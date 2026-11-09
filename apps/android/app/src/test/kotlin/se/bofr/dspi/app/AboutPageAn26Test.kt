@@ -49,7 +49,7 @@ class AboutPageAn26Test {
 
     private fun assertGoogleRowsStay() {
         rule.onNodeWithText("Source code").assertHasClickAction()
-        rule.onNodeWithText("https://github.com/Bofr5555/dspi-android").assertExists()
+        rule.onNodeWithText("https://github.com/Bofr5555/dspi-unified-console").assertExists()
         rule.onNodeWithText("Privacy policy").assertHasClickAction()
         rule.onNodeWithText("No data collected; no network access").assertExists()
         rule.onNodeWithText("Licences").assertHasClickAction()

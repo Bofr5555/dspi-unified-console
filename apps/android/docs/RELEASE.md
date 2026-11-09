@@ -25,8 +25,10 @@ Play (impersonation / IP complaint).
 
 Remaining before a public release:
 - make the source public for each released version (this repository, or a
-  public mirror of the release tag) — the in-app "Source code" link and the
-  store listing point to https://github.com/Bofr5555/dspi-android;
+  public mirror of the release tag) — the in-app "Source code" link points to
+  https://github.com/Bofr5555/dspi-unified-console (from 0.13.x, REL013M2); the
+  store listing and the privacy policy still point to
+  https://github.com/Bofr5555/dspi-android;
 - keep the third-party notices current: `tools/ci.sh settings` fails when
   `assets/licenses/rust-crates.txt` is stale
   (`tools/dev.sh python3 tools/gen_third_party_licenses.py` regenerates it);

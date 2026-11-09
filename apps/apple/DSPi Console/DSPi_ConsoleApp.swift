@@ -12309,7 +12309,7 @@ struct DSPi_ConsoleApp: App {
                 Divider()
 
                 Button("DSPi Console on GitHub") {
-                    if let url = URL(string: "https://github.com/WeebLabs/DSPi-Console") {
+                    if let url = URL(string: "https://github.com/Bofr5555/dspi-unified-console") {
                         NSWorkspace.shared.open(url)
                     }
                 }
