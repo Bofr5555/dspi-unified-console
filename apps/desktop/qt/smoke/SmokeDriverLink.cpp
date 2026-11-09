@@ -218,19 +218,24 @@ void SmokeDriver::testLink() {
         l.connectToHub(hub.url, hub.id);
         check("QD8: rate_limited", settled(l) && l.errorCode() == QLatin1String("rate_limited"));
         check("QD8: rate_limited keeps the token", storedIn(file, hub.id) == firstToken);
-        check("QD8: the hub takes token internal", hub.fault("token internal"));
+        // -- WP QD43 -- a code that is neither worth another try nor a refusal of the token
+        check("QD8: the hub takes token bad_request", hub.fault("token bad_request"));
+        l.connectToHub(hub.url, hub.id);
+        check("QD8: another failure", settled(l) && l.errorCode() == QLatin1String("bad_request"));
+        check("QD8: another failure keeps the token", storedIn(file, hub.id) == firstToken);
         // -- WP QD43 -- a busy hub (internal) is worth another try: since LK4 the first
         // dial keeps trying for 60 s (a release build has no shorter budget), so the
         // app shows Connecting and Disconnect is the way out
+        check("QD8: the hub takes token internal", hub.fault("token internal"));
         l.connectToHub(hub.url, hub.id);
         spin(1500);
-        check("QD8: another failure: still dialling", l.busy() && l.errorCode().isEmpty() && l.phase() == QLatin1String("idle"));
+        check("QD8: a busy hub: still dialling", l.busy() && l.errorCode().isEmpty() && l.phase() == QLatin1String("idle"));
         QElapsedTimer stop;
         stop.start();
         l.closeSession();
-        check("QD8: another failure: Disconnect stops the dial", settled(l) && stop.elapsed() < 10000 && l.errorCode().isEmpty());
-        check("QD8: another failure leaves no session", l.phase() == QLatin1String("idle") && !dspi_is_connected(run.core));
-        check("QD8: another failure keeps the token", storedIn(file, hub.id) == firstToken);
+        check("QD8: a busy hub: Disconnect stops the dial", settled(l) && stop.elapsed() < 10000 && l.errorCode().isEmpty());
+        check("QD8: a busy hub: no session left", l.phase() == QLatin1String("idle") && !dspi_is_connected(run.core));
+        check("QD8: a busy hub keeps the token", storedIn(file, hub.id) == firstToken);
         check("QD8: the hub takes token ok", hub.fault("token ok"));
         l.connectToHub(hub.url, hub.id);
         check("QD8: after the limit the same token works", settled(l) && l.errorCode().isEmpty());
@@ -271,8 +276,11 @@ void SmokeDriver::testLink() {
         l.setStaleDialHook([&] { staleUp = true; });
         check("QD8: the hub takes unstall", hub.fault("unstall"));
         check("QD8: the dial ends", settled(l));
-        check("QD8: a dial Disconnect stopped brings up no session", !staleUp && l.phase() == QLatin1String("idle"));
+        // The core ends that dial with "closed"; the app asked for it, so it shows no error
+        check("QD8: a dial Disconnect stopped brings up no session",
+              !staleUp && l.phase() == QLatin1String("idle") && !dspi_is_connected(run.core));
         spin(300);
+        l.refreshStatus();
         check("QD8: and none shows later", l.phase() == QLatin1String("idle") && l.errorCode().isEmpty());
     }
     {
