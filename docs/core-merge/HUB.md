@@ -138,6 +138,15 @@ costs a re-read:
 - **Only the hub's own path counts** (`relay::is_hub_path`): `HOST_SET` on USB, `MIDI`
   on MIDI, `BULK_SET` on either. A knob, a preset, or a MIDI host beside a USB hub has
   origin 0. Upstream lists `HOST_SET`, `BULK_SET`, `UART` regardless of the path.
+- **A write the firmware never answers on that path takes no place in the queue**
+  (`router::SILENT`, WP UPW1): no event at all (`RTA_CONTROL`, the saves, the control
+  surfaces' definitions), only events without a source (names, CS_AUX, the signal
+  generator), or a notification tagged `PRESET`, `FACTORY` or `UNKNOWN` (preset load and
+  delete, factory reset, and what the main loop applies after the request's source is
+  cleared: EQ, band bypass, the clock modes, the input source, the DAC mute). Left in the
+  queue, such an entry took the next console's change for its own echo, and a client
+  that drops its own echoes by `origin` never showed it. Upstream's Windows hub found
+  this for `RTA_CONTROL` (f1e18ed1).
 
 **Bulk.** The app reads and writes single-shot like any hub client. The worker turns
 `0xA0`/`0xA1` into a chunked session inside one job, where the transport has chunks, so
