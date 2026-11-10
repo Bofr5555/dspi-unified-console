@@ -1,9 +1,9 @@
-pkgbase = dspi-console
+pkgbase = dspi-uconsole
 	pkgdesc = Control application for the DSPi audio processor
 	pkgver = 0.13.0
 	pkgrel = 1
 	url = https://github.com/Bofr5555/dspi-unified-console
-	install = dspi-console.install
+	install = dspi-uconsole.install
 	arch = x86_64
 	license = GPL-3.0-or-later
 	makedepends = git
@@ -24,7 +24,7 @@ pkgbase = dspi-console
 	depends = glibc
 	optdepends = xdg-desktop-portal: native file dialogs
 	optdepends = udisks2: firmware updates
-	source = dspi-console::git+https://github.com/Bofr5555/dspi-unified-console.git#tag=v0.13.0
+	source = dspi-uconsole::git+https://github.com/Bofr5555/dspi-unified-console.git#commit=dfdc60af1e5055af574702f86cafacf6ab929b67
 	sha256sums = SKIP
 
-pkgname = dspi-console
+pkgname = dspi-uconsole

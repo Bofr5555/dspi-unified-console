@@ -15,7 +15,11 @@ makedepends=('git' 'cargo' 'cmake' 'ninja')
 optdepends=('xdg-desktop-portal: native file dialogs'
             'udisks2: firmware updates')
 install=dspi-uconsole.install
-source=("$pkgname::git+$url.git#tag=v$pkgver")
+# The commit the 0.13.0 release files were rebuilt from (renamed DSPi uConsole,
+# 2026-11-10); tag v0.13.0 does not contain it. The next release goes back to
+# #tag=v$pkgver.
+_commit=dfdc60af1e5055af574702f86cafacf6ab929b67
+source=("$pkgname::git+$url.git#commit=$_commit")
 sha256sums=('SKIP')
 
 prepare() {
