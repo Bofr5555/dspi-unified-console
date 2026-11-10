@@ -552,6 +552,31 @@ mod tests_wp_c1b {
         assert_eq!(open.opens(), 2);
     }
 
+    // -- WP UPW2 --
+    #[test]
+    fn wp_upw2_a_dead_handle_is_closed_and_reopened_as_after_a_reseat() {
+        let (core, events) = core_with_events();
+        let open = Opener::new();
+        open.on(&core)("A").unwrap();
+        core.poll_with(bus(&["A"]), never);
+        events.take();
+
+        // The handle stays open, but every notification read fails: the
+        // reader gives it up, and the poll reopens the board still listed.
+        open.remote
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .fail_notifications(u32::MAX);
+        wait_for_reader_end(&core);
+        core.poll_with(bus(&["A"]), open.on(&core));
+        assert_eq!(events.take(), ["-A", "+A"]);
+        assert_eq!(connected_serial(&core).as_deref(), Some("A"));
+        assert_eq!(open.opens(), 2);
+        assert!(core.lock().state.bulk_valid);
+    }
+
     #[test]
     fn wp_c1b_a_lost_stream_closes_a_device_that_is_gone() {
         let (core, events) = core_with_events();

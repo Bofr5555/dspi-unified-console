@@ -1310,8 +1310,9 @@ mod tests_wp_c4 {
 
     #[test]
     fn wp_c4_a_stalled_write_leaves_the_mirror_alone() {
-        // Subharm solo is not modelled by the fake: it stalls the SET.
-        let (core, _, _) = rig();
+        // -- WP UPW2 -- The fake models subharm solo now: make it stall the SET.
+        let (core, remote, _) = rig();
+        remote.stall(op::REQ_SET_SUBHARM_SOLO);
         let before = mirror(&core);
         assert!(matches!(
             core.set_subharm_solo(true),
@@ -1322,9 +1323,9 @@ mod tests_wp_c4 {
 
     #[test]
     fn wp_c4_an_acked_but_ignored_write_is_proven_by_read_back() {
-        // With `ack_unknown_sets` the fake ACKs the solo SET it does not
-        // model, as the firmware ACKs what it drops: the call succeeds and
-        // only a read-back could tell. The mirror records the request.
+        // Solo has no place in the bulk image (the fake keeps it apart, WP
+        // UPW2), so the image cannot show it: the call succeeds and only a
+        // read-back of its own GET could tell. The mirror records the request.
         let (core, remote, script) = rig_with(FakeOptions {
             ack_unknown_sets: true,
             ..FakeOptions::default()

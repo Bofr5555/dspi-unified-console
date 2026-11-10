@@ -374,6 +374,41 @@ pub trait NotificationSource: Send {
     }
 }
 
+// -- WP UPW2 --
+/// A notification reader's run of failed reads, to tell a dead handle from a
+/// transient error.
+///
+/// Every reader backs off a moment after an error other than
+/// [`TransportError::Disconnected`] and tries again. Only a USB endpoint
+/// returns such errors: a stall, or an I/O error from a handle the host stack
+/// still holds but can no longer use (a quick reseat, or a resume that cut the
+/// bus power while the board kept its address). A run of
+/// [`ReadFailures::LIMIT`] of them with no read in between that worked means
+/// the handle is dead: the reader gives it up and ends as on an unplug, so the
+/// owner closes the connection and, while the serial is still listed, reopens
+/// it. Any read that works, silence included, ends the run.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ReadFailures {
+    run: u32,
+}
+
+impl ReadFailures {
+    /// Failed reads in a row that give the handle up: about a second at the
+    /// readers' 50 ms back-off.
+    pub const LIMIT: u32 = 20;
+
+    /// A read failed. True when that makes [`Self::LIMIT`] in a row.
+    pub fn failed(&mut self) -> bool {
+        self.run = self.run.saturating_add(1);
+        self.run >= Self::LIMIT
+    }
+
+    /// A read worked, silence included: the run is over.
+    pub fn worked(&mut self) {
+        self.run = 0;
+    }
+}
+
 /// Run a transfer that may land inside a deferred write's busy window.
 ///
 /// Flash writes and pipeline resets briefly disable the USB control IRQ, so a

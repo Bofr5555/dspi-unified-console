@@ -255,6 +255,20 @@ pub(crate) fn describe(note: &Notification) -> String {
             let name = name_text(bytes.get(4..).unwrap_or_default());
             format!("{seq} {what} {name} src={src}")
         }
+        // -- WP UPW2 --
+        Event::Unknown { id, bytes } if *id == crate::rta::EVT_RTA_CONFIG => {
+            let src = source_label(Source::from_raw(bytes.get(12).copied().unwrap_or(0)));
+            match dspi_proto::packets::RtaConfig::decode(bytes) {
+                Ok(c) => format!(
+                    "{seq} v2.RtaConfig                  tap={} mask=0x{:04X} order={} avg={}ms decay={}dB/s src={src}",
+                    c.tap, c.channel_mask, c.fft_order, c.avg_ms, c.peak_decay_db_s
+                ),
+                Err(_) => format!(
+                    "{seq} v2.RtaConfig                  {} src={src}",
+                    hex(bytes)
+                ),
+            }
+        }
         // The reader's marker for a packet it could not decode.
         Event::Unknown { id: 0xFF, bytes } if note.lost => {
             format!("(undecodable, {} bytes)  {}", bytes.len(), hex(bytes))
@@ -769,6 +783,36 @@ mod tests_wp_c7 {
             n.contains("InputSourceName") && n.contains("source=2") && n.contains("\"TV\""),
             "{n}"
         );
+    }
+
+    // -- WP UPW2 --
+    #[test]
+    fn wp_upw2_the_monitor_names_the_analyser_configuration_event() {
+        let cfg = dspi_proto::packets::RtaConfig {
+            tap: 1,
+            channel_mask: 0x0101,
+            fft_order: 11,
+            avg_ms: 0,
+            peak_decay_db_s: 0,
+            flags: 0,
+        };
+        let mut bytes = cfg.encode().to_vec();
+        bytes.push(g::notify::PARAM_SRC_HOST_SET as u8);
+        let r = describe(&note(Event::Unknown {
+            id: crate::rta::EVT_RTA_CONFIG,
+            bytes,
+        }));
+        assert!(
+            r.contains("v2.RtaConfig")
+                && r.contains("tap=1 mask=0x0101 order=11")
+                && r.ends_with("src=HOST"),
+            "{r}"
+        );
+        let bad = describe(&note(Event::Unknown {
+            id: crate::rta::EVT_RTA_CONFIG,
+            bytes: vec![9],
+        }));
+        assert!(bad.contains("v2.RtaConfig") && bad.contains("09"), "{bad}");
     }
 
     #[test]

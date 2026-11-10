@@ -711,6 +711,8 @@ struct CallerDriven {
     reader: Reader,
     /// Read with a zero timeout on each drain, until it is quiet.
     source: Option<Box<dyn NotificationSource>>,
+    // -- WP UPW2 --
+    failures: dspi_transport::ReadFailures,
 }
 
 /// The reader thread and its channel.
@@ -778,10 +780,23 @@ impl Notifications {
                     overflowed: false,
                     waker,
                 };
+                // -- WP UPW2 --
+                let mut failures = dspi_transport::ReadFailures::default();
                 while !stop_flag.load(Ordering::Relaxed) {
                     let (packet, origin) = match source.read_attributed(Self::READ_TIMEOUT) {
-                        Ok(a) => (a.packet, a.origin),
-                        Err(dspi_transport::TransportError::Disconnected) => {
+                        Ok(a) => {
+                            failures.worked();
+                            (a.packet, a.origin)
+                        }
+                        Err(e) => {
+                            // A stall or a transient error: give the bus a
+                            // moment rather than spinning. A run of them is
+                            // a dead handle, given up as an unplug is (WP UPW2).
+                            let gone = matches!(e, dspi_transport::TransportError::Disconnected);
+                            if !gone && !failures.failed() {
+                                dspi_transport::clock::sleep(Duration::from_millis(50));
+                                continue;
+                            }
                             disc_flag.store(true, Ordering::Relaxed);
                             // Wake the client once so it notices the end
                             // (MIDI port closed, Link session over) instead
@@ -790,12 +805,6 @@ impl Notifications {
                                 w();
                             }
                             break;
-                        }
-                        // A stall or a transient error: give the bus a
-                        // moment rather than spinning.
-                        Err(_) => {
-                            dspi_transport::clock::sleep(Duration::from_millis(50));
-                            continue;
                         }
                     };
                     if !reader.packet(packet, origin) {
@@ -847,6 +856,7 @@ impl Notifications {
                     waker: None,
                 },
                 source,
+                failures: dspi_transport::ReadFailures::default(),
             })),
         }
     }
@@ -874,12 +884,20 @@ impl Notifications {
         let mut c = caller
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let CallerDriven { reader, source } = &mut *c;
+        let CallerDriven {
+            reader,
+            source,
+            failures,
+        } = &mut *c;
         let Some(src) = source.as_mut() else {
             return;
         };
         for _ in 0..Self::QUEUE {
-            match src.read_attributed(Duration::ZERO) {
+            let read = src.read_attributed(Duration::ZERO);
+            if read.is_ok() {
+                failures.worked();
+            }
+            match read {
                 Ok(a) if a.packet.is_empty() => return,
                 Ok(a) => {
                     if !reader.packet(a.packet, a.origin) {
@@ -891,8 +909,15 @@ impl Notifications {
                     *source = None;
                     return;
                 }
-                // A stall or a transient error: try again on the next call.
-                Err(_) => return,
+                // A stall or a transient error: try again on the next call,
+                // unless a run of them says the handle is dead (WP UPW2).
+                Err(_) => {
+                    if failures.failed() {
+                        self.disconnected.store(true, Ordering::Relaxed);
+                        *source = None;
+                    }
+                    return;
+                }
             }
         }
     }
@@ -1539,5 +1564,85 @@ mod tests_wp_wb2 {
         let mock = MockTransport::new();
         let n = Notifications::start(mock.notifications().unwrap()).unwrap();
         assert!(!n.push(param(1), None));
+    }
+}
+
+// -- WP UPW2 --
+#[cfg(test)]
+mod tests_wp_upw2 {
+    use super::*;
+    use dspi_transport::{FakeDevice, ReadFailures, Transport};
+
+    fn wait_until(what: &str, mut done: impl FnMut() -> bool) {
+        let start = std::time::Instant::now();
+        while !done() {
+            assert!(start.elapsed() < Duration::from_secs(10), "{what}");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    #[test]
+    fn wp_upw2_a_handle_that_keeps_failing_is_given_up_as_an_unplug() {
+        let dev = FakeDevice::demo();
+        let remote = dev.remote();
+        let woken = Arc::new(AtomicBool::new(false));
+        let w = Arc::clone(&woken);
+        let waker: Waker = Arc::new(move || w.store(true, Ordering::Relaxed));
+        let n = Notifications::start_with_waker(dev.notifications().unwrap(), Some(waker)).unwrap();
+        remote.fail_notifications(u32::MAX);
+        wait_until("the reader never gave the handle up", || {
+            n.is_disconnected()
+        });
+        assert!(woken.load(Ordering::Relaxed), "the client is woken once");
+        // The device itself still answers: only the reader gave up.
+        let mut dev = dev;
+        dev.control_in(dspi_proto::generated::opcodes::REQ_GET_SERIAL, 0, 16)
+            .unwrap();
+    }
+
+    #[test]
+    fn wp_upw2_a_shorter_run_of_errors_is_ridden_out() {
+        let dev = FakeDevice::demo();
+        let remote = dev.remote();
+        let n = Notifications::start(dev.notifications().unwrap()).unwrap();
+        remote.fail_notifications(ReadFailures::LIMIT - 1);
+        // A packet behind the errors still arrives, and the reader stays.
+        remote.push(vec![2, 0x04, 0, 0, 3, 0, 0, 0]);
+        let got = n.next(Duration::from_secs(10)).expect("the preset event");
+        assert!(matches!(got.event, Event::PresetLoaded { slot: 3 }));
+        assert!(!n.is_disconnected());
+        // A working read reset the count: another short run is ridden out too.
+        remote.fail_notifications(ReadFailures::LIMIT - 1);
+        remote.push(vec![2, 0x04, 0, 0, 4, 0, 0, 0]);
+        assert!(n.next(Duration::from_secs(10)).is_some());
+        assert!(!n.is_disconnected());
+        drop(dev);
+    }
+
+    #[test]
+    fn wp_upw2_a_caller_driven_reader_gives_a_dead_handle_up_too() {
+        let dev = FakeDevice::demo();
+        let remote = dev.remote();
+        let n = Notifications::caller_driven(dev.notifications());
+        remote.fail_notifications(u32::MAX);
+        for _ in 1..ReadFailures::LIMIT {
+            assert!(n.drain().is_empty());
+            assert!(!n.is_disconnected());
+        }
+        assert!(n.drain().is_empty());
+        assert!(n.is_disconnected());
+    }
+
+    #[test]
+    fn wp_upw2_the_count_is_of_failures_in_a_row() {
+        let mut f = ReadFailures::default();
+        for _ in 1..ReadFailures::LIMIT {
+            assert!(!f.failed());
+        }
+        f.worked();
+        for _ in 1..ReadFailures::LIMIT {
+            assert!(!f.failed());
+        }
+        assert!(f.failed());
     }
 }

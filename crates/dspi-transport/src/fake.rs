@@ -79,14 +79,11 @@
 //!   that stalls makes a missing model visible. The firmware ACKs every
 //!   unhandled OUT request on USB except `REQ_EXTENSION`;
 //!   [`FakeOptions::ack_unknown_sets`] does the same. Not modelled at all
-//!   (GETs stall): subharm meter/headroom/solo, the
-//!   band-bypass read (`REQ_GET_BAND_BYPASS`), pin SETs (output pins,
+//!   (GETs stall): the subharm headroom, pin SETs (output pins,
 //!   BCK, MCK, S/PDIF/I2S/ADAT RX pins) and output-pin GETs, the I2S
 //!   clock-pin mode, the S/PDIF RX, ADAT and I2S-slave status reads, the
-//!   control-interface status, the Core 1 mode read, the saved
-//!   master volume, save-output-config, clip
-//!   clearing, clock diagnostics, buffer statistics and the DAC mute test
-//!   pulse. The `SCALARS`/`FEATURE_SCALARS` tables and the per-opcode
+//!   control-interface status, the Core 1 mode read, clock diagnostics, the
+//!   DAC mute test pulse and the bootloader. The `SCALARS`/`FEATURE_SCALARS` tables and the per-opcode
 //!   matches in `State::get_other`/`set_other`/`get_feature`/`set_feature`
 //!   are the authoritative set.
 //!
@@ -456,6 +453,26 @@ impl FakeRemote {
     pub fn vreg_run_main_loop(&self) {
         self.shared.lock().vreg_run_main_loop();
     }
+
+    // -- WP UPW2 -- Error injection.
+
+    /// Make every later request with `opcode`, either direction, fail with
+    /// [`TransportError::Stalled`], whatever the fake would answer.
+    pub fn stall(&self, opcode: u8) {
+        let mut s = self.shared.lock();
+        if !s.stalled.contains(&opcode) {
+            s.stalled.push(opcode);
+        }
+    }
+
+    /// Make the next `reads` notification reads fail at once with
+    /// [`TransportError::Usb`], as a handle the host stack still holds but can
+    /// no longer use does (`u32::MAX`: every read from now on). Control
+    /// requests still work. Zero ends it.
+    pub fn fail_notifications(&self, reads: u32) {
+        self.shared.lock().notify_failures = reads;
+        self.shared.wake.notify_all();
+    }
 }
 
 // -- WP CG16 --
@@ -644,6 +661,11 @@ impl NotificationSource for FakeNotifications {
         loop {
             if s.gone {
                 return Err(TransportError::Disconnected);
+            }
+            // -- WP UPW2 --
+            if s.notify_failures > 0 {
+                s.notify_failures = s.notify_failures.saturating_sub(1);
+                return Err(TransportError::Usb("injected notification fault".into()));
             }
             if let Some(p) = s.queue.pop_front() {
                 return Ok(p);
@@ -1031,6 +1053,10 @@ struct Presets {
     default_slot: u8,
     output_config_mode: u8,
     master_volume_mode: u8,
+    // -- WP UPW2 --
+    /// The directory's independent master volume, in dB
+    /// (`REQ_SAVE_MASTER_VOLUME`, `REQ_GET_SAVED_MASTER_VOLUME`).
+    saved_master_volume: [u8; 4],
 }
 
 struct State {
@@ -1059,6 +1085,13 @@ struct State {
     // -- WP QD31 --
     /// [`EXT_FAKE_OUTPUT_SAVE_SIM`]'s byte.
     output_save_sim: u8,
+    // -- WP UPW2 --
+    /// `subharm_config.solo`: monitoring only, never in the image.
+    subharm_solo: bool,
+    /// Opcodes [`FakeRemote::stall`] made fail.
+    stalled: Vec<u8>,
+    /// Notification reads [`FakeRemote::fail_notifications`] still fails.
+    notify_failures: u32,
     queue: VecDeque<Vec<u8>>,
     seq: u8,
     started: Instant,
@@ -1076,6 +1109,8 @@ impl State {
             default_slot: 0,
             output_config_mode: OC_WITH_PRESET,
             master_volume_mode: MV_INDEPENDENT,
+            // -- WP UPW2 -- Set from the image below.
+            saved_master_volume: [0; 4],
         };
         // Slot 0 holds what the device is running.
         if let (Some(name), Some(slot)) = (presets.names.first_mut(), presets.slots.first_mut()) {
@@ -1113,6 +1148,10 @@ impl State {
             },
             // -- WP QD31 --
             output_save_sim: st::PRESET_OK as u8,
+            // -- WP UPW2 --
+            subharm_solo: false,
+            stalled: Vec::new(),
+            notify_failures: 0,
             queue: VecDeque::new(),
             seq: 0,
             started: Instant::now(),
@@ -1124,7 +1163,19 @@ impl State {
             *last = s.num_inputs().min(2);
         }
         s.status = status;
+        // -- WP UPW2 --
+        if let Some(live) = s.live_master_volume() {
+            s.presets.saved_master_volume = live;
+        }
         s
+    }
+
+    // -- WP UPW2 --
+    /// The master volume in the image, as its four wire bytes.
+    fn live_master_volume(&self) -> Option<[u8; 4]> {
+        self.locate("master_volume", 0, 0, MV_DB)
+            .and_then(|o| self.bytes(o, MV_DB.2))
+            .and_then(|b| <[u8; 4]>::try_from(b).ok())
     }
 
     fn header_byte(&self, i: usize) -> u8 {
@@ -1351,6 +1402,10 @@ impl State {
 
     /// The full reply to an IN request; the caller truncates to `wLength`.
     fn get(&mut self, opcode: u8, value: u16, want: usize) -> Result<Vec<u8>> {
+        // -- WP UPW2 --
+        if self.stalled.contains(&opcode) {
+            return Err(TransportError::Stalled { opcode });
+        }
         if opcode != op::REQ_GET_ALL_PARAMS_CHUNK {
             self.chunked = Chunked::None;
         }
@@ -1438,6 +1493,35 @@ impl State {
             op::REQ_FACTORY_RESET => Some(vec![self.factory_reset()]),
             // No PDM/EQ-worker interlock is modelled: never a conflict.
             op::REQ_GET_CORE1_CONFLICT => Some(vec![0]),
+            // -- WP UPW2 --
+            // Write-as-read: PRESET_OK, the flash write deferred to the main loop
+            // (vendor_commands.c, `case REQ_SAVE_MASTER_VOLUME`). Here the live
+            // master volume becomes the saved one at once.
+            op::REQ_SAVE_MASTER_VOLUME => {
+                if let Some(live) = self.live_master_volume() {
+                    self.presets.saved_master_volume = live;
+                }
+                Some(vec![st::PRESET_OK as u8])
+            }
+            op::REQ_GET_SAVED_MASTER_VOLUME => Some(self.presets.saved_master_volume.to_vec()),
+            op::REQ_GET_SUBHARM_SOLO => Some(vec![u8::from(self.subharm_solo)]),
+            // `wValue = (channel << 8) | band`: 1 when the band's bypass byte is
+            // exactly 1, as `REQ_SET_BAND_BYPASS` stores it.
+            op::REQ_GET_BAND_BYPASS => {
+                let [band, ch] = value.to_le_bytes();
+                let (off, _) = self.band_at(ch, band)?;
+                let b = self.bytes(off.checked_add(B_BYPASS.1)?, 1)?;
+                Some(vec![u8::from(b.first() == Some(&1))])
+            }
+            // Silent meters on the firmware's scale, two bytes per output.
+            op::REQ_GET_SUBHARM_METER => {
+                Some(vec![0; usize::from(self.num_outputs()).saturating_mul(2)])
+            }
+            // TinyUSB keeps no error counters: the firmware answers six zero
+            // `u32`s, and an ACK to the reset (vendor_commands.c,
+            // `case REQ_GET_USB_ERROR_STATS`).
+            op::REQ_GET_USB_ERROR_STATS => Some(vec![0; 24]),
+            op::REQ_RESET_USB_ERROR_STATS => Some(vec![1]),
             op::REQ_EXTENSION if self.options.extensions => self.get_ext(value),
             _ => None,
         }
@@ -1731,6 +1815,10 @@ impl State {
     // ------------------------------------------------------------ OUT
 
     fn set(&mut self, opcode: u8, value: u16, data: &[u8]) -> Result<()> {
+        // -- WP UPW2 --
+        if self.stalled.contains(&opcode) {
+            return Err(TransportError::Stalled { opcode });
+        }
         if opcode != op::REQ_SET_ALL_PARAMS_CHUNK {
             self.chunked = Chunked::None;
         }
@@ -1866,6 +1954,13 @@ impl State {
                 true
             }
             op::REQ_EXTENSION if self.options.extensions => self.set_ext(value, data),
+            // -- WP UPW2 -- Monitoring only: no wire offset, no notification.
+            op::REQ_SET_SUBHARM_SOLO => {
+                if let Some(b) = data.first() {
+                    self.subharm_solo = *b != 0;
+                }
+                true
+            }
             // Unknown: see `State::set` for ACK versus stall.
             _ => false,
         })
@@ -3281,5 +3376,117 @@ mod tests_wp_cg16_extensions {
                 "0x{code:04X} is listed"
             );
         }
+    }
+}
+
+// -- WP UPW2 --
+#[cfg(test)]
+mod tests_wp_upw2 {
+    use super::*;
+    use crate::Transport;
+
+    fn f32_reply(d: &mut FakeDevice, opcode: u8) -> f32 {
+        let b = d.control_in(opcode, 0, 4).unwrap();
+        f32::from_le_bytes([b[0], b[1], b[2], b[3]])
+    }
+
+    #[test]
+    fn wp_upw2_save_master_volume_answers_preset_ok_and_keeps_the_live_value() {
+        let mut d = FakeDevice::demo();
+        assert_eq!(f32_reply(&mut d, op::REQ_GET_SAVED_MASTER_VOLUME), -20.0);
+        d.control_out(op::REQ_SET_MASTER_VOLUME, 0, &(-7.5f32).to_le_bytes())
+            .unwrap();
+        // Nothing is saved until asked.
+        assert_eq!(f32_reply(&mut d, op::REQ_GET_SAVED_MASTER_VOLUME), -20.0);
+        let reply = d.control_in(op::REQ_SAVE_MASTER_VOLUME, 0, 1).unwrap();
+        assert_eq!(reply, [st::PRESET_OK as u8]);
+        assert_eq!(f32_reply(&mut d, op::REQ_GET_SAVED_MASTER_VOLUME), -7.5);
+    }
+
+    #[test]
+    fn wp_upw2_injected_faults_stall_an_opcode_and_fail_notification_reads() {
+        let mut d = FakeDevice::demo();
+        let remote = d.remote();
+        let mut events = d.notifications().unwrap();
+        remote.stall(op::REQ_GET_SUBHARM_SOLO);
+        assert!(matches!(
+            d.control_in(op::REQ_GET_SUBHARM_SOLO, 0, 1),
+            Err(TransportError::Stalled { .. })
+        ));
+        remote.stall(op::REQ_SET_SUBHARM_SOLO);
+        assert!(d.control_out(op::REQ_SET_SUBHARM_SOLO, 0, &[1]).is_err());
+        // Other requests are untouched.
+        d.control_in(op::REQ_GET_SERIAL, 0, 16).unwrap();
+
+        remote.fail_notifications(2);
+        for _ in 0..2 {
+            assert!(matches!(
+                events.read(Duration::from_secs(5)),
+                Err(TransportError::Usb(_))
+            ));
+        }
+        assert!(events.read(Duration::ZERO).unwrap().is_empty());
+        remote.fail_notifications(u32::MAX);
+        remote.disconnect();
+        // An unplug still reads as one.
+        assert!(matches!(
+            events.read(Duration::ZERO),
+            Err(TransportError::Disconnected)
+        ));
+    }
+
+    #[test]
+    fn wp_upw2_band_bypass_reads_back_what_was_set() {
+        let mut d = FakeDevice::demo();
+        let at = |ch: u16, band: u16| (ch << 8) | band;
+        assert_eq!(
+            d.control_in(op::REQ_GET_BAND_BYPASS, at(0, 2), 1).unwrap(),
+            [0]
+        );
+        d.control_out(op::REQ_SET_BAND_BYPASS, at(0, 2), &[1])
+            .unwrap();
+        assert_eq!(
+            d.control_in(op::REQ_GET_BAND_BYPASS, at(0, 2), 1).unwrap(),
+            [1]
+        );
+        assert_eq!(
+            d.control_in(op::REQ_GET_BAND_BYPASS, at(0, 3), 1).unwrap(),
+            [0]
+        );
+        // A channel past the end stalls, as the firmware's `return false`.
+        assert!(
+            d.control_in(op::REQ_GET_BAND_BYPASS, at(200, 0), 1)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn wp_upw2_subharmonic_solo_round_trips_without_a_notification() {
+        let mut d = FakeDevice::demo();
+        let mut events = d.notifications().unwrap();
+        assert_eq!(d.control_in(op::REQ_GET_SUBHARM_SOLO, 0, 1).unwrap(), [0]);
+        d.control_out(op::REQ_SET_SUBHARM_SOLO, 0, &[1]).unwrap();
+        assert_eq!(d.control_in(op::REQ_GET_SUBHARM_SOLO, 0, 1).unwrap(), [1]);
+        // Silence reads as an empty packet.
+        assert_eq!(
+            events.read(Duration::from_millis(20)).unwrap(),
+            Vec::<u8>::new()
+        );
+    }
+
+    #[test]
+    fn wp_upw2_meters_and_usb_error_counters_answer_as_the_firmware_does() {
+        let mut d = FakeDevice::demo();
+        let outputs = usize::from(d.run(|s| Ok(s.num_outputs())).unwrap());
+        let meter = d.control_in_upto(op::REQ_GET_SUBHARM_METER, 0, 64).unwrap();
+        assert_eq!(meter, vec![0; outputs * 2]);
+        assert_eq!(
+            d.control_in(op::REQ_GET_USB_ERROR_STATS, 0, 24).unwrap(),
+            [0; 24]
+        );
+        assert_eq!(
+            d.control_in(op::REQ_RESET_USB_ERROR_STATS, 0, 1).unwrap(),
+            [1]
+        );
     }
 }

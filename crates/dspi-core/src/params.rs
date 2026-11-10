@@ -1392,8 +1392,9 @@ mod tests_wp_c3 {
 
     #[test]
     fn wp_c3_a_failed_transfer_leaves_the_mirror_alone() {
-        // The demo does not model subharm solo: it stalls.
+        // -- WP UPW2 -- The demo models subharm solo now: make it stall.
         let (core, remote) = demo();
+        remote.stall(op::REQ_SET_SUBHARM_SOLO);
         let before = core.get_state();
         assert!(matches!(
             core.set_subharm_solo(true),
@@ -1473,8 +1474,11 @@ mod tests_wp_c3 {
             core.save_master_volume(),
             Err(DspiError::Refused { status: 3 })
         );
-        // The demo does not model the save: a stall is a transfer error.
-        let (core, _) = demo();
+        // -- WP UPW2 -- The demo answers PRESET_OK, as the firmware does; a
+        // stall is a transfer error.
+        let (core, remote) = demo();
+        assert_eq!(core.save_master_volume(), Ok(()));
+        remote.stall(op::REQ_SAVE_MASTER_VOLUME);
         assert!(matches!(
             core.save_master_volume(),
             Err(DspiError::Transfer { .. })
