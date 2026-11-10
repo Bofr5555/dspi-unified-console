@@ -36,12 +36,16 @@ CsController::CsController(DSPiBridge *bridge, QObject *parent)
     m_displayPoll.setInterval(1000);
     connect(&m_displayPoll, &QTimer::timeout, this, [poll]() { poll(R"({"op":"displayStatus"})", nullptr); });
     // A running macro pushes nothing, so follow it until it ends (with a ceiling:
-    // steps can carry minute-long delays)
+    // steps can carry minute-long delays). The ceiling counts ticks, read or
+    // skipped, so it stays about 30 s however slow the reads are.
     m_macroPoll.setInterval(250);
     connect(&m_macroPoll, &QTimer::timeout, this, [this, poll]() {
+        if (++m_macroPolls > 120) {
+            m_macroPoll.stop();
+            return;
+        }
         poll(R"({"op":"refreshStatus"})", [this]() {
-            const int running = m_model.value("ext").toMap().value("macroRunning").toInt();
-            if (running == 0xFF || ++m_macroPolls >= 120) m_macroPoll.stop();
+            if (m_model.value("ext").toMap().value("macroRunning").toInt() == 0xFF) m_macroPoll.stop();
         });
     });
 
