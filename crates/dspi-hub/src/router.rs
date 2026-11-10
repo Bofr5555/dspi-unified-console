@@ -25,6 +25,7 @@ use std::time::{Duration, Instant};
 use dspi_link::frames::CmdRequest;
 use dspi_link::{Dir, status};
 use dspi_proto::ext::CoreVregStatus;
+use dspi_proto::generated::ext;
 use dspi_proto::generated::opcodes as op;
 use dspi_proto::generated::rta;
 use dspi_session::overvolt;
@@ -117,6 +118,75 @@ pub struct Router {
 /// Whether this opcode writes the whole image.
 fn is_bulk_write(code: u8) -> bool {
     matches!(code, op::REQ_SET_ALL_PARAMS | op::REQ_SET_ALL_PARAMS_CHUNK)
+}
+
+// -- WP UPW1 --
+/// Writes the firmware never answers with a notification `relay::is_hub_path` takes
+/// (DSPi release/v1.1.6 and bofr-main, `vendor_commands.c`). Each would sit in the
+/// queue as a scalar writer and take the next console's change for its own echo
+/// within [`ATTRIBUTION_WINDOW`], which a client that drops its own echoes by
+/// `origin` never shows (upstream's Windows hub, f1e18ed1, for `RTA_CONTROL`). A
+/// newer firmware that tags one of these after all only gets origin 0 for it, which
+/// costs a re-read (HUB.md section 4).
+const SILENT: [u8; 45] = [
+    // No event at all.
+    op::REQ_OUTPUT_LATENCY,
+    op::REQ_RTA_CONTROL,
+    op::REQ_SET_CS_GROUP,
+    op::REQ_SET_CS_MACRO,
+    op::REQ_SET_CS_MACRO_STEP,
+    op::REQ_SET_CS_DISPLAY_CFG,
+    op::REQ_SET_CS_DISPLAY_PAGE,
+    op::REQ_SET_SUBHARM_SOLO,
+    op::REQ_SAVE_PARAMS,
+    op::REQ_SAVE_OUTPUT_CONFIG,
+    op::REQ_CLEAR_CLIPS,
+    op::REQ_SET_CS_BINDING,
+    op::REQ_SET_CS_NAME,
+    op::REQ_SET_CS_IR_CMD,
+    op::REQ_PRESET_SAVE,
+    op::REQ_PRESET_SET_NAME,
+    op::REQ_PRESET_SET_STARTUP,
+    op::REQ_SET_OUTPUT_CONFIG_MODE,
+    op::REQ_CS_SAVE,
+    op::REQ_CS_REVERT,
+    op::REQ_RESET_BUFFER_STATS,
+    op::REQ_RESET_USB_ERROR_STATS,
+    op::REQ_SET_MASTER_VOLUME_MODE,
+    op::REQ_SAVE_MASTER_VOLUME,
+    op::REQ_TEST_DAC_HW_MUTE,
+    op::REQ_ENTER_BOOTLOADER,
+    op::REQ_SET_UART_CONFIG,
+    op::REQ_SET_I2C_CONFIG,
+    // Only events that carry no source a writer can answer: CS_AUX, the two name
+    // events, CS_IR_LEARN, SIGGEN_STATE. A macro's steps run later, tagged GPIO.
+    op::REQ_SET_CS_AUX_STATE,
+    op::REQ_SET_CS_AUX_LEVEL,
+    op::REQ_SET_INPUT_SOURCE_NAME,
+    op::REQ_SET_DEVICE_NAME,
+    op::REQ_CS_IR_LEARN,
+    op::REQ_SIGGEN_SET_CONFIG,
+    op::REQ_SIGGEN_CONTROL,
+    op::REQ_CS_MACRO_FIRE,
+    // A notification, but never on the hub's path: BULK_INVALIDATED tagged PRESET or
+    // FACTORY, and changes the main loop applies after the request's source is
+    // cleared, so they are tagged UNKNOWN.
+    op::REQ_PRESET_LOAD,
+    op::REQ_FACTORY_RESET,
+    op::REQ_PRESET_DELETE,
+    op::REQ_SET_EQ_PARAM,
+    op::REQ_SET_BAND_BYPASS,
+    op::REQ_SET_I2S_CLOCK_MODE,
+    op::REQ_SET_ADAT_INPUT_CLOCK_MODE,
+    op::REQ_SET_INPUT_SOURCE,
+    op::REQ_SET_DAC_HW_MUTE_CONFIG,
+];
+
+/// Whether the firmware answers this write with nothing to attribute ([`SILENT`]).
+/// The voltage extension notifies nothing either (bofr-main `ext_core_vreg`).
+fn is_silent(req: &CmdRequest) -> bool {
+    SILENT.contains(&req.b_request)
+        || (req.b_request == op::REQ_EXTENSION && req.w_value == ext::EXT_CORE_VREG)
 }
 
 /// Which notification answers a write of this opcode.
@@ -284,7 +354,7 @@ impl Router {
                 return Err((status::DENIED, Vec::new()));
             }
         }
-        if !self.policy.mutates(req.b_request, req.dir) {
+        if !self.policy.mutates(req.b_request, req.dir) || is_silent(req) {
             return Ok(ExecTicket::none());
         }
         let param = parameter_key(req);
@@ -478,10 +548,42 @@ mod tests_wp_hb0 {
     fn wp_hb0_attribution_goes_to_the_oldest_writer() {
         let (r, t) = (router(8), Instant::now());
         wrote(&r, 2, &set(VOL, 0), t);
-        wrote(&r, 3, &set(op::REQ_SET_EQ_PARAM, 1), t);
+        wrote(&r, 3, &set(op::REQ_SET_PREAMP, 1), t);
         assert_eq!(r.consume_attribution(PacketKind::Scalar, t), 2);
         assert_eq!(r.consume_attribution(PacketKind::Scalar, t), 3);
         assert_eq!(r.consume_attribution(PacketKind::Scalar, t), NO_ORIGIN);
+    }
+
+    // -- WP UPW1 --
+    /// A write the firmware answers with nothing the hub can attribute leaves no
+    /// writer behind to claim the next console's change.
+    #[test]
+    fn wp_upw1_a_silent_write_leaves_nothing_to_attribute() {
+        let (r, t) = (router(8), Instant::now());
+        let start = CmdRequest {
+            dir: Dir::Get,
+            ..set(op::REQ_RTA_CONTROL, rta::RTA_CTL_START)
+        };
+        for silent in [
+            start,
+            set(op::REQ_SET_EQ_PARAM, 0),
+            set(op::REQ_SET_DEVICE_NAME, 0),
+        ] {
+            wrote(&r, 2, &silent, t);
+        }
+        wrote(&r, 3, &set(VOL, 0), t);
+        assert_eq!(r.consume_attribution(PacketKind::Scalar, t), 3);
+        assert_eq!(r.consume_attribution(PacketKind::Scalar, t), NO_ORIGIN);
+        // A voltage write notifies nothing; the crossfeed pair map does (bofr-main,
+        // HOST_SET).
+        assert!(is_silent(&set(op::REQ_EXTENSION, ext::EXT_CORE_VREG)));
+        wrote(
+            &r,
+            2,
+            &set(op::REQ_EXTENSION, ext::EXT_CROSSFEED_PAIR_MAP),
+            t,
+        );
+        assert_eq!(r.consume_attribution(PacketKind::Scalar, t), 2);
     }
 
     #[test]

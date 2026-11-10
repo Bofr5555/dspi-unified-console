@@ -760,6 +760,30 @@ mod tests_wp_hb0 {
         assert!(remote.image().windows(4).any(|w| w == volume));
     }
 
+    // -- WP UPW1 --
+    /// The macOS Console names its audio interface (0) in wIndex, also for the whole
+    /// image (upstream's Windows hub, 3972302e). The chunked read and write still go
+    /// to the vendor interface: no transport call carries wIndex at all.
+    #[test]
+    fn wp_upw1_the_macs_windex_does_not_reach_the_chunked_bulk_transfers() {
+        let mut d = small_transfers();
+        let remote = d.remote();
+        let mut image = remote.image();
+        let read = CmdRequest {
+            w_index: 0,
+            ..get(op::REQ_GET_ALL_PARAMS, u16::MAX)
+        };
+        assert_eq!(execute(&mut d, &read, true).unwrap(), image);
+        let at = 4700;
+        image[at..at + 4].copy_from_slice(&(-9.0f32).to_le_bytes());
+        let write = CmdRequest {
+            w_index: 0,
+            ..set(op::REQ_SET_ALL_PARAMS, image.clone())
+        };
+        execute(&mut d, &write, false).unwrap();
+        assert_eq!(remote.image()[at..at + 4], image[at..at + 4]);
+    }
+
     #[test]
     fn wp_hb0_the_busy_window_follows_a_write() {
         let t = Instant::now();

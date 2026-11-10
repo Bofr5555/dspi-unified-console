@@ -1177,3 +1177,57 @@ fn wp_hb2_a_change_nobody_here_made_has_no_origin() {
     ));
     assert_eq!(c.next_notify(), (0, nfy::PARAM_SRC_GPIO as u8));
 }
+
+// -- WP UPW1 --
+// Writes the firmware never answers with a notification it tags with the hub's path
+// leave nothing to attribute. Upstream's Windows hub found this for RTA_CONTROL (its
+// f1e18ed1); the list is the firmware's (`dspi_hub::router`, `SILENT`).
+
+fn rta_config(mask: u16) -> Vec<u8> {
+    dspi_proto::packets::RtaConfig {
+        tap: rta::RTA_TAP_OUTPUT as u8,
+        channel_mask: mask,
+        fft_order: 10,
+        avg_ms: 300,
+        peak_decay_db_s: 12,
+        flags: 0,
+    }
+    .encode()
+    .to_vec()
+}
+
+/// A starts the analyser, then B changes its configuration: A sees B as the origin.
+#[test]
+fn wp_upw1_an_analyser_start_does_not_take_another_consoles_config() {
+    let r = rig();
+    let (a, b) = (
+        Client::open(&r, Role::Control),
+        Client::open(&r, Role::Control),
+    );
+    let start = a.get(op::REQ_RTA_CONTROL, rta::RTA_CTL_START, 1);
+    assert_eq!(start.status, status::OK);
+    assert_eq!(
+        b.set(op::REQ_RTA_SET_CONFIG, 0, &rta_config(0b11)),
+        status::OK
+    );
+    assert_eq!(a.next_notify(), (b.id(), nfy::PARAM_SRC_HOST_SET as u8));
+}
+
+/// The same for any change of B's: A's analyser start must not claim it as A's echo,
+/// which a client that drops its own echoes by `origin` (spec 8.3) would never show.
+#[test]
+fn wp_upw1_an_analyser_start_does_not_take_another_consoles_write() {
+    let r = rig();
+    let (a, b) = (
+        Client::open(&r, Role::Control),
+        Client::open(&r, Role::Control),
+    );
+    let start = a.get(op::REQ_RTA_CONTROL, rta::RTA_CTL_START, 1);
+    assert_eq!(start.status, status::OK);
+    assert_eq!(b.set_volume(-13.0), status::OK);
+    assert_eq!(a.next_notify(), (b.id(), nfy::PARAM_SRC_HOST_SET as u8));
+    // And A's own write after that is still A's.
+    assert_eq!(a.set_volume(-14.0), status::OK);
+    assert_eq!(b.next_notify(), (b.id(), nfy::PARAM_SRC_HOST_SET as u8));
+    assert_eq!(b.next_notify(), (a.id(), nfy::PARAM_SRC_HOST_SET as u8));
+}
