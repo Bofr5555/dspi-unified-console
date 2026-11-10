@@ -447,6 +447,7 @@ impl EventLog {
 /// with the offset resolved all the way to a field name rather than only to a
 /// section.
 pub fn describe(e: &dspi_session::Event) -> (&'static str, String, String, String) {
+    use dspi_proto::generated::notify as nfy;
     use dspi_session::Event;
     let none = String::new();
     match e {
@@ -573,17 +574,60 @@ pub fn describe(e: &dspi_session::Event) -> (&'static str, String, String, Strin
                 *level_q8 as f32 / 256.0
             ),
         ),
-        Event::Unknown { id, bytes } => (
-            "unknown",
-            none,
-            format!("0x{id:02X}"),
-            bytes
-                .iter()
-                .map(|b| format!("{b:02X}"))
-                .collect::<Vec<_>>()
-                .join(" "),
-        ),
+        // -- WP UPW2 -- The events the session hands on undecoded (notify.h).
+        Event::Unknown { id, bytes } if *id == nfy::NOTIFY_EVT_RTA_CONFIG as u8 => {
+            let source = Source::from_raw(bytes.get(12).copied().unwrap_or(0));
+            let value = packets::RtaConfig::decode(bytes).map_or_else(
+                |_| hex_bytes(bytes),
+                |c| {
+                    format!(
+                        "{} mask=0x{:04X} order={}",
+                        if c.tap == dspi_proto::generated::rta::RTA_TAP_INPUT as u8 {
+                            "inputs"
+                        } else {
+                            "outputs"
+                        },
+                        c.channel_mask,
+                        c.fft_order
+                    )
+                },
+            );
+            ("rta_config", source_word(source), "analyser".into(), value)
+        }
+        Event::Unknown { id, bytes }
+            if *id == nfy::NOTIFY_EVT_INPUT_SOURCE_NAME as u8
+                || *id == nfy::NOTIFY_EVT_DEVICE_NAME as u8 =>
+        {
+            let source = Source::from_raw(bytes.get(1).copied().unwrap_or(0));
+            let raw = bytes.get(4..).unwrap_or_default();
+            let end = raw.iter().position(|&c| c == 0).unwrap_or(raw.len());
+            let name = format!(
+                "\"{}\"",
+                String::from_utf8_lossy(raw.get(..end).unwrap_or_default())
+            );
+            if *id == nfy::NOTIFY_EVT_DEVICE_NAME as u8 {
+                ("device_name", source_word(source), "name".into(), name)
+            } else {
+                let input = bytes.first().copied().unwrap_or(0);
+                (
+                    "input_source_name",
+                    source_word(source),
+                    format!("source {input}"),
+                    name,
+                )
+            }
+        }
+        Event::Unknown { id, bytes } => ("unknown", none, format!("0x{id:02X}"), hex_bytes(bytes)),
     }
+}
+
+// -- WP UPW2 --
+fn hex_bytes(bytes: &[u8]) -> String {
+    bytes
+        .iter()
+        .map(|b| format!("{b:02X}"))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// One word for the source column.
@@ -1584,6 +1628,36 @@ pub fn device_list() -> Vec<dspi_transport::DeviceDescriptor> {
 
 #[cfg(test)]
 mod tests {
+    // -- WP UPW2 --
+    #[test]
+    fn wp_upw2_the_event_list_names_the_analyser_and_name_events() {
+        use dspi_proto::generated::notify as nfy;
+        use dspi_session::Event;
+        let cfg = dspi_proto::packets::RtaConfig {
+            tap: 0,
+            channel_mask: 3,
+            fft_order: 12,
+            avg_ms: 0,
+            peak_decay_db_s: 0,
+            flags: 0,
+        };
+        let mut bytes = cfg.encode().to_vec();
+        bytes.push(nfy::PARAM_SRC_HOST_SET as u8);
+        let (event, source, _, value) = super::describe(&Event::Unknown {
+            id: nfy::NOTIFY_EVT_RTA_CONFIG as u8,
+            bytes,
+        });
+        assert_eq!((event, source.as_str()), ("rta_config", "host"));
+        assert_eq!(value, "inputs mask=0x0003 order=12");
+        let mut bytes = vec![0, nfy::PARAM_SRC_HOST_SET as u8, 0, 0];
+        bytes.extend(b"Den\0");
+        let (event, _, _, value) = super::describe(&Event::Unknown {
+            id: nfy::NOTIFY_EVT_DEVICE_NAME as u8,
+            bytes,
+        });
+        assert_eq!((event, value.as_str()), ("device_name", "\"Den\""));
+    }
+
     #[test]
     fn the_fill_history_keeps_the_last_eight_readings_of_each_buffer() {
         use dspi_proto::packets::BufferStatsPacket;

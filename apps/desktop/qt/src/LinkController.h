@@ -40,6 +40,9 @@ class LinkController : public QObject
     Q_PROPERTY(QString pinSource READ pinSource NOTIFY statusChanged)
     Q_PROPERTY(QString closeReason READ closeReason NOTIFY statusChanged)
     Q_PROPERTY(QString role READ role NOTIFY statusChanged)
+    // -- WP UPW2 -- This client's session id on the hub, 0 without one: a device's
+    // lockedBy names it when the lock is ours
+    Q_PROPERTY(int session READ session NOTIFY statusChanged)
     // The worker has calls in hand. A dial left with closeSession counts until it
     // times out, though phase is already idle.
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
@@ -71,6 +74,7 @@ public:
     QString pinSource() const { return m_pinSource; }
     QString closeReason() const { return m_closeReason; }
     QString role() const { return m_role; }
+    int session() const { return m_session; }     // -- WP UPW2 --
     bool busy() const { return m_busy > 0; }
     QString hubId() const { return m_hubId; }
     QString hubName() const { return m_hubName; }
@@ -135,6 +139,7 @@ private:
     int m_reconnectAttempt = 0;
     int m_reconnectInMs = 0;
     QString m_pinSource, m_closeReason, m_role;
+    int m_session = 0;                       // -- WP UPW2 --
     int m_busy = 0;
     QString m_hubId, m_hubName;
     QString m_sessionHubId;                  // who the hello of this session named

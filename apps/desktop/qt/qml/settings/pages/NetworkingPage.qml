@@ -103,11 +103,50 @@ SettingsPage {
             title: hub.inaccessible === 1 ? qsTr("1 device could not be opened") : qsTr("%1 devices could not be opened").arg(hub.inaccessible)
             detail: qsTr("Another program has it, or this user may not open it.")
         }
+        // -- WP UPW2 -- What Windows lets through, while sharing is on or starting
+        SettingsButtonRow {
+            objectName: "networkingFirewall"
+            visible: firewall.supported && hub.sharing && (firewall.rules === "blocked" || firewall.rules === "none")
+            title: firewall.rules === "blocked" ? qsTr("Windows Firewall blocks DSPi uConsole")
+                                                : qsTr("Windows Firewall has no rule for DSPi uConsole")
+            titleColor: "#ff9f0a"
+            detail: (firewall.rules === "blocked"
+                     ? qsTr("Other Consoles can't connect. Pressing Cancel when Windows first asked about DSPi uConsole leaves this block.")
+                     : qsTr("Other Consoles may not be able to connect."))
+                    + qsTr(" Allowing it lets it in on Private networks only. Windows then asks for permission for “Network Command Shell”, the part of Windows that changes the rule.")
+            buttonText: firewall.fixing ? qsTr("Waiting for Windows…") : qsTr("Allow in Windows Firewall")
+            enabled: !firewall.fixing
+            onClicked: firewall.allow()
+        }
+        SettingsButtonRow {
+            objectName: "networkingPublicNetwork"
+            visible: firewall.supported && hub.sharing && firewall.publicNetwork
+            title: qsTr("This network is set to Public")
+            titleColor: "#ff9f0a"
+            detail: qsTr("Windows keeps other Consoles out on a Public network. If you trust this network, make it Private in Network Settings.")
+            buttonText: qsTr("Open Network Settings")
+            onClicked: firewall.openNetworkSettings()
+        }
     }
     SettingsStatusLine {
         objectName: "networkingError"
         text: hub.lastError !== "" ? hub.lastError : hub.lastNote
         error: hub.lastError !== ""
+    }
+    // -- WP UPW2 --
+    SettingsStatusLine {
+        objectName: "networkingFirewallError"
+        text: firewall.supported && hub.sharing ? firewall.fixError : ""
+        error: true
+    }
+    // Read again while sharing is on and this page is open: the user may change the
+    // rules or the network in Windows' own settings meanwhile
+    Timer {
+        interval: 5000
+        repeat: true
+        triggeredOnStart: true
+        running: firewall.supported && hub.sharing && page.visible
+        onTriggered: firewall.check()
     }
 
     // ── This hub ──

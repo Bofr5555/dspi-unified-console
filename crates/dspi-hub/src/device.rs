@@ -556,9 +556,12 @@ fn reader_loop(
     sup: &Sender<SupMsg>,
     stop: &AtomicBool,
 ) {
+    // -- WP UPW2 --
+    let mut failures = dspi_transport::ReadFailures::default();
     while !stop.load(Ordering::Relaxed) {
         match source.read(READ_TIMEOUT) {
             Ok(packet) => {
+                failures.worked();
                 ingest(&packet, kind, shared, relay);
                 // -- WP HB3 --
                 // The supervisor takes it: the registry's lock and the name store are
@@ -579,9 +582,22 @@ fn reader_loop(
                 });
                 return;
             }
-            // A stall or a transient error: give the bus a moment.
+            // A stall or a transient error: give the bus a moment. A run of
+            // them is a dead handle, given up as an unplug is, so the next scan
+            // reattaches a board still listed (WP UPW2).
             Err(e) => {
                 log::debug!("device {}: notification read: {e}", shared.handle);
+                if failures.failed() {
+                    log::warn!(
+                        "device {}: notifications keep failing, giving the handle up: {e}",
+                        shared.handle
+                    );
+                    let _ = sup.send(SupMsg::Lost {
+                        handle: shared.handle,
+                        generation: shared.generation,
+                    });
+                    return;
+                }
                 thread::sleep(Duration::from_millis(50));
             }
         }

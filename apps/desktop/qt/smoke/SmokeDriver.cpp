@@ -29,6 +29,7 @@
 #include <QQuickItemGrabResult>
 #include <QSharedPointer>
 #include <QQuickWindow>
+#include <QThread>
 #include <QTimer>
 #include <QUrl>
 // -- WP CG16 --
@@ -549,6 +550,38 @@ void SmokeDriver::testControlSurfaces() {
     check("CG16: the poll sees the page change", waitFor(2500, [cs, firstPage]() { return cs->displayState().value("page") != firstPage; }));
     cs->setWatchDisplay(false);
     check("CG16: the display poll stops", !cs->watchDisplay());
+
+    // -- WP UPW2 -- A slow read (a slow hub or bridge) runs off the UI thread, and the
+    // ticks that come while it reads are skipped, not stacked
+    {
+        std::atomic<int> reads { 0 };
+        std::atomic<bool> onUi { false };
+        QThread *ui = QThread::currentThread();
+        cs->setPollReadHook([&reads, &onUi, ui]() {
+            if (QThread::currentThread() == ui) onUi = true;
+            reads++;
+            QThread::msleep(1600);
+        });
+        int uiTicks = 0;
+        QTimer beat;
+        beat.setInterval(50);
+        QObject::connect(&beat, &QTimer::timeout, [&uiTicks]() { uiTicks++; });
+        beat.start();
+        cs->setWatchDisplay(true);
+        QElapsedTimer t;
+        t.start();
+        while (t.elapsed() < 4200) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+        cs->setWatchDisplay(false);
+        beat.stop();
+        // A read still sleeping holds these locals: let it end first
+        t.restart();
+        while (t.elapsed() < 2000) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+        cs->setPollReadHook(nullptr);
+        printf("smoke: UPW2 display poll with 1.6 s reads: %d reads in 4.2 s, %d UI ticks of 50 ms\n", int(reads), uiTicks);
+        check("UPW2: the display poll reads off the UI thread", !onUi && reads >= 1);
+        check("UPW2: ticks during a read are skipped", reads <= 3);
+        check("UPW2: the UI kept running during the reads", uiTicks >= 50);
+    }
 
     // The macro poll: nothing is pushed, so it follows the run to its end
     const auto running = [cs]() { return cs->model().value("ext").toMap().value("macroRunning").toInt(); };

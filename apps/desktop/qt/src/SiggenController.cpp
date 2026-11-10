@@ -40,7 +40,9 @@ SiggenController::SiggenController(DSPiBridge *bridge, QObject *parent)
     m_draft.p[0] = 1000.0f;
 
     m_poll.setInterval(300);
-    connect(&m_poll, &QTimer::timeout, this, &SiggenController::refreshStatus);
+    // -- WP UPW2 --
+    m_pollWorker.setMaxThreadCount(1);
+    connect(&m_poll, &QTimer::timeout, this, &SiggenController::pollStatus);
     m_apply.setSingleShot(true);
     m_apply.setInterval(350);
     connect(&m_apply, &QTimer::timeout, this, &SiggenController::applyLive);
@@ -88,6 +90,26 @@ void SiggenController::refreshStatus() {
     if (!m_caps.supported) return;
     SiggenStatus s;
     if (!dspi_siggen_get_status(m_core, &s)) return;
+    takeStatus(s);
+}
+
+// -- WP UPW2 -- The timer's read runs on m_pollWorker, as the main status poll's
+// does; a tick still reading skips this one. A slow link no longer holds the UI.
+void SiggenController::pollStatus() {
+    if (!m_caps.supported || m_pollBusy) return;
+    m_pollBusy = true;
+    const QString serial = m_serial;
+    m_pollWorker.start([this, core = m_core, serial]() {
+        SiggenStatus s;
+        const bool ok = dspi_siggen_get_status(core, &s);
+        QMetaObject::invokeMethod(this, [this, s, ok, serial]() {
+            m_pollBusy = false;
+            if (ok && serial == m_serial) takeStatus(s);
+        }, Qt::QueuedConnection);
+    });
+}
+
+void SiggenController::takeStatus(const SiggenStatus &s) {
     if (std::memcmp(&s, &m_status, sizeof(s)) != 0) {
         m_status = s;
         emit statusChanged();

@@ -25,6 +25,8 @@
 //!   close CODE               close every session with this code
 //!   change OFF HEX SRC ORIGIN   another client's write (WP CG31): the bytes HEX at
 //!                            image offset OFF, notified with source SRC from session ORIGIN
+//!   lock SID MS | unlock     session SID holds the device lock for MS ms, or lets it go,
+//!                            and the hub says so (device.changed) (WP UPW2)
 //!
 //! Advertise it for discovery with avahi on the same host, e.g.
 //!   avahi-publish -s "Fake Hub" _dspi._tcp 11915 v=1 hid=<id> kind=console auth=none n=1
@@ -81,6 +83,18 @@ fn fault(hub: &FakeHub, line: &str) -> bool {
             }
             _ => return false,
         },
+        // -- WP UPW2 -- Another console takes or gives up the lock, and says so
+        ["lock", sid, ms] => match (sid.parse(), ms.parse()) {
+            (Ok(sid), Ok(ms)) => {
+                hub.hold_lock(sid, ms);
+                hub.announce_device();
+            }
+            _ => return false,
+        },
+        ["unlock"] => {
+            hub.release_lock();
+            hub.announce_device();
+        }
         _ => return false,
     }
     true

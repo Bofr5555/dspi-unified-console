@@ -15,6 +15,18 @@ Item {
     readonly property string serialTail: bridge.selectedSerial.slice(-8)
     readonly property string fullName: bridge.selectedSerial.length >= 8 ? qsTr("DSPi (%1)").arg(serialTail) : qsTr("DSPi")
 
+    // -- WP UPW2 -- On a hub: the device as the hub lists it, and whether another
+    // console holds its lock (the core's device list, kept current by the hub)
+    readonly property var hubDevice: {
+        if (!bridge.hubSession) return null
+        var list = linkSession.devices
+        for (var i = 0; i < list.length; i++)
+            if (list[i].serial === bridge.selectedSerial) return list[i]
+        return null
+    }
+    readonly property bool lockedElsewhere: connected && hubDevice !== null && !!hubDevice.lockedBy
+                                            && hubDevice.lockedBy !== linkSession.session
+
     // One core: its name, a bar (at most 40 px, as on the Mac) and its load
     component CoreMeter: Row {
         id: meter
@@ -104,14 +116,21 @@ Item {
         Text {
             anchors.verticalCenter: parent.verticalCenter
             // Short device name, as in the Windows Console: "DSPi (last 8 of the serial)"
+            objectName: "cpuStatusText"
             text: {
                 if (!cpuRoot.connected)
                     return bridge.availableSerials.length > 0 ? qsTr("Disconnected")
                          : cpuRoot.noAccess ? qsTr("No Permission") : qsTr("No Devices")
+                // -- WP UPW2 -- As the Mac's status row and Android's strip say it
+                if (cpuRoot.lockedElsewhere) return qsTr("Another console is applying changes")
                 return cpuRoot.fullName
             }
+            // -- WP UPW2 -- The notice is long for the footer: it elides first
+            width: Math.min(implicitWidth, cpuRoot.width - 32 - 18)
+            elide: Text.ElideRight
             font.pixelSize: 11
-            color: isMacOS ? (!cpuRoot.connected && bridge.availableSerials.length === 0 ? MacColors.red : MacColors.label) : cpuRoot.connected ? Qt.rgba(1, 1, 1, 0.65)
+            color: cpuRoot.lockedElsewhere ? (isMacOS ? MacColors.orange : "#ff9f0a")
+                 : isMacOS ? (!cpuRoot.connected && bridge.availableSerials.length === 0 ? MacColors.red : MacColors.label) : cpuRoot.connected ? Qt.rgba(1, 1, 1, 0.65)
                  : bridge.availableSerials.length === 0 ? "#ff453a" : Qt.rgba(1, 1, 1, 0.45)
         }
 
@@ -120,8 +139,14 @@ Item {
         ToolTip.text: statusTip
         // -- WP QD37 -- (review c4o N1) During a hub session a right-click does nothing
         // (bridge.rescan) and devices are chosen in Device > Devices…
+        // -- WP UPW2 -- "<name> via <hub>", as the Devices list and the other Consoles say it
         readonly property string statusTip: bridge.hubSession
-                      ? (cpuRoot.connected ? qsTr("Connected through a hub · Serial %1\nChoose devices in Device > Devices…").arg(bridge.selectedSerial)
+                      ? (cpuRoot.connected ? (cpuRoot.lockedElsewhere ? qsTr("Another console is applying changes.") + "\n" : "")
+                                             + (linkSession.hubName !== ""
+                                                ? qsTr("%1 via %2 · Serial %3\nChoose devices in Device > Devices…")
+                                                      .arg(cpuRoot.hubDevice && cpuRoot.hubDevice.name ? cpuRoot.hubDevice.name : cpuRoot.fullName)
+                                                      .arg(linkSession.hubName).arg(bridge.selectedSerial)
+                                                : qsTr("Connected through a hub · Serial %1\nChoose devices in Device > Devices…").arg(bridge.selectedSerial))
                                            : qsTr("On a hub, no device chosen yet.\nChoose devices in Device > Devices…"))
                       : cpuRoot.connected
                       ? (bridge.availableSerials.length > 1 ? qsTr("Connected · Serial %1\nClick to switch device. Right-click to reconnect.").arg(bridge.selectedSerial)

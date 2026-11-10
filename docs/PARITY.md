@@ -47,11 +47,11 @@ Most of the Qt desktop, many Android packages, and the Terminal's control-surfac
 
 ### Qt desktop (Linux/Windows/macOS)
 1. **No extension channel.** So there is no crossfeed pair map (the K340's "one DAC per ear") and no core-voltage status. This is the biggest gap for K340 owners.
-2. **No DSPi Link client or hub, no USB MIDI, no demo device.**
+2. **No USB MIDI.** The DSPi Link client (Devices list, pairing, tokens: `LinkController`), the hub (Settings > Networking: sharing, pairing, roles, the Windows Firewall and Public-network warnings: `HubController`, `FirewallController`), the tray (`TrayController`) and the demo device (`DemoController`) are in (UPW2 updated this line; section 5 has the detail).
 3. **Older firmware leaves the app blank, not read-only.** It shows a banner, and every write and every parameter read is skipped.
 4. **Firmware updater only flashes the bundled 1.1.6-beta4 images.** That is older than 1.1.6 final, and there is no custom `.uf2` and no download.
 5. **Missing settings:** no input-source names and no device-name edit (opcodes 0x54–0x57 are not in `dspi-core-linux`), and no clock/output-latency diagnostics.
-6. **Accessibility is done (QD22):** names and roles on every custom control, a keyboard walk through every window; the screen-reader (Orca) pass is still to do. **No localisation** (no `qsTr`), and no tray or menu-bar mode.
+6. **Accessibility is done (QD22):** names and roles on every custom control, a keyboard walk through every window; the screen-reader (Orca) pass is still to do. The texts go through `qsTr` (QD23), but English is the only language so far.
 7. Almost everything is marked "Done, untested on hardware"; USB has never run on Windows.
 
 ### Terminal (TUI/CLI)
@@ -91,8 +91,8 @@ It is frozen at wire **V26**. It has nothing from V27–V32 (limiter, subharmoni
 |---|---|---|---|---|---|---|---|
 | A1 | USB vendor transport | ✓ IOKit | n.a. (owner decision: MIDI is the only USB transport on iPhone/iPad) | ✓ rusb/libusb, WinUSB wIndex fix | ✓ nusb, `doctor`, `--install-udev` | ✓ UsbManager fd into the core (patch 0001); claims only the vendor interface | ✓ WinUSB |
 | A2 | USB MIDI (SysEx) | ◐ dev flag `-LocalTransport midi` only *(ours)* | ✓ CoreMIDI, retries, relay port for the Simulator *(ours)* | ✗ | ✗ | ✗ (not needed: vendor works) | ✗ |
-| A3 | DSPi Link client | ✓ Bonjour, typed address (lists the hub's devices), PIN pairing, tokens | ✓ Devices sheet, async PIN, local-network-denied state *(ours UI)* | ✗ | ✗ (`dspi-link` crate exists, not wired in; no mDNS) | ✓ with deviations: opt-in, NSD, Keystore tokens; viewer role makes the app read-only; no reconnect after 4000/4002 | ✗ |
-| A4 | DSPi Link hub / sharing | ✓ Networking page: roles, pairing, revoke, prevent sleep | n.a. (iOS is never a hub) | ✗ | ✗ (test fakehub only) | ✗ (owner decision D1/D5) | ✗ |
+| A3 | DSPi Link client | ✓ Bonjour, typed address (lists the hub's devices), PIN pairing, tokens | ✓ Devices sheet, async PIN, local-network-denied state *(ours UI)* | ✓ Devices list, mDNS discovery, typed address, PIN pairing, tokens, reconnect, lock notice (`LinkController`) | ✗ (`dspi-link` crate exists, not wired in; no mDNS) | ✓ with deviations: opt-in, NSD, Keystore tokens; viewer role makes the app read-only; no reconnect after 4000/4002 | ✗ |
+| A4 | DSPi Link hub / sharing | ✓ Networking page: roles, pairing, revoke, prevent sleep | n.a. (iOS is never a hub) | ✓ Settings > Networking: sharing, name, access, port, pairing, roles, revoke; Windows Firewall and Public-network warnings (`HubController`, `FirewallController`) | ✗ (test fakehub only) | ✗ (owner decision D1/D5) | ✗ |
 | A5 | Browser client served by the hub / ESP32 bridge | ✓ serves the web UI; ESP32 setup is external, Console sets the UART interface | ✗ (can be a client of a bridge) | ✗ | ✗ | ✗ (can be a client of a bridge) | ✗ |
 | A6 | UART bridge as host transport | n.a. (reached through an ESP32 bridge hub) | n.a. (same) | ✗ | ✗ | ✗ (only via a Link bridge) | ✗ |
 | A7 | Demo device | ◐ dev flag only *(ours)* | ✓ always listed; answers the ext channel; `-DemoPairMap k340` *(ours)* | ✗ | ◐ `--fixture`: render fixture, mock answers zeros | ✓ `FakeDspiCore` from a V32 capture; only while no DSPi is attached | ✗ |
@@ -175,7 +175,7 @@ It is frozen at wire **V26**. It has nothing from V27–V32 (limiter, subharmoni
 
 | # | Feature | macOS (ref) | iOS | Qt desktop | Terminal | Android | Windows C# |
 |---|---|---|---|---|---|---|---|
-| G1 | Menus, menu-bar mode, tray | ✓ menus + menu-bar gateway mode, start at login | ◐ toolbar Devices / Tools / Settings | ◐ in-window menu, native menu on macOS; **no tray** | n.a. (Ctrl-P palette instead) | n.a. (NavHost + service notification) | ◐ flyout menu, no tray |
+| G1 | Menus, menu-bar mode, tray | ✓ menus + menu-bar gateway mode, start at login | ◐ toolbar Devices / Tools / Settings | ✓ in-window menu, native menu on macOS; tray with start minimised (`TrayController`) | n.a. (Ctrl-P palette instead) | n.a. (NavHost + service notification) | ◐ flyout menu, no tray |
 | G2 | Keyboard shortcuts | ✓ about 30 + graph keys | ✗ | ✓ about 18 | ✓ Console mnemonics | ◐ graph editor only | ✓ |
 | G3 | Media keys, OS volume, notification controls | ◐ user volume follows the macOS volume (UAC); no media keys | n.a. | ◐ OS volume via UAC1 | ◐ shows OS-slider changes | ◐ notification Vol −/+, Mute, Next preset; no MediaSession or volume keys | ◐ UAC1 reflected |
 | G4 | Background behaviour | ✓ keeps sharing from the menu bar, prevents sleep | ◐ no background; reconnects on foreground *(ours)* | n.a. (desktop app) | n.a. | ✓ foreground service keeps USB or Link open | n.a. |
@@ -242,11 +242,11 @@ The core itself still needs an FFI surface (C ABI or UniFFI) over `dspi-session`
 | Extension channel: pair-map editor and core-voltage status | M | Core (move to `dspi-session`) + UI (crossfeed Pairs row, Overview status) |
 | Input-source names, device name, output latency, clock diagnostics (0x54–0x57, 0x03, 0x82) | S each in UI | Core: already in the Terminal crates; arrives with the core switch |
 | Read-only mode for older firmware instead of a blank app | M | Core + small UI |
-| DSPi Link client | M | Core (`dspi-link` adapter) + UI (devices list, pairing prompt) |
-| DSPi Link hub/sharing | L | Core (server side doesn't exist anywhere in Rust) + UI |
-| Demo device | S | Core |
+| DSPi Link client | M | Done (`LinkController`) |
+| DSPi Link hub/sharing | L | Done (`HubController`, `FirewallController`) |
+| Demo device | S | Done (`DemoController`) |
 | Firmware updater: 1.1.6 final images, custom `.uf2`, optional download | S | UI (bundle) / Core (writer) |
-| Tray / menu-bar mode (keep running, quick volume) | M | UI (`QSystemTrayIcon`) |
+| Tray / menu-bar mode (keep running, quick volume) | M | Done, without quick volume (`TrayController`) |
 | Accessibility (`Accessible.name/role` on custom controls) | M | UI: done in QD22; the Orca pass is left |
 | Localisation (`qsTr` + `.ts` files) | M | UI |
 | Separate C0/C1 CPU bars | S | UI (declined on purpose; optional) |

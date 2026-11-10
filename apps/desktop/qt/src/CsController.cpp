@@ -14,20 +14,39 @@ CsController::CsController(DSPiBridge *bridge, QObject *parent)
 {
     // Polls bypass apply(): they must not wipe the reason of a refusal a page
     // is still showing, nor log one line per tick while the read fails.
-    const auto poll = [this](const QByteArray &op) {
-        if (!m_bridge->connected()) return;
-        call(op);
-        reload();
+    // -- WP UPW2 -- The read runs on m_pollWorker, as the main status poll's does;
+    // a tick still reading skips this one. `after` runs once the model is current.
+    m_pollWorker.setMaxThreadCount(1);
+    const auto poll = [this](const QByteArray &op, std::function<void()> after) {
+        if (!m_bridge->connected() || m_pollBusy) return;
+        m_pollBusy = true;
+        const QString serial = m_serial;
+        m_pollWorker.start([this, core = m_bridge->core(), hook = m_pollReadHook, op, serial, after]() {
+            if (hook) hook();
+            QByteArray buf(4096, '\0');
+            dspi_cs_apply(core, op.constData(), buf.data(), uint32_t(buf.size()));
+            QMetaObject::invokeMethod(this, [this, serial, after]() {
+                m_pollBusy = false;
+                if (serial != m_serial || !m_bridge->connected()) return;
+                reload();
+                if (after) after();
+            }, Qt::QueuedConnection);
+        });
     };
     m_displayPoll.setInterval(1000);
-    connect(&m_displayPoll, &QTimer::timeout, this, [poll]() { poll(R"({"op":"displayStatus"})"); });
+    connect(&m_displayPoll, &QTimer::timeout, this, [poll]() { poll(R"({"op":"displayStatus"})", nullptr); });
     // A running macro pushes nothing, so follow it until it ends (with a ceiling:
-    // steps can carry minute-long delays)
+    // steps can carry minute-long delays). The ceiling counts ticks, read or
+    // skipped, so it stays about 30 s however slow the reads are.
     m_macroPoll.setInterval(250);
     connect(&m_macroPoll, &QTimer::timeout, this, [this, poll]() {
-        poll(R"({"op":"refreshStatus"})");
-        const int running = m_model.value("ext").toMap().value("macroRunning").toInt();
-        if (running == 0xFF || ++m_macroPolls >= 120) m_macroPoll.stop();
+        if (++m_macroPolls > 120) {
+            m_macroPoll.stop();
+            return;
+        }
+        poll(R"({"op":"refreshStatus"})", [this]() {
+            if (m_model.value("ext").toMap().value("macroRunning").toInt() == 0xFF) m_macroPoll.stop();
+        });
     });
 
     connect(m_bridge, &DSPiBridge::devicesChanged, this, &CsController::onDeviceChanged);

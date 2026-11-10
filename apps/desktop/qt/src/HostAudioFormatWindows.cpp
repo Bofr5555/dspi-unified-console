@@ -2,8 +2,12 @@
 
 #ifdef Q_OS_WIN
 
+#include <QLoggingCategory>
+#include <QStringList>
 #include <atomic>
+#include <string>
 #include <windows.h>
+#include <cfgmgr32.h>
 #include <mmdeviceapi.h>
 #include <propidl.h>
 #include <propsys.h>
@@ -27,6 +31,33 @@ struct Com {
     ~Com() { if (p) p->Release(); }
     T *operator->() const { return p; }
 };
+
+// -- WP UPW2 -- QT_LOGGING_RULES="dspi.hostaudio=true" lists each endpoint's chain
+Q_LOGGING_CATEGORY(lcHostAudio, "dspi.hostaudio", QtWarningMsg)
+
+// The endpoint's device node (SWD\MMDEVAPI\<its id>), then its parents up to the
+// root: the audio function, then the USB device that holds the serial
+QStringList instanceChain(IMMDevice *device) {
+    QStringList chain;
+    LPWSTR id = nullptr;
+    if (FAILED(device->GetId(&id)) || !id) return chain;
+    std::wstring node = L"SWD\\MMDEVAPI\\";
+    node += id;
+    CoTaskMemFree(id);
+    DEVINST inst = 0;
+    if (CM_Locate_DevNodeW(&inst, const_cast<DEVINSTID_W>(node.c_str()), CM_LOCATE_DEVNODE_NORMAL) != CR_SUCCESS)
+        return chain;
+    // A few levels are all there is; the bound keeps a loop in a broken tree short
+    for (int depth = 0; depth < 8; depth++) {
+        wchar_t text[MAX_DEVICE_ID_LEN + 1] = {};
+        if (CM_Get_Device_IDW(inst, text, MAX_DEVICE_ID_LEN, 0) != CR_SUCCESS) break;
+        chain << QString::fromWCharArray(text);
+        DEVINST parent = 0;
+        if (CM_Get_Parent(&parent, inst, 0) != CR_SUCCESS) break;
+        inst = parent;
+    }
+    return chain;
+}
 
 struct Prop {
     PROPVARIANT value;
@@ -141,7 +172,11 @@ private:
             Endpoint e;
             e.text = stringProp(store.p, kFriendlyName) + QLatin1Char(' ') + stringProp(store.p, kInterfaceName);
             e.channels = formatChannels(store.p);
-            // No serial here: an endpoint's properties don't hold it
+            // -- WP UPW2 -- An endpoint's properties hold no serial, but the USB
+            // device above it in the device tree does
+            const QStringList chain = instanceChain(device.p);
+            e.serialText = usbSerialFromInstanceIds(chain);
+            qCDebug(lcHostAudio) << e.text << e.channels << "channels, serial" << e.serialText << chain;
             out.push_back(e);
         }
         return out;

@@ -321,6 +321,8 @@ fn parse_target<'a>(flags: &[&'a str]) -> Result<(Target, Vec<&'a str>), String>
     let mut pin = None;
     // -- WP TM9 --
     let mut hub: Option<Option<String>> = None;
+    // -- WP UPW2 --
+    let mut bare_link = false;
 
     let mut it = flags.iter().copied().peekable();
     while let Some(f) = it.next() {
@@ -329,6 +331,9 @@ fn parse_target<'a>(flags: &[&'a str]) -> Result<(Target, Vec<&'a str>), String>
             Some((n, v)) if n.starts_with("--") => (n, Some(v)),
             _ => (f, None),
         };
+        // -- WP UPW2 -- A bare `--link` (nothing after it, or another flag)
+        // is the help's `list --link`: it needs an address given elsewhere.
+        let bare = inline.is_none() && it.peek().is_none_or(|w| w.starts_with('-'));
         let mut value = |what: &str| -> Result<String, String> {
             match inline {
                 Some(v) => Ok(v.to_owned()),
@@ -341,6 +346,8 @@ fn parse_target<'a>(flags: &[&'a str]) -> Result<(Target, Vec<&'a str>), String>
         match name {
             "--device" => device = Some(value("a serial")?),
             "--pin" => pin = Some(value("the hub's PIN")?),
+            // -- WP UPW2 --
+            "--link" if bare => bare_link = true,
             "--link" => link = Some(value("a hub address, HOST[:PORT]")?),
             // -- WP TM9 --
             "--hub" => {
@@ -364,6 +371,10 @@ fn parse_target<'a>(flags: &[&'a str]) -> Result<(Target, Vec<&'a str>), String>
         }
     }
 
+    // -- WP UPW2 --
+    if bare_link && link.is_none() {
+        return Err("--link needs a hub address, HOST[:PORT]".into());
+    }
     // -- WP TM9 -- `hub` here and below.
     let chosen = [demo, midi.is_some(), link.is_some(), hub.is_some()]
         .iter()
@@ -1076,8 +1087,13 @@ fn describe_event(
     kind: dspi_transport::TransportKind,
     own_session: Option<u16>,
 ) -> (&'static str, String) {
+    use dspi_proto::generated::notify as nfy;
     use dspi_session::Event;
     use dspi_tui::shell::connect::attribution;
+    // -- WP UPW2 --
+    const RTA_CONFIG: u8 = nfy::NOTIFY_EVT_RTA_CONFIG as u8;
+    const INPUT_SOURCE_NAME: u8 = nfy::NOTIFY_EVT_INPUT_SOURCE_NAME as u8;
+    const DEVICE_NAME: u8 = nfy::NOTIFY_EVT_DEVICE_NAME as u8;
     let says = |source: dspi_session::Source| attribution(kind, own_session, source, n.origin);
     match &n.event {
         Event::Idle => ("idle", String::new()),
@@ -1158,6 +1174,41 @@ fn describe_event(
                 says(*source)
             ),
         ),
+        // -- WP UPW2 -- The events the session hands on undecoded (notify.h).
+        Event::Unknown { id, bytes } if *id == RTA_CONFIG => {
+            let source = dspi_session::Source::from_raw(bytes.get(12).copied().unwrap_or(0));
+            let detail = match dspi_proto::packets::RtaConfig::decode(bytes) {
+                Ok(c) => format!(
+                    "{} mask 0x{:04X} order {} avg {} ms decay {} dB/s",
+                    if c.tap == dspi_proto::generated::rta::RTA_TAP_INPUT as u8 {
+                        "inputs"
+                    } else {
+                        "outputs"
+                    },
+                    c.channel_mask,
+                    c.fft_order,
+                    c.avg_ms,
+                    c.peak_decay_db_s
+                ),
+                Err(_) => hex_string(bytes),
+            };
+            ("rta_config", format!("{detail} [{}]", says(source)))
+        }
+        Event::Unknown { id, bytes } if *id == INPUT_SOURCE_NAME || *id == DEVICE_NAME => {
+            let source = dspi_session::Source::from_raw(bytes.get(1).copied().unwrap_or(0));
+            let raw = bytes.get(4..).unwrap_or_default();
+            let end = raw.iter().position(|&c| c == 0).unwrap_or(raw.len());
+            let name = String::from_utf8_lossy(raw.get(..end).unwrap_or_default());
+            if *id == DEVICE_NAME {
+                ("device_name", format!("\"{name}\" [{}]", says(source)))
+            } else {
+                let input = bytes.first().copied().unwrap_or(0);
+                (
+                    "input_source_name",
+                    format!("source {input} \"{name}\" [{}]", says(source)),
+                )
+            }
+        }
         Event::Unknown { id, bytes } => ("unknown", format!("0x{id:02X} {}", hex_string(bytes))),
     }
 }
@@ -3011,5 +3062,91 @@ mod tests_wp_dl3 {
             assert_eq!(run(&mut s, cmd, false, true, false), exit::USAGE);
         }
         assert_eq!(s.read("out.delay", &[1]).unwrap(), before);
+    }
+}
+
+// -- WP UPW2 --
+#[cfg(test)]
+mod tests_wp_upw2 {
+    use super::*;
+    use dspi_proto::generated::notify as nfy;
+    use dspi_session::{Event, Notification};
+
+    fn note(id: u16, bytes: Vec<u8>) -> Notification {
+        Notification {
+            seq: 7,
+            event: Event::Unknown {
+                id: id as u8,
+                bytes,
+            },
+            lost: false,
+            origin: None,
+            received: dspi_transport::clock::Instant::now(),
+        }
+    }
+
+    fn line(n: &Notification) -> (&'static str, String) {
+        describe_event(n, dspi_transport::TransportKind::Usb, None)
+    }
+
+    #[test]
+    fn wp_upw2_watch_names_the_analyser_configuration_event() {
+        let cfg = dspi_proto::packets::RtaConfig {
+            tap: dspi_proto::generated::rta::RTA_TAP_INPUT as u8,
+            channel_mask: 0x0003,
+            fft_order: 12,
+            avg_ms: 250,
+            peak_decay_db_s: 20,
+            flags: 0,
+        };
+        let mut bytes = cfg.encode().to_vec();
+        bytes.push(nfy::PARAM_SRC_HOST_SET as u8);
+        let (name, detail) = line(&note(nfy::NOTIFY_EVT_RTA_CONFIG, bytes));
+        assert_eq!(name, "rta_config");
+        assert!(
+            detail.starts_with("inputs mask 0x0003 order 12 avg 250 ms decay 20 dB/s ["),
+            "{detail}"
+        );
+    }
+
+    #[test]
+    fn wp_upw2_watch_names_the_name_events() {
+        let mut bytes = vec![2, nfy::PARAM_SRC_HOST_SET as u8, 0, 0];
+        bytes.extend(b"Turntable\0\0\0");
+        let (name, detail) = line(&note(nfy::NOTIFY_EVT_INPUT_SOURCE_NAME, bytes));
+        assert_eq!(name, "input_source_name");
+        assert!(detail.starts_with("source 2 \"Turntable\" ["), "{detail}");
+
+        let mut bytes = vec![0, nfy::PARAM_SRC_HOST_SET as u8, 0, 0];
+        bytes.extend(b"Lounge\0");
+        let (name, detail) = line(&note(nfy::NOTIFY_EVT_DEVICE_NAME, bytes));
+        assert_eq!(name, "device_name");
+        assert!(detail.starts_with("\"Lounge\" ["), "{detail}");
+
+        // An id no firmware sends is still shown raw.
+        let (name, _) = line(&note(0x3F, vec![1]));
+        assert_eq!(name, "unknown");
+    }
+
+    #[test]
+    fn wp_upw2_list_takes_a_bare_link_when_the_address_is_given() {
+        for flags in [
+            &["--link=hub:99", "list", "--link"][..],
+            &["--link", "hub:99", "list", "--link"],
+            &["list", "--link", "--link=hub:99"],
+            &["--link=hub:99", "list", "--link", "--json"],
+        ] {
+            let (t, rest) = parse_target(flags).unwrap_or_else(|e| panic!("{flags:?}: {e}"));
+            let Target::Link(l) = t else {
+                panic!("{flags:?}: a hub target");
+            };
+            assert_eq!((l.host.as_str(), l.port), ("hub", 99), "{flags:?}");
+            assert_eq!(rest.first(), Some(&"list"), "{flags:?}");
+        }
+        // With no address anywhere, a bare --link is still an error.
+        for flags in [&["list", "--link"][..], &["--link", "--json", "list"]] {
+            let e = parse_target(flags).unwrap_err();
+            assert_eq!(e, "--link needs a hub address, HOST[:PORT]", "{flags:?}");
+        }
     }
 }

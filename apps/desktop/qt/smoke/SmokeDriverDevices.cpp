@@ -286,9 +286,25 @@ void SmokeDriver::testDevices() {
         waitFor(500, answerUnsaved);
         check("QD37: bound", settled() && waitFor(5000, [&] { return phaseIs("bound") && b->connected(); }));
         printf("smoke: QD37 status tooltip on the hub: '%s'\n", qPrintable(tip().replace(QLatin1Char('\n'), QLatin1String(" | "))));
+        // -- WP UPW2 -- "<name> via <hub>" in place of "through a hub"
         check("QD37: the tooltip says it is a hub's device and offers no right-click",
-              tip().contains(QLatin1String("through a hub")) && tip().contains(QStringLiteral("Device > Devices"))
+              tip().contains(QStringLiteral(" via %1 ").arg(link->hubName())) && tip().contains(QStringLiteral("Device > Devices"))
                   && !tip().contains(QLatin1String("Right-click")));
+        // -- WP UPW2 -- Another console holds the device's lock: the status says so
+        // until it lets go, from the core's device list
+        {
+            QQuickItem *statusText = main ? findItem(main->contentItem(), QStringLiteral("cpuStatusText")) : nullptr;
+            const auto shown = [&] { return statusText ? statusText->property("text").toString() : QString(); };
+            const QString notice = QStringLiteral("Another console is applying changes");
+            check("UPW2: no lock notice at first", statusText && shown() != notice);
+            check("UPW2: the hub takes lock 77 5000", hub.fault("lock 77 5000"));
+            check("UPW2: the status shows the lock notice", waitFor(3000, [&] { return shown() == notice; }));
+            printf("smoke: UPW2 status while locked: '%s' | tip '%s'\n", qPrintable(shown()),
+                   qPrintable(tip().replace(QLatin1Char('\n'), QLatin1String(" | "))));
+            grab("lock-notice");
+            check("UPW2: the hub takes unlock", hub.fault("unlock"));
+            check("UPW2: the notice goes when the lock does", waitFor(3000, [&] { return shown() != notice; }));
+        }
         b->setFilter(0, 0, 1, b->filterFreq(0, 0) + 17.0f, 1.0f, 0.9f);
         check("QD37: unsaved changes on the hub's device", waitFor(2000, [&] { return b->presetDirty(); }));
         // Here the bridge drops the hub's device as the session closes, so a second

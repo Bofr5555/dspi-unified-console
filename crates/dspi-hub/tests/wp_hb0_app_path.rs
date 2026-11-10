@@ -1355,3 +1355,23 @@ fn wp_hb0_pin_pairing_is_the_default_and_open_access_is_opt_in() {
     assert_eq!(config.port, dspi_link::DEFAULT_PORT);
     assert!(!config.web, "the web UI is on only if asked for");
 }
+
+// -- WP UPW2 --
+/// A handle whose notification reads keep failing (a quick reseat, a resume that cut
+/// the bus power) is given up, and the next scan reattaches the board still listed.
+#[test]
+fn wp_upw2_a_dead_handle_is_given_up_and_reattached() {
+    let bus = TestBus::default();
+    bus.plug("AAAA");
+    let hub = hub_with_bus(&bus);
+    let handle = hub.devices()[0].handle;
+    assert_eq!(bus.opens(), 1);
+    let client = Client::open(&hub, Role::Admin);
+    bus.remote().fail_notifications(u32::MAX);
+    wait_until("the board reattached", || {
+        bus.opens() == 2 && hub.devices()[0].state == DeviceState::Online
+    });
+    assert_eq!(hub.devices()[0].handle, handle);
+    assert_eq!(client.set_volume(handle, -6.0), status::OK);
+    let _ = find_volume(&bus.remote(), -6.0);
+}
