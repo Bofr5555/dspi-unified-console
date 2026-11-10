@@ -41,7 +41,7 @@ cp "$here/GPL-3.0.txt" "$here/LGPL-3.0.txt" "$L/"
 cp "$here/TERMS.txt" "$here/rust-crates.txt" "$L/"   # -- WP LIC1 --
 tab=$(printf '\t')
 bundled=$L/BUNDLED.txt
-printf '# Libraries in this package that are not part of DSPi Console (tab-separated):\n# package\tversion\tfrom\tsource\tlicence\tfiles\n' >"$bundled"
+printf '# Libraries in this package that are not part of DSPi uConsole (tab-separated):\n# package\tversion\tfrom\tsource\tlicence\tfiles\n' >"$bundled"
 row() { printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$@" >>"$bundled"; }
 copy_dir() {  # <licences/ subfolder> <dest name> <what>
     [ -d "$here/$1" ] || fail "no licence texts for $3 in $here/$1 (run update-licences.sh)"
@@ -207,7 +207,7 @@ swift)
             if [ -f "$f" ]; then cp "$f" "$L/swift/$id/"; fi
         done
         ls "$L/swift/$id"/LICENSE* >/dev/null 2>&1 || fail "$id has no LICENSE file"
-        row "$id" "$ver" "${loc%.git}" "$id at $rev" "LICENSES/swift/$id/" "Contents/MacOS/DSPi Console (linked in)"
+        row "$id" "$ver" "${loc%.git}" "$id at $rev" "LICENSES/swift/$id/" "Contents/MacOS/DSPi uConsole (linked in)"
         i=$((i + 1))
     done
     [ "$i" -gt 0 ] || fail "no Swift packages in $resolved"
@@ -218,9 +218,9 @@ esac
 
 # The notice: plain facts. DSPi Console's licence: GPL-3.0-or-later (owner, 2026-11-08)
 {
-    echo "DSPi Console $version"
+    echo "DSPi uConsole $version"
     echo
-    echo "DSPi Console is licensed under the GNU General Public License, version 3 or"
+    echo "DSPi uConsole is licensed under the GNU General Public License, version 3 or"
     echo "(at your option) any later version (LICENSES/GPL-3.0.txt holds version 3),"
     echo "with additional terms under its section 7 (LICENSES/TERMS.txt, also below)."
     echo "Its source code:"
@@ -251,7 +251,7 @@ esac
         echo "LICENSES/KWindowSystem/."
     fi
     echo
-    echo "Every library in this package that is not part of DSPi Console is listed in"
+    echo "Every library in this package that is not part of DSPi uConsole is listed in"
     echo "LICENSES/BUNDLED.txt, with its version, its source and its licence."
     [ -z "$sources" ] || echo "$sources" | fold -s -w 79 | sed 's/ $//'
     # -- WP LIC1 -- the copyright and the additional terms, verbatim

@@ -46,7 +46,7 @@
 		1A1A00000000000000000022 /* DSPi Console iOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "DSPi Console iOSUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A1A00000000000000000012 /* DSPi Console iOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "DSPi Console iOSTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A1A00000000000000000002 /* DSPi Console iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "DSPi Console iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		665141C52F0DF37B00093CAF /* DSPi Console.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "DSPi Console.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		665141C52F0DF37B00093CAF /* DSPi uConsole.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "DSPi uConsole.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		66626F292F1487CD009BAE8A /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		667C67482F350A0100264C32 /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE; sourceTree = "<group>"; };
 		FACEFACEFACEFACEFACE0002 /* DSPi ConsoleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "DSPi ConsoleTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -260,7 +260,7 @@
 		665141C62F0DF37B00093CAF /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				665141C52F0DF37B00093CAF /* DSPi Console.app */,
+				665141C52F0DF37B00093CAF /* DSPi uConsole.app */,
 				FACEFACEFACEFACEFACE0002 /* DSPi ConsoleTests.xctest */,
 				1A1A00000000000000000002 /* DSPi Console iOS.app */,
 				1A1A00000000000000000012 /* DSPi Console iOSTests.xctest */,
@@ -368,7 +368,7 @@
 				D5020000000000000000001A /* DSPiCoreBindings */,
 			);
 			productName = "DSPi Console";
-			productReference = 665141C52F0DF37B00093CAF /* DSPi Console.app */;
+			productReference = 665141C52F0DF37B00093CAF /* DSPi uConsole.app */;
 			productType = "com.apple.product-type.application";
 		};
 		FACEFACEFACEFACEFACE0001 /* DSPi ConsoleTests */ = {
@@ -640,10 +640,10 @@
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "DSPi Console";
+				INFOPLIST_KEY_CFBundleDisplayName = "DSPi uConsole";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
 				INFOPLIST_FILE = "DSPi Console iOS/Info.plist";
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "DSPi Console finds DSPi Link hubs on your local network, such as a Mac sharing its DSPi or a DSPi Link bridge, and connects to them so you can control a DSPi that is not plugged into this device.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "DSPi uConsole finds DSPi Link hubs on your local network, such as a Mac sharing its DSPi or a DSPi Link bridge, and connects to them so you can control a DSPi that is not plugged into this device.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -677,10 +677,10 @@
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "DSPi Console";
+				INFOPLIST_KEY_CFBundleDisplayName = "DSPi uConsole";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
 				INFOPLIST_FILE = "DSPi Console iOS/Info.plist";
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "DSPi Console finds DSPi Link hubs on your local network, such as a Mac sharing its DSPi or a DSPi Link bridge, and connects to them so you can control a DSPi that is not plugged into this device.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "DSPi uConsole finds DSPi Link hubs on your local network, such as a Mac sharing its DSPi or a DSPi Link bridge, and connects to them so you can control a DSPi that is not plugged into this device.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -844,7 +844,8 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.6;
 				MARKETING_VERSION = 0.13.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "invalid.dspi-unified-console.DSPiConsole";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_MODULE_NAME = DSPi_Console;
+				PRODUCT_NAME = "DSPi uConsole";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -874,7 +875,8 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.6;
 				MARKETING_VERSION = 0.13.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "invalid.dspi-unified-console.DSPiConsole";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_MODULE_NAME = DSPi_Console;
+				PRODUCT_NAME = "DSPi uConsole";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -899,7 +901,7 @@
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DSPi Console.app/Contents/MacOS/DSPi Console";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DSPi uConsole.app/Contents/MacOS/DSPi uConsole";
 			};
 			name = Debug;
 		};
@@ -920,7 +922,7 @@
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DSPi Console.app/Contents/MacOS/DSPi Console";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DSPi uConsole.app/Contents/MacOS/DSPi uConsole";
 			};
 			name = Release;
 		};

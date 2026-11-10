@@ -8,7 +8,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>DSPi Console</source>
+        <source>DSPi uConsole</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -246,11 +246,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>What&apos;s New in DSPi Console</source>
+        <source>What&apos;s New in DSPi uConsole</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>DSPi Console on GitHub</source>
+        <source>DSPi uConsole on GitHub</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3373,7 +3373,7 @@ Click for help.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>This build of DSPi Console does not include firmware for the %1. Nothing was changed.</source>
+        <source>This build of DSPi uConsole does not include firmware for the %1. Nothing was changed.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8518,7 +8518,7 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Quit DSPi Console</source>
+        <source>Quit DSPi uConsole</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8554,19 +8554,19 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>DSPi Console: %1</source>
+        <source>DSPi uConsole: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open DSPi uConsole</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show DSPi uConsole</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Pairing code %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Open DSPi Console</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Show DSPi Console</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8984,7 +8984,7 @@ Macros are stored on the device alongside the controls and share their Save and 
 <context>
     <name>UpdateBanner</name>
     <message>
-        <source>DSPi Console %1 is available. You have %2.</source>
+        <source>DSPi uConsole %1 is available. You have %2.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9031,7 +9031,7 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>DSPi Console %1 is the newest version.</source>
+        <source>DSPi uConsole %1 is the newest version.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9616,10 +9616,6 @@ Macros are stored on the device alongside the controls and share their Save and 
 <context>
     <name>main</name>
     <message>
-        <source>DSPi Console</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Window</source>
         <translation type="unfinished"></translation>
     </message>
@@ -9632,14 +9628,6 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>This device runs firmware %1, which is newer than DSPi Console %2. Some of its features may not be shown.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>This device runs firmware %1; DSPi Console expects %2.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Details…</source>
         <translation type="unfinished"></translation>
     </message>
@@ -9649,10 +9637,6 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Hide</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Hide this warning until DSPi Console is next started</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9800,10 +9784,6 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>A DSPi is connected, but it couldn&apos;t be opened. Close any other program using it (another DSPi Console, or a terminal client), then unplug it and plug it in again. Very old firmware without WinUSB descriptors needs the WinUSB driver installed once with Zadig.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>A DSPi is connected, but it couldn&apos;t be opened. Close any other program using it, then unplug it and plug it in again.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -9824,7 +9804,27 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Install the dspi-console .deb or .rpm package, or copy</source>
+        <source>DSPi uConsole</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This device runs firmware %1, which is newer than DSPi uConsole %2. Some of its features may not be shown.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This device runs firmware %1; DSPi uConsole expects %2.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hide this warning until DSPi uConsole is next started</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A DSPi is connected, but it couldn&apos;t be opened. Close any other program using it (another DSPi uConsole or DSPi Console, or a terminal client), then unplug it and plug it in again. Very old firmware without WinUSB descriptors needs the WinUSB driver installed once with Zadig.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Install the dspi-uconsole .deb or .rpm package, or copy</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

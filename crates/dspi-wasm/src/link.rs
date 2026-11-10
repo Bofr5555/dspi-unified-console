@@ -55,7 +55,7 @@ thread_local! {
 }
 
 /// The name the hub lists this client under.
-const CLIENT_NAME: &str = "DSPi Console (web)";
+const CLIENT_NAME: &str = "DSPi uConsole (web)";
 
 /// What `dspi_ws_wait` says comes next.
 pub mod next {

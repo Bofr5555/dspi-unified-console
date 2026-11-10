@@ -1,5 +1,5 @@
 #!/bin/bash
-# macOS release: a universal (x86_64 + arm64) "DSPi Console.app", made
+# macOS release: a universal (x86_64 + arm64) "DSPi uConsole.app", made
 # self-contained with macdeployqt, ad-hoc signed, and a .dmg of it.
 #
 #   QTDIR=~/Qt/6.11.2/macos apps/desktop/packaging/macos/build-macos.sh [output dir, default dist/]
@@ -23,7 +23,7 @@ target=${CARGO_TARGET_DIR:-$repo/target}
 export MACOSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET:-13.0}
 
 version=$(sed -n 's/.*setApplicationVersion("\([^"]*\)").*/\1/p' "$root/qt/src/main.cpp")
-name="DSPi-Console-$version-macos"
+name="DSPi-uConsole-$version-macos"
 
 # The core for each architecture, then one universal static library
 libs=()
@@ -42,8 +42,8 @@ cmake -S "$root/qt" -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
 cmake --build "$build"
 
 mkdir -p "$out"
-app="$out/DSPi Console.app"
-rm -rf "$app"; cp -R "$build/DSPi Console.app" "$app"
+app="$out/DSPi uConsole.app"
+rm -rf "$app"; cp -R "$build/DSPi uConsole.app" "$app"
 "$QTDIR/bin/macdeployqt" "$app" -qmldir="$root/qt/qml" -always-overwrite
 # SQL drivers come with QtQuick.LocalStorage; the app uses none, and these
 # three link client libraries a Mac doesn't have (macdeployqt's "ERROR: no
@@ -51,7 +51,7 @@ rm -rf "$app"; cp -R "$build/DSPi Console.app" "$app"
 rm -f "$app"/Contents/PlugIns/sqldrivers/libqsql{mimer,odbc,psql}.dylib
 
 # -- WP QD21b -- Qt dynamic, from the bundle: the LGPL lets users swap it
-exe="$app/Contents/MacOS/DSPi Console"
+exe="$app/Contents/MacOS/DSPi uConsole"
 otool -L "$exe" | grep -q '@rpath/QtCore.framework/Versions/A/QtCore' \
     || { echo "build-macos: the app does not link QtCore dynamically" >&2; exit 1; }
 [ -f "$app/Contents/Frameworks/QtCore.framework/Versions/A/QtCore" ] \
@@ -74,6 +74,6 @@ fi
 codesign --verify --deep --strict "$app"
 
 rm -f "$out/$name.dmg"
-hdiutil create -quiet -volname "DSPi Console" -srcfolder "$app" -format UDZO "$out/$name.dmg"
+hdiutil create -quiet -volname "DSPi uConsole" -srcfolder "$app" -format UDZO "$out/$name.dmg"
 lipo -info "$exe"
 ls -la "$out/$name.dmg"

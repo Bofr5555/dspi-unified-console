@@ -38,7 +38,7 @@ SettingsPage {
             anchors.rightMargin: 20
             anchors.verticalCenter: parent.verticalCenter
             spacing: 4
-            Text { text: qsTr("DSPi Console"); font.pixelSize: 22; font.weight: Font.Bold; color: isMacOS ? MacColors.label : "white" }
+            Text { text: qsTr("DSPi uConsole"); font.pixelSize: 22; font.weight: Font.Bold; color: isMacOS ? MacColors.label : "white" }
             Text { text: qsTr("Version %1 for %2").arg(Qt.application.version).arg(isMacOS ? "macOS" : isWindows ? "Windows" : "Linux"); font.pixelSize: 13; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.6) }
             Repeater {
                 model: aboutInfo.creditLines

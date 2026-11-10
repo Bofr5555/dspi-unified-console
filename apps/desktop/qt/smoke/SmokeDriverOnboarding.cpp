@@ -169,7 +169,7 @@ void SmokeDriver::testOnboarding() {
     check("Done is resolved", allResolved(shown));
     check("Done shows the core's paragraphs", allShown(done.value(QLatin1String("paragraphs")).toArray(), joined));
     check("Done shows the core's rows", allShown(done.value(QLatin1String("rows")).toArray(), joined));
-    check("the finish button has its word", shown.contains(QLatin1String("Start Using DSPi Console")));
+    check("the finish button has its word", shown.contains(QLatin1String("Start Using DSPi uConsole")));
 #ifndef Q_OS_MACOS
     check("no host device on Done", !joined.contains(QLatin1String("computer")));
     check("Done names this app's settings page", joined.contains(QLatin1String("under Outputs")));

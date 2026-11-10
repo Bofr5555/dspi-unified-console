@@ -1,19 +1,19 @@
-DSPi Console for Linux
+DSPi uConsole for Linux
 ======================
 
 Install (recommended)
 ---------------------
     ./install.sh
 
-This copies the AppImage to ~/.local/bin, adds DSPi Console to your
+This copies the AppImage to ~/.local/bin, adds DSPi uConsole to your
 application menu, and installs a udev rule so the app can open the DSPi
 without root (it asks for your password once for that). Run it again to
 update; run ./install.sh --uninstall to remove everything.
 
 Run without installing
 ----------------------
-    chmod +x DSPi-Console-*-x86_64.AppImage
-    ./DSPi-Console-*-x86_64.AppImage
+    chmod +x DSPi-uConsole-*-x86_64.AppImage
+    ./DSPi-uConsole-*-x86_64.AppImage
 
 You still need the udev rule once, or the device can't be opened:
 

@@ -494,7 +494,7 @@ struct FirmwareMismatchBanner: View {
                     }
                 }
                     .controlSize(.small)
-                    .help("Hide this warning until DSPi Console is next started")
+                    .help("Hide this warning until DSPi uConsole is next started")
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
@@ -525,9 +525,9 @@ struct FirmwareMismatchBanner: View {
         let device = vm.firmwareVersion.map { FirmwareVersion($0.major, $0.minor, $0.patch, $0.beta).description } ?? "unknown"
         switch vm.firmwareMatch {
         case .deviceNewer:
-            return "This device runs firmware \(device), which is newer than DSPi Console \(expected). Some of its features may not be shown."
+            return "This device runs firmware \(device), which is newer than DSPi uConsole \(expected). Some of its features may not be shown."
         default:
-            return "This device runs firmware \(device); DSPi Console expects \(expected)."
+            return "This device runs firmware \(device); DSPi uConsole expects \(expected)."
         }
     }
 }

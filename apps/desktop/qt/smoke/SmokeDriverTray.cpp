@@ -126,8 +126,8 @@ void SmokeDriver::testTray() {
           order == QStringList({ "trayStatus", "trayAddress", "trayPairingCode", "-", "trayOpen", "trayShare", "trayPair", "-", "trayQuit" }));
     check("QD12: no hub: status is the device alone", itemText(tray, "trayStatus") == QLatin1String("DSPi connected") && !item(tray, "trayStatus")->isEnabled());
     check("QD12: no hub: hub items hidden", !itemVisible(tray, "trayShare") && !itemVisible(tray, "trayPair") && !itemVisible(tray, "trayAddress") && !itemVisible(tray, "trayPairingCode"));
-    check("QD12: shown: says Show", itemText(tray, "trayOpen") == QLatin1String("Show DSPi Console"));
-    check("QD12: says Quit", itemText(tray, "trayQuit") == QLatin1String("Quit DSPi Console"));
+    check("QD12: shown: says Show", itemText(tray, "trayOpen") == QLatin1String("Show DSPi uConsole"));
+    check("QD12: says Quit", itemText(tray, "trayQuit") == QLatin1String("Quit DSPi uConsole"));
 
     // Close hides, with a tool window, with no prompt though changes are unsaved
     b->setFilter(0, 0, 1, b->filterFreq(0, 0) + 13.0f, 1.0f, 0.9f);
@@ -140,7 +140,7 @@ void SmokeDriver::testTray() {
     check("QD12: close asks nothing and does not quit", closeAndCount() == 0 && !inMain(root(), "unsavedDialog.visible").toBool());
     check("QD12: close hides the window", !main->isVisible() && tray->windowHidden());
     check("QD12: and the tool window", !tool->isVisible());
-    check("QD12: hidden: says Open", itemText(tray, "trayOpen") == QLatin1String("Open DSPi Console"));
+    check("QD12: hidden: says Open", itemText(tray, "trayOpen") == QLatin1String("Open DSPi uConsole"));
 
     // Everything else carries on: the session answers, the app runs
     check("QD12: hidden: the device stays connected", b->connected());
@@ -152,7 +152,7 @@ void SmokeDriver::testTray() {
     item(tray, "trayOpen")->trigger();
     check("QD12: Open shows the window", main->isVisible() && !tray->windowHidden());
     check("QD12: and the tool window", tool->isVisible());
-    check("QD12: shown again: says Show", itemText(tray, "trayOpen") == QLatin1String("Show DSPi Console"));
+    check("QD12: shown again: says Show", itemText(tray, "trayOpen") == QLatin1String("Show DSPi uConsole"));
     tool->hide();
 
     main->showMaximized();
@@ -312,7 +312,7 @@ void SmokeDriver::runTrayLaunch(const QString &mode) {
         check("QD12: no tray: settings kept", tray->showInTray() && tray->startMinimised());
     } else {
         check("QD12: start minimised: never shown", !main->isVisible() && tray->windowHidden() && tray->iconShown());
-        check("QD12: start minimised: says Open", itemText(tray, "trayOpen") == QLatin1String("Open DSPi Console"));
+        check("QD12: start minimised: says Open", itemText(tray, "trayOpen") == QLatin1String("Open DSPi uConsole"));
         check("QD12: start minimised: the device is up all the same", waitFor(3000, [&]() { return m_.bridge->connected(); }));
     }
     if (mode == QLatin1String("hidden") || mode == QLatin1String("app-quit")) {

@@ -21,4 +21,4 @@ export QTDIR PATH="$CMAKE_DIR:$NINJA_DIR:$PATH"
 
 rm -rf "$out"
 BUILD_DIR=${BUILD_DIR:-$out/../build-qt-dmg} "$here/build-macos.sh" "$out"
-"$here/test-dmg.sh" "$out"/DSPi-Console-*-macos.dmg
+"$here/test-dmg.sh" "$out"/DSPi-uConsole-*-macos.dmg

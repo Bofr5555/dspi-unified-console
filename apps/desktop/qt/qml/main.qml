@@ -14,7 +14,7 @@ ApplicationWindow {
     height: 813
     minimumWidth: 950
     minimumHeight: 600
-    title: qsTr("DSPi Console")
+    title: qsTr("DSPi uConsole")
     color: isMacOS ? "transparent" : "#303030"
     // Linux draws its own titlebar (with the menu button in it)
     flags: isMacOS ? Qt.Window : (Qt.Window | Qt.FramelessWindowHint)
@@ -448,9 +448,9 @@ ApplicationWindow {
                         font.pixelSize: 12
                         color: isMacOS ? MacColors.label : "white"
                         text: firmware.match === 3
-                              ? qsTr("This device runs firmware %1, which is newer than DSPi Console %2. Some of its features may not be shown.")
+                              ? qsTr("This device runs firmware %1, which is newer than DSPi uConsole %2. Some of its features may not be shown.")
                                 .arg(firmware.deviceVersion).arg(firmware.expectedVersion)
-                              : qsTr("This device runs firmware %1; DSPi Console expects %2.").arg(firmware.deviceVersion).arg(firmware.expectedVersion)
+                              : qsTr("This device runs firmware %1; DSPi uConsole expects %2.").arg(firmware.deviceVersion).arg(firmware.expectedVersion)
                     }
                     Row {
                         id: versionButtons
@@ -477,7 +477,7 @@ ApplicationWindow {
                                     Accessible.description: parent.ToolTip.text
                                     onActivated: index === 0 ? root.openToolWindow("firmware") : (versionBanner.hiddenThisLaunch = true)
                                 }
-                                ToolTip.text: index === 1 ? qsTr("Hide this warning until DSPi Console is next started") : ""
+                                ToolTip.text: index === 1 ? qsTr("Hide this warning until DSPi uConsole is next started") : ""
                                 ToolTip.visible: index === 1 && bannerMouse.containsMouse
                                 ToolTip.delay: 600
                             }
@@ -838,7 +838,7 @@ ApplicationWindow {
                    + "Install the rule now? You'll be asked for your password.")
                  : isWindows
                    ? qsTr("A DSPi is connected, but it couldn't be opened. Close any other program using it "
-                     + "(another DSPi Console, or a terminal client), then unplug it and plug it in again. "
+                     + "(another DSPi uConsole or DSPi Console, or a terminal client), then unplug it and plug it in again. "
                      + "Very old firmware without WinUSB descriptors needs the WinUSB driver installed once with Zadig.")
                    : qsTr("A DSPi is connected, but it couldn't be opened. Close any other program using it, "
                      + "then unplug it and plug it in again.")
@@ -851,7 +851,7 @@ ApplicationWindow {
         icon: "warning"
         iconTint: "#ff9f0a"
         title: qsTr("Rule Not Installed")
-        details: [{ text: qsTr("Install the dspi-console .deb or .rpm package, or copy") },
+        details: [{ text: qsTr("Install the dspi-uconsole .deb or .rpm package, or copy") },
                   { text: qsTr("70-dspi.rules from the release to /etc/udev/rules.d/,") },
                   { text: qsTr("then unplug the DSPi and plug it in again.") }]
         buttons: [{ key: "ok", text: qsTr("OK"), role: "primary" }]

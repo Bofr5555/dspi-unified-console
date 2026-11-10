@@ -1,14 +1,14 @@
-# DSPi Console
+# DSPi uConsole
 
 ![Platform](https://img.shields.io/badge/Platform-macOS-black)
 ![Language](https://img.shields.io/badge/Language-Swift_%7C_SwiftUI-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-**DSPi Console** is the macOS app for setting up and controlling a [DSPi](https://github.com/WeebLabs/DSPi) audio processor. DSPi turns a Raspberry Pi Pico (RP2040) or Pico 2 (RP2350) into a USB sound card with a full digital signal processor inside it. Console is where you shape that processing. You can draw EQ curves directly on a response graph, route any input to any output, align speakers in time, add effects such as loudness compensation and headphone crossfeed, wire up physical knobs and remotes, and keep everything in presets stored on the device.
+**DSPi uConsole** is the macOS app for setting up and controlling a [DSPi](https://github.com/WeebLabs/DSPi) audio processor. DSPi turns a Raspberry Pi Pico (RP2040) or Pico 2 (RP2350) into a USB sound card with a full digital signal processor inside it. Console is where you shape that processing. You can draw EQ curves directly on a response graph, route any input to any output, align speakers in time, add effects such as loudness compensation and headphone crossfeed, wire up physical knobs and remotes, and keep everything in presets stored on the device.
 
 This README is the user guide for Console. It explains every part of the app and how to operate it. For the firmware itself, wiring diagrams and the USB protocol, see the [DSPi firmware repository](https://github.com/WeebLabs/DSPi).
 
-![DSPi Console main window](Images/main-window.png)
+![DSPi uConsole main window](Images/main-window.png)
 
 ## Contents
 
@@ -157,7 +157,7 @@ The first time you open Console, the main window shows the **Getting Started** w
    - If a DSPi is already running, the page tells you whether its firmware matches. It offers **Update DSPi Firmware** for older firmware or **Downgrade Firmware** for newer firmware. If the firmware already matches, nothing needs installing.
    - During installation a progress bar shows the write. Near the end the board restarts and its drive disappears. That is expected, so leave the board plugged in.
    - When the board comes back running the right version, the page reads **Firmware installed** and **Continue** becomes available.
-3. **Done** gives you a few pointers for what to do next. Click **Start Using DSPi Console**.
+3. **Done** gives you a few pointers for what to do next. Click **Start Using DSPi uConsole**.
 
 **Skip Setup** is always available and closes the wizard for good (you can still reopen it from the Help menu). **Back** returns to the previous step, except while an installation is running.
 
@@ -182,7 +182,7 @@ If the connected board runs a different firmware version from the one this Conso
 
 ![Firmware mismatch banner](Images/firmware-banner.png)
 
-- If the board is **older**, the banner reads "This device runs firmware X; DSPi Console expects Y." Click **Update...** to open the [Firmware Update](#firmware-updates) window.
+- If the board is **older**, the banner reads "This device runs firmware X; DSPi uConsole expects Y." Click **Update...** to open the [Firmware Update](#firmware-updates) window.
 - If the board is **newer**, the banner says some of its features may not be shown. Click **Details...** to open the same window, which can downgrade the board if you want.
 - **Hide** removes the banner until you next start Console.
 
@@ -1310,7 +1310,7 @@ Closing, minimising or covering the window stops it drawing, and the analyser st
 
 ### Opening and Navigating Settings
 
-Open Settings with **DSPi Console > Settings...** (**Cmd+,**) or the gear button in the sidebar. The gear button also closes the window.
+Open Settings with **DSPi uConsole > Settings...** (**Cmd+,**) or the gear button in the sidebar. The gear button also closes the window.
 
 ![Settings window](Images/settings-window.png)
 
@@ -1827,7 +1827,7 @@ To flash a firmware file of your own, click **Enter bootloader mode without inst
 | No board in bootloader mode was found | Hold BOOTSEL while plugging the board in. |
 | N boards are in bootloader mode | Disconnect all but the one you want to update. |
 | The board is connected but its drive has not appeared | Allow removable-volume access if macOS asked, then try again. |
-| This build of DSPi Console does not include firmware for the chip | This Console can't update that board. |
+| This build of DSPi uConsole does not include firmware for the chip | This Console can't update that board. |
 | Writing the firmware failed | Copying to the board failed; try again with a different cable or port. |
 | The firmware was written but the device did not reappear | Unplug the board, plug it back in, and check whether it works. |
 | The device came back running a different firmware | The update didn't take; try again. |
@@ -1990,11 +1990,11 @@ The board's **BOOT** button resets the bridge. Hold it, then let go:
 | Item | What it does |
 |---|---|
 | **Getting Started...** | Opens the setup wizard in the main window (see [The Getting Started Wizard](#the-getting-started-wizard)). |
-| **What's New in DSPi Console** | Shows the release notes. They also appear once, automatically, after Console is updated. |
-| **DSPi Console on GitHub** | Opens this project's page. |
+| **What's New in DSPi uConsole** | Shows the release notes. They also appear once, automatically, after Console is updated. |
+| **DSPi uConsole on GitHub** | Opens this project's page. |
 | **DSPi Firmware on GitHub** | Opens the firmware project's page. |
 
-**DSPi Console > About DSPi Console** shows the app's version.
+**DSPi uConsole > About DSPi uConsole** shows the app's version.
 
 ---
 

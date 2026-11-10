@@ -1,5 +1,5 @@
 #!/bin/sh
-# Installs DSPi Console for the current user: the AppImage in ~/.local/bin,
+# Installs DSPi uConsole for the current user: the AppImage in ~/.local/bin,
 # a menu entry with its icon, and the udev rule that lets you open a DSPi
 # without root (that step asks for your password).
 #   ./install.sh               install or update
@@ -7,9 +7,9 @@
 set -e
 cd "$(dirname "$0")"
 
-bin="$HOME/.local/bin/DSPi-Console.AppImage"
-desktop="$HOME/.local/share/applications/dspi-console.desktop"
-icon="$HOME/.local/share/icons/hicolor/scalable/apps/dspi-console.svg"
+bin="$HOME/.local/bin/DSPi-uConsole.AppImage"
+desktop="$HOME/.local/share/applications/dspi-uconsole.desktop"
+icon="$HOME/.local/share/icons/hicolor/scalable/apps/dspi-uconsole.svg"
 rule=/etc/udev/rules.d/70-dspi.rules
 
 as_root() {
@@ -32,31 +32,31 @@ if [ "$1" = "--uninstall" ]; then
         echo "Removing the udev rule (needs root)..."
         as_root rm -f "$rule" && as_root udevadm control --reload-rules || true
     fi
-    echo "DSPi Console removed. Your settings stay in ~/.config/DSPi."
+    echo "DSPi uConsole removed. Your settings stay in ~/.config/DSPi."
     exit 0
 fi
 
-app=$(ls DSPi-Console-*-x86_64.AppImage 2>/dev/null | head -n 1)
+app=$(ls DSPi-uConsole-*-x86_64.AppImage 2>/dev/null | head -n 1)
 if [ -z "$app" ]; then
-    echo "No DSPi-Console-*.AppImage next to this script." >&2
+    echo "No DSPi-uConsole-*.AppImage next to this script." >&2
     exit 1
 fi
 
 mkdir -p "$(dirname "$bin")" "$(dirname "$desktop")" "$(dirname "$icon")"
 install -m 755 "$app" "$bin"
-install -m 644 dspi-console.svg "$icon"
+install -m 644 dspi-uconsole.svg "$icon"
 cat > "$desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
-Name=DSPi Console
+Name=DSPi uConsole
 GenericName=DSP Controller
 Comment=Configure and tune a DSPi audio processor
 Exec="$bin"
-Icon=dspi-console
+Icon=dspi-uconsole
 Terminal=false
 Categories=AudioVideo;Audio;Mixer;
 Keywords=DSP;EQ;equalizer;crossover;audio;
-StartupWMClass=dspi-console
+StartupWMClass=dspi-uconsole
 DESKTOP
 refresh_menus
 echo "Installed $app to $bin, with a menu entry."
@@ -64,10 +64,10 @@ echo "Installed $app to $bin, with a menu entry."
 if [ -f "$rule" ] && cmp -s 70-dspi.rules "$rule"; then
     echo "The udev rule is already installed."
 else
-    echo "Installing the udev rule so DSPi Console can open the device (needs root)..."
+    echo "Installing the udev rule so DSPi uConsole can open the device (needs root)..."
     as_root install -D -m 644 70-dspi.rules "$rule"
     as_root udevadm control --reload-rules
     as_root udevadm trigger --subsystem-match=usb --attr-match=idProduct=feaa || true
     echo "Done. If the DSPi was already plugged in and still isn't found, unplug it and plug it back in."
 fi
-echo "Start DSPi Console from your application menu."
+echo "Start DSPi uConsole from your application menu."

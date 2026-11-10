@@ -15,7 +15,7 @@ build=${BUILD_DIR:-$root/qt/build-win64}   # (gitignored)
 triple=x86_64-pc-windows-gnu
 
 version=$(sed -n 's/.*setApplicationVersion("\([^"]*\)").*/\1/p' "$root/qt/src/main.cpp")
-name="DSPi-Console-$version-windows-x86_64"
+name="DSPi-uConsole-$version-windows-x86_64"
 
 (cd "$repo" && cargo build --release -p dspi-capi --features link,midir,mdns,hub --target $triple)
 cmake -S "$root/qt" -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \

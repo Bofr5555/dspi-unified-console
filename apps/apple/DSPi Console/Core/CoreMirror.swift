@@ -882,8 +882,8 @@ struct ReadOnlyBanner: View {
 
     var message: String {   // -- WP SWF4 -- internal, for the tests
         if vm.firmwareWireFormatVersion > WIRE_FORMAT_VERSION {
-            return "Read only: this device's firmware is newer than DSPi Console. Update DSPi Console to change its settings."
+            return "Read only: this device's firmware is newer than DSPi uConsole. Update DSPi uConsole to change its settings."
         }
-        return "Read only: this device's firmware is older than DSPi Console. Update the firmware to change its settings."
+        return "Read only: this device's firmware is older than DSPi uConsole. Update the firmware to change its settings."
     }
 }

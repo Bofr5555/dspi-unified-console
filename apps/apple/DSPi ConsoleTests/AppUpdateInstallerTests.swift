@@ -60,20 +60,20 @@ final class AppUpdateInstallerTests: XCTestCase {
     private func makeReleaseZip(identifier: String = "WeebLabs.DSPi-Console", version: String = "1.1.7",
                                 tamper: Bool = false) throws -> URL {
         let build = dir.appendingPathComponent(UUID().uuidString)
-        let app = build.appendingPathComponent("DSPi Console.app")
+        let app = build.appendingPathComponent("DSPi uConsole.app")
         let contents = app.appendingPathComponent("Contents")
         try FileManager.default.createDirectory(at: contents.appendingPathComponent("MacOS"), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: contents.appendingPathComponent("Resources"), withIntermediateDirectories: true)
         let info: [String: Any] = [
             "CFBundleIdentifier": identifier,
             "CFBundleShortVersionString": version,
-            "CFBundleExecutable": "DSPi Console",
+            "CFBundleExecutable": "DSPi uConsole",
             "CFBundlePackageType": "APPL",
         ]
         try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
             .write(to: contents.appendingPathComponent("Info.plist"))
         try FileManager.default.copyItem(at: URL(fileURLWithPath: "/usr/bin/true"),
-                                         to: contents.appendingPathComponent("MacOS/DSPi Console"))
+                                         to: contents.appendingPathComponent("MacOS/DSPi uConsole"))
         try Data("firmware".utf8).write(to: contents.appendingPathComponent("Resources/firmware.uf2"))
         XCTAssertEqual(AppUpdateInstaller.run("/usr/bin/codesign", ["--force", "--deep", "-s", "-", app.path]), 0)
         if tamper {
@@ -86,7 +86,7 @@ final class AppUpdateInstallerTests: XCTestCase {
 
     func testUnpacksAndAcceptsAMatchingSignedApp() throws {
         let app = try AppUpdateInstaller.unpack(try makeReleaseZip(), into: dir.appendingPathComponent("unpacked"))
-        XCTAssertEqual(app.lastPathComponent, "DSPi Console.app")
+        XCTAssertEqual(app.lastPathComponent, "DSPi uConsole.app")
         XCTAssertNoThrow(try AppUpdateInstaller.validate(app, bundleIdentifier: "WeebLabs.DSPi-Console",
                                                          version: FirmwareVersion(1, 1, 7)))
     }
@@ -142,9 +142,9 @@ final class AppUpdateInstallerTests: XCTestCase {
     }
 
     func testHelperSwapsTheBundleAfterExitAndCleansUp() throws {
-        let app = dir.appendingPathComponent("Applications/DSPi Console.app")
+        let app = dir.appendingPathComponent("Applications/DSPi uConsole.app")
         let work = dir.appendingPathComponent("work")
-        let staged = work.appendingPathComponent("unpacked/DSPi Console.app")
+        let staged = work.appendingPathComponent("unpacked/DSPi uConsole.app")
         try makeBundle(app, marker: "old")
         try makeBundle(staged, marker: "new")
 
@@ -154,7 +154,7 @@ final class AppUpdateInstallerTests: XCTestCase {
     }
 
     func testHelperRestoresTheOldBundleWhenTheSwapFails() throws {
-        let app = dir.appendingPathComponent("Applications/DSPi Console.app")
+        let app = dir.appendingPathComponent("Applications/DSPi uConsole.app")
         let work = dir.appendingPathComponent("work")
         try makeBundle(app, marker: "old")
         try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
@@ -165,7 +165,7 @@ final class AppUpdateInstallerTests: XCTestCase {
 
     func testCannotReplaceFromAReadOnlyLocation() throws {
         let parent = dir.appendingPathComponent("ro")
-        let app = parent.appendingPathComponent("DSPi Console.app")
+        let app = parent.appendingPathComponent("DSPi uConsole.app")
         try FileManager.default.createDirectory(at: app, withIntermediateDirectories: true)
         XCTAssertTrue(AppUpdateInstaller.canReplace(app))
         try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: parent.path)

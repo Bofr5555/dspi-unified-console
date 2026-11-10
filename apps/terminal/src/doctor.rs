@@ -302,7 +302,7 @@ fn permission_fix() -> String {
         )
     } else if cfg!(target_os = "macos") {
         "The vendor interface is exclusive on macOS, so only one application may \
-         hold it at a time. Quit DSPi Console or any other DSPi tool and try again."
+         hold it at a time. Quit DSPi uConsole or any other DSPi tool and try again."
             .into()
     } else {
         "Windows binds WinUSB automatically via the device's MS OS 2.0 \

@@ -439,7 +439,7 @@ export function About(props: { onClose: () => void; sourceUrl: string | null }) 
   return (
     <dialog open class="about" aria-label="About">
       <h2>
-        About DSPi Console {a.draft ? <span class="badge">Draft</span> : null}
+        About DSPi uConsole {a.draft ? <span class="badge">Draft</span> : null}
       </h2>
       {a.credit_lines.map((l) => (
         <p key={l.id}>{l.text}</p>

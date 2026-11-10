@@ -17,7 +17,7 @@ Item {
         Text {
             objectName: "updateBannerText"
             anchors { left: parent.left; leftMargin: 12; right: buttons.left; rightMargin: 12; verticalCenter: parent.verticalCenter }
-            text: qsTr("DSPi Console %1 is available. You have %2.").arg(appUpdater.availableVersion).arg(appUpdater.currentVersion)
+            text: qsTr("DSPi uConsole %1 is available. You have %2.").arg(appUpdater.availableVersion).arg(appUpdater.currentVersion)
             textFormat: Text.PlainText
             color: "white"
             font.pixelSize: 12

@@ -1,10 +1,10 @@
-# DSPi Console for Linux and Windows
+# DSPi uConsole for Linux and Windows
 
 A Linux and Windows control application for the [DSPi audio processor](https://github.com/WeebLabs/DSPi), open source DSP
 firmware that turns a Raspberry Pi Pico (RP2040) or Pico 2 (RP2350) into a multi-output USB audio interface with
 an onboard signal processor.
 
-DSPi Console controls the whole device: parametric equalisation, active crossovers, routing, time alignment,
+DSPi uConsole controls the whole device: parametric equalisation, active crossovers, routing, time alignment,
 loudness compensation, headphone crossfeed, dynamics, bass enhancement, stereo upmixing, a limiter on every
 output, physical control surfaces and hardware configuration, all applied live over USB with no reflashing.
 
@@ -48,56 +48,56 @@ There are no published downloads of this app yet. The packages are built from th
 
 | System | Package | Built by |
 |---|---|---|
-| Ubuntu 22.04+, Debian 12+ | `dspi-console_<version>_amd64.deb` | `packaging/linux/build-release.sh` |
-| Fedora 42+ | `dspi-console-<version>-1.x86_64.rpm` | `packaging/linux/build-release.sh` |
+| Ubuntu 22.04+, Debian 12+ | `dspi-uconsole_<version>_amd64.deb` | `packaging/linux/build-release.sh` |
+| Fedora 42+ | `dspi-uconsole-<version>-1.x86_64.rpm` | `packaging/linux/build-release.sh` |
 | Other x86_64 Linux (glibc 2.35+) | the AppImage, or the `.tar.gz` with an installer | `packaging/linux/build-release.sh` |
 | Arch | `packaging/arch/PKGBUILD` | `makepkg` |
 | Windows x86_64 | a folder that runs as is, a `.zip` of it, and a per-user installer | `packaging/windows/build-windows.sh` |
 
 The Linux builds are for 64-bit x86 and work on X11 and Wayland. The `.deb` and `.rpm` install the udev rule,
-add DSPi Console to the application menu and use your distribution's Qt and KDE libraries. Settings are kept
+add DSPi uConsole to the application menu and use your distribution's Qt and KDE libraries. Settings are kept
 in `~/.config/DSPi` on Linux and in an INI file in the roaming AppData folder on Windows.
 
 ### Ubuntu, Debian and Mint
 
 ```
-sudo apt install ./dspi-console_<version>_amd64.deb
+sudo apt install ./dspi-uconsole_<version>_amd64.deb
 ```
 
-Remove it with `sudo apt remove dspi-console`.
+Remove it with `sudo apt remove dspi-uconsole`.
 
 ### Fedora
 
 ```
-sudo dnf install ./dspi-console-<version>-1.x86_64.rpm
+sudo dnf install ./dspi-uconsole-<version>-1.x86_64.rpm
 ```
 
-Remove it with `sudo dnf remove dspi-console`.
+Remove it with `sudo dnf remove dspi-uconsole`.
 
 ### AppImage with the installer
 
 ```
-tar -xzf DSPi-Console-v<version>-linux-x86_64.tar.gz
-cd DSPi-Console-v<version>
+tar -xzf DSPi-uConsole-v<version>-linux-x86_64.tar.gz
+cd DSPi-uConsole-v<version>
 ./install.sh
 ```
 
-The installer copies the AppImage to `~/.local/bin`, adds DSPi Console to your application menu, and installs
+The installer copies the AppImage to `~/.local/bin`, adds DSPi uConsole to your application menu, and installs
 the udev rule (it asks for your password once). Run it again to update, or `./install.sh --uninstall` to remove
 everything.
 
 ### Running the AppImage directly
 
 ```
-chmod +x DSPi-Console-v<version>-x86_64.AppImage
-./DSPi-Console-v<version>-x86_64.AppImage
+chmod +x DSPi-uConsole-v<version>-x86_64.AppImage
+./DSPi-uConsole-v<version>-x86_64.AppImage
 ```
 
 This way the udev rule has to be installed by hand, once (below).
 
 ### Windows
 
-Run `DSPi-Console-<version>-windows-x86_64-setup.exe`, or unpack the `.zip` and start `DSPiConsole.exe`.
+Run `DSPi-uConsole-<version>-windows-x86_64-setup.exe`, or unpack the `.zip` and start `DSPiConsole.exe`.
 Windows needs no driver: the firmware carries the descriptors that make Windows bind its WinUSB driver itself.
 This has not yet been checked on real Windows with a device (work package QD25 in
 `docs/core-merge/PLAN-CLIENTS.md`).

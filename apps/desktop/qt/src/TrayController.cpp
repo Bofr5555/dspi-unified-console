@@ -186,7 +186,7 @@ void TrayController::makeIcon()
     });
     m_menu->addSeparator();
     auto *quitAction = named("trayQuit");
-    quitAction->setText(tr("Quit DSPi Console"));
+    quitAction->setText(tr("Quit DSPi uConsole"));
     connect(quitAction, &QAction::triggered, this, &TrayController::quit);
 
     m_icon = new QSystemTrayIcon(this);
@@ -232,12 +232,12 @@ void TrayController::refreshMenu()
     if (hasHub) state = s_hub->trayState();
 
     m_status->setText(statusLine(hasHub ? &state : nullptr));
-    m_icon->setToolTip(tr("DSPi Console: %1").arg(m_status->text()));
+    m_icon->setToolTip(tr("DSPi uConsole: %1").arg(m_status->text()));
     m_address->setText(state.address);
     m_address->setVisible(state.running && !state.address.isEmpty());
     m_pairingCode->setText(tr("Pairing code %1").arg(state.pairingCode));
     m_pairingCode->setVisible(!state.pairingCode.isEmpty());
-    m_open->setText(m_hidden ? tr("Open DSPi Console") : tr("Show DSPi Console"));
+    m_open->setText(m_hidden ? tr("Open DSPi uConsole") : tr("Show DSPi uConsole"));
     m_share->setVisible(hasHub);
     m_share->setChecked(state.sharing);
     m_pair->setVisible(hasHub && state.pinAccess);

@@ -234,7 +234,7 @@ pub fn export_warning(doc: &PresetDocument, path: &str) -> Option<String> {
     (!left.is_empty()).then(|| {
         format!(
             "this device does not report {}, so {} leaves them out. Importing it here leaves \
-             those settings as they are; DSPi Console on a Mac or on Linux or Windows may set \
+             those settings as they are; DSPi uConsole on a Mac or on Linux or Windows may set \
              them to its defaults instead.",
             left.join(", "),
             printable(path),
