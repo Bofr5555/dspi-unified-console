@@ -465,6 +465,16 @@ impl FakeRemote {
         }
     }
 
+    /// Make every later SET with `opcode` succeed without changing anything,
+    /// as the firmware ACKs a SET it drops over USB (vendor_commands.c:4761-4766),
+    /// for an opcode the fake would otherwise apply. Only a read-back shows it.
+    pub fn ignore(&self, opcode: u8) {
+        let mut s = self.shared.lock();
+        if !s.ignored.contains(&opcode) {
+            s.ignored.push(opcode);
+        }
+    }
+
     /// Make the next `reads` notification reads fail at once with
     /// [`TransportError::Usb`], as a handle the host stack still holds but can
     /// no longer use does (`u32::MAX`: every read from now on). Control
@@ -1090,6 +1100,8 @@ struct State {
     subharm_solo: bool,
     /// Opcodes [`FakeRemote::stall`] made fail.
     stalled: Vec<u8>,
+    /// SETs [`FakeRemote::ignore`] made ACK and drop.
+    ignored: Vec<u8>,
     /// Notification reads [`FakeRemote::fail_notifications`] still fails.
     notify_failures: u32,
     queue: VecDeque<Vec<u8>>,
@@ -1151,6 +1163,7 @@ impl State {
             // -- WP UPW2 --
             subharm_solo: false,
             stalled: Vec::new(),
+            ignored: Vec::new(),
             notify_failures: 0,
             queue: VecDeque::new(),
             seq: 0,
@@ -1818,6 +1831,9 @@ impl State {
         // -- WP UPW2 --
         if self.stalled.contains(&opcode) {
             return Err(TransportError::Stalled { opcode });
+        }
+        if self.ignored.contains(&opcode) {
+            return Ok(());
         }
         if opcode != op::REQ_SET_ALL_PARAMS_CHUNK {
             self.chunked = Chunked::None;
@@ -3401,6 +3417,15 @@ mod tests_wp_upw2 {
         let reply = d.control_in(op::REQ_SAVE_MASTER_VOLUME, 0, 1).unwrap();
         assert_eq!(reply, [st::PRESET_OK as u8]);
         assert_eq!(f32_reply(&mut d, op::REQ_GET_SAVED_MASTER_VOLUME), -7.5);
+    }
+
+    #[test]
+    fn wp_upw2_an_ignored_set_is_acked_and_dropped() {
+        let mut d = FakeDevice::demo();
+        let remote = d.remote();
+        remote.ignore(op::REQ_SET_SUBHARM_SOLO);
+        d.control_out(op::REQ_SET_SUBHARM_SOLO, 0, &[1]).unwrap();
+        assert_eq!(d.control_in(op::REQ_GET_SUBHARM_SOLO, 0, 1).unwrap(), [0]);
     }
 
     #[test]

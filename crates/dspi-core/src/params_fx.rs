@@ -1323,13 +1323,12 @@ mod tests_wp_c4 {
 
     #[test]
     fn wp_c4_an_acked_but_ignored_write_is_proven_by_read_back() {
-        // Solo has no place in the bulk image (the fake keeps it apart, WP
-        // UPW2), so the image cannot show it: the call succeeds and only a
-        // read-back of its own GET could tell. The mirror records the request.
-        let (core, remote, script) = rig_with(FakeOptions {
-            ack_unknown_sets: true,
-            ..FakeOptions::default()
-        });
+        // The firmware ACKs a SET it drops (-- WP UPW2 -- injected, as the
+        // fake now models solo): the call succeeds, the mirror records the
+        // request, and only a read-back of solo's own GET shows the device
+        // did not take it.
+        let (core, remote, script) = rig();
+        remote.ignore(op::REQ_SET_SUBHARM_SOLO);
         core.set_subharm_solo(true).unwrap();
         assert!(mirror(&core).subharm_solo);
         assert!(
@@ -1339,6 +1338,10 @@ mod tests_wp_c4 {
                 .log
                 .contains(&(true, op::REQ_SET_SUBHARM_SOLO, 0))
         );
+        let mut back = state::default_state();
+        back.subharm_solo = true; // the read must clear it
+        crate::connect::read_per_item_on(core.lock().conn().unwrap().transport(), &[], &mut back);
+        assert!(!back.subharm_solo);
         // A modelled write, by contrast, is visible in the device's copy.
         core.set_subharm_param(SUBHARM_PARAM_DEPTH, 42.0).unwrap();
         assert_eq!(
