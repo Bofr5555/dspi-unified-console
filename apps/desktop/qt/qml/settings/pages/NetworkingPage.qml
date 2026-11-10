@@ -113,7 +113,7 @@ SettingsPage {
             detail: (firewall.rules === "blocked"
                      ? qsTr("Other Consoles can't connect. Pressing Cancel when Windows first asked about DSPi uConsole leaves this block.")
                      : qsTr("Other Consoles may not be able to connect."))
-                    + qsTr(" Allowing it needs an administrator's approval, and lets it in on Private networks only.")
+                    + qsTr(" Allowing it lets it in on Private networks only. Windows then asks for permission for “Network Command Shell”, the part of Windows that changes the rule.")
             buttonText: firewall.fixing ? qsTr("Waiting for Windows…") : qsTr("Allow in Windows Firewall")
             enabled: !firewall.fixing
             onClicked: firewall.allow()

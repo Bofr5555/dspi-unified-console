@@ -3068,6 +3068,10 @@ Click for help.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Windows Firewall cannot name a program whose folder has a % sign in its name. Move DSPi uConsole to another folder.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Windows Firewall did not answer in time.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5340,7 +5344,7 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source> Allowing it needs an administrator&apos;s approval, and lets it in on Private networks only.</source>
+        <source> Allowing it lets it in on Private networks only. Windows then asks for permission for “Network Command Shell”, the part of Windows that changes the rule.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

@@ -12,12 +12,14 @@ class DSPiBridge;
 //
 // Two readings, both through the Windows APIs: Windows Firewall's inbound rules for
 // this program (INetFwPolicy2), judged for the Private and Domain profiles, and
-// whether a connected network is Public (INetworkListManager). A Cancel on
+// whether a connected network on an adapter with a default gateway is Public
+// (INetworkListManager, iphlpapi). A Cancel on
 // Windows' first question leaves Block rules, which win over any Allow rule.
 //
-// allow() replaces this program's inbound rules with one Allow rule for Private and
-// Domain networks: netsh, run elevated after a UAC prompt the user confirms. Nothing
-// adds a rule without that (the installer adds none).
+// allow() turns this program's inbound Block rules into Allow rules for Private and
+// Domain networks, or adds one such rule when there is none: netsh from the system
+// directory, run elevated after a UAC prompt the user confirms (Windows shows it as
+// "Network Command Shell"). Nothing adds a rule without that (the installer adds none).
 //
 // Reads and the fix run on a worker thread; elsewhere than on Windows `supported`
 // is false and nothing runs.
