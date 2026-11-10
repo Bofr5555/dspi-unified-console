@@ -3,8 +3,10 @@
 
 #include <QByteArray>
 #include <QObject>
+#include <QThreadPool>
 #include <QTimer>
 #include <QVariantMap>
+#include <functional>
 
 class DSPiBridge;
 
@@ -52,6 +54,8 @@ public:
     bool unsaved() const;
     bool watchDisplay() const { return m_displayPoll.isActive(); }
     void setWatchDisplay(bool on);
+    // -- WP UPW2 -- For the smoke driver: runs on the poll's worker before each read
+    void setPollReadHook(std::function<void()> hook) { m_pollReadHook = std::move(hook); }
 
     // One operation ({op, index, ...}); returns {ok, status, error, ...}
     Q_INVOKABLE QVariantMap apply(const QVariantMap &op);
@@ -105,6 +109,10 @@ private:
     int m_macroPolls = 0;
     int m_revision = 0;
     QString m_lastError;            // the last apply()'s `error`, for statusMessage()
+    // -- WP UPW2 -- The polls' reads, off the UI thread; last, so it is joined first
+    bool m_pollBusy = false;
+    std::function<void()> m_pollReadHook;
+    QThreadPool m_pollWorker;
 };
 
 #endif // CSCONTROLLER_H

@@ -42,6 +42,19 @@ int resolve(const std::vector<Endpoint> &endpoints, const QString &serial) {
     return differ ? 0 : agreed;
 }
 
+// -- WP UPW2 --
+QString usbSerialFromInstanceIds(const QStringList &chain) {
+    // dspi_proto::USB_VID and USB_PID
+    const QLatin1String device("USB\\VID_2E8B&PID_FEAA\\");
+    for (const QString &id : chain) {
+        if (!id.startsWith(device, Qt::CaseInsensitive)) continue;
+        const QString serial = id.mid(device.size());
+        if (serial.isEmpty() || serial.contains(QLatin1Char('&')) || serial.contains(QLatin1Char('\\'))) return {};
+        return serial;
+    }
+    return {};
+}
+
 int effectiveInputCount(int inputSource, int i2sChannels, int activeInputs, int hostChannels, int deviceInputs) {
     int base = 0;
     switch (inputSource) {

@@ -47,11 +47,11 @@ Most of the Qt desktop, many Android packages, and the Terminal's control-surfac
 
 ### Qt desktop (Linux/Windows/macOS)
 1. **No extension channel.** So there is no crossfeed pair map (the K340's "one DAC per ear") and no core-voltage status. This is the biggest gap for K340 owners.
-2. **No DSPi Link client or hub, no USB MIDI, no demo device.**
+2. **No USB MIDI.** The DSPi Link client (Devices list, pairing, tokens: `LinkController`), the hub (Settings > Networking: sharing, pairing, roles, the Windows Firewall and Public-network warnings: `HubController`, `FirewallController`), the tray (`TrayController`) and the demo device (`DemoController`) are in (UPW2 updated this line; section 5 has the detail).
 3. **Older firmware leaves the app blank, not read-only.** It shows a banner, and every write and every parameter read is skipped.
 4. **Firmware updater only flashes the bundled 1.1.6-beta4 images.** That is older than 1.1.6 final, and there is no custom `.uf2` and no download.
 5. **Missing settings:** no input-source names and no device-name edit (opcodes 0x54–0x57 are not in `dspi-core-linux`), and no clock/output-latency diagnostics.
-6. **Accessibility is done (QD22):** names and roles on every custom control, a keyboard walk through every window; the screen-reader (Orca) pass is still to do. **No localisation** (no `qsTr`), and no tray or menu-bar mode.
+6. **Accessibility is done (QD22):** names and roles on every custom control, a keyboard walk through every window; the screen-reader (Orca) pass is still to do. The texts go through `qsTr` (QD23), but English is the only language so far.
 7. Almost everything is marked "Done, untested on hardware"; USB has never run on Windows.
 
 ### Terminal (TUI/CLI)

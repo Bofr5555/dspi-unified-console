@@ -157,6 +157,47 @@ void SmokeDriver::testHostAudio() {
 
     // ── WAVEFORMATEX, the part of the Windows path that runs anywhere ──
     const char format[] = { 1, 0, 8, 0 };
+    // -- WP UPW2 -- Windows: the serial from the endpoint's chain of device instance IDs
+    {
+        using HostAudio::usbSerialFromInstanceIds;
+        const QStringList chain {
+            QStringLiteral("SWD\\MMDEVAPI\\{0.0.0.00000000}.{6e3a4f2c-1b2d-4c5e-9f00-112233445566}"),
+            QStringLiteral("USB\\VID_2E8B&PID_FEAA&MI_00\\7&1A2B3C4D&0&0000"),
+            QStringLiteral("USB\\VID_2E8B&PID_FEAA\\E6614103E7652F2A"),
+            QStringLiteral("USB\\ROOT_HUB30\\4&2F1B4E5&0&0"),
+        };
+        check("UPW2: the serial comes from the DSPi's USB device, not its interface",
+              usbSerialFromInstanceIds(chain) == QStringLiteral("E6614103E7652F2A"));
+        // As the Windows test VM's device tree has it for a DSPi seen there before
+        // (Get-PnpDeviceProperty DEVPKEY_Device_Parent, walked up from the endpoint)
+        const QStringList seen {
+            QStringLiteral("SWD\\MMDEVAPI\\{0.0.0.00000000}.{861504BF-6EE8-4204-BB9D-8C204A075FF6}"),
+            QStringLiteral("USB\\VID_2E8B&PID_FEAA&MI_00\\7&1c3244aa&0&0000"),
+            QStringLiteral("USB\\VID_2E8B&PID_FEAA\\BB66A44F2AC1E7B6"),
+            QStringLiteral("USB\\ROOT_HUB30\\5&1e461e56&0&0"),
+            QStringLiteral("PCI\\VEN_1B36&DEV_000D&SUBSYS_11001AF4&REV_01\\4&15f05328&0&0011"),
+        };
+        check("UPW2: the serial from a real device tree", usbSerialFromInstanceIds(seen) == QStringLiteral("BB66A44F2AC1E7B6"));
+        const QStringList hda {
+            QStringLiteral("SWD\\MMDEVAPI\\{0.0.0.00000000}.{EDA37699-803B-4745-AEC6-030140E6E74D}"),
+            QStringLiteral("HDAUDIO\\FUNC_01&VEN_1AF4&DEV_0022&SUBSYS_1AF40022&REV_1001\\4&c5e0874&0&0001"),
+            QStringLiteral("PCI\\VEN_8086&DEV_293E&SUBSYS_11001AF4&REV_03\\3&11583659&0&D8"),
+            QStringLiteral("ACPI\\PNP0A08\\0"),
+        };
+        check("UPW2: an onboard sound card has no serial", usbSerialFromInstanceIds(hda).isEmpty());
+        check("UPW2: the IDs match whatever their case",
+              usbSerialFromInstanceIds({ QStringLiteral("usb\\vid_2e8b&pid_feaa\\abc123") }) == QStringLiteral("abc123"));
+        check("UPW2: a made-up instance ID is no serial",
+              usbSerialFromInstanceIds({ QStringLiteral("USB\\VID_2E8B&PID_FEAA\\5&3A1F&0&2") }).isEmpty());
+        check("UPW2: another USB device's serial is not taken",
+              usbSerialFromInstanceIds({ QStringLiteral("USB\\VID_046D&PID_0A87\\0001"),
+                                         QStringLiteral("HDAUDIO\\FUNC_01&VEN_8086") }).isEmpty());
+        check("UPW2: an empty chain has no serial", usbSerialFromInstanceIds({}).isEmpty());
+        // The resolver then picks the unit by it, as on Linux
+        check("UPW2: two units told apart by the traced serial",
+              resolve({ dspi(8, usbSerialFromInstanceIds(chain)), dspi(4, QStringLiteral("0011223344556677")) },
+                      QStringLiteral("E6614103E7652F2A")) == 8);
+    }
     check("QD18: nChannels of a device format", waveFormatChannels(format, 4) == 8);
     check("QD18: a short blob is no format", waveFormatChannels(format, 3) == 0 && waveFormatChannels(nullptr, 0) == 0);
 

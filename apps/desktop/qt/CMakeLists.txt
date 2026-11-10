@@ -98,6 +98,8 @@ set(DSPI_APP_SOURCES
     src/HubController.cpp
     # -- WP QD13 --
     src/SystemIntegration.cpp
+    # -- WP UPW2 --
+    src/FirewallController.cpp
     resources.qrc
 )
 # -- WP QD16 -- The check for a newer release (src/AppUpdater.cpp). Distro packages
@@ -261,6 +263,9 @@ if(WIN32)
     target_link_libraries(DSPiConsole PRIVATE advapi32)
     # -- WP QD18 -- The audio endpoints' format (MMDevice, COM)
     target_link_libraries(DSPiConsole PRIVATE ole32)
+    # -- WP UPW2 -- Windows Firewall and the network list (COM automation), the
+    # elevated netsh (ShellExecuteEx), and the audio endpoint's parent (cfgmgr32)
+    target_link_libraries(DSPiConsole PRIVATE oleaut32 shell32 cfgmgr32)
 
     # Windows: the core is a DLL (dspi_capi.dll) next to the exe, linked
     # through cargo's import library

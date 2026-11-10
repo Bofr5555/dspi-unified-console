@@ -2,6 +2,7 @@
 #define SIGGENCONTROLLER_H
 
 #include <QObject>
+#include <QThreadPool>
 #include <QTimer>
 #include <QVariantMap>
 
@@ -91,6 +92,9 @@ signals:
 private:
     void onDeviceChanged();
     void refreshStatus();
+    // -- WP UPW2 --
+    void pollStatus();
+    void takeStatus(const SiggenStatus &s);
     void scheduleApply();
     void applyLive();
     void updatePolling();
@@ -108,6 +112,9 @@ private:
     bool m_watching = false;
     QTimer m_poll;
     QTimer m_apply;
+    // -- WP UPW2 -- The poll's read, off the UI thread; last, so it is joined first
+    bool m_pollBusy = false;
+    QThreadPool m_pollWorker;
 };
 
 #endif // SIGGENCONTROLLER_H

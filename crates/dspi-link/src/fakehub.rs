@@ -966,6 +966,15 @@ impl FakeHub {
         lock(&self.state).lock.map(|l| l.0)
     }
 
+    // -- WP UPW2 --
+    /// Tell every session the device's record again (`device.changed`), as a hub
+    /// does when its lock holder changes.
+    pub fn announce_device(&self) {
+        let mut s = lock(&self.state);
+        let changed = json!({"t": "device.changed", "device": s.device_json()}).to_string();
+        s.broadcast(changed);
+    }
+
     /// Revoke every token: their sessions close with 4002 (spec 6.2).
     pub fn revoke_all(&self) {
         let mut s = lock(&self.state);

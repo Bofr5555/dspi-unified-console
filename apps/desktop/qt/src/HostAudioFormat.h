@@ -4,6 +4,7 @@
 #include <QByteArray>
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QThreadPool>
 #include <QTimer>
 #include <atomic>
@@ -44,6 +45,13 @@ int effectiveInputCount(int inputSource, int i2sChannels, int activeInputs, int 
 
 // A Link session's phase has a hub's device behind it, not one of this host's
 bool phaseHasHub(const QString &phase);
+
+// -- WP UPW2 -- The USB serial in a chain of Windows device instance IDs, from an
+// audio endpoint up through its parents: the DSPi's own USB device is
+// USB\VID_2E8B&PID_FEAA\<serial> (its interfaces add &MI_xx). "" when none is there,
+// or when Windows made the last part up because the serial would not do (it then
+// holds '&').
+QString usbSerialFromInstanceIds(const QStringList &chain);
 
 // nChannels of a WAVEFORMATEX blob (Windows' PKEY_AudioEngine_DeviceFormat), 0 for
 // one too short to hold it

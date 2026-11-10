@@ -326,6 +326,7 @@ void LinkController::refreshStatus() {
     m_reconnectAttempt = status.value(QStringLiteral("reconnectAttempt")).toInt();
     m_reconnectInMs = status.value(QStringLiteral("reconnectInMs")).toInt();
     m_role = text(status, "role");
+    m_session = status.value(QStringLiteral("session")).toInt();   // -- WP UPW2 --
     const QString reason = text(status, "closeReason");
     if (!reason.isEmpty()) m_closeReason = reason;
     else if (phase != QLatin1String("closed") && phase != QLatin1String("refused")) m_closeReason.clear();

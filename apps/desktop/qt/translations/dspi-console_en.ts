@@ -1312,6 +1312,19 @@ Control-surface capability version %1.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Another console is applying changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Another console is applying changes.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 via %2 · Serial %3
+Choose devices in Device &gt; Devices…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Connected through a hub · Serial %1
 Choose devices in Device &gt; Devices…</source>
         <translation type="unfinished"></translation>
@@ -3041,6 +3054,25 @@ Click for help.</source>
     </message>
     <message>
         <source>%1 %2 dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>FirewallController</name>
+    <message>
+        <source>Windows did not get permission, so nothing changed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Windows could not start the change (error %1).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Windows Firewall did not answer in time.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Windows Firewall refused the rule (code %1).</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -5289,6 +5321,46 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Another program has it, or this user may not open it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Windows Firewall blocks DSPi uConsole</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Windows Firewall has no rule for DSPi uConsole</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Other Consoles can&apos;t connect. Pressing Cancel when Windows first asked about DSPi uConsole leaves this block.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Other Consoles may not be able to connect.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> Allowing it needs an administrator&apos;s approval, and lets it in on Private networks only.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Waiting for Windows…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow in Windows Firewall</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This network is set to Public</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Windows keeps other Consoles out on a Public network. If you trust this network, make it Private in Network Settings.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Network Settings</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
