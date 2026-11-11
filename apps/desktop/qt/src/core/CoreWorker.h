@@ -1,0 +1,65 @@
+#ifndef COREWORKER_H
+#define COREWORKER_H
+
+#include <QObject>
+#include <QPointer>
+#include <QThread>
+#include <atomic>
+#include <functional>
+#include <utility>
+
+struct FfiCore;
+
+// The one thread that calls the core. Every blocking dspi_* call (fetches,
+// setters, hot-plug polls, scans, files, reading the state record) runs here,
+// in the order it was posted, so the GUI thread never waits on a device.
+//
+//     worker->call(this,
+//         [](FfiCore *c) { return dspi_fetch_core1_mode(c); },     // worker thread
+//         [this](uint8_t mode) { ... });                            // GUI thread
+//
+// `done` runs on the GUI thread, and only while `ctx` is alive. A job must not
+// capture QObjects it touches on the worker thread; it gets the core and
+// returns values.
+class CoreWorker : public QObject {
+    Q_OBJECT
+public:
+    explicit CoreWorker(FfiCore *core, QObject *parent = nullptr);
+    ~CoreWorker() override;
+
+    // Runs `job` on the worker thread after everything posted before it.
+    void post(std::function<void(FfiCore *)> job);
+
+    // Runs `job` there, then `done(result)` on the GUI thread if `ctx` still exists.
+    template <class Job, class Done>
+    void call(QObject *ctx, Job job, Done done) {
+        QPointer<QObject> guard(ctx);
+        QObject *home = m_home;
+        post([job = std::move(job), done = std::move(done), guard, home](FfiCore *core) mutable {
+            auto result = job(core);
+            QMetaObject::invokeMethod(
+                home,
+                [done = std::move(done), guard, result = std::move(result)]() mutable {
+                    if (guard) done(std::move(result));
+                },
+                Qt::QueuedConnection);
+        });
+    }
+
+    // Jobs posted and not finished yet (the smoke driver waits for 0).
+    int pending() const { return m_pending.load(); }
+
+    // Lets the running job finish, drops the rest and joins the thread. Called
+    // once, before the core is freed; post() does nothing afterwards.
+    void stop();
+
+private:
+    FfiCore *m_core;
+    QThread m_thread;
+    QObject *m_runner = nullptr;   // lives on m_thread
+    QObject *m_home = nullptr;     // lives on the GUI thread, delivers results
+    std::atomic<int> m_pending{0};
+    std::atomic<bool> m_stopped{false};
+};
+
+#endif // COREWORKER_H
