@@ -38,10 +38,12 @@ struct AboutTable: Decodable {
     }
 
     let creditLines: [CreditLine]
+    let linksNote: String?   // -- WP CLEAN1 -- whose links the About lists
     let licence: Licence
 
     enum CodingKeys: String, CodingKey {
         case creditLines = "credit_lines"
+        case linksNote = "links_note"
         case licence
     }
 

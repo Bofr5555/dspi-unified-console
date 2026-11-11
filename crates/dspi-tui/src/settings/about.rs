@@ -21,10 +21,11 @@ use crate::widgets::{Action, KeyHelp};
 
 use super::{Cx, PageEvent, Row, SettingsPage};
 
-/// The Console's paragraph above the links.
-pub const SUPPORT: &str = "DSPi Firmware and Console are free, open-source software that I \
-                           (Weeb Labs) develop in my spare time. Contributions of any kind - code, \
-                           feedback, funding, or otherwise - are always immensely appreciated.";
+// -- WP CLEAN1 -- (DRAFT wording)
+/// Said under "Links & Support" when the table cannot be read: whose links they would
+/// have been, and where Weeb Labs' support page is.
+pub const SUPPORT: &str = "DSPi and its firmware are made by Weeb Labs. Their support page: \
+                           https://patreon.com/weeblabs";
 
 /// Said in place of the table if it cannot be read, which a test in `dspi-session`
 /// holds cannot reach a user.
@@ -201,7 +202,6 @@ fn table_rows(table: Option<&About>, width: u16) -> Vec<Row> {
     // -- WP CG29 -- The heading and note are the table's: they say whose links these are.
     w.heading(&table.links_title);
     w.note(&table.links_note);
-    w.note(SUPPORT);
     for link in &table.links {
         w.pair(&link.title, &link.url);
         w.note(&link.detail);
@@ -223,6 +223,13 @@ fn table_rows(table: Option<&About>, width: u16) -> Vec<Row> {
 
 // -- WP LIC1 --
 /// Where the page sends a reader for the same text on its own.
+// -- WP CLEAN1 --
+/// Where `--license` sends a reader for the Rust crates' licence texts.
+pub const THIRD_PARTY_HINT: &str = concat!(
+    dspi_cmd::command!(),
+    " --third-party-licences prints the licence texts of the Rust crates compiled into this \
+     program; its release archive carries them as THIRD-PARTY-NOTICES.txt."
+);
 pub const LICENCE_HINT: &str = concat!(
     dspi_cmd::command!(),
     " --license prints this licence notice and its terms."
@@ -301,6 +308,9 @@ pub fn licence_text(width: u16) -> String {
         String::new(),
         l.notices.clone(),
         GPL_TEXT.to_owned(),
+        // -- WP CLEAN1 --
+        String::new(),
+        THIRD_PARTY_HINT.to_owned(),
     ]);
     let mut out = String::new();
     for p in paragraphs {
@@ -500,7 +510,8 @@ mod tests {
         assert!(frames.len() > 1, "the page should need scrolling");
         // -- WP LIC1 -- the licence closes the page
         let last = frames.last().unwrap();
-        assert!(last.contains(LICENCE_HINT), "{last}");
+        // -- WP CLEAN1 -- the hint may fold at 80 columns; its start is on one line
+        assert!(last.contains("--license prints this licence"), "{last}");
     }
 
     /// Text nobody would approve, in every field.

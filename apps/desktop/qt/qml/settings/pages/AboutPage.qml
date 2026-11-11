@@ -133,14 +133,4 @@ SettingsPage {
         footnote: aboutInfo.licenceFreedoms
     }
     LicenceTextPopup { id: licenceText }
-
-    // Not in about.json: the wording of this paragraph is pending with the owner
-    Text {
-        width: parent.width
-        wrapMode: Text.WordWrap
-        font.pixelSize: 12
-        color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
-        text: qsTr("DSPi Firmware and Console are free, open-source software developed in spare time. "
-            + "Contributions of any kind - code, feedback, funding, or otherwise - are always immensely appreciated.")
-    }
 }

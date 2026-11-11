@@ -53,3 +53,20 @@ wire format V26, 190 vendor opcodes
 
 That pairing is what makes a bug report actionable: "wire V26" says more about
 what the app was talking to than an app version ever could.
+
+## Release archives and the source archive (WP CLEAN1)
+
+Every release publishes, beside its downloads, the source archive of the exact commit it
+was built from: `ci/release-source.sh VERSION dist` writes
+`dspi-uconsole-VERSION-source.tar.gz` (a `git archive`, without `apps/desktop` while the
+Qt app is not released). The notices of every non-Qt artifact point at that file.
+
+A Terminal archive comes from a release build of `-p dspi-term`:
+`ci/release-terminal.sh target/release/uconsole linux-x86_64 VERSION dist`. It holds the
+binary under its command name (`ci/command-name.sh`), the README, `LICENSE`, `NOTICE.md`,
+`THIRD-PARTY-NOTICES.txt` (the Rust crates' licence texts,
+`apps/terminal/notices/rust-crates.txt`), `SOURCE.txt`, the udev rule and the hub's
+service files (`service/`, rendered from `apps/terminal/packaging/service/`). Regenerate the
+crates' texts after a dependency change with
+`ci/run.sh 'python3 apps/terminal/tools/gen_rust_notices.py'`; the `terminal` check step
+fails while they are stale.

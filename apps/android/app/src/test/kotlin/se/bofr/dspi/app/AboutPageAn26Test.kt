@@ -110,7 +110,7 @@ class AboutPageAn26Test {
         val asset = File("../../../assets/about.json").readText()
         show(asset)
         val licence = Json.parseObject(asset)!!["licence"] as Map<String, Any?>
-        rule.onNodeWithText("GPL-3.0-or-later with additional terms · third-party notices").assertExists()
+        rule.onNodeWithText("GPL-3.0-only with additional terms · third-party notices").assertExists()
         rule.onNodeWithText("Licences").performClick()
         rule.onNodeWithText(licence.str("statement")!!).assertExists()
         rule.onNodeWithText(licence.str("terms_title")!!).assertExists()

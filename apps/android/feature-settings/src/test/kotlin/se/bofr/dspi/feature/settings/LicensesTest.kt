@@ -38,9 +38,10 @@ class LicensesTest {
     }
 
     @Test
-    fun wpLic1TheLicenceIsGpl3OrLaterWithThreeTerms() {
+    fun wpLic1TheLicenceIsGpl3WithThreeTerms() {
         val licence = parseAbout(File("../../../assets/about.json").readText()).licence
-        assertTrue(licence.spdx == "GPL-3.0-or-later")
+        // WP CLEAN1: the program as a whole is GPL-3.0; Bofr5555's own parts are "or later"
+        assertTrue(licence.spdx == "GPL-3.0-only")
         assertTrue(licence.statement!!.contains("either version 3 of the License, or (at your option) any later version"))
         val titles = listOf("Attributions (7b)", "Modified versions are marked (7c)", "No trademark rights (7e)")
         assertTrue(licence.terms.map { it.title } == titles)

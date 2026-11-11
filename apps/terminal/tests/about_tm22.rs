@@ -31,7 +31,7 @@ fn wp_tm22_version_prints_the_tables_credit_lines_after_the_versions() {
     assert_eq!(
         lines[lines.len() - 1],
         concat!(
-            "GPL-3.0-or-later, with additional terms: ",
+            "GPL-3.0-only, with additional terms: ",
             dspi_cmd::command!(),
             " --license"
         )

@@ -25,7 +25,8 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-internal const val APP_SOURCE_URL = "https://github.com/Bofr5555/dspi-unified-console"
+// -- WP CLEAN1 -- (DRAFT) the source goes with each release, as its source archive
+internal const val APP_SOURCE_NOTE = "Published with each release as its -source.tar.gz archive, beside the downloads"
 internal const val PRIVACY_POLICY_URL = "https://github.com/Bofr5555/dspi-android/blob/main/PRIVACY.md"
 
 /** One bundled licence text (assets/licenses/[asset]). */
@@ -39,11 +40,12 @@ internal val APACHE2 = LicenseText("Apache License 2.0", "Apache-2.0.txt")
 internal val MPL2 = LicenseText("Mozilla Public License 2.0", "MPL-2.0.txt")
 internal val AUTOEQ_MIT = LicenseText("AutoEq — MIT License", "AutoEq-MIT.txt")
 internal val RUST_CRATES = LicenseText("Rust crates — licences and notices", "rust-crates.txt")
+internal val FIRMWARE_NOTICES = LicenseText("DSPi firmware — third-party notices", "firmware-THIRD-PARTY-NOTICES.txt")
 
 internal val THIRD_PARTY = listOf(
     ThirdPartyComponent(
-        "DSPi core (Weeb Labs' DSPi-Terminal and consoles, extended by Bofr5555)",
-        "GPL-3.0-or-later, with the additional terms above",
+        "DSPi core (Weeb Labs' DSPi-Terminal, extended by Bofr5555)",
+        "GPL-3.0-or-later; Bofr5555's parts with the additional terms above",
         "https://github.com/WeebLabs/DSPi-Terminal",
         GPL3
     ),
@@ -54,18 +56,36 @@ internal val THIRD_PARTY = listOf(
         GPL3
     ),
     ThirdPartyComponent(
+        "DSPi Console for Windows (Weeb Labs) — PEQ graph editor, pin overview and hardware-change order (12 files)",
+        "GPL-3.0",
+        "https://github.com/WeebLabs/DSPi-Console-Windows",
+        GPL3
+    ),
+    ThirdPartyComponent(
         "DSPi Link protocol (Weeb Labs) — spec 1.2, Link client port",
         "MIT",
         "https://github.com/WeebLabs/DSPi-Link",
         null
     ),
     ThirdPartyComponent(
-        "DSPi firmware v1.1.6-beta5 (Weeb Labs) — bundled images",
+        "DSPi firmware v1.1.6 (Weeb Labs) — bundled images",
         "GPL-3.0",
-        "https://github.com/WeebLabs/DSPi/tree/v1.1.6-beta5",
+        "https://github.com/WeebLabs/DSPi/tree/v1.1.6",
         GPL3
     ),
+    ThirdPartyComponent(
+        "In the DSPi firmware: pico-sdk, pico-extras, TinyUSB, LUFA, Elehobica's S/PDIF receiver, Alex Stanoev",
+        "BSD-3-Clause, MIT, LUFA, BSD-2-Clause",
+        "https://github.com/Bofr5555/DSPi/tree/v1.1.6",
+        FIRMWARE_NOTICES
+    ),
     ThirdPartyComponent("AutoEq measurements (Jaakko Pasanen)", "MIT", "https://github.com/jaakkopasanen/AutoEq", AUTOEQ_MIT),
+    ThirdPartyComponent(
+        "Noto Sans Mono (The Noto Project Authors) — glyphs in the app icon",
+        "OFL-1.1",
+        "https://github.com/notofonts/latin-greek-cyrillic",
+        null
+    ),
     ThirdPartyComponent("UniFFI (Mozilla)", "MPL-2.0", "https://github.com/mozilla/uniffi-rs", MPL2),
     ThirdPartyComponent("Rust crates (serde, nusb, tungstenite, log, …)", "MIT / Apache-2.0", "https://crates.io", RUST_CRATES),
     ThirdPartyComponent("JNA", "Apache-2.0 (or LGPL-2.1)", "https://github.com/java-native-access/jna", APACHE2),
@@ -85,8 +105,8 @@ internal fun LicensesView(licence: AboutLicence, onOpenText: (LicenseText) -> Un
         item {
             SettingsSection(licence.title ?: "This App", footer = licence.copyright.joinToString("\n").ifEmpty { null }) {
                 licence.statement?.let { FormCaption(it) }
-                SettingRow(GPL3.title, licence.spdx ?: "GPL-3.0-or-later", onClick = { onOpenText(GPL3) })
-                SettingRow("Source code", APP_SOURCE_URL, onClick = { runCatching { uri.openUri(APP_SOURCE_URL) } })
+                SettingRow(GPL3.title, licence.spdx ?: "GPL-3.0-only", onClick = { onOpenText(GPL3) })
+                SettingRow("Source code", APP_SOURCE_NOTE)
             }
         }
         if (licence.terms.isNotEmpty()) {

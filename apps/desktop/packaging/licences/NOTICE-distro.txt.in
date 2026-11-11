@@ -1,10 +1,17 @@
 DSPi uConsole @DSPI_VERSION@
 
-DSPi uConsole is licensed under the GNU General Public License, version 3 or
-(at your option) any later version (@DSPI_GPL_TEXT@ holds version 3),
-with additional terms under its section 7 (below).
-Its source code:
-https://github.com/Bofr5555/dspi-unified-console
+DRAFT notice, pending the owner's approval.
+
+DSPi uConsole as a whole is distributed under the GNU General Public License
+version 3 (@DSPI_GPL_TEXT@). Bofr5555's own contributions are licensed under
+version 3 or (at your option) any later version, with additional terms under
+its section 7 (below).
+Its complete source code is published with this release, beside its
+downloads, as dspi-uconsole-@DSPI_VERSION@-source.tar.gz.
+
+The DSPi firmware images it bundles are Weeb Labs' release v1.1.6 (GPL-3.0);
+their third-party notices, and AutoEq's MIT licence for the data in its AutoEQ
+database, are in the source archive: assets/licences/.
 
 This program uses Qt from this system's packages, licensed under the GNU Lesser
 General Public License version 3; Qt's licence texts come with those packages.

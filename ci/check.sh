@@ -211,7 +211,7 @@ for s in "${steps[@]}"; do
       $RUN "PROPTEST_CASES=20000 cargo test --workspace --all-features --release -- proptest_" ;;
     terminal)
       # -- WP MR2 --
-      $RUN "cargo build --release --locked -p dspi-term && /target/release/$CMD --version" ;;
+      $RUN "cargo build --release --locked -p dspi-term && /target/release/$CMD --version && python3 apps/terminal/tools/gen_rust_notices.py --check" ;;
     kotlin|swift)
       $RUN "ci/compile-bindings.sh $s"
       # -- WP REL013M -- and the Swift macOS app's Rust crates notice is current
