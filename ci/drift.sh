@@ -8,6 +8,9 @@
 #   ci/drift.sh write   the same, then replace ci/generated/ with the new output
 #
 # What it covers:
+#   crates/dspi-capi/src/types/consts.rs
+#                              the C ABI's constants, written by
+#                              `cargo run -p xtask -- capi-consts`
 #   ci/generated/dspi_core.h   cbindgen's C header, as crates/dspi-capi's build script
 #                              writes it (the header itself is gitignored)
 #   ci/generated/kotlin/       UniFFI's Kotlin, one run per namespace
@@ -39,6 +42,17 @@ out=/work/drift
 rm -rf "$out"
 mkdir -p "$out"
 
+status=0
+
+# The C ABI's constants, generated from dspi-proto, dspi-core and dspi-session
+# (xtask/src/capi_consts.rs). Written first under `write`, so that the header
+# below is built from the new file; under `check` a stale file fails the step.
+if [ "$mode" = write ]; then
+  cargo run --quiet --locked -p xtask -- capi-consts
+elif ! cargo run --quiet --locked -p xtask -- capi-consts --check; then
+  status=1
+fi
+
 # The build script has `rerun-if-changed` on the crate's own files only: remove its
 # record, so that the header really is regenerated and a stale one cannot pass.
 rm -rf "$CARGO_TARGET_DIR"/debug/build/dspi-capi-*
@@ -67,7 +81,6 @@ python3 apps/apple/Tools/gen_swift_constants.py "$out/swift/DspiConstants.swift"
 mkdir -p "$out/web"
 cargo run --quiet --locked -p dspi-core --example web_texts >"$out/web/link-words.json"
 
-status=0
 if [ "$mode" = write ]; then
   rm -rf "$committed"
   cp -r "$out" "$committed"

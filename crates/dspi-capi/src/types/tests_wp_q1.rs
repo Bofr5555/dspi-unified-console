@@ -1,6 +1,6 @@
-//! WP Q1 tests: the records' layout against the old header (C compiler),
-//! the generated header against the old one (text), the constants against
-//! the firmware-generated ones, and the conversions.
+//! WP Q1 tests: the records' layout against the committed header (C
+//! compiler), the generated header against the committed one (text), the
+//! constants against the firmware-generated ones, and the conversions.
 
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -14,10 +14,11 @@ fn manifest() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-/// The old desktop core's header: a committed snapshot
-/// (`tests/data/dspi_core_old.h`); the crate itself is gone (WP Q3).
+/// The baseline: the committed copy of the header
+/// (`ci/generated/dspi_core.h`), which `ci/drift.sh` keeps equal to what the
+/// build writes. A declaration that changes here changes the ABI.
 fn old_header() -> String {
-    std::fs::read_to_string(manifest().join("tests/data/dspi_core_old.h")).unwrap()
+    std::fs::read_to_string(manifest().join("../../ci/generated/dspi_core.h")).unwrap()
 }
 
 /// The header build.rs wrote.
@@ -85,7 +86,7 @@ fn items(h: &str) -> BTreeMap<String, String> {
 fn wp_q1_header_matches_the_old_one() {
     let old = items(&old_header());
     let new = items(&new_header());
-    // Sanity: the parser found what the old header has.
+    // Sanity: the parser found what the committed header has.
     assert!(old.keys().filter(|k| k.starts_with("#define")).count() > 400);
     assert!(old.contains_key("struct DspState"));
     assert!(old.contains_key("typedef NotifyCallback"));
@@ -107,7 +108,7 @@ fn wp_q1_header_matches_the_old_one() {
     }
     assert!(
         problems.is_empty(),
-        "include/dspi_core.h vs the old header:\n{}",
+        "include/dspi_core.h vs ci/generated/dspi_core.h:\n{}",
         problems.join("\n")
     );
 }
@@ -155,6 +156,7 @@ fn rust_layouts() -> Vec<Layout> {
         BufferStats { num_spdif, pdm_active, streaming, sequence, spdif, pdm }
         SpdifRxStatus { state, input_source, lock_count, loss_count, sample_rate, parity_errors, fifo_fill_pct, lib_state, stable_callbacks, lost_callbacks }
         PlatformInfo { platform_id, num_output_channels, fw_major, fw_minor, fw_patch, fw_beta }
+        RtaOwnership { following, origin, tap, mask, fft_order }
     }
 }
 
@@ -245,13 +247,13 @@ fn wp_q1_every_old_struct_field_is_checked() {
         .collect();
     assert_eq!(
         rust, old,
-        "the layout list must name every struct and field of the old header"
+        "the layout list must name every struct and field of the committed header"
     );
 }
 
 #[test]
 fn wp_q1_layout_matches_the_old_header() {
-    check_layout_in_c("old header", &old_header());
+    check_layout_in_c("ci/generated/dspi_core.h", &old_header());
 }
 
 #[test]

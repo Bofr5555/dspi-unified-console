@@ -7,3 +7,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+# `capi-consts`: the C ABI's constants come from these crates' own items.
+dspi-proto.workspace = true
+dspi-core = { workspace = true, default-features = false }
+dspi-session = { workspace = true, default-features = false }

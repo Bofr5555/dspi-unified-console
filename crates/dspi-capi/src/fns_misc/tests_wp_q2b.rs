@@ -848,7 +848,7 @@ const OLD_FUNCTIONS: &[&str] = &[
 fn wp_q2b_old_functions_keep_their_signatures_in_the_header() {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let new = std::fs::read_to_string(dir.join("include/dspi_core.h")).unwrap();
-    let old = std::fs::read_to_string(dir.join("tests/data/dspi_core_old.h")).unwrap();
+    let old = std::fs::read_to_string(dir.join("../../ci/generated/dspi_core.h")).unwrap();
     let (new, old) = (prototypes(&new), prototypes(&old));
     for name in OLD_FUNCTIONS {
         assert!(new.contains_key(*name), "{name} missing");

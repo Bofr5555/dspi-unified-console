@@ -2555,6 +2555,11 @@ dependencies = [
 [[package]]
 name = "xtask"
 version = "0.13.0"
+dependencies = [
+ "dspi-core",
+ "dspi-proto",
+ "dspi-session",
+]
 
 [[package]]
 name = "zeroize"
