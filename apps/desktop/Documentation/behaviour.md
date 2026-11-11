@@ -26,7 +26,9 @@ Cite it by section, for example "behaviour.md §6.3".
 
 ### 1.1 Identity and start-up
 
-- Window title and product name: "DSPi uConsole". The executable is `DSPiConsole` (`DSPiConsole.exe` on Windows).
+- Window title and product name today: "DSPi uConsole". The executable is `DSPiConsole` (`DSPiConsole.exe` on Windows).
+  The rebuilt app takes the window title and every place a text names the product from its one identity constant
+  (`AppIdentity`, plan Q15), never from this paragraph: the name may change before packaging.
 - Settings organisation and application are `DSPi` and `DSPi Console` (§21).
 - `--demo` on the command line opens the demo device at start. Without it, the app starts with whatever USB device
   is present, or with nothing (§1.3).
@@ -71,8 +73,12 @@ Cite it by section, for example "behaviour.md §6.3".
 
 ## 2. Banner stack
 
-Banners sit at the top of the right pane, full width, stacked. Each is a rounded card. Order from the top, as
-observed when several show at once:
+Today banners sit at the top of the right pane, full width, stacked. Each is a rounded card.
+
+**Placement in the rebuild:** the plan puts the banner host (`BannerHost`) directly under the menu bar, across the
+window. That placement wins over today's; only the order and the content below carry over.
+
+Order from the top, as observed when several show at once:
 
 1. Firmware banner: either the mismatch banner (any version other than the expected one; "Update…" and "Hide") or
    the read-only banner (§14; "Update…" for older firmware, "Details…" for newer). Warning colour with a warning icon.
@@ -377,8 +383,9 @@ counts below cover is **not observable** from outside, so the rule decides.
 | Settings: device pages | reading | every row; Save |
 | Always | clip-indicator clear, entering the bootloader from the firmware window, all reads and polls, the device list, Link | — |
 
-The smoke clicks every enabled control on each window in turn and fails if any setter is called; counts per window
-from today's run (clicked of total): graphing 17/49, spectrum settings 17/35, overview 17/59, matrix 0/67, loudness
+The smoke clicks every enabled control on each window in turn and fails if any setter is called. The counts below
+are from today's run of today's app, for reference only; a rebuilt window will have other totals, and the rule above,
+not the counts, is the requirement. Counts per window (clicked of total): graphing 17/49, spectrum settings 17/35, overview 17/59, matrix 0/67, loudness
 0/17, crossfeed 0/18, leveller 0/14, psybass 0/27, subharmonic 0/34, tube 0/42, upmixer 0/1, generator 0/1, AutoEQ 0/20,
 stats 1/1, analyser 3/3, monitor 3/30, input page 2/37, output page 6/50, main window 23/30.
 
@@ -642,3 +649,42 @@ The NSIS script and its test (`apps/desktop/packaging/windows/`) are kept. Behav
   control" link (M13).
 - **Settings save failures** are named per setter (§8).
 - **Hidden-window shortcuts** only act while their window has focus (§1.2).
+
+## 26. Popover anchor rule (QD30)
+
+Applies to every popover the app opens from a button: the graph's gear (graph options), the analyser strip's gear,
+the dashboard layout popup, and any later one built on the shared popover component.
+
+- While a popover is open, the pointer over its anchor button shows that button's normal cursor and hover state at
+  once. It must not stay in the popover's cursor until the mouse is wiggled (the popup's pointer grab must not hold
+  the anchor's cursor).
+- One click on the anchor while the popover is open closes it, once. The same click must not close it and then reopen
+  it (the outside-press closing the popup and the button's own click toggling it again).
+- A click elsewhere outside the popover closes it as before; Escape closes it.
+- The rule holds on KDE Plasma under Wayland and under X11 (the owner's report was on KDE Wayland); Windows should
+  behave the same.
+- Offscreen tests cannot see the cursor. The smoke can check the click part (open, click the anchor, closed and not
+  reopened); the cursor part is a hand check.
+
+**Hand check for QP21:** on KDE Plasma Wayland, then X11: open the graph gear's popover, move the pointer onto the
+gear without wiggling: the hand cursor shows at once. Click the gear once: the popover closes and stays closed.
+Repeat with the analyser strip's gear. Record OS, session type and date in `docs/core-merge/HW-QT.md` with QD35's
+other hand checks.
+
+## 27. About: third-party notices list
+
+Mechanics only; the wording and the texts are data shipped with the app, not written in the UI.
+
+- The About page has a section listing the third-party components' notices, one row per notice (its name, and the
+  component it covers). The list should be built from the notice files the packaging stages (plan section 5: the
+  staging script adds each notice to this list), so it follows the packaging, never an edit of the page. The row
+  content is the plan's, not observed.
+- Choosing a row opens a text viewer over the Settings window: a modal card nearly the window's size, the notice's
+  name as its title at the top left, a "Close" button at the top right, and the notice text below in a monospaced
+  font, unwrapped as in the file, scrolling vertically.
+- "Close" closes the viewer and returns to the same place in the About page. Escape should do the same, and the
+  text should be selectable for copying (both **not observable** in a screenshot; recommended).
+- Observed in the About screenshots of 2026-11-09 (the viewer with its title and Close). The list rows themselves are
+  outside the visible part of the About page screenshot, so their exact layout is **not observable**: use the
+  Settings row style (§8).
+
