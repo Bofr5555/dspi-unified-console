@@ -1,5 +1,5 @@
 //! The C ABI the Qt desktop app links: the retired desktop core's functions
-//! (header `dspi_core.h`, snapshot in `tests/data/dspi_core_old.h`), same
+//! (header `dspi_core.h`, committed copy in `ci/generated/dspi_core.h`), same
 //! names, same signatures, same `#[repr(C)]` records, now over [`dspi_core::DspiCore`].
 //!
 //! Rules for every `extern "C"` function here:
@@ -127,21 +127,31 @@ mod tests {
             .collect()
     }
 
-    /// Every function of the old core's header (the committed snapshot; the
-    /// crate is gone) is defined by an export here and is in the header the
-    /// build writes. Signatures: `wp_q2a_*`, `wp_q2b_*`.
+    /// Every function of the committed header (`ci/generated/dspi_core.h`,
+    /// the ABI the Qt app is built against) is defined by an export here and
+    /// is in the header the build writes. Signatures: `wp_q2a_*`, `wp_q2b_*`.
     #[test]
     fn wp_q3_every_old_function_is_exported() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let read = |p: &str| std::fs::read_to_string(dir.join(p)).unwrap();
-        let old = called_names(&read("tests/data/dspi_core_old.h"));
+        let old = called_names(&read("../../ci/generated/dspi_core.h"));
         assert!(
             old.len() > 140,
-            "the parser lost the old header: {}",
+            "the parser lost the committed header: {}",
             old.len()
         );
 
-        let source = read("src/fns_device.rs") + &read("src/fns_misc.rs");
+        let source = [
+            "src/fns_device.rs",
+            "src/fns_misc.rs",
+            "src/fns_misc/autoeq.rs",
+            "src/fns_misc/link_text.rs",
+            "src/fns_browse.rs",
+            "src/fns_link.rs",
+            "src/fns_hub.rs",
+        ]
+        .map(read)
+        .concat();
         let exported: std::collections::BTreeSet<&str> = source
             .split("pub extern \"C\" fn ")
             .skip(1)

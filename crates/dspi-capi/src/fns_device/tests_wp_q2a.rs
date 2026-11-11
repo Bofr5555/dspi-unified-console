@@ -437,7 +437,7 @@ fn prototypes(h: &str) -> BTreeMap<String, String> {
 #[test]
 fn wp_q2a_signatures_match_the_old_header() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let old = std::fs::read_to_string(manifest.join("tests/data/dspi_core_old.h")).unwrap();
+    let old = std::fs::read_to_string(manifest.join("../../ci/generated/dspi_core.h")).unwrap();
     let new = std::fs::read_to_string(manifest.join("include/dspi_core.h")).unwrap();
     let (old, new) = (prototypes(&old), prototypes(&new));
     assert!(old.len() > 140, "the parser found {} functions", old.len());
