@@ -447,29 +447,19 @@ public enum DspiConstants {
     public static let MASTER_VOL_MUTE_DB: Float = -128.0
 
     // ── dspi-core consts.rs ──
-    /// Crossfeed output pairs in `DspState.crossfeed_pair_map`.
+    /// Bytes of a crossfeed pair map, one per stereo pair.
     public static let CROSSFEED_MAP_PAIRS: Int = 4
-    /// Number of `PSYBASS_PARAM_*` ids.
+    /// Number of psychoacoustic bass parameters.
     public static let PSYBASS_PARAM_COUNT: Int = 5
-    /// Another host renamed an input source or the device (re-read the names:
-    /// `get_input_source_name`, `get_device_name`). New in the merged core.
+    /// The device name or an input source name changed.
     public static let NOTIFY_NAMES: UInt32 = 1 << 8
-    /// The device's notification stream ended (unplugged, MIDI port closed,
-    /// Link session over): the connection is dead and should be closed. Never
-    /// set after an intentional `disconnect`. New in the merged core.
+    /// The device went away.
     public static let NOTIFY_DISCONNECTED: UInt32 = 1 << 9
-    /// `DspiError::Refused { status }` for an extension-channel write the
-    /// device stalled (`REQ_EXTENSION`, WP C8): the extension channel has no
-    /// status byte, so this code stands for "refused".
+    /// Status of an extension write the device stalled.
     public static let EXT_WRITE_REFUSED: UInt8 = 0xFF
-    /// `process_notifications`: a re-read after a change failed every retry, so
-    /// the mirror may be stale until the next change or an explicit `fetch_all`.
-    /// Reported once.
+    /// The state could not be re-read after retries: it may be out of date.
     public static let NOTIFY_STALE: UInt32 = 1 << 10
-    /// `process_notifications`: an audio stream's state changed (ADAT out, I2S
-    /// clock slave, ADAT in). Re-read `fetch_adat_out_status` or
-    /// `fetch_input_lock(0|1)`. The mirror already follows ADAT out's `enabled`
-    /// and `pin` (with `NOTIFY_STATE` when they changed).
+    /// An input or output stream changed state (ADAT, I2S slave, ...).
     public static let NOTIFY_STREAMS: UInt32 = 1 << 11
 
     // ── firmware config.h (not in the core) ──

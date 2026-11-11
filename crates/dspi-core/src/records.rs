@@ -1,663 +1,622 @@
-//! The records the embedder API hands out: plain Rust structs, binding
-//! friendly (no fixed arrays, no pointers, no lifetimes).
+//! The plain data the core hands to its embedders.
 //!
-//! They started as the Android console's UniFFI records (`dspi-ffi`
-//! `records.rs`), which mirror the old desktop core's `#[repr(C)]` structs
-//! field for field: same names, same order. Fixed-size C arrays are `Vec`s of
-//! the same length; NUL-padded name buffers are `String`s. Keeping that
-//! mirror means the C ABI (`dspi-capi`) converts mechanically and the Kotlin
-//! and Swift bindings (WP F1) see the field names the apps already use.
+//! Every type here is a value: no handles, no locks, no behaviour beyond the
+//! derives. The same structs cross every boundary the core has: UniFFI
+//! records for Kotlin and Swift (feature `uniffi`), JSON for the web and
+//! Link clients (`serde::Serialize`, camelCase keys, on the types that need
+//! it), and the C ABI, which converts them field by field in `dspi-capi`.
 //!
-//! Code values (filter types, `COMPAT_*`, `PRESET_*`, ...) stay raw integers,
-//! as on the wire; the named constants are in `crate::consts`.
+//! Field order is part of that contract (the Kotlin and Swift constructors
+//! take the fields positionally), so new fields go at the end of a struct.
 
-// ── types.rs ──────────────────────────────────────────────────────────
+// ---------------------------------------------------------------- filters
 
-/// One filter band, PEQ or crossover (`types.rs` `FilterParams`).
+/// One filter band as the device stores it: a PEQ band or a crossover slot.
+///
+/// The meaning of `gain` and `qp` depends on the type: a Linkwitz Transform
+/// (type 11) carries its target corner `fp` in `gain` and its target Q in
+/// `qp`; every other type ignores `qp`.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FilterParams {
-    /// Firmware filter type (`FILTER_*`): 0..13 PEQ, 32..63 crossover.
+    /// The firmware's filter type byte (`FILTER_*`): 0 flat, 1..13 the PEQ
+    /// shapes, 32..63 the crossover family/order/pass codes.
     pub filter_type: u8,
-    /// Whether the band is bypassed.
+    /// True when the band is switched off without losing its settings.
     pub bypass: bool,
-    /// Centre or corner frequency, Hz.
+    /// Centre or corner frequency in Hz (`f0` for a Linkwitz Transform).
     pub freq: f32,
-    /// Q (dimensionless).
+    /// Quality factor (`Q0` for a Linkwitz Transform).
     pub q: f32,
-    /// Gain in dB; for the Linkwitz Transform, the target frequency fp in Hz.
+    /// Gain in dB; the target corner `fp` in Hz for a Linkwitz Transform.
     pub gain: f32,
-    /// Linkwitz Transform target Q (ignored by every other type).
+    /// The Linkwitz Transform's target Q; unused by the other types.
     pub qp: f32,
 }
 
-/// Lock status of a clocked input (`fetch_input_lock`).
+// ------------------------------------------------- inputs and interfaces
+
+/// Lock state of a clocked digital input (S/PDIF, ADAT or I2S slave).
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct InputLockStatus {
-    /// Receiver state, the firmware's raw code; 0 = inactive.
+    /// The receiver's state code as the firmware reports it.
     pub state: u8,
-    /// Clock mode, 0 master, 1 slave.
+    /// Which clock the input runs on (the firmware's clock-mode code).
     pub clock_mode: u8,
-    /// Sample rate the receiver decided on, Hz.
+    /// The sample rate the receiver decoded, in Hz (0 when unknown).
     pub detected_rate: u32,
-    /// Sample rate as measured from the signal, Hz.
+    /// The measured incoming rate, in Hz.
     pub measured_hz: u32,
-    /// Whether the rate is usable; always true for the I2S slave.
+    /// True when the incoming rate is one the device can run at.
     pub rate_ok: bool,
-    /// Times it locked, wrapping 8-bit counter.
+    /// How often the input has locked since boot (wrapping counter).
     pub lock_count: u8,
-    /// Times it lost lock, wrapping 8-bit counter.
+    /// How often the input has lost lock since boot (wrapping counter).
     pub loss_count: u8,
 }
 
-/// The ADAT output's status (`fetch_adat_out_status`).
+/// State of the ADAT output.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct AdatOutStatus {
-    /// The output is enabled in the configuration.
+    /// The output is configured on.
     pub enabled: bool,
-    /// The output is running now.
+    /// The output is actually sending frames.
     pub active: bool,
-    /// GPIO of the output.
+    /// The GPIO the output drives.
     pub pin: u8,
-    /// The current sample rate suits ADAT.
+    /// True when the current sample rate is one ADAT can carry.
     pub rate_ok: bool,
-    /// Times the output resynchronised, wrapping counter.
+    /// Resynchronisations since boot.
     pub resync_count: u16,
-    /// Sample slips, wrapping counter.
+    /// Frame slips since boot.
     pub slip_count: u16,
 }
 
-/// LG Sound Sync status (`fetch_lg_status`).
+/// State of the LG Sound Sync link (optical volume from an LG TV).
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct LgStatus {
-    /// LG Sound Sync is enabled.
+    /// Sound Sync handling is switched on.
     pub enabled: bool,
-    /// A TV has been detected.
+    /// A TV is sending Sound Sync data.
     pub present: bool,
-    /// TV volume 0..100; 0xFF until one has been decoded.
+    /// The volume the TV last sent.
     pub volume: u8,
-    /// The TV reports mute.
+    /// The TV's mute flag.
     pub muted: bool,
 }
 
-/// The UART control interface's configuration (`set_uart`).
+/// Settings of the UART control interface.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UartConfig {
-    /// The UART control interface is enabled.
+    /// The interface is switched on.
     pub enabled: bool,
-    /// TX GPIO (`pin % 4 == 0`).
+    /// The transmit GPIO.
     pub tx_pin: u8,
-    /// RX GPIO (`pin % 4 == 1`), same UART instance.
+    /// The receive GPIO.
     pub rx_pin: u8,
-    /// Push notification frames over the UART.
+    /// The device sends unsolicited change notifications over the UART.
     pub notify: bool,
-    /// Baud rate, bits per second.
+    /// Line speed in baud.
     pub baud: u32,
 }
 
-/// The I2C control interface's configuration (`set_i2c`).
+/// Settings of the I2C control interface.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct I2cConfig {
-    /// The I2C control interface is enabled.
+    /// The interface is switched on.
     pub enabled: bool,
-    /// SDA GPIO (even), same I2C instance as `scl_pin`.
+    /// The data GPIO.
     pub sda_pin: u8,
-    /// SCL GPIO (odd).
+    /// The clock GPIO.
     pub scl_pin: u8,
-    /// 7-bit target address, 0x08..0x77.
+    /// The device's 7-bit address on the bus.
     pub address: u8,
 }
 
-/// The control interfaces' status (`REQ_GET_CTRL_IFACE_STATUS`).
+/// Live state of the UART and I2C control interfaces.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CtrlIfaceStatus {
-    /// `PIN_CONFIG_*` result of the last UART config write.
+    /// Status code of the last UART command.
     pub uart_last_status: u8,
-    /// The UART interface is up now (a boot-time pin collision keeps it down).
+    /// The UART has seen traffic recently.
     pub uart_live: bool,
-    /// `PIN_CONFIG_*` result of the last I2C config write.
+    /// Status code of the last I2C command.
     pub i2c_last_status: u8,
-    /// The I2C interface is up now.
+    /// The I2C bus has seen traffic recently.
     pub i2c_live: bool,
-    /// The control protocol version the firmware speaks.
+    /// Version of the control-interface protocol the firmware speaks.
     pub protocol_version: u8,
 }
 
-/// The stereo upmixer's live telemetry (`fetch_upmix_status`).
+/// Live state of the stereo-to-surround upmixer.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct UpmixStatus {
-    /// The upmixer is processing audio now.
+    /// The upmixer is processing audio.
     pub active: bool,
-    /// 0 active, 1 disabled, 2 input not stereo, 3 sample rate above 48 kHz.
+    /// Why it is parked when it is not active (the firmware's reason code).
     pub parked_reason: u8,
-    /// Smoothed L/R correlation, -1..1.
+    /// Measured left/right correlation.
     pub correlation: f32,
-    /// Smoothed L/R balance, 0..1.
+    /// Measured left/right balance.
     pub balance: f32,
-    /// Smoothed centre extraction gain, linear 0..1.
+    /// Current gain of the derived centre channel.
     pub center_gain: f32,
-    /// Left surround steering gain, linear 0..1.
+    /// Current gain of the left surround channel.
     pub ls_gain: f32,
-    /// Right surround steering gain, linear 0..1.
+    /// Current gain of the right surround channel.
     pub rs_gain: f32,
 }
 
-/// `types.rs` `SystemStatus` (REQ_GET_STATUS wValue 9), polled every 60 ms.
+// ------------------------------------------------------- device and state
+
+/// Levels and load, polled for the meters.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct SystemStatus {
-    /// Peak per wire channel, 0..1 (MAX_CHANNELS = 17 entries).
+    /// Peak level per channel, linear full scale, inputs first.
     pub peaks: Vec<f32>,
-    /// Core 0 load, %.
+    /// Load of core 0 in percent.
     pub cpu0: u8,
-    /// Core 1 load, %.
+    /// Load of core 1 in percent.
     pub cpu1: u8,
-    /// Sticky clip flags, bit per wire channel.
+    /// One bit per channel that clipped since the last poll.
     pub clip_flags: u32,
-    /// Input channels carrying the active source; 0 from firmware that does
-    /// not report it.
+    /// Input channels the host is currently streaming.
     pub active_input_channels: u8,
-    /// Wire channels the device has.
+    /// Number of entries in `peaks` that belong to the device.
     pub num_channels: u8,
-    /// -- WP C15 -- Not a fresh reading (DSPi Link only): no recent poll frame,
-    /// so all zero, which is not silence; or a repeat of the last slow read.
-    /// Grey the meters rather than show them as live.
+    /// True when these values are a held copy because the last poll failed.
     pub stale: bool,
-    /// How old the reading is, ms; 0 when `stale` with nothing read at all.
+    /// Age of the values in milliseconds.
     pub age_ms: u32,
 }
 
-/// `types.rs` `DeviceInfo`; `serial` replaces the `serial`/`serial_len` pair.
+/// A DSPi found on USB.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct DeviceInfo {
-    /// USB serial number, the picker's identity.
+    /// The USB serial number string.
     pub serial: String,
-    /// Where the unit sits on the bus: IOKit's location id on macOS, derived
-    /// from the bus position elsewhere.
+    /// The bus location, to tell two devices with one serial apart.
     pub location_id: u32,
 }
 
-/// The preset directory (`get_preset_directory`).
+/// The device's preset slots and startup settings.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct PresetDirectory {
-    /// Bit per slot: the slot holds a preset.
+    /// One bit per slot that holds a preset.
     pub occupied_mask: u16,
-    /// `PRESET_STARTUP_*`: 0 load `default_slot`, 1 load the last active.
+    /// What the device loads at power-up (`PRESET_STARTUP_*`).
     pub startup_mode: u8,
-    /// The slot loaded at boot in mode 0.
+    /// The slot loaded at power-up in the "specified" startup mode.
     pub default_slot: u8,
-    /// The slot last loaded or saved.
+    /// The slot loaded most recently.
     pub last_active: u8,
-    /// `OUTPUT_CONFIG_MODE_*`: 0 stored independently, 1 with the preset.
+    /// Whether a preset load also applies the output configuration.
     pub output_config_mode: u8,
-    /// `MASTER_VOLUME_MODE_*`: 0 stored independently, 1 with the preset.
+    /// Whether a preset load also applies the master volume.
     pub master_volume_mode: u8,
 }
 
-// ── state.rs ──────────────────────────────────────────────────────────
-
-/// Full mirror of `state.rs` `DspState` (wire format V32).
+/// Everything the core knows about the connected device's settings.
 ///
-/// Channel-indexed vectors use wire channel indices (`[inputs][outputs]`,
-/// MAX_CHANNELS = 17 entries); output-indexed ones have MAX_OUTPUTS = 9,
-/// input-indexed MAX_INPUTS = 8. Only the first `num_*` entries are live.
+/// Per-channel vectors are sized to the protocol maxima, not to the device:
+/// `num_input_channels` and `num_output_channels` say how much of each is
+/// real. Channels are numbered inputs first, then outputs.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DspState {
-    // Device / firmware
-    /// 0 RP2040, 1 RP2350.
+    /// The board's platform code (RP2040, RP2350, ...).
     pub platform_id: u8,
-    /// Live wire channels (inputs + outputs).
+    /// Inputs plus outputs on this device.
     pub num_channels: u8,
-    /// Live input channels.
+    /// Input channels on this device.
     pub num_input_channels: u8,
-    /// Live output channels.
+    /// Output channels on this device.
     pub num_output_channels: u8,
-    /// The device's own wire format version.
+    /// Wire format version of the bulk parameter image.
     pub format_version: u8,
-    /// Firmware version, major.
+    /// Firmware major version.
     pub fw_major: u8,
-    /// Firmware version, minor.
+    /// Firmware minor version.
     pub fw_minor: u8,
-    /// Firmware version, patch.
+    /// Firmware patch version.
     pub fw_patch: u8,
-    /// Beta number, 0 = final; `FW_BETA_EARLY` for an early beta that does not say.
+    /// Firmware beta number (0 for a release).
     pub fw_beta: u8,
-    /// `COMPAT_*` (0 unknown, 1 ok, 2 firmware too old, 3 too new).
+    /// How this build relates to the firmware (`COMPAT_*`).
     pub compat: u8,
-    // Global
-    /// Preamp, dB.
+    /// Global preamp in dB.
     pub preamp_db: f32,
-    /// Master EQ bypass.
+    /// The whole DSP chain is bypassed.
     pub bypass: bool,
-    /// Per-input preamp, dB (input-indexed).
+    /// Preamp per input, in dB.
     pub input_preamp_db: Vec<f32>,
-    // Volume
-    /// Master volume, dB.
+    /// Master volume in dB.
     pub master_volume_db: f32,
-    /// `MASTER_VOLUME_MODE_*`: 0 stored independently, 1 with the preset.
+    /// How the master volume behaves (fixed, saved, ...): firmware code.
     pub master_volume_mode: u8,
-    /// User volume, dB.
+    /// The user volume in dB.
     pub user_volume_db: f32,
-    /// User mute.
+    /// The user mute.
     pub user_mute: bool,
-    // Loudness
-    /// Loudness compensation on.
+    /// Loudness compensation is on.
     pub loudness_enabled: bool,
-    /// Loudness reference level, dB SPL.
+    /// Loudness reference level in dB SPL.
     pub loudness_ref_spl: f32,
-    /// Loudness intensity, %.
+    /// Loudness intensity in percent.
     pub loudness_intensity: f32,
-    /// Bit k: loudness processes output k.
+    /// Outputs loudness applies to, one bit each.
     pub loudness_output_mask: u16,
-    // Crossfeed
-    /// Crossfeed on.
+    /// Crossfeed is on.
     pub crossfeed_enabled: bool,
-    /// Crossfeed preset index.
+    /// Crossfeed preset number.
     pub crossfeed_preset: u8,
-    /// Custom crossfeed frequency, Hz.
+    /// Crossfeed corner frequency in Hz (custom preset).
     pub crossfeed_freq: f32,
-    /// Custom crossfeed feed level, dB.
+    /// Crossfeed level in dB (custom preset).
     pub crossfeed_feed: f32,
-    /// Interaural time delay on.
+    /// Interaural time delay is on.
     pub crossfeed_itd: bool,
-    /// Bit p: crossfeed processes stereo output pair p.
+    /// Output pairs crossfeed applies to, one bit each.
     pub crossfeed_output_pair_mask: u8,
-    /// Outputs of each crossfeed pair, 4 bytes (K340 firmware fork; zero
-    /// from other firmware). Byte p: 0 = default (2p, 2p+1), else
-    /// `(right << 4) | left`, 0-based output indices.
+    /// Which outputs each crossfeed pair uses (`EXT_CROSSFEED_PAIR_MAP`).
     pub crossfeed_pair_map: Vec<u8>,
-    // Delays (wire channel)
-    /// Delay per wire channel, ms.
+    /// Per-channel delay in ms.
     pub channel_delays: Vec<f32>,
-    // Matrix [input][output]
-    /// Crosspoint on.
+    /// Matrix routing, `[input][output]`.
     pub matrix_routing: Vec<Vec<bool>>,
-    /// Crosspoint gain, dB.
+    /// Matrix gain in dB, `[input][output]`.
     pub matrix_gain: Vec<Vec<f32>>,
-    /// Crosspoint polarity inverted.
+    /// Matrix polarity inversion, `[input][output]`.
     pub matrix_invert: Vec<Vec<bool>>,
-    // Outputs
-    /// Output enabled.
+    /// Output enabled, per output.
     pub output_enabled: Vec<bool>,
-    /// Output muted.
+    /// Output muted, per output.
     pub output_muted: Vec<bool>,
-    /// Output gain, dB.
+    /// Output gain in dB, per output.
     pub output_gain_db: Vec<f32>,
-    /// Output delay, ms.
+    /// Output delay in ms, per output.
     pub output_delay_ms: Vec<f32>,
-    // Limiter
     /// Limiter on, per output.
     pub limiter_enabled: Vec<bool>,
-    /// Limiter link group, per output; outputs in one group limit together.
+    /// Limiter link group, per output.
     pub limiter_link_group: Vec<u8>,
-    /// Limiter threshold, dB, per output.
+    /// Limiter threshold in dB, per output.
     pub limiter_threshold_db: Vec<f32>,
-    /// Limiter release, ms, per output.
+    /// Limiter release in ms, per output.
     pub limiter_release_ms: Vec<f32>,
-    // Pins
-    /// Physical output slots: 3 on RP2040, 5 on RP2350.
+    /// Physical output pins the device has.
     pub num_pin_outputs: u8,
-    /// GPIO of each physical output slot.
+    /// GPIO per physical output.
     pub output_pins: Vec<u8>,
-    /// `OUTPUT_CONFIG_MODE_*`: 0 stored independently, 1 with the preset.
+    /// Output configuration mode (firmware code).
     pub output_config_mode: u8,
-    // EQ [wire channel][band]
-    /// PEQ bands, `[wire channel][band]`.
+    /// PEQ bands, `[channel][band]`.
     pub filters: Vec<Vec<FilterParams>>,
-    /// Crossover bands, `[wire channel][band]`.
+    /// Crossover slots, `[channel][slot]`.
     pub xover: Vec<Vec<FilterParams>>,
-    // Names (wire channel)
-    /// Channel names (wire channel), at most 31 bytes of UTF-8 each.
+    /// User names of the channels.
     pub channel_names: Vec<String>,
-    // Leveller
-    /// Leveller on.
+    /// Volume leveller is on.
     pub leveller_enabled: bool,
-    /// Leveller speed: 0 slow, 1 medium, 2 fast.
+    /// Leveller speed (firmware code).
     pub leveller_speed: u8,
-    /// Leveller lookahead on.
+    /// Leveller lookahead is on.
     pub leveller_lookahead: bool,
-    /// Leveller amount, %.
+    /// Leveller amount in percent.
     pub leveller_amount: f32,
-    /// Leveller maximum gain, dB.
+    /// Leveller maximum gain in dB.
     pub leveller_max_gain_db: f32,
-    /// Leveller gate threshold, dB.
+    /// Leveller gate in dB.
     pub leveller_gate_db: f32,
-    /// Bit k: input channel k feeds the leveller's detector.
+    /// Channels the leveller listens to, one bit each.
     pub leveller_detector_mask: u8,
-    /// Bit k: the leveller's gain applies to input channel k.
+    /// Channels the leveller acts on, one bit each.
     pub leveller_apply_mask: u8,
-    // Input / misc
-    /// Active input (`InputSource`: 0 USB, 1 S/PDIF, 2 I2S, ...).
+    /// The selected audio input (USB, S/PDIF, ...).
     pub input_source: u8,
-    /// LG Sound Sync on.
+    /// LG Sound Sync is on.
     pub lg_sound_sync_enabled: bool,
-    /// Bit k: S/PDIF input k+1 is enabled. Bit 0 (input 1) is always set:
-    /// the first S/PDIF input cannot be disabled, and setters must keep the
-    /// bit when they write the mask.
+    /// How many S/PDIF inputs are enabled.
     pub spdif_inputs_enabled: u8,
-    /// ADAT input enabled.
+    /// The ADAT input is enabled.
     pub adat_input_enabled: bool,
-    /// GPIO of each S/PDIF receiver.
+    /// GPIO per S/PDIF receiver.
     pub spdif_rx_pins: Vec<u8>,
-    /// I2S data GPIO of each stereo input pair.
+    /// GPIO per I2S data input.
     pub i2s_rx_pins: Vec<u8>,
-    /// Active I2S input channels: 2, 4, 6 or 8.
+    /// Channels on the I2S input.
     pub i2s_input_channels: u8,
-    /// I2S input rate code: 0 44.1 kHz, 1 48 kHz, 2 96 kHz.
+    /// I2S input rate (firmware code).
     pub i2s_input_rate: u8,
-    /// I2S clock: 0 master, 1 slave.
+    /// I2S clock mode (master or slave).
     pub i2s_clock_mode: u8,
-    /// ADAT input GPIO.
+    /// GPIO of the ADAT input.
     pub adat_input_pin: u8,
-    /// ADAT input clock: 0 master, 1 slave.
+    /// ADAT input clock mode.
     pub adat_input_clock_mode: u8,
-    // Psychoacoustic bass
-    /// Psychoacoustic bass on.
+    /// Psychoacoustic bass is on.
     pub psybass_enabled: bool,
-    /// Bit k: psychoacoustic bass processes output k.
+    /// Outputs psychoacoustic bass applies to, one bit each.
     pub psybass_output_mask: u16,
-    /// Psychoacoustic bass cutoff, Hz.
+    /// Psychoacoustic bass cutoff in Hz.
     pub psybass_cutoff_hz: f32,
-    /// Harmonics level, dB.
+    /// Harmonics level in dB.
     pub psybass_harmonics_db: f32,
-    /// Drive, dB.
+    /// Drive in dB.
     pub psybass_drive_db: f32,
-    /// Character, %.
+    /// Even/odd character in percent.
     pub psybass_character_pct: f32,
-    /// Level of the original bass, dB.
+    /// Level of the original low band in dB.
     pub psybass_original_db: f32,
-    // Upmixer / subharm / tube, by *_PARAM_* id
-    /// Upmixer parameters, by `UPMIX_PARAM_*`.
+    /// Upmixer parameters, indexed by `UPMIX_PARAM_*`.
     pub upmix: Vec<f32>,
-    /// Subharmonic synthesizer parameters, by `SUBHARM_PARAM_*`.
+    /// Subharmonic synth parameters, indexed by `SUBHARM_PARAM_*`.
     pub subharm: Vec<f32>,
-    /// Subharmonic solo (runtime only, not in the image).
+    /// The subharmonic synth's solo switch.
     pub subharm_solo: bool,
-    /// Tube preamp parameters, by `TUBE_PARAM_*`.
+    /// Tube modeller parameters, indexed by the firmware's tube ids.
     pub tube: Vec<f32>,
-    // Output types and clocks
-    /// Type of each physical output slot: `OUTPUT_TYPE_*` (0 S/PDIF, 1 I2S).
+    /// Kind of each output pin (S/PDIF, I2S, PDM, ...).
     pub output_types: Vec<u8>,
-    /// I2S BCK GPIO as clock master.
+    /// I2S bit clock GPIO in master mode.
     pub i2s_bck_pin: u8,
-    /// I2S BCK GPIO as clock slave.
+    /// I2S bit clock GPIO in slave mode.
     pub i2s_bck_pin_slave: u8,
-    /// I2S clock pins: 0 unified, 1 split.
+    /// How the I2S clock pins are assigned.
     pub i2s_clock_pin_mode: u8,
-    /// I2S MCK output on.
+    /// The master clock output is on.
     pub mck_enabled: bool,
-    /// MCK GPIO.
+    /// GPIO of the master clock.
     pub mck_pin: u8,
-    /// MCK multiplier: 128 or 256.
+    /// Master clock as a multiple of the sample rate.
     pub mck_multiplier: u8,
-    /// ADAT output enabled.
+    /// The ADAT output is on.
     pub adat_out_enabled: bool,
-    /// ADAT output GPIO.
+    /// GPIO of the ADAT output.
     pub adat_out_pin: u8,
-    // DAC hardware mute
-    /// The firmware has the DAC hardware mute.
+    /// The firmware has the DAC mute line.
     pub dac_mute_supported: bool,
-    /// DAC hardware mute on.
+    /// The DAC mute line is on.
     pub dac_mute_enabled: bool,
-    /// Pull the pin low to mute.
+    /// The DAC mute line is active low.
     pub dac_mute_active_low: bool,
-    /// DAC mute GPIO.
+    /// GPIO of the DAC mute line.
     pub dac_mute_pin: u8,
-    /// Hold after the mute asserts, before the clock stops, ms.
+    /// How long the mute is held, in ms.
     pub dac_mute_hold_ms: u16,
-    /// Hold after the clock restarts, before the unmute, ms.
+    /// How long the release takes, in ms.
     pub dac_mute_release_ms: u16,
-    // Control interfaces
-    /// The firmware has the UART and I2C control interfaces.
+    /// The firmware has the UART/I2C control interfaces.
     pub ctrl_iface_supported: bool,
-    /// UART control interface configuration.
+    /// UART control interface settings.
     pub uart: UartConfig,
-    /// I2C control interface configuration.
+    /// I2C control interface settings.
     pub i2c: I2cConfig,
-    /// Control interfaces' status.
+    /// Live state of the control interfaces.
     pub ctrl_status: CtrlIfaceStatus,
-    // Core 1
-    /// `CORE1_MODE_*`: 0 idle, 1 PDM, 2 EQ worker.
+    /// What the second core runs (firmware code).
     pub core1_mode: u8,
-    // Presets
-    /// Bit per slot: the slot holds a preset.
+    /// One bit per occupied preset slot.
     pub preset_occupied: u16,
-    /// Preset names, per slot.
+    /// Name per preset slot.
     pub preset_names: Vec<String>,
-    /// The active preset slot.
+    /// The slot loaded last.
     pub active_preset_slot: u8,
-    /// `PRESET_STARTUP_*`: 0 load `preset_default_slot`, 1 load the last active.
+    /// Preset startup mode.
     pub preset_startup_mode: u8,
-    /// The slot loaded at boot in mode 0.
+    /// Preset loaded at startup in the "specified" mode.
     pub preset_default_slot: u8,
-    // Raw bulk image (BULK_PARAMS_SIZE = 6136 bytes)
-    /// The image is in this build's wire format, so the mirror may be written back.
+    /// `bulk_raw` holds a parameter image this build can decode.
     pub bulk_valid: bool,
-    /// The image itself.
+    /// The bulk parameter image as read from the device.
     pub bulk_raw: Vec<u8>,
-    // -- WP CG32 -- Presence of the image's +1-encoded bytes (0 = absent,
-    // which older firmware sends): with the flag false, the field beside it
-    // holds what an absent byte reads as, not a value the device reported.
-    /// The image carries `i2s_clock_pin_mode` (firmware with split clock pins).
+    /// The image carried `i2s_clock_pin_mode` (newer wire formats).
     pub i2s_clock_pin_mode_present: bool,
-    /// The image carries the S/PDIF inputs 2-4 bits of `spdif_inputs_enabled`
-    /// (firmware with several S/PDIF inputs).
+    /// The image carried `spdif_inputs_enabled`.
     pub spdif_inputs_enabled_present: bool,
-    /// The image carries `adat_input_enabled`.
+    /// The image carried `adat_input_enabled`.
     pub adat_input_enabled_present: bool,
-    /// The image carries `adat_input_clock_mode`.
+    /// The image carried `adat_input_clock_mode`.
     pub adat_input_clock_mode_present: bool,
 }
 
-// ── notify.rs ─────────────────────────────────────────────────────────
-
-/// What `process_notifications` changed: `NOTIFY_*` flags and a bitmask of
-/// wire channels whose filters changed.
+/// What a batch of device notifications changed.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct NotifyResult {
-    /// `NOTIFY_*` flags of what changed.
+    /// `NOTIFY_*` bits.
     pub flags: u32,
-    /// Bit per wire channel: its filters changed.
+    /// One bit per channel whose curve must be redrawn.
     pub filter_channels: u32,
 }
 
-// ── rta.rs ────────────────────────────────────────────────────────────
+// --------------------------------------------------------------- analyser
 
-/// What the analyser should measure (`rta_set_request`).
+/// What a view wants from the real-time analyser.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct RtaRequest {
-    /// `RTA_TAP_INPUT` (0) / `RTA_TAP_OUTPUT` (1).
+    /// Where to measure: `RTA_TAP_INPUT` or `RTA_TAP_OUTPUT`.
     pub tap: u8,
-    /// Channel mask within the tap; 0 releases the analyser unless `watching`.
+    /// Channels to measure, one bit each; 0 releases the analyser.
     pub mask: u16,
-    /// Ask for the FFT bins as well as the bands; the device sends them for a
-    /// single analysed channel.
+    /// Also fetch the raw FFT bins of one channel.
     pub wants_bins: bool,
-    /// FFT order, within the caps' `order_min..=order_max`.
+    /// FFT size as a power of two.
     pub fft_order: u8,
-    /// Averaging time, ms; 0 = none beyond the detector.
+    /// Averaging time in ms.
     pub avg_ms: u16,
-    /// Peak decay, dB/s; 0 = peak hold off.
+    /// Peak hold decay in dB per second.
     pub peak_decay_db_s: u8,
-    // -- WP CG30 --
-    /// A view shows the analyser, also with no channel chosen
-    /// (`isWatching`, SpectrumAnalyser.swift:827). With mask 0 it asks for
-    /// nothing of its own, but while another console is followed the device's
-    /// configuration keeps being polled and drawn. A mask other than 0 watches
-    /// anyway.
+    /// Show whatever another client is measuring instead of starting one.
     #[cfg_attr(feature = "uniffi", uniffi(default = false))]
     pub watching: bool,
 }
 
-/// The analyser's capabilities (`rta_get_caps`).
+/// What the device's analyser can do.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct RtaCapsInfo {
     /// The firmware has an analyser.
     pub supported: bool,
-    /// Input channels it can tap.
+    /// Input channels it can measure.
     pub input_channels: u8,
-    /// Output channels it can tap.
+    /// Output channels it can measure.
     pub output_channels: u8,
-    /// Lowest FFT order.
+    /// Smallest FFT order.
     pub order_min: u8,
-    /// Highest FFT order.
+    /// Largest FFT order.
     pub order_max: u8,
-    /// Default FFT order.
+    /// FFT order the device starts with.
     pub order_default: u8,
-    /// Bands of the continuous bass bank, from band 0.
+    /// Bands handled by the low-frequency filter bank.
     pub bass_bands: u8,
-    /// Bands in a frame.
+    /// Total bands.
     pub max_bands: u8,
-    /// Usable range of the FFT bands, dB.
+    /// Dynamic range of the FFT bands in dB.
     pub dynamic_range_db: u8,
-    /// Usable range of the bass bands, dB.
+    /// Dynamic range of the bass bands in dB.
     pub bass_dynamic_range_db: u16,
-    /// Band centre frequencies, RTA_MAX_BANDS = 37 entries.
+    /// Centre frequency of each band in Hz.
     pub centres: Vec<u16>,
 }
 
-/// One analysed channel's bands.
+/// One channel's band levels in an analyser frame.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct RtaChannelFrame {
-    /// Channel within the tap.
+    /// The channel these levels belong to.
     pub channel: u8,
-    /// Bands that carry data.
+    /// Valid entries in `avg_db` and `peak_db`.
     pub n_bands: u8,
-    /// No frame arrived for this channel.
+    /// The channel carried no signal.
     pub silent: bool,
-    /// Average level per band, dBFS.
+    /// Averaged level per band, dBFS.
     pub avg_db: Vec<f32>,
-    /// Peak level per band, dBFS.
+    /// Peak-hold level per band, dBFS.
     pub peak_db: Vec<f32>,
 }
 
-/// The analyser's latest frames and status (`rta_get_snapshot`).
+/// Everything the analyser view draws, as of the last poll.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct RtaSnapshot {
-    /// Changes when something drawn changed (`rta_get_snapshot`).
+    /// Bumped whenever the drawn levels change.
     pub version: u32,
-    /// Changes when the status line changed.
+    /// Bumped whenever the status fields change.
     pub telemetry_version: u32,
-    /// `RTA_TAP_INPUT` (0) / `RTA_TAP_OUTPUT` (1).
+    /// The tap being measured.
     pub tap: u8,
-    /// Channels analysed.
+    /// Valid entries in `frames`.
     pub count: u8,
-    /// RTA_MAX_CHANNELS = 16 entries; the first `count` are the analysed
-    /// channels (packed, ascending channel), the rest are defaults.
+    /// Levels per measured channel.
     pub frames: Vec<RtaChannelFrame>,
-    /// Bands that carry a level (`rta::populated_bands`): bit b = band b
-    /// (RTA_MAX_BANDS = 37); the bass bank always, an FFT band only when a bin
-    /// centre falls inside its edges, none below `first_band`.
+    /// One bit per band that has data at this rate and FFT size.
     pub populated: u64,
-    /// Valid entries of `bins_db`.
+    /// Valid entries in `bins_db`.
     pub bins_count: u16,
-    /// Channel the bins belong to.
+    /// The channel the bins belong to.
     pub bins_channel: u8,
-    /// Sample rate the bins were computed at, Hz.
+    /// Sample rate the bins were taken at, in Hz.
     pub bins_sample_rate: u32,
-    /// First `bins_count` of RTA_MAX_BINS = 512 entries are valid.
+    /// Raw FFT bins in dBFS.
     pub bins_db: Vec<f32>,
     /// The analyser is running on the device.
     pub running: bool,
-    /// Channels the device reports live.
+    /// Channels the device is measuring.
     pub live_count: u8,
-    /// Bit per channel of the tap: live on the device.
+    /// Mask of the channels the device is measuring.
     pub live_mask: u16,
-    /// Transforms per second.
+    /// Analyser frames per second.
     pub frames_per_s: u16,
-    /// Main-loop transform time, µs per second.
+    /// Processor time spent per second, in µs.
     pub busy_us_per_s: u16,
-    /// Wall time of the last complete transform, µs.
+    /// Time of the last frame, in µs.
     pub last_frame_us: u16,
-    /// Bass bank time on both cores, µs per second, saturating.
+    /// Processor time the bass bank spends per second, in µs.
     pub bass_busy_us_per_s: u16,
-    /// Current sample rate, Hz.
+    /// Device sample rate in Hz.
     pub sample_rate: u32,
-    /// First band this FFT resolves; 0xFF = unknown.
+    /// First band with data; 0xFF when unknown.
     pub first_band: u8,
-    /// FFT order in force.
+    /// FFT order in use.
     pub fft_order: u8,
-    /// The device refused the last requested configuration.
+    /// The device refused the requested configuration.
     pub config_rejected: bool,
-    /// How long one channel waits between frames, s.
+    /// How often the view should poll, in seconds.
     pub refresh_interval_s: f32,
 }
 
-// ── siggen.rs ─────────────────────────────────────────────────────────
+// ------------------------------------------------------- signal generator
 
-/// A signal generator configuration (`siggen_set_config`).
+/// A test signal to play.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct SiggenConfig {
-    /// `SIGGEN_TYPE_*`.
+    /// Signal type id.
     pub signal_type: u8,
-    /// Bit per output channel: the signal plays there.
+    /// Channels to play on, one bit each.
     pub channel_mask: u16,
-    /// The subset of `channel_mask` with inverted polarity.
+    /// Channels played inverted, one bit each.
     pub invert_mask: u16,
-    /// `SIGGEN_FLAG_*`.
+    /// `SIGGEN_FLAG_*` bits.
     pub flags: u8,
-    /// Peak level, dBFS, -120..0.
+    /// Level in dBFS.
     pub level_db: f32,
-    /// Duration, ms.
+    /// Length of one burst in ms (0: continuous).
     pub duration_ms: u32,
-    /// Repeat count.
+    /// Number of bursts.
     pub repeat: u16,
-    /// Gap between repeats, ms.
+    /// Silence between bursts in ms.
     pub gap_ms: u16,
-    /// Type-specific parameters, exactly 4.
+    /// The type's own parameters, as its `SiggenTypeInfo` describes them.
     pub p: Vec<f32>,
 }
 
-/// What the generator is doing (`siggen_get_status`).
+/// What the signal generator is doing.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct SiggenStatus {
-    /// `SIGGEN_STATE_*`: idle, fade in, run, gap, fade out.
+    /// Generator state code.
     pub state: u8,
-    /// The active or last `SIGGEN_TYPE_*`.
+    /// Signal type playing.
     pub signal_type: u8,
-    /// The walked output; 0xFF when not walking.
+    /// Channel playing (walk mode).
     pub active_channel: u8,
-    /// Time since start, ms.
+    /// Time since start in ms.
     pub elapsed_ms: u32,
-    /// Completed sweeps or pattern periods.
+    /// Bursts completed.
     pub cycles_done: u16,
-    /// `SIGGEN_STOP_*` of the last stop.
+    /// Why it last stopped.
     pub stop_reason: u8,
-    /// Instantaneous sweep frequency, Hz; 0 when not sweeping.
+    /// Current frequency in Hz, for sweeps and tones.
     pub current_freq: f32,
 }
 
-/// One parameter of a signal type.
+/// One parameter slot of a signal type.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct SiggenParam {
-    /// `SIGGEN_PARAM_*`: what the value means (0 = unused).
+    /// What the value means (frequency, ratio, ...): firmware code.
     pub semantic: u8,
-    /// Lowest value.
+    /// Smallest value.
     pub min: f32,
-    /// Highest value.
+    /// Largest value.
     pub max: f32,
     /// Default value.
     pub def: f32,
@@ -667,305 +626,298 @@ pub struct SiggenParam {
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct SiggenTypeInfo {
-    /// `SIGGEN_TYPE_*`; 0xFF when its descriptor could not be read.
+    /// Type id.
     pub id: u8,
-    /// Display name.
+    /// Display name from the device.
     pub name: String,
-    /// `SIGGEN_TIMING_*`: continuous, sweep or pattern.
+    /// Timing class (continuous, burst, ...).
     pub timing: u8,
-    /// Exactly 4.
+    /// Its parameter slots.
     pub params: Vec<SiggenParam>,
 }
 
-/// The generator's capabilities (`siggen_fetch_caps`).
+/// What the device's signal generator can do.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct SiggenCaps {
-    /// The firmware has a generator.
+    /// The firmware has a signal generator.
     pub supported: bool,
-    /// Signal types it reports.
+    /// Signal types the device reports.
     pub type_count: u8,
-    /// Output channels it can drive.
+    /// Output channels it can play on.
     pub output_channels: u8,
-    /// Most tones of a multitone signal.
+    /// Most tones in a multitone signal.
     pub multitone_max: u8,
-    /// Bit per channel: valid in `SiggenConfig.channel_mask`.
+    /// One bit per valid type id.
     pub valid_mask: u16,
-    /// SIGGEN_TYPE_COUNT = 15 entries; first `type_count` valid.
+    /// The types.
     pub types: Vec<SiggenTypeInfo>,
 }
 
-// ── stats.rs ──────────────────────────────────────────────────────────
+// ------------------------------------------------------ buffers and clocks
 
-/// One S/PDIF output's buffers.
+/// Fill of one S/PDIF output's buffers.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpdifBufferStats {
-    /// Free ring space, 48-frame buckets, 0..16.
+    /// Buffers free.
     pub free: u8,
-    /// Ring fill, 48-frame buckets, 0..16.
+    /// Buffers filled and waiting.
     pub prepared: u8,
-    /// DMA buffers in flight, 0..1.
+    /// Buffers being played.
     pub playing: u8,
-    /// Consumer pipeline fill, %.
+    /// Current fill in percent.
     pub fill_pct: u8,
-    /// Lowest fill since the last reset, %.
+    /// Lowest fill since the last read, percent.
     pub min_pct: u8,
-    /// Highest fill since the last reset, %.
+    /// Highest fill since the last read, percent.
     pub max_pct: u8,
 }
 
-/// The PDM output's buffers.
+/// Fill of the PDM output's DMA and ring buffers.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PdmBufferStats {
-    /// DMA buffer fill, %.
+    /// DMA buffer fill now, percent.
     pub dma_fill_pct: u8,
-    /// Lowest DMA fill since the last reset, %.
+    /// Lowest DMA fill, percent.
     pub dma_min_pct: u8,
-    /// Highest DMA fill since the last reset, %.
+    /// Highest DMA fill, percent.
     pub dma_max_pct: u8,
-    /// Software ring fill, %.
+    /// Ring buffer fill now, percent.
     pub ring_fill_pct: u8,
-    /// Lowest ring fill since the last reset, %.
+    /// Lowest ring fill, percent.
     pub ring_min_pct: u8,
-    /// Highest ring fill since the last reset, %.
+    /// Highest ring fill, percent.
     pub ring_max_pct: u8,
 }
 
-/// Buffer fill levels and watermarks (`fetch_buffer_stats`).
+/// Output buffer statistics.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BufferStats {
-    /// Live entries of `spdif`, at most 4.
+    /// Valid entries in `spdif`.
     pub num_spdif: u8,
-    /// The PDM output is active.
+    /// The PDM output is running.
     pub pdm_active: bool,
     /// Audio is streaming.
     pub streaming: bool,
-    /// Monotonic counter, wrapping.
+    /// Counter of the device's statistics snapshot.
     pub sequence: u16,
-    /// Exactly 4.
+    /// One entry per S/PDIF output.
     pub spdif: Vec<SpdifBufferStats>,
     /// The PDM output.
     pub pdm: PdmBufferStats,
 }
 
-/// The S/PDIF receiver (`fetch_spdif_rx_status`).
+/// State of the S/PDIF receiver.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct SpdifRxStatus {
-    /// 0 inactive, 1 acquiring, 2 locked, 3 relocking.
+    /// Receiver state code.
     pub state: u8,
-    /// The input source, raw `InputSource`.
+    /// Input the receiver listens to.
     pub input_source: u8,
-    /// Times it locked.
+    /// Times locked since boot.
     pub lock_count: u8,
-    /// Times it lost lock.
+    /// Times lost since boot.
     pub loss_count: u8,
-    /// Sample rate when locked, Hz.
+    /// Decoded sample rate in Hz.
     pub sample_rate: u32,
-    /// Parity errors counted.
+    /// Parity errors since boot.
     pub parity_errors: u32,
-    /// Receive FIFO fill, %.
+    /// Receive FIFO fill in percent.
     pub fifo_fill_pct: u16,
-    /// The receiver library's debug state.
+    /// State of the receiver library.
     pub lib_state: u8,
-    /// Stable callbacks, 4-bit counter.
+    /// Consecutive stable callbacks.
     pub stable_callbacks: u8,
-    /// Lost callbacks, 4-bit counter.
+    /// Callbacks lost.
     pub lost_callbacks: u8,
 }
 
-// ── monitor.rs (typed replacement of the C ABI's TSV text) ───────────
+// ----------------------------------------------------------------- misc
 
-/// One line of the notification monitor.
+/// One line of the traffic monitor.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MonitorEntry {
-    /// Rising id, for `monitor_read`.
+    /// Increasing id.
     pub id: u64,
-    /// Host time, ms since the Unix epoch.
+    /// Wall-clock time in ms since the Unix epoch.
     pub time_ms: i64,
-    /// The entry, for display.
+    /// The line.
     pub text: String,
 }
 
-/// Result of `monitor_read(after_id)`: the entries after `after_id` and the
-/// id to pass next time (`after_id` itself if there were none).
+/// Monitor lines after a given id.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MonitorBatch {
-    /// The id to pass next time.
+    /// The id to ask from next time.
     pub last_id: u64,
-    /// Entries after `after_id`, oldest first.
+    /// The new lines, oldest first.
     pub entries: Vec<MonitorEntry>,
 }
 
-// ── Glue-only records ────────────────────────────────────────────────
-
-/// One GPIO held by a live control-surface binding (`dspi_cs_pin_uses`).
+/// A GPIO used by a control-surface slot.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct PinUse {
     /// The GPIO.
     pub pin: u8,
-    /// The binding's slot.
+    /// The slot using it.
     pub slot: u8,
 }
 
-/// `dspi_bootloader_counts`. Always 0/0 on Android (no bus to
-/// enumerate from native code); Android uses the Kotlin BootloaderLocator instead.
+/// How many boards in bootloader mode are attached, per chip.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct BootloaderCounts {
-    /// RP2040 boards in BOOTSEL mode.
+    /// RP2040 boards.
     pub rp2040: u32,
-    /// RP2350 boards in BOOTSEL mode.
+    /// RP2350 boards.
     pub rp2350: u32,
 }
 
-/// Version facts of the linked core, for the About page and sanity checks.
+/// Version facts of this core build.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct CoreInfo {
-    /// dspi-ffi crate version.
+    /// The crate version.
     pub ffi_version: String,
-    /// `protocol::WIRE_FORMAT_VERSION` (32).
+    /// Wire format version this build writes.
     pub wire_format_version: u8,
-    /// `protocol::MIN_WIRE_FORMAT_VERSION` (16).
+    /// Oldest wire format version this build reads.
     pub min_wire_format_version: u8,
-    /// `protocol::BULK_PARAMS_SIZE` (6136).
+    /// Size of the bulk parameter image in bytes.
     pub bulk_params_size: u32,
-    /// Number of points in `compute_magnitude_curve` / `compute_phase_curve` (201).
+    /// Points on a response curve.
     pub magnitude_points: u32,
 }
 
-// ── DSPi Link (dspi-link crate; DSPi-Link spec 1.2) ───────────────────
+// ------------------------------------------------------------- DSPi Link
 
-/// The hub's `hello` after `link_connect` (spec 7.2).
+/// What a Link hub said about itself.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct LinkHello {
-    /// `hid`: lowercase UUID, stable per hub installation. Tokens are keyed on it.
+    /// The hub's stable id.
     pub hub_id: String,
     /// The hub's display name.
     pub hub_name: String,
-    /// `console` (DSPi Console in gateway mode) or `bridge` (ESP32 on the UART).
+    /// What kind of program the hub is.
     pub hub_kind: String,
-    /// The hub's software version.
+    /// The hub's version.
     pub hub_version: String,
-    /// The Link protocol minor version it speaks.
+    /// Minor version of the Link protocol.
     pub proto_minor: u32,
-    /// `none` or `pin`.
+    /// Authentication the hub asks for.
     pub auth: String,
-    /// `window` (PIN shown on the hub) or `fixed` (the hub's own PIN); `window` when absent.
+    /// Where the pairing PIN is shown.
     pub pin_source: String,
-    /// True: ask the user for the PIN and call `link_pair`.
+    /// The client has to pair first.
     pub needs_pairing: bool,
-    /// `cmd`, `notify`, `poll`, `snapshot`, `lock`, `fw_install`, `rename`, ...
+    /// The hub's capabilities.
     pub caps: Vec<String>,
-    /// Largest payload it takes, bytes.
+    /// Largest message payload in bytes.
     pub max_payload: u32,
-    /// Requests it allows in flight.
+    /// Most requests in flight.
     pub max_inflight: u32,
-    /// The hub refused the token passed in: forget it. Only this says the
-    /// token is bad; any other failure keeps it.
+    /// The stored token was refused.
     pub token_refused: bool,
 }
 
-/// One device the hub shares (`device.list`, spec 7.4).
+/// A device a Link hub offers.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct LinkDevice {
-    /// The hub's handle for it, for `link_select_device`.
+    /// The hub's handle for the device.
     pub handle: u32,
     /// USB serial number.
     pub serial: String,
-    /// The board's own name, else the hub's.
+    /// Device name.
     pub name: String,
-    /// `major.minor.patch`, "" when the hub did not say.
+    /// Firmware version text.
     pub fw: String,
-    /// Beta number, 0 = final, -1 = unknown.
+    /// Firmware beta number.
     pub fw_beta: i32,
-    /// 0 RP2040, 1 RP2350, -1 unknown.
+    /// Platform code.
     pub platform: i32,
-    /// `online`, `offline`, `updating`.
+    /// Device state on the hub.
     pub state: String,
-    /// `usb` or `uart` (latency and bulk timing).
+    /// How the hub reaches the device.
     pub link: String,
-    /// Session holding the device lock, 0 = none.
+    /// Session holding the device's lock, 0 for none.
     pub locked_by: u32,
 }
 
-/// A `[bRequest, dir]` row of `policy.denied` (dir 0 = SET, 1 = GET).
+/// A request the hub refused for this session's role.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct LinkDenied {
-    /// The `bRequest`.
+    /// The request code.
     pub request: u8,
-    /// 0 = SET, 1 = GET.
+    /// The direction: 0 for a SET, 1 for a GET.
     pub dir: u8,
 }
 
-/// Where the current Link session stands.
+/// State of the Link session.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct LinkStatus {
-    /// A session exists (connected, maybe not yet authenticated).
+    /// A connection to the hub exists.
     pub connected: bool,
-    /// Authenticated: commands and the device list work.
+    /// The session is bound to a device and usable.
     pub ready: bool,
-    /// Our session id (the NOTIFY `origin` of our own writes), 0 = unknown.
+    /// Session id given by the hub.
     pub session: u32,
-    /// `viewer`, `control` or `admin`.
+    /// The role the hub granted.
     pub role: String,
-    /// Commands this role may not send (`policy.denied`).
+    /// Requests refused for that role.
     pub denied: Vec<LinkDenied>,
-    /// The session ended (see `close_code` / `close_reason`).
+    /// The hub closed the session.
     pub closed: bool,
-    /// The hub's close code, -1 = none.
+    /// Close code.
     pub close_code: i32,
-    /// The hub's close reason.
+    /// Close reason.
     pub close_reason: String,
-    /// What to tell the user (WP C15).
+    /// Where the session is in its life.
     pub phase: LinkPhase,
-    /// [`LinkPhase::Reconnecting`]: failed tries since the session was lost.
+    /// Reconnect attempt number.
     pub reconnect_attempt: u32,
-    /// [`LinkPhase::Reconnecting`]: ms until the next try, 0 = now.
+    /// Time to the next reconnect in ms.
     pub reconnect_in_ms: u32,
-    /// `window` or `fixed`, for [`LinkPhase::NeedsPairing`]'s wording; "" with
-    /// no session.
+    /// Where the pairing PIN is shown.
     pub pin_source: String,
-    /// The hub refused or revoked the stored token, during a reconnect too:
-    /// forget it. Cleared by the next pairing.
+    /// The stored token was refused.
     pub token_refused: bool,
 }
 
-/// `GET /dspi/v1/info` (spec 3.2), for a hub added by address.
+/// A hub found on the network.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct LinkInfo {
-    /// Lowercase UUID, stable per hub installation.
+    /// The hub's stable id.
     pub hub_id: String,
     /// The hub's display name.
     pub hub_name: String,
-    /// `console` or `bridge`.
+    /// What kind of program the hub is.
     pub hub_kind: String,
-    /// `none` or `pin`.
+    /// Authentication the hub asks for.
     pub auth: String,
-    /// The Link protocol minor version it speaks.
+    /// Minor version of the Link protocol.
     pub proto_minor: u32,
-    /// WebSocket path (`/dspi/v1` by default).
+    /// WebSocket path.
     pub ws_path: String,
-    /// Serials of the devices it shares.
+    /// Serials of the devices it offers.
     pub serials: Vec<String>,
 }
 
-/// A typed hub address (spec 3.3).
+/// A hub address.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct LinkAddress {
@@ -975,300 +927,246 @@ pub struct LinkAddress {
     pub port: u16,
 }
 
-// ── Added by the core merge (docs/core-merge/PLAN.md) ────────────────────
+// ------------------------------------------------------ extension channel
 
-/// The extension channel (Bofr5555/DSPi fork; `REQ_EXTENSION` 0x00), as
-/// probed on connect (WP S3) and read on demand (WP C8).
+/// What the extension channel supports.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtStatus {
-    /// `EXT_LIST`: supported sub-command ids; empty on stock firmware.
+    /// Extension ids the device lists.
     pub supported: Vec<u16>,
-    /// Whether `EXT_CROSSFEED_PAIR_MAP` is usable: listed by `EXT_LIST` and
-    /// read successfully on connect.
+    /// The crossfeed pair map is supported.
     pub has_pair_map: bool,
-    /// Whether `EXT_CORE_VREG` is usable: listed by `EXT_LIST` and read
-    /// successfully on connect.
+    /// Core voltage control is supported.
     pub has_core_vreg: bool,
 }
 
-/// `EXT_CORE_VREG` status (16 bytes, `dspi_proto::ext::CoreVregStatus`).
+/// Core voltage regulator state.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CoreVregInfo {
-    /// Live VREG code; `millivolts` is its voltage (0 if unknown).
+    /// Regulator setting in use.
     pub live_vreg: u8,
-    /// Core voltage, mV; 0 if unknown.
+    /// That setting in millivolts.
     pub millivolts: u16,
-    /// The persisted selection in the flash directory; 0 = build default.
+    /// Stored selection.
     pub stored_sel: u8,
-    /// The build's default VREG code.
+    /// Factory setting.
     pub default_vreg: u8,
-    /// The stored selection was raised by the firmware.
+    /// The firmware raised the voltage on its own.
     pub auto_raised: bool,
-    /// The user opted out of automatic escalation
-    /// (`CORE_VREG_FLAG_AUTO_DISABLED`).
+    /// Automatic raising is off.
     pub auto_disabled: bool,
-    /// Own-watchdog hangs this power session, not yet acted on.
+    /// Hangs counted.
     pub hang_count: u8,
-    /// A voltage trial is running.
+    /// A trial setting is running.
     pub trial_active: bool,
-    /// The trial's VREG code, valid while `trial_active`.
+    /// The trial setting.
     pub trial_vreg: u8,
-    /// VREG code of the trial whose run ended in a hang; 0 = none.
+    /// The last trial setting that failed.
     pub failed_trial_vreg: u8,
-    /// How long that trial survived, s.
+    /// Uptime at which it failed, in seconds.
     pub failed_trial_uptime_s: u32,
-    /// This run's uptime, s.
+    /// Uptime in seconds.
     pub uptime_s: u32,
 }
 
-/// `REQ_OUTPUT_LATENCY` status (config.h; 12 bytes). Field meanings as in
-/// the firmware's `OutputLatencyStatus`.
+/// The output latency report.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OutputLatency {
-    /// The raw 12-byte reply, for fields this build does not name yet.
+    /// The reply bytes.
     pub raw: Vec<u8>,
-    /// Decoded `(name, value)` pairs, in the firmware's order.
+    /// The decoded fields.
     pub fields: Vec<NamedValue>,
 }
 
-/// `REQ_GET_CLOCK_DIAG` (0x82): empty unless the firmware was built with
-/// `DSPI_CLOCK_DIAG`.
+/// The clock diagnostics report.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClockDiag {
-    /// The firmware was built with `DSPI_CLOCK_DIAG`.
+    /// The device answered.
     pub available: bool,
-    /// The raw reply.
+    /// The reply bytes.
     pub raw: Vec<u8>,
-    /// Decoded `(name, value)` pairs, in the firmware's order.
+    /// The decoded fields.
     pub fields: Vec<NamedValue>,
 }
 
-/// A decoded diagnostic value.
+/// A label and its formatted value.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NamedValue {
-    /// The value's name.
+    /// The label.
     pub name: String,
-    /// The value, as text.
+    /// The value as text.
     pub value: String,
 }
 
-/// What a `.uf2` file is (WP C11): checked before anything is flashed.
+// --------------------------------------------------------------- firmware
+
+/// What a UF2 firmware file holds.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Uf2Info {
-    /// Whether the file is a well-formed UF2 for an RP2040 or RP2350.
+    /// The file is a usable image.
     pub valid: bool,
-    /// Why not, when `valid` is false.
+    /// What is wrong with it, empty when valid.
     pub problem: String,
-    /// UF2 family id (`0xE48BFF56` RP2040, `0xE48BFF59` RP2350 ARM-S, ...).
+    /// UF2 family id.
     pub family_id: u32,
-    /// 0 RP2040, 1 RP2350, -1 unknown.
+    /// Platform the image is for (-1 when no known family matches).
     pub platform: i8,
-    /// UF2 blocks in the file.
+    /// UF2 blocks.
     pub num_blocks: u32,
-    /// Bytes of flash the image covers.
+    /// Payload bytes.
     pub payload_bytes: u32,
-    /// The DSPi firmware version found in the image (`1.1.6`), "" if none.
-    /// It is the image's program-version string, so an untagged build
-    /// carries a `git describe` suffix (`1.1.6-beta3-16-g557bce7`); compare
-    /// versions on the leading `major.minor.patch[-betaN]` only.
+    /// Version string found in the image.
     pub firmware_version: String,
 }
 
-/// A mounted RP2040/RP2350 bootloader drive (`RPI-RP2` / `RP2350`).
+/// A mounted bootloader drive.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BootloaderDrive {
-    /// Mount point or drive root.
+    /// Mount path.
     pub path: String,
-    /// 0 RP2040, 1 RP2350, -1 unknown (from `INFO_UF2.TXT`).
+    /// Chip platform read from the drive (-1 when unknown).
     pub platform: i8,
-    /// `INFO_UF2.TXT`, verbatim.
+    /// The drive's INFO_UF2.TXT text.
     pub info: String,
 }
 
-// Work-package sections: append new records only inside your own section
-// (docs/core-merge/WP-BRIEF.md). Keep the order.
-// -- WP C0 --
-// -- WP C1 --
-// -- WP C1b --
-// -- WP C2 --
-// -- WP C3 --
-// -- WP C4 --
-// -- WP C5 --
-// -- WP C6 --
-// -- WP C7 --
-// -- WP C8 --
+// ------------------------------------------------------- output latency
 
-/// One output-latency option (`OutputLatencyOptionWire`, config.h; 8
-/// bytes), from `fetch_output_latency_options` (WP C8).
+/// One output latency setting the device offers.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OutputLatencyOption {
-    /// `OutputLatencyId`, the value `set_output_latency` takes (never 0).
+    /// Setting id.
     pub id: u8,
-    /// `OUTPUT_LATENCY_FLAG_STREAM_ONLY`: runs only with a streamed input
-    /// (S/PDIF, I2S, ADAT); USB input runs the fallback instead.
+    /// Only possible while streaming from the host.
     pub stream_only: bool,
-    /// `OUTPUT_LATENCY_WIRE_AVAILABLE`: runs as itself on the active source.
+    /// Usable now.
     pub available: bool,
-    /// Nominal ring fill target, µs.
+    /// Buffer latency in µs.
     pub latency_us: u16,
-    /// Nominal stream-input batch, µs.
+    /// Batch size in µs.
     pub batch_us: u16,
-    /// What choosing it gives now (active source and rate applied), µs.
+    /// Total latency in µs.
     pub effective_us: u16,
 }
-// -- WP C9 --
-// -- WP C10 --
-// -- WP C11 --
-// -- WP C12 --
-// -- WP C13 --
-// -- WP C14 --
-// -- WP C15 --
 
-/// Where a DSPi Link session stands, for the UI's wording
-/// ([`LinkStatus::phase`]).
+/// Where a Link session is in its life, for the status line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 pub enum LinkPhase {
     /// No session.
     #[default]
     Idle,
-    /// The hub wants a PIN (never paired, or the token was refused or revoked:
-    /// see `token_refused`): ask for it and call `link_pair`. Retries stop here.
+    /// The hub wants a PIN.
     NeedsPairing,
-    /// Connected and authenticated, but the hub has no DSPi to offer: the
-    /// board is off, or its control interface is not enabled. Not a failure
-    /// of the hub or the pairing ("Connected to hub, no DSPi found"). The
-    /// core binds the device by itself when it comes back.
+    /// The hub has no device.
     NoDevice,
-    /// A DSPi is available and none is bound: `link_devices`, then
-    /// `link_select_device`.
+    /// The hub has several devices: pick one.
     ChooseDevice,
     /// Bound to a device.
     Bound,
-    /// The session was lost, or the bound device is being re-attached; the
-    /// core retries with backoff. Entered at once. `close_reason` says why,
-    /// `reconnect_attempt` and `reconnect_in_ms` how it goes; `link_close`
-    /// stops it. The mirror stays last known; calls that need the device fail
-    /// at once with `Disconnected`, and nothing is queued.
+    /// Waiting to reconnect.
     Reconnecting,
-    /// Ended and not retried: see `close_code` and `close_reason`. A protocol
-    /// error is final, also when it comes from a redial (a hub of another
-    /// protocol version answers).
+    /// Closed by the hub or the client.
     Closed,
-    /// The hub refuses this client (a 4xx handshake). Retrying will not help
-    /// until something changes on the hub: see `close_reason`.
+    /// Refused by the hub.
     Refused,
 }
-// -- WP CG12 --
 
-/// The output rings' counters and watermarks (`fetch_ring_health`). The
-/// underrun, refused and over-budget counts are cumulative; the rest clear on
-/// `reset_buffer_stats`.
+// -------------------------------------------------- stream ring health
+
+/// How the host's output stream ring has been doing.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RingHealth {
-    /// How full the rings are kept, frames (Fill Target).
+    /// Target fill in frames.
     pub target_frames: u16,
-    /// The same as a time, µs.
+    /// Target fill in µs.
     pub target_us: u16,
-    /// Frames a stream input delivers per call; the fill swings by about this.
+    /// Frames per batch.
     pub batch_frames: u16,
-    /// Times the outputs ran dry while a source owed audio. A host that pauses
-    /// its stream does not count.
+    /// Underrun episodes.
     pub underrun_episodes: u32,
-    /// Audio blocks dropped because the rings had no room.
+    /// Blocks the ring refused.
     pub refused_blocks: u32,
-    /// The emptiest a ring got just before a write, frames; none before the
-    /// first write.
+    /// Lowest fill seen, if any.
     pub lowest_fill: Option<u32>,
-    /// Longest wait between input deliveries, µs.
+    /// Longest gap between input blocks, µs.
     pub worst_input_gap_us: u32,
-    /// Longest gap between audio-carrying USB packets, µs.
+    /// Longest gap between USB transfers, µs.
     pub worst_usb_gap_us: u32,
-    /// Background steps that overran their main-loop budget.
+    /// Processing steps over budget.
     pub over_budget_steps: u32,
 }
 
-/// How an output's fill reads ([`OutputFill::band`]). The Console shows these
-/// green, yellow and red.
+/// How healthy an output fill is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
 #[serde(rename_all = "camelCase")]
 pub enum FillBand {
-    /// Within the expected swing.
+    /// Comfortable.
     #[default]
     Good,
-    /// Outside the expected swing.
+    /// Getting close to an edge.
     Warn,
-    /// Empty, or too full to take a write.
+    /// At or past an edge.
     Bad,
 }
 
-/// One output's fill, scaled and judged (`fetch_output_fills`).
+/// One output's fill.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OutputFill {
-    /// Fill to frame resolution, %: of the ring where the firmware has the
-    /// latency setting (at most 100), else of the firmware's fixed scale (which
-    /// can pass 100).
+    /// Fill now, percent.
     pub fill_pct: f64,
-    /// Lowest fill since the last reset, % on the same scale.
+    /// Lowest fill, percent.
     pub min_pct: u8,
-    /// Highest fill since the last reset, % on the same scale.
+    /// Highest fill, percent.
     pub max_pct: u8,
-    /// The band of `fill_pct`, around the live latency target where there is
-    /// one.
+    /// Its rating.
     pub band: FillBand,
 }
 
-// -- WP CG21 --
-/// One sample of the Stats window's fast poll (`fetch_stats_tick`).
+/// One statistics poll.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StatsTick {
-    /// The buffer fill levels and their watermarks.
+    /// Buffer statistics.
     pub buffers: BufferStats,
-    /// The live outputs' fill, from the same read. `None` when the fill target
-    /// could not be read: keep the last fills.
+    /// Per-output fills, when known.
     pub fills: Option<Vec<OutputFill>>,
 }
 
-// -- WP F1 --
-// -- WP CG5 --
-/// Who chose the analyser configuration the device holds
-/// (`rta_get_ownership`). The last console to push one drives it, and every
-/// other console follows.
+/// Who runs the analyser on a shared device.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct RtaOwnership {
-    /// False: the device holds what this console asked for, and the fields
-    /// below are 0. True: someone else's configuration.
+    /// This client follows another one's configuration.
     pub following: bool,
-    /// The session that pushed it; 0 when the writer is unknown.
+    /// Who set the configuration.
     pub origin: u16,
-    /// The device's tap, `RTA_TAP_INPUT` or `RTA_TAP_OUTPUT`.
+    /// Its tap.
     pub tap: u8,
-    /// The device's channels.
+    /// Its channel mask.
     pub mask: u16,
-    /// The device's transform size.
+    /// Its FFT order.
     pub fft_order: u8,
 }
