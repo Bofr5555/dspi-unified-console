@@ -3208,10 +3208,10 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_max_delay_ms() != 14810.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_monitor_clear() != 30384.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_monitor_clear() != 47062.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_monitor_read() != 5658.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_monitor_read() != 27200.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_notify_tap_drain() != 2545.toShort()) {
@@ -6276,16 +6276,15 @@ public interface DspiCoreInterface {
     fun `maxDelayMs`(): kotlin.Float
     
     /**
-     * Forget the logged entries. Ids are not reused: a reader's last id
-     * stays valid.
+     * Forget every monitor line. Ids carry on from where they were, so a
+     * reader's last id stays valid. Never fails.
      */
     fun `monitorClear`()
     
     /**
-     * The log entries recorded after `after_id`, oldest first, and the id
-     * to pass next time (`after_id` itself when there are none). Pass 0
-     * for everything still held. Entries are recorded when
-     * [`DspiCore::process_notifications`] drains the queue. Never fails.
+     * The monitor lines with an id above `after_id`, oldest first, and the
+     * id to pass next time (`after_id` itself when there is nothing new).
+     * Pass 0 for everything still kept. Never fails.
      */
     fun `monitorRead`(`afterId`: kotlin.ULong): MonitorBatch
     
@@ -9872,8 +9871,8 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
-     * Forget the logged entries. Ids are not reused: a reader's last id
-     * stays valid.
+     * Forget every monitor line. Ids carry on from where they were, so a
+     * reader's last id stays valid. Never fails.
      */override fun `monitorClear`()
         = 
     callWithPointer {
@@ -9887,10 +9886,9 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
-     * The log entries recorded after `after_id`, oldest first, and the id
-     * to pass next time (`after_id` itself when there are none). Pass 0
-     * for everything still held. Entries are recorded when
-     * [`DspiCore::process_notifications`] drains the queue. Never fails.
+     * The monitor lines with an id above `after_id`, oldest first, and the
+     * id to pass next time (`after_id` itself when there is nothing new).
+     * Pass 0 for everything still kept. Never fails.
      */override fun `monitorRead`(`afterId`: kotlin.ULong): MonitorBatch {
             return FfiConverterTypeMonitorBatch.lift(
     callWithPointer {

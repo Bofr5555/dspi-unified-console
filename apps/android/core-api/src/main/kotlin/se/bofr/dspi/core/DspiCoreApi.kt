@@ -1310,16 +1310,15 @@ interface DspiCoreApi : AutoCloseable {
     fun linkSetUrl(url: String)
 
     /**
-     * The log entries recorded after `after_id`, oldest first, and the id
-     * to pass next time (`after_id` itself when there are none). Pass 0
-     * for everything still held. Entries are recorded when
-     * [`DspiCore::process_notifications`] drains the queue. Never fails.
+     * The monitor lines with an id above `after_id`, oldest first, and the
+     * id to pass next time (`after_id` itself when there is nothing new).
+     * Pass 0 for everything still kept. Never fails.
      */
     fun monitorRead(afterId: Long): MonitorBatch
 
     /**
-     * Forget the logged entries. Ids are not reused: a reader's last id
-     * stays valid.
+     * Forget every monitor line. Ids carry on from where they were, so a
+     * reader's last id stays valid. Never fails.
      */
     fun monitorClear()
 

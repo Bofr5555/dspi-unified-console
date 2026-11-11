@@ -2418,16 +2418,15 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func maxDelayMs()  -> Float
     
     /**
-     * Forget the logged entries. Ids are not reused: a reader's last id
-     * stays valid.
+     * Forget every monitor line. Ids carry on from where they were, so a
+     * reader's last id stays valid. Never fails.
      */
     func monitorClear() 
     
     /**
-     * The log entries recorded after `after_id`, oldest first, and the id
-     * to pass next time (`after_id` itself when there are none). Pass 0
-     * for everything still held. Entries are recorded when
-     * [`DspiCore::process_notifications`] drains the queue. Never fails.
+     * The monitor lines with an id above `after_id`, oldest first, and the
+     * id to pass next time (`after_id` itself when there is nothing new).
+     * Pass 0 for everything still kept. Never fails.
      */
     func monitorRead(afterId: UInt64)  -> MonitorBatch
     
@@ -5484,8 +5483,8 @@ open func maxDelayMs() -> Float  {
 }
     
     /**
-     * Forget the logged entries. Ids are not reused: a reader's last id
-     * stays valid.
+     * Forget every monitor line. Ids carry on from where they were, so a
+     * reader's last id stays valid. Never fails.
      */
 open func monitorClear()  {try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_monitor_clear(self.uniffiClonePointer(),$0
@@ -5494,10 +5493,9 @@ open func monitorClear()  {try! rustCall() {
 }
     
     /**
-     * The log entries recorded after `after_id`, oldest first, and the id
-     * to pass next time (`after_id` itself when there are none). Pass 0
-     * for everything still held. Entries are recorded when
-     * [`DspiCore::process_notifications`] drains the queue. Never fails.
+     * The monitor lines with an id above `after_id`, oldest first, and the
+     * id to pass next time (`after_id` itself when there is nothing new).
+     * Pass 0 for everything still kept. Never fails.
      */
 open func monitorRead(afterId: UInt64) -> MonitorBatch  {
     return try!  FfiConverterTypeMonitorBatch_lift(try! rustCall() {
@@ -22780,10 +22778,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_max_delay_ms() != 14810) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_monitor_clear() != 30384) {
+    if (uniffi_dspi_core_checksum_method_dspicore_monitor_clear() != 47062) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_monitor_read() != 5658) {
+    if (uniffi_dspi_core_checksum_method_dspicore_monitor_read() != 27200) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_notify_tap_drain() != 2545) {
