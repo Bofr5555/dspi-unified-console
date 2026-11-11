@@ -32,18 +32,17 @@
 #                                     (WP WB2, ci/wasm-scenario/run.sh): Node with
 #                                     JSPI (NODE in images.conf), the demo device in
 #                                     two sessions, no threads
-#       qt                            the Qt 6 desktop app (crates/dspi-capi,
-#                                     library dspi_capi)
-#       qt5                           the same against Qt 5.15
-#       qt-ts                         translations/dspi-console_en.ts is what
+#       qt                            the Qt desktop app, Qt 6.8 or newer
+#                                     (crates/dspi-capi, library dspi_capi)
+#       qt-ts                         translations/dspi-uconsole_en.ts is what
 #                                     lupdate makes of the sources (WP QD40; the
 #                                     qt step runs it too)
-#       qt-offscreen                  the Qt 6 app with its smoke driver, on the
+#       qt-offscreen                  the Qt app with its smoke driver, on the
 #                                     demo device, offscreen (apps/desktop/qt/smoke)
-#       qt5-offscreen                 the same on Qt 5.15
 #       terminal                      the Linux terminal binary (dspi-term), run once
 #       qt-windows                    packaging/windows/build-windows.sh: the
-#                                     MinGW Qt 6 app, zip and installer
+#                                     MinGW Qt 6 app, zip and installer. Off
+#                                     until QP20 rewrites the packaging (exits 3)
 #       proptest                      the property tests (functions named
 #                                     proptest_*), 20000 cases each
 #       kotlin                        generate the UniFFI bindings and compile
@@ -97,7 +96,8 @@ RUN=ci/run.sh
 . ci/container/images.conf
 # -- WP HB6 -- hub: the smoke driver starts one (SmokeDriverHub.cpp)
 CAPI_FEATURES=link,midir,mdns,hub
-# -- WP QD8 -- The smoke driver's Link test talks to this binary.
+# -- WP QD8 -- The smoke driver's Link test talks to this binary. -- WP QP0 -- Unused
+# until the new tree's Link and hub sections come (QP13, QP14).
 FAKEHUB="cargo build --release -p dspi-link --features fake-hub --bin dspi-link-fakehub"
 # -- WP HB6 -- The Terminal, as the smoke driver's client of a demo hub
 TERMINAL="cargo build --release --locked -p dspi-term"
@@ -108,16 +108,17 @@ TERMINAL="cargo build --release --locked -p dspi-term"
 # locations (-locations none), so moved lines don't make a difference; the fix
 # names the command, which runs in the CI image (lupdate 6.11.2: another version
 # may write the file differently).
-TSUPDATE='lupdate-qt6 -silent -locations none -no-obsolete -source-language en -target-language en qml src -ts translations/dspi-console_en.ts'
+# -- WP QP0 -- The new tree's file is dspi-uconsole_en.ts.
+TSUPDATE='lupdate-qt6 -silent -locations none -no-obsolete -source-language en -target-language en qml src -ts translations/dspi-uconsole_en.ts'
 TSCHECK='set -e; d=/work/ts-check; rm -rf "$d"; mkdir -p "$d"
   cp -r apps/desktop/qt/qml apps/desktop/qt/src apps/desktop/qt/translations "$d"/
   (cd "$d" && '"$TSUPDATE"')
-  if ! diff -u apps/desktop/qt/translations/dspi-console_en.ts "$d"/translations/dspi-console_en.ts; then
-    echo "qt-ts: apps/desktop/qt/translations/dspi-console_en.ts is not current. Regenerate it in the CI image (lupdate $(lupdate-qt6 -version 2>&1 | grep -o "[0-9][0-9.]*" | head -1)) and commit it:" >&2
+  if ! diff -u apps/desktop/qt/translations/dspi-uconsole_en.ts "$d"/translations/dspi-uconsole_en.ts; then
+    echo "qt-ts: apps/desktop/qt/translations/dspi-uconsole_en.ts is not current. Regenerate it in the CI image (lupdate $(lupdate-qt6 -version 2>&1 | grep -o "[0-9][0-9.]*" | head -1)) and commit it:" >&2
     echo "  ci/run.sh '"'"'cd apps/desktop/qt && '"$TSUPDATE"''"'"'" >&2
     exit 1
   fi
-  echo "qt-ts: dspi-console_en.ts is current"'
+  echo "qt-ts: dspi-uconsole_en.ts is current"'
 # -- WP QD40 end --
 # -- WP CG9 -- The image with kotlinc and swiftc. Other steps keep ci/run.sh's.
 crates=()
@@ -126,7 +127,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --crate) crates+=("$2"); shift 2 ;;
     --step) steps+=("$2"); shift 2 ;;
-    --all) steps=(fetch fmt clippy test windows-gnu android-contract licences deny windows-msvc android android-tests android-aab wasm wasm-core qt qt5 qt-offscreen qt5-offscreen terminal qt-windows proptest kotlin swift ios-check drift conformance-ts web); shift ;;
+    --all) steps=(fetch fmt clippy test windows-gnu android-contract licences deny windows-msvc android android-tests android-aab wasm wasm-core qt qt-offscreen terminal proptest kotlin swift ios-check drift conformance-ts web); shift ;;
     --all-clients) exec ci/matrix.sh ;;
     -h|--help) sed -n "2,/^set -euo/p" "$0" | sed '$d'; exit 0 ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
@@ -186,9 +187,8 @@ for s in "${steps[@]}"; do
       # -- WP WB2 -- and run it
       ci/wasm-scenario/run.sh ;;
     qt)
-      # The build directory's name moved with the core: /work/build-desktop-qt6
-      # may still cache the old core's paths.
-      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && cmake -S apps/desktop/qt -B /work/build-desktop-qt6-capi -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR=/target && cmake --build /work/build-desktop-qt6-capi"
+      # -- WP QP0 -- The new tree (Qt 6.8 or newer, no Qt 5); its own build directory
+      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && cmake -S apps/desktop/qt -B /work/build-desktop-qt -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_CARGO_TARGET_DIR=/target && cmake --build /work/build-desktop-qt"
       # -- WP QD40 -- and the .ts is current
       $RUN "$TSCHECK"
       # -- WP LIC1 -- and the packages' Rust crates notice is current
@@ -196,14 +196,16 @@ for s in "${steps[@]}"; do
     qt-ts)
       # -- WP QD40 -- only the .ts check (the qt step runs it too)
       $RUN "$TSCHECK" ;;
-    qt5)
-      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && cmake -S apps/desktop/qt -B /work/build-desktop-qt5 -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=5 -DDSPI_CARGO_TARGET_DIR=/target && cmake --build /work/build-desktop-qt5" ;;
     qt-offscreen)
-      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && $FAKEHUB && $TERMINAL && cmake -S apps/desktop/qt -B /work/build-desktop-qt6-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt6-smoke --target DSPiConsoleSmoke && DSPI_SMOKE_FAKEHUB=/target/release/dspi-link-fakehub DSPI_SMOKE_TERMINAL=/target/release/dspi apps/desktop/qt/smoke/run.sh /work/build-desktop-qt6-smoke/DSPiConsoleSmoke /work/smoke-out && DSPI_SMOKE_HW=dry apps/desktop/qt/smoke/run.sh /work/build-desktop-qt6-smoke/DSPiConsoleSmoke /work/smoke-out-hw-dry" ;;
-    qt5-offscreen)
-      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && $FAKEHUB && $TERMINAL && cmake -S apps/desktop/qt -B /work/build-desktop-qt5-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=5 -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt5-smoke --target DSPiConsoleSmoke && DSPI_SMOKE_FAKEHUB=/target/release/dspi-link-fakehub DSPI_SMOKE_TERMINAL=/target/release/dspi apps/desktop/qt/smoke/run.sh /work/build-desktop-qt5-smoke/DSPiConsoleSmoke /work/smoke-out-qt5" ;;
+      # -- WP QP0 -- The smoke driver's sections on the demo device. The fake hub and
+      # the Terminal come back with the sections that use them (QP13, QP14), the
+      # hardware dry run with QP19. DSPI_SMOKE_SECTION=<name> runs one section.
+      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && cmake -S apps/desktop/qt -B /work/build-desktop-qt-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt-smoke --target DSPiConsoleSmoke && DSPI_SMOKE_SECTION=${DSPI_SMOKE_SECTION:-} apps/desktop/qt/smoke/run.sh /work/build-desktop-qt-smoke/DSPiConsoleSmoke /work/smoke-out" ;;
     qt-windows)
-      $RUN "BUILD_DIR=/work/build-desktop-win64 apps/desktop/packaging/windows/build-windows.sh /work/dist-windows" ;;
+      # -- WP QP0 -- Off: the Windows packaging still expects the previous tree. QP20
+      # rewrites it and turns this step back on.
+      echo "qt-windows: not run: disabled until QP20 rewrites the Windows packaging" >&2
+      exit 3 ;;
     proptest)
       # Every property test function is named proptest_* (PLAN §1.9).
       $RUN "PROPTEST_CASES=20000 cargo test --workspace --all-features --release -- proptest_" ;;
