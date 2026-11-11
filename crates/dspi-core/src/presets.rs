@@ -1,118 +1,149 @@
-//! Presets, flash, baseline and diff.
+//! Presets, the device lock and the unsaved-changes baseline.
 //!
-//! - Save, load and delete are deferred on the device (they run on its main
-//!   loop, bracketed by a pipeline reset), so each one polls the device until
-//!   it reports the change (the directory's occupied mask, or the active
-//!   slot) before the mirror is updated, as the old desktop core did.
-//! - The flows that take more than one request (save, load, copy, delete,
-//!   save params, revert, factory reset) run under the transport's device
-//!   lock (`Transport::lock`: a no-op except on DSPi Link, where it holds off
-//!   the other consoles; PLAN "Link device lock"). The lock is released on
-//!   every path, failures included.
-//! - The baseline is a copy of `bulk_raw` taken when the live state matched
-//!   the active preset. [`DspiCore::preset_changes`] decodes the baseline and
-//!   the live `bulk_raw` with the same codec onto the same template (the
-//!   live mirror, so the persistence modes are the live ones) and words the
-//!   differences as the old core and the macOS Console do. Comparing image
-//!   to image keeps a codec that is decode-stable but not byte-identical
-//!   from reporting phantom changes.
+//! # Preset flows
 //!
-//! Owned by WP C5 (docs/core-merge/PLAN.md).
+//! The firmware defers every flash operation to its main loop: `PRESET_SAVE`,
+//! `PRESET_LOAD`, `PRESET_DELETE`, `SAVE_PARAMS` and `FACTORY_RESET` answer
+//! "accepted" at once and do the work a little later. A flow that must know
+//! the work is done asks the device until it says so, for at most
+//! [`CONFIRM_WITHIN`]:
+//!
+//! - a save or a load is done when `PRESET_GET_ACTIVE` names the slot;
+//! - a delete is done when the directory no longer marks the slot occupied.
+//!
+//! What a flow does when the answer never comes is part of its contract (see
+//! each method). The multi-request flows run under the device lock, so no
+//! other DSPi Link session writes in the middle of them.
+//!
+//! # The device lock
+//!
+//! [`DeviceLock`] is one flow's hold on the transport's lock
+//! (`Transport::lock`, a no-op except over DSPi Link), or on the Link side
+//! channel's ([`SideChannel::lock`]), which is taken with the core lock
+//! released. A lock is tied to the connection it was taken on by that
+//! connection's generation: releasing it never touches a connection that
+//! replaced the one it locked.
+//!
+//! A lock may also be kept past the call that took it ([`HeldLock`] on the
+//! connection): the caller's own (`device_lock_acquire`), an IR learn
+//! window, the bootloader restart. While one is held, the core's own flows
+//! take nothing of their own: their lock is *nested*, and its release gives
+//! nothing back. A held lock ends when its holder ends it, when it runs out
+//! (it is given back before the next flow takes the lock), or with its
+//! connection.
+//!
+//! # Unsaved changes
+//!
+//! The baseline is the bulk image the active preset holds as far as this
+//! client knows: captured after a connect, a load, a save, a revert or a
+//! factory reset. [`DspiCore::preset_changes`] decodes it and lists what the
+//! live mirror does differently, in the Mac console's words and order
+//! (`PresetSnapshot.diff`); the preset is dirty exactly when that list is
+//! not empty.
 
+use std::ops::Range;
+use std::sync::Arc;
 use std::time::Duration;
 
-use dspi_transport::clock::Instant;
+use dspi_proto::FilterType;
+use dspi_proto::generated::{self as g, opcodes as op, status as st};
+use dspi_transport::clock::{self, Instant};
 
-use dspi_proto::enums::FilterType;
-use dspi_proto::generated::ranges::{SUBHARM_CEILING_MAX, SUBHARM_LEVEL_MIN};
-use dspi_proto::generated::status as st;
-use dspi_proto::generated::tube as tb;
-use dspi_proto::generated::{self as g, opcodes as op};
-use dspi_session::tube;
+use crate::consts::{
+    BANDS_PER_CHANNEL, CHANNEL_NAME_LEN, CROSSFEED_MAP_PAIRS, FLASH_ERR_CRC, FLASH_ERR_WRITE,
+    MAX_PRESETS, MAX_XOVER_BANDS, SUBHARM_PARAM_BOOST, SUBHARM_PARAM_CEILING, SUBHARM_PARAM_DEPTH,
+    SUBHARM_PARAM_ENABLED, SUBHARM_PARAM_HIGH, SUBHARM_PARAM_HOLD, SUBHARM_PARAM_LINK,
+    SUBHARM_PARAM_LOW, SUBHARM_PARAM_MASK, SUBHARM_PARAM_SELECT, SUBHARM_PARAM_TOP,
+    UPMIX_PARAM_ATTACK, UPMIX_PARAM_CENTER_MODE, UPMIX_PARAM_DECORRELATION,
+    UPMIX_PARAM_DETECTOR_HPF, UPMIX_PARAM_ENABLED, UPMIX_PARAM_PRESENCE, UPMIX_PARAM_RELEASE,
+    UPMIX_PARAM_STRENGTH, UPMIX_PARAM_SURROUND_DELAY, UPMIX_PARAM_SURROUND_HPF,
+    UPMIX_PARAM_SURROUND_LPF, UPMIX_PARAM_SURROUND_MODE, UPMIX_PARAM_THRESHOLD, UPMIX_PARAM_WIDTH,
+};
+use crate::error::status;
+use crate::records::{DspState, FilterParams, PresetDirectory};
+use crate::{Connection, DspiCore, DspiError, Inner, Result, SideChannel, connect, state};
 
-use crate::connect::{read_preset_directory, read_preset_name, refresh_params_locked};
-use crate::consts::*;
-use crate::records::*;
-use crate::{Connection, DspiCore, DspiError, Inner, Result, error, state};
+/// How long a flow waits for the device to finish a deferred flash operation.
+const CONFIRM_WITHIN: Duration = Duration::from_millis(1500);
+/// The pause between two questions while it waits.
+const CONFIRM_EVERY: Duration = Duration::from_millis(20);
 
-/// How long a deferred save, load or delete may take to show (the old
-/// core's value).
-const DEFERRED_TIMEOUT: Duration = Duration::from_millis(1500);
-/// Pause between two polls of a deferred operation.
-const POLL_INTERVAL: Duration = Duration::from_millis(20);
-/// Settling time after a factory reset before the device is read again (the
-/// old core's value).
-const FACTORY_RESET_SETTLE: Duration = Duration::from_millis(250);
-/// How long the multi-request flows wait for the Link device lock.
-const LOCK_TIMEOUT: Duration = Duration::from_secs(60);
+/// The lease a flow's own lock asks for (a hub ends it sooner on release).
+const FLOW_LEASE: Duration = Duration::from_secs(60);
+/// The longest a caller may hold the lock (`device_lock_acquire`).
+const CALLER_LEASE_MAX_MS: u32 = 60_000;
 
-/// A held device lock, tied to the connection it was taken on (WP C15).
-/// [`DspiCore::acquire_device_lock`] makes one;
-/// [`DspiCore::release_device_lock`] consumes it.
+const SAVE_REASON: &str = "Saving preset";
+const LOAD_REASON: &str = "Loading preset";
+const COPY_REASON: &str = "Copying preset";
+const DELETE_REASON: &str = "Deleting preset";
+const SAVE_PARAMS_REASON: &str = "Saving to flash";
+const RESET_REASON: &str = "Restoring factory defaults";
+
+/// `PRESET_GET_DIR`'s reply length (the master-volume mode is its last byte).
+const DIRECTORY_LEN: u16 = 7;
+
+// ── The device lock ───────────────────────────────────────────────────
+
+/// One flow's hold on the device lock. Give it back with
+/// [`DspiCore::release_device_lock`] on every path, or keep it with
+/// [`DspiCore::hold_device_lock`].
 #[must_use = "release it on every path"]
 pub(crate) struct DeviceLock {
+    /// The connection it was taken on.
     generation: u64,
-    side: Option<std::sync::Arc<dyn crate::SideChannel>>,
-    /// Taken inside a held lock ([`HeldLock`], WP CG24): nothing was asked
-    /// of the hub, so nothing is given back.
+    /// The Link side channel it was taken through; `None` for the
+    /// transport's own lock (or a nested one).
+    side: Option<Arc<dyn SideChannel>>,
+    /// Taken inside a held lock: nothing was asked, nothing goes back.
     nested: bool,
 }
 
-/// What holds a [`HeldLock`] (WP CG24).
+/// Who keeps a [`HeldLock`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Holder {
-    /// `device_lock_acquire`.
+    /// `device_lock_acquire`; `device_lock_release` ends it.
     Caller,
-    /// An armed IR learn (`cs_apply` `learnArm`).
+    /// An IR learn window.
     Learn,
-    /// `enter_bootloader`, until the device leaves.
+    /// The bootloader restart: it lasts until the device leaves.
     Bootloader,
 }
 
-/// A device lock held past the call that took it, on
-/// [`crate::Connection::held_lock`] (WP CG24). The core's own flows nest
-/// inside it without asking the hub again. Dropped with its connection, it
-/// gives a Link lock back.
+/// A device lock kept on its connection past the call that took it.
 pub(crate) struct HeldLock {
     /// `None` once given back.
     lock: Option<DeviceLock>,
-    /// The core counts it as released from then on; the hub was given the
-    /// same timeout.
+    /// When it runs out.
     until: Instant,
     pub(crate) holder: Holder,
 }
 
 impl HeldLock {
-    fn expired(&self) -> bool {
-        Instant::now() >= self.until
+    /// Still in force at `now`.
+    fn in_force(&self, now: Instant) -> bool {
+        now < self.until
     }
 
-    /// Give it back under the core's lock. A transport's own lock is
-    /// released here; a side channel is returned, to be released with the
-    /// core's lock released ([`crate::SideChannel`]).
-    fn give_back(
-        mut self,
-        conn: &mut Connection,
-    ) -> Option<std::sync::Arc<dyn crate::SideChannel>> {
-        let lock = self.lock.take()?;
-        match lock.side {
-            Some(side) => Some(side),
-            None => {
-                if conn.generation == lock.generation {
-                    conn.transport().unlock();
-                }
-                None
-            }
+    /// Give back a transport lock now, on `conn` (its own connection). A side
+    /// channel's goes back when this is dropped, which the caller does with
+    /// the core lock released.
+    fn give_back_transport(&mut self, conn: &mut Connection) {
+        if self.lock.as_ref().is_some_and(|l| l.side.is_none()) {
+            self.lock = None;
+            conn.transport().unlock();
         }
     }
 }
 
 impl Drop for HeldLock {
-    /// Only for a connection closed with the lock still held: its transport
-    /// goes with it, but a Link side channel outlives it.
+    /// A side channel's lock goes back with its holder; a transport's goes
+    /// with the transport (a connection that closes gives it back).
     fn drop(&mut self) {
         if let Some(DeviceLock {
-            side: Some(side), ..
+            side: Some(side),
+            nested: false,
+            ..
         }) = self.lock.take()
         {
             side.unlock();
@@ -120,19 +151,8 @@ impl Drop for HeldLock {
     }
 }
 
-/// Take an expired held lock off `conn`, given back as [`HeldLock::give_back`]
-/// does.
-fn drop_expired(conn: &mut Connection) -> Option<std::sync::Arc<dyn crate::SideChannel>> {
-    let held = conn.held_lock.take_if(|h| h.expired())?;
-    held.give_back(conn)
-}
-
-/// The longest a caller may hold the device lock: hubs cap it at 60 s
-/// (spec 7.7).
-const HELD_MAX: Duration = Duration::from_secs(60);
-
 impl DeviceLock {
-    /// Whether the connection the lock was taken on is still the open one.
+    /// Whether `inner`'s connection is still the one this lock was taken on.
     pub(crate) fn is_current(&self, inner: &Inner) -> bool {
         inner
             .conn
@@ -141,363 +161,365 @@ impl DeviceLock {
     }
 }
 
-const PRESET_ERR_INVALID_SLOT: u8 = st::PRESET_ERR_INVALID_SLOT as u8;
-const PRESET_ERR_CRC: u8 = st::PRESET_ERR_CRC as u8;
-
-/// Preset name buffer, bytes, NUL included. The same size as
-/// `CHANNEL_NAME_LEN` (bulk_params.h: `WIRE_NAME_LEN` must match it), but the
-/// preset's own constant.
-const PRESET_NAME_LEN: usize = st::PRESET_NAME_LEN as usize;
-
-/// `set_preset_startup` mode: load `default_slot` at boot.
-const STARTUP_SPECIFIED: u8 = st::PRESET_STARTUP_SPECIFIED as u8;
-/// `set_preset_startup` mode: load the last active slot at boot.
-const STARTUP_LAST_ACTIVE: u8 = st::PRESET_STARTUP_LAST_ACTIVE as u8;
-
-/// `output_config_mode` / `master_volume_mode`: travels with the preset.
-const WITH_PRESET: u8 = 1;
+// ── Presets ───────────────────────────────────────────────────────────
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
-    /// Save the live state to preset `slot` (0..10) and make it the active
-    /// slot. **Writes flash.**
+    /// Save the live state to `slot` (0..10) and wait until the device has
+    /// written it (it names the slot active). Runs under the device lock.
+    /// The slot becomes the active one and the live state its baseline.
     ///
-    /// Sends `REQ_PRESET_SAVE`, then waits up to 1.5 s for the deferred save
-    /// to show in the directory. The mirror's active slot and occupied mask
-    /// follow, and the baseline becomes the live state (it now matches the
-    /// active preset). Runs under the Link device lock.
+    /// Without that confirmation the mirror only takes the directory as the
+    /// device reports it, the baseline stays, and the call fails.
     ///
-    /// Errors: [`DspiError::Refused`] with the `PRESET_*` status
-    /// (`PRESET_ERR_INVALID_SLOT` for a slot past 9, without sending);
-    /// [`DspiError::ReadOnly`] on a read-only connection;
-    /// [`DspiError::Disconnected`]; [`DspiError::Locked`] /
-    /// [`DspiError::Denied`] when the Link hub refuses its lock;
-    /// [`DspiError::Transfer`] when the device does not confirm in time (the
-    /// mirror then follows the directory, if it answers, and the baseline
-    /// stays); the transport's typed error when a transfer fails.
+    /// Errors: [`DspiError::Refused`] with `PRESET_ERR_INVALID_SLOT` for a
+    /// slot past the last (nothing is sent) or with the device's `PRESET_*`
+    /// status; [`DspiError::Transfer`] when the save was not confirmed;
+    /// [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
+    /// [`DspiError::ReadOnly`]; [`DspiError::Disconnected`].
     pub fn save_preset(&self, slot: u8) -> Result<()> {
-        let bit = slot_bit(slot)?;
-        self.with_device_lock("Saving preset", |inner| {
-            save_locked(inner, slot, bit)?;
+        slot_in_range(slot)?;
+        self.with_device_lock(SAVE_REASON, |inner| {
+            let confirmed = save_to_slot(inner, slot)?;
+            refresh_directory(inner);
+            if !confirmed {
+                return Err(unconfirmed("save to", slot));
+            }
+            mark_saved(&mut inner.state, slot);
             capture_baseline_locked(inner);
             Ok(())
         })
     }
 
-    /// Load preset `slot` (0..10) and re-read every parameter into the
-    /// mirror.
+    /// Load preset `slot`, wait until the device runs it, then read the
+    /// image and the directory again; the loaded state becomes the baseline.
+    /// Runs under the device lock.
     ///
-    /// Sends `REQ_PRESET_LOAD`, waits up to 1.5 s for the device to report
-    /// the slot active, then re-reads the bulk image ([`DspiCore::refresh_params`]) and the
-    /// directory. The baseline becomes the loaded state. Runs under the Link
-    /// device lock. The device also notifies `PRESET_LOADED` and then
-    /// `BULK_INVALIDATED` (source `PRESET`); `process_notifications`
-    /// re-reads on those as on any foreign change, and an edit made between
-    /// this call and that notification stays unsaved (WP CG33).
+    /// The active slot is the directory's after the re-read. When the
+    /// directory cannot be read, it is `slot` if the device confirmed the
+    /// load, and stays as it was otherwise. A load that is never confirmed
+    /// (an empty slot changes nothing) still re-reads and succeeds.
     ///
-    /// Errors: [`DspiError::Refused`] with the `PRESET_*` status;
-    /// [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
-    /// [`DspiError::Locked`] / [`DspiError::Denied`];
-    /// [`DspiError::Transfer`] when the device does not confirm the load in
-    /// time (a load that failed on the device looks the same: the image is
-    /// not re-read, the active slot follows the directory if it answers, and
-    /// the baseline stays); the transport's typed error when a transfer, or
-    /// the re-read, fails.
+    /// Errors: as [`DspiCore::save_preset`], and the re-read's.
     pub fn load_preset(&self, slot: u8) -> Result<()> {
-        slot_bit(slot)?;
-        let lock = self.acquire_device_lock("Loading preset")?;
-        let result = self.lock_current(&lock).and_then(|()| self.load_flow(slot));
-        self.release_device_lock(lock);
-        result
-    }
-
-    /// Copy the live state into preset `dest`, then save it back to
-    /// `source` so `source` stays the active slot (as the macOS Console
-    /// does). **Writes flash twice.**
-    ///
-    /// Each deferred save must finish (the device reports that slot active)
-    /// before the next is sent, or the second would replace the first's
-    /// pending save. The baseline becomes the live state. Runs under the
-    /// Link device lock.
-    ///
-    /// Errors: as [`DspiCore::save_preset`] for either slot, plus
-    /// [`DspiError::Transfer`] when the device does not confirm either save
-    /// in time (after the first, nothing is saved to `source`; `dest` may
-    /// hold the live state and the directory says which slot is active).
-    pub fn copy_preset(&self, source: u8, dest: u8) -> Result<()> {
-        let source_bit = slot_bit(source)?;
-        let dest_bit = slot_bit(dest)?;
-        self.with_device_lock("Copying preset", |inner| {
-            save_locked(inner, dest, dest_bit)?;
-            if !wait_for(inner.conn()?, |c| Ok(read_active(c)? == dest)) {
-                return Err(unconfirmed(inner, "saving", dest));
-            }
-            save_locked(inner, source, source_bit)?;
-            if !wait_for(inner.conn()?, |c| Ok(read_active(c)? == source)) {
-                return Err(unconfirmed(inner, "saving", source));
+        slot_in_range(slot)?;
+        self.with_device_lock(LOAD_REASON, |inner| {
+            let confirmed = {
+                let mut w = inner.writable_conn()?;
+                w.conn().fresh_image = false;
+                status(w.set_as_read(op::REQ_PRESET_LOAD, u16::from(slot))?)?;
+                wait_for(w.conn(), |c| names_active(c, slot))?
+            };
+            connect::refresh_params_locked(inner)?;
+            if !refresh_directory(inner) && confirmed {
+                inner.state.active_preset_slot = slot;
             }
             capture_baseline_locked(inner);
             Ok(())
         })
     }
 
-    /// Delete preset `slot` (0..10) and its name. **Writes flash.**
+    /// Copy the live state to `dest` and save it to `source` again, so
+    /// `source` stays the active preset (the Mac console's "Copy to"). Each
+    /// save waits for the device; one device lock covers both.
     ///
-    /// Waits up to 1.5 s for the slot to leave the directory. Deleting the
-    /// active slot makes the device apply its factory defaults, so the
-    /// image is then re-read (the baseline is kept: the live state matches
-    /// no preset). Runs under the Link device lock.
+    /// If the save to `dest` is not confirmed, nothing more is sent and the
+    /// baseline stays. After the second save, the live state is the
+    /// baseline.
     ///
-    /// Errors: [`DspiError::Refused`] with the `PRESET_*` status;
-    /// [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
-    /// [`DspiError::Locked`] / [`DspiError::Denied`];
-    /// [`DspiError::Transfer`] when the device does not confirm in time (the
-    /// mirror's directory fields then follow the directory, if it answers,
-    /// and the name is kept); the transport's typed error when a transfer or
-    /// the re-read fails.
-    pub fn delete_preset(&self, slot: u8) -> Result<()> {
-        let bit = slot_bit(slot)?;
-        let lock = self.acquire_device_lock("Deleting preset")?;
-        let result = self
-            .lock_current(&lock)
-            .and_then(|()| self.delete_flow(slot, bit));
-        self.release_device_lock(lock);
-        result
+    /// Errors: the first failing save's (`Refused` with its `PRESET_*`
+    /// status); [`DspiError::Transfer`] when `dest`'s save was not
+    /// confirmed; otherwise as [`DspiCore::save_preset`].
+    pub fn copy_preset(&self, source: u8, dest: u8) -> Result<()> {
+        slot_in_range(source)?;
+        slot_in_range(dest)?;
+        self.with_device_lock(COPY_REASON, |inner| {
+            if !save_to_slot(inner, dest)? {
+                refresh_directory(inner);
+                return Err(unconfirmed("copy to", dest));
+            }
+            mark_saved(&mut inner.state, dest);
+            let back = save_to_slot(inner, source)?;
+            refresh_directory(inner);
+            if back {
+                mark_saved(&mut inner.state, source);
+            } else {
+                log::warn!("the device did not confirm saving preset {source} again");
+            }
+            capture_baseline_locked(inner);
+            Ok(())
+        })
     }
 
-    /// Name preset `slot` (0..10): at most 31 bytes of UTF-8, cut at a
-    /// character boundary (and at an embedded NUL); an empty name clears it.
-    /// The mirror's `preset_names[slot]` follows.
+    /// Delete preset `slot` and wait until the directory no longer holds
+    /// it; its name goes with it. Runs under the device lock.
     ///
-    /// Errors: [`DspiError::InvalidArgument`] for a slot past 9;
-    /// [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; the transport's
-    /// typed error when the transfer fails.
+    /// Deleting the active slot makes the device load its factory defaults:
+    /// the image is read again and becomes the baseline. A deletion that is
+    /// never confirmed leaves the slot and its name in the mirror and fails.
+    ///
+    /// Errors: as [`DspiCore::save_preset`].
+    pub fn delete_preset(&self, slot: u8) -> Result<()> {
+        slot_in_range(slot)?;
+        self.with_device_lock(DELETE_REASON, |inner| {
+            let was_active = inner.state.active_preset_slot == slot;
+            let confirmed = {
+                let mut w = inner.writable_conn()?;
+                w.conn().fresh_image = false;
+                status(w.set_as_read(op::REQ_PRESET_DELETE, u16::from(slot))?)?;
+                wait_for(w.conn(), |c| slot_cleared(c, slot))?
+            };
+            if !confirmed {
+                return Err(unconfirmed("delete", slot));
+            }
+            inner.state.preset_occupied &= !bit(slot);
+            if let Some(name) = inner.state.preset_names.get_mut(usize::from(slot)) {
+                name.clear();
+            }
+            refresh_directory(inner);
+            if was_active {
+                connect::refresh_params_locked(inner)?;
+                capture_baseline_locked(inner);
+            }
+            Ok(())
+        })
+    }
+
+    /// Name preset `slot`: at most 31 bytes of `name` (cut at a character
+    /// boundary), sent NUL-terminated. The mirror takes the name as sent.
+    ///
+    /// Errors: `Refused` with `PRESET_ERR_INVALID_SLOT` for a slot past the
+    /// last (nothing is sent); [`DspiError::ReadOnly`];
+    /// [`DspiError::Disconnected`]; a transfer error.
     pub fn set_preset_name(&self, slot: u8, name: String) -> Result<()> {
-        let index = slot_index(slot)?;
-        let payload = name_payload(&name);
-        let mut guard = self.lock();
-        let inner = &mut *guard;
+        slot_in_range(slot)?;
+        let name = name_within(&name);
+        let mut payload = Vec::with_capacity(name.len().saturating_add(1));
+        payload.extend_from_slice(name.as_bytes());
+        payload.push(0);
+        let mut inner = self.lock();
         inner
             .writable_conn()?
             .set(op::REQ_PRESET_SET_NAME, u16::from(slot), &payload)?;
-        if let Some(n) = inner.state.preset_names.get_mut(index) {
-            let text = payload.split_last().map_or(&[][..], |(_, b)| b);
-            *n = String::from_utf8_lossy(text).into_owned();
+        let names = &mut inner.state.preset_names;
+        if names.len() < MAX_PRESETS {
+            names.resize(MAX_PRESETS, String::new());
+        }
+        if let Some(n) = names.get_mut(usize::from(slot)) {
+            *n = name.to_owned();
         }
         Ok(())
     }
 
-    /// Read the name of preset `slot` (0..10) into the mirror and return it.
-    /// Works on a read-only connection.
+    /// Read preset `slot`'s name from the device (also into the mirror). An
+    /// empty slot has no name: the device stalls, and that is the error.
     ///
-    /// Errors: [`DspiError::InvalidArgument`] for a slot past 9;
-    /// [`DspiError::Disconnected`]; the transport's typed error when the
-    /// read fails (an empty slot stalls; its mirrored name is cleared).
+    /// Errors: `Refused` with `PRESET_ERR_INVALID_SLOT` for a slot past the
+    /// last (nothing is sent); [`DspiError::Disconnected`]; a transfer error.
     pub fn get_preset_name(&self, slot: u8) -> Result<String> {
+        slot_in_range(slot)?;
         let mut guard = self.lock();
         let Inner { conn, state, .. } = &mut *guard;
         let conn = conn.as_mut().ok_or(DspiError::Disconnected)?;
-        read_preset_name(conn, state, slot)
+        connect::read_preset_name(conn, state, slot)
     }
 
-    /// Read the preset directory (occupied slots, startup mode and slot,
-    /// active slot, the output-config and master-volume persistence modes)
-    /// into the mirror and return it. Works on a read-only connection.
+    /// Read the preset directory (also into the mirror: occupied slots,
+    /// startup mode, default and active slot, both persistence modes).
     ///
-    /// Errors: [`DspiError::Disconnected`]; the transport's typed error when
-    /// the read fails or the reply is shorter than 5 bytes.
+    /// Errors: [`DspiError::Disconnected`]; a transfer error or a short reply.
     pub fn get_preset_directory(&self) -> Result<PresetDirectory> {
         let mut guard = self.lock();
         let Inner { conn, state, .. } = &mut *guard;
         let conn = conn.as_mut().ok_or(DspiError::Disconnected)?;
-        read_preset_directory(conn, state)
+        connect::read_preset_directory(conn, state)
     }
 
-    /// Choose the preset loaded at boot: `mode` 0 = load `default_slot`,
-    /// 1 = the last active slot. The mirror follows.
+    /// What the device loads at boot: `mode` 0 (`PRESET_STARTUP_SPECIFIED`)
+    /// loads `default_slot`, 1 (`PRESET_STARTUP_LAST_ACTIVE`) the slot last
+    /// active. The mirror takes both.
     ///
-    /// Errors: [`DspiError::InvalidArgument`] for a mode other than 0 or 1
-    /// or a slot past 9; [`DspiError::ReadOnly`];
-    /// [`DspiError::Disconnected`]; the transport's typed error when the
-    /// transfer fails.
+    /// Errors: [`DspiError::InvalidArgument`] for another mode or a slot
+    /// past the last (nothing is sent); [`DspiError::ReadOnly`];
+    /// [`DspiError::Disconnected`]; a transfer error.
     pub fn set_preset_startup(&self, mode: u8, default_slot: u8) -> Result<()> {
-        if mode != STARTUP_SPECIFIED && mode != STARTUP_LAST_ACTIVE {
+        if u16::from(mode) > st::PRESET_STARTUP_LAST_ACTIVE {
             return Err(DspiError::InvalidArgument {
-                msg: format!("preset startup mode {mode} is not 0 or 1"),
+                msg: format!("preset startup mode {mode} is neither 0 (a slot) nor 1 (the last)"),
             });
         }
-        slot_index(default_slot)?;
-        let mut guard = self.lock();
-        let inner = &mut *guard;
-        inner
-            .writable_conn()?
-            .set(op::REQ_PRESET_SET_STARTUP, 0, &[mode, default_slot])?;
+        if usize::from(default_slot) >= MAX_PRESETS {
+            return Err(DspiError::InvalidArgument {
+                msg: format!("default preset slot {default_slot} is past the last ({MAX_PRESETS})"),
+            });
+        }
+        let mut inner = self.lock();
+        {
+            let mut w = inner.writable_conn()?;
+            w.conn().fresh_image = false;
+            w.set(op::REQ_PRESET_SET_STARTUP, 0, &[mode, default_slot])?;
+        }
         inner.state.preset_startup_mode = mode;
         inner.state.preset_default_slot = default_slot;
         Ok(())
     }
 
-    /// Save the live state to the active preset slot (`REQ_SAVE_PARAMS`,
-    /// deferred on the device). **Writes flash.** The baseline becomes the
-    /// live state. Runs under the Link device lock.
+    /// Save the live state to the active slot (`REQ_SAVE_PARAMS`), under the
+    /// device lock; the live state becomes the baseline.
     ///
-    /// Errors: [`DspiError::Refused`] with the `FLASH_*` status;
-    /// [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
-    /// [`DspiError::Locked`] / [`DspiError::Denied`]; the transport's typed
-    /// error when the transfer fails.
+    /// Errors: `Refused` with the device's `FLASH_*` status;
+    /// [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
+    /// [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; a transfer
+    /// error.
     pub fn save_params(&self) -> Result<()> {
-        self.with_device_lock("Saving to flash", |inner| {
-            let code = inner.writable_conn()?.set_as_read(op::REQ_SAVE_PARAMS, 0)?;
-            error::status(code)?;
+        self.with_device_lock(SAVE_PARAMS_REASON, |inner| {
+            status(inner.writable_conn()?.set_as_read(op::REQ_SAVE_PARAMS, 0)?)?;
+            let active = inner.state.active_preset_slot;
+            if !refresh_directory(inner) {
+                mark_saved(&mut inner.state, active);
+            }
             capture_baseline_locked(inner);
             Ok(())
         })
     }
 
-    /// Revert to saved: reload the active preset through the deferred,
-    /// S/PDIF-safe preset load ([`DspiCore::load_preset`] of the mirror's
-    /// `active_preset_slot`).
+    /// Revert to saved: load the active slot again ([`DspiCore::load_preset`],
+    /// the device's deferred load, safe on every input).
     ///
-    /// Errors: as [`DspiCore::load_preset`], except that a refusal is
-    /// reported as [`DspiError::Refused`] with a `FLASH_*` status:
-    /// `FLASH_ERR_CRC` for a corrupt slot, `FLASH_ERR_WRITE` otherwise.
+    /// Errors: as `load_preset`, but a refusal carries a `FLASH_*` code:
+    /// `FLASH_ERR_CRC` for a slot that failed its check, `FLASH_ERR_WRITE`
+    /// for any other.
     pub fn load_params(&self) -> Result<()> {
         let slot = self.lock().state.active_preset_slot;
         self.load_preset(slot).map_err(|e| match e {
-            DspiError::Refused {
-                status: PRESET_ERR_CRC,
-            } => DspiError::Refused {
-                status: FLASH_ERR_CRC,
-            },
-            DspiError::Refused { .. } => DspiError::Refused {
-                status: FLASH_ERR_WRITE,
+            DspiError::Refused { status } => DspiError::Refused {
+                status: if u16::from(status) == st::PRESET_ERR_CRC {
+                    FLASH_ERR_CRC
+                } else {
+                    FLASH_ERR_WRITE
+                },
             },
             other => other,
         })
     }
 
-    /// Restore the factory defaults (`REQ_FACTORY_RESET`, deferred on the
-    /// device). **Writes flash.** Waits 250 ms, then re-reads everything
-    /// ([`DspiCore::fetch_all`]); the baseline becomes the reset state.
-    /// Runs under the Link device lock.
+    /// Restore the factory defaults on the live state (stored presets stay),
+    /// then read everything again as [`DspiCore::fetch_all`] does; the result
+    /// is the baseline. Runs under the device lock.
     ///
-    /// Errors: [`DspiError::Refused`] with the `FLASH_*` status;
-    /// [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
-    /// [`DspiError::Locked`] / [`DspiError::Denied`]; the transport's typed
-    /// error when the transfer or the re-read fails.
+    /// Errors: `Refused` with the device's `FLASH_*` status;
+    /// [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
+    /// [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; a transfer
+    /// error, of the reset or the re-read.
     pub fn factory_reset(&self) -> Result<()> {
-        let lock = self.acquire_device_lock("Factory reset")?;
-        let result = self
-            .lock_current(&lock)
-            .and_then(|()| self.factory_reset_flow());
+        let lock = self.acquire_device_lock(RESET_REASON)?;
+        let sent = {
+            let mut guard = self.lock();
+            if lock.is_current(&guard) {
+                guard.writable_conn().and_then(|mut w| {
+                    w.conn().fresh_image = false;
+                    status(w.set_as_read(op::REQ_FACTORY_RESET, 0)?)
+                })
+            } else {
+                Err(DspiError::Disconnected)
+            }
+        };
+        let result = sent.and_then(|()| self.fetch_all());
         self.release_device_lock(lock);
         result
     }
 
-    /// The live state now matches the active preset: remember its image as
-    /// the baseline for [`DspiCore::preset_dirty`] and
-    /// [`DspiCore::preset_changes`]. Without a device, or before an image
-    /// has been read, the baseline is cleared. Never fails.
+    /// Take the live state as what the active preset holds: from now on
+    /// [`DspiCore::preset_changes`] lists what differs from it. The core
+    /// does this itself after a connect, a load, a save, a revert and a
+    /// factory reset. Without a device, or without an image in this build's
+    /// format, there is no baseline.
     pub fn capture_baseline(&self) {
         capture_baseline_locked(&mut self.lock());
     }
 
-    /// Whether the live state differs from the baseline in anything a
-    /// preset holds: exactly when [`DspiCore::preset_changes`] is not
-    /// empty. False before any baseline. Never fails.
+    /// Whether the live state differs from the active preset: exactly when
+    /// [`DspiCore::preset_changes`] has something to say. No I/O.
     pub fn preset_dirty(&self) -> bool {
-        let guard = self.lock();
-        match &guard.baseline {
-            Some(b) if *b != guard.state.bulk_raw => !changes(b, &guard.state, &[]).is_empty(),
-            _ => false,
-        }
+        !self.preset_changes().is_empty()
     }
 
-    /// What differs from the baseline (the active preset), one sentence
-    /// each, worded as the macOS Console words it ("Preamp L: 0.0 dB →
-    /// -3.0 dB", "2 bands changed on Output 1"). The master volume counts
-    /// only in WITH_PRESET master-volume mode, the hardware wiring and the
-    /// limiters only in WITH_PRESET output-config mode, both judged by the
-    /// live mode. The user volume and the DAC mute are no preset change, as
-    /// on macOS. An input source goes by the user's name when it has one,
-    /// from the connection's cache, so this does no I/O. Empty before any
-    /// baseline. Never fails.
+    /// What differs from the active preset, one sentence each, in the Mac
+    /// console's words and order. Empty without a device or a baseline. No
+    /// I/O: input source titles come from the names the core keeps.
     pub fn preset_changes(&self) -> Vec<String> {
-        let guard = self.lock();
-        match &guard.baseline {
-            Some(b) if *b != guard.state.bulk_raw => {
-                let names = guard.conn.as_ref().map_or(&[][..], |c| &c.source_names[..]);
-                changes(b, &guard.state, names)
-            }
-            _ => Vec::new(),
+        let inner = self.lock();
+        let (Some(conn), Some(base)) = (inner.conn.as_ref(), inner.baseline.as_deref()) else {
+            return Vec::new();
+        };
+        if !inner.state.bulk_valid {
+            return Vec::new();
         }
+        // Start from the live state, so what the image does not carry (the
+        // persistence modes) is the live one, as the console gates on it.
+        let mut saved = inner.state.clone();
+        if let Err(e) = state::decode_bulk(base, &mut saved) {
+            log::debug!("the preset baseline does not decode: {e}");
+            return Vec::new();
+        }
+        changes(&saved, &inner.state, &conn.source_names)
     }
 }
 
-// -- WP CG24 --
+// ── The caller's lock ─────────────────────────────────────────────────
+
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
-    /// Hold the device lock across a flow of several calls, so another
-    /// session's commands answer `Locked` until [`DspiCore::device_lock_release`]
-    /// (DSPi Link spec 7.7; Swift's `acquireDeviceLock`). It lasts at most
-    /// `timeout_ms`, capped at 60 000 (the hub's cap): after that the hub and
-    /// the core count it as released. The core's own locked flows
-    /// (`save_preset`, `load_preset`, `save_output_config`, ...) run inside it
-    /// without asking the hub again. It is given back when the connection
-    /// closes or is replaced, a Link re-bind included. On USB, MIDI and the
-    /// demo device it succeeds at once, as their flows do. Blocking over
-    /// Link: call it off the UI thread.
+    /// Hold the device lock across a flow of several calls (a restore, a
+    /// firmware install), for at most `timeout_ms` (capped at 60 000), until
+    /// [`DspiCore::device_lock_release`]: another DSPi Link session's
+    /// commands answer locked meanwhile. The core's own flows nest inside it.
+    /// Blocking over Link: call it off the UI thread.
     ///
-    /// One lock, one timeout: the first holder's. A call while the lock is
-    /// already held keeps it as it is (no second request to the hub, the
-    /// same remaining time) and makes it the caller's, so
-    /// [`DspiCore::device_lock_release`] ends it and an IR learn's end no
-    /// longer does. Likewise an IR learn (`cs_apply` `learnArm`) or
-    /// [`DspiCore::enter_bootloader`] inside a caller's lock takes nothing of
-    /// its own: it lasts as long as the caller's lock, not 15 s or 60 s. So
-    /// do not wrap a learn in a short caller lock; to end a firmware install
-    /// whose restart never happened, take the caller's lock (60 000 ms)
-    /// before `enter_bootloader` and release it afterwards.
+    /// An acquire while a lock is held asks nothing more; one held by an IR
+    /// learn window or the bootloader restart becomes the caller's. Elsewhere
+    /// than over Link it succeeds without asking anyone.
     ///
-    /// Errors: [`DspiError::InvalidArgument`] for a `timeout_ms` of 0;
-    /// [`DspiError::Disconnected`] with no device, or when the connection
-    /// changed while the hub was asked; [`DspiError::Locked`] when another
-    /// session holds it; [`DspiError::Denied`] for a viewer.
+    /// Errors: [`DspiError::InvalidArgument`] for a zero timeout;
+    /// [`DspiError::Disconnected`]; [`DspiError::Locked`] while another
+    /// session holds it; [`DspiError::Denied`].
     pub fn device_lock_acquire(&self, reason: String, timeout_ms: u32) -> Result<()> {
         if timeout_ms == 0 {
             return Err(DspiError::InvalidArgument {
                 msg: "a device lock needs a timeout".into(),
             });
         }
-        let hold = Duration::from_millis(u64::from(timeout_ms)).min(HELD_MAX);
-        let lock = self.take_device_lock(&reason, hold, false)?;
-        if lock.nested {
-            let mut guard = self.lock();
-            if let Some(held) = guard.conn.as_mut().and_then(|c| c.held_lock.as_mut()) {
+        let lease = Duration::from_millis(u64::from(timeout_ms.min(CALLER_LEASE_MAX_MS)));
+        {
+            let mut inner = self.lock();
+            let conn = inner.conn()?;
+            if let Some(held) = conn.held_lock.as_mut()
+                && held.in_force(Instant::now())
+            {
                 held.holder = Holder::Caller;
+                return Ok(());
             }
-            return Ok(());
         }
-        self.hold_device_lock(lock, hold, Holder::Caller);
+        let lock = self.take_device_lock(&reason, lease, false)?;
+        self.hold_device_lock(lock, lease, Holder::Caller);
         Ok(())
     }
 
-    /// Release the lock [`DspiCore::device_lock_acquire`] took, and only
-    /// that one (Swift releases only what it took): an IR learn's lock ends
-    /// with its read, cancel or window, and `enter_bootloader`'s when the
-    /// device leaves or after 60 s. Idempotent, and never blocks. A closed
-    /// or replaced connection gives back every holder's lock.
+    /// Give back the lock [`DspiCore::device_lock_acquire`] took, and only
+    /// that one: an IR learn window or the bootloader restart ends on its own
+    /// terms. Idempotent; never blocks.
     pub fn device_lock_release(&self) {
         self.end_held_lock(Some(Holder::Caller));
     }
 }
 
 impl DspiCore {
-    // ── Flows ─────────────────────────────────────────────────────────
-
-    /// Take the device lock ([`DspiCore::acquire_device_lock`]), run `f`
-    /// under the core's lock and release the device lock whatever `f`
-    /// returned.
+    /// Run `f` with the core lock held, inside the device lock (`reason`
+    /// tells other sessions why). `f` runs only if the connection is still
+    /// the one locked; the lock goes back whatever `f` returns.
+    ///
+    /// Errors: the lock's ([`DspiCore::acquire_device_lock`]), `f`'s, or
+    /// [`DspiError::Disconnected`] when the connection changed meanwhile.
     pub(crate) fn with_device_lock<T>(
         &self,
         reason: &str,
@@ -506,9 +528,8 @@ impl DspiCore {
         let lock = self.acquire_device_lock(reason)?;
         let result = {
             let mut guard = self.lock();
-            let inner = &mut *guard;
-            if lock.is_current(inner) {
-                f(inner)
+            if lock.is_current(&guard) {
+                f(&mut guard)
             } else {
                 Err(DspiError::Disconnected)
             }
@@ -517,326 +538,371 @@ impl DspiCore {
         result
     }
 
-    /// Check the connection is writable (a read-only one is `ReadOnly`,
-    /// before any lock request) and take its device lock for `reason`. The
-    /// caller releases it on every path ([`DspiCore::release_device_lock`]).
+    /// The device lock for one flow that writes. Call with the core lock
+    /// released.
     ///
-    /// Over DSPi Link the hub is asked with the core's lock released, and
-    /// the connection is checked again afterwards: a close or reopen while
-    /// waiting gives [`DspiError::Disconnected`], with the lock given back.
-    /// A transport without a [`crate::SideChannel`] locks under the core's
-    /// lock: a no-op on USB, MIDI and the demo device. (A `LinkTransport`
-    /// handed to `open_transport` directly would wait there; the core's own
-    /// `link_select_device` never does.)
-    ///
-    /// Inside a held lock ([`HeldLock`], WP CG24) the lock is nested: the hub
-    /// is not asked again and the release gives nothing back.
+    /// Errors: [`DspiError::ReadOnly`] (nothing is asked);
+    /// [`DspiError::Disconnected`]; the lock's refusal.
     pub(crate) fn acquire_device_lock(&self, reason: &str) -> Result<DeviceLock> {
-        self.take_device_lock(reason, LOCK_TIMEOUT, true)
+        self.take_device_lock(reason, FLOW_LEASE, true)
     }
 
-    /// [`DspiCore::acquire_device_lock`] for `timeout` (what the hub is
-    /// told), and only on a writable connection when `writable`.
+    /// The device lock for `timeout` (the lease a hub grants), on the open
+    /// connection; with `writable`, only on one whose state may be written.
+    /// Inside a held lock it is nested: nothing is asked. A held lock that
+    /// ran out is given back first. Over DSPi Link the hub is asked with the
+    /// core lock released. Call with the core lock released.
+    ///
+    /// Errors: [`DspiError::ReadOnly`] (with `writable`);
+    /// [`DspiError::Disconnected`]; [`DspiError::Locked`] /
+    /// [`DspiError::Denied`] and the transport's other refusals.
     pub(crate) fn take_device_lock(
         &self,
         reason: &str,
         timeout: Duration,
         writable: bool,
     ) -> Result<DeviceLock> {
-        let (generation, side, expired) = {
+        let (generation, side, transport_locked, run_out) = {
             let mut guard = self.lock();
+            let inner = &mut *guard;
             if writable {
-                guard.writable_conn()?;
+                inner.writable_conn()?;
             }
-            let conn = guard.conn()?;
-            // -- WP CG24 --
-            let expired = drop_expired(conn);
-            if conn.held_lock.is_some() {
-                return Ok(DeviceLock {
-                    generation: conn.generation,
-                    side: None,
-                    nested: true,
-                });
+            let conn = inner.conn()?;
+            let generation = conn.generation;
+            let mut run_out = None;
+            if let Some(held) = conn.held_lock.as_ref() {
+                if held.in_force(Instant::now()) {
+                    return Ok(DeviceLock {
+                        generation,
+                        side: None,
+                        nested: true,
+                    });
+                }
+                run_out = conn.held_lock.take();
             }
-            let side = conn.side.clone();
-            if side.is_none() {
-                conn.transport().lock(reason, timeout)?;
+            if let Some(held) = run_out.as_mut() {
+                held.give_back_transport(conn);
             }
-            (conn.generation, side, expired)
-        };
-        if let Some(old) = expired {
-            old.unlock();
-        }
-        let lock = DeviceLock {
-            generation,
-            side,
-            nested: false,
-        };
-        if let Some(side) = &lock.side {
-            side.lock(reason, timeout)?;
-            if !lock.is_current(&self.lock()) {
-                self.release_device_lock(lock);
-                return Err(DspiError::Disconnected);
-            }
-        }
-        Ok(lock)
-    }
-
-    /// `Disconnected` if the connection `lock` was taken on is gone.
-    fn lock_current(&self, lock: &DeviceLock) -> Result<()> {
-        if lock.is_current(&self.lock()) {
-            Ok(())
-        } else {
-            Err(DspiError::Disconnected)
-        }
-    }
-
-    /// Release a device lock on the connection that took it. If that
-    /// connection was replaced mid-flow, the new one is left alone: its lock
-    /// is not ours to release. A nested lock gives nothing back.
-    pub(crate) fn release_device_lock(&self, lock: DeviceLock) {
-        if lock.nested {
-            return;
-        }
-        match lock.side {
-            Some(side) => side.unlock(),
-            None => {
-                let mut guard = self.lock();
-                if let Some(c) = guard
-                    .conn
-                    .as_mut()
-                    .filter(|c| c.generation == lock.generation)
-                {
-                    c.transport().unlock();
+            match conn.side.clone() {
+                Some(side) => (generation, Some(side), Ok(()), run_out),
+                None => {
+                    let locked = conn.transport().lock(reason, timeout);
+                    (generation, None, locked, run_out)
                 }
             }
+        };
+        // A side channel's expired lock goes back before it is asked again.
+        drop(run_out);
+        match side {
+            Some(side) => {
+                side.lock(reason, timeout)?;
+                Ok(DeviceLock {
+                    generation,
+                    side: Some(side),
+                    nested: false,
+                })
+            }
+            None => {
+                transport_locked?;
+                Ok(DeviceLock {
+                    generation,
+                    side: None,
+                    nested: false,
+                })
+            }
         }
     }
 
-    // -- WP CG24 --
+    /// Give `lock` back: through its side channel, or to its connection's
+    /// transport if that connection is still open (never to one that
+    /// replaced it). A nested lock gives nothing back. Call with the core
+    /// lock released.
+    pub(crate) fn release_device_lock(&self, lock: DeviceLock) {
+        let DeviceLock {
+            generation,
+            side,
+            nested,
+        } = lock;
+        if nested {
+            return;
+        }
+        if let Some(side) = side {
+            side.unlock();
+            return;
+        }
+        let mut inner = self.lock();
+        if let Some(conn) = inner.conn.as_mut()
+            && conn.generation == generation
+        {
+            conn.transport().unlock();
+        }
+    }
 
-    /// Keep `lock` held past this call for `holder`, for at most `hold`
-    /// (what the hub was told when it was taken). A nested lock is already
-    /// inside a held one and is dropped; so is a lock whose connection has
-    /// gone, or one that lost a race with another holder.
+    /// Keep `lock` on its connection for `hold`, for `holder`. A nested lock
+    /// is the holder's already: nothing changes. A lock whose connection is
+    /// gone is given back at once. Call with the core lock released.
     pub(crate) fn hold_device_lock(&self, lock: DeviceLock, hold: Duration, holder: Holder) {
         if lock.nested {
             return;
         }
-        let refused = {
+        let now = Instant::now();
+        let (unused, replaced) = {
             let mut guard = self.lock();
-            match guard
-                .conn
-                .as_mut()
-                .filter(|c| c.generation == lock.generation && c.held_lock.is_none())
-            {
-                Some(conn) => {
-                    conn.held_lock = Some(HeldLock {
+            match guard.conn.as_mut() {
+                Some(conn) if conn.generation == lock.generation => {
+                    let mut replaced = conn.held_lock.replace(HeldLock {
                         lock: Some(lock),
-                        // `hold` is at most 60 s: never past the clock's end.
-                        until: Instant::now()
-                            .checked_add(hold)
-                            .unwrap_or_else(Instant::now),
+                        until: now.checked_add(hold).unwrap_or(now),
                         holder,
                     });
-                    None
+                    if let Some(old) = replaced.as_mut() {
+                        old.give_back_transport(conn);
+                    }
+                    (None, replaced)
                 }
-                None => Some(lock),
+                _ => (Some(lock), None),
             }
         };
-        if let Some(lock) = refused {
+        drop(replaced);
+        if let Some(lock) = unused {
             self.release_device_lock(lock);
         }
     }
 
-    /// Give back the held lock if `holder` matches (any holder for `None`).
-    /// Never blocks: a Link release is fire and forget.
+    /// End the held lock if `holder` keeps it (`None`: whoever does), giving
+    /// it back. Call with the core lock released.
     pub(crate) fn end_held_lock(&self, holder: Option<Holder>) {
-        let side = {
+        let ended = {
             let mut guard = self.lock();
             let Some(conn) = guard.conn.as_mut() else {
                 return;
             };
-            let held = conn
+            let ours = conn
                 .held_lock
-                .take_if(|h| holder.is_none_or(|w| h.holder == w));
-            held.and_then(|h| h.give_back(conn))
+                .as_ref()
+                .is_some_and(|h| holder.is_none_or(|want| h.holder == want));
+            if !ours {
+                return;
+            }
+            let mut ended = conn.held_lock.take();
+            if let Some(h) = ended.as_mut() {
+                h.give_back_transport(conn);
+            }
+            ended
         };
-        if let Some(side) = side {
-            side.unlock();
-        }
+        drop(ended);
     }
 
-    /// Make the held lock's time up, as if its timeout had passed.
+    /// Let the held lock run out now, as its lease would (its holder stays
+    /// until the next flow gives it back).
     #[cfg(test)]
     pub(crate) fn expire_held_lock(&self) {
-        if let Some(h) = self.lock().conn.as_mut().and_then(|c| c.held_lock.as_mut()) {
-            h.until = Instant::now();
+        let now = Instant::now();
+        if let Some(held) = self.lock().conn.as_mut().and_then(|c| c.held_lock.as_mut()) {
+            held.until = now;
         }
     }
 
-    /// The holder of the device lock this core holds past a call, `None`
-    /// when it holds none (or its time is up).
+    /// Who keeps the lock in force on the open connection, if anyone.
     #[cfg(test)]
     pub(crate) fn held_lock_holder(&self) -> Option<Holder> {
-        let mut guard = self.lock();
-        let held = guard.conn.as_mut()?.held_lock.as_ref()?;
-        (!held.expired()).then_some(held.holder)
-    }
-
-    /// `load_preset` once the device lock is held.
-    fn load_flow(&self, slot: u8) -> Result<()> {
-        let mut guard = self.lock();
-        let inner = &mut *guard;
-        let code = inner
-            .writable_conn()?
-            .set_as_read(op::REQ_PRESET_LOAD, u16::from(slot))?;
-        error::status(code)?;
-        if !wait_for(inner.conn()?, |c| Ok(read_active(c)? == slot)) {
-            return Err(unconfirmed(inner, "loading", slot));
-        }
-        // Kept across the re-read, so no notification or setter lands between
-        // the device's state and the mirror.
-        refresh_params_locked(inner)?;
-        let directory = inner
+        let now = Instant::now();
+        self.lock()
             .conn
-            .as_mut()
-            .map(|conn| read_preset_directory(conn, &mut inner.state));
-        if !matches!(directory, Some(Ok(_))) {
-            // The load was confirmed; only the directory read failed.
-            inner.state.active_preset_slot = slot;
-        }
-        // The directory is trusted over the poll: the baseline must not be
-        // taken against a slot the device says is not the active one.
-        if inner.state.active_preset_slot != slot {
-            return Err(unconfirmed(inner, "loading", slot));
-        }
-        capture_baseline_locked(inner);
-        Ok(())
-    }
-
-    /// `delete_preset` once the device lock is held.
-    fn delete_flow(&self, slot: u8, bit: u16) -> Result<()> {
-        let mut guard = self.lock();
-        let inner = &mut *guard;
-        let code = inner
-            .writable_conn()?
-            .set_as_read(op::REQ_PRESET_DELETE, u16::from(slot))?;
-        error::status(code)?;
-        if !wait_for(inner.conn()?, |c| Ok(read_occupied(c)? & bit == 0)) {
-            return Err(unconfirmed(inner, "deleting", slot));
-        }
-        let s = &mut inner.state;
-        s.preset_occupied &= !bit;
-        // The device clears the slot's name with it.
-        if let Some(n) = s.preset_names.get_mut(usize::from(slot)) {
-            n.clear();
-        }
-        if s.active_preset_slot == slot {
-            // Deleting the active slot applies the factory defaults.
-            refresh_params_locked(inner)?;
-        }
-        Ok(())
-    }
-
-    /// `factory_reset` once the device lock is held.
-    fn factory_reset_flow(&self) -> Result<()> {
-        {
-            let mut guard = self.lock();
-            let code = guard
-                .writable_conn()?
-                .set_as_read(op::REQ_FACTORY_RESET, 0)?;
-            error::status(code)?;
-        }
-        dspi_transport::clock::sleep(FACTORY_RESET_SETTLE);
-        // Ends with the baseline.
-        self.fetch_all()
+            .as_ref()
+            .and_then(|c| c.held_lock.as_ref())
+            .filter(|h| h.in_force(now))
+            .map(|h| h.holder)
     }
 }
 
-// ── Helpers (called with the core's lock held, or without state) ──────
+// ── Flow steps ────────────────────────────────────────────────────────
 
-/// Remember the live image as the baseline. The hook for every flow that
-/// leaves the live state equal to the active preset, and for
-/// `process_notifications` (WP C7) once it has re-read a `BULK_INVALIDATED`
-/// from a preset load or factory reset (through
-/// [`rebaseline_after_load_locked`], WP CG33). Cleared without a device, or when
-/// no image has been read (the mirror's image does not decode).
-pub(crate) fn capture_baseline_locked(inner: &mut Inner) {
-    let readable = inner.conn.is_some() && {
-        let mut probe = inner.state.clone();
-        state::decode_bulk(&inner.state.bulk_raw, &mut probe).is_ok()
+/// `Refused` with `PRESET_ERR_INVALID_SLOT` for a slot past the last.
+fn slot_in_range(slot: u8) -> Result<()> {
+    if usize::from(slot) < MAX_PRESETS {
+        Ok(())
+    } else {
+        Err(DspiError::Refused {
+            status: st::PRESET_ERR_INVALID_SLOT as u8,
+        })
+    }
+}
+
+/// The directory's bit for `slot`.
+fn bit(slot: u8) -> u16 {
+    1u16.checked_shl(u32::from(slot)).unwrap_or(0)
+}
+
+fn unconfirmed(what: &str, slot: u8) -> DspiError {
+    DspiError::Transfer {
+        msg: format!(
+            "the device did not confirm the {what} preset {slot} within {} ms",
+            CONFIRM_WITHIN.as_millis()
+        ),
+    }
+}
+
+/// Send `PRESET_SAVE` for `slot` and wait until the device names it active:
+/// whether it did.
+fn save_to_slot(inner: &mut Inner, slot: u8) -> Result<bool> {
+    let mut w = inner.writable_conn()?;
+    status(w.set_as_read(op::REQ_PRESET_SAVE, u16::from(slot))?)?;
+    wait_for(w.conn(), |c| names_active(c, slot))
+}
+
+/// Ask `done` until it says yes or [`CONFIRM_WITHIN`] has passed: whether it
+/// did. An answer that cannot be read is a "not yet", but a device that went
+/// away ends the wait with [`DspiError::Disconnected`].
+fn wait_for(
+    conn: &mut Connection,
+    mut done: impl FnMut(&mut Connection) -> Result<bool>,
+) -> Result<bool> {
+    let start = Instant::now();
+    loop {
+        match done(conn) {
+            Ok(true) => return Ok(true),
+            Err(DspiError::Disconnected) => return Err(DspiError::Disconnected),
+            Ok(false) | Err(_) => {}
+        }
+        if start.elapsed() >= CONFIRM_WITHIN {
+            return Ok(false);
+        }
+        clock::sleep(CONFIRM_EVERY);
+    }
+}
+
+/// Whether `PRESET_GET_ACTIVE` names `slot`.
+fn names_active(conn: &mut Connection, slot: u8) -> Result<bool> {
+    let reply = conn.get_upto(op::REQ_PRESET_GET_ACTIVE, 0, 1)?;
+    Ok(reply.first() == Some(&slot))
+}
+
+/// Whether the directory no longer marks `slot` occupied.
+fn slot_cleared(conn: &mut Connection, slot: u8) -> Result<bool> {
+    Ok(occupied(conn)?.is_some_and(|mask| mask & bit(slot) == 0))
+}
+
+/// The directory's occupied mask; `None` for a reply too short to hold it.
+fn occupied(conn: &mut Connection) -> Result<Option<u16>> {
+    let d = conn.get_upto(op::REQ_PRESET_GET_DIR, 0, DIRECTORY_LEN)?;
+    Ok(match d.as_slice() {
+        [lo, hi, ..] => Some(u16::from_le_bytes([*lo, *hi])),
+        _ => None,
+    })
+}
+
+/// Read the directory into the mirror; whether that worked. A failure is
+/// logged and leaves the mirror as it was.
+fn refresh_directory(inner: &mut Inner) -> bool {
+    let Inner { conn, state, .. } = inner;
+    let Some(conn) = conn.as_mut() else {
+        return false;
     };
-    inner.baseline = readable.then(|| inner.state.bulk_raw.clone());
+    match connect::read_preset_directory(conn, state) {
+        Ok(_) => true,
+        Err(e) => {
+            log::debug!("preset directory not read again: {e}");
+            false
+        }
+    }
 }
 
-// -- WP CG33 --
-/// The baseline after the re-read a preset load or factory reset notified
-/// (`process_notifications`, WP C7), given the baseline (`old`) and the
-/// mirror's image (`mirror`) as they stood just before that re-read.
-///
-/// The notification comes after the load, up to ~100 ms on USB and longer
-/// over DSPi Link, and the re-read also brings in whatever was changed on
-/// the device after the load: an edit of this client's, or another host's
-/// change it notified. Taken as is, the re-read would count those as saved.
-/// So the re-read becomes the baseline except where the mirror held a value
-/// that differs from the old baseline and the device holds that same value
-/// after the load: such a change was made (or made again) after the load,
-/// and stays a change, from the old baseline's value. For this client's own
-/// load, whose read-back already made the preset the baseline, that is
-/// exactly the preset's own state; for another's, the preset's value under
-/// a later edit cannot be read, so the edit shows from the value saved
-/// before. An unsaved change from before another's load that the loaded
-/// preset happens to hold too also stays a change: the error is toward a
-/// prompt, never toward a lost edit.
+/// `slot` holds a preset and is the active one.
+fn mark_saved(s: &mut DspState, slot: u8) {
+    s.preset_occupied |= bit(slot);
+    s.active_preset_slot = slot;
+}
+
+/// At most 31 bytes of `name`, ending on a character boundary.
+fn name_within(name: &str) -> &str {
+    let max = CHANNEL_NAME_LEN.saturating_sub(1);
+    let mut end = name.len().min(max);
+    while !name.is_char_boundary(end) {
+        end = end.saturating_sub(1);
+    }
+    name.get(..end).unwrap_or_default()
+}
+
+// ── The baseline ──────────────────────────────────────────────────────
+
+/// [`DspiCore::capture_baseline`] with the core lock held.
+pub(crate) fn capture_baseline_locked(inner: &mut Inner) {
+    inner.baseline =
+        (inner.conn.is_some() && inner.state.bulk_valid).then(|| inner.state.bulk_raw.clone());
+}
+
+/// After a re-read caused by a preset load (this client's or anyone's): the
+/// re-read image is the new baseline, except where an edit made after the
+/// load reached the device first. `old` is the baseline before the re-read
+/// and `mirror` the image the mirror held then.
 pub(crate) fn rebaseline_after_load_locked(inner: &mut Inner, old: Option<&[u8]>, mirror: &[u8]) {
     capture_baseline_locked(inner);
-    if let (Some(old), Some(new)) = (old, inner.baseline.as_mut()) {
-        keep_edits_after_load(new, old, mirror);
+    if let (Some(base), Some(old)) = (inner.baseline.as_mut(), old) {
+        keep_edits_after_load(base, old, mirror);
     }
 }
 
-/// Put `old` back into `baseline` (the re-read) over every field in which
-/// `mirror` differs from `old` and `baseline` equals `mirror`. The unit is a
-/// field of the bulk image ([`IMAGE_FIELDS`], WP CG33b), not a run of
-/// differing bytes: two adjacent fields can differ from `old` in their
-/// boundary bytes, and as one run a load that replaced the first would hide
-/// an edit of the second. When the three images are of equal length other
-/// than `BULK_SIZE`, there is no known layout and the unit is a maximal
-/// byte run. When their lengths differ, nothing is put back.
+/// Keep unsaved what was edited after a load. `baseline` holds the re-read
+/// image; `old` the baseline before it; `mirror` the mirror's image before it.
+/// Where the mirror had changed a value since `old` and the device now holds
+/// that same value, the device applied the edit on top of the loaded preset:
+/// the value goes back to `old`'s, so the edit still shows. Where the device
+/// holds something else, the load replaced it, and the re-read stands.
+///
+/// A full bulk image is compared field by field ([`image_fields`]), so a
+/// value is never a mix of two; any other image by runs of changed bytes.
+/// Images of different lengths are left as read.
 pub(crate) fn keep_edits_after_load(baseline: &mut [u8], old: &[u8], mirror: &[u8]) {
-    let len = baseline.len();
-    if old.len() != len || mirror.len() != len {
+    if baseline.len() != old.len() || old.len() != mirror.len() {
         return;
     }
-    let units = if len == g::BULK_SIZE {
+    let spans = if old.len() == g::BULK_SIZE {
         image_fields()
     } else {
-        byte_runs(old, mirror)
+        changed_runs(old, mirror)
     };
-    for unit in units {
-        let (Some(o), Some(m)) = (old.get(unit.clone()), mirror.get(unit.clone())) else {
+    for span in spans {
+        let (Some(was), Some(edited)) = (old.get(span.clone()), mirror.get(span.clone())) else {
             continue;
         };
-        if o != m
-            && let Some(dst) = baseline.get_mut(unit)
-            && *dst == *m
+        if was == edited {
+            continue;
+        }
+        if let Some(now) = baseline.get_mut(span)
+            && *now == *edited
         {
-            dst.copy_from_slice(o);
+            now.copy_from_slice(was);
         }
     }
 }
 
-// -- WP CG33b --
-/// The fields of a `BULK_SIZE` image (`WireBulkParams`, bulk_params.h), for
-/// [`keep_edits_after_load`]: per section its offset, its length and the
-/// byte widths of one record's fields, the record repeated over the
-/// section. Reserved bytes and `u8` arrays count byte by byte; a channel
-/// name is one field.
-///
-/// Transcribed by hand from the V32 layout: on a wire format bump, check
-/// every section's fields against the new bulk_params.h (a same-size change
-/// inside a section passes the layout test) and move the pin below.
+/// The maximal runs of bytes where `a` and `b` differ.
+fn changed_runs(a: &[u8], b: &[u8]) -> Vec<Range<usize>> {
+    let mut runs = Vec::new();
+    let mut open: Option<usize> = None;
+    for (i, (x, y)) in a.iter().zip(b).enumerate() {
+        match (x != y, open) {
+            (true, None) => open = Some(i),
+            (false, Some(start)) => {
+                runs.push(start..i);
+                open = None;
+            }
+            _ => {}
+        }
+    }
+    if let Some(start) = open {
+        runs.push(start..a.len().min(b.len()));
+    }
+    runs
+}
+
+/// `WireBandParams`: type, bypass, the Linkwitz target Q pair, freq, Q, gain.
+const BAND_FIELDS: &[usize] = &[1, 1, 2, 4, 4, 4];
+
+/// The bulk image's sections as `(offset, length, field widths of one
+/// record)`; a section is a run of such records (`bulk_params.h`).
 pub(crate) const IMAGE_FIELDS: [(usize, usize, &[usize]); 25] = [
     (
         g::OFF_HEADER,
@@ -905,186 +971,785 @@ pub(crate) const IMAGE_FIELDS: [(usize, usize, &[usize]); 25] = [
     (g::OFF_LIMITER, g::LEN_LIMITER, &[1, 1, 1, 1, 4, 4]),
 ];
 
-// -- WP CG35 -- (review c6x N1)
-const _: () = assert!(
-    g::wire::WIRE_FORMAT_VERSION == 32,
-    "the wire format changed: update presets::IMAGE_FIELDS (crates/dspi-core/src/presets.rs) \
-     to the new bulk_params.h, then this pin"
-);
-
-/// `WireBandParams`: type, bypass, the Linkwitz target Q (`u16`), freq, Q,
-/// gain.
-const BAND_FIELDS: &[usize] = &[1, 1, 2, 4, 4, 4];
-
-/// [`IMAGE_FIELDS`] as byte ranges of the image, in order. A record that
-/// does not fit its section's end is cut there (the layout test rules that
-/// out).
-pub(crate) fn image_fields() -> Vec<std::ops::Range<usize>> {
+/// Every field of the bulk image, in order, as byte ranges: [`IMAGE_FIELDS`]
+/// with each section's records spelled out.
+pub(crate) fn image_fields() -> Vec<Range<usize>> {
     let mut fields = Vec::new();
-    for &(off, len, widths) in &IMAGE_FIELDS {
-        let end = off.saturating_add(len);
-        let mut at = off;
-        for &w in widths.iter().cycle() {
-            if at >= end || w == 0 {
-                break;
+    for &(offset, len, widths) in &IMAGE_FIELDS {
+        let end = offset.saturating_add(len);
+        let mut at = offset;
+        'records: while at < end {
+            for &w in widths {
+                let next = at.saturating_add(w);
+                if w == 0 || next > end {
+                    break 'records;
+                }
+                fields.push(at..next);
+                at = next;
             }
-            let next = at.saturating_add(w).min(end);
-            fields.push(at..next);
-            at = next;
         }
     }
     fields
 }
 
-/// The maximal runs of bytes in which `mirror` differs from `old`.
-fn byte_runs(old: &[u8], mirror: &[u8]) -> Vec<std::ops::Range<usize>> {
-    let mut runs = Vec::new();
-    let mut start = None;
-    let differs = mirror.iter().zip(old).map(|(m, o)| m != o);
-    for (i, differs) in differs.chain(std::iter::once(false)).enumerate() {
-        match (start, differs) {
-            (None, true) => start = Some(i),
-            (Some(s), false) => {
-                start = None;
-                runs.push(s..i);
-            }
-            _ => {}
+// ── The change list ───────────────────────────────────────────────────
+
+/// `OUTPUT_CONFIG_MODE_WITH_PRESET` and `MASTER_VOLUME_MODE_WITH_PRESET`.
+const WITH_PRESET: u8 = 1;
+/// The console's floor of a subharmonic band level: the band is off.
+const SUBHARM_BAND_OFF_DB: f32 = g::ranges::SUBHARM_LEVEL_MIN;
+/// The console's top of the sub ceiling: no ceiling.
+const SUBHARM_NO_CEILING_DB: f32 = g::ranges::SUBHARM_CEILING_MAX;
+/// I2S input rate codes, in Hz.
+const I2S_RATES_HZ: [u32; 3] = [44_100, 48_000, 96_000];
+/// The ADAT input pin's "unset" value in the mirror.
+const PIN_UNSET: u8 = 0xFF;
+
+/// The rows for going from `saved` to `live`, in the console's order.
+/// `sources`: the user's input source names ("" for none).
+fn changes(saved: &DspState, live: &DspState, sources: &[String]) -> Vec<String> {
+    let mut d = Rows {
+        out: Vec::new(),
+        live,
+    };
+    d.global(saved);
+    d.loudness_and_crossfeed(saved);
+    d.psybass(saved);
+    d.subharm(saved);
+    d.tube(saved);
+    if live.output_config_mode == WITH_PRESET {
+        d.limiters(saved);
+    }
+    d.upmix(saved);
+    d.leveller(saved);
+    d.channels(saved);
+    d.names(saved);
+    if live.output_config_mode == WITH_PRESET {
+        d.output_config(saved);
+    }
+    if saved.input_source != live.input_source {
+        let others_on = live.spdif_inputs_enabled & 0x0E != 0;
+        let title = |s: u8| source_title(s, sources, others_on);
+        d.out.push(format!(
+            "Input source: {} → {}",
+            title(saved.input_source),
+            title(live.input_source)
+        ));
+    }
+    d.toggle(
+        saved.lg_sound_sync_enabled,
+        live.lg_sound_sync_enabled,
+        "LG Sound Sync",
+    );
+    d.out
+}
+
+/// The rows so far, and the live state they compare with.
+struct Rows<'a> {
+    out: Vec<String>,
+    live: &'a DspState,
+}
+
+impl Rows<'_> {
+    /// A row from `text` when the values differ.
+    fn value(&mut self, a: f32, b: f32, text: impl FnOnce(f32, f32) -> String) {
+        if !same(a, b) {
+            self.out.push(text(a, b));
         }
     }
-    runs
-}
 
-/// The occupied-mask bit of `slot`, or `Refused { PRESET_ERR_INVALID_SLOT }`
-/// (what the firmware answers) for a slot past `MAX_PRESETS`.
-fn slot_bit(slot: u8) -> Result<u16> {
-    let refused = DspiError::Refused {
-        status: PRESET_ERR_INVALID_SLOT,
-    };
-    if usize::from(slot) >= MAX_PRESETS {
-        return Err(refused);
+    /// "`what`: enabled" (or disabled) when the switch moved.
+    fn toggle(&mut self, a: bool, b: bool, what: &str) {
+        if a != b {
+            self.out.push(format!("{what}: {}", enabled(b)));
+        }
     }
-    1u16.checked_shl(u32::from(slot)).ok_or(refused)
-}
 
-/// `slot` as an index into `preset_names`, or `InvalidArgument`.
-fn slot_index(slot: u8) -> Result<usize> {
-    let index = usize::from(slot);
-    if index >= MAX_PRESETS {
-        return Err(DspiError::InvalidArgument {
-            msg: format!("preset slot {slot} is out of range (0..{MAX_PRESETS})"),
+    /// "`what`: 0x…. → 0x…." for a 16-bit mask.
+    fn mask16(&mut self, a: u16, b: u16, what: &str) {
+        if a != b {
+            self.out.push(format!("{what}: 0x{a:04X} → 0x{b:04X}"));
+        }
+    }
+
+    /// "`what`: a`unit` → b`unit`", the values as the console prints them.
+    fn plain(&mut self, a: f32, b: f32, what: &str, unit: &str) {
+        self.value(a, b, |a, b| {
+            format!("{what}: {}{unit} → {}{unit}", plain(a), plain(b))
         });
     }
-    Ok(index)
-}
 
-/// `REQ_PRESET_SAVE` of `slot`, then wait for it to show in the directory;
-/// the mirror's active slot and occupied mask follow.
-fn save_locked(inner: &mut Inner, slot: u8, bit: u16) -> Result<()> {
-    let code = inner
-        .writable_conn()?
-        .set_as_read(op::REQ_PRESET_SAVE, u16::from(slot))?;
-    error::status(code)?;
-    if !wait_for(inner.conn()?, |c| Ok(read_occupied(c)? & bit != 0)) {
-        return Err(unconfirmed(inner, "saving", slot));
+    /// The live label of wire channel `ch`, or `fallback`.
+    fn label(&self, ch: usize, fallback: impl FnOnce() -> String) -> String {
+        channel_label(self.live, ch).unwrap_or_else(fallback)
     }
-    inner.state.active_preset_slot = slot;
-    inner.state.preset_occupied |= bit;
-    Ok(())
-}
 
-/// A deferred operation the device did not confirm in time, which may also
-/// have failed on the device: the mirror's directory fields follow the
-/// directory, if it answers, instead of assuming the operation's outcome.
-fn unconfirmed(inner: &mut Inner, doing: &str, slot: u8) -> DspiError {
-    if let Some(conn) = inner.conn.as_mut() {
-        let _ = read_preset_directory(conn, &mut inner.state);
-    }
-    DspiError::Transfer {
-        msg: format!("the device did not confirm {doing} preset {slot} in time"),
-    }
-}
-
-/// Poll `done` until it holds or the deferred-operation timeout passes. A
-/// failed poll counts as "not yet".
-fn wait_for(conn: &mut Connection, mut done: impl FnMut(&mut Connection) -> Result<bool>) -> bool {
-    let start = Instant::now();
-    loop {
-        if let Ok(true) = done(conn) {
-            return true;
+    fn global(&mut self, s: &DspState) {
+        const LABELS: [&str; 8] = ["L", "R", "FC", "LFE", "BL", "BR", "SL", "SR"];
+        for (ch, (&a, &b)) in s
+            .input_preamp_db
+            .iter()
+            .zip(&self.live.input_preamp_db)
+            .enumerate()
+        {
+            let label = LABELS.get(ch).map_or_else(
+                || format!("In {}", ch.saturating_add(1)),
+                |l| (*l).to_owned(),
+            );
+            self.value(a, b, |a, b| {
+                format!("Preamp {label}: {} → {}", db(a), db(b))
+            });
         }
-        if start.elapsed() >= DEFERRED_TIMEOUT {
-            return false;
+        // The master volume belongs to a preset only in that mode, and the
+        // live mode decides, so a switch to it shows a level that differs.
+        if self.live.master_volume_mode == WITH_PRESET {
+            self.value(s.master_volume_db, self.live.master_volume_db, |a, b| {
+                format!("Master Volume: {} → {}", volume(a), volume(b))
+            });
         }
-        dspi_transport::clock::sleep(POLL_INTERVAL);
+        if s.bypass != self.live.bypass {
+            self.out.push(format!(
+                "Master EQ bypass: {} → {}",
+                on_off(s.bypass),
+                on_off(self.live.bypass)
+            ));
+        }
+    }
+
+    fn loudness_and_crossfeed(&mut self, s: &DspState) {
+        let l = self.live;
+        self.toggle(s.loudness_enabled, l.loudness_enabled, "Loudness");
+        self.mask16(
+            s.loudness_output_mask,
+            l.loudness_output_mask,
+            "Loudness outputs",
+        );
+        self.plain(
+            s.loudness_ref_spl,
+            l.loudness_ref_spl,
+            "Loudness ref SPL",
+            "",
+        );
+        self.plain(
+            s.loudness_intensity,
+            l.loudness_intensity,
+            "Loudness intensity",
+            "%",
+        );
+
+        self.toggle(s.crossfeed_enabled, l.crossfeed_enabled, "Crossfeed");
+        if s.crossfeed_preset != l.crossfeed_preset {
+            self.out.push(format!(
+                "Crossfeed preset: {} → {}",
+                s.crossfeed_preset, l.crossfeed_preset
+            ));
+        }
+        self.value(s.crossfeed_freq, l.crossfeed_freq, |a, b| {
+            format!("Crossfeed frequency: {} → {} Hz", plain(a), plain(b))
+        });
+        self.plain(s.crossfeed_feed, l.crossfeed_feed, "Crossfeed feed", "");
+        self.toggle(s.crossfeed_itd, l.crossfeed_itd, "Crossfeed ITD");
+        if s.crossfeed_output_pair_mask != l.crossfeed_output_pair_mask {
+            self.out.push(format!(
+                "Crossfeed output pairs: 0x{:02X} → 0x{:02X}",
+                s.crossfeed_output_pair_mask, l.crossfeed_output_pair_mask
+            ));
+        }
+        for p in 0..CROSSFEED_MAP_PAIRS {
+            let (a, b) = (
+                pair_outputs(&s.crossfeed_pair_map, p),
+                pair_outputs(&l.crossfeed_pair_map, p),
+            );
+            if a != b {
+                self.out.push(format!(
+                    "Crossfeed pair {} outputs: {}/{} → {}/{}",
+                    p.saturating_add(1),
+                    a.0.saturating_add(1),
+                    a.1.saturating_add(1),
+                    b.0.saturating_add(1),
+                    b.1.saturating_add(1)
+                ));
+            }
+        }
+    }
+
+    fn psybass(&mut self, s: &DspState) {
+        let l = self.live;
+        self.toggle(s.psybass_enabled, l.psybass_enabled, "Psychoacoustic Bass");
+        self.mask16(
+            s.psybass_output_mask,
+            l.psybass_output_mask,
+            "Psybass outputs",
+        );
+        self.value(s.psybass_cutoff_hz, l.psybass_cutoff_hz, |a, b| {
+            format!("Psybass cutoff: {} → {} Hz", plain(a), plain(b))
+        });
+        self.plain(
+            s.psybass_harmonics_db,
+            l.psybass_harmonics_db,
+            "Psybass harmonics",
+            " dB",
+        );
+        self.plain(
+            s.psybass_drive_db,
+            l.psybass_drive_db,
+            "Psybass drive",
+            " dB",
+        );
+        self.plain(
+            s.psybass_character_pct,
+            l.psybass_character_pct,
+            "Psybass character",
+            "%",
+        );
+        self.plain(
+            s.psybass_original_db,
+            l.psybass_original_db,
+            "Psybass original bass",
+            " dB",
+        );
+    }
+
+    fn subharm(&mut self, s: &DspState) {
+        let (a, b) = (&s.subharm, &self.live.subharm);
+        let at = |v: &[f32], id: u8| param(v, id);
+        self.toggle(
+            at(a, SUBHARM_PARAM_ENABLED) != 0.0,
+            at(b, SUBHARM_PARAM_ENABLED) != 0.0,
+            "Subharmonic Synthesizer",
+        );
+        self.mask16(
+            at(a, SUBHARM_PARAM_MASK) as u16,
+            at(b, SUBHARM_PARAM_MASK) as u16,
+            "Subharm outputs",
+        );
+        for (id, band) in [
+            (SUBHARM_PARAM_LOW, "24-36 Hz"),
+            (SUBHARM_PARAM_HIGH, "36-56 Hz"),
+            (SUBHARM_PARAM_TOP, "56-80 Hz"),
+        ] {
+            self.value(at(a, id), at(b, id), |x, y| {
+                format!("Subharm {band}: {} → {}", band_level(x), band_level(y))
+            });
+        }
+        let (ma, mb) = (
+            at(a, SUBHARM_PARAM_SELECT) as i64,
+            at(b, SUBHARM_PARAM_SELECT) as i64,
+        );
+        if ma != mb {
+            self.out.push(format!(
+                "Subharm selectivity: {} → {}",
+                selectivity(ma),
+                selectivity(mb)
+            ));
+        }
+        self.plain(
+            at(a, SUBHARM_PARAM_DEPTH),
+            at(b, SUBHARM_PARAM_DEPTH),
+            "Subharm selectivity depth",
+            "%",
+        );
+        self.plain(
+            at(a, SUBHARM_PARAM_HOLD),
+            at(b, SUBHARM_PARAM_HOLD),
+            "Subharm selectivity hold",
+            " ms",
+        );
+        self.value(
+            at(a, SUBHARM_PARAM_CEILING),
+            at(b, SUBHARM_PARAM_CEILING),
+            |x, y| format!("Subharm sub ceiling: {} → {}", ceiling(x), ceiling(y)),
+        );
+        let (la, lb) = (
+            at(a, SUBHARM_PARAM_LINK) != 0.0,
+            at(b, SUBHARM_PARAM_LINK) != 0.0,
+        );
+        if la != lb {
+            let word = if lb { "linked" } else { "independent" };
+            self.out.push(format!("Subharm pair link: {word}"));
+        }
+        self.plain(
+            at(a, SUBHARM_PARAM_BOOST),
+            at(b, SUBHARM_PARAM_BOOST),
+            "Subharm LF boost",
+            " dB",
+        );
+    }
+
+    fn tube(&mut self, s: &DspState) {
+        use g::tube as t;
+        let (a, b) = (&s.tube, &self.live.tube);
+        let at = |v: &[f32], id: u16| param(v, u8::try_from(id).unwrap_or(u8::MAX));
+        self.toggle(
+            at(a, t::TUBE_PARAM_ENABLED) != 0.0,
+            at(b, t::TUBE_PARAM_ENABLED) != 0.0,
+            "Tube Modeller",
+        );
+        self.mask16(
+            at(a, t::TUBE_PARAM_OUTPUT_MASK) as u16,
+            at(b, t::TUBE_PARAM_OUTPUT_MASK) as u16,
+            "Tube outputs",
+        );
+        let (ta, tb) = (
+            at(a, t::TUBE_PARAM_TUBE_TYPE) as u8,
+            at(b, t::TUBE_PARAM_TUBE_TYPE) as u8,
+        );
+        if ta != tb {
+            self.out.push(format!(
+                "Tube type: {} → {}",
+                dspi_session::tube::type_name(ta),
+                dspi_session::tube::type_name(tb)
+            ));
+        }
+        for (id, what, unit) in [
+            (t::TUBE_PARAM_DRIVE_DB, "Tube drive", " dB"),
+            (t::TUBE_PARAM_BIAS_PCT, "Tube bias", "%"),
+            (t::TUBE_PARAM_ASYM_DB, "Tube asymmetry", " dB"),
+            (t::TUBE_PARAM_HARDNESS_PCT, "Tube knee hardness", "%"),
+            (t::TUBE_PARAM_SAG_PCT, "Tube sag", "%"),
+        ] {
+            self.plain(at(a, id), at(b, id), what, unit);
+        }
+        let (ra, rb) = (
+            at(a, t::TUBE_PARAM_RECTIFIER) as u8,
+            at(b, t::TUBE_PARAM_RECTIFIER) as u8,
+        );
+        if ra != rb {
+            self.out.push(format!(
+                "Tube rectifier: {} → {}",
+                dspi_session::tube::rectifier_name(ra),
+                dspi_session::tube::rectifier_name(rb)
+            ));
+        }
+        self.toggle(
+            at(a, t::TUBE_PARAM_XFMR_ENABLED) != 0.0,
+            at(b, t::TUBE_PARAM_XFMR_ENABLED) != 0.0,
+            "Tube output stage",
+        );
+        self.plain(
+            at(a, t::TUBE_PARAM_XFMR_DAMPING),
+            at(b, t::TUBE_PARAM_XFMR_DAMPING),
+            "Tube damping factor",
+            "",
+        );
+        self.value(
+            at(a, t::TUBE_PARAM_XFMR_RES_HZ),
+            at(b, t::TUBE_PARAM_XFMR_RES_HZ),
+            |x, y| format!("Tube speaker resonance: {} → {} Hz", plain(x), plain(y)),
+        );
+        self.plain(
+            at(a, t::TUBE_PARAM_MIX_PCT),
+            at(b, t::TUBE_PARAM_MIX_PCT),
+            "Tube mix",
+            "%",
+        );
+        self.plain(
+            at(a, t::TUBE_PARAM_TRIM_DB),
+            at(b, t::TUBE_PARAM_TRIM_DB),
+            "Tube output trim",
+            " dB",
+        );
+    }
+
+    fn limiters(&mut self, s: &DspState) {
+        let l = self.live;
+        let first_output = usize::from(l.num_input_channels);
+        for i in 0..usize::from(l.num_output_channels) {
+            let name = self.label(first_output.saturating_add(i), || format!("Output {i}"));
+            let flag = |v: &[bool]| v.get(i).copied().unwrap_or(false);
+            let num = |v: &[f32]| v.get(i).copied().unwrap_or(0.0);
+            let group = |v: &[u8]| v.get(i).copied().unwrap_or(0);
+            if flag(&s.limiter_enabled) != flag(&l.limiter_enabled) {
+                self.out.push(format!(
+                    "{name} limiter: {}",
+                    enabled(flag(&l.limiter_enabled))
+                ));
+            }
+            self.value(
+                num(&s.limiter_threshold_db),
+                num(&l.limiter_threshold_db),
+                |a, b| format!("{name} limiter threshold: {a:.1} → {b:.1} dBFS"),
+            );
+            self.value(
+                num(&s.limiter_release_ms),
+                num(&l.limiter_release_ms),
+                |a, b| format!("{name} limiter release: {} ms → {} ms", plain(a), plain(b)),
+            );
+            let (ga, gb) = (group(&s.limiter_link_group), group(&l.limiter_link_group));
+            if ga != gb {
+                self.out.push(format!(
+                    "{name} limiter link: {} → {}",
+                    dspi_session::state::limiter_link_group_name(ga),
+                    dspi_session::state::limiter_link_group_name(gb)
+                ));
+            }
+        }
+    }
+
+    fn upmix(&mut self, s: &DspState) {
+        let (a, b) = (&s.upmix, &self.live.upmix);
+        let at = |v: &[f32], id: u8| param(v, id);
+        self.toggle(
+            at(a, UPMIX_PARAM_ENABLED) != 0.0,
+            at(b, UPMIX_PARAM_ENABLED) != 0.0,
+            "Stereo Upmixer",
+        );
+        // The console's names, by wire value.
+        let modes: [(u8, &str, [&str; 3]); 2] = [
+            (
+                UPMIX_PARAM_CENTER_MODE,
+                "Centre mode",
+                ["Sinner", "Logician", "Off"],
+            ),
+            (
+                UPMIX_PARAM_SURROUND_MODE,
+                "Surround mode",
+                ["Off", "Sinner", "Logician"],
+            ),
+        ];
+        for (id, what, names) in modes {
+            let (x, y) = (at(a, id) as i64, at(b, id) as i64);
+            if x != y {
+                let name = |m: i64| {
+                    usize::try_from(m)
+                        .ok()
+                        .and_then(|i| names.get(i))
+                        .map_or_else(|| m.to_string(), |n| (*n).to_owned())
+                };
+                self.out.push(format!("{what}: {} → {}", name(x), name(y)));
+            }
+        }
+        for (id, what, unit) in [
+            (UPMIX_PARAM_STRENGTH, "Centre strength", "%"),
+            (UPMIX_PARAM_WIDTH, "Centre width", "%"),
+            (UPMIX_PARAM_THRESHOLD, "Correlation threshold", "%"),
+            (UPMIX_PARAM_ATTACK, "Centre attack", " ms"),
+            (UPMIX_PARAM_RELEASE, "Centre release", " ms"),
+            (UPMIX_PARAM_DETECTOR_HPF, "Detector HPF", " Hz"),
+            (UPMIX_PARAM_SURROUND_DELAY, "Surround delay", " ms"),
+            (UPMIX_PARAM_SURROUND_HPF, "Surround HPF", " Hz"),
+            (UPMIX_PARAM_SURROUND_LPF, "Surround LPF", " Hz"),
+            (UPMIX_PARAM_DECORRELATION, "Decorrelation", "%"),
+            (UPMIX_PARAM_PRESENCE, "Centre presence", " dB"),
+        ] {
+            self.plain(at(a, id), at(b, id), what, unit);
+        }
+    }
+
+    fn leveller(&mut self, s: &DspState) {
+        let l = self.live;
+        self.toggle(s.leveller_enabled, l.leveller_enabled, "Volume Leveller");
+        self.plain(s.leveller_amount, l.leveller_amount, "Leveller amount", "%");
+        if s.leveller_speed != l.leveller_speed {
+            let name = |v: u8| {
+                ["Slow", "Medium", "Fast"]
+                    .get(usize::from(v))
+                    .map_or_else(|| v.to_string(), |n| (*n).to_owned())
+            };
+            self.out.push(format!(
+                "Leveller speed: {} → {}",
+                name(s.leveller_speed),
+                name(l.leveller_speed)
+            ));
+        }
+        self.plain(
+            s.leveller_max_gain_db,
+            l.leveller_max_gain_db,
+            "Leveller max gain",
+            " dB",
+        );
+        self.toggle(
+            s.leveller_lookahead,
+            l.leveller_lookahead,
+            "Leveller lookahead",
+        );
+        self.plain(
+            s.leveller_gate_db,
+            l.leveller_gate_db,
+            "Leveller gate",
+            " dB",
+        );
+        if s.leveller_detector_mask != l.leveller_detector_mask {
+            self.out
+                .push("Leveller detector channels changed".to_owned());
+        }
+        if s.leveller_apply_mask != l.leveller_apply_mask {
+            self.out.push("Leveller apply channels changed".to_owned());
+        }
+    }
+
+    /// Delays, the matrix, the outputs, the EQ and the crossovers.
+    fn channels(&mut self, s: &DspState) {
+        let l = self.live;
+        let inputs = usize::from(l.num_input_channels);
+        let outputs = usize::from(l.num_output_channels);
+        let total = usize::from(l.num_channels);
+
+        for ch in 0..total {
+            let (a, b) = (
+                s.channel_delays.get(ch).copied().unwrap_or(0.0),
+                l.channel_delays.get(ch).copied().unwrap_or(0.0),
+            );
+            if !same(a, b) {
+                let name = self.label(ch, || format!("Ch {ch}"));
+                self.out
+                    .push(format!("{name} delay: {} ms → {} ms", delay(a), delay(b)));
+            }
+        }
+
+        let crosspoints = (0..inputs)
+            .flat_map(|i| (0..outputs).map(move |o| (i, o)))
+            .filter(|&(i, o)| {
+                let cell = |st: &DspState| {
+                    (
+                        cell(&st.matrix_routing, i, o).copied().unwrap_or(false),
+                        cell(&st.matrix_gain, i, o).copied().unwrap_or(0.0),
+                        cell(&st.matrix_invert, i, o).copied().unwrap_or(false),
+                    )
+                };
+                let (x, y) = (cell(s), cell(l));
+                x.0 != y.0 || !same(x.1, y.1) || x.2 != y.2
+            })
+            .count();
+        if crosspoints > 0 {
+            self.out.push(format!(
+                "{crosspoints} crosspoint{} changed",
+                plural(crosspoints)
+            ));
+        }
+
+        for i in 0..outputs {
+            let name = self.label(inputs.saturating_add(i), || format!("Output {i}"));
+            let flag = |v: &[bool]| v.get(i).copied().unwrap_or(false);
+            let num = |v: &[f32]| v.get(i).copied().unwrap_or(0.0);
+            let mut what = Vec::new();
+            if flag(&s.output_enabled) != flag(&l.output_enabled) {
+                what.push(
+                    if flag(&l.output_enabled) {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    }
+                    .to_owned(),
+                );
+            }
+            if flag(&s.output_muted) != flag(&l.output_muted) {
+                what.push(
+                    if flag(&l.output_muted) {
+                        "muted"
+                    } else {
+                        "unmuted"
+                    }
+                    .to_owned(),
+                );
+            }
+            let (ga, gb) = (num(&s.output_gain_db), num(&l.output_gain_db));
+            if !same(ga, gb) {
+                what.push(format!("gain: {} → {}", db(ga), db(gb)));
+            }
+            let (da, dbl) = (num(&s.output_delay_ms), num(&l.output_delay_ms));
+            if !same(da, dbl) {
+                what.push(format!("delay: {} ms → {} ms", delay(da), delay(dbl)));
+            }
+            for w in what {
+                self.out.push(format!("{name} {w}"));
+            }
+        }
+
+        for ch in 0..total {
+            let n = bands_changed(&s.filters, &l.filters, ch, BANDS_PER_CHANNEL);
+            if n > 0 {
+                let name = self.label(ch, || format!("Ch {ch}"));
+                self.out
+                    .push(format!("{n} band{} changed on {name}", plural(n)));
+            }
+        }
+        for ch in inputs..total {
+            let n = bands_changed(&s.xover, &l.xover, ch, MAX_XOVER_BANDS);
+            if n > 0 {
+                let name = self.label(ch, || format!("Ch {ch}"));
+                self.out
+                    .push(format!("{n} crossover band{} changed on {name}", plural(n)));
+            }
+        }
+    }
+
+    /// Renames. One output default name to another is the firmware following
+    /// an output type change, not an edit: skipped.
+    fn names(&mut self, s: &DspState) {
+        let l = self.live;
+        for (ch, (a, b)) in s.channel_names.iter().zip(&l.channel_names).enumerate() {
+            if a == b {
+                continue;
+            }
+            let was_default = firmware_name(s, ch).is_some_and(|n| n == *a);
+            let is_default = firmware_name(l, ch).is_some_and(|n| n == *b);
+            if was_default && is_default {
+                continue;
+            }
+            self.out.push(format!("'{a}' → '{b}'"));
+        }
+    }
+
+    /// The output configuration: what a preset holds only in that mode.
+    fn output_config(&mut self, s: &DspState) {
+        let l = self.live;
+        let pins = differing(&s.output_pins, &l.output_pins);
+        if pins > 0 {
+            self.out
+                .push(format!("{pins} pin assignment{} changed", plural(pins)));
+        }
+        let types = differing(&s.output_types, &l.output_types);
+        if types > 0 {
+            self.out
+                .push(format!("{types} output type{} changed", plural(types)));
+        }
+        self.gpio(s.i2s_bck_pin, l.i2s_bck_pin, "BCK pin");
+        self.toggle(s.mck_enabled, l.mck_enabled, "MCK");
+        self.gpio(s.mck_pin, l.mck_pin, "MCK pin");
+        if s.mck_multiplier != l.mck_multiplier {
+            self.out.push(format!(
+                "MCK multiplier: {}x → {}x",
+                mck_multiplier(s.mck_multiplier),
+                mck_multiplier(l.mck_multiplier)
+            ));
+        }
+        let first = |v: &[u8]| v.first().copied().unwrap_or(0);
+        self.gpio(
+            first(&s.spdif_rx_pins),
+            first(&l.spdif_rx_pins),
+            "S/PDIF RX pin",
+        );
+        if s.spdif_inputs_enabled_present && l.spdif_inputs_enabled_present {
+            // Bit k is S/PDIF input k + 1; the first is always on.
+            for k in 1..4u32 {
+                let on = |m: u8| m & 1u8.checked_shl(k).unwrap_or(0) != 0;
+                let (a, b) = (on(s.spdif_inputs_enabled), on(l.spdif_inputs_enabled));
+                if a != b {
+                    self.out.push(format!(
+                        "S/PDIF {} input: {}",
+                        k.saturating_add(1),
+                        enabled(b)
+                    ));
+                }
+            }
+            for (i, (a, b)) in s
+                .spdif_rx_pins
+                .iter()
+                .zip(&l.spdif_rx_pins)
+                .enumerate()
+                .skip(1)
+            {
+                self.gpio(*a, *b, &format!("S/PDIF {} RX pin", i.saturating_add(1)));
+            }
+        }
+        if s.i2s_input_channels != l.i2s_input_channels {
+            self.out.push(format!(
+                "I2S input channels: {} → {}",
+                s.i2s_input_channels, l.i2s_input_channels
+            ));
+        }
+        let pairs = if l.platform_id == 0 { 1 } else { 4 };
+        for (p, (a, b)) in s
+            .i2s_rx_pins
+            .iter()
+            .zip(&l.i2s_rx_pins)
+            .take(pairs)
+            .enumerate()
+        {
+            self.gpio(
+                *a,
+                *b,
+                &format!("I2S RX pin (pair {})", p.saturating_add(1)),
+            );
+        }
+        let (ra, rb) = (rate_hz(s.i2s_input_rate), rate_hz(l.i2s_input_rate));
+        if ra != rb {
+            self.out.push(format!("I2S rate: {ra} Hz → {rb} Hz"));
+        }
+        if s.i2s_clock_mode != l.i2s_clock_mode {
+            self.out.push(format!(
+                "I2S clock mode: {} → {}",
+                clock_mode(s.i2s_clock_mode),
+                clock_mode(l.i2s_clock_mode)
+            ));
+        }
+        // ADAT is an RP2350 feature.
+        if l.platform_id == 1 {
+            self.toggle(s.adat_out_enabled, l.adat_out_enabled, "ADAT output");
+            self.gpio(s.adat_out_pin, l.adat_out_pin, "ADAT pin");
+            if s.adat_input_enabled_present && l.adat_input_enabled_present {
+                self.toggle(s.adat_input_enabled, l.adat_input_enabled, "ADAT input");
+            }
+            if s.adat_input_pin != l.adat_input_pin {
+                let pin = |p: u8| {
+                    if p == PIN_UNSET {
+                        "unset".to_owned()
+                    } else {
+                        format!("GPIO {p}")
+                    }
+                };
+                self.out.push(format!(
+                    "ADAT input pin: {} → {}",
+                    pin(s.adat_input_pin),
+                    pin(l.adat_input_pin)
+                ));
+            }
+            if s.adat_input_clock_mode_present
+                && l.adat_input_clock_mode_present
+                && s.adat_input_clock_mode != l.adat_input_clock_mode
+            {
+                self.out.push(format!(
+                    "ADAT input clock mode: {} → {}",
+                    clock_mode(s.adat_input_clock_mode),
+                    clock_mode(l.adat_input_clock_mode)
+                ));
+            }
+        }
+    }
+
+    /// "`what`: GPIO a → GPIO b".
+    fn gpio(&mut self, a: u8, b: u8, what: &str) {
+        if a != b {
+            self.out.push(format!("{what}: GPIO {a} → GPIO {b}"));
+        }
     }
 }
 
-/// `REQ_PRESET_GET_ACTIVE`: the active slot.
-fn read_active(conn: &mut Connection) -> Result<u8> {
-    let d = conn.get_upto(op::REQ_PRESET_GET_ACTIVE, 0, 1)?;
-    d.first().copied().ok_or(DspiError::Transfer {
-        msg: "empty reply to REQ_PRESET_GET_ACTIVE".into(),
-    })
+/// Equal as the console compares (`==`), but a NaN equals a NaN, so one
+/// stored in the image never reads as a change.
+fn same(a: f32, b: f32) -> bool {
+    a == b || (a.is_nan() && b.is_nan())
 }
 
-/// The directory's occupied mask, read into a scratch state (the caller
-/// updates the mirror once the operation is confirmed).
-fn read_occupied(conn: &mut Connection) -> Result<u16> {
-    let mut scratch = state::default_state();
-    Ok(read_preset_directory(conn, &mut scratch)?.occupied_mask)
+fn enabled(on: bool) -> &'static str {
+    if on { "enabled" } else { "disabled" }
 }
 
-/// The `REQ_PRESET_SET_NAME` payload: `name` up to an embedded NUL, at most
-/// 31 bytes cut at a character boundary, then the NUL. An empty name is a
-/// lone NUL, which clears the name.
-fn name_payload(name: &str) -> Vec<u8> {
-    let name = name.split('\0').next().unwrap_or("");
-    let mut len = name.len().min(PRESET_NAME_LEN.saturating_sub(1));
-    while !name.is_char_boundary(len) {
-        len = len.saturating_sub(1);
-    }
-    let mut out = name.as_bytes().get(..len).unwrap_or(&[]).to_vec();
-    out.push(0);
-    out
+fn on_off(on: bool) -> &'static str {
+    if on { "on" } else { "off" }
 }
 
-/// The changes from the `baseline` image to the live one, both decoded onto
-/// the live mirror (so the fields the image does not carry, such as the
-/// persistence modes, are the live ones). Empty when either does not decode.
-fn changes(baseline: &[u8], live: &DspState, source_names: &[String]) -> Vec<String> {
-    let mut old = live.clone();
-    let mut new = live.clone();
-    if state::decode_bulk(baseline, &mut old).is_err()
-        || state::decode_bulk(&live.bulk_raw, &mut new).is_err()
-    {
-        return Vec::new();
-    }
-    diff(&old, &new, source_names)
+fn plural(n: usize) -> &'static str {
+    if n == 1 { "" } else { "s" }
 }
 
-// ── The diff (the old core's presetdiff.rs, on checked access) ────────
-
-/// `v[i]`, or the default past the end.
-fn at<T: Copy + Default>(v: &[T], i: usize) -> T {
-    v.get(i).copied().unwrap_or_default()
-}
-
-/// `v[i][j]`, or the default past either end.
-fn at2<T: Copy + Default>(v: &[Vec<T>], i: usize, j: usize) -> T {
-    v.get(i).map(|r| at(r, j)).unwrap_or_default()
-}
-
-/// Two decoded values differ (two NaNs are the same value).
-fn ne(a: f32, b: f32) -> bool {
-    a != b && !(a.is_nan() && b.is_nan())
-}
-
+/// One decimal and the unit: "-3.0 dB".
 fn db(v: f32) -> String {
     format!("{v:.1} dB")
 }
 
-/// Whole numbers without decimals, others with one.
-fn val(v: f32) -> String {
+/// A master volume: at or below -128 dB it is off.
+fn volume(v: f32) -> String {
+    if v <= -128.0 {
+        "-∞ dB".to_owned()
+    } else {
+        db(v)
+    }
+}
+
+/// A whole number as such, anything else with one decimal.
+fn plain(v: f32) -> String {
     if v == v.round() && v.abs() < 100_000.0 {
         format!("{v:.0}")
     } else {
@@ -1092,896 +1757,251 @@ fn val(v: f32) -> String {
     }
 }
 
-/// A delay to its stored 0.0001 ms, without trailing zeros ("1", "1.25"). The
-/// macOS Console sets whole milliseconds and words them "1"; the core keeps
-/// finer delays, which one decimal would show as no change ("1.2 → 1.2").
-fn ms(v: f32) -> String {
-    let s = format!("{v:.4}");
-    s.trim_end_matches('0').trim_end_matches('.').to_string()
-}
-
-fn on(b: bool) -> &'static str {
-    if b { "enabled" } else { "disabled" }
-}
-
-fn plural(n: usize) -> &'static str {
-    if n == 1 { "" } else { "s" }
-}
-
-/// A wire channel's name, or its default name.
-fn channel_label(s: &DspState, wire: usize) -> String {
-    match s.channel_names.get(wire).filter(|n| !n.is_empty()) {
-        Some(name) => name.clone(),
-        None => default_channel_name(s, wire),
+/// A delay in ms: up to four decimals, trailing zeros dropped.
+fn delay(ms: f32) -> String {
+    let text = format!("{ms:.4}");
+    match text.split_once('.') {
+        Some((whole, frac)) => {
+            let frac = frac.trim_end_matches('0');
+            if frac.is_empty() {
+                whole.to_owned()
+            } else {
+                format!("{whole}.{frac}")
+            }
+        }
+        None => text,
     }
 }
 
-/// The firmware's default name for a wire channel under `s`'s output types,
-/// as `DSPViewModel.defaultChannelNames` has it: "USB L", "USB R", "USB 3" on
-/// the inputs; "<SPDIF|I2S> <slot> <L|R>" on the outputs, the last one "PDM".
-fn default_channel_name(s: &DspState, wire: usize) -> String {
-    let ins = usize::from(s.num_input_channels);
-    let Some(out) = wire.checked_sub(ins) else {
-        return match wire {
-            0 => "USB L".into(),
-            1 => "USB R".into(),
-            n => format!("USB {}", n.saturating_add(1)),
-        };
-    };
-    if out.saturating_add(1) == usize::from(s.num_output_channels) {
-        return "PDM".into();
-    }
-    let slot = out / 2;
-    let kind = if at(&s.output_types, slot) == 1 {
-        "I2S"
+/// A subharmonic band level; the floor switches the band off.
+fn band_level(v: f32) -> String {
+    if v <= SUBHARM_BAND_OFF_DB {
+        "off".to_owned()
     } else {
-        "SPDIF"
-    };
-    let side = if out % 2 == 0 { "L" } else { "R" };
-    format!("{kind} {} {side}", slot.saturating_add(1))
+        format!("{} dB", plain(v))
+    }
 }
 
-/// Outputs (left, right) of crossfeed pair `p`, as `CrossfeedPairMap.pair`:
-/// byte 0 is the default pair, so a pair written out on its own default
-/// outputs is no change.
-fn crossfeed_pair(map: &[u8], p: usize) -> (usize, usize) {
-    match at(map, p) {
-        0 => (p.saturating_mul(2), p.saturating_mul(2).saturating_add(1)),
+/// The sub ceiling; at full scale it is off.
+fn ceiling(v: f32) -> String {
+    if v >= SUBHARM_NO_CEILING_DB {
+        "off".to_owned()
+    } else {
+        format!("{} dBFS", plain(v))
+    }
+}
+
+fn selectivity(mode: i64) -> &'static str {
+    match u16::try_from(mode) {
+        Ok(g::subharm::SUBHARM_SELECT_PERCUSSIVE) => "percussive",
+        Ok(g::subharm::SUBHARM_SELECT_SUSTAINED) => "sustained",
+        _ => "all material",
+    }
+}
+
+fn mck_multiplier(code: u8) -> u16 {
+    if code == 1 { 256 } else { 128 }
+}
+
+fn rate_hz(code: u8) -> u32 {
+    I2S_RATES_HZ
+        .get(usize::from(code))
+        .copied()
+        .unwrap_or(48_000)
+}
+
+fn clock_mode(mode: u8) -> &'static str {
+    if mode == 1 { "Slave" } else { "Master" }
+}
+
+/// Parameter `id` of a `*_PARAM_*`-indexed vector, 0 when missing.
+fn param(v: &[f32], id: u8) -> f32 {
+    v.get(usize::from(id)).copied().unwrap_or(0.0)
+}
+
+fn cell<T>(m: &[Vec<T>], i: usize, o: usize) -> Option<&T> {
+    m.get(i).and_then(|row| row.get(o))
+}
+
+/// How many entries differ, over the shorter of the two.
+fn differing(a: &[u8], b: &[u8]) -> usize {
+    a.iter().zip(b).filter(|(x, y)| x != y).count()
+}
+
+/// The outputs (left, right) of crossfeed pair `p`; a missing or zero byte
+/// is the pair's own outputs.
+fn pair_outputs(map: &[u8], p: usize) -> (usize, usize) {
+    match map.get(p).copied().unwrap_or(0) {
+        0 => {
+            let left = p.saturating_mul(2);
+            (left, left.saturating_add(1))
+        }
         b => (usize::from(b & 0x0F), usize::from(b >> 4)),
     }
 }
 
-/// An input source's title, as `DSPViewModel.inputSourceTitle`: the user's name
-/// when `names` has one, else the built-in title, whose number on the first
-/// S/PDIF depends on the live state `s`'s optional S/PDIF inputs.
-fn source_title(s: &DspState, names: &[String], source: u8) -> String {
-    if let Some(name) = names.get(usize::from(source)).filter(|n| !n.is_empty()) {
-        return name.clone();
-    }
-    match source {
-        0 => "USB".into(),
-        1 if s.spdif_inputs_enabled & 0x0E != 0 => "S/PDIF 1".into(),
-        1 => "S/PDIF".into(),
-        2 => "I2S".into(),
-        3 => "ADAT".into(),
-        4..=6 => format!("S/PDIF {}", source.saturating_sub(2)),
-        _ => format!("Source {source}"),
-    }
+/// How many of the first `bands` bands of channel `ch` differ.
+fn bands_changed(
+    a: &[Vec<FilterParams>],
+    b: &[Vec<FilterParams>],
+    ch: usize,
+    bands: usize,
+) -> usize {
+    let empty = Vec::new();
+    let (x, y) = (a.get(ch).unwrap_or(&empty), b.get(ch).unwrap_or(&empty));
+    (0..bands)
+        .filter(|&i| match (x.get(i), y.get(i)) {
+            (Some(p), Some(q)) => !same_band(p, q),
+            (None, None) => false,
+            _ => true,
+        })
+        .count()
 }
 
-fn band(v: &[Vec<FilterParams>], ch: usize, b: usize) -> Option<FilterParams> {
-    v.get(ch).and_then(|r| r.get(b)).copied()
-}
-
-fn same_filter(a: Option<FilterParams>, b: Option<FilterParams>) -> bool {
-    let (Some(a), Some(b)) = (a, b) else {
-        return a.is_none() && b.is_none();
-    };
-    // A Linkwitz Transform's target Q counts; for every other type it is
-    // ignored.
-    let qp = |f: &FilterParams| {
-        if FilterType::from_raw(f.filter_type).is_linkwitz() {
-            f.qp
+/// The console's band comparison: type, frequency, Q, gain, bypass, and the
+/// Linkwitz target Q only on a Linkwitz band.
+fn same_band(a: &FilterParams, b: &FilterParams) -> bool {
+    let target_q = |p: &FilterParams| {
+        if FilterType::from_raw(p.filter_type).is_linkwitz() {
+            p.qp
         } else {
             0.0
         }
     };
     a.filter_type == b.filter_type
         && a.bypass == b.bypass
-        && !ne(a.freq, b.freq)
-        && !ne(a.q, b.q)
-        && !ne(a.gain, b.gain)
-        && !ne(qp(&a), qp(&b))
+        && same(a.freq, b.freq)
+        && same(a.q, b.q)
+        && same(a.gain, b.gain)
+        && same(target_q(a), target_q(b))
 }
 
-/// What differs between the baseline `o` and the live state `n`, worded as
-/// the macOS Console words it. The persistence modes are `n`'s;
-/// `source_names` are the user's input source names.
-fn diff(o: &DspState, n: &DspState, source_names: &[String]) -> Vec<String> {
-    let mut c = Vec::new();
-    let ins = usize::from(n.num_input_channels).min(MAX_INPUTS);
-    let outs = usize::from(n.num_output_channels).min(MAX_OUTPUTS);
-    let all = ins.saturating_add(outs).min(MAX_CHANNELS);
-    let hardware = n.output_config_mode == WITH_PRESET;
-    diff_global(o, n, ins, &mut c);
-    diff_effects(o, n, &mut c);
-    if hardware {
-        diff_limiters(o, n, ins, outs, &mut c);
-    }
-    diff_upmix_leveller(o, n, &mut c);
-    diff_channels(o, n, ins, outs, all, &mut c);
-    if hardware {
-        diff_hardware(o, n, &mut c);
-    }
-    if o.input_source != n.input_source {
-        c.push(format!(
-            "Input source: {} → {}",
-            source_title(n, source_names, o.input_source),
-            source_title(n, source_names, n.input_source)
-        ));
-    }
-    if o.lg_sound_sync_enabled != n.lg_sound_sync_enabled {
-        c.push(format!("LG Sound Sync: {}", on(n.lg_sound_sync_enabled)));
-    }
-    c
-}
-
-fn diff_global(o: &DspState, n: &DspState, ins: usize, c: &mut Vec<String>) {
-    let labels = ["L", "R", "FC", "LFE", "BL", "BR", "SL", "SR"];
-    for i in 0..ins {
-        let (a, b) = (at(&o.input_preamp_db, i), at(&n.input_preamp_db, i));
-        if ne(a, b) {
-            let l = labels
-                .get(i)
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| format!("In {}", i.saturating_add(1)));
-            c.push(format!("Preamp {l}: {} → {}", db(a), db(b)));
-        }
-    }
-    if n.master_volume_mode == WITH_PRESET && ne(o.master_volume_db, n.master_volume_db) {
-        let mv = |v: f32| {
-            if v <= -128.0 {
-                "-∞ dB".to_string()
-            } else {
-                db(v)
-            }
-        };
-        c.push(format!(
-            "Master Volume: {} → {}",
-            mv(o.master_volume_db),
-            mv(n.master_volume_db)
-        ));
-    }
-    if o.bypass != n.bypass {
-        let w = |b: bool| if b { "on" } else { "off" };
-        c.push(format!(
-            "Master EQ bypass: {} → {}",
-            w(o.bypass),
-            w(n.bypass)
-        ));
+/// What a channel is called in a row: its name, or the firmware's default
+/// name when it has none.
+fn channel_label(s: &DspState, ch: usize) -> Option<String> {
+    match s.channel_names.get(ch) {
+        Some(n) if !n.is_empty() => Some(n.clone()),
+        _ => firmware_name(s, ch),
     }
 }
 
-fn diff_effects(o: &DspState, n: &DspState, c: &mut Vec<String>) {
-    // Loudness
-    if o.loudness_enabled != n.loudness_enabled {
-        c.push(format!("Loudness: {}", on(n.loudness_enabled)));
+/// The firmware's default name of wire channel `ch` (`get_default_channel_name`):
+/// "USB L", "USB R", "USB 3".. for the inputs; for the outputs
+/// "<SPDIF|I2S> <slot> <L|R>" by the slot's type, and "PDM" for the last.
+fn firmware_name(s: &DspState, ch: usize) -> Option<String> {
+    let inputs = usize::from(s.num_input_channels);
+    let outputs = usize::from(s.num_output_channels);
+    if ch < inputs {
+        return Some(match ch {
+            0 => "USB L".to_owned(),
+            1 => "USB R".to_owned(),
+            n => format!("USB {}", n.saturating_add(1)),
+        });
     }
-    if o.loudness_output_mask != n.loudness_output_mask {
-        c.push(format!(
-            "Loudness outputs: 0x{:04X} → 0x{:04X}",
-            o.loudness_output_mask, n.loudness_output_mask
-        ));
+    let out = ch.checked_sub(inputs)?;
+    if out >= outputs {
+        return None;
     }
-    if ne(o.loudness_ref_spl, n.loudness_ref_spl) {
-        c.push(format!(
-            "Loudness ref SPL: {} → {}",
-            val(o.loudness_ref_spl),
-            val(n.loudness_ref_spl)
-        ));
+    if out.saturating_add(1) == outputs {
+        return Some("PDM".to_owned());
     }
-    if ne(o.loudness_intensity, n.loudness_intensity) {
-        c.push(format!(
-            "Loudness intensity: {}% → {}%",
-            val(o.loudness_intensity),
-            val(n.loudness_intensity)
-        ));
-    }
-
-    // Crossfeed
-    if o.crossfeed_enabled != n.crossfeed_enabled {
-        c.push(format!("Crossfeed: {}", on(n.crossfeed_enabled)));
-    }
-    if o.crossfeed_preset != n.crossfeed_preset {
-        c.push(format!(
-            "Crossfeed preset: {} → {}",
-            o.crossfeed_preset, n.crossfeed_preset
-        ));
-    }
-    if ne(o.crossfeed_freq, n.crossfeed_freq) {
-        c.push(format!(
-            "Crossfeed frequency: {} → {} Hz",
-            val(o.crossfeed_freq),
-            val(n.crossfeed_freq)
-        ));
-    }
-    if ne(o.crossfeed_feed, n.crossfeed_feed) {
-        c.push(format!(
-            "Crossfeed feed: {} → {}",
-            val(o.crossfeed_feed),
-            val(n.crossfeed_feed)
-        ));
-    }
-    if o.crossfeed_itd != n.crossfeed_itd {
-        c.push(format!("Crossfeed ITD: {}", on(n.crossfeed_itd)));
-    }
-    if o.crossfeed_output_pair_mask != n.crossfeed_output_pair_mask {
-        c.push(format!(
-            "Crossfeed output pairs: 0x{:02X} → 0x{:02X}",
-            o.crossfeed_output_pair_mask, n.crossfeed_output_pair_mask
-        ));
-    }
-    for p in 0..CROSSFEED_MAP_PAIRS {
-        let (a, b) = (
-            crossfeed_pair(&o.crossfeed_pair_map, p),
-            crossfeed_pair(&n.crossfeed_pair_map, p),
-        );
-        if a != b {
-            c.push(format!(
-                "Crossfeed pair {} outputs: {}/{} → {}/{}",
-                p.saturating_add(1),
-                a.0.saturating_add(1),
-                a.1.saturating_add(1),
-                b.0.saturating_add(1),
-                b.1.saturating_add(1)
-            ));
-        }
-    }
-
-    // Psychoacoustic bass
-    if o.psybass_enabled != n.psybass_enabled {
-        c.push(format!("Psychoacoustic Bass: {}", on(n.psybass_enabled)));
-    }
-    if o.psybass_output_mask != n.psybass_output_mask {
-        c.push(format!(
-            "Psybass outputs: 0x{:04X} → 0x{:04X}",
-            o.psybass_output_mask, n.psybass_output_mask
-        ));
-    }
-    if ne(o.psybass_cutoff_hz, n.psybass_cutoff_hz) {
-        c.push(format!(
-            "Psybass cutoff: {} → {} Hz",
-            val(o.psybass_cutoff_hz),
-            val(n.psybass_cutoff_hz)
-        ));
-    }
-    for (name, a, b, unit) in [
-        (
-            "Psybass harmonics",
-            o.psybass_harmonics_db,
-            n.psybass_harmonics_db,
-            " dB",
-        ),
-        (
-            "Psybass drive",
-            o.psybass_drive_db,
-            n.psybass_drive_db,
-            " dB",
-        ),
-        (
-            "Psybass character",
-            o.psybass_character_pct,
-            n.psybass_character_pct,
-            "%",
-        ),
-        (
-            "Psybass original bass",
-            o.psybass_original_db,
-            n.psybass_original_db,
-            " dB",
-        ),
-    ] {
-        if ne(a, b) {
-            c.push(format!("{name}: {}{unit} → {}{unit}", val(a), val(b)));
-        }
-    }
-
-    diff_subharm(o, n, c);
-    diff_tube(o, n, c);
-}
-
-fn diff_subharm(o: &DspState, n: &DspState, c: &mut Vec<String>) {
-    let sh = |i: u8| {
-        (
-            at(&o.subharm, usize::from(i)),
-            at(&n.subharm, usize::from(i)),
-        )
+    let slot = out >> 1;
+    let kind = if s.output_types.get(slot) == Some(&1) {
+        "I2S"
+    } else {
+        "SPDIF"
     };
-    let (a, b) = sh(SUBHARM_PARAM_ENABLED);
-    if ne(a, b) {
-        c.push(format!("Subharmonic Synthesizer: {}", on(b != 0.0)));
-    }
-    let (a, b) = sh(SUBHARM_PARAM_MASK);
-    if ne(a, b) {
-        c.push(format!(
-            "Subharm outputs: 0x{:04X} → 0x{:04X}",
-            a as u32, b as u32
-        ));
-    }
-    let level = |v: f32| {
-        if v <= SUBHARM_LEVEL_MIN {
-            "off".to_string()
-        } else {
-            format!("{} dB", val(v))
-        }
-    };
-    for (name, i) in [
-        ("Subharm 24-36 Hz", SUBHARM_PARAM_LOW),
-        ("Subharm 36-56 Hz", SUBHARM_PARAM_HIGH),
-        ("Subharm 56-80 Hz", SUBHARM_PARAM_TOP),
-    ] {
-        let (a, b) = sh(i);
-        if ne(a, b) {
-            c.push(format!("{name}: {} → {}", level(a), level(b)));
-        }
-    }
-    let select = |v: f32| match v as i32 {
-        1 => "percussive",
-        2 => "sustained",
-        _ => "all material",
-    };
-    let (a, b) = sh(SUBHARM_PARAM_SELECT);
-    if ne(a, b) {
-        c.push(format!(
-            "Subharm selectivity: {} → {}",
-            select(a),
-            select(b)
-        ));
-    }
-    let (a, b) = sh(SUBHARM_PARAM_DEPTH);
-    if ne(a, b) {
-        c.push(format!(
-            "Subharm selectivity depth: {}% → {}%",
-            val(a),
-            val(b)
-        ));
-    }
-    let (a, b) = sh(SUBHARM_PARAM_HOLD);
-    if ne(a, b) {
-        c.push(format!(
-            "Subharm selectivity hold: {} ms → {} ms",
-            val(a),
-            val(b)
-        ));
-    }
-    let ceiling = |v: f32| {
-        if v >= SUBHARM_CEILING_MAX {
-            "off".to_string()
-        } else {
-            format!("{} dBFS", val(v))
-        }
-    };
-    let (a, b) = sh(SUBHARM_PARAM_CEILING);
-    if ne(a, b) {
-        c.push(format!(
-            "Subharm sub ceiling: {} → {}",
-            ceiling(a),
-            ceiling(b)
-        ));
-    }
-    let (a, b) = sh(SUBHARM_PARAM_LINK);
-    if ne(a, b) {
-        let l = if b != 0.0 { "linked" } else { "independent" };
-        c.push(format!("Subharm pair link: {l}"));
-    }
-    let (a, b) = sh(SUBHARM_PARAM_BOOST);
-    if ne(a, b) {
-        c.push(format!("Subharm LF boost: {} dB → {} dB", val(a), val(b)));
-    }
-    // Solo is for listening, not part of the sound: not a preset change (as
-    // on macOS).
+    let side = if out & 1 == 0 { 'L' } else { 'R' };
+    Some(format!("{kind} {} {side}", slot.saturating_add(1)))
 }
 
-fn diff_tube(o: &DspState, n: &DspState, c: &mut Vec<String>) {
-    let t = |i: u16| (at(&o.tube, usize::from(i)), at(&n.tube, usize::from(i)));
-    let (a, b) = t(tb::TUBE_PARAM_ENABLED);
-    if ne(a, b) {
-        c.push(format!("Tube Modeller: {}", on(b != 0.0)));
+/// An input source's title: the user's name for it, else the built-in one.
+/// The first S/PDIF input is numbered only while another one is on.
+fn source_title(source: u8, names: &[String], other_spdif_on: bool) -> String {
+    if let Some(n) = names.get(usize::from(source))
+        && !n.is_empty()
+    {
+        return n.clone();
     }
-    let (a, b) = t(tb::TUBE_PARAM_OUTPUT_MASK);
-    if ne(a, b) {
-        c.push(format!(
-            "Tube outputs: 0x{:04X} → 0x{:04X}",
-            a as u32, b as u32
-        ));
-    }
-    // The float comes from the device: `as` saturates, and both names take
-    // any value.
-    let tube = |v: f32| tube::type_name(v as u8);
-    let (a, b) = t(tb::TUBE_PARAM_TUBE_TYPE);
-    if ne(a, b) {
-        c.push(format!("Tube type: {} → {}", tube(a), tube(b)));
-    }
-    for (name, i, unit) in [
-        ("Tube drive", tb::TUBE_PARAM_DRIVE_DB, " dB"),
-        ("Tube bias", tb::TUBE_PARAM_BIAS_PCT, "%"),
-        ("Tube asymmetry", tb::TUBE_PARAM_ASYM_DB, " dB"),
-        ("Tube knee hardness", tb::TUBE_PARAM_HARDNESS_PCT, "%"),
-        ("Tube sag", tb::TUBE_PARAM_SAG_PCT, "%"),
-    ] {
-        let (a, b) = t(i);
-        if ne(a, b) {
-            c.push(format!("{name}: {}{unit} → {}{unit}", val(a), val(b)));
-        }
-    }
-    let rect = |v: f32| tube::rectifier_name(v as u8);
-    let (a, b) = t(tb::TUBE_PARAM_RECTIFIER);
-    if ne(a, b) {
-        c.push(format!("Tube rectifier: {} → {}", rect(a), rect(b)));
-    }
-    let (a, b) = t(tb::TUBE_PARAM_XFMR_ENABLED);
-    if ne(a, b) {
-        c.push(format!("Tube output stage: {}", on(b != 0.0)));
-    }
-    let (a, b) = t(tb::TUBE_PARAM_XFMR_DAMPING);
-    if ne(a, b) {
-        c.push(format!("Tube damping factor: {} → {}", val(a), val(b)));
-    }
-    let (a, b) = t(tb::TUBE_PARAM_XFMR_RES_HZ);
-    if ne(a, b) {
-        c.push(format!(
-            "Tube speaker resonance: {} → {} Hz",
-            val(a),
-            val(b)
-        ));
-    }
-    for (name, i, unit) in [
-        ("Tube mix", tb::TUBE_PARAM_MIX_PCT, "%"),
-        ("Tube output trim", tb::TUBE_PARAM_TRIM_DB, " dB"),
-    ] {
-        let (a, b) = t(i);
-        if ne(a, b) {
-            c.push(format!("{name}: {}{unit} → {}{unit}", val(a), val(b)));
-        }
-    }
-}
-
-/// The output limiters (part of the preset only with the hardware config).
-fn diff_limiters(o: &DspState, n: &DspState, ins: usize, outs: usize, c: &mut Vec<String>) {
-    for i in 0..outs {
-        let name = channel_label(n, ins.saturating_add(i));
-        let (a, b) = (at(&o.limiter_enabled, i), at(&n.limiter_enabled, i));
-        if a != b {
-            c.push(format!("{name} limiter: {}", on(b)));
-        }
-        let (a, b) = (
-            at(&o.limiter_threshold_db, i),
-            at(&n.limiter_threshold_db, i),
-        );
-        if ne(a, b) {
-            c.push(format!("{name} limiter threshold: {a:.1} → {b:.1} dBFS"));
-        }
-        let (a, b) = (at(&o.limiter_release_ms, i), at(&n.limiter_release_ms, i));
-        if ne(a, b) {
-            c.push(format!(
-                "{name} limiter release: {} ms → {} ms",
-                val(a),
-                val(b)
-            ));
-        }
-        let (a, b) = (at(&o.limiter_link_group, i), at(&n.limiter_link_group, i));
-        if a != b {
-            let g = |v: u8| {
-                if v == 0 {
-                    "Unlinked".to_string()
-                } else {
-                    format!("Group {v}")
-                }
-            };
-            c.push(format!("{name} limiter link: {} → {}", g(a), g(b)));
-        }
-    }
-}
-
-fn diff_upmix_leveller(o: &DspState, n: &DspState, c: &mut Vec<String>) {
-    let up = |i: u8| (at(&o.upmix, usize::from(i)), at(&n.upmix, usize::from(i)));
-    let (a, b) = up(UPMIX_PARAM_ENABLED);
-    if ne(a, b) {
-        c.push(format!("Stereo Upmixer: {}", on(b != 0.0)));
-    }
-    // A value past the names reads as its number, as on macOS.
-    let mode = |names: [&str; 3], v: f32| {
-        names
-            .get(v as usize)
-            .map_or_else(|| val(v), |n| (*n).to_string())
-    };
-    let centre = |v: f32| mode(["Sinner", "Logician", "Off"], v);
-    let surround = |v: f32| mode(["Off", "Sinner", "Logician"], v);
-    let (a, b) = up(UPMIX_PARAM_CENTER_MODE);
-    if ne(a, b) {
-        c.push(format!("Centre mode: {} → {}", centre(a), centre(b)));
-    }
-    let (a, b) = up(UPMIX_PARAM_SURROUND_MODE);
-    if ne(a, b) {
-        c.push(format!("Surround mode: {} → {}", surround(a), surround(b)));
-    }
-    for (name, i, unit) in [
-        ("Centre strength", UPMIX_PARAM_STRENGTH, "%"),
-        ("Centre width", UPMIX_PARAM_WIDTH, "%"),
-        ("Correlation threshold", UPMIX_PARAM_THRESHOLD, "%"),
-        ("Centre attack", UPMIX_PARAM_ATTACK, " ms"),
-        ("Centre release", UPMIX_PARAM_RELEASE, " ms"),
-        ("Detector HPF", UPMIX_PARAM_DETECTOR_HPF, " Hz"),
-        ("Surround delay", UPMIX_PARAM_SURROUND_DELAY, " ms"),
-        ("Surround HPF", UPMIX_PARAM_SURROUND_HPF, " Hz"),
-        ("Surround LPF", UPMIX_PARAM_SURROUND_LPF, " Hz"),
-        ("Decorrelation", UPMIX_PARAM_DECORRELATION, "%"),
-        ("Centre presence", UPMIX_PARAM_PRESENCE, " dB"),
-    ] {
-        let (a, b) = up(i);
-        if ne(a, b) {
-            c.push(format!("{name}: {}{unit} → {}{unit}", val(a), val(b)));
-        }
-    }
-
-    // Volume leveller
-    if o.leveller_enabled != n.leveller_enabled {
-        c.push(format!("Volume Leveller: {}", on(n.leveller_enabled)));
-    }
-    if ne(o.leveller_amount, n.leveller_amount) {
-        c.push(format!(
-            "Leveller amount: {}% → {}%",
-            val(o.leveller_amount),
-            val(n.leveller_amount)
-        ));
-    }
-    if o.leveller_speed != n.leveller_speed {
-        let sp = |v: u8| {
-            ["Slow", "Medium", "Fast"]
-                .get(usize::from(v))
-                .map_or_else(|| v.to_string(), |n| (*n).to_string())
-        };
-        c.push(format!(
-            "Leveller speed: {} → {}",
-            sp(o.leveller_speed),
-            sp(n.leveller_speed)
-        ));
-    }
-    if ne(o.leveller_max_gain_db, n.leveller_max_gain_db) {
-        c.push(format!(
-            "Leveller max gain: {} dB → {} dB",
-            val(o.leveller_max_gain_db),
-            val(n.leveller_max_gain_db)
-        ));
-    }
-    if o.leveller_lookahead != n.leveller_lookahead {
-        c.push(format!("Leveller lookahead: {}", on(n.leveller_lookahead)));
-    }
-    if ne(o.leveller_gate_db, n.leveller_gate_db) {
-        c.push(format!(
-            "Leveller gate: {} dB → {} dB",
-            val(o.leveller_gate_db),
-            val(n.leveller_gate_db)
-        ));
-    }
-    if o.leveller_detector_mask != n.leveller_detector_mask {
-        c.push("Leveller detector channels changed".into());
-    }
-    if o.leveller_apply_mask != n.leveller_apply_mask {
-        c.push("Leveller apply channels changed".into());
-    }
-}
-
-/// Delays, the matrix, the outputs, the bands and the channel names.
-fn diff_channels(
-    o: &DspState,
-    n: &DspState,
-    ins: usize,
-    outs: usize,
-    all: usize,
-    c: &mut Vec<String>,
-) {
-    // Channel delays. The firmware mirrors an output's delay onto its channel,
-    // so an output whose own delay changed gets its one line below.
-    for w in 0..all {
-        let (a, b) = (at(&o.channel_delays, w), at(&n.channel_delays, w));
-        let reported = w
-            .checked_sub(ins)
-            .is_some_and(|out| ne(at(&o.output_delay_ms, out), at(&n.output_delay_ms, out)));
-        if ne(a, b) && !reported {
-            c.push(format!(
-                "{} delay: {} ms → {} ms",
-                channel_label(n, w),
-                ms(a),
-                ms(b)
-            ));
-        }
-    }
-
-    // Matrix crosspoints
-    let points = (0..ins)
-        .flat_map(|i| (0..outs).map(move |j| (i, j)))
-        .filter(|&(i, j)| {
-            at2(&o.matrix_routing, i, j) != at2(&n.matrix_routing, i, j)
-                || ne(at2(&o.matrix_gain, i, j), at2(&n.matrix_gain, i, j))
-                || at2(&o.matrix_invert, i, j) != at2(&n.matrix_invert, i, j)
-        })
-        .count();
-    if points > 0 {
-        c.push(format!("{points} crosspoint{} changed", plural(points)));
-    }
-
-    // Outputs
-    for i in 0..outs {
-        let name = channel_label(n, ins.saturating_add(i));
-        let (a, b) = (at(&o.output_enabled, i), at(&n.output_enabled, i));
-        if a != b {
-            c.push(format!("{name} {}", on(b)));
-        }
-        let (a, b) = (at(&o.output_muted, i), at(&n.output_muted, i));
-        if a != b {
-            c.push(format!("{name} {}", if b { "muted" } else { "unmuted" }));
-        }
-        let (a, b) = (at(&o.output_gain_db, i), at(&n.output_gain_db, i));
-        if ne(a, b) {
-            c.push(format!("{name} gain: {} → {}", db(a), db(b)));
-        }
-        let (a, b) = (at(&o.output_delay_ms, i), at(&n.output_delay_ms, i));
-        if ne(a, b) {
-            c.push(format!("{name} delay: {} ms → {} ms", ms(a), ms(b)));
-        }
-    }
-
-    // EQ and crossover bands
-    for w in 0..all {
-        let changed = (0..BANDS_PER_CHANNEL)
-            .filter(|&b| !same_filter(band(&o.filters, w, b), band(&n.filters, w, b)))
-            .count();
-        if changed > 0 {
-            c.push(format!(
-                "{changed} band{} changed on {}",
-                plural(changed),
-                channel_label(n, w)
-            ));
-        }
-    }
-    for w in ins..all {
-        let changed = (0..MAX_XOVER_BANDS)
-            .filter(|&b| !same_filter(band(&o.xover, w, b), band(&n.xover, w, b)))
-            .count();
-        if changed > 0 {
-            c.push(format!(
-                "{changed} crossover band{} changed on {}",
-                plural(changed),
-                channel_label(n, w)
-            ));
-        }
-    }
-
-    // Channel names. Changing an output's type makes the firmware rename its
-    // channels that are still at their default: a consequence, not an edit.
-    // Only default-to-default is skipped, so a real rename always shows.
-    for w in 0..all {
-        let (a, b) = (
-            o.channel_names.get(w).map_or("", String::as_str),
-            n.channel_names.get(w).map_or("", String::as_str),
-        );
-        if a != b && !(a == default_channel_name(o, w) && b == default_channel_name(n, w)) {
-            c.push(format!("'{a}' → '{b}'"));
-        }
-    }
-}
-
-/// The hardware configuration, when it travels with the preset.
-fn diff_hardware(o: &DspState, n: &DspState, c: &mut Vec<String>) {
-    let pins = (0..MAX_PHYSICAL_OUTPUTS)
-        .filter(|&i| at(&o.output_pins, i) != at(&n.output_pins, i))
-        .count();
-    if pins > 0 {
-        c.push(format!("{pins} pin assignment{} changed", plural(pins)));
-    }
-    let types = (0..4)
-        .filter(|&i| at(&o.output_types, i) != at(&n.output_types, i))
-        .count();
-    if types > 0 {
-        c.push(format!("{types} output type{} changed", plural(types)));
-    }
-    if o.i2s_bck_pin != n.i2s_bck_pin {
-        c.push(format!(
-            "BCK pin: GPIO {} → GPIO {}",
-            o.i2s_bck_pin, n.i2s_bck_pin
-        ));
-    }
-    if o.mck_enabled != n.mck_enabled {
-        c.push(format!("MCK: {}", on(n.mck_enabled)));
-    }
-    if o.mck_pin != n.mck_pin {
-        c.push(format!("MCK pin: GPIO {} → GPIO {}", o.mck_pin, n.mck_pin));
-    }
-    if o.mck_multiplier != n.mck_multiplier {
-        let mult = |m: u8| 128u32.checked_shl(u32::from(m.min(1))).unwrap_or(128);
-        c.push(format!(
-            "MCK multiplier: {}x → {}x",
-            mult(o.mck_multiplier),
-            mult(n.mck_multiplier)
-        ));
-    }
-    let (a, b) = (at(&o.spdif_rx_pins, 0), at(&n.spdif_rx_pins, 0));
-    if a != b {
-        c.push(format!("S/PDIF RX pin: GPIO {a} → GPIO {b}"));
-    }
-    for k in 1..4usize {
-        let bit = |m: u8| m.checked_shr(k as u32).is_some_and(|v| v & 1 == 1);
-        let (was, now) = (bit(o.spdif_inputs_enabled), bit(n.spdif_inputs_enabled));
-        if was != now {
-            c.push(format!("S/PDIF {} input: {}", k.saturating_add(1), on(now)));
-        }
-    }
-    for k in 1..4usize {
-        let (a, b) = (at(&o.spdif_rx_pins, k), at(&n.spdif_rx_pins, k));
-        if a != b {
-            c.push(format!(
-                "S/PDIF {} RX pin: GPIO {a} → GPIO {b}",
-                k.saturating_add(1)
-            ));
-        }
-    }
-    if o.i2s_input_channels != n.i2s_input_channels {
-        c.push(format!(
-            "I2S input channels: {} → {}",
-            o.i2s_input_channels, n.i2s_input_channels
-        ));
-    }
-    for p in 0..4usize {
-        let (a, b) = (at(&o.i2s_rx_pins, p), at(&n.i2s_rx_pins, p));
-        if a != b {
-            c.push(format!(
-                "I2S RX pin (pair {}): GPIO {a} → GPIO {b}",
-                p.saturating_add(1)
-            ));
-        }
-    }
-    if o.i2s_input_rate != n.i2s_input_rate {
-        let hz = |v: u8| match v {
-            0 => 44100,
-            2 => 96000,
-            _ => 48000,
-        };
-        c.push(format!(
-            "I2S rate: {} Hz → {} Hz",
-            hz(o.i2s_input_rate),
-            hz(n.i2s_input_rate)
-        ));
-    }
-    let mode = |v: u8| if v == 1 { "Slave" } else { "Master" };
-    if o.i2s_clock_mode != n.i2s_clock_mode {
-        c.push(format!(
-            "I2S clock mode: {} → {}",
-            mode(o.i2s_clock_mode),
-            mode(n.i2s_clock_mode)
-        ));
-    }
-    if o.adat_out_enabled != n.adat_out_enabled {
-        c.push(format!("ADAT output: {}", on(n.adat_out_enabled)));
-    }
-    if o.adat_out_pin != n.adat_out_pin {
-        c.push(format!(
-            "ADAT pin: GPIO {} → GPIO {}",
-            o.adat_out_pin, n.adat_out_pin
-        ));
-    }
-    if o.adat_input_enabled != n.adat_input_enabled {
-        c.push(format!("ADAT input: {}", on(n.adat_input_enabled)));
-    }
-    if o.adat_input_pin != n.adat_input_pin {
-        let pin = |v: u8| {
-            if v == 0xFF {
-                "unset".to_string()
-            } else {
-                format!("GPIO {v}")
-            }
-        };
-        c.push(format!(
-            "ADAT input pin: {} → {}",
-            pin(o.adat_input_pin),
-            pin(n.adat_input_pin)
-        ));
-    }
-    if o.adat_input_clock_mode != n.adat_input_clock_mode {
-        c.push(format!(
-            "ADAT input clock mode: {} → {}",
-            mode(o.adat_input_clock_mode),
-            mode(n.adat_input_clock_mode)
-        ));
+    match source {
+        0 => "USB".to_owned(),
+        1 if other_spdif_on => "S/PDIF 1".to_owned(),
+        1 => "S/PDIF".to_owned(),
+        2 => "I2S".to_owned(),
+        3 => "ADAT".to_owned(),
+        4..=6 => format!("S/PDIF {}", source.saturating_sub(2)),
+        n => format!("Source {n}"),
     }
 }
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
-mod tests_wp_c5 {
+mod tests {
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     use dspi_transport::{
-        Capture, DeviceDescriptor, FakeDevice, FakeOptions, FakeRemote, NotificationSource,
-        Transport, TransportCaps, TransportError,
+        Capture, DeviceDescriptor, FakeDevice, NotificationSource, Transport, TransportCaps,
+        TransportError,
     };
 
     use super::*;
+    use crate::consts::{FLASH_ERR_CRC, FLASH_ERR_WRITE};
+    use crate::{MeterRead, SideChannel};
 
-    type Log = Arc<Mutex<Vec<String>>>;
+    const INVALID_SLOT: u8 = st::PRESET_ERR_INVALID_SLOT as u8;
 
-    /// The diff of a device with no source names.
-    fn diff(o: &DspState, n: &DspState) -> Vec<String> {
-        super::diff(o, n, &[])
+    /// What the test sees of a [`Spy`]: its log, its scripted replies, and
+    /// whether it refuses the device lock.
+    #[derive(Default)]
+    struct Probe {
+        /// `"in OP value"`, `"out OP value hex"`, `"lock reason ms"`,
+        /// `"unlock"`, `"side lock reason"`, `"side unlock"`.
+        log: Mutex<Vec<String>>,
+        /// IN replies by opcode instead of the device's; `None` stalls.
+        script: Mutex<HashMap<u8, Option<Vec<u8>>>>,
+        refuse_lock: AtomicBool,
     }
 
-    /// A demo device that logs every request and lock call, answers some
-    /// IN opcodes itself (`overrides`), can refuse the lock, and on a
-    /// factory reset loads `reset_image` into the device.
+    impl Probe {
+        fn note(&self, line: String) {
+            self.log.lock().unwrap().push(line);
+        }
+        fn mark(&self) -> usize {
+            self.log.lock().unwrap().len()
+        }
+        fn since(&self, mark: usize) -> Vec<String> {
+            self.log.lock().unwrap()[mark..].to_vec()
+        }
+        fn reply(&self, opcode: u8, reply: Option<Vec<u8>>) {
+            self.script.lock().unwrap().insert(opcode, reply);
+        }
+        fn forget(&self, opcode: u8) {
+            self.script.lock().unwrap().remove(&opcode);
+        }
+        fn scripted(&self, opcode: u8, len: u16) -> Option<dspi_transport::Result<Vec<u8>>> {
+            let script = self.script.lock().unwrap();
+            script.get(&opcode).map(|r| match r {
+                Some(b) => Ok(b.iter().copied().take(usize::from(len)).collect()),
+                None => Err(TransportError::Stalled { opcode }),
+            })
+        }
+    }
+
+    /// The demo device, watched through a [`Probe`].
     struct Spy {
-        inner: FakeDevice,
-        remote: FakeRemote,
-        log: Log,
-        overrides: HashMap<u8, Vec<u8>>,
-        stalls: Vec<u8>,
-        refuse_lock: Option<TransportError>,
-        reset_image: Option<Vec<u8>>,
-    }
-
-    impl Spy {
-        fn demo() -> Self {
-            Self::with(FakeDevice::demo())
-        }
-        fn with(inner: FakeDevice) -> Self {
-            let remote = inner.remote();
-            Self {
-                inner,
-                remote,
-                log: Arc::default(),
-                overrides: HashMap::new(),
-                stalls: Vec::new(),
-                refuse_lock: None,
-                reset_image: None,
-            }
-        }
-        fn answer(mut self, opcode: u8, reply: &[u8]) -> Self {
-            self.overrides.insert(opcode, reply.to_vec());
-            self
-        }
-        fn note(&self, what: String) {
-            self.log.lock().unwrap().push(what);
-        }
-        fn reply(
-            &mut self,
-            op: u8,
-            value: u16,
-            len: u16,
-            upto: bool,
-        ) -> dspi_transport::Result<Vec<u8>> {
-            self.note(format!("in {op:02X} {value}"));
-            if self.stalls.contains(&op) {
-                return Err(TransportError::Stalled { opcode: op });
-            }
-            if let Some(r) = self.overrides.get(&op) {
-                if op == op::REQ_FACTORY_RESET
-                    && let Some(img) = self.reset_image.take()
-                {
-                    self.remote.load_image(img, 0);
-                }
-                return Ok(r.clone());
-            }
-            if upto {
-                self.inner.control_in_upto(op, value, len)
-            } else {
-                self.inner.control_in(op, value, len)
-            }
-        }
+        dev: FakeDevice,
+        probe: Arc<Probe>,
     }
 
     impl Transport for Spy {
         fn control_in(&mut self, op: u8, value: u16, len: u16) -> dspi_transport::Result<Vec<u8>> {
-            self.reply(op, value, len, false)
+            self.probe.note(format!("in {op:02X} {value}"));
+            match self.probe.scripted(op, len) {
+                Some(r) => r,
+                None => self.dev.control_in(op, value, len),
+            }
         }
         fn control_in_upto(
             &mut self,
@@ -1989,1258 +2009,1109 @@ mod tests_wp_c5 {
             value: u16,
             len: u16,
         ) -> dspi_transport::Result<Vec<u8>> {
-            self.reply(op, value, len, true)
+            self.probe.note(format!("in {op:02X} {value}"));
+            match self.probe.scripted(op, len) {
+                Some(r) => r,
+                None => self.dev.control_in_upto(op, value, len),
+            }
         }
         fn control_out(&mut self, op: u8, value: u16, data: &[u8]) -> dspi_transport::Result<()> {
-            self.note(format!("out {op:02X} {value}"));
-            self.inner.control_out(op, value, data)
+            let hex: String = data.iter().map(|b| format!("{b:02x}")).collect();
+            self.probe.note(format!("out {op:02X} {value} {hex}"));
+            self.dev.control_out(op, value, data)
         }
         fn descriptor(&self) -> &DeviceDescriptor {
-            self.inner.descriptor()
+            self.dev.descriptor()
         }
         fn max_transfer(&self) -> usize {
-            self.inner.max_transfer()
+            self.dev.max_transfer()
         }
         fn notifications(&self) -> Option<Box<dyn NotificationSource>> {
             None
         }
         fn caps(&self) -> TransportCaps {
-            self.inner.caps()
+            self.dev.caps()
         }
         fn lock(&mut self, reason: &str, timeout: Duration) -> dspi_transport::Result<()> {
-            self.note(format!("lock {reason} {}", timeout.as_secs()));
-            match &self.refuse_lock {
-                Some(e) => Err(e.clone()),
-                None => Ok(()),
+            self.probe
+                .note(format!("lock {reason} {}", timeout.as_millis()));
+            if self.probe.refuse_lock.load(Ordering::SeqCst) {
+                Err(TransportError::Locked)
+            } else {
+                Ok(())
             }
         }
         fn unlock(&mut self) {
-            self.note("unlock".into());
+            self.probe.note("unlock".into());
         }
     }
 
-    /// `spy` attached and read as a connect does.
-    fn open(spy: Spy) -> (Arc<DspiCore>, FakeRemote, Log) {
-        let remote = spy.remote.clone();
-        let log = Arc::clone(&spy.log);
+    /// A Link side channel that only logs its lock calls.
+    struct Side(Arc<Probe>);
+
+    impl SideChannel for Side {
+        fn lock(&self, reason: &str, _timeout: Duration) -> Result<()> {
+            self.0.note(format!("side lock {reason}"));
+            Ok(())
+        }
+        fn unlock(&self) {
+            self.0.note("side unlock".into());
+        }
+        fn rta_transport(self: Arc<Self>, _rta_mask: u16) -> Box<dyn Transport> {
+            Box::new(FakeDevice::demo())
+        }
+        fn meters(&self, _len: u16) -> Result<MeterRead> {
+            Ok(MeterRead::default())
+        }
+    }
+
+    fn spy_on(dev: FakeDevice) -> (Spy, Arc<Probe>) {
+        let probe = Arc::new(Probe::default());
+        (
+            Spy {
+                dev,
+                probe: Arc::clone(&probe),
+            },
+            probe,
+        )
+    }
+
+    /// The demo device behind a spy, probed but not fetched (no baseline).
+    fn probed() -> (Arc<DspiCore>, Arc<Probe>) {
+        let (spy, probe) = spy_on(FakeDevice::demo());
         let core = DspiCore::new();
         core.attach_probed(Box::new(spy), "DEMO".into(), 0).unwrap();
+        (core, probe)
+    }
+
+    /// The demo device behind a spy, fetched: the baseline is its state.
+    fn fetched() -> (Arc<DspiCore>, Arc<Probe>) {
+        let (core, probe) = probed();
         core.fetch_all().unwrap();
-        // `fetch_all` leaves a baseline; these tests start without one, to see
-        // which flows take it.
-        core.lock().baseline = None;
-        log.lock().unwrap().clear();
-        (core, remote, log)
+        (core, probe)
     }
 
-    fn entries(log: &Log) -> Vec<String> {
-        log.lock().unwrap().clone()
+    fn sent(log: &[String], opcode: u8) -> bool {
+        let tag = format!(" {opcode:02X} ");
+        log.iter().any(|l| l.contains(&tag))
     }
 
-    fn sent(log: &Log, dir: &str, opcode: u8) -> bool {
-        let prefix = format!("{dir} {opcode:02X} ");
-        entries(log).iter().any(|e| e.starts_with(&prefix))
+    fn count(log: &[String], prefix: &str) -> usize {
+        log.iter().filter(|l| l.starts_with(prefix)).count()
     }
+
+    fn preamp(core: &DspiCore) -> f32 {
+        core.get_state().input_preamp_db[0]
+    }
+
+    /// The preset directory as the device would report it.
+    fn directory(occupied: u16, last_active: u8) -> Vec<u8> {
+        let [lo, hi] = occupied.to_le_bytes();
+        vec![lo, hi, 0, 0, last_active, 1, 0]
+    }
+
+    // ── Flows ─────────────────────────────────────────────────────────
 
     #[test]
-    fn wp_c15_a_replaced_connection_keeps_its_lock() {
-        let (core, _remote, _log) = open(Spy::demo());
-        let lock = core.acquire_device_lock("Flow").unwrap();
-        // The connection is replaced mid-flow.
-        let spy = Spy::demo();
-        let new_log = Arc::clone(&spy.log);
-        core.attach_probed(Box::new(spy), "DEMO".into(), 0).unwrap();
-        new_log.lock().unwrap().clear();
-        assert!(!lock.is_current(&core.lock()));
-        core.release_device_lock(lock);
-        assert!(
-            !entries(&new_log).iter().any(|e| e == "unlock"),
-            "a stray unlock on the new connection"
-        );
-    }
-
-    #[test]
-    fn wp_c15_the_same_connection_is_unlocked() {
-        let (core, _remote, log) = open(Spy::demo());
-        log.lock().unwrap().clear();
-        let lock = core.acquire_device_lock("Flow").unwrap();
-        assert!(lock.is_current(&core.lock()));
-        core.release_device_lock(lock);
-        assert_eq!(entries(&log), ["lock Flow 60", "unlock"]);
-    }
-
-    /// The first and last log entries: the lock taken, then released.
-    fn bracketed(log: &Log, reason: &str) {
-        let e = entries(log);
-        assert_eq!(
-            e.first().map(String::as_str),
-            Some(&*format!("lock {reason} 60")),
-            "{e:?}"
-        );
-        assert_eq!(e.last().map(String::as_str), Some("unlock"), "{e:?}");
-        assert_eq!(
-            e.iter().filter(|x| x.starts_with("lock")).count(),
-            1,
-            "{e:?}"
-        );
-        assert_eq!(e.iter().filter(|x| *x == "unlock").count(), 1, "{e:?}");
-    }
-
-    /// Change the mirror as a setter does: the field, then `bulk_raw`.
-    fn edit(core: &DspiCore, f: impl FnOnce(&mut DspState)) {
-        let mut g = core.lock();
-        f(&mut g.state);
-        g.state.bulk_raw = state::encode_bulk(&g.state);
-    }
-
-    fn decoded(image: &[u8]) -> DspState {
-        let mut s = state::default_state();
-        state::decode_bulk(image, &mut s).unwrap();
-        s
-    }
-
-    #[test]
-    fn wp_c5_save_preset_fills_the_slot_under_the_lock() {
-        let (core, remote, log) = open(Spy::demo());
-        edit(&core, |s| s.input_preamp_db[0] = -3.0);
-        core.apply_all_params().unwrap();
-        log.lock().unwrap().clear();
-
+    fn clean1_a_save_fills_the_slot_inside_one_lock() {
+        let (core, probe) = fetched();
+        core.set_input_preamp(0, -4.0).unwrap();
+        assert!(core.preset_dirty());
+        let mark = probe.mark();
         core.save_preset(3).unwrap();
-        bracketed(&log, "Saving preset");
+        let log = probe.since(mark);
+        assert_eq!(
+            log.first().map(String::as_str),
+            Some("lock Saving preset 60000")
+        );
+        assert_eq!(log.last().map(String::as_str), Some("unlock"));
+        assert_eq!(count(&log, "lock"), 1, "{log:?}");
+        assert!(log.contains(&format!("in {:02X} 3", op::REQ_PRESET_SAVE)));
+        assert!(sent(&log, op::REQ_PRESET_GET_ACTIVE), "{log:?}");
         let s = core.get_state();
         assert_eq!(s.active_preset_slot, 3);
-        assert_eq!(s.preset_occupied, 0b1001);
-        let dir = core.get_preset_directory().unwrap();
-        assert_eq!((dir.occupied_mask, dir.last_active), (0b1001, 3));
-        // The live state is the active preset now.
-        assert!(!core.preset_dirty());
-        assert_eq!(core.lock().baseline.as_deref(), Some(&*s.bulk_raw));
-        assert_eq!(decoded(&remote.image()).input_preamp_db[0], -3.0);
+        assert_ne!(s.preset_occupied & (1 << 3), 0);
+        assert!(!core.preset_dirty(), "{:?}", core.preset_changes());
+        assert_eq!(core.get_preset_directory().unwrap().last_active, 3);
     }
 
     #[test]
-    fn wp_c5_load_preset_rereads_and_rebaselines() {
-        let (core, remote, log) = open(Spy::demo());
-        let saved = core.get_state().output_gain_db[0];
+    fn clean1_a_load_reads_the_slot_back_and_is_clean() {
+        let (core, probe) = fetched();
+        core.set_input_preamp(0, -4.0).unwrap();
+        core.save_preset(1).unwrap();
+        core.set_input_preamp(0, -2.0).unwrap();
+        core.save_preset(0).unwrap();
+        core.set_input_preamp(0, 5.0).unwrap();
+        let mark = probe.mark();
+        core.load_preset(1).unwrap();
+        let log = probe.since(mark);
+        assert!(log.contains(&format!("in {:02X} 1", op::REQ_PRESET_LOAD)));
+        assert!(
+            sent(&log, op::REQ_GET_ALL_PARAMS) || sent(&log, op::REQ_GET_ALL_PARAMS_CHUNK),
+            "{log:?}"
+        );
+        assert_eq!(preamp(&core), -4.0);
+        assert_eq!(core.get_state().active_preset_slot, 1);
+        assert!(!core.preset_dirty(), "{:?}", core.preset_changes());
+        assert_eq!(log.last().map(String::as_str), Some("unlock"));
+    }
+
+    #[test]
+    fn clean1_revert_loads_the_active_slot_again() {
+        let (core, probe) = fetched();
+        core.set_input_preamp(0, -4.0).unwrap();
         core.save_preset(2).unwrap();
-        // Edit and send it to the device: dirty against slot 2.
-        edit(&core, |s| s.output_gain_db[0] = -9.0);
-        core.apply_all_params().unwrap();
-        assert!(core.preset_dirty());
-        let s = core.get_state();
-        let out1 = channel_label(&s, usize::from(s.num_input_channels));
-        assert_eq!(
-            core.preset_changes(),
-            vec![format!("{out1} gain: {} → -9.0 dB", db(saved))]
-        );
-        log.lock().unwrap().clear();
-
-        core.load_preset(2).unwrap();
-        bracketed(&log, "Loading preset");
-        assert!(sent(&log, "in", op::REQ_PRESET_LOAD));
-        let s = core.get_state();
-        assert_eq!(s.output_gain_db[0], saved);
-        assert_eq!(
-            s.bulk_raw,
-            remote.image(),
-            "the mirror is the device's image"
-        );
-        assert_eq!(s.active_preset_slot, 2);
-        assert!(!core.preset_dirty());
-        assert!(core.preset_changes().is_empty());
-    }
-
-    #[test]
-    fn wp_c5_load_params_reverts_to_the_active_slot() {
-        let (core, _remote, log) = open(Spy::demo());
-        let saved = core.get_state().output_gain_db[1];
-        core.capture_baseline();
-        edit(&core, |s| s.output_gain_db[1] = -20.0);
-        core.apply_all_params().unwrap();
-        log.lock().unwrap().clear();
+        core.set_input_preamp(0, -1.0).unwrap();
+        let mark = probe.mark();
         core.load_params().unwrap();
-        assert!(entries(&log).contains(&format!("in {:02X} 0", op::REQ_PRESET_LOAD)));
-        assert_eq!(core.get_state().output_gain_db[1], saved);
+        assert!(
+            probe
+                .since(mark)
+                .contains(&format!("in {:02X} 2", op::REQ_PRESET_LOAD))
+        );
+        assert_eq!(preamp(&core), -4.0);
         assert!(!core.preset_dirty());
     }
 
     #[test]
-    fn wp_c5_load_params_reports_flash_codes() {
-        let crc = Spy::demo().answer(op::REQ_PRESET_LOAD, &[PRESET_ERR_CRC]);
-        let (core, _, log) = open(crc);
-        assert_eq!(
-            core.load_params(),
-            Err(DspiError::Refused {
-                status: FLASH_ERR_CRC
-            })
-        );
-        bracketed(&log, "Loading preset");
-        let empty = Spy::demo().answer(op::REQ_PRESET_LOAD, &[st::PRESET_ERR_SLOT_EMPTY as u8]);
-        let (core, _, _) = open(empty);
-        assert_eq!(
-            core.load_params(),
-            Err(DspiError::Refused {
-                status: FLASH_ERR_WRITE
-            })
-        );
-        // load_preset itself keeps the PRESET_* code.
-        assert_eq!(
-            core.load_preset(1),
-            Err(DspiError::Refused {
-                status: st::PRESET_ERR_SLOT_EMPTY as u8
-            })
-        );
+    fn clean1_a_refused_revert_answers_in_flash_codes() {
+        let (core, probe) = fetched();
+        for (preset, flash) in [
+            (st::PRESET_ERR_CRC as u8, FLASH_ERR_CRC),
+            (st::PRESET_ERR_SLOT_EMPTY as u8, FLASH_ERR_WRITE),
+            (st::PRESET_ERR_FLASH_WRITE as u8, FLASH_ERR_WRITE),
+        ] {
+            probe.reply(op::REQ_PRESET_LOAD, Some(vec![preset]));
+            assert_eq!(
+                core.load_params(),
+                Err(DspiError::Refused { status: flash }),
+                "preset status {preset}"
+            );
+        }
+        probe.forget(op::REQ_PRESET_LOAD);
+        core.load_params().unwrap();
+        assert_eq!(DspiCore::new().load_params(), Err(DspiError::Disconnected));
     }
 
     #[test]
-    fn wp_c5_copy_preset_keeps_the_source_active() {
-        let (core, remote, log) = open(Spy::demo());
-        core.copy_preset(0, 4).unwrap();
-        bracketed(&log, "Copying preset");
-        let saves: Vec<_> = entries(&log)
-            .into_iter()
-            .filter(|e| e.starts_with(&format!("in {:02X} ", op::REQ_PRESET_SAVE)))
+    fn clean1_copy_to_keeps_the_source_active() {
+        let (core, probe) = fetched();
+        core.set_input_preamp(0, -6.0).unwrap();
+        let mark = probe.mark();
+        core.copy_preset(0, 5).unwrap();
+        let log = probe.since(mark);
+        let saves: Vec<_> = log
+            .iter()
+            .filter(|l| l.starts_with(&format!("in {:02X} ", op::REQ_PRESET_SAVE)))
             .collect();
-        assert_eq!(
-            saves,
-            vec![
-                format!("in {:02X} 4", op::REQ_PRESET_SAVE),
-                format!("in {:02X} 0", op::REQ_PRESET_SAVE)
-            ]
-        );
+        assert_eq!(saves, ["in 90 5", "in 90 0"]);
+        assert_eq!(count(&log, "lock"), 1);
+        assert_eq!(log.last().map(String::as_str), Some("unlock"));
         let s = core.get_state();
         assert_eq!(s.active_preset_slot, 0);
-        assert_eq!(s.preset_occupied, 0b1_0001);
-        let dir = core.get_preset_directory().unwrap();
-        assert_eq!((dir.occupied_mask, dir.last_active), (0b1_0001, 0));
+        assert_eq!(s.preset_occupied & 0b10_0001, 0b10_0001);
         assert!(!core.preset_dirty());
-        assert_eq!(s.bulk_raw, remote.image());
+        core.set_input_preamp(0, 0.0).unwrap();
+        core.load_preset(5).unwrap();
+        assert_eq!(preamp(&core), -6.0);
     }
 
     #[test]
-    fn wp_c5_delete_preset_clears_the_slot_and_its_name() {
-        let (core, _, log) = open(Spy::demo());
-        core.save_preset(5).unwrap();
-        core.set_preset_name(5, "Night".into()).unwrap();
+    fn clean1_delete_clears_the_slot_and_its_name() {
+        let (core, probe) = fetched();
+        core.save_preset(4).unwrap();
+        core.set_preset_name(4, "Gone".into()).unwrap();
         core.save_preset(0).unwrap();
-        log.lock().unwrap().clear();
-        core.delete_preset(5).unwrap();
-        bracketed(&log, "Deleting preset");
-        // Not the active slot: no re-read.
-        assert!(!sent(&log, "in", op::REQ_GET_ALL_PARAMS_CHUNK));
+        let mark = probe.mark();
+        core.delete_preset(4).unwrap();
+        let log = probe.since(mark);
+        assert!(log.contains(&format!("in {:02X} 4", op::REQ_PRESET_DELETE)));
+        assert_eq!(count(&log, "lock"), 1);
         let s = core.get_state();
-        assert_eq!(s.preset_occupied, 0b1);
-        assert_eq!(s.preset_names[5], "");
-        // Firmware stalls on an empty slot; the fake answers an empty name.
-        assert_eq!(core.get_preset_name(5).unwrap_or_default(), "");
-    }
-
-    #[test]
-    fn wp_c5_deleting_the_active_slot_rereads_the_image() {
-        let (core, _, log) = open(Spy::demo());
-        core.delete_preset(0).unwrap();
-        assert!(
-            sent(&log, "in", op::REQ_GET_ALL_PARAMS_CHUNK)
-                || sent(&log, "in", op::REQ_GET_ALL_PARAMS)
+        assert_eq!(s.preset_occupied & (1 << 4), 0);
+        assert_eq!(s.preset_names[4], "");
+        assert_eq!(
+            core.get_preset_directory().unwrap().occupied_mask & (1 << 4),
+            0
         );
-        assert_eq!(entries(&log).last().map(String::as_str), Some("unlock"));
-        assert_eq!(core.get_state().preset_occupied, 0);
+        // Not the active slot: the image is not read again.
+        assert!(!sent(&log, op::REQ_GET_ALL_PARAMS) && !sent(&log, op::REQ_GET_ALL_PARAMS_CHUNK));
     }
 
     #[test]
-    fn wp_c5_preset_names_round_trip() {
-        let (core, _, _) = open(Spy::demo());
-        assert_eq!(core.get_preset_name(0).unwrap(), "Demo");
-        core.set_preset_name(0, "Living room".into()).unwrap();
-        assert_eq!(core.get_state().preset_names[0], "Living room");
-        core.lock().state.preset_names[0].clear();
-        assert_eq!(core.get_preset_name(0).unwrap(), "Living room");
-        assert_eq!(core.get_state().preset_names[0], "Living room");
-        // Cut at 31 bytes, on a character boundary.
-        core.set_preset_name(0, "é".repeat(16)).unwrap();
-        assert_eq!(core.get_preset_name(0).unwrap(), "é".repeat(15));
-        assert_eq!(core.get_state().preset_names[0], "é".repeat(15));
-        // Empty clears.
-        core.set_preset_name(0, String::new()).unwrap();
-        assert_eq!(core.get_preset_name(0).unwrap(), "");
-        assert!(matches!(
-            core.set_preset_name(10, "x".into()),
-            Err(DspiError::InvalidArgument { .. })
-        ));
-        assert!(matches!(
-            core.get_preset_name(10),
-            Err(DspiError::InvalidArgument { .. })
-        ));
+    fn clean1_deleting_the_active_slot_reads_the_image_again() {
+        let (core, probe) = fetched();
+        core.save_preset(2).unwrap();
+        core.set_input_preamp(0, 2.0).unwrap();
+        let mark = probe.mark();
+        core.delete_preset(2).unwrap();
+        let log = probe.since(mark);
+        assert!(
+            sent(&log, op::REQ_GET_ALL_PARAMS) || sent(&log, op::REQ_GET_ALL_PARAMS_CHUNK),
+            "{log:?}"
+        );
+        assert!(
+            !core.preset_dirty(),
+            "what the device runs now is the baseline"
+        );
     }
 
     #[test]
-    fn wp_c5_name_payload_is_nul_terminated_and_bounded() {
-        assert_eq!(name_payload(""), vec![0]);
-        assert_eq!(name_payload("ab\0cd"), b"ab\0".to_vec());
-        let long = name_payload(&"x".repeat(40));
-        assert_eq!(long.len(), PRESET_NAME_LEN);
-        assert_eq!(long.last(), Some(&0));
+    fn clean1_names_go_out_and_come_back() {
+        let (core, _) = fetched();
+        core.save_preset(3).unwrap();
+        core.set_preset_name(3, "Night".into()).unwrap();
+        assert_eq!(core.get_state().preset_names[3], "Night");
+        assert_eq!(core.get_preset_name(3).unwrap(), "Night");
     }
 
     #[test]
-    fn wp_c5_startup_mode_is_validated_and_stored() {
-        let (core, _, _) = open(Spy::demo());
-        core.set_preset_startup(1, 3).unwrap();
-        let s = core.get_state();
-        assert_eq!((s.preset_startup_mode, s.preset_default_slot), (1, 3));
-        let dir = core.get_preset_directory().unwrap();
-        assert_eq!((dir.startup_mode, dir.default_slot), (1, 3));
+    fn clean1_a_name_is_cut_to_31_bytes_and_ends_in_nul() {
+        let (core, probe) = fetched();
+        let mark = probe.mark();
+        core.set_preset_name(1, "x".repeat(40)).unwrap();
+        let hex = format!("{}00", "78".repeat(31));
+        assert_eq!(
+            probe.since(mark),
+            [format!("out {:02X} 1 {hex}", op::REQ_PRESET_SET_NAME)]
+        );
+        assert_eq!(core.get_state().preset_names[1], "x".repeat(31));
+        // Never through a character: 15 two-byte characters fit.
+        core.set_preset_name(1, "é".repeat(20)).unwrap();
+        assert_eq!(core.get_state().preset_names[1], "é".repeat(15));
+        assert_eq!(name_within(""), "");
+    }
+
+    #[test]
+    fn clean1_the_startup_choice_is_checked_then_stored() {
+        let (core, probe) = fetched();
+        let mark = probe.mark();
         assert!(matches!(
             core.set_preset_startup(2, 0),
             Err(DspiError::InvalidArgument { .. })
         ));
         assert!(matches!(
-            core.set_preset_startup(0, 10),
+            core.set_preset_startup(0, MAX_PRESETS as u8),
             Err(DspiError::InvalidArgument { .. })
         ));
+        assert!(probe.since(mark).is_empty());
+        core.set_preset_startup(1, 4).unwrap();
+        let s = core.get_state();
+        assert_eq!((s.preset_startup_mode, s.preset_default_slot), (1, 4));
+        let dir = core.get_preset_directory().unwrap();
+        assert_eq!((dir.startup_mode, dir.default_slot), (1, 4));
     }
 
     #[test]
-    fn wp_c5_slots_past_the_last_are_refused_without_sending() {
-        let (core, _, log) = open(Spy::demo());
-        let invalid = Err(DspiError::Refused {
-            status: PRESET_ERR_INVALID_SLOT,
+    fn clean1_slots_past_the_last_send_nothing() {
+        let (core, probe) = fetched();
+        let refused = Err(DspiError::Refused {
+            status: INVALID_SLOT,
         });
-        assert_eq!(core.save_preset(10), invalid);
-        assert_eq!(core.load_preset(200), invalid);
-        assert_eq!(core.delete_preset(10), invalid);
-        assert_eq!(core.copy_preset(0, 10), invalid);
-        assert_eq!(core.copy_preset(10, 0), invalid);
-        assert!(entries(&log).is_empty(), "{:?}", entries(&log));
-    }
-
-    #[test]
-    fn wp_c5_a_refused_save_still_releases_the_lock() {
-        let spy = Spy::demo().answer(op::REQ_PRESET_SAVE, &[st::PRESET_ERR_FLASH_WRITE as u8]);
-        let (core, _, log) = open(spy);
-        let before = core.get_state();
+        let mark = probe.mark();
+        let past = MAX_PRESETS as u8;
+        assert_eq!(core.save_preset(past), refused);
+        assert_eq!(core.load_preset(past), refused);
+        assert_eq!(core.delete_preset(past), refused);
+        assert_eq!(core.copy_preset(0, past), refused);
+        assert_eq!(core.copy_preset(past, 0), refused);
+        assert_eq!(core.set_preset_name(past, "x".into()), refused);
         assert_eq!(
-            core.save_preset(1),
+            core.get_preset_name(255),
             Err(DspiError::Refused {
-                status: st::PRESET_ERR_FLASH_WRITE as u8
+                status: INVALID_SLOT
             })
         );
-        bracketed(&log, "Saving preset");
-        assert_eq!(core.get_state(), before);
-        assert_eq!(core.lock().baseline, None);
+        assert!(probe.since(mark).is_empty());
+        // Before the connection is even looked at.
+        assert_eq!(DspiCore::new().save_preset(past), refused);
     }
 
     #[test]
-    fn wp_c5_a_refused_lock_sends_nothing() {
-        for (refusal, want) in [
-            (TransportError::Locked, DspiError::Locked),
-            (TransportError::Denied("viewer".into()), DspiError::Denied),
-        ] {
-            let mut spy = Spy::demo();
-            spy.refuse_lock = Some(refusal);
-            let (core, remote, log) = open(spy);
-            let image = remote.image();
-            assert_eq!(core.save_preset(1), Err(want.clone()));
-            assert_eq!(core.load_preset(0), Err(want.clone()));
-            assert_eq!(core.copy_preset(0, 1), Err(want.clone()));
-            assert_eq!(core.delete_preset(0), Err(want.clone()));
-            assert_eq!(core.save_params(), Err(want.clone()));
-            assert_eq!(core.factory_reset(), Err(want.clone()));
-            let e = entries(&log);
-            assert!(e.iter().all(|x| x.starts_with("lock ")), "{e:?}");
-            assert_eq!(remote.image(), image);
-        }
+    fn clean1_a_refused_save_gives_the_lock_back() {
+        let (core, probe) = fetched();
+        let flash = st::PRESET_ERR_FLASH_WRITE as u8;
+        probe.reply(op::REQ_PRESET_SAVE, Some(vec![flash]));
+        let mark = probe.mark();
+        assert_eq!(
+            core.save_preset(1),
+            Err(DspiError::Refused { status: flash })
+        );
+        let log = probe.since(mark);
+        assert_eq!(log.last().map(String::as_str), Some("unlock"), "{log:?}");
+        assert!(
+            !sent(&log, op::REQ_PRESET_GET_ACTIVE),
+            "no wait after a refusal"
+        );
     }
 
     #[test]
-    fn wp_c5_save_params_saves_and_rebaselines() {
-        let spy = Spy::demo().answer(op::REQ_SAVE_PARAMS, &[FLASH_OK]);
-        let (core, _, log) = open(spy);
-        edit(&core, |s| s.bypass = !s.bypass);
+    fn clean1_a_refused_lock_sends_nothing() {
+        let (core, probe) = fetched();
+        probe.refuse_lock.store(true, Ordering::SeqCst);
+        let mark = probe.mark();
+        assert_eq!(core.save_preset(1), Err(DspiError::Locked));
+        assert_eq!(core.load_preset(1), Err(DspiError::Locked));
+        assert_eq!(core.copy_preset(0, 1), Err(DspiError::Locked));
+        assert_eq!(core.delete_preset(1), Err(DspiError::Locked));
+        assert_eq!(core.save_params(), Err(DspiError::Locked));
+        assert_eq!(core.factory_reset(), Err(DspiError::Locked));
+        let log = probe.since(mark);
+        assert!(log.iter().all(|l| l.starts_with("lock ")), "{log:?}");
+        assert_eq!(log.len(), 6);
+    }
+
+    #[test]
+    fn clean1_save_params_writes_the_active_slot_and_rebaselines() {
+        let (core, probe) = fetched();
+        core.set_input_preamp(0, -3.5).unwrap();
+        assert!(core.preset_dirty());
+        let mark = probe.mark();
         core.save_params().unwrap();
-        bracketed(&log, "Saving to flash");
-        assert!(sent(&log, "in", op::REQ_SAVE_PARAMS));
+        let log = probe.since(mark);
+        assert!(log.contains(&format!("in {:02X} 0", op::REQ_SAVE_PARAMS)));
+        assert_eq!(
+            log.first().map(String::as_str),
+            Some("lock Saving to flash 60000")
+        );
         assert!(!core.preset_dirty());
-
-        let spy = Spy::demo().answer(op::REQ_SAVE_PARAMS, &[FLASH_ERR_WRITE]);
-        let (core, _, log) = open(spy);
+        probe.reply(op::REQ_SAVE_PARAMS, Some(vec![FLASH_ERR_WRITE]));
         assert_eq!(
             core.save_params(),
             Err(DspiError::Refused {
                 status: FLASH_ERR_WRITE
             })
         );
-        bracketed(&log, "Saving to flash");
-        assert_eq!(core.lock().baseline, None);
     }
 
     #[test]
-    fn wp_c5_factory_reset_rereads_everything() {
-        let mut reset = Capture::demo().bulk;
-        let out = dspi_proto::generated::OFF_OUTPUTS;
-        let mut changed = decoded(&reset);
-        changed.output_gain_db[0] = -42.0;
-        reset = state::encode_bulk(&changed);
-        assert_ne!(out, 0);
-
-        let mut spy = Spy::demo().answer(op::REQ_FACTORY_RESET, &[FLASH_OK]);
-        spy.reset_image = Some(reset.clone());
-        let (core, _, log) = open(spy);
+    fn clean1_factory_reset_reads_everything_again() {
+        let (core, probe) = fetched();
+        let factory = preamp(&core);
+        core.set_input_preamp(0, factory - 7.0).unwrap();
+        let mark = probe.mark();
         core.factory_reset().unwrap();
-        bracketed(&log, "Factory reset");
-        assert!(sent(&log, "in", op::REQ_PRESET_GET_DIR), "fetch_all ran");
-        let s = core.get_state();
-        assert_eq!(s.output_gain_db[0], -42.0);
-        assert_eq!(s.bulk_raw, reset);
+        let log = probe.since(mark);
+        let reset = log
+            .iter()
+            .position(|l| *l == format!("in {:02X} 0", op::REQ_FACTORY_RESET))
+            .unwrap();
+        let after = &log[reset..];
+        assert!(sent(after, op::REQ_GET_PLATFORM), "{log:?}");
+        assert!(sent(after, op::REQ_PRESET_GET_DIR), "{log:?}");
+        assert_eq!(preamp(&core), factory);
         assert!(!core.preset_dirty());
-        assert_eq!(core.lock().baseline.as_deref(), Some(&*reset));
-
-        let spy = Spy::demo().answer(op::REQ_FACTORY_RESET, &[FLASH_ERR_WRITE]);
-        let (core, _, log) = open(spy);
-        assert_eq!(
-            core.factory_reset(),
-            Err(DspiError::Refused {
-                status: FLASH_ERR_WRITE
-            })
-        );
-        bracketed(&log, "Factory reset");
+        assert_eq!(log.last().map(String::as_str), Some("unlock"));
     }
 
     #[test]
-    fn wp_c5_read_only_connections_write_nothing() {
-        // A newer firmware's image: shown through its V32 prefix, read-only.
-        let mut bulk = Capture::demo().bulk;
-        bulk.resize(6200, 0);
-        bulk[0] = 33;
-        bulk[6..8].copy_from_slice(&6200u16.to_le_bytes());
-        let cap = Capture {
-            platform: Capture::demo().platform,
-            bulk,
-        };
-        let spy = Spy::with(FakeDevice::new(cap, FakeOptions::default()));
-        let (log, remote) = (Arc::clone(&spy.log), spy.remote.clone());
+    fn clean1_a_read_only_device_is_never_written() {
+        let (spy, probe) = spy_on(FakeDevice::demo_as_wire(31).unwrap());
         let core = DspiCore::new();
-        core.attach(Box::new(spy), "NEW".into(), 0);
+        core.attach_probed(Box::new(spy), "OLD".into(), 0).unwrap();
         core.fetch_all().unwrap();
-        assert_eq!(core.get_state().compat, COMPAT_FIRMWARE_TOO_NEW);
-        log.lock().unwrap().clear();
-        let image = remote.image();
-
-        let ro = Err(DspiError::ReadOnly);
-        assert_eq!(core.save_preset(1), ro);
-        assert_eq!(core.load_preset(0), ro);
-        assert_eq!(core.copy_preset(0, 1), ro);
-        assert_eq!(core.delete_preset(0), ro);
-        assert_eq!(core.set_preset_name(0, "x".into()), ro);
-        assert_eq!(core.set_preset_startup(0, 0), ro);
-        assert_eq!(core.save_params(), ro);
-        assert_eq!(core.load_params(), ro);
-        assert_eq!(core.factory_reset(), ro);
-        assert!(entries(&log).is_empty(), "{:?}", entries(&log));
-        assert_eq!(remote.image(), image);
-        // Reads work.
-        assert_eq!(core.get_preset_name(0).unwrap(), "Demo");
-        assert_eq!(core.get_preset_directory().unwrap().occupied_mask, 1);
-        // The baseline and diff work on the shown image.
-        core.capture_baseline();
-        assert!(!core.preset_dirty());
-        edit(&core, |s| s.input_preamp_db[1] = 2.0);
-        assert!(core.preset_dirty());
+        let mark = probe.mark();
+        assert_eq!(core.save_preset(1), Err(DspiError::ReadOnly));
+        assert_eq!(core.load_preset(1), Err(DspiError::ReadOnly));
+        assert_eq!(core.copy_preset(0, 1), Err(DspiError::ReadOnly));
+        assert_eq!(core.delete_preset(1), Err(DspiError::ReadOnly));
+        assert_eq!(
+            core.set_preset_name(1, "x".into()),
+            Err(DspiError::ReadOnly)
+        );
+        assert_eq!(core.set_preset_startup(1, 1), Err(DspiError::ReadOnly));
+        assert_eq!(core.save_params(), Err(DspiError::ReadOnly));
+        assert_eq!(core.load_params(), Err(DspiError::ReadOnly));
+        assert_eq!(core.factory_reset(), Err(DspiError::ReadOnly));
+        assert!(probe.since(mark).is_empty(), "{:?}", probe.since(mark));
+        // Reading still works, and an image of another format has no baseline.
+        core.get_preset_directory().unwrap();
+        assert!(core.preset_changes().is_empty());
     }
 
     #[test]
-    fn wp_c5_without_a_device() {
+    fn clean1_with_no_device() {
         let core = DspiCore::new();
         assert_eq!(core.save_preset(0), Err(DspiError::Disconnected));
         assert_eq!(core.load_preset(0), Err(DspiError::Disconnected));
-        assert_eq!(core.get_preset_name(0), Err(DspiError::Disconnected));
-        assert_eq!(core.get_preset_directory(), Err(DspiError::Disconnected));
-        assert_eq!(core.factory_reset(), Err(DspiError::Disconnected));
-        core.capture_baseline();
-        assert_eq!(core.lock().baseline, None);
-        assert!(!core.preset_dirty());
-        assert!(core.preset_changes().is_empty());
-    }
-
-    #[test]
-    fn wp_c5_no_baseline_means_no_changes() {
-        let (core, _, _) = open(Spy::demo());
-        edit(&core, |s| s.input_preamp_db[0] = -6.0);
-        assert!(!core.preset_dirty());
-        assert!(core.preset_changes().is_empty());
-    }
-
-    #[test]
-    fn wp_c5_dirty_follows_the_image_and_the_live_modes() {
-        let (core, _, _) = open(Spy::demo());
-        core.capture_baseline();
-        assert!(!core.preset_dirty());
-
-        // Master volume: not part of the preset in the demo's INDEPENDENT
-        // mode, part of it in WITH_PRESET mode (judged by the live mode).
-        let mv = core.get_state().master_volume_db;
-        edit(&core, |s| s.master_volume_db = mv - 7.5);
-        assert!(!core.preset_dirty());
-        core.lock().state.master_volume_mode = WITH_PRESET;
-        assert!(core.preset_dirty());
-        assert!(
-            core.preset_changes()[0].starts_with("Master Volume: "),
-            "{:?}",
-            core.preset_changes()
-        );
-        core.lock().state.master_volume_mode = 0;
-
-        // An edit and its undo: clean again.
-        edit(&core, |s| s.master_volume_db = mv);
-        let before = core.get_state().input_preamp_db[0];
-        edit(&core, |s| s.input_preamp_db[0] = before - 3.0);
-        assert!(core.preset_dirty());
+        assert_eq!(core.copy_preset(0, 1), Err(DspiError::Disconnected));
+        assert_eq!(core.delete_preset(0), Err(DspiError::Disconnected));
         assert_eq!(
-            core.preset_changes(),
-            vec![format!("Preamp L: {} → {}", db(before), db(before - 3.0))]
-        );
-        edit(&core, |s| s.input_preamp_db[0] = before);
-        assert!(!core.preset_dirty());
-    }
-
-    #[test]
-    fn wp_c5_a_reencoded_image_is_not_a_change() {
-        // The codec is decode-stable, not byte-identical: an image written
-        // back from the mirror may differ from the device's in bytes no
-        // field reads. That is no edit.
-        let (core, _, _) = open(Spy::demo());
-        core.capture_baseline();
-        {
-            let mut g = core.lock();
-            let mut s = g.state.clone();
-            s.bulk_raw.iter_mut().for_each(|b| *b = 0);
-            let raw = g.state.bulk_raw.clone();
-            s.bulk_raw[..8].copy_from_slice(&raw[..8]);
-            g.state.bulk_raw = state::encode_bulk(&s);
-        }
-        assert!(
-            core.preset_changes().is_empty(),
-            "{:?}",
-            core.preset_changes()
-        );
-        assert!(!core.preset_dirty());
-    }
-
-    #[test]
-    fn wp_c5_diff_words_edits_as_the_console_does() {
-        let mut a = decoded(&Capture::demo().bulk);
-        a.num_input_channels = 2;
-        a.num_output_channels = 4;
-        a.output_config_mode = 0;
-        let mut b = a.clone();
-        assert!(diff(&a, &b).is_empty());
-
-        b.filters[2][1].gain += 4.0;
-        b.output_muted[1] = !a.output_muted[1];
-        b.output_pins[0] = b.output_pins[0].wrapping_add(1);
-        b.channel_names[0] = "Left".into();
-        let lines = diff(&a, &b);
-        let (out1, out2) = (channel_label(&b, 2), channel_label(&b, 3));
-        assert!(
-            lines.contains(&format!("1 band changed on {out1}")),
-            "{lines:?}"
-        );
-        let muted = if b.output_muted[1] {
-            "muted"
-        } else {
-            "unmuted"
-        };
-        assert!(lines.contains(&format!("{out2} {muted}")), "{lines:?}");
-        assert!(
-            lines
-                .iter()
-                .any(|l| *l == format!("'{}' → 'Left'", a.channel_names[0])),
-            "{lines:?}"
-        );
-        assert!(
-            !lines.iter().any(|l| l.contains("pin assignment")),
-            "{lines:?}"
-        );
-
-        b.output_config_mode = WITH_PRESET;
-        let lines = diff(&a, &b);
-        assert!(
-            lines.iter().any(|l| l == "1 pin assignment changed"),
-            "{lines:?}"
-        );
-
-        // NaN is not a change; a Linkwitz Transform's Qp is.
-        let mut c = a.clone();
-        let mut d = a.clone();
-        c.filters[0][0].freq = f32::NAN;
-        d.filters[0][0].freq = f32::NAN;
-        assert!(diff(&c, &d).is_empty());
-        d.filters[0][0].qp = 3.0;
-        assert!(
-            diff(&c, &d).is_empty(),
-            "Qp counts only for a Linkwitz Transform"
-        );
-        c.filters[0][0].filter_type = 11;
-        d.filters[0][0].filter_type = 11;
-        assert_eq!(diff(&c, &d).len(), 1);
-    }
-
-    /// A directory reply: occupied mask and active slot, WITH_PRESET output
-    /// config, independent master volume.
-    fn dir(mask: u8, active: u8) -> [u8; 7] {
-        [mask, 0, 0, 0, active, WITH_PRESET, 0]
-    }
-
-    fn is_transfer<T: std::fmt::Debug>(r: Result<T>) {
-        assert!(matches!(r, Err(DspiError::Transfer { .. })), "{r:?}");
-    }
-
-    #[test]
-    fn wp_c5_an_unconfirmed_load_trusts_the_directory() {
-        // Accepted, then the device stays on slot 0 (a CRC failure on its
-        // main loop looks like this).
-        let spy = Spy::demo()
-            .answer(op::REQ_PRESET_LOAD, &[0])
-            .answer(op::REQ_PRESET_GET_ACTIVE, &[0])
-            .answer(op::REQ_PRESET_GET_DIR, &dir(0b101, 0));
-        let (core, _, log) = open(spy);
-        core.capture_baseline();
-        let baseline = core.lock().baseline.clone();
-        edit(&core, |s| s.bypass = !s.bypass);
-        log.lock().unwrap().clear();
-
-        is_transfer(core.load_preset(2));
-        bracketed(&log, "Loading preset");
-        assert!(
-            !sent(&log, "in", op::REQ_GET_ALL_PARAMS_CHUNK),
-            "no re-read"
-        );
-        assert_eq!(core.get_state().active_preset_slot, 0);
-        assert_eq!(core.lock().baseline, baseline);
-        assert!(core.preset_dirty(), "the edit is still unsaved");
-    }
-
-    #[test]
-    fn wp_c5_a_confirmed_load_without_a_directory_takes_the_slot() {
-        let mut spy = Spy::demo()
-            .answer(op::REQ_PRESET_LOAD, &[0])
-            .answer(op::REQ_PRESET_GET_ACTIVE, &[3]);
-        spy.stalls.push(op::REQ_PRESET_GET_DIR);
-        let (core, _, _) = open(spy);
-        core.load_preset(3).unwrap();
-        assert_eq!(core.get_state().active_preset_slot, 3);
-        assert!(core.lock().baseline.is_some());
-    }
-
-    #[test]
-    fn wp_c5_a_directory_naming_another_slot_wins_over_the_poll() {
-        let spy = Spy::demo()
-            .answer(op::REQ_PRESET_LOAD, &[0])
-            .answer(op::REQ_PRESET_GET_ACTIVE, &[3])
-            .answer(op::REQ_PRESET_GET_DIR, &dir(0b1001, 0));
-        let (core, _, log) = open(spy);
-        is_transfer(core.load_preset(3));
-        assert_eq!(entries(&log).last().map(String::as_str), Some("unlock"));
-        assert_eq!(core.get_state().active_preset_slot, 0);
-        assert_eq!(core.lock().baseline, None);
-    }
-
-    #[test]
-    fn wp_c5_an_unconfirmed_save_changes_nothing_but_the_directory() {
-        let spy = Spy::demo()
-            .answer(op::REQ_PRESET_SAVE, &[0])
-            .answer(op::REQ_PRESET_GET_DIR, &dir(0b1, 0));
-        let (core, _, log) = open(spy);
-        is_transfer(core.save_preset(3));
-        bracketed(&log, "Saving preset");
-        let s = core.get_state();
-        assert_eq!((s.active_preset_slot, s.preset_occupied), (0, 0b1));
-        assert_eq!(core.lock().baseline, None);
-    }
-
-    #[test]
-    fn wp_c5_an_unconfirmed_delete_keeps_the_slot_and_its_name() {
-        let spy = Spy::demo()
-            .answer(op::REQ_PRESET_DELETE, &[0])
-            .answer(op::REQ_PRESET_GET_DIR, &dir(0b1, 0));
-        let (core, _, log) = open(spy);
-        let name = core.get_state().preset_names[0].clone();
-        assert!(!name.is_empty());
-        is_transfer(core.delete_preset(0));
-        bracketed(&log, "Deleting preset");
-        assert!(
-            !sent(&log, "in", op::REQ_GET_ALL_PARAMS_CHUNK),
-            "no re-read"
-        );
-        let s = core.get_state();
-        assert_eq!(s.preset_occupied, 0b1);
-        assert_eq!(s.preset_names[0], name);
-    }
-
-    #[test]
-    fn wp_c5_an_unconfirmed_copy_stops_and_keeps_the_baseline() {
-        // The first save never reports active: the source is not re-saved.
-        let spy = Spy::demo().answer(op::REQ_PRESET_GET_ACTIVE, &[0]);
-        let (core, _, log) = open(spy);
-        is_transfer(core.copy_preset(0, 4));
-        bracketed(&log, "Copying preset");
-        let saves = entries(&log)
-            .into_iter()
-            .filter(|e| e.starts_with(&format!("in {:02X} ", op::REQ_PRESET_SAVE)))
-            .count();
-        assert_eq!(saves, 1);
-        assert_eq!(core.lock().baseline, None);
-
-        // The second save never reports active.
-        let spy = Spy::demo().answer(op::REQ_PRESET_GET_ACTIVE, &[4]);
-        let (core, _, log) = open(spy);
-        is_transfer(core.copy_preset(0, 4));
-        bracketed(&log, "Copying preset");
-        assert_eq!(core.lock().baseline, None);
-    }
-
-    #[test]
-    fn wp_cg7_the_pair_map_dirties_the_preset_and_the_user_volume_does_not() {
-        let (core, _, _) = open(Spy::demo());
-        core.capture_baseline();
-        edit(&core, |s| {
-            s.user_volume_db -= 20.0;
-            s.dac_mute_enabled = !s.dac_mute_enabled;
-        });
-        assert!(!core.preset_dirty(), "{:?}", core.preset_changes());
-        assert!(core.preset_changes().is_empty());
-
-        edit(&core, |s| s.crossfeed_pair_map = vec![0x02, 0x13, 0, 0]);
-        assert!(core.preset_dirty());
-        assert_eq!(
-            core.preset_changes(),
-            [
-                "Crossfeed pair 1 outputs: 1/2 → 3/1",
-                "Crossfeed pair 2 outputs: 3/4 → 4/2",
-            ]
-        );
-        edit(&core, |s| s.crossfeed_pair_map = vec![0; 4]);
-        assert!(!core.preset_dirty());
-    }
-
-    #[test]
-    fn wp_c5_formatting_helpers() {
-        assert_eq!(ms(0.0), "0");
-        assert_eq!(ms(10.0), "10");
-        assert_eq!(ms(1.02), "1.02");
-        assert_eq!(ms(1.2346), "1.2346");
-        assert_eq!(val(3.0), "3");
-        assert_eq!(val(3.25), "3.2");
-        assert_eq!(db(-3.0), "-3.0 dB");
-    }
-
-    // -- WP CG24 --
-
-    fn locks(log: &Log) -> Vec<String> {
-        entries(log)
-            .into_iter()
-            .filter(|e| e.starts_with("lock") || e == "unlock")
-            .collect()
-    }
-
-    #[test]
-    fn wp_cg24_flows_inside_a_held_lock_ask_nothing_more() {
-        let (core, _remote, log) = open(Spy::demo());
-        // On USB and the demo device it succeeds at once.
-        core.device_lock_acquire("Install".into(), 5000).unwrap();
-        assert_eq!(core.held_lock_holder(), Some(Holder::Caller));
-        // Neither deadlocks nor gives the lock back.
-        core.save_preset(3).unwrap();
-        core.load_preset(3).unwrap();
-        core.save_output_config().unwrap();
-        assert_eq!(locks(&log), ["lock Install 5"]);
-        assert_eq!(core.held_lock_holder(), Some(Holder::Caller));
-        core.device_lock_release();
-        core.device_lock_release();
-        assert_eq!(locks(&log), ["lock Install 5", "unlock"]);
-        assert_eq!(core.held_lock_holder(), None);
-        // Flows lock for themselves again.
-        log.lock().unwrap().clear();
-        core.save_preset(2).unwrap();
-        bracketed(&log, "Saving preset");
-    }
-
-    #[test]
-    fn wp_cg24_the_timeout_is_capped_and_zero_is_refused() {
-        let (core, _remote, log) = open(Spy::demo());
-        assert!(matches!(
-            core.device_lock_acquire("x".into(), 0),
-            Err(DspiError::InvalidArgument { .. })
-        ));
-        core.device_lock_acquire("Long".into(), u32::MAX).unwrap();
-        assert_eq!(locks(&log), ["lock Long 60"]);
-        core.device_lock_release();
-        assert_eq!(
-            DspiCore::new().device_lock_acquire("x".into(), 10),
+            core.set_preset_name(0, "x".into()),
             Err(DspiError::Disconnected)
         );
-        DspiCore::new().device_lock_release();
+        assert_eq!(core.get_preset_name(0), Err(DspiError::Disconnected));
+        assert_eq!(core.get_preset_directory(), Err(DspiError::Disconnected));
+        assert_eq!(core.set_preset_startup(0, 0), Err(DspiError::Disconnected));
+        assert_eq!(core.save_params(), Err(DspiError::Disconnected));
+        assert_eq!(core.factory_reset(), Err(DspiError::Disconnected));
+        assert_eq!(
+            core.device_lock_acquire("x".into(), 100),
+            Err(DspiError::Disconnected)
+        );
+        core.device_lock_release();
+        core.capture_baseline();
+        assert!(core.lock().baseline.is_none());
+        assert!(!core.preset_dirty());
+        assert!(core.preset_changes().is_empty());
+    }
+
+    // ── When the device does not confirm ──────────────────────────────
+
+    #[test]
+    fn clean1_a_load_never_confirmed_goes_by_the_directory() {
+        let (core, probe) = fetched();
+        core.save_preset(1).unwrap();
+        probe.reply(op::REQ_PRESET_GET_ACTIVE, Some(vec![7]));
+        probe.reply(op::REQ_PRESET_GET_DIR, Some(directory(0b11, 5)));
+        core.set_input_preamp(0, 1.0).unwrap();
+        core.load_preset(1).unwrap();
+        assert_eq!(core.get_state().active_preset_slot, 5);
+        assert!(!core.preset_dirty());
     }
 
     #[test]
-    fn wp_cg24_a_refused_lock_holds_nothing() {
-        let mut spy = Spy::demo();
-        spy.refuse_lock = Some(TransportError::Locked);
-        let (core, _remote, _log) = open(spy);
+    fn clean1_a_confirmed_load_without_a_directory_is_on_its_slot() {
+        let (core, probe) = fetched();
+        core.save_preset(1).unwrap();
+        core.save_preset(0).unwrap();
+        probe.reply(op::REQ_PRESET_GET_DIR, None);
+        core.load_preset(1).unwrap();
+        assert_eq!(core.get_state().active_preset_slot, 1);
+        // Neither confirmed nor read: it stays where it was.
+        probe.reply(op::REQ_PRESET_GET_ACTIVE, Some(vec![9]));
+        core.load_preset(0).unwrap();
+        assert_eq!(core.get_state().active_preset_slot, 1);
+    }
+
+    #[test]
+    fn clean1_the_directory_has_the_last_word_on_the_active_slot() {
+        let (core, probe) = fetched();
+        core.save_preset(1).unwrap();
+        probe.reply(op::REQ_PRESET_GET_DIR, Some(directory(0b11, 4)));
+        core.load_preset(1).unwrap();
+        assert_eq!(core.get_state().active_preset_slot, 4);
+    }
+
+    #[test]
+    fn clean1_a_save_never_confirmed_takes_only_the_directory() {
+        let (core, probe) = fetched();
+        core.set_input_preamp(0, -9.0).unwrap();
+        let changes = core.preset_changes();
+        probe.reply(op::REQ_PRESET_GET_ACTIVE, Some(vec![9]));
+        probe.reply(op::REQ_PRESET_GET_DIR, Some(directory(0b101, 0)));
+        assert!(matches!(
+            core.save_preset(2),
+            Err(DspiError::Transfer { .. })
+        ));
+        let s = core.get_state();
+        assert_eq!((s.preset_occupied, s.active_preset_slot), (0b101, 0));
+        assert_eq!(core.preset_changes(), changes, "the baseline stays");
+    }
+
+    #[test]
+    fn clean1_a_delete_never_confirmed_keeps_the_slot_and_its_name() {
+        let (core, probe) = fetched();
+        core.save_preset(3).unwrap();
+        core.set_preset_name(3, "Keep".into()).unwrap();
+        probe.reply(op::REQ_PRESET_GET_DIR, Some(directory(0x3FF, 3)));
+        assert!(matches!(
+            core.delete_preset(3),
+            Err(DspiError::Transfer { .. })
+        ));
+        let s = core.get_state();
+        assert_ne!(s.preset_occupied & (1 << 3), 0);
+        assert_eq!(s.preset_names[3], "Keep");
+    }
+
+    #[test]
+    fn clean1_a_copy_never_confirmed_stops_and_keeps_the_baseline() {
+        let (core, probe) = fetched();
+        core.set_input_preamp(0, -9.0).unwrap();
+        probe.reply(op::REQ_PRESET_GET_ACTIVE, Some(vec![9]));
+        let mark = probe.mark();
+        assert!(matches!(
+            core.copy_preset(0, 4),
+            Err(DspiError::Transfer { .. })
+        ));
+        let log = probe.since(mark);
+        assert_eq!(count(&log, &format!("in {:02X} ", op::REQ_PRESET_SAVE)), 1);
+        assert_eq!(log.last().map(String::as_str), Some("unlock"));
+        assert!(core.preset_dirty());
+    }
+
+    #[test]
+    fn clean1_a_device_that_leaves_ends_the_wait() {
+        let mut calls = 0;
+        let (spy, _) = spy_on(FakeDevice::demo());
+        let mut conn = Connection::new(Box::new(spy), "X".into(), 0);
+        let r = wait_for(&mut conn, |_| {
+            calls += 1;
+            Err(DspiError::Disconnected)
+        });
+        assert_eq!(r, Err(DspiError::Disconnected));
+        assert_eq!(calls, 1);
+        let r = wait_for(&mut conn, |_| Ok(true));
+        assert_eq!(r, Ok(true));
+    }
+
+    // ── The device lock ───────────────────────────────────────────────
+
+    #[test]
+    fn clean1_flows_inside_a_held_lock_ask_for_nothing() {
+        let (core, probe) = fetched();
+        let mark = probe.mark();
+        core.device_lock_acquire("Restore".into(), 5000).unwrap();
+        assert_eq!(core.held_lock_holder(), Some(Holder::Caller));
+        core.save_preset(1).unwrap();
+        core.load_preset(1).unwrap();
+        core.apply_all_params().unwrap();
+        // Again: nothing more is asked.
+        core.device_lock_acquire("Again".into(), 5000).unwrap();
+        core.device_lock_release();
+        let log = probe.since(mark);
+        let locks: Vec<_> = log
+            .iter()
+            .filter(|l| l.starts_with("lock") || *l == "unlock")
+            .collect();
+        assert_eq!(locks, ["lock Restore 5000", "unlock"]);
+        assert_eq!(core.held_lock_holder(), None);
+        core.device_lock_release();
+        assert_eq!(count(&probe.since(mark), "unlock"), 1, "idempotent");
+    }
+
+    #[test]
+    fn clean1_a_lease_is_capped_and_never_zero() {
+        let (core, probe) = fetched();
+        assert_eq!(
+            core.device_lock_acquire("x".into(), 0),
+            Err(DspiError::InvalidArgument {
+                msg: "a device lock needs a timeout".into()
+            })
+        );
+        let mark = probe.mark();
+        core.device_lock_acquire("Install".into(), u32::MAX)
+            .unwrap();
+        assert_eq!(probe.since(mark), ["lock Install 60000"]);
+    }
+
+    #[test]
+    fn clean1_a_refused_acquire_holds_nothing() {
+        let (core, probe) = fetched();
+        probe.refuse_lock.store(true, Ordering::SeqCst);
         assert_eq!(
             core.device_lock_acquire("x".into(), 1000),
             Err(DspiError::Locked)
         );
         assert_eq!(core.held_lock_holder(), None);
+        probe.refuse_lock.store(false, Ordering::SeqCst);
+        let mark = probe.mark();
+        core.save_preset(1).unwrap();
+        let log = probe.since(mark);
+        assert_eq!(count(&log, "lock "), 1);
+        assert_eq!(count(&log, "unlock"), 1);
     }
 
     #[test]
-    fn wp_cg24_an_expired_lock_is_given_back_before_the_next_flow() {
-        let (core, _remote, log) = open(Spy::demo());
-        core.device_lock_acquire("Short".into(), 5000).unwrap();
+    fn clean1_a_lease_that_ran_out_goes_back_before_the_next_flow() {
+        let (core, probe) = fetched();
+        core.device_lock_acquire("x".into(), 5000).unwrap();
         core.expire_held_lock();
         assert_eq!(core.held_lock_holder(), None);
-        log.lock().unwrap().clear();
-        core.save_preset(2).unwrap();
-        assert_eq!(locks(&log), ["unlock", "lock Saving preset 60", "unlock"]);
+        let mark = probe.mark();
+        core.save_preset(1).unwrap();
+        let log = probe.since(mark);
+        let locks: Vec<_> = log
+            .iter()
+            .filter(|l| l.starts_with("lock") || *l == "unlock")
+            .collect();
+        assert_eq!(locks, ["unlock", "lock Saving preset 60000", "unlock"]);
     }
 
     #[test]
-    fn wp_cg24_a_new_connection_holds_nothing() {
-        let (core, _remote, _log) = open(Spy::demo());
-        core.device_lock_acquire("Flow".into(), 5000).unwrap();
-        let spy = Spy::demo();
-        let new_log = Arc::clone(&spy.log);
-        core.attach_probed(Box::new(spy), "DEMO".into(), 0).unwrap();
-        assert_eq!(core.held_lock_holder(), None);
-        new_log.lock().unwrap().clear();
-        core.save_preset(2).unwrap();
-        bracketed(&new_log, "Saving preset");
-        // A release now has nothing to give back.
+    fn clean1_another_holder_becomes_the_callers() {
+        let (core, probe) = fetched();
+        let lock = core
+            .take_device_lock("Learning", Duration::from_secs(15), true)
+            .unwrap();
+        core.hold_device_lock(lock, Duration::from_secs(15), Holder::Learn);
         core.device_lock_release();
-        assert_eq!(locks(&new_log), ["lock Saving preset 60", "unlock"]);
-    }
-}
-
-/// Swift's diff table (`PresetSnapshot.diff`, ext-channel-116 at 48cf7c5), row
-/// by row: the wanted lines are Swift's format strings with values filled in,
-/// in Swift's order.
-#[cfg(test)]
-#[allow(clippy::arithmetic_side_effects)]
-mod tests_wp_cg7 {
-    use dspi_transport::Capture;
-
-    use super::*;
-
-    type Edit = fn(&mut DspState, &mut DspState);
-
-    /// The diff of a device with no source names.
-    fn diff(o: &DspState, n: &DspState) -> Vec<String> {
-        super::diff(o, n, &[])
+        assert_eq!(core.held_lock_holder(), Some(Holder::Learn));
+        core.device_lock_acquire("Flow".into(), 1000).unwrap();
+        assert_eq!(core.held_lock_holder(), Some(Holder::Caller));
+        core.end_held_lock(Some(Holder::Learn));
+        assert_eq!(core.held_lock_holder(), Some(Holder::Caller));
+        core.end_held_lock(None);
+        assert_eq!(core.held_lock_holder(), None);
+        assert_eq!(count(&probe.log.lock().unwrap(), "unlock"), 1);
     }
 
-    /// An RP2350-sized device with the firmware's default names, the two
-    /// persistence modes on WITH_PRESET.
+    #[test]
+    fn clean1_a_new_connection_holds_nothing() {
+        let (core, _) = fetched();
+        core.device_lock_acquire("x".into(), 5000).unwrap();
+        let (spy, probe) = spy_on(FakeDevice::demo());
+        core.attach_probed(Box::new(spy), "NEW".into(), 0).unwrap();
+        assert_eq!(core.held_lock_holder(), None);
+        core.fetch_all().unwrap();
+        let mark = probe.mark();
+        core.save_preset(1).unwrap();
+        assert_eq!(count(&probe.since(mark), "lock "), 1);
+    }
+
+    #[test]
+    fn clean1_a_lock_on_a_replaced_connection_leaves_the_new_one_locked() {
+        let core = DspiCore::new();
+        let (a, first) = spy_on(FakeDevice::demo());
+        core.attach(Box::new(a), "A".into(), 0);
+        let old = core
+            .take_device_lock("Old", Duration::from_secs(1), false)
+            .unwrap();
+        let (b, second) = spy_on(FakeDevice::demo());
+        core.attach(Box::new(b), "B".into(), 0);
+        let new = core
+            .take_device_lock("New", Duration::from_secs(1), false)
+            .unwrap();
+        assert!(!old.is_current(&core.lock()));
+        assert!(new.is_current(&core.lock()));
+        core.release_device_lock(old);
+        assert_eq!(count(&second.log.lock().unwrap(), "unlock"), 0);
+        assert_eq!(count(&first.log.lock().unwrap(), "unlock"), 0);
+        // Its own connection's lock goes back.
+        core.release_device_lock(new);
+        assert_eq!(*second.log.lock().unwrap(), ["lock New 1000", "unlock"]);
+    }
+
+    #[test]
+    fn clean1_a_held_lock_on_a_gone_connection_is_given_back() {
+        let core = DspiCore::new();
+        let (a, first) = spy_on(FakeDevice::demo());
+        core.attach(Box::new(a), "A".into(), 0);
+        let lock = core
+            .take_device_lock("x", Duration::from_secs(1), false)
+            .unwrap();
+        let (b, _) = spy_on(FakeDevice::demo());
+        core.attach(Box::new(b), "B".into(), 0);
+        // Not kept on the new connection, and never given to it.
+        core.hold_device_lock(lock, Duration::from_secs(1), Holder::Caller);
+        assert_eq!(core.held_lock_holder(), None);
+        assert_eq!(count(&first.log.lock().unwrap(), "unlock"), 0);
+    }
+
+    #[test]
+    fn clean1_over_a_side_channel_the_lock_goes_there() {
+        let (core, probe) = fetched();
+        core.lock().conn().unwrap().side = Some(Arc::new(Side(Arc::clone(&probe))));
+        let mark = probe.mark();
+        core.save_preset(1).unwrap();
+        let log = probe.since(mark);
+        assert_eq!(
+            log.first().map(String::as_str),
+            Some("side lock Saving preset")
+        );
+        assert_eq!(log.last().map(String::as_str), Some("side unlock"));
+        assert_eq!(count(&log, "lock "), 0, "not the transport's");
+
+        // A held one goes back when its connection closes.
+        core.device_lock_acquire("Hold".into(), 5000).unwrap();
+        let mark = probe.mark();
+        core.disconnect();
+        assert_eq!(probe.since(mark), ["side unlock"]);
+    }
+
+    // ── The baseline ──────────────────────────────────────────────────
+
+    #[test]
+    fn clean1_without_a_baseline_nothing_has_changed() {
+        let (core, _) = probed();
+        assert!(core.lock().baseline.is_none());
+        core.set_input_preamp(0, -3.0).unwrap();
+        assert!(core.preset_changes().is_empty());
+        assert!(!core.preset_dirty());
+        core.capture_baseline();
+        core.set_input_preamp(0, -4.0).unwrap();
+        assert_eq!(core.preset_changes().len(), 1);
+    }
+
+    #[test]
+    fn clean1_dirty_follows_the_image_and_the_live_modes() {
+        let (core, _) = fetched();
+        assert!(!core.preset_dirty());
+        // The demo keeps the master volume apart from presets.
+        core.lock().state.master_volume_mode = 0;
+        core.set_master_volume(-33.0).unwrap();
+        assert!(!core.preset_dirty(), "{:?}", core.preset_changes());
+        core.lock().state.master_volume_mode = WITH_PRESET;
+        assert!(core.preset_dirty());
+        assert!(core.preset_changes()[0].starts_with("Master Volume: "));
+        core.lock().state.master_volume_mode = 0;
+        core.set_bypass(true).unwrap();
+        assert_eq!(core.preset_changes(), ["Master EQ bypass: off → on"]);
+        core.set_bypass(false).unwrap();
+        assert!(!core.preset_dirty());
+    }
+
+    #[test]
+    fn clean1_the_same_values_in_other_bytes_are_no_change() {
+        let (core, _) = fetched();
+        core.apply_all_params().unwrap();
+        assert!(!core.preset_dirty());
+        // Bytes no value is read from, and the header, differ: still clean.
+        let mut inner = core.lock();
+        let mut base = inner.state.bulk_raw.clone();
+        base[g::OFF_LEGACY] ^= 0x5A;
+        base[g::OFF_HEADER + 15] ^= 0x01;
+        inner.baseline = Some(base);
+        drop(inner);
+        assert!(!core.preset_dirty(), "{:?}", core.preset_changes());
+        // A baseline that does not decode has nothing to say.
+        core.lock().baseline = Some(vec![0; 10]);
+        assert!(core.preset_changes().is_empty());
+    }
+
+    #[test]
+    fn clean1_a_load_elsewhere_keeps_later_edits_unsaved() {
+        let (core, _) = fetched();
+        let mut inner = core.lock();
+        let old = inner.baseline.clone();
+        assert!(old.is_some());
+        // Nothing was edited: the re-read is the baseline.
+        let mirror = inner.state.bulk_raw.clone();
+        rebaseline_after_load_locked(&mut inner, old.as_deref(), &mirror);
+        assert_eq!(
+            inner.baseline.as_deref(),
+            Some(inner.state.bulk_raw.as_slice())
+        );
+        // No baseline before: the re-read becomes it.
+        inner.baseline = None;
+        rebaseline_after_load_locked(&mut inner, None, &mirror);
+        assert_eq!(inner.baseline.as_deref(), Some(mirror.as_slice()));
+    }
+
+    #[test]
+    fn clean1_changed_runs_and_fields() {
+        assert_eq!(changed_runs(&[1, 2, 3, 4], &[1, 9, 9, 4]), vec![1..3]);
+        assert_eq!(changed_runs(&[1, 2], &[3, 2]), vec![0..1]);
+        assert_eq!(changed_runs(&[1, 2], &[1, 3]), vec![1..2]);
+        assert!(changed_runs(&[1], &[1]).is_empty());
+        let fields = image_fields();
+        assert_eq!(fields.first(), Some(&(0..1)));
+        assert_eq!(fields.last().map(|f| f.end), Some(g::BULK_SIZE));
+    }
+
+    // ── The rows ──────────────────────────────────────────────────────
+
+    /// The demo's state with a known layout: two inputs, five outputs, no
+    /// names (so every label is the firmware's default name), every
+    /// persistence mode with the preset, and known values where rows test.
     fn base() -> DspState {
         let mut s = state::default_state();
         state::decode_bulk(&Capture::demo().bulk, &mut s).unwrap();
-        s.num_input_channels = 8;
-        s.num_output_channels = 9;
-        s.master_volume_mode = WITH_PRESET;
-        s.output_config_mode = WITH_PRESET;
+        s.platform_id = 1;
+        s.num_input_channels = 2;
+        s.num_output_channels = 5;
+        s.num_channels = 7;
         s.output_types = vec![0; 4];
-        s.channel_names = (0..17).map(|w| default_channel_name(&s, w)).collect();
-        s.bulk_raw = state::encode_bulk(&s);
+        s.channel_names = vec![String::new(); 17];
+        s.output_config_mode = WITH_PRESET;
+        s.master_volume_mode = WITH_PRESET;
+        s.input_preamp_db = vec![0.0; 8];
+        s.master_volume_db = -20.0;
+        s.bypass = false;
+        s.loudness_enabled = false;
+        s.loudness_output_mask = 0;
+        s.loudness_ref_spl = 83.0;
+        s.crossfeed_freq = 700.0;
+        s.crossfeed_pair_map = vec![0; 4];
+        s.psybass_cutoff_hz = 80.0;
+        s.subharm[usize::from(SUBHARM_PARAM_LOW)] = -6.0;
+        s.subharm[usize::from(SUBHARM_PARAM_CEILING)] = -3.0;
+        s.subharm[usize::from(SUBHARM_PARAM_SELECT)] = 0.0;
+        s.tube[g::tube::TUBE_PARAM_TUBE_TYPE as usize] = 1.0;
+        s.limiter_threshold_db = vec![-1.0; 9];
+        s.upmix[usize::from(UPMIX_PARAM_CENTER_MODE)] = 0.0;
+        s.leveller_speed = 1;
+        s.channel_delays = vec![0.0; 17];
+        s.output_muted = vec![false; 9];
+        s.output_gain_db = vec![0.0; 9];
+        s.input_source = 0;
+        s.lg_sound_sync_enabled = false;
+        s.spdif_inputs_enabled = 0x01;
+        s.spdif_inputs_enabled_present = true;
         s
     }
 
-    /// `base()` with `edit` applied, through both paths: the diff alone, and
-    /// the images the core really compares.
-    fn lines(edit: Edit) -> (Vec<String>, Vec<String>) {
-        let (mut o, mut n) = (base(), base());
-        edit(&mut o, &mut n);
-        o.bulk_raw = state::encode_bulk(&o);
-        n.bulk_raw = state::encode_bulk(&n);
-        (diff(&o, &n), changes(&o.bulk_raw, &n, &[]))
-    }
-
-    fn sub(s: &mut DspState, i: u8, v: f32) {
-        s.subharm[usize::from(i)] = v;
-    }
-    fn tube_p(s: &mut DspState, i: u16, v: f32) {
-        s.tube[usize::from(i)] = v;
-    }
-    fn up(s: &mut DspState, i: u8, v: f32) {
-        s.upmix[usize::from(i)] = v;
-    }
-    /// One band with an edit that shows.
-    fn band_edit(v: &mut [Vec<FilterParams>], ch: usize, bands: &[usize]) {
-        for &b in bands {
-            v[ch][b].freq += 50.0;
-        }
-    }
-
-    /// Every row, in Swift's order, one edit each.
-    #[rustfmt::skip]
-    fn table() -> Vec<(Edit, Vec<&'static str>)> {
-        vec![
-            // Global
-            (|o, n| { o.input_preamp_db[0] = 0.0; n.input_preamp_db[0] = -3.0; }, vec!["Preamp L: 0.0 dB → -3.0 dB"]),
-            (|o, n| { o.input_preamp_db[1] = 1.5; n.input_preamp_db[1] = 2.0; }, vec!["Preamp R: 1.5 dB → 2.0 dB"]),
-            (|o, n| { o.input_preamp_db[2] = 0.0; n.input_preamp_db[2] = 1.0; }, vec!["Preamp FC: 0.0 dB → 1.0 dB"]),
-            (|o, n| { o.input_preamp_db[3] = 0.0; n.input_preamp_db[3] = 1.0; }, vec!["Preamp LFE: 0.0 dB → 1.0 dB"]),
-            (|o, n| { o.input_preamp_db[4] = 0.0; n.input_preamp_db[4] = 1.0; }, vec!["Preamp BL: 0.0 dB → 1.0 dB"]),
-            (|o, n| { o.input_preamp_db[5] = 0.0; n.input_preamp_db[5] = 1.0; }, vec!["Preamp BR: 0.0 dB → 1.0 dB"]),
-            (|o, n| { o.input_preamp_db[6] = 0.0; n.input_preamp_db[6] = 1.0; }, vec!["Preamp SL: 0.0 dB → 1.0 dB"]),
-            (|o, n| { o.input_preamp_db[7] = 0.0; n.input_preamp_db[7] = 1.0; }, vec!["Preamp SR: 0.0 dB → 1.0 dB"]),
-            (|o, n| { o.master_volume_db = -128.0; n.master_volume_db = -20.5; }, vec!["Master Volume: -∞ dB → -20.5 dB"]),
-            (|o, n| { o.bypass = false; n.bypass = true; }, vec!["Master EQ bypass: off → on"]),
-            // Loudness
-            (|o, n| { o.loudness_enabled = false; n.loudness_enabled = true; }, vec!["Loudness: enabled"]),
-            (|o, n| { o.loudness_output_mask = 1; n.loudness_output_mask = 0x1FF; }, vec!["Loudness outputs: 0x0001 → 0x01FF"]),
-            (|o, n| { o.loudness_ref_spl = 83.0; n.loudness_ref_spl = 80.5; }, vec!["Loudness ref SPL: 83 → 80.5"]),
-            (|o, n| { o.loudness_intensity = 100.0; n.loudness_intensity = 50.0; }, vec!["Loudness intensity: 100% → 50%"]),
-            // Crossfeed
-            (|o, n| { o.crossfeed_enabled = true; n.crossfeed_enabled = false; }, vec!["Crossfeed: disabled"]),
-            (|o, n| { o.crossfeed_preset = 0; n.crossfeed_preset = 2; }, vec!["Crossfeed preset: 0 → 2"]),
-            (|o, n| { o.crossfeed_freq = 700.0; n.crossfeed_freq = 650.0; }, vec!["Crossfeed frequency: 700 → 650 Hz"]),
-            (|o, n| { o.crossfeed_feed = 4.5; n.crossfeed_feed = 6.0; }, vec!["Crossfeed feed: 4.5 → 6"]),
-            (|o, n| { o.crossfeed_itd = false; n.crossfeed_itd = true; }, vec!["Crossfeed ITD: enabled"]),
-            (|o, n| { o.crossfeed_output_pair_mask = 1; n.crossfeed_output_pair_mask = 3; }, vec!["Crossfeed output pairs: 0x01 → 0x03"]),
-            // The pair map: the K340 preset, pair 1 left out3 and right out1.
-            (|o, n| { o.crossfeed_pair_map = vec![0; 4]; n.crossfeed_pair_map = vec![0x02, 0x13, 0, 0]; }, vec!["Crossfeed pair 1 outputs: 1/2 → 3/1", "Crossfeed pair 2 outputs: 3/4 → 4/2"]),
-            // Psychoacoustic bass
-            (|o, n| { o.psybass_enabled = false; n.psybass_enabled = true; }, vec!["Psychoacoustic Bass: enabled"]),
-            (|o, n| { o.psybass_output_mask = 3; n.psybass_output_mask = 15; }, vec!["Psybass outputs: 0x0003 → 0x000F"]),
-            (|o, n| { o.psybass_cutoff_hz = 120.0; n.psybass_cutoff_hz = 80.0; }, vec!["Psybass cutoff: 120 → 80 Hz"]),
-            (|o, n| { o.psybass_harmonics_db = 3.0; n.psybass_harmonics_db = 4.5; }, vec!["Psybass harmonics: 3 dB → 4.5 dB"]),
-            (|o, n| { o.psybass_drive_db = 0.0; n.psybass_drive_db = 2.0; }, vec!["Psybass drive: 0 dB → 2 dB"]),
-            (|o, n| { o.psybass_character_pct = 50.0; n.psybass_character_pct = 60.0; }, vec!["Psybass character: 50% → 60%"]),
-            (|o, n| { o.psybass_original_db = 0.0; n.psybass_original_db = -6.0; }, vec!["Psybass original bass: 0 dB → -6 dB"]),
-            // Subharmonic synthesizer
-            (|o, n| { sub(o, SUBHARM_PARAM_ENABLED, 0.0); sub(n, SUBHARM_PARAM_ENABLED, 1.0); }, vec!["Subharmonic Synthesizer: enabled"]),
-            (|o, n| { sub(o, SUBHARM_PARAM_MASK, 1.0); sub(n, SUBHARM_PARAM_MASK, 3.0); }, vec!["Subharm outputs: 0x0001 → 0x0003"]),
-            (|o, n| { sub(o, SUBHARM_PARAM_LOW, -30.0); sub(n, SUBHARM_PARAM_LOW, -6.0); }, vec!["Subharm 24-36 Hz: off → -6 dB"]),
-            (|o, n| { sub(o, SUBHARM_PARAM_HIGH, -7.5); sub(n, SUBHARM_PARAM_HIGH, -30.0); }, vec!["Subharm 36-56 Hz: -7.5 dB → off"]),
-            (|o, n| { sub(o, SUBHARM_PARAM_TOP, -1.0); sub(n, SUBHARM_PARAM_TOP, -2.0); }, vec!["Subharm 56-80 Hz: -1 dB → -2 dB"]),
-            (|o, n| { sub(o, SUBHARM_PARAM_SELECT, 0.0); sub(n, SUBHARM_PARAM_SELECT, 1.0); }, vec!["Subharm selectivity: all material → percussive"]),
-            (|o, n| { sub(o, SUBHARM_PARAM_SELECT, 2.0); sub(n, SUBHARM_PARAM_SELECT, 0.0); }, vec!["Subharm selectivity: sustained → all material"]),
-            (|o, n| { sub(o, SUBHARM_PARAM_DEPTH, 50.0); sub(n, SUBHARM_PARAM_DEPTH, 75.0); }, vec!["Subharm selectivity depth: 50% → 75%"]),
-            (|o, n| { sub(o, SUBHARM_PARAM_HOLD, 100.0); sub(n, SUBHARM_PARAM_HOLD, 200.0); }, vec!["Subharm selectivity hold: 100 ms → 200 ms"]),
-            (|o, n| { sub(o, SUBHARM_PARAM_CEILING, 0.0); sub(n, SUBHARM_PARAM_CEILING, -6.5); }, vec!["Subharm sub ceiling: off → -6.5 dBFS"]),
-            (|o, n| { sub(o, SUBHARM_PARAM_LINK, 0.0); sub(n, SUBHARM_PARAM_LINK, 1.0); }, vec!["Subharm pair link: linked"]),
-            (|o, n| { sub(o, SUBHARM_PARAM_BOOST, 0.0); sub(n, SUBHARM_PARAM_BOOST, 3.0); }, vec!["Subharm LF boost: 0 dB → 3 dB"]),
-            // Tube modeller
-            (|o, n| { tube_p(o, tb::TUBE_PARAM_ENABLED, 0.0); tube_p(n, tb::TUBE_PARAM_ENABLED, 1.0); }, vec!["Tube Modeller: enabled"]),
-            (|o, n| { tube_p(o, tb::TUBE_PARAM_OUTPUT_MASK, 1.0); tube_p(n, tb::TUBE_PARAM_OUTPUT_MASK, 2.0); }, vec!["Tube outputs: 0x0001 → 0x0002"]),
-            (|o, n| { tube_p(o, tb::TUBE_PARAM_TUBE_TYPE, 0.0); tube_p(n, tb::TUBE_PARAM_TUBE_TYPE, 1.0); }, vec!["Tube type: Custom → 12AX7 / ECC83"]),
-            (|o, n| { tube_p(o, tb::TUBE_PARAM_TUBE_TYPE, 8.0); tube_p(n, tb::TUBE_PARAM_TUBE_TYPE, 16.0); }, vec!["Tube type: 6DJ8 / ECC88 / 6922 → 300B / 2A3"]),
-            (|o, n| { tube_p(o, tb::TUBE_PARAM_DRIVE_DB, 0.0); tube_p(n, tb::TUBE_PARAM_DRIVE_DB, 6.0); }, vec!["Tube drive: 0 dB → 6 dB"]),
-            (|o, n| { tube_p(o, tb::TUBE_PARAM_BIAS_PCT, 10.0); tube_p(n, tb::TUBE_PARAM_BIAS_PCT, 5.0); }, vec!["Tube bias: 10% → 5%"]),
-            (|o, n| { tube_p(o, tb::TUBE_PARAM_ASYM_DB, 3.0); tube_p(n, tb::TUBE_PARAM_ASYM_DB, 2.0); }, vec!["Tube asymmetry: 3 dB → 2 dB"]),
-            (|o, n| { tube_p(o, tb::TUBE_PARAM_HARDNESS_PCT, 40.0); tube_p(n, tb::TUBE_PARAM_HARDNESS_PCT, 50.0); }, vec!["Tube knee hardness: 40% → 50%"]),
-            (|o, n| { tube_p(o, tb::TUBE_PARAM_SAG_PCT, 15.0); tube_p(n, tb::TUBE_PARAM_SAG_PCT, 20.0); }, vec!["Tube sag: 15% → 20%"]),
-            (|o, n| { tube_p(o, tb::TUBE_PARAM_RECTIFIER, 0.0); tube_p(n, tb::TUBE_PARAM_RECTIFIER, 1.0); }, vec!["Tube rectifier: Solid state → GZ34 / 5AR4"]),
-            (|o, n| { tube_p(o, tb::TUBE_PARAM_RECTIFIER, 2.0); tube_p(n, tb::TUBE_PARAM_RECTIFIER, 3.0); }, vec!["Tube rectifier: 5U4 → 5Y3"]),
-            (|o, n| { tube_p(o, tb::TUBE_PARAM_XFMR_ENABLED, 0.0); tube_p(n, tb::TUBE_PARAM_XFMR_ENABLED, 1.0); }, vec!["Tube output stage: enabled"]),
-            (|o, n| { tube_p(o, tb::TUBE_PARAM_XFMR_DAMPING, 4.0); tube_p(n, tb::TUBE_PARAM_XFMR_DAMPING, 8.0); }, vec!["Tube damping factor: 4 → 8"]),
-            (|o, n| { tube_p(o, tb::TUBE_PARAM_XFMR_RES_HZ, 95.0); tube_p(n, tb::TUBE_PARAM_XFMR_RES_HZ, 80.0); }, vec!["Tube speaker resonance: 95 → 80 Hz"]),
-            (|o, n| { tube_p(o, tb::TUBE_PARAM_MIX_PCT, 100.0); tube_p(n, tb::TUBE_PARAM_MIX_PCT, 50.0); }, vec!["Tube mix: 100% → 50%"]),
-            (|o, n| { tube_p(o, tb::TUBE_PARAM_TRIM_DB, 0.0); tube_p(n, tb::TUBE_PARAM_TRIM_DB, -3.0); }, vec!["Tube output trim: 0 dB → -3 dB"]),
-            // Output limiter
-            (|o, n| { o.limiter_enabled[0] = false; n.limiter_enabled[0] = true; }, vec!["SPDIF 1 L limiter: enabled"]),
-            (|o, n| { o.limiter_threshold_db[1] = -1.0; n.limiter_threshold_db[1] = -3.25; }, vec!["SPDIF 1 R limiter threshold: -1.0 → -3.2 dBFS"]),
-            (|o, n| { o.limiter_release_ms[2] = 100.0; n.limiter_release_ms[2] = 50.0; }, vec!["SPDIF 2 L limiter release: 100 ms → 50 ms"]),
-            (|o, n| { o.limiter_link_group[8] = 0; n.limiter_link_group[8] = 2; }, vec!["PDM limiter link: Unlinked → Group 2"]),
-            // Stereo upmixer
-            (|o, n| { up(o, UPMIX_PARAM_ENABLED, 0.0); up(n, UPMIX_PARAM_ENABLED, 1.0); }, vec!["Stereo Upmixer: enabled"]),
-            (|o, n| { up(o, UPMIX_PARAM_CENTER_MODE, 0.0); up(n, UPMIX_PARAM_CENTER_MODE, 2.0); }, vec!["Centre mode: Sinner → Off"]),
-            (|o, n| { up(o, UPMIX_PARAM_CENTER_MODE, 1.0); up(n, UPMIX_PARAM_CENTER_MODE, 3.0); }, vec!["Centre mode: Logician → 3"]),
-            (|o, n| { up(o, UPMIX_PARAM_SURROUND_MODE, 0.0); up(n, UPMIX_PARAM_SURROUND_MODE, 2.0); }, vec!["Surround mode: Off → Logician"]),
-            (|o, n| { up(o, UPMIX_PARAM_SURROUND_MODE, 1.0); up(n, UPMIX_PARAM_SURROUND_MODE, 7.0); }, vec!["Surround mode: Sinner → 7"]),
-            (|o, n| { up(o, UPMIX_PARAM_STRENGTH, 50.0); up(n, UPMIX_PARAM_STRENGTH, 60.0); }, vec!["Centre strength: 50% → 60%"]),
-            (|o, n| { up(o, UPMIX_PARAM_WIDTH, 50.0); up(n, UPMIX_PARAM_WIDTH, 60.0); }, vec!["Centre width: 50% → 60%"]),
-            (|o, n| { up(o, UPMIX_PARAM_THRESHOLD, 50.0); up(n, UPMIX_PARAM_THRESHOLD, 60.0); }, vec!["Correlation threshold: 50% → 60%"]),
-            (|o, n| { up(o, UPMIX_PARAM_ATTACK, 5.0); up(n, UPMIX_PARAM_ATTACK, 10.0); }, vec!["Centre attack: 5 ms → 10 ms"]),
-            (|o, n| { up(o, UPMIX_PARAM_RELEASE, 50.0); up(n, UPMIX_PARAM_RELEASE, 100.0); }, vec!["Centre release: 50 ms → 100 ms"]),
-            (|o, n| { up(o, UPMIX_PARAM_DETECTOR_HPF, 100.0); up(n, UPMIX_PARAM_DETECTOR_HPF, 200.0); }, vec!["Detector HPF: 100 Hz → 200 Hz"]),
-            (|o, n| { up(o, UPMIX_PARAM_SURROUND_DELAY, 10.0); up(n, UPMIX_PARAM_SURROUND_DELAY, 20.0); }, vec!["Surround delay: 10 ms → 20 ms"]),
-            (|o, n| { up(o, UPMIX_PARAM_SURROUND_HPF, 100.0); up(n, UPMIX_PARAM_SURROUND_HPF, 200.0); }, vec!["Surround HPF: 100 Hz → 200 Hz"]),
-            (|o, n| { up(o, UPMIX_PARAM_SURROUND_LPF, 7000.0); up(n, UPMIX_PARAM_SURROUND_LPF, 9000.0); }, vec!["Surround LPF: 7000 Hz → 9000 Hz"]),
-            (|o, n| { up(o, UPMIX_PARAM_DECORRELATION, 50.0); up(n, UPMIX_PARAM_DECORRELATION, 60.0); }, vec!["Decorrelation: 50% → 60%"]),
-            (|o, n| { up(o, UPMIX_PARAM_PRESENCE, 0.0); up(n, UPMIX_PARAM_PRESENCE, 2.0); }, vec!["Centre presence: 0 dB → 2 dB"]),
-            // Volume leveller
-            (|o, n| { o.leveller_enabled = false; n.leveller_enabled = true; }, vec!["Volume Leveller: enabled"]),
-            (|o, n| { o.leveller_amount = 50.0; n.leveller_amount = 60.0; }, vec!["Leveller amount: 50% → 60%"]),
-            (|o, n| { o.leveller_speed = 0; n.leveller_speed = 2; }, vec!["Leveller speed: Slow → Fast"]),
-            (|o, n| { o.leveller_speed = 1; n.leveller_speed = 5; }, vec!["Leveller speed: Medium → 5"]),
-            (|o, n| { o.leveller_max_gain_db = 6.0; n.leveller_max_gain_db = 12.0; }, vec!["Leveller max gain: 6 dB → 12 dB"]),
-            (|o, n| { o.leveller_lookahead = false; n.leveller_lookahead = true; }, vec!["Leveller lookahead: enabled"]),
-            (|o, n| { o.leveller_gate_db = -60.0; n.leveller_gate_db = -50.0; }, vec!["Leveller gate: -60 dB → -50 dB"]),
-            (|o, n| { o.leveller_detector_mask = 1; n.leveller_detector_mask = 3; }, vec!["Leveller detector channels changed"]),
-            (|o, n| { o.leveller_apply_mask = 1; n.leveller_apply_mask = 3; }, vec!["Leveller apply channels changed"]),
-            // Channel delays, an input's and an output channel's alone
-            (|o, n| { o.channel_delays[0] = 0.0; n.channel_delays[0] = 10.0; }, vec!["USB L delay: 0 ms → 10 ms"]),
-            (|o, n| { o.channel_delays[9] = 2.0; n.channel_delays[9] = 3.0; }, vec!["SPDIF 1 R delay: 2 ms → 3 ms"]),
-            // Matrix
-            (|o, n| { o.matrix_routing[0][0] = false; n.matrix_routing[0][0] = true; }, vec!["1 crosspoint changed"]),
-            (|o, n| {
-                o.matrix_gain[1][1] = 0.0; n.matrix_gain[1][1] = -6.0;
-                o.matrix_invert[1][2] = false; n.matrix_invert[1][2] = true;
-            }, vec!["2 crosspoints changed"]),
-            // Outputs
-            (|o, n| { o.output_enabled[0] = true; n.output_enabled[0] = false; }, vec!["SPDIF 1 L disabled"]),
-            (|o, n| { o.output_enabled[0] = false; n.output_enabled[0] = true; }, vec!["SPDIF 1 L enabled"]),
-            (|o, n| { o.output_muted[1] = false; n.output_muted[1] = true; }, vec!["SPDIF 1 R muted"]),
-            (|o, n| { o.output_muted[1] = true; n.output_muted[1] = false; }, vec!["SPDIF 1 R unmuted"]),
-            (|o, n| { o.output_gain_db[2] = 0.0; n.output_gain_db[2] = -9.0; }, vec!["SPDIF 2 L gain: 0.0 dB → -9.0 dB"]),
-            (|o, n| {
-                // The firmware mirrors it onto the channel: still one line.
-                o.output_delay_ms[3] = 1.0; n.output_delay_ms[3] = 2.0;
-                o.channel_delays[11] = 1.0; n.channel_delays[11] = 2.0;
-            }, vec!["SPDIF 2 R delay: 1 ms → 2 ms"]),
-            // EQ and crossover bands
-            (|o, n| { let _ = o; band_edit(&mut n.filters, 0, &[0]); }, vec!["1 band changed on USB L"]),
-            (|o, n| { let _ = o; band_edit(&mut n.filters, 8, &[0, 1, 2]); }, vec!["3 bands changed on SPDIF 1 L"]),
-            (|o, n| { let _ = o; band_edit(&mut n.xover, 8, &[0]); }, vec!["1 crossover band changed on SPDIF 1 L"]),
-            (|o, n| { let _ = o; band_edit(&mut n.xover, 16, &[0, 1]); }, vec!["2 crossover bands changed on PDM"]),
-            // Names
-            (|o, n| { let _ = o; n.channel_names[2] = "Centre".into(); }, vec!["'USB 3' → 'Centre'"]),
-            // Output configuration
-            (|o, n| { o.output_pins[0] = 6; n.output_pins[0] = 7; }, vec!["1 pin assignment changed"]),
-            (|o, n| { o.output_pins[0] = 6; n.output_pins[0] = 7; o.output_pins[1] = 8; n.output_pins[1] = 9; }, vec!["2 pin assignments changed"]),
-            (|o, n| { o.output_types[3] = 0; n.output_types[3] = 1; }, vec!["1 output type changed"]),
-            (|o, n| { o.i2s_bck_pin = 14; n.i2s_bck_pin = 16; }, vec!["BCK pin: GPIO 14 → GPIO 16"]),
-            (|o, n| { o.mck_enabled = false; n.mck_enabled = true; }, vec!["MCK: enabled"]),
-            (|o, n| { o.mck_pin = 13; n.mck_pin = 17; }, vec!["MCK pin: GPIO 13 → GPIO 17"]),
-            (|o, n| { o.mck_multiplier = 0; n.mck_multiplier = 1; }, vec!["MCK multiplier: 128x → 256x"]),
-            (|o, n| { o.spdif_rx_pins[0] = 5; n.spdif_rx_pins[0] = 4; }, vec!["S/PDIF RX pin: GPIO 5 → GPIO 4"]),
-            (|o, n| { o.spdif_inputs_enabled = 0x01; n.spdif_inputs_enabled = 0x03; }, vec!["S/PDIF 2 input: enabled"]),
-            (|o, n| { o.spdif_rx_pins[3] = 20; n.spdif_rx_pins[3] = 21; }, vec!["S/PDIF 4 RX pin: GPIO 20 → GPIO 21"]),
-            (|o, n| { o.i2s_input_channels = 2; n.i2s_input_channels = 8; }, vec!["I2S input channels: 2 → 8"]),
-            (|o, n| { o.i2s_rx_pins[1] = 10; n.i2s_rx_pins[1] = 11; }, vec!["I2S RX pin (pair 2): GPIO 10 → GPIO 11"]),
-            (|o, n| { o.i2s_input_rate = 0; n.i2s_input_rate = 2; }, vec!["I2S rate: 44100 Hz → 96000 Hz"]),
-            (|o, n| { o.i2s_clock_mode = 0; n.i2s_clock_mode = 1; }, vec!["I2S clock mode: Master → Slave"]),
-            (|o, n| { o.adat_out_enabled = false; n.adat_out_enabled = true; }, vec!["ADAT output: enabled"]),
-            (|o, n| { o.adat_out_pin = 22; n.adat_out_pin = 23; }, vec!["ADAT pin: GPIO 22 → GPIO 23"]),
-            (|o, n| { o.adat_input_enabled = false; n.adat_input_enabled = true; }, vec!["ADAT input: enabled"]),
-            (|o, n| { o.adat_input_pin = 0xFF; n.adat_input_pin = 24; }, vec!["ADAT input pin: unset → GPIO 24"]),
-            (|o, n| { o.adat_input_clock_mode = 1; n.adat_input_clock_mode = 0; }, vec!["ADAT input clock mode: Slave → Master"]),
-            // Input source and LG Sound Sync
-            (|o, n| { o.input_source = 0; n.input_source = 2; }, vec!["Input source: USB → I2S"]),
-            (|o, n| { o.input_source = 3; n.input_source = 5; }, vec!["Input source: ADAT → S/PDIF 3"]),
-            (|o, n| { o.lg_sound_sync_enabled = false; n.lg_sound_sync_enabled = true; }, vec!["LG Sound Sync: enabled"]),
-        ]
+    fn rows(saved: &DspState, live: &DspState) -> Vec<String> {
+        changes(saved, live, &[])
     }
 
     #[test]
-    fn wp_cg7_every_row_reads_as_swift_words_it() {
-        for (i, (edit, want)) in table().into_iter().enumerate() {
-            let (direct, via_image) = lines(edit);
-            assert_eq!(direct, want, "row {i}, the diff");
-            assert_eq!(via_image, want, "row {i}, through the images");
-        }
-    }
-
-    #[test]
-    fn wp_cg7_rows_come_in_swifts_order() {
-        // One row per setting, all at once, in the table's order. Edits of
-        // the same setting and the rows that move a label are left out.
-        let picked = |want: &[&str]| {
-            ![
-                "Subharm selectivity: sustained",
-                "Tube type: 6DJ8",
-                "Tube rectifier: 5U4",
-                "Centre mode: Logician",
-                "Surround mode: Sinner",
-                "Leveller speed: Medium",
-                "SPDIF 1 L enabled",
-                "SPDIF 1 R unmuted",
-                "2 crosspoints",
-                "2 pin assignments",
-                "Input source: ADAT",
+    fn clean1_every_kind_of_row_in_the_consoles_words_and_order() {
+        let saved = base();
+        let mut l = saved.clone();
+        l.lg_sound_sync_enabled = true;
+        l.input_source = 2;
+        l.output_pins[1] ^= 1;
+        l.channel_names[4] = "Sub".into();
+        l.xover[6][0].freq += 10.0;
+        l.xover[6][1].q += 0.5;
+        l.filters[1][0].gain += 1.0;
+        l.output_gain_db[1] = -1.0;
+        l.output_muted[1] = true;
+        l.matrix_gain[0][0] += 1.0;
+        l.matrix_routing[1][1] = !l.matrix_routing[1][1];
+        l.channel_delays[0] = 1.25;
+        l.leveller_speed = 2;
+        l.upmix[usize::from(UPMIX_PARAM_CENTER_MODE)] = 2.0;
+        l.limiter_threshold_db[0] = -3.0;
+        l.tube[g::tube::TUBE_PARAM_TUBE_TYPE as usize] = 0.0;
+        l.subharm[usize::from(SUBHARM_PARAM_SELECT)] = 1.0;
+        l.subharm[usize::from(SUBHARM_PARAM_CEILING)] = 0.0;
+        l.subharm[usize::from(SUBHARM_PARAM_LOW)] = -30.0;
+        l.psybass_cutoff_hz = 100.0;
+        l.crossfeed_pair_map = vec![0x02, 0, 0, 0];
+        l.crossfeed_freq = 650.0;
+        l.loudness_ref_spl = 85.5;
+        l.loudness_output_mask = 3;
+        l.loudness_enabled = true;
+        l.bypass = true;
+        l.master_volume_db = -200.0;
+        l.input_preamp_db[1] = -3.0;
+        let tube_was = dspi_session::tube::type_name(1);
+        assert_eq!(
+            rows(&saved, &l),
+            [
+                "Preamp R: 0.0 dB → -3.0 dB".to_owned(),
+                "Master Volume: -20.0 dB → -∞ dB".into(),
+                "Master EQ bypass: off → on".into(),
+                "Loudness: enabled".into(),
+                "Loudness outputs: 0x0000 → 0x0003".into(),
+                "Loudness ref SPL: 83 → 85.5".into(),
+                "Crossfeed frequency: 700 → 650 Hz".into(),
+                "Crossfeed pair 1 outputs: 1/2 → 3/1".into(),
+                "Psybass cutoff: 80 → 100 Hz".into(),
+                "Subharm 24-36 Hz: -6 dB → off".into(),
+                "Subharm selectivity: all material → percussive".into(),
+                "Subharm sub ceiling: -3 dBFS → off".into(),
+                format!("Tube type: {tube_was} → Custom"),
+                "SPDIF 1 L limiter threshold: -1.0 → -3.0 dBFS".into(),
+                "Centre mode: Sinner → Off".into(),
+                "Leveller speed: Medium → Fast".into(),
+                "USB L delay: 0 ms → 1.25 ms".into(),
+                "2 crosspoints changed".into(),
+                "SPDIF 1 R muted".into(),
+                "SPDIF 1 R gain: 0.0 dB → -1.0 dB".into(),
+                "1 band changed on USB R".into(),
+                "2 crossover bands changed on PDM".into(),
+                "'' → 'Sub'".into(),
+                "1 pin assignment changed".into(),
+                "Input source: USB → I2S".into(),
+                "LG Sound Sync: enabled".into(),
             ]
+        );
+        assert!(rows(&saved, &saved).is_empty());
+    }
+
+    #[test]
+    fn clean1_the_live_modes_gate_their_rows() {
+        let saved = base();
+        let mut l = saved.clone();
+        l.master_volume_db = -30.0;
+        l.limiter_enabled[2] = !l.limiter_enabled[2];
+        l.i2s_bck_pin ^= 1;
+        assert_eq!(
+            rows(&saved, &l),
+            [
+                "Master Volume: -20.0 dB → -30.0 dB",
+                &format!("SPDIF 2 L limiter: {}", enabled(l.limiter_enabled[2])),
+                &format!(
+                    "BCK pin: GPIO {} → GPIO {}",
+                    saved.i2s_bck_pin, l.i2s_bck_pin
+                ),
+            ]
+        );
+        // The saved state's own modes do not matter; the live ones do.
+        let mut s = saved.clone();
+        s.master_volume_mode = 0;
+        s.output_config_mode = 0;
+        assert_eq!(rows(&s, &l).len(), 3);
+        l.master_volume_mode = 0;
+        l.output_config_mode = 0;
+        assert!(rows(&saved, &l).is_empty());
+    }
+
+    #[test]
+    fn clean1_pairs_on_their_own_outputs_are_no_change() {
+        let saved = base();
+        let mut l = saved.clone();
+        // Pair 2 named explicitly on its default outputs 3 and 4.
+        l.crossfeed_pair_map = vec![0, 0x32, 0, 0];
+        assert!(rows(&saved, &l).is_empty());
+        // A map cut short reads as default.
+        l.crossfeed_pair_map = vec![];
+        assert!(rows(&saved, &l).is_empty());
+        l.crossfeed_pair_map = vec![0, 0x23];
+        assert_eq!(rows(&saved, &l), ["Crossfeed pair 2 outputs: 3/4 → 4/3"]);
+        assert_eq!(pair_outputs(&[], 3), (6, 7));
+    }
+
+    #[test]
+    fn clean1_volume_and_mute_outside_the_preset_are_no_change() {
+        let saved = base();
+        let mut l = saved.clone();
+        l.user_volume_db -= 6.0;
+        l.user_mute = !l.user_mute;
+        l.dac_mute_enabled = !l.dac_mute_enabled;
+        l.dac_mute_pin ^= 1;
+        l.dac_mute_hold_ms += 3;
+        l.subharm_solo = !l.subharm_solo;
+        assert!(rows(&saved, &l).is_empty());
+        // The pair map is part of the preset.
+        l.crossfeed_pair_map = vec![0x02, 0, 0, 0];
+        assert_eq!(rows(&saved, &l).len(), 1);
+    }
+
+    #[test]
+    fn clean1_a_default_name_to_another_is_no_rename() {
+        let mut saved = base();
+        saved.output_config_mode = 0;
+        saved.channel_names[2] = "SPDIF 1 L".into();
+        let mut l = saved.clone();
+        // The slot became I2S: the firmware renamed the channel.
+        l.output_types[0] = 1;
+        l.channel_names[2] = "I2S 1 L".into();
+        assert!(rows(&saved, &l).is_empty());
+        // A name the user chose, or another channel's default, is a rename.
+        l.channel_names[2] = "Left".into();
+        assert_eq!(rows(&saved, &l), ["'SPDIF 1 L' → 'Left'"]);
+        l.channel_names[2] = "I2S 1 R".into();
+        assert_eq!(rows(&saved, &l), ["'SPDIF 1 L' → 'I2S 1 R'"]);
+    }
+
+    #[test]
+    fn clean1_an_unnamed_channel_reads_as_its_firmware_name() {
+        let saved = base();
+        let mut l = saved.clone();
+        for ch in 0..7 {
+            l.channel_delays[ch] = 1.0;
+        }
+        let names: Vec<String> = rows(&saved, &l)
             .iter()
-            .any(|p| want.iter().any(|w| w.starts_with(p)))
-        };
-        let (mut o, mut n) = (base(), base());
-        let mut want = Vec::new();
-        for (edit, lines) in table() {
-            if picked(&lines) {
-                edit(&mut o, &mut n);
-                want.extend(lines);
-            }
-        }
-        assert_eq!(diff(&o, &n), want);
-    }
-
-    #[test]
-    fn wp_cg7_a_pair_on_its_default_outputs_is_no_change() {
-        // Explicit (left 0, right 1) reads the same as byte 0, as
-        // `CrossfeedPairMap.pair` has it.
-        let (o, mut n) = (base(), base());
-        n.crossfeed_pair_map[0] = 0x10;
-        assert!(diff(&o, &n).is_empty());
-        // Pair 3 written out: only the byte that moves the pair counts.
-        n.crossfeed_pair_map[2] = 0x54;
-        assert!(diff(&o, &n).is_empty());
-        n.crossfeed_pair_map[3] = 0x76;
-        assert!(diff(&o, &n).is_empty());
-        n.crossfeed_pair_map[3] = 0x67;
-        assert_eq!(diff(&o, &n), ["Crossfeed pair 4 outputs: 7/8 → 8/7"],);
-    }
-
-    #[test]
-    fn wp_cg7_a_short_pair_map_reads_as_default() {
-        // Decoded from firmware without the bytes.
-        let (mut o, n) = (base(), base());
-        o.crossfeed_pair_map.clear();
-        assert!(diff(&o, &n).is_empty());
-    }
-
-    #[test]
-    fn wp_cg7_user_volume_and_dac_mute_are_no_change() {
-        // Swift's snapshot holds neither.
-        let (mut o, mut n) = (base(), base());
-        o.user_volume_db = 0.0;
-        n.user_volume_db = -20.0;
-        o.dac_mute_enabled = false;
-        n.dac_mute_enabled = true;
-        n.dac_mute_active_low = !o.dac_mute_active_low;
-        n.dac_mute_pin = o.dac_mute_pin.wrapping_add(1);
-        n.dac_mute_hold_ms = o.dac_mute_hold_ms.wrapping_add(1);
-        n.dac_mute_release_ms = o.dac_mute_release_ms.wrapping_add(1);
-        o.bulk_raw = state::encode_bulk(&o);
-        n.bulk_raw = state::encode_bulk(&n);
-        assert_ne!(o.bulk_raw, n.bulk_raw, "the images do differ");
-        assert!(diff(&o, &n).is_empty());
-        assert!(changes(&o.bulk_raw, &n, &[]).is_empty());
-    }
-
-    #[test]
-    fn wp_cg7_gates_follow_the_live_modes() {
-        // In INDEPENDENT mode the wiring, the limiters and the master volume
-        // are not the preset's; everything else still is.
-        let (mut o, mut n) = (base(), base());
-        n.output_config_mode = 0;
-        n.master_volume_mode = 0;
-        n.output_pins[0] = n.output_pins[0].wrapping_add(1);
-        n.limiter_enabled[0] = !o.limiter_enabled[0];
-        n.i2s_input_rate = (o.i2s_input_rate + 1) % 3;
-        o.master_volume_db = 0.0;
-        n.master_volume_db = -5.0;
-        assert!(diff(&o, &n).is_empty(), "{:?}", diff(&o, &n));
-        // The mode is the live one: back on WITH_PRESET they count again.
-        n.output_config_mode = WITH_PRESET;
-        n.master_volume_mode = WITH_PRESET;
-        assert_eq!(diff(&o, &n)[0], "Master Volume: 0.0 dB → -5.0 dB");
-        assert!(diff(&o, &n).contains(&"1 pin assignment changed".to_string()));
-    }
-
-    #[test]
-    fn wp_cg7_default_to_default_renames_are_skipped_and_real_ones_are_not() {
-        let (o, mut n) = (base(), base());
-        // The firmware renames the slot's channels on a type flip.
-        n.output_types[0] = 1;
-        n.channel_names[8] = "I2S 1 L".into();
-        n.channel_names[9] = "I2S 1 R".into();
-        assert_eq!(diff(&o, &n), ["1 output type changed"]);
-        // A user's rename in the same edit shows, also on another output.
-        n.channel_names[10] = "Woofer".into();
-        n.channel_names[9] = "Tweeter".into();
+            .map(|r| r.trim_end_matches(" delay: 0 ms → 1 ms").to_owned())
+            .collect();
         assert_eq!(
-            diff(&o, &n),
+            names,
             [
-                "'SPDIF 1 R' → 'Tweeter'",
-                "'SPDIF 2 L' → 'Woofer'",
-                "1 output type changed",
+                "USB L",
+                "USB R",
+                "SPDIF 1 L",
+                "SPDIF 1 R",
+                "SPDIF 2 L",
+                "SPDIF 2 R",
+                "PDM"
             ]
         );
-        // In INDEPENDENT mode the type change is not listed, and neither is
-        // its rename.
-        let mut m = n.clone();
-        m.output_config_mode = 0;
-        m.channel_names[9] = "I2S 1 R".into();
-        m.channel_names[10] = "SPDIF 2 L".into();
-        assert!(diff(&o, &m).is_empty());
-        // A user's name going back to a default is a rename too.
-        let mut custom = base();
-        custom.channel_names[8] = "Woofer".into();
-        assert_eq!(diff(&custom, &base()), ["'Woofer' → 'SPDIF 1 L'"]);
-    }
-
-    #[test]
-    fn wp_cg7_the_first_spdif_takes_its_number_with_others_on() {
-        let (mut o, mut n) = (base(), base());
-        o.input_source = 0;
-        n.input_source = 1;
-        n.spdif_inputs_enabled = 0x01;
-        o.spdif_inputs_enabled = 0x01;
-        assert_eq!(diff(&o, &n), ["Input source: USB → S/PDIF"]);
-        o.spdif_inputs_enabled = 0x05;
-        n.spdif_inputs_enabled = 0x05;
-        assert_eq!(diff(&o, &n), ["Input source: USB → S/PDIF 1"]);
-        n.input_source = 6;
-        assert_eq!(diff(&o, &n), ["Input source: USB → S/PDIF 4"]);
-        n.input_source = 9;
-        assert_eq!(diff(&o, &n), ["Input source: USB → Source 9"]);
-    }
-
-    #[test]
-    fn wp_cg13_the_users_name_comes_first_in_the_input_source_row() {
-        let (mut o, mut n) = (base(), base());
-        o.input_source = 0;
-        n.input_source = 1;
-        let mut names = vec![String::new(); 7];
-        names[1] = "Blu-ray".into();
-        assert_eq!(super::diff(&o, &n, &names), ["Input source: USB → Blu-ray"]);
-        names[0] = "Mac".into();
-        assert_eq!(super::diff(&o, &n, &names), ["Input source: Mac → Blu-ray"]);
-        // Unnamed and past-the-table sources keep their built-in titles.
-        names[1].clear();
-        assert_eq!(super::diff(&o, &n, &names), ["Input source: Mac → S/PDIF"]);
-        n.input_source = 9;
+        // A name, when there is one.
+        l.channel_names[6] = "Sub".into();
+        let mut s = saved.clone();
+        s.channel_names[6] = "Sub".into();
+        assert_eq!(rows(&s, &l).last().unwrap(), "Sub delay: 0 ms → 1 ms");
+        // More inputs: their numbers go on.
         assert_eq!(
-            super::diff(&o, &n, &names),
-            ["Input source: Mac → Source 9"]
+            firmware_name(
+                &{
+                    let mut x = base();
+                    x.num_input_channels = 8;
+                    x
+                },
+                5
+            )
+            .unwrap(),
+            "USB 6"
+        );
+        assert_eq!(firmware_name(&base(), 7), None);
+    }
+
+    #[test]
+    fn clean1_the_first_spdif_is_numbered_while_another_is_on() {
+        let mut saved = base();
+        saved.input_source = 1;
+        let mut l = saved.clone();
+        l.input_source = 0;
+        assert_eq!(rows(&saved, &l), ["Input source: S/PDIF → USB"]);
+        l.spdif_inputs_enabled = 0x03;
+        let mut s = saved.clone();
+        s.spdif_inputs_enabled = 0x03;
+        assert_eq!(rows(&s, &l), ["Input source: S/PDIF 1 → USB"]);
+        assert_eq!(source_title(5, &[], false), "S/PDIF 3");
+        assert_eq!(source_title(3, &[], false), "ADAT");
+        assert_eq!(source_title(9, &[], false), "Source 9");
+    }
+
+    #[test]
+    fn clean1_the_users_source_name_comes_first() {
+        let saved = base();
+        let mut l = saved.clone();
+        l.input_source = 2;
+        let names: Vec<String> = ["Mac", "", "Turntable", "", "", "", ""]
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect();
+        assert_eq!(
+            changes(&saved, &l, &names),
+            ["Input source: Mac → Turntable"]
         );
     }
 
     #[test]
-    fn wp_cg7_spdif_enables_come_before_the_optional_pins() {
-        let (mut o, mut n) = (base(), base());
-        o.spdif_inputs_enabled = 0x01;
-        n.spdif_inputs_enabled = 0x0F;
-        o.spdif_rx_pins[1] = 10;
-        n.spdif_rx_pins[1] = 11;
+    fn clean1_spdif_switches_come_before_their_pins() {
+        let saved = base();
+        let mut l = saved.clone();
+        l.spdif_inputs_enabled = 0x05;
+        l.spdif_rx_pins[2] = saved.spdif_rx_pins[2].wrapping_add(1);
         assert_eq!(
-            diff(&o, &n),
+            rows(&saved, &l),
             [
-                "S/PDIF 2 input: enabled",
-                "S/PDIF 3 input: enabled",
-                "S/PDIF 4 input: enabled",
-                "S/PDIF 2 RX pin: GPIO 10 → GPIO 11",
+                "S/PDIF 3 input: enabled".to_owned(),
+                format!(
+                    "S/PDIF 3 RX pin: GPIO {} → GPIO {}",
+                    saved.spdif_rx_pins[2], l.spdif_rx_pins[2]
+                ),
             ]
         );
+        // Firmware without the optional inputs has no such rows.
+        l.spdif_inputs_enabled_present = false;
+        assert!(rows(&saved, &l).is_empty());
     }
 
     #[test]
-    fn wp_cg7_a_default_label_is_the_firmwares_default_name() {
-        let mut s = base();
-        s.channel_names = vec![String::new(); 17];
-        s.output_types = vec![0, 1, 0, 0];
-        assert_eq!(channel_label(&s, 0), "USB L");
-        assert_eq!(channel_label(&s, 1), "USB R");
-        assert_eq!(channel_label(&s, 2), "USB 3");
-        assert_eq!(channel_label(&s, 8), "SPDIF 1 L");
-        assert_eq!(channel_label(&s, 11), "I2S 2 R");
-        assert_eq!(channel_label(&s, 16), "PDM");
-        // RP2040: two inputs and five outputs.
-        s.num_input_channels = 2;
-        s.num_output_channels = 5;
-        assert_eq!(channel_label(&s, 2), "SPDIF 1 L");
-        assert_eq!(channel_label(&s, 5), "I2S 2 R");
-        assert_eq!(channel_label(&s, 6), "PDM");
+    fn clean1_values_print_as_the_console_prints_them() {
+        assert_eq!(db(-3.0), "-3.0 dB");
+        assert_eq!(db(0.04), "0.0 dB");
+        assert_eq!(volume(-128.0), "-∞ dB");
+        assert_eq!(volume(-127.9), "-127.9 dB");
+        assert_eq!(plain(83.0), "83");
+        assert_eq!(plain(85.5), "85.5");
+        assert_eq!(plain(-0.25), "-0.2");
+        assert_eq!(plain(250_000.0), "250000.0");
+        assert_eq!(delay(0.0), "0");
+        assert_eq!(delay(1.5), "1.5");
+        assert_eq!(delay(2.0), "2");
+        assert_eq!(delay(0.123_456), "0.1235");
+        assert_eq!(band_level(-30.0), "off");
+        assert_eq!(band_level(-12.5), "-12.5 dB");
+        assert_eq!(ceiling(0.0), "off");
+        assert_eq!(ceiling(-6.0), "-6 dBFS");
+        assert_eq!(selectivity(2), "sustained");
+        assert_eq!(selectivity(-1), "all material");
+        assert_eq!(rate_hz(0), 44_100);
+        assert_eq!(rate_hz(7), 48_000);
+        assert_eq!(mck_multiplier(1), 256);
+        assert_eq!(clock_mode(1), "Slave");
+        assert!(same(f32::NAN, f32::NAN));
+        assert!(same(0.0, -0.0));
+        assert_eq!(plural(1), "");
+        assert_eq!(plural(2), "s");
     }
 }
