@@ -2818,25 +2818,25 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_func_bootloader_drives() != 58490.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_func_compute_magnitude_curve() != 29910.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_func_compute_magnitude_curve() != 49830.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_func_compute_phase_curve() != 24991.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_func_compute_phase_curve() != 11263.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_func_compute_response() != 56737.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_func_compute_response() != 46454.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_config_inspect() != 36664.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_func_core_info() != 39265.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_func_core_info() != 61478.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_func_crossfeed_pair_map_valid() != 64480.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_func_crossfeed_pair_map_valid() != 51737.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_func_curve_freq() != 1109.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_func_curve_freq() != 51789.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_filter_type_name() != 9662.toShort()) {
@@ -2884,10 +2884,10 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_func_output_labels_for() != 60813.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_func_quantize_delay() != 45128.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_func_quantize_delay() != 705.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_func_quantize_gain() != 37869.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_func_quantize_gain() != 25180.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_uf2_inspect() != 30039.toShort()) {
@@ -14403,31 +14403,31 @@ public object FfiConverterTypeRtaListener: FfiConverter<RtaListener, Pointer> {
 
 
 /**
- * The ADAT output's status (`fetch_adat_out_status`).
+ * State of the ADAT output.
  */
 data class AdatOutStatus (
     /**
-     * The output is enabled in the configuration.
+     * The output is configured on.
      */
     var `enabled`: kotlin.Boolean, 
     /**
-     * The output is running now.
+     * The output is actually sending frames.
      */
     var `active`: kotlin.Boolean, 
     /**
-     * GPIO of the output.
+     * The GPIO the output drives.
      */
     var `pin`: kotlin.UByte, 
     /**
-     * The current sample rate suits ADAT.
+     * True when the current sample rate is one ADAT can carry.
      */
     var `rateOk`: kotlin.Boolean, 
     /**
-     * Times the output resynchronised, wrapping counter.
+     * Resynchronisations since boot.
      */
     var `resyncCount`: kotlin.UShort, 
     /**
-     * Sample slips, wrapping counter.
+     * Frame slips since boot.
      */
     var `slipCount`: kotlin.UShort
 ) {
@@ -14748,16 +14748,15 @@ public object FfiConverterTypeAutoEqRebuildProgress: FfiConverterRustBuffer<Auto
 
 
 /**
- * `dspi_bootloader_counts`. Always 0/0 on Android (no bus to
- * enumerate from native code); Android uses the Kotlin BootloaderLocator instead.
+ * How many boards in bootloader mode are attached, per chip.
  */
 data class BootloaderCounts (
     /**
-     * RP2040 boards in BOOTSEL mode.
+     * RP2040 boards.
      */
     var `rp2040`: kotlin.UInt, 
     /**
-     * RP2350 boards in BOOTSEL mode.
+     * RP2350 boards.
      */
     var `rp2350`: kotlin.UInt
 ) {
@@ -14790,19 +14789,19 @@ public object FfiConverterTypeBootloaderCounts: FfiConverterRustBuffer<Bootloade
 
 
 /**
- * A mounted RP2040/RP2350 bootloader drive (`RPI-RP2` / `RP2350`).
+ * A mounted bootloader drive.
  */
 data class BootloaderDrive (
     /**
-     * Mount point or drive root.
+     * Mount path.
      */
     var `path`: kotlin.String, 
     /**
-     * 0 RP2040, 1 RP2350, -1 unknown (from `INFO_UF2.TXT`).
+     * Chip platform read from the drive (-1 when unknown).
      */
     var `platform`: kotlin.Byte, 
     /**
-     * `INFO_UF2.TXT`, verbatim.
+     * The drive's INFO_UF2.TXT text.
      */
     var `info`: kotlin.String
 ) {
@@ -14838,15 +14837,15 @@ public object FfiConverterTypeBootloaderDrive: FfiConverterRustBuffer<Bootloader
 
 
 /**
- * Buffer fill levels and watermarks (`fetch_buffer_stats`).
+ * Output buffer statistics.
  */
 data class BufferStats (
     /**
-     * Live entries of `spdif`, at most 4.
+     * Valid entries in `spdif`.
      */
     var `numSpdif`: kotlin.UByte, 
     /**
-     * The PDM output is active.
+     * The PDM output is running.
      */
     var `pdmActive`: kotlin.Boolean, 
     /**
@@ -14854,11 +14853,11 @@ data class BufferStats (
      */
     var `streaming`: kotlin.Boolean, 
     /**
-     * Monotonic counter, wrapping.
+     * Counter of the device's statistics snapshot.
      */
     var `sequence`: kotlin.UShort, 
     /**
-     * Exactly 4.
+     * One entry per S/PDIF output.
      */
     var `spdif`: List<SpdifBufferStats>, 
     /**
@@ -14907,20 +14906,19 @@ public object FfiConverterTypeBufferStats: FfiConverterRustBuffer<BufferStats> {
 
 
 /**
- * `REQ_GET_CLOCK_DIAG` (0x82): empty unless the firmware was built with
- * `DSPI_CLOCK_DIAG`.
+ * The clock diagnostics report.
  */
 data class ClockDiag (
     /**
-     * The firmware was built with `DSPI_CLOCK_DIAG`.
+     * The device answered.
      */
     var `available`: kotlin.Boolean, 
     /**
-     * The raw reply.
+     * The reply bytes.
      */
     var `raw`: kotlin.ByteArray, 
     /**
-     * Decoded `(name, value)` pairs, in the firmware's order.
+     * The decoded fields.
      */
     var `fields`: List<NamedValue>
 ) {
@@ -14956,27 +14954,27 @@ public object FfiConverterTypeClockDiag: FfiConverterRustBuffer<ClockDiag> {
 
 
 /**
- * Version facts of the linked core, for the About page and sanity checks.
+ * Version facts of this core build.
  */
 data class CoreInfo (
     /**
-     * dspi-ffi crate version.
+     * The crate version.
      */
     var `ffiVersion`: kotlin.String, 
     /**
-     * `protocol::WIRE_FORMAT_VERSION` (32).
+     * Wire format version this build writes.
      */
     var `wireFormatVersion`: kotlin.UByte, 
     /**
-     * `protocol::MIN_WIRE_FORMAT_VERSION` (16).
+     * Oldest wire format version this build reads.
      */
     var `minWireFormatVersion`: kotlin.UByte, 
     /**
-     * `protocol::BULK_PARAMS_SIZE` (6136).
+     * Size of the bulk parameter image in bytes.
      */
     var `bulkParamsSize`: kotlin.UInt, 
     /**
-     * Number of points in `compute_magnitude_curve` / `compute_phase_curve` (201).
+     * Points on a response curve.
      */
     var `magnitudePoints`: kotlin.UInt
 ) {
@@ -15018,56 +15016,55 @@ public object FfiConverterTypeCoreInfo: FfiConverterRustBuffer<CoreInfo> {
 
 
 /**
- * `EXT_CORE_VREG` status (16 bytes, `dspi_proto::ext::CoreVregStatus`).
+ * Core voltage regulator state.
  */
 data class CoreVregInfo (
     /**
-     * Live VREG code; `millivolts` is its voltage (0 if unknown).
+     * Regulator setting in use.
      */
     var `liveVreg`: kotlin.UByte, 
     /**
-     * Core voltage, mV; 0 if unknown.
+     * That setting in millivolts.
      */
     var `millivolts`: kotlin.UShort, 
     /**
-     * The persisted selection in the flash directory; 0 = build default.
+     * Stored selection.
      */
     var `storedSel`: kotlin.UByte, 
     /**
-     * The build's default VREG code.
+     * Factory setting.
      */
     var `defaultVreg`: kotlin.UByte, 
     /**
-     * The stored selection was raised by the firmware.
+     * The firmware raised the voltage on its own.
      */
     var `autoRaised`: kotlin.Boolean, 
     /**
-     * The user opted out of automatic escalation
-     * (`CORE_VREG_FLAG_AUTO_DISABLED`).
+     * Automatic raising is off.
      */
     var `autoDisabled`: kotlin.Boolean, 
     /**
-     * Own-watchdog hangs this power session, not yet acted on.
+     * Hangs counted.
      */
     var `hangCount`: kotlin.UByte, 
     /**
-     * A voltage trial is running.
+     * A trial setting is running.
      */
     var `trialActive`: kotlin.Boolean, 
     /**
-     * The trial's VREG code, valid while `trial_active`.
+     * The trial setting.
      */
     var `trialVreg`: kotlin.UByte, 
     /**
-     * VREG code of the trial whose run ended in a hang; 0 = none.
+     * The last trial setting that failed.
      */
     var `failedTrialVreg`: kotlin.UByte, 
     /**
-     * How long that trial survived, s.
+     * Uptime at which it failed, in seconds.
      */
     var `failedTrialUptimeS`: kotlin.UInt, 
     /**
-     * This run's uptime, s.
+     * Uptime in seconds.
      */
     var `uptimeS`: kotlin.UInt
 ) {
@@ -15130,27 +15127,27 @@ public object FfiConverterTypeCoreVregInfo: FfiConverterRustBuffer<CoreVregInfo>
 
 
 /**
- * The control interfaces' status (`REQ_GET_CTRL_IFACE_STATUS`).
+ * Live state of the UART and I2C control interfaces.
  */
 data class CtrlIfaceStatus (
     /**
-     * `PIN_CONFIG_*` result of the last UART config write.
+     * Status code of the last UART command.
      */
     var `uartLastStatus`: kotlin.UByte, 
     /**
-     * The UART interface is up now (a boot-time pin collision keeps it down).
+     * The UART has seen traffic recently.
      */
     var `uartLive`: kotlin.Boolean, 
     /**
-     * `PIN_CONFIG_*` result of the last I2C config write.
+     * Status code of the last I2C command.
      */
     var `i2cLastStatus`: kotlin.UByte, 
     /**
-     * The I2C interface is up now.
+     * The I2C bus has seen traffic recently.
      */
     var `i2cLive`: kotlin.Boolean, 
     /**
-     * The control protocol version the firmware speaks.
+     * Version of the control-interface protocol the firmware speaks.
      */
     var `protocolVersion`: kotlin.UByte
 ) {
@@ -15192,16 +15189,15 @@ public object FfiConverterTypeCtrlIfaceStatus: FfiConverterRustBuffer<CtrlIfaceS
 
 
 /**
- * `types.rs` `DeviceInfo`; `serial` replaces the `serial`/`serial_len` pair.
+ * A DSPi found on USB.
  */
 data class DeviceInfo (
     /**
-     * USB serial number, the picker's identity.
+     * The USB serial number string.
      */
     var `serial`: kotlin.String, 
     /**
-     * Where the unit sits on the bus: IOKit's location id on macOS, derived
-     * from the bus position elsewhere.
+     * The bus location, to tell two devices with one serial apart.
      */
     var `locationId`: kotlin.UInt
 ) {
@@ -15234,157 +15230,155 @@ public object FfiConverterTypeDeviceInfo: FfiConverterRustBuffer<DeviceInfo> {
 
 
 /**
- * Full mirror of `state.rs` `DspState` (wire format V32).
+ * Everything the core knows about the connected device's settings.
  *
- * Channel-indexed vectors use wire channel indices (`[inputs][outputs]`,
- * MAX_CHANNELS = 17 entries); output-indexed ones have MAX_OUTPUTS = 9,
- * input-indexed MAX_INPUTS = 8. Only the first `num_*` entries are live.
+ * Per-channel vectors are sized to the protocol maxima, not to the device:
+ * `num_input_channels` and `num_output_channels` say how much of each is
+ * real. Channels are numbered inputs first, then outputs.
  */
 data class DspState (
     /**
-     * 0 RP2040, 1 RP2350.
+     * The board's platform code (RP2040, RP2350, ...).
      */
     var `platformId`: kotlin.UByte, 
     /**
-     * Live wire channels (inputs + outputs).
+     * Inputs plus outputs on this device.
      */
     var `numChannels`: kotlin.UByte, 
     /**
-     * Live input channels.
+     * Input channels on this device.
      */
     var `numInputChannels`: kotlin.UByte, 
     /**
-     * Live output channels.
+     * Output channels on this device.
      */
     var `numOutputChannels`: kotlin.UByte, 
     /**
-     * The device's own wire format version.
+     * Wire format version of the bulk parameter image.
      */
     var `formatVersion`: kotlin.UByte, 
     /**
-     * Firmware version, major.
+     * Firmware major version.
      */
     var `fwMajor`: kotlin.UByte, 
     /**
-     * Firmware version, minor.
+     * Firmware minor version.
      */
     var `fwMinor`: kotlin.UByte, 
     /**
-     * Firmware version, patch.
+     * Firmware patch version.
      */
     var `fwPatch`: kotlin.UByte, 
     /**
-     * Beta number, 0 = final; `FW_BETA_EARLY` for an early beta that does not say.
+     * Firmware beta number (0 for a release).
      */
     var `fwBeta`: kotlin.UByte, 
     /**
-     * `COMPAT_*` (0 unknown, 1 ok, 2 firmware too old, 3 too new).
+     * How this build relates to the firmware (`COMPAT_*`).
      */
     var `compat`: kotlin.UByte, 
     /**
-     * Preamp, dB.
+     * Global preamp in dB.
      */
     var `preampDb`: kotlin.Float, 
     /**
-     * Master EQ bypass.
+     * The whole DSP chain is bypassed.
      */
     var `bypass`: kotlin.Boolean, 
     /**
-     * Per-input preamp, dB (input-indexed).
+     * Preamp per input, in dB.
      */
     var `inputPreampDb`: List<kotlin.Float>, 
     /**
-     * Master volume, dB.
+     * Master volume in dB.
      */
     var `masterVolumeDb`: kotlin.Float, 
     /**
-     * `MASTER_VOLUME_MODE_*`: 0 stored independently, 1 with the preset.
+     * How the master volume behaves (fixed, saved, ...): firmware code.
      */
     var `masterVolumeMode`: kotlin.UByte, 
     /**
-     * User volume, dB.
+     * The user volume in dB.
      */
     var `userVolumeDb`: kotlin.Float, 
     /**
-     * User mute.
+     * The user mute.
      */
     var `userMute`: kotlin.Boolean, 
     /**
-     * Loudness compensation on.
+     * Loudness compensation is on.
      */
     var `loudnessEnabled`: kotlin.Boolean, 
     /**
-     * Loudness reference level, dB SPL.
+     * Loudness reference level in dB SPL.
      */
     var `loudnessRefSpl`: kotlin.Float, 
     /**
-     * Loudness intensity, %.
+     * Loudness intensity in percent.
      */
     var `loudnessIntensity`: kotlin.Float, 
     /**
-     * Bit k: loudness processes output k.
+     * Outputs loudness applies to, one bit each.
      */
     var `loudnessOutputMask`: kotlin.UShort, 
     /**
-     * Crossfeed on.
+     * Crossfeed is on.
      */
     var `crossfeedEnabled`: kotlin.Boolean, 
     /**
-     * Crossfeed preset index.
+     * Crossfeed preset number.
      */
     var `crossfeedPreset`: kotlin.UByte, 
     /**
-     * Custom crossfeed frequency, Hz.
+     * Crossfeed corner frequency in Hz (custom preset).
      */
     var `crossfeedFreq`: kotlin.Float, 
     /**
-     * Custom crossfeed feed level, dB.
+     * Crossfeed level in dB (custom preset).
      */
     var `crossfeedFeed`: kotlin.Float, 
     /**
-     * Interaural time delay on.
+     * Interaural time delay is on.
      */
     var `crossfeedItd`: kotlin.Boolean, 
     /**
-     * Bit p: crossfeed processes stereo output pair p.
+     * Output pairs crossfeed applies to, one bit each.
      */
     var `crossfeedOutputPairMask`: kotlin.UByte, 
     /**
-     * Outputs of each crossfeed pair, 4 bytes (K340 firmware fork; zero
-     * from other firmware). Byte p: 0 = default (2p, 2p+1), else
-     * `(right << 4) | left`, 0-based output indices.
+     * Which outputs each crossfeed pair uses (`EXT_CROSSFEED_PAIR_MAP`).
      */
     var `crossfeedPairMap`: kotlin.ByteArray, 
     /**
-     * Delay per wire channel, ms.
+     * Per-channel delay in ms.
      */
     var `channelDelays`: List<kotlin.Float>, 
     /**
-     * Crosspoint on.
+     * Matrix routing, `[input][output]`.
      */
     var `matrixRouting`: List<List<kotlin.Boolean>>, 
     /**
-     * Crosspoint gain, dB.
+     * Matrix gain in dB, `[input][output]`.
      */
     var `matrixGain`: List<List<kotlin.Float>>, 
     /**
-     * Crosspoint polarity inverted.
+     * Matrix polarity inversion, `[input][output]`.
      */
     var `matrixInvert`: List<List<kotlin.Boolean>>, 
     /**
-     * Output enabled.
+     * Output enabled, per output.
      */
     var `outputEnabled`: List<kotlin.Boolean>, 
     /**
-     * Output muted.
+     * Output muted, per output.
      */
     var `outputMuted`: List<kotlin.Boolean>, 
     /**
-     * Output gain, dB.
+     * Output gain in dB, per output.
      */
     var `outputGainDb`: List<kotlin.Float>, 
     /**
-     * Output delay, ms.
+     * Output delay in ms, per output.
      */
     var `outputDelayMs`: List<kotlin.Float>, 
     /**
@@ -15392,286 +15386,283 @@ data class DspState (
      */
     var `limiterEnabled`: List<kotlin.Boolean>, 
     /**
-     * Limiter link group, per output; outputs in one group limit together.
+     * Limiter link group, per output.
      */
     var `limiterLinkGroup`: kotlin.ByteArray, 
     /**
-     * Limiter threshold, dB, per output.
+     * Limiter threshold in dB, per output.
      */
     var `limiterThresholdDb`: List<kotlin.Float>, 
     /**
-     * Limiter release, ms, per output.
+     * Limiter release in ms, per output.
      */
     var `limiterReleaseMs`: List<kotlin.Float>, 
     /**
-     * Physical output slots: 3 on RP2040, 5 on RP2350.
+     * Physical output pins the device has.
      */
     var `numPinOutputs`: kotlin.UByte, 
     /**
-     * GPIO of each physical output slot.
+     * GPIO per physical output.
      */
     var `outputPins`: kotlin.ByteArray, 
     /**
-     * `OUTPUT_CONFIG_MODE_*`: 0 stored independently, 1 with the preset.
+     * Output configuration mode (firmware code).
      */
     var `outputConfigMode`: kotlin.UByte, 
     /**
-     * PEQ bands, `[wire channel][band]`.
+     * PEQ bands, `[channel][band]`.
      */
     var `filters`: List<List<FilterParams>>, 
     /**
-     * Crossover bands, `[wire channel][band]`.
+     * Crossover slots, `[channel][slot]`.
      */
     var `xover`: List<List<FilterParams>>, 
     /**
-     * Channel names (wire channel), at most 31 bytes of UTF-8 each.
+     * User names of the channels.
      */
     var `channelNames`: List<kotlin.String>, 
     /**
-     * Leveller on.
+     * Volume leveller is on.
      */
     var `levellerEnabled`: kotlin.Boolean, 
     /**
-     * Leveller speed: 0 slow, 1 medium, 2 fast.
+     * Leveller speed (firmware code).
      */
     var `levellerSpeed`: kotlin.UByte, 
     /**
-     * Leveller lookahead on.
+     * Leveller lookahead is on.
      */
     var `levellerLookahead`: kotlin.Boolean, 
     /**
-     * Leveller amount, %.
+     * Leveller amount in percent.
      */
     var `levellerAmount`: kotlin.Float, 
     /**
-     * Leveller maximum gain, dB.
+     * Leveller maximum gain in dB.
      */
     var `levellerMaxGainDb`: kotlin.Float, 
     /**
-     * Leveller gate threshold, dB.
+     * Leveller gate in dB.
      */
     var `levellerGateDb`: kotlin.Float, 
     /**
-     * Bit k: input channel k feeds the leveller's detector.
+     * Channels the leveller listens to, one bit each.
      */
     var `levellerDetectorMask`: kotlin.UByte, 
     /**
-     * Bit k: the leveller's gain applies to input channel k.
+     * Channels the leveller acts on, one bit each.
      */
     var `levellerApplyMask`: kotlin.UByte, 
     /**
-     * Active input (`InputSource`: 0 USB, 1 S/PDIF, 2 I2S, ...).
+     * The selected audio input (USB, S/PDIF, ...).
      */
     var `inputSource`: kotlin.UByte, 
     /**
-     * LG Sound Sync on.
+     * LG Sound Sync is on.
      */
     var `lgSoundSyncEnabled`: kotlin.Boolean, 
     /**
-     * Bit k: S/PDIF input k+1 is enabled. Bit 0 (input 1) is always set:
-     * the first S/PDIF input cannot be disabled, and setters must keep the
-     * bit when they write the mask.
+     * How many S/PDIF inputs are enabled.
      */
     var `spdifInputsEnabled`: kotlin.UByte, 
     /**
-     * ADAT input enabled.
+     * The ADAT input is enabled.
      */
     var `adatInputEnabled`: kotlin.Boolean, 
     /**
-     * GPIO of each S/PDIF receiver.
+     * GPIO per S/PDIF receiver.
      */
     var `spdifRxPins`: kotlin.ByteArray, 
     /**
-     * I2S data GPIO of each stereo input pair.
+     * GPIO per I2S data input.
      */
     var `i2sRxPins`: kotlin.ByteArray, 
     /**
-     * Active I2S input channels: 2, 4, 6 or 8.
+     * Channels on the I2S input.
      */
     var `i2sInputChannels`: kotlin.UByte, 
     /**
-     * I2S input rate code: 0 44.1 kHz, 1 48 kHz, 2 96 kHz.
+     * I2S input rate (firmware code).
      */
     var `i2sInputRate`: kotlin.UByte, 
     /**
-     * I2S clock: 0 master, 1 slave.
+     * I2S clock mode (master or slave).
      */
     var `i2sClockMode`: kotlin.UByte, 
     /**
-     * ADAT input GPIO.
+     * GPIO of the ADAT input.
      */
     var `adatInputPin`: kotlin.UByte, 
     /**
-     * ADAT input clock: 0 master, 1 slave.
+     * ADAT input clock mode.
      */
     var `adatInputClockMode`: kotlin.UByte, 
     /**
-     * Psychoacoustic bass on.
+     * Psychoacoustic bass is on.
      */
     var `psybassEnabled`: kotlin.Boolean, 
     /**
-     * Bit k: psychoacoustic bass processes output k.
+     * Outputs psychoacoustic bass applies to, one bit each.
      */
     var `psybassOutputMask`: kotlin.UShort, 
     /**
-     * Psychoacoustic bass cutoff, Hz.
+     * Psychoacoustic bass cutoff in Hz.
      */
     var `psybassCutoffHz`: kotlin.Float, 
     /**
-     * Harmonics level, dB.
+     * Harmonics level in dB.
      */
     var `psybassHarmonicsDb`: kotlin.Float, 
     /**
-     * Drive, dB.
+     * Drive in dB.
      */
     var `psybassDriveDb`: kotlin.Float, 
     /**
-     * Character, %.
+     * Even/odd character in percent.
      */
     var `psybassCharacterPct`: kotlin.Float, 
     /**
-     * Level of the original bass, dB.
+     * Level of the original low band in dB.
      */
     var `psybassOriginalDb`: kotlin.Float, 
     /**
-     * Upmixer parameters, by `UPMIX_PARAM_*`.
+     * Upmixer parameters, indexed by `UPMIX_PARAM_*`.
      */
     var `upmix`: List<kotlin.Float>, 
     /**
-     * Subharmonic synthesizer parameters, by `SUBHARM_PARAM_*`.
+     * Subharmonic synth parameters, indexed by `SUBHARM_PARAM_*`.
      */
     var `subharm`: List<kotlin.Float>, 
     /**
-     * Subharmonic solo (runtime only, not in the image).
+     * The subharmonic synth's solo switch.
      */
     var `subharmSolo`: kotlin.Boolean, 
     /**
-     * Tube preamp parameters, by `TUBE_PARAM_*`.
+     * Tube modeller parameters, indexed by the firmware's tube ids.
      */
     var `tube`: List<kotlin.Float>, 
     /**
-     * Type of each physical output slot: `OUTPUT_TYPE_*` (0 S/PDIF, 1 I2S).
+     * Kind of each output pin (S/PDIF, I2S, PDM, ...).
      */
     var `outputTypes`: kotlin.ByteArray, 
     /**
-     * I2S BCK GPIO as clock master.
+     * I2S bit clock GPIO in master mode.
      */
     var `i2sBckPin`: kotlin.UByte, 
     /**
-     * I2S BCK GPIO as clock slave.
+     * I2S bit clock GPIO in slave mode.
      */
     var `i2sBckPinSlave`: kotlin.UByte, 
     /**
-     * I2S clock pins: 0 unified, 1 split.
+     * How the I2S clock pins are assigned.
      */
     var `i2sClockPinMode`: kotlin.UByte, 
     /**
-     * I2S MCK output on.
+     * The master clock output is on.
      */
     var `mckEnabled`: kotlin.Boolean, 
     /**
-     * MCK GPIO.
+     * GPIO of the master clock.
      */
     var `mckPin`: kotlin.UByte, 
     /**
-     * MCK multiplier: 128 or 256.
+     * Master clock as a multiple of the sample rate.
      */
     var `mckMultiplier`: kotlin.UByte, 
     /**
-     * ADAT output enabled.
+     * The ADAT output is on.
      */
     var `adatOutEnabled`: kotlin.Boolean, 
     /**
-     * ADAT output GPIO.
+     * GPIO of the ADAT output.
      */
     var `adatOutPin`: kotlin.UByte, 
     /**
-     * The firmware has the DAC hardware mute.
+     * The firmware has the DAC mute line.
      */
     var `dacMuteSupported`: kotlin.Boolean, 
     /**
-     * DAC hardware mute on.
+     * The DAC mute line is on.
      */
     var `dacMuteEnabled`: kotlin.Boolean, 
     /**
-     * Pull the pin low to mute.
+     * The DAC mute line is active low.
      */
     var `dacMuteActiveLow`: kotlin.Boolean, 
     /**
-     * DAC mute GPIO.
+     * GPIO of the DAC mute line.
      */
     var `dacMutePin`: kotlin.UByte, 
     /**
-     * Hold after the mute asserts, before the clock stops, ms.
+     * How long the mute is held, in ms.
      */
     var `dacMuteHoldMs`: kotlin.UShort, 
     /**
-     * Hold after the clock restarts, before the unmute, ms.
+     * How long the release takes, in ms.
      */
     var `dacMuteReleaseMs`: kotlin.UShort, 
     /**
-     * The firmware has the UART and I2C control interfaces.
+     * The firmware has the UART/I2C control interfaces.
      */
     var `ctrlIfaceSupported`: kotlin.Boolean, 
     /**
-     * UART control interface configuration.
+     * UART control interface settings.
      */
     var `uart`: UartConfig, 
     /**
-     * I2C control interface configuration.
+     * I2C control interface settings.
      */
     var `i2c`: I2cConfig, 
     /**
-     * Control interfaces' status.
+     * Live state of the control interfaces.
      */
     var `ctrlStatus`: CtrlIfaceStatus, 
     /**
-     * `CORE1_MODE_*`: 0 idle, 1 PDM, 2 EQ worker.
+     * What the second core runs (firmware code).
      */
     var `core1Mode`: kotlin.UByte, 
     /**
-     * Bit per slot: the slot holds a preset.
+     * One bit per occupied preset slot.
      */
     var `presetOccupied`: kotlin.UShort, 
     /**
-     * Preset names, per slot.
+     * Name per preset slot.
      */
     var `presetNames`: List<kotlin.String>, 
     /**
-     * The active preset slot.
+     * The slot loaded last.
      */
     var `activePresetSlot`: kotlin.UByte, 
     /**
-     * `PRESET_STARTUP_*`: 0 load `preset_default_slot`, 1 load the last active.
+     * Preset startup mode.
      */
     var `presetStartupMode`: kotlin.UByte, 
     /**
-     * The slot loaded at boot in mode 0.
+     * Preset loaded at startup in the "specified" mode.
      */
     var `presetDefaultSlot`: kotlin.UByte, 
     /**
-     * The image is in this build's wire format, so the mirror may be written back.
+     * `bulk_raw` holds a parameter image this build can decode.
      */
     var `bulkValid`: kotlin.Boolean, 
     /**
-     * The image itself.
+     * The bulk parameter image as read from the device.
      */
     var `bulkRaw`: kotlin.ByteArray, 
     /**
-     * The image carries `i2s_clock_pin_mode` (firmware with split clock pins).
+     * The image carried `i2s_clock_pin_mode` (newer wire formats).
      */
     var `i2sClockPinModePresent`: kotlin.Boolean, 
     /**
-     * The image carries the S/PDIF inputs 2-4 bits of `spdif_inputs_enabled`
-     * (firmware with several S/PDIF inputs).
+     * The image carried `spdif_inputs_enabled`.
      */
     var `spdifInputsEnabledPresent`: kotlin.Boolean, 
     /**
-     * The image carries `adat_input_enabled`.
+     * The image carried `adat_input_enabled`.
      */
     var `adatInputEnabledPresent`: kotlin.Boolean, 
     /**
-     * The image carries `adat_input_clock_mode`.
+     * The image carried `adat_input_clock_mode`.
      */
     var `adatInputClockModePresent`: kotlin.Boolean
 ) {
@@ -16019,22 +16010,19 @@ public object FfiConverterTypeDspState: FfiConverterRustBuffer<DspState> {
 
 
 /**
- * The extension channel (Bofr5555/DSPi fork; `REQ_EXTENSION` 0x00), as
- * probed on connect (WP S3) and read on demand (WP C8).
+ * What the extension channel supports.
  */
 data class ExtStatus (
     /**
-     * `EXT_LIST`: supported sub-command ids; empty on stock firmware.
+     * Extension ids the device lists.
      */
     var `supported`: List<kotlin.UShort>, 
     /**
-     * Whether `EXT_CROSSFEED_PAIR_MAP` is usable: listed by `EXT_LIST` and
-     * read successfully on connect.
+     * The crossfeed pair map is supported.
      */
     var `hasPairMap`: kotlin.Boolean, 
     /**
-     * Whether `EXT_CORE_VREG` is usable: listed by `EXT_LIST` and read
-     * successfully on connect.
+     * Core voltage control is supported.
      */
     var `hasCoreVreg`: kotlin.Boolean
 ) {
@@ -16070,31 +16058,36 @@ public object FfiConverterTypeExtStatus: FfiConverterRustBuffer<ExtStatus> {
 
 
 /**
- * One filter band, PEQ or crossover (`types.rs` `FilterParams`).
+ * One filter band as the device stores it: a PEQ band or a crossover slot.
+ *
+ * The meaning of `gain` and `qp` depends on the type: a Linkwitz Transform
+ * (type 11) carries its target corner `fp` in `gain` and its target Q in
+ * `qp`; every other type ignores `qp`.
  */
 data class FilterParams (
     /**
-     * Firmware filter type (`FILTER_*`): 0..13 PEQ, 32..63 crossover.
+     * The firmware's filter type byte (`FILTER_*`): 0 flat, 1..13 the PEQ
+     * shapes, 32..63 the crossover family/order/pass codes.
      */
     var `filterType`: kotlin.UByte, 
     /**
-     * Whether the band is bypassed.
+     * True when the band is switched off without losing its settings.
      */
     var `bypass`: kotlin.Boolean, 
     /**
-     * Centre or corner frequency, Hz.
+     * Centre or corner frequency in Hz (`f0` for a Linkwitz Transform).
      */
     var `freq`: kotlin.Float, 
     /**
-     * Q (dimensionless).
+     * Quality factor (`Q0` for a Linkwitz Transform).
      */
     var `q`: kotlin.Float, 
     /**
-     * Gain in dB; for the Linkwitz Transform, the target frequency fp in Hz.
+     * Gain in dB; the target corner `fp` in Hz for a Linkwitz Transform.
      */
     var `gain`: kotlin.Float, 
     /**
-     * Linkwitz Transform target Q (ignored by every other type).
+     * The Linkwitz Transform's target Q; unused by the other types.
      */
     var `qp`: kotlin.Float
 ) {
@@ -16301,23 +16294,23 @@ public object FfiConverterTypeFirmwareGuardVerdict: FfiConverterRustBuffer<Firmw
 
 
 /**
- * The I2C control interface's configuration (`set_i2c`).
+ * Settings of the I2C control interface.
  */
 data class I2cConfig (
     /**
-     * The I2C control interface is enabled.
+     * The interface is switched on.
      */
     var `enabled`: kotlin.Boolean, 
     /**
-     * SDA GPIO (even), same I2C instance as `scl_pin`.
+     * The data GPIO.
      */
     var `sdaPin`: kotlin.UByte, 
     /**
-     * SCL GPIO (odd).
+     * The clock GPIO.
      */
     var `sclPin`: kotlin.UByte, 
     /**
-     * 7-bit target address, 0x08..0x77.
+     * The device's 7-bit address on the bus.
      */
     var `address`: kotlin.UByte
 ) {
@@ -16356,35 +16349,35 @@ public object FfiConverterTypeI2cConfig: FfiConverterRustBuffer<I2cConfig> {
 
 
 /**
- * Lock status of a clocked input (`fetch_input_lock`).
+ * Lock state of a clocked digital input (S/PDIF, ADAT or I2S slave).
  */
 data class InputLockStatus (
     /**
-     * Receiver state, the firmware's raw code; 0 = inactive.
+     * The receiver's state code as the firmware reports it.
      */
     var `state`: kotlin.UByte, 
     /**
-     * Clock mode, 0 master, 1 slave.
+     * Which clock the input runs on (the firmware's clock-mode code).
      */
     var `clockMode`: kotlin.UByte, 
     /**
-     * Sample rate the receiver decided on, Hz.
+     * The sample rate the receiver decoded, in Hz (0 when unknown).
      */
     var `detectedRate`: kotlin.UInt, 
     /**
-     * Sample rate as measured from the signal, Hz.
+     * The measured incoming rate, in Hz.
      */
     var `measuredHz`: kotlin.UInt, 
     /**
-     * Whether the rate is usable; always true for the I2S slave.
+     * True when the incoming rate is one the device can run at.
      */
     var `rateOk`: kotlin.Boolean, 
     /**
-     * Times it locked, wrapping 8-bit counter.
+     * How often the input has locked since boot (wrapping counter).
      */
     var `lockCount`: kotlin.UByte, 
     /**
-     * Times it lost lock, wrapping 8-bit counter.
+     * How often the input has lost lock since boot (wrapping counter).
      */
     var `lossCount`: kotlin.UByte
 ) {
@@ -16432,23 +16425,23 @@ public object FfiConverterTypeInputLockStatus: FfiConverterRustBuffer<InputLockS
 
 
 /**
- * LG Sound Sync status (`fetch_lg_status`).
+ * State of the LG Sound Sync link (optical volume from an LG TV).
  */
 data class LgStatus (
     /**
-     * LG Sound Sync is enabled.
+     * Sound Sync handling is switched on.
      */
     var `enabled`: kotlin.Boolean, 
     /**
-     * A TV has been detected.
+     * A TV is sending Sound Sync data.
      */
     var `present`: kotlin.Boolean, 
     /**
-     * TV volume 0..100; 0xFF until one has been decoded.
+     * The volume the TV last sent.
      */
     var `volume`: kotlin.UByte, 
     /**
-     * The TV reports mute.
+     * The TV's mute flag.
      */
     var `muted`: kotlin.Boolean
 ) {
@@ -16487,7 +16480,7 @@ public object FfiConverterTypeLgStatus: FfiConverterRustBuffer<LgStatus> {
 
 
 /**
- * A typed hub address (spec 3.3).
+ * A hub address.
  */
 data class LinkAddress (
     /**
@@ -16528,15 +16521,15 @@ public object FfiConverterTypeLinkAddress: FfiConverterRustBuffer<LinkAddress> {
 
 
 /**
- * A `[bRequest, dir]` row of `policy.denied` (dir 0 = SET, 1 = GET).
+ * A request the hub refused for this session's role.
  */
 data class LinkDenied (
     /**
-     * The `bRequest`.
+     * The request code.
      */
     var `request`: kotlin.UByte, 
     /**
-     * 0 = SET, 1 = GET.
+     * The direction: 0 for a SET, 1 for a GET.
      */
     var `dir`: kotlin.UByte
 ) {
@@ -16569,11 +16562,11 @@ public object FfiConverterTypeLinkDenied: FfiConverterRustBuffer<LinkDenied> {
 
 
 /**
- * One device the hub shares (`device.list`, spec 7.4).
+ * A device a Link hub offers.
  */
 data class LinkDevice (
     /**
-     * The hub's handle for it, for `link_select_device`.
+     * The hub's handle for the device.
      */
     var `handle`: kotlin.UInt, 
     /**
@@ -16581,31 +16574,31 @@ data class LinkDevice (
      */
     var `serial`: kotlin.String, 
     /**
-     * The board's own name, else the hub's.
+     * Device name.
      */
     var `name`: kotlin.String, 
     /**
-     * `major.minor.patch`, "" when the hub did not say.
+     * Firmware version text.
      */
     var `fw`: kotlin.String, 
     /**
-     * Beta number, 0 = final, -1 = unknown.
+     * Firmware beta number.
      */
     var `fwBeta`: kotlin.Int, 
     /**
-     * 0 RP2040, 1 RP2350, -1 unknown.
+     * Platform code.
      */
     var `platform`: kotlin.Int, 
     /**
-     * `online`, `offline`, `updating`.
+     * Device state on the hub.
      */
     var `state`: kotlin.String, 
     /**
-     * `usb` or `uart` (latency and bulk timing).
+     * How the hub reaches the device.
      */
     var `link`: kotlin.String, 
     /**
-     * Session holding the device lock, 0 = none.
+     * Session holding the device's lock, 0 for none.
      */
     var `lockedBy`: kotlin.UInt
 ) {
@@ -16659,11 +16652,11 @@ public object FfiConverterTypeLinkDevice: FfiConverterRustBuffer<LinkDevice> {
 
 
 /**
- * The hub's `hello` after `link_connect` (spec 7.2).
+ * What a Link hub said about itself.
  */
 data class LinkHello (
     /**
-     * `hid`: lowercase UUID, stable per hub installation. Tokens are keyed on it.
+     * The hub's stable id.
      */
     var `hubId`: kotlin.String, 
     /**
@@ -16671,44 +16664,43 @@ data class LinkHello (
      */
     var `hubName`: kotlin.String, 
     /**
-     * `console` (DSPi Console in gateway mode) or `bridge` (ESP32 on the UART).
+     * What kind of program the hub is.
      */
     var `hubKind`: kotlin.String, 
     /**
-     * The hub's software version.
+     * The hub's version.
      */
     var `hubVersion`: kotlin.String, 
     /**
-     * The Link protocol minor version it speaks.
+     * Minor version of the Link protocol.
      */
     var `protoMinor`: kotlin.UInt, 
     /**
-     * `none` or `pin`.
+     * Authentication the hub asks for.
      */
     var `auth`: kotlin.String, 
     /**
-     * `window` (PIN shown on the hub) or `fixed` (the hub's own PIN); `window` when absent.
+     * Where the pairing PIN is shown.
      */
     var `pinSource`: kotlin.String, 
     /**
-     * True: ask the user for the PIN and call `link_pair`.
+     * The client has to pair first.
      */
     var `needsPairing`: kotlin.Boolean, 
     /**
-     * `cmd`, `notify`, `poll`, `snapshot`, `lock`, `fw_install`, `rename`, ...
+     * The hub's capabilities.
      */
     var `caps`: List<kotlin.String>, 
     /**
-     * Largest payload it takes, bytes.
+     * Largest message payload in bytes.
      */
     var `maxPayload`: kotlin.UInt, 
     /**
-     * Requests it allows in flight.
+     * Most requests in flight.
      */
     var `maxInflight`: kotlin.UInt, 
     /**
-     * The hub refused the token passed in: forget it. Only this says the
-     * token is bad; any other failure keeps it.
+     * The stored token was refused.
      */
     var `tokenRefused`: kotlin.Boolean
 ) {
@@ -16771,11 +16763,11 @@ public object FfiConverterTypeLinkHello: FfiConverterRustBuffer<LinkHello> {
 
 
 /**
- * `GET /dspi/v1/info` (spec 3.2), for a hub added by address.
+ * A hub found on the network.
  */
 data class LinkInfo (
     /**
-     * Lowercase UUID, stable per hub installation.
+     * The hub's stable id.
      */
     var `hubId`: kotlin.String, 
     /**
@@ -16783,23 +16775,23 @@ data class LinkInfo (
      */
     var `hubName`: kotlin.String, 
     /**
-     * `console` or `bridge`.
+     * What kind of program the hub is.
      */
     var `hubKind`: kotlin.String, 
     /**
-     * `none` or `pin`.
+     * Authentication the hub asks for.
      */
     var `auth`: kotlin.String, 
     /**
-     * The Link protocol minor version it speaks.
+     * Minor version of the Link protocol.
      */
     var `protoMinor`: kotlin.UInt, 
     /**
-     * WebSocket path (`/dspi/v1` by default).
+     * WebSocket path.
      */
     var `wsPath`: kotlin.String, 
     /**
-     * Serials of the devices it shares.
+     * Serials of the devices it offers.
      */
     var `serials`: List<kotlin.String>
 ) {
@@ -16912,61 +16904,59 @@ public object FfiConverterTypeLinkPhaseText: FfiConverterRustBuffer<LinkPhaseTex
 
 
 /**
- * Where the current Link session stands.
+ * State of the Link session.
  */
 data class LinkStatus (
     /**
-     * A session exists (connected, maybe not yet authenticated).
+     * A connection to the hub exists.
      */
     var `connected`: kotlin.Boolean, 
     /**
-     * Authenticated: commands and the device list work.
+     * The session is bound to a device and usable.
      */
     var `ready`: kotlin.Boolean, 
     /**
-     * Our session id (the NOTIFY `origin` of our own writes), 0 = unknown.
+     * Session id given by the hub.
      */
     var `session`: kotlin.UInt, 
     /**
-     * `viewer`, `control` or `admin`.
+     * The role the hub granted.
      */
     var `role`: kotlin.String, 
     /**
-     * Commands this role may not send (`policy.denied`).
+     * Requests refused for that role.
      */
     var `denied`: List<LinkDenied>, 
     /**
-     * The session ended (see `close_code` / `close_reason`).
+     * The hub closed the session.
      */
     var `closed`: kotlin.Boolean, 
     /**
-     * The hub's close code, -1 = none.
+     * Close code.
      */
     var `closeCode`: kotlin.Int, 
     /**
-     * The hub's close reason.
+     * Close reason.
      */
     var `closeReason`: kotlin.String, 
     /**
-     * What to tell the user (WP C15).
+     * Where the session is in its life.
      */
     var `phase`: LinkPhase, 
     /**
-     * [`LinkPhase::Reconnecting`]: failed tries since the session was lost.
+     * Reconnect attempt number.
      */
     var `reconnectAttempt`: kotlin.UInt, 
     /**
-     * [`LinkPhase::Reconnecting`]: ms until the next try, 0 = now.
+     * Time to the next reconnect in ms.
      */
     var `reconnectInMs`: kotlin.UInt, 
     /**
-     * `window` or `fixed`, for [`LinkPhase::NeedsPairing`]'s wording; "" with
-     * no session.
+     * Where the pairing PIN is shown.
      */
     var `pinSource`: kotlin.String, 
     /**
-     * The hub refused or revoked the stored token, during a reconnect too:
-     * forget it. Cleared by the next pairing.
+     * The stored token was refused.
      */
     var `tokenRefused`: kotlin.Boolean
 ) {
@@ -17032,16 +17022,15 @@ public object FfiConverterTypeLinkStatus: FfiConverterRustBuffer<LinkStatus> {
 
 
 /**
- * Result of `monitor_read(after_id)`: the entries after `after_id` and the
- * id to pass next time (`after_id` itself if there were none).
+ * Monitor lines after a given id.
  */
 data class MonitorBatch (
     /**
-     * The id to pass next time.
+     * The id to ask from next time.
      */
     var `lastId`: kotlin.ULong, 
     /**
-     * Entries after `after_id`, oldest first.
+     * The new lines, oldest first.
      */
     var `entries`: List<MonitorEntry>
 ) {
@@ -17074,19 +17063,19 @@ public object FfiConverterTypeMonitorBatch: FfiConverterRustBuffer<MonitorBatch>
 
 
 /**
- * One line of the notification monitor.
+ * One line of the traffic monitor.
  */
 data class MonitorEntry (
     /**
-     * Rising id, for `monitor_read`.
+     * Increasing id.
      */
     var `id`: kotlin.ULong, 
     /**
-     * Host time, ms since the Unix epoch.
+     * Wall-clock time in ms since the Unix epoch.
      */
     var `timeMs`: kotlin.Long, 
     /**
-     * The entry, for display.
+     * The line.
      */
     var `text`: kotlin.String
 ) {
@@ -17122,15 +17111,15 @@ public object FfiConverterTypeMonitorEntry: FfiConverterRustBuffer<MonitorEntry>
 
 
 /**
- * A decoded diagnostic value.
+ * A label and its formatted value.
  */
 data class NamedValue (
     /**
-     * The value's name.
+     * The label.
      */
     var `name`: kotlin.String, 
     /**
-     * The value, as text.
+     * The value as text.
      */
     var `value`: kotlin.String
 ) {
@@ -17163,16 +17152,15 @@ public object FfiConverterTypeNamedValue: FfiConverterRustBuffer<NamedValue> {
 
 
 /**
- * What `process_notifications` changed: `NOTIFY_*` flags and a bitmask of
- * wire channels whose filters changed.
+ * What a batch of device notifications changed.
  */
 data class NotifyResult (
     /**
-     * `NOTIFY_*` flags of what changed.
+     * `NOTIFY_*` bits.
      */
     var `flags`: kotlin.UInt, 
     /**
-     * Bit per wire channel: its filters changed.
+     * One bit per channel whose curve must be redrawn.
      */
     var `filterChannels`: kotlin.UInt
 ) {
@@ -17286,26 +17274,23 @@ public object FfiConverterTypeOutputCard: FfiConverterRustBuffer<OutputCard> {
 
 
 /**
- * One output's fill, scaled and judged (`fetch_output_fills`).
+ * One output's fill.
  */
 data class OutputFill (
     /**
-     * Fill to frame resolution, %: of the ring where the firmware has the
-     * latency setting (at most 100), else of the firmware's fixed scale (which
-     * can pass 100).
+     * Fill now, percent.
      */
     var `fillPct`: kotlin.Double, 
     /**
-     * Lowest fill since the last reset, % on the same scale.
+     * Lowest fill, percent.
      */
     var `minPct`: kotlin.UByte, 
     /**
-     * Highest fill since the last reset, % on the same scale.
+     * Highest fill, percent.
      */
     var `maxPct`: kotlin.UByte, 
     /**
-     * The band of `fill_pct`, around the live latency target where there is
-     * one.
+     * Its rating.
      */
     var `band`: FillBand
 ) {
@@ -17505,16 +17490,15 @@ public object FfiConverterTypeOutputLabelInput: FfiConverterRustBuffer<OutputLab
 
 
 /**
- * `REQ_OUTPUT_LATENCY` status (config.h; 12 bytes). Field meanings as in
- * the firmware's `OutputLatencyStatus`.
+ * The output latency report.
  */
 data class OutputLatency (
     /**
-     * The raw 12-byte reply, for fields this build does not name yet.
+     * The reply bytes.
      */
     var `raw`: kotlin.ByteArray, 
     /**
-     * Decoded `(name, value)` pairs, in the firmware's order.
+     * The decoded fields.
      */
     var `fields`: List<NamedValue>
 ) {
@@ -17547,33 +17531,31 @@ public object FfiConverterTypeOutputLatency: FfiConverterRustBuffer<OutputLatenc
 
 
 /**
- * One output-latency option (`OutputLatencyOptionWire`, config.h; 8
- * bytes), from `fetch_output_latency_options` (WP C8).
+ * One output latency setting the device offers.
  */
 data class OutputLatencyOption (
     /**
-     * `OutputLatencyId`, the value `set_output_latency` takes (never 0).
+     * Setting id.
      */
     var `id`: kotlin.UByte, 
     /**
-     * `OUTPUT_LATENCY_FLAG_STREAM_ONLY`: runs only with a streamed input
-     * (S/PDIF, I2S, ADAT); USB input runs the fallback instead.
+     * Only possible while streaming from the host.
      */
     var `streamOnly`: kotlin.Boolean, 
     /**
-     * `OUTPUT_LATENCY_WIRE_AVAILABLE`: runs as itself on the active source.
+     * Usable now.
      */
     var `available`: kotlin.Boolean, 
     /**
-     * Nominal ring fill target, µs.
+     * Buffer latency in µs.
      */
     var `latencyUs`: kotlin.UShort, 
     /**
-     * Nominal stream-input batch, µs.
+     * Batch size in µs.
      */
     var `batchUs`: kotlin.UShort, 
     /**
-     * What choosing it gives now (active source and rate applied), µs.
+     * Total latency in µs.
      */
     var `effectiveUs`: kotlin.UShort
 ) {
@@ -17618,31 +17600,31 @@ public object FfiConverterTypeOutputLatencyOption: FfiConverterRustBuffer<Output
 
 
 /**
- * The PDM output's buffers.
+ * Fill of the PDM output's DMA and ring buffers.
  */
 data class PdmBufferStats (
     /**
-     * DMA buffer fill, %.
+     * DMA buffer fill now, percent.
      */
     var `dmaFillPct`: kotlin.UByte, 
     /**
-     * Lowest DMA fill since the last reset, %.
+     * Lowest DMA fill, percent.
      */
     var `dmaMinPct`: kotlin.UByte, 
     /**
-     * Highest DMA fill since the last reset, %.
+     * Highest DMA fill, percent.
      */
     var `dmaMaxPct`: kotlin.UByte, 
     /**
-     * Software ring fill, %.
+     * Ring buffer fill now, percent.
      */
     var `ringFillPct`: kotlin.UByte, 
     /**
-     * Lowest ring fill since the last reset, %.
+     * Lowest ring fill, percent.
      */
     var `ringMinPct`: kotlin.UByte, 
     /**
-     * Highest ring fill since the last reset, %.
+     * Highest ring fill, percent.
      */
     var `ringMaxPct`: kotlin.UByte
 ) {
@@ -17687,7 +17669,7 @@ public object FfiConverterTypePdmBufferStats: FfiConverterRustBuffer<PdmBufferSt
 
 
 /**
- * One GPIO held by a live control-surface binding (`dspi_cs_pin_uses`).
+ * A GPIO used by a control-surface slot.
  */
 data class PinUse (
     /**
@@ -17695,7 +17677,7 @@ data class PinUse (
      */
     var `pin`: kotlin.UByte, 
     /**
-     * The binding's slot.
+     * The slot using it.
      */
     var `slot`: kotlin.UByte
 ) {
@@ -17728,31 +17710,31 @@ public object FfiConverterTypePinUse: FfiConverterRustBuffer<PinUse> {
 
 
 /**
- * The preset directory (`get_preset_directory`).
+ * The device's preset slots and startup settings.
  */
 data class PresetDirectory (
     /**
-     * Bit per slot: the slot holds a preset.
+     * One bit per slot that holds a preset.
      */
     var `occupiedMask`: kotlin.UShort, 
     /**
-     * `PRESET_STARTUP_*`: 0 load `default_slot`, 1 load the last active.
+     * What the device loads at power-up (`PRESET_STARTUP_*`).
      */
     var `startupMode`: kotlin.UByte, 
     /**
-     * The slot loaded at boot in mode 0.
+     * The slot loaded at power-up in the "specified" startup mode.
      */
     var `defaultSlot`: kotlin.UByte, 
     /**
-     * The slot last loaded or saved.
+     * The slot loaded most recently.
      */
     var `lastActive`: kotlin.UByte, 
     /**
-     * `OUTPUT_CONFIG_MODE_*`: 0 stored independently, 1 with the preset.
+     * Whether a preset load also applies the output configuration.
      */
     var `outputConfigMode`: kotlin.UByte, 
     /**
-     * `MASTER_VOLUME_MODE_*`: 0 stored independently, 1 with the preset.
+     * Whether a preset load also applies the master volume.
      */
     var `masterVolumeMode`: kotlin.UByte
 ) {
@@ -17867,47 +17849,43 @@ public object FfiConverterTypeRawNotification: FfiConverterRustBuffer<RawNotific
 
 
 /**
- * The output rings' counters and watermarks (`fetch_ring_health`). The
- * underrun, refused and over-budget counts are cumulative; the rest clear on
- * `reset_buffer_stats`.
+ * How the host's output stream ring has been doing.
  */
 data class RingHealth (
     /**
-     * How full the rings are kept, frames (Fill Target).
+     * Target fill in frames.
      */
     var `targetFrames`: kotlin.UShort, 
     /**
-     * The same as a time, µs.
+     * Target fill in µs.
      */
     var `targetUs`: kotlin.UShort, 
     /**
-     * Frames a stream input delivers per call; the fill swings by about this.
+     * Frames per batch.
      */
     var `batchFrames`: kotlin.UShort, 
     /**
-     * Times the outputs ran dry while a source owed audio. A host that pauses
-     * its stream does not count.
+     * Underrun episodes.
      */
     var `underrunEpisodes`: kotlin.UInt, 
     /**
-     * Audio blocks dropped because the rings had no room.
+     * Blocks the ring refused.
      */
     var `refusedBlocks`: kotlin.UInt, 
     /**
-     * The emptiest a ring got just before a write, frames; none before the
-     * first write.
+     * Lowest fill seen, if any.
      */
     var `lowestFill`: kotlin.UInt?, 
     /**
-     * Longest wait between input deliveries, µs.
+     * Longest gap between input blocks, µs.
      */
     var `worstInputGapUs`: kotlin.UInt, 
     /**
-     * Longest gap between audio-carrying USB packets, µs.
+     * Longest gap between USB transfers, µs.
      */
     var `worstUsbGapUs`: kotlin.UInt, 
     /**
-     * Background steps that overran their main-loop budget.
+     * Processing steps over budget.
      */
     var `overBudgetSteps`: kotlin.UInt
 ) {
@@ -17961,7 +17939,7 @@ public object FfiConverterTypeRingHealth: FfiConverterRustBuffer<RingHealth> {
 
 
 /**
- * The analyser's capabilities (`rta_get_caps`).
+ * What the device's analyser can do.
  */
 data class RtaCapsInfo (
     /**
@@ -17969,43 +17947,43 @@ data class RtaCapsInfo (
      */
     var `supported`: kotlin.Boolean, 
     /**
-     * Input channels it can tap.
+     * Input channels it can measure.
      */
     var `inputChannels`: kotlin.UByte, 
     /**
-     * Output channels it can tap.
+     * Output channels it can measure.
      */
     var `outputChannels`: kotlin.UByte, 
     /**
-     * Lowest FFT order.
+     * Smallest FFT order.
      */
     var `orderMin`: kotlin.UByte, 
     /**
-     * Highest FFT order.
+     * Largest FFT order.
      */
     var `orderMax`: kotlin.UByte, 
     /**
-     * Default FFT order.
+     * FFT order the device starts with.
      */
     var `orderDefault`: kotlin.UByte, 
     /**
-     * Bands of the continuous bass bank, from band 0.
+     * Bands handled by the low-frequency filter bank.
      */
     var `bassBands`: kotlin.UByte, 
     /**
-     * Bands in a frame.
+     * Total bands.
      */
     var `maxBands`: kotlin.UByte, 
     /**
-     * Usable range of the FFT bands, dB.
+     * Dynamic range of the FFT bands in dB.
      */
     var `dynamicRangeDb`: kotlin.UByte, 
     /**
-     * Usable range of the bass bands, dB.
+     * Dynamic range of the bass bands in dB.
      */
     var `bassDynamicRangeDb`: kotlin.UShort, 
     /**
-     * Band centre frequencies, RTA_MAX_BANDS = 37 entries.
+     * Centre frequency of each band in Hz.
      */
     var `centres`: List<kotlin.UShort>
 ) {
@@ -18065,27 +18043,27 @@ public object FfiConverterTypeRtaCapsInfo: FfiConverterRustBuffer<RtaCapsInfo> {
 
 
 /**
- * One analysed channel's bands.
+ * One channel's band levels in an analyser frame.
  */
 data class RtaChannelFrame (
     /**
-     * Channel within the tap.
+     * The channel these levels belong to.
      */
     var `channel`: kotlin.UByte, 
     /**
-     * Bands that carry data.
+     * Valid entries in `avg_db` and `peak_db`.
      */
     var `nBands`: kotlin.UByte, 
     /**
-     * No frame arrived for this channel.
+     * The channel carried no signal.
      */
     var `silent`: kotlin.Boolean, 
     /**
-     * Average level per band, dBFS.
+     * Averaged level per band, dBFS.
      */
     var `avgDb`: List<kotlin.Float>, 
     /**
-     * Peak level per band, dBFS.
+     * Peak-hold level per band, dBFS.
      */
     var `peakDb`: List<kotlin.Float>
 ) {
@@ -18127,30 +18105,27 @@ public object FfiConverterTypeRtaChannelFrame: FfiConverterRustBuffer<RtaChannel
 
 
 /**
- * Who chose the analyser configuration the device holds
- * (`rta_get_ownership`). The last console to push one drives it, and every
- * other console follows.
+ * Who runs the analyser on a shared device.
  */
 data class RtaOwnership (
     /**
-     * False: the device holds what this console asked for, and the fields
-     * below are 0. True: someone else's configuration.
+     * This client follows another one's configuration.
      */
     var `following`: kotlin.Boolean, 
     /**
-     * The session that pushed it; 0 when the writer is unknown.
+     * Who set the configuration.
      */
     var `origin`: kotlin.UShort, 
     /**
-     * The device's tap, `RTA_TAP_INPUT` or `RTA_TAP_OUTPUT`.
+     * Its tap.
      */
     var `tap`: kotlin.UByte, 
     /**
-     * The device's channels.
+     * Its channel mask.
      */
     var `mask`: kotlin.UShort, 
     /**
-     * The device's transform size.
+     * Its FFT order.
      */
     var `fftOrder`: kotlin.UByte
 ) {
@@ -18192,40 +18167,35 @@ public object FfiConverterTypeRtaOwnership: FfiConverterRustBuffer<RtaOwnership>
 
 
 /**
- * What the analyser should measure (`rta_set_request`).
+ * What a view wants from the real-time analyser.
  */
 data class RtaRequest (
     /**
-     * `RTA_TAP_INPUT` (0) / `RTA_TAP_OUTPUT` (1).
+     * Where to measure: `RTA_TAP_INPUT` or `RTA_TAP_OUTPUT`.
      */
     var `tap`: kotlin.UByte, 
     /**
-     * Channel mask within the tap; 0 releases the analyser unless `watching`.
+     * Channels to measure, one bit each; 0 releases the analyser.
      */
     var `mask`: kotlin.UShort, 
     /**
-     * Ask for the FFT bins as well as the bands; the device sends them for a
-     * single analysed channel.
+     * Also fetch the raw FFT bins of one channel.
      */
     var `wantsBins`: kotlin.Boolean, 
     /**
-     * FFT order, within the caps' `order_min..=order_max`.
+     * FFT size as a power of two.
      */
     var `fftOrder`: kotlin.UByte, 
     /**
-     * Averaging time, ms; 0 = none beyond the detector.
+     * Averaging time in ms.
      */
     var `avgMs`: kotlin.UShort, 
     /**
-     * Peak decay, dB/s; 0 = peak hold off.
+     * Peak hold decay in dB per second.
      */
     var `peakDecayDbS`: kotlin.UByte, 
     /**
-     * A view shows the analyser, also with no channel chosen
-     * (`isWatching`, SpectrumAnalyser.swift:827). With mask 0 it asks for
-     * nothing of its own, but while another console is followed the device's
-     * configuration keeps being polled and drawn. A mask other than 0 watches
-     * anyway.
+     * Show whatever another client is measuring instead of starting one.
      */
     var `watching`: kotlin.Boolean = false
 ) {
@@ -18273,50 +18243,47 @@ public object FfiConverterTypeRtaRequest: FfiConverterRustBuffer<RtaRequest> {
 
 
 /**
- * The analyser's latest frames and status (`rta_get_snapshot`).
+ * Everything the analyser view draws, as of the last poll.
  */
 data class RtaSnapshot (
     /**
-     * Changes when something drawn changed (`rta_get_snapshot`).
+     * Bumped whenever the drawn levels change.
      */
     var `version`: kotlin.UInt, 
     /**
-     * Changes when the status line changed.
+     * Bumped whenever the status fields change.
      */
     var `telemetryVersion`: kotlin.UInt, 
     /**
-     * `RTA_TAP_INPUT` (0) / `RTA_TAP_OUTPUT` (1).
+     * The tap being measured.
      */
     var `tap`: kotlin.UByte, 
     /**
-     * Channels analysed.
+     * Valid entries in `frames`.
      */
     var `count`: kotlin.UByte, 
     /**
-     * RTA_MAX_CHANNELS = 16 entries; the first `count` are the analysed
-     * channels (packed, ascending channel), the rest are defaults.
+     * Levels per measured channel.
      */
     var `frames`: List<RtaChannelFrame>, 
     /**
-     * Bands that carry a level (`rta::populated_bands`): bit b = band b
-     * (RTA_MAX_BANDS = 37); the bass bank always, an FFT band only when a bin
-     * centre falls inside its edges, none below `first_band`.
+     * One bit per band that has data at this rate and FFT size.
      */
     var `populated`: kotlin.ULong, 
     /**
-     * Valid entries of `bins_db`.
+     * Valid entries in `bins_db`.
      */
     var `binsCount`: kotlin.UShort, 
     /**
-     * Channel the bins belong to.
+     * The channel the bins belong to.
      */
     var `binsChannel`: kotlin.UByte, 
     /**
-     * Sample rate the bins were computed at, Hz.
+     * Sample rate the bins were taken at, in Hz.
      */
     var `binsSampleRate`: kotlin.UInt, 
     /**
-     * First `bins_count` of RTA_MAX_BINS = 512 entries are valid.
+     * Raw FFT bins in dBFS.
      */
     var `binsDb`: List<kotlin.Float>, 
     /**
@@ -18324,47 +18291,47 @@ data class RtaSnapshot (
      */
     var `running`: kotlin.Boolean, 
     /**
-     * Channels the device reports live.
+     * Channels the device is measuring.
      */
     var `liveCount`: kotlin.UByte, 
     /**
-     * Bit per channel of the tap: live on the device.
+     * Mask of the channels the device is measuring.
      */
     var `liveMask`: kotlin.UShort, 
     /**
-     * Transforms per second.
+     * Analyser frames per second.
      */
     var `framesPerS`: kotlin.UShort, 
     /**
-     * Main-loop transform time, µs per second.
+     * Processor time spent per second, in µs.
      */
     var `busyUsPerS`: kotlin.UShort, 
     /**
-     * Wall time of the last complete transform, µs.
+     * Time of the last frame, in µs.
      */
     var `lastFrameUs`: kotlin.UShort, 
     /**
-     * Bass bank time on both cores, µs per second, saturating.
+     * Processor time the bass bank spends per second, in µs.
      */
     var `bassBusyUsPerS`: kotlin.UShort, 
     /**
-     * Current sample rate, Hz.
+     * Device sample rate in Hz.
      */
     var `sampleRate`: kotlin.UInt, 
     /**
-     * First band this FFT resolves; 0xFF = unknown.
+     * First band with data; 0xFF when unknown.
      */
     var `firstBand`: kotlin.UByte, 
     /**
-     * FFT order in force.
+     * FFT order in use.
      */
     var `fftOrder`: kotlin.UByte, 
     /**
-     * The device refused the last requested configuration.
+     * The device refused the requested configuration.
      */
     var `configRejected`: kotlin.Boolean, 
     /**
-     * How long one channel waits between frames, s.
+     * How often the view should poll, in seconds.
      */
     var `refreshIntervalS`: kotlin.Float
 ) {
@@ -18457,31 +18424,31 @@ public object FfiConverterTypeRtaSnapshot: FfiConverterRustBuffer<RtaSnapshot> {
 
 
 /**
- * The generator's capabilities (`siggen_fetch_caps`).
+ * What the device's signal generator can do.
  */
 data class SiggenCaps (
     /**
-     * The firmware has a generator.
+     * The firmware has a signal generator.
      */
     var `supported`: kotlin.Boolean, 
     /**
-     * Signal types it reports.
+     * Signal types the device reports.
      */
     var `typeCount`: kotlin.UByte, 
     /**
-     * Output channels it can drive.
+     * Output channels it can play on.
      */
     var `outputChannels`: kotlin.UByte, 
     /**
-     * Most tones of a multitone signal.
+     * Most tones in a multitone signal.
      */
     var `multitoneMax`: kotlin.UByte, 
     /**
-     * Bit per channel: valid in `SiggenConfig.channel_mask`.
+     * One bit per valid type id.
      */
     var `validMask`: kotlin.UShort, 
     /**
-     * SIGGEN_TYPE_COUNT = 15 entries; first `type_count` valid.
+     * The types.
      */
     var `types`: List<SiggenTypeInfo>
 ) {
@@ -18526,43 +18493,43 @@ public object FfiConverterTypeSiggenCaps: FfiConverterRustBuffer<SiggenCaps> {
 
 
 /**
- * A signal generator configuration (`siggen_set_config`).
+ * A test signal to play.
  */
 data class SiggenConfig (
     /**
-     * `SIGGEN_TYPE_*`.
+     * Signal type id.
      */
     var `signalType`: kotlin.UByte, 
     /**
-     * Bit per output channel: the signal plays there.
+     * Channels to play on, one bit each.
      */
     var `channelMask`: kotlin.UShort, 
     /**
-     * The subset of `channel_mask` with inverted polarity.
+     * Channels played inverted, one bit each.
      */
     var `invertMask`: kotlin.UShort, 
     /**
-     * `SIGGEN_FLAG_*`.
+     * `SIGGEN_FLAG_*` bits.
      */
     var `flags`: kotlin.UByte, 
     /**
-     * Peak level, dBFS, -120..0.
+     * Level in dBFS.
      */
     var `levelDb`: kotlin.Float, 
     /**
-     * Duration, ms.
+     * Length of one burst in ms (0: continuous).
      */
     var `durationMs`: kotlin.UInt, 
     /**
-     * Repeat count.
+     * Number of bursts.
      */
     var `repeat`: kotlin.UShort, 
     /**
-     * Gap between repeats, ms.
+     * Silence between bursts in ms.
      */
     var `gapMs`: kotlin.UShort, 
     /**
-     * Type-specific parameters, exactly 4.
+     * The type's own parameters, as its `SiggenTypeInfo` describes them.
      */
     var `p`: List<kotlin.Float>
 ) {
@@ -18616,19 +18583,19 @@ public object FfiConverterTypeSiggenConfig: FfiConverterRustBuffer<SiggenConfig>
 
 
 /**
- * One parameter of a signal type.
+ * One parameter slot of a signal type.
  */
 data class SiggenParam (
     /**
-     * `SIGGEN_PARAM_*`: what the value means (0 = unused).
+     * What the value means (frequency, ratio, ...): firmware code.
      */
     var `semantic`: kotlin.UByte, 
     /**
-     * Lowest value.
+     * Smallest value.
      */
     var `min`: kotlin.Float, 
     /**
-     * Highest value.
+     * Largest value.
      */
     var `max`: kotlin.Float, 
     /**
@@ -18671,35 +18638,35 @@ public object FfiConverterTypeSiggenParam: FfiConverterRustBuffer<SiggenParam> {
 
 
 /**
- * What the generator is doing (`siggen_get_status`).
+ * What the signal generator is doing.
  */
 data class SiggenStatus (
     /**
-     * `SIGGEN_STATE_*`: idle, fade in, run, gap, fade out.
+     * Generator state code.
      */
     var `state`: kotlin.UByte, 
     /**
-     * The active or last `SIGGEN_TYPE_*`.
+     * Signal type playing.
      */
     var `signalType`: kotlin.UByte, 
     /**
-     * The walked output; 0xFF when not walking.
+     * Channel playing (walk mode).
      */
     var `activeChannel`: kotlin.UByte, 
     /**
-     * Time since start, ms.
+     * Time since start in ms.
      */
     var `elapsedMs`: kotlin.UInt, 
     /**
-     * Completed sweeps or pattern periods.
+     * Bursts completed.
      */
     var `cyclesDone`: kotlin.UShort, 
     /**
-     * `SIGGEN_STOP_*` of the last stop.
+     * Why it last stopped.
      */
     var `stopReason`: kotlin.UByte, 
     /**
-     * Instantaneous sweep frequency, Hz; 0 when not sweeping.
+     * Current frequency in Hz, for sweeps and tones.
      */
     var `currentFreq`: kotlin.Float
 ) {
@@ -18751,19 +18718,19 @@ public object FfiConverterTypeSiggenStatus: FfiConverterRustBuffer<SiggenStatus>
  */
 data class SiggenTypeInfo (
     /**
-     * `SIGGEN_TYPE_*`; 0xFF when its descriptor could not be read.
+     * Type id.
      */
     var `id`: kotlin.UByte, 
     /**
-     * Display name.
+     * Display name from the device.
      */
     var `name`: kotlin.String, 
     /**
-     * `SIGGEN_TIMING_*`: continuous, sweep or pattern.
+     * Timing class (continuous, burst, ...).
      */
     var `timing`: kotlin.UByte, 
     /**
-     * Exactly 4.
+     * Its parameter slots.
      */
     var `params`: List<SiggenParam>
 ) {
@@ -18802,31 +18769,31 @@ public object FfiConverterTypeSiggenTypeInfo: FfiConverterRustBuffer<SiggenTypeI
 
 
 /**
- * One S/PDIF output's buffers.
+ * Fill of one S/PDIF output's buffers.
  */
 data class SpdifBufferStats (
     /**
-     * Free ring space, 48-frame buckets, 0..16.
+     * Buffers free.
      */
     var `free`: kotlin.UByte, 
     /**
-     * Ring fill, 48-frame buckets, 0..16.
+     * Buffers filled and waiting.
      */
     var `prepared`: kotlin.UByte, 
     /**
-     * DMA buffers in flight, 0..1.
+     * Buffers being played.
      */
     var `playing`: kotlin.UByte, 
     /**
-     * Consumer pipeline fill, %.
+     * Current fill in percent.
      */
     var `fillPct`: kotlin.UByte, 
     /**
-     * Lowest fill since the last reset, %.
+     * Lowest fill since the last read, percent.
      */
     var `minPct`: kotlin.UByte, 
     /**
-     * Highest fill since the last reset, %.
+     * Highest fill since the last read, percent.
      */
     var `maxPct`: kotlin.UByte
 ) {
@@ -18871,47 +18838,47 @@ public object FfiConverterTypeSpdifBufferStats: FfiConverterRustBuffer<SpdifBuff
 
 
 /**
- * The S/PDIF receiver (`fetch_spdif_rx_status`).
+ * State of the S/PDIF receiver.
  */
 data class SpdifRxStatus (
     /**
-     * 0 inactive, 1 acquiring, 2 locked, 3 relocking.
+     * Receiver state code.
      */
     var `state`: kotlin.UByte, 
     /**
-     * The input source, raw `InputSource`.
+     * Input the receiver listens to.
      */
     var `inputSource`: kotlin.UByte, 
     /**
-     * Times it locked.
+     * Times locked since boot.
      */
     var `lockCount`: kotlin.UByte, 
     /**
-     * Times it lost lock.
+     * Times lost since boot.
      */
     var `lossCount`: kotlin.UByte, 
     /**
-     * Sample rate when locked, Hz.
+     * Decoded sample rate in Hz.
      */
     var `sampleRate`: kotlin.UInt, 
     /**
-     * Parity errors counted.
+     * Parity errors since boot.
      */
     var `parityErrors`: kotlin.UInt, 
     /**
-     * Receive FIFO fill, %.
+     * Receive FIFO fill in percent.
      */
     var `fifoFillPct`: kotlin.UShort, 
     /**
-     * The receiver library's debug state.
+     * State of the receiver library.
      */
     var `libState`: kotlin.UByte, 
     /**
-     * Stable callbacks, 4-bit counter.
+     * Consecutive stable callbacks.
      */
     var `stableCallbacks`: kotlin.UByte, 
     /**
-     * Lost callbacks, 4-bit counter.
+     * Callbacks lost.
      */
     var `lostCallbacks`: kotlin.UByte
 ) {
@@ -18968,16 +18935,15 @@ public object FfiConverterTypeSpdifRxStatus: FfiConverterRustBuffer<SpdifRxStatu
 
 
 /**
- * One sample of the Stats window's fast poll (`fetch_stats_tick`).
+ * One statistics poll.
  */
 data class StatsTick (
     /**
-     * The buffer fill levels and their watermarks.
+     * Buffer statistics.
      */
     var `buffers`: BufferStats, 
     /**
-     * The live outputs' fill, from the same read. `None` when the fill target
-     * could not be read: keep the last fills.
+     * Per-output fills, when known.
      */
     var `fills`: List<OutputFill>?
 ) {
@@ -19010,42 +18976,39 @@ public object FfiConverterTypeStatsTick: FfiConverterRustBuffer<StatsTick> {
 
 
 /**
- * `types.rs` `SystemStatus` (REQ_GET_STATUS wValue 9), polled every 60 ms.
+ * Levels and load, polled for the meters.
  */
 data class SystemStatus (
     /**
-     * Peak per wire channel, 0..1 (MAX_CHANNELS = 17 entries).
+     * Peak level per channel, linear full scale, inputs first.
      */
     var `peaks`: List<kotlin.Float>, 
     /**
-     * Core 0 load, %.
+     * Load of core 0 in percent.
      */
     var `cpu0`: kotlin.UByte, 
     /**
-     * Core 1 load, %.
+     * Load of core 1 in percent.
      */
     var `cpu1`: kotlin.UByte, 
     /**
-     * Sticky clip flags, bit per wire channel.
+     * One bit per channel that clipped since the last poll.
      */
     var `clipFlags`: kotlin.UInt, 
     /**
-     * Input channels carrying the active source; 0 from firmware that does
-     * not report it.
+     * Input channels the host is currently streaming.
      */
     var `activeInputChannels`: kotlin.UByte, 
     /**
-     * Wire channels the device has.
+     * Number of entries in `peaks` that belong to the device.
      */
     var `numChannels`: kotlin.UByte, 
     /**
-     * -- WP C15 -- Not a fresh reading (DSPi Link only): no recent poll frame,
-     * so all zero, which is not silence; or a repeat of the last slow read.
-     * Grey the meters rather than show them as live.
+     * True when these values are a held copy because the last poll failed.
      */
     var `stale`: kotlin.Boolean, 
     /**
-     * How old the reading is, ms; 0 when `stale` with nothing read at all.
+     * Age of the values in milliseconds.
      */
     var `ageMs`: kotlin.UInt
 ) {
@@ -19096,27 +19059,27 @@ public object FfiConverterTypeSystemStatus: FfiConverterRustBuffer<SystemStatus>
 
 
 /**
- * The UART control interface's configuration (`set_uart`).
+ * Settings of the UART control interface.
  */
 data class UartConfig (
     /**
-     * The UART control interface is enabled.
+     * The interface is switched on.
      */
     var `enabled`: kotlin.Boolean, 
     /**
-     * TX GPIO (`pin % 4 == 0`).
+     * The transmit GPIO.
      */
     var `txPin`: kotlin.UByte, 
     /**
-     * RX GPIO (`pin % 4 == 1`), same UART instance.
+     * The receive GPIO.
      */
     var `rxPin`: kotlin.UByte, 
     /**
-     * Push notification frames over the UART.
+     * The device sends unsolicited change notifications over the UART.
      */
     var `notify`: kotlin.Boolean, 
     /**
-     * Baud rate, bits per second.
+     * Line speed in baud.
      */
     var `baud`: kotlin.UInt
 ) {
@@ -19158,38 +19121,35 @@ public object FfiConverterTypeUartConfig: FfiConverterRustBuffer<UartConfig> {
 
 
 /**
- * What a `.uf2` file is (WP C11): checked before anything is flashed.
+ * What a UF2 firmware file holds.
  */
 data class Uf2Info (
     /**
-     * Whether the file is a well-formed UF2 for an RP2040 or RP2350.
+     * The file is a usable image.
      */
     var `valid`: kotlin.Boolean, 
     /**
-     * Why not, when `valid` is false.
+     * What is wrong with it, empty when valid.
      */
     var `problem`: kotlin.String, 
     /**
-     * UF2 family id (`0xE48BFF56` RP2040, `0xE48BFF59` RP2350 ARM-S, ...).
+     * UF2 family id.
      */
     var `familyId`: kotlin.UInt, 
     /**
-     * 0 RP2040, 1 RP2350, -1 unknown.
+     * Platform the image is for (-1 when no known family matches).
      */
     var `platform`: kotlin.Byte, 
     /**
-     * UF2 blocks in the file.
+     * UF2 blocks.
      */
     var `numBlocks`: kotlin.UInt, 
     /**
-     * Bytes of flash the image covers.
+     * Payload bytes.
      */
     var `payloadBytes`: kotlin.UInt, 
     /**
-     * The DSPi firmware version found in the image (`1.1.6`), "" if none.
-     * It is the image's program-version string, so an untagged build
-     * carries a `git describe` suffix (`1.1.6-beta3-16-g557bce7`); compare
-     * versions on the leading `major.minor.patch[-betaN]` only.
+     * Version string found in the image.
      */
     var `firmwareVersion`: kotlin.String
 ) {
@@ -19237,35 +19197,35 @@ public object FfiConverterTypeUf2Info: FfiConverterRustBuffer<Uf2Info> {
 
 
 /**
- * The stereo upmixer's live telemetry (`fetch_upmix_status`).
+ * Live state of the stereo-to-surround upmixer.
  */
 data class UpmixStatus (
     /**
-     * The upmixer is processing audio now.
+     * The upmixer is processing audio.
      */
     var `active`: kotlin.Boolean, 
     /**
-     * 0 active, 1 disabled, 2 input not stereo, 3 sample rate above 48 kHz.
+     * Why it is parked when it is not active (the firmware's reason code).
      */
     var `parkedReason`: kotlin.UByte, 
     /**
-     * Smoothed L/R correlation, -1..1.
+     * Measured left/right correlation.
      */
     var `correlation`: kotlin.Float, 
     /**
-     * Smoothed L/R balance, 0..1.
+     * Measured left/right balance.
      */
     var `balance`: kotlin.Float, 
     /**
-     * Smoothed centre extraction gain, linear 0..1.
+     * Current gain of the derived centre channel.
      */
     var `centerGain`: kotlin.Float, 
     /**
-     * Left surround steering gain, linear 0..1.
+     * Current gain of the left surround channel.
      */
     var `lsGain`: kotlin.Float, 
     /**
-     * Right surround steering gain, linear 0..1.
+     * Current gain of the right surround channel.
      */
     var `rsGain`: kotlin.Float
 ) {
@@ -19981,22 +19941,21 @@ public object FfiConverterTypeDspiError : FfiConverterRustBuffer<DspiException> 
 
 
 /**
- * How an output's fill reads ([`OutputFill::band`]). The Console shows these
- * green, yellow and red.
+ * How healthy an output fill is.
  */
 
 enum class FillBand {
     
     /**
-     * Within the expected swing.
+     * Comfortable.
      */
     GOOD,
     /**
-     * Outside the expected swing.
+     * Getting close to an edge.
      */
     WARN,
     /**
-     * Empty, or too full to take a write.
+     * At or past an edge.
      */
     BAD;
     companion object
@@ -20295,8 +20254,7 @@ public object FfiConverterTypeHostTransportKind : FfiConverterRustBuffer<HostTra
 
 
 /**
- * Where a DSPi Link session stands, for the UI's wording
- * ([`LinkStatus::phase`]).
+ * Where a Link session is in its life, for the status line.
  */
 
 enum class LinkPhase {
@@ -20306,20 +20264,15 @@ enum class LinkPhase {
      */
     IDLE,
     /**
-     * The hub wants a PIN (never paired, or the token was refused or revoked:
-     * see `token_refused`): ask for it and call `link_pair`. Retries stop here.
+     * The hub wants a PIN.
      */
     NEEDS_PAIRING,
     /**
-     * Connected and authenticated, but the hub has no DSPi to offer: the
-     * board is off, or its control interface is not enabled. Not a failure
-     * of the hub or the pairing ("Connected to hub, no DSPi found"). The
-     * core binds the device by itself when it comes back.
+     * The hub has no device.
      */
     NO_DEVICE,
     /**
-     * A DSPi is available and none is bound: `link_devices`, then
-     * `link_select_device`.
+     * The hub has several devices: pick one.
      */
     CHOOSE_DEVICE,
     /**
@@ -20327,22 +20280,15 @@ enum class LinkPhase {
      */
     BOUND,
     /**
-     * The session was lost, or the bound device is being re-attached; the
-     * core retries with backoff. Entered at once. `close_reason` says why,
-     * `reconnect_attempt` and `reconnect_in_ms` how it goes; `link_close`
-     * stops it. The mirror stays last known; calls that need the device fail
-     * at once with `Disconnected`, and nothing is queued.
+     * Waiting to reconnect.
      */
     RECONNECTING,
     /**
-     * Ended and not retried: see `close_code` and `close_reason`. A protocol
-     * error is final, also when it comes from a redial (a hub of another
-     * protocol version answers).
+     * Closed by the hub or the client.
      */
     CLOSED,
     /**
-     * The hub refuses this client (a 4xx handshake). Retrying will not help
-     * until something changes on the hub: see `close_reason`.
+     * Refused by the hub.
      */
     REFUSED;
     companion object
@@ -22018,10 +21964,8 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     
 
         /**
-         * 201-point magnitude curve, dB, on the [`curve_freq`] grid.
-         *
-         * Each band is designed once, then evaluated at every point. Same rules
-         * as [`compute_response`].
+         * The combined level of `filters` in dB at each of the [`CURVE_POINTS`]
+         * frequencies of [`curve_freq`]. Never below -300 dB.
          */ fun `computeMagnitudeCurve`(`filters`: List<FilterParams>): List<kotlin.Double> {
             return FfiConverterSequenceDouble.lift(
     uniffiRustCall() { _status ->
@@ -22033,11 +21977,9 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     
 
         /**
-         * 201-point phase curve in degrees on the same grid; continuous when
-         * `unwrap`, else wrapped to ±180°.
-         *
-         * The unwrapped curve starts at the wrapped value of the first point and
-         * then takes, between neighbours, the step in (-180°, 180°].
+         * The combined phase of `filters` in degrees at each of the
+         * [`CURVE_POINTS`] frequencies of [`curve_freq`]: within +-180, or, with
+         * `unwrap`, continuous from the first point on.
          */ fun `computePhaseCurve`(`filters`: List<FilterParams>, `unwrap`: kotlin.Boolean): List<kotlin.Double> {
             return FfiConverterSequenceDouble.lift(
     uniffiRustCall() { _status ->
@@ -22049,10 +21991,10 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     
 
         /**
-         * Magnitude in dB at one frequency (Hz) for a chain of bands.
+         * The combined level of `filters` at `freq` Hz, in dB.
          *
-         * Bypassed and off bands are skipped; an empty chain is 0 dB. A total
-         * power below -300 dB (a notch's exact zero) reads -300 dB.
+         * Bypassed and flat bands do not count; a crossover type counts with all
+         * its sections; a type this build does not know counts as flat.
          */ fun `computeResponse`(`filters`: List<FilterParams>, `freq`: kotlin.Float): kotlin.Float {
             return FfiConverterFloat.lift(
     uniffiRustCall() { _status ->
@@ -22079,8 +22021,8 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     
 
         /**
-         * Version facts of the linked core: this crate's version, the wire format
-         * versions it reads and writes, the bulk image size and the curve size.
+         * The version facts of this build: crate version, the wire format versions
+         * it writes and reads, the bulk image size and the curve size.
          */ fun `coreInfo`(): CoreInfo {
             return FfiConverterTypeCoreInfo.lift(
     uniffiRustCall() { _status ->
@@ -22092,15 +22034,9 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     
 
         /**
-         * Whether `map` (4 bytes, `DspState.crossfeed_pair_map` encoding) is a pair
-         * map the firmware accepts for `num_pairs` stereo pairs (4 on RP2350, 2 on
-         * RP2040): every pair gets two distinct non-PDM outputs, no output is used
-         * twice, bytes beyond `num_pairs` are 0.
-         *
-         * Byte `p` is pair `p`: `0x00` is the default pairing (`2p`, `2p+1`), any
-         * other value is `(right << 4) | left`. The non-PDM outputs are
-         * `0..2 * num_pairs`. A map that is not exactly 4 bytes, or a `num_pairs`
-         * of 0 or above 4, is invalid (false), never a panic.
+         * Whether the firmware accepts `map` as the crossfeed pair map on a device
+         * with `num_pairs` stereo pairs: exactly [`crate::consts::CROSSFEED_MAP_PAIRS`]
+         * bytes, and the rule of `dspi_proto::ext::PairMap::is_valid`.
          */ fun `crossfeedPairMapValid`(`map`: kotlin.ByteArray, `numPairs`: kotlin.UByte): kotlin.Boolean {
             return FfiConverterBoolean.lift(
     uniffiRustCall() { _status ->
@@ -22112,8 +22048,9 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     
 
         /**
-         * Frequency (Hz) of curve point `i` (0..200): log-spaced, 10 Hz at 0,
-         * 20 kHz at 200. A larger `i` extrapolates on the same spacing.
+         * The frequency of curve point `i` in Hz: 10 Hz at 0, 20 kHz at
+         * `CURVE_POINTS - 1`, evenly spaced in log frequency. Larger `i` continue
+         * the same spacing past 20 kHz.
          */ fun `curveFreq`(`i`: kotlin.UInt): kotlin.Double {
             return FfiConverterDouble.lift(
     uniffiRustCall() { _status ->
@@ -22350,14 +22287,10 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     
 
         /**
-         * Quantize a delay (ms) to 0.0001 ms, as the delay setters do before
-         * sending (the old core's `dsp_math::quantize_delay`, bit for bit; the
-         * Windows Console's step).
+         * A delay in ms on a 0.0001 ms grid, as the delay setters send it.
          *
-         * Rounds half away from zero (`f32::round` of `ms * 10000`), and maps
-         * -0.0 to +0.0. It does not clamp: callers clamp to `0..=max_delay_ms`
-         * afterwards, as the old core did. NaN stays NaN and ±inf stays ±inf (as
-         * does a finite value whose `* 10000` overflows f32); never panics.
+         * Halves round away from zero and -0 becomes +0. No clamping (callers bound
+         * the delay to its range afterwards); NaN and the infinities pass through.
          */ fun `quantizeDelay`(`ms`: kotlin.Float): kotlin.Float {
             return FfiConverterFloat.lift(
     uniffiRustCall() { _status ->
@@ -22369,14 +22302,10 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     
 
         /**
-         * Quantize a gain (dB) to 0.1 dB, as every gain setter does before sending
-         * (the old core's `dsp_math::quantize_gain`, bit for bit).
+         * A gain in dB on the device's 0.1 dB grid, as the gain setters send it.
          *
-         * Rounds half away from zero (`f32::round` of `db * 10`), and maps -0.0
-         * to +0.0 so a zero gain is never stored or sent as negative zero. It does
-         * not clamp: callers clamp to the parameter's range first. NaN stays NaN
-         * and ±inf stays ±inf (as does a finite value whose `* 10` overflows f32);
-         * never panics.
+         * Halves round away from zero and -0 becomes +0. No clamping: NaN and the
+         * infinities come back unchanged, and so does a value too large to scale.
          */ fun `quantizeGain`(`db`: kotlin.Float): kotlin.Float {
             return FfiConverterFloat.lift(
     uniffiRustCall() { _status ->

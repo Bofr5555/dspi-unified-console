@@ -2646,90 +2646,73 @@ interface DspiCoreApi : AutoCloseable {
     fun autoeqRebuildStart(dbPath: String, fetch: AutoEqFetch): AutoEqRebuild
 
     /**
-     * Magnitude in dB at one frequency (Hz) for a chain of bands.
+     * The combined level of `filters` at `freq` Hz, in dB.
      *
-     * Bypassed and off bands are skipped; an empty chain is 0 dB. A total
-     * power below -300 dB (a notch's exact zero) reads -300 dB.
+     * Bypassed and flat bands do not count; a crossover type counts with all
+     * its sections; a type this build does not know counts as flat.
      *
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun computeResponse(filters: List<FilterParams>, freq: Float): Float
 
     /**
-     * 201-point magnitude curve, dB, on the [`curve_freq`] grid.
-     *
-     * Each band is designed once, then evaluated at every point. Same rules
-     * as [`compute_response`].
+     * The combined level of `filters` in dB at each of the [`CURVE_POINTS`]
+     * frequencies of [`curve_freq`]. Never below -300 dB.
      *
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun computeMagnitudeCurve(filters: List<FilterParams>): List<Double>
 
     /**
-     * 201-point phase curve in degrees on the same grid; continuous when
-     * `unwrap`, else wrapped to ±180°.
-     *
-     * The unwrapped curve starts at the wrapped value of the first point and
-     * then takes, between neighbours, the step in (-180°, 180°].
+     * The combined phase of `filters` in degrees at each of the
+     * [`CURVE_POINTS`] frequencies of [`curve_freq`]: within +-180, or, with
+     * `unwrap`, continuous from the first point on.
      *
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun computePhaseCurve(filters: List<FilterParams>, unwrap: Boolean): List<Double>
 
     /**
-     * Frequency (Hz) of curve point `i` (0..200): log-spaced, 10 Hz at 0,
-     * 20 kHz at 200. A larger `i` extrapolates on the same spacing.
+     * The frequency of curve point `i` in Hz: 10 Hz at 0, 20 kHz at
+     * `CURVE_POINTS - 1`, evenly spaced in log frequency. Larger `i` continue
+     * the same spacing past 20 kHz.
      *
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun curveFreq(i: Long): Double
 
     /**
-     * Whether `map` (4 bytes, `DspState.crossfeed_pair_map` encoding) is a pair
-     * map the firmware accepts for `num_pairs` stereo pairs (4 on RP2350, 2 on
-     * RP2040): every pair gets two distinct non-PDM outputs, no output is used
-     * twice, bytes beyond `num_pairs` are 0.
-     *
-     * Byte `p` is pair `p`: `0x00` is the default pairing (`2p`, `2p+1`), any
-     * other value is `(right << 4) | left`. The non-PDM outputs are
-     * `0..2 * num_pairs`. A map that is not exactly 4 bytes, or a `num_pairs`
-     * of 0 or above 4, is invalid (false), never a panic.
+     * Whether the firmware accepts `map` as the crossfeed pair map on a device
+     * with `num_pairs` stereo pairs: exactly [`crate::consts::CROSSFEED_MAP_PAIRS`]
+     * bytes, and the rule of `dspi_proto::ext::PairMap::is_valid`.
      *
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun crossfeedPairMapValid(map: List<Int>, numPairs: Int): Boolean
 
     /**
-     * Version facts of the linked core: this crate's version, the wire format
-     * versions it reads and writes, the bulk image size and the curve size.
+     * The version facts of this build: crate version, the wire format versions
+     * it writes and reads, the bulk image size and the curve size.
      *
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun coreInfo(): CoreInfo
 
     /**
-     * Quantize a gain (dB) to 0.1 dB, as every gain setter does before sending
-     * (the old core's `dsp_math::quantize_gain`, bit for bit).
+     * A gain in dB on the device's 0.1 dB grid, as the gain setters send it.
      *
-     * Rounds half away from zero (`f32::round` of `db * 10`), and maps -0.0
-     * to +0.0 so a zero gain is never stored or sent as negative zero. It does
-     * not clamp: callers clamp to the parameter's range first. NaN stays NaN
-     * and ±inf stays ±inf (as does a finite value whose `* 10` overflows f32);
-     * never panics.
+     * Halves round away from zero and -0 becomes +0. No clamping: NaN and the
+     * infinities come back unchanged, and so does a value too large to scale.
      *
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun quantizeGain(db: Float): Float
 
     /**
-     * Quantize a delay (ms) to 0.0001 ms, as the delay setters do before
-     * sending (the old core's `dsp_math::quantize_delay`, bit for bit; the
-     * Windows Console's step).
+     * A delay in ms on a 0.0001 ms grid, as the delay setters send it.
      *
-     * Rounds half away from zero (`f32::round` of `ms * 10000`), and maps
-     * -0.0 to +0.0. It does not clamp: callers clamp to `0..=max_delay_ms`
-     * afterwards, as the old core did. NaN stays NaN and ±inf stays ±inf (as
-     * does a finite value whose `* 10000` overflows f32); never panics.
+     * Halves round away from zero and -0 becomes +0. No clamping (callers bound
+     * the delay to its range afterwards); NaN and the infinities pass through.
      *
      * Stateless (a free function in dspi-core); needs no device.
      */

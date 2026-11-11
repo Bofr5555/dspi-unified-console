@@ -8928,31 +8928,31 @@ public func FfiConverterTypeRtaListener_lower(_ value: RtaListener) -> UnsafeMut
 
 
 /**
- * The ADAT output's status (`fetch_adat_out_status`).
+ * State of the ADAT output.
  */
 public struct AdatOutStatus {
     /**
-     * The output is enabled in the configuration.
+     * The output is configured on.
      */
     public var enabled: Bool
     /**
-     * The output is running now.
+     * The output is actually sending frames.
      */
     public var active: Bool
     /**
-     * GPIO of the output.
+     * The GPIO the output drives.
      */
     public var pin: UInt8
     /**
-     * The current sample rate suits ADAT.
+     * True when the current sample rate is one ADAT can carry.
      */
     public var rateOk: Bool
     /**
-     * Times the output resynchronised, wrapping counter.
+     * Resynchronisations since boot.
      */
     public var resyncCount: UInt16
     /**
-     * Sample slips, wrapping counter.
+     * Frame slips since boot.
      */
     public var slipCount: UInt16
 
@@ -8960,22 +8960,22 @@ public struct AdatOutStatus {
     // declare one manually.
     public init(
         /**
-         * The output is enabled in the configuration.
+         * The output is configured on.
          */enabled: Bool, 
         /**
-         * The output is running now.
+         * The output is actually sending frames.
          */active: Bool, 
         /**
-         * GPIO of the output.
+         * The GPIO the output drives.
          */pin: UInt8, 
         /**
-         * The current sample rate suits ADAT.
+         * True when the current sample rate is one ADAT can carry.
          */rateOk: Bool, 
         /**
-         * Times the output resynchronised, wrapping counter.
+         * Resynchronisations since boot.
          */resyncCount: UInt16, 
         /**
-         * Sample slips, wrapping counter.
+         * Frame slips since boot.
          */slipCount: UInt16) {
         self.enabled = enabled
         self.active = active
@@ -9633,16 +9633,15 @@ public func FfiConverterTypeAutoEqRebuildProgress_lower(_ value: AutoEqRebuildPr
 
 
 /**
- * `dspi_bootloader_counts`. Always 0/0 on Android (no bus to
- * enumerate from native code); Android uses the Kotlin BootloaderLocator instead.
+ * How many boards in bootloader mode are attached, per chip.
  */
 public struct BootloaderCounts {
     /**
-     * RP2040 boards in BOOTSEL mode.
+     * RP2040 boards.
      */
     public var rp2040: UInt32
     /**
-     * RP2350 boards in BOOTSEL mode.
+     * RP2350 boards.
      */
     public var rp2350: UInt32
 
@@ -9650,10 +9649,10 @@ public struct BootloaderCounts {
     // declare one manually.
     public init(
         /**
-         * RP2040 boards in BOOTSEL mode.
+         * RP2040 boards.
          */rp2040: UInt32, 
         /**
-         * RP2350 boards in BOOTSEL mode.
+         * RP2350 boards.
          */rp2350: UInt32) {
         self.rp2040 = rp2040
         self.rp2350 = rp2350
@@ -9719,19 +9718,19 @@ public func FfiConverterTypeBootloaderCounts_lower(_ value: BootloaderCounts) ->
 
 
 /**
- * A mounted RP2040/RP2350 bootloader drive (`RPI-RP2` / `RP2350`).
+ * A mounted bootloader drive.
  */
 public struct BootloaderDrive {
     /**
-     * Mount point or drive root.
+     * Mount path.
      */
     public var path: String
     /**
-     * 0 RP2040, 1 RP2350, -1 unknown (from `INFO_UF2.TXT`).
+     * Chip platform read from the drive (-1 when unknown).
      */
     public var platform: Int8
     /**
-     * `INFO_UF2.TXT`, verbatim.
+     * The drive's INFO_UF2.TXT text.
      */
     public var info: String
 
@@ -9739,13 +9738,13 @@ public struct BootloaderDrive {
     // declare one manually.
     public init(
         /**
-         * Mount point or drive root.
+         * Mount path.
          */path: String, 
         /**
-         * 0 RP2040, 1 RP2350, -1 unknown (from `INFO_UF2.TXT`).
+         * Chip platform read from the drive (-1 when unknown).
          */platform: Int8, 
         /**
-         * `INFO_UF2.TXT`, verbatim.
+         * The drive's INFO_UF2.TXT text.
          */info: String) {
         self.path = path
         self.platform = platform
@@ -9818,15 +9817,15 @@ public func FfiConverterTypeBootloaderDrive_lower(_ value: BootloaderDrive) -> R
 
 
 /**
- * Buffer fill levels and watermarks (`fetch_buffer_stats`).
+ * Output buffer statistics.
  */
 public struct BufferStats {
     /**
-     * Live entries of `spdif`, at most 4.
+     * Valid entries in `spdif`.
      */
     public var numSpdif: UInt8
     /**
-     * The PDM output is active.
+     * The PDM output is running.
      */
     public var pdmActive: Bool
     /**
@@ -9834,11 +9833,11 @@ public struct BufferStats {
      */
     public var streaming: Bool
     /**
-     * Monotonic counter, wrapping.
+     * Counter of the device's statistics snapshot.
      */
     public var sequence: UInt16
     /**
-     * Exactly 4.
+     * One entry per S/PDIF output.
      */
     public var spdif: [SpdifBufferStats]
     /**
@@ -9850,19 +9849,19 @@ public struct BufferStats {
     // declare one manually.
     public init(
         /**
-         * Live entries of `spdif`, at most 4.
+         * Valid entries in `spdif`.
          */numSpdif: UInt8, 
         /**
-         * The PDM output is active.
+         * The PDM output is running.
          */pdmActive: Bool, 
         /**
          * Audio is streaming.
          */streaming: Bool, 
         /**
-         * Monotonic counter, wrapping.
+         * Counter of the device's statistics snapshot.
          */sequence: UInt16, 
         /**
-         * Exactly 4.
+         * One entry per S/PDIF output.
          */spdif: [SpdifBufferStats], 
         /**
          * The PDM output.
@@ -9959,20 +9958,19 @@ public func FfiConverterTypeBufferStats_lower(_ value: BufferStats) -> RustBuffe
 
 
 /**
- * `REQ_GET_CLOCK_DIAG` (0x82): empty unless the firmware was built with
- * `DSPI_CLOCK_DIAG`.
+ * The clock diagnostics report.
  */
 public struct ClockDiag {
     /**
-     * The firmware was built with `DSPI_CLOCK_DIAG`.
+     * The device answered.
      */
     public var available: Bool
     /**
-     * The raw reply.
+     * The reply bytes.
      */
     public var raw: Data
     /**
-     * Decoded `(name, value)` pairs, in the firmware's order.
+     * The decoded fields.
      */
     public var fields: [NamedValue]
 
@@ -9980,13 +9978,13 @@ public struct ClockDiag {
     // declare one manually.
     public init(
         /**
-         * The firmware was built with `DSPI_CLOCK_DIAG`.
+         * The device answered.
          */available: Bool, 
         /**
-         * The raw reply.
+         * The reply bytes.
          */raw: Data, 
         /**
-         * Decoded `(name, value)` pairs, in the firmware's order.
+         * The decoded fields.
          */fields: [NamedValue]) {
         self.available = available
         self.raw = raw
@@ -10059,27 +10057,27 @@ public func FfiConverterTypeClockDiag_lower(_ value: ClockDiag) -> RustBuffer {
 
 
 /**
- * Version facts of the linked core, for the About page and sanity checks.
+ * Version facts of this core build.
  */
 public struct CoreInfo {
     /**
-     * dspi-ffi crate version.
+     * The crate version.
      */
     public var ffiVersion: String
     /**
-     * `protocol::WIRE_FORMAT_VERSION` (32).
+     * Wire format version this build writes.
      */
     public var wireFormatVersion: UInt8
     /**
-     * `protocol::MIN_WIRE_FORMAT_VERSION` (16).
+     * Oldest wire format version this build reads.
      */
     public var minWireFormatVersion: UInt8
     /**
-     * `protocol::BULK_PARAMS_SIZE` (6136).
+     * Size of the bulk parameter image in bytes.
      */
     public var bulkParamsSize: UInt32
     /**
-     * Number of points in `compute_magnitude_curve` / `compute_phase_curve` (201).
+     * Points on a response curve.
      */
     public var magnitudePoints: UInt32
 
@@ -10087,19 +10085,19 @@ public struct CoreInfo {
     // declare one manually.
     public init(
         /**
-         * dspi-ffi crate version.
+         * The crate version.
          */ffiVersion: String, 
         /**
-         * `protocol::WIRE_FORMAT_VERSION` (32).
+         * Wire format version this build writes.
          */wireFormatVersion: UInt8, 
         /**
-         * `protocol::MIN_WIRE_FORMAT_VERSION` (16).
+         * Oldest wire format version this build reads.
          */minWireFormatVersion: UInt8, 
         /**
-         * `protocol::BULK_PARAMS_SIZE` (6136).
+         * Size of the bulk parameter image in bytes.
          */bulkParamsSize: UInt32, 
         /**
-         * Number of points in `compute_magnitude_curve` / `compute_phase_curve` (201).
+         * Points on a response curve.
          */magnitudePoints: UInt32) {
         self.ffiVersion = ffiVersion
         self.wireFormatVersion = wireFormatVersion
@@ -10186,56 +10184,55 @@ public func FfiConverterTypeCoreInfo_lower(_ value: CoreInfo) -> RustBuffer {
 
 
 /**
- * `EXT_CORE_VREG` status (16 bytes, `dspi_proto::ext::CoreVregStatus`).
+ * Core voltage regulator state.
  */
 public struct CoreVregInfo {
     /**
-     * Live VREG code; `millivolts` is its voltage (0 if unknown).
+     * Regulator setting in use.
      */
     public var liveVreg: UInt8
     /**
-     * Core voltage, mV; 0 if unknown.
+     * That setting in millivolts.
      */
     public var millivolts: UInt16
     /**
-     * The persisted selection in the flash directory; 0 = build default.
+     * Stored selection.
      */
     public var storedSel: UInt8
     /**
-     * The build's default VREG code.
+     * Factory setting.
      */
     public var defaultVreg: UInt8
     /**
-     * The stored selection was raised by the firmware.
+     * The firmware raised the voltage on its own.
      */
     public var autoRaised: Bool
     /**
-     * The user opted out of automatic escalation
-     * (`CORE_VREG_FLAG_AUTO_DISABLED`).
+     * Automatic raising is off.
      */
     public var autoDisabled: Bool
     /**
-     * Own-watchdog hangs this power session, not yet acted on.
+     * Hangs counted.
      */
     public var hangCount: UInt8
     /**
-     * A voltage trial is running.
+     * A trial setting is running.
      */
     public var trialActive: Bool
     /**
-     * The trial's VREG code, valid while `trial_active`.
+     * The trial setting.
      */
     public var trialVreg: UInt8
     /**
-     * VREG code of the trial whose run ended in a hang; 0 = none.
+     * The last trial setting that failed.
      */
     public var failedTrialVreg: UInt8
     /**
-     * How long that trial survived, s.
+     * Uptime at which it failed, in seconds.
      */
     public var failedTrialUptimeS: UInt32
     /**
-     * This run's uptime, s.
+     * Uptime in seconds.
      */
     public var uptimeS: UInt32
 
@@ -10243,41 +10240,40 @@ public struct CoreVregInfo {
     // declare one manually.
     public init(
         /**
-         * Live VREG code; `millivolts` is its voltage (0 if unknown).
+         * Regulator setting in use.
          */liveVreg: UInt8, 
         /**
-         * Core voltage, mV; 0 if unknown.
+         * That setting in millivolts.
          */millivolts: UInt16, 
         /**
-         * The persisted selection in the flash directory; 0 = build default.
+         * Stored selection.
          */storedSel: UInt8, 
         /**
-         * The build's default VREG code.
+         * Factory setting.
          */defaultVreg: UInt8, 
         /**
-         * The stored selection was raised by the firmware.
+         * The firmware raised the voltage on its own.
          */autoRaised: Bool, 
         /**
-         * The user opted out of automatic escalation
-         * (`CORE_VREG_FLAG_AUTO_DISABLED`).
+         * Automatic raising is off.
          */autoDisabled: Bool, 
         /**
-         * Own-watchdog hangs this power session, not yet acted on.
+         * Hangs counted.
          */hangCount: UInt8, 
         /**
-         * A voltage trial is running.
+         * A trial setting is running.
          */trialActive: Bool, 
         /**
-         * The trial's VREG code, valid while `trial_active`.
+         * The trial setting.
          */trialVreg: UInt8, 
         /**
-         * VREG code of the trial whose run ended in a hang; 0 = none.
+         * The last trial setting that failed.
          */failedTrialVreg: UInt8, 
         /**
-         * How long that trial survived, s.
+         * Uptime at which it failed, in seconds.
          */failedTrialUptimeS: UInt32, 
         /**
-         * This run's uptime, s.
+         * Uptime in seconds.
          */uptimeS: UInt32) {
         self.liveVreg = liveVreg
         self.millivolts = millivolts
@@ -10413,27 +10409,27 @@ public func FfiConverterTypeCoreVregInfo_lower(_ value: CoreVregInfo) -> RustBuf
 
 
 /**
- * The control interfaces' status (`REQ_GET_CTRL_IFACE_STATUS`).
+ * Live state of the UART and I2C control interfaces.
  */
 public struct CtrlIfaceStatus {
     /**
-     * `PIN_CONFIG_*` result of the last UART config write.
+     * Status code of the last UART command.
      */
     public var uartLastStatus: UInt8
     /**
-     * The UART interface is up now (a boot-time pin collision keeps it down).
+     * The UART has seen traffic recently.
      */
     public var uartLive: Bool
     /**
-     * `PIN_CONFIG_*` result of the last I2C config write.
+     * Status code of the last I2C command.
      */
     public var i2cLastStatus: UInt8
     /**
-     * The I2C interface is up now.
+     * The I2C bus has seen traffic recently.
      */
     public var i2cLive: Bool
     /**
-     * The control protocol version the firmware speaks.
+     * Version of the control-interface protocol the firmware speaks.
      */
     public var protocolVersion: UInt8
 
@@ -10441,19 +10437,19 @@ public struct CtrlIfaceStatus {
     // declare one manually.
     public init(
         /**
-         * `PIN_CONFIG_*` result of the last UART config write.
+         * Status code of the last UART command.
          */uartLastStatus: UInt8, 
         /**
-         * The UART interface is up now (a boot-time pin collision keeps it down).
+         * The UART has seen traffic recently.
          */uartLive: Bool, 
         /**
-         * `PIN_CONFIG_*` result of the last I2C config write.
+         * Status code of the last I2C command.
          */i2cLastStatus: UInt8, 
         /**
-         * The I2C interface is up now.
+         * The I2C bus has seen traffic recently.
          */i2cLive: Bool, 
         /**
-         * The control protocol version the firmware speaks.
+         * Version of the control-interface protocol the firmware speaks.
          */protocolVersion: UInt8) {
         self.uartLastStatus = uartLastStatus
         self.uartLive = uartLive
@@ -10540,16 +10536,15 @@ public func FfiConverterTypeCtrlIfaceStatus_lower(_ value: CtrlIfaceStatus) -> R
 
 
 /**
- * `types.rs` `DeviceInfo`; `serial` replaces the `serial`/`serial_len` pair.
+ * A DSPi found on USB.
  */
 public struct DeviceInfo {
     /**
-     * USB serial number, the picker's identity.
+     * The USB serial number string.
      */
     public var serial: String
     /**
-     * Where the unit sits on the bus: IOKit's location id on macOS, derived
-     * from the bus position elsewhere.
+     * The bus location, to tell two devices with one serial apart.
      */
     public var locationId: UInt32
 
@@ -10557,11 +10552,10 @@ public struct DeviceInfo {
     // declare one manually.
     public init(
         /**
-         * USB serial number, the picker's identity.
+         * The USB serial number string.
          */serial: String, 
         /**
-         * Where the unit sits on the bus: IOKit's location id on macOS, derived
-         * from the bus position elsewhere.
+         * The bus location, to tell two devices with one serial apart.
          */locationId: UInt32) {
         self.serial = serial
         self.locationId = locationId
@@ -10627,157 +10621,155 @@ public func FfiConverterTypeDeviceInfo_lower(_ value: DeviceInfo) -> RustBuffer 
 
 
 /**
- * Full mirror of `state.rs` `DspState` (wire format V32).
+ * Everything the core knows about the connected device's settings.
  *
- * Channel-indexed vectors use wire channel indices (`[inputs][outputs]`,
- * MAX_CHANNELS = 17 entries); output-indexed ones have MAX_OUTPUTS = 9,
- * input-indexed MAX_INPUTS = 8. Only the first `num_*` entries are live.
+ * Per-channel vectors are sized to the protocol maxima, not to the device:
+ * `num_input_channels` and `num_output_channels` say how much of each is
+ * real. Channels are numbered inputs first, then outputs.
  */
 public struct DspState {
     /**
-     * 0 RP2040, 1 RP2350.
+     * The board's platform code (RP2040, RP2350, ...).
      */
     public var platformId: UInt8
     /**
-     * Live wire channels (inputs + outputs).
+     * Inputs plus outputs on this device.
      */
     public var numChannels: UInt8
     /**
-     * Live input channels.
+     * Input channels on this device.
      */
     public var numInputChannels: UInt8
     /**
-     * Live output channels.
+     * Output channels on this device.
      */
     public var numOutputChannels: UInt8
     /**
-     * The device's own wire format version.
+     * Wire format version of the bulk parameter image.
      */
     public var formatVersion: UInt8
     /**
-     * Firmware version, major.
+     * Firmware major version.
      */
     public var fwMajor: UInt8
     /**
-     * Firmware version, minor.
+     * Firmware minor version.
      */
     public var fwMinor: UInt8
     /**
-     * Firmware version, patch.
+     * Firmware patch version.
      */
     public var fwPatch: UInt8
     /**
-     * Beta number, 0 = final; `FW_BETA_EARLY` for an early beta that does not say.
+     * Firmware beta number (0 for a release).
      */
     public var fwBeta: UInt8
     /**
-     * `COMPAT_*` (0 unknown, 1 ok, 2 firmware too old, 3 too new).
+     * How this build relates to the firmware (`COMPAT_*`).
      */
     public var compat: UInt8
     /**
-     * Preamp, dB.
+     * Global preamp in dB.
      */
     public var preampDb: Float
     /**
-     * Master EQ bypass.
+     * The whole DSP chain is bypassed.
      */
     public var bypass: Bool
     /**
-     * Per-input preamp, dB (input-indexed).
+     * Preamp per input, in dB.
      */
     public var inputPreampDb: [Float]
     /**
-     * Master volume, dB.
+     * Master volume in dB.
      */
     public var masterVolumeDb: Float
     /**
-     * `MASTER_VOLUME_MODE_*`: 0 stored independently, 1 with the preset.
+     * How the master volume behaves (fixed, saved, ...): firmware code.
      */
     public var masterVolumeMode: UInt8
     /**
-     * User volume, dB.
+     * The user volume in dB.
      */
     public var userVolumeDb: Float
     /**
-     * User mute.
+     * The user mute.
      */
     public var userMute: Bool
     /**
-     * Loudness compensation on.
+     * Loudness compensation is on.
      */
     public var loudnessEnabled: Bool
     /**
-     * Loudness reference level, dB SPL.
+     * Loudness reference level in dB SPL.
      */
     public var loudnessRefSpl: Float
     /**
-     * Loudness intensity, %.
+     * Loudness intensity in percent.
      */
     public var loudnessIntensity: Float
     /**
-     * Bit k: loudness processes output k.
+     * Outputs loudness applies to, one bit each.
      */
     public var loudnessOutputMask: UInt16
     /**
-     * Crossfeed on.
+     * Crossfeed is on.
      */
     public var crossfeedEnabled: Bool
     /**
-     * Crossfeed preset index.
+     * Crossfeed preset number.
      */
     public var crossfeedPreset: UInt8
     /**
-     * Custom crossfeed frequency, Hz.
+     * Crossfeed corner frequency in Hz (custom preset).
      */
     public var crossfeedFreq: Float
     /**
-     * Custom crossfeed feed level, dB.
+     * Crossfeed level in dB (custom preset).
      */
     public var crossfeedFeed: Float
     /**
-     * Interaural time delay on.
+     * Interaural time delay is on.
      */
     public var crossfeedItd: Bool
     /**
-     * Bit p: crossfeed processes stereo output pair p.
+     * Output pairs crossfeed applies to, one bit each.
      */
     public var crossfeedOutputPairMask: UInt8
     /**
-     * Outputs of each crossfeed pair, 4 bytes (K340 firmware fork; zero
-     * from other firmware). Byte p: 0 = default (2p, 2p+1), else
-     * `(right << 4) | left`, 0-based output indices.
+     * Which outputs each crossfeed pair uses (`EXT_CROSSFEED_PAIR_MAP`).
      */
     public var crossfeedPairMap: Data
     /**
-     * Delay per wire channel, ms.
+     * Per-channel delay in ms.
      */
     public var channelDelays: [Float]
     /**
-     * Crosspoint on.
+     * Matrix routing, `[input][output]`.
      */
     public var matrixRouting: [[Bool]]
     /**
-     * Crosspoint gain, dB.
+     * Matrix gain in dB, `[input][output]`.
      */
     public var matrixGain: [[Float]]
     /**
-     * Crosspoint polarity inverted.
+     * Matrix polarity inversion, `[input][output]`.
      */
     public var matrixInvert: [[Bool]]
     /**
-     * Output enabled.
+     * Output enabled, per output.
      */
     public var outputEnabled: [Bool]
     /**
-     * Output muted.
+     * Output muted, per output.
      */
     public var outputMuted: [Bool]
     /**
-     * Output gain, dB.
+     * Output gain in dB, per output.
      */
     public var outputGainDb: [Float]
     /**
-     * Output delay, ms.
+     * Output delay in ms, per output.
      */
     public var outputDelayMs: [Float]
     /**
@@ -10785,286 +10777,283 @@ public struct DspState {
      */
     public var limiterEnabled: [Bool]
     /**
-     * Limiter link group, per output; outputs in one group limit together.
+     * Limiter link group, per output.
      */
     public var limiterLinkGroup: Data
     /**
-     * Limiter threshold, dB, per output.
+     * Limiter threshold in dB, per output.
      */
     public var limiterThresholdDb: [Float]
     /**
-     * Limiter release, ms, per output.
+     * Limiter release in ms, per output.
      */
     public var limiterReleaseMs: [Float]
     /**
-     * Physical output slots: 3 on RP2040, 5 on RP2350.
+     * Physical output pins the device has.
      */
     public var numPinOutputs: UInt8
     /**
-     * GPIO of each physical output slot.
+     * GPIO per physical output.
      */
     public var outputPins: Data
     /**
-     * `OUTPUT_CONFIG_MODE_*`: 0 stored independently, 1 with the preset.
+     * Output configuration mode (firmware code).
      */
     public var outputConfigMode: UInt8
     /**
-     * PEQ bands, `[wire channel][band]`.
+     * PEQ bands, `[channel][band]`.
      */
     public var filters: [[FilterParams]]
     /**
-     * Crossover bands, `[wire channel][band]`.
+     * Crossover slots, `[channel][slot]`.
      */
     public var xover: [[FilterParams]]
     /**
-     * Channel names (wire channel), at most 31 bytes of UTF-8 each.
+     * User names of the channels.
      */
     public var channelNames: [String]
     /**
-     * Leveller on.
+     * Volume leveller is on.
      */
     public var levellerEnabled: Bool
     /**
-     * Leveller speed: 0 slow, 1 medium, 2 fast.
+     * Leveller speed (firmware code).
      */
     public var levellerSpeed: UInt8
     /**
-     * Leveller lookahead on.
+     * Leveller lookahead is on.
      */
     public var levellerLookahead: Bool
     /**
-     * Leveller amount, %.
+     * Leveller amount in percent.
      */
     public var levellerAmount: Float
     /**
-     * Leveller maximum gain, dB.
+     * Leveller maximum gain in dB.
      */
     public var levellerMaxGainDb: Float
     /**
-     * Leveller gate threshold, dB.
+     * Leveller gate in dB.
      */
     public var levellerGateDb: Float
     /**
-     * Bit k: input channel k feeds the leveller's detector.
+     * Channels the leveller listens to, one bit each.
      */
     public var levellerDetectorMask: UInt8
     /**
-     * Bit k: the leveller's gain applies to input channel k.
+     * Channels the leveller acts on, one bit each.
      */
     public var levellerApplyMask: UInt8
     /**
-     * Active input (`InputSource`: 0 USB, 1 S/PDIF, 2 I2S, ...).
+     * The selected audio input (USB, S/PDIF, ...).
      */
     public var inputSource: UInt8
     /**
-     * LG Sound Sync on.
+     * LG Sound Sync is on.
      */
     public var lgSoundSyncEnabled: Bool
     /**
-     * Bit k: S/PDIF input k+1 is enabled. Bit 0 (input 1) is always set:
-     * the first S/PDIF input cannot be disabled, and setters must keep the
-     * bit when they write the mask.
+     * How many S/PDIF inputs are enabled.
      */
     public var spdifInputsEnabled: UInt8
     /**
-     * ADAT input enabled.
+     * The ADAT input is enabled.
      */
     public var adatInputEnabled: Bool
     /**
-     * GPIO of each S/PDIF receiver.
+     * GPIO per S/PDIF receiver.
      */
     public var spdifRxPins: Data
     /**
-     * I2S data GPIO of each stereo input pair.
+     * GPIO per I2S data input.
      */
     public var i2sRxPins: Data
     /**
-     * Active I2S input channels: 2, 4, 6 or 8.
+     * Channels on the I2S input.
      */
     public var i2sInputChannels: UInt8
     /**
-     * I2S input rate code: 0 44.1 kHz, 1 48 kHz, 2 96 kHz.
+     * I2S input rate (firmware code).
      */
     public var i2sInputRate: UInt8
     /**
-     * I2S clock: 0 master, 1 slave.
+     * I2S clock mode (master or slave).
      */
     public var i2sClockMode: UInt8
     /**
-     * ADAT input GPIO.
+     * GPIO of the ADAT input.
      */
     public var adatInputPin: UInt8
     /**
-     * ADAT input clock: 0 master, 1 slave.
+     * ADAT input clock mode.
      */
     public var adatInputClockMode: UInt8
     /**
-     * Psychoacoustic bass on.
+     * Psychoacoustic bass is on.
      */
     public var psybassEnabled: Bool
     /**
-     * Bit k: psychoacoustic bass processes output k.
+     * Outputs psychoacoustic bass applies to, one bit each.
      */
     public var psybassOutputMask: UInt16
     /**
-     * Psychoacoustic bass cutoff, Hz.
+     * Psychoacoustic bass cutoff in Hz.
      */
     public var psybassCutoffHz: Float
     /**
-     * Harmonics level, dB.
+     * Harmonics level in dB.
      */
     public var psybassHarmonicsDb: Float
     /**
-     * Drive, dB.
+     * Drive in dB.
      */
     public var psybassDriveDb: Float
     /**
-     * Character, %.
+     * Even/odd character in percent.
      */
     public var psybassCharacterPct: Float
     /**
-     * Level of the original bass, dB.
+     * Level of the original low band in dB.
      */
     public var psybassOriginalDb: Float
     /**
-     * Upmixer parameters, by `UPMIX_PARAM_*`.
+     * Upmixer parameters, indexed by `UPMIX_PARAM_*`.
      */
     public var upmix: [Float]
     /**
-     * Subharmonic synthesizer parameters, by `SUBHARM_PARAM_*`.
+     * Subharmonic synth parameters, indexed by `SUBHARM_PARAM_*`.
      */
     public var subharm: [Float]
     /**
-     * Subharmonic solo (runtime only, not in the image).
+     * The subharmonic synth's solo switch.
      */
     public var subharmSolo: Bool
     /**
-     * Tube preamp parameters, by `TUBE_PARAM_*`.
+     * Tube modeller parameters, indexed by the firmware's tube ids.
      */
     public var tube: [Float]
     /**
-     * Type of each physical output slot: `OUTPUT_TYPE_*` (0 S/PDIF, 1 I2S).
+     * Kind of each output pin (S/PDIF, I2S, PDM, ...).
      */
     public var outputTypes: Data
     /**
-     * I2S BCK GPIO as clock master.
+     * I2S bit clock GPIO in master mode.
      */
     public var i2sBckPin: UInt8
     /**
-     * I2S BCK GPIO as clock slave.
+     * I2S bit clock GPIO in slave mode.
      */
     public var i2sBckPinSlave: UInt8
     /**
-     * I2S clock pins: 0 unified, 1 split.
+     * How the I2S clock pins are assigned.
      */
     public var i2sClockPinMode: UInt8
     /**
-     * I2S MCK output on.
+     * The master clock output is on.
      */
     public var mckEnabled: Bool
     /**
-     * MCK GPIO.
+     * GPIO of the master clock.
      */
     public var mckPin: UInt8
     /**
-     * MCK multiplier: 128 or 256.
+     * Master clock as a multiple of the sample rate.
      */
     public var mckMultiplier: UInt8
     /**
-     * ADAT output enabled.
+     * The ADAT output is on.
      */
     public var adatOutEnabled: Bool
     /**
-     * ADAT output GPIO.
+     * GPIO of the ADAT output.
      */
     public var adatOutPin: UInt8
     /**
-     * The firmware has the DAC hardware mute.
+     * The firmware has the DAC mute line.
      */
     public var dacMuteSupported: Bool
     /**
-     * DAC hardware mute on.
+     * The DAC mute line is on.
      */
     public var dacMuteEnabled: Bool
     /**
-     * Pull the pin low to mute.
+     * The DAC mute line is active low.
      */
     public var dacMuteActiveLow: Bool
     /**
-     * DAC mute GPIO.
+     * GPIO of the DAC mute line.
      */
     public var dacMutePin: UInt8
     /**
-     * Hold after the mute asserts, before the clock stops, ms.
+     * How long the mute is held, in ms.
      */
     public var dacMuteHoldMs: UInt16
     /**
-     * Hold after the clock restarts, before the unmute, ms.
+     * How long the release takes, in ms.
      */
     public var dacMuteReleaseMs: UInt16
     /**
-     * The firmware has the UART and I2C control interfaces.
+     * The firmware has the UART/I2C control interfaces.
      */
     public var ctrlIfaceSupported: Bool
     /**
-     * UART control interface configuration.
+     * UART control interface settings.
      */
     public var uart: UartConfig
     /**
-     * I2C control interface configuration.
+     * I2C control interface settings.
      */
     public var i2c: I2cConfig
     /**
-     * Control interfaces' status.
+     * Live state of the control interfaces.
      */
     public var ctrlStatus: CtrlIfaceStatus
     /**
-     * `CORE1_MODE_*`: 0 idle, 1 PDM, 2 EQ worker.
+     * What the second core runs (firmware code).
      */
     public var core1Mode: UInt8
     /**
-     * Bit per slot: the slot holds a preset.
+     * One bit per occupied preset slot.
      */
     public var presetOccupied: UInt16
     /**
-     * Preset names, per slot.
+     * Name per preset slot.
      */
     public var presetNames: [String]
     /**
-     * The active preset slot.
+     * The slot loaded last.
      */
     public var activePresetSlot: UInt8
     /**
-     * `PRESET_STARTUP_*`: 0 load `preset_default_slot`, 1 load the last active.
+     * Preset startup mode.
      */
     public var presetStartupMode: UInt8
     /**
-     * The slot loaded at boot in mode 0.
+     * Preset loaded at startup in the "specified" mode.
      */
     public var presetDefaultSlot: UInt8
     /**
-     * The image is in this build's wire format, so the mirror may be written back.
+     * `bulk_raw` holds a parameter image this build can decode.
      */
     public var bulkValid: Bool
     /**
-     * The image itself.
+     * The bulk parameter image as read from the device.
      */
     public var bulkRaw: Data
     /**
-     * The image carries `i2s_clock_pin_mode` (firmware with split clock pins).
+     * The image carried `i2s_clock_pin_mode` (newer wire formats).
      */
     public var i2sClockPinModePresent: Bool
     /**
-     * The image carries the S/PDIF inputs 2-4 bits of `spdif_inputs_enabled`
-     * (firmware with several S/PDIF inputs).
+     * The image carried `spdif_inputs_enabled`.
      */
     public var spdifInputsEnabledPresent: Bool
     /**
-     * The image carries `adat_input_enabled`.
+     * The image carried `adat_input_enabled`.
      */
     public var adatInputEnabledPresent: Bool
     /**
-     * The image carries `adat_input_clock_mode`.
+     * The image carried `adat_input_clock_mode`.
      */
     public var adatInputClockModePresent: Bool
 
@@ -11072,330 +11061,325 @@ public struct DspState {
     // declare one manually.
     public init(
         /**
-         * 0 RP2040, 1 RP2350.
+         * The board's platform code (RP2040, RP2350, ...).
          */platformId: UInt8, 
         /**
-         * Live wire channels (inputs + outputs).
+         * Inputs plus outputs on this device.
          */numChannels: UInt8, 
         /**
-         * Live input channels.
+         * Input channels on this device.
          */numInputChannels: UInt8, 
         /**
-         * Live output channels.
+         * Output channels on this device.
          */numOutputChannels: UInt8, 
         /**
-         * The device's own wire format version.
+         * Wire format version of the bulk parameter image.
          */formatVersion: UInt8, 
         /**
-         * Firmware version, major.
+         * Firmware major version.
          */fwMajor: UInt8, 
         /**
-         * Firmware version, minor.
+         * Firmware minor version.
          */fwMinor: UInt8, 
         /**
-         * Firmware version, patch.
+         * Firmware patch version.
          */fwPatch: UInt8, 
         /**
-         * Beta number, 0 = final; `FW_BETA_EARLY` for an early beta that does not say.
+         * Firmware beta number (0 for a release).
          */fwBeta: UInt8, 
         /**
-         * `COMPAT_*` (0 unknown, 1 ok, 2 firmware too old, 3 too new).
+         * How this build relates to the firmware (`COMPAT_*`).
          */compat: UInt8, 
         /**
-         * Preamp, dB.
+         * Global preamp in dB.
          */preampDb: Float, 
         /**
-         * Master EQ bypass.
+         * The whole DSP chain is bypassed.
          */bypass: Bool, 
         /**
-         * Per-input preamp, dB (input-indexed).
+         * Preamp per input, in dB.
          */inputPreampDb: [Float], 
         /**
-         * Master volume, dB.
+         * Master volume in dB.
          */masterVolumeDb: Float, 
         /**
-         * `MASTER_VOLUME_MODE_*`: 0 stored independently, 1 with the preset.
+         * How the master volume behaves (fixed, saved, ...): firmware code.
          */masterVolumeMode: UInt8, 
         /**
-         * User volume, dB.
+         * The user volume in dB.
          */userVolumeDb: Float, 
         /**
-         * User mute.
+         * The user mute.
          */userMute: Bool, 
         /**
-         * Loudness compensation on.
+         * Loudness compensation is on.
          */loudnessEnabled: Bool, 
         /**
-         * Loudness reference level, dB SPL.
+         * Loudness reference level in dB SPL.
          */loudnessRefSpl: Float, 
         /**
-         * Loudness intensity, %.
+         * Loudness intensity in percent.
          */loudnessIntensity: Float, 
         /**
-         * Bit k: loudness processes output k.
+         * Outputs loudness applies to, one bit each.
          */loudnessOutputMask: UInt16, 
         /**
-         * Crossfeed on.
+         * Crossfeed is on.
          */crossfeedEnabled: Bool, 
         /**
-         * Crossfeed preset index.
+         * Crossfeed preset number.
          */crossfeedPreset: UInt8, 
         /**
-         * Custom crossfeed frequency, Hz.
+         * Crossfeed corner frequency in Hz (custom preset).
          */crossfeedFreq: Float, 
         /**
-         * Custom crossfeed feed level, dB.
+         * Crossfeed level in dB (custom preset).
          */crossfeedFeed: Float, 
         /**
-         * Interaural time delay on.
+         * Interaural time delay is on.
          */crossfeedItd: Bool, 
         /**
-         * Bit p: crossfeed processes stereo output pair p.
+         * Output pairs crossfeed applies to, one bit each.
          */crossfeedOutputPairMask: UInt8, 
         /**
-         * Outputs of each crossfeed pair, 4 bytes (K340 firmware fork; zero
-         * from other firmware). Byte p: 0 = default (2p, 2p+1), else
-         * `(right << 4) | left`, 0-based output indices.
+         * Which outputs each crossfeed pair uses (`EXT_CROSSFEED_PAIR_MAP`).
          */crossfeedPairMap: Data, 
         /**
-         * Delay per wire channel, ms.
+         * Per-channel delay in ms.
          */channelDelays: [Float], 
         /**
-         * Crosspoint on.
+         * Matrix routing, `[input][output]`.
          */matrixRouting: [[Bool]], 
         /**
-         * Crosspoint gain, dB.
+         * Matrix gain in dB, `[input][output]`.
          */matrixGain: [[Float]], 
         /**
-         * Crosspoint polarity inverted.
+         * Matrix polarity inversion, `[input][output]`.
          */matrixInvert: [[Bool]], 
         /**
-         * Output enabled.
+         * Output enabled, per output.
          */outputEnabled: [Bool], 
         /**
-         * Output muted.
+         * Output muted, per output.
          */outputMuted: [Bool], 
         /**
-         * Output gain, dB.
+         * Output gain in dB, per output.
          */outputGainDb: [Float], 
         /**
-         * Output delay, ms.
+         * Output delay in ms, per output.
          */outputDelayMs: [Float], 
         /**
          * Limiter on, per output.
          */limiterEnabled: [Bool], 
         /**
-         * Limiter link group, per output; outputs in one group limit together.
+         * Limiter link group, per output.
          */limiterLinkGroup: Data, 
         /**
-         * Limiter threshold, dB, per output.
+         * Limiter threshold in dB, per output.
          */limiterThresholdDb: [Float], 
         /**
-         * Limiter release, ms, per output.
+         * Limiter release in ms, per output.
          */limiterReleaseMs: [Float], 
         /**
-         * Physical output slots: 3 on RP2040, 5 on RP2350.
+         * Physical output pins the device has.
          */numPinOutputs: UInt8, 
         /**
-         * GPIO of each physical output slot.
+         * GPIO per physical output.
          */outputPins: Data, 
         /**
-         * `OUTPUT_CONFIG_MODE_*`: 0 stored independently, 1 with the preset.
+         * Output configuration mode (firmware code).
          */outputConfigMode: UInt8, 
         /**
-         * PEQ bands, `[wire channel][band]`.
+         * PEQ bands, `[channel][band]`.
          */filters: [[FilterParams]], 
         /**
-         * Crossover bands, `[wire channel][band]`.
+         * Crossover slots, `[channel][slot]`.
          */xover: [[FilterParams]], 
         /**
-         * Channel names (wire channel), at most 31 bytes of UTF-8 each.
+         * User names of the channels.
          */channelNames: [String], 
         /**
-         * Leveller on.
+         * Volume leveller is on.
          */levellerEnabled: Bool, 
         /**
-         * Leveller speed: 0 slow, 1 medium, 2 fast.
+         * Leveller speed (firmware code).
          */levellerSpeed: UInt8, 
         /**
-         * Leveller lookahead on.
+         * Leveller lookahead is on.
          */levellerLookahead: Bool, 
         /**
-         * Leveller amount, %.
+         * Leveller amount in percent.
          */levellerAmount: Float, 
         /**
-         * Leveller maximum gain, dB.
+         * Leveller maximum gain in dB.
          */levellerMaxGainDb: Float, 
         /**
-         * Leveller gate threshold, dB.
+         * Leveller gate in dB.
          */levellerGateDb: Float, 
         /**
-         * Bit k: input channel k feeds the leveller's detector.
+         * Channels the leveller listens to, one bit each.
          */levellerDetectorMask: UInt8, 
         /**
-         * Bit k: the leveller's gain applies to input channel k.
+         * Channels the leveller acts on, one bit each.
          */levellerApplyMask: UInt8, 
         /**
-         * Active input (`InputSource`: 0 USB, 1 S/PDIF, 2 I2S, ...).
+         * The selected audio input (USB, S/PDIF, ...).
          */inputSource: UInt8, 
         /**
-         * LG Sound Sync on.
+         * LG Sound Sync is on.
          */lgSoundSyncEnabled: Bool, 
         /**
-         * Bit k: S/PDIF input k+1 is enabled. Bit 0 (input 1) is always set:
-         * the first S/PDIF input cannot be disabled, and setters must keep the
-         * bit when they write the mask.
+         * How many S/PDIF inputs are enabled.
          */spdifInputsEnabled: UInt8, 
         /**
-         * ADAT input enabled.
+         * The ADAT input is enabled.
          */adatInputEnabled: Bool, 
         /**
-         * GPIO of each S/PDIF receiver.
+         * GPIO per S/PDIF receiver.
          */spdifRxPins: Data, 
         /**
-         * I2S data GPIO of each stereo input pair.
+         * GPIO per I2S data input.
          */i2sRxPins: Data, 
         /**
-         * Active I2S input channels: 2, 4, 6 or 8.
+         * Channels on the I2S input.
          */i2sInputChannels: UInt8, 
         /**
-         * I2S input rate code: 0 44.1 kHz, 1 48 kHz, 2 96 kHz.
+         * I2S input rate (firmware code).
          */i2sInputRate: UInt8, 
         /**
-         * I2S clock: 0 master, 1 slave.
+         * I2S clock mode (master or slave).
          */i2sClockMode: UInt8, 
         /**
-         * ADAT input GPIO.
+         * GPIO of the ADAT input.
          */adatInputPin: UInt8, 
         /**
-         * ADAT input clock: 0 master, 1 slave.
+         * ADAT input clock mode.
          */adatInputClockMode: UInt8, 
         /**
-         * Psychoacoustic bass on.
+         * Psychoacoustic bass is on.
          */psybassEnabled: Bool, 
         /**
-         * Bit k: psychoacoustic bass processes output k.
+         * Outputs psychoacoustic bass applies to, one bit each.
          */psybassOutputMask: UInt16, 
         /**
-         * Psychoacoustic bass cutoff, Hz.
+         * Psychoacoustic bass cutoff in Hz.
          */psybassCutoffHz: Float, 
         /**
-         * Harmonics level, dB.
+         * Harmonics level in dB.
          */psybassHarmonicsDb: Float, 
         /**
-         * Drive, dB.
+         * Drive in dB.
          */psybassDriveDb: Float, 
         /**
-         * Character, %.
+         * Even/odd character in percent.
          */psybassCharacterPct: Float, 
         /**
-         * Level of the original bass, dB.
+         * Level of the original low band in dB.
          */psybassOriginalDb: Float, 
         /**
-         * Upmixer parameters, by `UPMIX_PARAM_*`.
+         * Upmixer parameters, indexed by `UPMIX_PARAM_*`.
          */upmix: [Float], 
         /**
-         * Subharmonic synthesizer parameters, by `SUBHARM_PARAM_*`.
+         * Subharmonic synth parameters, indexed by `SUBHARM_PARAM_*`.
          */subharm: [Float], 
         /**
-         * Subharmonic solo (runtime only, not in the image).
+         * The subharmonic synth's solo switch.
          */subharmSolo: Bool, 
         /**
-         * Tube preamp parameters, by `TUBE_PARAM_*`.
+         * Tube modeller parameters, indexed by the firmware's tube ids.
          */tube: [Float], 
         /**
-         * Type of each physical output slot: `OUTPUT_TYPE_*` (0 S/PDIF, 1 I2S).
+         * Kind of each output pin (S/PDIF, I2S, PDM, ...).
          */outputTypes: Data, 
         /**
-         * I2S BCK GPIO as clock master.
+         * I2S bit clock GPIO in master mode.
          */i2sBckPin: UInt8, 
         /**
-         * I2S BCK GPIO as clock slave.
+         * I2S bit clock GPIO in slave mode.
          */i2sBckPinSlave: UInt8, 
         /**
-         * I2S clock pins: 0 unified, 1 split.
+         * How the I2S clock pins are assigned.
          */i2sClockPinMode: UInt8, 
         /**
-         * I2S MCK output on.
+         * The master clock output is on.
          */mckEnabled: Bool, 
         /**
-         * MCK GPIO.
+         * GPIO of the master clock.
          */mckPin: UInt8, 
         /**
-         * MCK multiplier: 128 or 256.
+         * Master clock as a multiple of the sample rate.
          */mckMultiplier: UInt8, 
         /**
-         * ADAT output enabled.
+         * The ADAT output is on.
          */adatOutEnabled: Bool, 
         /**
-         * ADAT output GPIO.
+         * GPIO of the ADAT output.
          */adatOutPin: UInt8, 
         /**
-         * The firmware has the DAC hardware mute.
+         * The firmware has the DAC mute line.
          */dacMuteSupported: Bool, 
         /**
-         * DAC hardware mute on.
+         * The DAC mute line is on.
          */dacMuteEnabled: Bool, 
         /**
-         * Pull the pin low to mute.
+         * The DAC mute line is active low.
          */dacMuteActiveLow: Bool, 
         /**
-         * DAC mute GPIO.
+         * GPIO of the DAC mute line.
          */dacMutePin: UInt8, 
         /**
-         * Hold after the mute asserts, before the clock stops, ms.
+         * How long the mute is held, in ms.
          */dacMuteHoldMs: UInt16, 
         /**
-         * Hold after the clock restarts, before the unmute, ms.
+         * How long the release takes, in ms.
          */dacMuteReleaseMs: UInt16, 
         /**
-         * The firmware has the UART and I2C control interfaces.
+         * The firmware has the UART/I2C control interfaces.
          */ctrlIfaceSupported: Bool, 
         /**
-         * UART control interface configuration.
+         * UART control interface settings.
          */uart: UartConfig, 
         /**
-         * I2C control interface configuration.
+         * I2C control interface settings.
          */i2c: I2cConfig, 
         /**
-         * Control interfaces' status.
+         * Live state of the control interfaces.
          */ctrlStatus: CtrlIfaceStatus, 
         /**
-         * `CORE1_MODE_*`: 0 idle, 1 PDM, 2 EQ worker.
+         * What the second core runs (firmware code).
          */core1Mode: UInt8, 
         /**
-         * Bit per slot: the slot holds a preset.
+         * One bit per occupied preset slot.
          */presetOccupied: UInt16, 
         /**
-         * Preset names, per slot.
+         * Name per preset slot.
          */presetNames: [String], 
         /**
-         * The active preset slot.
+         * The slot loaded last.
          */activePresetSlot: UInt8, 
         /**
-         * `PRESET_STARTUP_*`: 0 load `preset_default_slot`, 1 load the last active.
+         * Preset startup mode.
          */presetStartupMode: UInt8, 
         /**
-         * The slot loaded at boot in mode 0.
+         * Preset loaded at startup in the "specified" mode.
          */presetDefaultSlot: UInt8, 
         /**
-         * The image is in this build's wire format, so the mirror may be written back.
+         * `bulk_raw` holds a parameter image this build can decode.
          */bulkValid: Bool, 
         /**
-         * The image itself.
+         * The bulk parameter image as read from the device.
          */bulkRaw: Data, 
         /**
-         * The image carries `i2s_clock_pin_mode` (firmware with split clock pins).
+         * The image carried `i2s_clock_pin_mode` (newer wire formats).
          */i2sClockPinModePresent: Bool, 
         /**
-         * The image carries the S/PDIF inputs 2-4 bits of `spdif_inputs_enabled`
-         * (firmware with several S/PDIF inputs).
+         * The image carried `spdif_inputs_enabled`.
          */spdifInputsEnabledPresent: Bool, 
         /**
-         * The image carries `adat_input_enabled`.
+         * The image carried `adat_input_enabled`.
          */adatInputEnabledPresent: Bool, 
         /**
-         * The image carries `adat_input_clock_mode`.
+         * The image carried `adat_input_clock_mode`.
          */adatInputClockModePresent: Bool) {
         self.platformId = platformId
         self.numChannels = numChannels
@@ -12196,22 +12180,19 @@ public func FfiConverterTypeDspState_lower(_ value: DspState) -> RustBuffer {
 
 
 /**
- * The extension channel (Bofr5555/DSPi fork; `REQ_EXTENSION` 0x00), as
- * probed on connect (WP S3) and read on demand (WP C8).
+ * What the extension channel supports.
  */
 public struct ExtStatus {
     /**
-     * `EXT_LIST`: supported sub-command ids; empty on stock firmware.
+     * Extension ids the device lists.
      */
     public var supported: [UInt16]
     /**
-     * Whether `EXT_CROSSFEED_PAIR_MAP` is usable: listed by `EXT_LIST` and
-     * read successfully on connect.
+     * The crossfeed pair map is supported.
      */
     public var hasPairMap: Bool
     /**
-     * Whether `EXT_CORE_VREG` is usable: listed by `EXT_LIST` and read
-     * successfully on connect.
+     * Core voltage control is supported.
      */
     public var hasCoreVreg: Bool
 
@@ -12219,15 +12200,13 @@ public struct ExtStatus {
     // declare one manually.
     public init(
         /**
-         * `EXT_LIST`: supported sub-command ids; empty on stock firmware.
+         * Extension ids the device lists.
          */supported: [UInt16], 
         /**
-         * Whether `EXT_CROSSFEED_PAIR_MAP` is usable: listed by `EXT_LIST` and
-         * read successfully on connect.
+         * The crossfeed pair map is supported.
          */hasPairMap: Bool, 
         /**
-         * Whether `EXT_CORE_VREG` is usable: listed by `EXT_LIST` and read
-         * successfully on connect.
+         * Core voltage control is supported.
          */hasCoreVreg: Bool) {
         self.supported = supported
         self.hasPairMap = hasPairMap
@@ -12300,31 +12279,36 @@ public func FfiConverterTypeExtStatus_lower(_ value: ExtStatus) -> RustBuffer {
 
 
 /**
- * One filter band, PEQ or crossover (`types.rs` `FilterParams`).
+ * One filter band as the device stores it: a PEQ band or a crossover slot.
+ *
+ * The meaning of `gain` and `qp` depends on the type: a Linkwitz Transform
+ * (type 11) carries its target corner `fp` in `gain` and its target Q in
+ * `qp`; every other type ignores `qp`.
  */
 public struct FilterParams {
     /**
-     * Firmware filter type (`FILTER_*`): 0..13 PEQ, 32..63 crossover.
+     * The firmware's filter type byte (`FILTER_*`): 0 flat, 1..13 the PEQ
+     * shapes, 32..63 the crossover family/order/pass codes.
      */
     public var filterType: UInt8
     /**
-     * Whether the band is bypassed.
+     * True when the band is switched off without losing its settings.
      */
     public var bypass: Bool
     /**
-     * Centre or corner frequency, Hz.
+     * Centre or corner frequency in Hz (`f0` for a Linkwitz Transform).
      */
     public var freq: Float
     /**
-     * Q (dimensionless).
+     * Quality factor (`Q0` for a Linkwitz Transform).
      */
     public var q: Float
     /**
-     * Gain in dB; for the Linkwitz Transform, the target frequency fp in Hz.
+     * Gain in dB; the target corner `fp` in Hz for a Linkwitz Transform.
      */
     public var gain: Float
     /**
-     * Linkwitz Transform target Q (ignored by every other type).
+     * The Linkwitz Transform's target Q; unused by the other types.
      */
     public var qp: Float
 
@@ -12332,22 +12316,23 @@ public struct FilterParams {
     // declare one manually.
     public init(
         /**
-         * Firmware filter type (`FILTER_*`): 0..13 PEQ, 32..63 crossover.
+         * The firmware's filter type byte (`FILTER_*`): 0 flat, 1..13 the PEQ
+         * shapes, 32..63 the crossover family/order/pass codes.
          */filterType: UInt8, 
         /**
-         * Whether the band is bypassed.
+         * True when the band is switched off without losing its settings.
          */bypass: Bool, 
         /**
-         * Centre or corner frequency, Hz.
+         * Centre or corner frequency in Hz (`f0` for a Linkwitz Transform).
          */freq: Float, 
         /**
-         * Q (dimensionless).
+         * Quality factor (`Q0` for a Linkwitz Transform).
          */q: Float, 
         /**
-         * Gain in dB; for the Linkwitz Transform, the target frequency fp in Hz.
+         * Gain in dB; the target corner `fp` in Hz for a Linkwitz Transform.
          */gain: Float, 
         /**
-         * Linkwitz Transform target Q (ignored by every other type).
+         * The Linkwitz Transform's target Q; unused by the other types.
          */qp: Float) {
         self.filterType = filterType
         self.bypass = bypass
@@ -12773,23 +12758,23 @@ public func FfiConverterTypeFirmwareGuardVerdict_lower(_ value: FirmwareGuardVer
 
 
 /**
- * The I2C control interface's configuration (`set_i2c`).
+ * Settings of the I2C control interface.
  */
 public struct I2cConfig {
     /**
-     * The I2C control interface is enabled.
+     * The interface is switched on.
      */
     public var enabled: Bool
     /**
-     * SDA GPIO (even), same I2C instance as `scl_pin`.
+     * The data GPIO.
      */
     public var sdaPin: UInt8
     /**
-     * SCL GPIO (odd).
+     * The clock GPIO.
      */
     public var sclPin: UInt8
     /**
-     * 7-bit target address, 0x08..0x77.
+     * The device's 7-bit address on the bus.
      */
     public var address: UInt8
 
@@ -12797,16 +12782,16 @@ public struct I2cConfig {
     // declare one manually.
     public init(
         /**
-         * The I2C control interface is enabled.
+         * The interface is switched on.
          */enabled: Bool, 
         /**
-         * SDA GPIO (even), same I2C instance as `scl_pin`.
+         * The data GPIO.
          */sdaPin: UInt8, 
         /**
-         * SCL GPIO (odd).
+         * The clock GPIO.
          */sclPin: UInt8, 
         /**
-         * 7-bit target address, 0x08..0x77.
+         * The device's 7-bit address on the bus.
          */address: UInt8) {
         self.enabled = enabled
         self.sdaPin = sdaPin
@@ -12886,35 +12871,35 @@ public func FfiConverterTypeI2cConfig_lower(_ value: I2cConfig) -> RustBuffer {
 
 
 /**
- * Lock status of a clocked input (`fetch_input_lock`).
+ * Lock state of a clocked digital input (S/PDIF, ADAT or I2S slave).
  */
 public struct InputLockStatus {
     /**
-     * Receiver state, the firmware's raw code; 0 = inactive.
+     * The receiver's state code as the firmware reports it.
      */
     public var state: UInt8
     /**
-     * Clock mode, 0 master, 1 slave.
+     * Which clock the input runs on (the firmware's clock-mode code).
      */
     public var clockMode: UInt8
     /**
-     * Sample rate the receiver decided on, Hz.
+     * The sample rate the receiver decoded, in Hz (0 when unknown).
      */
     public var detectedRate: UInt32
     /**
-     * Sample rate as measured from the signal, Hz.
+     * The measured incoming rate, in Hz.
      */
     public var measuredHz: UInt32
     /**
-     * Whether the rate is usable; always true for the I2S slave.
+     * True when the incoming rate is one the device can run at.
      */
     public var rateOk: Bool
     /**
-     * Times it locked, wrapping 8-bit counter.
+     * How often the input has locked since boot (wrapping counter).
      */
     public var lockCount: UInt8
     /**
-     * Times it lost lock, wrapping 8-bit counter.
+     * How often the input has lost lock since boot (wrapping counter).
      */
     public var lossCount: UInt8
 
@@ -12922,25 +12907,25 @@ public struct InputLockStatus {
     // declare one manually.
     public init(
         /**
-         * Receiver state, the firmware's raw code; 0 = inactive.
+         * The receiver's state code as the firmware reports it.
          */state: UInt8, 
         /**
-         * Clock mode, 0 master, 1 slave.
+         * Which clock the input runs on (the firmware's clock-mode code).
          */clockMode: UInt8, 
         /**
-         * Sample rate the receiver decided on, Hz.
+         * The sample rate the receiver decoded, in Hz (0 when unknown).
          */detectedRate: UInt32, 
         /**
-         * Sample rate as measured from the signal, Hz.
+         * The measured incoming rate, in Hz.
          */measuredHz: UInt32, 
         /**
-         * Whether the rate is usable; always true for the I2S slave.
+         * True when the incoming rate is one the device can run at.
          */rateOk: Bool, 
         /**
-         * Times it locked, wrapping 8-bit counter.
+         * How often the input has locked since boot (wrapping counter).
          */lockCount: UInt8, 
         /**
-         * Times it lost lock, wrapping 8-bit counter.
+         * How often the input has lost lock since boot (wrapping counter).
          */lossCount: UInt8) {
         self.state = state
         self.clockMode = clockMode
@@ -13041,23 +13026,23 @@ public func FfiConverterTypeInputLockStatus_lower(_ value: InputLockStatus) -> R
 
 
 /**
- * LG Sound Sync status (`fetch_lg_status`).
+ * State of the LG Sound Sync link (optical volume from an LG TV).
  */
 public struct LgStatus {
     /**
-     * LG Sound Sync is enabled.
+     * Sound Sync handling is switched on.
      */
     public var enabled: Bool
     /**
-     * A TV has been detected.
+     * A TV is sending Sound Sync data.
      */
     public var present: Bool
     /**
-     * TV volume 0..100; 0xFF until one has been decoded.
+     * The volume the TV last sent.
      */
     public var volume: UInt8
     /**
-     * The TV reports mute.
+     * The TV's mute flag.
      */
     public var muted: Bool
 
@@ -13065,16 +13050,16 @@ public struct LgStatus {
     // declare one manually.
     public init(
         /**
-         * LG Sound Sync is enabled.
+         * Sound Sync handling is switched on.
          */enabled: Bool, 
         /**
-         * A TV has been detected.
+         * A TV is sending Sound Sync data.
          */present: Bool, 
         /**
-         * TV volume 0..100; 0xFF until one has been decoded.
+         * The volume the TV last sent.
          */volume: UInt8, 
         /**
-         * The TV reports mute.
+         * The TV's mute flag.
          */muted: Bool) {
         self.enabled = enabled
         self.present = present
@@ -13154,7 +13139,7 @@ public func FfiConverterTypeLgStatus_lower(_ value: LgStatus) -> RustBuffer {
 
 
 /**
- * A typed hub address (spec 3.3).
+ * A hub address.
  */
 public struct LinkAddress {
     /**
@@ -13239,15 +13224,15 @@ public func FfiConverterTypeLinkAddress_lower(_ value: LinkAddress) -> RustBuffe
 
 
 /**
- * A `[bRequest, dir]` row of `policy.denied` (dir 0 = SET, 1 = GET).
+ * A request the hub refused for this session's role.
  */
 public struct LinkDenied {
     /**
-     * The `bRequest`.
+     * The request code.
      */
     public var request: UInt8
     /**
-     * 0 = SET, 1 = GET.
+     * The direction: 0 for a SET, 1 for a GET.
      */
     public var dir: UInt8
 
@@ -13255,10 +13240,10 @@ public struct LinkDenied {
     // declare one manually.
     public init(
         /**
-         * The `bRequest`.
+         * The request code.
          */request: UInt8, 
         /**
-         * 0 = SET, 1 = GET.
+         * The direction: 0 for a SET, 1 for a GET.
          */dir: UInt8) {
         self.request = request
         self.dir = dir
@@ -13324,11 +13309,11 @@ public func FfiConverterTypeLinkDenied_lower(_ value: LinkDenied) -> RustBuffer 
 
 
 /**
- * One device the hub shares (`device.list`, spec 7.4).
+ * A device a Link hub offers.
  */
 public struct LinkDevice {
     /**
-     * The hub's handle for it, for `link_select_device`.
+     * The hub's handle for the device.
      */
     public var handle: UInt32
     /**
@@ -13336,31 +13321,31 @@ public struct LinkDevice {
      */
     public var serial: String
     /**
-     * The board's own name, else the hub's.
+     * Device name.
      */
     public var name: String
     /**
-     * `major.minor.patch`, "" when the hub did not say.
+     * Firmware version text.
      */
     public var fw: String
     /**
-     * Beta number, 0 = final, -1 = unknown.
+     * Firmware beta number.
      */
     public var fwBeta: Int32
     /**
-     * 0 RP2040, 1 RP2350, -1 unknown.
+     * Platform code.
      */
     public var platform: Int32
     /**
-     * `online`, `offline`, `updating`.
+     * Device state on the hub.
      */
     public var state: String
     /**
-     * `usb` or `uart` (latency and bulk timing).
+     * How the hub reaches the device.
      */
     public var link: String
     /**
-     * Session holding the device lock, 0 = none.
+     * Session holding the device's lock, 0 for none.
      */
     public var lockedBy: UInt32
 
@@ -13368,31 +13353,31 @@ public struct LinkDevice {
     // declare one manually.
     public init(
         /**
-         * The hub's handle for it, for `link_select_device`.
+         * The hub's handle for the device.
          */handle: UInt32, 
         /**
          * USB serial number.
          */serial: String, 
         /**
-         * The board's own name, else the hub's.
+         * Device name.
          */name: String, 
         /**
-         * `major.minor.patch`, "" when the hub did not say.
+         * Firmware version text.
          */fw: String, 
         /**
-         * Beta number, 0 = final, -1 = unknown.
+         * Firmware beta number.
          */fwBeta: Int32, 
         /**
-         * 0 RP2040, 1 RP2350, -1 unknown.
+         * Platform code.
          */platform: Int32, 
         /**
-         * `online`, `offline`, `updating`.
+         * Device state on the hub.
          */state: String, 
         /**
-         * `usb` or `uart` (latency and bulk timing).
+         * How the hub reaches the device.
          */link: String, 
         /**
-         * Session holding the device lock, 0 = none.
+         * Session holding the device's lock, 0 for none.
          */lockedBy: UInt32) {
         self.handle = handle
         self.serial = serial
@@ -13507,11 +13492,11 @@ public func FfiConverterTypeLinkDevice_lower(_ value: LinkDevice) -> RustBuffer 
 
 
 /**
- * The hub's `hello` after `link_connect` (spec 7.2).
+ * What a Link hub said about itself.
  */
 public struct LinkHello {
     /**
-     * `hid`: lowercase UUID, stable per hub installation. Tokens are keyed on it.
+     * The hub's stable id.
      */
     public var hubId: String
     /**
@@ -13519,44 +13504,43 @@ public struct LinkHello {
      */
     public var hubName: String
     /**
-     * `console` (DSPi Console in gateway mode) or `bridge` (ESP32 on the UART).
+     * What kind of program the hub is.
      */
     public var hubKind: String
     /**
-     * The hub's software version.
+     * The hub's version.
      */
     public var hubVersion: String
     /**
-     * The Link protocol minor version it speaks.
+     * Minor version of the Link protocol.
      */
     public var protoMinor: UInt32
     /**
-     * `none` or `pin`.
+     * Authentication the hub asks for.
      */
     public var auth: String
     /**
-     * `window` (PIN shown on the hub) or `fixed` (the hub's own PIN); `window` when absent.
+     * Where the pairing PIN is shown.
      */
     public var pinSource: String
     /**
-     * True: ask the user for the PIN and call `link_pair`.
+     * The client has to pair first.
      */
     public var needsPairing: Bool
     /**
-     * `cmd`, `notify`, `poll`, `snapshot`, `lock`, `fw_install`, `rename`, ...
+     * The hub's capabilities.
      */
     public var caps: [String]
     /**
-     * Largest payload it takes, bytes.
+     * Largest message payload in bytes.
      */
     public var maxPayload: UInt32
     /**
-     * Requests it allows in flight.
+     * Most requests in flight.
      */
     public var maxInflight: UInt32
     /**
-     * The hub refused the token passed in: forget it. Only this says the
-     * token is bad; any other failure keeps it.
+     * The stored token was refused.
      */
     public var tokenRefused: Bool
 
@@ -13564,41 +13548,40 @@ public struct LinkHello {
     // declare one manually.
     public init(
         /**
-         * `hid`: lowercase UUID, stable per hub installation. Tokens are keyed on it.
+         * The hub's stable id.
          */hubId: String, 
         /**
          * The hub's display name.
          */hubName: String, 
         /**
-         * `console` (DSPi Console in gateway mode) or `bridge` (ESP32 on the UART).
+         * What kind of program the hub is.
          */hubKind: String, 
         /**
-         * The hub's software version.
+         * The hub's version.
          */hubVersion: String, 
         /**
-         * The Link protocol minor version it speaks.
+         * Minor version of the Link protocol.
          */protoMinor: UInt32, 
         /**
-         * `none` or `pin`.
+         * Authentication the hub asks for.
          */auth: String, 
         /**
-         * `window` (PIN shown on the hub) or `fixed` (the hub's own PIN); `window` when absent.
+         * Where the pairing PIN is shown.
          */pinSource: String, 
         /**
-         * True: ask the user for the PIN and call `link_pair`.
+         * The client has to pair first.
          */needsPairing: Bool, 
         /**
-         * `cmd`, `notify`, `poll`, `snapshot`, `lock`, `fw_install`, `rename`, ...
+         * The hub's capabilities.
          */caps: [String], 
         /**
-         * Largest payload it takes, bytes.
+         * Largest message payload in bytes.
          */maxPayload: UInt32, 
         /**
-         * Requests it allows in flight.
+         * Most requests in flight.
          */maxInflight: UInt32, 
         /**
-         * The hub refused the token passed in: forget it. Only this says the
-         * token is bad; any other failure keeps it.
+         * The stored token was refused.
          */tokenRefused: Bool) {
         self.hubId = hubId
         self.hubName = hubName
@@ -13734,11 +13717,11 @@ public func FfiConverterTypeLinkHello_lower(_ value: LinkHello) -> RustBuffer {
 
 
 /**
- * `GET /dspi/v1/info` (spec 3.2), for a hub added by address.
+ * A hub found on the network.
  */
 public struct LinkInfo {
     /**
-     * Lowercase UUID, stable per hub installation.
+     * The hub's stable id.
      */
     public var hubId: String
     /**
@@ -13746,23 +13729,23 @@ public struct LinkInfo {
      */
     public var hubName: String
     /**
-     * `console` or `bridge`.
+     * What kind of program the hub is.
      */
     public var hubKind: String
     /**
-     * `none` or `pin`.
+     * Authentication the hub asks for.
      */
     public var auth: String
     /**
-     * The Link protocol minor version it speaks.
+     * Minor version of the Link protocol.
      */
     public var protoMinor: UInt32
     /**
-     * WebSocket path (`/dspi/v1` by default).
+     * WebSocket path.
      */
     public var wsPath: String
     /**
-     * Serials of the devices it shares.
+     * Serials of the devices it offers.
      */
     public var serials: [String]
 
@@ -13770,25 +13753,25 @@ public struct LinkInfo {
     // declare one manually.
     public init(
         /**
-         * Lowercase UUID, stable per hub installation.
+         * The hub's stable id.
          */hubId: String, 
         /**
          * The hub's display name.
          */hubName: String, 
         /**
-         * `console` or `bridge`.
+         * What kind of program the hub is.
          */hubKind: String, 
         /**
-         * `none` or `pin`.
+         * Authentication the hub asks for.
          */auth: String, 
         /**
-         * The Link protocol minor version it speaks.
+         * Minor version of the Link protocol.
          */protoMinor: UInt32, 
         /**
-         * WebSocket path (`/dspi/v1` by default).
+         * WebSocket path.
          */wsPath: String, 
         /**
-         * Serials of the devices it shares.
+         * Serials of the devices it offers.
          */serials: [String]) {
         self.hubId = hubId
         self.hubName = hubName
@@ -14022,61 +14005,59 @@ public func FfiConverterTypeLinkPhaseText_lower(_ value: LinkPhaseText) -> RustB
 
 
 /**
- * Where the current Link session stands.
+ * State of the Link session.
  */
 public struct LinkStatus {
     /**
-     * A session exists (connected, maybe not yet authenticated).
+     * A connection to the hub exists.
      */
     public var connected: Bool
     /**
-     * Authenticated: commands and the device list work.
+     * The session is bound to a device and usable.
      */
     public var ready: Bool
     /**
-     * Our session id (the NOTIFY `origin` of our own writes), 0 = unknown.
+     * Session id given by the hub.
      */
     public var session: UInt32
     /**
-     * `viewer`, `control` or `admin`.
+     * The role the hub granted.
      */
     public var role: String
     /**
-     * Commands this role may not send (`policy.denied`).
+     * Requests refused for that role.
      */
     public var denied: [LinkDenied]
     /**
-     * The session ended (see `close_code` / `close_reason`).
+     * The hub closed the session.
      */
     public var closed: Bool
     /**
-     * The hub's close code, -1 = none.
+     * Close code.
      */
     public var closeCode: Int32
     /**
-     * The hub's close reason.
+     * Close reason.
      */
     public var closeReason: String
     /**
-     * What to tell the user (WP C15).
+     * Where the session is in its life.
      */
     public var phase: LinkPhase
     /**
-     * [`LinkPhase::Reconnecting`]: failed tries since the session was lost.
+     * Reconnect attempt number.
      */
     public var reconnectAttempt: UInt32
     /**
-     * [`LinkPhase::Reconnecting`]: ms until the next try, 0 = now.
+     * Time to the next reconnect in ms.
      */
     public var reconnectInMs: UInt32
     /**
-     * `window` or `fixed`, for [`LinkPhase::NeedsPairing`]'s wording; "" with
-     * no session.
+     * Where the pairing PIN is shown.
      */
     public var pinSource: String
     /**
-     * The hub refused or revoked the stored token, during a reconnect too:
-     * forget it. Cleared by the next pairing.
+     * The stored token was refused.
      */
     public var tokenRefused: Bool
 
@@ -14084,45 +14065,43 @@ public struct LinkStatus {
     // declare one manually.
     public init(
         /**
-         * A session exists (connected, maybe not yet authenticated).
+         * A connection to the hub exists.
          */connected: Bool, 
         /**
-         * Authenticated: commands and the device list work.
+         * The session is bound to a device and usable.
          */ready: Bool, 
         /**
-         * Our session id (the NOTIFY `origin` of our own writes), 0 = unknown.
+         * Session id given by the hub.
          */session: UInt32, 
         /**
-         * `viewer`, `control` or `admin`.
+         * The role the hub granted.
          */role: String, 
         /**
-         * Commands this role may not send (`policy.denied`).
+         * Requests refused for that role.
          */denied: [LinkDenied], 
         /**
-         * The session ended (see `close_code` / `close_reason`).
+         * The hub closed the session.
          */closed: Bool, 
         /**
-         * The hub's close code, -1 = none.
+         * Close code.
          */closeCode: Int32, 
         /**
-         * The hub's close reason.
+         * Close reason.
          */closeReason: String, 
         /**
-         * What to tell the user (WP C15).
+         * Where the session is in its life.
          */phase: LinkPhase, 
         /**
-         * [`LinkPhase::Reconnecting`]: failed tries since the session was lost.
+         * Reconnect attempt number.
          */reconnectAttempt: UInt32, 
         /**
-         * [`LinkPhase::Reconnecting`]: ms until the next try, 0 = now.
+         * Time to the next reconnect in ms.
          */reconnectInMs: UInt32, 
         /**
-         * `window` or `fixed`, for [`LinkPhase::NeedsPairing`]'s wording; "" with
-         * no session.
+         * Where the pairing PIN is shown.
          */pinSource: String, 
         /**
-         * The hub refused or revoked the stored token, during a reconnect too:
-         * forget it. Cleared by the next pairing.
+         * The stored token was refused.
          */tokenRefused: Bool) {
         self.connected = connected
         self.ready = ready
@@ -14265,16 +14244,15 @@ public func FfiConverterTypeLinkStatus_lower(_ value: LinkStatus) -> RustBuffer 
 
 
 /**
- * Result of `monitor_read(after_id)`: the entries after `after_id` and the
- * id to pass next time (`after_id` itself if there were none).
+ * Monitor lines after a given id.
  */
 public struct MonitorBatch {
     /**
-     * The id to pass next time.
+     * The id to ask from next time.
      */
     public var lastId: UInt64
     /**
-     * Entries after `after_id`, oldest first.
+     * The new lines, oldest first.
      */
     public var entries: [MonitorEntry]
 
@@ -14282,10 +14260,10 @@ public struct MonitorBatch {
     // declare one manually.
     public init(
         /**
-         * The id to pass next time.
+         * The id to ask from next time.
          */lastId: UInt64, 
         /**
-         * Entries after `after_id`, oldest first.
+         * The new lines, oldest first.
          */entries: [MonitorEntry]) {
         self.lastId = lastId
         self.entries = entries
@@ -14351,19 +14329,19 @@ public func FfiConverterTypeMonitorBatch_lower(_ value: MonitorBatch) -> RustBuf
 
 
 /**
- * One line of the notification monitor.
+ * One line of the traffic monitor.
  */
 public struct MonitorEntry {
     /**
-     * Rising id, for `monitor_read`.
+     * Increasing id.
      */
     public var id: UInt64
     /**
-     * Host time, ms since the Unix epoch.
+     * Wall-clock time in ms since the Unix epoch.
      */
     public var timeMs: Int64
     /**
-     * The entry, for display.
+     * The line.
      */
     public var text: String
 
@@ -14371,13 +14349,13 @@ public struct MonitorEntry {
     // declare one manually.
     public init(
         /**
-         * Rising id, for `monitor_read`.
+         * Increasing id.
          */id: UInt64, 
         /**
-         * Host time, ms since the Unix epoch.
+         * Wall-clock time in ms since the Unix epoch.
          */timeMs: Int64, 
         /**
-         * The entry, for display.
+         * The line.
          */text: String) {
         self.id = id
         self.timeMs = timeMs
@@ -14450,15 +14428,15 @@ public func FfiConverterTypeMonitorEntry_lower(_ value: MonitorEntry) -> RustBuf
 
 
 /**
- * A decoded diagnostic value.
+ * A label and its formatted value.
  */
 public struct NamedValue {
     /**
-     * The value's name.
+     * The label.
      */
     public var name: String
     /**
-     * The value, as text.
+     * The value as text.
      */
     public var value: String
 
@@ -14466,10 +14444,10 @@ public struct NamedValue {
     // declare one manually.
     public init(
         /**
-         * The value's name.
+         * The label.
          */name: String, 
         /**
-         * The value, as text.
+         * The value as text.
          */value: String) {
         self.name = name
         self.value = value
@@ -14535,16 +14513,15 @@ public func FfiConverterTypeNamedValue_lower(_ value: NamedValue) -> RustBuffer 
 
 
 /**
- * What `process_notifications` changed: `NOTIFY_*` flags and a bitmask of
- * wire channels whose filters changed.
+ * What a batch of device notifications changed.
  */
 public struct NotifyResult {
     /**
-     * `NOTIFY_*` flags of what changed.
+     * `NOTIFY_*` bits.
      */
     public var flags: UInt32
     /**
-     * Bit per wire channel: its filters changed.
+     * One bit per channel whose curve must be redrawn.
      */
     public var filterChannels: UInt32
 
@@ -14552,10 +14529,10 @@ public struct NotifyResult {
     // declare one manually.
     public init(
         /**
-         * `NOTIFY_*` flags of what changed.
+         * `NOTIFY_*` bits.
          */flags: UInt32, 
         /**
-         * Bit per wire channel: its filters changed.
+         * One bit per channel whose curve must be redrawn.
          */filterChannels: UInt32) {
         self.flags = flags
         self.filterChannels = filterChannels
@@ -14786,26 +14763,23 @@ public func FfiConverterTypeOutputCard_lower(_ value: OutputCard) -> RustBuffer 
 
 
 /**
- * One output's fill, scaled and judged (`fetch_output_fills`).
+ * One output's fill.
  */
 public struct OutputFill {
     /**
-     * Fill to frame resolution, %: of the ring where the firmware has the
-     * latency setting (at most 100), else of the firmware's fixed scale (which
-     * can pass 100).
+     * Fill now, percent.
      */
     public var fillPct: Double
     /**
-     * Lowest fill since the last reset, % on the same scale.
+     * Lowest fill, percent.
      */
     public var minPct: UInt8
     /**
-     * Highest fill since the last reset, % on the same scale.
+     * Highest fill, percent.
      */
     public var maxPct: UInt8
     /**
-     * The band of `fill_pct`, around the live latency target where there is
-     * one.
+     * Its rating.
      */
     public var band: FillBand
 
@@ -14813,19 +14787,16 @@ public struct OutputFill {
     // declare one manually.
     public init(
         /**
-         * Fill to frame resolution, %: of the ring where the firmware has the
-         * latency setting (at most 100), else of the firmware's fixed scale (which
-         * can pass 100).
+         * Fill now, percent.
          */fillPct: Double, 
         /**
-         * Lowest fill since the last reset, % on the same scale.
+         * Lowest fill, percent.
          */minPct: UInt8, 
         /**
-         * Highest fill since the last reset, % on the same scale.
+         * Highest fill, percent.
          */maxPct: UInt8, 
         /**
-         * The band of `fill_pct`, around the live latency target where there is
-         * one.
+         * Its rating.
          */band: FillBand) {
         self.fillPct = fillPct
         self.minPct = minPct
@@ -15233,16 +15204,15 @@ public func FfiConverterTypeOutputLabelInput_lower(_ value: OutputLabelInput) ->
 
 
 /**
- * `REQ_OUTPUT_LATENCY` status (config.h; 12 bytes). Field meanings as in
- * the firmware's `OutputLatencyStatus`.
+ * The output latency report.
  */
 public struct OutputLatency {
     /**
-     * The raw 12-byte reply, for fields this build does not name yet.
+     * The reply bytes.
      */
     public var raw: Data
     /**
-     * Decoded `(name, value)` pairs, in the firmware's order.
+     * The decoded fields.
      */
     public var fields: [NamedValue]
 
@@ -15250,10 +15220,10 @@ public struct OutputLatency {
     // declare one manually.
     public init(
         /**
-         * The raw 12-byte reply, for fields this build does not name yet.
+         * The reply bytes.
          */raw: Data, 
         /**
-         * Decoded `(name, value)` pairs, in the firmware's order.
+         * The decoded fields.
          */fields: [NamedValue]) {
         self.raw = raw
         self.fields = fields
@@ -15319,33 +15289,31 @@ public func FfiConverterTypeOutputLatency_lower(_ value: OutputLatency) -> RustB
 
 
 /**
- * One output-latency option (`OutputLatencyOptionWire`, config.h; 8
- * bytes), from `fetch_output_latency_options` (WP C8).
+ * One output latency setting the device offers.
  */
 public struct OutputLatencyOption {
     /**
-     * `OutputLatencyId`, the value `set_output_latency` takes (never 0).
+     * Setting id.
      */
     public var id: UInt8
     /**
-     * `OUTPUT_LATENCY_FLAG_STREAM_ONLY`: runs only with a streamed input
-     * (S/PDIF, I2S, ADAT); USB input runs the fallback instead.
+     * Only possible while streaming from the host.
      */
     public var streamOnly: Bool
     /**
-     * `OUTPUT_LATENCY_WIRE_AVAILABLE`: runs as itself on the active source.
+     * Usable now.
      */
     public var available: Bool
     /**
-     * Nominal ring fill target, µs.
+     * Buffer latency in µs.
      */
     public var latencyUs: UInt16
     /**
-     * Nominal stream-input batch, µs.
+     * Batch size in µs.
      */
     public var batchUs: UInt16
     /**
-     * What choosing it gives now (active source and rate applied), µs.
+     * Total latency in µs.
      */
     public var effectiveUs: UInt16
 
@@ -15353,23 +15321,22 @@ public struct OutputLatencyOption {
     // declare one manually.
     public init(
         /**
-         * `OutputLatencyId`, the value `set_output_latency` takes (never 0).
+         * Setting id.
          */id: UInt8, 
         /**
-         * `OUTPUT_LATENCY_FLAG_STREAM_ONLY`: runs only with a streamed input
-         * (S/PDIF, I2S, ADAT); USB input runs the fallback instead.
+         * Only possible while streaming from the host.
          */streamOnly: Bool, 
         /**
-         * `OUTPUT_LATENCY_WIRE_AVAILABLE`: runs as itself on the active source.
+         * Usable now.
          */available: Bool, 
         /**
-         * Nominal ring fill target, µs.
+         * Buffer latency in µs.
          */latencyUs: UInt16, 
         /**
-         * Nominal stream-input batch, µs.
+         * Batch size in µs.
          */batchUs: UInt16, 
         /**
-         * What choosing it gives now (active source and rate applied), µs.
+         * Total latency in µs.
          */effectiveUs: UInt16) {
         self.id = id
         self.streamOnly = streamOnly
@@ -15463,31 +15430,31 @@ public func FfiConverterTypeOutputLatencyOption_lower(_ value: OutputLatencyOpti
 
 
 /**
- * The PDM output's buffers.
+ * Fill of the PDM output's DMA and ring buffers.
  */
 public struct PdmBufferStats {
     /**
-     * DMA buffer fill, %.
+     * DMA buffer fill now, percent.
      */
     public var dmaFillPct: UInt8
     /**
-     * Lowest DMA fill since the last reset, %.
+     * Lowest DMA fill, percent.
      */
     public var dmaMinPct: UInt8
     /**
-     * Highest DMA fill since the last reset, %.
+     * Highest DMA fill, percent.
      */
     public var dmaMaxPct: UInt8
     /**
-     * Software ring fill, %.
+     * Ring buffer fill now, percent.
      */
     public var ringFillPct: UInt8
     /**
-     * Lowest ring fill since the last reset, %.
+     * Lowest ring fill, percent.
      */
     public var ringMinPct: UInt8
     /**
-     * Highest ring fill since the last reset, %.
+     * Highest ring fill, percent.
      */
     public var ringMaxPct: UInt8
 
@@ -15495,22 +15462,22 @@ public struct PdmBufferStats {
     // declare one manually.
     public init(
         /**
-         * DMA buffer fill, %.
+         * DMA buffer fill now, percent.
          */dmaFillPct: UInt8, 
         /**
-         * Lowest DMA fill since the last reset, %.
+         * Lowest DMA fill, percent.
          */dmaMinPct: UInt8, 
         /**
-         * Highest DMA fill since the last reset, %.
+         * Highest DMA fill, percent.
          */dmaMaxPct: UInt8, 
         /**
-         * Software ring fill, %.
+         * Ring buffer fill now, percent.
          */ringFillPct: UInt8, 
         /**
-         * Lowest ring fill since the last reset, %.
+         * Lowest ring fill, percent.
          */ringMinPct: UInt8, 
         /**
-         * Highest ring fill since the last reset, %.
+         * Highest ring fill, percent.
          */ringMaxPct: UInt8) {
         self.dmaFillPct = dmaFillPct
         self.dmaMinPct = dmaMinPct
@@ -15604,7 +15571,7 @@ public func FfiConverterTypePdmBufferStats_lower(_ value: PdmBufferStats) -> Rus
 
 
 /**
- * One GPIO held by a live control-surface binding (`dspi_cs_pin_uses`).
+ * A GPIO used by a control-surface slot.
  */
 public struct PinUse {
     /**
@@ -15612,7 +15579,7 @@ public struct PinUse {
      */
     public var pin: UInt8
     /**
-     * The binding's slot.
+     * The slot using it.
      */
     public var slot: UInt8
 
@@ -15623,7 +15590,7 @@ public struct PinUse {
          * The GPIO.
          */pin: UInt8, 
         /**
-         * The binding's slot.
+         * The slot using it.
          */slot: UInt8) {
         self.pin = pin
         self.slot = slot
@@ -15689,31 +15656,31 @@ public func FfiConverterTypePinUse_lower(_ value: PinUse) -> RustBuffer {
 
 
 /**
- * The preset directory (`get_preset_directory`).
+ * The device's preset slots and startup settings.
  */
 public struct PresetDirectory {
     /**
-     * Bit per slot: the slot holds a preset.
+     * One bit per slot that holds a preset.
      */
     public var occupiedMask: UInt16
     /**
-     * `PRESET_STARTUP_*`: 0 load `default_slot`, 1 load the last active.
+     * What the device loads at power-up (`PRESET_STARTUP_*`).
      */
     public var startupMode: UInt8
     /**
-     * The slot loaded at boot in mode 0.
+     * The slot loaded at power-up in the "specified" startup mode.
      */
     public var defaultSlot: UInt8
     /**
-     * The slot last loaded or saved.
+     * The slot loaded most recently.
      */
     public var lastActive: UInt8
     /**
-     * `OUTPUT_CONFIG_MODE_*`: 0 stored independently, 1 with the preset.
+     * Whether a preset load also applies the output configuration.
      */
     public var outputConfigMode: UInt8
     /**
-     * `MASTER_VOLUME_MODE_*`: 0 stored independently, 1 with the preset.
+     * Whether a preset load also applies the master volume.
      */
     public var masterVolumeMode: UInt8
 
@@ -15721,22 +15688,22 @@ public struct PresetDirectory {
     // declare one manually.
     public init(
         /**
-         * Bit per slot: the slot holds a preset.
+         * One bit per slot that holds a preset.
          */occupiedMask: UInt16, 
         /**
-         * `PRESET_STARTUP_*`: 0 load `default_slot`, 1 load the last active.
+         * What the device loads at power-up (`PRESET_STARTUP_*`).
          */startupMode: UInt8, 
         /**
-         * The slot loaded at boot in mode 0.
+         * The slot loaded at power-up in the "specified" startup mode.
          */defaultSlot: UInt8, 
         /**
-         * The slot last loaded or saved.
+         * The slot loaded most recently.
          */lastActive: UInt8, 
         /**
-         * `OUTPUT_CONFIG_MODE_*`: 0 stored independently, 1 with the preset.
+         * Whether a preset load also applies the output configuration.
          */outputConfigMode: UInt8, 
         /**
-         * `MASTER_VOLUME_MODE_*`: 0 stored independently, 1 with the preset.
+         * Whether a preset load also applies the master volume.
          */masterVolumeMode: UInt8) {
         self.occupiedMask = occupiedMask
         self.startupMode = startupMode
@@ -15973,47 +15940,43 @@ public func FfiConverterTypeRawNotification_lower(_ value: RawNotification) -> R
 
 
 /**
- * The output rings' counters and watermarks (`fetch_ring_health`). The
- * underrun, refused and over-budget counts are cumulative; the rest clear on
- * `reset_buffer_stats`.
+ * How the host's output stream ring has been doing.
  */
 public struct RingHealth {
     /**
-     * How full the rings are kept, frames (Fill Target).
+     * Target fill in frames.
      */
     public var targetFrames: UInt16
     /**
-     * The same as a time, µs.
+     * Target fill in µs.
      */
     public var targetUs: UInt16
     /**
-     * Frames a stream input delivers per call; the fill swings by about this.
+     * Frames per batch.
      */
     public var batchFrames: UInt16
     /**
-     * Times the outputs ran dry while a source owed audio. A host that pauses
-     * its stream does not count.
+     * Underrun episodes.
      */
     public var underrunEpisodes: UInt32
     /**
-     * Audio blocks dropped because the rings had no room.
+     * Blocks the ring refused.
      */
     public var refusedBlocks: UInt32
     /**
-     * The emptiest a ring got just before a write, frames; none before the
-     * first write.
+     * Lowest fill seen, if any.
      */
     public var lowestFill: UInt32?
     /**
-     * Longest wait between input deliveries, µs.
+     * Longest gap between input blocks, µs.
      */
     public var worstInputGapUs: UInt32
     /**
-     * Longest gap between audio-carrying USB packets, µs.
+     * Longest gap between USB transfers, µs.
      */
     public var worstUsbGapUs: UInt32
     /**
-     * Background steps that overran their main-loop budget.
+     * Processing steps over budget.
      */
     public var overBudgetSteps: UInt32
 
@@ -16021,33 +15984,31 @@ public struct RingHealth {
     // declare one manually.
     public init(
         /**
-         * How full the rings are kept, frames (Fill Target).
+         * Target fill in frames.
          */targetFrames: UInt16, 
         /**
-         * The same as a time, µs.
+         * Target fill in µs.
          */targetUs: UInt16, 
         /**
-         * Frames a stream input delivers per call; the fill swings by about this.
+         * Frames per batch.
          */batchFrames: UInt16, 
         /**
-         * Times the outputs ran dry while a source owed audio. A host that pauses
-         * its stream does not count.
+         * Underrun episodes.
          */underrunEpisodes: UInt32, 
         /**
-         * Audio blocks dropped because the rings had no room.
+         * Blocks the ring refused.
          */refusedBlocks: UInt32, 
         /**
-         * The emptiest a ring got just before a write, frames; none before the
-         * first write.
+         * Lowest fill seen, if any.
          */lowestFill: UInt32?, 
         /**
-         * Longest wait between input deliveries, µs.
+         * Longest gap between input blocks, µs.
          */worstInputGapUs: UInt32, 
         /**
-         * Longest gap between audio-carrying USB packets, µs.
+         * Longest gap between USB transfers, µs.
          */worstUsbGapUs: UInt32, 
         /**
-         * Background steps that overran their main-loop budget.
+         * Processing steps over budget.
          */overBudgetSteps: UInt32) {
         self.targetFrames = targetFrames
         self.targetUs = targetUs
@@ -16162,7 +16123,7 @@ public func FfiConverterTypeRingHealth_lower(_ value: RingHealth) -> RustBuffer 
 
 
 /**
- * The analyser's capabilities (`rta_get_caps`).
+ * What the device's analyser can do.
  */
 public struct RtaCapsInfo {
     /**
@@ -16170,43 +16131,43 @@ public struct RtaCapsInfo {
      */
     public var supported: Bool
     /**
-     * Input channels it can tap.
+     * Input channels it can measure.
      */
     public var inputChannels: UInt8
     /**
-     * Output channels it can tap.
+     * Output channels it can measure.
      */
     public var outputChannels: UInt8
     /**
-     * Lowest FFT order.
+     * Smallest FFT order.
      */
     public var orderMin: UInt8
     /**
-     * Highest FFT order.
+     * Largest FFT order.
      */
     public var orderMax: UInt8
     /**
-     * Default FFT order.
+     * FFT order the device starts with.
      */
     public var orderDefault: UInt8
     /**
-     * Bands of the continuous bass bank, from band 0.
+     * Bands handled by the low-frequency filter bank.
      */
     public var bassBands: UInt8
     /**
-     * Bands in a frame.
+     * Total bands.
      */
     public var maxBands: UInt8
     /**
-     * Usable range of the FFT bands, dB.
+     * Dynamic range of the FFT bands in dB.
      */
     public var dynamicRangeDb: UInt8
     /**
-     * Usable range of the bass bands, dB.
+     * Dynamic range of the bass bands in dB.
      */
     public var bassDynamicRangeDb: UInt16
     /**
-     * Band centre frequencies, RTA_MAX_BANDS = 37 entries.
+     * Centre frequency of each band in Hz.
      */
     public var centres: [UInt16]
 
@@ -16217,34 +16178,34 @@ public struct RtaCapsInfo {
          * The firmware has an analyser.
          */supported: Bool, 
         /**
-         * Input channels it can tap.
+         * Input channels it can measure.
          */inputChannels: UInt8, 
         /**
-         * Output channels it can tap.
+         * Output channels it can measure.
          */outputChannels: UInt8, 
         /**
-         * Lowest FFT order.
+         * Smallest FFT order.
          */orderMin: UInt8, 
         /**
-         * Highest FFT order.
+         * Largest FFT order.
          */orderMax: UInt8, 
         /**
-         * Default FFT order.
+         * FFT order the device starts with.
          */orderDefault: UInt8, 
         /**
-         * Bands of the continuous bass bank, from band 0.
+         * Bands handled by the low-frequency filter bank.
          */bassBands: UInt8, 
         /**
-         * Bands in a frame.
+         * Total bands.
          */maxBands: UInt8, 
         /**
-         * Usable range of the FFT bands, dB.
+         * Dynamic range of the FFT bands in dB.
          */dynamicRangeDb: UInt8, 
         /**
-         * Usable range of the bass bands, dB.
+         * Dynamic range of the bass bands in dB.
          */bassDynamicRangeDb: UInt16, 
         /**
-         * Band centre frequencies, RTA_MAX_BANDS = 37 entries.
+         * Centre frequency of each band in Hz.
          */centres: [UInt16]) {
         self.supported = supported
         self.inputChannels = inputChannels
@@ -16373,27 +16334,27 @@ public func FfiConverterTypeRtaCapsInfo_lower(_ value: RtaCapsInfo) -> RustBuffe
 
 
 /**
- * One analysed channel's bands.
+ * One channel's band levels in an analyser frame.
  */
 public struct RtaChannelFrame {
     /**
-     * Channel within the tap.
+     * The channel these levels belong to.
      */
     public var channel: UInt8
     /**
-     * Bands that carry data.
+     * Valid entries in `avg_db` and `peak_db`.
      */
     public var nBands: UInt8
     /**
-     * No frame arrived for this channel.
+     * The channel carried no signal.
      */
     public var silent: Bool
     /**
-     * Average level per band, dBFS.
+     * Averaged level per band, dBFS.
      */
     public var avgDb: [Float]
     /**
-     * Peak level per band, dBFS.
+     * Peak-hold level per band, dBFS.
      */
     public var peakDb: [Float]
 
@@ -16401,19 +16362,19 @@ public struct RtaChannelFrame {
     // declare one manually.
     public init(
         /**
-         * Channel within the tap.
+         * The channel these levels belong to.
          */channel: UInt8, 
         /**
-         * Bands that carry data.
+         * Valid entries in `avg_db` and `peak_db`.
          */nBands: UInt8, 
         /**
-         * No frame arrived for this channel.
+         * The channel carried no signal.
          */silent: Bool, 
         /**
-         * Average level per band, dBFS.
+         * Averaged level per band, dBFS.
          */avgDb: [Float], 
         /**
-         * Peak level per band, dBFS.
+         * Peak-hold level per band, dBFS.
          */peakDb: [Float]) {
         self.channel = channel
         self.nBands = nBands
@@ -16500,30 +16461,27 @@ public func FfiConverterTypeRtaChannelFrame_lower(_ value: RtaChannelFrame) -> R
 
 
 /**
- * Who chose the analyser configuration the device holds
- * (`rta_get_ownership`). The last console to push one drives it, and every
- * other console follows.
+ * Who runs the analyser on a shared device.
  */
 public struct RtaOwnership {
     /**
-     * False: the device holds what this console asked for, and the fields
-     * below are 0. True: someone else's configuration.
+     * This client follows another one's configuration.
      */
     public var following: Bool
     /**
-     * The session that pushed it; 0 when the writer is unknown.
+     * Who set the configuration.
      */
     public var origin: UInt16
     /**
-     * The device's tap, `RTA_TAP_INPUT` or `RTA_TAP_OUTPUT`.
+     * Its tap.
      */
     public var tap: UInt8
     /**
-     * The device's channels.
+     * Its channel mask.
      */
     public var mask: UInt16
     /**
-     * The device's transform size.
+     * Its FFT order.
      */
     public var fftOrder: UInt8
 
@@ -16531,20 +16489,19 @@ public struct RtaOwnership {
     // declare one manually.
     public init(
         /**
-         * False: the device holds what this console asked for, and the fields
-         * below are 0. True: someone else's configuration.
+         * This client follows another one's configuration.
          */following: Bool, 
         /**
-         * The session that pushed it; 0 when the writer is unknown.
+         * Who set the configuration.
          */origin: UInt16, 
         /**
-         * The device's tap, `RTA_TAP_INPUT` or `RTA_TAP_OUTPUT`.
+         * Its tap.
          */tap: UInt8, 
         /**
-         * The device's channels.
+         * Its channel mask.
          */mask: UInt16, 
         /**
-         * The device's transform size.
+         * Its FFT order.
          */fftOrder: UInt8) {
         self.following = following
         self.origin = origin
@@ -16631,40 +16588,35 @@ public func FfiConverterTypeRtaOwnership_lower(_ value: RtaOwnership) -> RustBuf
 
 
 /**
- * What the analyser should measure (`rta_set_request`).
+ * What a view wants from the real-time analyser.
  */
 public struct RtaRequest {
     /**
-     * `RTA_TAP_INPUT` (0) / `RTA_TAP_OUTPUT` (1).
+     * Where to measure: `RTA_TAP_INPUT` or `RTA_TAP_OUTPUT`.
      */
     public var tap: UInt8
     /**
-     * Channel mask within the tap; 0 releases the analyser unless `watching`.
+     * Channels to measure, one bit each; 0 releases the analyser.
      */
     public var mask: UInt16
     /**
-     * Ask for the FFT bins as well as the bands; the device sends them for a
-     * single analysed channel.
+     * Also fetch the raw FFT bins of one channel.
      */
     public var wantsBins: Bool
     /**
-     * FFT order, within the caps' `order_min..=order_max`.
+     * FFT size as a power of two.
      */
     public var fftOrder: UInt8
     /**
-     * Averaging time, ms; 0 = none beyond the detector.
+     * Averaging time in ms.
      */
     public var avgMs: UInt16
     /**
-     * Peak decay, dB/s; 0 = peak hold off.
+     * Peak hold decay in dB per second.
      */
     public var peakDecayDbS: UInt8
     /**
-     * A view shows the analyser, also with no channel chosen
-     * (`isWatching`, SpectrumAnalyser.swift:827). With mask 0 it asks for
-     * nothing of its own, but while another console is followed the device's
-     * configuration keeps being polled and drawn. A mask other than 0 watches
-     * anyway.
+     * Show whatever another client is measuring instead of starting one.
      */
     public var watching: Bool
 
@@ -16672,30 +16624,25 @@ public struct RtaRequest {
     // declare one manually.
     public init(
         /**
-         * `RTA_TAP_INPUT` (0) / `RTA_TAP_OUTPUT` (1).
+         * Where to measure: `RTA_TAP_INPUT` or `RTA_TAP_OUTPUT`.
          */tap: UInt8, 
         /**
-         * Channel mask within the tap; 0 releases the analyser unless `watching`.
+         * Channels to measure, one bit each; 0 releases the analyser.
          */mask: UInt16, 
         /**
-         * Ask for the FFT bins as well as the bands; the device sends them for a
-         * single analysed channel.
+         * Also fetch the raw FFT bins of one channel.
          */wantsBins: Bool, 
         /**
-         * FFT order, within the caps' `order_min..=order_max`.
+         * FFT size as a power of two.
          */fftOrder: UInt8, 
         /**
-         * Averaging time, ms; 0 = none beyond the detector.
+         * Averaging time in ms.
          */avgMs: UInt16, 
         /**
-         * Peak decay, dB/s; 0 = peak hold off.
+         * Peak hold decay in dB per second.
          */peakDecayDbS: UInt8, 
         /**
-         * A view shows the analyser, also with no channel chosen
-         * (`isWatching`, SpectrumAnalyser.swift:827). With mask 0 it asks for
-         * nothing of its own, but while another console is followed the device's
-         * configuration keeps being polled and drawn. A mask other than 0 watches
-         * anyway.
+         * Show whatever another client is measuring instead of starting one.
          */watching: Bool = false) {
         self.tap = tap
         self.mask = mask
@@ -16796,50 +16743,47 @@ public func FfiConverterTypeRtaRequest_lower(_ value: RtaRequest) -> RustBuffer 
 
 
 /**
- * The analyser's latest frames and status (`rta_get_snapshot`).
+ * Everything the analyser view draws, as of the last poll.
  */
 public struct RtaSnapshot {
     /**
-     * Changes when something drawn changed (`rta_get_snapshot`).
+     * Bumped whenever the drawn levels change.
      */
     public var version: UInt32
     /**
-     * Changes when the status line changed.
+     * Bumped whenever the status fields change.
      */
     public var telemetryVersion: UInt32
     /**
-     * `RTA_TAP_INPUT` (0) / `RTA_TAP_OUTPUT` (1).
+     * The tap being measured.
      */
     public var tap: UInt8
     /**
-     * Channels analysed.
+     * Valid entries in `frames`.
      */
     public var count: UInt8
     /**
-     * RTA_MAX_CHANNELS = 16 entries; the first `count` are the analysed
-     * channels (packed, ascending channel), the rest are defaults.
+     * Levels per measured channel.
      */
     public var frames: [RtaChannelFrame]
     /**
-     * Bands that carry a level (`rta::populated_bands`): bit b = band b
-     * (RTA_MAX_BANDS = 37); the bass bank always, an FFT band only when a bin
-     * centre falls inside its edges, none below `first_band`.
+     * One bit per band that has data at this rate and FFT size.
      */
     public var populated: UInt64
     /**
-     * Valid entries of `bins_db`.
+     * Valid entries in `bins_db`.
      */
     public var binsCount: UInt16
     /**
-     * Channel the bins belong to.
+     * The channel the bins belong to.
      */
     public var binsChannel: UInt8
     /**
-     * Sample rate the bins were computed at, Hz.
+     * Sample rate the bins were taken at, in Hz.
      */
     public var binsSampleRate: UInt32
     /**
-     * First `bins_count` of RTA_MAX_BINS = 512 entries are valid.
+     * Raw FFT bins in dBFS.
      */
     public var binsDb: [Float]
     /**
@@ -16847,47 +16791,47 @@ public struct RtaSnapshot {
      */
     public var running: Bool
     /**
-     * Channels the device reports live.
+     * Channels the device is measuring.
      */
     public var liveCount: UInt8
     /**
-     * Bit per channel of the tap: live on the device.
+     * Mask of the channels the device is measuring.
      */
     public var liveMask: UInt16
     /**
-     * Transforms per second.
+     * Analyser frames per second.
      */
     public var framesPerS: UInt16
     /**
-     * Main-loop transform time, µs per second.
+     * Processor time spent per second, in µs.
      */
     public var busyUsPerS: UInt16
     /**
-     * Wall time of the last complete transform, µs.
+     * Time of the last frame, in µs.
      */
     public var lastFrameUs: UInt16
     /**
-     * Bass bank time on both cores, µs per second, saturating.
+     * Processor time the bass bank spends per second, in µs.
      */
     public var bassBusyUsPerS: UInt16
     /**
-     * Current sample rate, Hz.
+     * Device sample rate in Hz.
      */
     public var sampleRate: UInt32
     /**
-     * First band this FFT resolves; 0xFF = unknown.
+     * First band with data; 0xFF when unknown.
      */
     public var firstBand: UInt8
     /**
-     * FFT order in force.
+     * FFT order in use.
      */
     public var fftOrder: UInt8
     /**
-     * The device refused the last requested configuration.
+     * The device refused the requested configuration.
      */
     public var configRejected: Bool
     /**
-     * How long one channel waits between frames, s.
+     * How often the view should poll, in seconds.
      */
     public var refreshIntervalS: Float
 
@@ -16895,73 +16839,70 @@ public struct RtaSnapshot {
     // declare one manually.
     public init(
         /**
-         * Changes when something drawn changed (`rta_get_snapshot`).
+         * Bumped whenever the drawn levels change.
          */version: UInt32, 
         /**
-         * Changes when the status line changed.
+         * Bumped whenever the status fields change.
          */telemetryVersion: UInt32, 
         /**
-         * `RTA_TAP_INPUT` (0) / `RTA_TAP_OUTPUT` (1).
+         * The tap being measured.
          */tap: UInt8, 
         /**
-         * Channels analysed.
+         * Valid entries in `frames`.
          */count: UInt8, 
         /**
-         * RTA_MAX_CHANNELS = 16 entries; the first `count` are the analysed
-         * channels (packed, ascending channel), the rest are defaults.
+         * Levels per measured channel.
          */frames: [RtaChannelFrame], 
         /**
-         * Bands that carry a level (`rta::populated_bands`): bit b = band b
-         * (RTA_MAX_BANDS = 37); the bass bank always, an FFT band only when a bin
-         * centre falls inside its edges, none below `first_band`.
+         * One bit per band that has data at this rate and FFT size.
          */populated: UInt64, 
         /**
-         * Valid entries of `bins_db`.
+         * Valid entries in `bins_db`.
          */binsCount: UInt16, 
         /**
-         * Channel the bins belong to.
+         * The channel the bins belong to.
          */binsChannel: UInt8, 
         /**
-         * Sample rate the bins were computed at, Hz.
+         * Sample rate the bins were taken at, in Hz.
          */binsSampleRate: UInt32, 
         /**
-         * First `bins_count` of RTA_MAX_BINS = 512 entries are valid.
+         * Raw FFT bins in dBFS.
          */binsDb: [Float], 
         /**
          * The analyser is running on the device.
          */running: Bool, 
         /**
-         * Channels the device reports live.
+         * Channels the device is measuring.
          */liveCount: UInt8, 
         /**
-         * Bit per channel of the tap: live on the device.
+         * Mask of the channels the device is measuring.
          */liveMask: UInt16, 
         /**
-         * Transforms per second.
+         * Analyser frames per second.
          */framesPerS: UInt16, 
         /**
-         * Main-loop transform time, µs per second.
+         * Processor time spent per second, in µs.
          */busyUsPerS: UInt16, 
         /**
-         * Wall time of the last complete transform, µs.
+         * Time of the last frame, in µs.
          */lastFrameUs: UInt16, 
         /**
-         * Bass bank time on both cores, µs per second, saturating.
+         * Processor time the bass bank spends per second, in µs.
          */bassBusyUsPerS: UInt16, 
         /**
-         * Current sample rate, Hz.
+         * Device sample rate in Hz.
          */sampleRate: UInt32, 
         /**
-         * First band this FFT resolves; 0xFF = unknown.
+         * First band with data; 0xFF when unknown.
          */firstBand: UInt8, 
         /**
-         * FFT order in force.
+         * FFT order in use.
          */fftOrder: UInt8, 
         /**
-         * The device refused the last requested configuration.
+         * The device refused the requested configuration.
          */configRejected: Bool, 
         /**
-         * How long one channel waits between frames, s.
+         * How often the view should poll, in seconds.
          */refreshIntervalS: Float) {
         self.version = version
         self.telemetryVersion = telemetryVersion
@@ -17167,31 +17108,31 @@ public func FfiConverterTypeRtaSnapshot_lower(_ value: RtaSnapshot) -> RustBuffe
 
 
 /**
- * The generator's capabilities (`siggen_fetch_caps`).
+ * What the device's signal generator can do.
  */
 public struct SiggenCaps {
     /**
-     * The firmware has a generator.
+     * The firmware has a signal generator.
      */
     public var supported: Bool
     /**
-     * Signal types it reports.
+     * Signal types the device reports.
      */
     public var typeCount: UInt8
     /**
-     * Output channels it can drive.
+     * Output channels it can play on.
      */
     public var outputChannels: UInt8
     /**
-     * Most tones of a multitone signal.
+     * Most tones in a multitone signal.
      */
     public var multitoneMax: UInt8
     /**
-     * Bit per channel: valid in `SiggenConfig.channel_mask`.
+     * One bit per valid type id.
      */
     public var validMask: UInt16
     /**
-     * SIGGEN_TYPE_COUNT = 15 entries; first `type_count` valid.
+     * The types.
      */
     public var types: [SiggenTypeInfo]
 
@@ -17199,22 +17140,22 @@ public struct SiggenCaps {
     // declare one manually.
     public init(
         /**
-         * The firmware has a generator.
+         * The firmware has a signal generator.
          */supported: Bool, 
         /**
-         * Signal types it reports.
+         * Signal types the device reports.
          */typeCount: UInt8, 
         /**
-         * Output channels it can drive.
+         * Output channels it can play on.
          */outputChannels: UInt8, 
         /**
-         * Most tones of a multitone signal.
+         * Most tones in a multitone signal.
          */multitoneMax: UInt8, 
         /**
-         * Bit per channel: valid in `SiggenConfig.channel_mask`.
+         * One bit per valid type id.
          */validMask: UInt16, 
         /**
-         * SIGGEN_TYPE_COUNT = 15 entries; first `type_count` valid.
+         * The types.
          */types: [SiggenTypeInfo]) {
         self.supported = supported
         self.typeCount = typeCount
@@ -17308,43 +17249,43 @@ public func FfiConverterTypeSiggenCaps_lower(_ value: SiggenCaps) -> RustBuffer 
 
 
 /**
- * A signal generator configuration (`siggen_set_config`).
+ * A test signal to play.
  */
 public struct SiggenConfig {
     /**
-     * `SIGGEN_TYPE_*`.
+     * Signal type id.
      */
     public var signalType: UInt8
     /**
-     * Bit per output channel: the signal plays there.
+     * Channels to play on, one bit each.
      */
     public var channelMask: UInt16
     /**
-     * The subset of `channel_mask` with inverted polarity.
+     * Channels played inverted, one bit each.
      */
     public var invertMask: UInt16
     /**
-     * `SIGGEN_FLAG_*`.
+     * `SIGGEN_FLAG_*` bits.
      */
     public var flags: UInt8
     /**
-     * Peak level, dBFS, -120..0.
+     * Level in dBFS.
      */
     public var levelDb: Float
     /**
-     * Duration, ms.
+     * Length of one burst in ms (0: continuous).
      */
     public var durationMs: UInt32
     /**
-     * Repeat count.
+     * Number of bursts.
      */
     public var `repeat`: UInt16
     /**
-     * Gap between repeats, ms.
+     * Silence between bursts in ms.
      */
     public var gapMs: UInt16
     /**
-     * Type-specific parameters, exactly 4.
+     * The type's own parameters, as its `SiggenTypeInfo` describes them.
      */
     public var p: [Float]
 
@@ -17352,31 +17293,31 @@ public struct SiggenConfig {
     // declare one manually.
     public init(
         /**
-         * `SIGGEN_TYPE_*`.
+         * Signal type id.
          */signalType: UInt8, 
         /**
-         * Bit per output channel: the signal plays there.
+         * Channels to play on, one bit each.
          */channelMask: UInt16, 
         /**
-         * The subset of `channel_mask` with inverted polarity.
+         * Channels played inverted, one bit each.
          */invertMask: UInt16, 
         /**
-         * `SIGGEN_FLAG_*`.
+         * `SIGGEN_FLAG_*` bits.
          */flags: UInt8, 
         /**
-         * Peak level, dBFS, -120..0.
+         * Level in dBFS.
          */levelDb: Float, 
         /**
-         * Duration, ms.
+         * Length of one burst in ms (0: continuous).
          */durationMs: UInt32, 
         /**
-         * Repeat count.
+         * Number of bursts.
          */`repeat`: UInt16, 
         /**
-         * Gap between repeats, ms.
+         * Silence between bursts in ms.
          */gapMs: UInt16, 
         /**
-         * Type-specific parameters, exactly 4.
+         * The type's own parameters, as its `SiggenTypeInfo` describes them.
          */p: [Float]) {
         self.signalType = signalType
         self.channelMask = channelMask
@@ -17491,19 +17432,19 @@ public func FfiConverterTypeSiggenConfig_lower(_ value: SiggenConfig) -> RustBuf
 
 
 /**
- * One parameter of a signal type.
+ * One parameter slot of a signal type.
  */
 public struct SiggenParam {
     /**
-     * `SIGGEN_PARAM_*`: what the value means (0 = unused).
+     * What the value means (frequency, ratio, ...): firmware code.
      */
     public var semantic: UInt8
     /**
-     * Lowest value.
+     * Smallest value.
      */
     public var min: Float
     /**
-     * Highest value.
+     * Largest value.
      */
     public var max: Float
     /**
@@ -17515,13 +17456,13 @@ public struct SiggenParam {
     // declare one manually.
     public init(
         /**
-         * `SIGGEN_PARAM_*`: what the value means (0 = unused).
+         * What the value means (frequency, ratio, ...): firmware code.
          */semantic: UInt8, 
         /**
-         * Lowest value.
+         * Smallest value.
          */min: Float, 
         /**
-         * Highest value.
+         * Largest value.
          */max: Float, 
         /**
          * Default value.
@@ -17604,35 +17545,35 @@ public func FfiConverterTypeSiggenParam_lower(_ value: SiggenParam) -> RustBuffe
 
 
 /**
- * What the generator is doing (`siggen_get_status`).
+ * What the signal generator is doing.
  */
 public struct SiggenStatus {
     /**
-     * `SIGGEN_STATE_*`: idle, fade in, run, gap, fade out.
+     * Generator state code.
      */
     public var state: UInt8
     /**
-     * The active or last `SIGGEN_TYPE_*`.
+     * Signal type playing.
      */
     public var signalType: UInt8
     /**
-     * The walked output; 0xFF when not walking.
+     * Channel playing (walk mode).
      */
     public var activeChannel: UInt8
     /**
-     * Time since start, ms.
+     * Time since start in ms.
      */
     public var elapsedMs: UInt32
     /**
-     * Completed sweeps or pattern periods.
+     * Bursts completed.
      */
     public var cyclesDone: UInt16
     /**
-     * `SIGGEN_STOP_*` of the last stop.
+     * Why it last stopped.
      */
     public var stopReason: UInt8
     /**
-     * Instantaneous sweep frequency, Hz; 0 when not sweeping.
+     * Current frequency in Hz, for sweeps and tones.
      */
     public var currentFreq: Float
 
@@ -17640,25 +17581,25 @@ public struct SiggenStatus {
     // declare one manually.
     public init(
         /**
-         * `SIGGEN_STATE_*`: idle, fade in, run, gap, fade out.
+         * Generator state code.
          */state: UInt8, 
         /**
-         * The active or last `SIGGEN_TYPE_*`.
+         * Signal type playing.
          */signalType: UInt8, 
         /**
-         * The walked output; 0xFF when not walking.
+         * Channel playing (walk mode).
          */activeChannel: UInt8, 
         /**
-         * Time since start, ms.
+         * Time since start in ms.
          */elapsedMs: UInt32, 
         /**
-         * Completed sweeps or pattern periods.
+         * Bursts completed.
          */cyclesDone: UInt16, 
         /**
-         * `SIGGEN_STOP_*` of the last stop.
+         * Why it last stopped.
          */stopReason: UInt8, 
         /**
-         * Instantaneous sweep frequency, Hz; 0 when not sweeping.
+         * Current frequency in Hz, for sweeps and tones.
          */currentFreq: Float) {
         self.state = state
         self.signalType = signalType
@@ -17763,19 +17704,19 @@ public func FfiConverterTypeSiggenStatus_lower(_ value: SiggenStatus) -> RustBuf
  */
 public struct SiggenTypeInfo {
     /**
-     * `SIGGEN_TYPE_*`; 0xFF when its descriptor could not be read.
+     * Type id.
      */
     public var id: UInt8
     /**
-     * Display name.
+     * Display name from the device.
      */
     public var name: String
     /**
-     * `SIGGEN_TIMING_*`: continuous, sweep or pattern.
+     * Timing class (continuous, burst, ...).
      */
     public var timing: UInt8
     /**
-     * Exactly 4.
+     * Its parameter slots.
      */
     public var params: [SiggenParam]
 
@@ -17783,16 +17724,16 @@ public struct SiggenTypeInfo {
     // declare one manually.
     public init(
         /**
-         * `SIGGEN_TYPE_*`; 0xFF when its descriptor could not be read.
+         * Type id.
          */id: UInt8, 
         /**
-         * Display name.
+         * Display name from the device.
          */name: String, 
         /**
-         * `SIGGEN_TIMING_*`: continuous, sweep or pattern.
+         * Timing class (continuous, burst, ...).
          */timing: UInt8, 
         /**
-         * Exactly 4.
+         * Its parameter slots.
          */params: [SiggenParam]) {
         self.id = id
         self.name = name
@@ -17872,31 +17813,31 @@ public func FfiConverterTypeSiggenTypeInfo_lower(_ value: SiggenTypeInfo) -> Rus
 
 
 /**
- * One S/PDIF output's buffers.
+ * Fill of one S/PDIF output's buffers.
  */
 public struct SpdifBufferStats {
     /**
-     * Free ring space, 48-frame buckets, 0..16.
+     * Buffers free.
      */
     public var free: UInt8
     /**
-     * Ring fill, 48-frame buckets, 0..16.
+     * Buffers filled and waiting.
      */
     public var prepared: UInt8
     /**
-     * DMA buffers in flight, 0..1.
+     * Buffers being played.
      */
     public var playing: UInt8
     /**
-     * Consumer pipeline fill, %.
+     * Current fill in percent.
      */
     public var fillPct: UInt8
     /**
-     * Lowest fill since the last reset, %.
+     * Lowest fill since the last read, percent.
      */
     public var minPct: UInt8
     /**
-     * Highest fill since the last reset, %.
+     * Highest fill since the last read, percent.
      */
     public var maxPct: UInt8
 
@@ -17904,22 +17845,22 @@ public struct SpdifBufferStats {
     // declare one manually.
     public init(
         /**
-         * Free ring space, 48-frame buckets, 0..16.
+         * Buffers free.
          */free: UInt8, 
         /**
-         * Ring fill, 48-frame buckets, 0..16.
+         * Buffers filled and waiting.
          */prepared: UInt8, 
         /**
-         * DMA buffers in flight, 0..1.
+         * Buffers being played.
          */playing: UInt8, 
         /**
-         * Consumer pipeline fill, %.
+         * Current fill in percent.
          */fillPct: UInt8, 
         /**
-         * Lowest fill since the last reset, %.
+         * Lowest fill since the last read, percent.
          */minPct: UInt8, 
         /**
-         * Highest fill since the last reset, %.
+         * Highest fill since the last read, percent.
          */maxPct: UInt8) {
         self.free = free
         self.prepared = prepared
@@ -18013,47 +17954,47 @@ public func FfiConverterTypeSpdifBufferStats_lower(_ value: SpdifBufferStats) ->
 
 
 /**
- * The S/PDIF receiver (`fetch_spdif_rx_status`).
+ * State of the S/PDIF receiver.
  */
 public struct SpdifRxStatus {
     /**
-     * 0 inactive, 1 acquiring, 2 locked, 3 relocking.
+     * Receiver state code.
      */
     public var state: UInt8
     /**
-     * The input source, raw `InputSource`.
+     * Input the receiver listens to.
      */
     public var inputSource: UInt8
     /**
-     * Times it locked.
+     * Times locked since boot.
      */
     public var lockCount: UInt8
     /**
-     * Times it lost lock.
+     * Times lost since boot.
      */
     public var lossCount: UInt8
     /**
-     * Sample rate when locked, Hz.
+     * Decoded sample rate in Hz.
      */
     public var sampleRate: UInt32
     /**
-     * Parity errors counted.
+     * Parity errors since boot.
      */
     public var parityErrors: UInt32
     /**
-     * Receive FIFO fill, %.
+     * Receive FIFO fill in percent.
      */
     public var fifoFillPct: UInt16
     /**
-     * The receiver library's debug state.
+     * State of the receiver library.
      */
     public var libState: UInt8
     /**
-     * Stable callbacks, 4-bit counter.
+     * Consecutive stable callbacks.
      */
     public var stableCallbacks: UInt8
     /**
-     * Lost callbacks, 4-bit counter.
+     * Callbacks lost.
      */
     public var lostCallbacks: UInt8
 
@@ -18061,34 +18002,34 @@ public struct SpdifRxStatus {
     // declare one manually.
     public init(
         /**
-         * 0 inactive, 1 acquiring, 2 locked, 3 relocking.
+         * Receiver state code.
          */state: UInt8, 
         /**
-         * The input source, raw `InputSource`.
+         * Input the receiver listens to.
          */inputSource: UInt8, 
         /**
-         * Times it locked.
+         * Times locked since boot.
          */lockCount: UInt8, 
         /**
-         * Times it lost lock.
+         * Times lost since boot.
          */lossCount: UInt8, 
         /**
-         * Sample rate when locked, Hz.
+         * Decoded sample rate in Hz.
          */sampleRate: UInt32, 
         /**
-         * Parity errors counted.
+         * Parity errors since boot.
          */parityErrors: UInt32, 
         /**
-         * Receive FIFO fill, %.
+         * Receive FIFO fill in percent.
          */fifoFillPct: UInt16, 
         /**
-         * The receiver library's debug state.
+         * State of the receiver library.
          */libState: UInt8, 
         /**
-         * Stable callbacks, 4-bit counter.
+         * Consecutive stable callbacks.
          */stableCallbacks: UInt8, 
         /**
-         * Lost callbacks, 4-bit counter.
+         * Callbacks lost.
          */lostCallbacks: UInt8) {
         self.state = state
         self.inputSource = inputSource
@@ -18210,16 +18151,15 @@ public func FfiConverterTypeSpdifRxStatus_lower(_ value: SpdifRxStatus) -> RustB
 
 
 /**
- * One sample of the Stats window's fast poll (`fetch_stats_tick`).
+ * One statistics poll.
  */
 public struct StatsTick {
     /**
-     * The buffer fill levels and their watermarks.
+     * Buffer statistics.
      */
     public var buffers: BufferStats
     /**
-     * The live outputs' fill, from the same read. `None` when the fill target
-     * could not be read: keep the last fills.
+     * Per-output fills, when known.
      */
     public var fills: [OutputFill]?
 
@@ -18227,11 +18167,10 @@ public struct StatsTick {
     // declare one manually.
     public init(
         /**
-         * The buffer fill levels and their watermarks.
+         * Buffer statistics.
          */buffers: BufferStats, 
         /**
-         * The live outputs' fill, from the same read. `None` when the fill target
-         * could not be read: keep the last fills.
+         * Per-output fills, when known.
          */fills: [OutputFill]?) {
         self.buffers = buffers
         self.fills = fills
@@ -18297,42 +18236,39 @@ public func FfiConverterTypeStatsTick_lower(_ value: StatsTick) -> RustBuffer {
 
 
 /**
- * `types.rs` `SystemStatus` (REQ_GET_STATUS wValue 9), polled every 60 ms.
+ * Levels and load, polled for the meters.
  */
 public struct SystemStatus {
     /**
-     * Peak per wire channel, 0..1 (MAX_CHANNELS = 17 entries).
+     * Peak level per channel, linear full scale, inputs first.
      */
     public var peaks: [Float]
     /**
-     * Core 0 load, %.
+     * Load of core 0 in percent.
      */
     public var cpu0: UInt8
     /**
-     * Core 1 load, %.
+     * Load of core 1 in percent.
      */
     public var cpu1: UInt8
     /**
-     * Sticky clip flags, bit per wire channel.
+     * One bit per channel that clipped since the last poll.
      */
     public var clipFlags: UInt32
     /**
-     * Input channels carrying the active source; 0 from firmware that does
-     * not report it.
+     * Input channels the host is currently streaming.
      */
     public var activeInputChannels: UInt8
     /**
-     * Wire channels the device has.
+     * Number of entries in `peaks` that belong to the device.
      */
     public var numChannels: UInt8
     /**
-     * -- WP C15 -- Not a fresh reading (DSPi Link only): no recent poll frame,
-     * so all zero, which is not silence; or a repeat of the last slow read.
-     * Grey the meters rather than show them as live.
+     * True when these values are a held copy because the last poll failed.
      */
     public var stale: Bool
     /**
-     * How old the reading is, ms; 0 when `stale` with nothing read at all.
+     * Age of the values in milliseconds.
      */
     public var ageMs: UInt32
 
@@ -18340,31 +18276,28 @@ public struct SystemStatus {
     // declare one manually.
     public init(
         /**
-         * Peak per wire channel, 0..1 (MAX_CHANNELS = 17 entries).
+         * Peak level per channel, linear full scale, inputs first.
          */peaks: [Float], 
         /**
-         * Core 0 load, %.
+         * Load of core 0 in percent.
          */cpu0: UInt8, 
         /**
-         * Core 1 load, %.
+         * Load of core 1 in percent.
          */cpu1: UInt8, 
         /**
-         * Sticky clip flags, bit per wire channel.
+         * One bit per channel that clipped since the last poll.
          */clipFlags: UInt32, 
         /**
-         * Input channels carrying the active source; 0 from firmware that does
-         * not report it.
+         * Input channels the host is currently streaming.
          */activeInputChannels: UInt8, 
         /**
-         * Wire channels the device has.
+         * Number of entries in `peaks` that belong to the device.
          */numChannels: UInt8, 
         /**
-         * -- WP C15 -- Not a fresh reading (DSPi Link only): no recent poll frame,
-         * so all zero, which is not silence; or a repeat of the last slow read.
-         * Grey the meters rather than show them as live.
+         * True when these values are a held copy because the last poll failed.
          */stale: Bool, 
         /**
-         * How old the reading is, ms; 0 when `stale` with nothing read at all.
+         * Age of the values in milliseconds.
          */ageMs: UInt32) {
         self.peaks = peaks
         self.cpu0 = cpu0
@@ -18472,27 +18405,27 @@ public func FfiConverterTypeSystemStatus_lower(_ value: SystemStatus) -> RustBuf
 
 
 /**
- * The UART control interface's configuration (`set_uart`).
+ * Settings of the UART control interface.
  */
 public struct UartConfig {
     /**
-     * The UART control interface is enabled.
+     * The interface is switched on.
      */
     public var enabled: Bool
     /**
-     * TX GPIO (`pin % 4 == 0`).
+     * The transmit GPIO.
      */
     public var txPin: UInt8
     /**
-     * RX GPIO (`pin % 4 == 1`), same UART instance.
+     * The receive GPIO.
      */
     public var rxPin: UInt8
     /**
-     * Push notification frames over the UART.
+     * The device sends unsolicited change notifications over the UART.
      */
     public var notify: Bool
     /**
-     * Baud rate, bits per second.
+     * Line speed in baud.
      */
     public var baud: UInt32
 
@@ -18500,19 +18433,19 @@ public struct UartConfig {
     // declare one manually.
     public init(
         /**
-         * The UART control interface is enabled.
+         * The interface is switched on.
          */enabled: Bool, 
         /**
-         * TX GPIO (`pin % 4 == 0`).
+         * The transmit GPIO.
          */txPin: UInt8, 
         /**
-         * RX GPIO (`pin % 4 == 1`), same UART instance.
+         * The receive GPIO.
          */rxPin: UInt8, 
         /**
-         * Push notification frames over the UART.
+         * The device sends unsolicited change notifications over the UART.
          */notify: Bool, 
         /**
-         * Baud rate, bits per second.
+         * Line speed in baud.
          */baud: UInt32) {
         self.enabled = enabled
         self.txPin = txPin
@@ -18599,38 +18532,35 @@ public func FfiConverterTypeUartConfig_lower(_ value: UartConfig) -> RustBuffer 
 
 
 /**
- * What a `.uf2` file is (WP C11): checked before anything is flashed.
+ * What a UF2 firmware file holds.
  */
 public struct Uf2Info {
     /**
-     * Whether the file is a well-formed UF2 for an RP2040 or RP2350.
+     * The file is a usable image.
      */
     public var valid: Bool
     /**
-     * Why not, when `valid` is false.
+     * What is wrong with it, empty when valid.
      */
     public var problem: String
     /**
-     * UF2 family id (`0xE48BFF56` RP2040, `0xE48BFF59` RP2350 ARM-S, ...).
+     * UF2 family id.
      */
     public var familyId: UInt32
     /**
-     * 0 RP2040, 1 RP2350, -1 unknown.
+     * Platform the image is for (-1 when no known family matches).
      */
     public var platform: Int8
     /**
-     * UF2 blocks in the file.
+     * UF2 blocks.
      */
     public var numBlocks: UInt32
     /**
-     * Bytes of flash the image covers.
+     * Payload bytes.
      */
     public var payloadBytes: UInt32
     /**
-     * The DSPi firmware version found in the image (`1.1.6`), "" if none.
-     * It is the image's program-version string, so an untagged build
-     * carries a `git describe` suffix (`1.1.6-beta3-16-g557bce7`); compare
-     * versions on the leading `major.minor.patch[-betaN]` only.
+     * Version string found in the image.
      */
     public var firmwareVersion: String
 
@@ -18638,28 +18568,25 @@ public struct Uf2Info {
     // declare one manually.
     public init(
         /**
-         * Whether the file is a well-formed UF2 for an RP2040 or RP2350.
+         * The file is a usable image.
          */valid: Bool, 
         /**
-         * Why not, when `valid` is false.
+         * What is wrong with it, empty when valid.
          */problem: String, 
         /**
-         * UF2 family id (`0xE48BFF56` RP2040, `0xE48BFF59` RP2350 ARM-S, ...).
+         * UF2 family id.
          */familyId: UInt32, 
         /**
-         * 0 RP2040, 1 RP2350, -1 unknown.
+         * Platform the image is for (-1 when no known family matches).
          */platform: Int8, 
         /**
-         * UF2 blocks in the file.
+         * UF2 blocks.
          */numBlocks: UInt32, 
         /**
-         * Bytes of flash the image covers.
+         * Payload bytes.
          */payloadBytes: UInt32, 
         /**
-         * The DSPi firmware version found in the image (`1.1.6`), "" if none.
-         * It is the image's program-version string, so an untagged build
-         * carries a `git describe` suffix (`1.1.6-beta3-16-g557bce7`); compare
-         * versions on the leading `major.minor.patch[-betaN]` only.
+         * Version string found in the image.
          */firmwareVersion: String) {
         self.valid = valid
         self.problem = problem
@@ -18760,35 +18687,35 @@ public func FfiConverterTypeUf2Info_lower(_ value: Uf2Info) -> RustBuffer {
 
 
 /**
- * The stereo upmixer's live telemetry (`fetch_upmix_status`).
+ * Live state of the stereo-to-surround upmixer.
  */
 public struct UpmixStatus {
     /**
-     * The upmixer is processing audio now.
+     * The upmixer is processing audio.
      */
     public var active: Bool
     /**
-     * 0 active, 1 disabled, 2 input not stereo, 3 sample rate above 48 kHz.
+     * Why it is parked when it is not active (the firmware's reason code).
      */
     public var parkedReason: UInt8
     /**
-     * Smoothed L/R correlation, -1..1.
+     * Measured left/right correlation.
      */
     public var correlation: Float
     /**
-     * Smoothed L/R balance, 0..1.
+     * Measured left/right balance.
      */
     public var balance: Float
     /**
-     * Smoothed centre extraction gain, linear 0..1.
+     * Current gain of the derived centre channel.
      */
     public var centerGain: Float
     /**
-     * Left surround steering gain, linear 0..1.
+     * Current gain of the left surround channel.
      */
     public var lsGain: Float
     /**
-     * Right surround steering gain, linear 0..1.
+     * Current gain of the right surround channel.
      */
     public var rsGain: Float
 
@@ -18796,25 +18723,25 @@ public struct UpmixStatus {
     // declare one manually.
     public init(
         /**
-         * The upmixer is processing audio now.
+         * The upmixer is processing audio.
          */active: Bool, 
         /**
-         * 0 active, 1 disabled, 2 input not stereo, 3 sample rate above 48 kHz.
+         * Why it is parked when it is not active (the firmware's reason code).
          */parkedReason: UInt8, 
         /**
-         * Smoothed L/R correlation, -1..1.
+         * Measured left/right correlation.
          */correlation: Float, 
         /**
-         * Smoothed L/R balance, 0..1.
+         * Measured left/right balance.
          */balance: Float, 
         /**
-         * Smoothed centre extraction gain, linear 0..1.
+         * Current gain of the derived centre channel.
          */centerGain: Float, 
         /**
-         * Left surround steering gain, linear 0..1.
+         * Current gain of the left surround channel.
          */lsGain: Float, 
         /**
-         * Right surround steering gain, linear 0..1.
+         * Current gain of the right surround channel.
          */rsGain: Float) {
         self.active = active
         self.parkedReason = parkedReason
@@ -19763,22 +19690,21 @@ extension DspiError: Foundation.LocalizedError {
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
- * How an output's fill reads ([`OutputFill::band`]). The Console shows these
- * green, yellow and red.
+ * How healthy an output fill is.
  */
 
 public enum FillBand {
     
     /**
-     * Within the expected swing.
+     * Comfortable.
      */
     case good
     /**
-     * Outside the expected swing.
+     * Getting close to an edge.
      */
     case warn
     /**
-     * Empty, or too full to take a write.
+     * At or past an edge.
      */
     case bad
 }
@@ -20292,8 +20218,7 @@ extension HostTransportKind: Equatable, Hashable {}
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
- * Where a DSPi Link session stands, for the UI's wording
- * ([`LinkStatus::phase`]).
+ * Where a Link session is in its life, for the status line.
  */
 
 public enum LinkPhase {
@@ -20303,20 +20228,15 @@ public enum LinkPhase {
      */
     case idle
     /**
-     * The hub wants a PIN (never paired, or the token was refused or revoked:
-     * see `token_refused`): ask for it and call `link_pair`. Retries stop here.
+     * The hub wants a PIN.
      */
     case needsPairing
     /**
-     * Connected and authenticated, but the hub has no DSPi to offer: the
-     * board is off, or its control interface is not enabled. Not a failure
-     * of the hub or the pairing ("Connected to hub, no DSPi found"). The
-     * core binds the device by itself when it comes back.
+     * The hub has no device.
      */
     case noDevice
     /**
-     * A DSPi is available and none is bound: `link_devices`, then
-     * `link_select_device`.
+     * The hub has several devices: pick one.
      */
     case chooseDevice
     /**
@@ -20324,22 +20244,15 @@ public enum LinkPhase {
      */
     case bound
     /**
-     * The session was lost, or the bound device is being re-attached; the
-     * core retries with backoff. Entered at once. `close_reason` says why,
-     * `reconnect_attempt` and `reconnect_in_ms` how it goes; `link_close`
-     * stops it. The mirror stays last known; calls that need the device fail
-     * at once with `Disconnected`, and nothing is queued.
+     * Waiting to reconnect.
      */
     case reconnecting
     /**
-     * Ended and not retried: see `close_code` and `close_reason`. A protocol
-     * error is final, also when it comes from a redial (a hub of another
-     * protocol version answers).
+     * Closed by the hub or the client.
      */
     case closed
     /**
-     * The hub refuses this client (a 4xx handshake). Retrying will not help
-     * until something changes on the hub: see `close_reason`.
+     * Refused by the hub.
      */
     case refused
 }
@@ -22010,10 +21923,8 @@ public func bootloaderDrives() -> [BootloaderDrive]  {
 })
 }
 /**
- * 201-point magnitude curve, dB, on the [`curve_freq`] grid.
- *
- * Each band is designed once, then evaluated at every point. Same rules
- * as [`compute_response`].
+ * The combined level of `filters` in dB at each of the [`CURVE_POINTS`]
+ * frequencies of [`curve_freq`]. Never below -300 dB.
  */
 public func computeMagnitudeCurve(filters: [FilterParams]) -> [Double]  {
     return try!  FfiConverterSequenceDouble.lift(try! rustCall() {
@@ -22023,11 +21934,9 @@ public func computeMagnitudeCurve(filters: [FilterParams]) -> [Double]  {
 })
 }
 /**
- * 201-point phase curve in degrees on the same grid; continuous when
- * `unwrap`, else wrapped to ±180°.
- *
- * The unwrapped curve starts at the wrapped value of the first point and
- * then takes, between neighbours, the step in (-180°, 180°].
+ * The combined phase of `filters` in degrees at each of the
+ * [`CURVE_POINTS`] frequencies of [`curve_freq`]: within +-180, or, with
+ * `unwrap`, continuous from the first point on.
  */
 public func computePhaseCurve(filters: [FilterParams], unwrap: Bool) -> [Double]  {
     return try!  FfiConverterSequenceDouble.lift(try! rustCall() {
@@ -22038,10 +21947,10 @@ public func computePhaseCurve(filters: [FilterParams], unwrap: Bool) -> [Double]
 })
 }
 /**
- * Magnitude in dB at one frequency (Hz) for a chain of bands.
+ * The combined level of `filters` at `freq` Hz, in dB.
  *
- * Bypassed and off bands are skipped; an empty chain is 0 dB. A total
- * power below -300 dB (a notch's exact zero) reads -300 dB.
+ * Bypassed and flat bands do not count; a crossover type counts with all
+ * its sections; a type this build does not know counts as flat.
  */
 public func computeResponse(filters: [FilterParams], freq: Float) -> Float  {
     return try!  FfiConverterFloat.lift(try! rustCall() {
@@ -22065,8 +21974,8 @@ public func configInspect(text: String) -> String  {
 })
 }
 /**
- * Version facts of the linked core: this crate's version, the wire format
- * versions it reads and writes, the bulk image size and the curve size.
+ * The version facts of this build: crate version, the wire format versions
+ * it writes and reads, the bulk image size and the curve size.
  */
 public func coreInfo() -> CoreInfo  {
     return try!  FfiConverterTypeCoreInfo_lift(try! rustCall() {
@@ -22075,15 +21984,9 @@ public func coreInfo() -> CoreInfo  {
 })
 }
 /**
- * Whether `map` (4 bytes, `DspState.crossfeed_pair_map` encoding) is a pair
- * map the firmware accepts for `num_pairs` stereo pairs (4 on RP2350, 2 on
- * RP2040): every pair gets two distinct non-PDM outputs, no output is used
- * twice, bytes beyond `num_pairs` are 0.
- *
- * Byte `p` is pair `p`: `0x00` is the default pairing (`2p`, `2p+1`), any
- * other value is `(right << 4) | left`. The non-PDM outputs are
- * `0..2 * num_pairs`. A map that is not exactly 4 bytes, or a `num_pairs`
- * of 0 or above 4, is invalid (false), never a panic.
+ * Whether the firmware accepts `map` as the crossfeed pair map on a device
+ * with `num_pairs` stereo pairs: exactly [`crate::consts::CROSSFEED_MAP_PAIRS`]
+ * bytes, and the rule of `dspi_proto::ext::PairMap::is_valid`.
  */
 public func crossfeedPairMapValid(map: Data, numPairs: UInt8) -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
@@ -22094,8 +21997,9 @@ public func crossfeedPairMapValid(map: Data, numPairs: UInt8) -> Bool  {
 })
 }
 /**
- * Frequency (Hz) of curve point `i` (0..200): log-spaced, 10 Hz at 0,
- * 20 kHz at 200. A larger `i` extrapolates on the same spacing.
+ * The frequency of curve point `i` in Hz: 10 Hz at 0, 20 kHz at
+ * `CURVE_POINTS - 1`, evenly spaced in log frequency. Larger `i` continue
+ * the same spacing past 20 kHz.
  */
 public func curveFreq(i: UInt32) -> Double  {
     return try!  FfiConverterDouble.lift(try! rustCall() {
@@ -22301,14 +22205,10 @@ public func outputLabelsFor(input: OutputLabelInput) -> [OutputLabel]  {
 })
 }
 /**
- * Quantize a delay (ms) to 0.0001 ms, as the delay setters do before
- * sending (the old core's `dsp_math::quantize_delay`, bit for bit; the
- * Windows Console's step).
+ * A delay in ms on a 0.0001 ms grid, as the delay setters send it.
  *
- * Rounds half away from zero (`f32::round` of `ms * 10000`), and maps
- * -0.0 to +0.0. It does not clamp: callers clamp to `0..=max_delay_ms`
- * afterwards, as the old core did. NaN stays NaN and ±inf stays ±inf (as
- * does a finite value whose `* 10000` overflows f32); never panics.
+ * Halves round away from zero and -0 becomes +0. No clamping (callers bound
+ * the delay to its range afterwards); NaN and the infinities pass through.
  */
 public func quantizeDelay(ms: Float) -> Float  {
     return try!  FfiConverterFloat.lift(try! rustCall() {
@@ -22318,14 +22218,10 @@ public func quantizeDelay(ms: Float) -> Float  {
 })
 }
 /**
- * Quantize a gain (dB) to 0.1 dB, as every gain setter does before sending
- * (the old core's `dsp_math::quantize_gain`, bit for bit).
+ * A gain in dB on the device's 0.1 dB grid, as the gain setters send it.
  *
- * Rounds half away from zero (`f32::round` of `db * 10`), and maps -0.0
- * to +0.0 so a zero gain is never stored or sent as negative zero. It does
- * not clamp: callers clamp to the parameter's range first. NaN stays NaN
- * and ±inf stays ±inf (as does a finite value whose `* 10` overflows f32);
- * never panics.
+ * Halves round away from zero and -0 becomes +0. No clamping: NaN and the
+ * infinities come back unchanged, and so does a value too large to scale.
  */
 public func quantizeGain(db: Float) -> Float  {
     return try!  FfiConverterFloat.lift(try! rustCall() {
@@ -22390,25 +22286,25 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_func_bootloader_drives() != 58490) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_func_compute_magnitude_curve() != 29910) {
+    if (uniffi_dspi_core_checksum_func_compute_magnitude_curve() != 49830) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_func_compute_phase_curve() != 24991) {
+    if (uniffi_dspi_core_checksum_func_compute_phase_curve() != 11263) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_func_compute_response() != 56737) {
+    if (uniffi_dspi_core_checksum_func_compute_response() != 46454) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_config_inspect() != 36664) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_func_core_info() != 39265) {
+    if (uniffi_dspi_core_checksum_func_core_info() != 61478) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_func_crossfeed_pair_map_valid() != 64480) {
+    if (uniffi_dspi_core_checksum_func_crossfeed_pair_map_valid() != 51737) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_func_curve_freq() != 1109) {
+    if (uniffi_dspi_core_checksum_func_curve_freq() != 51789) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_filter_type_name() != 9662) {
@@ -22456,10 +22352,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_func_output_labels_for() != 60813) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_func_quantize_delay() != 45128) {
+    if (uniffi_dspi_core_checksum_func_quantize_delay() != 705) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_func_quantize_gain() != 37869) {
+    if (uniffi_dspi_core_checksum_func_quantize_gain() != 25180) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_uf2_inspect() != 30039) {
