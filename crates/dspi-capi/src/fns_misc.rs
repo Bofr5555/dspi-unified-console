@@ -1,207 +1,51 @@
-//! C functions: hardware, hotplug, notify, monitor, RTA, siggen/stats, files,
-//! CS, and the additions to the old ABI: extension channel, names,
-//! diagnostics, firmware and the demo device (WP Q2b).
+//! C functions for everything around the parameters: the hardware
+//! configuration, callbacks and notifications, the monitor log, the analyser,
+//! the signal generator and statistics, files, control surfaces, the
+//! extension channel, names, diagnostics, firmware, the demo device and the
+//! core-voltage calibration. Each wraps one [`DspiCore`] method or one of
+//! dspi-core's free functions, by the rules in `fns_device`.
 //!
-//! Failure values: `bool` false; a status byte is the device's `PIN_CONFIG_*`
-//! or `PRESET_*` code (0 = success) and 0xFF when it did not answer; `i8` -1;
-//! a `u32` text length 0. A failed fetch leaves `out` untouched. A `void`
-//! function that fills a record writes its zero value when the handle is null.
-//! A misaligned record pointer counts as a null one.
+//! # Text replies
 //!
-//! **Text functions** copy NUL-terminated UTF-8 into `buf` and return the bytes
-//! needed including the NUL. When that is more than `len`, nothing is written:
-//! call again with a larger buffer. **Except** `dspi_config_import`,
-//! `dspi_filters_import` and `dspi_cs_apply`, which change the device: don't
-//! retry those. A reply too long means the write has happened, and a second
-//! call applies it again. Give them a large enough buffer the first time.
+//! A function with `buf` and `len` writes a NUL-terminated UTF-8 reply and
+//! returns the bytes it needs, NUL included. When that is more than `len`,
+//! nothing is written: call again with a buffer that large (a null `buf` asks
+//! for the length). Those that change something do so on every call, whatever
+//! the buffer; their replies are short. 0 means a null handle (or a panic).
 //!
-//! **The added functions** that return a record reply in JSON, built from
-//! dspi-core's `Serialize` records: `{"ok":true, <the record's fields in
-//! camelCase>}` (a list as `"value"`), or `{"ok":false,"code":<kind>,
-//! "error":<sentence>}`. `code` is one of `disconnected`, `transfer`,
-//! `refused`, `invalid`, `unsupported`, `read_only`, `locked`, `denied`,
-//! `link` or `io`. `unsupported` is how stock firmware answers the
-//! extension channel; it is not a fault.
+//! Most replies are JSON: a record's fields (camelCase) next to
+//! `"ok": true`, a list or a plain value as `"value"`, and a failure as
+//! `{"ok": false, "code": <kind>, "error": <sentence>}`. The kinds:
+//! `disconnected`, `transfer`, `refused`, `invalid`, `unsupported`,
+//! `read_only`, `locked`, `denied`, `link`, `io`, `autoeq`, `firmware_guard`,
+//! `overvolt_word`. A document export replies the document itself, or that
+//! failure.
 
-use std::ffi::{CStr, c_char, c_void};
+#[cfg(test)]
+use std::ffi::CStr;
+use std::ffi::{CString, c_char, c_void};
 use std::ptr;
 use std::sync::Arc;
 
 use dspi_core::{
-    BootloaderDrive,
-    DeviceEvents,
-    DspiCore,
-    DspiError,
-    NotifyListener,
-    Result,
-    RtaListener,
-    // -- WP CG11 --
-    VregDemoEvent,
+    BootloaderDrive, DeviceEvents, DspiCore, DspiError, FirmwareGuardBoard, NotifyListener,
+    PairMap, ParamValue, Result, RtaListener, VregDemoEvent,
 };
-use serde::Serialize;
+use serde_json::{Map, Value, json};
 
-use crate::types::{
-    AdatOutStatus, BufferStats, DeviceEventCallback, I2cConfig, InputLockStatus, LgStatus,
-    NotifyCallback, NotifyResult, RtaCapsInfo, RtaOwnership, RtaRequest, RtaSnapshot, SiggenCaps,
-    SiggenConfig, SiggenStatus, SpdifRxStatus, UartConfig,
+use crate::fns_device::{
+    arg, c_str, copy_out, copy_text, fetch_value, flag, name_into, status, text,
 };
-use crate::{FfiCore, guard, with_core};
+use crate::guard;
+use crate::types::*;
+use crate::{FfiCore, with_core};
 
-/// Bytes of IEC 60958 channel status `dspi_fetch_spdif_rx_channel_status` fills.
-const CHANNEL_STATUS_LEN: usize = 24;
-/// Bytes of a crossfeed pair map.
-const PAIR_MAP_LEN: usize = 4;
+mod autoeq;
+mod link_text;
 
-// ── Helpers ───────────────────────────────────────────────────────────
+// ── Replies ──────────────────────────────────────────────────────────
 
-/// Borrow a NUL-terminated UTF-8 C string: `None` for null or invalid UTF-8.
-fn c_str<'a>(p: *const c_char) -> Option<&'a str> {
-    if p.is_null() {
-        return None;
-    }
-    // SAFETY: a non-null string argument is NUL-terminated and outlives the
-    // call; that is the C caller's contract.
-    unsafe { CStr::from_ptr(p) }.to_str().ok()
-}
-
-/// `c_str`, with "" for a null or invalid string: the old ABI's way for the
-/// text documents, whose parsers then report the empty text.
-fn c_text(p: *const c_char) -> String {
-    c_str(p).unwrap_or("").to_owned()
-}
-
-/// The caller's bytes as a vector; empty for a null pointer.
-fn c_bytes(p: *const u8, len: u32) -> Vec<u8> {
-    if p.is_null() || len == 0 {
-        return Vec::new();
-    }
-    // SAFETY: a non-null buffer holds `len` bytes; the C caller's contract.
-    unsafe { std::slice::from_raw_parts(p, len as usize) }.to_vec()
-}
-
-/// Copy `s` into a caller buffer, NUL-terminated, cut at a character boundary
-/// if it does not fit. False for a null or empty buffer.
-fn copy_out(s: &str, buf: *mut c_char, len: u32) -> bool {
-    let Some(room) = (len as usize).checked_sub(1) else {
-        return false;
-    };
-    if buf.is_null() {
-        return false;
-    }
-    let cut = s.len().min(room);
-    let n = (0..=cut)
-        .rev()
-        .find(|&i| s.is_char_boundary(i))
-        .unwrap_or(0);
-    // SAFETY: `buf` holds `len` bytes (the C caller's contract), n <= len - 1,
-    // and a Rust string cannot overlap a buffer the caller owns.
-    unsafe {
-        ptr::copy_nonoverlapping(s.as_ptr(), buf.cast::<u8>(), n);
-        buf.add(n).write(0);
-    }
-    true
-}
-
-/// Copy `s` into `buf` if it fits whole; returns the bytes needed including
-/// the NUL, so a caller with too small a buffer can retry.
-fn copy_text(s: &str, buf: *mut c_char, len: u32) -> u32 {
-    let needed = u32::try_from(s.len())
-        .ok()
-        .and_then(|n| n.checked_add(1))
-        .unwrap_or(u32::MAX);
-    if needed <= len {
-        copy_out(s, buf, len);
-    }
-    needed
-}
-
-/// Copy `src` to `out`, which holds exactly `want` bytes; false, with nothing
-/// written, for a null `out` or a reply of another length.
-fn copy_bytes(src: &[u8], out: *mut u8, want: usize) -> bool {
-    if out.is_null() || src.len() != want {
-        return false;
-    }
-    // SAFETY: `out` holds `want` bytes, the C caller's contract, and src has
-    // that length.
-    unsafe { ptr::copy_nonoverlapping(src.as_ptr(), out, want) };
-    true
-}
-
-/// Run a text function on the handle: 0 for a null handle or a panic.
-fn text(
-    core: *mut FfiCore,
-    buf: *mut c_char,
-    len: u32,
-    f: impl FnOnce(&DspiCore) -> String,
-) -> u32 {
-    with_core(core, 0, |h| copy_text(&f(&h.core), buf, len))
-}
-
-/// `Ok` as true; an error, logged, as false.
-fn flag(core: *mut FfiCore, f: impl FnOnce(&DspiCore) -> Result<()>) -> bool {
-    with_core(core, false, |h| match f(&h.core) {
-        Ok(()) => true,
-        Err(e) => {
-            log::debug!("dspi-capi: {e}");
-            false
-        }
-    })
-}
-
-/// `Ok` as 0, a device's refusal as its status byte, anything else as 0xFF.
-fn status(core: *mut FfiCore, f: impl FnOnce(&DspiCore) -> Result<()>) -> u8 {
-    with_core(core, 0xFF, |h| match f(&h.core) {
-        Ok(()) => 0,
-        Err(DspiError::Refused { status }) => status,
-        Err(e) => {
-            log::debug!("dspi-capi: {e}");
-            0xFF
-        }
-    })
-}
-
-/// Fetch a record into `out`, converted to its C layout.
-fn fetch<R, C>(core: *mut FfiCore, out: *mut C, f: impl FnOnce(&DspiCore) -> Result<R>) -> bool
-where
-    C: for<'a> From<&'a R>,
-{
-    if out.is_null() || !out.is_aligned() {
-        return false;
-    }
-    with_core(core, false, |h| match f(&h.core) {
-        Ok(v) => {
-            // SAFETY: not null, aligned, and points to a `C`; the C caller's
-            // contract.
-            unsafe { out.write(C::from(&v)) };
-            true
-        }
-        Err(e) => {
-            log::debug!("dspi-capi: {e}");
-            false
-        }
-    })
-}
-
-/// Fetch a plain value into `out`.
-fn fetch_value<T>(core: *mut FfiCore, out: *mut T, f: impl FnOnce(&DspiCore) -> Result<T>) -> bool {
-    if out.is_null() || !out.is_aligned() {
-        return false;
-    }
-    with_core(core, false, |h| match f(&h.core) {
-        Ok(v) => {
-            // SAFETY: not null, aligned, and points to a `T`; the C caller's
-            // contract.
-            unsafe { out.write(v) };
-            true
-        }
-        Err(e) => {
-            log::debug!("dspi-capi: {e}");
-            false
-        }
-    })
-}
-
-/// The `code` of a JSON failure reply (module docs).
+/// The `code` of a failure reply (module docs).
 fn error_code(e: &DspiError) -> &'static str {
     match e {
         DspiError::Disconnected => "disconnected",
@@ -214,51 +58,101 @@ fn error_code(e: &DspiError) -> &'static str {
         DspiError::Denied => "denied",
         DspiError::Link { .. } => "link",
         DspiError::Io { .. } => "io",
-        // -- WP CG6 --
         DspiError::AutoEq { .. } => "autoeq",
-        // -- WP CG8 --
         DspiError::FirmwareGuardBlocked { .. } => "firmware_guard",
-        // -- WP CG14 --
         DspiError::OvervoltWordRequired { .. } => "overvolt_word",
     }
 }
 
-/// A result as the added functions' JSON reply (module docs).
-///
-/// `ok` is inserted among the record's own fields, so no record that comes
-/// through here may have a field named `ok`: it would be overwritten. A test
-/// checks every such record (`wp_q2b_no_reply_record_has_a_field_named_ok`).
-fn json_reply<T: Serialize>(r: Result<T>) -> String {
-    let fields = r.and_then(|v| {
-        serde_json::to_value(v).map_err(|e| DspiError::InvalidArgument { msg: e.to_string() })
+/// A result as a JSON reply (module docs). The records replied this way have
+/// no field named `ok`.
+fn json_reply<T: serde::Serialize>(result: Result<T>) -> String {
+    let encoded = result.and_then(|v| {
+        serde_json::to_value(v).map_err(|e| DspiError::Io {
+            msg: format!("the reply could not be encoded: {e}"),
+        })
     });
-    let reply = match fields {
-        Ok(serde_json::Value::Object(mut m)) => {
-            m.insert("ok".to_owned(), serde_json::Value::Bool(true));
-            serde_json::Value::Object(m)
+    let reply = match encoded {
+        Ok(Value::Object(fields)) => {
+            let mut all = Map::new();
+            all.insert("ok".to_owned(), Value::Bool(true));
+            all.extend(fields);
+            Value::Object(all)
         }
-        Ok(v) => serde_json::json!({ "ok": true, "value": v }),
-        Err(e) => serde_json::json!({
-            "ok": false,
-            "code": error_code(&e),
-            "error": e.to_string(),
-        }),
+        Ok(value) => json!({ "ok": true, "value": value }),
+        Err(e) => json!({ "ok": false, "code": error_code(&e), "error": e.to_string() }),
     };
     reply.to_string()
 }
 
-// ── Listeners over C function pointers ────────────────────────────────
+/// A JSON reply for a call that answers nothing but success.
+fn done_reply(result: Result<()>) -> String {
+    json_reply(result.map(|()| Map::new()))
+}
 
-/// A C wake-up callback and its `user_data`, as the core's listeners.
+/// A document, or the failure reply in its place.
+fn document_reply(result: Result<String>) -> String {
+    result.unwrap_or_else(|e| json_reply::<()>(Err(e)))
+}
+
+/// An optional string argument: null is `None`; bytes that are not UTF-8 are
+/// refused.
+fn optional_text(p: *const c_char, name: &str) -> Result<Option<String>> {
+    if p.is_null() {
+        return Ok(None);
+    }
+    arg(p, name).map(|s| Some(s.to_owned()))
+}
+
+/// `len` bytes at `p`, copied; nothing for a null pointer.
+fn c_bytes(p: *const u8, len: u32) -> Vec<u8> {
+    if p.is_null() {
+        return Vec::new();
+    }
+    let len = usize::try_from(len).unwrap_or(0);
+    // SAFETY: a non-null buffer holds `len` bytes; the C caller's contract.
+    unsafe { std::slice::from_raw_parts(p, len) }.to_vec()
+}
+
+/// Read one record the caller passes in: `None` for a null or misaligned
+/// pointer.
+fn read_in<T: Copy>(p: *const T) -> Option<T> {
+    if p.is_null() || !p.is_aligned() {
+        return None;
+    }
+    // SAFETY: non-null and aligned, and the caller's record lives for the
+    // call; the C caller's contract.
+    Some(unsafe { p.read() })
+}
+
+/// Store a record at `out` when it is non-null and aligned; otherwise
+/// nothing.
+fn store<T>(out: *mut T, value: T) {
+    if !out.is_null() && out.is_aligned() {
+        // SAFETY: non-null and aligned, pointing at the caller's record; the
+        // C caller's contract.
+        unsafe { out.write(value) };
+    }
+}
+
+/// A function with no handle and a JSON reply: the bytes needed, 0 for a
+/// panic.
+fn free_text(buf: *mut c_char, len: u32, f: impl FnOnce() -> String) -> u32 {
+    guard(0, || copy_text(&f(), buf, len))
+}
+
+// ── Callbacks ────────────────────────────────────────────────────────
+
+/// A C wake-up callback, as the notification and analyser listeners.
 struct CWake {
-    callback: NotifyCallback,
+    callback: extern "C" fn(user_data: *mut c_void),
     user_data: *mut c_void,
 }
 
-// SAFETY: the callback runs on core threads by the ABI's documented contract
-// (the caller's `user_data` must allow that); nothing here touches the pointer.
+// SAFETY: the callback is called on the core's threads, which its
+// documentation tells the caller; `user_data` is only handed back to it.
 unsafe impl Send for CWake {}
-// SAFETY: as for Send: the pointer is only passed back to the caller.
+// SAFETY: as for Send.
 unsafe impl Sync for CWake {}
 
 impl NotifyListener for CWake {
@@ -273,24 +167,39 @@ impl RtaListener for CWake {
     }
 }
 
-/// The C hotplug callback and its `user_data`, as the core's listener.
+/// The listener for a C callback; `None` unsets it.
+fn wake(
+    callback: Option<extern "C" fn(user_data: *mut c_void)>,
+    user_data: *mut c_void,
+) -> Option<Arc<CWake>> {
+    callback.map(|callback| {
+        Arc::new(CWake {
+            callback,
+            user_data,
+        })
+    })
+}
+
+/// A C hot-plug callback, as device events: 0 arrived, 1 departed.
 struct CHotplug {
-    callback: DeviceEventCallback,
+    callback: extern "C" fn(event: u8, serial: *const c_char, user_data: *mut c_void),
     user_data: *mut c_void,
 }
 
-// SAFETY: as for `CWake`.
+// SAFETY: as for CWake: the poll's thread is the caller's, and `user_data`
+// is only handed back.
 unsafe impl Send for CHotplug {}
-// SAFETY: as for `CWake`.
+// SAFETY: as for Send.
 unsafe impl Sync for CHotplug {}
 
 impl CHotplug {
+    /// Call back with `serial` as a C string, up to any NUL in it.
     fn fire(&self, event: u8, serial: &str) {
-        // A serial with an inner NUL reads as cut there, never as a failure.
-        let mut z = Vec::with_capacity(serial.len().saturating_add(1));
-        z.extend_from_slice(serial.as_bytes());
-        z.push(0);
-        (self.callback)(event, z.as_ptr().cast::<c_char>(), self.user_data);
+        let printable = serial.split('\0').next().unwrap_or_default();
+        let Ok(serial) = CString::new(printable) else {
+            return;
+        };
+        (self.callback)(event, serial.as_ptr(), self.user_data);
     }
 }
 
@@ -304,15 +213,16 @@ impl DeviceEvents for CHotplug {
     }
 }
 
-// ── Pins and output configuration ─────────────────────────────────────
+// ── Output pins and the output configuration ─────────────────────────
 
-/// Returns a PIN_CONFIG_* status (0 = success), 0xFF on communication error.
+/// Put output `slot` on GPIO `pin`. Returns a `PIN_CONFIG_*` status, 0xFF
+/// when it could not be asked.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_output_pin(core: *mut FfiCore, slot: u8, pin: u8) -> u8 {
     status(core, |c| c.set_output_pin(slot, pin))
 }
 
-/// Returns the pin number, 0xFF on error.
+/// The GPIO of output `slot`, 0xFF on failure.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_output_pin(core: *mut FfiCore, slot: u8) -> u8 {
     with_core(core, 0xFF, |h| {
@@ -320,33 +230,30 @@ pub extern "C" fn dspi_fetch_output_pin(core: *mut FfiCore, slot: u8) -> u8 {
     })
 }
 
-/// 0 = output config stored independently, 1 = saved with presets.
+/// Keep the output configuration with each preset (1) or once for all (0).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_output_config_mode(core: *mut FfiCore, mode: u8) -> bool {
     flag(core, |c| c.set_output_config_mode(mode))
 }
 
-/// Persist the live output config (independent mode). PRESET_* code, 0xFF on error.
+/// Store the output configuration in flash. Returns the device's status,
+/// 0xFF when it could not be asked.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_save_output_config(core: *mut FfiCore) -> u8 {
-    status(core, |c| c.save_output_config())
+    status(core, DspiCore::save_output_config)
 }
 
-// ── System ────────────────────────────────────────────────────────────
-
-/// Restart the device into its USB bootloader.
+/// Reboot the device into its USB bootloader. No answer comes back, so true
+/// means only that the request went out.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_enter_bootloader(core: *mut FfiCore) -> bool {
-    flag(core, |c| c.enter_bootloader())
+    flag(core, DspiCore::enter_bootloader)
 }
 
-// -- WP CG24 --
-/// Hold the device lock across a flow of several calls, for at most
-/// `timeout_ms` (capped at 60 000), until `dspi_device_lock_release`: another
-/// DSPi Link session's commands answer locked meanwhile. Blocking over Link:
-/// call it off the UI thread. Replies in JSON {ok} or {ok, code, error}
-/// (`locked` when another session holds it) and returns the length needed. A
-/// retry with a larger buffer is harmless: an acquire while held keeps the lock.
+/// Hold the device for this console (DSPi Link; at once elsewhere) for up to
+/// `timeout_ms`, giving `reason` to the others. JSON `{ok}` or a failure
+/// (`locked` when another console holds it). Returns the bytes needed; 0 for
+/// a null handle.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_device_lock_acquire(
     core: *mut FfiCore,
@@ -356,202 +263,200 @@ pub extern "C" fn dspi_device_lock_acquire(
     len: u32,
 ) -> u32 {
     text(core, buf, len, |c| {
-        let done = c.device_lock_acquire(c_text(reason), timeout_ms);
-        json_reply(done.map(|()| serde_json::json!({})))
+        let held =
+            arg(reason, "reason").and_then(|why| c.device_lock_acquire(why.to_owned(), timeout_ms));
+        done_reply(held)
     })
 }
 
-/// Release the lock `dspi_device_lock_acquire` took, and only that one: an IR
-/// learn's lock ends with its read, cancel or window, `dspi_enter_bootloader`'s
-/// when the device leaves or after 60 s. Idempotent; never blocks.
+/// Give back the lock `dspi_device_lock_acquire` took. Nothing if not held.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_device_lock_release(core: *mut FfiCore) {
     with_core(core, (), |h| h.core.device_lock_release());
 }
 
-/// Core 1 mode (0 = idle, 1 = PDM, 2 = EQ worker), -1 on error.
+/// Core 1's mode, -1 on failure.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_core1_mode(core: *mut FfiCore) -> i8 {
-    with_core(core, -1, |h| match h.core.fetch_core1_mode() {
-        Ok(mode) => i8::try_from(mode).unwrap_or(-1),
-        Err(_) => -1,
+    with_core(core, -1, |h| {
+        h.core
+            .fetch_core1_mode()
+            .ok()
+            .and_then(|mode| i8::try_from(mode).ok())
+            .unwrap_or(-1)
     })
 }
 
-/// 1 if enabling `output` would conflict with Core 1's mode, 0 if not, -1 on error.
+/// Whether enabling `output` would collide on Core 1: 1 yes, 0 no, -1 on
+/// failure.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_check_core1_conflict(core: *mut FfiCore, output: u8) -> i8 {
-    with_core(core, -1, |h| match h.core.check_core1_conflict(output) {
-        Ok(conflict) => i8::from(conflict),
-        Err(_) => -1,
+    with_core(core, -1, |h| {
+        h.core.check_core1_conflict(output).map_or(-1, i8::from)
     })
 }
 
-// ── Hot-plug ──────────────────────────────────────────────────────────
+// ── Hot-plug ─────────────────────────────────────────────────────────
 
-/// Register a callback for device arrival/departure events; NULL clears it,
-/// waiting for a call in progress on another thread. False for a null handle.
-/// It runs on the thread that calls `dspi_poll_hotplug`, and must not set
-/// listeners from inside the call.
+/// Set the callback `dspi_poll_hotplug` reports arrivals (0) and departures
+/// (1) with, on the polling thread; null unsets it. The serial is valid
+/// during the call only.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_hotplug_callback(
     core: *mut FfiCore,
-    // Spelled out: cbindgen renders `Option<DeviceEventCallback>` as a struct.
     callback: Option<extern "C" fn(event: u8, serial: *const c_char, user_data: *mut c_void)>,
     user_data: *mut c_void,
 ) -> bool {
     with_core(core, false, |h| {
-        let listener = callback.map(|callback| {
+        let events = callback.map(|callback| -> Arc<dyn DeviceEvents> {
             Arc::new(CHotplug {
                 callback,
                 user_data,
-            }) as Arc<dyn DeviceEvents>
+            })
         });
-        h.core.set_hotplug_callback(listener);
+        h.core.set_hotplug_callback(events);
         true
     })
 }
 
-/// Poll for hot-plug changes (~every 500 ms). Fires the registered callback
-/// for arrivals (event 0) and departures (event 1), reconnects the selected
-/// device when it comes back and closes one that went away. A reconnect runs
-/// here, so the call can take a few hundred milliseconds on a replug. Call
-/// `dspi_scan_devices` first, or every unit present is announced as arrived.
+/// Look for devices that came or went, and report them to the callback.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_poll_hotplug(core: *mut FfiCore) {
     with_core(core, (), |h| h.core.poll_hotplug());
 }
 
-// ── Hardware I/O (outputs, clocks, inputs). Status-returning calls give
-//    the PIN_CONFIG_* code, or 255 when the device did not answer. ──────
+// ── Hardware configuration (status: PIN_CONFIG_*, 0xFF) ──────────────
 
-/// Slot type: 0 = S/PDIF, 1 = I2S.
+/// Set the kind of output `slot` (I2S, S/PDIF, ...).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_output_type(core: *mut FfiCore, slot: u8, kind: u8) -> u8 {
     status(core, |c| c.set_output_type(slot, kind))
 }
 
-/// I2S BCK pin (LRCLK = +1); role 0 = master/shared, 1 = slave pair.
+/// Put an I2S bit clock (`role`) on GPIO `pin`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_i2s_bck_pin(core: *mut FfiCore, role: u8, pin: u8) -> u8 {
     status(core, |c| c.set_i2s_bck_pin(role, pin))
 }
 
-/// 0 = shared clock pins, 1 = separate slave pins.
+/// Choose how the I2S clock pins are laid out.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_i2s_clock_pin_mode(core: *mut FfiCore, mode: u8) -> u8 {
     status(core, |c| c.set_i2s_clock_pin_mode(mode))
 }
 
-/// Master clock output on/off.
+/// Turn the master clock output on or off.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_mck_enabled(core: *mut FfiCore, enabled: bool) -> u8 {
     status(core, |c| c.set_mck_enabled(enabled))
 }
 
-/// Master clock pin (MCK off first).
+/// Put the master clock on GPIO `pin`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_mck_pin(core: *mut FfiCore, pin: u8) -> u8 {
     status(core, |c| c.set_mck_pin(pin))
 }
 
-/// 0 = 128 x fs, 1 = 256 x fs.
+/// Set the master clock's multiple of the sample rate.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_mck_multiplier(core: *mut FfiCore, mult: u8) -> u8 {
     status(core, |c| c.set_mck_multiplier(mult))
 }
 
-/// ADAT optical output (RP2350).
+/// Turn the ADAT output on or off.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_adat_out_enabled(core: *mut FfiCore, enabled: bool) -> u8 {
     status(core, |c| c.set_adat_out_enabled(enabled))
 }
 
-/// ADAT output data pin.
+/// Put the ADAT output on GPIO `pin`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_adat_out_pin(core: *mut FfiCore, pin: u8) -> u8 {
     status(core, |c| c.set_adat_out_pin(pin))
 }
 
-/// S/PDIF input RX pin (index 0-3).
+/// Put S/PDIF receiver `index` on GPIO `pin`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_spdif_rx_pin(core: *mut FfiCore, index: u8, pin: u8) -> u8 {
     status(core, |c| c.set_spdif_rx_pin(index, pin))
 }
 
-/// Enable S/PDIF input 2-4 (index 1-3).
+/// Turn S/PDIF input `index` on or off.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_spdif_input_enabled(core: *mut FfiCore, index: u8, enabled: bool) -> u8 {
     status(core, |c| c.set_spdif_input_enabled(index, enabled))
 }
 
-/// I2S input data pin of a pair (0-3).
+/// Put I2S input `pair` on GPIO `pin`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_i2s_rx_pin(core: *mut FfiCore, pair: u8, pin: u8) -> u8 {
     status(core, |c| c.set_i2s_rx_pin(pair, pin))
 }
 
-/// I2S input channels: 2, 4, 6 or 8.
+/// Set how many channels the I2S input carries.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_i2s_input_channels(core: *mut FfiCore, channels: u8) -> u8 {
     status(core, |c| c.set_i2s_input_channels(channels))
 }
 
-/// ADAT input on/off (needs a pin).
+/// Turn the ADAT input on or off.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_adat_input_enabled(core: *mut FfiCore, enabled: bool) -> u8 {
     status(core, |c| c.set_adat_input_enabled(enabled))
 }
 
-/// ADAT input data pin; 0xFF clears it.
+/// Put the ADAT input on GPIO `pin`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_adat_input_pin(core: *mut FfiCore, pin: u8) -> u8 {
     status(core, |c| c.set_adat_input_pin(pin))
 }
 
-/// ADAT input clock: 0 = master, 1 = slave.
+/// Choose where the ADAT input takes its clock from.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_adat_input_clock_mode(core: *mut FfiCore, mode: u8) -> u8 {
     status(core, |c| c.set_adat_input_clock_mode(mode))
 }
 
-/// Master-mode input rate for I2S and ADAT: 0 = 44.1k, 1 = 48k, 2 = 96k.
+/// Choose the input sample rate by its index.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_input_rate(core: *mut FfiCore, index: u8) -> bool {
     flag(core, |c| c.set_input_rate(index))
 }
 
-/// The rate the pipeline runs at now, Hz (0 if unknown).
+/// The input sample rate in Hz, 0 on failure.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_input_rate(core: *mut FfiCore) -> u32 {
     with_core(core, 0, |h| h.core.fetch_input_rate().unwrap_or(0))
 }
 
-/// I2S input clock: 0 = master, 1 = slave (applied by the device later).
+/// Choose whether the I2S clocks are driven or followed.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_i2s_clock_mode(core: *mut FfiCore, mode: u8) -> bool {
     flag(core, |c| c.set_i2s_clock_mode(mode))
 }
 
-/// `which`: 0 = I2S slave lock, 1 = ADAT input lock; false for another value.
+/// The lock state of digital input `which` into `out`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_input_lock(
     core: *mut FfiCore,
     which: u8,
     out: *mut InputLockStatus,
 ) -> bool {
-    fetch(core, out, |c| c.fetch_input_lock(which))
+    fetch_value(core, out, |c| {
+        c.fetch_input_lock(which).map(|s| InputLockStatus::from(&s))
+    })
 }
 
-/// The ADAT output's status (all zero on RP2040).
+/// The ADAT output's state into `out`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_adat_out_status(core: *mut FfiCore, out: *mut AdatOutStatus) -> bool {
-    fetch(core, out, |c| c.fetch_adat_out_status())
+    fetch_value(core, out, |c| {
+        c.fetch_adat_out_status().map(|s| AdatOutStatus::from(&s))
+    })
 }
 
-// ── DAC hardware mute, LG Sound Sync, UART / I2C control ──────────────
-
-/// Send a DAC mute config; read it back with `dspi_fetch_dac_mute` ~150 ms later.
+/// Configure the DAC mute line: on or off, its polarity, its GPIO, and how
+/// long it holds before and after a change, in ms.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_dac_mute(
     core: *mut FfiCore,
@@ -566,93 +471,82 @@ pub extern "C" fn dspi_set_dac_mute(
     })
 }
 
-/// Re-read the DAC mute config into the state.
+/// Read the DAC mute configuration into the mirror.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_dac_mute(core: *mut FfiCore) -> bool {
-    flag(core, |c| c.fetch_dac_mute())
+    flag(core, DspiCore::fetch_dac_mute)
 }
 
-/// Pulse the DAC mute output for ~1 s. Returns 0 when started, 3 when the
-/// feature is disabled, 255 if the device did not answer.
+/// Pulse the DAC mute line once. Returns the device's status, 0xFF when it
+/// could not be asked.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_test_dac_mute(core: *mut FfiCore) -> u8 {
-    status(core, |c| c.test_dac_mute())
+    status(core, DspiCore::test_dac_mute)
 }
 
-/// LG Sound Sync on or off.
+/// Turn LG Sound Sync on or off.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_lg_sound_sync(core: *mut FfiCore, enabled: bool) -> bool {
     flag(core, |c| c.set_lg_sound_sync(enabled))
 }
 
-/// LG Sound Sync's status.
+/// LG Sound Sync's state into `out`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_lg_status(core: *mut FfiCore, out: *mut LgStatus) -> bool {
-    fetch(core, out, |c| c.fetch_lg_status())
+    fetch_value(core, out, |c| {
+        c.fetch_lg_status().map(|s| LgStatus::from(&s))
+    })
 }
 
-/// Re-read both control interface configs and their status into the state.
+/// Read the UART and I2C control interfaces into the mirror.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_ctrl_ifaces(core: *mut FfiCore) -> bool {
-    flag(core, |c| c.fetch_ctrl_ifaces())
+    flag(core, DspiCore::fetch_ctrl_ifaces)
 }
 
-/// Send a UART config; read the outcome with `dspi_fetch_ctrl_ifaces` ~250 ms later.
+/// Configure the UART control interface.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_uart(core: *mut FfiCore, config: UartConfig) -> bool {
-    flag(core, |c| c.set_uart((&config).into()))
+    flag(core, |c| c.set_uart(dspi_core::UartConfig::from(&config)))
 }
 
-/// Send an I2C config; read the outcome with `dspi_fetch_ctrl_ifaces` later.
+/// Configure the I2C control interface.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_i2c(core: *mut FfiCore, config: I2cConfig) -> bool {
-    flag(core, |c| c.set_i2c((&config).into()))
+    flag(core, |c| c.set_i2c(dspi_core::I2cConfig::from(&config)))
 }
 
-// ── Device notifications ──────────────────────────────────────────────
+// ── Notifications ────────────────────────────────────────────────────
 
-/// Register the callback the notification listener thread calls when
-/// packets are waiting; NULL clears it, waiting for a call in progress. It runs
-/// on that thread: it must only schedule `dspi_process_notifications` on the
-/// GUI thread.
+/// Set the callback that says notifications are waiting. It runs on the
+/// reader's thread and must only schedule `dspi_process_notifications`. Null
+/// unsets it; once that returns, the old one is not running.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_notify_callback(
     core: *mut FfiCore,
-    // Spelled out: cbindgen renders `Option<NotifyCallback>` as a struct.
     callback: Option<extern "C" fn(user_data: *mut c_void)>,
     user_data: *mut c_void,
 ) {
     with_core(core, (), |h| {
-        let listener = callback.map(|callback| {
-            Arc::new(CWake {
-                callback,
-                user_data,
-            }) as Arc<dyn NotifyListener>
-        });
+        let listener = wake(callback, user_data).map(|w| -> Arc<dyn NotifyListener> { w });
         h.core.set_notify_listener(listener);
     });
 }
 
-/// Apply the queued device notifications to the state. `out` receives what
-/// changed (`NOTIFY_*` flags and the wire channels whose filters changed);
-/// zeros for a null handle. `out` may be null.
+/// Apply the waiting notifications to the mirror and say what changed in
+/// `out` (may be null). A null handle gives the empty result.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_process_notifications(core: *mut FfiCore, out: *mut NotifyResult) {
     let result = with_core(core, NotifyResult::default(), |h| {
         NotifyResult::from(&h.core.process_notifications())
     });
-    if !out.is_null() && out.is_aligned() {
-        // SAFETY: not null, aligned, and points to a record; the C caller's
-        // contract.
-        unsafe { out.write(result) };
-    }
+    store(out, result);
 }
 
-// ── Spectrum analyser ─────────────────────────────────────────────────
+// ── The analyser ─────────────────────────────────────────────────────
 
-/// Register the callback the analyser worker calls (on its own thread) when
-/// the caps or the snapshot changed. It must only schedule work on the GUI
-/// thread. NULL stops the calls; once this returns, no call is in progress.
+/// Set the callback that says new analyser data is waiting, on the
+/// analyser's thread; null unsets it.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_rta_set_callback(
     core: *mut FfiCore,
@@ -660,206 +554,202 @@ pub extern "C" fn dspi_rta_set_callback(
     user_data: *mut c_void,
 ) {
     with_core(core, (), |h| {
-        let listener = callback.map(|callback| {
-            Arc::new(CWake {
-                callback,
-                user_data,
-            }) as Arc<dyn RtaListener>
-        });
+        let listener = wake(callback, user_data).map(|w| -> Arc<dyn RtaListener> { w });
         h.core.rta_set_listener(listener);
     });
 }
 
-/// Probe and start polling the connected device's analyser (compatible
-/// firmware only). Stops by itself on disconnect.
+/// Start the analyser's worker for the open device.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_rta_start(core: *mut FfiCore) {
     with_core(core, (), |h| h.core.rta_start());
 }
 
-/// What to analyse. A zero mask releases the analyser.
+/// Ask for an analysis; a zero mask releases the analyser. A null request
+/// does nothing.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_rta_set_request(core: *mut FfiCore, request: *const RtaRequest) {
-    if request.is_null() || !request.is_aligned() {
+    let Some(request) = read_in(request) else {
         return;
-    }
+    };
     with_core(core, (), |h| {
-        // SAFETY: not null, aligned, and points to a record; the C caller's
-        // contract.
-        let request = unsafe { request.read() };
-        h.core.rta_set_request((&request).into());
+        h.core
+            .rta_set_request(dspi_core::RtaRequest::from(&request));
     });
 }
 
-// -- WP CG30 --
-/// As `dspi_rta_set_request`, saying whether a view shows the analyser. With
-/// `watching` true and a zero mask, nothing of this console's is analysed,
-/// but while another console is followed its configuration is still polled
-/// and in the snapshot. The record keeps the old layout, so the flag is an
-/// argument.
+/// `dspi_rta_set_request` for a view that is on screen: with `watching`, a
+/// zero mask keeps showing what another console has the analyser doing
+/// instead of releasing it.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_rta_set_request_watching(
     core: *mut FfiCore,
     request: *const RtaRequest,
     watching: bool,
 ) {
-    if request.is_null() || !request.is_aligned() {
+    let Some(request) = read_in(request) else {
         return;
-    }
+    };
     with_core(core, (), |h| {
-        // SAFETY: not null, aligned, and points to a record; the C caller's
-        // contract.
-        let request = unsafe { request.read() };
-        h.core.rta_set_request(dspi_core::RtaRequest {
-            watching,
-            ..(&request).into()
-        });
+        let mut wanted = dspi_core::RtaRequest::from(&request);
+        wanted.watching = watching;
+        h.core.rta_set_request(wanted);
     });
 }
 
-/// The analyser's capabilities (`supported` false until probed or without
-/// one, and for a null handle).
+/// The analyser's capabilities into `out`; "not supported" for a null
+/// handle.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_rta_get_caps(core: *mut FfiCore, out: *mut RtaCapsInfo) {
     if out.is_null() || !out.is_aligned() {
         return;
     }
-    let caps = with_core(core, None, |h| {
-        Some(RtaCapsInfo::from(&h.core.rta_get_caps()))
+    let caps = with_core(core, RtaCapsInfo::default(), |h| {
+        RtaCapsInfo::from(&h.core.rta_get_caps())
     });
-    // SAFETY: not null, aligned, and points to a record; the C caller's contract.
-    unsafe { out.write(caps.unwrap_or_default()) };
+    store(out, caps);
 }
 
-/// Copy the latest snapshot into `out` (the empty one for a null handle).
+/// The latest analysis into `out`; empty for a null handle.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_rta_get_snapshot(core: *mut FfiCore, out: *mut RtaSnapshot) {
     if out.is_null() || !out.is_aligned() {
         return;
     }
-    let snapshot = with_core(core, None, |h| {
-        Some(RtaSnapshot::from(&h.core.rta_get_snapshot()))
+    let snapshot = with_core(core, RtaSnapshot::default(), |h| {
+        RtaSnapshot::from(&h.core.rta_get_snapshot())
     });
-    // SAFETY: not null, aligned, and points to a record; the C caller's contract.
-    unsafe { out.write(snapshot.unwrap_or_default()) };
+    store(out, snapshot);
 }
 
-// -- WP CG5 --
-/// Whether this console drives the analyser or follows another one's
-/// configuration (driving, all zero, for a null handle). The analyser
-/// callback is called when this changes.
+/// Who chose the analyser's configuration, into `out`; "this console drives"
+/// for a null handle.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_rta_get_ownership(core: *mut FfiCore, out: *mut RtaOwnership) {
     if out.is_null() || !out.is_aligned() {
         return;
     }
-    let ownership = with_core(core, None, |h| {
-        Some(RtaOwnership::from(&h.core.rta_get_ownership()))
+    let owner = with_core(core, RtaOwnership::default(), |h| {
+        RtaOwnership::from(&h.core.rta_get_ownership())
     });
-    // SAFETY: not null, aligned, and points to a record; the C caller's contract.
-    unsafe { out.write(ownership.unwrap_or_default()) };
+    store(out, owner);
 }
 
-/// Stop following and push this console's own request on the next poll.
+/// Make this console the one that drives the analyser again.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_rta_take_control(core: *mut FfiCore) {
     with_core(core, (), |h| h.core.rta_take_control());
 }
 
-// ── Signal generator ──────────────────────────────────────────────────
+// ── Signal generator and statistics ──────────────────────────────────
 
-/// The generator's caps and signal types. False on a USB error; true with
-/// `supported` false when the firmware has no generator.
+/// The signal generator's capabilities into `out`. True with `supported`
+/// false on firmware without one.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_siggen_fetch_caps(core: *mut FfiCore, out: *mut SiggenCaps) -> bool {
-    fetch(core, out, |c| c.siggen_fetch_caps())
-}
-
-/// The config the generator runs (as the device sanitised it).
-#[unsafe(no_mangle)]
-pub extern "C" fn dspi_siggen_get_config(core: *mut FfiCore, out: *mut SiggenConfig) -> bool {
-    fetch(core, out, |c| c.siggen_get_config())
-}
-
-/// Stage a config; a running generator restarts with it. The device ACKs
-/// even a config it refuses: read it back to check.
-#[unsafe(no_mangle)]
-pub extern "C" fn dspi_siggen_set_config(core: *mut FfiCore, cfg: *const SiggenConfig) -> bool {
-    if cfg.is_null() || !cfg.is_aligned() {
-        return false;
-    }
-    flag(core, |c| {
-        // SAFETY: not null, aligned, and points to a record; the C caller's
-        // contract.
-        let cfg = unsafe { cfg.read() };
-        c.siggen_set_config((&cfg).into())
+    fetch_value(core, out, |c| {
+        c.siggen_fetch_caps().map(|caps| SiggenCaps::from(&caps))
     })
 }
 
-/// SIGGEN_CTL_START / STOP (fade) / STOP_NOW. False if refused.
+/// The signal generator's configuration into `out`.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_siggen_get_config(core: *mut FfiCore, out: *mut SiggenConfig) -> bool {
+    fetch_value(core, out, |c| {
+        c.siggen_get_config().map(|cfg| SiggenConfig::from(&cfg))
+    })
+}
+
+/// Configure the signal generator. False for a null `cfg`.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_siggen_set_config(core: *mut FfiCore, cfg: *const SiggenConfig) -> bool {
+    let Some(cfg) = read_in(cfg) else {
+        return false;
+    };
+    flag(core, |c| {
+        c.siggen_set_config(dspi_core::SiggenConfig::from(&cfg))
+    })
+}
+
+/// Start, stop or otherwise drive the signal generator (`action`).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_siggen_control(core: *mut FfiCore, action: u16) -> bool {
     flag(core, |c| c.siggen_control(action))
 }
 
-/// The generator's state.
+/// The signal generator's state into `out`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_siggen_get_status(core: *mut FfiCore, out: *mut SiggenStatus) -> bool {
-    fetch(core, out, |c| c.siggen_get_status())
+    fetch_value(core, out, |c| {
+        c.siggen_get_status().map(|s| SiggenStatus::from(&s))
+    })
 }
 
-// ── Statistics ────────────────────────────────────────────────────────
-
-/// One REQ_GET_STATUS u32 counter (STAT_*).
+/// One statistic (`STAT_*`) into `out`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_stat(core: *mut FfiCore, which: u16, out: *mut u32) -> bool {
     fetch_value(core, out, |c| c.fetch_stat(which))
 }
 
-/// The audio buffers' fill statistics.
+/// The buffer fill levels into `out`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_buffer_stats(core: *mut FfiCore, out: *mut BufferStats) -> bool {
-    fetch(core, out, |c| c.fetch_buffer_stats())
+    fetch_value(core, out, |c| {
+        c.fetch_buffer_stats().map(|s| BufferStats::from(&s))
+    })
 }
 
-/// Restart the buffer watermarks.
+/// Reset the buffer statistics' watermarks.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_reset_buffer_stats(core: *mut FfiCore) -> bool {
-    flag(core, |c| c.reset_buffer_stats())
+    flag(core, DspiCore::reset_buffer_stats)
 }
 
-/// The S/PDIF receiver's status.
+/// The S/PDIF receiver's state into `out`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_spdif_rx_status(core: *mut FfiCore, out: *mut SpdifRxStatus) -> bool {
-    fetch(core, out, |c| c.fetch_spdif_rx_status())
+    fetch_value(core, out, |c| {
+        c.fetch_spdif_rx_status().map(|s| SpdifRxStatus::from(&s))
+    })
 }
 
-/// `out` receives 24 bytes of IEC 60958 channel status.
+/// The bytes of the IEC 60958 channel status block.
+const CHANNEL_STATUS_BYTES: usize = 24;
+
+/// The received S/PDIF channel status into `out`, which holds 24 bytes;
+/// bytes the device did not send are 0.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_spdif_rx_channel_status(core: *mut FfiCore, out: *mut u8) -> bool {
     if out.is_null() {
         return false;
     }
     with_core(core, false, |h| {
-        h.core
-            .fetch_spdif_rx_channel_status()
-            .is_ok_and(|b| copy_bytes(&b, out, CHANNEL_STATUS_LEN))
+        let Ok(block) = h.core.fetch_spdif_rx_channel_status() else {
+            return false;
+        };
+        let padded = block.into_iter().chain(std::iter::repeat(0));
+        for (i, byte) in padded.take(CHANNEL_STATUS_BYTES).enumerate() {
+            // SAFETY: `out` holds 24 bytes (the C caller's contract) and
+            // `i < 24`.
+            unsafe { out.add(i).write(byte) };
+        }
+        true
     })
 }
 
-/// GPIO of S/PDIF receiver `index`; false if it has none.
+/// The GPIO of S/PDIF receiver `index` into `out`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_spdif_rx_pin(core: *mut FfiCore, index: u8, out: *mut u8) -> bool {
     fetch_value(core, out, |c| c.fetch_spdif_rx_pin(index))
 }
 
-// ── Interrupt monitor ─────────────────────────────────────────────────
+// ── The monitor log ──────────────────────────────────────────────────
 
-/// Copy the notification log lines after `after_id` into `buf` as
-/// "time_ms<TAB>text<LF>" (ms since the Unix epoch), stopping before `buf`
-/// would overflow. A line too long for `buf` even on its own is dropped.
-/// Returns the id of the last line written or dropped (`after_id` if none);
-/// call again from there to get the rest.
+/// The log entries after `after_id` into `buf`, one per line as
+/// `<ms since the epoch>\t<text>\n`, as many whole lines as fit. Returns the
+/// id to pass next time: the last entry written, or past entries too long
+/// for the buffer at all, which are dropped. With nothing new, a null buffer,
+/// a length of 0 or a null handle it returns `after_id`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_monitor_read(
     core: *mut FfiCore,
@@ -867,54 +757,50 @@ pub extern "C" fn dspi_monitor_read(
     buf: *mut c_char,
     buf_len: u32,
 ) -> u64 {
-    let Some(limit) = (buf_len as usize).checked_sub(1) else {
-        return after_id;
-    };
-    if buf.is_null() {
+    if buf.is_null() || buf_len == 0 {
         return after_id;
     }
     with_core(core, after_id, |h| {
-        let mut out = String::new();
-        let mut last = after_id;
-        for e in h.core.monitor_read(after_id).entries {
-            let line = format!("{}\t{}\n", e.time_ms, e.text);
-            if line.len() > limit {
-                // It would never fit: a caller looping until the id stops
-                // moving must not stop here for good.
-                log::debug!("dspi-capi: dropped a {}-byte monitor line", line.len());
-                last = e.id;
-                continue;
+        let batch = h.core.monitor_read(after_id);
+        let room = usize::try_from(buf_len).map_or(usize::MAX, |n| n.saturating_sub(1));
+        let mut lines = String::new();
+        let mut next = after_id;
+        let mut stopped = false;
+        for entry in &batch.entries {
+            let flat: String = entry
+                .text
+                .chars()
+                .map(|ch| if ch == '\n' || ch == '\0' { ' ' } else { ch })
+                .collect();
+            let line = format!("{}\t{flat}\n", entry.time_ms);
+            if line.len() <= room {
+                if lines.len().saturating_add(line.len()) > room {
+                    stopped = true;
+                    break;
+                }
+                lines.push_str(&line);
             }
-            if out.len().saturating_add(line.len()) > limit {
-                break;
-            }
-            out.push_str(&line);
-            last = e.id;
+            next = entry.id;
         }
-        copy_out(&out, buf, buf_len);
-        last
+        if !stopped {
+            next = next.max(batch.last_id);
+        }
+        copy_out(&lines, buf, buf_len);
+        next
     })
 }
 
-/// Empty the notification log.
+/// Empty the monitor log.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_monitor_clear(core: *mut FfiCore) {
     with_core(core, (), |h| h.core.monitor_clear());
 }
 
-// ── Configuration and filter files ────────────────────────────────────
+// ── Files ────────────────────────────────────────────────────────────
 
-/// An export's text, or its refusal as the JSON failure reply (module docs).
-fn export_text(r: Result<String>) -> String {
-    r.unwrap_or_else(|e| json_reply::<()>(Err(e)))
-}
-
-/// The device's configuration as a `.dspipreset` document. `links` = the
-/// app's input-pair link mask. Returns the length needed.
-///
-/// With no device's state to export, the text is instead the JSON failure reply
-/// `{"ok":false,"code":<kind>,"error":<sentence>}`: a document has no `ok` key.
-/// Check before writing it to a file.
+/// The device's whole configuration as a `.dspipreset` document named
+/// `name`, written by `app_version`, with the input links `links`; or a JSON
+/// failure. Returns the bytes needed.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_config_export(
     core: *mut FfiCore,
@@ -925,26 +811,27 @@ pub extern "C" fn dspi_config_export(
     len: u32,
 ) -> u32 {
     text(core, buf, len, |c| {
-        export_text(c.config_export(c_text(name), c_text(app_version), links))
+        let doc = arg(name, "name").and_then(|name| {
+            let version = arg(app_version, "app_version")?;
+            c.config_export(name.to_owned(), version.to_owned(), links)
+        });
+        document_reply(doc)
     })
 }
 
-/// Check a document and describe it, as JSON {ok, error, name, platform,
-/// firmware, savedUtc}. Returns the length needed.
+/// What a configuration document holds, in JSON, without a device. Returns
+/// the bytes needed, 0 only for a panic.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_config_inspect(text: *const c_char, buf: *mut c_char, len: u32) -> u32 {
-    guard(0, || {
-        copy_text(&dspi_core::files::config_inspect(c_text(text)), buf, len)
+    free_text(buf, len, || match arg(text, "text") {
+        Ok(doc) => dspi_core::files::config_inspect(doc.to_owned()),
+        Err(e) => json_reply::<()>(Err(e)),
     })
 }
 
-/// Apply a document (`options`: 1 = volumes, 2 = hardware I/O). Writes JSON
-/// {ok, error, lines, clean, links (or null), hardwareWritten}. Returns the
-/// length needed.
-///
-/// Don't retry on a short buffer: a reply too long means the write has
-/// happened, and a second call applies it again. Give it a large enough buffer
-/// the first time.
+/// Apply a configuration document to the device. `options`: bit 0 the
+/// volumes too, bit 1 the hardware configuration too. JSON reply; the device
+/// has changed whatever the buffer.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_config_import(
     core: *mut FfiCore,
@@ -953,12 +840,14 @@ pub extern "C" fn dspi_config_import(
     buf: *mut c_char,
     len: u32,
 ) -> u32 {
-    self::text(core, buf, len, |c| c.config_import(c_text(text), options))
+    self::text(core, buf, len, |c| match arg(text, "text") {
+        Ok(doc) => c.config_import(doc.to_owned(), options),
+        Err(e) => json_reply::<()>(Err(e)),
+    })
 }
 
-/// Every channel's filters as a text file (`inputs` = live inputs to write),
-/// or the JSON failure reply as [`dspi_config_export`] gives it: a filter file
-/// starts with `#`.
+/// The filters of the device's `inputs` inputs and every output as a filter
+/// document, or a JSON failure.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_filters_export(
     core: *mut FfiCore,
@@ -966,10 +855,10 @@ pub extern "C" fn dspi_filters_export(
     buf: *mut c_char,
     len: u32,
 ) -> u32 {
-    text(core, buf, len, |c| export_text(c.filters_export(inputs)))
+    text(core, buf, len, |c| document_reply(c.filters_export(inputs)))
 }
 
-/// What a filter file holds, for the channel picker (JSON).
+/// What a filter document holds that this device can use, in JSON.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_filters_inspect(
     core: *mut FfiCore,
@@ -978,15 +867,14 @@ pub extern "C" fn dspi_filters_inspect(
     buf: *mut c_char,
     len: u32,
 ) -> u32 {
-    self::text(core, buf, len, |c| c.filters_inspect(c_text(text), inputs))
+    self::text(core, buf, len, |c| match arg(text, "text") {
+        Ok(doc) => c.filters_inspect(doc.to_owned(), inputs),
+        Err(e) => json_reply::<()>(Err(e)),
+    })
 }
 
-/// Apply a filter file to the channels in `wires` (wire indices). Writes
-/// JSON {ok, error, lines}. Returns the length needed.
-///
-/// Don't retry on a short buffer: a reply too long means the write has
-/// happened, and a second call applies it again. Give it a large enough buffer
-/// the first time.
+/// Apply a filter document's channels to the `count` wire channels at
+/// `wires`. JSON reply; the device has changed whatever the buffer.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_filters_import(
     core: *mut FfiCore,
@@ -996,33 +884,28 @@ pub extern "C" fn dspi_filters_import(
     buf: *mut c_char,
     len: u32,
 ) -> u32 {
-    self::text(core, buf, len, |c| {
-        c.filters_import(c_text(text), c_bytes(wires, count))
+    self::text(core, buf, len, |c| match arg(text, "text") {
+        Ok(doc) => c.filters_import(doc.to_owned(), c_bytes(wires, count)),
+        Err(e) => json_reply::<()>(Err(e)),
     })
 }
 
-// ── Control surfaces ──────────────────────────────────────────────────
+// ── Control surfaces ─────────────────────────────────────────────────
 
-/// Read the whole control surfaces configuration from the device (bindings,
-/// IR commands, groups, macros, display, aux). Returns false on a transfer
-/// error; firmware without control surfaces reads as unsupported.
+/// Read the control surface configuration from the device.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_cs_fetch(core: *mut FfiCore) -> bool {
-    flag(core, |c| c.cs_fetch())
+    flag(core, DspiCore::cs_fetch)
 }
 
-/// The control surfaces configuration as JSON. Returns the length needed.
+/// The control surface configuration last read, as JSON.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_cs_snapshot(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
-    text(core, buf, len, |c| c.cs_snapshot())
+    text(core, buf, len, DspiCore::cs_snapshot)
 }
 
-/// Perform one control surfaces operation, given as JSON {op, index, ...}.
-/// Writes JSON {ok, status, error, ...}. Returns the length needed.
-///
-/// Don't retry on a short buffer: a reply too long means the write has
-/// happened, and a second call applies it again. Give it a large enough buffer
-/// the first time.
+/// Run one control surface operation, given as JSON; the JSON reply carries
+/// an `error` when it failed.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_cs_apply(
     core: *mut FfiCore,
@@ -1030,11 +913,15 @@ pub extern "C" fn dspi_cs_apply(
     buf: *mut c_char,
     len: u32,
 ) -> u32 {
-    text(core, buf, len, |c| c.cs_apply(c_text(op)))
+    text(core, buf, len, |c| match arg(op, "op") {
+        Ok(op) => c.cs_apply(op.to_owned()),
+        Err(e) => json_reply::<()>(Err(e)),
+    })
 }
 
-/// GPIOs held by live control surface bindings: fills `pins` and `slots`
-/// (up to `max` each) and returns how many there are.
+/// The GPIOs live bindings hold: up to `max` of them into `pins`, with the
+/// binding's slot at the same index of `slots` (either may be null). Returns
+/// how many there are in all; 0 for a null handle.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_cs_pin_uses(
     core: *mut FfiCore,
@@ -1044,13 +931,16 @@ pub extern "C" fn dspi_cs_pin_uses(
 ) -> u32 {
     with_core(core, 0, |h| {
         let uses = h.core.cs_pin_uses();
-        if !pins.is_null() && !slots.is_null() {
-            for (i, u) in uses.iter().take(max as usize).enumerate() {
-                // SAFETY: both arrays hold `max` bytes, the C caller's
-                // contract, and i < max.
-                unsafe {
-                    pins.add(i).write(u.pin);
-                    slots.add(i).write(u.slot);
+        let room = usize::try_from(max).unwrap_or(usize::MAX);
+        for (i, used) in uses.iter().take(room).enumerate() {
+            // SAFETY: each non-null array holds `max` bytes (the C caller's
+            // contract) and `i < max`.
+            unsafe {
+                if !pins.is_null() {
+                    pins.add(i).write(used.pin);
+                }
+                if !slots.is_null() {
+                    slots.add(i).write(used.slot);
                 }
             }
         }
@@ -1058,118 +948,120 @@ pub extern "C" fn dspi_cs_pin_uses(
     })
 }
 
-// ── Bootloader on the bus ─────────────────────────────────────────────
+// ── Bootloader boards and the demo device ────────────────────────────
 
-/// Boards in BOOTSEL (Raspberry Pi's ROM loader, not DSPi) on the USB bus:
-/// fills the RP2040 and RP2350 counts. Either pointer may be null.
+/// How many RP2040 and RP2350 boards are in their USB bootloader. Either
+/// pointer may be null.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_bootloader_counts(rp2040: *mut u32, rp2350: *mut u32) {
-    let counts = guard(Default::default(), dspi_core::bootloader_counts);
-    // SAFETY: a non-null, aligned pointer points to a u32; the C caller's
-    // contract.
-    unsafe {
-        if !rp2040.is_null() && rp2040.is_aligned() {
-            rp2040.write(counts.rp2040);
-        }
-        if !rp2350.is_null() && rp2350.is_aligned() {
-            rp2350.write(counts.rp2350);
-        }
+    let counts = guard(None, || Some(dspi_core::bootloader_counts()));
+    if let Some(counts) = counts {
+        store(rp2040, counts.rp2040);
+        store(rp2350, counts.rp2350);
     }
 }
 
-// ── Added: the demo device ────────────────────────────────────────────
-
-/// Open the built-in demo device: a simulated RP2350 that answers reads and
-/// writes and notifies. Replaces any open device. Follow it with
-/// `dspi_fetch_all`, as after `dspi_select_device`.
+/// Open the demo device, a simulated DSPi, in place of any open device.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_open_demo(core: *mut FfiCore) -> bool {
-    flag(core, |c| c.open_demo())
+    flag(core, DspiCore::open_demo)
 }
 
-// ── Added: extension channel ──────────────────────────────────────────
+// ── The extension channel ────────────────────────────────────────────
 
-/// What the extension channel offers, as probed on connect (no traffic):
-/// JSON {ok, supported, hasPairMap, hasCoreVreg}. Returns the length needed.
+/// What the extension channel offers on the open device, in JSON:
+/// `{ok, supported, hasPairMap, hasCoreVreg}`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_ext_status(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
     text(core, buf, len, |c| json_reply(c.ext_status()))
 }
 
-/// Read the live crossfeed pair map into `out`. `out_len` must be at least 4;
-/// a shorter buffer is false with no traffic. Also false on firmware without
-/// the extension.
+/// The crossfeed pair map, 4 bytes, into `out` of `out_len` bytes. False for
+/// a buffer under 4 bytes, with nothing written.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_crossfeed_pair_map(
     core: *mut FfiCore,
     out: *mut u8,
     out_len: u32,
 ) -> bool {
-    if out.is_null() || (out_len as usize) < PAIR_MAP_LEN {
+    let fits = usize::try_from(out_len).is_ok_and(|n| n >= PairMap::SIZE);
+    if out.is_null() || !fits {
         return false;
     }
     with_core(core, false, |h| {
-        h.core
-            .fetch_crossfeed_pair_map()
-            .is_ok_and(|m| copy_bytes(&m, out, PAIR_MAP_LEN))
+        let Ok(map) = h.core.fetch_crossfeed_pair_map() else {
+            return false;
+        };
+        let padded = map.into_iter().chain(std::iter::repeat(0));
+        for (i, byte) in padded.take(PairMap::SIZE).enumerate() {
+            // SAFETY: `out` holds `out_len` >= 4 bytes and `i < 4`.
+            unsafe { out.add(i).write(byte) };
+        }
+        true
     })
 }
 
-/// Set the crossfeed pair map (`map_len` 4 bytes). Returns 0 on success, the
-/// device's status byte if it refused, 0xFF otherwise: an invalid map (nothing
-/// is sent), firmware without the extension, or no device.
+/// Write the crossfeed pair map: `map_len` (4) bytes at `map`. Returns a
+/// status byte; 0xFF for a null or short map without asking the device.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_crossfeed_pair_map(
     core: *mut FfiCore,
     map: *const u8,
     map_len: u32,
 ) -> u8 {
-    status(core, |c| c.set_crossfeed_pair_map(c_bytes(map, map_len)))
+    let long_enough = usize::try_from(map_len).is_ok_and(|n| n >= PairMap::SIZE);
+    if map.is_null() || !long_enough {
+        return 0xFF;
+    }
+    let bytes = c_bytes(map, map_len);
+    status(core, |c| c.set_crossfeed_pair_map(bytes))
 }
 
-// -- WP CG17 --
-/// Whether `map` (`map_len` 4 bytes) is a pair map the firmware takes on a
-/// platform with `num_pairs` stereo pairs: the rule
-/// `dspi_set_crossfeed_pair_map` applies, for telling an editor as the pairs
-/// are picked. No device involved. False for a null map or another length.
+/// Whether `map` (`map_len` bytes, which must be 4) is a pair map the
+/// firmware takes with `num_pairs` pairs.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_crossfeed_pair_map_valid(
     map: *const u8,
     map_len: u32,
     num_pairs: u8,
 ) -> bool {
-    dspi_core::crossfeed_pair_map_valid(c_bytes(map, map_len), num_pairs)
+    if map.is_null() {
+        return false;
+    }
+    guard(false, || {
+        dspi_core::crossfeed_pair_map_valid(c_bytes(map, map_len), num_pairs)
+    })
 }
 
-/// The K340's pair map (one DAC per ear) into `out`. `out_len` must be at
-/// least 4; a shorter or null buffer is false.
+/// The K340's pair map into `out` (4 bytes of `out_len`). False for a
+/// buffer under 4 bytes.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_crossfeed_k340_pair_map(out: *mut u8, out_len: u32) -> bool {
-    (out_len as usize) >= PAIR_MAP_LEN && copy_bytes(&dspi_core::PairMap::K340.0, out, PAIR_MAP_LEN)
+    let fits = usize::try_from(out_len).is_ok_and(|n| n >= PairMap::SIZE);
+    if out.is_null() || !fits {
+        return false;
+    }
+    let PairMap(bytes) = PairMap::K340;
+    // SAFETY: `out` holds `out_len` >= 4 bytes (the C caller's contract).
+    unsafe { ptr::copy_nonoverlapping(bytes.as_ptr(), out, bytes.len()) };
+    true
 }
 
 /// The output pair mask that goes with the K340's pair map.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_crossfeed_k340_pair_mask() -> u8 {
-    dspi_core::PairMap::K340_MASK
+    PairMap::K340_MASK
 }
 
-/// The core voltage extension's status: JSON {ok, liveVreg, millivolts,
-/// storedSel, defaultVreg, autoRaised, autoDisabled, hangCount, trialActive,
-/// trialVreg, failedTrialVreg, failedTrialUptimeS, uptimeS}. Returns the
-/// length needed.
+/// The core voltage extension's status, in JSON (`millivolts`, `storedSel`,
+/// ...), or a failure (`unsupported` without it).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_core_vreg(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
     text(core, buf, len, |c| json_reply(c.fetch_core_vreg()))
 }
 
-/// Core voltage write: `op` 0 set (value = VREG code, 0 = build default),
-/// 1 trial, 2 end trial, 3 auto (value 0/1), 4 clear. Out-of-range requests
-/// are refused here with nothing sent. A set or trial above 1.20 V and above
-/// what the unit reports now needs `word`, exactly "OVERVOLT"; null or anything
-/// else refuses it with nothing written. Returns 0 on success, the device's
-/// status byte if it refused, 0xFF otherwise. Read the status back with
-/// `dspi_fetch_core_vreg`.
+/// One raw core voltage operation. `word` is what the user typed (null:
+/// nothing); raising above 1.20 V needs `OVERVOLT`. Returns a status byte.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_vreg_op(
     core: *mut FfiCore,
@@ -1177,14 +1069,15 @@ pub extern "C" fn dspi_core_vreg_op(
     value: u8,
     word: *const c_char,
 ) -> u8 {
-    let word = c_str(word).map(str::to_owned);
-    status(core, |c| c.core_vreg_op(op, value, word))
+    status(core, |c| {
+        c.core_vreg_op(op, value, optional_text(word, "word")?)
+    })
 }
 
-// ── Added: names ──────────────────────────────────────────────────────
+// ── Names ────────────────────────────────────────────────────────────
 
-/// The user's name for input source `source` ("" when unnamed), cut to fit
-/// `out_buf`; 32 bytes always fit. False on firmware without source names.
+/// The user's name for input source `source`, read from the device, into
+/// `out_buf`, cut to fit.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_get_input_source_name(
     core: *mut FfiCore,
@@ -1192,63 +1085,39 @@ pub extern "C" fn dspi_get_input_source_name(
     out_buf: *mut c_char,
     buf_len: u32,
 ) -> bool {
-    if out_buf.is_null() || buf_len == 0 {
-        return false;
-    }
-    with_core(core, false, |h| {
-        h.core
-            .get_input_source_name(source)
-            .is_ok_and(|n| copy_out(&n, out_buf, buf_len))
-    })
+    name_into(core, out_buf, buf_len, |c| c.get_input_source_name(source))
 }
 
-/// Name input source `source`; "" clears it. At most 31 bytes of UTF-8. False
-/// for a null or invalid string (nothing is sent), and as the device refuses.
+/// Name input source `source`. False for a null or non-UTF-8 name, or one too
+/// long for the device.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_input_source_name(
     core: *mut FfiCore,
     source: u8,
     name: *const c_char,
 ) -> bool {
-    let Some(name) = c_str(name) else {
-        return false;
-    };
-    flag(core, |c| c.set_input_source_name(source, name.to_owned()))
+    flag(core, |c| {
+        c.set_input_source_name(source, arg(name, "name")?.to_owned())
+    })
 }
 
-/// The device's own name ("" when unnamed), cut to fit `out_buf`; 32 bytes
-/// always fit. False on firmware without device names.
+/// The device's name, read from it, into `out_buf`, cut to fit.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_get_device_name(
     core: *mut FfiCore,
     out_buf: *mut c_char,
     buf_len: u32,
 ) -> bool {
-    if out_buf.is_null() || buf_len == 0 {
-        return false;
-    }
-    with_core(core, false, |h| {
-        h.core
-            .get_device_name()
-            .is_ok_and(|n| copy_out(&n, out_buf, buf_len))
-    })
+    name_into(core, out_buf, buf_len, DspiCore::get_device_name)
 }
 
-/// Rename the device; "" clears it. At most 31 bytes of UTF-8. False for a
-/// null or invalid string (nothing is sent), and as the device refuses.
+/// Name the device. False for a null or non-UTF-8 name, or one too long.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_device_name(core: *mut FfiCore, name: *const c_char) -> bool {
-    let Some(name) = c_str(name) else {
-        return false;
-    };
-    flag(core, |c| c.set_device_name(name.to_owned()))
+    flag(core, |c| c.set_device_name(arg(name, "name")?.to_owned()))
 }
 
-// -- WP QD4 --
-/// The name of input source `source` as last known ("" when unnamed), cut to
-/// fit `out_buf`, with no traffic: for showing names, which connect has read
-/// and notifications keep current. 32 bytes always fit. False on firmware
-/// without source names, and for a source past the table.
+/// The input source's name as last read (no I/O), into `out_buf`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_cached_input_source_name(
     core: *mut FfiCore,
@@ -1256,53 +1125,38 @@ pub extern "C" fn dspi_cached_input_source_name(
     out_buf: *mut c_char,
     buf_len: u32,
 ) -> bool {
-    if out_buf.is_null() || buf_len == 0 {
-        return false;
-    }
-    with_core(core, false, |h| {
-        h.core
-            .cached_input_source_name(source)
-            .is_ok_and(|n| copy_out(&n, out_buf, buf_len))
+    name_into(core, out_buf, buf_len, |c| {
+        c.cached_input_source_name(source)
     })
 }
 
-/// The device's name as last known, as [`dspi_cached_input_source_name`]. False
-/// on firmware without device names.
+/// The device's name as last read (no I/O), into `out_buf`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_cached_device_name(
     core: *mut FfiCore,
     out_buf: *mut c_char,
     buf_len: u32,
 ) -> bool {
-    if out_buf.is_null() || buf_len == 0 {
-        return false;
-    }
-    with_core(core, false, |h| {
-        h.core
-            .cached_device_name()
-            .is_ok_and(|n| copy_out(&n, out_buf, buf_len))
-    })
+    name_into(core, out_buf, buf_len, DspiCore::cached_device_name)
 }
 
-/// On the demo device only: someone else renames input source `target`, or the
-/// device for 0xFF. "" clears the name. False on anything else.
+/// Demo device: another console renames input source `target` (0xFF: the
+/// device) to `name`, as a notification shows it.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_demo_rename_elsewhere(
     core: *mut FfiCore,
     target: u8,
     name: *const c_char,
 ) -> bool {
-    let Some(name) = c_str(name) else {
-        return false;
-    };
-    flag(core, |c| c.demo_rename_elsewhere(target, name.to_owned()))
+    flag(core, |c| {
+        c.demo_rename_elsewhere(target, arg(name, "name")?.to_owned())
+    })
 }
 
-// -- WP QD5 --
-/// On the demo device only: how an output-latency request lands. `mode` 0 at
-/// once, 1 after `reads` status reads, 2 never, 3 dropped after `reads` status
-/// reads; `blackout` status reads stall first while one is pending. False on
-/// anything else.
+// ── The demo device's timings and fixtures ───────────────────────────
+
+/// Demo device: how output latency changes behave (`mode`), how many reads
+/// they take and how long the device goes quiet.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_demo_latency_timing(
     core: *mut FfiCore,
@@ -1313,9 +1167,8 @@ pub extern "C" fn dspi_demo_latency_timing(
     flag(core, |c| c.demo_latency_timing(mode, reads, blackout))
 }
 
-// -- WP QD5 --
-/// On the demo device only: how many output-latency requests it has received,
-/// or `u32::MAX` on anything else.
+/// Demo device: how many output latency changes it took. `u32::MAX` on
+/// failure.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_demo_latency_sets(core: *mut FfiCore) -> u32 {
     with_core(core, u32::MAX, |h| {
@@ -1323,49 +1176,40 @@ pub extern "C" fn dspi_demo_latency_sets(core: *mut FfiCore) -> u32 {
     })
 }
 
-// -- WP QD31 --
-/// On the demo device only: how `dspi_save_output_config` answers from now on.
-/// 0 goes through, 0xFF stalls, another byte is that `PRESET_*` status. False on
-/// anything else.
+/// Demo device: the status its next output configuration save answers.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_demo_output_save_status(core: *mut FfiCore, status: u8) -> bool {
     flag(core, |c| c.demo_output_save_status(status))
 }
 
-// -- WP QD6 --
-/// The demo device as firmware of wire format `wire` (17, 26, 31 or 33), for
-/// read-only tests. Replaces any open device. False for any other format.
+/// Open a recorded device of wire format `wire` (read-only below the
+/// current format and above it).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_demo_open_wire(core: *mut FfiCore, wire: u8) -> bool {
     flag(core, |c| c.open_demo_wire(wire))
 }
 
-// -- WP QD6 --
-/// How many writes this core has refused because the connection is read-only.
+/// How many writes the read-only mode has refused on this handle.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_read_only_refusals(core: *mut FfiCore) -> u32 {
     with_core(core, 0, |h| h.core.read_only_refusals())
 }
 
-// -- WP QD6 --
-/// The `WIRE_FEAT_*` bits the connected firmware's wire format carries: all of
-/// them on V32 and newer, none with no device or below V16.
+/// The open device's wire features (`WIRE_FEAT_*`); 0 without one.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_wire_features(core: *mut FfiCore) -> u32 {
     with_core(core, 0, |h| h.core.wire_features())
 }
 
-// ── Added: diagnostics ────────────────────────────────────────────────
+// ── Diagnostics ──────────────────────────────────────────────────────
 
-/// The output latency's status: JSON {ok, raw, fields: [{name, value}]}.
-/// Returns the length needed.
+/// The output latency the device reports, in JSON: `{ok, raw, fields}`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_output_latency(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
     text(core, buf, len, |c| json_reply(c.fetch_output_latency()))
 }
 
-/// The output latency options: JSON {ok, value: [{id, streamOnly, available,
-/// latencyUs, batchUs, effectiveUs}]}. Returns the length needed.
+/// The output latency settings to choose from, in JSON (`value`: a list).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_output_latency_options(
     core: *mut FfiCore,
@@ -1377,71 +1221,55 @@ pub extern "C" fn dspi_fetch_output_latency_options(
     })
 }
 
-/// Request output latency option `id` (1..=7). The device applies it later.
+/// Choose an output latency setting by its id.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_output_latency(core: *mut FfiCore, id: u8) -> bool {
     flag(core, |c| c.set_output_latency(id))
 }
 
-/// The clock diagnostics packet: JSON {ok, available, raw, fields: [{name,
-/// value}]}; `available` false on firmware built without them. Returns the
-/// length needed.
+/// The clock diagnostics, in JSON (`available` false on firmware without
+/// them).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_clock_diag(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
     text(core, buf, len, |c| json_reply(c.fetch_clock_diag()))
 }
 
-// -- WP CG12 --
-
-/// The output rings' health: JSON {ok, targetFrames, targetUs, batchFrames,
-/// underrunEpisodes, refusedBlocks, lowestFill, worstInputGapUs, worstUsbGapUs,
-/// overBudgetSteps}, with `lowestFill` null before the first write. On firmware
-/// without the status, {"ok":true,"value":null}: show no section. Returns the
-/// length needed.
+/// The output ring's health, in JSON; `{ok, value: null}` when the device
+/// does not report it.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_ring_health(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
     text(core, buf, len, |c| json_reply(c.fetch_ring_health()))
 }
 
-/// The live outputs' fill, on the ring's scale where the firmware has one:
-/// JSON {ok, value: [{fillPct, minPct, maxPct, band}]}, `band` being "good",
-/// "warn" or "bad". Returns the length needed.
+/// Each live output's fill, in JSON (`value`: a list).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_output_fills(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
     text(core, buf, len, |c| json_reply(c.fetch_output_fills()))
 }
 
-// -- WP CG21 --
-/// The Stats window's fast poll, one transfer: JSON {ok, buffers: {numSpdif,
-/// pdmActive, streaming, sequence, spdif: [{free, prepared, playing, fillPct,
-/// minPct, maxPct}], pdm: {...}}, fills: [as dspi_fetch_output_fills] or null}.
-/// Null fills mean keep the last ones. Returns the length needed.
+/// The buffers and the output fills from one read, in JSON: `{ok, buffers,
+/// fills}`; `fills` is null when they could not be read (keep the last).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_stats_tick(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
     text(core, buf, len, |c| json_reply(c.fetch_stats_tick()))
 }
 
-// -- WP CG23 --
-/// Start (true) or stop the raw notification tap. Off by default; stopping
-/// forgets what it held.
+/// Start or stop keeping a copy of every notification for
+/// `dspi_notify_tap_drain`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_notify_tap_set(core: *mut FfiCore, enabled: bool) {
     with_core(core, (), |h| h.core.notify_tap_set(enabled));
 }
 
-// -- WP CG23 --
-/// The notifications the tap kept since the last drain, oldest first: JSON
-/// {ok, value: [{packet: [bytes], origin: session id or null, own, lost,
-/// receivedMs}]}. Returns the length needed. **Drains**, like the
-/// device-changing text functions: a reply too long for `buf` is not
-/// written and its entries are gone, so the next entry kept has `lost` set.
-/// A full ring (512 entries) fits in 256 KiB.
+/// The notifications kept since the last drain, in JSON (`value`: a list of
+/// `{packet, origin, own, lost, receivedMs}`). They are taken whatever the
+/// buffer: when they do not fit, the next one kept is marked `lost`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_notify_tap_drain(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
     with_core(core, 0, |h| {
-        let entries = h.core.notify_tap_drain();
-        let any = !entries.is_empty();
-        let needed = copy_text(&json_reply(Ok(entries)), buf, len);
+        let kept = h.core.notify_tap_drain();
+        let any = !kept.is_empty();
+        let needed = copy_text(&json_reply(Ok(kept)), buf, len);
         if any && (buf.is_null() || needed > len) {
             h.core.notify_tap_note_dropped();
         }
@@ -1449,19 +1277,16 @@ pub extern "C" fn dspi_notify_tap_drain(core: *mut FfiCore, buf: *mut c_char, le
     })
 }
 
-// -- WP CG23 --
-/// The open connection's generation: unique per connection, never reused
-/// while the process runs. 0 when nothing is open.
+/// The open connection's generation: new on every open, 0 with none.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_connection_generation(core: *mut FfiCore) -> u64 {
     with_core(core, 0, |h| h.core.connection_generation())
 }
 
-// ── Added: firmware ───────────────────────────────────────────────────
+// ── Firmware ─────────────────────────────────────────────────────────
 
-/// Check a `.uf2` image: JSON {ok, valid, problem, familyId, platform,
-/// numBlocks, payloadBytes, firmwareVersion}. `valid` is false for a null or
-/// malformed image. Returns the length needed.
+/// Check a UF2 image of `image_len` bytes, in JSON: `{ok, valid, problem,
+/// familyId, platform, ...}`. A null image is an empty one.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_uf2_inspect(
     image: *const u8,
@@ -1469,28 +1294,30 @@ pub extern "C" fn dspi_uf2_inspect(
     buf: *mut c_char,
     len: u32,
 ) -> u32 {
-    guard(0, || {
-        let info = dspi_core::uf2_inspect(c_bytes(image, image_len));
-        copy_text(&json_reply(Ok(info)), buf, len)
+    free_text(buf, len, || {
+        json_reply(Ok(dspi_core::uf2_inspect(c_bytes(image, image_len))))
     })
 }
 
-/// Mounted bootloader drives: JSON {ok, value: [{path, platform, info}]}.
-/// Returns the length needed.
+/// The boards' bootloader drives that are mounted, in JSON (`value`: a list
+/// of `{path, platform, info}`).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_bootloader_drives(buf: *mut c_char, len: u32) -> u32 {
-    guard(0, || {
-        copy_text(&json_reply(Ok(dspi_core::bootloader_drives())), buf, len)
+    free_text(buf, len, || json_reply(Ok(dspi_core::bootloader_drives())))
+}
+
+/// The drive record a caller describes by its path and platform.
+fn drive_at(drive_path: *const c_char, platform: i8) -> Result<BootloaderDrive> {
+    Ok(BootloaderDrive {
+        path: arg(drive_path, "drive_path")?.to_owned(),
+        platform,
+        info: String::new(),
     })
 }
 
-/// Write a validated image to the bootloader drive at `drive_path`, whose
-/// `platform` comes from `dspi_bootloader_drives` (0 RP2040, 1 RP2350). The
-/// image and the drive are checked before any byte goes out. Replies in JSON
-/// {ok} or {ok, code, error}, and returns the length needed. `ok` means only
-/// that the write ended, or that the drive went away during it, assumed to be
-/// the board rebooting: confirm with `dspi_firmware_version_matches` once the
-/// DSPi is back.
+/// Write a UF2 image to the bootloader drive at `drive_path` (`platform`: 0
+/// RP2040, 1 RP2350). Blocks for the copy. JSON `{ok}` or a failure; an
+/// invalid image never reaches the drive. Use the guarded call instead.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_flash_to_drive(
     image: *const u8,
@@ -1500,70 +1327,57 @@ pub extern "C" fn dspi_flash_to_drive(
     buf: *mut c_char,
     len: u32,
 ) -> u32 {
-    guard(0, || {
-        let drive = BootloaderDrive {
-            path: c_text(drive_path),
-            platform,
-            info: String::new(),
-        };
-        let done = dspi_core::flash_to_drive(c_bytes(image, image_len), drive);
-        copy_text(&json_reply(done.map(|()| serde_json::json!({}))), buf, len)
+    free_text(buf, len, || {
+        let written = drive_at(drive_path, platform)
+            .and_then(|drive| dspi_core::flash_to_drive(c_bytes(image, image_len), drive));
+        done_reply(written)
     })
 }
 
-/// 1 if the open device runs firmware `version` (a UF2's `firmwareVersion`),
-/// 0 if not, -1 with no device open or for a null or invalid string.
+/// Whether the open device runs firmware `version`: 1 yes, 0 no, -1 on
+/// failure or for a null or non-UTF-8 version.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_firmware_version_matches(core: *mut FfiCore, version: *const c_char) -> i8 {
     let Some(version) = c_str(version) else {
         return -1;
     };
     with_core(core, -1, |h| {
-        match h.core.firmware_version_matches(version) {
-            Ok(same) => i8::from(same),
-            Err(_) => -1,
-        }
+        h.core
+            .firmware_version_matches(version)
+            .map_or(-1, i8::from)
     })
 }
 
-// -- WP CG11 --
-// ── Added: core-voltage calibration ───────────────────────────────────
-//
-// The calls that return a `u8` return 0, the device's status byte if it
-// refused, or 0xFF for anything else; the reason is in the view's `lastError`.
+// ── Core voltage calibration ─────────────────────────────────────────
 
-/// The calibration flow as it stands, from memory, with no traffic (it waits
-/// for a call in flight, so keep it off the UI thread): JSON
-/// {ok, available, phase, messageKey, message, warning, soakNote, ...}, the
-/// fields of dspi-core's `VregCalView`. Returns the length needed.
+/// The calibration flow as it stands, in JSON (`phase`, `choices`,
+/// `lastError`, ...). No I/O.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_vreg_cal_view(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
     text(core, buf, len, |c| json_reply(Ok(c.core_vreg_cal_view())))
 }
 
-/// Read the device and advance the flow, as `dspi_core_vreg_cal_view` for the
-/// reply. Call about once a second while the page shows, and on every connect.
-/// The next step of a run the user started may go out here, but never a save,
-/// and a second call for a larger buffer does no harm. Returns the length needed.
+/// The calibration flow after moving it on (reads the device), in JSON.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_vreg_cal_poll(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
     text(core, buf, len, |c| json_reply(Ok(c.core_vreg_cal_poll())))
 }
 
-/// Open the flow: the user reached it from Advanced. Sends no write.
+/// Open the calibration for review. Returns a status byte; the reason for a
+/// refusal is the view's `lastError`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_vreg_cal_open(core: *mut FfiCore) -> u8 {
-    status(core, |c| c.core_vreg_cal_open())
+    status(core, DspiCore::core_vreg_cal_open)
 }
 
-/// Close the flow: the user left. Refused while a run is under way.
+/// Close the calibration. Returns a status byte.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_vreg_cal_close(core: *mut FfiCore) -> u8 {
-    status(core, |c| c.core_vreg_cal_close())
+    status(core, DspiCore::core_vreg_cal_close)
 }
 
-/// Start a run at VREG code `target` for `soak_s` seconds. `typed` is what the
-/// user typed when the view says the voltage needs the word, or null.
+/// Start a trial at VREG code `target` for `soak_s` seconds; `typed` is the
+/// word for a raise above 1.20 V (null: none). Returns a status byte.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_vreg_cal_start(
     core: *mut FfiCore,
@@ -1571,92 +1385,97 @@ pub extern "C" fn dspi_core_vreg_cal_start(
     soak_s: u32,
     typed: *const c_char,
 ) -> u8 {
-    let typed = c_str(typed).map(str::to_owned);
-    status(core, |c| c.core_vreg_cal_start(target, soak_s, typed))
+    status(core, |c| {
+        c.core_vreg_cal_start(target, soak_s, optional_text(typed, "typed")?)
+    })
 }
 
-/// Keep a trial found on the device, for `soak_s` seconds from now.
+/// Keep the trial's voltage for another `soak_s` seconds. Returns a status
+/// byte.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_vreg_cal_keep(core: *mut FfiCore, soak_s: u32) -> u8 {
     status(core, |c| c.core_vreg_cal_keep(soak_s))
 }
 
-/// Save the voltage that passed. `typed` as for `dspi_core_vreg_cal_start`.
+/// Store the passed trial's voltage; `typed` as for the start. Returns a
+/// status byte.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_vreg_cal_commit(core: *mut FfiCore, typed: *const c_char) -> u8 {
-    let typed = c_str(typed).map(str::to_owned);
-    status(core, |c| c.core_vreg_cal_commit(typed))
+    status(core, |c| {
+        c.core_vreg_cal_commit(optional_text(typed, "typed")?)
+    })
 }
 
-/// End a trial, or abort a run.
+/// End the running trial. Returns a status byte.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_vreg_trial_end(core: *mut FfiCore) -> u8 {
-    status(core, |c| c.core_vreg_trial_end())
+    status(core, DspiCore::core_vreg_trial_end)
 }
 
-/// Manual save: `value` 0 is the build default, otherwise the flow's limits
-/// and confirmation apply. `typed` as for `dspi_core_vreg_cal_start`.
+/// Store VREG code `value` directly (0: the build's default); `typed` as for
+/// the start. Returns a status byte.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_vreg_manual_set(
     core: *mut FfiCore,
     value: u8,
     typed: *const c_char,
 ) -> u8 {
-    let typed = c_str(typed).map(str::to_owned);
-    status(core, |c| c.core_vreg_manual_set(value, typed))
+    status(core, |c| {
+        c.core_vreg_manual_set(value, optional_text(typed, "typed")?)
+    })
 }
 
-/// Manual trial, with the flow's limits and confirmation.
+/// Try VREG code `value` until the next reboot; `typed` as for the start.
+/// Returns a status byte.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_vreg_manual_trial(
     core: *mut FfiCore,
     value: u8,
     typed: *const c_char,
 ) -> u8 {
-    let typed = c_str(typed).map(str::to_owned);
-    status(core, |c| c.core_vreg_manual_trial(value, typed))
+    status(core, |c| {
+        c.core_vreg_manual_trial(value, optional_text(typed, "typed")?)
+    })
 }
 
-/// Turn the firmware's automatic raising on or off.
+/// Let the firmware raise the voltage by itself after hangs, or not.
+/// Returns a status byte.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_vreg_manual_auto(core: *mut FfiCore, on: bool) -> u8 {
     status(core, |c| c.core_vreg_manual_auto(on))
 }
 
-/// Forget the hang count and the last trial failure. Refused during a run.
+/// Clear the hang records. Returns a status byte.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_vreg_manual_clear(core: *mut FfiCore) -> u8 {
-    status(core, |c| c.core_vreg_manual_clear())
+    status(core, DspiCore::core_vreg_manual_clear)
 }
 
-/// On the demo device only: 0 a hang, 1 a requested reboot, 2 a power cycle,
-/// 3 `seconds` passing on the device's clock.
+/// Demo device: something happens to it. `event`: 0 a hang, 1 a reboot, 2 a
+/// power cycle, 3 `seconds` pass. Returns a status byte; 0xFF for another
+/// event.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_vreg_demo_event(core: *mut FfiCore, event: u8, seconds: u32) -> u8 {
-    let event = match event {
+    let happening = match event {
         0 => VregDemoEvent::Hang,
         1 => VregDemoEvent::Reboot,
         2 => VregDemoEvent::PowerCycle,
         3 => VregDemoEvent::AdvanceUptime,
         _ => return 0xFF,
     };
-    status(core, |c| c.core_vreg_demo_event(event, seconds))
+    status(core, |c| c.core_vreg_demo_event(happening, seconds))
 }
 
-// -- WP CG16 --
-/// On the demo device only: hold it in a running revert (`on`), or let it finish.
-/// While held, control-surface writes settle busy, and the save, the revert, a
-/// macro fire and a learn are refused. 0 when done.
+// ── Control surface rules and the firmware guard ─────────────────────
+
+/// Demo device: make the control surfaces report busy, or stop. Returns a
+/// status byte.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_cs_demo_busy(core: *mut FfiCore, on: bool) -> u8 {
     status(core, |c| c.cs_demo_busy(on))
 }
 
-// -- WP CG20 --
-/// What a page shows for one control-surface record, as JSON: `dspi_core`'s
-/// `cs_describe`. `kind` is `binding`, `ir`, `step`, `page`, `display` or `group`;
-/// `draft` is the record's JSON. No device I/O. Returns the bytes needed including
-/// the NUL; call again with a larger buffer if that exceeds `len`.
+/// The rows an editor shows for a draft record of `kind` in `slot`, as JSON.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_cs_describe(
     core: *mut FfiCore,
@@ -1667,12 +1486,14 @@ pub extern "C" fn dspi_cs_describe(
     len: u32,
 ) -> u32 {
     text(core, buf, len, |c| {
-        c.cs_describe(c_text(kind), slot, c_text(draft))
+        match arg(kind, "kind").and_then(|k| Ok((k, arg(draft, "draft")?))) {
+            Ok((kind, draft)) => c.cs_describe(kind.to_owned(), slot, draft.to_owned()),
+            Err(e) => json_reply::<()>(Err(e)),
+        }
     })
 }
 
-/// The record after one row's value changed, as JSON `{ok, draft}`: `dspi_core`'s
-/// `cs_edit`. `change` is `{id, value}`. No device I/O. Sized as [`dspi_cs_describe`].
+/// A draft with one row changed (`change`: `{id, value}`), as JSON.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_cs_edit(
     core: *mut FfiCore,
@@ -1684,12 +1505,20 @@ pub extern "C" fn dspi_cs_edit(
     len: u32,
 ) -> u32 {
     text(core, buf, len, |c| {
-        c.cs_edit(c_text(kind), slot, c_text(draft), c_text(change))
+        let args = arg(kind, "kind").and_then(|k| {
+            let d = arg(draft, "draft")?;
+            Ok((k, d, arg(change, "change")?))
+        });
+        match args {
+            Ok((kind, draft, change)) => {
+                c.cs_edit(kind.to_owned(), slot, draft.to_owned(), change.to_owned())
+            }
+            Err(e) => json_reply::<()>(Err(e)),
+        }
     })
 }
 
-/// A fresh binding of a component type in `slot`, on free pins, as JSON `{ok, draft}`.
-/// No device I/O. Sized as [`dspi_cs_describe`].
+/// A new binding for `slot` driven by `component`, as a JSON draft.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_cs_new_binding(
     core: *mut FfiCore,
@@ -1701,8 +1530,7 @@ pub extern "C" fn dspi_cs_new_binding(
     text(core, buf, len, |c| c.cs_new_binding(slot, component))
 }
 
-/// A fresh `ir`, `step` or `page` record, as JSON `{ok, draft}`. No device I/O. Sized
-/// as [`dspi_cs_describe`].
+/// A new record of `kind`, as a JSON draft.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_cs_new_record(
     core: *mut FfiCore,
@@ -1710,11 +1538,13 @@ pub extern "C" fn dspi_cs_new_record(
     buf: *mut c_char,
     len: u32,
 ) -> u32 {
-    text(core, buf, len, |c| c.cs_new_record(c_text(kind)))
+    text(core, buf, len, |c| match arg(kind, "kind") {
+        Ok(kind) => c.cs_new_record(kind.to_owned()),
+        Err(e) => json_reply::<()>(Err(e)),
+    })
 }
 
-/// A control-surface or pin-configuration status code as a sentence, empty for
-/// success. Sized as [`dspi_cs_describe`].
+/// A control surface status byte in words (plain text, empty for 0).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_cs_status_text(
     core: *mut FfiCore,
@@ -1725,8 +1555,8 @@ pub extern "C" fn dspi_cs_status_text(
     text(core, buf, len, |c| c.cs_status_text(code))
 }
 
-/// On the demo device only: the remote button an armed learn waits for was pressed.
-/// True when a learn took it; false with nothing armed, or on any other device.
+/// Demo device: an IR code arrives for the armed learn. False when nothing
+/// was armed.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_cs_demo_learn(core: *mut FfiCore, protocol: u8, code: u32) -> bool {
     with_core(core, false, |h| {
@@ -1734,43 +1564,25 @@ pub extern "C" fn dspi_cs_demo_learn(core: *mut FfiCore, protocol: u8, code: u32
     })
 }
 
-#[cfg(test)]
-#[path = "fns_misc/tests_wp_cg11.rs"]
-#[allow(clippy::arithmetic_side_effects)]
-mod tests_wp_cg11;
-// -- WP CG6 --
-mod autoeq;
-
-// -- WP CG10 --
-mod link_text;
-
-// -- WP CG8 --
-
-fn guard_board(required_mv: u16) -> dspi_core::FirmwareGuardBoard {
-    dspi_core::FirmwareGuardBoard {
-        required_mv,
-        ..Default::default()
-    }
-}
-
-/// What the open board needs, read from the device now: JSON {ok, requiredMv,
-/// source}. Call before entering the bootloader and pass `requiredMv` to
-/// `dspi_firmware_guard_check`. No device, or an answer that cannot be
-/// believed, gives `requiredMv` 0, which means unknown: so does a failed call.
-/// Returns the length needed; 0 for a null handle.
+/// What the open board needs before new firmware, in JSON: `{ok,
+/// requiredMv, source}`. Read it before entering the bootloader.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_firmware_guard_board(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
     text(core, buf, len, |c| json_reply(Ok(c.firmware_guard_board())))
 }
 
-/// May this image go on this board? `board_required_mv` comes from
-/// `dspi_firmware_guard_board`: 1150 not at risk, above that at risk, anything
-/// else unknown. Pass 0 for a board already in the bootloader. `typed` is what
-/// the user typed, null or "" if nothing yet. JSON {ok, allowed, decision,
-/// reason, message, confirmationPhrase, imageMv, requiredMv}; `decision` is
-/// `refused`, `needsConfirmation`, `confirmed` or `clear`, and `reason` is
-/// `imageInvalid`, `noRisk`, `imageUnknown`, `imageLower` or `boardUnknown`.
-/// Flash only on `allowed`. Returns the length needed.
+/// The board record for a required voltage the caller kept (0: unknown).
+fn board_needing(required_mv: u16) -> FirmwareGuardBoard {
+    FirmwareGuardBoard {
+        required_mv,
+        ..FirmwareGuardBoard::default()
+    }
+}
+
+/// The firmware guard's verdict on an image for a board that needs
+/// `board_required_mv`, with what the user `typed` (null: nothing), in JSON:
+/// `{ok, allowed, decision, reason, message, confirmationPhrase, imageMv,
+/// requiredMv}`. Flash only when `allowed`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_firmware_guard_check(
     image: *const u8,
@@ -1780,20 +1592,18 @@ pub extern "C" fn dspi_firmware_guard_check(
     buf: *mut c_char,
     len: u32,
 ) -> u32 {
-    guard(0, || {
+    free_text(buf, len, || {
         let verdict = dspi_core::firmware_guard_check(
             c_bytes(image, image_len),
-            guard_board(board_required_mv),
-            c_text(typed),
+            board_needing(board_required_mv),
+            c_str(typed).unwrap_or_default().to_owned(),
         );
-        copy_text(&json_reply(Ok(verdict)), buf, len)
+        json_reply(Ok(verdict))
     })
 }
 
-/// `dspi_flash_to_drive` behind `dspi_firmware_guard_check`, with the same
-/// arguments as each. Nothing is written unless the guard allows it: a blocked
-/// image replies {ok: false, code: "firmware_guard", error}. Returns the length
-/// needed.
+/// `dspi_flash_to_drive` behind the firmware guard: nothing reaches the drive
+/// unless the guard allows it (`firmware_guard` failure otherwise).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_flash_to_drive_guarded(
     image: *const u8,
@@ -1805,223 +1615,35 @@ pub extern "C" fn dspi_flash_to_drive_guarded(
     buf: *mut c_char,
     len: u32,
 ) -> u32 {
-    guard(0, || {
-        let drive = BootloaderDrive {
-            path: c_text(drive_path),
-            platform,
-            info: String::new(),
-        };
-        let done = dspi_core::flash_to_drive_guarded(
-            c_bytes(image, image_len),
-            drive,
-            guard_board(board_required_mv),
-            c_text(typed),
-        );
-        copy_text(&json_reply(done.map(|()| serde_json::json!({}))), buf, len)
+    free_text(buf, len, || {
+        let written = drive_at(drive_path, platform).and_then(|drive| {
+            dspi_core::flash_to_drive_guarded(
+                c_bytes(image, image_len),
+                drive,
+                board_needing(board_required_mv),
+                c_str(typed).unwrap_or_default().to_owned(),
+            )
+        });
+        done_reply(written)
     })
 }
 
-#[cfg(test)]
-#[allow(clippy::arithmetic_side_effects)]
-mod tests_wp_cg8 {
-    use super::*;
-    use std::ffi::CString;
-    use std::ptr::null;
+// ── Parameters by path ───────────────────────────────────────────────
 
-    fn read(f: impl FnOnce(*mut c_char, u32) -> u32) -> serde_json::Value {
-        let mut buf = vec![0u8; 16 * 1024];
-        let needed = f(buf.as_mut_ptr().cast(), buf.len() as u32);
-        assert!(needed > 0 && needed as usize <= buf.len());
-        serde_json::from_slice(&buf[..needed as usize - 1]).unwrap()
-    }
-
-    /// One 256-byte RP2350 page in a UF2 block: valid, no stamp.
-    fn unstamped_image() -> Vec<u8> {
-        let mut b = vec![0u8; 512];
-        for (off, v) in [
-            (0usize, 0x0A32_4655u32),
-            (4, 0x9E5D_5157),
-            (8, 0x2000),
-            (12, 0x1000_0000),
-            (16, 256),
-            (20, 0),
-            (24, 1),
-            (28, 0xE48B_FF59),
-            (508, 0x0AB1_6F30),
-        ] {
-            b[off..off + 4].copy_from_slice(&v.to_le_bytes());
-        }
-        b
-    }
-
-    #[test]
-    fn wp_cg8_c_guard_blocks_and_takes_the_phrase() {
-        let image = unstamped_image();
-        let check = |mv: u16, typed: *const c_char| {
-            read(|b, l| dspi_firmware_guard_check(image.as_ptr(), 512, mv, typed, b, l))
-        };
-        let v = check(1200, null());
-        assert_eq!(v["ok"], true);
-        assert_eq!(v["allowed"], false);
-        assert_eq!(v["decision"], "needsConfirmation");
-        assert_eq!(v["reason"], "imageUnknown");
-        assert_eq!(v["imageMv"], 0);
-        assert_eq!(v["requiredMv"], 1200);
-
-        let phrase = CString::new(v["confirmationPhrase"].as_str().unwrap()).unwrap();
-        let wrong = CString::new("yes").unwrap();
-        assert_eq!(check(1200, wrong.as_ptr())["allowed"], false);
-        let yes = check(1200, phrase.as_ptr());
-        assert_eq!(yes["allowed"], true);
-        assert_eq!(yes["decision"], "confirmed");
-
-        assert_eq!(check(0, null())["reason"], "boardUnknown");
-        assert_eq!(check(0, null())["allowed"], false);
-        assert_eq!(check(1150, null())["decision"], "clear");
-
-        let v = read(|b, l| dspi_firmware_guard_check(null(), 0, 1150, phrase.as_ptr(), b, l));
-        assert_eq!(v["allowed"], false);
-        assert_eq!(v["decision"], "refused");
-    }
-
-    #[test]
-    fn wp_cg8_c_board_read() {
-        // A failed call is "unknown" too: nothing there to read as 1150.
-        let v = read(|b, l| {
-            let h = Box::into_raw(Box::new(FfiCore {
-                core: DspiCore::new(),
-                state: std::sync::Mutex::new(Box::new(crate::types::DspState::from(
-                    &DspiCore::new().get_state(),
-                ))),
-            }));
-            let n = dspi_firmware_guard_board(h, b, l);
-            drop(unsafe { Box::from_raw(h) });
-            n
-        });
-        assert_eq!(v["ok"], true);
-        assert_eq!(v["requiredMv"], 0);
-        assert_eq!(v["source"], "noDevice");
-        let mut buf = [0u8; 8];
-        let null_core = std::ptr::null_mut();
-        assert_eq!(
-            dspi_firmware_guard_board(null_core, buf.as_mut_ptr().cast(), 8),
-            0
-        );
-    }
-
-    #[test]
-    fn wp_cg8_c_guarded_flash_refuses_before_the_drive() {
-        let image = unstamped_image();
-        let path = CString::new("/nonexistent/drive").unwrap();
-        let v = read(|b, l| {
-            dspi_flash_to_drive_guarded(image.as_ptr(), 512, path.as_ptr(), 1, 1200, null(), b, l)
-        });
-        assert_eq!(v["ok"], false);
-        assert_eq!(v["code"], "firmware_guard");
-        let v = read(|b, l| {
-            dspi_flash_to_drive_guarded(null(), 0, path.as_ptr(), 1, 1150, null(), b, l)
-        });
-        assert_eq!(v["ok"], false);
-        assert_eq!(v["code"], "invalid");
-    }
-
-    #[test]
-    fn wp_cg8_no_reply_record_has_a_field_named_ok() {
-        for record in [
-            serde_json::to_value(dspi_core::FirmwareGuardBoard::default()).unwrap(),
-            serde_json::to_value(dspi_core::FirmwareGuardVerdict::default()).unwrap(),
-        ] {
-            assert!(!record.as_object().unwrap().contains_key("ok"), "{record}");
-        }
-    }
-}
-
-#[cfg(test)]
-#[path = "fns_misc/tests_wp_q2b.rs"]
-#[allow(clippy::arithmetic_side_effects)]
-mod tests_wp_q2b;
-
-// -- WP CG12 --
-#[cfg(test)]
-#[allow(clippy::arithmetic_side_effects)]
-#[path = "fns_misc/tests_wp_cg12.rs"]
-mod tests_wp_cg12;
-
-// -- WP QD4 --
-#[cfg(test)]
-#[allow(clippy::arithmetic_side_effects)]
-#[path = "fns_misc/tests_wp_qd4.rs"]
-mod tests_wp_qd4;
-
-// -- WP QD5 --
-#[cfg(test)]
-#[path = "fns_misc/tests_wp_qd5.rs"]
-mod tests_wp_qd5;
-
-// -- WP QD31 --
-#[cfg(test)]
-#[path = "fns_misc/tests_wp_qd31.rs"]
-mod tests_wp_qd31;
-
-// -- WP CG17 --
-#[cfg(test)]
-#[path = "fns_misc/tests_wp_cg17.rs"]
-mod tests_wp_cg17;
-
-// -- WP QD6 --
-#[cfg(test)]
-#[path = "fns_misc/tests_wp_qd6.rs"]
-mod tests_wp_qd6;
-
-// -- WP CG24 --
-#[cfg(test)]
-#[path = "fns_misc/tests_wp_cg24.rs"]
-mod tests_wp_cg24;
-// -- WP CG23 --
-#[cfg(test)]
-#[path = "fns_misc/tests_wp_cg23.rs"]
-mod tests_wp_cg23;
-
-// -- WP CG32 -- ── Added: a parameter by registry path ─────────────────
-
-/// `dspi_write_param`'s request.
+/// What `dspi_write_param` takes.
 #[derive(serde::Deserialize)]
-struct WriteParamRequest {
+struct WriteRequest {
     path: String,
     #[serde(default)]
     indices: Vec<u8>,
-    value: dspi_core::ParamValue,
+    value: ParamValue,
 }
 
-/// `dspi_write_param`'s reply: the value read back.
-#[derive(Serialize)]
-struct WriteParamReply {
-    value: dspi_core::ParamValue,
-}
-
-/// The request's JSON, parsed and written.
-fn write_param_json(c: &DspiCore, request: Option<&str>) -> Result<WriteParamReply> {
-    let text = request.ok_or_else(|| DspiError::InvalidArgument {
-        msg: "the request is null or not UTF-8".into(),
-    })?;
-    let r: WriteParamRequest =
-        serde_json::from_str(text).map_err(|e| DspiError::InvalidArgument {
-            msg: format!("the request is not {{path, indices, value}}: {e}"),
-        })?;
-    let value = c.write_param(r.path, r.indices, r.value)?;
-    Ok(WriteParamReply { value })
-}
-
-/// Write one parameter by its registry path (`DspiCore::write_param`).
-/// `request` is JSON {path, indices, value}, the value tagged by kind:
-/// {"float": -3}, {"bool": true}, {"int": 4}, {"choice": 1}, {"mask": 3},
-/// {"text": "x"}, {"bytes": [1, 2]} or "trigger"; `indices` may be left out
-/// for a path without any. Writes JSON {ok, value} with the value read back,
-/// or the failure reply. Returns the length needed.
-///
-/// Don't retry on a short buffer: a reply too long means the write has
-/// happened, and a second call applies it again. Give it a large enough buffer
-/// the first time.
+/// Write one parameter by its registry path. `request` is JSON: `{"path":
+/// "out.gain", "indices": [1], "value": {"float": -4}}` (`indices` may be left
+/// out; an action's value is `"trigger"`). The reply is `{ok, value}` with
+/// the value read back, or a failure; the write has happened whatever the
+/// buffer, so do not call again for a short one.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_write_param(
     core: *mut FfiCore,
@@ -2030,16 +1652,21 @@ pub extern "C" fn dspi_write_param(
     len: u32,
 ) -> u32 {
     text(core, buf, len, |c| {
-        json_reply(write_param_json(c, c_str(request)))
+        let written = arg(request, "request")
+            .and_then(|r| {
+                serde_json::from_str::<WriteRequest>(r).map_err(|e| DspiError::InvalidArgument {
+                    msg: format!("the request is not one: {e}"),
+                })
+            })
+            .and_then(|r| c.write_param(r.path, r.indices, r.value))
+            .map(|value| json!({ "value": value }));
+        json_reply(written)
     })
 }
 
-/// Which of the image's +1-encoded bytes the state's image carried (older
-/// firmware sends 0, "absent"), as bits: 1 `i2s_clock_pin_mode`, 2 the S/PDIF
-/// inputs 2-4 bits of `spdif_inputs_enabled`, 4 `adat_input_enabled`, 8
-/// `adat_input_clock_mode`. A field whose bit is clear holds what an absent
-/// byte reads as, not a value the device reported. The `DspState` record
-/// keeps the old core's layout, so these are not in it. 0 for a null handle.
+/// Which optional bytes the device's image carried: bit 0 the I2S clock pin
+/// mode, bit 1 the S/PDIF inputs' switches, bit 2 the ADAT input switch, bit
+/// 3 the ADAT input clock mode. 0 for a null handle or before any read.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_state_presence(core: *const FfiCore) -> u8 {
     with_core(core, 0, |h| {
@@ -2050,58 +1677,28 @@ pub extern "C" fn dspi_state_presence(core: *const FfiCore) -> u8 {
             s.adat_input_enabled_present,
             s.adat_input_clock_mode_present,
         ]
-        .iter()
-        .rev()
-        .fold(0, |bits, &on| (bits << 1) | u8::from(on))
+        .into_iter()
+        .zip([0x01u8, 0x02, 0x04, 0x08])
+        .filter(|&(present, _)| present)
+        .fold(0u8, |bits, (_, bit)| bits | bit)
     })
 }
 
-#[cfg(test)]
-#[path = "fns_misc/tests_wp_cg32.rs"]
-mod tests_wp_cg32;
-
-// -- WP CG34 -- ── Added: the filter types' names ────────────────────────
-
-/// Every filter type the firmware defines with the name clients show for it
-/// (`dspi_core::filter_type_names`, the Console's band-list names), in JSON:
-/// {ok, value:[{code, name}]}, PEQ types 0..13 then crossovers 32..63.
-/// Returns the bytes needed including the NUL, 0 for a panic.
+/// Every filter type's display name, in JSON (`value`: `[{code, name}]`).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_filter_type_names(buf: *mut c_char, len: u32) -> u32 {
-    guard(0, || {
-        copy_text(&json_reply(Ok(dspi_core::filter_type_names())), buf, len)
-    })
+    free_text(buf, len, || json_reply(Ok(dspi_core::filter_type_names())))
 }
 
-/// The name of filter type `code` as plain NUL-terminated text, e.g.
-/// "High Cut (12dB)"; "Type 14" for a code the firmware does not define.
-/// Returns the bytes needed including the NUL, 0 for a panic.
+/// One filter type's display name, as plain text (`Type <n>` for a code with
+/// none).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_filter_type_name(code: u8, buf: *mut c_char, len: u32) -> u32 {
-    guard(0, || {
-        copy_text(&dspi_core::filter_type_name(code), buf, len)
-    })
+    free_text(buf, len, || dspi_core::filter_type_name(code))
 }
 
-#[cfg(test)]
-#[path = "fns_misc/tests_wp_cg34.rs"]
-mod tests_wp_cg34;
-
-// -- WP CG36 -- ── Added: a Core 1 conflict, in words ──────────────────
-
-/// `dspi_core1_conflict_reason`'s reply.
-#[derive(Serialize)]
-struct Core1ConflictReply {
-    conflict: bool,
-    reason: Option<String>,
-}
-
-/// Whether enabling `output` would collide on Core 1, as the device answers it
-/// (`dspi_check_core1_conflict`), with the core's reason: the words
-/// `dspi_write_param` refuses such an `out.enable` with
-/// (`DspiCore::core1_conflict_reason`). Writes JSON {ok, conflict, reason},
-/// `reason` null without a conflict, or the failure reply. Returns the length
-/// needed including the NUL, 0 for a null handle.
+/// Whether enabling `output` would collide on Core 1, and why, in JSON:
+/// `{ok, conflict, reason}` (`reason` null when there is none).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core1_conflict_reason(
     core: *mut FfiCore,
@@ -2110,43 +1707,245 @@ pub extern "C" fn dspi_core1_conflict_reason(
     len: u32,
 ) -> u32 {
     text(core, buf, len, |c| {
-        json_reply(
-            c.core1_conflict_reason(output)
-                .map(|reason| Core1ConflictReply {
-                    conflict: reason.is_some(),
-                    reason,
-                }),
-        )
+        let answer = c
+            .core1_conflict_reason(output)
+            .map(|reason| json!({ "conflict": reason.is_some(), "reason": reason }));
+        json_reply(answer)
     })
 }
 
-#[cfg(test)]
-#[path = "fns_misc/tests_wp_cg36.rs"]
-mod tests_wp_cg36;
-
-// -- BUG1 -- ── Added: output labels and dashboard cards ───────────────
-
-/// Every output's label from the mirror (`DspiCore::output_labels`): JSON
-/// {ok, value: [{output, label, slotName, userNamed, channel, band}, ...]} in
-/// output order. `label` is the user's name, else "Out 1 · R · Low" from the
-/// routing and the filters; `slotName` the firmware's name for the slot, for a
-/// tooltip. Call it when the state changes, not per frame. Returns the length
-/// needed including the NUL, 0 for a null handle.
+/// Each output's label, in JSON (`value`: a list).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_output_labels(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
     text(core, buf, len, |c| json_reply(Ok(c.output_labels())))
 }
 
-/// The dashboard's output cards (`DspiCore::output_cards`): JSON {ok, value:
-/// [{left, right, title, leftName, rightName}, ...]}, `right` null for a card
-/// of one output. Paired by the crossfeed pair map when the device has one,
-/// else by slot. Returns the length needed including the NUL, 0 for a null
-/// handle.
+/// The output cards (an output pair with its title), in JSON (`value`: a
+/// list).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_output_cards(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
     text(core, buf, len, |c| json_reply(Ok(c.output_cards())))
 }
 
 #[cfg(test)]
-#[path = "fns_misc/tests_bug1.rs"]
+#[allow(clippy::arithmetic_side_effects)]
 mod tests_bug1;
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg11;
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg12;
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg17;
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg23;
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg24;
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg32;
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg34;
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cg36;
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_q2b;
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_qd31;
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_qd4;
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_qd5;
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_qd6;
+
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_clean1 {
+    use std::ptr::{null, null_mut};
+
+    use super::*;
+    use crate::fns_device::{dspi_core_free, dspi_core_new};
+
+    const PHRASE: &str = "I ACCEPT THE CORE VOLTAGE RISK";
+
+    fn stock_image() -> Vec<u8> {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/qt/firmware/DSPi-RP2350-v1.1.6.uf2");
+        std::fs::read(path).unwrap()
+    }
+
+    fn reply(f: impl Fn(*mut c_char, u32) -> u32) -> Value {
+        let needed = f(null_mut(), 0);
+        assert!(needed > 0);
+        let mut buf = vec![0u8; needed as usize];
+        assert_eq!(f(buf.as_mut_ptr().cast(), needed), needed);
+        serde_json::from_slice(&buf[..needed as usize - 1]).unwrap()
+    }
+
+    #[test]
+    fn clean1_the_guard_blocks_and_takes_the_phrase() {
+        let image = stock_image();
+        let check = |mv: u16, typed: *const c_char| {
+            reply(|b, l| {
+                dspi_firmware_guard_check(image.as_ptr(), image.len() as u32, mv, typed, b, l)
+            })
+        };
+        let clear = check(1150, null());
+        assert_eq!(clear["ok"], true, "{clear}");
+        assert_eq!(clear["allowed"], true, "{clear}");
+        let blocked = check(1200, null());
+        assert_eq!(blocked["allowed"], false, "{blocked}");
+        assert_eq!(blocked["decision"], "needsConfirmation");
+        assert_eq!(blocked["confirmationPhrase"], PHRASE);
+        let phrase = CString::new(PHRASE).unwrap();
+        let taken = check(1200, phrase.as_ptr());
+        assert_eq!(taken["allowed"], true, "{taken}");
+        assert_eq!(taken["decision"], "confirmed");
+        let junk = [0u8; 64];
+        let refused =
+            reply(|b, l| dspi_firmware_guard_check(junk.as_ptr(), 64, 1150, null(), b, l));
+        assert_eq!(refused["allowed"], false);
+        assert_eq!(refused["decision"], "refused");
+    }
+
+    #[test]
+    fn clean1_the_board_is_read_through_c() {
+        assert_eq!(dspi_firmware_guard_board(null_mut(), null_mut(), 0), 0);
+        let h = dspi_core_new();
+        let board = reply(|b, l| dspi_firmware_guard_board(h, b, l));
+        assert_eq!(board["ok"], true);
+        assert_eq!(board["source"], "noDevice");
+        assert_eq!(board["requiredMv"], 0);
+        assert!(dspi_open_demo(h));
+        let board = reply(|b, l| dspi_firmware_guard_board(h, b, l));
+        assert_ne!(board["source"], "noDevice", "{board}");
+        dspi_core_free(h);
+    }
+
+    #[test]
+    fn clean1_a_guarded_flash_stops_before_the_drive() {
+        let image = stock_image();
+        let path = CString::new("/nonexistent/clean1-drive").unwrap();
+        let flash = |typed: *const c_char| {
+            reply(|b, l| {
+                dspi_flash_to_drive_guarded(
+                    image.as_ptr(),
+                    image.len() as u32,
+                    path.as_ptr(),
+                    1,
+                    1200,
+                    typed,
+                    b,
+                    l,
+                )
+            })
+        };
+        let blocked = flash(null());
+        assert_eq!(blocked["ok"], false);
+        assert_eq!(blocked["code"], "firmware_guard", "{blocked}");
+        // With the phrase the guard lets it through, and the drive refuses.
+        let phrase = CString::new(PHRASE).unwrap();
+        let tried = flash(phrase.as_ptr());
+        assert_eq!(tried["ok"], false);
+        assert_ne!(tried["code"], "firmware_guard", "{tried}");
+        let no_path = reply(|b, l| {
+            dspi_flash_to_drive_guarded(image.as_ptr(), 4, null(), 1, 1150, null(), b, l)
+        });
+        assert_eq!(no_path["code"], "invalid");
+    }
+
+    #[test]
+    fn clean1_no_guard_record_has_a_field_named_ok() {
+        for record in [
+            serde_json::to_value(dspi_core::FirmwareGuardBoard::default()).unwrap(),
+            serde_json::to_value(dspi_core::FirmwareGuardVerdict::default()).unwrap(),
+            serde_json::to_value(dspi_core::VregCalView::default()).unwrap(),
+        ] {
+            let fields = record.as_object().unwrap();
+            assert!(!fields.contains_key("ok"), "{record}");
+        }
+    }
+
+    #[test]
+    fn clean1_the_link_kind_is_plain_here() {
+        let e = DspiError::Link {
+            code: "wrong_pin".into(),
+            msg: "Wrong PIN".into(),
+        };
+        let v: Value = serde_json::from_str(&json_reply::<()>(Err(e))).unwrap();
+        assert_eq!(v["code"], "link");
+        assert_eq!(done_reply(Ok(())), r#"{"ok":true}"#);
+    }
+
+    #[test]
+    fn clean1_a_document_or_its_failure() {
+        assert_eq!(document_reply(Ok("doc".into())), "doc");
+        let v: Value = serde_json::from_str(&document_reply(Err(DspiError::ReadOnly))).unwrap();
+        assert_eq!(v["code"], "read_only");
+    }
+
+    #[test]
+    fn clean1_optional_text_refuses_bad_bytes_only() {
+        assert_eq!(optional_text(null(), "w"), Ok(None));
+        let bad = [0xC3u8, 0];
+        assert!(optional_text(bad.as_ptr().cast(), "w").is_err());
+        assert_eq!(
+            optional_text(c"OVERVOLT".as_ptr(), "w"),
+            Ok(Some("OVERVOLT".into()))
+        );
+    }
+
+    #[test]
+    fn clean1_write_param_wants_a_value() {
+        let h = dspi_core_new();
+        assert!(dspi_open_demo(h));
+        let req = CString::new(r#"{"path":"vol.user"}"#).unwrap();
+        let r = reply(|b, l| dspi_write_param(h, req.as_ptr(), b, l));
+        assert_eq!(r["code"], "invalid", "{r}");
+        dspi_core_free(h);
+    }
+
+    #[test]
+    fn clean1_the_monitor_needs_a_handle() {
+        let mut buf = [0x55u8; 8];
+        assert_eq!(
+            dspi_monitor_read(null_mut(), 9, buf.as_mut_ptr().cast(), 8),
+            9
+        );
+        assert_eq!(buf, [0x55; 8]);
+        let h = dspi_core_new();
+        assert_eq!(dspi_monitor_read(h, 0, buf.as_mut_ptr().cast(), 8), 0);
+        assert_eq!(buf[0], 0, "an empty read still terminates the buffer");
+        dspi_core_free(h);
+    }
+
+    #[test]
+    fn clean1_wake_and_hotplug_wrappers_unset_on_null() {
+        assert!(wake(None, null_mut()).is_none());
+        let h = dspi_core_new();
+        assert!(dspi_set_hotplug_callback(h, None, null_mut()));
+        dspi_set_notify_callback(h, None, null_mut());
+        dspi_rta_set_callback(h, None, null_mut());
+        dspi_core_free(h);
+        assert!(!dspi_set_hotplug_callback(null_mut(), None, null_mut()));
+    }
+
+    #[test]
+    fn clean1_a_null_chain_of_bytes_is_empty() {
+        assert!(c_bytes(null(), 99).is_empty());
+        let three = [1u8, 2, 3];
+        assert_eq!(c_bytes(three.as_ptr(), 2), vec![1, 2]);
+    }
+}

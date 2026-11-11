@@ -3641,111 +3641,102 @@ typedef void (*LinkEventCallback)(uint8_t event,
 typedef void (*HubEventCallback)(uint8_t event, int32_t code, const char *text, void *user_data);
 
 /**
- * Create a core instance. Free it with `dspi_core_free`. Null if creating it
- * panicked.
+ * Create a core handle, with no device open, and install the logger (stderr,
+ * level from `RUST_LOG`). Free it with `dspi_core_free`. Null only if
+ * creating it panicked.
  */
 struct FfiCore *dspi_core_new(void);
 
 /**
- * Destroy a core instance, closing its device. Null is ignored. The handle and
- * any pointer `dspi_get_state` returned for it are invalid afterwards.
- *
- * The hotplug, notify, RTA and Link callbacks are cleared first, waiting for a call
- * in progress on another thread: once this starts closing the device, none of
- * them runs again, so `user_data` may go right after it returns. Do not call
- * this from inside one of those callbacks: it would wait for itself.
+ * Free a handle from `dspi_core_new`. Every callback is unset first, so none
+ * runs once this has begun; then the Link session ends (in a build with
+ * Link) and the device is closed. The `DspState` pointer from
+ * `dspi_get_state` dies with the handle. Null is ignored.
  */
 void dspi_core_free(struct FfiCore *core);
 
 /**
- * Scan for DSPis. Writes up to `max_devices` entries to `out_devices` (which
- * may be null) and returns how many were found, at most `max_devices`.
+ * Look for DSPi units on USB and write up to `max_devices` of them to
+ * `out_devices` (may be null: then nothing is written). Returns how many
+ * were written, or would have been; 0 for a null handle.
  */
 uint32_t dspi_scan_devices(struct FfiCore *core,
                            struct DeviceInfo *out_devices,
                            uint32_t max_devices);
 
 /**
- * The highest preamp (dB) the connected chip applies correctly: +18 on RP2040,
- * +24 on RP2350. The lowest is -60. 0 for a null handle.
+ * The largest preamp gain the open device takes, in dB (its platform's
+ * limit; the default without a device). 0 for a null handle.
  */
 float dspi_preamp_max_db(struct FfiCore *core);
 
 /**
- * DSPis the last scan or hot-plug poll saw on the bus but could not open (the
- * udev rule is missing, say).
+ * How many DSPi units the last scan saw but could not open (permissions,
+ * another program). 0 for a null handle.
  */
 uint32_t dspi_inaccessible_devices(struct FfiCore *core);
 
 /**
- * Select and open a device by serial number. False for a null or non-UTF-8
- * serial or on any error.
+ * Open the DSPi with this serial (from `dspi_scan_devices`) and read it.
+ * False for a null or non-UTF-8 serial, or when it cannot be opened.
  */
 bool dspi_select_device(struct FfiCore *core, const char *serial);
 
 /**
- * Close the open device. It stays selected, so a replug reconnects.
+ * Close the open device, if any; the mirror goes back to its defaults.
  */
 void dspi_disconnect(struct FfiCore *core);
 
 /**
- * Whether a device is open.
+ * Whether a device is open. False for a null handle.
  */
 bool dspi_is_connected(const struct FfiCore *core);
 
 /**
- * Identify the firmware and read all parameters. False only when the device
- * could not be talked to; check `DspState.compat` for compatibility.
+ * Read everything from the open device into the mirror.
  */
 bool dspi_fetch_all(struct FfiCore *core);
 
 /**
- * Re-read the bulk parameter image only. False on any error.
+ * Read the parameters again (the bulk image), not the platform facts.
  */
 bool dspi_refresh_params(struct FfiCore *core);
 
 /**
- * Write the whole cached state to the device in one bulk transfer. False on
- * any error.
+ * Write every parameter of the mirror to the device.
  */
 bool dspi_apply_all_params(struct FfiCore *core);
 
 /**
- * Fetch the device status into `out_status`, which may be null. False on any
- * error.
+ * Read the live status (levels, clips, load). `out_status` may be null: the
+ * read still happens. False on failure or for a misaligned `out_status`.
  */
 bool dspi_fetch_status(struct FfiCore *core, struct SystemStatus *out_status);
 
 /**
- * Pointer to the state, refreshed by this call; null for a null handle.
- *
- * The record belongs to the handle and its address never changes until
- * `dspi_core_free`, so a caller may keep the pointer; what it reads is the
- * state as of the last `dspi_get_state`. This call rewrites the record: every
- * reader must be on the thread that calls it (the Qt app's GUI thread), or
- * must serialise reads and calls itself.
+ * The mirror, refreshed now. The record belongs to the handle and stays at
+ * the same address until `dspi_core_free`; each call rewrites it, so read it
+ * from the thread that calls this. Null for a null handle.
  */
 const struct DspState *dspi_get_state(const struct FfiCore *core);
 
 /**
- * Longest channel or output delay the connected platform supports, ms. 0 for a
- * null handle.
+ * The longest delay the open device takes, in ms. 0 for a null handle.
  */
 float dspi_max_delay_ms(const struct FfiCore *core);
 
 /**
- * Clear the device's sticky clip flags. False on any error.
+ * Clear the device's clip indicators.
  */
 bool dspi_clear_clips(struct FfiCore *core);
 
 /**
- * Set PEQ band `band` (0..9) of wire channel `ch`. False on any error.
+ * Set PEQ band `band` of wire channel `ch`.
  */
 bool dspi_set_filter(struct FfiCore *core, uint8_t ch, uint8_t band, struct FilterParams params);
 
 /**
- * Set crossover band `xband` (0..3) of an output's wire channel `ch`. False
- * on any error.
+ * Set crossover band `xband` of wire channel `ch`.
  */
 bool dspi_set_crossover(struct FfiCore *core,
                         uint8_t ch,
@@ -3753,167 +3744,164 @@ bool dspi_set_crossover(struct FfiCore *core,
                         struct FilterParams params);
 
 /**
- * Bypass one band. `band` is a PEQ band (0..9) or a crossover band (20..23).
- * False on any error.
+ * Bypass, or stop bypassing, one band.
  */
 bool dspi_set_band_bypass(struct FfiCore *core, uint8_t ch, uint8_t band, bool bypass);
 
 /**
- * Legacy preamp: every input to the same value, dB. False on any error.
+ * Set the global preamp, in dB.
  */
 bool dspi_set_preamp(struct FfiCore *core, float db);
 
 /**
- * Preamp of one input (input index), dB. False on any error.
+ * Set the preamp of one input, in dB.
  */
 bool dspi_set_input_preamp(struct FfiCore *core, uint8_t input, float db);
 
 /**
- * Global DSP bypass. False on any error.
+ * Bypass all processing, or stop.
  */
 bool dspi_set_bypass(struct FfiCore *core, bool enabled);
 
 /**
- * Master volume in dB (-128 = mute, otherwise -127..0). False on any error.
+ * Set the master volume, in dB.
  */
 bool dspi_set_master_volume(struct FfiCore *core, float db);
 
 /**
- * 0 = master volume independent of presets, 1 = saved with presets. False on
- * any error.
+ * Set how the master volume is kept (with the preset, or on its own).
  */
 bool dspi_set_master_volume_mode(struct FfiCore *core, uint8_t mode);
 
 /**
- * Persist the live master volume (independent mode). A `PRESET_*` status,
- * 0xFF on any other error.
+ * Store the master volume on the device. Returns a status byte: 0, the
+ * device's refusal, or 0xFF.
  */
 uint8_t dspi_save_master_volume(struct FfiCore *core);
 
 /**
- * User volume, dB (-60..0). False on any error.
+ * Set the user volume, in dB.
  */
 bool dspi_set_user_volume(struct FfiCore *core, float db);
 
 /**
- * User mute. False on any error.
+ * Mute or unmute the user volume.
  */
 bool dspi_set_user_mute(struct FfiCore *core, bool muted);
 
 /**
- * Delay of wire channel `ch`, ms (an output channel's delay is its output
- * delay). False on any error.
+ * Set the delay of wire channel `ch`, in ms.
  */
 bool dspi_set_delay(struct FfiCore *core, uint8_t ch, float ms);
 
 /**
- * Loudness compensation on or off. False on any error.
+ * Turn loudness compensation on or off.
  */
 bool dspi_set_loudness(struct FfiCore *core, bool enabled);
 
 /**
- * Loudness reference level, dB SPL. False on any error.
+ * Set the loudness reference level, in dB SPL.
  */
 bool dspi_set_loudness_ref(struct FfiCore *core, float spl);
 
 /**
- * Loudness intensity, percent. False on any error.
+ * Set the loudness intensity, in percent.
  */
 bool dspi_set_loudness_intensity(struct FfiCore *core, float pct);
 
 /**
- * Bit k: loudness compensates output k. False on any error.
+ * Set which channels get loudness compensation.
  */
 bool dspi_set_loudness_mask(struct FfiCore *core, uint16_t mask);
 
 /**
- * Crossfeed on or off. False on any error.
+ * Turn the crossfeed on or off.
  */
 bool dspi_set_crossfeed(struct FfiCore *core, bool enabled);
 
 /**
- * Crossfeed preset. False on any error.
+ * Choose a crossfeed preset.
  */
 bool dspi_set_crossfeed_preset(struct FfiCore *core, uint8_t preset);
 
 /**
- * Custom crossfeed frequency, Hz. False on any error.
+ * Set the custom crossfeed frequency, in Hz.
  */
 bool dspi_set_crossfeed_freq(struct FfiCore *core, float freq);
 
 /**
- * Custom crossfeed level, dB. False on any error.
+ * Set the custom crossfeed level, in dB.
  */
 bool dspi_set_crossfeed_feed(struct FfiCore *core, float feed);
 
 /**
- * Crossfeed interaural time difference on or off. False on any error.
+ * Turn the crossfeed's interaural time delay on or off.
  */
 bool dspi_set_crossfeed_itd(struct FfiCore *core, bool enabled);
 
 /**
- * Bit p: crossfeed runs on output pair p. False on any error.
+ * Set which output pairs the crossfeed processes.
  */
 bool dspi_set_crossfeed_outputs(struct FfiCore *core, uint8_t pair_mask);
 
 /**
- * Leveller on or off. False on any error.
+ * Turn the leveller on or off.
  */
 bool dspi_set_leveller_enabled(struct FfiCore *core, bool enabled);
 
 /**
- * Leveller amount, percent. False on any error.
+ * Set the leveller's amount, in percent.
  */
 bool dspi_set_leveller_amount(struct FfiCore *core, float pct);
 
 /**
- * 0 = slow, 1 = medium, 2 = fast. False on any error.
+ * Set the leveller's speed.
  */
 bool dspi_set_leveller_speed(struct FfiCore *core, uint8_t speed);
 
 /**
- * Leveller maximum gain, dB. False on any error.
+ * Set the leveller's largest gain, in dB.
  */
 bool dspi_set_leveller_max_gain(struct FfiCore *core, float db);
 
 /**
- * Leveller look-ahead on or off. False on any error.
+ * Turn the leveller's lookahead on or off.
  */
 bool dspi_set_leveller_lookahead(struct FfiCore *core, bool enabled);
 
 /**
- * Leveller gate, dB. False on any error.
+ * Set the leveller's gate, in dB.
  */
 bool dspi_set_leveller_gate(struct FfiCore *core, float db);
 
 /**
- * Bit k of each mask = input k. False on any error.
+ * Set which channels the leveller listens to and which it acts on.
  */
 bool dspi_set_leveller_masks(struct FfiCore *core, uint8_t detector, uint8_t apply);
 
 /**
- * Select the audio input source (firmware `InputSource` enum). False on any
- * error.
+ * Choose the input source.
  */
 bool dspi_set_input_source(struct FfiCore *core, uint8_t source);
 
 /**
- * Set psybass parameter `param` (`PSYBASS_PARAM_*`). False on any error.
+ * Set one psychoacoustic bass parameter.
  */
 bool dspi_set_psybass_param(struct FfiCore *core, uint8_t param, float value);
 
 /**
- * Bit k: psybass processes output k. False on any error.
+ * Set which outputs get psychoacoustic bass.
  */
 bool dspi_set_psybass_mask(struct FfiCore *core, uint16_t mask);
 
 /**
- * Psybass on or off. False on any error.
+ * Turn psychoacoustic bass on or off.
  */
 bool dspi_set_psybass_enabled(struct FfiCore *core, bool enabled);
 
 /**
- * One matrix crosspoint: `input` to `output`, gain in dB. False on any error.
+ * Set one crosspoint of the matrix: input to output, on or off, its gain in
+ * dB and its polarity.
  */
 bool dspi_set_matrix_route(struct FfiCore *core,
                            uint8_t input,
@@ -3923,198 +3911,184 @@ bool dspi_set_matrix_route(struct FfiCore *core,
                            bool invert);
 
 /**
- * Enable or disable an output. The resulting state (1 on, 0 off; the firmware
- * may refuse a PDM / Core 1 conflict), -1 on any error.
+ * Enable or disable an output. Returns the state it ended in, read back: 1
+ * enabled, 0 disabled (an enable that would collide on Core 1 is refused,
+ * and gives 0), -1 on failure.
  */
 int8_t dspi_set_output_enable(struct FfiCore *core, uint8_t output, bool enabled);
 
 /**
- * Output gain, dB. False on any error.
+ * Set an output's gain, in dB.
  */
 bool dspi_set_output_gain(struct FfiCore *core, uint8_t output, float db);
 
 /**
- * Output mute. False on any error.
+ * Mute or unmute an output.
  */
 bool dspi_set_output_mute(struct FfiCore *core, uint8_t output, bool muted);
 
 /**
- * Output delay, ms. False on any error.
+ * Set an output's delay, in ms.
  */
 bool dspi_set_output_delay(struct FfiCore *core, uint8_t output, float ms);
 
 /**
- * Set limiter parameter `param` (`LIMITER_PARAM_*`) of `output`
- * (`LIMITER_ALL_OUTPUTS` = every output). False on any error.
+ * Set one limiter parameter of an output.
  */
 bool dspi_set_limiter_param(struct FfiCore *core, uint8_t output, uint8_t param, float value);
 
 /**
- * Read the gain reduction (dB, positive = reducing) of every output into
- * `out_gr`, which must hold `MAX_OUTPUTS` floats; outputs the device does not
- * report read 0. False for a null pointer or on any error.
+ * The limiters' gain reduction, in dB, into `out_gr`: `MAX_OUTPUTS` floats.
  */
 bool dspi_fetch_limiter_meter(struct FfiCore *core, float *out_gr);
 
 /**
- * Set the name of wire channel `ch`. False for a null or non-UTF-8 name or on
- * any error.
+ * Name wire channel `ch`. False for a null or non-UTF-8 name, or one the
+ * device does not take.
  */
 bool dspi_set_channel_name(struct FfiCore *core, uint8_t ch, const char *name);
 
 /**
- * Read a channel name from the device into `out_buf` (NUL-terminated, cut to
- * `buf_len` at a character boundary). False for a null or empty buffer or on
- * any error.
+ * The name of wire channel `ch` into `out_buf` of `buf_len` bytes, cut to fit
+ * and NUL-terminated.
  */
 bool dspi_get_channel_name(struct FfiCore *core, uint8_t ch, char *out_buf, uint32_t buf_len);
 
 /**
- * Set upmixer parameter `id` (`UPMIX_PARAM_*`). RP2350 only. False on any
- * error.
+ * Set one upmixer parameter.
  */
 bool dspi_set_upmix_param(struct FfiCore *core, uint8_t id, float value);
 
 /**
- * Read the upmixer's status into `out`. False for a null pointer or on any
- * error.
+ * Read the upmixer's live status into `out`.
  */
 bool dspi_fetch_upmix_status(struct FfiCore *core, struct UpmixStatus *out);
 
 /**
- * Set subharmonic synth parameter `id` (`SUBHARM_PARAM_*`). False on any
- * error.
+ * Set one sub-harmonic synthesiser parameter.
  */
 bool dspi_set_subharm_param(struct FfiCore *core, uint8_t id, float value);
 
 /**
- * Solo the subharmonic synth. False on any error.
+ * Solo the sub-harmonic synthesiser's output, or stop.
  */
 bool dspi_set_subharm_solo(struct FfiCore *core, bool solo);
 
 /**
- * The headroom the subharmonic settings cost, dB (0 = none), into `out_db`.
- * False for a null pointer or on any error.
+ * The sub-harmonic synthesiser's headroom, in dB, into `out_db`.
  */
 bool dspi_fetch_subharm_headroom(struct FfiCore *core, float *out_db);
 
 /**
- * The synthesized sub peak per output, 0..1, into `out`, which must hold
- * `MAX_OUTPUTS` floats; outputs the device does not report read 0. False for a
- * null pointer or on any error.
+ * The sub-harmonic synthesiser's per-output meter into `out`:
+ * `MAX_OUTPUTS` floats.
  */
 bool dspi_fetch_subharm_meter(struct FfiCore *core, float *out);
 
 /**
- * Set tube parameter `idx` (`TUBE_PARAM_*`). False on any error.
+ * Set one tube stage parameter.
  */
 bool dspi_set_tube_param(struct FfiCore *core, uint8_t idx, float value);
 
 /**
- * Save the live state to `slot`, waiting for the device to finish the deferred
- * save. A `PRESET_*` status, 0xFF on any other error.
+ * Save the live state to preset `slot`. Returns a `PRESET_*` status, 0xFF
+ * when it could not be asked.
  */
 uint8_t dspi_save_preset(struct FfiCore *core, uint8_t slot);
 
 /**
- * Load a preset and re-read every parameter. A `PRESET_*` status, 0xFF on any
- * other error.
+ * Load preset `slot` and read the device again. Returns a `PRESET_*`
+ * status, 0xFF when it could not be asked.
  */
 uint8_t dspi_load_preset(struct FfiCore *core, uint8_t slot);
 
 /**
- * Copy the live state to `dest` and re-save it to `source` (which stays
- * active). The `PRESET_*` status of the first failing save, 0xFF on any other
- * error.
+ * Copy preset `source` to `dest`. Returns a `PRESET_*` status, 0xFF when it
+ * could not be asked.
  */
 uint8_t dspi_copy_preset(struct FfiCore *core, uint8_t source, uint8_t dest);
 
 /**
- * Delete a preset. A `PRESET_*` status, 0xFF on any other error.
+ * Delete preset `slot`. Returns a `PRESET_*` status, 0xFF when it could not
+ * be asked.
  */
 uint8_t dspi_delete_preset(struct FfiCore *core, uint8_t slot);
 
 /**
- * Rename a preset. False for a null or non-UTF-8 name or on any error.
+ * Name preset `slot`. False for a null or non-UTF-8 name.
  */
 bool dspi_set_preset_name(struct FfiCore *core, uint8_t slot, const char *name);
 
 /**
- * Read a preset's name into `out_buf` (NUL-terminated, cut to `buf_len` at a
- * character boundary). False for a null or empty buffer or on any error.
+ * The name of preset `slot` into `out_buf` of `buf_len` bytes, cut to fit
+ * and NUL-terminated.
  */
 bool dspi_get_preset_name(struct FfiCore *core, uint8_t slot, char *out_buf, uint32_t buf_len);
 
 /**
- * Read the preset directory into `out_dir`. False for a null pointer or on
- * any error.
+ * Read the preset directory into `out_dir`.
  */
 bool dspi_get_preset_directory(struct FfiCore *core, struct PresetDirectory *out_dir);
 
 /**
- * Boot preset: mode 0 = load `default_slot`, 1 = load the last active slot.
- * False on any error.
+ * Choose what the device loads at power-up: `mode`, and the slot for the
+ * mode that names one.
  */
 bool dspi_set_preset_startup(struct FfiCore *core, uint8_t mode, uint8_t default_slot);
 
 /**
- * Save the live state to flash. A `FLASH_*` status; `FLASH_ERR_WRITE` on any
- * other error.
+ * Save the live parameters to flash. Returns a `FLASH_*` status;
+ * `FLASH_ERR_WRITE` when it could not be asked.
  */
 uint8_t dspi_save_params(struct FfiCore *core);
 
 /**
- * Revert to saved (reloads the active preset). A `FLASH_*` status;
- * `FLASH_ERR_WRITE` on any other error.
+ * Load the parameters saved in flash. Returns a `FLASH_*` status;
+ * `FLASH_ERR_WRITE` when it could not be asked.
  */
 uint8_t dspi_load_params(struct FfiCore *core);
 
 /**
- * Restore the factory defaults. A `FLASH_*` status; `FLASH_ERR_WRITE` on any
- * other error.
+ * Restore the factory defaults, writing flash, and read the device again.
+ * Returns a `FLASH_*` status; `FLASH_ERR_WRITE` when it could not be asked.
  */
 uint8_t dspi_factory_reset(struct FfiCore *core);
 
 /**
- * The live state now matches the active preset (after connecting, loading a
- * preset, saving to the active slot, reverting or a factory reset).
+ * Take the live state as the one unsaved changes are counted from.
  */
 void dspi_capture_baseline(struct FfiCore *core);
 
 /**
- * Whether the live state differs from the active preset. False for a null
- * handle.
+ * Whether the live state differs from the baseline. False for a null handle.
  */
 bool dspi_preset_dirty(struct FfiCore *core);
 
 /**
- * What differs from the active preset, as a JSON array of sentences, into
- * `buf`. Returns the bytes needed including the NUL; a null or too small
- * buffer is left alone, so the caller can retry. 0 for a null handle.
+ * What differs from the baseline, as a JSON array of sentences, into `buf`
+ * of `len` bytes. Returns the bytes needed including the NUL; nothing is
+ * written when that is more than `len`. 0 for a null handle.
  */
 uint32_t dspi_preset_changes(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * Magnitude in dB at one frequency for a chain of bands; 0 for a null or empty
- * chain. `filters` must hold `num_filters` records.
+ * The response of `num_filters` bands at `filters` at `freq` Hz, in dB. A
+ * null or empty chain is flat: 0.
  */
 float dspi_compute_response(const struct FilterParams *filters, uint32_t num_filters, float freq);
 
 /**
- * The 201-point magnitude curve (dB, 10 Hz..20 kHz log-spaced) into
- * `out_magnitudes`, which must hold `MAGNITUDE_POINTS` doubles. A null chain
- * is an empty one. False for a null output. `filters` must hold `num_filters`
- * records.
+ * The magnitude curve of a chain, in dB, into `out_magnitudes`:
+ * `MAGNITUDE_POINTS` doubles on the core's frequency grid. A null chain is
+ * flat. False for a null `out_magnitudes`.
  */
 bool dspi_compute_magnitude_curve(const struct FilterParams *filters,
                                   uint32_t num_filters,
                                   double *out_magnitudes);
 
 /**
- * The 201-point phase curve in degrees over the same grid, continuous when
- * `unwrap` is set, otherwise wrapped to +-180, into `out_phases`, which must
- * hold `MAGNITUDE_POINTS` doubles. A null chain is an empty one. False for a
- * null output. `filters` must hold `num_filters` records.
+ * The phase curve of a chain, in degrees, unwrapped if asked, into
+ * `out_phases`: `MAGNITUDE_POINTS` doubles. False for a null `out_phases`.
  */
 bool dspi_compute_phase_curve(const struct FilterParams *filters,
                               uint32_t num_filters,
@@ -4122,37 +4096,38 @@ bool dspi_compute_phase_curve(const struct FilterParams *filters,
                               double *out_phases);
 
 /**
- * Returns a PIN_CONFIG_* status (0 = success), 0xFF on communication error.
+ * Put output `slot` on GPIO `pin`. Returns a `PIN_CONFIG_*` status, 0xFF
+ * when it could not be asked.
  */
 uint8_t dspi_set_output_pin(struct FfiCore *core, uint8_t slot, uint8_t pin);
 
 /**
- * Returns the pin number, 0xFF on error.
+ * The GPIO of output `slot`, 0xFF on failure.
  */
 uint8_t dspi_fetch_output_pin(struct FfiCore *core, uint8_t slot);
 
 /**
- * 0 = output config stored independently, 1 = saved with presets.
+ * Keep the output configuration with each preset (1) or once for all (0).
  */
 bool dspi_set_output_config_mode(struct FfiCore *core, uint8_t mode);
 
 /**
- * Persist the live output config (independent mode). PRESET_* code, 0xFF on error.
+ * Store the output configuration in flash. Returns the device's status,
+ * 0xFF when it could not be asked.
  */
 uint8_t dspi_save_output_config(struct FfiCore *core);
 
 /**
- * Restart the device into its USB bootloader.
+ * Reboot the device into its USB bootloader. No answer comes back, so true
+ * means only that the request went out.
  */
 bool dspi_enter_bootloader(struct FfiCore *core);
 
 /**
- * Hold the device lock across a flow of several calls, for at most
- * `timeout_ms` (capped at 60 000), until `dspi_device_lock_release`: another
- * DSPi Link session's commands answer locked meanwhile. Blocking over Link:
- * call it off the UI thread. Replies in JSON {ok} or {ok, code, error}
- * (`locked` when another session holds it) and returns the length needed. A
- * retry with a larger buffer is harmless: an acquire while held keeps the lock.
+ * Hold the device for this console (DSPi Link; at once elsewhere) for up to
+ * `timeout_ms`, giving `reason` to the others. JSON `{ok}` or a failure
+ * (`locked` when another console holds it). Returns the bytes needed; 0 for
+ * a null handle.
  */
 uint32_t dspi_device_lock_acquire(struct FfiCore *core,
                                   const char *reason,
@@ -4161,143 +4136,138 @@ uint32_t dspi_device_lock_acquire(struct FfiCore *core,
                                   uint32_t len);
 
 /**
- * Release the lock `dspi_device_lock_acquire` took, and only that one: an IR
- * learn's lock ends with its read, cancel or window, `dspi_enter_bootloader`'s
- * when the device leaves or after 60 s. Idempotent; never blocks.
+ * Give back the lock `dspi_device_lock_acquire` took. Nothing if not held.
  */
 void dspi_device_lock_release(struct FfiCore *core);
 
 /**
- * Core 1 mode (0 = idle, 1 = PDM, 2 = EQ worker), -1 on error.
+ * Core 1's mode, -1 on failure.
  */
 int8_t dspi_fetch_core1_mode(struct FfiCore *core);
 
 /**
- * 1 if enabling `output` would conflict with Core 1's mode, 0 if not, -1 on error.
+ * Whether enabling `output` would collide on Core 1: 1 yes, 0 no, -1 on
+ * failure.
  */
 int8_t dspi_check_core1_conflict(struct FfiCore *core, uint8_t output);
 
 /**
- * Register a callback for device arrival/departure events; NULL clears it,
- * waiting for a call in progress on another thread. False for a null handle.
- * It runs on the thread that calls `dspi_poll_hotplug`, and must not set
- * listeners from inside the call.
+ * Set the callback `dspi_poll_hotplug` reports arrivals (0) and departures
+ * (1) with, on the polling thread; null unsets it. The serial is valid
+ * during the call only.
  */
 bool dspi_set_hotplug_callback(struct FfiCore *core,
                                void (*callback)(uint8_t event, const char *serial, void *user_data),
                                void *user_data);
 
 /**
- * Poll for hot-plug changes (~every 500 ms). Fires the registered callback
- * for arrivals (event 0) and departures (event 1), reconnects the selected
- * device when it comes back and closes one that went away. A reconnect runs
- * here, so the call can take a few hundred milliseconds on a replug. Call
- * `dspi_scan_devices` first, or every unit present is announced as arrived.
+ * Look for devices that came or went, and report them to the callback.
  */
 void dspi_poll_hotplug(struct FfiCore *core);
 
 /**
- * Slot type: 0 = S/PDIF, 1 = I2S.
+ * Set the kind of output `slot` (I2S, S/PDIF, ...).
  */
 uint8_t dspi_set_output_type(struct FfiCore *core, uint8_t slot, uint8_t kind);
 
 /**
- * I2S BCK pin (LRCLK = +1); role 0 = master/shared, 1 = slave pair.
+ * Put an I2S bit clock (`role`) on GPIO `pin`.
  */
 uint8_t dspi_set_i2s_bck_pin(struct FfiCore *core, uint8_t role, uint8_t pin);
 
 /**
- * 0 = shared clock pins, 1 = separate slave pins.
+ * Choose how the I2S clock pins are laid out.
  */
 uint8_t dspi_set_i2s_clock_pin_mode(struct FfiCore *core, uint8_t mode);
 
 /**
- * Master clock output on/off.
+ * Turn the master clock output on or off.
  */
 uint8_t dspi_set_mck_enabled(struct FfiCore *core, bool enabled);
 
 /**
- * Master clock pin (MCK off first).
+ * Put the master clock on GPIO `pin`.
  */
 uint8_t dspi_set_mck_pin(struct FfiCore *core, uint8_t pin);
 
 /**
- * 0 = 128 x fs, 1 = 256 x fs.
+ * Set the master clock's multiple of the sample rate.
  */
 uint8_t dspi_set_mck_multiplier(struct FfiCore *core, uint8_t mult);
 
 /**
- * ADAT optical output (RP2350).
+ * Turn the ADAT output on or off.
  */
 uint8_t dspi_set_adat_out_enabled(struct FfiCore *core, bool enabled);
 
 /**
- * ADAT output data pin.
+ * Put the ADAT output on GPIO `pin`.
  */
 uint8_t dspi_set_adat_out_pin(struct FfiCore *core, uint8_t pin);
 
 /**
- * S/PDIF input RX pin (index 0-3).
+ * Put S/PDIF receiver `index` on GPIO `pin`.
  */
 uint8_t dspi_set_spdif_rx_pin(struct FfiCore *core, uint8_t index, uint8_t pin);
 
 /**
- * Enable S/PDIF input 2-4 (index 1-3).
+ * Turn S/PDIF input `index` on or off.
  */
 uint8_t dspi_set_spdif_input_enabled(struct FfiCore *core, uint8_t index, bool enabled);
 
 /**
- * I2S input data pin of a pair (0-3).
+ * Put I2S input `pair` on GPIO `pin`.
  */
 uint8_t dspi_set_i2s_rx_pin(struct FfiCore *core, uint8_t pair, uint8_t pin);
 
 /**
- * I2S input channels: 2, 4, 6 or 8.
+ * Set how many channels the I2S input carries.
  */
 uint8_t dspi_set_i2s_input_channels(struct FfiCore *core, uint8_t channels);
 
 /**
- * ADAT input on/off (needs a pin).
+ * Turn the ADAT input on or off.
  */
 uint8_t dspi_set_adat_input_enabled(struct FfiCore *core, bool enabled);
 
 /**
- * ADAT input data pin; 0xFF clears it.
+ * Put the ADAT input on GPIO `pin`.
  */
 uint8_t dspi_set_adat_input_pin(struct FfiCore *core, uint8_t pin);
 
 /**
- * ADAT input clock: 0 = master, 1 = slave.
+ * Choose where the ADAT input takes its clock from.
  */
 uint8_t dspi_set_adat_input_clock_mode(struct FfiCore *core, uint8_t mode);
 
 /**
- * Master-mode input rate for I2S and ADAT: 0 = 44.1k, 1 = 48k, 2 = 96k.
+ * Choose the input sample rate by its index.
  */
 bool dspi_set_input_rate(struct FfiCore *core, uint8_t index);
 
 /**
- * The rate the pipeline runs at now, Hz (0 if unknown).
+ * The input sample rate in Hz, 0 on failure.
  */
 uint32_t dspi_fetch_input_rate(struct FfiCore *core);
 
 /**
- * I2S input clock: 0 = master, 1 = slave (applied by the device later).
+ * Choose whether the I2S clocks are driven or followed.
  */
 bool dspi_set_i2s_clock_mode(struct FfiCore *core, uint8_t mode);
 
 /**
- * `which`: 0 = I2S slave lock, 1 = ADAT input lock; false for another value.
+ * The lock state of digital input `which` into `out`.
  */
 bool dspi_fetch_input_lock(struct FfiCore *core, uint8_t which, struct InputLockStatus *out);
 
 /**
- * The ADAT output's status (all zero on RP2040).
+ * The ADAT output's state into `out`.
  */
 bool dspi_fetch_adat_out_status(struct FfiCore *core, struct AdatOutStatus *out);
 
 /**
- * Send a DAC mute config; read it back with `dspi_fetch_dac_mute` ~150 ms later.
+ * Configure the DAC mute line: on or off, its polarity, its GPIO, and how
+ * long it holds before and after a change, in ms.
  */
 bool dspi_set_dac_mute(struct FfiCore *core,
                        bool enabled,
@@ -4307,190 +4277,181 @@ bool dspi_set_dac_mute(struct FfiCore *core,
                        uint16_t release_ms);
 
 /**
- * Re-read the DAC mute config into the state.
+ * Read the DAC mute configuration into the mirror.
  */
 bool dspi_fetch_dac_mute(struct FfiCore *core);
 
 /**
- * Pulse the DAC mute output for ~1 s. Returns 0 when started, 3 when the
- * feature is disabled, 255 if the device did not answer.
+ * Pulse the DAC mute line once. Returns the device's status, 0xFF when it
+ * could not be asked.
  */
 uint8_t dspi_test_dac_mute(struct FfiCore *core);
 
 /**
- * LG Sound Sync on or off.
+ * Turn LG Sound Sync on or off.
  */
 bool dspi_set_lg_sound_sync(struct FfiCore *core, bool enabled);
 
 /**
- * LG Sound Sync's status.
+ * LG Sound Sync's state into `out`.
  */
 bool dspi_fetch_lg_status(struct FfiCore *core, struct LgStatus *out);
 
 /**
- * Re-read both control interface configs and their status into the state.
+ * Read the UART and I2C control interfaces into the mirror.
  */
 bool dspi_fetch_ctrl_ifaces(struct FfiCore *core);
 
 /**
- * Send a UART config; read the outcome with `dspi_fetch_ctrl_ifaces` ~250 ms later.
+ * Configure the UART control interface.
  */
 bool dspi_set_uart(struct FfiCore *core, struct UartConfig config);
 
 /**
- * Send an I2C config; read the outcome with `dspi_fetch_ctrl_ifaces` later.
+ * Configure the I2C control interface.
  */
 bool dspi_set_i2c(struct FfiCore *core, struct I2cConfig config);
 
 /**
- * Register the callback the notification listener thread calls when
- * packets are waiting; NULL clears it, waiting for a call in progress. It runs
- * on that thread: it must only schedule `dspi_process_notifications` on the
- * GUI thread.
+ * Set the callback that says notifications are waiting. It runs on the
+ * reader's thread and must only schedule `dspi_process_notifications`. Null
+ * unsets it; once that returns, the old one is not running.
  */
 void dspi_set_notify_callback(struct FfiCore *core,
                               void (*callback)(void *user_data),
                               void *user_data);
 
 /**
- * Apply the queued device notifications to the state. `out` receives what
- * changed (`NOTIFY_*` flags and the wire channels whose filters changed);
- * zeros for a null handle. `out` may be null.
+ * Apply the waiting notifications to the mirror and say what changed in
+ * `out` (may be null). A null handle gives the empty result.
  */
 void dspi_process_notifications(struct FfiCore *core, struct NotifyResult *out);
 
 /**
- * Register the callback the analyser worker calls (on its own thread) when
- * the caps or the snapshot changed. It must only schedule work on the GUI
- * thread. NULL stops the calls; once this returns, no call is in progress.
+ * Set the callback that says new analyser data is waiting, on the
+ * analyser's thread; null unsets it.
  */
 void dspi_rta_set_callback(struct FfiCore *core,
                            void (*callback)(void *user_data),
                            void *user_data);
 
 /**
- * Probe and start polling the connected device's analyser (compatible
- * firmware only). Stops by itself on disconnect.
+ * Start the analyser's worker for the open device.
  */
 void dspi_rta_start(struct FfiCore *core);
 
 /**
- * What to analyse. A zero mask releases the analyser.
+ * Ask for an analysis; a zero mask releases the analyser. A null request
+ * does nothing.
  */
 void dspi_rta_set_request(struct FfiCore *core, const struct RtaRequest *request);
 
 /**
- * As `dspi_rta_set_request`, saying whether a view shows the analyser. With
- * `watching` true and a zero mask, nothing of this console's is analysed,
- * but while another console is followed its configuration is still polled
- * and in the snapshot. The record keeps the old layout, so the flag is an
- * argument.
+ * `dspi_rta_set_request` for a view that is on screen: with `watching`, a
+ * zero mask keeps showing what another console has the analyser doing
+ * instead of releasing it.
  */
 void dspi_rta_set_request_watching(struct FfiCore *core,
                                    const struct RtaRequest *request,
                                    bool watching);
 
 /**
- * The analyser's capabilities (`supported` false until probed or without
- * one, and for a null handle).
+ * The analyser's capabilities into `out`; "not supported" for a null
+ * handle.
  */
 void dspi_rta_get_caps(struct FfiCore *core, struct RtaCapsInfo *out);
 
 /**
- * Copy the latest snapshot into `out` (the empty one for a null handle).
+ * The latest analysis into `out`; empty for a null handle.
  */
 void dspi_rta_get_snapshot(struct FfiCore *core, struct RtaSnapshot *out);
 
 /**
- * Whether this console drives the analyser or follows another one's
- * configuration (driving, all zero, for a null handle). The analyser
- * callback is called when this changes.
+ * Who chose the analyser's configuration, into `out`; "this console drives"
+ * for a null handle.
  */
 void dspi_rta_get_ownership(struct FfiCore *core, struct RtaOwnership *out);
 
 /**
- * Stop following and push this console's own request on the next poll.
+ * Make this console the one that drives the analyser again.
  */
 void dspi_rta_take_control(struct FfiCore *core);
 
 /**
- * The generator's caps and signal types. False on a USB error; true with
- * `supported` false when the firmware has no generator.
+ * The signal generator's capabilities into `out`. True with `supported`
+ * false on firmware without one.
  */
 bool dspi_siggen_fetch_caps(struct FfiCore *core, struct SiggenCaps *out);
 
 /**
- * The config the generator runs (as the device sanitised it).
+ * The signal generator's configuration into `out`.
  */
 bool dspi_siggen_get_config(struct FfiCore *core, struct SiggenConfig *out);
 
 /**
- * Stage a config; a running generator restarts with it. The device ACKs
- * even a config it refuses: read it back to check.
+ * Configure the signal generator. False for a null `cfg`.
  */
 bool dspi_siggen_set_config(struct FfiCore *core, const struct SiggenConfig *cfg);
 
 /**
- * SIGGEN_CTL_START / STOP (fade) / STOP_NOW. False if refused.
+ * Start, stop or otherwise drive the signal generator (`action`).
  */
 bool dspi_siggen_control(struct FfiCore *core, uint16_t action);
 
 /**
- * The generator's state.
+ * The signal generator's state into `out`.
  */
 bool dspi_siggen_get_status(struct FfiCore *core, struct SiggenStatus *out);
 
 /**
- * One REQ_GET_STATUS u32 counter (STAT_*).
+ * One statistic (`STAT_*`) into `out`.
  */
 bool dspi_fetch_stat(struct FfiCore *core, uint16_t which, uint32_t *out);
 
 /**
- * The audio buffers' fill statistics.
+ * The buffer fill levels into `out`.
  */
 bool dspi_fetch_buffer_stats(struct FfiCore *core, struct BufferStats *out);
 
 /**
- * Restart the buffer watermarks.
+ * Reset the buffer statistics' watermarks.
  */
 bool dspi_reset_buffer_stats(struct FfiCore *core);
 
 /**
- * The S/PDIF receiver's status.
+ * The S/PDIF receiver's state into `out`.
  */
 bool dspi_fetch_spdif_rx_status(struct FfiCore *core, struct SpdifRxStatus *out);
 
 /**
- * `out` receives 24 bytes of IEC 60958 channel status.
+ * The received S/PDIF channel status into `out`, which holds 24 bytes;
+ * bytes the device did not send are 0.
  */
 bool dspi_fetch_spdif_rx_channel_status(struct FfiCore *core, uint8_t *out);
 
 /**
- * GPIO of S/PDIF receiver `index`; false if it has none.
+ * The GPIO of S/PDIF receiver `index` into `out`.
  */
 bool dspi_fetch_spdif_rx_pin(struct FfiCore *core, uint8_t index, uint8_t *out);
 
 /**
- * Copy the notification log lines after `after_id` into `buf` as
- * "time_ms<TAB>text<LF>" (ms since the Unix epoch), stopping before `buf`
- * would overflow. A line too long for `buf` even on its own is dropped.
- * Returns the id of the last line written or dropped (`after_id` if none);
- * call again from there to get the rest.
+ * The log entries after `after_id` into `buf`, one per line as
+ * `<ms since the epoch>\t<text>\n`, as many whole lines as fit. Returns the
+ * id to pass next time: the last entry written, or past entries too long
+ * for the buffer at all, which are dropped. With nothing new, a null buffer,
+ * a length of 0 or a null handle it returns `after_id`.
  */
 uint64_t dspi_monitor_read(struct FfiCore *core, uint64_t after_id, char *buf, uint32_t buf_len);
 
 /**
- * Empty the notification log.
+ * Empty the monitor log.
  */
 void dspi_monitor_clear(struct FfiCore *core);
 
 /**
- * The device's configuration as a `.dspipreset` document. `links` = the
- * app's input-pair link mask. Returns the length needed.
- *
- * With no device's state to export, the text is instead the JSON failure reply
- * `{"ok":false,"code":<kind>,"error":<sentence>}`: a document has no `ok` key.
- * Check before writing it to a file.
+ * The device's whole configuration as a `.dspipreset` document named
+ * `name`, written by `app_version`, with the input links `links`; or a JSON
+ * failure. Returns the bytes needed.
  */
 uint32_t dspi_config_export(struct FfiCore *core,
                             const char *name,
@@ -4500,19 +4461,15 @@ uint32_t dspi_config_export(struct FfiCore *core,
                             uint32_t len);
 
 /**
- * Check a document and describe it, as JSON {ok, error, name, platform,
- * firmware, savedUtc}. Returns the length needed.
+ * What a configuration document holds, in JSON, without a device. Returns
+ * the bytes needed, 0 only for a panic.
  */
 uint32_t dspi_config_inspect(const char *text, char *buf, uint32_t len);
 
 /**
- * Apply a document (`options`: 1 = volumes, 2 = hardware I/O). Writes JSON
- * {ok, error, lines, clean, links (or null), hardwareWritten}. Returns the
- * length needed.
- *
- * Don't retry on a short buffer: a reply too long means the write has
- * happened, and a second call applies it again. Give it a large enough buffer
- * the first time.
+ * Apply a configuration document to the device. `options`: bit 0 the
+ * volumes too, bit 1 the hardware configuration too. JSON reply; the device
+ * has changed whatever the buffer.
  */
 uint32_t dspi_config_import(struct FfiCore *core,
                             const char *text,
@@ -4521,14 +4478,13 @@ uint32_t dspi_config_import(struct FfiCore *core,
                             uint32_t len);
 
 /**
- * Every channel's filters as a text file (`inputs` = live inputs to write),
- * or the JSON failure reply as [`dspi_config_export`] gives it: a filter file
- * starts with `#`.
+ * The filters of the device's `inputs` inputs and every output as a filter
+ * document, or a JSON failure.
  */
 uint32_t dspi_filters_export(struct FfiCore *core, uint8_t inputs, char *buf, uint32_t len);
 
 /**
- * What a filter file holds, for the channel picker (JSON).
+ * What a filter document holds that this device can use, in JSON.
  */
 uint32_t dspi_filters_inspect(struct FfiCore *core,
                               const char *text,
@@ -4537,12 +4493,8 @@ uint32_t dspi_filters_inspect(struct FfiCore *core,
                               uint32_t len);
 
 /**
- * Apply a filter file to the channels in `wires` (wire indices). Writes
- * JSON {ok, error, lines}. Returns the length needed.
- *
- * Don't retry on a short buffer: a reply too long means the write has
- * happened, and a second call applies it again. Give it a large enough buffer
- * the first time.
+ * Apply a filter document's channels to the `count` wire channels at
+ * `wires`. JSON reply; the device has changed whatever the buffer.
  */
 uint32_t dspi_filters_import(struct FfiCore *core,
                              const char *text,
@@ -4552,77 +4504,66 @@ uint32_t dspi_filters_import(struct FfiCore *core,
                              uint32_t len);
 
 /**
- * Read the whole control surfaces configuration from the device (bindings,
- * IR commands, groups, macros, display, aux). Returns false on a transfer
- * error; firmware without control surfaces reads as unsupported.
+ * Read the control surface configuration from the device.
  */
 bool dspi_cs_fetch(struct FfiCore *core);
 
 /**
- * The control surfaces configuration as JSON. Returns the length needed.
+ * The control surface configuration last read, as JSON.
  */
 uint32_t dspi_cs_snapshot(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * Perform one control surfaces operation, given as JSON {op, index, ...}.
- * Writes JSON {ok, status, error, ...}. Returns the length needed.
- *
- * Don't retry on a short buffer: a reply too long means the write has
- * happened, and a second call applies it again. Give it a large enough buffer
- * the first time.
+ * Run one control surface operation, given as JSON; the JSON reply carries
+ * an `error` when it failed.
  */
 uint32_t dspi_cs_apply(struct FfiCore *core, const char *op, char *buf, uint32_t len);
 
 /**
- * GPIOs held by live control surface bindings: fills `pins` and `slots`
- * (up to `max` each) and returns how many there are.
+ * The GPIOs live bindings hold: up to `max` of them into `pins`, with the
+ * binding's slot at the same index of `slots` (either may be null). Returns
+ * how many there are in all; 0 for a null handle.
  */
 uint32_t dspi_cs_pin_uses(struct FfiCore *core, uint8_t *pins, uint8_t *slots, uint32_t max);
 
 /**
- * Boards in BOOTSEL (Raspberry Pi's ROM loader, not DSPi) on the USB bus:
- * fills the RP2040 and RP2350 counts. Either pointer may be null.
+ * How many RP2040 and RP2350 boards are in their USB bootloader. Either
+ * pointer may be null.
  */
 void dspi_bootloader_counts(uint32_t *rp2040, uint32_t *rp2350);
 
 /**
- * Open the built-in demo device: a simulated RP2350 that answers reads and
- * writes and notifies. Replaces any open device. Follow it with
- * `dspi_fetch_all`, as after `dspi_select_device`.
+ * Open the demo device, a simulated DSPi, in place of any open device.
  */
 bool dspi_open_demo(struct FfiCore *core);
 
 /**
- * What the extension channel offers, as probed on connect (no traffic):
- * JSON {ok, supported, hasPairMap, hasCoreVreg}. Returns the length needed.
+ * What the extension channel offers on the open device, in JSON:
+ * `{ok, supported, hasPairMap, hasCoreVreg}`.
  */
 uint32_t dspi_ext_status(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * Read the live crossfeed pair map into `out`. `out_len` must be at least 4;
- * a shorter buffer is false with no traffic. Also false on firmware without
- * the extension.
+ * The crossfeed pair map, 4 bytes, into `out` of `out_len` bytes. False for
+ * a buffer under 4 bytes, with nothing written.
  */
 bool dspi_fetch_crossfeed_pair_map(struct FfiCore *core, uint8_t *out, uint32_t out_len);
 
 /**
- * Set the crossfeed pair map (`map_len` 4 bytes). Returns 0 on success, the
- * device's status byte if it refused, 0xFF otherwise: an invalid map (nothing
- * is sent), firmware without the extension, or no device.
+ * Write the crossfeed pair map: `map_len` (4) bytes at `map`. Returns a
+ * status byte; 0xFF for a null or short map without asking the device.
  */
 uint8_t dspi_set_crossfeed_pair_map(struct FfiCore *core, const uint8_t *map, uint32_t map_len);
 
 /**
- * Whether `map` (`map_len` 4 bytes) is a pair map the firmware takes on a
- * platform with `num_pairs` stereo pairs: the rule
- * `dspi_set_crossfeed_pair_map` applies, for telling an editor as the pairs
- * are picked. No device involved. False for a null map or another length.
+ * Whether `map` (`map_len` bytes, which must be 4) is a pair map the
+ * firmware takes with `num_pairs` pairs.
  */
 bool dspi_crossfeed_pair_map_valid(const uint8_t *map, uint32_t map_len, uint8_t num_pairs);
 
 /**
- * The K340's pair map (one DAC per ear) into `out`. `out_len` must be at
- * least 4; a shorter or null buffer is false.
+ * The K340's pair map into `out` (4 bytes of `out_len`). False for a
+ * buffer under 4 bytes.
  */
 bool dspi_crossfeed_k340_pair_map(uint8_t *out, uint32_t out_len);
 
@@ -4632,27 +4573,20 @@ bool dspi_crossfeed_k340_pair_map(uint8_t *out, uint32_t out_len);
 uint8_t dspi_crossfeed_k340_pair_mask(void);
 
 /**
- * The core voltage extension's status: JSON {ok, liveVreg, millivolts,
- * storedSel, defaultVreg, autoRaised, autoDisabled, hangCount, trialActive,
- * trialVreg, failedTrialVreg, failedTrialUptimeS, uptimeS}. Returns the
- * length needed.
+ * The core voltage extension's status, in JSON (`millivolts`, `storedSel`,
+ * ...), or a failure (`unsupported` without it).
  */
 uint32_t dspi_fetch_core_vreg(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * Core voltage write: `op` 0 set (value = VREG code, 0 = build default),
- * 1 trial, 2 end trial, 3 auto (value 0/1), 4 clear. Out-of-range requests
- * are refused here with nothing sent. A set or trial above 1.20 V and above
- * what the unit reports now needs `word`, exactly "OVERVOLT"; null or anything
- * else refuses it with nothing written. Returns 0 on success, the device's
- * status byte if it refused, 0xFF otherwise. Read the status back with
- * `dspi_fetch_core_vreg`.
+ * One raw core voltage operation. `word` is what the user typed (null:
+ * nothing); raising above 1.20 V needs `OVERVOLT`. Returns a status byte.
  */
 uint8_t dspi_core_vreg_op(struct FfiCore *core, uint8_t op, uint8_t value, const char *word);
 
 /**
- * The user's name for input source `source` ("" when unnamed), cut to fit
- * `out_buf`; 32 bytes always fit. False on firmware without source names.
+ * The user's name for input source `source`, read from the device, into
+ * `out_buf`, cut to fit.
  */
 bool dspi_get_input_source_name(struct FfiCore *core,
                                 uint8_t source,
@@ -4660,28 +4594,23 @@ bool dspi_get_input_source_name(struct FfiCore *core,
                                 uint32_t buf_len);
 
 /**
- * Name input source `source`; "" clears it. At most 31 bytes of UTF-8. False
- * for a null or invalid string (nothing is sent), and as the device refuses.
+ * Name input source `source`. False for a null or non-UTF-8 name, or one too
+ * long for the device.
  */
 bool dspi_set_input_source_name(struct FfiCore *core, uint8_t source, const char *name);
 
 /**
- * The device's own name ("" when unnamed), cut to fit `out_buf`; 32 bytes
- * always fit. False on firmware without device names.
+ * The device's name, read from it, into `out_buf`, cut to fit.
  */
 bool dspi_get_device_name(struct FfiCore *core, char *out_buf, uint32_t buf_len);
 
 /**
- * Rename the device; "" clears it. At most 31 bytes of UTF-8. False for a
- * null or invalid string (nothing is sent), and as the device refuses.
+ * Name the device. False for a null or non-UTF-8 name, or one too long.
  */
 bool dspi_set_device_name(struct FfiCore *core, const char *name);
 
 /**
- * The name of input source `source` as last known ("" when unnamed), cut to
- * fit `out_buf`, with no traffic: for showing names, which connect has read
- * and notifications keep current. 32 bytes always fit. False on firmware
- * without source names, and for a source past the table.
+ * The input source's name as last read (no I/O), into `out_buf`.
  */
 bool dspi_cached_input_source_name(struct FfiCore *core,
                                    uint8_t source,
@@ -4689,146 +4618,121 @@ bool dspi_cached_input_source_name(struct FfiCore *core,
                                    uint32_t buf_len);
 
 /**
- * The device's name as last known, as [`dspi_cached_input_source_name`]. False
- * on firmware without device names.
+ * The device's name as last read (no I/O), into `out_buf`.
  */
 bool dspi_cached_device_name(struct FfiCore *core, char *out_buf, uint32_t buf_len);
 
 /**
- * On the demo device only: someone else renames input source `target`, or the
- * device for 0xFF. "" clears the name. False on anything else.
+ * Demo device: another console renames input source `target` (0xFF: the
+ * device) to `name`, as a notification shows it.
  */
 bool dspi_demo_rename_elsewhere(struct FfiCore *core, uint8_t target, const char *name);
 
 /**
- * On the demo device only: how an output-latency request lands. `mode` 0 at
- * once, 1 after `reads` status reads, 2 never, 3 dropped after `reads` status
- * reads; `blackout` status reads stall first while one is pending. False on
- * anything else.
+ * Demo device: how output latency changes behave (`mode`), how many reads
+ * they take and how long the device goes quiet.
  */
 bool dspi_demo_latency_timing(struct FfiCore *core, uint8_t mode, uint8_t reads, uint8_t blackout);
 
 /**
- * On the demo device only: how many output-latency requests it has received,
- * or `u32::MAX` on anything else.
+ * Demo device: how many output latency changes it took. `u32::MAX` on
+ * failure.
  */
 uint32_t dspi_demo_latency_sets(struct FfiCore *core);
 
 /**
- * On the demo device only: how `dspi_save_output_config` answers from now on.
- * 0 goes through, 0xFF stalls, another byte is that `PRESET_*` status. False on
- * anything else.
+ * Demo device: the status its next output configuration save answers.
  */
 bool dspi_demo_output_save_status(struct FfiCore *core, uint8_t status);
 
 /**
- * The demo device as firmware of wire format `wire` (17, 26, 31 or 33), for
- * read-only tests. Replaces any open device. False for any other format.
+ * Open a recorded device of wire format `wire` (read-only below the
+ * current format and above it).
  */
 bool dspi_demo_open_wire(struct FfiCore *core, uint8_t wire);
 
 /**
- * How many writes this core has refused because the connection is read-only.
+ * How many writes the read-only mode has refused on this handle.
  */
 uint32_t dspi_read_only_refusals(struct FfiCore *core);
 
 /**
- * The `WIRE_FEAT_*` bits the connected firmware's wire format carries: all of
- * them on V32 and newer, none with no device or below V16.
+ * The open device's wire features (`WIRE_FEAT_*`); 0 without one.
  */
 uint32_t dspi_wire_features(struct FfiCore *core);
 
 /**
- * The output latency's status: JSON {ok, raw, fields: [{name, value}]}.
- * Returns the length needed.
+ * The output latency the device reports, in JSON: `{ok, raw, fields}`.
  */
 uint32_t dspi_fetch_output_latency(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * The output latency options: JSON {ok, value: [{id, streamOnly, available,
- * latencyUs, batchUs, effectiveUs}]}. Returns the length needed.
+ * The output latency settings to choose from, in JSON (`value`: a list).
  */
 uint32_t dspi_fetch_output_latency_options(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * Request output latency option `id` (1..=7). The device applies it later.
+ * Choose an output latency setting by its id.
  */
 bool dspi_set_output_latency(struct FfiCore *core, uint8_t id);
 
 /**
- * The clock diagnostics packet: JSON {ok, available, raw, fields: [{name,
- * value}]}; `available` false on firmware built without them. Returns the
- * length needed.
+ * The clock diagnostics, in JSON (`available` false on firmware without
+ * them).
  */
 uint32_t dspi_fetch_clock_diag(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * The output rings' health: JSON {ok, targetFrames, targetUs, batchFrames,
- * underrunEpisodes, refusedBlocks, lowestFill, worstInputGapUs, worstUsbGapUs,
- * overBudgetSteps}, with `lowestFill` null before the first write. On firmware
- * without the status, {"ok":true,"value":null}: show no section. Returns the
- * length needed.
+ * The output ring's health, in JSON; `{ok, value: null}` when the device
+ * does not report it.
  */
 uint32_t dspi_fetch_ring_health(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * The live outputs' fill, on the ring's scale where the firmware has one:
- * JSON {ok, value: [{fillPct, minPct, maxPct, band}]}, `band` being "good",
- * "warn" or "bad". Returns the length needed.
+ * Each live output's fill, in JSON (`value`: a list).
  */
 uint32_t dspi_fetch_output_fills(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * The Stats window's fast poll, one transfer: JSON {ok, buffers: {numSpdif,
- * pdmActive, streaming, sequence, spdif: [{free, prepared, playing, fillPct,
- * minPct, maxPct}], pdm: {...}}, fills: [as dspi_fetch_output_fills] or null}.
- * Null fills mean keep the last ones. Returns the length needed.
+ * The buffers and the output fills from one read, in JSON: `{ok, buffers,
+ * fills}`; `fills` is null when they could not be read (keep the last).
  */
 uint32_t dspi_fetch_stats_tick(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * Start (true) or stop the raw notification tap. Off by default; stopping
- * forgets what it held.
+ * Start or stop keeping a copy of every notification for
+ * `dspi_notify_tap_drain`.
  */
 void dspi_notify_tap_set(struct FfiCore *core, bool enabled);
 
 /**
- * The notifications the tap kept since the last drain, oldest first: JSON
- * {ok, value: [{packet: [bytes], origin: session id or null, own, lost,
- * receivedMs}]}. Returns the length needed. **Drains**, like the
- * device-changing text functions: a reply too long for `buf` is not
- * written and its entries are gone, so the next entry kept has `lost` set.
- * A full ring (512 entries) fits in 256 KiB.
+ * The notifications kept since the last drain, in JSON (`value`: a list of
+ * `{packet, origin, own, lost, receivedMs}`). They are taken whatever the
+ * buffer: when they do not fit, the next one kept is marked `lost`.
  */
 uint32_t dspi_notify_tap_drain(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * The open connection's generation: unique per connection, never reused
- * while the process runs. 0 when nothing is open.
+ * The open connection's generation: new on every open, 0 with none.
  */
 uint64_t dspi_connection_generation(struct FfiCore *core);
 
 /**
- * Check a `.uf2` image: JSON {ok, valid, problem, familyId, platform,
- * numBlocks, payloadBytes, firmwareVersion}. `valid` is false for a null or
- * malformed image. Returns the length needed.
+ * Check a UF2 image of `image_len` bytes, in JSON: `{ok, valid, problem,
+ * familyId, platform, ...}`. A null image is an empty one.
  */
 uint32_t dspi_uf2_inspect(const uint8_t *image, uint32_t image_len, char *buf, uint32_t len);
 
 /**
- * Mounted bootloader drives: JSON {ok, value: [{path, platform, info}]}.
- * Returns the length needed.
+ * The boards' bootloader drives that are mounted, in JSON (`value`: a list
+ * of `{path, platform, info}`).
  */
 uint32_t dspi_bootloader_drives(char *buf, uint32_t len);
 
 /**
- * Write a validated image to the bootloader drive at `drive_path`, whose
- * `platform` comes from `dspi_bootloader_drives` (0 RP2040, 1 RP2350). The
- * image and the drive are checked before any byte goes out. Replies in JSON
- * {ok} or {ok, code, error}, and returns the length needed. `ok` means only
- * that the write ended, or that the drive went away during it, assumed to be
- * the board rebooting: confirm with `dspi_firmware_version_matches` once the
- * DSPi is back.
+ * Write a UF2 image to the bootloader drive at `drive_path` (`platform`: 0
+ * RP2040, 1 RP2350). Blocks for the copy. JSON `{ok}` or a failure; an
+ * invalid image never reaches the drive. Use the guarded call instead.
  */
 uint32_t dspi_flash_to_drive(const uint8_t *image,
                              uint32_t image_len,
@@ -4838,40 +4742,36 @@ uint32_t dspi_flash_to_drive(const uint8_t *image,
                              uint32_t len);
 
 /**
- * 1 if the open device runs firmware `version` (a UF2's `firmwareVersion`),
- * 0 if not, -1 with no device open or for a null or invalid string.
+ * Whether the open device runs firmware `version`: 1 yes, 0 no, -1 on
+ * failure or for a null or non-UTF-8 version.
  */
 int8_t dspi_firmware_version_matches(struct FfiCore *core, const char *version);
 
 /**
- * The calibration flow as it stands, from memory, with no traffic (it waits
- * for a call in flight, so keep it off the UI thread): JSON
- * {ok, available, phase, messageKey, message, warning, soakNote, ...}, the
- * fields of dspi-core's `VregCalView`. Returns the length needed.
+ * The calibration flow as it stands, in JSON (`phase`, `choices`,
+ * `lastError`, ...). No I/O.
  */
 uint32_t dspi_core_vreg_cal_view(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * Read the device and advance the flow, as `dspi_core_vreg_cal_view` for the
- * reply. Call about once a second while the page shows, and on every connect.
- * The next step of a run the user started may go out here, but never a save,
- * and a second call for a larger buffer does no harm. Returns the length needed.
+ * The calibration flow after moving it on (reads the device), in JSON.
  */
 uint32_t dspi_core_vreg_cal_poll(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * Open the flow: the user reached it from Advanced. Sends no write.
+ * Open the calibration for review. Returns a status byte; the reason for a
+ * refusal is the view's `lastError`.
  */
 uint8_t dspi_core_vreg_cal_open(struct FfiCore *core);
 
 /**
- * Close the flow: the user left. Refused while a run is under way.
+ * Close the calibration. Returns a status byte.
  */
 uint8_t dspi_core_vreg_cal_close(struct FfiCore *core);
 
 /**
- * Start a run at VREG code `target` for `soak_s` seconds. `typed` is what the
- * user typed when the view says the voltage needs the word, or null.
+ * Start a trial at VREG code `target` for `soak_s` seconds; `typed` is the
+ * word for a raise above 1.20 V (null: none). Returns a status byte.
  */
 uint8_t dspi_core_vreg_cal_start(struct FfiCore *core,
                                  uint8_t target,
@@ -4879,59 +4779,60 @@ uint8_t dspi_core_vreg_cal_start(struct FfiCore *core,
                                  const char *typed);
 
 /**
- * Keep a trial found on the device, for `soak_s` seconds from now.
+ * Keep the trial's voltage for another `soak_s` seconds. Returns a status
+ * byte.
  */
 uint8_t dspi_core_vreg_cal_keep(struct FfiCore *core, uint32_t soak_s);
 
 /**
- * Save the voltage that passed. `typed` as for `dspi_core_vreg_cal_start`.
+ * Store the passed trial's voltage; `typed` as for the start. Returns a
+ * status byte.
  */
 uint8_t dspi_core_vreg_cal_commit(struct FfiCore *core, const char *typed);
 
 /**
- * End a trial, or abort a run.
+ * End the running trial. Returns a status byte.
  */
 uint8_t dspi_core_vreg_trial_end(struct FfiCore *core);
 
 /**
- * Manual save: `value` 0 is the build default, otherwise the flow's limits
- * and confirmation apply. `typed` as for `dspi_core_vreg_cal_start`.
+ * Store VREG code `value` directly (0: the build's default); `typed` as for
+ * the start. Returns a status byte.
  */
 uint8_t dspi_core_vreg_manual_set(struct FfiCore *core, uint8_t value, const char *typed);
 
 /**
- * Manual trial, with the flow's limits and confirmation.
+ * Try VREG code `value` until the next reboot; `typed` as for the start.
+ * Returns a status byte.
  */
 uint8_t dspi_core_vreg_manual_trial(struct FfiCore *core, uint8_t value, const char *typed);
 
 /**
- * Turn the firmware's automatic raising on or off.
+ * Let the firmware raise the voltage by itself after hangs, or not.
+ * Returns a status byte.
  */
 uint8_t dspi_core_vreg_manual_auto(struct FfiCore *core, bool on);
 
 /**
- * Forget the hang count and the last trial failure. Refused during a run.
+ * Clear the hang records. Returns a status byte.
  */
 uint8_t dspi_core_vreg_manual_clear(struct FfiCore *core);
 
 /**
- * On the demo device only: 0 a hang, 1 a requested reboot, 2 a power cycle,
- * 3 `seconds` passing on the device's clock.
+ * Demo device: something happens to it. `event`: 0 a hang, 1 a reboot, 2 a
+ * power cycle, 3 `seconds` pass. Returns a status byte; 0xFF for another
+ * event.
  */
 uint8_t dspi_core_vreg_demo_event(struct FfiCore *core, uint8_t event, uint32_t seconds);
 
 /**
- * On the demo device only: hold it in a running revert (`on`), or let it finish.
- * While held, control-surface writes settle busy, and the save, the revert, a
- * macro fire and a learn are refused. 0 when done.
+ * Demo device: make the control surfaces report busy, or stop. Returns a
+ * status byte.
  */
 uint8_t dspi_cs_demo_busy(struct FfiCore *core, bool on);
 
 /**
- * What a page shows for one control-surface record, as JSON: `dspi_core`'s
- * `cs_describe`. `kind` is `binding`, `ir`, `step`, `page`, `display` or `group`;
- * `draft` is the record's JSON. No device I/O. Returns the bytes needed including
- * the NUL; call again with a larger buffer if that exceeds `len`.
+ * The rows an editor shows for a draft record of `kind` in `slot`, as JSON.
  */
 uint32_t dspi_cs_describe(struct FfiCore *core,
                           const char *kind,
@@ -4941,8 +4842,7 @@ uint32_t dspi_cs_describe(struct FfiCore *core,
                           uint32_t len);
 
 /**
- * The record after one row's value changed, as JSON `{ok, draft}`: `dspi_core`'s
- * `cs_edit`. `change` is `{id, value}`. No device I/O. Sized as [`dspi_cs_describe`].
+ * A draft with one row changed (`change`: `{id, value}`), as JSON.
  */
 uint32_t dspi_cs_edit(struct FfiCore *core,
                       const char *kind,
@@ -4953,8 +4853,7 @@ uint32_t dspi_cs_edit(struct FfiCore *core,
                       uint32_t len);
 
 /**
- * A fresh binding of a component type in `slot`, on free pins, as JSON `{ok, draft}`.
- * No device I/O. Sized as [`dspi_cs_describe`].
+ * A new binding for `slot` driven by `component`, as a JSON draft.
  */
 uint32_t dspi_cs_new_binding(struct FfiCore *core,
                              uint32_t slot,
@@ -4963,41 +4862,32 @@ uint32_t dspi_cs_new_binding(struct FfiCore *core,
                              uint32_t len);
 
 /**
- * A fresh `ir`, `step` or `page` record, as JSON `{ok, draft}`. No device I/O. Sized
- * as [`dspi_cs_describe`].
+ * A new record of `kind`, as a JSON draft.
  */
 uint32_t dspi_cs_new_record(struct FfiCore *core, const char *kind, char *buf, uint32_t len);
 
 /**
- * A control-surface or pin-configuration status code as a sentence, empty for
- * success. Sized as [`dspi_cs_describe`].
+ * A control surface status byte in words (plain text, empty for 0).
  */
 uint32_t dspi_cs_status_text(struct FfiCore *core, uint8_t code, char *buf, uint32_t len);
 
 /**
- * On the demo device only: the remote button an armed learn waits for was pressed.
- * True when a learn took it; false with nothing armed, or on any other device.
+ * Demo device: an IR code arrives for the armed learn. False when nothing
+ * was armed.
  */
 bool dspi_cs_demo_learn(struct FfiCore *core, uint8_t protocol, uint32_t code);
 
 /**
- * What the open board needs, read from the device now: JSON {ok, requiredMv,
- * source}. Call before entering the bootloader and pass `requiredMv` to
- * `dspi_firmware_guard_check`. No device, or an answer that cannot be
- * believed, gives `requiredMv` 0, which means unknown: so does a failed call.
- * Returns the length needed; 0 for a null handle.
+ * What the open board needs before new firmware, in JSON: `{ok,
+ * requiredMv, source}`. Read it before entering the bootloader.
  */
 uint32_t dspi_firmware_guard_board(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * May this image go on this board? `board_required_mv` comes from
- * `dspi_firmware_guard_board`: 1150 not at risk, above that at risk, anything
- * else unknown. Pass 0 for a board already in the bootloader. `typed` is what
- * the user typed, null or "" if nothing yet. JSON {ok, allowed, decision,
- * reason, message, confirmationPhrase, imageMv, requiredMv}; `decision` is
- * `refused`, `needsConfirmation`, `confirmed` or `clear`, and `reason` is
- * `imageInvalid`, `noRisk`, `imageUnknown`, `imageLower` or `boardUnknown`.
- * Flash only on `allowed`. Returns the length needed.
+ * The firmware guard's verdict on an image for a board that needs
+ * `board_required_mv`, with what the user `typed` (null: nothing), in JSON:
+ * `{ok, allowed, decision, reason, message, confirmationPhrase, imageMv,
+ * requiredMv}`. Flash only when `allowed`.
  */
 uint32_t dspi_firmware_guard_check(const uint8_t *image,
                                    uint32_t image_len,
@@ -5007,10 +4897,8 @@ uint32_t dspi_firmware_guard_check(const uint8_t *image,
                                    uint32_t len);
 
 /**
- * `dspi_flash_to_drive` behind `dspi_firmware_guard_check`, with the same
- * arguments as each. Nothing is written unless the guard allows it: a blocked
- * image replies {ok: false, code: "firmware_guard", error}. Returns the length
- * needed.
+ * `dspi_flash_to_drive` behind the firmware guard: nothing reaches the drive
+ * unless the guard allows it (`firmware_guard` failure otherwise).
  */
 uint32_t dspi_flash_to_drive_guarded(const uint8_t *image,
                                      uint32_t image_len,
@@ -5022,70 +4910,46 @@ uint32_t dspi_flash_to_drive_guarded(const uint8_t *image,
                                      uint32_t len);
 
 /**
- * Write one parameter by its registry path (`DspiCore::write_param`).
- * `request` is JSON {path, indices, value}, the value tagged by kind:
- * {"float": -3}, {"bool": true}, {"int": 4}, {"choice": 1}, {"mask": 3},
- * {"text": "x"}, {"bytes": [1, 2]} or "trigger"; `indices` may be left out
- * for a path without any. Writes JSON {ok, value} with the value read back,
- * or the failure reply. Returns the length needed.
- *
- * Don't retry on a short buffer: a reply too long means the write has
- * happened, and a second call applies it again. Give it a large enough buffer
- * the first time.
+ * Write one parameter by its registry path. `request` is JSON: `{"path":
+ * "out.gain", "indices": [1], "value": {"float": -4}}` (`indices` may be left
+ * out; an action's value is `"trigger"`). The reply is `{ok, value}` with
+ * the value read back, or a failure; the write has happened whatever the
+ * buffer, so do not call again for a short one.
  */
 uint32_t dspi_write_param(struct FfiCore *core, const char *request, char *buf, uint32_t len);
 
 /**
- * Which of the image's +1-encoded bytes the state's image carried (older
- * firmware sends 0, "absent"), as bits: 1 `i2s_clock_pin_mode`, 2 the S/PDIF
- * inputs 2-4 bits of `spdif_inputs_enabled`, 4 `adat_input_enabled`, 8
- * `adat_input_clock_mode`. A field whose bit is clear holds what an absent
- * byte reads as, not a value the device reported. The `DspState` record
- * keeps the old core's layout, so these are not in it. 0 for a null handle.
+ * Which optional bytes the device's image carried: bit 0 the I2S clock pin
+ * mode, bit 1 the S/PDIF inputs' switches, bit 2 the ADAT input switch, bit
+ * 3 the ADAT input clock mode. 0 for a null handle or before any read.
  */
 uint8_t dspi_state_presence(const struct FfiCore *core);
 
 /**
- * Every filter type the firmware defines with the name clients show for it
- * (`dspi_core::filter_type_names`, the Console's band-list names), in JSON:
- * {ok, value:[{code, name}]}, PEQ types 0..13 then crossovers 32..63.
- * Returns the bytes needed including the NUL, 0 for a panic.
+ * Every filter type's display name, in JSON (`value`: `[{code, name}]`).
  */
 uint32_t dspi_filter_type_names(char *buf, uint32_t len);
 
 /**
- * The name of filter type `code` as plain NUL-terminated text, e.g.
- * "High Cut (12dB)"; "Type 14" for a code the firmware does not define.
- * Returns the bytes needed including the NUL, 0 for a panic.
+ * One filter type's display name, as plain text (`Type <n>` for a code with
+ * none).
  */
 uint32_t dspi_filter_type_name(uint8_t code, char *buf, uint32_t len);
 
 /**
- * Whether enabling `output` would collide on Core 1, as the device answers it
- * (`dspi_check_core1_conflict`), with the core's reason: the words
- * `dspi_write_param` refuses such an `out.enable` with
- * (`DspiCore::core1_conflict_reason`). Writes JSON {ok, conflict, reason},
- * `reason` null without a conflict, or the failure reply. Returns the length
- * needed including the NUL, 0 for a null handle.
+ * Whether enabling `output` would collide on Core 1, and why, in JSON:
+ * `{ok, conflict, reason}` (`reason` null when there is none).
  */
 uint32_t dspi_core1_conflict_reason(struct FfiCore *core, uint8_t output, char *buf, uint32_t len);
 
 /**
- * Every output's label from the mirror (`DspiCore::output_labels`): JSON
- * {ok, value: [{output, label, slotName, userNamed, channel, band}, ...]} in
- * output order. `label` is the user's name, else "Out 1 · R · Low" from the
- * routing and the filters; `slotName` the firmware's name for the slot, for a
- * tooltip. Call it when the state changes, not per frame. Returns the length
- * needed including the NUL, 0 for a null handle.
+ * Each output's label, in JSON (`value`: a list).
  */
 uint32_t dspi_output_labels(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * The dashboard's output cards (`DspiCore::output_cards`): JSON {ok, value:
- * [{left, right, title, leftName, rightName}, ...]}, `right` null for a card
- * of one output. Paired by the crossfeed pair map when the device has one,
- * else by slot. Returns the length needed including the NUL, 0 for a null
- * handle.
+ * The output cards (an output pair with its title), in JSON (`value`: a
+ * list).
  */
 uint32_t dspi_output_cards(struct FfiCore *core, char *buf, uint32_t len);
 
