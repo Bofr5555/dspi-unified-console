@@ -22,7 +22,7 @@ distributed under the GNU GPL version 3. It is distributed in the hope that it w
 but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
 PARTICULAR PURPOSE. See the GNU General Public License for details.
 See [`LICENSE`](LICENSE) (the GPL version 3 text) and the project's [`NOTICE.md`](../../NOTICE.md),
-which lists the material under the GPL version 3 only, among it the 12 files of this app ported
+which lists the material under the GPL version 3 only, among it the 13 files of this app ported
 from DSPi Console for Windows.
 
 The complete source code of each release is published with it, as the file ending in
@@ -56,7 +56,7 @@ The app includes or links:
 |---|---|---|
 | DSPi core (the monorepo's `crates/`: Weeb Labs' DSPi-Terminal, extended by Bofr5555; firmware headers vendored in `crates/dspi-proto/firmware/`) | Bofr5555's parts GPL-3.0-or-later with the additional terms above; DSPi-Terminal GPL-3.0-or-later; firmware headers GPL-3.0 | the release's source archive (see above); https://github.com/WeebLabs/DSPi-Terminal |
 | DSPi Console for macOS — UI, behaviour and texts ported from it; AutoEQ database | GPL-3.0 (its `LICENSE`: version 3, without "or later") | https://github.com/WeebLabs/DSPi-Console |
-| DSPi Console for Windows — the 12 files the project's `NOTICE.md` lists (PEQ graph editor, pin overview, hardware-change order) | GPL-3.0 (its README: "GPL v3") | https://github.com/WeebLabs/DSPi-Console-Windows |
+| DSPi Console for Windows — the 13 files the project's `NOTICE.md` lists (PEQ graph editor, pin overview, hardware-change order, a throttle test) | GPL-3.0 (its README: "GPL v3") | https://github.com/WeebLabs/DSPi-Console-Windows |
 | Noto Sans Mono — glyph outlines in the app icon | SIL Open Font License 1.1 | https://github.com/notofonts/latin-greek-cyrillic |
 | DSPi Link protocol spec, policy table and test fixtures (`fixtures/link/`, tests only); the Link client follows the macOS Console's `Link/` | MIT | https://github.com/WeebLabs/DSPi-Link |
 | DSPi firmware images (`feature-firmware` assets: Weeb Labs' release v1.1.6, unmodified), with their third-party parts (pico-sdk and pico-extras, BSD-3-Clause; TinyUSB, MIT; LUFA; Elehobica's S/PDIF receiver, BSD-2-Clause; Alex Stanoev, BSD-3-Clause), whose notices ship as `firmware-THIRD-PARTY-NOTICES.txt` | GPL-3.0 | https://github.com/WeebLabs/DSPi/tree/v1.1.6 (commit 9ffce34), mirrored as tag `v1.1.6` in https://github.com/Bofr5555/DSPi |

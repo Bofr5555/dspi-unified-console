@@ -74,7 +74,9 @@ These parts come from Weeb Labs' work under the GNU GPL version 3, without "or l
 offered under the same terms.
 
 - **Ported from DSPi Console for Windows** (https://github.com/WeebLabs/DSPi-Console-Windows; its README states GPL v3),
-  the Android console's PEQ graph editor, pin overview and hardware-change order, in these 12 files of `apps/android/`:
+  the Android console's PEQ graph editor, pin overview and hardware-change order and a throttle test, in these 13 files
+  of `apps/android/`:
+  - `bridge/src/test/kotlin/se/bofr/dspi/bridge/ThrottleTest.kt`
   - `feature-graph/src/main/kotlin/se/bofr/dspi/feature/graph/PeqEditorTypes.kt`
   - `feature-graph/src/main/kotlin/se/bofr/dspi/feature/graph/PeqGraphEditor.kt`
   - `feature-graph/src/main/kotlin/se/bofr/dspi/feature/graph/PeqGraphEditorView.kt`

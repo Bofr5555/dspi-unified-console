@@ -56,7 +56,7 @@ internal val THIRD_PARTY = listOf(
         GPL3
     ),
     ThirdPartyComponent(
-        "DSPi Console for Windows (Weeb Labs) — PEQ graph editor, pin overview and hardware-change order (12 files)",
+        "DSPi Console for Windows (Weeb Labs) — PEQ graph editor, pin overview and hardware-change order (13 files)",
         "GPL-3.0",
         "https://github.com/WeebLabs/DSPi-Console-Windows",
         GPL3

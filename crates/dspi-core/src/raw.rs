@@ -333,7 +333,7 @@ fn packet(note: &Notification) -> Vec<u8> {
 
 /// `at` as ms since the Unix epoch (0 if the clock is before it), as the
 /// monitor stamps its lines.
-fn epoch_ms(at: Instant) -> i64 {
+pub(crate) fn epoch_ms(at: Instant) -> i64 {
     let age = Instant::now().saturating_duration_since(at);
     clock::system_time()
         .checked_sub(age)
