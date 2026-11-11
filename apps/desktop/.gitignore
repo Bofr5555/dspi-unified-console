@@ -1,0 +1,7 @@
+# Build directories of the Qt app and the packaging scripts' output
+/qt/build/
+/qt/build-*/
+/packaging/**/build/
+/packaging/**/dist/
+*.user
+.qmlls.ini
