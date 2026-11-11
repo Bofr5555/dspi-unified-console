@@ -48,8 +48,9 @@ class AboutPageAn26Test {
     }
 
     private fun assertGoogleRowsStay() {
-        rule.onNodeWithText("Source code").assertHasClickAction()
-        rule.onNodeWithText("https://github.com/Bofr5555/dspi-unified-console").assertExists()
+        // WP CLEAN1: the source is the release's archive, named rather than linked
+        rule.onNodeWithText("Source code").assertExists()
+        rule.onNodeWithText("Published with each release as its -source.tar.gz archive, beside the downloads").assertExists()
         rule.onNodeWithText("Privacy policy").assertHasClickAction()
         rule.onNodeWithText("No data collected; no network access").assertExists()
         rule.onNodeWithText("Licences").assertHasClickAction()
