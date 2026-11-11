@@ -6,6 +6,7 @@
 //! benefit, and leave channel names to the interactive completer where a session
 //! is already open.
 
+use crate::COMMAND;
 use dspi_proto::registry::{Kind, REGISTRY};
 
 use crate::VERBS;
@@ -63,8 +64,8 @@ fn bash() -> String {
     }
 
     format!(
-        r#"# dspi completion for bash. Generated; do not edit.
-# Install:  dspi completions bash > /etc/bash_completion.d/dspi
+        r#"# {COMMAND} completion for bash. Generated; do not edit.
+# Install:  {COMMAND} completions bash > /etc/bash_completion.d/dspi
 
 _dspi() {{
     local cur prev
@@ -87,7 +88,7 @@ _dspi() {{
             ;;
         --device)
             # Serial numbers of anything currently attached.
-            COMPREPLY=($(compgen -W "$(dspi list 2>/dev/null | awk '{{print $1}}')" -- "$cur"))
+            COMPREPLY=($(compgen -W "$({COMMAND} list 2>/dev/null | awk '{{print $1}}')" -- "$cur"))
             return
             ;;
 {cases}    esac
@@ -95,7 +96,7 @@ _dspi() {{
     COMPREPLY=($(compgen -W "--json --quiet --dry-run --device" -- "$cur"))
 }}
 
-complete -F _dspi dspi
+complete -F _dspi {COMMAND}
 "#
     )
 }
@@ -131,9 +132,9 @@ fn zsh() -> String {
     }
 
     format!(
-        r#"#compdef dspi
-# dspi completion for zsh. Generated; do not edit.
-# Install:  dspi completions zsh > "${{fpath[1]}}/_dspi"
+        r#"#compdef {COMMAND}
+# {COMMAND} completion for zsh. Generated; do not edit.
+# Install:  {COMMAND} completions zsh > "${{fpath[1]}}/_dspi"
 
 _dspi() {{
     local -a params verbs
@@ -159,7 +160,7 @@ _dspi() {{
             ;;
         --device)
             local -a serials
-            serials=(${{(f)"$(dspi list 2>/dev/null | awk '{{print $1}}')"}})
+            serials=(${{(f)"$({COMMAND} list 2>/dev/null | awk '{{print $1}}')"}})
             _describe -t devices 'device' serials
             return
             ;;
@@ -177,15 +178,15 @@ _dspi "$@"
 }
 
 fn fish() -> String {
-    let mut out = String::from(
-        "# dspi completion for fish. Generated; do not edit.\n\
-         # Install:  dspi completions fish > ~/.config/fish/completions/dspi.fish\n\n\
-         complete -c dspi -f\n\n",
+    let mut out = format!(
+        "# {COMMAND} completion for fish. Generated; do not edit.\n\
+         # Install:  {COMMAND} completions fish > ~/.config/fish/completions/{COMMAND}.fish\n\n\
+         complete -c {COMMAND} -f\n\n",
     );
 
     for (n, d) in VERBS {
         out.push_str(&format!(
-            "complete -c dspi -n '__fish_use_subcommand' -a '{n}' -d '{}'\n",
+            "complete -c {COMMAND} -n '__fish_use_subcommand' -a '{n}' -d '{}'\n",
             d.replace('\'', "")
         ));
     }
@@ -196,7 +197,7 @@ fn fish() -> String {
         .filter(|d| d.set.is_some() || d.get.is_some())
     {
         out.push_str(&format!(
-            "complete -c dspi -a '{}' -d '{}'\n",
+            "complete -c {COMMAND} -a '{}' -d '{}'\n",
             d.path,
             d.plain.replace('\'', "")
         ));
@@ -205,17 +206,17 @@ fn fish() -> String {
 
     for (path, values) in enum_paths() {
         out.push_str(&format!(
-            "complete -c dspi -n '__fish_seen_subcommand_from {path}' -a '{}'\n",
+            "complete -c {COMMAND} -n '__fish_seen_subcommand_from {path}' -a '{}'\n",
             values.join(" ")
         ));
     }
 
-    out.push_str(
-        "\ncomplete -c dspi -l json -d 'machine-readable output'\n\
-         complete -c dspi -l quiet -d 'suppress confirmation'\n\
-         complete -c dspi -l dry-run -d 'do not write anything'\n\
-         complete -c dspi -l device -d 'target one device' -r\n",
-    );
+    out.push_str(&format!(
+        "\ncomplete -c {COMMAND} -l json -d 'machine-readable output'\n\
+         complete -c {COMMAND} -l quiet -d 'suppress confirmation'\n\
+         complete -c {COMMAND} -l dry-run -d 'do not write anything'\n\
+         complete -c {COMMAND} -l device -d 'target one device' -r\n"
+    ));
     out
 }
 
@@ -227,11 +228,11 @@ fn powershell() -> String {
         .collect();
 
     format!(
-        r#"# dspi completion for PowerShell. Generated; do not edit.
-# Install:  dspi completions powershell | Out-String | Invoke-Expression
+        r#"# {COMMAND} completion for PowerShell. Generated; do not edit.
+# Install:  {COMMAND} completions powershell | Out-String | Invoke-Expression
 #           (add that line to $PROFILE to make it permanent)
 
-Register-ArgumentCompleter -Native -CommandName dspi -ScriptBlock {{
+Register-ArgumentCompleter -Native -CommandName {COMMAND} -ScriptBlock {{
     param($wordToComplete, $commandAst, $cursorPosition)
 
     $words = @({words})
@@ -307,7 +308,15 @@ mod tests {
 
     #[test]
     fn bash_and_zsh_complete_device_serials() {
-        assert!(generate("bash").unwrap().contains("dspi list"));
-        assert!(generate("zsh").unwrap().contains("dspi list"));
+        assert!(
+            generate("bash")
+                .unwrap()
+                .contains(concat!(crate::command!(), " list"))
+        );
+        assert!(
+            generate("zsh")
+                .unwrap()
+                .contains(concat!(crate::command!(), " list"))
+        );
     }
 }

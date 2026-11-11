@@ -25,7 +25,7 @@ mock cannot be wrong in the same way a device can. The hardware smoke suite
 (`--features hardware`, still to be written) is the missing piece, and it needs
 a device attached to a runner.
 
-Until then, `dspi doctor` on the target machine is the real check. It
+Until then, `uconsole doctor` on the target machine is the real check. It
 enumerates, opens, claims the interface and probes the firmware, which is
 exactly the sequence that fails when a platform assumption is wrong.
 
@@ -43,11 +43,11 @@ someone unpacks the wrong archive on a Pi.
 
 ## Version numbers
 
-The application version is independent of the firmware version. `dspi --version`
+The application version is independent of the firmware version. `uconsole --version`
 prints both, plus the wire format:
 
 ```
-dspi 2.0.0 (protocol from DSPi release/v1.1.5 @ 9776c2f)
+uconsole 2.0.0 (protocol from DSPi release/v1.1.5 @ 9776c2f)
 wire format V26, 190 vendor opcodes
 ```
 

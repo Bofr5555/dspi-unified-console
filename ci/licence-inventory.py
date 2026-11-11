@@ -53,7 +53,7 @@ OUT_MD = OUT_DIR / "IOS-INVENTORY.md"
 OUT_JSON = OUT_DIR / "ios-inventory.json"
 # -- WP WB7 --
 WEB_LOCK = ROOT / "apps/web/package-lock.json"
-# Upstream's DSPi-Link web page, built into `dspi hub` (crates/dspi-hub/tools/build-link-web.sh)
+# Upstream's DSPi-Link web page, built into `uconsole hub` (crates/dspi-hub/tools/build-link-web.sh)
 HUB_PAGE = ROOT / "crates/dspi-hub/assets/web/hub/PROVENANCE.json"
 NOTES_MD = OUT_DIR / "ios-inventory-notes.md"
 
@@ -1006,7 +1006,7 @@ def render(data: dict) -> str:
         emit("")
         hub = web.get("hub_page")
         if hub:
-            emit(f"**`dspi hub`'s page at `/hub/`** is upstream's DSPi Link web page, built unmodified and compiled into the hub "
+            emit(f"**`uconsole hub`'s page at `/hub/`** is upstream's DSPi Link web page, built unmodified and compiled into the hub "
                  f"(`crates/dspi-hub/assets/web/hub/`, `PROVENANCE.json`): {hub['repository']} at `{hub['commit'][:8]}`, "
                  f"`@dspi/web` {hub['version']}, **{hub['license']}** (its `LICENSE`, served in the hub's `/THIRD-PARTY-NOTICES.txt`). "
                  f"Bundled: {', '.join(f'`{p}`' for p in hub['packages'])}; `@dspi/web` declares no licence field, the repository's "

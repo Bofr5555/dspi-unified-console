@@ -1,6 +1,6 @@
 //! WP TM15: every command that prints, run with its output going nowhere.
 //!
-//! `dspi --demo dump | head -5` used to panic: `println!` panics when standard
+//! `uconsole --demo dump | head -5` used to panic: `println!` panics when standard
 //! output is a pipe nobody reads any more. These run the real binary with a
 //! reader that has already gone, so the first write fails with a broken pipe.
 //! A closed reader ends the output, not the command: each exits with the status
@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
-const DSPI: &str = env!("CARGO_BIN_EXE_dspi");
+const DSPI: &str = env!(concat!("CARGO_BIN_EXE_", dspi_cmd::command!()));
 
 /// Long enough for a loaded build machine; `watch` might otherwise never end.
 const LIMIT: Duration = Duration::from_secs(60);
@@ -302,7 +302,10 @@ fn tm15_open_pipe_output_is_unchanged() {
     let out = dspi(&home, &["--version"]).output().expect("spawn");
     assert!(out.status.success());
     let text = String::from_utf8_lossy(&out.stdout);
-    assert!(text.starts_with("dspi "), "{text}");
+    assert!(
+        text.starts_with(concat!(dspi_cmd::command!(), " ")),
+        "{text}"
+    );
     assert!(text.ends_with('\n'), "{text}");
     let out = dspi(&home, &["completions", "fish"])
         .output()

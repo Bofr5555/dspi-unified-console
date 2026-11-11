@@ -26,7 +26,7 @@ use crate::widgets::{KeyHelp, SectionHeader};
 
 // -- WP TM12 --
 /// What a finished rebuild came to, a line each, for the Terminal's report and
-/// `dspi autoeq rebuild`: what was written, and what is missing from it.
+/// `uconsole autoeq rebuild`: what was written, and what is missing from it.
 pub fn rebuild_report(summary: &RebuildSummary) -> Vec<String> {
     fn count(n: usize, one: &str, many: &str) -> String {
         format!("{n} {}", if n == 1 { one } else { many })

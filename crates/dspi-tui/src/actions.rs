@@ -349,7 +349,7 @@ pub fn read_stats(session: &mut Session, state: &DeviceState, previous: &Stats) 
 pub struct LogEntry {
     /// Seconds since the log started. The Console stamps wall-clock local
     /// time; there is no local-time source here without another dependency,
-    /// and an elapsed stamp is what `dspi watch` already prints.
+    /// and an elapsed stamp is what `uconsole watch` already prints.
     pub at: f64,
     pub seq: u8,
     pub event: &'static str,
@@ -443,7 +443,7 @@ impl EventLog {
 
 /// Name one event, its source, the field it touched and its new value.
 ///
-/// This is `dspi watch`'s `describe_event` split into the monitor's columns,
+/// This is `uconsole watch`'s `describe_event` split into the monitor's columns,
 /// with the offset resolved all the way to a field name rather than only to a
 /// section.
 pub fn describe(e: &dspi_session::Event) -> (&'static str, String, String, String) {

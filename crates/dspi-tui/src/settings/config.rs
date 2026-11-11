@@ -4,7 +4,7 @@
 //! rather than on the device: the Graphing page, the volume-mode choice and
 //! the Tube panel's layout.
 //! The device holds none of this, so it lives in a file of our own at
-//! `~/.config/dspi/config.toml` (or the platform equivalent `dirs` reports).
+//! `~/.config/uconsole/config.toml` (or the platform equivalent `dirs` reports).
 //!
 //! Reading is total: a missing file, an unreadable one or a malformed one all
 //! give the defaults, because a settings file is never worth refusing to start
@@ -196,9 +196,9 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
-    /// `~/.config/dspi/config.toml`, or the platform's equivalent.
+    /// `~/.config/uconsole/config.toml`, or the platform's equivalent.
     pub fn path() -> Option<PathBuf> {
-        dirs::config_dir().map(|d| d.join("dspi").join("config.toml"))
+        dirs::config_dir().map(|d| d.join(dspi_cmd::COMMAND).join("config.toml"))
     }
 
     /// The stored settings, or the defaults when there is nothing readable.

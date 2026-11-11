@@ -1,4 +1,4 @@
-//! WP TM3: `dspi flash` as a user runs it, on the demo device and a fake
+//! WP TM3: `uconsole flash` as a user runs it, on the demo device and a fake
 //! bootloader drive under Cargo's target-side scratch directory, never on tmpfs.
 
 use std::io::Write;
@@ -21,7 +21,7 @@ fn scratch(name: &str) -> PathBuf {
 }
 
 fn dspi(home: &Path, args: &[&str], stdin: &str) -> Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_dspi"))
+    let mut child = Command::new(env!(concat!("CARGO_BIN_EXE_", dspi_cmd::command!())))
         .env("HOME", home)
         .env("XDG_CONFIG_HOME", home)
         .args(args)

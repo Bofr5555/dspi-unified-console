@@ -62,7 +62,7 @@ Decisions, all settled:
 | Repository | Clean `main` in this repo |
 | Documentation | All notes stay in this repo. The firmware repo is not touched |
 | Navigation | Ten panels plus two global overlays (Graph, Meters) |
-| Invocation | `dspi` alone opens the TUI; `dspi <command>` runs one-shot and exits |
+| Invocation | `uconsole` alone opens the TUI; `uconsole <command>` runs one-shot and exits |
 | Filter layout | Stacked, graph full-width above the band table, adjustable split |
 | All-channel view | Small multiples grid, with overlay as a second mode |
 | Meters | Compact always-on rail, expandable to a full meter bridge |
@@ -393,7 +393,7 @@ dspi-term/
 │   │   ├── app.rs · theme.rs · palette.rs · cmdline.rs (uses dspi-cmd)
 │   │   ├── widgets/               bode.rs, meter.rs, matrix.rs, ...
 │   │   └── panels/                one module per panel, each a field list
-│   └── dspi/                      the binary; no args -> TUI, args -> one-shot
+│   └── uconsole/                      the binary; no args -> TUI, args -> one-shot
 └── xtask/                         packaging, udev rule, release builds
 ```
 
@@ -664,23 +664,23 @@ Beyond parameter setting: `:graph`, `:diff`, `:export`, `:import`, `:load`,
 
 ### 6.4 One-shot mode: the same grammar from a shell
 
-`dspi` with arguments does not launch the TUI. It connects, performs the command,
+`uconsole` with arguments does not launch the TUI. It connects, performs the command,
 prints the result, and exits. **It is the same grammar as the `:` command line**,
 parsed by the same code in `dspi-cmd`, so there is one syntax to learn and one
 place where it can drift.
 
 ```
-$ dspi eq in.1 3 peak 2856 3.58 -8.6
+$ uconsole eq in.1 3 peak 2856 3.58 -8.6
 in.1 band 3: Peaking 2856 Hz Q 3.58 -8.6 dB
 
-$ dspi vol.user -18
-$ dspi bass on
-$ dspi get eq.in.1.3.freq
+$ uconsole vol.user -18
+$ uconsole bass on
+$ uconsole get eq.in.1.3.freq
 2856
 
-$ dspi preset save 3 --name "Living Room"
-$ dspi export tuning.json
-$ dspi import tuning.json --dry-run
+$ uconsole preset save 3 --name "Living Room"
+$ uconsole export tuning.json
+$ uconsole import tuning.json --dry-run
 ```
 
 This matters for a Raspberry Pi install more than for a laptop: it makes the
@@ -692,8 +692,8 @@ Design rules:
 - **Nothing is CLI-only or TUI-only.** Both front-ends drive `dspi-session`
   through the registry, so any parameter reachable in one is reachable in the
   other, by construction rather than by discipline.
-- **Reads and writes are symmetric.** `dspi get <path>` prints a bare value for
-  easy capture; `dspi get <path> --json` prints the value with its unit, range,
+- **Reads and writes are symmetric.** `uconsole get <path>` prints a bare value for
+  easy capture; `uconsole get <path> --json` prints the value with its unit, range,
   and confirmation state.
 - **Scripting output.** `--json` on any command emits a machine-readable result.
   `--quiet` suppresses everything but errors. Default output is a short
@@ -701,7 +701,7 @@ Design rules:
 - **Exit codes** are meaningful: `0` success, `1` usage or parse error, `2`
   device not found, `3` write rejected by the device on readback, `4` transport
   or busy-window failure after retries.
-- **Batching.** `dspi -f script.dspi` and piped stdin run a sequence, aborting on
+- **Batching.** `uconsole -f script.dspi` and piped stdin run a sequence, aborting on
   first failure unless `--keep-going`. `:log --commands` from the TUI produces
   exactly this format, so a session can be replayed or committed to version
   control.
@@ -713,7 +713,7 @@ Design rules:
   works and one that races.
 
 **Shell completions come free.** The registry generates static completion scripts
-for bash, zsh, fish, and PowerShell via `dspi completions <shell>`, covering every
+for bash, zsh, fish, and PowerShell via `uconsole completions <shell>`, covering every
 parameter path and enum value. The same table drives TUI completion, so the two
 can never disagree.
 
@@ -1440,9 +1440,9 @@ right, M3 through M7 are largely mechanical.
 9. **Meters**: every channel, from one `GET_STATUS` poll. Compact context-aware
    rail on by default, full meter bridge on `M`. Sticky clip latch cleared with
    `CLEAR_CLIPS`. (7.1)
-10. **One-shot CLI**: `dspi <command>` executes without launching the TUI, using
+10. **One-shot CLI**: `uconsole <command>` executes without launching the TUI, using
     the same grammar as the `:` line, with `--json`, meaningful exit codes,
-    batching, and generated shell completions. Binary is named `dspi`. (6.4)
+    batching, and generated shell completions. Binary is named `uconsole`. (6.4)
 
 ## 17. Open items
 

@@ -1,4 +1,4 @@
-//! `dspi doctor`: answer "why can't it see my device?".
+//! `uconsole doctor`: answer "why can't it see my device?".
 //!
 //! This is the single most common support question for any USB tool, and the
 //! answer is completely different on each platform: a missing udev rule on
@@ -6,6 +6,7 @@
 //! on Windows. A generic "permission denied" helps nobody, so every check knows
 //! what to suggest where.
 
+use dspi_cmd::COMMAND;
 use dspi_link::LinkError;
 use dspi_proto::{USB_PID, USB_VID};
 use dspi_session::{Capabilities, probe_any};
@@ -43,11 +44,11 @@ impl Status {
     }
 }
 
-/// Check the way to `target`; plain `dspi doctor` is USB, and says whether any
+/// Check the way to `target`; plain `uconsole doctor` is USB, and says whether any
 /// MIDI port is there too.
 pub fn run(target: &Target) -> u8 {
     println!(
-        "dspi {} on {} {}\n",
+        "{COMMAND} {} on {} {}\n",
         env!("CARGO_PKG_VERSION"),
         std::env::consts::OS,
         std::env::consts::ARCH
@@ -295,7 +296,7 @@ fn permission_fix() -> String {
     if cfg!(target_os = "linux") {
         format!(
             "Almost always a missing udev rule. Install it with:\n\
-             sudo dspi --install-udev\n\
+             sudo {COMMAND} --install-udev\n\
              sudo udevadm control --reload\n\
              then unplug and replug the device.\n\
              (The rule belongs at {UDEV_PATH}.)"
@@ -318,7 +319,7 @@ fn udev_check() -> Status {
     } else {
         Status::Warn(format!(
             "no udev rule at {UDEV_PATH}; non-root access needs one \
-             (`sudo dspi --install-udev`)"
+             (`sudo {COMMAND} --install-udev`)"
         ))
     }
 }
@@ -327,7 +328,7 @@ fn udev_check() -> Status {
 pub fn install_udev() -> u8 {
     if !cfg!(target_os = "linux") {
         eprintln!(
-            "dspi: udev rules are a Linux thing; nothing to install on {}.",
+            "{COMMAND}: udev rules are a Linux thing; nothing to install on {}.",
             std::env::consts::OS
         );
         return 1;
@@ -341,11 +342,13 @@ pub fn install_udev() -> u8 {
             0
         }
         Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
-            eprintln!("dspi: need root to write {UDEV_PATH}. Try `sudo dspi --install-udev`.");
+            eprintln!(
+                "{COMMAND}: need root to write {UDEV_PATH}. Try `sudo {COMMAND} --install-udev`."
+            );
             1
         }
         Err(e) => {
-            eprintln!("dspi: could not write {UDEV_PATH}: {e}");
+            eprintln!("{COMMAND}: could not write {UDEV_PATH}: {e}");
             1
         }
     }

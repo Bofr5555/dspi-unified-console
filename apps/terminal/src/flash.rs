@@ -1,4 +1,4 @@
-//! `dspi flash [FILE]`: put firmware on a board, behind the firmware guard.
+//! `uconsole flash [FILE]`: put firmware on a board, behind the firmware guard.
 //!
 //! The order is the safety. Everything that can refuse does so while the board
 //! still plays: the file is checked, the chip compared, the board's core voltage
@@ -24,7 +24,7 @@
 //! - **USB only.** The drive has to appear here: a hub's device mounts on the
 //!   hub's machine, and a MIDI port does not say which board is behind it.
 //! - **It works read-only.** The device is opened through the same guard as
-//!   `dspi raw` ([`Target::open_raw`]), which lets the bootloader request through
+//!   `uconsole raw` ([`Target::open_raw`]), which lets the bootloader request through
 //!   on purpose: another wire format, or an image that cannot be read at all, is
 //!   when a board most needs this.
 //! - **Writing is not success.** [`flash_to_drive_guarded`] returning means the
@@ -44,6 +44,7 @@
     clippy::arithmetic_side_effects
 )]
 
+use dspi_cmd::COMMAND;
 use std::collections::BTreeSet;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -132,7 +133,7 @@ impl Request {
     /// words as the one report on standard output. Every way out of this command
     /// reports once, so a script always has something to parse. Returns `code`.
     fn fail(&self, code: u8, message: &str) -> u8 {
-        eprintln!("dspi: {message}");
+        eprintln!("{COMMAND}: {message}");
         self.json_failure(message);
         code
     }
@@ -238,7 +239,7 @@ fn drive_at(path: &Path) -> Option<BootloaderDrive> {
     })
 }
 
-/// `dspi flash [FILE]`. `flags` start with the word `flash`.
+/// `uconsole flash [FILE]`. `flags` start with the word `flash`.
 pub fn cmd_flash(target: &Target, flags: &[&str]) -> u8 {
     let req = match Request::parse(flags.get(1..).unwrap_or_default()) {
         Ok(r) => r,
@@ -420,7 +421,7 @@ fn open_for_flash(req: &Request, target: &Target, world: &mut dyn World) -> Resu
             let code = super::fail_open(e);
             if absent {
                 eprintln!(
-                    "dspi: a board already in its bootloader needs its drive mounted first; \
+                    "{COMMAND}: a board already in its bootloader needs its drive mounted first; \
                      nothing was changed"
                 );
             }
@@ -515,7 +516,7 @@ fn yes(answer: Option<String>) -> bool {
 /// Report a guard refusal in both forms: `--json` readers get it too.
 fn refuse(req: &Request, verdict: &FirmwareGuardVerdict, why: &str) -> u8 {
     let message = format!("{why}. Nothing was changed");
-    eprintln!("dspi: {message}");
+    eprintln!("{COMMAND}: {message}");
     if req.json {
         println!(
             "{}",
@@ -553,7 +554,7 @@ fn gate(
         if verdict.decision == FirmwareGuardDecision::Refused {
             return Err(req.fail(exit::USAGE, &printable(&verdict.message)));
         }
-        eprintln!("dspi: {}", printable(&verdict.message));
+        eprintln!("{COMMAND}: {}", printable(&verdict.message));
         if !req.accept_risk {
             return Err(refuse(
                 req,
@@ -673,10 +674,10 @@ fn onto_device(
     check_chip(req, &device.state, image)?;
     describe_image(req, image);
     req.note(&format!("Board: running {}.", running(&device.state)));
-    req.note(
+    req.note(&format!(
         "Updating can reset settings. Save them first if you have not: \
-         dspi export backup.dspipreset",
-    );
+         {COMMAND} export backup.dspipreset"
+    ));
     let core = Arc::clone(&device.core);
     let passed = gate(
         req,
@@ -726,7 +727,7 @@ fn not_rebooted(e: &DspiError) -> (u8, String) {
     )
 }
 
-/// `dspi flash` with no file: the board in its bootloader, for what comes next.
+/// `uconsole flash` with no file: the board in its bootloader, for what comes next.
 fn reboot_only(target: &Target, req: &Request, world: &mut dyn World) -> Result<(), u8> {
     let device = open_for_flash(req, target, world)?;
     req.note(&format!("Board: running {}.", running(&device.state)));
@@ -737,10 +738,10 @@ fn reboot_only(target: &Target, req: &Request, world: &mut dyn World) -> Result<
         );
         return Ok(());
     }
-    req.note(
+    req.note(&format!(
         "Updating can reset settings. Save them first if you have not: \
-         dspi export backup.dspipreset",
-    );
+         {COMMAND} export backup.dspipreset"
+    ));
     if !req.force && !yes(world.ask("Reboot this board into its bootloader? [y/N] ")) {
         return Err(req.fail(exit::REJECTED, "not confirmed. Nothing was changed"));
     }
@@ -749,7 +750,7 @@ fn reboot_only(target: &Target, req: &Request, world: &mut dyn World) -> Result<
     let path = printable(&drive.path);
     req.result(
         &format!(
-            "The board is in its bootloader, at {path}. dspi flash FILE installs an image; it \
+            "The board is in its bootloader, at {path}. {COMMAND} flash FILE installs an image; it \
              will ask about core voltage, as a board there cannot say what it needs."
         ),
         json!({ "flashed": false, "drive": path, "entered": true }),
@@ -802,7 +803,7 @@ fn write(req: &Request, image: &Image, drive: &BootloaderDrive, passed: &Passed)
         req.fail(
             code,
             &format!(
-                "{e}. The board stays in its bootloader at {}; dspi flash FILE tries again, and \
+                "{e}. The board stays in its bootloader at {}; {COMMAND} flash FILE tries again, and \
                  will ask about core voltage, as a board there cannot say what it needs",
                 printable(&drive.path)
             ),
@@ -899,7 +900,7 @@ fn confirm(
             }
             _ => {
                 eprintln!(
-                    "dspi: the board came back running {now}, but the image was {shown}: it did \
+                    "{COMMAND}: the board came back running {now}, but the image was {shown}: it did \
                      not take"
                 );
                 if req.json {
@@ -910,8 +911,8 @@ fn confirm(
         };
     }
     eprintln!(
-        "dspi: the write ended, but {why}, so this is not confirmed. Check \
-         it with dspi list. If the drive is still there the image did not take"
+        "{COMMAND}: the write ended, but {why}, so this is not confirmed. Check \
+         it with {COMMAND} list. If the drive is still there the image did not take"
     );
     if req.json {
         println!("{}", report(None, false));

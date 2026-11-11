@@ -1,4 +1,4 @@
-//! WP TM10: `dspi export`, `import` and `cs`, as a user runs them, on the demo
+//! WP TM10: `uconsole export`, `import` and `cs`, as a user runs them, on the demo
 //! device. Files go in Cargo's target-side scratch directory, never on tmpfs.
 
 use std::io::Write;
@@ -17,7 +17,7 @@ fn scratch(name: &str) -> PathBuf {
 }
 
 fn dspi(args: &[&str], stdin: Option<&str>) -> Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_dspi"))
+    let mut child = Command::new(env!(concat!("CARGO_BIN_EXE_", dspi_cmd::command!())))
         .arg("--demo")
         .args(args)
         .stdin(Stdio::piped())
@@ -227,7 +227,7 @@ fn wp_tm10_a_closed_pipe_ends_an_export_quietly() {
         &["export", "-", "--json"][..],
         &["cs", "export", "-"][..],
     ] {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_dspi"))
+        let mut child = Command::new(env!(concat!("CARGO_BIN_EXE_", dspi_cmd::command!())))
             .arg("--demo")
             .args(args)
             .stdin(Stdio::null())
@@ -244,7 +244,7 @@ fn wp_tm10_a_closed_pipe_ends_an_export_quietly() {
 
 /// Runs with standard output going to `stdout`.
 fn with_stdout(args: &[&str], stdout: Stdio) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_dspi"))
+    Command::new(env!(concat!("CARGO_BIN_EXE_", dspi_cmd::command!())))
         .arg("--demo")
         .args(args)
         .stdin(Stdio::null())

@@ -22,7 +22,7 @@ upstream web page is served at `/hub/` since WB7 (section 9, "WB7 as built").
 - **The hub knows nothing of `dspi-core` unless asked.** `dspi-hub` depends on proto,
   transport and link, and on `dspi-session` without its default features, for the voltage
   rule (section 13). Feature `app` adds the bridge to `DspiCore`, for Qt. A headless
-  `dspi hub` does not link the embedder API.
+  `uconsole hub` does not link the embedder API.
 - **PIN pairing is the default, open access is opt-in** (`AccessMode::default()`).
   This departs from spec 6.1 ("hubs default to `none`"), by owner's decision. A client
   cannot tell except by `hello.auth`, so nothing else changes.
@@ -557,7 +557,7 @@ reference to the hub (section 3). Set `initial_scan: false` when an app is to at
 - **Start does not scan.** Nothing is claimed until the port is bound and the listener is in place, whatever the options.
   With an app: `HUB_OPT_APP`, then `dspi_hub_attach_app`.
 - **Logs.** The library's logger holds `tungstenite` at debug, since its trace level prints whole frames, PINs and tokens
-  included. A host that installs its own logger, or a binary with its own (`dspi hub`), must do the same.
+  included. A host that installs its own logger, or a binary with its own (`uconsole hub`), must do the same.
 - **Not offered yet:** the web bundle and `mdns_name`, HB5's. Add them to `config_for` and as options when HB5 lands.
 - **QD14 has to add `hub`** to the `dspi-capi` feature lists that build the plain app: `apps/desktop/packaging/*`, the Arch
   `PKGBUILD`, `ci/github-actions-build.yml` and the `windows-msvc` step. The smoke builds have it.
@@ -612,8 +612,8 @@ request's `Host`, only when the `Origin` rule's own names accept it; else left e
 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self' ws://<Host>; style-src 'self'; ...
 frame-ancestors 'none'`, `nosniff`, `no-cache` with an ETag (304), `Referrer-Policy: no-referrer`;
 `/console` redirects to `/console/`. The `Origin` check is untouched. The C ABI (HB6) does not offer
-`console` yet; a desktop app that wants it adds a path option in `config_for`. The Terminal: `dspi hub
---web [--console DIR]`, `dspi web` (= `--local`: loopback, port 11916, no USB bus unless `--share-usb`).
+`console` yet; a desktop app that wants it adds a path option in `config_for`. The Terminal: `uconsole hub
+--web [--console DIR]`, `uconsole web` (= `--local`: loopback, port 11916, no USB bus unless `--share-usb`).
 
 **TM11.** `dspi-hub` without `app`. **SW-M3.** A UniFFI wrapper over the same; `DeviceBroker`
 is a plain Rust trait today and needs no export if the wrapper's `AppLink` stays in Rust.

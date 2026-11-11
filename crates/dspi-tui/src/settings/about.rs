@@ -223,7 +223,10 @@ fn table_rows(table: Option<&About>, width: u16) -> Vec<Row> {
 
 // -- WP LIC1 --
 /// Where the page sends a reader for the same text on its own.
-pub const LICENCE_HINT: &str = "dspi --license prints this licence notice and its terms.";
+pub const LICENCE_HINT: &str = concat!(
+    dspi_cmd::command!(),
+    " --license prints this licence notice and its terms."
+);
 
 /// Where the GPL's own text is.
 pub const GPL_TEXT: &str =
@@ -264,7 +267,7 @@ fn licence_rows(l: &Licence, w: &mut Writer) {
     w.note(LICENCE_HINT);
 }
 
-/// `dspi --license`: the credit lines, then the licence and its terms, as paragraphs
+/// `uconsole --license`: the credit lines, then the licence and its terms, as paragraphs
 /// folded to `width` columns. Empty if the table cannot be read.
 pub fn licence_text(width: u16) -> String {
     let Some(table) = table() else {
@@ -313,7 +316,7 @@ pub fn licence_text(width: u16) -> String {
     out
 }
 
-/// The credit lines as plain text, for `dspi --version`. Empty if the table cannot be
+/// The credit lines as plain text, for `uconsole --version`. Empty if the table cannot be
 /// read: asking for the version never fails over its credits.
 pub fn credit_lines() -> Vec<String> {
     table().map(plain_credits).unwrap_or_default()
@@ -704,7 +707,7 @@ mod tests {
 mod tests_wp_lic1 {
     use super::*;
 
-    /// `dspi --license`: the attributions, the statement and every term, folded.
+    /// `uconsole --license`: the attributions, the statement and every term, folded.
     #[test]
     fn wp_lic1_licence_text_holds_the_statement_and_the_terms() {
         let table = about().unwrap();

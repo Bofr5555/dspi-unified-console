@@ -73,7 +73,9 @@ const FILES: &[(&str, Asset)] = &[
             // -- WP LIC1 -- the hub's own licence and its additional terms (the
             // project's, as the desktop packages carry them), then the third parties
             body: concat!(
-                "DSPi hub (dspi hub, part of the DSPi Terminal): licence\n\n",
+                "DSPi hub (",
+                dspi_proto::command!(),
+                " hub, part of the DSPi Terminal): licence\n\n",
                 include_str!("../../../apps/desktop/packaging/licences/TERMS.txt"),
                 "\n",
                 "========================================================================\n\n",

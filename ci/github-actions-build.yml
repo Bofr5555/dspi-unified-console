@@ -45,8 +45,8 @@ jobs:
         with:
           name: dspi-terminal-${{ runner.os }}
           path: |
-            target/release/dspi
-            target/release/dspi.exe
+            target/release/uconsole
+            target/release/uconsole.exe
 
   desktop-linux:
     name: Desktop app, Linux (Qt 6)

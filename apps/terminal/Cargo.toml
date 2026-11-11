@@ -7,9 +7,11 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
-# The command users type. Short matters for one-shot CLI use.
+# The command users type. Short matters for one-shot CLI use. The same name is
+# `dspi_proto::command!()` (crates/dspi-proto/src/lib.rs), which everything else reads;
+# a test in src/main.rs holds the two equal (WP CLEAN1).
 [[bin]]
-name = "dspi"
+name = "uconsole"
 path = "src/main.rs"
 
 [dependencies]

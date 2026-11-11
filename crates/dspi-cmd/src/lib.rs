@@ -18,6 +18,12 @@ use dspi_proto::value::Value;
 
 pub use complete::{Candidate, complete};
 
+// -- WP CLEAN1 --
+/// The Terminal's command name ([`dspi_proto::command!`], where it is spelled), for
+/// format strings: `"{COMMAND}: ..."`. `dspi_cmd::command!()` is the literal.
+pub use dspi_proto::command;
+pub const COMMAND: &str = command!();
+
 // -- WP CG37 --
 /// The paths whose range is the delay line's ([`delay_range`]).
 pub fn is_delay(path: &str) -> bool {
@@ -38,7 +44,7 @@ pub fn delay_range() -> String {
 
 #[derive(Debug, thiserror::Error, PartialEq)]
 pub enum ParseError {
-    #[error("no parameter or command called `{0}`. Try `dspi params`.")]
+    #[error("no parameter or command called `{0}`. Try `{cmd} params`.", cmd = COMMAND)]
     Unknown(String),
 
     #[error("`{path}` needs {want} index(es) before the value; got {got}")]
@@ -174,7 +180,7 @@ pub fn parse(tokens: &[&str], ctx: &Context) -> Result<Command, ParseError> {
             name: v.to_string(),
             args: tokens[1..].iter().map(|s| s.to_string()).collect(),
         }),
-        // A bare path is a set, which is what makes `dspi vol.user -18` work.
+        // A bare path is a set, which is what makes `uconsole vol.user -18` work.
         _ => parse_set(tokens, ctx),
     }
 }
@@ -1227,7 +1233,10 @@ mod tests {
     #[test]
     fn an_unknown_word_suggests_where_to_look() {
         let e = p("wobble 3").unwrap_err();
-        assert!(e.to_string().contains("dspi params"), "{e}");
+        assert!(
+            e.to_string().contains(concat!(command!(), " params")),
+            "{e}"
+        );
     }
 }
 

@@ -534,4 +534,4 @@ fork's extension channel. Wire format stays V32 at 6136 bytes.
 - **The extension channel** multiplexes sub-commands by `wValue` under opcode
   0x00: `EXT_LIST` 0x0000, `EXT_CROSSFEED_PAIR_MAP` 0x0001,
   `EXT_CORE_VREG` 0x0002. Stock firmware stalls 0x00, which reads as "no
-  extensions". `dspi ext` drives it (`crates/dspi-session/src/ext.rs`).
+  extensions". `uconsole ext` drives it (`crates/dspi-session/src/ext.rs`).

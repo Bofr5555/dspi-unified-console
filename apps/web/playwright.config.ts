@@ -6,7 +6,7 @@ const port = Number(process.env.PORT ?? 8737);
 // hub), for test/e2e/link.spec.ts; without DSPI_FAKEHUB those tests are skipped
 export const hubPort = Number(process.env.HUB_PORT ?? 8738);
 const fakehub = process.env.DSPI_FAKEHUB ?? "";
-// -- WP WB7 -- the real hub serving the console (test/e2e/hosting.spec.ts) is `dspi`
+// -- WP WB7 -- the real hub serving the console (test/e2e/hosting.spec.ts) is `uconsole`
 // (DSPI_TERM); without it those tests are skipped. -- WP HB9 -- Each of those tests' groups
 // starts its own hubs on free ports, so parallel workers and `--repeat-each` copies never
 // share one.

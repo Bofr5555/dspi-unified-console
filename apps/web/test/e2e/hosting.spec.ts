@@ -1,11 +1,11 @@
 // WP WB7 e2e: the console reaches the demo device through each hosting route.
 //
-//   1. `dspi hub --web`: the real hub (DSPI_TERM, the Terminal's binary) serves three
+//   1. `uconsole hub --web`: the real hub (DSPI_TERM, the Terminal's binary) serves three
 //      paths: / a landing page with two links, /console/ the console, /hub/ upstream's
 //      DSPi Link page, byte for byte its build. The console knows its hub from the
 //      <meta> the hub fills in and reaches the hub's demo DSPi over Link, under the
 //      hub's policy (CSP); upstream's page pairs (PIN) and reaches it too.
-//   2. `dspi web`: a hub on loopback serving the console on http://localhost, a
+//   2. `uconsole web`: a hub on loopback serving the console on http://localhost, a
 //      secure context, so one page holds a DSPi on USB (the WebUSB mock, Chromium)
 //      and the hub's demo over Link at once.
 //   3. The static build (tools/serve.mjs, any static host): the core's own demo,
@@ -23,13 +23,13 @@ const linkWords = (await import("../../../../ci/generated/web/link-words.json", 
 };
 const words = (key: string) => linkWords.link.find((w) => w.key === key)!;
 
-// -- WP HB9 -- Each group below starts its own `dspi hub --web` or `dspi web` on a free
+// -- WP HB9 -- Each group below starts its own `uconsole hub --web` or `uconsole web` on a free
 // port (ownHub), so parallel workers and `--repeat-each` copies never share one.
 let HUB = "";
 let LOCAL_PORT = 0;
 let LOCAL = "";
 const PLAIN = `http://127.0.0.1:${Number(process.env.PORT ?? 8737)}`;
-/** The core's simulated DSPi (FakeDevice::demo), which `dspi --demo hub` shares. */
+/** The core's simulated DSPi (FakeDevice::demo), which `uconsole --demo hub` shares. */
 const DEMO = "DEMO0000DSPI0001";
 const ASSETS = new URL("../../../../crates/dspi-hub/assets/web/", import.meta.url);
 const LANDING = readFileSync(new URL("index.html", ASSETS));
@@ -74,7 +74,7 @@ async function upstreamOpensDemo(page: Page, connect = true) {
 
 type OwnHub = { port: number; pin: string; child: ChildProcess };
 
-/** A hub of the caller's own on a free port, `dspi --demo <args> --port 0 --json`, once it
+/** A hub of the caller's own on a free port, `uconsole --demo <args> --port 0 --json`, once it
  *  says it is up (with `pairing`, once it shows its PIN). */
 async function ownHub(args: string[], pairing = false): Promise<OwnHub> {
   const store = `${process.env.TMPDIR ?? "test-results"}/wb7-${args[0]}-${process.pid}-${Math.random().toString(36).slice(2)}`;
@@ -86,7 +86,7 @@ async function ownHub(args: string[], pairing = false): Promise<OwnHub> {
   const lines = createInterface({ input: child.stdout! });
   let port = 0;
   const pin = await new Promise<string>((ok, fail) => {
-    child.on("exit", (code) => fail(new Error(`dspi ${args[0]} exited ${code}`)));
+    child.on("exit", (code) => fail(new Error(`uconsole ${args[0]} exited ${code}`)));
     lines.on("line", (line) => {
       const e = JSON.parse(line) as { event?: string; port?: number; pin?: string };
       if (e.event === "status") {
@@ -99,7 +99,7 @@ async function ownHub(args: string[], pairing = false): Promise<OwnHub> {
   return { port, pin, child };
 }
 
-/** A hub of this test's own, with PIN pairing open: `dspi --demo hub --web --pair --json` on a free port. */
+/** A hub of this test's own, with PIN pairing open: `uconsole --demo hub --web --pair --json` on a free port. */
 const pinHub = () => ownHub(["hub", "--web", "--loopback", "--pair"], true);
 
 /** The console's hubs as the e2e had them in playwright.config.ts: open access, the built console. */
@@ -134,13 +134,13 @@ async function writeOnce(session: ReturnType<Page["getByRole"]>, info: TestInfo,
 
 if (!process.env.DSPI_TERM) {
   test("WB7: the Terminal's binary is there", () => {
-    test.skip(!process.env.DSPI_TERM_REQUIRED, "no dspi binary (set DSPI_TERM)");
+    test.skip(!process.env.DSPI_TERM_REQUIRED, "no uconsole binary (set DSPI_TERM)");
     throw new Error("DSPI_TERM_REQUIRED, but no DSPI_TERM");
   });
 }
 
-test.describe("served by dspi hub --web", () => {
-  test.skip(!process.env.DSPI_TERM, "no dspi binary (set DSPI_TERM)");
+test.describe("served by uconsole hub --web", () => {
+  test.skip(!process.env.DSPI_TERM, "no uconsole binary (set DSPI_TERM)");
   // One browser at a time on this group's hub, as a person would use it.
   test.describe.configure({ mode: "serial" });
   let hub: OwnHub | undefined;
@@ -291,8 +291,8 @@ test.describe("served by dspi hub --web", () => {
   });
 });
 
-test.describe("served by dspi web on localhost", () => {
-  test.skip(!process.env.DSPI_TERM, "no dspi binary (set DSPI_TERM)");
+test.describe("served by uconsole web on localhost", () => {
+  test.skip(!process.env.DSPI_TERM, "no uconsole binary (set DSPI_TERM)");
   test.describe.configure({ mode: "serial" });
   let hub: OwnHub | undefined;
   test.beforeAll(async () => {

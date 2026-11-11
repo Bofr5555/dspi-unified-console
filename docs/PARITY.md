@@ -56,7 +56,7 @@ Most of the Qt desktop, many Android packages, and the Terminal's control-surfac
 
 ### Terminal (TUI/CLI)
 1. **No on-graph PEQ editing.** This is out of scope by design (decision 5); the `;` command bar replaces it.
-2. **Extension channel is CLI-only.** `dspi ext list | xfeed-map | vreg` work, but there is no TUI screen and no probe on connect.
+2. **Extension channel is CLI-only.** `uconsole ext list | xfeed-map | vreg` work, but there is no TUI screen and no probe on connect.
 3. **No automatic reconnect after unplug/replug.** You have to run `:reconnect`.
 4. **USB vendor transport only.** No Link client (the `dspi-link` crate exists but isn't wired in), no MIDI, and the demo fixture answers zeros rather than simulating a device.
 5. **Firmware update** only reboots into the bootloader and finds the drive; you copy the `.uf2` by hand.
@@ -100,7 +100,7 @@ It is frozen at wire **V26**. It has nothing from V27–V32 (limiter, subharmoni
 | A9 | Wire format V32 | ✓ + per-version/caps gating | ✓ | ✓ (constants hand-copied at beta4) | ✓ (generated from `bofr-main` headers, 247-opcode coverage test) | ✓ | ✗ V26 (floor V16) |
 | A10 | Older/newer firmware | ◐ banner and feature hiding, no read-only fallback; `-MIDIReadOnly` diagnostic *(ours)* | ◐ same | ◐ banner, then blank (no reads, no writes) | ◐ refuses with a message (by design) | ◐ newer: read-only + banner (double write guard); older V17–V30 **unreadable** on `main` | ◐ legacy per-opcode fetch, no warning UI |
 | A11 | Extension channel 0x00, EXT_LIST probe on connect | ✓ once per connect over every transport *(ours)* | ✓ *(ours)* | ✗ | ◐ on demand via CLI, not on connect | ◐ probe is a pair-map GET; EXT_LIST defined but unused | ✗ |
-| A12 | Live sync (notifications, other hosts) | ✓ EP 0x83 v1+v2, echo suppression, Link relay | ✓ MIDI notification frames *(ours)*, Link | ✓ EP 0x83 (other hosts' EP0 writes are dropped as echoes) | ✓ EP 0x83 v2, `dspi watch` | ✓ USB + Link NOTIFY, 30 ms batching, 0 Hz poll when hidden | ✓ |
+| A12 | Live sync (notifications, other hosts) | ✓ EP 0x83 v1+v2, echo suppression, Link relay | ✓ MIDI notification frames *(ours)*, Link | ✓ EP 0x83 (other hosts' EP0 writes are dropped as echoes) | ✓ EP 0x83 v2, `uconsole watch` | ✓ USB + Link NOTIFY, 30 ms batching, 0 Hz poll when hidden | ✓ |
 
 ### B. DSP features
 
@@ -119,7 +119,7 @@ It is frozen at wire **V26**. It has nothing from V27–V32 (limiter, subharmoni
 | B11 | Output delay/gain/mute/invert | ✓ | ✓ | ✓ | ✓ (+ output latency) | ✓ | ✓ |
 | B12 | Output limiter | ✓ | ✓ | ✓ | ✓ | ✓ (gang groups mirrored in Kotlin) | ✗ |
 | B13 | Crossfeed (basic) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| B14 | Crossfeed pair map (ext 0x00) | ✓ Default / K340 / Custom; in presets, files and diff *(ours)* | ✓ one column on iPhone *(ours)* | ✗ (fixed-pair mask only) | ◐ CLI only (`dspi ext xfeed-map`) | ✓ (patch 0002; in presets and diff) | ◐ legacy 0xFC/0xFD pair mask |
+| B14 | Crossfeed pair map (ext 0x00) | ✓ Default / K340 / Custom; in presets, files and diff *(ours)* | ✓ one column on iPhone *(ours)* | ✗ (fixed-pair mask only) | ◐ CLI only (`uconsole ext xfeed-map`) | ✓ (patch 0002; in presets and diff) | ◐ legacy 0xFC/0xFD pair mask |
 | B15 | Loudness | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | B16 | Volume leveller | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | B17 | Psychoacoustic bass | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -189,7 +189,7 @@ It is frozen at wire **V26**. It has nothing from V27–V32 (limiter, subharmoni
 
 | Extra | Where |
 |---|---|
-| Scripting / JSON / dry-run / raw opcodes / `dspi screenshot` | Terminal |
+| Scripting / JSON / dry-run / raw opcodes / `uconsole screenshot` | Terminal |
 | Undo/redo journal | Terminal (full); Windows (IO only) |
 | Full core-voltage control (set/trial/auto) | Terminal CLI only |
 | Strict read-only double write guard; confirmation tokens on flash writes; PICOBOOT flashing without a drive; config share sheet; light theme; auto-launch on plug | Android |

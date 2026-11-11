@@ -32,7 +32,7 @@ core. On the merged core no real device has been used on any platform.
   ships as `dspi_capi.dll`. The deliverables are a runnable folder, a zip and a
   per-user NSIS installer. All are built on the merged tree; none has been started
   on it (the Wine and Windows 11 runs in section 10 were on the old core).
-- **MSVC.** `dspi_capi.dll` and `dspi.exe` build for `x86_64-pc-windows-msvc` from
+- **MSVC.** `dspi_capi.dll` and `uconsole.exe` build for `x86_64-pc-windows-msvc` from
   Linux with cargo-xwin. **The Qt app has not been linked with MSVC** (see "MSVC Qt
   builds" below).
 - **macOS.** A universal app and `.dmg` were built and run on the old core
@@ -176,7 +176,7 @@ Linux containers, through `ci/check.sh`. No device.
 | `--step qt-offscreen` | Qt 6, the real app with its smoke driver on the demo device: 127 checks, 0 failures, 0 QML errors |
 | `--step qt5-offscreen` | The same on Qt 5.15: 110 checks, 0 failures, 0 QML errors |
 | `--step qt-windows` | MinGW Qt 6 app, folder (580 files, 127 MB), zip (50 MB), installer (34 MB). Built, not started. |
-| `--step windows-msvc` | `dspi_capi.dll`, `dspi.exe` (dev profile). Built, not run. |
+| `--step windows-msvc` | `dspi_capi.dll`, `uconsole.exe` (dev profile). Built, not run. |
 
 The whole workspace's test step last ran at the wave 3 merge (`d190535`): 2182
 passed. `--step android` and `--step proptest` passed in the same round.
@@ -205,7 +205,7 @@ Paths below were in a session scratch directory (`Q`), which has not been kept.
 | NSIS installer under Wine (`/S`) | installs to `AppData\Local\Programs\DSPi Console`, adds the Start menu link and the HKCU uninstall key | |
 | Desktop, Windows, MinGW Qt 5 | **not built**: Fedora 44's `mingw64-qt5-qtquickcontrols2` lacks its import library (`libQt5QuickControls2.dll.a`). Qt 6 is the Windows target anyway. | |
 | Monorepo `cargo test --workspace --all-features` (Linux) | 1378 passed: Terminal 1297, core 59, dspi-link 22 | |
-| Monorepo, windows-gnu workspace build | builds `dspi.exe`, `dspi_core.dll`, `xtask.exe`; dspi-link tests 22/22 under Wine | |
+| Monorepo, windows-gnu workspace build | builds `uconsole.exe`, `dspi_core.dll`, `xtask.exe`; dspi-link tests 22/22 under Wine | |
 
 Screenshots:
 - `Q/logs/wine-qt6.png` and `Q/logs/wine-mono.png` (Windows build under Wine);
@@ -273,7 +273,7 @@ based on `main` @ `8389b20`, now `apps/terminal/` plus `crates/` here.
 - `dspi-transport`: USB over nusb, plus a mock transport;
 - `dspi-session`, `dspi-cmd` and `dspi-tui`: session logic, command
   grammar, and the interface (ratatui + crossterm);
-- the `dspi` binary.
+- the `uconsole` binary.
 
 There is no C dependency and no libusb, so cross-builds are plain cargo
 builds.
@@ -288,14 +288,14 @@ builds.
 **Platform notes.**
 - **USB.** nusb uses WinUSB, IOKit and usbfs directly. As above, it uses
   interface 2, wIndex 2 and a 4 KB transfer cap.
-- **Linux** needs a udev rule (`sudo dspi --install-udev`). That code is
+- **Linux** needs a udev rule (`sudo uconsole --install-udev`). That code is
   gated with `cfg!(target_os = "linux")`.
 - **Terminal.** crossterm on every OS. Windows Terminal and ConEmu get
   truecolour and braille; the classic console gets 16 colours.
 - **Config paths** come from `dirs::config_dir()`: XDG,
   `~/Library/Application Support`, or `%APPDATA%`. Fixed here: the AutoEQ
   data used to follow `HOME` on Windows.
-- **`dspi --fixture`** runs the interface on a built-in example device, for
+- **`uconsole --fixture`** runs the interface on a built-in example device, for
   headless and Wine tests.
 
 **Protocol pin.**
@@ -313,10 +313,10 @@ builds.
   `SIGGEN_MULTITONE_MAX` is platform-conditional and is not emitted.
 
 **Extension channel (`REQ_EXTENSION` 0x00).**
-- `dspi ext list`
-- `dspi ext xfeed-map [L:R …]`: the K340 map `2:0 3:1` is sent as
+- `uconsole ext list`
+- `uconsole ext xfeed-map [L:R …]`: the K340 map `2:0 3:1` is sent as
   `02 13 00 00` and always read back.
-- `dspi ext vreg [set|trial|trial-end|auto|clear]`
+- `uconsole ext vreg [set|trial|trial-end|auto|clear]`
 
 On stock firmware a stalled read is reported as "not supported", and a
 stalled write as "refused" (exit 3). There are 11 mock-transport tests;
@@ -328,7 +328,7 @@ none has run against a K340 yet.
 - TUI screens for the new names, latency and ext commands (CLI only for
   now).
 - The `SOURCE` choice still lacks S/PDIF 2–4.
-- The TUI config directory (`dspi`) and the AutoEQ data directory
+- The TUI config directory (`uconsole`) and the AutoEQ data directory
   (`dspi-term`) have different names.
 
 ## 6. The monorepo
@@ -441,7 +441,7 @@ time. The code moved between the host and the VM as git bundles.
 | Universal app | `DSPi Console.app` is x86_64 + arm64 (`lipo`). The .dmg is 71 MB; the bundle 161 MB unpacked. The arm64 half has not been run: the VM is Intel. |
 | Run in the GUI session, DSPi attached | It connected to the DSPi (2AC1E7B6) over the VM's USB pass-through and read the platform, status and the full parameter set (chunked 2048-byte reads, which the pass-through allows). It showed preset 1, user volume −23 dB, the K340 crossovers and CPU 8 %, plus the "newer firmware" banner (the app targets 1.1.6 beta 4, the device runs 1.1.6 final). |
 | Menu bar | Opened by QMP clicks: the application menu (Preferences… ⌘, / Hide / Quit ⌘Q) and Tools (⇧⌘M, ⇧⌘A, …) |
-| Terminal client | `dspi list`, `dspi doctor` ("interface claimed, RP2350 firmware 1.1.6, wire V32, 17 channels"), `dspi ext list` (0x0001 crossfeed pair map, 0x0002 core voltage), `dspi ext vreg` (live 1.20 V, hang_count 0), `dspi ext xfeed-map` (`02 13 00 00`: pairs 2:0, 3:1, the K340 map) |
+| Terminal client | `uconsole list`, `uconsole doctor` ("interface claimed, RP2350 firmware 1.1.6, wire V32, 17 channels"), `uconsole ext list` (0x0001 crossfeed pair map, 0x0002 core voltage), `uconsole ext vreg` (live 1.20 V, hang_count 0), `uconsole ext xfeed-map` (`02 13 00 00`: pairs 2:0, 3:1, the K340 map) |
 | TUI | `--fixture` in a pty: draws and quits on `q` |
 | Universal terminal binary | `lipo` of the aarch64 and x86_64 builds |
 
@@ -457,7 +457,7 @@ terminal ran read commands only.
 - `shot1.png` (the first, unbundled run).
 
 **Artifacts** are in `qtport/mac/` on the host and `~/qtport/dist/` in
-the VM: `DSPi-Console-1.1.6-beta4-macos.dmg` and the universal `dspi`.
+the VM: `DSPi-Console-1.1.6-beta4-macos.dmg` and the universal `uconsole`.
 
 **Fixed on the way.**
 - **The Qt 5 build had been broken since the Qt 6 commit.** Qt 5.15
@@ -507,7 +507,7 @@ artifacts were rebuilt from `main` in the containers.
     Defender scanning 580 new files).
   - Idle: about 1.3 % of one core, 136 MB working set.
 - **Terminal:**
-  - `dspi --version`, `list` ("No DSPi found.", exit 2), `doctor`
+  - `uconsole --version`, `list` ("No DSPi found.", exit 2), `doctor`
     ("USB subsystem reachable", then no device) and `ext` (no device),
     for both the MinGW and the MSVC build.
   - The `--fixture` TUI works in Windows Terminal (truecolour, braille)
@@ -522,7 +522,7 @@ artifacts were rebuilt from `main` in the containers.
   shell (`ExecShell`). The installer now also has the app's own side
   artwork instead of NSIS's default.
 - **About said "for Linux"**; it now names the platform.
-- **The MSVC `dspi.exe` didn't start on a clean Windows**
+- **The MSVC `uconsole.exe` didn't start on a clean Windows**
   (STATUS_DLL_NOT_FOUND, VCRUNTIME140.dll). MSVC builds now link the C
   runtime statically (`.cargo/config.toml`). The MinGW builds were
   unaffected.

@@ -27,6 +27,21 @@ pub mod wire_compat;
 pub mod xover;
 
 pub use channel::ChannelMap;
+
+// -- WP CLEAN1 --
+/// The Terminal's command name, as a string literal: the one place it is spelled.
+/// Not protocol, but this is the crate every Terminal crate shares. Help texts,
+/// messages, shell completions, the Terminal's own directories, the hub's service
+/// files and the release archives all take it from here (`concat!`/`env!` need a
+/// literal, hence a macro); `dspi_cmd::COMMAND` is the same as a constant. The
+/// binary's own name, `[[bin]] name` in `apps/terminal/Cargo.toml`, must be the
+/// same; a test there holds them equal, and `ci/command-name.sh` reads it for scripts.
+#[macro_export]
+macro_rules! command {
+    () => {
+        "uconsole"
+    };
+}
 pub use enums::FilterType;
 
 /// USB identity of a DSPi device.

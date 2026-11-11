@@ -1,11 +1,11 @@
 // A hub that serves the web console, for the Link e2e tests (WP WB4b). Loopback
-// only; a test tool, not a product (WB7 makes `dspi hub` serve the console).
+// only; a test tool, not a product (WB7 makes `uconsole hub` serve the console).
 //
 //   node tools/hub-host.mjs <dist> <port> <dspi-link-fakehub>
 //
 // It plays what a real hub does for a browser: it serves the page from its own
 // address, and it enforces Link spec 4's Origin rule on the WebSocket upgrade (an
-// `Origin` naming any site but this one is refused with HTTP 403, as `dspi hub`
+// `Origin` naming any site but this one is refused with HTTP 403, as `uconsole hub`
 // does). Behind that, each test gets fake hubs of its own (`dspi-link-fakehub`,
 // the protocol's fake from crates/dspi-link), so faults in one test never reach
 // another:

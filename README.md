@@ -1,7 +1,7 @@
 # dspi-unified-console
 
 One repository with one Rust core and every DSPi console client built on it:
-the Qt app for Windows and Linux, the Android app, the `dspi` terminal client,
+the Qt app for Windows and Linux, the Android app, the `uconsole` terminal client,
 the Swift app for macOS and iOS (partly moved onto the core), a web console,
 and a Rust DSPi Link hub.
 
@@ -40,7 +40,7 @@ so each system warns the first time (how to get past it is below).
 | **Arch Linux** | `dspi-uconsole-0.13.0-arch-PKGBUILD.tar.gz` (or the test-built `…pkg.tar.zst`) | `makepkg -si` in the unpacked folder. |
 | **Android** 8+ | Google Play: *DSPi Console for Android* (renamed with its next update). Without Play: `DSPi-uConsole-APK-0.13.0.apk` | The APK is a separate app, *DSPi uConsole (APK)*, so it installs next to the Play version. Allow installs from your browser or file manager when asked. |
 | **iOS / iPadOS** | none | Not distributed (an unsigned build cannot be installed). |
-| **Terminal** (`dspi`, every system) | `dspi-0.13.0-<system>.tar.gz` / `.zip`: Linux x86_64 and aarch64 (glibc 2.39+), Windows x86_64, macOS universal | Unpack and run `dspi`. On Linux, `sudo dspi --install-udev` once for USB access. The aarch64 build has no MIDI. |
+| **Terminal** (`uconsole`, every system) | `dspi-0.13.0-<system>.tar.gz` / `.zip`: Linux x86_64 and aarch64 (glibc 2.39+), Windows x86_64, macOS universal | Unpack and run `uconsole`. On Linux, `sudo uconsole --install-udev` once for USB access. The aarch64 build has no MIDI. |
 | **Web console** | `dspi-uconsole-web-0.13.0.tar.gz` | See below. |
 
 If you installed the first 0.13.0 files (named DSPi Console), the renamed ones install next to them, not over
@@ -50,14 +50,14 @@ The Qt app keeps its settings.
 
 ### The web console
 
-The web console runs in the browser and is served by the `dspi` Terminal program or by a
+The web console runs in the browser and is served by the `uconsole` Terminal program or by a
 web server. Pick one:
 
 1. **On this computer, with USB and hubs:** unpack the web download into a folder named
-   `web` next to the `dspi` program (or pass `--console <folder>`), run `dspi web`, and open
+   `web` next to the `uconsole` program (or pass `--console <folder>`), run `uconsole web`, and open
    **http://localhost:11916/console/** in Chrome or Edge. USB needs a Chromium-based browser
    (Firefox and Safari have no WebUSB); on Linux the USB rule above is needed.
-2. **From a hub on the network:** run `dspi hub --web --console <folder>` on the machine
+2. **From a hub on the network:** run `uconsole hub --web --console <folder>` on the machine
    the DSPi is plugged into, then open **http://&lt;that machine&gt;:11915/** from any
    browser on the network. The page links to the console (`/console/`) and to the hub page
    (`/hub/`). Pair with the hub's PIN when asked.
@@ -85,8 +85,8 @@ Hardware runs are recorded in `docs/core-merge/HW-*.md` and
 | Android | `apps/android/` | On the core through UniFFI. **0.12.0, the first release on the core, is on Google Play.** On `main` for the next release: R8 shrinking, accessibility (TalkBack labels and roles, with the layout unchanged), faster Link meters (they start in seconds, not minutes, on a lossy network), fractional delays kept, delay sliders in whole milliseconds, and the delay limit from the core. Open: edge-to-edge, localisation. |
 | Terminal | `apps/terminal/` | Done but for a physical replug in its hardware pass (TM13). Refuses delays past the limit and non-finite numbers. |
 | Swift, macOS and iOS | `apps/apple/` | On the core for reads: the bulk read, notifications, the view model's mirror, the unsaved-changes list and the delay limit. Read-only is enforced everywhere. iOS imports and exports files through the system document picker. Still Swift-only: writes, USB, MIDI, Link, firmware updates and the hub. Moving those depends on the owner's look-and-feel decision (OD3). |
-| Link hub | `crates/dspi-hub/` | Server, pairing, roles, registry, advertising, conformance and a C ABI are merged; `dspi hub` runs it. With `--web` it serves `/` (a landing page without scripts), `/console/` (our web console) and `/hub/` (Weeb Labs' DSPi-Link page, built from a pinned commit). Connection budgets: plain HTTP 48 in all and 16 per address; WebSocket 16 in all and 4 per address before sign-in, so web pages cannot use up the app's slots. |
-| Web | `apps/web/`, `crates/dspi-wasm/` | The same core in wasm, in one Worker per session, without threads. Works: the core's demo device, USB through WebUSB (Chromium, tested on a mock), DSPis behind hubs over Link (Chromium and Firefox), hosting by a hub, by `dspi web` or by any static server. Screens: main window, EQ (with Linkwitz), crossover, outputs and matrix. Next: the remaining screens (WB6), Web MIDI (WB4c), hardware runs (WB8) and its gate (WB9). Not published. |
+| Link hub | `crates/dspi-hub/` | Server, pairing, roles, registry, advertising, conformance and a C ABI are merged; `uconsole hub` runs it. With `--web` it serves `/` (a landing page without scripts), `/console/` (our web console) and `/hub/` (Weeb Labs' DSPi-Link page, built from a pinned commit). Connection budgets: plain HTTP 48 in all and 16 per address; WebSocket 16 in all and 4 per address before sign-in, so web pages cannot use up the app's slots. |
+| Web | `apps/web/`, `crates/dspi-wasm/` | The same core in wasm, in one Worker per session, without threads. Works: the core's demo device, USB through WebUSB (Chromium, tested on a mock), DSPis behind hubs over Link (Chromium and Firefox), hosting by a hub, by `uconsole web` or by any static server. Screens: main window, EQ (with Linkwitz), crossover, outputs and matrix. Next: the remaining screens (WB6), Web MIDI (WB4c), hardware runs (WB8) and its gate (WB9). Not published. |
 | Link over the ESP32 bridge | `crates/dspi-link/`, `tools/esp-rig/` | LK1 and LK2 are merged: meters no longer wait behind start-up reads, and Link tolerates short silences (5 s ping, closes only after a long silence). LK3 (an emulated bridge: the real bridge firmware in Espressif's QEMU, its UART tunnelled to a DSPi, with set baud rates and network loss) and LK4 (a faster connect, and a silent bridge session replaced as soon as a new one connects) are on their branches, not merged yet. Target: at least as fast as Weeb Labs' own Link client. |
 | CI | `ci/` | `ci/check.sh` is the gate (27 steps with `--all`, the web console included); `ci/matrix.sh` builds and tests every client from one commit, one row each, with the macOS Swift app, the iOS Simulator and the Qt `.dmg` on a macOS VM. The ESP32 rig comes with LK3 as an opt-in step (`--step esp-rig`), not in `--all`. The GitHub Actions file is a draft and not enabled. |
 
@@ -131,7 +131,7 @@ What each client lacks against the macOS reference is in
 | `apps/desktop/packaging/` | Qt packages: `linux/` (`.deb`, `.rpm`, AppImage, udev rule), `arch/`, `windows/` (zip and installer), `macos/` (`.dmg`). |
 | `apps/android/` | The Android app, Kotlin and Compose, Gradle. |
 | `apps/apple/` | The Swift app, one Xcode project with macOS and iOS targets. |
-| `apps/terminal/` | The `dspi` terminal client, a TUI and CLI (package `dspi-term`). |
+| `apps/terminal/` | The `uconsole` terminal client, a TUI and CLI (package `dspi-term`). |
 | `apps/web/` | The web console, TypeScript and Preact, Playwright tests ([`apps/web/DEPLOY.md`](apps/web/DEPLOY.md) for hosting). |
 | `tools/esp-rig/` | The emulated ESP32 Link bridge rig (on `wp/LK3` and `wp/LK4`, not yet on `main`). |
 | `assets/` | Data shared by every client, `about.json` (the About pages) and `onboarding/`. |
@@ -165,7 +165,7 @@ Per client:
 | Qt, Windows | `--step qt-windows` (MinGW app, zip and installer); `--step windows-msvc` builds the core and terminal with MSVC | `apps/desktop/packaging/windows/build-windows.sh` |
 | Android | `--step android` (core libraries), `android-tests`, `android-aab` | `apps/android/tools/ci.sh` |
 | Swift, macOS and iOS | not in a container: `ci/macvm.sh macos` or `ios` runs it in the macOS VM | `apps/apple/build-xcframework.sh`, then `apps/apple/ci-test.sh macos` or `ios` |
-| Web | `--step web` (Chromium and Firefox on the core's demo) | `apps/web/README.md`; `dspi web --demo` serves it on localhost |
+| Web | `--step web` (Chromium and Firefox on the core's demo) | `apps/web/README.md`; `uconsole web --demo` serves it on localhost |
 | Qt, macOS | not in a container: `ci/macvm.sh qt-dmg` builds the `.dmg` and starts it on the demo device | `apps/desktop/packaging/macos/ci-dmg.sh` |
 | Swift, macOS `.dmg` | not in a container: `ci/macvm.sh swift-dmg` builds the release `.dmg` and starts it on the demo device | `apps/apple/package-macos.sh`, then `apps/apple/test-dmg.sh` |
 | Bindings | `--step kotlin`, `--step swift`, `--step drift` | `ci/compile-bindings.sh` |
