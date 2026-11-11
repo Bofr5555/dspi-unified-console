@@ -1329,35 +1329,48 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func closeFd() 
     
     /**
-     * The device configuration (the mirror) as a `.dspipreset` document:
-     * schema 1, pretty-printed JSON with sorted keys. `name` and `app_version`
-     * go into `meta`; `links` = the app's input-pair link mask (bit p = pair
-     * p), which the firmware does not hold.
+     * The device's configuration as a `.dspipreset` document (JSON, schema
+     * 1), from the mirror: no transfer. `name` and `app_version` go into
+     * `meta`; `links` is the app's input-pair link mask (bit p: pair p),
+     * written as `global.inputPairLinked`.
      *
-     * A read-only device of an older wire format exports what that format
-     * carries, and the keys it lacks are left out. There is nothing to export
-     * without a device's state: [`crate::DspiError::Disconnected`] with no
-     * device, [`crate::DspiError::Unsupported`] for firmware whose image cannot
-     * be mapped, and [`crate::DspiError::Transfer`] when it has not been read.
+     * The document holds what the device's wire format carries: a key or
+     * block that firmware lacks is left out, `crossfeed.pairMap` is written
+     * only when the device reports a map over the extension channel, and
+     * the upmixer only on an RP2350. A read-only device (another wire
+     * format) exports what its image showed.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::Transfer`] before its settings were read;
+     * [`DspiError::Unsupported`] for firmware whose image this build cannot
+     * map.
      */
     func configExport(name: String, appVersion: String, links: UInt8) throws  -> String
     
     /**
-     * Apply a `.dspipreset` document to the device. `options`: bit
-     * [`IMPORT_VOLUMES`] also applies the master and user volume, bit
-     * [`IMPORT_HARDWARE`] the hardware I/O and the limiters.
+     * Apply a `.dspipreset` document to the device as one bulk write, under
+     * the device lock. `options`: [`IMPORT_VOLUMES`] also applies the master
+     * and user volume, [`IMPORT_HARDWARE`] the hardware I/O and the
+     * limiters. The crossfeed pair map goes over the extension channel when
+     * the device has one.
      *
-     * Returns JSON `{ok, error, lines, clean, links, hardwareWritten}`:
-     * `ok` false with `error` for a file that is not a document of this
-     * schema, or when the device could not be written (disconnected,
-     * read-only firmware, transfer failure; the mirror is then left as it
-     * was). A setting the document holds no value for keeps the device's
-     * value, an `eq` or `crossover` with no entries leaves that bank alone,
-     * and `leftAlone` names them by JSON key. On success `lines` is the report
-     * for the user, `clean` is false when channels or settings were left out,
-     * `links` the input-pair link mask to restore (null when the document has
-     * none) and `hardwareWritten` whether I/O was written outside a preset
-     * (save the output config to keep it).
+     * Every setting the document holds no readable value for keeps the
+     * device's value: a missing key or block, a value of the wrong type, an
+     * `eq` or `crossover` with no entries. A bank with entries replaces the
+     * channel's, the rest going flat. Delays past the device's delay line
+     * are shortened to it. Channels the device lacks are named, not moved.
+     *
+     * Returns JSON. On success `{ok: true, error: "", lines, clean, links,
+     * hardwareWritten, leftAlone}`: `lines` is the report, `clean` false
+     * when anything was missing, skipped, left alone or shortened,
+     * `leftAlone` the keys left alone, `links` the input-pair link mask to
+     * restore (null when the document has none), and `hardwareWritten`
+     * whether I/O was changed while the device stores its output
+     * configuration apart from presets (save that to keep it). Otherwise
+     * `{ok: false, error}`: the text is not a document this build reads, or
+     * the device could not be written (disconnected, read-only firmware,
+     * another console's lock, a failed transfer); the mirror then stays as
+     * it was.
      */
     func configImport(text: String, options: UInt32)  -> String
     
@@ -2114,35 +2127,42 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func fetchUpmixStatus() throws  -> UpmixStatus
     
     /**
-     * Every channel's filters as a filter text file (format 2): the first
-     * `inputs` live inputs with their preamp and PEQ bands, then every
-     * output with its PEQ and crossover bands and enable state. Reads the
-     * mirror; refused as [`DspiCore::config_export`] is when it holds no
+     * Every channel's bands as a filter file (format 2), from the mirror:
+     * the first `inputs` inputs with their preamp and EQ bands, then every
+     * output with its EQ and crossover bands and its enable state.
+     *
+     * Errors: as [`DspiCore::config_export`], when the mirror holds no
      * device's state.
      */
     func filtersExport(inputs: UInt8) throws  -> String
     
     /**
-     * Apply a filter file to the channels in `wires` (wire indices; other
-     * channels in the file are ignored) through the band, preamp and
-     * output-enable setters. A section with no lines for a bank leaves that
-     * bank alone, and the report says so. Returns JSON `{ok, error, lines}`: `ok` false
-     * with `error` when the file is over [`MAX_FILE_BYTES`] or the device
-     * could not be written (disconnected, read-only firmware, transfer
-     * failure; channels written before a failure stay written).
+     * Apply a filter file to the wire channels in `wires` (sections for
+     * other channels are ignored), through the band, preamp and output
+     * enable setters, under the device lock. A section's EQ or crossover
+     * lines replace that bank, the rest going flat; a section without lines
+     * for a bank leaves it alone, and the report says so. A REW list goes to
+     * every chosen channel, its preamp to the inputs only.
+     *
+     * Returns JSON `{ok, error, lines}`: `ok` false with `error` when the
+     * file is over [`MAX_FILE_BYTES`], nothing in it applies to the chosen
+     * channels, or the device could not be written (disconnected, read-only
+     * firmware, a failed transfer; channels written before a failure stay
+     * written).
      */
     func filtersImport(text: String, wires: Data)  -> String
     
     /**
-     * What a filter file holds, for the channel picker, as JSON.
-     *
-     * A DSPi Console file: `{kind: "native", channels: [{wire, label,
-     * bands, checked}], newer}` with the channels this device has (`newer`:
-     * written in a newer format). A REW / AutoEQ list: `{kind: "rew",
-     * channels, filters, preamp}` offering the first `inputs` inputs
-     * (ticked) and every output. An empty `channels` means nothing in the
-     * file applies (`kind` "error" with an `error` for a file over
-     * [`MAX_FILE_BYTES`]). Never fails.
+     * What a filter file holds, for the channel picker, as JSON; never
+     * fails. A Console file (macOS, Windows or this one) gives
+     * `{kind: "native", channels, newer}`: each channel it has a section
+     * for on this device, ticked, and whether a newer format wrote it. A
+     * REW or AutoEQ list gives `{kind: "rew", channels, filters, preamp}`:
+     * the first `inputs` inputs (ticked) and every output (not ticked), the
+     * number of filters and the preamp (null without one). A channel is
+     * `{wire, label, bands, checked}`. An empty `channels` means nothing in
+     * the file applies; a file over [`MAX_FILE_BYTES`] gives `kind`
+     * "error" with an `error`.
      */
     func filtersInspect(text: String, inputs: UInt8)  -> String
     
@@ -3842,16 +3862,21 @@ open func closeFd()  {try! rustCall() {
 }
     
     /**
-     * The device configuration (the mirror) as a `.dspipreset` document:
-     * schema 1, pretty-printed JSON with sorted keys. `name` and `app_version`
-     * go into `meta`; `links` = the app's input-pair link mask (bit p = pair
-     * p), which the firmware does not hold.
+     * The device's configuration as a `.dspipreset` document (JSON, schema
+     * 1), from the mirror: no transfer. `name` and `app_version` go into
+     * `meta`; `links` is the app's input-pair link mask (bit p: pair p),
+     * written as `global.inputPairLinked`.
      *
-     * A read-only device of an older wire format exports what that format
-     * carries, and the keys it lacks are left out. There is nothing to export
-     * without a device's state: [`crate::DspiError::Disconnected`] with no
-     * device, [`crate::DspiError::Unsupported`] for firmware whose image cannot
-     * be mapped, and [`crate::DspiError::Transfer`] when it has not been read.
+     * The document holds what the device's wire format carries: a key or
+     * block that firmware lacks is left out, `crossfeed.pairMap` is written
+     * only when the device reports a map over the extension channel, and
+     * the upmixer only on an RP2350. A read-only device (another wire
+     * format) exports what its image showed.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::Transfer`] before its settings were read;
+     * [`DspiError::Unsupported`] for firmware whose image this build cannot
+     * map.
      */
 open func configExport(name: String, appVersion: String, links: UInt8)throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
@@ -3864,21 +3889,29 @@ open func configExport(name: String, appVersion: String, links: UInt8)throws  ->
 }
     
     /**
-     * Apply a `.dspipreset` document to the device. `options`: bit
-     * [`IMPORT_VOLUMES`] also applies the master and user volume, bit
-     * [`IMPORT_HARDWARE`] the hardware I/O and the limiters.
+     * Apply a `.dspipreset` document to the device as one bulk write, under
+     * the device lock. `options`: [`IMPORT_VOLUMES`] also applies the master
+     * and user volume, [`IMPORT_HARDWARE`] the hardware I/O and the
+     * limiters. The crossfeed pair map goes over the extension channel when
+     * the device has one.
      *
-     * Returns JSON `{ok, error, lines, clean, links, hardwareWritten}`:
-     * `ok` false with `error` for a file that is not a document of this
-     * schema, or when the device could not be written (disconnected,
-     * read-only firmware, transfer failure; the mirror is then left as it
-     * was). A setting the document holds no value for keeps the device's
-     * value, an `eq` or `crossover` with no entries leaves that bank alone,
-     * and `leftAlone` names them by JSON key. On success `lines` is the report
-     * for the user, `clean` is false when channels or settings were left out,
-     * `links` the input-pair link mask to restore (null when the document has
-     * none) and `hardwareWritten` whether I/O was written outside a preset
-     * (save the output config to keep it).
+     * Every setting the document holds no readable value for keeps the
+     * device's value: a missing key or block, a value of the wrong type, an
+     * `eq` or `crossover` with no entries. A bank with entries replaces the
+     * channel's, the rest going flat. Delays past the device's delay line
+     * are shortened to it. Channels the device lacks are named, not moved.
+     *
+     * Returns JSON. On success `{ok: true, error: "", lines, clean, links,
+     * hardwareWritten, leftAlone}`: `lines` is the report, `clean` false
+     * when anything was missing, skipped, left alone or shortened,
+     * `leftAlone` the keys left alone, `links` the input-pair link mask to
+     * restore (null when the document has none), and `hardwareWritten`
+     * whether I/O was changed while the device stores its output
+     * configuration apart from presets (save that to keep it). Otherwise
+     * `{ok: false, error}`: the text is not a document this build reads, or
+     * the device could not be written (disconnected, read-only firmware,
+     * another console's lock, a failed transfer); the mirror then stays as
+     * it was.
      */
 open func configImport(text: String, options: UInt32) -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
@@ -4991,10 +5024,11 @@ open func fetchUpmixStatus()throws  -> UpmixStatus  {
 }
     
     /**
-     * Every channel's filters as a filter text file (format 2): the first
-     * `inputs` live inputs with their preamp and PEQ bands, then every
-     * output with its PEQ and crossover bands and enable state. Reads the
-     * mirror; refused as [`DspiCore::config_export`] is when it holds no
+     * Every channel's bands as a filter file (format 2), from the mirror:
+     * the first `inputs` inputs with their preamp and EQ bands, then every
+     * output with its EQ and crossover bands and its enable state.
+     *
+     * Errors: as [`DspiCore::config_export`], when the mirror holds no
      * device's state.
      */
 open func filtersExport(inputs: UInt8)throws  -> String  {
@@ -5006,13 +5040,18 @@ open func filtersExport(inputs: UInt8)throws  -> String  {
 }
     
     /**
-     * Apply a filter file to the channels in `wires` (wire indices; other
-     * channels in the file are ignored) through the band, preamp and
-     * output-enable setters. A section with no lines for a bank leaves that
-     * bank alone, and the report says so. Returns JSON `{ok, error, lines}`: `ok` false
-     * with `error` when the file is over [`MAX_FILE_BYTES`] or the device
-     * could not be written (disconnected, read-only firmware, transfer
-     * failure; channels written before a failure stay written).
+     * Apply a filter file to the wire channels in `wires` (sections for
+     * other channels are ignored), through the band, preamp and output
+     * enable setters, under the device lock. A section's EQ or crossover
+     * lines replace that bank, the rest going flat; a section without lines
+     * for a bank leaves it alone, and the report says so. A REW list goes to
+     * every chosen channel, its preamp to the inputs only.
+     *
+     * Returns JSON `{ok, error, lines}`: `ok` false with `error` when the
+     * file is over [`MAX_FILE_BYTES`], nothing in it applies to the chosen
+     * channels, or the device could not be written (disconnected, read-only
+     * firmware, a failed transfer; channels written before a failure stay
+     * written).
      */
 open func filtersImport(text: String, wires: Data) -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
@@ -5024,15 +5063,16 @@ open func filtersImport(text: String, wires: Data) -> String  {
 }
     
     /**
-     * What a filter file holds, for the channel picker, as JSON.
-     *
-     * A DSPi Console file: `{kind: "native", channels: [{wire, label,
-     * bands, checked}], newer}` with the channels this device has (`newer`:
-     * written in a newer format). A REW / AutoEQ list: `{kind: "rew",
-     * channels, filters, preamp}` offering the first `inputs` inputs
-     * (ticked) and every output. An empty `channels` means nothing in the
-     * file applies (`kind` "error" with an `error` for a file over
-     * [`MAX_FILE_BYTES`]). Never fails.
+     * What a filter file holds, for the channel picker, as JSON; never
+     * fails. A Console file (macOS, Windows or this one) gives
+     * `{kind: "native", channels, newer}`: each channel it has a section
+     * for on this device, ticked, and whether a newer format wrote it. A
+     * REW or AutoEQ list gives `{kind: "rew", channels, filters, preamp}`:
+     * the first `inputs` inputs (ticked) and every output (not ticked), the
+     * number of filters and the preamp (null without one). A channel is
+     * `{wire, label, bands, checked}`. An empty `channels` means nothing in
+     * the file applies; a file over [`MAX_FILE_BYTES`] gives `kind`
+     * "error" with an `error`.
      */
 open func filtersInspect(text: String, inputs: UInt8) -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
@@ -21862,9 +21902,10 @@ public func computeResponse(filters: [FilterParams], freq: Float) -> Float  {
 }
 /**
  * Check a `.dspipreset` document and describe it, as JSON
- * `{ok, error, name, platform, firmware, savedUtc}` (`dspi_config_inspect`):
- * `ok` false with an `error` message for text that is not a document of
- * this schema (or is newer, or over [`MAX_FILE_BYTES`]). Needs no device.
+ * `{ok, error, name, platform, firmware, savedUtc}`. `ok` is false, with the
+ * reason in `error`, for text that is not a document this build reads: not
+ * JSON, no schema version or a newer one, no channels, or over
+ * [`MAX_FILE_BYTES`]. Needs no device.
  */
 public func configInspect(text: String) -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
@@ -22195,7 +22236,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_func_compute_response() != 46454) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_func_config_inspect() != 36664) {
+    if (uniffi_dspi_core_checksum_func_config_inspect() != 19604) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_core_info() != 61478) {
@@ -22297,10 +22338,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_close_fd() != 20694) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_config_export() != 43963) {
+    if (uniffi_dspi_core_checksum_method_dspicore_config_export() != 55997) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_config_import() != 51763) {
+    if (uniffi_dspi_core_checksum_method_dspicore_config_import() != 18479) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_connection_generation() != 50111) {
@@ -22501,13 +22542,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_upmix_status() != 65322) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_filters_export() != 47242) {
+    if (uniffi_dspi_core_checksum_method_dspicore_filters_export() != 62927) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_filters_import() != 52068) {
+    if (uniffi_dspi_core_checksum_method_dspicore_filters_import() != 10770) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_filters_inspect() != 49082) {
+    if (uniffi_dspi_core_checksum_method_dspicore_filters_inspect() != 22218) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_firmware_guard_board() != 9275) {
