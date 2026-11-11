@@ -80,8 +80,8 @@ class AboutPageAn26Test {
         show(File("../../../assets/about.json").readText())
         rule.onNodeWithText("Weeb Labs: links and support").assertExists()
         rule.onNodeWithText(
-            "Weeb Labs' channels for DSPi, its firmware and the original DSPi Consoles. " +
-                "This console is made by Bofr5555, not Weeb Labs."
+            "Weeb Labs makes DSPi, its firmware and the original DSPi Consoles; these are their channels, " +
+                "and Patreon and Ko-fi are where to support their work. This console is made by Bofr5555, not Weeb Labs."
         ).assertExists()
         rule.onNode(hasText("Links & Support")).assertDoesNotExist()
     }
