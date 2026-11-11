@@ -1284,10 +1284,11 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func cachedInputSourceName(source: UInt8) throws  -> String
     
     /**
-     * The live state now matches the active preset: remember its image as
-     * the baseline for [`DspiCore::preset_dirty`] and
-     * [`DspiCore::preset_changes`]. Without a device, or before an image
-     * has been read, the baseline is cleared. Never fails.
+     * Take the live state as what the active preset holds: from now on
+     * [`DspiCore::preset_changes`] lists what differs from it. The core
+     * does this itself after a connect, a load, a save, a revert and a
+     * factory reset. Without a device, or without an image in this build's
+     * format, there is no baseline.
      */
     func captureBaseline() 
     
@@ -1368,19 +1369,17 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func connectionGeneration()  -> UInt64
     
     /**
-     * Copy the live state into preset `dest`, then save it back to
-     * `source` so `source` stays the active slot (as the macOS Console
-     * does). **Writes flash twice.**
+     * Copy the live state to `dest` and save it to `source` again, so
+     * `source` stays the active preset (the Mac console's "Copy to"). Each
+     * save waits for the device; one device lock covers both.
      *
-     * Each deferred save must finish (the device reports that slot active)
-     * before the next is sent, or the second would replace the first's
-     * pending save. The baseline becomes the live state. Runs under the
-     * Link device lock.
+     * If the save to `dest` is not confirmed, nothing more is sent and the
+     * baseline stays. After the second save, the live state is the
+     * baseline.
      *
-     * Errors: as [`DspiCore::save_preset`] for either slot, plus
-     * [`DspiError::Transfer`] when the device does not confirm either save
-     * in time (after the first, nothing is saved to `source`; `dest` may
-     * hold the live state and the directory says which slot is active).
+     * Errors: the first failing save's (`Refused` with its `PRESET_*`
+     * status); [`DspiError::Transfer`] when `dest`'s save was not
+     * confirmed; otherwise as [`DspiCore::save_preset`].
      */
     func copyPreset(source: UInt8, dest: UInt8) throws 
     
@@ -1652,20 +1651,14 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func csStatusText(code: UInt8)  -> String
     
     /**
-     * Delete preset `slot` (0..10) and its name. **Writes flash.**
+     * Delete preset `slot` and wait until the directory no longer holds
+     * it; its name goes with it. Runs under the device lock.
      *
-     * Waits up to 1.5 s for the slot to leave the directory. Deleting the
-     * active slot makes the device apply its factory defaults, so the
-     * image is then re-read (the baseline is kept: the live state matches
-     * no preset). Runs under the Link device lock.
+     * Deleting the active slot makes the device load its factory defaults:
+     * the image is read again and becomes the baseline. A deletion that is
+     * never confirmed leaves the slot and its name in the mirror and fails.
      *
-     * Errors: [`DspiError::Refused`] with the `PRESET_*` status;
-     * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
-     * [`DspiError::Locked`] / [`DspiError::Denied`];
-     * [`DspiError::Transfer`] when the device does not confirm in time (the
-     * mirror's directory fields then follow the directory, if it answers,
-     * and the name is kept); the transport's typed error when a transfer or
-     * the re-read fails.
+     * Errors: as [`DspiCore::save_preset`].
      */
     func deletePreset(slot: UInt8) throws 
     
@@ -1704,41 +1697,26 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func demoRenameElsewhere(target: UInt8, name: String) throws 
     
     /**
-     * Hold the device lock across a flow of several calls, so another
-     * session's commands answer `Locked` until [`DspiCore::device_lock_release`]
-     * (DSPi Link spec 7.7; Swift's `acquireDeviceLock`). It lasts at most
-     * `timeout_ms`, capped at 60 000 (the hub's cap): after that the hub and
-     * the core count it as released. The core's own locked flows
-     * (`save_preset`, `load_preset`, `save_output_config`, ...) run inside it
-     * without asking the hub again. It is given back when the connection
-     * closes or is replaced, a Link re-bind included. On USB, MIDI and the
-     * demo device it succeeds at once, as their flows do. Blocking over
-     * Link: call it off the UI thread.
+     * Hold the device lock across a flow of several calls (a restore, a
+     * firmware install), for at most `timeout_ms` (capped at 60 000), until
+     * [`DspiCore::device_lock_release`]: another DSPi Link session's
+     * commands answer locked meanwhile. The core's own flows nest inside it.
+     * Blocking over Link: call it off the UI thread.
      *
-     * One lock, one timeout: the first holder's. A call while the lock is
-     * already held keeps it as it is (no second request to the hub, the
-     * same remaining time) and makes it the caller's, so
-     * [`DspiCore::device_lock_release`] ends it and an IR learn's end no
-     * longer does. Likewise an IR learn (`cs_apply` `learnArm`) or
-     * [`DspiCore::enter_bootloader`] inside a caller's lock takes nothing of
-     * its own: it lasts as long as the caller's lock, not 15 s or 60 s. So
-     * do not wrap a learn in a short caller lock; to end a firmware install
-     * whose restart never happened, take the caller's lock (60 000 ms)
-     * before `enter_bootloader` and release it afterwards.
+     * An acquire while a lock is held asks nothing more; one held by an IR
+     * learn window or the bootloader restart becomes the caller's. Elsewhere
+     * than over Link it succeeds without asking anyone.
      *
-     * Errors: [`DspiError::InvalidArgument`] for a `timeout_ms` of 0;
-     * [`DspiError::Disconnected`] with no device, or when the connection
-     * changed while the hub was asked; [`DspiError::Locked`] when another
-     * session holds it; [`DspiError::Denied`] for a viewer.
+     * Errors: [`DspiError::InvalidArgument`] for a zero timeout;
+     * [`DspiError::Disconnected`]; [`DspiError::Locked`] while another
+     * session holds it; [`DspiError::Denied`].
      */
     func deviceLockAcquire(reason: String, timeoutMs: UInt32) throws 
     
     /**
-     * Release the lock [`DspiCore::device_lock_acquire`] took, and only
-     * that one (Swift releases only what it took): an IR learn's lock ends
-     * with its read, cancel or window, and `enter_bootloader`'s when the
-     * device leaves or after 60 s. Idempotent, and never blocks. A closed
-     * or replaced connection gives back every holder's lock.
+     * Give back the lock [`DspiCore::device_lock_acquire`] took, and only
+     * that one: an IR learn window or the bootloader restart ends on its own
+     * terms. Idempotent; never blocks.
      */
     func deviceLockRelease() 
     
@@ -1789,15 +1767,14 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func extStatus() throws  -> ExtStatus
     
     /**
-     * Restore the factory defaults (`REQ_FACTORY_RESET`, deferred on the
-     * device). **Writes flash.** Waits 250 ms, then re-reads everything
-     * ([`DspiCore::fetch_all`]); the baseline becomes the reset state.
-     * Runs under the Link device lock.
+     * Restore the factory defaults on the live state (stored presets stay),
+     * then read everything again as [`DspiCore::fetch_all`] does; the result
+     * is the baseline. Runs under the device lock.
      *
-     * Errors: [`DspiError::Refused`] with the `FLASH_*` status;
-     * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
-     * [`DspiError::Locked`] / [`DspiError::Denied`]; the transport's typed
-     * error when the transfer or the re-read fails.
+     * Errors: `Refused` with the device's `FLASH_*` status;
+     * [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
+     * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; a transfer
+     * error, of the reset or the re-read.
      */
     func factoryReset() throws 
     
@@ -2222,22 +2199,19 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func getInputSourceName(source: UInt8) throws  -> String
     
     /**
-     * Read the preset directory (occupied slots, startup mode and slot,
-     * active slot, the output-config and master-volume persistence modes)
-     * into the mirror and return it. Works on a read-only connection.
+     * Read the preset directory (also into the mirror: occupied slots,
+     * startup mode, default and active slot, both persistence modes).
      *
-     * Errors: [`DspiError::Disconnected`]; the transport's typed error when
-     * the read fails or the reply is shorter than 5 bytes.
+     * Errors: [`DspiError::Disconnected`]; a transfer error or a short reply.
      */
     func getPresetDirectory() throws  -> PresetDirectory
     
     /**
-     * Read the name of preset `slot` (0..10) into the mirror and return it.
-     * Works on a read-only connection.
+     * Read preset `slot`'s name from the device (also into the mirror). An
+     * empty slot has no name: the device stalls, and that is the error.
      *
-     * Errors: [`DspiError::InvalidArgument`] for a slot past 9;
-     * [`DspiError::Disconnected`]; the transport's typed error when the
-     * read fails (an empty slot stalls; its mirrored name is cleared).
+     * Errors: `Refused` with `PRESET_ERR_INVALID_SLOT` for a slot past the
+     * last (nothing is sent); [`DspiError::Disconnected`]; a transfer error.
      */
     func getPresetName(slot: UInt8) throws  -> String
     
@@ -2377,36 +2351,26 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func linkStatus()  -> LinkStatus
     
     /**
-     * Revert to saved: reload the active preset through the deferred,
-     * S/PDIF-safe preset load ([`DspiCore::load_preset`] of the mirror's
-     * `active_preset_slot`).
+     * Revert to saved: load the active slot again ([`DspiCore::load_preset`],
+     * the device's deferred load, safe on every input).
      *
-     * Errors: as [`DspiCore::load_preset`], except that a refusal is
-     * reported as [`DspiError::Refused`] with a `FLASH_*` status:
-     * `FLASH_ERR_CRC` for a corrupt slot, `FLASH_ERR_WRITE` otherwise.
+     * Errors: as `load_preset`, but a refusal carries a `FLASH_*` code:
+     * `FLASH_ERR_CRC` for a slot that failed its check, `FLASH_ERR_WRITE`
+     * for any other.
      */
     func loadParams() throws 
     
     /**
-     * Load preset `slot` (0..10) and re-read every parameter into the
-     * mirror.
+     * Load preset `slot`, wait until the device runs it, then read the
+     * image and the directory again; the loaded state becomes the baseline.
+     * Runs under the device lock.
      *
-     * Sends `REQ_PRESET_LOAD`, waits up to 1.5 s for the device to report
-     * the slot active, then re-reads the bulk image ([`DspiCore::refresh_params`]) and the
-     * directory. The baseline becomes the loaded state. Runs under the Link
-     * device lock. The device also notifies `PRESET_LOADED` and then
-     * `BULK_INVALIDATED` (source `PRESET`); `process_notifications`
-     * re-reads on those as on any foreign change, and an edit made between
-     * this call and that notification stays unsaved (WP CG33).
+     * The active slot is the directory's after the re-read. When the
+     * directory cannot be read, it is `slot` if the device confirmed the
+     * load, and stays as it was otherwise. A load that is never confirmed
+     * (an empty slot changes nothing) still re-reads and succeeds.
      *
-     * Errors: [`DspiError::Refused`] with the `PRESET_*` status;
-     * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
-     * [`DspiError::Locked`] / [`DspiError::Denied`];
-     * [`DspiError::Transfer`] when the device does not confirm the load in
-     * time (a load that failed on the device looks the same: the image is
-     * not re-read, the active slot follows the directory if it answers, and
-     * the baseline stays); the transport's typed error when a transfer, or
-     * the re-read, fails.
+     * Errors: as [`DspiCore::save_preset`], and the re-read's.
      */
     func loadPreset(slot: UInt8) throws 
     
@@ -2532,22 +2496,15 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func preampMaxDb()  -> Float
     
     /**
-     * What differs from the baseline (the active preset), one sentence
-     * each, worded as the macOS Console words it ("Preamp L: 0.0 dB →
-     * -3.0 dB", "2 bands changed on Output 1"). The master volume counts
-     * only in WITH_PRESET master-volume mode, the hardware wiring and the
-     * limiters only in WITH_PRESET output-config mode, both judged by the
-     * live mode. The user volume and the DAC mute are no preset change, as
-     * on macOS. An input source goes by the user's name when it has one,
-     * from the connection's cache, so this does no I/O. Empty before any
-     * baseline. Never fails.
+     * What differs from the active preset, one sentence each, in the Mac
+     * console's words and order. Empty without a device or a baseline. No
+     * I/O: input source titles come from the names the core keeps.
      */
     func presetChanges()  -> [String]
     
     /**
-     * Whether the live state differs from the baseline in anything a
-     * preset holds: exactly when [`DspiCore::preset_changes`] is not
-     * empty. False before any baseline. Never fails.
+     * Whether the live state differs from the active preset: exactly when
+     * [`DspiCore::preset_changes`] has something to say. No I/O.
      */
     func presetDirty()  -> Bool
     
@@ -2761,34 +2718,29 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func saveOutputConfig() throws 
     
     /**
-     * Save the live state to the active preset slot (`REQ_SAVE_PARAMS`,
-     * deferred on the device). **Writes flash.** The baseline becomes the
-     * live state. Runs under the Link device lock.
+     * Save the live state to the active slot (`REQ_SAVE_PARAMS`), under the
+     * device lock; the live state becomes the baseline.
      *
-     * Errors: [`DspiError::Refused`] with the `FLASH_*` status;
-     * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
-     * [`DspiError::Locked`] / [`DspiError::Denied`]; the transport's typed
-     * error when the transfer fails.
+     * Errors: `Refused` with the device's `FLASH_*` status;
+     * [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
+     * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; a transfer
+     * error.
      */
     func saveParams() throws 
     
     /**
-     * Save the live state to preset `slot` (0..10) and make it the active
-     * slot. **Writes flash.**
+     * Save the live state to `slot` (0..10) and wait until the device has
+     * written it (it names the slot active). Runs under the device lock.
+     * The slot becomes the active one and the live state its baseline.
      *
-     * Sends `REQ_PRESET_SAVE`, then waits up to 1.5 s for the deferred save
-     * to show in the directory. The mirror's active slot and occupied mask
-     * follow, and the baseline becomes the live state (it now matches the
-     * active preset). Runs under the Link device lock.
+     * Without that confirmation the mirror only takes the directory as the
+     * device reports it, the baseline stays, and the call fails.
      *
-     * Errors: [`DspiError::Refused`] with the `PRESET_*` status
-     * (`PRESET_ERR_INVALID_SLOT` for a slot past 9, without sending);
-     * [`DspiError::ReadOnly`] on a read-only connection;
-     * [`DspiError::Disconnected`]; [`DspiError::Locked`] /
-     * [`DspiError::Denied`] when the Link hub refuses its lock;
-     * [`DspiError::Transfer`] when the device does not confirm in time (the
-     * mirror then follows the directory, if it answers, and the baseline
-     * stays); the transport's typed error when a transfer fails.
+     * Errors: [`DspiError::Refused`] with `PRESET_ERR_INVALID_SLOT` for a
+     * slot past the last (nothing is sent) or with the device's `PRESET_*`
+     * status; [`DspiError::Transfer`] when the save was not confirmed;
+     * [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
+     * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`].
      */
     func savePreset(slot: UInt8) throws 
     
@@ -3453,24 +3405,23 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func setPreamp(db: Float) throws 
     
     /**
-     * Name preset `slot` (0..10): at most 31 bytes of UTF-8, cut at a
-     * character boundary (and at an embedded NUL); an empty name clears it.
-     * The mirror's `preset_names[slot]` follows.
+     * Name preset `slot`: at most 31 bytes of `name` (cut at a character
+     * boundary), sent NUL-terminated. The mirror takes the name as sent.
      *
-     * Errors: [`DspiError::InvalidArgument`] for a slot past 9;
-     * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; the transport's
-     * typed error when the transfer fails.
+     * Errors: `Refused` with `PRESET_ERR_INVALID_SLOT` for a slot past the
+     * last (nothing is sent); [`DspiError::ReadOnly`];
+     * [`DspiError::Disconnected`]; a transfer error.
      */
     func setPresetName(slot: UInt8, name: String) throws 
     
     /**
-     * Choose the preset loaded at boot: `mode` 0 = load `default_slot`,
-     * 1 = the last active slot. The mirror follows.
+     * What the device loads at boot: `mode` 0 (`PRESET_STARTUP_SPECIFIED`)
+     * loads `default_slot`, 1 (`PRESET_STARTUP_LAST_ACTIVE`) the slot last
+     * active. The mirror takes both.
      *
-     * Errors: [`DspiError::InvalidArgument`] for a mode other than 0 or 1
-     * or a slot past 9; [`DspiError::ReadOnly`];
-     * [`DspiError::Disconnected`]; the transport's typed error when the
-     * transfer fails.
+     * Errors: [`DspiError::InvalidArgument`] for another mode or a slot
+     * past the last (nothing is sent); [`DspiError::ReadOnly`];
+     * [`DspiError::Disconnected`]; a transfer error.
      */
     func setPresetStartup(mode: UInt8, defaultSlot: UInt8) throws 
     
@@ -3828,10 +3779,11 @@ open func cachedInputSourceName(source: UInt8)throws  -> String  {
 }
     
     /**
-     * The live state now matches the active preset: remember its image as
-     * the baseline for [`DspiCore::preset_dirty`] and
-     * [`DspiCore::preset_changes`]. Without a device, or before an image
-     * has been read, the baseline is cleared. Never fails.
+     * Take the live state as what the active preset holds: from now on
+     * [`DspiCore::preset_changes`] lists what differs from it. The core
+     * does this itself after a connect, a load, a save, a revert and a
+     * factory reset. Without a device, or without an image in this build's
+     * format, there is no baseline.
      */
 open func captureBaseline()  {try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_capture_baseline(self.uniffiClonePointer(),$0
@@ -3950,19 +3902,17 @@ open func connectionGeneration() -> UInt64  {
 }
     
     /**
-     * Copy the live state into preset `dest`, then save it back to
-     * `source` so `source` stays the active slot (as the macOS Console
-     * does). **Writes flash twice.**
+     * Copy the live state to `dest` and save it to `source` again, so
+     * `source` stays the active preset (the Mac console's "Copy to"). Each
+     * save waits for the device; one device lock covers both.
      *
-     * Each deferred save must finish (the device reports that slot active)
-     * before the next is sent, or the second would replace the first's
-     * pending save. The baseline becomes the live state. Runs under the
-     * Link device lock.
+     * If the save to `dest` is not confirmed, nothing more is sent and the
+     * baseline stays. After the second save, the live state is the
+     * baseline.
      *
-     * Errors: as [`DspiCore::save_preset`] for either slot, plus
-     * [`DspiError::Transfer`] when the device does not confirm either save
-     * in time (after the first, nothing is saved to `source`; `dest` may
-     * hold the live state and the directory says which slot is active).
+     * Errors: the first failing save's (`Refused` with its `PRESET_*`
+     * status); [`DspiError::Transfer`] when `dest`'s save was not
+     * confirmed; otherwise as [`DspiCore::save_preset`].
      */
 open func copyPreset(source: UInt8, dest: UInt8)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_copy_preset(self.uniffiClonePointer(),
@@ -4387,20 +4337,14 @@ open func csStatusText(code: UInt8) -> String  {
 }
     
     /**
-     * Delete preset `slot` (0..10) and its name. **Writes flash.**
+     * Delete preset `slot` and wait until the directory no longer holds
+     * it; its name goes with it. Runs under the device lock.
      *
-     * Waits up to 1.5 s for the slot to leave the directory. Deleting the
-     * active slot makes the device apply its factory defaults, so the
-     * image is then re-read (the baseline is kept: the live state matches
-     * no preset). Runs under the Link device lock.
+     * Deleting the active slot makes the device load its factory defaults:
+     * the image is read again and becomes the baseline. A deletion that is
+     * never confirmed leaves the slot and its name in the mirror and fails.
      *
-     * Errors: [`DspiError::Refused`] with the `PRESET_*` status;
-     * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
-     * [`DspiError::Locked`] / [`DspiError::Denied`];
-     * [`DspiError::Transfer`] when the device does not confirm in time (the
-     * mirror's directory fields then follow the directory, if it answers,
-     * and the name is kept); the transport's typed error when a transfer or
-     * the re-read fails.
+     * Errors: as [`DspiCore::save_preset`].
      */
 open func deletePreset(slot: UInt8)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_delete_preset(self.uniffiClonePointer(),
@@ -4467,32 +4411,19 @@ open func demoRenameElsewhere(target: UInt8, name: String)throws   {try rustCall
 }
     
     /**
-     * Hold the device lock across a flow of several calls, so another
-     * session's commands answer `Locked` until [`DspiCore::device_lock_release`]
-     * (DSPi Link spec 7.7; Swift's `acquireDeviceLock`). It lasts at most
-     * `timeout_ms`, capped at 60 000 (the hub's cap): after that the hub and
-     * the core count it as released. The core's own locked flows
-     * (`save_preset`, `load_preset`, `save_output_config`, ...) run inside it
-     * without asking the hub again. It is given back when the connection
-     * closes or is replaced, a Link re-bind included. On USB, MIDI and the
-     * demo device it succeeds at once, as their flows do. Blocking over
-     * Link: call it off the UI thread.
+     * Hold the device lock across a flow of several calls (a restore, a
+     * firmware install), for at most `timeout_ms` (capped at 60 000), until
+     * [`DspiCore::device_lock_release`]: another DSPi Link session's
+     * commands answer locked meanwhile. The core's own flows nest inside it.
+     * Blocking over Link: call it off the UI thread.
      *
-     * One lock, one timeout: the first holder's. A call while the lock is
-     * already held keeps it as it is (no second request to the hub, the
-     * same remaining time) and makes it the caller's, so
-     * [`DspiCore::device_lock_release`] ends it and an IR learn's end no
-     * longer does. Likewise an IR learn (`cs_apply` `learnArm`) or
-     * [`DspiCore::enter_bootloader`] inside a caller's lock takes nothing of
-     * its own: it lasts as long as the caller's lock, not 15 s or 60 s. So
-     * do not wrap a learn in a short caller lock; to end a firmware install
-     * whose restart never happened, take the caller's lock (60 000 ms)
-     * before `enter_bootloader` and release it afterwards.
+     * An acquire while a lock is held asks nothing more; one held by an IR
+     * learn window or the bootloader restart becomes the caller's. Elsewhere
+     * than over Link it succeeds without asking anyone.
      *
-     * Errors: [`DspiError::InvalidArgument`] for a `timeout_ms` of 0;
-     * [`DspiError::Disconnected`] with no device, or when the connection
-     * changed while the hub was asked; [`DspiError::Locked`] when another
-     * session holds it; [`DspiError::Denied`] for a viewer.
+     * Errors: [`DspiError::InvalidArgument`] for a zero timeout;
+     * [`DspiError::Disconnected`]; [`DspiError::Locked`] while another
+     * session holds it; [`DspiError::Denied`].
      */
 open func deviceLockAcquire(reason: String, timeoutMs: UInt32)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_device_lock_acquire(self.uniffiClonePointer(),
@@ -4503,11 +4434,9 @@ open func deviceLockAcquire(reason: String, timeoutMs: UInt32)throws   {try rust
 }
     
     /**
-     * Release the lock [`DspiCore::device_lock_acquire`] took, and only
-     * that one (Swift releases only what it took): an IR learn's lock ends
-     * with its read, cancel or window, and `enter_bootloader`'s when the
-     * device leaves or after 60 s. Idempotent, and never blocks. A closed
-     * or replaced connection gives back every holder's lock.
+     * Give back the lock [`DspiCore::device_lock_acquire`] took, and only
+     * that one: an IR learn window or the bootloader restart ends on its own
+     * terms. Idempotent; never blocks.
      */
 open func deviceLockRelease()  {try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_device_lock_release(self.uniffiClonePointer(),$0
@@ -4575,15 +4504,14 @@ open func extStatus()throws  -> ExtStatus  {
 }
     
     /**
-     * Restore the factory defaults (`REQ_FACTORY_RESET`, deferred on the
-     * device). **Writes flash.** Waits 250 ms, then re-reads everything
-     * ([`DspiCore::fetch_all`]); the baseline becomes the reset state.
-     * Runs under the Link device lock.
+     * Restore the factory defaults on the live state (stored presets stay),
+     * then read everything again as [`DspiCore::fetch_all`] does; the result
+     * is the baseline. Runs under the device lock.
      *
-     * Errors: [`DspiError::Refused`] with the `FLASH_*` status;
-     * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
-     * [`DspiError::Locked`] / [`DspiError::Denied`]; the transport's typed
-     * error when the transfer or the re-read fails.
+     * Errors: `Refused` with the device's `FLASH_*` status;
+     * [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
+     * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; a transfer
+     * error, of the reset or the re-read.
      */
 open func factoryReset()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_factory_reset(self.uniffiClonePointer(),$0
@@ -5196,12 +5124,10 @@ open func getInputSourceName(source: UInt8)throws  -> String  {
 }
     
     /**
-     * Read the preset directory (occupied slots, startup mode and slot,
-     * active slot, the output-config and master-volume persistence modes)
-     * into the mirror and return it. Works on a read-only connection.
+     * Read the preset directory (also into the mirror: occupied slots,
+     * startup mode, default and active slot, both persistence modes).
      *
-     * Errors: [`DspiError::Disconnected`]; the transport's typed error when
-     * the read fails or the reply is shorter than 5 bytes.
+     * Errors: [`DspiError::Disconnected`]; a transfer error or a short reply.
      */
 open func getPresetDirectory()throws  -> PresetDirectory  {
     return try  FfiConverterTypePresetDirectory_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
@@ -5211,12 +5137,11 @@ open func getPresetDirectory()throws  -> PresetDirectory  {
 }
     
     /**
-     * Read the name of preset `slot` (0..10) into the mirror and return it.
-     * Works on a read-only connection.
+     * Read preset `slot`'s name from the device (also into the mirror). An
+     * empty slot has no name: the device stalls, and that is the error.
      *
-     * Errors: [`DspiError::InvalidArgument`] for a slot past 9;
-     * [`DspiError::Disconnected`]; the transport's typed error when the
-     * read fails (an empty slot stalls; its mirrored name is cleared).
+     * Errors: `Refused` with `PRESET_ERR_INVALID_SLOT` for a slot past the
+     * last (nothing is sent); [`DspiError::Disconnected`]; a transfer error.
      */
 open func getPresetName(slot: UInt8)throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
@@ -5428,13 +5353,12 @@ open func linkStatus() -> LinkStatus  {
 }
     
     /**
-     * Revert to saved: reload the active preset through the deferred,
-     * S/PDIF-safe preset load ([`DspiCore::load_preset`] of the mirror's
-     * `active_preset_slot`).
+     * Revert to saved: load the active slot again ([`DspiCore::load_preset`],
+     * the device's deferred load, safe on every input).
      *
-     * Errors: as [`DspiCore::load_preset`], except that a refusal is
-     * reported as [`DspiError::Refused`] with a `FLASH_*` status:
-     * `FLASH_ERR_CRC` for a corrupt slot, `FLASH_ERR_WRITE` otherwise.
+     * Errors: as `load_preset`, but a refusal carries a `FLASH_*` code:
+     * `FLASH_ERR_CRC` for a slot that failed its check, `FLASH_ERR_WRITE`
+     * for any other.
      */
 open func loadParams()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_load_params(self.uniffiClonePointer(),$0
@@ -5443,25 +5367,16 @@ open func loadParams()throws   {try rustCallWithError(FfiConverterTypeDspiError_
 }
     
     /**
-     * Load preset `slot` (0..10) and re-read every parameter into the
-     * mirror.
+     * Load preset `slot`, wait until the device runs it, then read the
+     * image and the directory again; the loaded state becomes the baseline.
+     * Runs under the device lock.
      *
-     * Sends `REQ_PRESET_LOAD`, waits up to 1.5 s for the device to report
-     * the slot active, then re-reads the bulk image ([`DspiCore::refresh_params`]) and the
-     * directory. The baseline becomes the loaded state. Runs under the Link
-     * device lock. The device also notifies `PRESET_LOADED` and then
-     * `BULK_INVALIDATED` (source `PRESET`); `process_notifications`
-     * re-reads on those as on any foreign change, and an edit made between
-     * this call and that notification stays unsaved (WP CG33).
+     * The active slot is the directory's after the re-read. When the
+     * directory cannot be read, it is `slot` if the device confirmed the
+     * load, and stays as it was otherwise. A load that is never confirmed
+     * (an empty slot changes nothing) still re-reads and succeeds.
      *
-     * Errors: [`DspiError::Refused`] with the `PRESET_*` status;
-     * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
-     * [`DspiError::Locked`] / [`DspiError::Denied`];
-     * [`DspiError::Transfer`] when the device does not confirm the load in
-     * time (a load that failed on the device looks the same: the image is
-     * not re-read, the active slot follows the directory if it answers, and
-     * the baseline stays); the transport's typed error when a transfer, or
-     * the re-read, fails.
+     * Errors: as [`DspiCore::save_preset`], and the re-read's.
      */
 open func loadPreset(slot: UInt8)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_load_preset(self.uniffiClonePointer(),
@@ -5658,15 +5573,9 @@ open func preampMaxDb() -> Float  {
 }
     
     /**
-     * What differs from the baseline (the active preset), one sentence
-     * each, worded as the macOS Console words it ("Preamp L: 0.0 dB →
-     * -3.0 dB", "2 bands changed on Output 1"). The master volume counts
-     * only in WITH_PRESET master-volume mode, the hardware wiring and the
-     * limiters only in WITH_PRESET output-config mode, both judged by the
-     * live mode. The user volume and the DAC mute are no preset change, as
-     * on macOS. An input source goes by the user's name when it has one,
-     * from the connection's cache, so this does no I/O. Empty before any
-     * baseline. Never fails.
+     * What differs from the active preset, one sentence each, in the Mac
+     * console's words and order. Empty without a device or a baseline. No
+     * I/O: input source titles come from the names the core keeps.
      */
 open func presetChanges() -> [String]  {
     return try!  FfiConverterSequenceString.lift(try! rustCall() {
@@ -5676,9 +5585,8 @@ open func presetChanges() -> [String]  {
 }
     
     /**
-     * Whether the live state differs from the baseline in anything a
-     * preset holds: exactly when [`DspiCore::preset_changes`] is not
-     * empty. False before any baseline. Never fails.
+     * Whether the live state differs from the active preset: exactly when
+     * [`DspiCore::preset_changes`] has something to say. No I/O.
      */
 open func presetDirty() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
@@ -5966,14 +5874,13 @@ open func saveOutputConfig()throws   {try rustCallWithError(FfiConverterTypeDspi
 }
     
     /**
-     * Save the live state to the active preset slot (`REQ_SAVE_PARAMS`,
-     * deferred on the device). **Writes flash.** The baseline becomes the
-     * live state. Runs under the Link device lock.
+     * Save the live state to the active slot (`REQ_SAVE_PARAMS`), under the
+     * device lock; the live state becomes the baseline.
      *
-     * Errors: [`DspiError::Refused`] with the `FLASH_*` status;
-     * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
-     * [`DspiError::Locked`] / [`DspiError::Denied`]; the transport's typed
-     * error when the transfer fails.
+     * Errors: `Refused` with the device's `FLASH_*` status;
+     * [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
+     * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; a transfer
+     * error.
      */
 open func saveParams()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_save_params(self.uniffiClonePointer(),$0
@@ -5982,22 +5889,18 @@ open func saveParams()throws   {try rustCallWithError(FfiConverterTypeDspiError_
 }
     
     /**
-     * Save the live state to preset `slot` (0..10) and make it the active
-     * slot. **Writes flash.**
+     * Save the live state to `slot` (0..10) and wait until the device has
+     * written it (it names the slot active). Runs under the device lock.
+     * The slot becomes the active one and the live state its baseline.
      *
-     * Sends `REQ_PRESET_SAVE`, then waits up to 1.5 s for the deferred save
-     * to show in the directory. The mirror's active slot and occupied mask
-     * follow, and the baseline becomes the live state (it now matches the
-     * active preset). Runs under the Link device lock.
+     * Without that confirmation the mirror only takes the directory as the
+     * device reports it, the baseline stays, and the call fails.
      *
-     * Errors: [`DspiError::Refused`] with the `PRESET_*` status
-     * (`PRESET_ERR_INVALID_SLOT` for a slot past 9, without sending);
-     * [`DspiError::ReadOnly`] on a read-only connection;
-     * [`DspiError::Disconnected`]; [`DspiError::Locked`] /
-     * [`DspiError::Denied`] when the Link hub refuses its lock;
-     * [`DspiError::Transfer`] when the device does not confirm in time (the
-     * mirror then follows the directory, if it answers, and the baseline
-     * stays); the transport's typed error when a transfer fails.
+     * Errors: [`DspiError::Refused`] with `PRESET_ERR_INVALID_SLOT` for a
+     * slot past the last (nothing is sent) or with the device's `PRESET_*`
+     * status; [`DspiError::Transfer`] when the save was not confirmed;
+     * [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
+     * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`].
      */
 open func savePreset(slot: UInt8)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_save_preset(self.uniffiClonePointer(),
@@ -7012,13 +6915,12 @@ open func setPreamp(db: Float)throws   {try rustCallWithError(FfiConverterTypeDs
 }
     
     /**
-     * Name preset `slot` (0..10): at most 31 bytes of UTF-8, cut at a
-     * character boundary (and at an embedded NUL); an empty name clears it.
-     * The mirror's `preset_names[slot]` follows.
+     * Name preset `slot`: at most 31 bytes of `name` (cut at a character
+     * boundary), sent NUL-terminated. The mirror takes the name as sent.
      *
-     * Errors: [`DspiError::InvalidArgument`] for a slot past 9;
-     * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; the transport's
-     * typed error when the transfer fails.
+     * Errors: `Refused` with `PRESET_ERR_INVALID_SLOT` for a slot past the
+     * last (nothing is sent); [`DspiError::ReadOnly`];
+     * [`DspiError::Disconnected`]; a transfer error.
      */
 open func setPresetName(slot: UInt8, name: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_set_preset_name(self.uniffiClonePointer(),
@@ -7029,13 +6931,13 @@ open func setPresetName(slot: UInt8, name: String)throws   {try rustCallWithErro
 }
     
     /**
-     * Choose the preset loaded at boot: `mode` 0 = load `default_slot`,
-     * 1 = the last active slot. The mirror follows.
+     * What the device loads at boot: `mode` 0 (`PRESET_STARTUP_SPECIFIED`)
+     * loads `default_slot`, 1 (`PRESET_STARTUP_LAST_ACTIVE`) the slot last
+     * active. The mirror takes both.
      *
-     * Errors: [`DspiError::InvalidArgument`] for a mode other than 0 or 1
-     * or a slot past 9; [`DspiError::ReadOnly`];
-     * [`DspiError::Disconnected`]; the transport's typed error when the
-     * transfer fails.
+     * Errors: [`DspiError::InvalidArgument`] for another mode or a slot
+     * past the last (nothing is sent); [`DspiError::ReadOnly`];
+     * [`DspiError::Disconnected`]; a transfer error.
      */
 open func setPresetStartup(mode: UInt8, defaultSlot: UInt8)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_set_preset_startup(self.uniffiClonePointer(),
@@ -22383,7 +22285,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_cached_input_source_name() != 3222) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_capture_baseline() != 12643) {
+    if (uniffi_dspi_core_checksum_method_dspicore_capture_baseline() != 36713) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_check_core1_conflict() != 29922) {
@@ -22404,7 +22306,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_connection_generation() != 50111) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_copy_preset() != 46555) {
+    if (uniffi_dspi_core_checksum_method_dspicore_copy_preset() != 9367) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_core1_conflict_reason() != 6255) {
@@ -22485,7 +22387,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_cs_status_text() != 13025) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_delete_preset() != 21426) {
+    if (uniffi_dspi_core_checksum_method_dspicore_delete_preset() != 218) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_demo_latency_sets() != 20471) {
@@ -22500,10 +22402,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_demo_rename_elsewhere() != 20262) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_device_lock_acquire() != 11345) {
+    if (uniffi_dspi_core_checksum_method_dspicore_device_lock_acquire() != 28409) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_device_lock_release() != 21651) {
+    if (uniffi_dspi_core_checksum_method_dspicore_device_lock_release() != 10916) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_disconnect() != 29066) {
@@ -22515,7 +22417,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_ext_status() != 10163) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_factory_reset() != 24049) {
+    if (uniffi_dspi_core_checksum_method_dspicore_factory_reset() != 10591) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_adat_out_status() != 51824) {
@@ -22623,10 +22525,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_get_input_source_name() != 5089) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_get_preset_directory() != 5351) {
+    if (uniffi_dspi_core_checksum_method_dspicore_get_preset_directory() != 65234) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_get_preset_name() != 60986) {
+    if (uniffi_dspi_core_checksum_method_dspicore_get_preset_name() != 34340) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_get_state() != 32151) {
@@ -22665,10 +22567,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_link_status() != 7876) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_load_params() != 50295) {
+    if (uniffi_dspi_core_checksum_method_dspicore_load_params() != 46764) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_load_preset() != 51595) {
+    if (uniffi_dspi_core_checksum_method_dspicore_load_preset() != 4331) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_max_delay_ms() != 14810) {
@@ -22710,10 +22612,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_preamp_max_db() != 3403) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_preset_changes() != 43967) {
+    if (uniffi_dspi_core_checksum_method_dspicore_preset_changes() != 34020) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_preset_dirty() != 19546) {
+    if (uniffi_dspi_core_checksum_method_dspicore_preset_dirty() != 1680) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_process_notifications() != 22812) {
@@ -22758,10 +22660,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_save_output_config() != 27456) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_save_params() != 39911) {
+    if (uniffi_dspi_core_checksum_method_dspicore_save_params() != 8876) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_save_preset() != 4566) {
+    if (uniffi_dspi_core_checksum_method_dspicore_save_preset() != 49987) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_scan_devices() != 33045) {
@@ -22953,10 +22855,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_set_preamp() != 11019) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_set_preset_name() != 13608) {
+    if (uniffi_dspi_core_checksum_method_dspicore_set_preset_name() != 49090) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_set_preset_startup() != 35455) {
+    if (uniffi_dspi_core_checksum_method_dspicore_set_preset_startup() != 15733) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_psybass_enabled() != 33505) {
