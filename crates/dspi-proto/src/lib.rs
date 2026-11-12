@@ -14,6 +14,8 @@ pub mod generated {
     include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 }
 
+// -- WP BULKFIX --
+pub mod bulk_gain;
 pub mod channel;
 pub mod dsp;
 pub mod enums;

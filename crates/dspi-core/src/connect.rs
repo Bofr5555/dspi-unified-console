@@ -916,12 +916,24 @@ pub(crate) fn apply_all_params_locked(inner: &mut Inner) -> Result<()> {
     check_apply_allowed(inner)?;
     let image = state::encode_bulk(&inner.state);
     let mut w = inner.writable_conn()?;
+    // -- WP BULKFIX --
+    let repair = bulk_gain_repair(w.conn(), &image);
 
     w.conn().echo.bulk_write_started(Instant::now());
-    let sent = write_image(&mut w, &image);
+    // -- WP BULKFIX --
+    let sent = match &repair {
+        None => write_image(&mut w, &image),
+        Some(r) => write_image(&mut w, &r.muted).and_then(|()| {
+            dspi_session::bulk_gain::repair(w.conn().transport(), r).map_err(DspiError::from)
+        }),
+    };
     w.conn()
         .echo
         .bulk_write_finished(Instant::now(), sent.is_ok());
+    if let (Err(_), Some(r)) = (&sent, &repair) {
+        // The device may hold the muted image: show its outputs muted.
+        let _ = state::decode_bulk(&r.muted, &mut inner.state);
+    }
     sent?;
 
     // Cannot fail: `encode_bulk` always yields a BULK_SIZE V32 image.
@@ -929,6 +941,29 @@ pub(crate) fn apply_all_params_locked(inner: &mut Inner) -> Result<()> {
     let _ = state::decode_bulk(&image, &mut inner.state);
     Ok(())
 }
+
+// -- WP BULKFIX --
+/// The repair a bulk write of `image` needs on this connection: `None` when
+/// the firmware reports the bulk dB fix (`EXT_FIRMWARE_FIXES`, read only when
+/// `EXT_LIST` named it) or the image is not one the firmware applies.
+/// Firmware v1.1.6 and every fork build without FWX's FW2 convert a bulk
+/// SET's gains with a Taylor series that plays deep cuts loud
+/// ([`dspi_proto::bulk_gain`]).
+fn bulk_gain_repair(
+    conn: &mut Connection,
+    image: &[u8],
+) -> Option<dspi_proto::bulk_gain::GainRepair> {
+    let supported = conn.ext.supported.clone();
+    if dspi_session::bulk_gain::fix_reported_in(conn.transport(), &supported) {
+        return None;
+    }
+    dspi_proto::bulk_gain::plan(image)
+}
+
+// -- WP BULKFIX --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_bulkfix;
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
