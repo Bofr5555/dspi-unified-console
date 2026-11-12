@@ -285,7 +285,20 @@ void statsSection(SmokeDriver &d) {
                            : ring.size() == 7 && qp9Stats.shows("StatsWindow.ringHeading")
                                  && ring.first().toMap().value(QStringLiteral("text")).toString().contains(QStringLiteral(" frames (")));
     d.check("qp9: clock diagnostics only when built", stats->clockDiagnostics().isEmpty() == !qp9Stats.shows("StatsWindow.clockDiagnostics"));
-    d.check("qp9: no USB error section without the export", stats->usbErrors().isEmpty() && !qp9Stats.shows("StatsWindow.usbErrors"));
+    // -- WP SYNC1 -- the demo counts no USB errors: the section stays hidden
+    d.check("qp9: no USB error section while the device counts none", stats->usbErrors().isEmpty() && !qp9Stats.shows("StatsWindow.usbErrors"));
+    {
+        const QVariantMap counted{ { QStringLiteral("ok"), true }, { QStringLiteral("total"), 3 }, { QStringLiteral("crc"), 2 },
+                                   { QStringLiteral("dataSeq"), 1 } };
+        const QVariantList rows = StatsController::usbErrorRows(counted);
+        d.check("SYNC1: the USB error rows once the device counts one",
+                rows.size() == 6 && rows.first().toMap().value(QStringLiteral("text")).toString() == QLatin1String("3")
+                    && rows.at(1).toMap().value(QStringLiteral("text")).toString() == QLatin1String("2")
+                    && rows.last().toMap().value(QStringLiteral("text")).toString() == QLatin1String("1"));
+        QVariantMap failed = counted;
+        failed.insert(QStringLiteral("ok"), false);
+        d.check("SYNC1: no USB error rows from a failed read", StatsController::usbErrorRows(failed).isEmpty());
+    }
     d.check("qp9: the connection footer", qp9Stats.shownName("StatsWindow.connection") == QLatin1String("Connected"));
     d.spin(400);
     const QVariantList rows = stats->fillRows();

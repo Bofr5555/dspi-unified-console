@@ -130,6 +130,7 @@ StatsController::Slow StatsController::readSlow(FfiCore *c) {
     const QJsonObject diag = json(readSized([c](char *b, uint32_t n) { return dspi_fetch_clock_diag(c, b, n); }));
     if (diag.value(QLatin1String("ok")).toBool() && diag.value(QLatin1String("available")).toBool())
         s.clockDiag = diag.value(QLatin1String("fields")).toArray().toVariantList();
+    s.usb = json(readSized([c](char *b, uint32_t n) { return dspi_fetch_usb_error_stats(c, b, n); })).toVariantMap();
     return s;
 }
 
@@ -441,6 +442,19 @@ QVariantList StatsController::adatOutput() const {
         row(tr(QT_TRANSLATE_NOOP("StatsController", "Data Pin")), QStringLiteral("GPIO %1").arg(s.adatPin)),
         row(tr(QT_TRANSLATE_NOOP("StatsController", "Resync Count")), QString::number(s.adatResync)),
         row(tr(QT_TRANSLATE_NOOP("StatsController", "Slip Count")), QString::number(s.adatSlip)),
+    };
+}
+
+QVariantList StatsController::usbErrorRows(const QVariantMap &reply) {
+    if (!reply.value(QStringLiteral("ok")).toBool() || reply.value(QStringLiteral("total")).toUInt() == 0) return {};
+    const auto count = [&reply](const char *key) { return QString::number(reply.value(QLatin1String(key)).toUInt()); };
+    return {
+        row(tr(QT_TRANSLATE_NOOP("StatsController", "Total")), count("total"), QStringLiteral("bad")),
+        row(tr(QT_TRANSLATE_NOOP("StatsController", "CRC Errors")), count("crc")),
+        row(tr(QT_TRANSLATE_NOOP("StatsController", "Bit Stuffing Errors")), count("bitstuff")),
+        row(tr(QT_TRANSLATE_NOOP("StatsController", "Receive Overflows")), count("rxOverflow")),
+        row(tr(QT_TRANSLATE_NOOP("StatsController", "Receive Timeouts")), count("rxTimeout")),
+        row(tr(QT_TRANSLATE_NOOP("StatsController", "Data Sequence Errors")), count("dataSeq")),
     };
 }
 

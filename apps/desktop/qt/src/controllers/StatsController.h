@@ -30,8 +30,8 @@ class QJSEngine;
 // report it, the S/PDIF input without the input-source probe, LG Sound Sync
 // until a read answers (then it stays), ADAT on RP2350 only while its read
 // answers, the I2S slave clock only in slave mode, clock diagnostics only on
-// firmware built with them. USB error statistics have no export in the core
-// yet; `usbErrors` is the seam for them (empty: the section stays hidden).
+// firmware built with them, USB errors (dspi_fetch_usb_error_stats) only once
+// the device has counted one (current firmware reports zeros).
 //
 // Everything QML shows is prepared here as text (`*.text` keys) with its
 // colour band ("good", "warn", "bad", "" for none).
@@ -92,7 +92,7 @@ public:
     QVariantList adatOutput() const;
     QVariantList i2sSlave() const;
     QVariantList clockDiagnostics() const { return m_clockDiag; }
-    QVariantList usbErrors() const { return {}; }
+    QVariantList usbErrors() const { return usbErrorRows(m_slow.usb); }
     bool streaming() const { return m_streaming; }
     bool pdmActive() const { return m_pdmActive; }
     QVariantList fillRows() const;
@@ -110,6 +110,9 @@ public:
     Q_INVOKABLE static QString ringBand(double pct, int targetFrames, int batchFrames);
     static QString gapText(uint32_t us);
     static QString latencyText(uint32_t us);
+    // The USB error rows from dspi_fetch_usb_error_stats' reply; none while it
+    // failed or counts no error
+    static QVariantList usbErrorRows(const QVariantMap &reply);
 
     // For tests
     Poller::Id slowPoll() const { return m_slowPoll; }
@@ -141,6 +144,7 @@ public:
         uint8_t i2sState = 0, i2sMode = 0, i2sLock = 0, i2sLoss = 0;
         uint32_t i2sDetected = 0, i2sMeasured = 0;
         QVariantList clockDiag;
+        QVariantMap usb;
     };
     // One 60 ms read, worker side
     struct Fast {
