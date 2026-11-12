@@ -62,6 +62,35 @@ object HomeModel {
     /** `DSPiDevice.displayName`: "DSPi (last 8 of serial)". */
     fun deviceDisplayName(serial: String): String = "DSPi (${serial.takeLast(8)})"
 
+    // -- WP UIM1 --
+    /** A core's load (%) above which the health line says so (the CPU meter turns red there too). */
+    const val CPU_HIGH = 90
+
+    /** How bad the health line's state is: its dot's colour. */
+    enum class Health { OFFLINE, OK, WARNING, PROBLEM }
+
+    /** The phone front's health line: its words and its state. */
+    data class HealthLine(val text: String, val health: Health)
+
+    /**
+     * WP UIM1: one line on the phone's Home that says whether anything needs a look: no device,
+     * outputs clipping (the core's sticky clip flags, named by their OUTn tags), limiters holding
+     * the level down, a core above [CPU_HIGH] %; otherwise all is well.
+     */
+    fun healthLine(connected: Boolean, clipping: List<String>, limiting: List<String>, cpu0: Int, cpu1: Int): HealthLine {
+        if (!connected) return HealthLine("Not connected", Health.OFFLINE)
+        val parts = buildList {
+            if (clipping.isNotEmpty()) add("Clipping: ${clipping.joinToString(", ")}")
+            if (limiting.isNotEmpty()) add("Limiting: ${limiting.joinToString(", ")}")
+            if (cpu0 > CPU_HIGH || cpu1 > CPU_HIGH) add("CPU load high")
+        }
+        return when {
+            parts.isEmpty() -> HealthLine("All outputs OK", Health.OK)
+            clipping.isNotEmpty() -> HealthLine(parts.joinToString(" · "), Health.PROBLEM)
+            else -> HealthLine(parts.joinToString(" · "), Health.WARNING)
+        }
+    }
+
     /** `InputLinkAlerts.showMismatchAlert` title. */
     fun linkMismatchTitle(pageInput: Int, partnerInput: Int): String = "Inputs ${pageInput + 1} and ${partnerInput + 1} don't match"
 
