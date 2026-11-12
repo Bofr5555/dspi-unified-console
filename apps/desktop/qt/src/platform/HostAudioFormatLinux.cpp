@@ -12,9 +12,8 @@ namespace HostAudio {
 namespace {
 
 QString readText(const QString &path) {
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) return {};
-    return QString::fromUtf8(f.readAll()).trimmed();
+    QFile file(path);
+    return file.open(QIODevice::ReadOnly) ? QString::fromUtf8(file.readAll()).trimmed() : QString();
 }
 
 // ALSA: each sound card of a USB device. The serial is in the USB device's
