@@ -70,7 +70,7 @@ CsCard {
                 text: qsTr("%1%").arg(Math.round(level.value))
                 font: Theme.fontMono
                 color: Theme.text
-                horizontalAlignment: Text.AlignRight
+                horizontalAlignment: Qt.AlignRight
                 Layout.preferredWidth: 38
             }
         }

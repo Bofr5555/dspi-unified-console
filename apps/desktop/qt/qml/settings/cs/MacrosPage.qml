@@ -51,7 +51,7 @@ SettingsPage {
             iconColor: rec.running === true ? Theme.success : Theme.accentText
             expanded: page.isOpen(modelData)
             onExpandedChanged: if (expanded !== page.isOpen(modelData)) page.setOpen(modelData, expanded)
-            trailing: [
+            headerExtras: [
                 IconButton {
                     objectName: card.objectName + ".run"
                     iconName: card.rec.running === true ? "square" : "play"
@@ -78,7 +78,7 @@ SettingsPage {
                             text: stepItem.index + 1
                             font: Theme.fontMono
                             color: Theme.textMuted
-                            horizontalAlignment: Text.AlignRight
+                            horizontalAlignment: Qt.AlignRight
                             Layout.preferredWidth: 16
                         }
                         Text {
@@ -128,7 +128,7 @@ SettingsPage {
                     enabled: CsController.writable && (card.rec.stepCount || 0) < (card.rec.maxSteps || 0)
                     onClicked: CsController.addStep(card.modelData)
                 }
-                Item { Layout.fillWidth: true }
+                Item { implicitHeight: 1; Layout.fillWidth: true }
                 Text {
                     visible: (card.rec.stepCount || 0) >= (card.rec.maxSteps || 0)
                     text: qsTr("A macro holds up to %1 steps.").arg(card.rec.maxSteps || 0)
@@ -149,7 +149,7 @@ SettingsPage {
             enabled: CsController.revision >= 0 && CsController.canAdd("macro")
             onClicked: CsController.addMacro()
         }
-        Item { Layout.fillWidth: true }
+        Item { implicitHeight: 1; Layout.fillWidth: true }
         Text {
             visible: CsController.revision >= 0 && !CsController.canAdd("macro") && CsController.writable
             text: qsTr("All %1 macro slots are in use.").arg(CsController.macroCount)

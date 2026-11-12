@@ -23,9 +23,9 @@ Rectangle {
     property bool ready: true
     property string hint
     property bool removable: true
-    default property alias body: bodyColumn.data
+    default property alias editor: bodyColumn.data
     // Beside the remove button (a macro's run button)
-    property alias trailing: trailingRow.data
+    property alias headerExtras: trailingRow.data
     // At the start of the Apply row (the receiver's Add Remote Button)
     property alias applyLeading: applyRow.leading
     readonly property string base: objectName

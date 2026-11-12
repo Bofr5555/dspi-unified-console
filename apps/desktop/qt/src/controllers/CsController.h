@@ -43,26 +43,26 @@ class CsController : public QObject, public SaveParticipant {
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
-    Q_PROPERTY(int revision READ revision NOTIFY changed)
-    Q_PROPERTY(bool connected READ connected NOTIFY changed)
-    Q_PROPERTY(bool writable READ writable NOTIFY changed)
+    Q_PROPERTY(int revision READ revision NOTIFY updated)
+    Q_PROPERTY(bool connected READ connected NOTIFY updated)
+    Q_PROPERTY(bool writable READ writable NOTIFY updated)
     // The device's tables have been read (false while reading, or without CS)
-    Q_PROPERTY(bool loaded READ loaded NOTIFY changed)
-    Q_PROPERTY(bool supported READ supported NOTIFY changed)
-    Q_PROPERTY(bool busy READ busy NOTIFY changed)
+    Q_PROPERTY(bool loaded READ loaded NOTIFY updated)
+    Q_PROPERTY(bool supported READ supported NOTIFY updated)
+    Q_PROPERTY(bool busy READ busy NOTIFY updated)
     // The device holds changes not saved to flash
-    Q_PROPERTY(bool dirty READ dirty NOTIFY changed)
-    Q_PROPERTY(int capsVersion READ capsVersion NOTIFY changed)
-    Q_PROPERTY(int slotCount READ slotCount NOTIFY changed)
-    Q_PROPERTY(int groupCount READ groupCount NOTIFY changed)
-    Q_PROPERTY(int macroCount READ macroCount NOTIFY changed)
-    Q_PROPERTY(int maxSteps READ maxSteps NOTIFY changed)
-    Q_PROPERTY(int irCount READ irCount NOTIFY changed)
+    Q_PROPERTY(bool dirty READ dirty NOTIFY updated)
+    Q_PROPERTY(int capsVersion READ capsVersion NOTIFY updated)
+    Q_PROPERTY(int slotCount READ slotCount NOTIFY updated)
+    Q_PROPERTY(int groupCount READ groupCount NOTIFY updated)
+    Q_PROPERTY(int macroCount READ macroCount NOTIFY updated)
+    Q_PROPERTY(int maxSteps READ maxSteps NOTIFY updated)
+    Q_PROPERTY(int irCount READ irCount NOTIFY updated)
     // Why the last fetch failed, "" when it did not
-    Q_PROPERTY(QString loadError READ loadError NOTIFY changed)
+    Q_PROPERTY(QString loadError READ loadError NOTIFY updated)
     // The remote button a learn is waiting for, -1 for none, and its line
-    Q_PROPERTY(int learningSub READ learningSub NOTIFY changed)
-    Q_PROPERTY(QString learnMessage READ learnMessage NOTIFY changed)
+    Q_PROPERTY(int learningSub READ learningSub NOTIFY updated)
+    Q_PROPERTY(QString learnMessage READ learnMessage NOTIFY updated)
 public:
     CsController(const AppContext &ctx, QObject *parent);
     ~CsController() override;
@@ -72,7 +72,7 @@ public:
     enum Type { None = 0, Button, Switch, Pot, Encoder, Led, LedPwm, Ir, Display, AuxOut, AuxPwm };
     Q_ENUM(Type)
 
-    int revision() const { return m_revision; }
+    int revision() const { return m_rev; }
     bool connected() const;
     bool writable() const;
     bool loaded() const { return !m_snap.isEmpty() && supported(); }
@@ -151,7 +151,7 @@ public:
     Q_INVOKABLE void watchDisplay(bool on);
 
 signals:
-    void changed();
+    void updated();
     // A card was added; its page opens it
     void added(const QString &key);
 
@@ -230,7 +230,7 @@ private:
     QString m_serial;
     uint64_t m_generation = 0;
     int m_epoch = 0;
-    int m_revision = 0;
+    int m_rev = 0;
     int m_ops = 0;
     bool m_fetching = false;
     bool m_joined = false;

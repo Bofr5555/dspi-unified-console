@@ -466,8 +466,8 @@ void CsController::describeOne(const QString &key) {
 }
 
 void CsController::bump() {
-    ++m_revision;
-    emit changed();
+    ++m_rev;
+    emit updated();
     const bool nowDirty = dirty();
     if (m_joined && nowDirty != m_wasDirty)
         if (auto *hw = Registrar::instance<HardwareController>()) hw->participantChanged();

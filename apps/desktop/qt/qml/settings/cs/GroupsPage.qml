@@ -98,7 +98,7 @@ SettingsPage {
             enabled: CsController.revision >= 0 && CsController.canAdd("group")
             onClicked: CsController.addGroup()
         }
-        Item { Layout.fillWidth: true }
+        Item { implicitHeight: 1; Layout.fillWidth: true }
         Text {
             visible: CsController.revision >= 0 && !CsController.canAdd("group") && CsController.writable
             text: qsTr("All %1 group slots are in use.").arg(CsController.groupCount)

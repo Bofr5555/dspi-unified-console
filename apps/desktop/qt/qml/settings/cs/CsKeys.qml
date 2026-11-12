@@ -14,7 +14,7 @@ QtObject {
     }
     property Connections watch: Connections {
         target: CsController
-        function onChanged() { keys.sync() }
+        function onUpdated() { keys.sync() }
     }
     onPageChanged: sync()
     Component.onCompleted: sync()

@@ -56,7 +56,7 @@ SettingsPage {
             text: qsTr("Add Output")
             types: CsController.revision < 0 ? [] : CsController.addableTypes("aux")
         }
-        Item { Layout.fillWidth: true }
+        Item { implicitHeight: 1; Layout.fillWidth: true }
         Text {
             visible: CsController.revision >= 0 && !CsController.canAdd("binding") && CsController.writable
             text: qsTr("All %1 control slots are in use.").arg(CsController.slotCount)

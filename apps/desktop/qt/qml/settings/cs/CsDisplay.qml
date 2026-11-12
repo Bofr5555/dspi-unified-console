@@ -58,7 +58,7 @@ ColumnLayout {
             Text {
                 Layout.alignment: Qt.AlignTop
                 Layout.preferredWidth: 18
-                horizontalAlignment: Text.AlignRight
+                horizontalAlignment: Qt.AlignRight
                 text: pageRow.modelData.index + 1
                 font: Qt.font({ family: Theme.fontMono.family, pixelSize: Theme.fontBody.pixelSize,
                                 weight: pageRow.modelData.shown ? Font.Bold : Font.Normal })
@@ -91,7 +91,7 @@ ColumnLayout {
             enabled: section.disp.canAddPage === true
             onClicked: CsController.addPage()
         }
-        Item { Layout.fillWidth: true }
+        Item { implicitHeight: 1; Layout.fillWidth: true }
         Text {
             visible: section.disp.canAddPage !== true && (section.disp.pages || []).length > 0
             text: qsTr("All %1 page slots are in use.").arg(section.disp.maxPages || 0)

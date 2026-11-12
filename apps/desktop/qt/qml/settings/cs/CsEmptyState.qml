@@ -53,7 +53,7 @@ ColumnLayout {
             font: Theme.fontSmall
             color: Theme.textMuted
             wrapMode: Text.Wrap
-            horizontalAlignment: Text.AlignHCenter
+            horizontalAlignment: Qt.AlignHCenter
         }
     }
     Item {
