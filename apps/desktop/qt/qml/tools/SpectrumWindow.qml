@@ -23,7 +23,7 @@ ToolWindow {
     property int mode: 0
     // Channels hidden here, as "tap:channel"
     property var hidden: ({})
-    readonly property bool available: RtaController.supported && (RtaController.showGraph || RtaController.showBars)
+    readonly property bool available: RtaController.available && (RtaController.showGraph || RtaController.showBars)
                                       && (RtaController.ownChannels.length > 0 || RtaController.following)
     readonly property var drawn: RtaController.drawnChannels
     readonly property var visibleChannels: drawn.filter(c => !hidden[RtaController.drawnTap + ":" + c])
@@ -90,7 +90,7 @@ ToolWindow {
 
         Notice {
             objectName: "SpectrumWindow.unavailable"
-            visible: !RtaController.supported
+            visible: !RtaController.available
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.margins: 40
@@ -102,7 +102,7 @@ ToolWindow {
 
         // ---- Header ----
         RowLayout {
-            visible: RtaController.supported
+            visible: RtaController.available
             Layout.fillWidth: true
             Layout.preferredHeight: 32
             Layout.leftMargin: Theme.spacing
@@ -202,12 +202,12 @@ ToolWindow {
                 AppTabButton { text: qsTr("Both"); onClicked: window.mode = 2 }
             }
         }
-        Rectangle { visible: RtaController.supported; Layout.fillWidth: true; implicitHeight: 1; color: Theme.separator }
+        Rectangle { visible: RtaController.available; Layout.fillWidth: true; implicitHeight: 1; color: Theme.separator }
 
         // ---- Content ----
         Notice {
             objectName: "SpectrumWindow.hidden"
-            visible: RtaController.supported && !window.available
+            visible: RtaController.available && !window.available
             Layout.fillWidth: true
             Layout.fillHeight: true
             icon: "eye-off"
@@ -217,7 +217,7 @@ ToolWindow {
                      : qsTr("This window shows the spectrum of the open channel page. Choose channels and switch the spectrum on from the gear on the response graph.")
         }
         Rectangle {
-            visible: RtaController.supported && window.available
+            visible: RtaController.available && window.available
             Layout.fillWidth: true
             Layout.fillHeight: true
             color: Theme.panel
@@ -315,10 +315,10 @@ ToolWindow {
         }
 
         // ---- Status bar ----
-        Rectangle { visible: RtaController.supported; Layout.fillWidth: true; implicitHeight: 1; color: Theme.separator }
+        Rectangle { visible: RtaController.available; Layout.fillWidth: true; implicitHeight: 1; color: Theme.separator }
         RowLayout {
             objectName: "SpectrumWindow.status"
-            visible: RtaController.supported
+            visible: RtaController.available
             Layout.fillWidth: true
             Layout.leftMargin: Theme.spacing
             Layout.rightMargin: Theme.spacing
@@ -334,12 +334,12 @@ ToolWindow {
                     width: 6
                     height: 6
                     radius: 3
-                    color: RtaController.running ? Theme.success : Qt.alpha(Theme.textMuted, 0.5)
+                    color: RtaController.analysing ? Theme.success : Qt.alpha(Theme.textMuted, 0.5)
                 }
                 Text {
                     objectName: "SpectrumWindow.running"
                     property string shownName: text
-                    text: RtaController.running ? qsTr("Running") : qsTr("Idle")
+                    text: RtaController.analysing ? qsTr("Running") : qsTr("Idle")
                     font: parent.parent.mono
                     color: Theme.textMuted
                 }
@@ -361,13 +361,13 @@ ToolWindow {
             // The first that applies: refused, following, the low bands, the range
             Text {
                 objectName: "SpectrumWindow.rejected"
-                visible: RtaController.configRejected
+                visible: RtaController.refused
                 text: qsTr("Device refused this configuration")
                 font: parent.mono
                 color: Theme.warning
             }
             RowLayout {
-                visible: !RtaController.configRejected && RtaController.following
+                visible: !RtaController.refused && RtaController.following
                 spacing: 6
                 Icon {
                     name: "users"
@@ -389,7 +389,7 @@ ToolWindow {
             }
             Text {
                 objectName: "SpectrumWindow.lowBands"
-                visible: !RtaController.configRejected && !RtaController.following && window.available && window.mode !== 0
+                visible: !RtaController.refused && !RtaController.following && window.available && window.mode !== 0
                          && RtaController.lowBandText !== ""
                 text: RtaController.lowBandText
                 font: parent.mono
@@ -397,7 +397,7 @@ ToolWindow {
             }
             Text {
                 objectName: "SpectrumWindow.range"
-                visible: !RtaController.configRejected && !RtaController.following
+                visible: !RtaController.refused && !RtaController.following
                          && !(window.available && window.mode !== 0 && RtaController.lowBandText !== "")
                          && RtaController.rangeText !== ""
                 text: RtaController.rangeText

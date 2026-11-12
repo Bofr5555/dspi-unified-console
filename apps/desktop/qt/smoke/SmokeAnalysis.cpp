@@ -91,7 +91,9 @@ void siggenSection(SmokeDriver &d) {
     d.check("qp9: Signal Generator... opens its window", qp9Gen.w && qp9Gen.w->isVisible()
                                                               && qp9Gen.w->title() == QLatin1String("Signal Generator"));
     if (!qp9Gen.w) return;
-    d.check("qp9: the demo has a generator", d.waitFor(5000, [gen] { return gen->supported() && gen->controlsEnabled(); }));
+    d.check("qp9: the demo has a generator", d.waitFor(5000, [gen] { return gen->available() && gen->controlsEnabled(); }));
+    QQuickItem *qp9LastTile = qp9Gen.item("SiggenWindow.signal.14");
+    d.check("qp9: the tiles share the grid's width", qp9LastTile && qp9LastTile->width() > 40 && qp9LastTile->isVisible());
     d.check("qp9: fifteen signals, a tile each", gen->types().size() == 15 && qp9Gen.item("SiggenWindow.signal.14")
                                                      && qp9Gen.item("SiggenWindow.signal.0"));
     d.check("qp9: an output chip per output", gen->outputCount() > 0
@@ -110,7 +112,7 @@ void siggenSection(SmokeDriver &d) {
     d.check("qp9: a sweep is at least 10 ms", gen->durationSeconds() == 0.01);
 
     // Outputs: off, on, inverted, off
-    gen->selectNone();
+    gen->noOutputs();
     d.check("qp9: None blocks Start", gen->startBlocker() == QLatin1String("Select at least one output")
                                           && !qp9Gen.item("SiggenWindow.start")->isEnabled());
     qp9Gen.click("SiggenWindow.output.1");
@@ -120,7 +122,7 @@ void siggenSection(SmokeDriver &d) {
                           && qp9Gen.shownName("SiggenWindow.output.1").endsWith(QStringLiteral(" ø"));
     qp9Gen.click("SiggenWindow.output.1");
     d.check("qp9: a chip goes on, inverted, off", on && inverted && gen->channelMask() == 0 && gen->invertMask() == 0);
-    gen->selectAll();
+    gen->allOutputs();
     d.check("qp9: All selects the device's outputs", gen->channelMask() != 0);
 
     // Level: the field to -120, the slider to -80
@@ -131,14 +133,14 @@ void siggenSection(SmokeDriver &d) {
 
     // Sine on output 1, started with Space
     gen->selectType(SiggenController::Sine);
-    gen->selectNone();
-    gen->cycleOutput(0);
+    gen->noOutputs();
+    gen->stepOutput(0);
     gen->setLevel(-30);
     d.check("qp9: ready, in the Mac's words", gen->transportTitle() == QStringLiteral("Ready · Sine")
                                                    && gen->transportDetail() == QStringLiteral("1 output · peak -30.0 dBFS"));
     d.check("qp9: the window has the keyboard", qp9Gen.focus());
     QTest::keyClick(qp9Gen.w, Qt::Key_Space);
-    d.check("qp9: Space starts it", d.waitFor(3000, [gen] { return gen->running() && gen->status().signal_type == 0; }));
+    d.check("qp9: Space starts it", d.waitFor(3000, [gen] { return gen->playing() && gen->status().signal_type == 0; }));
     d.check("qp9: the device plays the draft", [&] {
         const SiggenConfig cfg = qp9OnWorker<SiggenConfig>(d, [](FfiCore *c) {
             SiggenConfig out{};
@@ -155,7 +157,7 @@ void siggenSection(SmokeDriver &d) {
     d.grab(qp9Gen.w, QStringLiteral("window-siggen.png"));
 
     // A live edit reaches the device after the debounce
-    gen->setParam(0, 440);
+    gen->setParameter(0, 440);
     d.check("qp9: an edit while playing is sent", d.waitFor(3000, [&] {
         const SiggenConfig cfg = qp9OnWorker<SiggenConfig>(d, [](FfiCore *c) {
             SiggenConfig out{};
@@ -164,22 +166,22 @@ void siggenSection(SmokeDriver &d) {
         });
         return std::fabs(cfg.p[0] - 440) < 0.01;
     }));
-    d.check("qp9: and it keeps playing", gen->running());
+    d.check("qp9: and it keeps playing", gen->playing());
 
     // Closing the window leaves it playing
     qp9Gen.w->close();
     d.spin(700);
-    d.check("qp9: the window closed, it plays on", gen->running());
+    d.check("qp9: the window closed, it plays on", gen->playing());
     Qp9Window again(d, "tools.signalGenerator");
     d.check("qp9: Space stops it (faded)", again.focus() && [&] {
         QTest::keyClick(again.w, Qt::Key_Space);
-        return d.waitFor(3000, [gen] { return !gen->running(); });
+        return d.waitFor(3000, [gen] { return !gen->playing(); });
     }());
     d.check("qp9: stopped by the host", d.waitFor(2000, [gen] { return gen->transportDetail() == QLatin1String("Stopped"); }));
-    gen->start();
-    d.check("qp9: Start again", d.waitFor(3000, [gen] { return gen->running(); }));
+    gen->play();
+    d.check("qp9: Start again", d.waitFor(3000, [gen] { return gen->playing(); }));
     again.click("SiggenWindow.stopNow");
-    d.check("qp9: the hard stop", d.waitFor(3000, [gen] { return !gen->running(); }));
+    d.check("qp9: the hard stop", d.waitFor(3000, [gen] { return !gen->playing(); }));
 
     // Formats
     d.check("qp9: the elapsed and frequency formats",
@@ -325,7 +327,7 @@ void spectrumSection(SmokeDriver &d) {
     d.check("qp9: the analyser's controller", rta && graph && sidebar);
     if (!rta || !graph || !sidebar) return;
     QQuickWindow *main = d.mainWindow();
-    d.check("qp9: the demo's analyser probed", d.waitFor(5000, [rta] { return rta->supported(); }));
+    d.check("qp9: the demo's analyser probed", d.waitFor(5000, [rta] { return rta->available(); }));
     sidebar->select(-1);
     d.spin(100);
     // A clean dashboard: its own selection, the graph on, the bars off
@@ -340,7 +342,7 @@ void spectrumSection(SmokeDriver &d) {
                                            && rta->request().wants_bins && rta->request().tap == RTA_TAP_OUTPUT && rta->watching(); }));
     QQuickItem *surface = d.item(QStringLiteral("GraphHost.spectrum.surface"));
     d.check("qp9: the overlay is in the graph's slot", surface != nullptr);
-    d.check("qp9: a picture arrives", d.waitFor(8000, [rta] { return rta->snapshot().count > 0 && rta->running(); }));
+    d.check("qp9: a picture arrives", d.waitFor(8000, [rta] { return rta->snapshot().count > 0 && rta->analysing(); }));
     d.check("qp9: and the overlay draws it", surface && d.waitFor(5000, [surface] { return surface->property("drawnCount").toInt() == 1; }));
     d.check("qp9: the settings reach the request", rta->request().fft_order == 10 && rta->request().avg_ms == 300
                                                        && rta->request().peak_decay_db_s == 12);
@@ -377,6 +379,12 @@ void spectrumSection(SmokeDriver &d) {
     }));
     QQuickItem *bars = d.item(QStringLiteral("SpectrumStrip.dashboard.bars.0"));
     d.check("qp9: the strip draws bars", bars && d.waitFor(5000, [bars] { return bars->property("drawnBars").toInt() > 3; }));
+    rta->prefs()->insert(QStringLiteral("barColumns"), 2);
+    rta->prefs()->insert(QStringLiteral("barHeight"), 96);
+    d.check("qp9: the strip's layout", rta->barColumnsFor(1) == 1 && rta->barColumnsFor(3) == 2 && rta->barCellHeight(1) == 96
+                                           && rta->barCellHeight(2) == 72 && rta->draggedBarHeight(96, 24, 1) == 120
+                                           && rta->draggedBarHeight(96, 1000, 2) == 240 && rta->draggedBarHeight(96, -1000, 1) == 64
+                                           && rta->draggedBarHeight(96, 15, 2) == 116);
     rta->prefs()->insert(QStringLiteral("barColumns"), 1);
     d.spin(100);
     d.grab(main, QStringLiteral("window-main-spectrum.png"));
@@ -424,7 +432,7 @@ void spectrumSection(SmokeDriver &d) {
     rta->setShowGraph(false);
     rta->setShowBars(false);
     d.check("qp9: nothing watching, the analyser is released", d.waitFor(2000, [rta] { return rta->request().mask == 0 && !rta->watching(); }));
-    d.check("qp9: and the device stops it", d.waitFor(8000, [rta] { return !rta->running(); }));
+    d.check("qp9: and the device stops it", d.waitFor(8000, [rta] { return !rta->analysing(); }));
     rta->setShowGraph(true);
     rta->setShowBars(false);
     sidebar->select(-1);
@@ -464,11 +472,11 @@ void followSection(SmokeDriver &d) {
         return settled(l) && d.waitFor(8000, [&] { return l.phase() == QLatin1String("bound"); });
     };
     d.check("qp9: the app binds the hub's device", bind(*link) && d.waitFor(5000, [&] { return d.app().device->remote(); }));
-    d.check("qp9: its analyser probed", d.waitFor(10000, [rta] { return rta->supported(); }));
+    d.check("qp9: its analyser probed", d.waitFor(10000, [rta] { return rta->available(); }));
     rta->setShowGraph(true);
     const QVariant qp9Source = rta->prefs()->value(QStringLiteral("dashboardSource"));
     const QVariant qp9OtherSide = rta->prefs()->value(QStringLiteral("dashboardOtherSide"));
-    d.check("qp9: driving at first", d.waitFor(10000, [rta] { return rta->watching() && rta->running() && !rta->following(); }));
+    d.check("qp9: driving at first", d.waitFor(10000, [rta] { return rta->watching() && rta->analysing() && !rta->following(); }));
     const int ownTap = rta->ownTap();
 
     // Another console asks for the other side: it drives, the app follows

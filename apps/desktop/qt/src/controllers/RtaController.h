@@ -45,9 +45,9 @@ class RtaController : public QObject {
     QML_ELEMENT
     QML_SINGLETON
     // The device and its analyser
-    Q_PROPERTY(bool ready READ ready NOTIFY capsChanged)
-    Q_PROPERTY(bool supported READ supported NOTIFY capsChanged)
-    Q_PROPERTY(int orderMax READ orderMax NOTIFY capsChanged)
+    Q_PROPERTY(bool ready READ ready NOTIFY analyserChanged)
+    Q_PROPERTY(bool available READ available NOTIFY analyserChanged)
+    Q_PROPERTY(int largestOrder READ largestOrder NOTIFY analyserChanged)
     // The page: the dashboard, or a channel page
     Q_PROPERTY(bool onDashboard READ onDashboard NOTIFY selectionChanged)
     Q_PROPERTY(QString pageTitle READ pageTitle NOTIFY selectionChanged)
@@ -62,12 +62,12 @@ class RtaController : public QObject {
     // Ownership
     Q_PROPERTY(bool following READ following NOTIFY ownershipChanged)
     // Telemetry (the window's status bar)
-    Q_PROPERTY(bool running READ running NOTIFY telemetryChanged)
-    Q_PROPERTY(bool configRejected READ configRejected NOTIFY telemetryChanged)
-    Q_PROPERTY(QStringList statusParts READ statusParts NOTIFY telemetryChanged)
-    Q_PROPERTY(QString bassText READ bassText NOTIFY telemetryChanged)
-    Q_PROPERTY(QString lowBandText READ lowBandText NOTIFY telemetryChanged)
-    Q_PROPERTY(QString rangeText READ rangeText NOTIFY telemetryChanged)
+    Q_PROPERTY(bool analysing READ analysing NOTIFY readingsChanged)
+    Q_PROPERTY(bool refused READ refused NOTIFY readingsChanged)
+    Q_PROPERTY(QStringList statusParts READ statusParts NOTIFY readingsChanged)
+    Q_PROPERTY(QString bassText READ bassText NOTIFY readingsChanged)
+    Q_PROPERTY(QString lowBandText READ lowBandText NOTIFY readingsChanged)
+    Q_PROPERTY(QString rangeText READ rangeText NOTIFY readingsChanged)
     // Rises with every new picture (the renderers repaint on it)
     Q_PROPERTY(int pictureRevision READ pictureRevision NOTIFY pictureChanged)
     // The request asks for something
@@ -92,7 +92,7 @@ public:
     struct Selection {
         int tap = RTA_TAP_OUTPUT;
         QList<int> channels;
-        bool operator==(const Selection &o) const { return tap == o.tap && channels == o.channels; }
+        bool operator==(const Selection &o) const { return key() == o.key(); }
         uint16_t mask() const;
         // "in:0,2", "out:" (nothing chosen)
         QString key() const;
@@ -105,34 +105,34 @@ public:
     static RtaController *create(QQmlEngine *, QJSEngine *) { return Registrar::instance<RtaController>(); }
 
     bool ready() const;
-    bool supported() const { return ready() && m_caps.supported; }
-    int orderMax() const { return m_caps.order_max; }
+    bool available() const;
+    int largestOrder() const;
     const RtaCapsInfo &caps() const { return m_caps; }
     // The latest picture (GUI thread)
     const RtaSnapshot &snapshot() const { return *m_snap; }
-    int pictureRevision() const { return m_pictureRevision; }
+    int pictureRevision() const;
 
-    bool onDashboard() const { return m_page < 0; }
+    bool onDashboard() const;
     QString pageTitle() const;
-    int ownTap() const { return own().tap; }
-    QList<int> ownChannels() const { return own().channels; }
-    int drawnTap() const { return drawn().tap; }
-    QList<int> drawnChannels() const { return drawn().channels; }
+    int ownTap() const;
+    QList<int> ownChannels() const;
+    int drawnTap() const;
+    QList<int> drawnChannels() const;
     Selection own() const;
     Selection drawn() const;
     bool showGraph() const;
     void setShowGraph(bool on);
     bool showBars() const;
     void setShowBars(bool on);
-    bool following() const { return m_owner.following; }
+    bool following() const;
 
-    bool running() const { return m_snap->running; }
-    bool configRejected() const { return m_snap->config_rejected; }
+    bool analysing() const;
+    bool refused() const;
     QStringList statusParts() const;
     QString bassText() const;
     QString lowBandText() const;
     QString rangeText() const;
-    bool watching() const { return m_request.mask != 0 || m_watching; }
+    bool watching() const;
 
     PrefsMap *prefs() const { return m_prefs; }
     double floorDb() const;
@@ -162,17 +162,23 @@ public:
     Q_INVOKABLE bool viewActive(const QString &id) const { return m_views.contains(id); }
     // "1k", "200"
     Q_INVOKABLE static QString shortHz(double hz);
+    // The bar layout (strip and window): columns for `count` channels, a
+    // cell's height, and the stored height after dragging the strip's edge
+    // `dy` down from `startHeight`
+    Q_INVOKABLE int barColumnsFor(int count) const;
+    Q_INVOKABLE int barCellHeight(int count) const;
+    Q_INVOKABLE int draggedBarHeight(double startHeight, double dy, int count) const;
 
     // The request as last sent (tests)
     const RtaRequest &request() const { return m_request; }
     // How many requests were sent (tests)
-    int requestsSent() const { return m_requestsSent; }
+    int requestsSent() const;
 
 signals:
-    void capsChanged();
+    void analyserChanged();
     void selectionChanged();
     void ownershipChanged();
-    void telemetryChanged();
+    void readingsChanged();
     void pictureChanged();
     void requestChanged();
     void scaleChanged();

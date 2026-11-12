@@ -16,8 +16,8 @@ Item {
     readonly property var win: Window.window
     readonly property bool onScreen: plot !== null && visible && win !== null && win.visible
                                      && (popOut ? GraphController.poppedOut : !GraphController.poppedOut)
-    readonly property bool active: onScreen && RtaController.supported && RtaController.showGraph
-                                   && RtaController.ownChannels.length > 0 || (onScreen && RtaController.supported
+    readonly property bool active: onScreen && RtaController.available && RtaController.showGraph
+                                   && RtaController.ownChannels.length > 0 || (onScreen && RtaController.available
                                    && RtaController.showGraph && RtaController.following)
     readonly property string viewId: popOut ? "graph.popOut" : "graph"
 

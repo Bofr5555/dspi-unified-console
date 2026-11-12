@@ -2,7 +2,6 @@
 #include "RtaBars.h"
 
 #include "CoreApi.h"
-#include "Registrar.h"
 #include "RtaController.h"
 
 #include <QLinearGradient>
@@ -13,145 +12,113 @@
 
 namespace {
 
-constexpr double kLabelRow = 12;
-constexpr double kLabelled[] = { 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000 };
-// Width of one label character (the Mac's estimate for its 8 pt digits)
-constexpr double kCharWidth = 4.9;
+// A label's width per character, as the Mac estimates its 8 pt digits
+constexpr double kGlyph = 4.9;
+// Labels keep this much room between them
+constexpr double kLabelGap = 4;
 
-double norm(double db, double floor, double ceiling) {
-    if (!std::isfinite(db) || ceiling <= floor) return 0;
-    return std::clamp((db - floor) / (ceiling - floor), 0.0, 1.0);
+bool isDecade(double hz) {
+    const double e = std::log10(hz);
+    return std::fabs(e - std::round(e)) < 1e-9;
 }
-
-bool decade(double hz) { return hz == 10 || hz == 100 || hz == 1000 || hz == 10000; }
 
 } // namespace
 
-RtaBars::RtaBars(QQuickItem *parent) : QQuickPaintedItem(parent) {
-    setAntialiasing(true);
-    setAcceptedMouseButtons(Qt::NoButton);
-    m_clock.start();
-    connect(this, &RtaBars::lookChanged, this, [this] { update(); });
-    m_rta = Registrar::instance<RtaController>();
-    if (m_rta) {
-        connect(m_rta, &RtaController::pictureChanged, this, [this] { if (m_active) update(); });
-        connect(m_rta, &RtaController::scaleChanged, this, [this] { update(); });
-    }
+RtaBars::RtaBars(QQuickItem *parent) : RtaPaintedItem(parent) {}
+
+void RtaBars::paintFrequencies(QPainter &g, const QRectF &plot, const std::vector<int> &bands, double slot) const {
+    const RtaCapsInfo &caps = m_rta->caps();
+    std::vector<std::pair<double, double>> taken;   // left and right of each label placed
+    g.setPen(m_labelColor);
+    g.setFont(m_labelFont);
+    const auto place = [&](bool decades) {
+        for (size_t pos = 0; pos < bands.size(); ++pos) {
+            const double centre = caps.centres[bands[pos]];
+            const auto mark = std::find_if(labelledHz().begin(), labelledHz().end(),
+                                           [centre](double hz) { return std::fabs(centre - hz) <= 0.03 * hz; });
+            if (mark == labelledHz().end() || isDecade(*mark) != decades) continue;
+            const QString text = RtaController::shortHz(centre);
+            const double mid = plot.left() + slot * (double(pos) + 0.5);
+            const double half = text.size() * kGlyph / 2;
+            if (mid - half < plot.left() || mid + half > plot.right()) continue;
+            const bool crowded = std::any_of(taken.begin(), taken.end(), [&](const auto &t) {
+                return mid - half < t.second + kLabelGap && mid + half + kLabelGap > t.first;
+            });
+            if (crowded) continue;
+            taken.emplace_back(mid - half, mid + half);
+            g.drawText(QRectF(mid - 20, height() - kLabelRow + 1, 40, kLabelRow - 1), int(Qt::AlignHCenter | Qt::AlignTop), text);
+        }
+    };
+    place(true);
+    place(false);
 }
 
-void RtaBars::paint(QPainter *p) {
-    const double dt = std::clamp(m_clock.restart() / 1000.0, 0.0, 0.25);
+void RtaBars::paint(QPainter *painter) {
+    QPainter &g = *painter;
+    const double dt = tick();
     if (!m_rta || width() < 4 || height() < 4) return;
-    const QRectF plot(0, 0, width(), height() - (m_freqLabels ? kLabelRow : 0));
-    const double floor = m_rta->floorDb(), ceiling = m_rta->ceilingDb();
-    const auto yOf = [&](double db) { return plot.bottom() - plot.height() * norm(db, floor, ceiling); };
-    p->setRenderHint(QPainter::Antialiasing, true);
-    p->setFont(m_labelFont);
+    const QRectF plot(QPointF(0, 0), QSizeF(width(), height() - (m_frequencyLabels ? kLabelRow : 0)));
+    g.setRenderHint(QPainter::Antialiasing);
+    if (m_dbLabels) paintLevels(g, plot, true);
 
-    if (m_dbLabels) {
-        for (double db = std::floor(ceiling / 12) * 12; db > floor; db -= 12) {
-            const double y = yOf(db);
-            QColor c = m_gridColor;
-            c.setAlphaF(db == 0 ? 0.35 : 0.12);
-            p->setPen(QPen(c, db == 0 ? 1.0 : 0.5));
-            p->drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y));
-            QColor lc = m_labelColor;
-            lc.setAlphaF(0.6);
-            p->setPen(lc);
-            p->drawText(QRectF(plot.right() - 42, y - 6, 40, 12), Qt::AlignRight | Qt::AlignTop, QString::number(int(db)));
-        }
-    }
-
-    // The resolved bands; the rest are left out and the others share the width
-    const RtaSnapshot &snap = m_rta->snapshot();
-    const RtaCapsInfo &caps = m_rta->caps();
     std::vector<int> bands;
     for (int b = 0; b < m_rta->bandCount(); ++b)
         if (m_rta->bandVisible(b)) bands.push_back(b);
     if (bands.empty()) return;
+
+    // This channel's frame, if the picture is of this tap and has one
+    const RtaSnapshot &snap = m_rta->snapshot();
     const RtaChannelFrame *frame = nullptr;
-    if (snap.tap == m_tap)
-        for (int f = 0; f < snap.count && f < RTA_MAX_CHANNELS; ++f)
-            if (snap.frames[f].channel == m_channel) frame = &snap.frames[f];
-    std::vector<double> avg, peak;
+    for (int f = 0; snap.tap == m_tap && f < std::min<int>(snap.count, RTA_MAX_CHANNELS); ++f)
+        if (snap.frames[f].channel == m_channel) frame = &snap.frames[f];
+    std::vector<double> levels, holds;
+    levels.reserve(bands.size());
+    holds.reserve(bands.size());
     for (int b : bands) {
-        const bool have = frame && b < frame->n_bands;
-        avg.push_back(have ? frame->avg_db[b] : RTA_FLOOR_DB);
-        peak.push_back(have ? frame->peak_db[b] : RTA_FLOOR_DB);
+        const bool known = frame && b < frame->n_bands;
+        levels.push_back(known ? frame->avg_db[b] : RTA_FLOOR_DB);
+        holds.push_back(known ? frame->peak_db[b] : RTA_FLOOR_DB);
     }
-    // Another channel, tap or band count: no glide from the old picture
-    const int key = (m_tap * 64 + m_channel) * 64 + int(bands.size());
-    if (key != m_seriesKey) {
-        m_avg.reset();
-        m_peak.reset();
-        m_seriesKey = key;
+    // A new channel, side or band count starts without a glide
+    const int series = ((m_tap << 6) | m_channel) << 6 | int(bands.size());
+    if (series != m_series) {
+        m_level.forget();
+        m_hold.forget();
+        m_series = series;
     }
     const double tau = m_active ? m_rta->smoothingTau() : 0;
-    bool moving = m_avg.step(avg, dt, tau, false);
-    moving = m_peak.step(peak, dt, tau, true) || moving;
+    bool moving = m_level.advance(levels, dt, tau, false);
+    moving = m_hold.advance(holds, dt, tau, true) || moving;
 
     const double slot = plot.width() / double(bands.size());
-    const double gap = std::clamp(slot * 0.18, 0.5, 2.0);
-    const double barW = std::max(1.0, slot - gap);
-    const bool peaks = m_rta->showPeakHold();
+    const double gap = std::clamp(0.18 * slot, 0.5, 2.0);
+    const double barWidth = std::max(1.0, slot - gap);
+    const double corner = std::min(1.5, barWidth / 3);
+    QColor top = m_color, foot = m_color, cap = m_color;
+    top.setAlphaF(0.95);
+    foot.setAlphaF(0.45);
+    cap.setAlphaF(0.9);
+    const bool caps = m_rta->showPeakHold();
     int drawn = 0;
-    QLinearGradient fill(0, plot.top(), 0, plot.bottom());
-    for (size_t i = 0; i < bands.size(); ++i) {
-        const double x = plot.x() + double(i) * slot + gap / 2;
-        const double n = norm(m_avg.values()[i], floor, ceiling);
-        if (n > 0.001) {
+    g.setPen(Qt::NoPen);
+    for (size_t pos = 0; pos < bands.size(); ++pos) {
+        const double left = plot.left() + slot * double(pos) + gap / 2;
+        const double rise = plot.height() * heightOf(m_level.values()[pos]);
+        if (rise > 0.001 * plot.height()) {
             ++drawn;
-            const double h = plot.height() * n;
-            QColor top = m_color, bottom = m_color;
-            top.setAlphaF(0.95);
-            bottom.setAlphaF(0.45);
-            fill.setStart(0, plot.bottom() - h);
-            fill.setStops({ { 0.0, top }, { 1.0, bottom } });
-            const double r = std::min(1.5, barW / 3);
-            p->setPen(Qt::NoPen);
-            p->setBrush(fill);
-            p->drawRoundedRect(QRectF(x, plot.bottom() - h, barW, h), r, r);
+            const QRectF bar(left, plot.bottom() - rise, barWidth, rise);
+            QLinearGradient shade(bar.topLeft(), QPointF(left, plot.bottom()));
+            shade.setColorAt(0, top);
+            shade.setColorAt(1, foot);
+            g.setBrush(shade);
+            g.drawRoundedRect(bar, corner, corner);
         }
-        const double np = norm(m_peak.values()[i], floor, ceiling);
-        if (peaks && np > 0.001) {
-            QColor cap = m_color;
-            cap.setAlphaF(0.9);
-            p->fillRect(QRectF(x, std::max(plot.top(), plot.bottom() - plot.height() * np - 1), barW, 1.5), cap);
-        }
+        const double peak = plot.height() * heightOf(m_hold.values()[pos]);
+        if (caps && peak > 0.001 * plot.height())
+            g.fillRect(QRectF(left, std::max(plot.top(), plot.bottom() - peak - 1), barWidth, 1.5), cap);
     }
-
-    if (m_freqLabels) {
-        // Decades first, then the others where they fit with a 4 px gap
-        struct Placed { double l, r; };
-        std::vector<Placed> placed;
-        p->setPen(m_labelColor);
-        for (int pass = 0; pass < 2; ++pass) {
-            for (size_t i = 0; i < bands.size(); ++i) {
-                const double hz = caps.centres[bands[i]];
-                if (hz <= 0) continue;
-                for (double l : kLabelled) {
-                    if (std::fabs(hz - l) > l * 0.03 || decade(l) != (pass == 0)) continue;
-                    const QString text = RtaController::shortHz(hz);
-                    const double w = text.size() * kCharWidth;
-                    const double cx = plot.x() + (double(i) + 0.5) * slot;
-                    const Placed me{ cx - w / 2, cx + w / 2 };
-                    if (me.l < plot.left() || me.r > plot.right()) continue;
-                    const bool clash = std::any_of(placed.begin(), placed.end(),
-                                                   [&](const Placed &o) { return me.l < o.r + 4 && me.r + 4 > o.l; });
-                    if (clash) continue;
-                    placed.push_back(me);
-                    p->drawText(QRectF(cx - 20, height() - 11, 40, 11), Qt::AlignHCenter | Qt::AlignTop, text);
-                }
-            }
-        }
-    }
+    if (m_frequencyLabels) paintFrequencies(g, plot, bands, slot);
     const bool changed = drawn != m_drawn;
     m_drawn = drawn;
-    QMetaObject::invokeMethod(
-        this,
-        [this, changed, moving] {
-            if (changed) emit painted();
-            if (moving && m_active) update();
-        },
-        Qt::QueuedConnection);
+    afterPaint(changed, moving);
 }

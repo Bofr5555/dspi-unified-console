@@ -232,6 +232,25 @@ bool SiggenController::walking() const {
     return (m_draft.flags & SIGGEN_FLAG_WALK) != 0 || m_draft.signal_type == ChannelId;
 }
 
+// ---- The state as QML reads it ----
+
+bool SiggenController::available() const { return m_supported; }
+int SiggenController::mostTones() const { return m_caps.multitone_max; }
+int SiggenController::signalType() const { return m_draft.signal_type; }
+int SiggenController::channelMask() const { return m_draft.channel_mask; }
+int SiggenController::invertMask() const { return m_draft.invert_mask; }
+int SiggenController::flags() const { return m_draft.flags; }
+double SiggenController::levelDb() const { return m_draft.level_db; }
+double SiggenController::durationSeconds() const { return m_draft.duration_ms / 1000.0; }
+int SiggenController::repeat() const { return m_draft.repeat; }
+int SiggenController::gapMs() const { return m_draft.gap_ms; }
+int SiggenController::timing() const { return timingOf(m_draft.signal_type); }
+bool SiggenController::playing() const { return m_status.state != Idle; }
+int SiggenController::phase() const { return m_status.state; }
+int SiggenController::walkOutput() const { return m_status.active_channel; }
+bool SiggenController::windowShown() const { return m_shown; }
+Poller::Id SiggenController::statusPoll() const { return m_poll; }
+
 // ---- Edits ----
 
 void SiggenController::edit(const std::function<void(SiggenConfig &)> &change) {
@@ -239,9 +258,9 @@ void SiggenController::edit(const std::function<void(SiggenConfig &)> &change) {
     change(next);
     if (sameConfig(next, m_draft)) return;
     m_draft = next;
-    emit draftChanged();
-    emit transportChanged();
-    if (running() && controlsEnabled()) m_live.start();
+    emit draftEdited();
+    emit captionsChanged();
+    if (playing() && controlsEnabled()) m_live.start();
 }
 
 void SiggenController::selectType(int id) {
@@ -255,7 +274,7 @@ void SiggenController::selectType(int id) {
     });
 }
 
-void SiggenController::cycleOutput(int output) {
+void SiggenController::stepOutput(int output) {
     if (output < 0 || output >= 16) return;
     const uint16_t bit = uint16_t(1u << output);
     edit([&](SiggenConfig &c) {
@@ -268,13 +287,13 @@ void SiggenController::cycleOutput(int output) {
     });
 }
 
-void SiggenController::selectAll() {
+void SiggenController::allOutputs() {
     const int n = std::clamp(outputCount(), 0, 16);
     const uint16_t all = m_supported && m_caps.valid_mask ? m_caps.valid_mask : uint16_t((1u << n) - 1u);
     edit([&](SiggenConfig &c) { c.channel_mask = all; });
 }
 
-void SiggenController::selectNone() {
+void SiggenController::noOutputs() {
     edit([](SiggenConfig &c) {
         c.channel_mask = 0;
         c.invert_mask = 0;
@@ -286,7 +305,7 @@ void SiggenController::setLevel(double db, bool fromSlider) {
     edit([&](SiggenConfig &c) { c.level_db = float(v); });
 }
 
-void SiggenController::setParam(int index, double value) {
+void SiggenController::setParameter(int index, double value) {
     if (index < 0 || index > 3 || !std::isfinite(value)) return;
     const Param p = paramOf(m_draft.signal_type, index);
     double v = value;
@@ -312,7 +331,7 @@ void SiggenController::setGapMs(double ms) {
     edit([&](SiggenConfig &c) { c.gap_ms = uint16_t(std::clamp(std::round(ms), 0.0, 65535.0)); });
 }
 
-void SiggenController::setFlag(int flag, bool on) {
+void SiggenController::setOption(int flag, bool on) {
     if (flag != SIGGEN_FLAG_RAW && flag != SIGGEN_FLAG_DECORR && flag != SIGGEN_FLAG_WALK) return;
     edit([&](SiggenConfig &c) { c.flags = on ? uint8_t(c.flags | flag) : uint8_t(c.flags & ~flag); });
 }
@@ -330,7 +349,7 @@ void SiggenController::applyPreset(const QString &which) {
 
 // ---- Transport ----
 
-void SiggenController::start() {
+void SiggenController::play() {
     if (!startBlocker().isEmpty()) return;
     m_live.stop();
     const SiggenConfig cfg = m_draft;
@@ -340,7 +359,7 @@ void SiggenController::start() {
         [this](bool) { fetchStatus(); });
 }
 
-void SiggenController::stop(bool immediate) {
+void SiggenController::stopPlaying(bool immediate) {
     m_live.stop();
     const uint16_t action = immediate ? SIGGEN_CTL_STOP_NOW : SIGGEN_CTL_STOP;
     m_ctx.device->write(
@@ -349,16 +368,16 @@ void SiggenController::stop(bool immediate) {
 }
 
 void SiggenController::toggle() {
-    if (running()) {
-        if (controlsEnabled()) stop(false);
+    if (playing()) {
+        if (controlsEnabled()) stopPlaying(false);
     } else {
-        start();
+        play();
     }
 }
 
 void SiggenController::sendLive() {
     // The device changed, the generator stopped, or the draft cannot play: nothing
-    if (!running() || !startBlocker().isEmpty() || m_ctx.device->snapshot().generation != m_generation) return;
+    if (!playing() || !startBlocker().isEmpty() || m_ctx.device->snapshot().generation != m_generation) return;
     const SiggenConfig cfg = m_draft;
     m_ctx.device->write(
         QStringLiteral("siggen"), [cfg](FfiCore *c) { return dspi_siggen_set_config(c, &cfg); },
@@ -379,8 +398,8 @@ void SiggenController::onSnapshot() {
             idle.active_channel = kNotWalking;
             setStatus(idle);
         }
-        emit capsChanged();
-        emit transportChanged();
+        emit generatorChanged();
+        emit captionsChanged();
         return;
     }
     if (snap.generation != m_generation) {
@@ -389,8 +408,8 @@ void SiggenController::onSnapshot() {
         fetchAll();
     }
     // The outputs' names and the read-only state follow every snapshot
-    emit capsChanged();
-    emit transportChanged();
+    emit generatorChanged();
+    emit captionsChanged();
 }
 
 void SiggenController::onState(uint flags) {
@@ -423,9 +442,9 @@ void SiggenController::fetchAll() {
                 }
                 if (f.statusOk) setStatus(f.status);
             }
-            emit capsChanged();
-            emit draftChanged();
-            emit transportChanged();
+            emit generatorChanged();
+            emit draftEdited();
+            emit captionsChanged();
         });
 }
 
@@ -451,8 +470,8 @@ void SiggenController::setStatus(const SiggenStatus &s) {
     if (same) return;
     m_status = s;
     updatePoll();
-    emit statusChanged();
-    emit transportChanged();
+    emit playbackChanged();
+    emit captionsChanged();
 }
 
 void SiggenController::setWindowShown(bool shown) {
@@ -464,12 +483,12 @@ void SiggenController::setWindowShown(bool shown) {
 }
 
 void SiggenController::updatePoll() {
-    if (m_ctx.poller) m_ctx.poller->setEnabled(m_poll, running());
+    if (m_ctx.poller) m_ctx.poller->setEnabled(m_poll, playing());
 }
 
 // ---- Texts ----
 
-QString SiggenController::stateLabel() const {
+QString SiggenController::phaseText() const {
     switch (m_status.state) {
     case FadeIn: return tr(QT_TRANSLATE_NOOP("SiggenController", "Fading in"));
     case Run: return tr(QT_TRANSLATE_NOOP("SiggenController", "Running"));
@@ -490,14 +509,14 @@ QString SiggenController::startBlocker() const {
 
 QString SiggenController::transportTitle() const {
     const auto nameOf = [](int type) { return validType(type) ? tr(kTypes[size_t(type)].name) : QString(); };
-    if (running()) return stateLabel() + QStringLiteral(" · ") + nameOf(m_status.signal_type);
+    if (playing()) return phaseText() + QStringLiteral(" · ") + nameOf(m_status.signal_type);
     const QString blocker = startBlocker();
     if (!blocker.isEmpty() && connected() && m_supported) return blocker;
     return tr(QT_TRANSLATE_NOOP("SiggenController", "Ready · %1")).arg(nameOf(m_draft.signal_type));
 }
 
 QString SiggenController::transportDetail() const {
-    if (running()) {
+    if (playing()) {
         QStringList parts{ formatElapsed(m_status.elapsed_ms) };
         if (m_status.current_freq > 0) parts.append(formatFrequency(m_status.current_freq));
         if (m_status.cycles_done > 0) parts.append(tr(QT_TRANSLATE_NOOP("SiggenController", "cycle %1")).arg(m_status.cycles_done));

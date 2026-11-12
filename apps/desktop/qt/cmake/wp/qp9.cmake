@@ -14,6 +14,6 @@ list(APPEND DSPI_APP_SOURCES
     src/render/RtaBars.h src/render/RtaBars.cpp)
 list(APPEND DSPI_QML_FILES
     qml/tools/StatsWindow.qml qml/tools/StatsFillRow.qml
-    qml/tools/SpectrumWindow.qml qml/main/SpectrumStrip.qml
+    qml/tools/SpectrumWindow.qml qml/main/SpectrumStrip.qml qml/main/StripColumnsTile.qml
     qml/graph/RtaGraphOverlay.qml qml/graph/RtaGraphOptions.qml qml/graph/RtaChip.qml)
 list(APPEND DSPI_SMOKE_SOURCES smoke/SmokeAnalysis.cpp)

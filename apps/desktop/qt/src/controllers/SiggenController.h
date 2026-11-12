@@ -37,34 +37,34 @@ class SiggenController : public QObject {
     QML_ELEMENT
     QML_SINGLETON
     // The device: connected, has a generator, accepts writes
-    Q_PROPERTY(bool connected READ connected NOTIFY capsChanged)
-    Q_PROPERTY(bool supported READ supported NOTIFY capsChanged)
-    Q_PROPERTY(bool controlsEnabled READ controlsEnabled NOTIFY capsChanged)
-    Q_PROPERTY(int outputCount READ outputCount NOTIFY capsChanged)
-    Q_PROPERTY(int multitoneMax READ multitoneMax NOTIFY capsChanged)
+    Q_PROPERTY(bool connected READ connected NOTIFY generatorChanged)
+    Q_PROPERTY(bool available READ available NOTIFY generatorChanged)
+    Q_PROPERTY(bool controlsEnabled READ controlsEnabled NOTIFY generatorChanged)
+    Q_PROPERTY(int outputCount READ outputCount NOTIFY generatorChanged)
+    Q_PROPERTY(int mostTones READ mostTones NOTIFY generatorChanged)
     // The 15 types: {id, label, name, blurb, timing, params: [{label, semantic, min, max, def}]}
-    Q_PROPERTY(QVariantList types READ types NOTIFY capsChanged)
+    Q_PROPERTY(QVariantList types READ types NOTIFY generatorChanged)
     // The draft
-    Q_PROPERTY(int signalType READ signalType NOTIFY draftChanged)
-    Q_PROPERTY(int channelMask READ channelMask NOTIFY draftChanged)
-    Q_PROPERTY(int invertMask READ invertMask NOTIFY draftChanged)
-    Q_PROPERTY(int flags READ flags NOTIFY draftChanged)
-    Q_PROPERTY(double levelDb READ levelDb NOTIFY draftChanged)
-    Q_PROPERTY(double durationSeconds READ durationSeconds NOTIFY draftChanged)
-    Q_PROPERTY(int repeat READ repeat NOTIFY draftChanged)
-    Q_PROPERTY(int gapMs READ gapMs NOTIFY draftChanged)
-    Q_PROPERTY(QVariantList params READ params NOTIFY draftChanged)
-    Q_PROPERTY(int timing READ timing NOTIFY draftChanged)
-    Q_PROPERTY(bool walking READ walking NOTIFY draftChanged)
+    Q_PROPERTY(int signalType READ signalType NOTIFY draftEdited)
+    Q_PROPERTY(int channelMask READ channelMask NOTIFY draftEdited)
+    Q_PROPERTY(int invertMask READ invertMask NOTIFY draftEdited)
+    Q_PROPERTY(int flags READ flags NOTIFY draftEdited)
+    Q_PROPERTY(double levelDb READ levelDb NOTIFY draftEdited)
+    Q_PROPERTY(double durationSeconds READ durationSeconds NOTIFY draftEdited)
+    Q_PROPERTY(int repeat READ repeat NOTIFY draftEdited)
+    Q_PROPERTY(int gapMs READ gapMs NOTIFY draftEdited)
+    Q_PROPERTY(QVariantList params READ params NOTIFY draftEdited)
+    Q_PROPERTY(int timing READ timing NOTIFY draftEdited)
+    Q_PROPERTY(bool walking READ walking NOTIFY draftEdited)
     // The status
-    Q_PROPERTY(bool running READ running NOTIFY statusChanged)
-    Q_PROPERTY(int state READ state NOTIFY statusChanged)
-    Q_PROPERTY(int activeChannel READ activeChannel NOTIFY statusChanged)
-    Q_PROPERTY(QString stateLabel READ stateLabel NOTIFY statusChanged)
+    Q_PROPERTY(bool playing READ playing NOTIFY playbackChanged)
+    Q_PROPERTY(int phase READ phase NOTIFY playbackChanged)
+    Q_PROPERTY(int walkOutput READ walkOutput NOTIFY playbackChanged)
+    Q_PROPERTY(QString phaseText READ phaseText NOTIFY playbackChanged)
     // What blocks Start ("" for nothing), the transport's two lines
-    Q_PROPERTY(QString startBlocker READ startBlocker NOTIFY transportChanged)
-    Q_PROPERTY(QString transportTitle READ transportTitle NOTIFY transportChanged)
-    Q_PROPERTY(QString transportDetail READ transportDetail NOTIFY transportChanged)
+    Q_PROPERTY(QString startBlocker READ startBlocker NOTIFY captionsChanged)
+    Q_PROPERTY(QString transportTitle READ transportTitle NOTIFY captionsChanged)
+    Q_PROPERTY(QString transportDetail READ transportDetail NOTIFY captionsChanged)
     // The window shows (status is read while it runs either way)
     Q_PROPERTY(bool windowShown READ windowShown WRITE setWindowShown NOTIFY windowShownChanged)
 
@@ -92,53 +92,53 @@ public:
     static SiggenController *create(QQmlEngine *, QJSEngine *) { return Registrar::instance<SiggenController>(); }
 
     bool connected() const;
-    bool supported() const { return m_supported; }
+    bool available() const;
     bool controlsEnabled() const;
     int outputCount() const;
-    int multitoneMax() const { return m_caps.multitone_max; }
+    int mostTones() const;
     QVariantList types() const;
 
-    int signalType() const { return m_draft.signal_type; }
-    int channelMask() const { return m_draft.channel_mask; }
-    int invertMask() const { return m_draft.invert_mask; }
-    int flags() const { return m_draft.flags; }
-    double levelDb() const { return m_draft.level_db; }
-    double durationSeconds() const { return m_draft.duration_ms / 1000.0; }
-    int repeat() const { return m_draft.repeat; }
-    int gapMs() const { return m_draft.gap_ms; }
+    int signalType() const;
+    int channelMask() const;
+    int invertMask() const;
+    int flags() const;
+    double levelDb() const;
+    double durationSeconds() const;
+    int repeat() const;
+    int gapMs() const;
     QVariantList params() const;
-    int timing() const { return timingOf(m_draft.signal_type); }
+    int timing() const;
     bool walking() const;
 
-    bool running() const { return m_status.state != Idle; }
-    int state() const { return m_status.state; }
-    int activeChannel() const { return m_status.active_channel; }
-    QString stateLabel() const;
+    bool playing() const;
+    int phase() const;
+    int walkOutput() const;
+    QString phaseText() const;
     QString startBlocker() const;
     QString transportTitle() const;
     QString transportDetail() const;
-    bool windowShown() const { return m_shown; }
+    bool windowShown() const;
     void setWindowShown(bool shown);
 
     // Edits of the draft (Mac's names)
     Q_INVOKABLE void selectType(int id);
     // off → on → inverted → off
-    Q_INVOKABLE void cycleOutput(int output);
-    Q_INVOKABLE void selectAll();
-    Q_INVOKABLE void selectNone();
+    Q_INVOKABLE void stepOutput(int output);
+    Q_INVOKABLE void allOutputs();
+    Q_INVOKABLE void noOutputs();
     // The field clamps to -120..0, the slider to -80..0
     Q_INVOKABLE void setLevel(double db, bool fromSlider = false);
-    Q_INVOKABLE void setParam(int index, double value);
+    Q_INVOKABLE void setParameter(int index, double value);
     Q_INVOKABLE void setDurationSeconds(double seconds, double minimum);
     Q_INVOKABLE void setRepeat(double count);
     Q_INVOKABLE void setGapMs(double ms);
-    Q_INVOKABLE void setFlag(int flag, bool on);
+    Q_INVOKABLE void setOption(int flag, bool on);
     // The tone pair's presets: "smpte" or "ccif"
     Q_INVOKABLE void applyPreset(const QString &which);
     // Transport
-    Q_INVOKABLE void start();
-    Q_INVOKABLE void stop(bool immediate = false);
-    // Space: Start while idle, the faded Stop while running
+    Q_INVOKABLE void play();
+    Q_INVOKABLE void stopPlaying(bool immediate = false);
+    // Space: Start while idle, the faded Stop while playing
     Q_INVOKABLE void toggle();
     // An output's name: the sidebar's label, else "Out n"; enabled in the matrix
     Q_INVOKABLE QString outputName(int output) const;
@@ -152,13 +152,13 @@ public:
     // For tests
     const SiggenConfig &draft() const { return m_draft; }
     const SiggenStatus &status() const { return m_status; }
-    Poller::Id statusPoll() const { return m_poll; }
+    Poller::Id statusPoll() const;
 
 signals:
-    void capsChanged();
-    void draftChanged();
-    void statusChanged();
-    void transportChanged();
+    void generatorChanged();
+    void draftEdited();
+    void playbackChanged();
+    void captionsChanged();
     void windowShownChanged();
 
 private:

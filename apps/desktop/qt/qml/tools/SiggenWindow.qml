@@ -130,17 +130,17 @@ ToolWindow {
             Rectangle {
                 id: pill
                 objectName: "SiggenWindow.state"
-                readonly property color tint: SiggenController.state === SiggenController.FadeIn
-                                              || SiggenController.state === SiggenController.Run ? Theme.success
-                                            : SiggenController.state === SiggenController.Gap
-                                              || SiggenController.state === SiggenController.FadeOut ? Theme.warning
+                readonly property color tint: SiggenController.phase === SiggenController.FadeIn
+                                              || SiggenController.phase === SiggenController.Run ? Theme.success
+                                            : SiggenController.phase === SiggenController.Gap
+                                              || SiggenController.phase === SiggenController.FadeOut ? Theme.warning
                                             : Theme.textMuted
-                property string shownName: SiggenController.stateLabel
+                property string shownName: SiggenController.phaseText
                 implicitWidth: pillRow.implicitWidth + 20
                 implicitHeight: pillRow.implicitHeight + 10
                 radius: height / 2
                 color: Theme.control
-                border.color: Qt.alpha(tint, SiggenController.running ? 0.5 : 0.2)
+                border.color: Qt.alpha(tint, SiggenController.playing ? 0.5 : 0.2)
                 Accessible.role: Accessible.StaticText
                 Accessible.name: shownName
                 RowLayout {
@@ -153,7 +153,7 @@ ToolWindow {
                         radius: 4
                         color: pill.tint
                         SequentialAnimation on scale {
-                            running: SiggenController.running
+                            running: SiggenController.playing
                             loops: Animation.Infinite
                             alwaysRunToEnd: true
                             NumberAnimation { from: 1.0; to: 0.75; duration: 700; easing.type: Easing.InOutQuad }
@@ -163,7 +163,7 @@ ToolWindow {
                     Text {
                         text: pill.shownName
                         font: Qt.font({ pixelSize: Theme.fontCaption.pixelSize, weight: Font.DemiBold })
-                        color: SiggenController.running ? Theme.text : Theme.textMuted
+                        color: SiggenController.playing ? Theme.text : Theme.textMuted
                     }
                 }
             }
@@ -173,7 +173,7 @@ ToolWindow {
         // ---- Unsupported ----
         ColumnLayout {
             objectName: "SiggenWindow.unsupported"
-            visible: SiggenController.connected && !SiggenController.supported
+            visible: SiggenController.connected && !SiggenController.available
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: Theme.spacingSmall
@@ -207,7 +207,7 @@ ToolWindow {
         RowLayout {
             id: columns
             readonly property real half: (width - 1) / 2
-            visible: !(SiggenController.connected && !SiggenController.supported)
+            visible: !(SiggenController.connected && !SiggenController.available)
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: 0
@@ -241,7 +241,7 @@ ToolWindow {
                                 type: modelData.id
                                 text: modelData.label
                                 toolTip: modelData.blurb
-                                selected: SiggenController.signalType === modelData.id
+                                chosen: SiggenController.signalType === modelData.id
                                 enabled: window.enabledControls
                                 onClicked: SiggenController.selectType(modelData.id)
                             }
@@ -266,13 +266,13 @@ ToolWindow {
                             objectName: "SiggenWindow.all"
                             text: qsTr("All")
                             enabled: window.enabledControls
-                            onClicked: SiggenController.selectAll()
+                            onClicked: SiggenController.allOutputs()
                         }
                         AppButton {
                             objectName: "SiggenWindow.none"
                             text: qsTr("None")
                             enabled: window.enabledControls
-                            onClicked: SiggenController.selectNone()
+                            onClicked: SiggenController.noOutputs()
                         }
                     }
                     GridLayout {
@@ -289,10 +289,10 @@ ToolWindow {
                                 text: { DeviceModel.revision; return SiggenController.outputName(index) }
                                 selected: (SiggenController.channelMask & (1 << index)) !== 0
                                 inverted: selected && (SiggenController.invertMask & (1 << index)) !== 0
-                                walking: SiggenController.running && SiggenController.activeChannel === index
+                                walking: SiggenController.playing && SiggenController.walkOutput === index
                                 matrixEnabled: { DeviceModel.revision; return SiggenController.outputEnabled(index) }
                                 enabled: window.enabledControls
-                                onClicked: SiggenController.cycleOutput(index)
+                                onClicked: SiggenController.stepOutput(index)
                             }
                         }
                     }
@@ -382,11 +382,11 @@ ToolWindow {
                             ToolTip.text: qsTr("Sample-peak-normalized sequences with a known inter-sample true-peak over. Set the level at or below the headroom the over should fit into.")
                             AppTabButton {
                                 text: qsTr("fs/4 · +3.01 dBTP")
-                                onClicked: SiggenController.setParam(0, 0)
+                                onClicked: SiggenController.setParameter(0, 0)
                             }
                             AppTabButton {
                                 text: qsTr("fs/6 · +1.25 dBTP")
-                                onClicked: SiggenController.setParam(0, 1)
+                                onClicked: SiggenController.setParameter(0, 1)
                             }
                         }
                         Repeater {
@@ -410,7 +410,7 @@ ToolWindow {
                                     minValue: modelData.min
                                     maxValue: modelData.max > 0 ? modelData.max : Infinity
                                     enabled: window.enabledControls
-                                    onCommitted: v => SiggenController.setParam(index, v)
+                                    onCommitted: v => SiggenController.setParameter(index, v)
                                 }
                             }
                         }
@@ -436,8 +436,8 @@ ToolWindow {
                             }
                         }
                         Caption {
-                            visible: SiggenController.signalType === SiggenController.Multitone && SiggenController.multitoneMax > 0
-                            text: qsTr("Up to %1 tones on this device.").arg(SiggenController.multitoneMax)
+                            visible: SiggenController.signalType === SiggenController.Multitone && SiggenController.mostTones > 0
+                            text: qsTr("Up to %1 tones on this device.").arg(SiggenController.mostTones)
                         }
                     }
 
@@ -524,7 +524,7 @@ ToolWindow {
                             caption: qsTr("Skips crossover and PEQ on the selected outputs. Trim, master volume, mute and delay still apply.")
                             checked: (SiggenController.flags & 1) !== 0
                             switchEnabled: window.enabledControls
-                            onToggled: on => SiggenController.setFlag(1, on)
+                            onToggled: on => SiggenController.setOption(1, on)
                         }
                         OptionRow {
                             toggleName: "SiggenWindow.decorrelate"
@@ -534,7 +534,7 @@ ToolWindow {
                             caption: qsTr("Independent noise per output instead of one copied signal.")
                             checked: (SiggenController.flags & 2) !== 0
                             switchEnabled: window.enabledControls
-                            onToggled: on => SiggenController.setFlag(2, on)
+                            onToggled: on => SiggenController.setOption(2, on)
                         }
                         OptionRow {
                             readonly property bool channelId: SiggenController.signalType === SiggenController.ChannelId
@@ -544,7 +544,7 @@ ToolWindow {
                                                : qsTr("Plays the selected outputs sequentially instead of together.")
                             checked: channelId || (SiggenController.flags & 4) !== 0
                             switchEnabled: window.enabledControls && !channelId
-                            onToggled: on => SiggenController.setFlag(4, on)
+                            onToggled: on => SiggenController.setOption(4, on)
                         }
                     }
                 }
@@ -585,30 +585,30 @@ ToolWindow {
             }
             IconButton {
                 objectName: "SiggenWindow.stopNow"
-                visible: SiggenController.running
+                visible: SiggenController.playing
                 iconName: "square"
                 toolTip: qsTr("Stop immediately, no fade")
                 enabled: window.enabledControls
-                onClicked: SiggenController.stop(true)
+                onClicked: SiggenController.stopPlaying(true)
             }
             AppButton {
                 objectName: "SiggenWindow.stop"
-                visible: SiggenController.running
+                visible: SiggenController.playing
                 text: qsTr("Stop")
                 iconName: "circle-x"
                 destructive: true
                 enabled: window.enabledControls
-                onClicked: SiggenController.stop(false)
+                onClicked: SiggenController.stopPlaying(false)
             }
             AppButton {
                 objectName: "SiggenWindow.start"
-                visible: !SiggenController.running
+                visible: !SiggenController.playing
                 text: qsTr("Start")
                 iconName: "play"
                 primary: true
                 enabled: SiggenController.startBlocker === "" && !DeviceModel.readOnly
                 toolTip: SiggenController.startBlocker !== "" ? SiggenController.startBlocker : qsTr("Start the generator")
-                onClicked: SiggenController.start()
+                onClicked: SiggenController.play()
             }
         }
     }

@@ -190,7 +190,7 @@ void RtaController::onPicture() {
     m_version = snap->version;
     m_telemetry = snap->telemetry_version;
     if (capsNew) {
-        emit capsChanged();
+        emit analyserChanged();
         emit selectionChanged();   // the channels available follow the caps
         push();
     }
@@ -202,7 +202,7 @@ void RtaController::onPicture() {
         ++m_pictureRevision;
         emit pictureChanged();
     }
-    if (telemetryNew || capsNew) emit telemetryChanged();
+    if (telemetryNew || capsNew) emit readingsChanged();
 }
 
 void RtaController::onSnapshot() {
@@ -210,7 +210,7 @@ void RtaController::onSnapshot() {
     if (!snap.connected) {
         if (m_generation != 0) {
             m_generation = 0;
-            emit capsChanged();
+            emit analyserChanged();
             emit selectionChanged();
         }
         return;
@@ -248,6 +248,22 @@ void RtaController::onPageChanged() {
     emit selectionChanged();
     push();
 }
+
+// ---- The state as QML reads it ----
+
+bool RtaController::available() const { return ready() && m_caps.supported; }
+int RtaController::largestOrder() const { return m_caps.order_max; }
+int RtaController::pictureRevision() const { return m_pictureRevision; }
+bool RtaController::onDashboard() const { return m_page < 0; }
+int RtaController::ownTap() const { return own().tap; }
+QList<int> RtaController::ownChannels() const { return own().channels; }
+int RtaController::drawnTap() const { return drawn().tap; }
+QList<int> RtaController::drawnChannels() const { return drawn().channels; }
+bool RtaController::following() const { return m_owner.following; }
+bool RtaController::analysing() const { return m_snap->running; }
+bool RtaController::refused() const { return m_snap->config_rejected; }
+bool RtaController::watching() const { return m_request.mask != 0 || m_watching; }
+int RtaController::requestsSent() const { return m_requestsSent; }
 
 // ---- Selections ----
 
@@ -500,6 +516,27 @@ bool RtaController::bandVisible(int band) const {
     const double n = double(1 << order);
     const double binHz = 48000.0 / n;
     return std::max(1.0, std::ceil(lo / binHz)) <= std::min(n / 2 - 1, std::floor(hi / binHz));
+}
+
+// ---- The bar layout ----
+
+int RtaController::barColumnsFor(int count) const {
+    const int chosen = std::clamp(m_prefs->value(QStringLiteral("barColumns")).toInt(), 1, kMaxColumns);
+    return std::min(std::max(count, 1), chosen);
+}
+
+int RtaController::barCellHeight(int count) const {
+    const int stored = std::clamp(m_prefs->value(QStringLiteral("barHeight")).toInt(), kBarHeightMin, kBarHeightMax);
+    // Several channels share the strip at three quarters of the height
+    return count <= 1 ? stored : int(std::lround(0.75 * stored));
+}
+
+int RtaController::draggedBarHeight(double startHeight, double dy, int count) const {
+    const int columns = barColumnsFor(count);
+    const int rows = (std::max(count, 1) + columns - 1) / columns;
+    // Every row grows with the drag, so the edge stays under the pointer
+    const double perRow = rows * (count <= 1 ? 1.0 : 0.75);
+    return int(std::lround(std::clamp(startHeight + dy / perRow, double(kBarHeightMin), double(kBarHeightMax))));
 }
 
 // ---- Texts ----

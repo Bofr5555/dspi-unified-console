@@ -23,7 +23,7 @@ ColumnLayout {
     // Without an analyser: one line
     Text {
         objectName: options.prefix + ".unavailable"
-        visible: !RtaController.supported
+        visible: !RtaController.available
         Layout.fillWidth: true
         Layout.margins: Theme.spacing
         wrapMode: Text.WordWrap
@@ -35,7 +35,7 @@ ColumnLayout {
     // Following another console
     RowLayout {
         objectName: options.prefix + ".following"
-        visible: RtaController.supported && RtaController.following
+        visible: RtaController.available && RtaController.following
         Layout.fillWidth: true
         Layout.leftMargin: Theme.spacing
         Layout.rightMargin: Theme.spacing
@@ -61,7 +61,7 @@ ColumnLayout {
     }
 
     ColumnLayout {
-        visible: RtaController.supported
+        visible: RtaController.available
         Layout.fillWidth: true
         Layout.margins: Theme.spacing
         spacing: 10
@@ -137,14 +137,14 @@ ColumnLayout {
     }
 
     Rectangle {
-        visible: RtaController.supported
+        visible: RtaController.available
         color: Theme.separator
         implicitHeight: 1
         Layout.fillWidth: true
     }
     AppSwitch {
         objectName: options.prefix + ".graph"
-        visible: RtaController.supported
+        visible: RtaController.available
         implicitHeight: 26
         Layout.fillWidth: true
         Layout.leftMargin: 10
@@ -156,7 +156,7 @@ ColumnLayout {
     }
     AppSwitch {
         objectName: options.prefix + ".bars"
-        visible: RtaController.supported
+        visible: RtaController.available
         implicitHeight: 26
         Layout.fillWidth: true
         Layout.leftMargin: 10
