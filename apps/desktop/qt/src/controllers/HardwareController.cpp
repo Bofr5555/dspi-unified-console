@@ -335,7 +335,7 @@ void HardwareController::onSnapshot() {
     readState();
     readSurfaces();
     m_ctx.poller->setEnabled(m_lockPoll, m_watchers > 0 && connected());
-    ++m_revision;
+    ++m_rev;
     emit changed();
     if (!m_globalEdited) emit draftChanged();
     pendingMaybeChanged();
@@ -377,7 +377,9 @@ void HardwareController::readFeatures() {
                 settings->setPageAvailable(QStringLiteral("interfaces"),
                                            m_has.value(QStringLiteral("interfaces")).toBool());
             }
-            ++m_revision;
+            // What the snapshot says depends on what the device has
+            readState();
+            ++m_rev;
             emit changed();
         });
 }
@@ -665,11 +667,11 @@ void HardwareController::resetPins() {
     QList<QPair<int, int>> targets;
     QStringList names;
     for (const QVariant &v : m_hw.value(QStringLiteral("outputs")).toList()) {
-        const QVariantMap m = v.toMap();
-        const int id = m.value(QStringLiteral("id")).toInt();
-        const bool slot = m.value(QStringLiteral("slot")).toBool();
+        const QVariantMap entry = v.toMap();
+        const int id = entry.value(QStringLiteral("id")).toInt();
+        const bool slot = entry.value(QStringLiteral("slot")).toBool();
         targets.append({ id, slot ? kDefaultDataPins[size_t(std::clamp(id, 0, 3))] : kDefaultSubPin });
-        names.append(m.value(QStringLiteral("name")).toString());
+        names.append(entry.value(QStringLiteral("name")).toString());
     }
     auto failed = std::make_shared<int>(-1);
     beginOutputEdit();
@@ -865,9 +867,9 @@ void HardwareController::setLgSoundSync(bool on) {
     m_ctx.device->write(QStringLiteral("lg sound sync"), [on](FfiCore *c) { return dspi_set_lg_sound_sync(c, on); });
 }
 
-void HardwareController::setI2sClockMode(int mode) {
+void HardwareController::setI2sClockMode(int clockMode) {
     live(QStringLiteral("i2s clock mode"),
-         [mode](FfiCore *c) { return uint8_t(dspi_set_i2s_clock_mode(c, uint8_t(mode)) ? PIN_CONFIG_SUCCESS : 0xFF); },
+         [clockMode](FfiCore *c) { return uint8_t(dspi_set_i2s_clock_mode(c, uint8_t(clockMode)) ? PIN_CONFIG_SUCCESS : 0xFF); },
          [](uint8_t) {});
 }
 

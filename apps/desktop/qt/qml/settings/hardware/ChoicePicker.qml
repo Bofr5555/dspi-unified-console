@@ -9,13 +9,9 @@ AppComboBox {
     property var choices: []
     property var value
     property string missingText
+    readonly property int found: choices.findIndex(c => c.value === picker.value)
     signal chosen(var value)
 
-    readonly property int found: {
-        for (let i = 0; i < choices.length; ++i)
-            if (choices[i].value === value) return i
-        return -1
-    }
     readonly property var shown: found >= 0 || missingText.length === 0
                                  ? choices : choices.concat([{ value: value, text: missingText }])
 

@@ -24,7 +24,7 @@ class OutputLatencyController : public QObject, public SaveParticipant {
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
-    Q_PROPERTY(bool supported READ supported NOTIFY changed)
+    Q_PROPERTY(bool supported READ supported NOTIFY changed FINAL)
     // [{id, text, available}] in the device's order; a requested id the
     // table lacks shows as "-"
     Q_PROPERTY(QVariantList options READ options NOTIFY changed)

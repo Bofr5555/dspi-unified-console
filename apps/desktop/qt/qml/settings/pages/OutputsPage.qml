@@ -60,7 +60,10 @@ SettingsPage {
                         color: Theme.textMuted
                     }
                 }
-                Item { Layout.fillWidth: true }
+                Item {
+                    Layout.fillWidth: true
+                    implicitHeight: 1
+                }
                 // The bus: S/PDIF or I2S for a slot (I2S where the chip allows
                 // it), PDM only for the sub
                 ChoicePicker {

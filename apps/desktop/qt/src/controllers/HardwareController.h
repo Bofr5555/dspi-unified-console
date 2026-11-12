@@ -65,7 +65,7 @@ class HardwareController : public QObject {
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
-    Q_PROPERTY(int revision READ revision NOTIFY changed)
+    Q_PROPERTY(int revision READ revision NOTIFY changed FINAL)
     Q_PROPERTY(bool connected READ connected NOTIFY changed)
     Q_PROPERTY(bool writable READ writable NOTIFY changed)
     Q_PROPERTY(bool rp2040 READ rp2040 NOTIFY changed)
@@ -85,7 +85,7 @@ class HardwareController : public QObject {
     Q_PROPERTY(bool statusError READ statusError NOTIFY statusChanged)
 
     // Global Parameters: the held draft
-    Q_PROPERTY(QVariantMap draft READ draft NOTIFY draftChanged)
+    Q_PROPERTY(QVariantMap draft READ draft NOTIFY draftChanged FINAL)
     Q_PROPERTY(QStringList presetSlotLabels READ presetSlotLabels NOTIFY changed)
 
     // Control Interfaces: the outcome of the last Apply per interface
@@ -122,7 +122,7 @@ public:
     };
     Q_ENUM(Consumer)
 
-    int revision() const { return m_revision; }
+    int revision() const { return m_rev; }
     bool connected() const;
     bool writable() const;
     bool rp2040() const;
@@ -182,7 +182,7 @@ public:
     Q_INVOKABLE void setSpdifCount(int count);
     Q_INVOKABLE void setSpdifPin(int index, int pin);
     Q_INVOKABLE void setLgSoundSync(bool on);
-    Q_INVOKABLE void setI2sClockMode(int mode);
+    Q_INVOKABLE void setI2sClockMode(int clockMode);
     Q_INVOKABLE void setI2sChannels(int channels);
     Q_INVOKABLE void setI2sRxPin(int pair, int pin);
     Q_INVOKABLE void setAdatInEnabled(bool on);
@@ -280,7 +280,7 @@ private:
     void readInterfacesLater(bool uart);
 
     AppContext m_ctx;
-    int m_revision = 0;
+    int m_rev = 0;
     uint64_t m_generation = 0;
     QString m_serial;
     QVariantMap m_has;

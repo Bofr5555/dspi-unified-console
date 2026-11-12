@@ -75,9 +75,9 @@ OutputLatencyController::Reading OutputLatencyController::read(FfiCore *c, bool 
     const QJsonArray options =
         jsonValue(readSized([c](char *b, uint32_t n) { return dspi_fetch_output_latency_options(c, b, n); })).toArray();
     for (const QJsonValue &v : options) {
-        const QJsonObject o = v.toObject();
-        r.options.append({ o.value(QLatin1String("id")).toInt(), o.value(QLatin1String("available")).toBool(),
-                           number(o, "latencyUs", "latency_us"), number(o, "effectiveUs", "effective_us") });
+        const QJsonObject entry = v.toObject();
+        r.options.append({ entry.value(QLatin1String("id")).toInt(), entry.value(QLatin1String("available")).toBool(),
+                           number(entry, "latencyUs", "latency_us"), number(entry, "effectiveUs", "effective_us") });
     }
     return r;
 }
