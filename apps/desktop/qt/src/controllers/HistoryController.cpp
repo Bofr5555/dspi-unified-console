@@ -85,19 +85,19 @@ QString unitOf(const QString &path) {
 // A parameter value ({"float": -7.5}, {"bool": true}, ...) in words
 QString valueText(const QJsonValue &v, const QString &path) {
     if (!v.isObject()) return QString();
-    const QJsonObject o = v.toObject();
-    if (o.contains(QLatin1String("bool")))
-        return o.value(QLatin1String("bool")).toBool() ? QCoreApplication::translate("HistoryController", "On")
+    const QJsonObject value = v.toObject();
+    if (value.contains(QLatin1String("bool")))
+        return value.value(QLatin1String("bool")).toBool() ? QCoreApplication::translate("HistoryController", "On")
                                                         : QCoreApplication::translate("HistoryController", "Off");
-    if (o.contains(QLatin1String("float"))) {
-        const double x = o.value(QLatin1String("float")).toDouble();
+    if (value.contains(QLatin1String("float"))) {
+        const double x = value.value(QLatin1String("float")).toDouble();
         const QString unit = unitOf(path);
         QString number = QLocale().toString(x, 'f', unit == QLatin1String("Hz") ? 0 : (path == QLatin1String("eq.q") ? 2 : 1));
         return unit.isEmpty() ? number : number + QLatin1Char(' ') + unit;
     }
-    if (o.contains(QLatin1String("int"))) return QString::number(o.value(QLatin1String("int")).toInteger());
-    if (o.contains(QLatin1String("choice"))) return QString::number(o.value(QLatin1String("choice")).toInt());
-    if (o.contains(QLatin1String("text"))) return o.value(QLatin1String("text")).toString();
+    if (value.contains(QLatin1String("int"))) return QString::number(value.value(QLatin1String("int")).toInteger());
+    if (value.contains(QLatin1String("choice"))) return QString::number(value.value(QLatin1String("choice")).toInt());
+    if (value.contains(QLatin1String("text"))) return value.value(QLatin1String("text")).toString();
     return QString();
 }
 

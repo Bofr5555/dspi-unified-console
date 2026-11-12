@@ -13,7 +13,7 @@ namespace {
 
 QString readText(const QString &path) {
     QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) return QString();
+    if (!f.open(QIODevice::ReadOnly)) return {};
     return QString::fromUtf8(f.readAll()).trimmed();
 }
 
