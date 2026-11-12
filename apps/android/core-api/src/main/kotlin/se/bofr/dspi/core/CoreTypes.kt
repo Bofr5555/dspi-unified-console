@@ -2039,6 +2039,65 @@ data class FirmwareGuardVerdict(
 )
 
 /**
+ * One change in the history ([`DspiCore::history`]).
+ */
+data class HistoryEntry(
+    /**
+     * The registry path (`out.gain`, `eq.freq`, ...), or one of the
+     * journal's own: `eq.band` (a whole band: type, bypass, then freq, Q,
+     * gain and the Linkwitz target Q as little-endian `f32`s), `ext.pairmap`
+     * (the crossfeed pair map's four bytes), `ext.vreg` (a core-voltage
+     * request: op and value), `raw` (a raw request: opcode and `wValue` as
+     * indices, the payload as the value). A control-surface operation is
+     * under its `cs.*` path with the operation's JSON as text.
+     */
+    val path: String,
+    /**
+     * The path's indices (an output, a channel and a band, ...).
+     */
+    val indices: List<Int>,
+    /**
+     * The value before, when known; undo writes it back.
+     */
+    val before: ParamValue?,
+    /**
+     * The value after (`trigger` for an action).
+     */
+    val after: ParamValue,
+    /**
+     * Who made it.
+     */
+    val source: HistorySource,
+    /**
+     * When, in milliseconds since the Unix epoch (a drag: its last step).
+     */
+    val atMs: Long,
+    /**
+     * Whether undo may reverse it. The registry decides: only a parameter
+     * with no hazard (not a flash write, an audible one, a reconfiguration,
+     * a deferred or an irreversible one).
+     */
+    val undoable: Boolean,
+)
+
+/**
+ * What [`DspiCore::undo`] or [`DspiCore::redo`] did.
+ */
+data class HistoryMove(
+    /**
+     * The change reversed (undo) or applied again (redo); `None` when
+     * nothing moved.
+     */
+    val entry: HistoryEntry?,
+    /**
+     * Undo only: the changes stepped over on the way, newest first, which
+     * cannot be undone (see [`HistoryEntry::undoable`]). An entry here that
+     * is undoable had no value before to restore; the walk stopped there.
+     */
+    val skipped: List<HistoryEntry>,
+)
+
+/**
  * What to tell the user about a [`LinkPhase`].
  */
 data class LinkPhaseText(
@@ -2513,6 +2572,24 @@ enum class FirmwareGuardReason {
      * voltage. Its `confirmation_phrase` is the word `OVERVOLT`.
      */
     OVERVOLT,
+}
+
+/**
+ * Who made a change in the history.
+ */
+enum class HistorySource {
+    /**
+     * A write this program asked for.
+     */
+    LOCAL,
+    /**
+     * The reversal of an earlier change, sent by [`DspiCore::undo`].
+     */
+    UNDO,
+    /**
+     * The repeat of an undone change, sent by [`DspiCore::redo`].
+     */
+    REDO,
 }
 
 /**

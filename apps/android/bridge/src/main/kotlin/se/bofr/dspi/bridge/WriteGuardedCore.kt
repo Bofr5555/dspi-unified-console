@@ -4,6 +4,7 @@ package se.bofr.dspi.bridge
 import se.bofr.dspi.core.DspiCoreApi
 import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.FilterParams
+import se.bofr.dspi.core.HistoryMove
 import se.bofr.dspi.core.I2cConfig
 import se.bofr.dspi.core.SiggenConfig
 import se.bofr.dspi.core.UartConfig
@@ -135,6 +136,17 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
     override fun applyAllParams() {
         guard("applyAllParams")
         return inner.applyAllParams()
+    }
+
+    // -- WP P0W -- an undo or redo writes the device like the setter it replays
+    override fun undo(): HistoryMove {
+        guard("undo")
+        return inner.undo()
+    }
+
+    override fun redo(): HistoryMove {
+        guard("redo")
+        return inner.redo()
     }
 
     override fun setFilter(ch: Int, band: Int, params: FilterParams) {
@@ -661,6 +673,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "setOutputLatency",
             "coreVregOp",
             "rawSet",
+            // -- WP P0W --
+            "undo",
+            "redo",
             // Review w1d (CG11, CG14): the calibration flow's device writes
             "coreVregCalStart",
             "coreVregCalCommit",
@@ -839,7 +854,11 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // (the firmware-update path, as enterBootloader; the writes
             // inside it are guarded one by one).
             "deviceLockAcquire",
-            "deviceLockRelease"
+            "deviceLockRelease",
+            // -- WP P0W -- the change history's reads
+            "canUndo",
+            "canRedo",
+            "history"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

@@ -25,6 +25,8 @@ use serde_json::{Value, json};
 use crate::guard::{self, Refusal};
 // -- WP WB6b --
 use crate::curves;
+// -- WP P0W --
+use crate::history;
 // -- WP WB4b --
 use crate::link;
 // -- WP WB6a --
@@ -219,6 +221,11 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         }
         // -- WP CG36 --
         "core1Conflict" => write::core1_conflict(&core, &params(req.params)?),
+        // -- WP P0W -- the change history (src/history.rs)
+        "undo" => history::undo(&core),
+        "redo" => history::redo(&core),
+        "canUndo" | "canRedo" => Ok(history::can(&core)),
+        "history" => Ok(history::history(&core, &params(req.params)?)),
         "describe" => {
             #[derive(Deserialize)]
             struct P {
@@ -619,6 +626,36 @@ mod tests {
 
     fn code(r: &Value) -> &str {
         r["code"].as_str().unwrap_or("")
+    }
+
+    // -- WP P0W --
+    #[test]
+    fn wp_p0w_undo_redo_and_history_through_the_worker_calls() {
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        ok(h, "open", json!({ "kind": "demo" }));
+        let can = ok(h, "canUndo", Value::Null);
+        assert_eq!(can, json!({ "canUndo": false, "canRedo": false }));
+        ok(
+            h,
+            "write",
+            json!({ "path": "out.gain", "indices": [0], "value": { "float": -6.5 } }),
+        );
+        let flags = ok(h, "poll", Value::Null)["flags"].as_u64().unwrap();
+        assert_ne!(flags & u64::from(dspi_core::consts::NOTIFY_HISTORY), 0);
+        let hist = ok(h, "history", json!({ "n": 5 }));
+        assert_eq!(hist[0]["path"], "out.gain");
+        assert_eq!(hist[0]["after"], json!({ "float": -6.5 }));
+        assert_eq!(hist[0]["source"], "local");
+        let undone = ok(h, "undo", Value::Null);
+        assert_eq!(undone["entry"]["path"], "out.gain");
+        assert_eq!(ok(h, "canRedo", Value::Null)["canRedo"], true);
+        let redone = ok(h, "redo", Value::Null);
+        assert_eq!(redone["entry"]["after"], json!({ "float": -6.5 }));
+        assert_eq!(ok(h, "history", json!({ "n": 1 }))[0]["source"], "redo");
+        ok(h, "close", Value::Null);
+        assert_eq!(code(&run(h, "undo", Value::Null)), "not_open");
+        session_free(h).unwrap();
     }
 
     #[test]

@@ -759,6 +759,10 @@ object DspiConstants {
      * `dspi_core::consts::NOTIFY_IR_LEARN`.
      */
     const val NOTIFY_IR_LEARN: Int = 1 shl 7
+    /**
+     * `dspi_core::consts::NOTIFY_HISTORY`.
+     */
+    const val NOTIFY_HISTORY: Int = 1 shl 12
 
     // ── files ──
     /**
