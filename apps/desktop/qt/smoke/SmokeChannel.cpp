@@ -9,12 +9,14 @@
 #include "Core.h"
 #include "CoreApi.h"
 #include "DeviceModel.h"
+#include "GraphController.h"
 #include "Registrar.h"
 #include "Shell.h"
 
 #include <QQuickItem>
 #include <algorithm>
 #include <QQuickWindow>
+#include <QTest>
 #include <cmath>
 
 namespace {
@@ -237,6 +239,26 @@ void outputPage(Pages &p) {
     // Card: gain, delay (SL1), mute, routing, limiter
     p.type(QStringLiteral("OutputCard.gainValue"), QStringLiteral("-4"));
     d.check(QStringLiteral("qp2: the gain field sets the output gain"), p.s() && near(p.s()->output_gain_db[0], -4));
+    // -- WP QPI1 -- a drag previews the gain on the graph, a release hands it back
+    if (auto *gain = qobject_cast<QQuickItem *>(p.obj(QStringLiteral("OutputCard.gain")))) {
+        GraphController *g = Registrar::instance<GraphController>();
+        const int out0 = p.cc->outputChannel(0);
+        const QPoint from = gain->mapToScene(QPointF(gain->width() * 0.5, gain->height() / 2)).toPoint();
+        const QPoint to = gain->mapToScene(QPointF(gain->width() * 0.8, gain->height() / 2)).toPoint();
+        QTest::mousePress(p.w, Qt::LeftButton, Qt::NoModifier, from);
+        for (int i = 1; i <= 6; ++i) {
+            QTest::mouseMove(p.w, from + (to - from) * i / 6);
+            d.spin(20);
+        }
+        const double shown = g->outputGain(out0);
+        d.check(QStringLiteral("qpi1: the graph follows the gain slider while it is held"),
+                near(shown, gain->property("value").toDouble(), 0.01) && !near(shown, -4, 0.5));
+        QTest::mouseRelease(p.w, Qt::LeftButton, Qt::NoModifier, to);
+        d.waitIdle();
+        d.check(QStringLiteral("qpi1: on release the graph takes the device's gain"),
+                p.s() && near(g->outputGain(out0), p.s()->output_gain_db[0], 0.01) && !near(p.s()->output_gain_db[0], -4, 0.5));
+        p.type(QStringLiteral("OutputCard.gainValue"), QStringLiteral("-4"));
+    }
     QObject *delay = p.obj(QStringLiteral("OutputCard.delay"));
     if (delay) QMetaObject::invokeMethod(delay, "valueMoved", Q_ARG(double, 3.6));
     d.waitIdle();

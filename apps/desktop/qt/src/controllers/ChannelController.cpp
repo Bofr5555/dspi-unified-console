@@ -488,16 +488,17 @@ void ChannelController::clearInputPeq(int input) {
     if (partner >= 0) clearBands(partner, false);
 }
 
-// Pair 0 (inputs 1/2) is linked until the person says otherwise
+// Kept per device under inputLinks/<serial> (behaviour.md §21), one bit per
+// pair. Pair 0 (inputs 1/2) is linked until the person says otherwise.
 void ChannelController::loadLinks() {
     QSettings s;
-    m_linkedPairs = s.value(QStringLiteral("linkedInputPairs/%1").arg(m_linksSerial), 1).toInt() & 0xF;
+    m_linkedPairs = s.value(QStringLiteral("inputLinks/%1").arg(m_linksSerial), 1).toInt() & 0xF;
 }
 
 void ChannelController::storeLinks() {
     if (m_linksSerial.isEmpty()) return;
     QSettings s;
-    s.setValue(QStringLiteral("linkedInputPairs/%1").arg(m_linksSerial), m_linkedPairs);
+    s.setValue(QStringLiteral("inputLinks/%1").arg(m_linksSerial), m_linkedPairs);
 }
 
 // ---- Outputs ---------------------------------------------------------------

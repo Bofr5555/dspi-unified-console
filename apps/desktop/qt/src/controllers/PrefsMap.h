@@ -6,9 +6,9 @@
 #include <QVariant>
 #include <QtQml/qqmlregistration.h>
 
-// App preferences of one settings group ("graph", "spectrum"), as properties
-// QML binds to and writes: `SettingsController.graph.lineWidth = 2` stores
-// graph/lineWidth in the app's settings file and every binding follows at once.
+// App preferences of one settings group ("spectrum"), as properties QML binds
+// to and writes: `SettingsController.spectrum.avgMs = 500` stores
+// spectrum/avgMs in the app's settings file and every binding follows at once.
 // A key declared with a default reads as that type (the INI file keeps
 // numbers as text). C++ readers connect valueChanged(key, value).
 class PrefsMap : public QQmlPropertyMap {

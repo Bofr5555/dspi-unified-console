@@ -120,7 +120,8 @@ public:
     Q_INVOKABLE double preamp(int input) const;
     // Sent live during a drag and again on release; mirrored onto a linked partner
     Q_INVOKABLE void setPreamp(int input, double db);
-    // Pair links (inputs 2p and 2p+1), kept per device serial
+    // Pair links (inputs 2p and 2p+1), kept per device serial under
+    // inputLinks/<serial>. The one owner: the sidebar and the graph read these.
     Q_INVOKABLE bool pairAvailable(int input) const;
     Q_INVOKABLE bool isLinked(int input) const;
     Q_INVOKABLE int linkedPartner(int input) const;

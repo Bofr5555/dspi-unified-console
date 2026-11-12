@@ -11,6 +11,7 @@
 #include "Core.h"
 #include "CoreWorker.h"
 #include "DeviceModel.h"
+#include "GraphController.h"
 #include "PrefsMap.h"
 #include "SettingsController.h"
 #include "Shell.h"
@@ -256,19 +257,32 @@ void settingsSection(SmokeDriver &d) {
 
     // ---- Graphing: a preference applies and is stored at once -------------------------
     showOnly(d, s, "graphing");
-    PrefsMap *graph = s->graph();
-    const bool glow = graph->value(QStringLiteral("showGlow")).toBool();
+    // -- WP QPI1 -- the page's preferences are GraphController's (the one owner)
+    GraphController *graph = Registrar::instance<GraphController>();
+    const bool glow = graph->showGraphGlow();
     if (QObject *sw = ui.get("Graphing.showGlow.switch")) QMetaObject::invokeMethod(sw, "click");
     d.spin(100);
-    d.check(QStringLiteral("qp10: Graph Line Glow switches the preference"), graph->value(QStringLiteral("showGlow")).toBool() == !glow);
+    d.check(QStringLiteral("qpi1: Graph Line Glow switches the graph's glow"), graph->showGraphGlow() == !glow);
     d.check(QStringLiteral("qp10: and stores it under graph/showGlow"),
             QSettings().value(QStringLiteral("graph/showGlow")).toBool() == !glow);
+    graph->setShowGraphGlow(glow);
+    d.spin(50);
+    auto *glowRow = qobject_cast<QQuickItem *>(ui.get("Graphing.showGlow"));
+    d.check(QStringLiteral("qpi1: the page follows a change made on the graph"),
+            glowRow && glowRow->property("checked").toBool() == glow);
     auto *unwrap = qobject_cast<QQuickItem *>(ui.get("Graphing.phaseUnwrapped"));
     d.check(QStringLiteral("qp10: Unwrap Phase is off while phase is hidden"),
-            unwrap && (graph->value(QStringLiteral("showPhase")).toBool() || !unwrap->isEnabled()));
-    d.check(QStringLiteral("qp10: the graph defaults are behaviour.md's"),
-            graph->fallback(QStringLiteral("dbRange")).toDouble() == 50 && graph->fallback(QStringLiteral("minFreq")).toDouble() == 15 &&
-                graph->fallback(QStringLiteral("lineWidth")).toDouble() == 1.5);
+            unwrap && (graph->showPhase() || !unwrap->isEnabled()));
+    const double minFreq = graph->minFreq(), maxFreq = graph->maxFreq(), range = graph->dbRange(), centre = graph->dbCenter();
+    graph->resetScale();
+    auto *lineWidth = qobject_cast<QQuickItem *>(ui.get("Graphing.lineWidth"));
+    d.check(QStringLiteral("qpi1: the graph defaults are behaviour.md's"),
+            graph->dbRange() == 50 && graph->minFreq() == 15 && graph->maxFreq() == 20000 && graph->dbCenter() == 0 &&
+                lineWidth && lineWidth->property("resetValue").toDouble() == 1.5);
+    graph->setMinFreq(minFreq);
+    graph->setMaxFreq(maxFreq);
+    graph->setDbRange(range);
+    graph->setDbCenter(centre);
     d.grab(w, QStringLiteral("settings-graphing.png"));
     if (QObject *sw = ui.get("Graphing.showGlow.switch")) QMetaObject::invokeMethod(sw, "click");
     d.spin(50);

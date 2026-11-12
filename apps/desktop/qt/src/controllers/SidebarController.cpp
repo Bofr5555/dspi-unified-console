@@ -1,6 +1,7 @@
 // -- WP QP1 -- The sidebar's state and writes (SidebarController.h).
 #include "SidebarController.h"
 
+#include "ChannelController.h"
 #include "Core.h"
 #include "DeviceModel.h"
 #include "Shell.h"
@@ -42,12 +43,11 @@ const QStringList kStripWindows = { QStringLiteral("tools.matrix"), QStringLiter
 constexpr double kMasterUnits = 248.0;
 constexpr double kMasterBreak1 = 1.0 - 100.0 / kMasterUnits;
 constexpr double kMasterBreak2 = kMasterBreak1 - 60.0 / kMasterUnits;
-
-QString linkKey(const QString &serial) { return QStringLiteral("inputLinks/") + serial; }
 } // namespace
 
 SidebarController::SidebarController(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {
     m_masterMode = QSettings().value(QStringLiteral("sidebar/showMaster"), false).toBool();
+    m_sidebarWidth = qMax(0, QSettings().value(QStringLiteral("sidebar/width"), 0).toInt());
     connect(ctx.device, &DeviceModel::snapshotApplied, this, &SidebarController::onSnapshot);
     connect(ctx.shell, &Shell::triggered, this, [this](const QString &action) {
         if (kStripWindows.contains(action)) QTimer::singleShot(0, this, [this, action]() { trackWindow(action); });
@@ -184,11 +184,7 @@ int SidebarController::selectedIndex() const {
 
 void SidebarController::onSnapshot() {
     DeviceModel *device = m_ctx.device;
-    const QString serial = device->connected() ? device->serial() : QString();
-    if (serial != m_linkSerial) {
-        m_linkSerial = serial;
-        loadLinkedPairs();
-    }
+    watchLinks();
     // A page whose row went away (no device, the output switched off) goes back
     // to the overview, as the Mac's sidebar does
     if (m_selected >= 0) {
@@ -302,7 +298,7 @@ void SidebarController::rebuildSources() {
     }
 }
 
-// ---- Selection, links, curves -------------------------------------------------
+// ---- Selection and links --------------------------------------------------------
 
 void SidebarController::select(int channel) {
     if (channel >= 0 && m_ctx.device->channels()->rowOfChannel(channel) < 0) channel = -1;
@@ -314,29 +310,18 @@ void SidebarController::select(int channel) {
 
 void SidebarController::rowClicked(int channel) { select((m_highlighted >> channel & 1) ? -1 : channel); }
 
+// Inputs are wire channels 0..n-1, so an input's number is its channel
 int SidebarController::linkedPartner(int channel) const {
-    const int inputs = m_ctx.device->channels()->inputCount();
-    if (channel < 0 || channel >= inputs || !isPairLinked(channel / 2)) return -1;
-    const int partner = channel ^ 1;
-    return partner < inputs ? partner : -1;
+    if (channel < 0 || channel >= m_ctx.device->channels()->inputCount()) return -1;
+    return Registrar::instance<ChannelController>()->linkedPartner(channel);
 }
 
-bool SidebarController::isPairLinked(int pair) const { return pair >= 0 && pair < MAX_INPUTS / 2 && (m_linkedPairs >> pair & 1); }
-
-void SidebarController::setInputPairLinked(int pair, bool linked) {
-    if (pair < 0 || pair >= MAX_INPUTS / 2 || isPairLinked(pair) == linked) return;
-    m_linkedPairs = linked ? m_linkedPairs | 1 << pair : m_linkedPairs & ~(1 << pair);
-    if (!m_linkSerial.isEmpty()) QSettings().setValue(linkKey(m_linkSerial), m_linkedPairs);
-    emit linkedInputPairsChanged();
-    updateHighlight();
-}
-
-// Per device; inputs 1/2 linked until the user says otherwise
-void SidebarController::loadLinkedPairs() {
-    const int pairs = m_linkSerial.isEmpty() ? 1 : QSettings().value(linkKey(m_linkSerial), 1).toInt();
-    if (pairs == m_linkedPairs) return;
-    m_linkedPairs = pairs;
-    emit linkedInputPairsChanged();
+// A link made or broken on the input page moves the highlight. Looked up on
+// first use: controllers are made in no set order.
+void SidebarController::watchLinks() {
+    if (m_watchingLinks) return;
+    m_watchingLinks = true;
+    connect(Registrar::instance<ChannelController>(), &ChannelController::changed, this, &SidebarController::updateHighlight);
 }
 
 void SidebarController::updateHighlight() {
@@ -350,16 +335,6 @@ void SidebarController::updateHighlight() {
     m_highlighted = mask;
     emit highlightChanged();
 }
-
-bool SidebarController::isCurveVisible(int channel) const { return channel < 0 || channel >= MAX_CHANNELS || !(m_hiddenCurves >> channel & 1); }
-
-void SidebarController::setCurveVisible(int channel, bool visible) {
-    if (channel < 0 || channel >= MAX_CHANNELS || isCurveVisible(channel) == visible) return;
-    m_hiddenCurves = visible ? m_hiddenCurves & ~(1 << channel) : m_hiddenCurves | 1 << channel;
-    emit curvesChanged();
-}
-
-void SidebarController::toggleCurve(int channel) { setCurveVisible(channel, !isCurveVisible(channel)); }
 
 // ---- Writes --------------------------------------------------------------------
 
@@ -484,6 +459,13 @@ void SidebarController::setVolumeMode(const QString &mode) {
     m_masterMode = master;
     QSettings().setValue(QStringLiteral("sidebar/showMaster"), master);
     emit volumeModeChanged();
+}
+
+void SidebarController::setSidebarWidth(int width) {
+    if (width <= 0 || width == m_sidebarWidth) return;
+    m_sidebarWidth = width;
+    QSettings().setValue(QStringLiteral("sidebar/width"), width);
+    emit sidebarWidthChanged();
 }
 
 void SidebarController::setUserVolume(double db) {
@@ -776,10 +758,4 @@ void SidebarController::clearAllPresets() {
             return worst;
         },
         tr("Clear Failed"), tr("Failed to clear preset (%1)."));
-}
-
-void SidebarController::setStatusNotice(const QString &text) {
-    if (text == m_statusNotice) return;
-    m_statusNotice = text;
-    emit statusNoticeChanged();
 }

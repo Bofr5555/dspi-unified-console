@@ -8,6 +8,8 @@
 #include "ChannelListModel.h"
 #include "Core.h"
 #include "DeviceModel.h"
+#include "GraphController.h"
+#include "ChannelController.h"
 #include "Poller.h"
 #include "PresetModel.h"
 #include "Shell.h"
@@ -20,6 +22,7 @@
 #include <QSettings>
 #include <QTest>
 #include <cmath>
+#include <cstdio>
 
 namespace {
 
@@ -123,41 +126,75 @@ void checkRows(SmokeDriver &d, SidebarController *sc) {
 void checkSelection(SmokeDriver &d, SidebarController *sc) {
     QObject *sidebar = d.item(QStringLiteral("Sidebar"));
     d.check(QStringLiteral("qp1: the overview is selected at start"), sc->selectedChannel() == -1 && sc->selectedKind() == QLatin1String("overview"));
-    d.check(QStringLiteral("qp1: inputs 1/2 are linked by default"), sc->isPairLinked(0) && sc->linkedPartner(0) == 1 && sc->linkedPartner(1) == 0);
+    ChannelController *cc = Registrar::instance<ChannelController>();
+    GraphController *g = Registrar::instance<GraphController>();
+    d.check(QStringLiteral("qp1: inputs 1/2 are linked by default"), cc->isLinked(0) && sc->linkedPartner(0) == 1 && sc->linkedPartner(1) == 0);
 
     click(d, d.item(QStringLiteral("Sidebar.channel.0")));
     d.check(QStringLiteral("qp1: a click selects input 1"), sc->selectedChannel() == 0 && sc->selectedKind() == QLatin1String("input") && sc->selectedIndex() == 0);
     d.check(QStringLiteral("qp1: the main window follows the selection"), sidebar && sidebar->property("selectedChannel").toInt() == 0);
     d.check(QStringLiteral("qp1: the linked partner is highlighted too"), sc->highlightedMask() == 0b11);
+    // -- WP QPI1 -- the right pane shows the input's page, the graph the pair
+    d.check(QStringLiteral("qpi1: the right pane shows input 1's page"), d.waitFor(2000, [&]() {
+        QQuickItem *page = d.item(QStringLiteral("InputDetail"));
+        return page && page->isVisible() && page->property("input").toInt() == 0;
+    }));
+    d.check(QStringLiteral("qpi1: the dashboard gives way to the page"), !d.item(QStringLiteral("Dashboard")) || !d.item(QStringLiteral("Dashboard"))->isVisible());
+    d.check(QStringLiteral("qpi1: the graph shows the linked pair"), g->visibleChannels() == QList<int>({ 0, 1 }));
+    d.check(QStringLiteral("qp1: screenshot of an input page"), d.grab(d.mainWindow(), QStringLiteral("window-main-input.png")));
     click(d, d.item(QStringLiteral("Sidebar.channel.1")));
     d.check(QStringLiteral("qp1: a click on the partner goes back to the overview"), sc->selectedChannel() == -1 && sc->highlightedMask() == 0);
 
-    sc->setInputPairLinked(0, false);
+    cc->unlinkPair(0);
+    d.spin(50);
+    d.check(QStringLiteral("qpi1: unlinking in the input header ends the highlight"), sc->linkedPartner(0) == -1);
     click(d, d.item(QStringLiteral("Sidebar.channel.0")));
     click(d, d.item(QStringLiteral("Sidebar.channel.1")));
     d.check(QStringLiteral("qp1: unlinked, the other input is selected instead"), sc->selectedChannel() == 1 && sc->highlightedMask() == 0b10);
+    d.check(QStringLiteral("qpi1: unlinked, the graph shows the one input"), d.waitFor(1000, [&]() { return g->visibleChannels() == QList<int>({ 1 }); }));
+    d.check(QStringLiteral("qpi1: and the page is input 2's"), d.item(QStringLiteral("InputDetail")) && d.item(QStringLiteral("InputDetail"))->property("input").toInt() == 1);
     d.check(QStringLiteral("qp1: the link choice is kept per device"),
             QSettings().value(QStringLiteral("inputLinks/") + d.app().device->serial()).toInt() == 0);
-    sc->setInputPairLinked(0, true);
+    cc->linkPair(0, -1);
+    d.spin(50);
+    d.check(QStringLiteral("qpi1: linked again, the graph shows the pair"), d.waitFor(1000, [&]() { return g->visibleChannels() == QList<int>({ 0, 1 }); }));
+    click(d, d.item(QStringLiteral("Sidebar.channel.1")));
 
     const QList<int> outs = shownOutputs(d);
     if (!outs.isEmpty()) {
         click(d, d.item(QStringLiteral("Sidebar.channel.%1").arg(outs.first())));
         d.check(QStringLiteral("qp1: a click selects an output"), sc->selectedChannel() == outs.first() && sc->selectedKind() == QLatin1String("output"));
+        d.check(QStringLiteral("qpi1: the right pane shows the output's page"), d.waitFor(2000, [&]() {
+            QQuickItem *page = d.item(QStringLiteral("OutputDetail"));
+            return page && page->isVisible() && page->property("output").toInt() == sc->selectedIndex();
+        }));
+        d.check(QStringLiteral("qp1: screenshot of an output page"), d.grab(d.mainWindow(), QStringLiteral("window-main-output.png")));
         click(d, d.item(QStringLiteral("Sidebar.channel.%1").arg(outs.first())));
         d.check(QStringLiteral("qp1: a second click goes back to the overview"), sc->selectedChannel() == -1);
+        d.check(QStringLiteral("qpi1: and the dashboard shows again"), d.waitFor(2000, [&]() {
+            QQuickItem *dash = d.item(QStringLiteral("Dashboard"));
+            return dash && dash->isVisible() && !d.item(QStringLiteral("OutputDetail"));
+        }));
     }
 }
 
+// -- WP QPI1 -- the pills show and set GraphController's visibility
 void checkPills(SmokeDriver &d, SidebarController *sc) {
+    GraphController *g = Registrar::instance<GraphController>();
     QQuickItem *pill = d.item(QStringLiteral("Sidebar.pill.2"));
-    d.check(QStringLiteral("qp1: every curve shows at start"), sc->hiddenCurves() == 0);
+    QStringList shown;
+    for (int ch : g->visibleChannels()) shown << QString::number(ch);
+    std::printf("smoke: qpi1 graph curves at the pills' check: %s\n", qPrintable(shown.join(QLatin1Char(' '))));
+    const bool start = g->isCurveVisible(2);
+    d.check(QStringLiteral("qpi1: the pill shows the graph's curve state"), pill && pill->property("checked").toBool() == start);
     click(d, pill);
-    d.check(QStringLiteral("qp1: the pill hides its curve"), !sc->isCurveVisible(2) && sc->hiddenCurves() == 0b100);
+    d.check(QStringLiteral("qpi1: the pill toggles the graph's curve"), g->isCurveVisible(2) == !start && g->visibleChannels().contains(2) == !start);
     d.check(QStringLiteral("qp1: the pill does not select its row"), sc->selectedChannel() == -1);
-    d.check(QStringLiteral("qp1: the pill shows it is off"), pill && !pill->property("checked").toBool());
-    click(d, pill);
-    d.check(QStringLiteral("qp1: the pill shows the curve again"), sc->isCurveVisible(2) && sc->hiddenCurves() == 0);
+    d.check(QStringLiteral("qpi1: the pill shows the new state"), pill && pill->property("checked").toBool() == !start);
+    g->toggleCurve(2);
+    d.spin(50);
+    d.check(QStringLiteral("qpi1: the pill follows a change made elsewhere"),
+            g->isCurveVisible(2) == start && pill && pill->property("checked").toBool() == start);
 }
 
 void checkRename(SmokeDriver &d) {
@@ -197,6 +234,9 @@ void checkRowMenu(SmokeDriver &d, SidebarController *sc) {
     d.check(QStringLiteral("qp1: an output's menu offers Identify on the demo"), identify && identify->property("visible").toBool() == sc->identifySupported());
     QObject *paste = row ? row->findChild<QObject *>(QStringLiteral("Sidebar.menu.paste.%1").arg(out)) : nullptr;
     d.check(QStringLiteral("qp1: Paste waits for a copy"), paste && paste->property("enabled").toBool() == sc->hasClipboard());
+    // -- WP QPI1 -- the last row sits clear of the menu's bottom edge
+    d.check(QStringLiteral("qpi1: the row menu has room below its last row"),
+            menu && menu->property("bottomPadding").toDouble() >= 4 && menu->property("topPadding").toDouble() >= 4);
     d.check(QStringLiteral("qp1: screenshot of the row menu"), d.grab(d.mainWindow(), QStringLiteral("window-main-sidebar-menu.png")));
     QTest::keyClick(d.mainWindow(), Qt::Key_Escape);
     d.check(QStringLiteral("qp1: Escape closes the menu"), d.waitFor(1000, [&]() { return menu && !menu->property("opened").toBool(); }));
@@ -434,19 +474,26 @@ void checkVolume(SmokeDriver &d, SidebarController *sc) {
     d.check(QStringLiteral("qp1: the volumes are restored"), std::fabs(sc->userVolumeDb() - user) < 0.05 && std::fabs(sc->masterVolumeDb() - master) < 0.05 && device->connected());
 }
 
-void checkStatus(SmokeDriver &d, SidebarController *sc) {
+// -- WP QPI1 -- the sidebar keeps the width it was given (sidebar/width)
+void checkWidth(SmokeDriver &d, SidebarController *sc) {
+    QQuickItem *bar = d.item(QStringLiteral("Sidebar"));
+    const int before = bar ? int(bar->width()) : 0;
+    sc->setSidebarWidth(280);
+    d.spin(100);
+    d.check(QStringLiteral("qpi1: the sidebar takes its stored width"), bar && int(bar->width()) == 280);
+    d.check(QStringLiteral("qpi1: and the width is kept under sidebar/width"), QSettings().value(QStringLiteral("sidebar/width")).toInt() == 280);
+    sc->setSidebarWidth(before);
+    d.spin(100);
+}
+
+void checkStatus(SmokeDriver &d, SidebarController *) {
     QObject *cpu = d.item(QStringLiteral("Sidebar.cpu0"));
     d.check(QStringLiteral("qp1: the C0 load shows a percentage"),
             cpu && d.waitFor(3000, [&]() { return shownName(cpu).endsWith(QLatin1Char('%')); }));
     d.check(QStringLiteral("qp1: the C1 load exists"), d.item(QStringLiteral("Sidebar.cpu1")) != nullptr);
+    // The lock notice on this line comes from the Link client: qp13-devices checks it on the fake hub
     QObject *text = d.item(QStringLiteral("DeviceStatus.text"));
-    sc->setStatusNotice(QStringLiteral("Another console is applying changes"));
-    d.spin(100);
-    d.check(QStringLiteral("qp1: the device line shows a notice"), text && text->property("text").toString() == QLatin1String("Another console is applying changes"));
-    d.check(QStringLiteral("qp1: the device button still names the device"), shownName(d.item(QStringLiteral("DeviceStatus.button"))) == d.app().device->deviceTitle());
-    sc->setStatusNotice(QString());
-    d.spin(100);
-    d.check(QStringLiteral("qp1: and drops it"), text && text->property("text").toString() == d.app().device->deviceTitle());
+    d.check(QStringLiteral("qp1: the device line names the device"), text && text->property("text").toString() == d.app().device->deviceTitle());
 }
 
 void checkFallback(SmokeDriver &d, SidebarController *sc) {
@@ -487,6 +534,7 @@ void sidebarSection(SmokeDriver &d) {
     checkSource(d, sc);
     checkVolume(d, sc);
     checkStatus(d, sc);
+    checkWidth(d, sc);
     checkFallback(d, sc);
     d.waitIdle();
 }

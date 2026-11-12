@@ -39,6 +39,7 @@ By hand, in the container:
     qt/src/core/             the core wrapper: Core, CoreWorker, DeviceModel, the list models
     qt/src/controllers/      Registrar, Shell; one controller per feature
     qt/src/platform/         the icon provider, the token store, tray and system integration
+    qt/src/render/           the drawn items: BodePlot (the graph), Meter, PinGrid
     qt/qml/Theme/            Theme (every colour, size and font) and ChannelPalette
     qt/qml/components/       the shared controls (below)
     qt/qml/main/             the main window, the menu table, the banner host, the
@@ -162,11 +163,10 @@ adapts each to `Core` and `DeviceModel`, or replaces it:
 
 | File | Work package |
 |---|---|
-| `src/controllers/LinkController.h` | QP13 |
 | `src/platform/SystemIntegration.h`, `SystemIntegration.cpp` | QP14 |
 | `src/platform/FirewallController.cpp` | QP14 |
 | `src/platform/HostAudioFormatWindows.cpp` | QP18 |
-| `smoke/LinkFakeHub.h`, `smoke/SmokeDriverLink*.cpp`, `SmokeDriverDevices.cpp`, `SmokeDriverRtaFollow.cpp` | QP13, QP9 |
+| `smoke/SmokeDriverRtaFollow.cpp` | QP9 |
 | `smoke/SmokeDriverNetworking.cpp`, `SmokeDriverTray.cpp`, `SmokeDriverSystem.cpp` | QP14 |
 | the other `smoke/SmokeDriver*.cpp` section files | the work package of their screens; QP19 for the rest |
 

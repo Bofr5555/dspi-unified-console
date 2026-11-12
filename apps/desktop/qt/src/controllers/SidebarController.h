@@ -26,12 +26,10 @@ class QWindow;
 //   "overview", "input" or "output"; `selectedIndex` is the input or output
 //   number. A click on a row the page already covers (its own, or the other
 //   half of a linked input pair) goes back to the overview, as on the Mac.
-// - Curves: `hiddenCurves`, one bit per wire channel whose curve the graph
-//   leaves out (the sidebar pills, for this session only, as the Mac's
-//   channelVisibility).
-// - Linked input pairs: `linkedInputPairs`, one bit per pair (1/2, 3/4, ...),
-//   kept per device serial under inputLinks/<serial>; pair 0 is linked by
-//   default. linkedPartner() says where an edit is mirrored.
+// - Curves: the pills show and toggle GraphController's visibility, which is
+//   the one owner of it.
+// - Linked input pairs: ChannelController owns them (inputLinks/<serial>);
+//   linkedPartner() reads it for the highlight and for Paste's mirroring.
 // - The channel clipboard: copy and paste a channel's bands (and, between
 //   outputs, crossover, gain, delay and mute); Edit > Copy / Paste act on the
 //   selected channel.
@@ -48,9 +46,6 @@ class SidebarController : public QObject {
     Q_PROPERTY(int selectedIndex READ selectedIndex NOTIFY selectionChanged)
     // Rows drawn as selected: the selected channel and its linked partner
     Q_PROPERTY(int highlightedMask READ highlightedMask NOTIFY highlightChanged)
-    // Curves the graph leaves out, one bit per wire channel
-    Q_PROPERTY(int hiddenCurves READ hiddenCurves NOTIFY curvesChanged)
-    Q_PROPERTY(int linkedInputPairs READ linkedInputPairs NOTIFY linkedInputPairsChanged)
     // Rows: outputs switched off or muted (one bit per output), each output's
     // slot name ("I2S 1 L"), and whether any shown output has a derived label
     Q_PROPERTY(int inactiveOutputs READ inactiveOutputs NOTIFY deviceChanged)
@@ -63,6 +58,9 @@ class SidebarController : public QObject {
     // Volume: "user" or "master", remembered (sidebar/showMaster)
     Q_PROPERTY(QString volumeMode READ volumeMode WRITE setVolumeMode NOTIFY volumeModeChanged)
     Q_PROPERTY(double userVolumeDb READ userVolumeDb NOTIFY deviceChanged)
+    // The sidebar's width in px as the person left it (sidebar/width); 0 until
+    // they first drag it, and the main window then uses its own
+    Q_PROPERTY(int sidebarWidth READ sidebarWidth WRITE setSidebarWidth NOTIFY sidebarWidthChanged)
     Q_PROPERTY(double masterVolumeDb READ masterVolumeDb NOTIFY deviceChanged)
     // Quick strip
     Q_PROPERTY(bool crossfeedOn READ crossfeedOn NOTIFY deviceChanged)
@@ -84,9 +82,6 @@ class SidebarController : public QObject {
     Q_PROPERTY(bool unsaved READ unsaved NOTIFY unsavedChanged)
     Q_PROPERTY(QStringList unsavedChanges READ unsavedChanges NOTIFY unsavedChanged)
     Q_PROPERTY(bool presetBusy READ presetBusy NOTIFY presetBusyChanged)
-    // A short notice on the device button (another console holds the
-    // device); the Link client sets it
-    Q_PROPERTY(QString statusNotice READ statusNotice NOTIFY statusNoticeChanged)
 public:
     SidebarController(const AppContext &ctx, QObject *parent = nullptr);
     static SidebarController *create(QQmlEngine *, QJSEngine *) { return Registrar::instance<SidebarController>(); }
@@ -109,8 +104,6 @@ public:
     QString selectedKind() const;
     int selectedIndex() const;
     int highlightedMask() const { return m_highlighted; }
-    int hiddenCurves() const { return m_hiddenCurves; }
-    int linkedInputPairs() const { return m_linkedPairs; }
     int inactiveOutputs() const;
     QStringList slotNames() const;
     bool derivedLabels() const;
@@ -119,6 +112,8 @@ public:
     bool identifySupported() const { return m_siggenMask != 0; }
     QString volumeMode() const { return m_masterMode ? QStringLiteral("master") : QStringLiteral("user"); }
     void setVolumeMode(const QString &mode);
+    int sidebarWidth() const { return m_sidebarWidth; }
+    void setSidebarWidth(int width);
     double userVolumeDb() const;
     double masterVolumeDb() const;
     bool crossfeedOn() const;
@@ -136,21 +131,13 @@ public:
     bool unsaved() const { return m_unsaved; }
     QStringList unsavedChanges() const { return m_unsavedLines; }
     bool presetBusy() const { return m_presetBusy; }
-    QString statusNotice() const { return m_statusNotice; }
-    void setStatusNotice(const QString &text);
 
     // Selection
     Q_INVOKABLE void select(int channel);
     // A click on a row (the Mac's rule: a row the page covers closes it)
     Q_INVOKABLE void rowClicked(int channel);
+    // The other half of a linked input pair (ChannelController's), or -1
     Q_INVOKABLE int linkedPartner(int channel) const;
-    Q_INVOKABLE bool isPairLinked(int pair) const;
-    Q_INVOKABLE void setInputPairLinked(int pair, bool linked);
-
-    // Curves
-    Q_INVOKABLE bool isCurveVisible(int channel) const;
-    Q_INVOKABLE void setCurveVisible(int channel, bool visible);
-    Q_INVOKABLE void toggleCurve(int channel);
 
     // Rows
     // Trimmed; an empty name changes nothing. False when nothing was sent.
@@ -197,17 +184,15 @@ public:
 signals:
     void selectionChanged();
     void highlightChanged();
-    void curvesChanged();
-    void linkedInputPairsChanged();
     void clipboardChanged();
     void capsChanged();
     void volumeModeChanged();
+    void sidebarWidthChanged();
     void deviceChanged();
     void openWindowsChanged();
     void sourcesChanged();
     void unsavedChanged();
     void presetBusyChanged();
-    void statusNoticeChanged();
     // op: "switch" or "copy"
     void unsavedQuestion(const QString &op, int slot, const QString &summary);
     // A preset operation failed: an alert's title and text
@@ -241,7 +226,7 @@ private:
     void applyExtras(const Extras &e);
     void rebuildSources();
     void updateHighlight();
-    void loadLinkedPairs();
+    void watchLinks();
     void runPreset(const QString &what, std::function<uint8_t(FfiCore *)> op, const QString &failTitle,
                    const QString &failText);
     void loadSlot(int slot);
@@ -255,11 +240,10 @@ private:
     AppContext m_ctx;
     int m_selected = -1;
     int m_highlighted = 0;
-    int m_hiddenCurves = 0;
-    int m_linkedPairs = 1;
-    QString m_linkSerial;
+    bool m_watchingLinks = false;
     Clipboard m_clipboard;
     bool m_masterMode = false;
+    int m_sidebarWidth = 0;
     QVariantList m_sources;
     bool m_sourceNamesSupported = false;
     QStringList m_sourceNames;
@@ -271,7 +255,6 @@ private:
     bool m_presetBusy = false;
     bool m_extrasInFlight = false;
     bool m_extrasAgain = false;
-    QString m_statusNotice;
     QHash<QString, QPointer<QWindow>> m_windows;
 };
 

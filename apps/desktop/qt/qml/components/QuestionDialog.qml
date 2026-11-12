@@ -57,27 +57,41 @@ Dialog {
         border.color: Theme.border
     }
 
-    header: Text {
-        leftPadding: Theme.spacingLarge
-        rightPadding: Theme.spacingLarge
-        topPadding: Theme.spacingLarge
-        text: dialog.title
-        font: Theme.fontTitle
-        color: Theme.text
-        wrapMode: Text.Wrap
-        Accessible.role: Accessible.Heading
-        Accessible.name: text
+    // The title and the body are Items sized by their Text's laid-out
+    // height. A wrapped Text's implicitHeight is computed on first read and
+    // changes while it is read, so the dialog's implicitHeight binding would
+    // loop on a text given at creation.
+    header: Item {
+        implicitHeight: titleText.height
+        Text {
+            id: titleText
+            width: parent.width
+            leftPadding: Theme.spacingLarge
+            rightPadding: Theme.spacingLarge
+            topPadding: Theme.spacingLarge
+            text: dialog.title
+            font: Theme.fontTitle
+            color: Theme.text
+            wrapMode: Text.Wrap
+            Accessible.role: Accessible.Heading
+            Accessible.name: text
+        }
     }
 
     // A Popup is not an Item: the body carries the dialog's accessible role
-    contentItem: Text {
-        text: dialog.text
-        font: Theme.fontBody
-        color: Theme.text
-        wrapMode: Text.Wrap
+    contentItem: Item {
+        implicitHeight: bodyText.height
         Accessible.role: Accessible.AlertMessage
         Accessible.name: dialog.title
         Accessible.description: dialog.text
+        Text {
+            id: bodyText
+            width: parent.width
+            text: dialog.text
+            font: Theme.fontBody
+            color: Theme.text
+            wrapMode: Text.Wrap
+        }
     }
 
     footer: Item {

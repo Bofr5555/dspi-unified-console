@@ -187,7 +187,12 @@ Rectangle {
                     restoreMode: Binding.RestoreNone
                 }
                 onValueMoved: v => ChannelController.setOutputGain(card.output, v)
-                onCommitted: v => ChannelController.setOutputGain(card.output, v)
+                onCommitted: v => {
+                    GraphController.endOutputGainPreview(card.output)
+                    ChannelController.setOutputGain(card.output, v)
+                }
+                // -- WP QPI1 -- the graph follows the thumb, not the write
+                onMoved: if (pressed) GraphController.previewOutputGain(card.output, value)
             }
         }
         Divider {}

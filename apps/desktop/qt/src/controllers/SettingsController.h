@@ -111,9 +111,9 @@ class SettingsController : public QObject {
     // Bumped when the page list, a page's availability or its terms change
     Q_PROPERTY(int revision READ revision NOTIFY pagesChanged)
     Q_PROPERTY(QStringList footers READ footerTypes CONSTANT)
-    // App preferences, applied at once (behaviour.md §8): graph/* and
-    // spectrum/* in the settings file; QML binds `SettingsController.graph.lineWidth`
-    Q_PROPERTY(PrefsMap *graph READ graph CONSTANT)
+    // App preferences, applied at once (behaviour.md §8): spectrum/* in the
+    // settings file; QML binds `SettingsController.spectrum.fftOrder`. The
+    // graph's (graph/*) belong to GraphController, which the Graphing page binds.
     Q_PROPERTY(PrefsMap *spectrum READ spectrum CONSTANT)
     Q_PROPERTY(bool showDebugInfo READ showDebugInfo WRITE setShowDebugInfo NOTIFY showDebugInfoChanged)
     // The app's update checker (QP17's AppUpdater), null until one is set; the
@@ -140,7 +140,6 @@ public:
     bool canGoForward() const { return m_historyIndex + 1 < m_history.size(); }
     int revision() const { return m_pagesRevision; }
     QStringList footerTypes() const;
-    PrefsMap *graph() const { return m_graph; }
     PrefsMap *spectrum() const { return m_spectrum; }
     bool showDebugInfo() const { return m_showDebugInfo; }
     void setShowDebugInfo(bool on);
@@ -204,7 +203,6 @@ private:
     void readPins();
 
     AppContext m_ctx;
-    PrefsMap *m_graph;
     PrefsMap *m_spectrum;
     QString m_current;
     QStringList m_history;

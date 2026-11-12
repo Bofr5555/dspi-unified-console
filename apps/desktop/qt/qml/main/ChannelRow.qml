@@ -27,7 +27,8 @@ ItemDelegate {
 
     readonly property bool isOutput: kind === "output"
     readonly property color tint: ChannelPalette.forRow(kind, number, pdm)
-    readonly property bool curveVisible: (SidebarController.hiddenCurves >> channel & 1) === 0
+    // The graph owns which curves show (it solos a channel page and hands back)
+    readonly property bool curveVisible: GraphController.visibleChannels.indexOf(channel) >= 0
     readonly property bool selectedRow: (SidebarController.highlightedMask >> channel & 1) === 1
     readonly property bool inactive: isOutput && (SidebarController.inactiveOutputs >> number & 1) === 1
     readonly property string slotName: isOutput && number < SidebarController.slotNames.length ? SidebarController.slotNames[number] : ""
@@ -146,7 +147,7 @@ ItemDelegate {
                 ? [row.descriptor, row.label.split(" · ").join(", "),
                    row.slotName.length ? qsTr("slot %1").arg(row.slotName) : ""].filter(s => s.length).join(", ")
                 : row.descriptor
-            onToggled: SidebarController.setCurveVisible(row.channel, checked)
+            onToggled: GraphController.setCurveVisible(row.channel, checked)
             HelpTip {
                 text: row.curveVisible ? qsTr("Hide %1 on the graph").arg(row.descriptor)
                                        : qsTr("Show %1 on the graph").arg(row.descriptor)

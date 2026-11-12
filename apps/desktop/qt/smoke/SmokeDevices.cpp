@@ -210,6 +210,11 @@ void devicesSection(SmokeDriver &d) {
     d.check("qp13: the device tooltip names the hub and where to choose",
             link->sessionTip().contains(QStringLiteral(" via %1 (%2)").arg(link->hubName(), serial))
                 && link->sessionTip().contains(QLatin1String("Device > Devices")));
+    // -- WP QPI1 -- the device line in the sidebar carries it
+    QQuickItem *statusButton = d.item(QStringLiteral("DeviceStatus.button"));
+    QQuickItem *statusText = d.item(QStringLiteral("DeviceStatus.text"));
+    d.check("qpi1: the device line's tooltip is the hub session's",
+            statusButton && statusButton->property("tip").toString() == link->sessionTip());
     d.check("qp13: marked open, and the demo is not", d.waitFor(1000, [&] {
         return (hubRow = row("DevicesPopup.hubDevice.", serial)) && hubRow->property("current").toBool() && !demoRow->property("current").toBool();
     }));
@@ -229,9 +234,16 @@ void devicesSection(SmokeDriver &d) {
     d.check("qp13: no lock notice at first", lock && !lock->isVisible() && link->lockNotice().isEmpty());
     d.check("qp13: the hub takes lock 77 5000", hub.fault("lock 77 5000"));
     d.check("qp13: the lock notice shows", d.waitFor(3000, [&] { return lock->isVisible() && !link->lockNotice().isEmpty(); }));
+    d.check("qpi1: the device line reads the lock notice",
+            statusText && statusText->property("text").toString() == link->lockNotice());
+    d.check("qpi1: and the device button's notice is the lock's (its tooltip leads with it)",
+            statusButton && statusButton->property("notice").toString() == link->lockNotice());
     grab("lock-notice");
     d.check("qp13: the hub takes unlock", hub.fault("unlock"));
     d.check("qp13: the notice goes when the lock does", d.waitFor(3000, [&] { return !lock->isVisible(); }));
+    d.check("qpi1: and the device line names the device again", d.waitFor(1000, [&] {
+        return statusText && statusText->property("text").toString() == device->deviceTitle();
+    }));
 
     // no_device: the hub's board goes, and comes back
     d.check("qp13: the hub takes board off", hub.fault("board off"));
@@ -277,6 +289,8 @@ void devicesSection(SmokeDriver &d) {
     }));
     d.check("qp13: polls back to their rate", poller && !poller->property("slowTransport").toBool());
     d.check("qp13: no hub tooltip off the hub", link->sessionTip().isEmpty());
+    d.check("qpi1: the device line's tooltip is the plain one again",
+            statusButton && statusButton->property("tip").toString().startsWith(QLatin1String("Connected (")));
     grab("closed");
 
     // Again by address: the stored token, no prompt this time

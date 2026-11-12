@@ -3,11 +3,13 @@ import QtQuick.Layouts
 import UConsole
 
 // Settings > Graphing (the Mac's GraphingSettingsTab): how the response graph
-// draws. App preferences, applied at once (SettingsController.graph).
+// draws. App preferences, applied at once. GraphController owns them (and
+// stores them under graph/*), so the graph and its own setup page see a change
+// here at once.
 SettingsPage {
     id: page
     objectName: "GraphingPage"
-    readonly property var prefs: SettingsController.graph
+    readonly property var prefs: GraphController
 
     SettingsGroup {
         title: qsTr("Graph Appearance")
@@ -16,8 +18,8 @@ SettingsPage {
             objectName: "Graphing.showGlow"
             title: qsTr("Graph Line Glow")
             caption: qsTr("Add a neon glow effect to frequency response curves")
-            checked: page.prefs.showGlow
-            onToggled: on => page.prefs.showGlow = on
+            checked: page.prefs.showGraphGlow
+            onToggled: on => page.prefs.showGraphGlow = on
         }
         SettingsToggle {
             objectName: "Graphing.showPhase"
@@ -41,13 +43,13 @@ SettingsPage {
         iconName: "activity"
         SettingsSliderRow {
             objectName: "Graphing.lineWidth"
-            label: qsTr("Line Width: %1pt").arg(Number(page.prefs.lineWidth).toFixed(1))
+            label: qsTr("Line Width: %1pt").arg(Number(page.prefs.graphLineWidth).toFixed(1))
             minimum: 1.0
             maximum: 4.0
             step: 0.5
             resetValue: 1.5
-            value: page.prefs.lineWidth
-            onMoved: v => page.prefs.lineWidth = v
+            value: page.prefs.graphLineWidth
+            onMoved: v => page.prefs.graphLineWidth = v
         }
     }
 
@@ -57,48 +59,48 @@ SettingsPage {
         SettingsToggle {
             objectName: "Graphing.showFreqGrid"
             title: qsTr("Show Frequency Grid")
-            checked: page.prefs.showFreqGrid
-            onToggled: on => page.prefs.showFreqGrid = on
+            checked: page.prefs.showFrequencyGrid
+            onToggled: on => page.prefs.showFrequencyGrid = on
         }
         SettingsToggle {
             objectName: "Graphing.showFreqLabels"
             title: qsTr("Show Frequency Labels")
-            checked: page.prefs.showFreqLabels
-            onToggled: on => page.prefs.showFreqLabels = on
+            checked: page.prefs.showFrequencyLabels
+            onToggled: on => page.prefs.showFrequencyLabels = on
         }
         SettingsToggle {
             objectName: "Graphing.showDbGrid"
             title: qsTr("Show dB Grid")
-            checked: page.prefs.showDbGrid
-            onToggled: on => page.prefs.showDbGrid = on
+            checked: page.prefs.showDBGrid
+            onToggled: on => page.prefs.showDBGrid = on
         }
         SettingsToggle {
             objectName: "Graphing.showDbLabels"
             title: qsTr("Show dB Labels")
-            checked: page.prefs.showDbLabels
-            onToggled: on => page.prefs.showDbLabels = on
+            checked: page.prefs.showDBLabels
+            onToggled: on => page.prefs.showDBLabels = on
         }
         SettingsToggle {
             objectName: "Graphing.freqReadout"
             title: qsTr("Show Frequency Readout")
-            checked: page.prefs.freqReadout
-            onToggled: on => page.prefs.freqReadout = on
+            checked: page.prefs.showFrequencyReadout
+            onToggled: on => page.prefs.showFrequencyReadout = on
         }
         SettingsToggle {
             objectName: "Graphing.levelReadout"
             title: qsTr("Show Gain Readout")
-            checked: page.prefs.levelReadout
-            onToggled: on => page.prefs.levelReadout = on
+            checked: page.prefs.showLevelReadout
+            onToggled: on => page.prefs.showLevelReadout = on
         }
         SettingsSliderRow {
             objectName: "Graphing.gridOpacity"
-            label: qsTr("Grid Opacity: %1%").arg(Math.round(page.prefs.gridOpacity * 100))
-            enabled: page.prefs.showFreqGrid || page.prefs.showDbGrid
+            label: qsTr("Grid Opacity: %1%").arg(Math.round(page.prefs.graphGridOpacity * 100))
+            enabled: page.prefs.showFrequencyGrid || page.prefs.showDBGrid
             minimum: 0
             maximum: 2
             resetValue: 0.5
-            value: page.prefs.gridOpacity
-            onMoved: v => page.prefs.gridOpacity = v
+            value: page.prefs.graphGridOpacity
+            onMoved: v => page.prefs.graphGridOpacity = v
         }
         Rectangle {
             Layout.fillWidth: true
@@ -159,8 +161,8 @@ SettingsPage {
         SettingsToggle {
             objectName: "Graphing.popOutFollows"
             title: qsTr("Pop-out graph follows channel selection")
-            checked: page.prefs.popOutFollows
-            onToggled: on => page.prefs.popOutFollows = on
+            checked: page.prefs.popoutFollowsSelection
+            onToggled: on => page.prefs.popoutFollowsSelection = on
         }
     }
 }

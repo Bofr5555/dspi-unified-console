@@ -209,8 +209,7 @@ Rectangle {
         objectName: list.objectName + ".bypassQuestion"
         parent: Overlay.overlay
         title: qsTr("Bypass this output's crossovers?")
-        // Set while shown: a wrapped text before the dialog has its place loops its height
-        text: visible ? qsTr("This sends full-range audio to this output with no crossover protection, which can damage unprotected drivers such as tweeters. Continue only if you are sure.") : ""
+        text: qsTr("This sends full-range audio to this output with no crossover protection, which can damage unprotected drivers such as tweeters. Continue only if you are sure.")
         acceptText: qsTr("Bypass All")
         destructive: true
         onAnswered: answer => { if (answer === "accept") ChannelController.setAllBypassed(list.channel, true, true) }
@@ -220,7 +219,7 @@ Rectangle {
         objectName: list.objectName + ".clearQuestion"
         parent: Overlay.overlay
         title: qsTr("Clear All Bands?")
-        text: visible ? qsTr("Every band in this list will be reset to its default (flat) state. This cannot be undone.") : ""
+        text: qsTr("Every band in this list will be reset to its default (flat) state. This cannot be undone.")
         acceptText: qsTr("Clear All")
         onAnswered: answer => { if (answer === "accept") ChannelController.clearBands(list.channel, list.crossover) }
     }

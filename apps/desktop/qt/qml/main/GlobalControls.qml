@@ -262,6 +262,8 @@ ColumnLayout {
             to: 1
             label: volume.master ? qsTr("Master Volume") : qsTr("User Volume")
             enabled: controls.writable
+            // Right-click: back to 0 dB
+            resetValue: volume.toPosition(0)
             // Follows the device except while the person holds it
             Binding on value {
                 when: !slider.pressed
@@ -287,15 +289,6 @@ ColumnLayout {
             }
             Accessible.description: volume.master ? SidebarController.formatMasterDb(volume.toDb(value))
                                                   : SidebarController.formatUserDb(volume.toDb(value))
-            // Right-click: back to 0 dB. Caught here, above the slider, which
-            // would otherwise move to the clicked point
-            MouseArea {
-                anchors.fill: parent
-                z: 10
-                acceptedButtons: Qt.RightButton
-                enabled: slider.enabled
-                onClicked: volume.send(0)
-            }
         }
     }
 
@@ -346,13 +339,9 @@ ColumnLayout {
         id: clearAll
         objectName: "GlobalControls.clearAllQuestion"
         parent: Overlay.overlay
-        // The text is set as it opens: a long text bound from the start loops
-        // the dialog's height binding
-        function ask() {
-            text = qsTr("This will erase all preset data and names, restoring every slot to factory defaults. This cannot be undone.")
-            open()
-        }
+        function ask() { open() }
         title: qsTr("Clear All Presets?")
+        text: qsTr("This will erase all preset data and names, restoring every slot to factory defaults. This cannot be undone.")
         acceptText: qsTr("Clear All")
         destructive: true
         onAnswered: answer => { if (answer === "accept") SidebarController.clearAllPresets() }

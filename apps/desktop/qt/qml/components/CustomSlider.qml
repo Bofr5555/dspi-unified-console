@@ -53,10 +53,15 @@ Slider {
         }
     }
 
-    TapHandler {
+    // Above the handle and the track: the Slider takes any press it sees and
+    // moves to it, so the right button is caught before it gets there. The
+    // left button passes through.
+    MouseArea {
+        anchors.fill: parent
+        z: 1
         acceptedButtons: Qt.RightButton
         enabled: !isNaN(slider.resetValue)
-        onTapped: {
+        onClicked: {
             slider.value = slider.resetValue
             slider.committed(slider.value)
         }

@@ -82,7 +82,6 @@ set(DSPI_APP_SOURCES
 )
 # Kept from the previous tree, not built until their work package adapts them to
 # Core and DeviceModel (README.md, "Parked files"):
-#   src/controllers/LinkController.h        QP13
 #   src/platform/SystemIntegration.{h,cpp}  QP14
 #   src/platform/FirewallController.cpp     QP14
 #   src/platform/HostAudioFormatWindows.cpp QP18
@@ -180,7 +179,7 @@ function(dspi_add_app target)
         QML_FILES ${DSPI_QML_FILES}
         RESOURCES ${DSPI_ICON_FILES}
     )
-    target_include_directories(${target} PRIVATE src src/core src/controllers src/platform)
+    target_include_directories(${target} PRIVATE src src/core src/controllers src/platform src/render)
     target_compile_definitions(${target} PRIVATE DSPI_APP_VERSION="${PROJECT_VERSION}")
     target_link_libraries(${target} PRIVATE
         Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Svg dspi_capi)

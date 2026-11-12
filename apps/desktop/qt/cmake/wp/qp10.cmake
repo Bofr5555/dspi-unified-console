@@ -1,6 +1,5 @@
 # -- WP QP10 -- Settings window: shell, search, About, Advanced, Graphing,
 # Spectrum Analyser, Updates and Overview pages
-include_directories(src/render)
 list(APPEND DSPI_APP_SOURCES
     src/controllers/SettingsController.h src/controllers/SettingsController.cpp
     src/controllers/PrefsMap.h src/controllers/PrefsMap.cpp

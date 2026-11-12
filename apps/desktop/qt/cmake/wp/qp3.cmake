@@ -7,5 +7,3 @@ list(APPEND DSPI_QML_FILES
     qml/main/GraphOptions.qml qml/main/GraphSetupPage.qml
     qml/tools/GraphWindow.qml)
 list(APPEND DSPI_SMOKE_SOURCES smoke/SmokeGraph.cpp)
-# The render items' headers, for the QML type registration
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/render)

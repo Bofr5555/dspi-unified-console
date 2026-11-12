@@ -108,18 +108,7 @@ std::vector<const SettingsRegistry::PageEntry *> groupPages(SettingsRegistry::Gr
 } // namespace
 
 SettingsController::SettingsController(const AppContext &ctx, QObject *parent)
-    : QObject(parent), m_ctx(ctx), m_graph(new PrefsMap(QStringLiteral("graph"), this)),
-      m_spectrum(new PrefsMap(QStringLiteral("spectrum"), this)) {
-    // Graphing (the Mac's AppSettings, keys and defaults of behaviour.md §21.2)
-    const std::array<std::pair<const char *, QVariant>, 17> graph{ {
-        { "dbCenter", 0.0 },        { "dbRange", 50.0 },        { "minFreq", 15.0 },
-        { "maxFreq", 20000.0 },     { "lineWidth", 1.5 },       { "gridOpacity", 0.5 },
-        { "showDbGrid", true },     { "showDbLabels", true },   { "showFreqGrid", true },
-        { "showFreqLabels", true }, { "showGlow", false },      { "showPhase", false },
-        { "phaseUnwrapped", false }, { "freqReadout", true },   { "levelReadout", true },
-        { "popOutFollows", true },  { "animationSpeed", 0.2 },
-    } };
-    for (const auto &[key, value] : graph) m_graph->declare(QString::fromLatin1(key), value);
+    : QObject(parent), m_ctx(ctx), m_spectrum(new PrefsMap(QStringLiteral("spectrum"), this)) {
     // Spectrum Analyser
     const std::array<std::pair<const char *, QVariant>, 8> spectrum{ {
         { "fftOrder", 10 }, { "avgMs", 300 }, { "peakDecay", 12.0 }, { "floorDb", -90.0 },
