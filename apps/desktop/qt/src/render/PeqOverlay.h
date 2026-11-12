@@ -54,7 +54,7 @@ class PeqOverlay : public QQuickPaintedItem {
     QML_ELEMENT
     Q_PROPERTY(GraphController *graph READ graph WRITE setGraph NOTIFY graphChanged)
     // The page's channel when this graph follows it, else -1
-    Q_PROPERTY(int channel READ channel WRITE setChannel NOTIFY channelChanged)
+    Q_PROPERTY(int pageChannel READ pageChannel WRITE setPageChannel NOTIFY pageChannelChanged)
     Q_PROPERTY(QColor curveColor READ curveColor WRITE setCurveColor NOTIFY curveColorChanged)
     // A colour per band (PeqSelection.qml's palette)
     Q_PROPERTY(QVariantList bandColors READ bandColors WRITE setBandColors NOTIFY bandColorsChanged)
@@ -67,7 +67,7 @@ class PeqOverlay : public QQuickPaintedItem {
     Q_PROPERTY(bool editing READ editing NOTIFY viewChanged)
     Q_PROPERTY(int editedChannel READ editedChannel NOTIFY viewChanged)
     Q_PROPERTY(QList<int> selectedBands READ selectedBands NOTIFY viewChanged)
-    Q_PROPERTY(int hoveredBand READ hoveredBand NOTIFY viewChanged)
+    Q_PROPERTY(int pointedBand READ pointedBand NOTIFY viewChanged)
     Q_PROPERTY(bool ghostShown READ ghostShown NOTIFY viewChanged)
     Q_PROPERTY(bool marqueeShown READ marqueeShown NOTIFY viewChanged)
     Q_PROPERTY(bool animating READ animating NOTIFY viewChanged)
@@ -98,13 +98,13 @@ public:
     static constexpr double kChipRow = 15;
     static constexpr double kChipBottom = 5;
 
-    explicit PeqOverlay(QQuickItem *parent = nullptr);
+    explicit PeqOverlay(QQuickItem *parentItem = nullptr);
     ~PeqOverlay() override;
 
     GraphController *graph() const { return m_graph; }
     void setGraph(GraphController *g);
-    int channel() const { return m_requested; }
-    void setChannel(int ch);
+    int pageChannel() const { return m_pageChannel; }
+    void setPageChannel(int ch);
     QColor curveColor() const { return m_curveColor; }
     void setCurveColor(const QColor &c);
     QVariantList bandColors() const { return m_bandColorList; }
@@ -117,7 +117,7 @@ public:
     bool editing() const { return m_channel >= 0; }
     int editedChannel() const { return m_channel; }
     QList<int> selectedBands() const;
-    int hoveredBand() const { return m_hovered; }
+    int pointedBand() const { return m_hovered; }
     bool ghostShown() const { return m_ghost.has_value(); }
     bool marqueeShown() const { return m_gesture.kind == Gesture::Marquee; }
     bool animating() const { return m_frame.isActive(); }
@@ -174,11 +174,11 @@ public:
     Q_INVOKABLE double curveDbAt(double hz) const;
 
     // Runs in the scene graph's sync: reads, never writes
-    void paint(QPainter *painter) override;
+    void paint(QPainter *canvas) override;
 
 signals:
     void graphChanged();
-    void channelChanged();
+    void pageChannelChanged();
     void curveColorChanged();
     void bandColorsChanged();
     void backdropChanged();
@@ -192,15 +192,15 @@ signals:
     void refused();
 
 protected:
-    bool event(QEvent *e) override;
+    bool event(QEvent *ev) override;
     void geometryChange(const QRectF &now, const QRectF &before) override;
-    void mousePressEvent(QMouseEvent *e) override;
-    void mouseMoveEvent(QMouseEvent *e) override;
-    void mouseReleaseEvent(QMouseEvent *e) override;
-    void mouseDoubleClickEvent(QMouseEvent *e) override;
-    void wheelEvent(QWheelEvent *e) override;
-    void keyPressEvent(QKeyEvent *e) override;
-    void itemChange(ItemChange change, const ItemChangeData &value) override;
+    void mousePressEvent(QMouseEvent *ev) override;
+    void mouseMoveEvent(QMouseEvent *ev) override;
+    void mouseReleaseEvent(QMouseEvent *ev) override;
+    void mouseDoubleClickEvent(QMouseEvent *ev) override;
+    void wheelEvent(QWheelEvent *ev) override;
+    void keyPressEvent(QKeyEvent *ev) override;
+    void itemChange(ItemChange what, const ItemChangeData &data) override;
 
 private:
     struct Gesture {
@@ -271,10 +271,10 @@ private:
     QList<int> graphBands() const;
     QPointF dotOf(const FilterParams &p) const;
     double combinedDb(double hz) const;
-    int dotAt(const QPointF &p) const;
-    int lobeAt(const QPointF &p) const;
-    int bandAt(const QPointF &p) const;
-    bool nearCurve(const QPointF &p) const;
+    int dotUnder(const QPointF &p) const;
+    int fillUnder(const QPointF &p) const;
+    int bandUnder(const QPointF &p) const;
+    bool onCurveAt(const QPointF &p) const;
     int freeSlot() const;
     QList<int> frequencyOrder(QList<int> bands) const;
     FilterParams current(int b) const;
@@ -316,7 +316,7 @@ private:
     void updateHover(const QPointF &p);
     void press(const QPointF &p, Qt::KeyboardModifiers mods, bool doubleClick);
     void beginDrag(int grabbed, const QSet<int> &bands, const QPointF &at, bool qMode);
-    void continueDrag(const QPointF &p, Qt::KeyboardModifiers mods);
+    void continueDrag(const QPointF &p, Qt::KeyboardModifiers modifiers);
     QHash<int, FilterParams> dragResult(const Gesture &g) const;
     void updateMarquee();
     bool handleWheel(const QPointF &p, double delta, Qt::KeyboardModifiers mods, bool begins);
@@ -324,7 +324,7 @@ private:
 
     // Keys
     void stepSelection(bool backwards);
-    void nudge(int key, Qt::KeyboardModifiers mods);
+    void nudge(int key, Qt::KeyboardModifiers modifiers);
 
     // Chip and card
     void showChip(int b);
@@ -344,7 +344,7 @@ private:
 
     QPointer<GraphController> m_graph;
     PeqEditorController *m_editor = nullptr;
-    int m_requested = -1;
+    int m_pageChannel = -1;
     QColor m_curveColor{ Qt::white };
     QVariantList m_bandColorList;
     QVector<QColor> m_bandColors;
@@ -369,9 +369,9 @@ private:
     std::optional<QVector<FilterParams>> m_animFrom;
     double m_animStart = 0;
 
-    int m_anchor = -1;
+    int m_rangeAnchor = -1;
     int m_hovered = -1;
-    int m_listHovered = -1;
+    int m_rowHovered = -1;
     std::optional<FilterParams> m_ghost, m_ghostShown;
     float m_ghostAmount = 0;
     std::optional<QPointF> m_pointer;
@@ -400,7 +400,7 @@ private:
     int m_menuBand = -1;
 
     // Wheel sessions
-    int m_wheelBand = -1;
+    int m_wheelTarget = -1;
     double m_wheelTime = -10;
     int m_chipWheelField = -1;
     double m_chipWheelTime = -10;
@@ -421,21 +421,21 @@ private:
 class PeqShapeGlyph : public QQuickPaintedItem {
     Q_OBJECT
     QML_ELEMENT
-    Q_PROPERTY(int shape READ shape WRITE setShape NOTIFY changed)
-    Q_PROPERTY(QColor color READ color WRITE setColor NOTIFY changed)
+    Q_PROPERTY(int shape READ shape WRITE setShape NOTIFY glyphChanged)
+    Q_PROPERTY(QColor ink READ ink WRITE setInk NOTIFY glyphChanged)
 public:
-    explicit PeqShapeGlyph(QQuickItem *parent = nullptr);
+    explicit PeqShapeGlyph(QQuickItem *parentItem = nullptr);
     int shape() const { return m_shape; }
     void setShape(int s);
-    QColor color() const { return m_color; }
-    void setColor(const QColor &c);
-    void paint(QPainter *painter) override;
+    QColor ink() const { return m_ink; }
+    void setInk(const QColor &value);
+    void paint(QPainter *p) override;
 signals:
-    void changed();
+    void glyphChanged();
 
 private:
     int m_shape = 0;
-    QColor m_color{ Qt::white };
+    QColor m_ink{ Qt::white };
 };
 
 #endif // PEQOVERLAY_H

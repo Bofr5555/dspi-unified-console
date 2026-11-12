@@ -22,9 +22,9 @@ Item {
         objectName: root.objectName + ".overlay"
         anchors.fill: parent
         graph: GraphController
-        channel: root.plot && root.plot.following && !root.plot.onDashboard ? root.plot.activeChannel : -1
-        curveColor: root.plot && channel >= 0 && root.plot.channelColors[channel] !== undefined
-                    ? root.plot.channelColors[channel] : Theme.text
+        pageChannel: root.plot && root.plot.following && !root.plot.onDashboard ? root.plot.activeChannel : -1
+        curveColor: root.plot && pageChannel >= 0 && root.plot.channelColors[pageChannel] !== undefined
+                    ? root.plot.channelColors[pageChannel] : Theme.text
         bandColors: PeqSelection.colors
         backdrop: Theme.panel
         ink: Theme.text
@@ -100,14 +100,14 @@ Item {
             height: 78
             radius: Theme.radius
             color: Theme.menu
-            border.width: 1
-            border.color: Theme.border
+            border { width: 1; color: Theme.border }
             Accessible.role: Accessible.Grouping
             Accessible.name: qsTr("Add Band")
             onVisibleChanged: if (visible) chooser.reset()
+            // Its clicks are its own, not the graph's
             MouseArea {
+                acceptedButtons: Qt.AllButtons
                 anchors.fill: parent
-                acceptedButtons: Qt.LeftButton | Qt.RightButton
             }
             ShapeChooser {
                 id: chooser

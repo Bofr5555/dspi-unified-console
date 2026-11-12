@@ -94,7 +94,7 @@ bool parseNote(const QString &text, double *hz);
 // - Selection: the bands selected on the graph or by a click on a row's
 //   number, the band under the pointer on the graph (its row lights) and the
 //   row under the pointer (its dot lights). A band the pointer rests on asks
-//   for its row to be shown (revealRow).
+//   for its row to be shown (showRow).
 // - Live values: what a drag shows in the rows between device writes.
 // - Writes: through ChannelController's band setters, which stage the edit,
 //   mirror it onto a linked input and coalesce per band.
@@ -105,24 +105,24 @@ class PeqEditorController : public QObject {
 
     Q_PROPERTY(int revision READ revision NOTIFY changed)
     Q_PROPERTY(QList<int> selected READ selected NOTIFY changed)
-    Q_PROPERTY(int listHovered READ listHovered WRITE setListHovered NOTIFY changed)
-    Q_PROPERTY(int graphHovered READ graphHovered NOTIFY changed)
+    Q_PROPERTY(int rowHovered READ rowHovered WRITE setRowHovered NOTIFY changed)
+    Q_PROPERTY(int pointedBand READ pointedBand NOTIFY changed)
     // The channel the graph edits, -1 for none (set by the editor on show)
-    Q_PROPERTY(int channel READ channel NOTIFY changed)
+    Q_PROPERTY(int editedChannel READ editedChannel NOTIFY changed)
 
 public:
     PeqEditorController(const AppContext &ctx, QObject *parent);
     static PeqEditorController *create(QQmlEngine *, QJSEngine *) { return Registrar::instance<PeqEditorController>(); }
 
-    int revision() const { return m_revision; }
+    int revision() const { return m_rev; }
     QList<int> selected() const;
     const QSet<int> &selection() const { return m_selected; }
-    int listHovered() const { return m_listHovered; }
-    void setListHovered(int band);
-    int graphHovered() const { return m_graphHovered; }
-    void setGraphHovered(int band);
-    int channel() const { return m_channel; }
-    void setChannel(int channel);
+    int rowHovered() const { return m_rowHovered; }
+    void setRowHovered(int band);
+    int pointedBand() const { return m_pointed; }
+    void setPointedBand(int band);
+    int editedChannel() const { return m_edited; }
+    void setEditedChannel(int channel);
 
     Q_INVOKABLE bool isSelected(int band) const { return m_selected.contains(band); }
     // {freq, gain, q} while the graph drags the band, else null
@@ -130,11 +130,11 @@ public:
     // A click on a band's number in the list, with the modifiers of a click
     // on its dot: Ctrl toggles it, Shift takes the run of rows from the last
     // one clicked (row order, empty rows skipped), a plain click selects it
-    Q_INVOKABLE void listClick(int band, int modifiers);
-    Q_INVOKABLE void reset();
+    Q_INVOKABLE void rowClicked(int band, int modifiers);
+    Q_INVOKABLE void forget();
 
     void setSelection(const QSet<int> &bands);
-    void reveal(int band) { emit revealRow(band); }
+    void reveal(int band) { emit showRow(band); }
     void showLive(int band, const FilterParams &p);
     void endLive();
 
@@ -145,27 +145,27 @@ public:
     QList<int> availableTypes() const;
     // Writes each changed band, mirrored onto a linked input
     void writeBands(int channel, const QList<QPair<int, FilterParams>> &changes);
-    void setBypass(int channel, int band, bool bypass);
+    void setBandBypassed(int channel, int band, bool bypass);
 
 signals:
     void changed();
     // The selection changed on the list's side (a row's number clicked)
     void selectionChanged();
-    void listHoveredChanged();
+    void rowHoveredChanged();
     // The list should scroll this band's row into view
-    void revealRow(int band);
+    void showRow(int band);
 
 private:
     void bump();
 
     AppContext m_ctx;
     QSet<int> m_selected;
-    int m_listAnchor = -1;
-    int m_listHovered = -1;
-    int m_graphHovered = -1;
-    int m_channel = -1;
+    int m_rowAnchor = -1;
+    int m_rowHovered = -1;
+    int m_pointed = -1;
+    int m_edited = -1;
     QHash<int, FilterParams> m_live;
-    int m_revision = 0;
+    int m_rev = 0;
 };
 
 #endif // PEQEDITORCONTROLLER_H

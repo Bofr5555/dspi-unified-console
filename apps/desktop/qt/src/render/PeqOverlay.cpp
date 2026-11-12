@@ -62,8 +62,8 @@ QPen pen(const QColor &c, double width, Qt::PenStyle style = Qt::SolidLine) {
 
 } // namespace
 
-PeqOverlay::PeqOverlay(QQuickItem *parent) : QQuickPaintedItem(parent) {
-    setAcceptedMouseButtons(Qt::LeftButton | Qt::RightButton);
+PeqOverlay::PeqOverlay(QQuickItem *parentItem) : QQuickPaintedItem(parentItem) {
+    setAcceptedMouseButtons(Qt::RightButton | Qt::LeftButton);
     // Hover comes from PeqGraphOverlay.qml's HoverHandler (hoverAt), so the
     // graph's own hover (its gear) still sees the pointer
     setActiveFocusOnTab(true);
@@ -109,12 +109,12 @@ void PeqOverlay::setGraph(GraphController *g) {
         if (m_editor) {
             connect(m_editor, &PeqEditorController::selectionChanged, this, [this] {
                 const QSet<int> &s = selection();
-                if (s.size() == 1) m_anchor = *s.cbegin();
+                if (s.size() == 1) m_rangeAnchor = *s.cbegin();
                 pinChipToSelection();
                 invalidate();
             });
-            connect(m_editor, &PeqEditorController::listHoveredChanged, this, [this] {
-                m_listHovered = m_editor->listHovered();
+            connect(m_editor, &PeqEditorController::rowHoveredChanged, this, [this] {
+                m_rowHovered = m_editor->rowHovered();
                 invalidate();
             });
         }
@@ -133,10 +133,10 @@ void PeqOverlay::setGraph(GraphController *g) {
     reconfigure();
 }
 
-void PeqOverlay::setChannel(int ch) {
-    if (ch == m_requested) return;
-    m_requested = ch;
-    emit channelChanged();
+void PeqOverlay::setPageChannel(int ch) {
+    if (ch == m_pageChannel) return;
+    m_pageChannel = ch;
+    emit pageChannelChanged();
     reconfigure();
 }
 
@@ -170,11 +170,11 @@ void PeqOverlay::setInk(const QColor &c) {
     rebuild();
 }
 
-void PeqOverlay::itemChange(ItemChange change, const ItemChangeData &value) {
-    QQuickPaintedItem::itemChange(change, value);
-    if (change == ItemVisibleHasChanged || change == ItemSceneChange) {
-        if (change == ItemSceneChange && value.window)
-            connect(value.window, &QWindow::visibleChanged, this, &PeqOverlay::reconfigure, Qt::UniqueConnection);
+void PeqOverlay::itemChange(ItemChange what, const ItemChangeData &data) {
+    QQuickPaintedItem::itemChange(what, data);
+    if (what == ItemVisibleHasChanged || what == ItemSceneChange) {
+        if (what == ItemSceneChange && data.window)
+            connect(data.window, &QWindow::visibleChanged, this, &PeqOverlay::reconfigure, Qt::UniqueConnection);
         QMetaObject::invokeMethod(this, &PeqOverlay::reconfigure, Qt::QueuedConnection);
     }
 }
@@ -213,7 +213,7 @@ void PeqOverlay::configure() {
     auto *cc = Registrar::instance<ChannelController>();
     DeviceModel *device = DeviceModel::instance();
     const DspState *s = device ? device->state() : nullptr;
-    const int ch = m_requested;
+    const int ch = m_pageChannel;
     // The Mac's editedChannel: a device that takes writes, the page's channel
     // with its curve shown, and the PEQ tab (the XO tab lists other bands)
     const bool shown = isVisible() && window() && window()->isVisible();
@@ -270,13 +270,13 @@ void PeqOverlay::updateOwnership() {
             break;
         }
     if (m_graph) m_graph->setOverlayChannel(owner);
-    if (m_editor) m_editor->setChannel(owner);
+    if (m_editor) m_editor->setEditedChannel(owner);
 }
 
 void PeqOverlay::resetInteraction() {
     closeCard();
     m_gesture = Gesture{};
-    m_anchor = m_hovered = -1;
+    m_rangeAnchor = m_hovered = -1;
     m_ghost.reset();
     m_ghostShown.reset();
     m_ghostAmount = 0;
@@ -359,7 +359,7 @@ double PeqOverlay::combinedDb(double hz) const {
 }
 
 // The dot under `p`, preferring selected and hovered dots, which draw on top
-int PeqOverlay::dotAt(const QPointF &p) const {
+int PeqOverlay::dotUnder(const QPointF &p) const {
     int best = -1;
     double score = 0;
     for (int b : graphBands()) {
@@ -376,7 +376,7 @@ int PeqOverlay::dotAt(const QPointF &p) const {
 
 // The band whose fill (between its curve and 0 dB) holds `p`: it lights and
 // takes the wheel, but clicks go through it to the graph
-int PeqOverlay::lobeAt(const QPointF &p) const {
+int PeqOverlay::fillUnder(const QPointF &p) const {
     const double hz = freqAt(p.x());
     const double zero = yOf(0);
     int best = -1;
@@ -394,12 +394,12 @@ int PeqOverlay::lobeAt(const QPointF &p) const {
     return best;
 }
 
-int PeqOverlay::bandAt(const QPointF &p) const {
-    const int dot = dotAt(p);
-    return dot >= 0 ? dot : lobeAt(p);
+int PeqOverlay::bandUnder(const QPointF &p) const {
+    const int dot = dotUnder(p);
+    return dot >= 0 ? dot : fillUnder(p);
 }
 
-bool PeqOverlay::nearCurve(const QPointF &p) const { return std::abs(yOf(combinedDb(freqAt(p.x()))) - p.y()) <= kCurveHit; }
+bool PeqOverlay::onCurveAt(const QPointF &p) const { return std::abs(yOf(combinedDb(freqAt(p.x()))) - p.y()) <= kCurveHit; }
 
 int PeqOverlay::freeSlot() const {
     for (int b = 0; b < qMin(int(m_committed.size()), int(BANDS_PER_CHANNEL)); ++b)
@@ -458,7 +458,7 @@ int PeqOverlay::selectedChipBand() const {
     const QSet<int> &s = selection();
     if (s.isEmpty()) return -1;
     if (m_chipShown && s.contains(m_chipBand)) return m_chipBand;
-    if (s.contains(m_anchor)) return m_anchor;
+    if (s.contains(m_rangeAnchor)) return m_rangeAnchor;
     return frequencyOrder(QList<int>(s.cbegin(), s.cend())).value(0, -1);
 }
 
@@ -487,7 +487,7 @@ void PeqOverlay::updateEmphasisTargets() {
         const bool shown = isBand(i);
         m_emphasis[i].selectTarget = shown && selection().contains(i) ? 1 : 0;
         m_emphasis[i].hoverTarget = shown
-                && (m_hovered == i || m_listHovered == i || dragged.contains(i) || (m_chipShown && m_chipBand == i))
+                && (m_hovered == i || m_rowHovered == i || dragged.contains(i) || (m_chipShown && m_chipBand == i))
             ? 1
             : 0;
     }
@@ -689,10 +689,10 @@ void PeqOverlay::rebuild() {
     update();
 }
 
-void PeqOverlay::paint(QPainter *painter) {
+void PeqOverlay::paint(QPainter *canvas) {
     const Picture &pic = m_picture;
     if (pic.curve.isEmpty()) return;
-    painter->setRenderHint(QPainter::Antialiasing);
+    canvas->setRenderHint(QPainter::Antialiasing);
 
     // Every band's lobe, faint and fading towards 0 dB; hovering or
     // selecting a band brightens it and adds its outline
@@ -701,44 +701,44 @@ void PeqOverlay::paint(QPainter *painter) {
             QLinearGradient fade(QPointF(0, lobe.edgeY), QPointF(0, lobe.zeroY));
             fade.setColorAt(0, faded(lobe.color, lobe.fillOpacity));
             fade.setColorAt(1, faded(lobe.color, lobe.fillOpacity * 0.15));
-            painter->setPen(Qt::NoPen);
-            painter->setBrush(fade);
-            painter->drawPolygon(lobe.fill);
+            canvas->setPen(Qt::NoPen);
+            canvas->setBrush(fade);
+            canvas->drawPolygon(lobe.fill);
         }
         if (lobe.lineOpacity > 0.001) {
-            painter->setBrush(Qt::NoBrush);
-            painter->setPen(pen(faded(lobe.color, lobe.lineOpacity), 1.25));
-            painter->drawPolyline(lobe.line);
+            canvas->setBrush(Qt::NoBrush);
+            canvas->setPen(pen(faded(lobe.color, lobe.lineOpacity), 1.25));
+            canvas->drawPolyline(lobe.line);
         }
     }
 
     // The channel's combined curve, with BodePlot's glow when it is on
-    painter->setBrush(Qt::NoBrush);
+    canvas->setBrush(Qt::NoBrush);
     if (pic.glow) {
-        painter->setPen(pen(faded(pic.curveColor, 0.12), pic.lineWidth * 4));
-        painter->drawPolyline(pic.curve);
-        painter->setPen(pen(faded(pic.curveColor, 0.3), pic.lineWidth * 2));
-        painter->drawPolyline(pic.curve);
+        canvas->setPen(pen(faded(pic.curveColor, 0.12), pic.lineWidth * 4));
+        canvas->drawPolyline(pic.curve);
+        canvas->setPen(pen(faded(pic.curveColor, 0.3), pic.lineWidth * 2));
+        canvas->drawPolyline(pic.curve);
     }
-    painter->setPen(pen(pic.curveColor, pic.lineWidth));
-    painter->drawPolyline(pic.curve);
+    canvas->setPen(pen(pic.curveColor, pic.lineWidth));
+    canvas->drawPolyline(pic.curve);
 
     // Flat discs; a selected one grows a centre in the plot's background
-    painter->setPen(Qt::NoPen);
+    canvas->setPen(Qt::NoPen);
     for (const Picture::Dot &dot : pic.dots) {
-        painter->setBrush(faded(dot.color, dot.alpha));
-        painter->drawEllipse(dot.at, dot.radius, dot.radius);
+        canvas->setBrush(faded(dot.color, dot.alpha));
+        canvas->drawEllipse(dot.at, dot.radius, dot.radius);
         if (dot.select > 0.01) {
             const double r = 2.2 * dot.select;
-            painter->setBrush(faded(m_backdrop, qMin(dot.select * 2, 1.0) * dot.alpha));
-            painter->drawEllipse(dot.at, r, r);
+            canvas->setBrush(faded(m_backdrop, qMin(dot.select * 2, 1.0) * dot.alpha));
+            canvas->drawEllipse(dot.at, r, r);
         }
     }
 
     if (!pic.marquee.isNull()) {
-        painter->setBrush(faded(m_ink, 0.06));
-        painter->setPen(QPen(faded(m_ink, 0.45), 1, Qt::DashLine));
-        painter->drawRect(pic.marquee);
+        canvas->setBrush(faded(m_ink, 0.06));
+        canvas->setPen(QPen(faded(m_ink, 0.45), 1, Qt::DashLine));
+        canvas->drawRect(pic.marquee);
     }
 }
 
@@ -845,7 +845,7 @@ void PeqOverlay::setSelection(const QSet<int> &bands) {
 void PeqOverlay::setHovered(int band) {
     if (band == m_hovered) return;
     m_hovered = band;
-    if (m_editor) m_editor->setGraphHovered(band);
+    if (m_editor) m_editor->setPointedBand(band);
     scheduleReveal();
     invalidate();
     emit viewChanged();
@@ -869,7 +869,7 @@ int PeqOverlay::createBand(const FilterParams &p, bool select) {
     commitNow({ { slot, p } });
     if (select) {
         setSelection({ slot });
-        m_anchor = slot;
+        m_rangeAnchor = slot;
     }
     m_ghost.reset();
     return slot;
@@ -903,7 +903,7 @@ void PeqOverlay::toggleBypass(const QSet<int> &bands) {
         for (int b : list) {
             m_committed[b].bypass = bypass;
             m_shown[b].bypass = bypass;
-            m_editor->setBypass(ch, b, bypass);
+            m_editor->setBandBypassed(ch, b, bypass);
         }
     });
     refreshChip();
@@ -990,8 +990,8 @@ void PeqOverlay::updateHover(const QPointF &p) {
         invalidate();
         return;
     }
-    const int dot = dotAt(p);
-    setHovered(dot >= 0 ? dot : lobeAt(p));
+    const int dot = dotUnder(p);
+    setHovered(dot >= 0 ? dot : fillUnder(p));
     const int pin = selectedChipBand();
     if (pin >= 0) {
         // The chip stays on the selection; another band only lights
@@ -1040,33 +1040,33 @@ void PeqOverlay::hideReadouts() {
     emit viewChanged();
 }
 
-void PeqOverlay::mousePressEvent(QMouseEvent *e) {
+void PeqOverlay::mousePressEvent(QMouseEvent *ev) {
     if (!editing()) {
-        e->ignore();
+        ev->ignore();
         return;
     }
     forceActiveFocus(Qt::MouseFocusReason);
-    const QPointF p = e->position();
-    if (e->button() == Qt::RightButton) {
+    const QPointF p = ev->position();
+    if (ev->button() == Qt::RightButton) {
         if (m_cardPoint) {
             closeCard();
             m_gesture = Gesture{};
             return;
         }
         closeShapePage();
-        openMenu(p, dotAt(p));
+        openMenu(p, dotUnder(p));
         return;
     }
-    press(p, e->modifiers(), false);
+    press(p, ev->modifiers(), false);
 }
 
-void PeqOverlay::mouseDoubleClickEvent(QMouseEvent *e) {
+void PeqOverlay::mouseDoubleClickEvent(QMouseEvent *ev) {
     if (!editing()) {
-        e->ignore();
+        ev->ignore();
         return;
     }
     // Qt sends the second press, then this
-    if (e->button() == Qt::LeftButton) press(e->position(), e->modifiers(), true);
+    if (ev->button() == Qt::LeftButton) press(ev->position(), ev->modifiers(), true);
 }
 
 void PeqOverlay::press(const QPointF &p, Qt::KeyboardModifiers mods, bool doubleClick) {
@@ -1080,7 +1080,7 @@ void PeqOverlay::press(const QPointF &p, Qt::KeyboardModifiers mods, bool double
         return;
     }
     if (doubleClick) {
-        const int b = dotAt(p);
+        const int b = dotUnder(p);
         if (b >= 0) {
             showChip(b);
             emit editRequested(Peq::Freq);
@@ -1090,13 +1090,13 @@ void PeqOverlay::press(const QPointF &p, Qt::KeyboardModifiers mods, bool double
         m_gesture = Gesture{};
         return;
     }
-    const int b = dotAt(p);
+    const int b = dotUnder(p);
     if (b >= 0) {
         // Modified presses wait for the release (a click) or movement (a
         // drag), so Alt and Shift can mean both
         if (!(mods & (kCommand | kOption | Qt::ShiftModifier)) && !selection().contains(b)) {
             setSelection({ b });
-            m_anchor = b;
+            m_rangeAnchor = b;
         }
         m_gesture = Gesture{};
         m_gesture.kind = Gesture::Press;
@@ -1117,12 +1117,12 @@ void PeqOverlay::press(const QPointF &p, Qt::KeyboardModifiers mods, bool double
     m_gesture.kind = Gesture::Background;
     m_gesture.at = p;
     m_gesture.mods = mods;
-    m_gesture.onCurve = freeSlot() >= 0 && nearCurve(p);
+    m_gesture.onCurve = freeSlot() >= 0 && onCurveAt(p);
 }
 
-void PeqOverlay::mouseMoveEvent(QMouseEvent *e) {
+void PeqOverlay::mouseMoveEvent(QMouseEvent *ev) {
     if (!editing()) return;
-    const QPointF p = e->position();
+    const QPointF p = ev->position();
     m_pointer = p;
     switch (m_gesture.kind) {
     case Gesture::Press: {
@@ -1139,10 +1139,10 @@ void PeqOverlay::mouseMoveEvent(QMouseEvent *e) {
             setSelection(selection() | QSet<int>{ b });
         } else if (!selection().contains(b)) {
             setSelection({ b });
-            m_anchor = b;
+            m_rangeAnchor = b;
         }
         beginDrag(b, bands, m_gesture.at, mods & kCommand);
-        continueDrag(p, e->modifiers());
+        continueDrag(p, ev->modifiers());
         break;
     }
     case Gesture::Background: {
@@ -1158,9 +1158,9 @@ void PeqOverlay::mouseMoveEvent(QMouseEvent *e) {
             m_live.insert(slot, band);
             if (slot < m_shown.size()) m_shown[slot] = band;
             setSelection({ slot });
-            m_anchor = slot;
+            m_rangeAnchor = slot;
             beginDrag(slot, { slot }, m_gesture.at, false);
-            continueDrag(p, e->modifiers());
+            continueDrag(p, ev->modifiers());
         } else {
             // Ctrl opens the card, so only Shift adds to the selection here
             const QSet<int> base = (m_gesture.mods & Qt::ShiftModifier) ? selection() : QSet<int>{};
@@ -1175,7 +1175,7 @@ void PeqOverlay::mouseMoveEvent(QMouseEvent *e) {
         }
         break;
     }
-    case Gesture::Drag: continueDrag(p, e->modifiers()); break;
+    case Gesture::Drag: continueDrag(p, ev->modifiers()); break;
     case Gesture::Marquee:
         m_gesture.to = p;
         updateMarquee();
@@ -1184,9 +1184,9 @@ void PeqOverlay::mouseMoveEvent(QMouseEvent *e) {
     }
 }
 
-void PeqOverlay::mouseReleaseEvent(QMouseEvent *e) {
-    if (!editing() || e->button() != Qt::LeftButton) return;
-    const QPointF p = e->position();
+void PeqOverlay::mouseReleaseEvent(QMouseEvent *ev) {
+    if (!editing() || ev->button() != Qt::LeftButton) return;
+    const QPointF p = ev->position();
     const Gesture::Kind kind = m_gesture.kind;
     switch (kind) {
     case Gesture::Press: {
@@ -1199,18 +1199,18 @@ void PeqOverlay::mouseReleaseEvent(QMouseEvent *e) {
             QSet<int> next = selection();
             if (!next.remove(b)) next.insert(b);
             setSelection(next);
-            m_anchor = b;
+            m_rangeAnchor = b;
         } else if (mods & Qt::ShiftModifier) {
             const QList<int> order = frequencyOrder(graphBands());
-            const int i = order.indexOf(m_anchor), j = order.indexOf(b);
+            const int i = order.indexOf(m_rangeAnchor), j = order.indexOf(b);
             if (i >= 0 && j >= 0) setSelection(QSet<int>(order.cbegin() + qMin(i, j), order.cbegin() + qMax(i, j) + 1));
             else {
                 setSelection({ b });
-                m_anchor = b;
+                m_rangeAnchor = b;
             }
         } else {
             setSelection({ b });
-            m_anchor = b;
+            m_rangeAnchor = b;
         }
         break;
     }
@@ -1352,31 +1352,31 @@ void PeqOverlay::updateMarquee() {
     for (int b : graphBands())
         if (rect.contains(dotOf(m_shown[b]))) inside << b;
     setSelection(m_gesture.base | QSet<int>(inside.cbegin(), inside.cend()));
-    if (!inside.isEmpty()) m_anchor = frequencyOrder(inside).first();
+    if (!inside.isEmpty()) m_rangeAnchor = frequencyOrder(inside).first();
     rebuild();
 }
 
-void PeqOverlay::wheelEvent(QWheelEvent *e) {
-    const QPointF p = e->position();
-    const bool precise = !e->pixelDelta().isNull();
-    const QPoint raw = precise ? e->pixelDelta() : e->angleDelta();
+void PeqOverlay::wheelEvent(QWheelEvent *ev) {
+    const QPointF p = ev->position();
+    const bool precise = !ev->pixelDelta().isNull();
+    const QPoint raw = precise ? ev->pixelDelta() : ev->angleDelta();
     // Shift turns a wheel sideways on some systems: take whichever moved
     const double step = raw.y() != 0 ? raw.y() : raw.x();
     const double delta = precise ? step : step / 120.0 * 8.0;
-    const bool begins = e->phase() == Qt::ScrollBegin;
+    const bool begins = ev->phase() == Qt::ScrollBegin;
     if (begins) m_chipWheelField = -1;
-    if (editing() && handleWheel(p, delta, e->modifiers(), begins)) {
-        e->accept();
+    if (editing() && handleWheel(p, delta, ev->modifiers(), begins)) {
+        ev->accept();
         return;
     }
     if (p.x() <= kZoomZone && m_graph && delta != 0) {
         // The dB zoom strip at the left edge
         const double notches = precise ? step * 0.3 : step / 120.0 * 3.0;
         m_graph->setDbRange(qBound(GraphController::kRangeMin, m_graph->dbRange() - notches, GraphController::kRangeMax));
-        e->accept();
+        ev->accept();
         return;
     }
-    e->ignore();
+    ev->ignore();
 }
 
 // One wheel step; false when no band takes it. A gesture stays with the band
@@ -1389,18 +1389,18 @@ bool PeqOverlay::handleWheel(const QPointF &p, double rawDelta, Qt::KeyboardModi
     int target = -1;
     if (m_gesture.kind == Gesture::Drag) {
         target = m_gesture.grabbed;
-    } else if (!begins && isBand(m_wheelBand) && t - m_wheelTime < kWheelSession && (owner < 0 || selection().contains(m_wheelBand))) {
-        target = m_wheelBand;
+    } else if (!begins && isBand(m_wheelTarget) && t - m_wheelTime < kWheelSession && (owner < 0 || selection().contains(m_wheelTarget))) {
+        target = m_wheelTarget;
     } else {
         // The chip is drawn over the graph, so it wins over a band beneath it
-        const int under = m_chipShown && m_chipRect.contains(p) ? m_chipBand : bandAt(p);
+        const int under = m_chipShown && m_chipRect.contains(p) ? m_chipBand : bandUnder(p);
         if (under >= 0) target = owner >= 0 ? owner : under;
     }
     if (target < 0) {
-        m_wheelBand = -1;
+        m_wheelTarget = -1;
         return false;
     }
-    m_wheelBand = target;
+    m_wheelTarget = target;
     m_wheelTime = t;
     m_chipWheelField = -1;
     const double delta = rawDelta * ((mods & Qt::ShiftModifier) ? kFine : 1.0);
@@ -1440,7 +1440,7 @@ void PeqOverlay::openMenu(const QPointF &p, int band) {
     if (band >= 0) {
         if (!selection().contains(band)) {
             setSelection({ band });
-            m_anchor = band;
+            m_rangeAnchor = band;
         }
         m_menuTargets = targets(band);
     } else {
@@ -1506,10 +1506,10 @@ void PeqOverlay::menuAction(const QString &action, int argument) {
 
 // ---- Keys ------------------------------------------------------------------------
 
-bool PeqOverlay::takesKey(const QKeyEvent *e) const {
+bool PeqOverlay::takesKey(const QKeyEvent *ev) const {
     if (!editing()) return false;
-    const Qt::KeyboardModifiers mods = e->modifiers() & (kCommand | kOption | Qt::ShiftModifier | Qt::MetaModifier);
-    switch (e->key()) {
+    const Qt::KeyboardModifiers mods = ev->modifiers() & (kCommand | kOption | Qt::ShiftModifier | Qt::MetaModifier);
+    switch (ev->key()) {
     case Qt::Key_Delete:
     case Qt::Key_Backspace:
     case Qt::Key_Escape:
@@ -1528,23 +1528,23 @@ bool PeqOverlay::takesKey(const QKeyEvent *e) const {
     }
 }
 
-bool PeqOverlay::event(QEvent *e) {
+bool PeqOverlay::event(QEvent *ev) {
     // The editor's keys win over the menus' shortcuts (Delete, Ctrl+A) while
     // the graph has the keyboard
-    if (e->type() == QEvent::ShortcutOverride && takesKey(static_cast<QKeyEvent *>(e))) {
-        e->accept();
+    if (ev->type() == QEvent::ShortcutOverride && takesKey(static_cast<QKeyEvent *>(ev))) {
+        ev->accept();
         return true;
     }
-    return QQuickPaintedItem::event(e);
+    return QQuickPaintedItem::event(ev);
 }
 
-void PeqOverlay::keyPressEvent(QKeyEvent *e) {
-    if (!takesKey(e)) {
-        e->ignore();
+void PeqOverlay::keyPressEvent(QKeyEvent *ev) {
+    if (!takesKey(ev)) {
+        ev->ignore();
         return;
     }
-    const Qt::KeyboardModifiers mods = e->modifiers();
-    switch (e->key()) {
+    const Qt::KeyboardModifiers mods = ev->modifiers();
+    switch (ev->key()) {
     case Qt::Key_Delete:
     case Qt::Key_Backspace: deleteBands(selection()); break;
     case Qt::Key_Escape:
@@ -1564,7 +1564,7 @@ void PeqOverlay::keyPressEvent(QKeyEvent *e) {
     case Qt::Key_Left:
     case Qt::Key_Right:
     case Qt::Key_Up:
-    case Qt::Key_Down: nudge(e->key(), mods); break;
+    case Qt::Key_Down: nudge(ev->key(), mods); break;
     case Qt::Key_Return:
     case Qt::Key_Enter: {
         // Type the values of the band the chip stays on, as a double-click does
@@ -1588,17 +1588,17 @@ void PeqOverlay::keyPressEvent(QKeyEvent *e) {
     }
     default: break;
     }
-    e->accept();
+    ev->accept();
 }
 
 void PeqOverlay::stepSelection(bool backwards) {
     const QList<int> order = frequencyOrder(graphBands());
     if (order.isEmpty()) return;
-    const int from = order.indexOf(m_anchor);
+    const int from = order.indexOf(m_rangeAnchor);
     const int n = int(order.size());
     const int next = from >= 0 ? ((from + (backwards ? -1 : 1)) % n + n) % n : (backwards ? n - 1 : 0);
     setSelection({ order[next] });
-    m_anchor = order[next];
+    m_rangeAnchor = order[next];
     showChip(order[next]);
 }
 
@@ -1623,7 +1623,7 @@ void PeqOverlay::nudge(int key, Qt::KeyboardModifiers mods) {
         changes.insert(b, p);
     }
     setLiveThenCommit(changes);
-    if (selection().contains(m_anchor)) showChip(m_anchor);
+    if (selection().contains(m_rangeAnchor)) showChip(m_rangeAnchor);
 }
 
 // ---- The chip ----------------------------------------------------------------------
@@ -1739,7 +1739,7 @@ void PeqOverlay::pinChipToSelection() {
     if (pin >= 0) {
         if (m_gesture.kind == Gesture::Marquee) return;
         if (!m_chipShown || m_chipBand != pin) showChip(pin);
-    } else if (m_chipShown && (!m_pointer || dotAt(*m_pointer) != m_chipBand)) {
+    } else if (m_chipShown && (!m_pointer || dotUnder(*m_pointer) != m_chipBand)) {
         scheduleChipHide();
     }
 }
@@ -1804,7 +1804,7 @@ void PeqOverlay::chipHovered(bool inside) {
         m_ghost.reset();
         hideReadouts();
         invalidate();
-    } else if (!m_pointer || dotAt(*m_pointer) != m_chipBand) {
+    } else if (!m_pointer || dotUnder(*m_pointer) != m_chipBand) {
         scheduleChipHide();
     }
 }
@@ -1879,12 +1879,12 @@ void PeqOverlay::chipScroll(int field, double delta, bool fine) {
     const int locked = chipWheelActive() && m_chipWheelField >= 0 ? m_chipWheelField : field;
     m_chipWheelField = locked;
     m_chipWheelTime = now();
-    m_wheelBand = -1;
+    m_wheelTarget = -1;
     const double d = delta * (fine ? kFine : 1.0);
     if (const auto p = adjusted(current(m_chipBand), locked, d * 0.5)) setLiveThenCommit({ { m_chipBand, *p } });
 }
 
-bool PeqOverlay::graphWheelActive() const { return m_wheelBand >= 0 && now() - m_wheelTime < kWheelSession; }
+bool PeqOverlay::graphWheelActive() const { return m_wheelTarget >= 0 && now() - m_wheelTime < kWheelSession; }
 
 bool PeqOverlay::chipWheelActive() const {
     return m_chipWheelField >= 0 && m_chipShown && now() - m_chipWheelTime < kWheelSession;
@@ -1958,7 +1958,7 @@ double PeqOverlay::curveDbAt(double hz) const { return combinedDb(hz); }
 
 // ---- Shape glyphs ------------------------------------------------------------------------
 
-PeqShapeGlyph::PeqShapeGlyph(QQuickItem *parent) : QQuickPaintedItem(parent) {
+PeqShapeGlyph::PeqShapeGlyph(QQuickItem *parentItem) : QQuickPaintedItem(parentItem) {
     setImplicitSize(18, 12);
     setAntialiasing(true);
 }
@@ -1966,66 +1966,66 @@ PeqShapeGlyph::PeqShapeGlyph(QQuickItem *parent) : QQuickPaintedItem(parent) {
 void PeqShapeGlyph::setShape(int s) {
     if (s == m_shape) return;
     m_shape = s;
-    emit changed();
+    emit glyphChanged();
     update();
 }
 
-void PeqShapeGlyph::setColor(const QColor &c) {
-    if (c == m_color) return;
-    m_color = c;
-    emit changed();
+void PeqShapeGlyph::setInk(const QColor &value) {
+    if (value == m_ink) return;
+    m_ink = value;
+    emit glyphChanged();
     update();
 }
 
-void PeqShapeGlyph::paint(QPainter *painter) {
+void PeqShapeGlyph::paint(QPainter *p) {
     // Drawn on the Mac's 18 x 12 grid, scaled to the item
-    painter->setRenderHint(QPainter::Antialiasing);
-    painter->scale(width() / 18.0, height() / 12.0);
-    QPainterPath p;
+    p->setRenderHint(QPainter::Antialiasing);
+    p->scale(width() / 18.0, height() / 12.0);
+    QPainterPath line;
     const double mid = 7;
     switch (m_shape) {
     case Peq::Bell:
-        p.moveTo(1, 9);
-        p.cubicTo(5, 9, 6.5, 2, 9, 2);
-        p.cubicTo(11.5, 2, 13, 9, 17, 9);
+        line.moveTo(1, 9);
+        line.cubicTo(5, 9, 6.5, 2, 9, 2);
+        line.cubicTo(11.5, 2, 13, 9, 17, 9);
         break;
     case Peq::LowShelf:
-        p.moveTo(1, 3);
-        p.lineTo(6, 3);
-        p.cubicTo(9, 3, 9, 9, 12, 9);
-        p.lineTo(17, 9);
+        line.moveTo(1, 3);
+        line.lineTo(6, 3);
+        line.cubicTo(9, 3, 9, 9, 12, 9);
+        line.lineTo(17, 9);
         break;
     case Peq::HighShelf:
-        p.moveTo(1, 9);
-        p.lineTo(6, 9);
-        p.cubicTo(9, 9, 9, 3, 12, 3);
-        p.lineTo(17, 3);
+        line.moveTo(1, 9);
+        line.lineTo(6, 9);
+        line.cubicTo(9, 9, 9, 3, 12, 3);
+        line.lineTo(17, 3);
         break;
     case Peq::LowCut:
-        p.moveTo(3, 11);
-        p.cubicTo(5, 5, 7, 4, 10, 4);
-        p.lineTo(17, 4);
+        line.moveTo(3, 11);
+        line.cubicTo(5, 5, 7, 4, 10, 4);
+        line.lineTo(17, 4);
         break;
     case Peq::HighCut:
-        p.moveTo(1, 4);
-        p.lineTo(8, 4);
-        p.cubicTo(11, 4, 13, 5, 15, 11);
+        line.moveTo(1, 4);
+        line.lineTo(8, 4);
+        line.cubicTo(11, 4, 13, 5, 15, 11);
         break;
     case Peq::Notch:
-        p.moveTo(1, 3);
-        p.lineTo(6.5, 3);
-        p.cubicTo(8.2, 3, 8.6, 11, 9, 11);
-        p.cubicTo(9.4, 11, 9.8, 3, 11.5, 3);
-        p.lineTo(17, 3);
+        line.moveTo(1, 3);
+        line.lineTo(6.5, 3);
+        line.cubicTo(8.2, 3, 8.6, 11, 9, 11);
+        line.cubicTo(9.4, 11, 9.8, 3, 11.5, 3);
+        line.lineTo(17, 3);
         break;
     default:
-        p.moveTo(1, mid);
-        p.lineTo(5, mid);
-        p.cubicTo(8, 0, 10, 14, 13, mid);
-        p.lineTo(17, mid);
+        line.moveTo(1, mid);
+        line.lineTo(5, mid);
+        line.cubicTo(8, 0, 10, 14, 13, mid);
+        line.lineTo(17, mid);
         break;
     }
-    painter->setPen(QPen(m_color, 1.5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    painter->setBrush(Qt::NoBrush);
-    painter->drawPath(p);
+    p->setPen(QPen(m_ink, 1.5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    p->setBrush(Qt::NoBrush);
+    p->drawPath(line);
 }

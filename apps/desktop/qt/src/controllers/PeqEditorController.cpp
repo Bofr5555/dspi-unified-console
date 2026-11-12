@@ -264,7 +264,7 @@ ChannelController *channels() { return Registrar::instance<ChannelController>();
 PeqEditorController::PeqEditorController(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {}
 
 void PeqEditorController::bump() {
-    ++m_revision;
+    ++m_rev;
     emit changed();
 }
 
@@ -274,24 +274,24 @@ QList<int> PeqEditorController::selected() const {
     return out;
 }
 
-void PeqEditorController::setListHovered(int band) {
-    if (band == m_listHovered) return;
-    m_listHovered = band;
-    emit listHoveredChanged();
+void PeqEditorController::setRowHovered(int band) {
+    if (band == m_rowHovered) return;
+    m_rowHovered = band;
+    emit rowHoveredChanged();
     bump();
 }
 
-void PeqEditorController::setGraphHovered(int band) {
-    if (band == m_graphHovered) return;
-    m_graphHovered = band;
+void PeqEditorController::setPointedBand(int band) {
+    if (band == m_pointed) return;
+    m_pointed = band;
     bump();
 }
 
-void PeqEditorController::setChannel(int channel) {
-    if (channel == m_channel) return;
-    m_channel = channel;
+void PeqEditorController::setEditedChannel(int channel) {
+    if (channel == m_edited) return;
+    m_edited = channel;
     m_selected.clear();
-    m_listAnchor = m_listHovered = m_graphHovered = -1;
+    m_rowAnchor = m_rowHovered = m_pointed = -1;
     m_live.clear();
     emit selectionChanged();
     bump();
@@ -303,35 +303,35 @@ void PeqEditorController::setSelection(const QSet<int> &bands) {
     bump();
 }
 
-void PeqEditorController::reset() {
-    m_listAnchor = -1;
-    const bool any = !m_selected.isEmpty() || m_graphHovered >= 0 || m_listHovered >= 0;
+void PeqEditorController::forget() {
+    m_rowAnchor = -1;
+    const bool any = !m_selected.isEmpty() || m_pointed >= 0 || m_rowHovered >= 0;
     m_selected.clear();
-    m_graphHovered = m_listHovered = -1;
+    m_pointed = m_rowHovered = -1;
     if (!any) return;
     emit selectionChanged();
-    emit listHoveredChanged();
+    emit rowHoveredChanged();
     bump();
 }
 
-void PeqEditorController::listClick(int band, int modifiers) {
-    if (m_channel < 0 || band < 0 || band >= BANDS_PER_CHANNEL) return;
+void PeqEditorController::rowClicked(int band, int modifiers) {
+    if (m_edited < 0 || band < 0 || band >= BANDS_PER_CHANNEL) return;
     QSet<int> next;
-    int from = m_listAnchor >= 0 && m_selected.contains(m_listAnchor) ? m_listAnchor
+    int from = m_rowAnchor >= 0 && m_selected.contains(m_rowAnchor) ? m_rowAnchor
              : m_selected.size() == 1                                ? *m_selected.cbegin()
                                                                      : -1;
     if (modifiers & Qt::ControlModifier) {
         next = m_selected;
         if (!next.remove(band)) next.insert(band);
-        m_listAnchor = band;
+        m_rowAnchor = band;
     } else if ((modifiers & Qt::ShiftModifier) && from >= 0) {
         // The anchor stays, so a second Shift-click reshapes the run
         for (int b = qMin(from, band); b <= qMax(from, band); ++b)
-            if (Peq::isGraphBand(this->band(m_channel, b, false))) next.insert(b);
-        m_listAnchor = from;
+            if (Peq::isGraphBand(this->band(m_edited, b, false))) next.insert(b);
+        m_rowAnchor = from;
     } else {
         next = { band };
-        m_listAnchor = band;
+        m_rowAnchor = band;
     }
     if (next == m_selected) return;
     m_selected = next;
@@ -390,6 +390,6 @@ void PeqEditorController::writeBands(int channel, const QList<QPair<int, FilterP
     }
 }
 
-void PeqEditorController::setBypass(int channel, int band, bool bypass) {
+void PeqEditorController::setBandBypassed(int channel, int band, bool bypass) {
     if (channels()->bypassSupported()) channels()->setBandBypass(channel, band, false, bypass);
 }

@@ -92,7 +92,7 @@ Rectangle {
     }
     Connections {
         target: PeqEditorController
-        function onRevealRow(band) {
+        function onShowRow(band) {
             const list = pane.peqList(pane)
             if (list) list.showBand(band)
         }

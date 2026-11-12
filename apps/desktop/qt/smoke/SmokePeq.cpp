@@ -115,7 +115,7 @@ bool nearRatio(double a, double b, double tol) { return b != 0 && std::abs(a / b
 
 void owner(Peqs &p) {
     SmokeDriver &d = p.d;
-    d.check(QStringLiteral("qp4: the editor takes the page's channel"), p.ov->editedChannel() == p.ch && p.ed->channel() == p.ch);
+    d.check(QStringLiteral("qp4: the editor takes the page's channel"), p.ov->editedChannel() == p.ch && p.ed->editedChannel() == p.ch);
     d.check(QStringLiteral("qp4: the graph leaves the edited curve to the editor"), p.g->overlayChannel() == p.ch);
     QObject *curves = p.obj(QStringLiteral("GraphHost.plot.curves"));
     d.check(QStringLiteral("qp4: and the curve layer draws it no more"),
@@ -547,25 +547,25 @@ void bandList(Peqs &p) {
     p.put(4, FILTER_PEAKING, 9000, 1, 2);
     QObject *row = p.obj(QStringLiteral("OutputDetail.bands.band.1"));
     d.check(QStringLiteral("qp4: the page's band list is the editor's"), row != nullptr);
-    p.ed->listClick(1, Qt::NoModifier);
+    p.ed->rowClicked(1, Qt::NoModifier);
     p.settle();
     d.check(QStringLiteral("qp4: a click on a row's number selects the band on the graph"), p.selected() == QSet<int>{ 1 } && p.ov->chipBand() == 1);
     d.check(QStringLiteral("qp4: its row shows it selected"), row && row->property("selected").toBool());
     d.check(QStringLiteral("qp4: and in its band's colour"), row && row->property("bandColor").value<QColor>() == p.ov->bandColors().value(1).value<QColor>());
-    p.ed->listClick(4, Qt::ShiftModifier);
+    p.ed->rowClicked(4, Qt::ShiftModifier);
     d.check(QStringLiteral("qp4: Shift-click takes the run of rows, empty ones skipped"), p.selected() == (QSet<int>{ 1, 4 }));
-    p.ed->listClick(0, Qt::ControlModifier);
+    p.ed->rowClicked(0, Qt::ControlModifier);
     d.check(QStringLiteral("qp4: Ctrl-click on a row adds it"), p.selected() == (QSet<int>{ 0, 1, 4 }));
-    p.ed->setListHovered(4);
-    d.check(QStringLiteral("qp4: a hovered row lights its dot"), p.ed->listHovered() == 4);
-    p.ed->setListHovered(-1);
+    p.ed->setRowHovered(4);
+    d.check(QStringLiteral("qp4: a hovered row lights its dot"), p.ed->rowHovered() == 4);
+    p.ed->setRowHovered(-1);
     // A rest on a dot brings its row into view
-    QSignalSpy reveal(p.ed, &PeqEditorController::revealRow);
-    p.ed->listClick(0, Qt::NoModifier);
+    QSignalSpy reveal(p.ed, &PeqEditorController::showRow);
+    p.ed->rowClicked(0, Qt::NoModifier);
     p.hover(p.dot(4) + QPoint(1, 0));
     p.hover(p.dot(4));
     d.check(QStringLiteral("qp4: resting on a dot asks for its row"), reveal.wait(1500) && reveal.last().value(0).toInt() == 4);
-    d.check(QStringLiteral("qp4: the graph's hovered band is shared with the list"), p.ed->graphHovered() == 4);
+    d.check(QStringLiteral("qp4: the graph's hovered band is shared with the list"), p.ed->pointedBand() == 4);
     p.hover(p.empty(0.02, -20));
 }
 
@@ -640,7 +640,7 @@ void standsAside(Peqs &p, SidebarController *sc) {
     p.g->setCurveVisible(out, true);
     sc->select(-1);
     d.spin(50);
-    d.check(QStringLiteral("qp4: the overview edits nothing"), p.ov->editedChannel() == -1 && p.g->overlayChannel() == -1 && p.ed->channel() == -1);
+    d.check(QStringLiteral("qp4: the overview edits nothing"), p.ov->editedChannel() == -1 && p.g->overlayChannel() == -1 && p.ed->editedChannel() == -1);
     // The dB zoom strip still works there
     const double span = p.g->dbRange();
     p.wheel(p.at(QPointF(10, 20)), -120);

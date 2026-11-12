@@ -23,18 +23,18 @@ QtObject {
 
     readonly property int revision: PeqEditorController.revision
     property int listHovered: -1
-    onListHoveredChanged: PeqEditorController.listHovered = listHovered
+    onListHoveredChanged: PeqEditorController.rowHovered = listHovered
 
     function isSelected(band) { return PeqEditorController.isSelected(band) }
     function bandColor(band) { return colors[((band % colors.length) + colors.length) % colors.length] }
     function live(band) { return PeqEditorController.live(band) }
-    function listClick(band, modifiers) { PeqEditorController.listClick(band, modifiers) }
+    function listClick(band, modifiers) { PeqEditorController.rowClicked(band, modifiers) }
 
     // The list hovering a row while nothing edits on the graph gives none back
     readonly property Connections editor: Connections {
         target: PeqEditorController
-        function onListHoveredChanged() {
-            if (PeqEditorController.listHovered !== listHovered) listHovered = PeqEditorController.listHovered
+        function onRowHoveredChanged() {
+            if (PeqEditorController.rowHovered !== listHovered) listHovered = PeqEditorController.rowHovered
         }
     }
 }

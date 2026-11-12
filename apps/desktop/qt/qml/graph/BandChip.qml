@@ -31,10 +31,9 @@ Rectangle {
     height: editor.chipHeight
     radius: Theme.radius
     color: Theme.menu
-    border.width: 1
-    border.color: Theme.border
+    border { width: 1; color: Theme.border }
     opacity: shown ? 1 : 0
-    visible: opacity > 0
+    visible: opacity !== 0
     Behavior on opacity { NumberAnimation { duration: chip.shown ? 120 : 150 } }
 
     Accessible.role: Accessible.Grouping
@@ -48,11 +47,7 @@ Rectangle {
     }
     Component.onCompleted: info = editor.chip
 
-    function rowOf(field) {
-        const rows = info.rows || []
-        for (let i = 0; i < rows.length; ++i) if (rows[i].field === field) return i
-        return -1
-    }
+    function rowOf(field) { return (info.rows || []).findIndex(r => r.field === field) }
     // The next value that can be typed, after `field` in row order
     function nextField(field, backwards) {
         const rows = (info.rows || []).filter(r => r.adjustable)
@@ -80,9 +75,9 @@ Rectangle {
 
     // The panel swallows clicks, which would otherwise make a band behind it
     MouseArea {
-        anchors.fill: parent
+        acceptedButtons: Qt.AllButtons
         hoverEnabled: true
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        anchors.fill: parent
         onContainsMouseChanged: chip.editor.chipHovered(containsMouse)
     }
 
@@ -105,25 +100,26 @@ Rectangle {
             Accessible.name: chip.info.shapeTip || ""
             Accessible.onPressAction: chip.editor.chipToggleShapes()
             Row {
-                anchors.verticalCenter: parent.verticalCenter
                 x: 3
+                height: parent.height
                 spacing: 3
                 PeqShapeGlyph {
-                    anchors.verticalCenter: parent.verticalCenter
+                    y: (parent.height - height) / 2
                     visible: chip.info.reshapable === true
                     width: 18
                     height: 12
                     shape: chip.info.shape >= 0 ? chip.info.shape : 0
-                    color: chip.ink
+                    ink: chip.ink
                 }
                 Text {
-                    anchors.verticalCenter: parent.verticalCenter
+                    height: parent.height
+                    verticalAlignment: Text.AlignVCenter
                     text: chip.info.code || ""
                     font: Theme.fontSmall
                     color: chip.info.bypass || !chip.info.reshapable ? Theme.textMuted : Theme.text
                 }
                 Icon {
-                    anchors.verticalCenter: parent.verticalCenter
+                    y: (parent.height - height) / 2
                     visible: chip.info.reshapable === true
                     name: "chevron-down"
                     size: 8
@@ -206,8 +202,8 @@ Rectangle {
                     x: chip.numberX
                     width: line.modelData.inline ? chip.width - chip.pad - chip.numberX : 44
                     height: 15
-                    horizontalAlignment: Text.AlignRight
                     verticalAlignment: Text.AlignVCenter
+                    horizontalAlignment: Text.AlignRight
                     text: line.modelData.inline ? line.modelData.number + " " + line.modelData.unit : line.modelData.number
                     font: Theme.fontMono
                     color: chip.info.bypass || !line.modelData.adjustable ? Theme.textMuted : Theme.text
@@ -259,15 +255,14 @@ Rectangle {
                     height: 15
                     radius: 3
                     color: Theme.control
-                    border.width: 1
-                    border.color: Theme.focusRing
+                    border { width: 1; color: Theme.focusRing }
                     TextInput {
                         id: input
                         objectName: "PeqChip.input." + line.modelData.field
                         anchors.fill: parent
                         anchors.rightMargin: 2
-                        horizontalAlignment: Text.AlignRight
                         verticalAlignment: Text.AlignVCenter
+                        horizontalAlignment: Text.AlignRight
                         font: Theme.fontMono
                         color: Theme.text
                         selectByMouse: true
