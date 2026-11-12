@@ -1250,3 +1250,31 @@ pub struct EventBatch {
     /// Oldest first.
     pub entries: Vec<EventEntry>,
 }
+
+// -- WP P0E --
+/// A file a client adds to a diagnostics bundle (`client/<name>` in the
+/// zip): its own log, `uconsole doctor`'s report.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct DiagFile {
+    /// The file's name; anything but letters, digits, `.`, `_` and `-`
+    /// becomes `_`.
+    pub name: String,
+    /// Its text, kept up to 4 MiB.
+    pub text: String,
+}
+
+/// What a client adds to a diagnostics bundle
+/// (`DspiCore::diagnostics_save`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct DiagOptions {
+    /// The client and its version, as it names itself ("DSPi Console 1.2.0
+    /// (Android)"); "" when it does not say.
+    pub app: String,
+    /// The folder of a hub store (`hub-store.json`) to include with its
+    /// tokens and secrets removed; "" for none.
+    pub hub_store_dir: String,
+    /// The client's own files.
+    pub files: Vec<DiagFile>,
+}
