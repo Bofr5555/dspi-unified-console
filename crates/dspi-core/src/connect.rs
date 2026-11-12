@@ -183,13 +183,23 @@ impl DspiCore {
         let result = {
             let mut guard = self.lock();
             if lock.is_current(&guard) {
-                apply_all_params_locked(&mut guard)
+                let r = apply_all_params_locked(&mut guard);
+                // -- WP BULKFIX --
+                r.map_err(|e| (e, bulk_left_muted(&guard)))
             } else {
-                Err(DspiError::Disconnected)
+                Err((DspiError::Disconnected, false))
             }
         };
         self.release_device_lock(lock);
-        result
+        // -- WP BULKFIX -- (fixup bf F2) Logged with the lock released.
+        result.map_err(|(e, left_muted)| {
+            if left_muted {
+                let e = with_why(e);
+                self.log_left_muted("Applying the configuration", &e);
+                return e;
+            }
+            e
+        })
     }
 
     /// Read the meter block (`REQ_GET_STATUS` sub-query 9): the peak of each
@@ -945,22 +955,41 @@ pub(crate) fn apply_all_params_locked(inner: &mut Inner) -> Result<()> {
     let image = state::encode_bulk(&inner.state);
     let mut w = inner.writable_conn()?;
     // -- WP BULKFIX --
+    w.conn().bulk_left_muted = false;
     let repair = bulk_gain_repair(w.conn(), &image);
 
     w.conn().echo.bulk_write_started(Instant::now());
     // -- WP BULKFIX --
-    let sent = match &repair {
-        None => write_image(&mut w, &image),
-        Some(r) => write_image(&mut w, &r.muted).and_then(|()| {
-            dspi_session::bulk_gain::repair(w.conn().transport(), r).map_err(DspiError::from)
-        }),
+    let mut unmuted = 0usize;
+    let (sent, left_muted) = match &repair {
+        None => (write_image(&mut w, &image), false),
+        Some(r) => match write_image(&mut w, &r.muted) {
+            Ok(()) => {
+                let repaired = repair_after_write(&mut w, r, &mut unmuted);
+                let failed = repaired.is_err();
+                (repaired, failed)
+            }
+            Err(e) => {
+                // A lost reply may hide an applied image: its gains are unknown.
+                let all = dspi_session::bulk_gain::all_outputs(r.outputs);
+                w.conn().gain_guard.suspect(all);
+                (Err(e), false)
+            }
+        },
     };
     w.conn()
         .echo
         .bulk_write_finished(Instant::now(), sent.is_ok());
-    if let (Err(_), Some(r)) = (&sent, &repair) {
-        // The device may hold the muted image: show its outputs muted.
+    if let (true, Some(r)) = (left_muted, &repair) {
+        // -- fixup bf (F2) -- The device holds the muted image: so does the
+        // mirror, and `bulk_left_muted` says why to the caller.
+        w.conn().bulk_left_muted = true;
         let _ = state::decode_bulk(&r.muted, &mut inner.state);
+        for u in r.unmutes.iter().take(unmuted) {
+            if let Some(m) = inner.state.output_muted.get_mut(usize::from(u.value)) {
+                *m = false;
+            }
+        }
     }
     sent?;
 
@@ -972,22 +1001,99 @@ pub(crate) fn apply_all_params_locked(inner: &mut Inner) -> Result<()> {
     Ok(())
 }
 
+// -- WP BULKFIX -- (fixup bf F2)
+/// Whether the last bulk write on the open connection left the outputs muted.
+pub(crate) fn bulk_left_muted(inner: &Inner) -> bool {
+    inner.conn.as_ref().is_some_and(|c| c.bulk_left_muted)
+}
+
+/// Why the outputs are muted after a failed bulk write, for an error line.
+pub(crate) const LEFT_MUTED: &str = "the device's outputs were left muted, because the gains it \
+     was sent could not be checked or corrected (its firmware plays a bulk write's gains wrong \
+     until they are re-sent); apply the configuration again or load a preset";
+
+/// `e` with [`LEFT_MUTED`] in its message. Other kinds (a lost device, a
+/// Link refusal) keep theirs, so a client still tells them apart.
+pub(crate) fn with_why(e: DspiError) -> DspiError {
+    match e {
+        DspiError::Transfer { msg } => DspiError::Transfer {
+            msg: format!("{msg}; {LEFT_MUTED}"),
+        },
+        other => other,
+    }
+}
+
+impl DspiCore {
+    /// Record a bulk write whose repair failed in the event history. Call
+    /// with the lock released.
+    pub(crate) fn log_left_muted(&self, what: &str, e: &DspiError) {
+        let text = match e {
+            DspiError::Transfer { .. } => format!("{what} failed: {e}"),
+            _ => format!("{what} failed ({e}): {LEFT_MUTED}"),
+        };
+        let r = dspi_session::events::EventRecord::new(
+            dspi_session::events::EventKind::Import,
+            crate::events::now_ms(),
+            text,
+        );
+        self.events.record_all(vec![r]);
+    }
+}
+
 // -- WP BULKFIX --
 /// The repair a bulk write of `image` needs on this connection: `None` when
-/// the firmware reports the bulk dB fix (`EXT_FIRMWARE_FIXES`, read only when
-/// `EXT_LIST` named it) or the image is not one the firmware applies.
-/// Firmware v1.1.6 and every fork build without FWX's FW2 convert a bulk
-/// SET's gains with a Taylor series that plays deep cuts loud
+/// the firmware reports the bulk dB fix (`EXT_FIRMWARE_FIXES`, asked once per
+/// connection, and only when `EXT_LIST` named it) or the image is not one the
+/// firmware applies. Firmware v1.1.6 and every fork build without FWX's FW2
+/// convert a bulk SET's gains with a Taylor series that plays deep cuts loud
 /// ([`dspi_proto::bulk_gain`]).
 fn bulk_gain_repair(
     conn: &mut Connection,
     image: &[u8],
 ) -> Option<dspi_proto::bulk_gain::GainRepair> {
-    let supported = conn.ext.supported.clone();
-    if dspi_session::bulk_gain::fix_reported_in(conn.transport(), &supported) {
+    let guard = conn.gain_guard.clone();
+    // A Link bind's probe may not have read `EXT_LIST` yet: then ask.
+    let supported = conn
+        .pending_probe
+        .is_none()
+        .then(|| conn.ext.supported.clone());
+    if guard.fixed(conn.transport(), supported.as_deref()) {
         return None;
     }
     dspi_proto::bulk_gain::plan(image)
+}
+
+// -- WP BULKFIX -- (fixup bf F5: the writes go through `Writable`)
+/// After the muted image was sent: wait for its apply and check the read-back,
+/// re-send the gains, then unmute. Every output is suspect if this fails
+/// before the gains are all in ([`dspi_session::bulk_gain::GainGuard`]).
+/// `unmuted` counts the unmutes sent.
+fn repair_after_write(
+    w: &mut Writable<'_>,
+    r: &dspi_proto::bulk_gain::GainRepair,
+    unmuted: &mut usize,
+) -> Result<()> {
+    use dspi_session::bulk_gain::{all_outputs, check_readback, wait_applied};
+    let guard = w.conn().gain_guard.clone();
+    let gains = (|| -> Result<()> {
+        let back = wait_applied(w.conn().transport())?;
+        check_readback(&back, r)?;
+        for g in &r.gains {
+            w.set(g.opcode, g.value, &g.payload)?;
+        }
+        Ok(())
+    })();
+    if gains.is_err() {
+        guard.suspect(all_outputs(r.outputs));
+    } else {
+        guard.clear_all();
+    }
+    gains?;
+    for u in &r.unmutes {
+        w.set(u.opcode, u.value, &u.payload)?;
+        *unmuted = unmuted.saturating_add(1);
+    }
+    Ok(())
 }
 
 // -- WP BULKFIX --

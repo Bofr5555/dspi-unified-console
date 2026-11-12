@@ -125,6 +125,11 @@ struct Model {
     bulk_applies: usize,
     /// Every OUT request's opcode, in order.
     sets: Vec<u8>,
+    // -- fixup bf --
+    /// Every IN request's `(opcode, wValue)`, in order.
+    gets: Vec<(u8, u16)>,
+    /// OUT opcodes that fail (stall) while listed.
+    failing: Vec<u8>,
     /// The largest dB by which an audible gain played above its stored value
     /// since the first bulk apply.
     worst_excess_db: f32,
@@ -188,7 +193,10 @@ impl Model {
         }
         // `bulk_params_apply` refuses another version or size and applies
         // nothing; else the image is stored and BULK_INVALIDATED sent.
-        if BulkPacket::decode(image.clone()).is_ok() {
+        // -2 / -3: another platform or other channel counts (header bytes
+        // 1-4) are refused as well.
+        let same_device = image.get(1..5) == self.image().get(1..5);
+        if same_device && BulkPacket::decode(image.clone()).is_ok() {
             self.remote
                 .load_image(image.clone(), nfy::PARAM_SRC_BULK_SET as u8);
             let f = if self.options.fixed {
@@ -313,6 +321,8 @@ impl BulkDbDevice {
             chunks: None,
             bulk_applies: 0,
             sets: Vec::new(),
+            gets: Vec::new(),
+            failing: Vec::new(),
             worst_excess_db: f32::NEG_INFINITY,
         };
         Self {
@@ -343,6 +353,7 @@ impl BulkDbDevice {
 
     fn get(&mut self, opcode: u8, value: u16, len: u16, upto: bool) -> Result<Vec<u8>> {
         self.with(|m, inner| {
+            m.gets.push((opcode, value));
             let bulk_read = matches!(
                 opcode,
                 op::REQ_GET_ALL_PARAMS | op::REQ_GET_ALL_PARAMS_CHUNK
@@ -389,6 +400,20 @@ impl GainProbe {
         self.model().bulk_applies
     }
 
+    /// Every IN request's `(opcode, wValue)` so far, in order.
+    pub fn gets(&self) -> Vec<(u8, u16)> {
+        self.model().gets.clone()
+    }
+
+    /// Make every later OUT request with `opcode` stall (`on`), or work again.
+    pub fn fail(&self, opcode: u8, on: bool) {
+        let mut m = self.model();
+        m.failing.retain(|o| *o != opcode);
+        if on {
+            m.failing.push(opcode);
+        }
+    }
+
     /// Every OUT request's opcode so far, in order.
     pub fn sets(&self) -> Vec<u8> {
         self.model().sets.clone()
@@ -432,6 +457,9 @@ impl Transport for BulkDbDevice {
     fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> Result<()> {
         self.with(|m, inner| {
             m.sets.push(opcode);
+            if m.failing.contains(&opcode) {
+                return Err(TransportError::Stalled { opcode });
+            }
             m.set(inner, opcode, value, data)
         })
     }

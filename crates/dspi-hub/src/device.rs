@@ -291,7 +291,7 @@ impl Drop for LostOnExit {
 }
 
 fn worker_loop(
-    mut transport: Box<dyn Transport>,
+    transport: Box<dyn Transport>,
     shared: &DeviceShared,
     rx: &Receiver<Job>,
     sup: Sender<SupMsg>,
@@ -302,8 +302,9 @@ fn worker_loop(
         generation: shared.generation,
     };
     let mut busy = BusyWindow::default();
-    // -- WP BULKFIX --
-    let mut chunks = crate::bulk_gain::ChunkedSet::default();
+    // -- WP BULKFIX -- (fixup bf F1, F4: the guard sees every relayed unmute)
+    let (mut transport, guard) = dspi_session::bulk_gain::GainGuard::wrap(transport, true);
+    let mut chunks = crate::bulk_gain::BulkRelay::new(guard);
     loop {
         let next = match shared.polls.next_due() {
             Some(due) => rx.recv_timeout(due.saturating_duration_since(Instant::now())),
@@ -390,7 +391,7 @@ fn run_command(
     shared: &DeviceShared,
     sup: &Sender<SupMsg>,
     busy: &mut BusyWindow,
-    chunks: &mut crate::bulk_gain::ChunkedSet,
+    chunks: &mut crate::bulk_gain::BulkRelay,
     job: CmdJob,
 ) {
     let CmdJob {
@@ -499,9 +500,9 @@ pub(crate) fn execute(
             opcode,
         ),
         Dir::Get => t.control_in_upto(opcode, req.w_value, req.w_length),
-        // -- WP BULKFIX --
+        // -- WP BULKFIX -- (repaired by `BulkRelay::take` before this runs)
         Dir::Set if opcode == op::REQ_SET_ALL_PARAMS => {
-            crate::bulk_gain::write_repaired(t, &req.payload, write_bulk).map(|()| Vec::new())
+            write_bulk(t, &req.payload).map(|()| Vec::new())
         }
         Dir::Set => t
             .control_out(opcode, req.w_value, &req.payload)

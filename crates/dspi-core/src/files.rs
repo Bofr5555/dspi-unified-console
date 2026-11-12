@@ -1756,7 +1756,20 @@ impl DspiCore {
                 if !lock.is_current(inner) {
                     return Err(DspiError::Disconnected);
                 }
-                self.write_document(inner, doc, options)?
+                // -- WP BULKFIX --
+                let written = self.write_document(inner, doc, options);
+                let left_muted = written.is_err() && crate::connect::bulk_left_muted(inner);
+                drop(guard);
+                match written {
+                    Ok(w) => w,
+                    Err(e) => {
+                        // Logged with the lock released (P0M).
+                        if left_muted {
+                            self.log_left_muted("Importing a configuration", &e);
+                        }
+                        return Err(e);
+                    }
+                }
             };
             let hardware = options & IMPORT_HARDWARE != 0;
             let written = hardware && separate && io_changed(&before, &built.state);
@@ -1810,6 +1823,12 @@ impl DspiCore {
         }
         inner.state = built.state.clone();
         if let Err(e) = apply_all_params_locked(inner) {
+            // -- WP BULKFIX -- (fixup bf F2) A failed repair left the device
+            // muted: the mirror keeps showing that (set by the apply), and the
+            // error says why. Otherwise nothing was applied.
+            if crate::connect::bulk_left_muted(inner) {
+                return Err(crate::connect::with_why(e));
+            }
             inner.state = before;
             return Err(e);
         }

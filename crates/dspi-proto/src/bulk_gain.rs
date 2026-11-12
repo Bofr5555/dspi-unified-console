@@ -27,9 +27,11 @@ use crate::generated::{self, opcodes as op};
 use crate::packets::MatrixRoutePacket;
 use crate::wire::WireHeader;
 
-/// Proposed extension sub-command (`REQ_EXTENSION` `wValue`): IN, a `uint32`
-/// LE of firmware fixes a host may rely on. Proposed to `wp/FWX` for FW2; not
-/// yet in the vendored headers, so it is spelled here.
+/// Extension sub-command (`REQ_EXTENSION` `wValue`): IN, a `uint32` LE of
+/// firmware fixes a host may rely on. Spelled by hand: it matches bofr-main
+/// de9614c (`wp/FWFIX` merged; `config.h` `EXT_FIRMWARE_FIXES` and
+/// `FW_FIX_BULK_DB_POWF`), which the vendored headers are not pinned to yet.
+/// Switch both constants to the generated ones once they are.
 pub const EXT_FIRMWARE_FIXES: u16 = 0x0006;
 /// `EXT_FIRMWARE_FIXES` bit 0: a bulk SET converts dB with `powf`, so a host
 /// need not repair the gains after one.
@@ -56,7 +58,8 @@ pub fn firmware_bulk_linear(db: f32) -> f32 {
     }
     // NaN stays NaN, as through the firmware's two comparisons.
     let db = db.clamp(-60.0, 20.0);
-    let x = db * 0.115_129_25_f32;
+    // The f32 the firmware's `0.1151292546f` rounds to (ln 10 / 20).
+    let x = db * 0.115_129_255_f32;
     let linear = 1.0 + x + x * x * 0.5 + x * x * x * 0.166_666_7 + x * x * x * x * 0.041_666_7;
     if linear < 0.0 { 0.0 } else { linear }
 }
@@ -91,6 +94,8 @@ pub struct GainRepair {
     /// The device's output count (header), the outputs [`GainRepair::muted`]
     /// mutes and a read-back must show muted.
     pub outputs: usize,
+    /// The device's input count (header).
+    pub inputs: usize,
     /// Single SETs for each preamp, crosspoint and output gain the series
     /// gets wrong, in that order.
     pub gains: Vec<SetWrite>,
@@ -192,9 +197,120 @@ pub fn plan(image: &[u8]) -> Option<GainRepair> {
     Some(GainRepair {
         muted,
         outputs,
+        inputs,
         gains,
         unmutes,
     })
+}
+
+// -- fixup bf (F3) --
+/// Whether `back`, the image read after the bulk SET, is the one that was
+/// sent ([`GainRepair::muted`]) in every field the repair depends on: the
+/// header's platform and channel counts, each preamp, each crosspoint
+/// (enabled, phase, gain) and each output (enabled, mute, gain). The flags
+/// compare as booleans (the firmware stores them as such); a gain compares
+/// bit for bit, or as FW2's clamp of it (firmware with FW2 that did not
+/// report the fix). Anything else is an image the firmware refused or
+/// changed, and the repair must not go on.
+pub fn readback_matches(back: &[u8], r: &GainRepair) -> bool {
+    let sent = &r.muted;
+    let byte = |b: &[u8], at: usize| b.get(at).copied();
+    let flag = |at: usize| byte(back, at).map(|v| v != 0) == byte(sent, at).map(|v| v != 0);
+    let gain = |at: usize, lo: f32, hi: f32| match (f32_at(back, at), f32_at(sent, at)) {
+        (Some(b), Some(s)) => b.to_bits() == s.to_bits() || (s.is_finite() && b == s.clamp(lo, hi)),
+        _ => false,
+    };
+    if back.len() != sent.len() || (1..5).any(|k| byte(back, k) != byte(sent, k)) {
+        return false;
+    }
+    let max_outputs = usize::from(generated::wire::WIRE_MAX_OUTPUT_CHANNELS);
+    let check = || -> Option<bool> {
+        for ch in 0..r.inputs {
+            let at = generated::OFF_PREAMP.checked_add(ch.checked_mul(4)?)?;
+            // FW2's preamp ceiling: +24 dB on RP2350, +18 dB on RP2040.
+            if !gain(at, -60.0, 24.0) && !gain(at, -60.0, 18.0) {
+                return Some(false);
+            }
+            for o in 0..r.outputs {
+                let k = ch.checked_mul(max_outputs)?.checked_add(o)?;
+                let at = generated::OFF_CROSSPOINTS.checked_add(k.checked_mul(XP_LEN)?)?;
+                if !flag(at)
+                    || !flag(at.checked_add(1)?)
+                    || !gain(at.checked_add(XP_GAIN)?, -60.0, 20.0)
+                {
+                    return Some(false);
+                }
+            }
+        }
+        for o in 0..r.outputs {
+            let at = generated::OFF_OUTPUTS.checked_add(o.checked_mul(OUT_LEN)?)?;
+            if !flag(at.checked_add(OUT_ENABLED)?)
+                || !flag(at.checked_add(OUT_MUTE)?)
+                || !gain(at.checked_add(OUT_GAIN)?, -60.0, 20.0)
+            {
+                return Some(false);
+            }
+        }
+        Some(true)
+    };
+    check().unwrap_or(false)
+}
+
+// -- fixup bf (F1) --
+/// The single SETs that convert, with `powf`, every gain feeding output `o`
+/// as `image` (a read-back of the device's state) stores it: the output's
+/// gain, its column of crosspoints and the preamp of each input routed to
+/// it. `None` when `image` is not a whole image of this build's format or
+/// `o` is not one of its outputs. Used before unmuting an output whose gains
+/// a failed repair may have left as the series made them.
+pub fn output_gain_writes(image: &[u8], o: usize) -> Option<Vec<SetWrite>> {
+    if image.len() != generated::BULK_SIZE {
+        return None;
+    }
+    let header = WireHeader::decode(image).ok()?;
+    let inputs = usize::from(header.num_input_channels)
+        .min(usize::from(generated::wire::WIRE_MAX_INPUT_CHANNELS));
+    let outputs = usize::from(header.num_output_channels)
+        .min(usize::from(generated::wire::WIRE_MAX_OUTPUT_CHANNELS));
+    if o >= outputs {
+        return None;
+    }
+    let max_outputs = usize::from(generated::wire::WIRE_MAX_OUTPUT_CHANNELS);
+    let value = u16::try_from(o).ok()?;
+    let out_at = generated::OFF_OUTPUTS.checked_add(o.checked_mul(OUT_LEN)?)?;
+    let mut writes = vec![SetWrite {
+        opcode: op::REQ_SET_OUTPUT_GAIN,
+        value,
+        payload: f32_at(image, out_at.checked_add(OUT_GAIN)?)?
+            .to_le_bytes()
+            .to_vec(),
+    }];
+    for input in 0..inputs {
+        let k = input.checked_mul(max_outputs)?.checked_add(o)?;
+        let at = generated::OFF_CROSSPOINTS.checked_add(k.checked_mul(XP_LEN)?)?;
+        let enabled = *image.get(at)? != 0;
+        let packet = MatrixRoutePacket {
+            input: u8::try_from(input).ok()?,
+            output: u8::try_from(o).ok()?,
+            enabled,
+            phase_invert: *image.get(at.checked_add(1)?)? != 0,
+            gain_db: f32_at(image, at.checked_add(XP_GAIN)?)?,
+        };
+        writes.push(SetWrite {
+            opcode: op::REQ_SET_MATRIX_ROUTE,
+            value: 0,
+            payload: packet.encode().to_vec(),
+        });
+        if enabled {
+            let pre = generated::OFF_PREAMP.checked_add(input.checked_mul(4)?)?;
+            writes.push(SetWrite {
+                opcode: op::REQ_SET_PREAMP_CH,
+                value: u16::try_from(input).ok()?,
+                payload: f32_at(image, pre)?.to_le_bytes().to_vec(),
+            });
+        }
+    }
+    Some(writes)
 }
 
 /// Whether `image` (a read-back) has outputs `0..outputs` muted: the image
@@ -207,6 +323,25 @@ pub fn outputs_muted(image: &[u8], outputs: usize) -> bool {
             .and_then(|at| image.get(at))
             .is_some_and(|m| *m != 0)
     })
+}
+
+// -- fixup bf (F1) --
+/// Outputs `0..outputs` of `image` that are muted, one bit each (outputs past
+/// 32 are not counted; the wire has 9).
+pub fn muted_mask(image: &[u8], outputs: usize) -> u32 {
+    (0..outputs.min(32))
+        .filter(|&o| {
+            o.checked_mul(OUT_LEN)
+                .and_then(|k| generated::OFF_OUTPUTS.checked_add(k))
+                .and_then(|at| at.checked_add(OUT_MUTE))
+                .and_then(|at| image.get(at))
+                .is_some_and(|m| *m != 0)
+        })
+        .fold(0, |m, o| {
+            m | 1u32
+                .checked_shl(u32::try_from(o).unwrap_or(31))
+                .unwrap_or(0)
+        })
 }
 
 /// Whether output `o` of `image` is enabled (for a fake device's model).
@@ -343,5 +478,63 @@ mod tests_wp_bulkfix {
         torn[6] = 0;
         assert!(plan(&torn).is_none());
         assert!(!outputs_muted(&[], 1));
+    }
+
+    // -- fixup bf --
+
+    #[test]
+    fn wp_bulkfix_bf_the_read_back_must_be_the_image_sent() {
+        let mut img = image();
+        put(&mut img, generated::OFF_OUTPUTS + OUT_GAIN, -40.0);
+        let r = plan(&img).unwrap();
+        assert!(readback_matches(&r.muted, &r));
+        // An old state that happens to be all muted is not the image sent.
+        let mut old = r.muted.clone();
+        put(&mut old, generated::OFF_OUTPUTS + OUT_GAIN, 0.0);
+        assert!(outputs_muted(&old, 9) && !readback_matches(&old, &r));
+        // Another platform or channel count: refused by the firmware.
+        let mut other = r.muted.clone();
+        other[1] ^= 1;
+        assert!(!readback_matches(&other, &r));
+        let mut flag = r.muted.clone();
+        flag[generated::OFF_CROSSPOINTS] = 1;
+        assert!(!readback_matches(&flag, &r));
+        // A flag stored as a boolean still matches.
+        let mut sent = r.clone();
+        sent.muted[generated::OFF_OUTPUTS + OUT_MUTE] = 7;
+        assert!(readback_matches(&r.muted, &sent));
+        // FW2's clamp of an out-of-range gain is accepted.
+        let mut deep = img.clone();
+        put(&mut deep, generated::OFF_OUTPUTS + OUT_GAIN, -80.0);
+        let r = plan(&deep).unwrap();
+        let mut clamped = r.muted.clone();
+        put(&mut clamped, generated::OFF_OUTPUTS + OUT_GAIN, -60.0);
+        assert!(readback_matches(&clamped, &r));
+        assert!(!readback_matches(&r.muted[..100], &r));
+    }
+
+    #[test]
+    fn wp_bulkfix_bf_an_outputs_gains_are_its_gain_its_column_and_its_inputs_preamps() {
+        let mut img = image();
+        let xp = generated::OFF_CROSSPOINTS + (9 + 2) * XP_LEN; // in 1 -> out 2
+        img[xp] = 1;
+        put(&mut img, xp + XP_GAIN, -60.0);
+        put(&mut img, generated::OFF_PREAMP + 4, -20.0);
+        let w = output_gain_writes(&img, 2).unwrap();
+        let ops: Vec<u8> = w.iter().map(|w| w.opcode).collect();
+        assert_eq!(
+            ops,
+            [
+                op::REQ_SET_OUTPUT_GAIN,
+                op::REQ_SET_MATRIX_ROUTE,
+                op::REQ_SET_MATRIX_ROUTE,
+                op::REQ_SET_PREAMP_CH
+            ]
+        );
+        assert_eq!(w[3].value, 1);
+        assert_eq!(w[3].payload, (-20.0f32).to_le_bytes());
+        assert!(output_gain_writes(&img, 9).is_none());
+        img[generated::OFF_OUTPUTS + 5 * OUT_LEN + OUT_MUTE] = 1;
+        assert_eq!(muted_mask(&img, 9), 1 << 5);
     }
 }

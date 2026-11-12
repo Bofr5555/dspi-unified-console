@@ -221,3 +221,145 @@ fn wp_bulkfix_a_failed_repair_leaves_the_outputs_muted() {
         "the series' −40 dB output is still in"
     );
 }
+
+// -- fixup bf --
+
+fn suspects(core: &DspiCore) -> u32 {
+    core.lock().conn.as_ref().unwrap().gain_guard.suspects()
+}
+
+/// Review bf's probe: the deep cuts, with the repair failing on the output
+/// gains, so output 1 keeps the series' +19.5 dB for its −40 dB behind its
+/// mute. The device works again afterwards.
+fn failed_repair() -> (Arc<DspiCore>, GainProbe, FakeRemote) {
+    let (core, probe, remote) = core_on(buggy());
+    deep_cuts(&core);
+    probe.fail(op::REQ_SET_OUTPUT_GAIN, true);
+    assert!(core.apply_all_params().is_err());
+    probe.fail(op::REQ_SET_OUTPUT_GAIN, false);
+    assert!(probe.mismatch_db() > 50.0, "the series' gain is still in");
+    assert_ne!(suspects(&core), 0);
+    (core, probe, remote)
+}
+
+#[test]
+fn wp_bulkfix_bf_a_manual_unmute_after_a_failed_repair_plays_right() {
+    let (core, probe, remote) = failed_repair();
+    core.set_output_mute(1, false).unwrap();
+    core.set_output_mute(0, false).unwrap();
+    assert!(
+        probe.worst_excess_db() <= TOLERANCE_DB,
+        "the unmute played {} dB too loud",
+        probe.worst_excess_db()
+    );
+    assert!(
+        probe.mismatch_db() <= TOLERANCE_DB,
+        "{}",
+        probe.mismatch_db()
+    );
+    assert_eq!(mutes(&remote, 2), vec![0, 0]);
+    assert_eq!(
+        suspects(&core) & 0b11,
+        0,
+        "verified outputs are not suspect any more"
+    );
+    // Muting and unmuting again sends nothing but the mutes.
+    let before = probe.sets().len();
+    core.set_output_mute(1, true).unwrap();
+    core.set_output_mute(1, false).unwrap();
+    assert_eq!(probe.sets()[before..], [op::REQ_SET_OUTPUT_MUTE; 2]);
+}
+
+#[test]
+fn wp_bulkfix_bf_an_unmute_that_cannot_resend_the_gains_is_refused() {
+    let (core, probe, remote) = failed_repair();
+    probe.fail(op::REQ_SET_OUTPUT_GAIN, true);
+    let e = core.set_output_mute(1, false).unwrap_err();
+    assert!(e.to_string().contains("stays muted"), "{e}");
+    assert_eq!(mutes(&remote, 2)[1], 1);
+    assert!(probe.worst_excess_db() <= TOLERANCE_DB);
+}
+
+#[test]
+fn wp_bulkfix_bf_a_raw_unmute_resends_the_gains_too() {
+    let (core, probe, _) = failed_repair();
+    core.raw_set(op::REQ_SET_OUTPUT_MUTE, 1, vec![0]).unwrap();
+    assert!(probe.worst_excess_db() <= TOLERANCE_DB);
+    assert!(probe.mismatch_db() <= TOLERANCE_DB);
+}
+
+#[test]
+fn wp_bulkfix_bf_a_preset_load_or_a_new_apply_clears_the_suspicion() {
+    let (core, probe, _) = core_on(buggy());
+    core.save_preset(2).unwrap();
+    deep_cuts(&core);
+    probe.fail(op::REQ_SET_OUTPUT_GAIN, true);
+    assert!(core.apply_all_params().is_err());
+    probe.fail(op::REQ_SET_OUTPUT_GAIN, false);
+    assert_ne!(suspects(&core), 0);
+    core.load_preset(2).unwrap();
+    assert_eq!(suspects(&core), 0);
+    assert!(probe.mismatch_db() <= TOLERANCE_DB);
+
+    let (core, probe, _) = failed_repair();
+    core.apply_all_params().unwrap();
+    assert_eq!(suspects(&core), 0);
+    assert!(probe.mismatch_db() <= TOLERANCE_DB);
+}
+
+#[test]
+fn wp_bulkfix_bf_outputs_muted_at_connect_are_suspect_without_the_fix() {
+    // A repair cut short before this connection: output 1 muted, −40 dB,
+    // playing the series' value.
+    let mut dev = BulkDbDevice::new(FakeDevice::demo(), buggy());
+    let probe = dev.probe();
+    let mut img = dev.remote().image();
+    let out = g::OFF_OUTPUTS + 12;
+    img[out] = 1;
+    img[out + 1] = 1;
+    img[out + 4..out + 8].copy_from_slice(&(-40.0f32).to_le_bytes());
+    use dspi_transport::Transport;
+    dev.control_out(op::REQ_SET_ALL_PARAMS, 0, &img).unwrap();
+    while probe.bulk_applies() == 0 {
+        let _ = dev.control_in(op::REQ_GET_PLATFORM, 0, 7);
+    }
+    assert!(probe.mismatch_db() > 50.0);
+    let core = DspiCore::new();
+    core.attach_probed(Box::new(dev), "BULKFIX".into(), 0)
+        .unwrap();
+    core.fetch_all().unwrap();
+    assert_eq!(suspects(&core), 0b10);
+    core.set_output_mute(1, false).unwrap();
+    assert!(
+        probe.worst_excess_db() <= TOLERANCE_DB,
+        "{}",
+        probe.worst_excess_db()
+    );
+    assert!(probe.mismatch_db() <= TOLERANCE_DB);
+}
+
+#[test]
+fn wp_bulkfix_bf_a_failed_import_repair_shows_the_device_muted_and_why() {
+    let (core, probe, remote) = core_on(buggy());
+    probe.fail(op::REQ_SET_OUTPUT_MUTE, true);
+    let r: serde_json::Value =
+        serde_json::from_str(&core.config_import(K340.into(), IMPORT_HARDWARE)).unwrap();
+    assert_eq!(r["ok"], false, "{r}");
+    let why = r["error"].as_str().unwrap_or_default();
+    assert!(why.contains("left muted"), "{r}");
+    let s = core.get_state();
+    let n = usize::from(s.num_output_channels);
+    assert!(
+        s.output_muted.iter().take(n).all(|m| *m),
+        "the mirror shows the device muted"
+    );
+    assert!(mutes(&remote, n).iter().all(|m| *m == 1));
+    // The import's matrix is what the device holds (USB 2 feeds output 1).
+    assert!(s.matrix_routing[1][0]);
+    let logged = core.event_log_read(String::new(), 0, 100).entries;
+    assert!(
+        logged.iter().any(|e| e.text.contains("left muted")),
+        "{:?}",
+        logged.iter().map(|e| &e.text).collect::<Vec<_>>()
+    );
+}
