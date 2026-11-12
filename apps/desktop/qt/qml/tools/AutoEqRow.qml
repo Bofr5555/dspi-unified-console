@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Layouts
 import UConsole
 
 // One headphone in the AutoEQ browser (HeadphoneRow): its kind, its name, the
@@ -34,66 +35,62 @@ ItemDelegate {
         color: row.selected ? Theme.selection : row.hovered ? Theme.controlHover : "transparent"
     }
 
-    contentItem: Item {
+    leftPadding: 12
+    rightPadding: 12
+    contentItem: RowLayout {
+        spacing: 12
         Icon {
-            id: kind
-            x: 12
-            anchors.verticalCenter: parent.verticalCenter
-            width: 30
+            Layout.preferredWidth: 30
+            Layout.alignment: Qt.AlignVCenter
             name: row.formFactor === "in-ear" || row.formFactor === "earbud" ? "ear" : "headphones"
             size: 22
             color: Theme.accentText
         }
-        Column {
-            anchors.left: kind.right
-            anchors.leftMargin: 12
-            anchors.right: heart.left
-            anchors.rightMargin: Theme.spacingSmall
-            anchors.verticalCenter: parent.verticalCenter
+        ColumnLayout {
+            Layout.fillWidth: true
+            Layout.alignment: Qt.AlignVCenter
             spacing: 2
             Text {
-                width: parent.width
+                Layout.fillWidth: true
                 text: row.displayName
                 font: Theme.fontBody
                 color: Theme.text
                 elide: Text.ElideRight
             }
-            Row {
+            RowLayout {
                 spacing: Theme.spacingSmall
                 // The source's tag: a faint capsule of its colour
-                Rectangle {
-                    width: tag.implicitWidth + 12
-                    height: tag.implicitHeight + 4
-                    radius: height / 2
-                    color: Qt.alpha(Theme.autoEqSourceTint(row.source), row.selected ? 0.35 : 0.22)
-                    Text {
-                        id: tag
-                        anchors.centerIn: parent
-                        text: row.sourceName
-                        font: Theme.fontSmall
-                        color: Theme.text
+                Label {
+                    leftPadding: 6
+                    rightPadding: 6
+                    topPadding: 2
+                    bottomPadding: 2
+                    text: row.sourceName
+                    font: Theme.fontSmall
+                    color: Theme.text
+                    background: Rectangle {
+                        radius: parent.height / 2
+                        color: Qt.alpha(Theme.autoEqSourceTint(row.source), row.selected ? 0.35 : 0.22)
                     }
                 }
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
+                Label {
                     text: row.formFactor
                     font: Theme.fontSmall
                     color: Theme.textMuted
                 }
             }
         }
+        // The heart: on hover, and always on a favourite
         IconButton {
-            id: heart
             objectName: "AutoEqWindow.favorite." + row.index
-            anchors.right: parent.right
-            anchors.rightMargin: 12
-            anchors.verticalCenter: parent.verticalCenter
-            visible: row.hovered || row.favorite
+            Layout.alignment: Qt.AlignVCenter
+            opacity: row.hovered || row.favorite ? 1 : 0
+            enabled: opacity > 0
             iconName: "heart"
             iconSize: 14
             iconColor: row.favorite ? Theme.dangerText : Theme.textMuted
             toolTip: row.favorite ? qsTr("Remove from favorites") : qsTr("Add to favorites")
-            onClicked: AutoEqController.toggleFavorite(row.profileId)
+            onClicked: AutoEqController.flipFavourite(row.profileId)
         }
     }
 }

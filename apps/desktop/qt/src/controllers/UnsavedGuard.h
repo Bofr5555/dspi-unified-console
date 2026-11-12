@@ -25,6 +25,9 @@ class QQuickWindow;
 // the writes), then asks the core (dspi_preset_dirty, dspi_preset_changes).
 // Nothing unsaved: the path goes on without a question.
 //
+// A question while the main window is hidden in the tray (a quit from the
+// tray's menu) brings the window back first.
+//
 // Answers, as on the Mac: Save stores the live state in the active slot and
 // goes on (a failed save stops a device switch; quitting then asks "Quit
 // anyway?"); Discard goes on; Cancel stops. The host (files/FilesHost.qml)
@@ -35,9 +38,10 @@ class UnsavedGuard : public QObject {
     QML_SINGLETON
     // A question (or its save) is under way; another path asking meanwhile is dropped
     Q_PROPERTY(bool asking READ asking NOTIFY askingChanged)
-    // Closing the main window asks first. A tray that hides the window instead
-    // of quitting sets this false, as the Mac asks nothing when it hides to the
-    // menu bar.
+    // Closing the main window asks first. Not while the close only hides it
+    // (QGuiApplication::quitOnLastWindowClosed() false, or this set false by a
+    // tray that hides the window instead), as the Mac asks nothing when it
+    // hides to the menu bar.
     Q_PROPERTY(bool askOnClose READ askOnClose WRITE setAskOnClose NOTIFY askOnCloseChanged)
 public:
     UnsavedGuard(const AppContext &ctx, QObject *parent = nullptr);
@@ -82,6 +86,7 @@ private:
     void proceed();
     void finish();
     void wire(QQuickWindow *window);
+    void bringBack();
     bool cleanForSure() const;
 
     AppContext m_ctx;

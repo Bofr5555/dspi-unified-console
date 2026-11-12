@@ -110,7 +110,7 @@ QVariant AutoEqProfileModel::data(const QModelIndex &index, int role) const {
     case Source: return p.source;
     case SourceName: return sourceName(p.source);
     case FormFactor: return p.formFactor;
-    case Favorite: return m_favorites.contains(p.id);
+    case Favorite: return m_favourites.contains(p.id);
     default: return {};
     }
 }
@@ -120,10 +120,10 @@ QHash<int, QByteArray> AutoEqProfileModel::roleNames() const {
              { SourceName, "sourceName" }, { FormFactor, "formFactor" }, { Favorite, "favorite" } };
 }
 
-void AutoEqProfileModel::setQuery(const QString &query) {
-    if (query == m_query) return;
-    m_query = query;
-    emit queryChanged();
+void AutoEqProfileModel::setSearchText(const QString &text) {
+    if (text == m_search) return;
+    m_search = text;
+    emit searchTextChanged();
     refilter();
 }
 
@@ -132,8 +132,8 @@ void AutoEqProfileModel::setProfiles(std::shared_ptr<const QVector<AutoEqProfile
     refilter();
 }
 
-void AutoEqProfileModel::setFavorites(const QStringList &ids) {
-    m_favorites = ids;
+void AutoEqProfileModel::setFavourites(const QStringList &ids) {
+    m_favourites = ids;
     if (!m_rows.isEmpty()) emit dataChanged(index(0), index(int(m_rows.size()) - 1), { Favorite });
 }
 
@@ -142,7 +142,7 @@ void AutoEqProfileModel::refilter() {
     beginResetModel();
     m_rows.clear();
     if (m_profiles) {
-        const QString q = m_query.trimmed();
+        const QString q = m_search.trimmed();
         for (int i = 0; i < m_profiles->size(); ++i) {
             const AutoEqProfile &p = m_profiles->at(i);
             if (q.isEmpty() || p.manufacturer.contains(q, Qt::CaseInsensitive) || p.model.contains(q, Qt::CaseInsensitive) ||
@@ -151,7 +151,7 @@ void AutoEqProfileModel::refilter() {
         }
     }
     endResetModel();
-    emit countChanged();
+    emit shownChanged();
 }
 
 int AutoEqProfileModel::rowOf(const QString &id) const {
@@ -171,14 +171,14 @@ AutoEqController::AutoEqController(const AppContext &ctx, QObject *parent)
     : QObject(parent), m_ctx(ctx), m_model(new AutoEqProfileModel(this)) {
     m_files.setMaxThreadCount(1);
     m_files.setExpiryTimeout(-1);
-    m_favoriteIds = QSettings().value(QLatin1String(kFavorites)).toStringList();
-    m_model->setFavorites(m_favoriteIds);
+    m_favouriteIds = QSettings().value(QLatin1String(kFavorites)).toStringList();
+    m_model->setFavourites(m_favouriteIds);
     // Polling the rebuild is not a device read, so not the Poller's: it runs
     // with no device open
     m_rebuildPoll.setInterval(kPollMs);
     connect(&m_rebuildPoll, &QTimer::timeout, this, &AutoEqController::pollRebuild);
 
-    ctx.shell->addHandler(QStringLiteral("autoeq.clearFavorites"), this, [this] { clearFavorites(); });
+    ctx.shell->addHandler(QStringLiteral("autoeq.clearFavorites"), this, [this] { forgetFavourites(); });
     ctx.shell->addHandler(QStringLiteral("autoeq.updateDatabase"), this, [this] { emit updateRequested(); });
     connect(ctx.device, &DeviceModel::snapshotApplied, this, [this] {
         if (canApply() == m_lastCanApply) return;
@@ -206,7 +206,7 @@ QString AutoEqController::userDatabasePath() {
 
 QString AutoEqController::builtInDatabasePath() { return QStringLiteral(":/autoeq/autoeq_database.json"); }
 
-bool AutoEqController::hasUserDatabase() const { return QFileInfo::exists(userDatabasePath()); }
+bool AutoEqController::updatedDatabase() const { return QFileInfo::exists(userDatabasePath()); }
 
 bool AutoEqController::canApply() const { return m_ctx.device->connected() && !m_ctx.device->readOnly(); }
 
@@ -255,8 +255,8 @@ AutoEqController::Loaded AutoEqController::load(const QString &path) {
 
 void AutoEqController::reload(std::function<void()> then) {
     m_loading = true;
-    emit databaseChanged();
-    const QString path = hasUserDatabase() ? userDatabasePath() : builtInDatabasePath();
+    emit libraryChanged();
+    const QString path = updatedDatabase() ? userDatabasePath() : builtInDatabasePath();
     m_files.start([this, path, then] {
         Loaded loaded = load(path);
         QMetaObject::invokeMethod(this, [this, loaded, then] {
@@ -268,8 +268,8 @@ void AutoEqController::reload(std::function<void()> then) {
             if (m_profiles)
                 for (int i = 0; i < m_profiles->size(); ++i) m_byId.insert(m_profiles->at(i).id, i);
             m_model->setProfiles(m_profiles);
-            emit databaseChanged();
-            emit favoritesChanged();
+            emit libraryChanged();
+            emit favouritesChanged();
             if (then) then();
         }, Qt::QueuedConnection);
     });
@@ -288,10 +288,10 @@ QVariantMap AutoEqController::profile(const QString &id) const {
 
 // ---- Favourites ----------------------------------------------------------------
 
-QVariantList AutoEqController::favorites() const {
+QVariantList AutoEqController::favouriteList() const {
     QVariantList out;
     if (!m_profiles) return out;
-    for (const QString &id : m_favoriteIds) {
+    for (const QString &id : m_favouriteIds) {
         const auto it = m_byId.constFind(id);
         if (it == m_byId.cend()) continue;
         const AutoEqProfile &p = m_profiles->at(*it);
@@ -301,25 +301,25 @@ QVariantList AutoEqController::favorites() const {
     return out;
 }
 
-bool AutoEqController::isFavorite(const QString &id) const { return m_favoriteIds.contains(id); }
+bool AutoEqController::isFavourite(const QString &id) const { return m_favouriteIds.contains(id); }
 
-void AutoEqController::setFavoriteIds(const QStringList &ids) {
-    m_favoriteIds = ids;
+void AutoEqController::setFavouriteIds(const QStringList &ids) {
+    m_favouriteIds = ids;
     QSettings s;
     if (ids.isEmpty()) s.remove(QLatin1String(kFavorites));
     else s.setValue(QLatin1String(kFavorites), ids);
-    m_model->setFavorites(ids);
-    emit favoritesChanged();
+    m_model->setFavourites(ids);
+    emit favouritesChanged();
 }
 
-void AutoEqController::toggleFavorite(const QString &id) {
+void AutoEqController::flipFavourite(const QString &id) {
     if (!m_byId.contains(id)) return;
-    QStringList ids = m_favoriteIds;
+    QStringList ids = m_favouriteIds;
     if (!ids.removeAll(id)) ids.append(id);
-    setFavoriteIds(ids);
+    setFavouriteIds(ids);
 }
 
-void AutoEqController::clearFavorites() { setFavoriteIds({}); }
+void AutoEqController::forgetFavourites() { setFavouriteIds({}); }
 
 // ---- Applying ------------------------------------------------------------------
 
@@ -350,16 +350,21 @@ void AutoEqController::apply(const QString &id) {
 
 // ---- Updating the database -------------------------------------------------------
 
-QString AutoEqController::updateText() const {
-    return tr("Current database: %1\nEntries: %2\n\nChoose an update method:")
-        .arg(m_date.isEmpty() ? tr("Unknown") : m_date)
-        .arg(entryCount());
+// An update's alert: what happened, then how many profiles the database holds now
+QString AutoEqController::withCount(const QString &what) const {
+    return what + QLatin1Char('\n') + tr("Entries: %1").arg(profileCount());
 }
 
-void AutoEqController::setUpdating(bool updating) {
-    if (updating == m_updating) return;
-    m_updating = updating;
-    emit updatingChanged();
+QString AutoEqController::updateQuestionText() const {
+    return tr("Current database: %1\nEntries: %2\n\nChoose an update method:")
+        .arg(m_date.isEmpty() ? tr("Unknown") : m_date)
+        .arg(profileCount());
+}
+
+void AutoEqController::setFileBusy(bool busy) {
+    if (busy == m_fileBusy) return;
+    m_fileBusy = busy;
+    emit fileBusyChanged();
 }
 
 void AutoEqController::chooseDatabaseFile() {
@@ -368,8 +373,8 @@ void AutoEqController::chooseDatabaseFile() {
 }
 
 void AutoEqController::importDatabaseFrom(const QString &path) {
-    if (m_updating) return;
-    setUpdating(true);
+    if (m_fileBusy) return;
+    setFileBusy(true);
     const QString target = userDatabasePath();
     m_files.start([this, path, target] {
         QString error;
@@ -389,21 +394,21 @@ void AutoEqController::importDatabaseFrom(const QString &path) {
         }
         QMetaObject::invokeMethod(this, [this, error] {
             if (!error.isEmpty()) {
-                setUpdating(false);
+                setFileBusy(false);
                 emit notice(tr("Error"), tr("Failed to import database: %1").arg(error), true);
                 return;
             }
             reload([this] {
-                setUpdating(false);
-                emit notice(tr("Success"), tr("Database updated successfully.\nEntries: %1").arg(entryCount()), false);
+                setFileBusy(false);
+                emit notice(tr("Success"), withCount(tr("Database updated successfully.")), false);
             });
         }, Qt::QueuedConnection);
     });
 }
 
 void AutoEqController::resetToBuiltIn() {
-    if (m_updating) return;
-    setUpdating(true);
+    if (m_fileBusy) return;
+    setFileBusy(true);
     const QByteArray db = userDatabasePath().toUtf8();
     m_files.start([this, db] {
         const QJsonObject reply =
@@ -412,13 +417,13 @@ void AutoEqController::resetToBuiltIn() {
             reply.value(QLatin1String("ok")).toBool() ? QString() : reply.value(QLatin1String("error")).toString();
         QMetaObject::invokeMethod(this, [this, error] {
             if (!error.isEmpty()) {
-                setUpdating(false);
+                setFileBusy(false);
                 emit notice(tr("Error"), tr("Failed to reset: %1").arg(error), true);
                 return;
             }
             reload([this] {
-                setUpdating(false);
-                emit notice(tr("Success"), tr("Reset to built-in database.\nEntries: %1").arg(entryCount()), false);
+                setFileBusy(false);
+                emit notice(tr("Success"), withCount(tr("Reset to built-in database.")), false);
             });
         }, Qt::QueuedConnection);
     });
@@ -426,7 +431,7 @@ void AutoEqController::resetToBuiltIn() {
 
 // ---- Rebuilding from GitHub --------------------------------------------------------
 
-void AutoEqController::startRebuild() {
+void AutoEqController::rebuildFromGitHub() {
     if (m_rebuild || m_rebuildShown) return;
     const QString target = userDatabasePath();
     QDir().mkpath(QFileInfo(target).absolutePath());
@@ -437,14 +442,14 @@ void AutoEqController::startRebuild() {
         return;
     }
     m_rebuildShown = true;
-    m_rebuildDone = false;
-    m_rebuildProgress = 0;
-    m_rebuildStatus = tr("Connecting to GitHub...");
-    emit rebuildChanged();
+    m_rebuildFinished = false;
+    m_rebuildFraction = 0;
+    m_rebuildLine = tr("Connecting to GitHub...");
+    emit rebuildMoved();
     m_rebuildPoll.start();
 }
 
-void AutoEqController::cancelRebuild() {
+void AutoEqController::stopRebuild() {
     if (m_rebuild) dspi_autoeq_rebuild_cancel(m_rebuild);
 }
 
@@ -462,9 +467,9 @@ void AutoEqController::pollRebuild() {
     buf.truncate(int(need) - 1);
     const QJsonObject o = QJsonDocument::fromJson(buf).object();
     const QString status = o.value(QLatin1String("status")).toString();
-    m_rebuildProgress = qBound(0.0, o.value(QLatin1String("fraction")).toDouble(), 1.0);
-    if (!status.isEmpty()) m_rebuildStatus = status;
-    emit rebuildChanged();
+    m_rebuildFraction = qBound(0.0, o.value(QLatin1String("fraction")).toDouble(), 1.0);
+    if (!status.isEmpty()) m_rebuildLine = status;
+    emit rebuildMoved();
     if (!o.value(QLatin1String("finished")).toBool()) return;
     m_rebuildPoll.stop();
     const bool succeeded = o.value(QLatin1String("succeeded")).toBool();
@@ -477,20 +482,20 @@ void AutoEqController::pollRebuild() {
 void AutoEqController::endRebuild(bool succeeded, const QString &status) {
     if (!succeeded) {
         m_rebuildShown = false;
-        emit rebuildChanged();
+        emit rebuildMoved();
         if (!status.isEmpty()) emit notice(tr("Error"), tr("Rebuild failed: %1").arg(status), true);
         return;
     }
     // Keep the sheet up briefly to show it finished, as the Mac does
-    m_rebuildProgress = 1.0;
-    m_rebuildDone = true;
-    emit rebuildChanged();
+    m_rebuildFraction = 1.0;
+    m_rebuildFinished = true;
+    emit rebuildMoved();
     reload([this] {
         QTimer::singleShot(kDoneShownMs, this, [this] {
             m_rebuildShown = false;
-            m_rebuildDone = false;
-            emit rebuildChanged();
-            emit notice(tr("Success"), tr("Database rebuilt successfully!\nEntries: %1").arg(entryCount()), false);
+            m_rebuildFinished = false;
+            emit rebuildMoved();
+            emit notice(tr("Success"), withCount(tr("Database rebuilt successfully!")), false);
         });
     });
 }

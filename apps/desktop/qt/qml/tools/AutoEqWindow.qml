@@ -59,8 +59,8 @@ ToolWindow {
                     objectName: "AutoEqWindow.search"
                     Layout.fillWidth: true
                     placeholderText: qsTr("Search headphones...")
-                    text: AutoEqController.profiles.query
-                    onTextEdited: AutoEqController.profiles.query = text
+                    text: AutoEqController.profiles.searchText
+                    onTextEdited: AutoEqController.profiles.searchText = text
                     Accessible.name: qsTr("Search headphones")
                     Keys.onDownPressed: {
                         list.forceActiveFocus()
@@ -68,7 +68,7 @@ ToolWindow {
                     }
                     Keys.onReturnPressed: window.applySelected()
                     Keys.onEscapePressed: {
-                        if (text.length) AutoEqController.profiles.query = ""
+                        if (text.length) AutoEqController.profiles.searchText = ""
                         else window.close()
                     }
                 }
@@ -79,7 +79,7 @@ ToolWindow {
                     iconColor: Theme.textMuted
                     toolTip: qsTr("Clear search")
                     onClicked: {
-                        AutoEqController.profiles.query = ""
+                        AutoEqController.profiles.searchText = ""
                         search.forceActiveFocus()
                     }
                 }
@@ -129,7 +129,7 @@ ToolWindow {
                 spacing: Theme.spacingSmall
                 Icon {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    visible: AutoEqController.errorMessage.length > 0
+                    visible: AutoEqController.loadProblem.length > 0
                     name: "triangle-alert"
                     size: 32
                     color: Theme.warning
@@ -141,7 +141,7 @@ ToolWindow {
                     wrapMode: Text.Wrap
                     font: Theme.fontBody
                     color: Theme.textMuted
-                    text: AutoEqController.errorMessage.length > 0 ? AutoEqController.errorMessage
+                    text: AutoEqController.loadProblem.length > 0 ? AutoEqController.loadProblem
                         : search.text.length === 0 ? qsTr("Loading headphone database...")
                         //: %1 is the search text
                         : qsTr("No headphones found matching \"%1\"").arg(search.text)

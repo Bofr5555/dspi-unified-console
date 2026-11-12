@@ -21,11 +21,11 @@ Window {
     flags: Qt.Dialog | Qt.CustomizeWindowHint | Qt.WindowTitleHint
     modality: Qt.ApplicationModal
     color: Theme.window
-    visible: AutoEqController.rebuilding
+    visible: AutoEqController.rebuildOnScreen
 
     onClosing: close => {
         close.accepted = false
-        AutoEqController.cancelRebuild()
+        AutoEqController.stopRebuild()
     }
 
     Column {
@@ -51,7 +51,7 @@ Window {
         Rectangle {
             id: track
             objectName: "AutoEqRebuild.progress"
-            property real value: AutoEqController.rebuildProgress
+            property real value: AutoEqController.rebuildFraction
             width: parent.width
             height: 6
             radius: 3
@@ -72,7 +72,7 @@ Window {
             objectName: "AutoEqRebuild.status"
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
-            text: AutoEqController.rebuildStatus
+            text: AutoEqController.rebuildLine
             font: Theme.fontSmall
             color: Theme.textMuted
             elide: Text.ElideMiddle
@@ -82,7 +82,7 @@ Window {
             height: Theme.controlHeight + 4
             Icon {
                 anchors.centerIn: parent
-                visible: AutoEqController.rebuildDone
+                visible: AutoEqController.rebuildFinished
                 name: "circle-check"
                 size: 24
                 color: Theme.success
@@ -91,9 +91,9 @@ Window {
             AppButton {
                 objectName: "AutoEqRebuild.cancel"
                 anchors.centerIn: parent
-                visible: !AutoEqController.rebuildDone
+                visible: !AutoEqController.rebuildFinished
                 text: qsTr("Cancel")
-                onClicked: AutoEqController.cancelRebuild()
+                onClicked: AutoEqController.stopRebuild()
             }
         }
     }

@@ -64,7 +64,7 @@ AppMenuBar {
 
     // -- WP QP15 -- AutoEQ > Favorite Profiles: a row per favourite above Clear
     // Favorites, which works only with something to clear; "No favorites yet"
-    // while there is none. The rows follow AutoEqController.favorites.
+    // while there is none. The rows follow AutoEqController.favouriteList.
     property Menu favoritesMenu: null
     property var favoriteRows: []
     function menuHolding(menu, name) {
@@ -83,7 +83,7 @@ AppMenuBar {
             for (let i = 0; i < bar.count && !favoritesMenu; ++i) favoritesMenu = menuHolding(bar.menuAt(i), "Menu.autoeq.clearFavorites")
             if (!favoritesMenu) return
             const clear = favoritesMenu.itemAt(favoritesMenu.count - 1)
-            if (clear && clear.action) clear.action.enabled = Qt.binding(() => AutoEqController.favorites.length > 0)
+            if (clear && clear.action) clear.action.enabled = Qt.binding(() => AutoEqController.favouriteList.length > 0)
             favoritesMenu.insertItem(0, separatorComponent.createObject(bar))
         }
         for (const row of favoriteRows) {
@@ -92,8 +92,8 @@ AppMenuBar {
             row.destroy()
         }
         const rows = []
-        const favorites = AutoEqController.favorites
-        favorites.forEach((f, i) => {
+        const favourites = AutoEqController.favouriteList
+        favourites.forEach((f, i) => {
             const item = itemComponent.createObject(bar, { text: f.title, objectName: "Menu.autoeq.favorite." + i })
             item.Accessible.name = f.title
             item.enabled = Qt.binding(() => AutoEqController.canApply)
@@ -101,7 +101,7 @@ AppMenuBar {
             item.triggered.connect(() => AutoEqController.apply(id))
             rows.push(item)
         })
-        if (favorites.length === 0) {
+        if (favourites.length === 0) {
             const none = itemComponent.createObject(bar, { text: qsTr("No favorites yet"), enabled: false,
                                                            objectName: "Menu.autoeq.noFavorites" })
             rows.push(none)
@@ -111,6 +111,6 @@ AppMenuBar {
     }
     Connections {
         target: AutoEqController
-        function onFavoritesChanged() { bar.fillFavorites() }
+        function onFavouritesChanged() { bar.fillFavorites() }
     }
 }

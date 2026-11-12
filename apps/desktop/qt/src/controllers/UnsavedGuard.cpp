@@ -14,6 +14,7 @@
 
 #include <QCoreApplication>
 #include <QEvent>
+#include <QGuiApplication>
 #include <QJSEngine>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -124,6 +125,7 @@ void UnsavedGuard::read() {
             proceed();
             return;
         }
+        bringBack();
         emit question(m_op, summary(r.second));
     });
 }
@@ -162,6 +164,7 @@ void UnsavedGuard::answer(const QString &answer) {
                 return;
             }
             const QString why = failure(*status);
+            bringBack();
             if (m_op == QLatin1String("quit")) {
                 emit saveFailed(m_op, tr("Save Failed"), tr("Failed to save preset (%1). Quit anyway?").arg(why));
                 return;   // still asking: answerSaveFailed() decides
@@ -191,6 +194,20 @@ void UnsavedGuard::finish() {
     setAsking(false);
 }
 
+// A question needs the main window: one hidden in the tray (QP14's
+// TrayController, when it is there) comes back first
+void UnsavedGuard::bringBack() {
+    if (!m_window || m_window->isVisible()) return;
+    QObject *tray = nullptr;
+    if (QObject *owner = parent()) {
+        for (QObject *o : owner->children())
+            if (qstrcmp(o->metaObject()->className(), "TrayController") == 0) tray = o;
+    }
+    if (!tray || !QMetaObject::invokeMethod(tray, "restore")) m_window->show();
+    m_window->raise();
+    m_window->requestActivate();
+}
+
 // ---- Closing the main window --------------------------------------------------
 
 void UnsavedGuard::wire(QQuickWindow *window) {
@@ -213,7 +230,8 @@ bool UnsavedGuard::eventFilter(QObject *watched, QEvent *event) {
         m_closePass = false;
         return false;
     }
-    if (m_quitting || !m_askOnClose || cleanForSure()) return false;
+    // A close that only hides the window (the tray keeps the app) loses nothing
+    if (m_quitting || !m_askOnClose || !QGuiApplication::quitOnLastWindowClosed() || cleanForSure()) return false;
     event->ignore();
     QPointer<QQuickWindow> window = m_window;
     ask(QStringLiteral("close"), this, [this, window] {

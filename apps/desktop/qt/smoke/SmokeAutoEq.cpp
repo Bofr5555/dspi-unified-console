@@ -79,10 +79,10 @@ static void autoEqSection(SmokeDriver &d) {
 
     // ---- The built-in database ----
     d.check(QStringLiteral("qp15: the built-in database loads"),
-            d.waitFor(15000, [&]() { return !aeq->loading(); }) && aeq->errorMessage().isEmpty());
-    const int builtIn = aeq->entryCount();
+            d.waitFor(15000, [&]() { return !aeq->loading(); }) && aeq->loadProblem().isEmpty());
+    const int builtIn = aeq->profileCount();
     d.check(QStringLiteral("qp15: it holds the shipped profiles"), builtIn == 3828);
-    d.check(QStringLiteral("qp15: it has a date and no user file"), !aeq->databaseDate().isEmpty() && !aeq->hasUserDatabase());
+    d.check(QStringLiteral("qp15: it has a date and no user file"), !aeq->generatedOn().isEmpty() && !aeq->updatedDatabase());
 
     // ---- The browser ----
     shell->trigger(QStringLiteral("autoeq.browse"));
@@ -94,7 +94,7 @@ static void autoEqSection(SmokeDriver &d) {
             browser->title() == QLatin1String("AutoEQ - Browse Profiles") && browser->minimumWidth() == 450);
     AutoEqProfileModel *list = aeq->profiles();
     d.check(QStringLiteral("qp15: every profile is listed"), list->rowCount() == builtIn);
-    list->setQuery(QStringLiteral("HD 600"));
+    list->setSearchText(QStringLiteral("HD 600"));
     bool allMatch = list->rowCount() > 0;
     for (int r = 0; r < list->rowCount(); ++r)
         allMatch = allMatch && list->data(list->index(r), AutoEqProfileModel::DisplayName).toString().contains(QLatin1String("HD 600"), Qt::CaseInsensitive);
@@ -108,12 +108,12 @@ static void autoEqSection(SmokeDriver &d) {
     d.spin(300);
     d.check(QStringLiteral("qp15: screenshot of the browser"), d.grab(browser, QStringLiteral("window-autoeq.png")));
 
-    list->setQuery(QStringLiteral("zzzz no such headphone"));
+    list->setSearchText(QStringLiteral("zzzz no such headphone"));
     QObject *empty = browser->findChild<QObject *>(QStringLiteral("AutoEqWindow.empty"));
     d.check(QStringLiteral("qp15: no match says so"),
             list->rowCount() == 0 && empty && empty->property("text").toString() == QLatin1String("No headphones found matching \"zzzz no such headphone\""));
     d.check(QStringLiteral("qp15: a profile the search hides is not applied"), browser->property("selectedId").toString().isEmpty());
-    list->setQuery(QString());
+    list->setSearchText(QString());
 
     // ---- Apply: the profile on inputs 1 and 2 ----
     const DspState before = *device->state();
@@ -144,21 +144,21 @@ static void autoEqSection(SmokeDriver &d) {
 
     // ---- Favourites and their menu ----
     d.check(QStringLiteral("qp15: no favourites at first"),
-            aeq->favorites().isEmpty() && d.object(QStringLiteral("Menu.autoeq.noFavorites")) != nullptr);
-    aeq->toggleFavorite(id);
-    d.check(QStringLiteral("qp15: the heart adds a favourite"), aeq->isFavorite(id) && aeq->favorites().size() == 1);
+            aeq->favouriteList().isEmpty() && d.object(QStringLiteral("Menu.autoeq.noFavorites")) != nullptr);
+    aeq->flipFavourite(id);
+    d.check(QStringLiteral("qp15: the heart adds a favourite"), aeq->isFavourite(id) && aeq->favouriteList().size() == 1);
     d.check(QStringLiteral("qp15: it is stored"), QSettings().value(QStringLiteral("autoeq/favorites")).toStringList() == QStringList{ id });
     d.spin(100);
     QObject *row = d.object(QStringLiteral("Menu.autoeq.favorite.0"));
     d.check(QStringLiteral("qp15: the menu lists it"),
-            row && row->property("text").toString() == aeq->favorites().first().toMap().value(QStringLiteral("title")).toString());
-    d.check(QStringLiteral("qp15: No favorites yet is gone"), d.object(QStringLiteral("Menu.autoeq.noFavorites")) == nullptr);
+            row && row->property("text").toString() == aeq->favouriteList().first().toMap().value(QStringLiteral("title")).toString());
+    d.check(QStringLiteral("qp15: No favouriteList yet is gone"), d.object(QStringLiteral("Menu.autoeq.noFavorites")) == nullptr);
     QObject *clear = d.object(QStringLiteral("Menu.autoeq.clearFavorites"));
     d.check(QStringLiteral("qp15: Clear Favorites is enabled"), clear && clear->property("enabled").toBool());
     shell->trigger(QStringLiteral("autoeq.clearFavorites"));
     d.spin(100);
     d.check(QStringLiteral("qp15: Clear Favorites empties them"),
-            aeq->favorites().isEmpty() && !QSettings().contains(QStringLiteral("autoeq/favorites")) &&
+            aeq->favouriteList().isEmpty() && !QSettings().contains(QStringLiteral("autoeq/favorites")) &&
                 d.object(QStringLiteral("Menu.autoeq.noFavorites")) != nullptr && clear && !clear->property("enabled").toBool());
 
     // ---- Update Database... ----
@@ -190,15 +190,15 @@ static void autoEqSection(SmokeDriver &d) {
     QString text = takeNoticeText(d, notice, &error);
     d.check(QStringLiteral("qp15: importing a database says how many it holds"),
             !error && text == QLatin1String("Database updated successfully.\nEntries: 2"));
-    d.check(QStringLiteral("qp15: the imported database is in use"), aeq->entryCount() == 2 && aeq->hasUserDatabase());
+    d.check(QStringLiteral("qp15: the imported database is in use"), aeq->profileCount() == 2 && aeq->updatedDatabase());
     shell->trigger(QStringLiteral("autoeq.updateDatabase"));
     d.waitFor(2000, [&]() { return opened(update); });
     d.check(QStringLiteral("qp15: Reset to Built-in is offered now"), reset->property("visible").toBool());
     QMetaObject::invokeMethod(reset, "clicked");
     text = takeNoticeText(d, notice, &error);
     d.check(QStringLiteral("qp15: Reset to Built-in says so"),
-            !error && text == QStringLiteral("Reset to built-in database.\nEntries: %1").arg(builtIn));
-    d.check(QStringLiteral("qp15: the built-in database is in use again"), aeq->entryCount() == builtIn && !aeq->hasUserDatabase());
+            !error && text == QStringLiteral("Reset to built-in database.\nEntries: ") + QString::number(builtIn));
+    d.check(QStringLiteral("qp15: the built-in database is in use again"), aeq->profileCount() == builtIn && !aeq->updatedDatabase());
     const QString junk = dir + QStringLiteral("/junk.json");
     {
         QFile f(junk);
@@ -208,7 +208,7 @@ static void autoEqSection(SmokeDriver &d) {
     aeq->importDatabaseFrom(junk);
     text = takeNoticeText(d, notice, &error);
     d.check(QStringLiteral("qp15: a file that is no database is refused"),
-            error && text.startsWith(QLatin1String("Failed to import database: ")) && aeq->entryCount() == builtIn && !aeq->hasUserDatabase());
+            error && text.startsWith(QLatin1String("Failed to import database: ")) && aeq->profileCount() == builtIn && !aeq->updatedDatabase());
 
     // ---- Rebuild from GitHub, against a scripted GitHub ----
     auto asked = std::make_shared<std::atomic<int>>(0);
@@ -238,35 +238,35 @@ static void autoEqSection(SmokeDriver &d) {
     d.check(QStringLiteral("qp15: the Updating Database window shows"),
             d.waitFor(3000, [&]() { return (sheet = topWindow(QStringLiteral("AutoEqRebuild"))) && sheet->isVisible(); }));
     d.check(QStringLiteral("qp15: its title is the Mac's"), sheet && sheet->title() == QLatin1String("Updating Database"));
-    d.check(QStringLiteral("qp15: the rebuild finishes"), d.waitFor(20000, [&]() { return aeq->rebuildDone(); }));
+    d.check(QStringLiteral("qp15: the rebuild finishes"), d.waitFor(20000, [&]() { return aeq->rebuildFinished(); }));
     d.spin(300);
     if (sheet) d.check(QStringLiteral("qp15: screenshot of the finished rebuild"), d.grab(sheet, QStringLiteral("window-autoeqRebuild.png")));
     text = takeNoticeText(d, notice, &error, 8000);
     d.check(QStringLiteral("qp15: the rebuild says how many profiles it found"),
             !error && text == QLatin1String("Database rebuilt successfully!\nEntries: 2"));
-    d.check(QStringLiteral("qp15: the window goes when it is done"), !aeq->rebuilding() && (!sheet || !sheet->isVisible()));
-    d.check(QStringLiteral("qp15: the rebuilt database is in use"), aeq->entryCount() == 2 && aeq->hasUserDatabase());
+    d.check(QStringLiteral("qp15: the window goes when it is done"), !aeq->rebuildOnScreen() && (!sheet || !sheet->isVisible()));
+    d.check(QStringLiteral("qp15: the rebuilt database is in use"), aeq->profileCount() == 2 && aeq->updatedDatabase());
     d.check(QStringLiteral("qp15: every request carried a user agent"), asked->load() >= 4 && agentSeen->load());
-    list->setQuery(QStringLiteral("HD 600"));
+    list->setSearchText(QStringLiteral("HD 600"));
     d.check(QStringLiteral("qp15: the rebuilt profile is found"), list->rowCount() == 1);
-    list->setQuery(QString());
+    list->setSearchText(QString());
 
     // A cancelled rebuild writes nothing and says nothing
     AutoEqController::setFetchOverride([](const QByteArray &, const QByteArray &, const QByteArray &) {
         QThread::msleep(300);
         return reply(404, QByteArray());
     });
-    aeq->startRebuild();
-    d.waitFor(1000, [&]() { return aeq->rebuilding(); });
-    aeq->cancelRebuild();
-    d.check(QStringLiteral("qp15: Cancel stops the rebuild"), d.waitFor(10000, [&]() { return !aeq->rebuilding(); }));
+    aeq->rebuildFromGitHub();
+    d.waitFor(1000, [&]() { return aeq->rebuildOnScreen(); });
+    aeq->stopRebuild();
+    d.check(QStringLiteral("qp15: Cancel stops the rebuild"), d.waitFor(10000, [&]() { return !aeq->rebuildOnScreen(); }));
     d.spin(200);
-    d.check(QStringLiteral("qp15: and leaves the database alone"), aeq->entryCount() == 2 && !opened(notice));
+    d.check(QStringLiteral("qp15: and leaves the database alone"), aeq->profileCount() == 2 && !opened(notice));
     AutoEqController::setFetchOverride({});
 
     aeq->resetToBuiltIn();
     takeNoticeText(d, notice);
-    d.check(QStringLiteral("qp15: back on the built-in database"), aeq->entryCount() == builtIn && !aeq->hasUserDatabase());
+    d.check(QStringLiteral("qp15: back on the built-in database"), aeq->profileCount() == builtIn && !aeq->updatedDatabase());
 
     // ---- The real fetch, against a server on the loopback interface ----
     QTcpServer server;

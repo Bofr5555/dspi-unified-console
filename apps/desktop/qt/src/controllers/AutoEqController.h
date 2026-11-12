@@ -29,7 +29,10 @@ struct AutoEqProfile {
         uint8_t type;   // FILTER_*
         float freq, q, gain;
     };
-    QString id, manufacturer, model, source, formFactor;
+    QString id;
+    QString manufacturer, model;
+    QString source;       // "oratory1990", "crinacle", ...
+    QString formFactor;   // "over-ear", "in-ear", "earbud"
     float preamp = 0;
     QVector<Band> bands;
     QString displayName() const;
@@ -39,8 +42,9 @@ struct AutoEqProfile {
 class AutoEqProfileModel : public QAbstractListModel {
     Q_OBJECT
     QML_ANONYMOUS
-    Q_PROPERTY(QString query READ query WRITE setQuery NOTIFY queryChanged)
-    Q_PROPERTY(int count READ rowCount NOTIFY countChanged)
+    // What the person typed: the manufacturer, model or whole name holds it
+    Q_PROPERTY(QString searchText READ searchText WRITE setSearchText NOTIFY searchTextChanged)
+    Q_PROPERTY(int shown READ rowCount NOTIFY shownChanged)
 public:
     enum Role { ProfileId = Qt::UserRole + 1, DisplayName, Source, SourceName, FormFactor, Favorite };
     explicit AutoEqProfileModel(QObject *parent = nullptr) : QAbstractListModel(parent) {}
@@ -49,26 +53,26 @@ public:
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
-    QString query() const { return m_query; }
-    void setQuery(const QString &query);
+    QString searchText() const { return m_search; }
+    void setSearchText(const QString &text);
     // A profile's row in the current list, or -1
     Q_INVOKABLE int rowOf(const QString &id) const;
     Q_INVOKABLE QString idAt(int row) const;
 
     void setProfiles(std::shared_ptr<const QVector<AutoEqProfile>> profiles);
-    void setFavorites(const QStringList &ids);
+    void setFavourites(const QStringList &ids);
 
 signals:
-    void queryChanged();
-    void countChanged();
+    void searchTextChanged();
+    void shownChanged();
 
 private:
     void refilter();
 
     std::shared_ptr<const QVector<AutoEqProfile>> m_profiles;
     QVector<int> m_rows;   // indices into m_profiles
-    QStringList m_favorites;
-    QString m_query;
+    QStringList m_favourites;
+    QString m_search;
 };
 
 // AutoEQ (AutoEQManager.swift, AutoEQBrowser.swift and the AutoEQ menu): the
@@ -86,22 +90,22 @@ class AutoEqController : public QObject {
     QML_ELEMENT
     QML_SINGLETON
     Q_PROPERTY(AutoEqProfileModel *profiles READ profiles CONSTANT)
-    Q_PROPERTY(bool loading READ loading NOTIFY databaseChanged)
-    Q_PROPERTY(int entryCount READ entryCount NOTIFY databaseChanged)
-    Q_PROPERTY(QString databaseDate READ databaseDate NOTIFY databaseChanged)
-    Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY databaseChanged)
-    Q_PROPERTY(bool hasUserDatabase READ hasUserDatabase NOTIFY databaseChanged)
+    Q_PROPERTY(bool loading READ loading NOTIFY libraryChanged)
+    Q_PROPERTY(int profileCount READ profileCount NOTIFY libraryChanged)
+    Q_PROPERTY(QString generatedOn READ generatedOn NOTIFY libraryChanged)
+    Q_PROPERTY(QString loadProblem READ loadProblem NOTIFY libraryChanged)
+    Q_PROPERTY(bool updatedDatabase READ updatedDatabase NOTIFY libraryChanged)
     // [{id, title}] in the order they were added (the menu's rows)
-    Q_PROPERTY(QVariantList favorites READ favorites NOTIFY favoritesChanged)
+    Q_PROPERTY(QVariantList favouriteList READ favouriteList NOTIFY favouritesChanged)
     // A profile can be sent now: a device that takes writes
     Q_PROPERTY(bool canApply READ canApply NOTIFY canApplyChanged)
     // Updating: a file import or reset is running
-    Q_PROPERTY(bool updating READ updating NOTIFY updatingChanged)
+    Q_PROPERTY(bool fileBusy READ fileBusy NOTIFY fileBusyChanged)
     // The rebuild's sheet: shown, fraction 0..1, the core's status line, done
-    Q_PROPERTY(bool rebuilding READ rebuilding NOTIFY rebuildChanged)
-    Q_PROPERTY(double rebuildProgress READ rebuildProgress NOTIFY rebuildChanged)
-    Q_PROPERTY(QString rebuildStatus READ rebuildStatus NOTIFY rebuildChanged)
-    Q_PROPERTY(bool rebuildDone READ rebuildDone NOTIFY rebuildChanged)
+    Q_PROPERTY(bool rebuildOnScreen READ rebuildOnScreen NOTIFY rebuildMoved)
+    Q_PROPERTY(double rebuildFraction READ rebuildFraction NOTIFY rebuildMoved)
+    Q_PROPERTY(QString rebuildLine READ rebuildLine NOTIFY rebuildMoved)
+    Q_PROPERTY(bool rebuildFinished READ rebuildFinished NOTIFY rebuildMoved)
 public:
     AutoEqController(const AppContext &ctx, QObject *parent = nullptr);
     ~AutoEqController() override;
@@ -109,33 +113,33 @@ public:
 
     AutoEqProfileModel *profiles() const { return m_model; }
     bool loading() const { return m_loading; }
-    int entryCount() const { return m_profiles ? int(m_profiles->size()) : 0; }
-    QString databaseDate() const { return m_date; }
-    QString errorMessage() const { return m_error; }
-    bool hasUserDatabase() const;
-    QVariantList favorites() const;
+    int profileCount() const { return m_profiles ? int(m_profiles->size()) : 0; }
+    QString generatedOn() const { return m_date; }
+    QString loadProblem() const { return m_error; }
+    bool updatedDatabase() const;
+    QVariantList favouriteList() const;
     bool canApply() const;
-    bool updating() const { return m_updating; }
-    bool rebuilding() const { return m_rebuild != nullptr || m_rebuildShown; }
-    double rebuildProgress() const { return m_rebuildProgress; }
-    QString rebuildStatus() const { return m_rebuildStatus; }
-    bool rebuildDone() const { return m_rebuildDone; }
+    bool fileBusy() const { return m_fileBusy; }
+    bool rebuildOnScreen() const { return m_rebuild != nullptr || m_rebuildShown; }
+    double rebuildFraction() const { return m_rebuildFraction; }
+    QString rebuildLine() const { return m_rebuildLine; }
+    bool rebuildFinished() const { return m_rebuildFinished; }
 
     // {name, sourceName, formFactor, formFactorIcon} of a profile, or {}
     Q_INVOKABLE QVariantMap profile(const QString &id) const;
-    Q_INVOKABLE bool isFavorite(const QString &id) const;
-    Q_INVOKABLE void toggleFavorite(const QString &id);
-    Q_INVOKABLE void clearFavorites();
+    Q_INVOKABLE bool isFavourite(const QString &id) const;
+    Q_INVOKABLE void flipFavourite(const QString &id);
+    Q_INVOKABLE void forgetFavourites();
     // The profile's preamp and bands on inputs 1 and 2, the rest of their bands flat
     Q_INVOKABLE void apply(const QString &id);
 
     // Update Database...: the dialog's text
-    Q_INVOKABLE QString updateText() const;
+    Q_INVOKABLE QString updateQuestionText() const;
     Q_INVOKABLE void importDatabaseFrom(const QString &path);
     Q_INVOKABLE void chooseDatabaseFile();
     Q_INVOKABLE void resetToBuiltIn();
-    Q_INVOKABLE void startRebuild();
-    Q_INVOKABLE void cancelRebuild();
+    Q_INVOKABLE void rebuildFromGitHub();
+    Q_INVOKABLE void stopRebuild();
 
     // The user's database file, and the built-in one (a resource)
     static QString userDatabasePath();
@@ -157,11 +161,11 @@ public:
     static void setFetchOverride(FetchOverride fetch);
 
 signals:
-    void databaseChanged();
-    void favoritesChanged();
+    void libraryChanged();
+    void favouritesChanged();
     void canApplyChanged();
-    void updatingChanged();
-    void rebuildChanged();
+    void fileBusyChanged();
+    void rebuildMoved();
     // The Update Database dialog: the host shows it
     void updateRequested();
     // An alert after an update: `error` gives it the error look
@@ -175,8 +179,9 @@ private:
     static Loaded load(const QString &path);
     static void fetchThunk(void *self, const char *url, const char *accept, const char *agent, AutoEqFetchSink *sink);
     void reload(std::function<void()> then = {});
-    void setUpdating(bool updating);
-    void setFavoriteIds(const QStringList &ids);
+    void setFileBusy(bool busy);
+    void setFavouriteIds(const QStringList &ids);
+    QString withCount(const QString &what) const;
     void pollRebuild();
     void endRebuild(bool succeeded, const QString &status);
     void freeRebuild();
@@ -185,18 +190,18 @@ private:
     AutoEqProfileModel *m_model;
     std::shared_ptr<const QVector<AutoEqProfile>> m_profiles;
     QHash<QString, int> m_byId;
-    QStringList m_favoriteIds;
+    QStringList m_favouriteIds;
     bool m_loading = false;
-    bool m_updating = false;
+    bool m_fileBusy = false;
     QString m_date, m_error;
     QThreadPool m_files;   // one thread: reading, importing, resetting the database
     AutoEqRebuildHandle *m_rebuild = nullptr;
     QByteArray m_rebuildPath;   // kept alive for the core while it runs
     QTimer m_rebuildPoll;
     bool m_rebuildShown = false;
-    bool m_rebuildDone = false;
-    double m_rebuildProgress = 0;
-    QString m_rebuildStatus;
+    bool m_rebuildFinished = false;
+    double m_rebuildFraction = 0;
+    QString m_rebuildLine;
     bool m_lastCanApply = false;
 };
 

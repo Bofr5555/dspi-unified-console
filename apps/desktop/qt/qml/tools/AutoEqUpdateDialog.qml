@@ -13,7 +13,7 @@ Dialog {
     signal rebuildChosen()
 
     function ask() {
-        text = AutoEqController.updateText()
+        text = AutoEqController.updateQuestionText()
         open()
     }
 
@@ -104,7 +104,7 @@ Dialog {
             AppButton {
                 objectName: "AutoEqUpdateDialog.reset"
                 width: parent.width
-                visible: AutoEqController.hasUserDatabase
+                visible: AutoEqController.updatedDatabase
                 text: qsTr("Reset to Built-in")
                 onClicked: {
                     dialog.close()

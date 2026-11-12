@@ -77,7 +77,7 @@ Item {
         acceptText: qsTr("Rebuild")
         rejectText: qsTr("Cancel")
         onAnswered: answer => {
-            if (answer === "accept") AutoEqController.startRebuild()
+            if (answer === "accept") AutoEqController.rebuildFromGitHub()
         }
     }
     AutoEqRebuild {

@@ -21,6 +21,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
+#include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QQuickItem>
@@ -337,6 +338,24 @@ static void filesSection(SmokeDriver &d) {
     d.waitFor(2000, [&]() { return !guard->asking(); });
     d.spin(200);
     d.check(QStringLiteral("qp15: Cancel keeps the window"), d.mainWindow()->isVisible());
+
+    // A quit from the tray while the window is hidden: the window comes back for the question
+    d.mainWindow()->hide();
+    d.spin(100);
+    shell->trigger(QStringLiteral("file.quit"));
+    d.check(QStringLiteral("qp15: a quit with the window hidden asks"), d.waitFor(3000, [&]() { return opened(question); }));
+    d.check(QStringLiteral("qp15: and brings the window back for it"), d.mainWindow()->isVisible());
+    QMetaObject::invokeMethod(question, "finish", Q_ARG(QVariant, QStringLiteral("reject")));
+    d.waitFor(2000, [&]() { return !guard->asking(); });
+
+    // A close that only hides the window (the tray keeps the app) asks nothing
+    QGuiApplication::setQuitOnLastWindowClosed(false);
+    d.mainWindow()->close();
+    d.spin(300);
+    d.check(QStringLiteral("qp15: a close that only hides asks nothing"), !opened(question) && !guard->asking());
+    d.mainWindow()->show();
+    QGuiApplication::setQuitOnLastWindowClosed(true);
+    d.spin(100);
 
     // Save stores the live state, then switches
     QSignalSpy failed(guard, &UnsavedGuard::saveFailed);
