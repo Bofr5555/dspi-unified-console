@@ -41,7 +41,7 @@ pub const NEEDS_PAIRING_FIXED: LinkWords = words("needs_pairing.fixed", "Enter t
 /// The hub wants a PIN from a pairing window, or does not say.
 pub const NEEDS_PAIRING_WINDOW: LinkWords = words(
     "needs_pairing.window",
-    "Enter the PIN shown on the hub. On a DSPi uConsole, open Settings > Networking \
+    "Enter the PIN shown on the hub. In uConsole for DSPi, open Settings > Networking \
      and choose Allow a New Client to get one.",
 );
 /// Connected, and the hub has no DSPi to offer.

@@ -12,7 +12,7 @@
       "action_key": null,
       "key": "needs_pairing.window",
       "phase": "needs_pairing",
-      "text": "Enter the PIN shown on the hub. On a DSPi uConsole, open Settings > Networking and choose Allow a New Client to get one."
+      "text": "Enter the PIN shown on the hub. In uConsole for DSPi, open Settings > Networking and choose Allow a New Client to get one."
     },
     {
       "action": null,

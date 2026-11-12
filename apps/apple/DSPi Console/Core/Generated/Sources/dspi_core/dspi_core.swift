@@ -11372,7 +11372,7 @@ public func FfiConverterTypeDiagFile_lower(_ value: DiagFile) -> RustBuffer {
  */
 public struct DiagOptions {
     /**
-     * The client and its version, as it names itself ("DSPi Console 1.2.0
+     * The client and its version, as it names itself ("uConsole for DSPi 1.2.0
      * (Android)"); "" when it does not say.
      */
     public var app: String
@@ -11390,7 +11390,7 @@ public struct DiagOptions {
     // declare one manually.
     public init(
         /**
-         * The client and its version, as it names itself ("DSPi Console 1.2.0
+         * The client and its version, as it names itself ("uConsole for DSPi 1.2.0
          * (Android)"); "" when it does not say.
          */app: String, 
         /**

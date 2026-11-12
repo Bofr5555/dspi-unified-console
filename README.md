@@ -23,9 +23,10 @@ Console remains the reference for behaviour and look
 
 ## Download and install
 
-Prebuilt version **0.13.0** is on the
-[Releases page](https://github.com/Bofr5555/dspi-unified-console/releases) (tag `v0.13.0`).
-The app is called **DSPi uConsole** (it was DSPi Console until the 0.13.0 files were rebuilt on 2026-11-10).
+Prebuilt versions are on the
+[Releases page](https://github.com/Bofr5555/dspi-unified-console/releases) (tag `v<version>`).
+The app is called **uConsole for DSPi**; every release file starts with `uConsole-for-DSPi-<version>`,
+and packages, commands and installed files use `uconsole-for-dspi` (the Terminal's command stays `uconsole`).
 The Google Play app is still called *DSPi Console* until its next update.
 Every client shares the version number. Check a download against `SHA256SUMS`.
 The desktop installers, the `.dmg` files and the Terminal binaries are **not code-signed** yet,
@@ -33,21 +34,19 @@ so each system warns the first time (how to get past it is below).
 
 | System | Download | How |
 |---|---|---|
-| **Windows** 10/11 (x86_64) | `DSPi-uConsole-0.13.0-windows-x86_64-setup.exe` (or the portable `…-windows-x86_64.zip`) | Run the installer. SmartScreen warns about an unknown publisher: *More info* → *Run anyway*. No driver step on a clean machine. |
-| **macOS** 14.6+ (Intel and Apple silicon) | `DSPi-uConsole-Swift-0.13.0-macos.dmg`, the native Swift app (recommended). The alternative is the Qt app, `DSPi-uConsole-0.13.0-macos.dmg`, which also runs on macOS 13 | Open the `.dmg` and drag the app to Applications. The first start is blocked (unsigned): *System Settings* → *Privacy & Security* → *Open Anyway*. Both apps are called *DSPi uConsole.app*: to keep both, rename one in Applications. Weeb Labs' own Mac app is *DSPi Console.app*. Each keeps its own settings. |
-| **Debian 13, Ubuntu 25.04 or newer** | `dspi-uconsole_0.13.0_amd64.deb` | `sudo apt install ./dspi-uconsole_0.13.0_amd64.deb` (installs the USB rule too). |
-| **Fedora 42 or newer** | `dspi-uconsole-0.13.0-1.x86_64.rpm` | `sudo dnf install ./dspi-uconsole-0.13.0-1.x86_64.rpm` (installs the USB rule too). |
-| **Other Linux** (Ubuntu 24.04 and newer, x86_64) | `DSPi-uConsole-v0.13.0-x86_64.AppImage`, or `DSPi-uConsole-v0.13.0-linux-x86_64.tar.gz` with an installer | Make the AppImage executable and run it. For USB access install the rule once: the tar.gz's `install.sh` does it, or copy `70-dspi.rules` to `/etc/udev/rules.d/` and run `sudo udevadm control --reload`, then replug. |
-| **Arch Linux** | `dspi-uconsole-0.13.0-arch-PKGBUILD.tar.gz` (or the test-built `…pkg.tar.zst`) | `makepkg -si` in the unpacked folder. |
-| **Android** 8+ | Google Play: *DSPi Console for Android* (renamed with its next update). Without Play: `DSPi-uConsole-APK-0.13.0.apk` | The APK is a separate app, *DSPi uConsole (APK)*, so it installs next to the Play version. Allow installs from your browser or file manager when asked. |
+| **Windows** 10/11 (x86_64) | `uConsole-for-DSPi-<version>-windows-x86_64-setup.exe` (or the portable `…-windows-x86_64.zip`) | Run the installer. SmartScreen warns about an unknown publisher: *More info* → *Run anyway*. No driver step on a clean machine. |
+| **macOS** 14.6+ (Intel and Apple silicon) | `uConsole-for-DSPi-<version>-macos.dmg`, the native Swift app | Open the `.dmg` and drag the app to Applications. The first start is blocked (unsigned): *System Settings* → *Privacy & Security* → *Open Anyway*. The app is *uConsole for DSPi.app*; Weeb Labs' own Mac app is *DSPi Console.app*, and each keeps its own settings. |
+| **Debian 13, Ubuntu 25.04 or newer** | `uconsole-for-dspi_<version>_amd64.deb` | `sudo apt install ./uconsole-for-dspi_<version>_amd64.deb` (installs the USB rule too). |
+| **Fedora 43 or 44** | `uconsole-for-dspi-<version>-1.fc<N>.x86_64.rpm` (one per Fedora release) | `sudo dnf install ./uconsole-for-dspi-<version>-1.fc<N>.x86_64.rpm` (installs the USB rule too). |
+| **Other Linux** (Ubuntu 24.04 and newer, x86_64) | `uConsole-for-DSPi-<version>-x86_64.AppImage`, or `uConsole-for-DSPi-<version>-linux-x86_64.tar.gz` with an installer | Make the AppImage executable and run it. For USB access install the rule once: the tar.gz's `install.sh --udev` does it, or copy `70-uconsole-for-dspi.rules` to `/etc/udev/rules.d/` and run `sudo udevadm control --reload`, then replug. |
+| **Arch Linux** | the AUR package `uconsole-for-dspi` (`apps/desktop/packaging/arch/PKGBUILD`), built from `uConsole-for-DSPi-<version>-desktop-source.tar.gz` | `makepkg -si` in the package's folder. |
+| **Android** 8+ | Google Play: *DSPi Console for Android* (renamed with its next update). Without Play: `uConsole-for-DSPi-<version>.apk` | The APK is a separate app, *uConsole for DSPi (APK)*, so it installs next to the Play version. Allow installs from your browser or file manager when asked. |
 | **iOS / iPadOS** | none | Not distributed (an unsigned build cannot be installed). |
-| **Terminal** (`uconsole`, every system) | `dspi-0.13.0-<system>.tar.gz` / `.zip`: Linux x86_64 and aarch64 (glibc 2.39+), Windows x86_64, macOS universal | Unpack and run `uconsole`. On Linux, `sudo uconsole --install-udev` once for USB access. The aarch64 build has no MIDI. |
-| **Web console** | `dspi-uconsole-web-0.13.0.tar.gz` | See below. |
+| **Terminal** (`uconsole`, every system) | `uConsole-for-DSPi-<version>-terminal-<system>.tar.gz` / `.zip`: Linux x86_64 and aarch64 (glibc 2.39+), Windows x86_64, macOS universal | Unpack and run `uconsole`. On Linux, `sudo uconsole --install-udev` once for USB access. The aarch64 build has no MIDI. |
+| **Web console** | `uConsole-for-DSPi-<version>-web.tar.gz` | See below. |
 
-If you installed the first 0.13.0 files (named DSPi Console), the renamed ones install next to them, not over
-them: remove the old copy yourself (`sudo apt remove dspi-console`, `sudo dnf remove dspi-console`,
-`sudo pacman -R dspi-console`, *DSPi Console* in Windows' Settings › Apps, or the old app in Applications).
-The Qt app keeps its settings.
+The source code of each release is `uConsole-for-DSPi-<version>-source.tar.gz` (the Qt packages':
+`…-desktop-source.tar.gz`).
 
 ### The web console
 
@@ -162,7 +161,7 @@ Per client:
 | Client | In a container | Entry point |
 |---|---|---|
 | Terminal | `ci/check.sh --step terminal` | `cargo build --release -p dspi-term`; `cargo run -p dspi-term -- --demo dump` runs on the simulated device |
-| Qt, Linux | `--step qt`, `qt5`; `qt-offscreen`, `qt5-offscreen` run the app with its smoke driver on the demo device | `cargo build --release -p dspi-capi`, then CMake on `apps/desktop/qt` ([`apps/desktop/README.md`](apps/desktop/README.md)); `DSPiConsole --demo` |
+| Qt, Linux | `--step qt`, `qt5`; `qt-offscreen`, `qt5-offscreen` run the app with its smoke driver on the demo device | `cargo build --release -p dspi-capi`, then CMake on `apps/desktop/qt` ([`apps/desktop/README.md`](apps/desktop/README.md)); `uconsole-for-dspi --demo` |
 | Qt, Windows | `--step qt-windows` (MinGW app, zip and installer); `--step windows-msvc` builds the core and terminal with MSVC | `apps/desktop/packaging/windows/build-windows.sh` |
 | Android | `--step android` (core libraries), `android-tests`, `android-aab` | `apps/android/tools/ci.sh` |
 | Swift, macOS and iOS | not in a container: `ci/macvm.sh macos` or `ios` runs it in the macOS VM | `apps/apple/build-xcframework.sh`, then `apps/apple/ci-test.sh macos` or `ios` |

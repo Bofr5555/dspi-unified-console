@@ -83,7 +83,7 @@ final class CoreMIDIControlPort: MIDIControlPort {
         return _endpoints
     }
 
-    init(clientName: String = "DSPi uConsole", extraName: String? = UserDefaults.standard.string(forKey: "MIDIControlEndpoint")) {
+    init(clientName: String = "uConsole for DSPi", extraName: String? = UserDefaults.standard.string(forKey: "MIDIControlEndpoint")) {
         self.extraName = (extraName?.isEmpty ?? true) ? nil : extraName
         var status = MIDIClientCreateWithBlock(clientName as CFString, &client) { [weak self] note in
             switch note.pointee.messageID {

@@ -1,4 +1,4 @@
-# DSPi uConsole VERSION
+# uConsole for DSPi VERSION
 
 Release date: YYYY-MM-DD. One version for every client.
 
@@ -10,7 +10,7 @@ Release date: YYYY-MM-DD. One version for every client.
 
 Every file of this release is listed in `SHA256SUMS`, which is signed:
 `SHA256SUMS.minisig`. The source code of exactly this release is
-`dspi-uconsole-VERSION-source.tar.gz`. Licence: see `NOTICE.md`.
+`uConsole-for-DSPi-VERSION-source.tar.gz`. Licence: see `NOTICE.md`.
 
 ## Check a download
 

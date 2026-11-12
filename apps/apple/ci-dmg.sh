@@ -11,4 +11,4 @@ here=$(cd "$(dirname "$0")" && pwd)
 out=${CI_OUT:-$here/build/ci}/swift-dmg
 rm -rf "$out"
 DERIVED_DATA=${DERIVED_DATA:-$out/../dd-swift-dmg} "$here/package-macos.sh" "$out"
-"$here/test-dmg.sh" "$out"/DSPi-uConsole-Swift-*-macos.dmg
+"$here/test-dmg.sh" "$out"/uConsole-for-DSPi-*-macos.dmg

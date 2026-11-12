@@ -788,7 +788,7 @@ mod tests_wp_cg10 {
             }
         }
         let ios = all_text(Platform::Ios);
-        assert!(ios.contains("use DSPi uConsole on macOS, Windows or Linux"));
+        assert!(ios.contains("use uConsole for DSPi on macOS, Windows or Linux"));
         assert!(!ios.contains("right here"));
     }
 }

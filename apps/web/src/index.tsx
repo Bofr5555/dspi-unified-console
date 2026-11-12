@@ -58,7 +58,7 @@ export function mount(el: HTMLElement, opts: MountOptions = {}): MountedConsole 
   const options: ConsoleOptions = {
     backend: opts.backend ?? new LocalBackend(),
     spawnCore: opts.spawnCore ?? (() => CoreClient.spawn(workerUrl)),
-    title: opts.title ?? "DSPi uConsole",
+    title: opts.title ?? "uConsole for DSPi",
     sourceUrl: opts.sourceUrl ?? (BUILD_SOURCE_URL || null),
     hubPage: opts.hubPage ?? null,
     readOnly: opts.readOnly ?? false,
