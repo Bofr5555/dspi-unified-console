@@ -17,15 +17,10 @@ Rectangle {
         anchors.margins: Theme.spacing
         spacing: Theme.spacing
 
-        // The graph host's place
-        Rectangle {
-            objectName: "RightPane.graph"
+        // -- WP QP3 -- The response graph: header, graph, drag strip
+        GraphHost {
             Layout.fillWidth: true
-            Layout.preferredHeight: 280
-            radius: Theme.radius
-            color: Theme.panel
-            border.width: 1
-            border.color: Theme.separator
+            selectedChannel: pane.selectedChannel
         }
 
         // The overview's or the channel detail's place

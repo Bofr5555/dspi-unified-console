@@ -1,0 +1,3 @@
+# -- WP QP3 -- Response graph
+maximize-2          graph options: pop out graph
+minimize-2          graph header: close the pop-out window
