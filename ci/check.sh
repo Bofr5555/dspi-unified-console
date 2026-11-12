@@ -43,8 +43,8 @@
 #                                     demo device, offscreen (apps/desktop/qt/smoke)
 #       terminal                      the Linux terminal binary (dspi-term: uconsole), run once
 #       qt-windows                    packaging/windows/build-windows.sh: the
-#                                     MinGW Qt 6 app, zip and installer. Off
-#                                     until QP20 rewrites the packaging (exits 3)
+#                                     MinGW Qt 6 app, zip and installer; then
+#                                     test-installer.sh runs them under Wine
 #       proptest                      the property tests (functions named
 #                                     proptest_*), 20000 cases each
 #       kotlin                        generate the UniFFI bindings and compile
@@ -132,7 +132,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --crate) crates+=("$2"); shift 2 ;;
     --step) steps+=("$2"); shift 2 ;;
-    --all) steps=(fetch fmt clippy test windows-gnu android-contract licences deny windows-msvc android android-tests android-aab wasm wasm-core qt qt-offscreen terminal proptest kotlin swift ios-check drift conformance-ts web); shift ;;
+    --all) steps=(fetch fmt clippy test windows-gnu android-contract licences deny windows-msvc android android-tests android-aab wasm wasm-core qt qt-offscreen qt-windows terminal proptest kotlin swift ios-check drift conformance-ts web); shift ;;
     --all-clients) exec ci/matrix.sh ;;
     -h|--help) sed -n "2,/^set -euo/p" "$0" | sed '$d'; exit 0 ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
@@ -217,10 +217,11 @@ for s in "${steps[@]}"; do
       # -- WP QP13 -- The fake hub is back, for the Link sections (DSPI_SMOKE_FAKEHUB).
       $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && $FAKEHUB && cmake -S apps/desktop/qt -B /work/build-desktop-qt-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt-smoke --target DSPiConsoleSmoke && DSPI_SMOKE_FAKEHUB=/target/release/dspi-link-fakehub DSPI_SMOKE_SECTION=${DSPI_SMOKE_SECTION:-} apps/desktop/qt/smoke/run.sh /work/build-desktop-qt-smoke/DSPiConsoleSmoke /work/smoke-out" ;;
     qt-windows)
-      # -- WP QP0 -- Off: the Windows packaging still expects the previous tree. QP20
-      # rewrites it and turns this step back on.
-      echo "qt-windows: not run: disabled until QP20 rewrites the Windows packaging" >&2
-      exit 3 ;;
+      # -- WP QP20 -- Back on: the zip and the installer, then the installer's
+      # test under Wine (install over an earlier install, refused while the app
+      # runs, the notices, uninstall). The update feed is left out here: a CI
+      # build is not a release.
+      $RUN "BUILD_DIR=/work/build-desktop-win64 DSPI_UPDATE_FEED_URL= apps/desktop/packaging/windows/build-windows.sh /work/dist-windows && apps/desktop/packaging/windows/test-installer.sh /work/dist-windows/DSPi-uConsole-*-windows-x86_64-setup.exe" ;;
     proptest)
       # Every property test function is named proptest_* (PLAN §1.9).
       $RUN "PROPTEST_CASES=20000 cargo test --workspace --all-features --release -- proptest_" ;;
