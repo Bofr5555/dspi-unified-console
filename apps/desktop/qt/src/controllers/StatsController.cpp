@@ -21,8 +21,6 @@ static const Registrar::Window statsWindow("tools.stats", "StatsWindow");
 
 namespace {
 
-QString tr(const char *text) { return QCoreApplication::translate("StatsController", text); }
-
 QVariantMap row(const QString &label, const QString &text, const QString &band = QString(),
                 const QString &tip = QString()) {
     return { { QStringLiteral("label"), label }, { QStringLiteral("text"), text },
@@ -35,10 +33,10 @@ QVariantMap stateRow(const QString &label, const QString &text, const QString &b
     return r;
 }
 
-QString yesNo(bool v) { return v ? tr(QT_TRANSLATE_NOOP("StatsController", "Yes")) : tr(QT_TRANSLATE_NOOP("StatsController", "No")); }
+QString yesNo(bool v) { return v ? QCoreApplication::translate("StatsController", "Yes") : QCoreApplication::translate("StatsController", "No"); }
 QString dash() { return QStringLiteral("-"); }
 QString khz(uint32_t hz) { return QStringLiteral("%1 kHz").arg(hz / 1000.0, 0, 'f', 1); }
-QString unknown(int n) { return tr(QT_TRANSLATE_NOOP("StatsController", "Unknown (%1)")).arg(n); }
+QString unknown(int n) { return QCoreApplication::translate("StatsController", "Unknown (%1)").arg(n); }
 
 QJsonObject json(const QByteArray &bytes) { return QJsonDocument::fromJson(bytes).object(); }
 
@@ -280,7 +278,7 @@ QVariantMap StatsController::starvation() const {
     QVariantList perSlot;
     const int n = std::max(m_numSpdif, 2);
     for (int i = 0; i < n && i < 4; ++i)
-        perSlot.append(QVariantMap{ { QStringLiteral("label"), tr(QT_TRANSLATE_NOOP("StatsController", "Out %1/%2"))
+        perSlot.append(QVariantMap{ { QStringLiteral("label"), QCoreApplication::translate("StatsController", "Out %1/%2")
                                                                    .arg(2 * i + 1)
                                                                    .arg(2 * i + 2) },
                                   { QStringLiteral("count"), qint64(m_slow.starvation[i]) } });
@@ -297,27 +295,27 @@ QVariantList StatsController::ringHealth() const {
     const auto num = [&](const char *key) { return r.value(QLatin1String(key)).toLongLong(); };
     const QVariant lowest = r.value(QStringLiteral("lowestFill"));
     return {
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Fill Target")),
-            tr(QT_TRANSLATE_NOOP("StatsController", "%1 frames (%2)")).arg(num("targetFrames")).arg(latencyText(uint32_t(num("targetUs")))),
-            QString(), tr(QT_TRANSLATE_NOOP("StatsController", "How full the output rings are kept, set by Latency in Settings"))),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Underrun Episodes")), QString::number(num("underrunEpisodes")),
+        row(QCoreApplication::translate("StatsController", "Fill Target"),
+            QCoreApplication::translate("StatsController", "%1 frames (%2)").arg(num("targetFrames")).arg(latencyText(uint32_t(num("targetUs")))),
+            QString(), QCoreApplication::translate("StatsController", "How full the output rings are kept, set by Latency in Settings")),
+        row(QCoreApplication::translate("StatsController", "Underrun Episodes"), QString::number(num("underrunEpisodes")),
             num("underrunEpisodes") > 0 ? QStringLiteral("bad") : QString(),
-            tr(QT_TRANSLATE_NOOP("StatsController", "Times the outputs ran dry while a source owed audio. A host that pauses its stream does not count."))),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Refused Blocks")), QString::number(num("refusedBlocks")),
+            QCoreApplication::translate("StatsController", "Times the outputs ran dry while a source owed audio. A paused stream does not count.")),
+        row(QCoreApplication::translate("StatsController", "Refused Blocks"), QString::number(num("refusedBlocks")),
             num("refusedBlocks") > 0 ? QStringLiteral("warn") : QString(),
-            tr(QT_TRANSLATE_NOOP("StatsController", "Audio blocks dropped because the rings had no room for them"))),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Lowest Fill")),
+            QCoreApplication::translate("StatsController", "Audio blocks dropped because the rings had no room for them")),
+        row(QCoreApplication::translate("StatsController", "Lowest Fill"),
             lowest.isNull() || !lowest.isValid() ? dash()
-                                                 : tr(QT_TRANSLATE_NOOP("StatsController", "%1 frames")).arg(lowest.toLongLong()),
+                                                 : QCoreApplication::translate("StatsController", "%1 frames").arg(lowest.toLongLong()),
             QString(),
-            tr(QT_TRANSLATE_NOOP("StatsController", "The emptiest any output ring got just before new audio arrived, since the watermarks were reset. Near zero means the margin is thin."))),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Worst Input Gap")), gapText(uint32_t(num("worstInputGapUs"))), QString(),
-            tr(QT_TRANSLATE_NOOP("StatsController", "Longest wait between input deliveries since the watermarks were reset"))),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Worst USB Gap")), gapText(uint32_t(num("worstUsbGapUs"))), QString(),
-            tr(QT_TRANSLATE_NOOP("StatsController", "Longest gap between USB audio packets since the watermarks were reset. Long gaps are the host pausing its stream."))),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Over-Budget Steps")), QString::number(num("overBudgetSteps")),
+            QCoreApplication::translate("StatsController", "The emptiest any output ring got just before new audio arrived, since the watermarks were reset. Near zero means the margin is thin.")),
+        row(QCoreApplication::translate("StatsController", "Worst Input Gap"), gapText(uint32_t(num("worstInputGapUs"))), QString(),
+            QCoreApplication::translate("StatsController", "Longest wait between input deliveries since the watermarks were reset")),
+        row(QCoreApplication::translate("StatsController", "Worst USB Gap"), gapText(uint32_t(num("worstUsbGapUs"))), QString(),
+            QCoreApplication::translate("StatsController", "Longest gap between USB audio packets since the watermarks were reset. Long gaps are a paused stream.")),
+        row(QCoreApplication::translate("StatsController", "Over-Budget Steps"), QString::number(num("overBudgetSteps")),
             num("overBudgetSteps") > 0 ? QStringLiteral("warn") : QString(),
-            tr(QT_TRANSLATE_NOOP("StatsController", "Background tasks that ran past their time slice in the device's main loop"))),
+            QCoreApplication::translate("StatsController", "Background tasks that ran past their time slice in the device's main loop")),
     };
 }
 
@@ -326,10 +324,10 @@ QVariantList StatsController::spdifInput() const {
     const Slow &s = m_slow;
     QString state, band;
     switch (s.rxState) {
-    case 0: state = tr(QT_TRANSLATE_NOOP("StatsController", "Inactive")); band = QStringLiteral("off"); break;
-    case 1: state = tr(QT_TRANSLATE_NOOP("StatsController", "Acquiring")); band = QStringLiteral("warn"); break;
-    case 2: state = tr(QT_TRANSLATE_NOOP("StatsController", "Locked")); band = QStringLiteral("good"); break;
-    case 3: state = tr(QT_TRANSLATE_NOOP("StatsController", "Relocking")); band = QStringLiteral("warn"); break;
+    case 0: state = QCoreApplication::translate("StatsController", "Inactive"); band = QStringLiteral("off"); break;
+    case 1: state = QCoreApplication::translate("StatsController", "Acquiring"); band = QStringLiteral("warn"); break;
+    case 2: state = QCoreApplication::translate("StatsController", "Locked"); band = QStringLiteral("good"); break;
+    case 3: state = QCoreApplication::translate("StatsController", "Relocking"); band = QStringLiteral("warn"); break;
     default: state = unknown(s.rxState); band = QStringLiteral("off"); break;
     }
     QString source;
@@ -344,14 +342,14 @@ QVariantList StatsController::spdifInput() const {
     }
     const bool locked = s.rxState == 2;
     return {
-        stateRow(tr(QT_TRANSLATE_NOOP("StatsController", "State")), state, band),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Active Source")), source),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Sample Rate")), locked && s.rxRate > 0 ? khz(s.rxRate) : dash()),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Lock Count")), QString::number(s.rxLock)),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Loss Count")), QString::number(s.rxLoss)),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Parity Errors")), locked ? QString::number(s.rxParity) : dash()),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "FIFO Fill")), locked ? QStringLiteral("%1%").arg(s.rxFifo) : dash()),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "RX Pin")), QStringLiteral("GPIO %1").arg(s.rxPin)),
+        stateRow(QCoreApplication::translate("StatsController", "State"), state, band),
+        row(QCoreApplication::translate("StatsController", "Active Source"), source),
+        row(QCoreApplication::translate("StatsController", "Sample Rate"), locked && s.rxRate > 0 ? khz(s.rxRate) : dash()),
+        row(QCoreApplication::translate("StatsController", "Lock Count"), QString::number(s.rxLock)),
+        row(QCoreApplication::translate("StatsController", "Loss Count"), QString::number(s.rxLoss)),
+        row(QCoreApplication::translate("StatsController", "Parity Errors"), locked ? QString::number(s.rxParity) : dash()),
+        row(QCoreApplication::translate("StatsController", "FIFO Fill"), locked ? QStringLiteral("%1%").arg(s.rxFifo) : dash()),
+        row(QCoreApplication::translate("StatsController", "RX Pin"), QStringLiteral("GPIO %1").arg(s.rxPin)),
     };
 }
 
@@ -360,24 +358,24 @@ QVariantList StatsController::channelStatus() const {
     const auto &raw = m_slow.channelStatus;
     QString category;
     switch (raw[1]) {
-    case 0x00: category = tr(QT_TRANSLATE_NOOP("StatsController", "General")); break;
-    case 0x01: category = tr(QT_TRANSLATE_NOOP("StatsController", "CD Player")); break;
+    case 0x00: category = QCoreApplication::translate("StatsController", "General"); break;
+    case 0x01: category = QCoreApplication::translate("StatsController", "CD Player"); break;
     case 0x02: category = QStringLiteral("DAT"); break;
     case 0x03: category = QStringLiteral("DCC"); break;
     case 0x04: category = QStringLiteral("MiniDisc"); break;
-    case 0x06: category = tr(QT_TRANSLATE_NOOP("StatsController", "Synthesizer")); break;
-    case 0x08: category = tr(QT_TRANSLATE_NOOP("StatsController", "Broadcast Receiver")); break;
-    case 0x09: category = tr(QT_TRANSLATE_NOOP("StatsController", "Musical Instrument")); break;
-    case 0x0A: category = tr(QT_TRANSLATE_NOOP("StatsController", "A/D Converter")); break;
-    case 0x0C: category = tr(QT_TRANSLATE_NOOP("StatsController", "Mixer")); break;
-    case 0x0D: category = tr(QT_TRANSLATE_NOOP("StatsController", "Rate Converter")); break;
-    case 0x0E: category = tr(QT_TRANSLATE_NOOP("StatsController", "Sampler")); break;
-    case 0x0F: category = tr(QT_TRANSLATE_NOOP("StatsController", "Digital Signal Processor")); break;
+    case 0x06: category = QCoreApplication::translate("StatsController", "Synthesizer"); break;
+    case 0x08: category = QCoreApplication::translate("StatsController", "Broadcast Receiver"); break;
+    case 0x09: category = QCoreApplication::translate("StatsController", "Musical Instrument"); break;
+    case 0x0A: category = QCoreApplication::translate("StatsController", "A/D Converter"); break;
+    case 0x0C: category = QCoreApplication::translate("StatsController", "Mixer"); break;
+    case 0x0D: category = QCoreApplication::translate("StatsController", "Rate Converter"); break;
+    case 0x0E: category = QCoreApplication::translate("StatsController", "Sampler"); break;
+    case 0x0F: category = QCoreApplication::translate("StatsController", "Digital Signal Processor"); break;
     default: category = QStringLiteral("0x") + QString::number(raw[1], 16).toUpper().rightJustified(2, QLatin1Char('0')); break;
     }
     QString word;
     switch (raw[4] & 0x0F) {
-    case 0x0: word = tr(QT_TRANSLATE_NOOP("StatsController", "Not indicated")); break;
+    case 0x0: word = QCoreApplication::translate("StatsController", "Not indicated"); break;
     case 0x2: word = QStringLiteral("16-bit"); break;
     case 0x4: word = QStringLiteral("20-bit"); break;
     case 0x8: word = QStringLiteral("17-bit"); break;
@@ -386,13 +384,13 @@ QVariantList StatsController::channelStatus() const {
     default: word = dash(); break;
     }
     return {
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Format")),
-            raw[0] & 1 ? tr(QT_TRANSLATE_NOOP("StatsController", "Professional")) : tr(QT_TRANSLATE_NOOP("StatsController", "Consumer"))),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Audio")), raw[0] & 2 ? QStringLiteral("Non-PCM") : QStringLiteral("PCM")),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Category")), category),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Word Length")), word),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Copy")),
-            raw[0] & 4 ? tr(QT_TRANSLATE_NOOP("StatsController", "Permitted")) : tr(QT_TRANSLATE_NOOP("StatsController", "Prohibited"))),
+        row(QCoreApplication::translate("StatsController", "Format"),
+            raw[0] & 1 ? QCoreApplication::translate("StatsController", "Professional") : QCoreApplication::translate("StatsController", "Consumer")),
+        row(QCoreApplication::translate("StatsController", "Audio"), raw[0] & 2 ? QStringLiteral("Non-PCM") : QStringLiteral("PCM")),
+        row(QCoreApplication::translate("StatsController", "Category"), category),
+        row(QCoreApplication::translate("StatsController", "Word Length"), word),
+        row(QCoreApplication::translate("StatsController", "Copy"),
+            raw[0] & 4 ? QCoreApplication::translate("StatsController", "Permitted") : QCoreApplication::translate("StatsController", "Prohibited")),
     };
 }
 
@@ -400,15 +398,15 @@ QVariantList StatsController::spdifDebug() const {
     if (!m_slow.inputSource || !m_slow.rxOk || m_slow.rxState == 0) return {};
     QString lib;
     switch (m_slow.rxLib) {
-    case 0: lib = tr(QT_TRANSLATE_NOOP("StatsController", "No Signal")); break;
-    case 1: lib = tr(QT_TRANSLATE_NOOP("StatsController", "Waiting Stable")); break;
-    case 2: lib = tr(QT_TRANSLATE_NOOP("StatsController", "Stable")); break;
+    case 0: lib = QCoreApplication::translate("StatsController", "No Signal"); break;
+    case 1: lib = QCoreApplication::translate("StatsController", "Waiting Stable"); break;
+    case 2: lib = QCoreApplication::translate("StatsController", "Stable"); break;
     default: lib = unknown(m_slow.rxLib); break;
     }
     return {
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Library State")), lib),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Stable Callbacks")), QString::number(m_slow.rxStable)),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Lost Callbacks")), QString::number(m_slow.rxLost)),
+        row(QCoreApplication::translate("StatsController", "Library State"), lib),
+        row(QCoreApplication::translate("StatsController", "Stable Callbacks"), QString::number(m_slow.rxStable)),
+        row(QCoreApplication::translate("StatsController", "Lost Callbacks"), QString::number(m_slow.rxLost)),
     };
 }
 
@@ -416,13 +414,13 @@ QVariantList StatsController::lgSoundSync() const {
     if (!m_lgSeen) return {};
     const Slow &s = m_slow;
     return {
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Enabled")), yesNo(s.lgEnabled)),
-        stateRow(tr(QT_TRANSLATE_NOOP("StatsController", "Present")), yesNo(s.lgPresent),
+        row(QCoreApplication::translate("StatsController", "Enabled"), yesNo(s.lgEnabled)),
+        stateRow(QCoreApplication::translate("StatsController", "Present"), yesNo(s.lgPresent),
                  s.lgPresent ? QStringLiteral("good") : QStringLiteral("off")),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "TV Volume")),
+        row(QCoreApplication::translate("StatsController", "TV Volume"),
             s.lgVolume == 0xFF ? dash() : QStringLiteral("%1 / 100").arg(s.lgVolume)),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "TV Mute")),
-            s.lgMuted ? tr(QT_TRANSLATE_NOOP("StatsController", "On")) : tr(QT_TRANSLATE_NOOP("StatsController", "Off"))),
+        row(QCoreApplication::translate("StatsController", "TV Mute"),
+            s.lgMuted ? QCoreApplication::translate("StatsController", "On") : QCoreApplication::translate("StatsController", "Off")),
     };
 }
 
@@ -431,17 +429,17 @@ QVariantList StatsController::adatOutput() const {
     if (!m_slow.adatOk || !st || st->platform_id != 1) return {};
     const Slow &s = m_slow;
     QString state, band;
-    if (!s.adatEnabled) { state = tr(QT_TRANSLATE_NOOP("StatsController", "Disabled")); band = QStringLiteral("off"); }
-    else if (s.adatActive) { state = tr(QT_TRANSLATE_NOOP("StatsController", "Streaming")); band = QStringLiteral("good"); }
-    else if (!s.adatRateOk) { state = tr(QT_TRANSLATE_NOOP("StatsController", "Suspended (rate above 48 kHz)")); band = QStringLiteral("warn"); }
-    else { state = tr(QT_TRANSLATE_NOOP("StatsController", "Enabled")); band = QStringLiteral("warn"); }
+    if (!s.adatEnabled) { state = QCoreApplication::translate("StatsController", "Disabled"); band = QStringLiteral("off"); }
+    else if (s.adatActive) { state = QCoreApplication::translate("StatsController", "Streaming"); band = QStringLiteral("good"); }
+    else if (!s.adatRateOk) { state = QCoreApplication::translate("StatsController", "Suspended (rate above 48 kHz)"); band = QStringLiteral("warn"); }
+    else { state = QCoreApplication::translate("StatsController", "Enabled"); band = QStringLiteral("warn"); }
     return {
-        stateRow(tr(QT_TRANSLATE_NOOP("StatsController", "State")), state, band),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Streaming")), yesNo(s.adatActive)),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Rate Supported")), yesNo(s.adatRateOk)),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Data Pin")), QStringLiteral("GPIO %1").arg(s.adatPin)),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Resync Count")), QString::number(s.adatResync)),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Slip Count")), QString::number(s.adatSlip)),
+        stateRow(QCoreApplication::translate("StatsController", "State"), state, band),
+        row(QCoreApplication::translate("StatsController", "Streaming"), yesNo(s.adatActive)),
+        row(QCoreApplication::translate("StatsController", "Rate Supported"), yesNo(s.adatRateOk)),
+        row(QCoreApplication::translate("StatsController", "Data Pin"), QStringLiteral("GPIO %1").arg(s.adatPin)),
+        row(QCoreApplication::translate("StatsController", "Resync Count"), QString::number(s.adatResync)),
+        row(QCoreApplication::translate("StatsController", "Slip Count"), QString::number(s.adatSlip)),
     };
 }
 
@@ -449,12 +447,12 @@ QVariantList StatsController::usbErrorRows(const QVariantMap &reply) {
     if (!reply.value(QStringLiteral("ok")).toBool() || reply.value(QStringLiteral("total")).toUInt() == 0) return {};
     const auto count = [&reply](const char *key) { return QString::number(reply.value(QLatin1String(key)).toUInt()); };
     return {
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Total")), count("total"), QStringLiteral("bad")),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "CRC Errors")), count("crc")),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Bit Stuffing Errors")), count("bitstuff")),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Receive Overflows")), count("rxOverflow")),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Receive Timeouts")), count("rxTimeout")),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Data Sequence Errors")), count("dataSeq")),
+        row(QCoreApplication::translate("StatsController", "Total"), count("total"), QStringLiteral("bad")),
+        row(QCoreApplication::translate("StatsController", "CRC Errors"), count("crc")),
+        row(QCoreApplication::translate("StatsController", "Bit Stuffing Errors"), count("bitstuff")),
+        row(QCoreApplication::translate("StatsController", "Receive Overflows"), count("rxOverflow")),
+        row(QCoreApplication::translate("StatsController", "Receive Timeouts"), count("rxTimeout")),
+        row(QCoreApplication::translate("StatsController", "Data Sequence Errors"), count("dataSeq")),
     };
 }
 
@@ -463,18 +461,18 @@ QVariantList StatsController::i2sSlave() const {
     const Slow &s = m_slow;
     QString state, band;
     switch (s.i2sState) {
-    case 0: state = tr(QT_TRANSLATE_NOOP("StatsController", "Inactive")); band = QStringLiteral("off"); break;
-    case 1: state = tr(QT_TRANSLATE_NOOP("StatsController", "Acquiring")); band = QStringLiteral("warn"); break;
-    case 2: state = tr(QT_TRANSLATE_NOOP("StatsController", "Relocking")); band = QStringLiteral("warn"); break;
-    case 3: state = tr(QT_TRANSLATE_NOOP("StatsController", "Locked")); band = QStringLiteral("good"); break;
+    case 0: state = QCoreApplication::translate("StatsController", "Inactive"); band = QStringLiteral("off"); break;
+    case 1: state = QCoreApplication::translate("StatsController", "Acquiring"); band = QStringLiteral("warn"); break;
+    case 2: state = QCoreApplication::translate("StatsController", "Relocking"); band = QStringLiteral("warn"); break;
+    case 3: state = QCoreApplication::translate("StatsController", "Locked"); band = QStringLiteral("good"); break;
     default: state = unknown(s.i2sState); band = QStringLiteral("off"); break;
     }
     return {
-        stateRow(tr(QT_TRANSLATE_NOOP("StatsController", "State")), state, band),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Detected Rate")), s.i2sState == 3 && s.i2sDetected > 0 ? khz(s.i2sDetected) : dash()),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Measured Rate")), s.i2sMeasured > 0 ? khz(s.i2sMeasured) : dash()),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Lock Count")), QString::number(s.i2sLock)),
-        row(tr(QT_TRANSLATE_NOOP("StatsController", "Loss Count")), QString::number(s.i2sLoss)),
+        stateRow(QCoreApplication::translate("StatsController", "State"), state, band),
+        row(QCoreApplication::translate("StatsController", "Detected Rate"), s.i2sState == 3 && s.i2sDetected > 0 ? khz(s.i2sDetected) : dash()),
+        row(QCoreApplication::translate("StatsController", "Measured Rate"), s.i2sMeasured > 0 ? khz(s.i2sMeasured) : dash()),
+        row(QCoreApplication::translate("StatsController", "Lock Count"), QString::number(s.i2sLock)),
+        row(QCoreApplication::translate("StatsController", "Loss Count"), QString::number(s.i2sLoss)),
     };
 }
 
@@ -504,8 +502,8 @@ QVariantList StatsController::fillRows() const {
     const QVariantList spdif = m_buffers.value(QStringLiteral("spdif")).toList();
     for (int i = 0; i < m_numSpdif; ++i) {
         const bool i2s = st && i < 4 && st->output_types[i] == 1;
-        const QString title = i2s ? tr(QT_TRANSLATE_NOOP("StatsController", "Out %1/%2 (I2S)")).arg(2 * i + 1).arg(2 * i + 2)
-                                  : tr(QT_TRANSLATE_NOOP("StatsController", "Out %1/%2 (SPDIF)")).arg(2 * i + 1).arg(2 * i + 2);
+        const QString title = i2s ? QCoreApplication::translate("StatsController", "Out %1/%2 (I2S)").arg(2 * i + 1).arg(2 * i + 2)
+                                  : QCoreApplication::translate("StatsController", "Out %1/%2 (SPDIF)").arg(2 * i + 1).arg(2 * i + 2);
         double fill = 0;
         int min = 0, max = 0;
         QString band;
@@ -529,9 +527,9 @@ QVariantList StatsController::fillRows() const {
         const QVariantMap pdm = m_buffers.value(QStringLiteral("pdm")).toMap();
         const double dma = pdm.value(QStringLiteral("dmaFillPct")).toDouble();
         const double ring = pdm.value(QStringLiteral("ringFillPct")).toDouble();
-        rows.append(make(tr(QT_TRANSLATE_NOOP("StatsController", "PDM DMA")), dma, pdm.value(QStringLiteral("dmaMinPct")).toInt(),
+        rows.append(make(QCoreApplication::translate("StatsController", "PDM DMA"), dma, pdm.value(QStringLiteral("dmaMinPct")).toInt(),
                          pdm.value(QStringLiteral("dmaMaxPct")).toInt(), pdmDmaBand(dma), QStringLiteral("pdm"), false, false, 4));
-        rows.append(make(tr(QT_TRANSLATE_NOOP("StatsController", "PDM Ring")), ring, pdm.value(QStringLiteral("ringMinPct")).toInt(),
+        rows.append(make(QCoreApplication::translate("StatsController", "PDM Ring"), ring, pdm.value(QStringLiteral("ringMinPct")).toInt(),
                          pdm.value(QStringLiteral("ringMaxPct")).toInt(), pdmRingBand(ring), QStringLiteral("pdm"), true, true, 5));
     }
     return rows;

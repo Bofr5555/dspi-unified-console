@@ -1,8 +1,18 @@
-; Per-user installer for DSPi uConsole on Windows (no administrator rights):
-; installs to %LOCALAPPDATA%\Programs\DSPi uConsole, adds a Start menu
+; Per-user installer for uConsole for DSPi on Windows (no administrator rights):
+; installs to %LOCALAPPDATA%\Programs\uConsole for DSPi, adds a Start menu
 ; shortcut and an entry in Settings > Apps. Build on Linux or Windows with
 ;   makensis -DVERSION=0.13.0 -DBUNDLE=<deployed folder> -DOUTFILE=<setup.exe> dspi-console.nsi
 ; (packaging/windows/build-windows.sh does this).
+;
+; -- WP QP20 -- The name people see is "uConsole for DSPi". What an earlier
+; install wrote keeps its name, so this installer updates it in place: the
+; uninstall key (DSPiuConsole), the key holding the install folder, and the
+; folder itself when one is recorded there. The earlier Start menu shortcut
+; ("DSPi uConsole.lnk") is replaced by the new one. The app's own entries
+; (the Run value "DSPi uConsole" for open at login, the settings under
+; %APPDATA%\DSPi) are the app's and stay as they are on an install or an
+; update; the uninstaller removes the Run value (-- WP QPI4 --), whose name
+; stays the one the app writes (SystemIntegration.cpp's kRunName).
 
 Unicode true
 !include "MUI2.nsh"
@@ -17,19 +27,29 @@ Unicode true
   !define OUTFILE "DSPi-uConsole-${VERSION}-windows-x86_64-setup.exe"
 !endif
 
-!define APP "DSPi uConsole"
+!define APP "uConsole for DSPi"
+!define EXE "DSPiConsole.exe"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\DSPiuConsole"
+!define DIR_KEY "Software\DSPi\DSPi uConsole"
+!define OLD_LINK "DSPi uConsole.lnk"
+!define RUN_KEY "Software\Microsoft\Windows\CurrentVersion\Run"
+!define RUN_NAME "DSPi uConsole"
 
 Name "${APP}"
 OutFile "${OUTFILE}"
 RequestExecutionLevel user
 InstallDir "$LOCALAPPDATA\Programs\${APP}"
-InstallDirRegKey HKCU "Software\DSPi\${APP}" "InstallDir"
+InstallDirRegKey HKCU "${DIR_KEY}" "InstallDir"
 SetCompressor /SOLID lzma
+VIProductVersion "${VERSION}.0"
+VIAddVersionKey /LANG=1033 "ProductName" "${APP}"
+VIAddVersionKey /LANG=1033 "FileDescription" "${APP} setup"
+VIAddVersionKey /LANG=1033 "FileVersion" "${VERSION}"
+VIAddVersionKey /LANG=1033 "ProductVersion" "${VERSION}"
 
 !define MUI_ICON "${__FILEDIR__}\dspi-console.ico"
 !define MUI_UNICON "${__FILEDIR__}\dspi-console.ico"
-; "Run DSPi uConsole" on the last page, started through the shell like the
+; "Run uConsole for DSPi" on the last page, started through the shell like the
 ; Start menu does. The first start after an install takes several seconds
 ; (QML compiled into the cache, files scanned by Defender).
 !define MUI_FINISHPAGE_RUN
@@ -46,18 +66,18 @@ SetCompressor /SOLID lzma
 !insertmacro MUI_LANGUAGE "English"
 
 Function LaunchApp
-  ExecShell "open" "$INSTDIR\DSPiConsole.exe" "" SW_SHOWNORMAL
+  ExecShell "open" "$INSTDIR\${EXE}" "" SW_SHOWNORMAL
 FunctionEnd
 
-; -- WP QD21a -- DSPi uConsole must not be running while its files are replaced or
+; -- WP QD21a -- The app must not be running while its files are replaced or
 ; removed. A running exe can't be opened for writing (Windows maps it), which is
 ; the case that matters: this copy, also when it only shows in the tray. Retry
 ; or cancel; a silent run (/S) cancels, with exit code 2.
 !macro DSPI_NOT_RUNNING
   retry:
-  IfFileExists "$INSTDIR\DSPiConsole.exe" 0 done
+  IfFileExists "$INSTDIR\${EXE}" 0 done
   ClearErrors
-  FileOpen $0 "$INSTDIR\DSPiConsole.exe" a
+  FileOpen $0 "$INSTDIR\${EXE}" a
   IfErrors 0 closed
   MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION \
     "${APP} is running. Quit it (also from its icon in the notification area), then click Retry." \
@@ -83,14 +103,16 @@ Section "Install"
   RMDir /r "$INSTDIR\LICENSES"   ; -- WP QD42 -- and no stale licence texts
   File /r "${BUNDLE}\*.*"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
-  CreateShortcut "$SMPROGRAMS\${APP}.lnk" "$INSTDIR\DSPiConsole.exe"
-  WriteRegStr HKCU "Software\DSPi\${APP}" "InstallDir" "$INSTDIR"
+  Delete "$SMPROGRAMS\${OLD_LINK}"
+  CreateShortcut "$SMPROGRAMS\${APP}.lnk" "$INSTDIR\${EXE}"
+  WriteRegStr HKCU "${DIR_KEY}" "InstallDir" "$INSTDIR"
   WriteRegStr HKCU "${UNINST_KEY}" "DisplayName" "${APP}"
   WriteRegStr HKCU "${UNINST_KEY}" "DisplayVersion" "${VERSION}"
   WriteRegStr HKCU "${UNINST_KEY}" "Publisher" "DSPi unified console maintainers"
-  WriteRegStr HKCU "${UNINST_KEY}" "DisplayIcon" "$INSTDIR\DSPiConsole.exe"
+  WriteRegStr HKCU "${UNINST_KEY}" "DisplayIcon" "$INSTDIR\${EXE}"
   WriteRegStr HKCU "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKCU "${UNINST_KEY}" "UninstallString" '"$INSTDIR\Uninstall.exe"'
+  WriteRegStr HKCU "${UNINST_KEY}" "QuietUninstallString" '"$INSTDIR\Uninstall.exe" /S'
   WriteRegDWORD HKCU "${UNINST_KEY}" "NoModify" 1
   WriteRegDWORD HKCU "${UNINST_KEY}" "NoRepair" 1
 SectionEnd
@@ -99,7 +121,10 @@ Section "Uninstall"
   ; The settings (%APPDATA%\DSPi) stay, as Windows apps usually leave them
   Call un.CheckNotRunning
   Delete "$SMPROGRAMS\${APP}.lnk"
+  Delete "$SMPROGRAMS\${OLD_LINK}"
   RMDir /r "$INSTDIR"
   DeleteRegKey HKCU "${UNINST_KEY}"
-  DeleteRegKey HKCU "Software\DSPi\${APP}"
+  DeleteRegKey HKCU "${DIR_KEY}"
+  ; -- WP QPI4 -- open at login would start a deleted exe
+  DeleteRegValue HKCU "${RUN_KEY}" "${RUN_NAME}"
 SectionEnd

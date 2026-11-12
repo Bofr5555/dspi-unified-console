@@ -119,8 +119,9 @@ void onboardingSection(SmokeDriver &d) {
     const QString notesJson = QString::fromUtf8(QJsonDocument::fromVariant(ob->releases()).toJson());
     d.check(QStringLiteral("qp17: release notes come from the core"), !ob->releases().isEmpty() && notesJson.contains("1.1.6-beta4"));
     d.check(QStringLiteral("qp17: release notes have nothing left to resolve"), !notesJson.contains(QLatin1String("[[")));
+    // -- WP QP18 -- this app keeps the effect windows under Tools, as the Mac does
     d.check(QStringLiteral("qp17: the notes name this app's menu"),
-            notesJson.contains(QLatin1String("Effects > ")) && !notesJson.contains(QLatin1String("Tools > Tube")));
+            notesJson.contains(QLatin1String("Tools > Tube Modeller (Ctrl+Shift+D)")) && !notesJson.contains(QLatin1String("Effects > ")));
     d.check(QStringLiteral("qp17: the notes are newest first"),
             ob->releases().value(0).toMap().value(QStringLiteral("version")).toString() == "1.1.6");
     d.check(QStringLiteral("qp17: the bundled firmware is read from the images"), ob->bundledFirmware() == "1.1.6");

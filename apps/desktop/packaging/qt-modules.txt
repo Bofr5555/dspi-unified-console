@@ -1,0 +1,37 @@
+# The Qt modules the desktop app needs, in one place (-- WP QPI4 --). Read by
+# qt/CMakeLists.txt (link), qt/cmake/wp/qp20.cmake (import, package: the .deb's
+# Depends, and a configure-time check that every module qt/qml imports is
+# listed) and the two deploy scripts, windows/deploy-mingw.sh and
+# linux/make-appimage.sh (runtime). What each image installs is pinned apart,
+# in licences/qt-modules.sh; the plugin lists in the deploy scripts differ by
+# platform and stay there.
+#
+#   link <component>           a Qt6 component both targets link (Linux adds DBus)
+#   import <module> <package>  a QML module qt/qml imports, and its Debian package
+#   package <package>          another Debian package the app loads at run time
+#   runtime <qml dir>          a QML module Controls.Basic loads at run time,
+#                              beside what qmlimportscanner finds
+link Core
+link Gui
+link Widgets
+link Qml
+link Quick
+link QuickControls2
+link Svg
+import QtQuick qml6-module-qtquick
+import QtQuick.Controls.Basic qml6-module-qtquick-controls
+import QtQuick.Layouts qml6-module-qtquick-layouts
+import QtQuick.Window qml6-module-qtquick-window
+import QtQml qml6-module-qtqml
+import QtCore qml6-module-qtcore
+package qml6-module-qtquick-templates
+package qml6-module-qtqml-workerscript
+package qt6-qpa-plugins
+package qt6-svg-plugins
+runtime QtQuick/Controls/impl
+runtime QtQuick/Controls/Basic
+runtime QtQuick/Controls/Basic/impl
+runtime QtQuick/Templates
+runtime QtQml/WorkerScript
+runtime QtQml/Models
+runtime QtQml/Base

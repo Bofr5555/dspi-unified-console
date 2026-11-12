@@ -64,7 +64,8 @@ public:
 
     // Lets the running job finish, drops the rest and joins the thread. Called
     // once, on the GUI thread, before the core is freed; post() does nothing
-    // afterwards. The jobs that never ran are destroyed on the caller's thread.
+    // afterwards. The jobs that never ran are destroyed on the caller's thread,
+    // as every job that ran is (runOne sends it home, QPI4).
     void stop();
 
 private:

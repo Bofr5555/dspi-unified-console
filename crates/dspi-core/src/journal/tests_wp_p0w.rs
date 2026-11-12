@@ -943,7 +943,7 @@ fn remote_demo() -> (Arc<DspiCore>, dspi_transport::FakeRemote) {
     (core, remote)
 }
 
-/// Our master volume, then the computer's volume control moves it.
+/// Our master volume, then the USB audio volume control moves it.
 fn overwritten_by_uac1() -> (Arc<DspiCore>, f32) {
     let (core, remote) = remote_demo();
     let start = core.get_state().master_volume_db;
@@ -973,7 +973,11 @@ fn wp_p0w_fixup_a_foreign_change_skip_and_name() {
     assert_eq!(m.skipped.len(), 1);
     assert_eq!(m.skipped[0].path, "vol.master");
     let note = m.note.unwrap();
-    assert!(note.contains("the computer's volume control"), "{note}");
+    // -- WP QPI4 -- the label and no host-device noun
+    assert_eq!(
+        note,
+        "Master volume was changed by the USB audio volume control since; it was left as they set it"
+    );
     assert_eq!(core.get_state().master_volume_db, -12.0, "theirs stays");
     assert!(!core.can_undo() && !core.can_redo(), "the entry is gone");
 }

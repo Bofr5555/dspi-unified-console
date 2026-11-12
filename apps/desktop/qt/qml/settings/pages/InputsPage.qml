@@ -73,7 +73,7 @@ SettingsPage {
         SettingsToggle {
             objectName: "Inputs.lg"
             title: qsTr("LG Sound Sync")
-            caption: qsTr("Decode the LG TV's TOSLINK volume + mute signaling and apply it as the host volume - TV remote becomes the volume control. Per-preset; saved with the active preset.")
+            caption: qsTr("Decode the LG TV's TOSLINK volume + mute signaling and apply it as the volume - TV remote becomes the volume control. Per-preset; saved with the active preset.")
             enabled: page.has.lgSoundSync === true
             checked: page.state.lgEnabled === true
             onToggled: on => page.hw.setLgSoundSync(on)

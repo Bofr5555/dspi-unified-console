@@ -30,8 +30,8 @@ rows=(
   "linux-qt6|Linux Qt 6|container|qt"
   "linux-qt6-demo|Linux Qt 6, demo device, offscreen|container|qt-offscreen"
   "linux-terminal|Linux Terminal|container|terminal"
-  # -- WP QP0 -- The new Qt tree's Windows packaging is QP20's
-  "windows-qt|Windows Qt (MinGW), zip and installer|container|-disabled until QP20 rewrites the Windows packaging"
+  # -- WP QP20 -- The Windows packaging of the new Qt tree, back on
+  "windows-qt|Windows Qt (MinGW), zip and installer|container|qt-windows"
   "windows-gnu|Windows workspace (GNU)|container|windows-gnu"
   "windows-terminal|Windows core and Terminal (MSVC)|xwin, container|windows-msvc"
   "android-libs|Android core libraries, three ABIs|cross container|android"

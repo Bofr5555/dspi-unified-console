@@ -31,8 +31,10 @@ Rectangle {
     function faint(c, alpha) {
         return Qt.rgba(c.r, c.g, c.b, alpha)
     }
+    // -- WP QP18 -- A neutral edge: the channel's colour is the heading's dot
+    // only (docs/UI-MODES.md §7, small tags)
     function edge(at) {
-        return columns.length ? faint(tint(columns[at === 0 ? 0 : columns.length - 1]), 0.3) : Theme.separator
+        return Theme.separator
     }
 
     implicitHeight: headerHeight + 1 + 12 + 10 * rowHeight
@@ -118,7 +120,7 @@ Rectangle {
                         Layout.topMargin: 3
                         Layout.bottomMargin: 3
                         channel: column.modelData.channel
-                        color: column.tone
+                        color: Theme.meterLevel   // -- WP QP18 --
                         trackColor: card.faint(Theme.text, 0.08)
                         clipColor: Theme.danger
                         clipping: column.modelData.channel < 32
@@ -133,7 +135,7 @@ Rectangle {
                         model: BandListModel { channel: column.modelData.channel }
                         DashboardRow {
                             Layout.preferredHeight: card.rowHeight
-                            tone: column.tone
+                            tone: Theme.text   // -- WP QP18 -- band codes in text colour
                         }
                     }
                     Item { Layout.fillHeight: true }

@@ -83,6 +83,12 @@ void checkCoalescing(SmokeDriver &d) {
     const int run0 = device->settersRun();
     int done = 0;
     QString last;
+    // -- WP QPI4 -- the worker is held while the writes queue, so the count
+    // does not depend on how fast it runs (it flaked once under build load)
+    auto release = std::make_shared<std::atomic<bool>>(false);
+    d.app().core->worker()->post([release](FfiCore *) {
+        for (int i = 0; i < 2500 && !release->load(); ++i) QThread::msleep(2);
+    });
     // Thirty writes to one target in one go, as a slider drag delivers them
     for (int i = 0; i < 30; ++i) {
         last = QStringLiteral("QP0 Drag %1").arg(i);
@@ -91,9 +97,10 @@ void checkCoalescing(SmokeDriver &d) {
                       [utf8](FfiCore *c) { return dspi_set_channel_name(c, 0, utf8.constData()); },
                       [&done](bool) { ++done; });
     }
+    release->store(true);
     d.check(QStringLiteral("qp0: coalesced writes finish"), d.waitFor(5000, [&]() { return done == 30; }));
     const int ran = device->settersRun() - run0;
-    d.check(QStringLiteral("qp0: thirty writes to one target run at most twice (ran %1)").arg(ran), ran >= 1 && ran <= 2);
+    d.check(QStringLiteral("qp0: thirty writes to one target queued behind a held worker run once (ran %1)").arg(ran), ran == 1);
     d.check(QStringLiteral("qp0: the newest value wins"),
             d.waitFor(3000, [&]() { return device->channels()->get(0, QStringLiteral("name")).toString() == last; }));
     // Writes to different targets are not merged
@@ -145,12 +152,38 @@ void checkUnrunJobs(SmokeDriver &d) {
     }
 }
 
+// -- WP QPI4 -- A job that ran is destroyed on the GUI thread too: whatever
+// its closures own (a QTimer behind a shared_ptr) never dies on the worker's
+void checkRunJobs(SmokeDriver &d) {
+    struct Witness {
+        QThread **diedOn;
+        explicit Witness(QThread **out) : diedOn(out) {}
+        Witness(const Witness &) = delete;
+        ~Witness() {
+            if (diedOn) *diedOn = QThread::currentThread();
+        }
+    };
+    QThread *diedOn = nullptr;
+    QThread *ranOn = nullptr;
+    CoreWorker worker(nullptr);
+    {
+        auto witness = std::make_shared<Witness>(&diedOn);
+        worker.post([witness, &ranOn](FfiCore *) { ranOn = QThread::currentThread(); });
+    }
+    // The job is the witness's last owner now
+    d.waitFor(2000, [&]() { return worker.pending() == 0 && diedOn != nullptr; });
+    d.check(QStringLiteral("qpi4: a job the worker ran is destroyed on the GUI thread"),
+            ranOn && ranOn != QThread::currentThread() && diedOn == QThread::currentThread());
+    worker.stop();
+}
+
 void coreSection(SmokeDriver &d) {
     d.check(QStringLiteral("qp0: a device is open"), d.waitFor(10000, [&]() { return d.app().device->connected(); }));
     checkPolls(d);
     checkCoalescing(d);
     checkNoDevice(d);
     checkUnrunJobs(d);
+    checkRunJobs(d);
 }
 
 const SmokeDriver::Section core("qp0-core", 1, &coreSection);

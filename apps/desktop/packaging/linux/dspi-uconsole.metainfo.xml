@@ -2,6 +2,9 @@
 <!-- AppStream metadata (freedesktop.org AppStream specification, desktop-application) -->
 <component type="desktop-application">
   <id>dspi-uconsole</id>
+  <!-- WP QP20: the app's licence label, and this file's -->
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
   <name>uConsole for DSPi</name>
   <summary>Set up and control a DSPi audio processor</summary>
   <description>

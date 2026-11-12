@@ -12,11 +12,14 @@
 #include "GraphController.h"
 #include "Registrar.h"
 #include "Shell.h"
+#include "SidebarController.h"
+#include "SiggenController.h"
 
 #include <QQuickItem>
 #include <algorithm>
 #include <QQuickWindow>
 #include <QTest>
+#include <atomic>
 #include <cmath>
 
 namespace {
@@ -303,6 +306,38 @@ void outputPage(Pages &p) {
     d.check(QStringLiteral("qp2: screenshot of the output page"), d.grab(p.w, QStringLiteral("window-output.png")));
 }
 
+// -- WP QPI4 -- The card's own menu: a right-click off its controls offers
+// Identify, played by the generator's controller as the sidebar's is
+void cardIdentify(Pages &p) {
+    SmokeDriver &d = p.d;
+    auto *card = qobject_cast<QQuickItem *>(p.obj(QStringLiteral("OutputCard")));
+    auto *sidebar = Registrar::instance<SidebarController>();
+    auto *siggen = Registrar::instance<SiggenController>();
+    d.check(QStringLiteral("qpi4: the demo can identify outputs"),
+            sidebar && siggen && d.waitFor(3000, [&]() { return sidebar->identifySupported() && siggen->controlsEnabled(); }));
+    if (!card || !sidebar || !siggen) return;
+    const QPointF corner = card->mapToScene(QPointF(3, card->height() - 3));
+    QTest::mouseClick(p.w, Qt::RightButton, Qt::NoModifier, corner.toPoint());
+    QObject *menu = p.obj(QStringLiteral("OutputCard.menu"), card);
+    d.check(QStringLiteral("qpi4: a right-click on the output card opens its menu"), p.opened(menu));
+    QObject *identify = p.obj(QStringLiteral("OutputCard.menu.identify"), card);
+    d.check(QStringLiteral("qpi4: the card's menu offers Identify"), identify && identify->property("enabled").toBool());
+    if (!identify) return;
+    const int before = p.device->settersRun();
+    QMetaObject::invokeMethod(identify, "click");
+    d.waitIdle();
+    d.check(QStringLiteral("qpi4: Identify on the card starts the generator once"), p.device->settersRun() == before + 1);
+    auto played = std::make_shared<SiggenConfig>();
+    auto read = std::make_shared<std::atomic<bool>>(false);
+    d.app().core->worker()->post([played, read](FfiCore *core) { read->store(dspi_siggen_get_config(core, played.get())); });
+    d.waitIdle();
+    d.check(QStringLiteral("qpi4: the card's Identify plays the channel ID on output 1 alone"),
+            read->load() && played->signal_type == SiggenController::ChannelId && played->channel_mask == 1 && played->repeat == 2);
+    d.app().core->worker()->post([](FfiCore *core) { dspi_siggen_control(core, SIGGEN_CTL_STOP_NOW); });
+    d.waitIdle();
+    d.check(QStringLiteral("qpi4: the card's menu closes"), menu && d.waitFor(1000, [&]() { return !menu->property("opened").toBool(); }));
+}
+
 void crossoverTab(Pages &p) {
     SmokeDriver &d = p.d;
     p.show("output", 0);
@@ -426,6 +461,7 @@ void channelSection(SmokeDriver &d) {
     filterTypes(p);
     inputPage(p);
     outputPage(p);
+    cardIdentify(p);
     crossoverTab(p);
     enableQuestions(p);
     readOnly(p);

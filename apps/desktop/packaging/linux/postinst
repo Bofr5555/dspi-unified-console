@@ -1,0 +1,10 @@
+#!/bin/sh
+# After the .deb or .rpm put the udev rule in place: udev reads it now, and a
+# DSPi already plugged in gets the uaccess tag without being replugged. Where
+# udev is not running (a container, a chroot) there is nothing to tell.
+set -e
+if [ -d /run/udev ] && command -v udevadm >/dev/null 2>&1; then
+    udevadm control --reload-rules || true
+    udevadm trigger --subsystem-match=usb --action=change || true
+fi
+exit 0

@@ -1,13 +1,17 @@
 #!/bin/bash
 # Tests the installer and uninstaller under Wine, silently (/S), in a fresh
 # Wine prefix: they install and remove the app, and refuse (exit code 2,
-# nothing replaced or removed) while the installed DSPi uConsole is running.
+# nothing replaced or removed) while the installed app is running.
 # Runs in the build image, after build-windows.sh:
 #   ci/run.sh 'apps/desktop/packaging/windows/test-installer.sh /work/dist-windows/DSPi-uConsole-<v>-windows-x86_64-setup.exe'
 # The app runs on the demo device under Xvfb; no device, no network needed.
 # -- WP QD42 -- The install, and the zip beside the installer, carry the licence
 # texts: NOTICE.txt and LICENSES/ (Qt's, GCC's runtime exception, every DLL
 # listed in BUNDLED.txt).
+# -- WP QP20 -- The name people see is "uConsole for DSPi"; the notice labels
+# it GPL-3.0-only and carries Lucide's licence. An install made by an earlier
+# installer (uninstall key DSPiuConsole, the "DSPi uConsole" Start menu
+# shortcut, its folder) is updated in place, not installed twice.
 set -uo pipefail
 setup=$(realpath "$1")
 export WINEPREFIX=${WINEPREFIX:-$HOME/wine-installer-test} WINEDEBUG=-all WINEDLLOVERRIDES="mscoree,mshtml="
@@ -28,31 +32,48 @@ cleanup() { wineserver -k 2>/dev/null; kill "$xvfb" 2>/dev/null; wait 2>/dev/nul
 trap cleanup EXIT
 wineboot -i >/dev/null 2>&1; wineserver -w
 
-wine "$setup" /S "/D=$dir"; check "install" 0 $?
+# -- WP QP20 -- An earlier install's entries, as its installer wrote them: the
+# uninstall key, the folder key and the old Start menu shortcut
+key='HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\DSPiuConsole'
+wine reg add "$key" /v DisplayName /d "DSPi uConsole" /f >/dev/null 2>&1
+wine reg add 'HKCU\Software\DSPi\DSPi uConsole' /v InstallDir /d "$dir" /f >/dev/null 2>&1
+programs=$(find "$WINEPREFIX/drive_c/users" -type d -path '*Start Menu/Programs' 2>/dev/null | head -n 1)
+if [ -n "$programs" ]; then : >"$programs/DSPi uConsole.lnk"
+else echo "test-installer: FAIL: no Start menu folder in the Wine prefix to put an earlier shortcut in"; fails=$((fails + 1)); fi
+wineserver -w
+
+wine "$setup" /S; check "install (over an earlier install, into its folder)" 0 $?
 [ -f "$unix/DSPiConsole.exe" ] || { echo "test-installer: FAIL: no DSPiConsole.exe after the install"; exit 1; }
 # -- WP QD21c -- the publisher Apps & features shows
-key='HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\DSPiuConsole'
 publisher=$(wine reg query "$key" /v Publisher 2>/dev/null | tr -d '\r' | sed -n 's/.*REG_SZ *//p')
 [ -n "$publisher" ] && echo "test-installer: ok: Publisher \"$publisher\"" \
     || { echo "test-installer: FAIL: no Publisher in the uninstall entry"; fails=$((fails + 1)); }
 # -- WP REL013R -- the name in Settings > Apps and the Start menu
 display=$(wine reg query "$key" /v DisplayName 2>/dev/null | tr -d '\r' | sed -n 's/.*REG_SZ *//p')
 menu=$(find "$WINEPREFIX/drive_c/users" -path '*Start Menu/Programs/*' -name '*.lnk' -printf '%f\n' 2>/dev/null)
-[ "$display" = "DSPi uConsole" ] && [ "$menu" = "DSPi uConsole.lnk" ] \
-    && echo "test-installer: ok: DisplayName \"$display\", Start menu \"$menu\"" \
-    || { echo "test-installer: FAIL: DisplayName \"$display\", Start menu \"$menu\" (expected DSPi uConsole)"; fails=$((fails + 1)); }
+[ "$display" = "uConsole for DSPi" ] && [ "$menu" = "uConsole for DSPi.lnk" ] \
+    && echo "test-installer: ok: DisplayName \"$display\", Start menu \"$menu\" (the earlier shortcut replaced)" \
+    || { echo "test-installer: FAIL: DisplayName \"$display\", Start menu \"$menu\" (expected uConsole for DSPi, one shortcut)"; fails=$((fails + 1)); }
+version=$(wine reg query "$key" /v DisplayVersion 2>/dev/null | tr -d '\r' | sed -n 's/.*REG_SZ *//p')
+case $setup in *"-$version-windows-x86_64-setup.exe") echo "test-installer: ok: DisplayVersion $version" ;;
+    *) echo "test-installer: FAIL: DisplayVersion \"$version\" is not the setup's"; fails=$((fails + 1)) ;; esac
 
 # -- WP QD42 -- the licence files
 lic_ok=1
 for f in NOTICE.txt LICENSES/GPL-3.0.txt LICENSES/LGPL-3.0.txt LICENSES/BUNDLED.txt LICENSES/Qt/THIRD-PARTY.txt \
          LICENSES/Qt/LGPL-3.0-only.txt LICENSES/bundled/mingw64-libgcc/COPYING.RUNTIME LICENSES/bundled/mingw64-libstdc++/COPYING.RUNTIME \
-         LICENSES/TERMS.txt LICENSES/rust-crates.txt; do
+         LICENSES/TERMS.txt LICENSES/rust-crates.txt LICENSES/Lucide/LICENSE; do
     [ -s "$unix/$f" ] || { echo "test-installer: FAIL: no $f in the install"; lic_ok=; }
 done
-grep -q "any later version" "$unix/NOTICE.txt" || { echo "test-installer: FAIL: NOTICE.txt does not say GPL-3.0-or-later"; lic_ok=; }
+# -- WP QP20 -- the package's label, its name, our contributions' or-later, Lucide
+flat=$(tr '\n' ' ' <"$unix/NOTICE.txt" | tr -s ' ')
+for s in "Licence: GPL-3.0-only" "uConsole for DSPi" "any later version" "LICENSES/Lucide/LICENSE" "-desktop-source.tar.gz"; do
+    case $flat in *"$s"*) ;; *) echo "test-installer: FAIL: NOTICE.txt does not say \"$s\""; lic_ok= ;; esac
+done
+grep -q "^ISC License" "$unix/LICENSES/Lucide/LICENSE" || { echo "test-installer: FAIL: LICENSES/Lucide/LICENSE is not Lucide's licence"; lic_ok=; }
 # -- WP LIC1 -- the additional terms in the notice, and the Rust crates notice
-grep -q "section 7 (LICENSES/TERMS.txt" "$unix/NOTICE.txt" && grep -q "No trademark rights (7e)" "$unix/NOTICE.txt" \
-    || { echo "test-installer: FAIL: NOTICE.txt lacks the additional terms"; lic_ok=; }
+case $flat in *"section 7 (LICENSES/TERMS.txt"*) ;; *) echo "test-installer: FAIL: NOTICE.txt lacks the additional terms"; lic_ok= ;; esac
+grep -q "No trademark rights (7e)" "$unix/NOTICE.txt" || { echo "test-installer: FAIL: NOTICE.txt lacks the additional terms"; lic_ok=; }
 grep -q "^Third-party Rust crates linked into" "$unix/LICENSES/rust-crates.txt" 2>/dev/null \
     || { echo "test-installer: FAIL: LICENSES/rust-crates.txt is not the Rust crates notice"; lic_ok=; }
 # Every bundled package has its licence text (a non-empty LICENSES/bundled/<package>/)
@@ -69,7 +90,7 @@ done
 zip=${setup%-setup.exe}.zip
 if [ -f "$zip" ]; then
     names=$(python3 -m zipfile -l "$zip" | awk '{print $1}')
-    for f in NOTICE.txt LICENSES/BUNDLED.txt LICENSES/Qt/THIRD-PARTY.txt LICENSES/TERMS.txt LICENSES/rust-crates.txt; do
+    for f in NOTICE.txt LICENSES/BUNDLED.txt LICENSES/Qt/THIRD-PARTY.txt LICENSES/TERMS.txt LICENSES/rust-crates.txt LICENSES/Lucide/LICENSE; do
         grep -q "^[^/]*/$f$" <<<"$names" || { echo "test-installer: FAIL: no $f in ${zip##*/}"; lic_ok=; }
     done
 fi
@@ -91,10 +112,23 @@ wine "$unix/Uninstall.exe" /S "_?=$dir"; check "uninstall while the app runs is 
 
 # Quit it: the installer and uninstaller go through
 kill "$app" 2>/dev/null; wineserver -k; wineserver -w; wait "$app" 2>/dev/null
+# -- WP QPI4 -- open at login on, as the app writes it: an update keeps it,
+# the uninstall removes it
+run='HKCU\Software\Microsoft\Windows\CurrentVersion\Run'
+wine reg add "$run" /v "DSPi uConsole" /d "\"$dir\\DSPiConsole.exe\"" /f >/dev/null 2>&1
 wine "$setup" /S "/D=$dir"; check "install after the app quit" 0 $?
+wine reg query "$run" /v "DSPi uConsole" >/dev/null 2>&1 && echo "test-installer: ok: an update keeps open at login" \
+    || { echo "test-installer: FAIL: the update removed the open-at-login entry"; fails=$((fails + 1)); }
 wine "$unix/Uninstall.exe" /S "_?=$dir"; check "uninstall after the app quit" 0 $?
+wine reg query "$run" /v "DSPi uConsole" >/dev/null 2>&1 \
+    && { echo "test-installer: FAIL: the open-at-login entry is still there"; fails=$((fails + 1)); } \
+    || echo "test-installer: ok: the open-at-login entry is removed"
 [ ! -e "$unix/DSPiConsole.exe" ] && echo "test-installer: ok: the app's files are removed" \
     || { echo "test-installer: FAIL: DSPiConsole.exe is still there after the uninstall"; fails=$((fails + 1)); }
+left=$(find "$WINEPREFIX/drive_c/users" -path '*Start Menu/Programs/*' -name '*.lnk' -printf '%f ' 2>/dev/null)
+wine reg query "$key" >/dev/null 2>&1 && { echo "test-installer: FAIL: the uninstall key is still there"; fails=$((fails + 1)); }
+[ -z "$left" ] && echo "test-installer: ok: no Start menu shortcut and no uninstall key left" \
+    || { echo "test-installer: FAIL: Start menu shortcuts left: $left"; fails=$((fails + 1)); }
 
 [ "$fails" = 0 ] && echo "test-installer: PASS" || echo "test-installer: $fails failed"
 [ "$fails" = 0 ]

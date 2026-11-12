@@ -391,9 +391,13 @@ void wheelAndKeys(Peqs &p) {
     d.check(QStringLiteral("qp4: Ctrl+A selects every band (not the Edit menu's Select All)"), p.selected() == (QSet<int>{ 0, 1 }));
     p.key(Qt::Key_Escape);
     d.check(QStringLiteral("qp4: Escape deselects"), p.selected().isEmpty());
-    // Tab goes on from the last band stepped to, the selection gone or not
+    // -- WP QP18 -- With nothing selected Tab leaves the graph (no keyboard
+    // trap); back on it, an arrow picks the band after the last one stepped to
     p.key(Qt::Key_Tab);
-    d.check(QStringLiteral("qp4: Tab after Escape goes on from the last band"), p.selected() == QSet<int>{ 1 });
+    d.check(QStringLiteral("qp18: Tab after Escape leaves the graph"), !p.ov->hasActiveFocus() && p.selected().isEmpty());
+    p.ov->forceActiveFocus();
+    p.key(Qt::Key_Right);
+    d.check(QStringLiteral("qp18: an arrow with nothing selected picks the next band"), p.selected() == QSet<int>{ 1 });
     p.key(Qt::Key_Return);
     p.settle();
     QObject *input = p.obj(QStringLiteral("PeqBar.input.0"));
