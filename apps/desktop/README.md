@@ -33,19 +33,21 @@ By hand, in the container:
 ## Layout
 
     qt/CMakeLists.txt        one QML module, UConsole: every QML file, C++ type and icon
+    qt/cmake/wp/             each work package's own file list (<wp>.cmake)
     qt/src/main.cpp          the app's start and end
     qt/src/AppIdentity.h     the display name, the settings names, the project's links
     qt/src/core/             the core wrapper: Core, CoreWorker, DeviceModel, the list models
     qt/src/controllers/      Registrar, Shell; one controller per feature
     qt/src/platform/         the icon provider, the token store, tray and system integration
     qt/qml/Theme/            Theme (every colour, size and font) and ChannelPalette
-    qt/qml/components/       the shared controls: slider, field, pill, card, popover,
-                             banner, icon, menus, tooltip, tool window
+    qt/qml/components/       the shared controls (below)
     qt/qml/main/             the main window, the menu table, the banner host, the
                              sidebar, the right pane, the device button
     qt/icons/lucide/         the Lucide icons the app ships (manifest.txt, fetch-lucide.sh)
     qt/icons/own/            icons drawn for the app, in Lucide's style
-    qt/smoke/                the offscreen smoke driver (NAMES.md: object names)
+    qt/smoke/                the offscreen smoke driver (NAMES.md: the naming rule;
+                             names/<wp>.md: each package's names)
+    qt/tools/contrast.py     the theme's WCAG contrast check (ci/check.sh --step qt)
     qt/translations/         dspi-uconsole_en.ts, generated (English only)
     packaging/               installers and packages per platform
 
@@ -62,8 +64,53 @@ By hand, in the container:
   processes the batch (`dspi_process_notifications`) and reads a snapshot when
   something changed.
 - **Writes** go one way: a controller validates and calls
-  `DeviceModel::write()` with the setter; the setter runs on the worker, a
-  fresh snapshot follows, and a refusal emits `writeFailed`.
+  `DeviceModel::write(what, setter, done)`; the setter runs on the worker, a
+  fresh snapshot follows, and a refusal emits `writeFailed`. `what` is also the
+  coalescing key: a write whose key matches one still queued replaces it
+  (latest wins), so name a write by its target (`"output gain 3"`). A slider
+  dragged over a slow link then sends its newest value, not a backlog.
+- **Periodic reads** go through `Poller` (`AppContext::poller`), never a timer of
+  a controller's own. The base runs two polls: the meters every 60 ms
+  (`Poller.peaks`, `clipFlags`) and the status every second (`cpu0`, `cpu1`,
+  `activeInputs`). A package adds its own:
+
+      m_poll = ctx.poller->add(QStringLiteral("subharmonic meter"), 100, this,
+          [](FfiCore *c) { float v = 0; return dspi_fetch_subharm_meter(c, &v) ? v : NAN; },  // worker
+          [this](float v) { setMeter(v); });                                                 // GUI
+      ctx.poller->setEnabled(m_poll, windowShown);
+
+  A tick is skipped while the poll's last read is in flight; nothing polls
+  while no device is open; over a slow transport (`Poller.slowTransport`, set
+  by the Link client) every poll runs at 2 Hz at most. Polls are never paused
+  for anything else.
+
+## Components
+
+`qml/components/`, each with `Accessible.role` and `Accessible.name` and themed
+for both schemes; screens use these, not the Basic style's controls:
+
+| Component | For |
+|---|---|
+| `AppButton` | push buttons; `primary` (accent), `destructive`, `iconName`, `toolTip` |
+| `IconButton` | borderless icon buttons; `secondaryClicked` (right-click) |
+| `AppSwitch`, `AppCheckBox` | on/off settings; the check box also partly checked |
+| `AppComboBox` | popup choices (presets, sources, settings pickers); `label` |
+| `AppSpinBox` | a number with steppers in real units: `realValue`, `realFrom/To/Step`, `decimals`, `unit`, `committed` |
+| `CustomSlider` | sliders: `valueMoved` live (≤ 30/s), `committed` on release; right-click resets |
+| `BorderedField` | text fields; `committed`, Escape restores |
+| `AppTabBar` + `AppTabButton` | segmented choices (PEQ / XO) |
+| `AppScrollBar` | `ScrollBar.vertical: AppScrollBar {}` |
+| `SectionHeading` | section titles (`caps`, `rule`) |
+| `Card`, `Pill` | grouped controls; channel labels and curve toggles |
+| `PopoverPanel` | popovers anchored to a control |
+| `QuestionDialog` | questions before a change: `acceptText`, `rejectText`, `alternativeText`, `destructive`, `answered(answer)` |
+| `Banner` | the banners under the menu bar |
+| `Icon`, `HelpTip` | Lucide icons tinted by the theme; tooltips |
+| `AppMenu`, `AppMenuItem`, `AppMenuBar` | menus |
+| `ToolWindow` | tool windows: remembered size, the menu table's shortcuts (`TableShortcuts`) |
+
+Colours come from `Theme` tokens only. Text tokens reach WCAG AA (4.5:1) on
+every surface; `tools/contrast.py` checks it in `ci/check.sh --step qt`.
 
 ## Adding a feature
 
@@ -82,8 +129,31 @@ A work package adds its files without editing the shell:
 - a **smoke section** with `SmokeDriver::Section` in its own file under
   `qt/smoke/`.
 
-New files go into the lists in `CMakeLists.txt` under the work package's
-marker. `src/controllers/Registrar.h` has the details.
+`src/controllers/Registrar.h` has the details.
+
+## Shared files: the merge rule
+
+Work packages run in parallel on branches cut from `qtport`. So that their
+merges do not conflict, nothing generated or listed is edited by two of them:
+
+- **Files to build:** each package lists its sources, QML files, singletons
+  and smoke sections in its own `qt/cmake/wp/<wp>.cmake` (`cmake/wp/README.md`).
+  `CMakeLists.txt` includes them all; packages do not edit it.
+- **Icons:** each package names the icons it adds in
+  `qt/icons/lucide/manifest.d/<wp>.txt` and commits the SVGs
+  `icons/fetch-lucide.sh` copies; `manifest.txt` is the base's.
+- **The translation file** `qt/translations/dspi-uconsole_en.ts` is not
+  committed by a package. The coordinator regenerates it on `qtport` after
+  each merge (QP18 during its pass), and `ci/check.sh --step qt-ts` checks it
+  there. On a package's branch `--step qt` skips the `.ts` check
+  (`DSPI_TS_CHECK=1` forces it).
+- **Smoke object names:** each package documents its names in
+  `qt/smoke/names/<wp>.md`; `NAMES.md` holds only the rule.
+- **The menu table** (`qml/main/MenuTable.qml`) has every row already; a
+  package fills a row through `Shell` and edits the table only to add a row,
+  under its `// -- WP <ID> --` marker.
+- **The parked files' table** below is updated by the coordinator when a
+  package that adapts a parked file is merged.
 
 ## Parked files
 

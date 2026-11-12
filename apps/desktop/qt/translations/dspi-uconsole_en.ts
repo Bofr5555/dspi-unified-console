@@ -2,6 +2,17 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="en" sourcelanguage="en">
 <context>
+    <name>AppScrollBar</name>
+    <message>
+        <source>Vertical scroll bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Horizontal scroll bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>Banner</name>
     <message>
         <source>Dismiss</source>
@@ -267,6 +278,17 @@
     </message>
 </context>
 <context>
+    <name>QuestionDialog</name>
+    <message>
+        <source>OK</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>RightPane</name>
     <message>
         <source>No Device Connected</source>
@@ -321,6 +343,10 @@
 </context>
 <context>
     <name>main</name>
+    <message>
+        <source>Displays version information.</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>Open the demo device.</source>
         <translation type="unfinished"></translation>

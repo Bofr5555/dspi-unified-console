@@ -33,7 +33,9 @@
 #                                     JSPI (NODE in images.conf), the demo device in
 #                                     two sessions, no threads
 #       qt                            the Qt desktop app, Qt 6.8 or newer
-#                                     (crates/dspi-capi, library dspi_capi)
+#                                     (crates/dspi-capi, library dspi_capi); the
+#                                     .ts check only on qtport/main or with
+#                                     DSPI_TS_CHECK=1; the theme's contrast
 #       qt-ts                         translations/dspi-uconsole_en.ts is what
 #                                     lupdate makes of the sources (WP QD40; the
 #                                     qt step runs it too)
@@ -189,8 +191,17 @@ for s in "${steps[@]}"; do
     qt)
       # -- WP QP0 -- The new tree (Qt 6.8 or newer, no Qt 5); its own build directory
       $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && cmake -S apps/desktop/qt -B /work/build-desktop-qt -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_CARGO_TARGET_DIR=/target && cmake --build /work/build-desktop-qt"
-      # -- WP QD40 -- and the .ts is current
-      $RUN "$TSCHECK"
+      # -- WP QD40 -- and the .ts is current. -- WP QP0 -- Only on the integration
+      # branches (or DSPI_TS_CHECK=1): a work package's branch does not commit the
+      # .ts, the coordinator regenerates it when merging (apps/desktop/README.md)
+      case "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" in
+        qtport|main) ts_check=1 ;;
+        *) ts_check=${DSPI_TS_CHECK:-0} ;;
+      esac
+      if [ "$ts_check" = 1 ]; then $RUN "$TSCHECK"
+      else echo "qt: the .ts check is skipped on this branch (the coordinator runs --step qt-ts after merging)"; fi
+      # -- WP QP0 -- the theme's text colours reach WCAG AA
+      $RUN "python3 apps/desktop/qt/tools/contrast.py apps/desktop/qt/qml/Theme/Theme.qml apps/desktop/qt/qml/Theme/ChannelPalette.qml"
       # -- WP LIC1 -- and the packages' Rust crates notice is current
       $RUN "python3 apps/desktop/packaging/licences/gen_rust_notices.py --check" ;;
     qt-ts)
