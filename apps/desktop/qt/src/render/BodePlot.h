@@ -97,6 +97,9 @@ public:
     // Runs in the scene graph's sync (the GUI thread waits): reads, never writes
     void paint(QPainter *painter) override;
 
+protected:
+    void geometryChange(const QRectF &now, const QRectF &before) override;
+
 signals:
     void graphChanged();
     void layersChanged();
@@ -108,8 +111,20 @@ private:
     struct Line {
         QVector<double> from, to, shown;
     };
+    // Sets `field`; true when that changed it
+    template <class T>
+    static bool change(T &field, const T &value) {
+        if (field == value) return false;
+        field = value;
+        return true;
+    }
+    void restyle();
     void retarget();
     void tick();
+    // Where `hz` falls between the graph's limits (0 to 1, log frequency), and
+    // `db` between `top` (0) and `bottom` (1)
+    double freqFraction(double hz) const;
+    static double levelFraction(double db, double top, double bottom);
     void paintGrid(QPainter *p);
     void paintCurves(QPainter *p);
     void paintLabels(QPainter *p);

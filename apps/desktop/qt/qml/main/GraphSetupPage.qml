@@ -8,44 +8,48 @@ import UConsole
 // graph they change. Each control writes GraphController's preference at once.
 ColumnLayout {
     id: page
+    // Object names start with this (the gear's name)
+    property string prefix: "GraphHost.options"
     // The pop-out's own follow switch, which means nothing in the main window
     property bool inPopOutWindow: false
-    property string prefix: "GraphHost.options"
     signal back()
-
-    spacing: 0
 
     // Fixed so the slider rows line up whatever their labels and values say
     readonly property int labelWidth: 80
     readonly property int valueWidth: 46
 
+    spacing: 0
+
+    // A level with its sign, "+6" or "-12"
+    function signedDb(v) {
+        const r = Math.round(v)
+        return r > 0 ? "+" + r : String(r)
+    }
+
     // ---- Title bar: Back and the page's name ----
     Item {
-        Layout.fillWidth: true
         implicitHeight: 32
+        Layout.fillWidth: true
+        LinkButton {
+            objectName: page.prefix + ".back"
+            anchors { verticalCenter: parent.verticalCenter; left: parent.left; leftMargin: 12 }
+            text: qsTr("Back")
+            iconName: "chevron-left"
+            onActivated: page.back()
+        }
         Text {
             anchors.centerIn: parent
             text: qsTr("Graph Setup")
-            font.pixelSize: Theme.fontBody.pixelSize - 1
-            font.weight: Font.DemiBold
             color: Theme.text
+            font { pixelSize: Theme.fontBody.pixelSize - 1; weight: Font.DemiBold }
             Accessible.role: Accessible.Heading
             Accessible.name: text
         }
-        LinkButton {
-            objectName: page.prefix + ".back"
-            anchors.left: parent.left
-            anchors.leftMargin: 12
-            anchors.verticalCenter: parent.verticalCenter
-            iconName: "chevron-left"
-            text: qsTr("Back")
-            onActivated: page.back()
-        }
     }
     Rectangle {
-        Layout.fillWidth: true
-        implicitHeight: 1
         color: Theme.separator
+        implicitHeight: 1
+        Layout.fillWidth: true
     }
 
     // ---- Scale ----
@@ -59,23 +63,18 @@ ColumnLayout {
         }
     }
     RowLayout {
+        spacing: 6
         Layout.fillWidth: true
         Layout.leftMargin: 12
         Layout.rightMargin: 12
-        spacing: 6
         RowLabel {
             text: qsTr("Frequency")
             // Its own width, so the two pickers have room
             Layout.preferredWidth: implicitWidth
         }
-        AppComboBox {
+        FreqPicker {
             objectName: page.prefix + ".minFreq"
             label: qsTr("Lowest frequency")
-            Layout.fillWidth: true
-            Layout.minimumWidth: 60
-            Layout.preferredWidth: 74
-            textRole: "text"
-            valueRole: "hz"
             model: [
                 { text: qsTr("10 Hz"), hz: 10 },
                 { text: qsTr("15 Hz"), hz: 15 },
@@ -88,17 +87,12 @@ ColumnLayout {
         }
         Text {
             text: qsTr("to")
-            font: Theme.fontSmall
             color: Theme.textMuted
+            font: Theme.fontSmall
         }
-        AppComboBox {
+        FreqPicker {
             objectName: page.prefix + ".maxFreq"
             label: qsTr("Highest frequency")
-            Layout.fillWidth: true
-            Layout.minimumWidth: 60
-            Layout.preferredWidth: 74
-            textRole: "text"
-            valueRole: "hz"
             model: [
                 { text: qsTr("5 kHz"), hz: 5000 },
                 { text: qsTr("10 kHz"), hz: 10000 },
@@ -107,17 +101,12 @@ ColumnLayout {
             currentIndex: indexOfValue(GraphController.maxFreq)
             onActivated: GraphController.maxFreq = currentValue
         }
-        Item { Layout.fillWidth: true }
     }
     SliderRow {
         objectName: page.prefix + ".range"
         Layout.topMargin: 8
         text: qsTr("Range")
-        value: GraphController.dbRange
-        from: 10
-        to: 100
-        stepSize: 1
-        resetValue: 50
+        slider { from: 10; to: 100; stepSize: 1; resetValue: 50; value: GraphController.dbRange }
         shown: qsTr("%1 dB").arg(Math.round(GraphController.dbRange))
         onChanged: v => GraphController.dbRange = Math.round(v)
     }
@@ -125,12 +114,8 @@ ColumnLayout {
         objectName: page.prefix + ".center"
         Layout.topMargin: 8
         text: qsTr("Center")
-        value: GraphController.dbCenter
-        from: -40
-        to: 20
-        stepSize: 1
-        resetValue: 0
-        shown: qsTr("%1 dB").arg((GraphController.dbCenter > 0 ? "+" : "") + Math.round(GraphController.dbCenter))
+        slider { from: -40; to: 20; stepSize: 1; resetValue: 0; value: GraphController.dbCenter }
+        shown: qsTr("%1 dB").arg(page.signedDb(GraphController.dbCenter))
         onChanged: v => GraphController.dbCenter = Math.round(v)
     }
 
@@ -139,51 +124,48 @@ ColumnLayout {
     ToggleRow {
         objectName: page.prefix + ".freqGrid"
         text: qsTr("Frequency Grid")
-        checked: GraphController.showFreqGrid
-        onToggled: GraphController.showFreqGrid = checked
+        checked: GraphController.showFrequencyGrid
+        onToggled: GraphController.showFrequencyGrid = checked
     }
     ToggleRow {
         objectName: page.prefix + ".freqLabels"
         text: qsTr("Frequency Labels")
-        checked: GraphController.showFreqLabels
-        onToggled: GraphController.showFreqLabels = checked
+        checked: GraphController.showFrequencyLabels
+        onToggled: GraphController.showFrequencyLabels = checked
     }
     ToggleRow {
         objectName: page.prefix + ".dbGrid"
         text: qsTr("dB Grid")
-        checked: GraphController.showDbGrid
-        onToggled: GraphController.showDbGrid = checked
+        checked: GraphController.showDBGrid
+        onToggled: GraphController.showDBGrid = checked
     }
     ToggleRow {
         objectName: page.prefix + ".dbLabels"
         text: qsTr("dB Labels")
-        checked: GraphController.showDbLabels
-        onToggled: GraphController.showDbLabels = checked
+        checked: GraphController.showDBLabels
+        onToggled: GraphController.showDBLabels = checked
     }
     ToggleRow {
         objectName: page.prefix + ".freqReadout"
         text: qsTr("Frequency Readout")
-        checked: GraphController.freqReadout
-        onToggled: GraphController.freqReadout = checked
+        checked: GraphController.showFrequencyReadout
+        onToggled: GraphController.showFrequencyReadout = checked
     }
     ToggleRow {
         objectName: page.prefix + ".levelReadout"
         text: qsTr("Gain Readout")
-        checked: GraphController.levelReadout
-        onToggled: GraphController.levelReadout = checked
+        checked: GraphController.showLevelReadout
+        onToggled: GraphController.showLevelReadout = checked
     }
     SliderRow {
         objectName: page.prefix + ".gridOpacity"
         Layout.topMargin: 2
         Layout.bottomMargin: 2
+        enabled: GraphController.showFrequencyGrid || GraphController.showDBGrid
         text: qsTr("Grid Opacity")
-        enabled: GraphController.showFreqGrid || GraphController.showDbGrid
-        value: GraphController.gridOpacity
-        from: 0
-        to: 2
-        resetValue: 0.5
-        shown: qsTr("%1%").arg(Math.round(GraphController.gridOpacity * 100))
-        onChanged: v => GraphController.gridOpacity = v
+        slider { from: 0; to: 2; resetValue: 0.5; value: GraphController.graphGridOpacity }
+        shown: qsTr("%1%").arg(Math.round(GraphController.graphGridOpacity * 100))
+        onChanged: v => GraphController.graphGridOpacity = v
     }
 
     // ---- Curves ----
@@ -192,19 +174,15 @@ ColumnLayout {
         objectName: page.prefix + ".lineWidth"
         Layout.bottomMargin: 2
         text: qsTr("Line Width")
-        value: GraphController.lineWidth
-        from: 1
-        to: 4
-        stepSize: 0.5
-        resetValue: 1.5
-        shown: qsTr("%1 pt").arg(GraphController.lineWidth.toFixed(1))
-        onChanged: v => GraphController.lineWidth = v
+        slider { from: 1; to: 4; stepSize: 0.5; resetValue: 1.5; value: GraphController.graphLineWidth }
+        shown: qsTr("%1 pt").arg(GraphController.graphLineWidth.toFixed(1))
+        onChanged: v => GraphController.graphLineWidth = v
     }
     ToggleRow {
         objectName: page.prefix + ".glow"
         text: qsTr("Glow")
-        checked: GraphController.showGlow
-        onToggled: GraphController.showGlow = checked
+        checked: GraphController.showGraphGlow
+        onToggled: GraphController.showGraphGlow = checked
     }
     ToggleRow {
         objectName: page.prefix + ".phase"
@@ -214,8 +192,8 @@ ColumnLayout {
     }
     ToggleRow {
         objectName: page.prefix + ".unwrap"
-        text: qsTr("Unwrap Phase")
         enabled: GraphController.showPhase
+        text: qsTr("Unwrap Phase")
         checked: GraphController.phaseUnwrapped
         onToggled: GraphController.phaseUnwrapped = checked
     }
@@ -223,26 +201,26 @@ ColumnLayout {
         objectName: page.prefix + ".follow"
         visible: page.inPopOutWindow
         text: qsTr("Follow Channel Selection")
-        checked: GraphController.popOutFollows
-        onToggled: GraphController.popOutFollows = checked
+        checked: GraphController.popoutFollowsSelection
+        onToggled: GraphController.popoutFollowsSelection = checked
     }
     Item { implicitHeight: 8 }
 
     // ---- The page's pieces ----
 
+    // A section's small capitals, with an optional control on the right
     component Header: RowLayout {
-        property alias text: title.text
+        property alias text: caption.text
         default property alias trailing: tail.data
         Layout.fillWidth: true
-        Layout.leftMargin: 12
-        Layout.rightMargin: 12
         Layout.topMargin: 12
         Layout.bottomMargin: 6
+        Layout.leftMargin: 12
+        Layout.rightMargin: 12
         Text {
-            id: title
-            font.pixelSize: Theme.fontCaption.pixelSize
-            font.weight: Font.Bold
+            id: caption
             color: Theme.textMuted
+            font { pixelSize: Theme.fontCaption.pixelSize; weight: Font.Bold }
             Layout.fillWidth: true
             Accessible.role: Accessible.Heading
             Accessible.name: text
@@ -251,99 +229,105 @@ ColumnLayout {
     }
 
     component RowLabel: Text {
+        color: enabled ? Theme.text : Theme.textDisabled
+        font: Theme.fontBody
+        elide: Text.ElideRight
         Layout.preferredWidth: page.labelWidth
         Layout.maximumWidth: page.labelWidth
-        font: Theme.fontBody
-        color: enabled ? Theme.text : Theme.textDisabled
-        elide: Text.ElideRight
+    }
+
+    component FreqPicker: AppComboBox {
+        textRole: "text"
+        valueRole: "hz"
+        Layout.fillWidth: true
+        Layout.minimumWidth: 60
+        Layout.preferredWidth: 74
     }
 
     component ToggleRow: AppSwitch {
+        implicitHeight: 26
         Layout.fillWidth: true
         Layout.leftMargin: 10
         Layout.rightMargin: 10
-        implicitHeight: 26
     }
 
-    // A labelled slider with its value; live while dragged
+    // A labelled slider with its value shown; live while dragged. Its slider
+    // is set through `slider { ... }`.
     component SliderRow: RowLayout {
         id: sliderRow
         property alias text: rowLabel.text
-        property alias value: slider.value
-        property alias from: slider.from
-        property alias to: slider.to
-        property alias stepSize: slider.stepSize
-        property alias resetValue: slider.resetValue
+        property alias slider: control
         property string shown
         signal changed(real v)
 
+        spacing: 6
         Layout.fillWidth: true
         Layout.leftMargin: 12
         Layout.rightMargin: 12
-        spacing: 6
         RowLabel { id: rowLabel }
         CustomSlider {
-            id: slider
+            id: control
             label: rowLabel.text
-            Layout.fillWidth: true
             implicitWidth: 100
             snapMode: stepSize > 0 ? Slider.SnapAlways : Slider.NoSnap
+            Layout.fillWidth: true
             onValueMoved: v => sliderRow.changed(v)
             onCommitted: v => sliderRow.changed(v)
         }
         Text {
             text: sliderRow.shown
-            font: Theme.fontMono
             color: Theme.textMuted
+            font: Theme.fontMono
             horizontalAlignment: Text.AlignRight
             Layout.preferredWidth: page.valueWidth
         }
     }
 
-    // A borderless accent-coloured text button, optionally with an icon
+    // A borderless text button in the accent colour, an icon before it if given
     component LinkButton: Item {
         id: link
-        property string text
         property string iconName
+        property string text
         property string toolTip
         signal activated()
 
-        implicitWidth: linkRow.implicitWidth
-        implicitHeight: Math.max(linkRow.implicitHeight, 18)
         activeFocusOnTab: true
+        implicitWidth: content.implicitWidth
+        implicitHeight: Math.max(content.implicitHeight, 18)
         Accessible.role: Accessible.Button
         Accessible.name: text
         Accessible.onPressAction: activated()
         Keys.onReturnPressed: activated()
         Keys.onSpacePressed: activated()
 
-        Row {
-            id: linkRow
-            anchors.verticalCenter: parent.verticalCenter
+        RowLayout {
+            id: content
+            anchors.fill: parent
             spacing: 3
             Icon {
                 visible: link.iconName !== ""
                 name: link.iconName
-                size: 12
                 color: Theme.accentText
-                anchors.verticalCenter: parent.verticalCenter
+                size: 12
             }
             Text {
                 text: link.text
-                font: link.iconName !== "" ? Theme.fontBody : Theme.fontCaption
                 color: Theme.accentText
-                anchors.verticalCenter: parent.verticalCenter
+                font: link.iconName !== "" ? Theme.fontBody : Theme.fontCaption
             }
         }
+        // The keyboard focus ring
         Rectangle {
-            anchors.fill: parent
-            anchors.margins: -2
+            anchors { fill: parent; margins: -2 }
+            visible: link.activeFocus
             color: "transparent"
             radius: Theme.radiusSmall
-            border.width: link.activeFocus ? 2 : 0
-            border.color: Theme.focusRing
+            border { width: 2; color: Theme.focusRing }
         }
-        HoverHandler { id: linkHover; cursorShape: Qt.PointingHandCursor }
+        HoverHandler {
+            id: linkHover
+            cursorShape: Qt.PointingHandCursor
+        }
         TapHandler { onTapped: link.activated() }
         HelpTip {
             visible: linkHover.hovered && link.toolTip !== ""

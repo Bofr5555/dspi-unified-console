@@ -10,8 +10,9 @@ import UConsole
 // it is open closes it once and does not reopen it (behaviour.md §26).
 IconButton {
     id: gear
-    property bool popOut: false
     readonly property bool open: panel.opened
+    // In the pop-out window: no Pop Out row, and the follow switch
+    property bool popOut: false
 
     objectName: (popOut ? "GraphWindow" : "GraphHost") + ".options"
     iconName: "settings"
@@ -22,10 +23,15 @@ IconButton {
 
     PopoverPanel {
         id: panel
+        // The setup page shows; reopening starts on the main page, as the Mac
+        // builds a fresh panel each time
+        property bool setup: false
+        // 0 on the main page, 1 on the setup page, sliding between them
+        property real slide: setup ? 1 : 0
+        Behavior on slide { NumberAnimation { duration: 200; easing.type: Easing.InOutQuad } }
+
         objectName: gear.objectName + ".popover"
         title: qsTr("Graph options")
-        // Reopening starts on the main page, as the Mac builds a fresh panel
-        property bool setup: false
         onAboutToShow: setup = false
         x: gear.width - width
         y: gear.height + 4
@@ -35,20 +41,17 @@ IconButton {
         bottomPadding: 6
 
         contentItem: Item {
-            implicitHeight: panel.setup ? setupPage.implicitHeight : mainPage.implicitHeight
             clip: true
-            Behavior on implicitHeight { NumberAnimation { duration: 200; easing.type: Easing.InOutQuad } }
+            implicitHeight: mainPage.implicitHeight + (setupPage.implicitHeight - mainPage.implicitHeight) * panel.slide
 
             // ---- Main page ----
             ColumnLayout {
                 id: mainPage
-                width: parent.width
                 spacing: 0
-                x: panel.setup ? -width : 0
-                opacity: panel.setup ? 0 : 1
-                visible: opacity > 0
-                Behavior on x { NumberAnimation { duration: 200; easing.type: Easing.InOutQuad } }
-                Behavior on opacity { NumberAnimation { duration: 200 } }
+                width: parent.width
+                x: -width * panel.slide
+                opacity: 1 - panel.slide
+                visible: panel.slide < 1
 
                 Loader {
                     objectName: gear.objectName + ".rtaSlot"
@@ -58,20 +61,26 @@ IconButton {
                     sourceComponent: active ? Qt.createComponent("UConsole", type) : null
                     onLoaded: if ("popOut" in item) item.popOut = gear.popOut
                 }
-                Rule { visible: GraphController.slotType(GraphController.RtaOptions) !== "" }
-
+                Rectangle {
+                    visible: GraphController.slotType(GraphController.RtaOptions) !== ""
+                    color: Theme.separator
+                    implicitHeight: 1
+                    Layout.fillWidth: true
+                    Layout.topMargin: 6
+                    Layout.bottomMargin: 6
+                }
                 ActionRow {
                     objectName: gear.objectName + ".setup"
-                    iconName: "sliders-horizontal"
                     text: qsTr("Graph Setup")
+                    iconName: "sliders-horizontal"
                     trailingIcon: "chevron-right"
                     onActivated: panel.setup = true
                 }
                 ActionRow {
                     objectName: gear.objectName + ".popOut"
                     visible: !gear.popOut
-                    iconName: "maximize-2"
                     text: qsTr("Pop Out Graph")
+                    iconName: "maximize-2"
                     onActivated: {
                         panel.close()
                         Shell.trigger("window.popOutGraph")
@@ -82,77 +91,65 @@ IconButton {
             // ---- Setup page ----
             GraphSetupPage {
                 id: setupPage
-                width: parent.width
-                inPopOutWindow: gear.popOut
                 prefix: gear.objectName
-                x: panel.setup ? 0 : width
-                opacity: panel.setup ? 1 : 0
-                visible: opacity > 0
-                Behavior on x { NumberAnimation { duration: 200; easing.type: Easing.InOutQuad } }
-                Behavior on opacity { NumberAnimation { duration: 200 } }
+                inPopOutWindow: gear.popOut
+                width: parent.width
+                x: width * (1 - panel.slide)
+                opacity: panel.slide
+                visible: panel.slide > 0
                 onBack: panel.setup = false
             }
         }
     }
 
-    // A separator line across the panel
-    component Rule: Rectangle {
-        Layout.fillWidth: true
-        Layout.topMargin: 6
-        Layout.bottomMargin: 6
-        implicitHeight: 1
-        color: Theme.separator
-    }
-
-    // A menu-like row: highlighted under the pointer, a chevron when it opens a page
+    // A menu-like row: the accent under the pointer or the keyboard focus,
+    // a chevron when it opens a page
     component ActionRow: Rectangle {
         id: row
-        property string iconName
         property string text
+        property string iconName
         property string trailingIcon
+        readonly property bool lit: rowHover.hovered || activeFocus
         signal activated()
 
+        implicitHeight: 26
         Layout.fillWidth: true
         Layout.leftMargin: 4
         Layout.rightMargin: 4
-        implicitHeight: 26
         radius: Theme.radiusSmall
-        color: rowHover.hovered || activeFocus ? Theme.accent : "transparent"
+        color: lit ? Theme.accent : "transparent"
         activeFocusOnTab: true
-        readonly property color ink: rowHover.hovered || activeFocus ? Theme.textOnAccent : Theme.text
 
         Accessible.role: Accessible.MenuItem
         Accessible.name: text
         Accessible.onPressAction: activated()
         Keys.onReturnPressed: activated()
         Keys.onSpacePressed: activated()
+        HoverHandler { id: rowHover }
+        TapHandler { onTapped: row.activated() }
 
         RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 8
-            anchors.rightMargin: 8
+            anchors { fill: parent; leftMargin: 8; rightMargin: 8 }
             spacing: 8
             Icon {
                 name: row.iconName
+                color: row.lit ? Theme.textOnAccent : Theme.text
                 size: 14
-                color: row.ink
                 Layout.preferredWidth: 18
             }
             Text {
                 text: row.text
+                color: row.lit ? Theme.textOnAccent : Theme.text
                 font: Theme.fontBody
-                color: row.ink
                 Layout.fillWidth: true
             }
             Icon {
                 visible: row.trailingIcon !== ""
                 name: row.trailingIcon
-                size: 12
-                color: row.ink
+                color: row.lit ? Theme.textOnAccent : Theme.text
                 opacity: rowHover.hovered ? 1 : 0.5
+                size: 12
             }
         }
-        HoverHandler { id: rowHover }
-        TapHandler { onTapped: row.activated() }
     }
 }

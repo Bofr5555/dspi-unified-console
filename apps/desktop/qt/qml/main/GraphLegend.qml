@@ -13,7 +13,7 @@ Flow {
     bottomPadding: 2
     opacity: DeviceModel.connected ? 1 : 0
     enabled: DeviceModel.connected
-    Behavior on opacity { NumberAnimation { duration: 300; easing.type: Easing.InOutQuad } }
+    Behavior on opacity { OpacityAnimator { duration: 300 } }
 
     Repeater {
         model: DeviceModel.channels

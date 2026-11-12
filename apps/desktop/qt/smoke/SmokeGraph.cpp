@@ -165,14 +165,14 @@ void preferences(SmokeDriver &d, GraphController *g, BodePlot *curves) {
     d.check(QStringLiteral("qp3: the centre stops at -40 dB"), g->dbCenter() == -40);
     g->setMinFreq(33);
     d.check(QStringLiteral("qp3: the lowest frequency is one of the offered ones"), g->minFreq() == 20);
-    g->setLineWidth(2.2);
-    d.check(QStringLiteral("qp3: the line width moves in half points"), g->lineWidth() == 2.0);
+    g->setGraphLineWidth(2.2);
+    d.check(QStringLiteral("qp3: the line width moves in half points"), g->graphLineWidth() == 2.0);
     g->setGraphHeight(1000);
     d.check(QStringLiteral("qp3: the graph height stops at 350"), g->graphHeight() == 350);
     g->resetScale();
     d.check(QStringLiteral("qp3: Reset restores the scale"),
             g->minFreq() == 15 && g->maxFreq() == 20000 && g->dbRange() == 50 && g->dbCenter() == 0);
-    g->setLineWidth(1.5);
+    g->setGraphLineWidth(1.5);
     g->setGraphHeight(250);
 
     if (curves) {
@@ -210,13 +210,13 @@ void options(SmokeDriver &d) {
     d.check(QStringLiteral("qp3: the follow switch is the pop-out's only"), follow && !follow->isVisible());
     // A switch on the page changes the graph at once
     auto *glow = d.item(QStringLiteral("GraphHost.options.glow"));
-    const bool glowBefore = graph()->showGlow();
+    const bool glowBefore = graph()->showGraphGlow();
     if (glow) {
         QMetaObject::invokeMethod(glow, "toggle");
         QMetaObject::invokeMethod(glow, "toggled");
     }
-    d.check(QStringLiteral("qp3: the Glow switch sets the preference"), graph()->showGlow() != glowBefore);
-    graph()->setShowGlow(glowBefore);
+    d.check(QStringLiteral("qp3: the Glow switch sets the preference"), graph()->showGraphGlow() != glowBefore);
+    graph()->setShowGraphGlow(glowBefore);
     d.check(QStringLiteral("qp3: screenshot of the graph setup page"), d.grab(w, QStringLiteral("window-graph-setup.png")));
 
     // One click on the gear while open closes it, once, and it stays closed
@@ -281,7 +281,7 @@ void popOut(SmokeDriver &d, GraphController *g) {
     d.check(QStringLiteral("qp3: the pill shows the curve's state"), pill && pill->property("checked").toBool() == g->isCurveVisible(0));
 
     // Not following: its own set
-    g->setPopOutFollows(false);
+    g->setPopoutFollowsSelection(false);
     const QList<int> mainSet = g->visibleChannels();
     const bool ownShown = g->isPopOutCurveVisible(0);
     if (pill) QMetaObject::invokeMethod(pill, "click");
@@ -304,7 +304,7 @@ void popOut(SmokeDriver &d, GraphController *g) {
     d.check(QStringLiteral("qp3: screenshot of the pop-out's setup page"), d.grab(w, QStringLiteral("window-graph-setup-popout.png")));
     QTest::keyClick(w, Qt::Key_Escape);
     d.spin(100);
-    g->setPopOutFollows(true);
+    g->setPopoutFollowsSelection(true);
     if (pill && pill->property("checked").toBool() != shown) QMetaObject::invokeMethod(pill, "click");
 
     g->closePopOut();

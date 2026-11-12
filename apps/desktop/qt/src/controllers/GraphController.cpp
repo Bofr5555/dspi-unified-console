@@ -35,6 +35,16 @@ constexpr double kDefaultGridOpacity = 0.5;
 constexpr double kDefaultLineWidth = 1.5;
 constexpr double kDefaultHeight = 250;
 
+// The switches' keys and defaults, in GraphController::Flag's order
+const struct {
+    const char *key;
+    bool initially;
+} kFlagKeys[] = {
+    { "showFreqGrid", true }, { "showFreqLabels", true }, { "showDbGrid", true }, { "showDbLabels", true },
+    { "freqReadout", true },  { "levelReadout", true },   { "showGlow", false },  { "showPhase", false },
+    { "phaseUnwrapped", false }, { "popOutFollows", true },
+};
+
 // The setup page's choices
 const double kMinFreqs[] = { 10, 15, 20, 50, 100 };
 const double kMaxFreqs[] = { 5000, 10000, 20000 };
@@ -61,28 +71,21 @@ bool GraphController::Chain::operator==(const Chain &o) const {
 GraphController::GraphController(const AppContext &ctx, QObject *parent)
     : QObject(parent), m_device(ctx.device), m_poller(ctx.poller) {
     m_settings.beginGroup(QStringLiteral("graph"));
-    auto number = [this](const char *key, double fallback) {
+    // A stored number, or `fallback` when it is missing or not a number
+    auto stored = [this](const char *key, double fallback) {
         bool ok = false;
-        const double v = m_settings.value(QLatin1String(key), fallback).toDouble(&ok);
+        const double v = m_settings.value(QLatin1String(key)).toDouble(&ok);
         return ok && qIsFinite(v) ? v : fallback;
     };
-    m_minFreq = nearestOf(kMinFreqs, int(std::size(kMinFreqs)), number("minFreq", kDefaultMinFreq));
-    m_maxFreq = nearestOf(kMaxFreqs, int(std::size(kMaxFreqs)), number("maxFreq", kDefaultMaxFreq));
-    m_dbRange = qBound(kRangeMin, number("dbRange", kDefaultRange), kRangeMax);
-    m_dbCenter = qBound(kCenterMin, number("dbCenter", kDefaultCenter), kCenterMax);
-    m_gridOpacity = qBound(0.0, number("gridOpacity", kDefaultGridOpacity), kGridOpacityMax);
-    m_lineWidth = qBound(kLineMin, number("lineWidth", kDefaultLineWidth), kLineMax);
-    m_height = qBound(kHeightMin, number("height", kDefaultHeight), kHeightMax);
-    const struct {
-        const char *key;
-        bool fallback;
-    } flags[] = {
-        { "showFreqGrid", true }, { "showFreqLabels", true }, { "showDbGrid", true },   { "showDbLabels", true },
-        { "freqReadout", true },  { "levelReadout", true },   { "showGlow", false },    { "showPhase", false },
-        { "phaseUnwrapped", false }, { "popOutFollows", true },
-    };
-    for (const auto &f : flags)
-        m_flags.insert(QLatin1String(f.key), m_settings.value(QLatin1String(f.key), f.fallback).toBool());
+    m_scale.lowHz = nearestOf(kMinFreqs, int(std::size(kMinFreqs)), stored("minFreq", kDefaultMinFreq));
+    m_scale.highHz = nearestOf(kMaxFreqs, int(std::size(kMaxFreqs)), stored("maxFreq", kDefaultMaxFreq));
+    m_scale.span = qBound(kRangeMin, stored("dbRange", kDefaultRange), kRangeMax);
+    m_scale.centre = qBound(kCenterMin, stored("dbCenter", kDefaultCenter), kCenterMax);
+    m_scale.gridOpacity = qBound(0.0, stored("gridOpacity", kDefaultGridOpacity), kGridOpacityMax);
+    m_scale.lineWidth = qBound(kLineMin, stored("lineWidth", kDefaultLineWidth), kLineMax);
+    m_scale.height = qBound(kHeightMin, stored("height", kDefaultHeight), kHeightMax);
+    for (int f = 0; f < FlagCount; ++f)
+        m_on[size_t(f)] = m_settings.value(QLatin1String(kFlagKeys[f].key), kFlagKeys[f].initially).toBool();
 
     connect(m_device, &DeviceModel::snapshotApplied, this, &GraphController::onSnapshot);
     if (m_poller) connect(m_poller, &Poller::statusChanged, this, &GraphController::onStatus);
@@ -112,7 +115,7 @@ void GraphController::onSnapshot() {
         for (auto &v : m_phaseUnwrapped) v.clear();
         m_chains.fill(Chain{});
         m_gainPreview.clear();
-        ++m_revision;
+        ++m_curveRev;
         emit curvesChanged();
         return;
     }
@@ -182,7 +185,7 @@ void GraphController::onSnapshot() {
     }
 
     if (changed) {
-        ++m_revision;
+        ++m_curveRev;
         emit curvesChanged();
     }
 }
@@ -219,13 +222,13 @@ void GraphController::previewOutputGain(int output, double db) {
     if (output < 0 || output >= MAX_OUTPUTS || !qIsFinite(db)) return;
     if (m_gainPreview.contains(output) && m_gainPreview.value(output) == db) return;
     m_gainPreview.insert(output, db);
-    ++m_revision;
+    ++m_curveRev;
     emit curvesChanged();
 }
 
 void GraphController::endOutputGainPreview(int output) {
     if (!m_gainPreview.remove(output)) return;
-    ++m_revision;
+    ++m_curveRev;
     emit curvesChanged();
 }
 
@@ -304,7 +307,7 @@ void GraphController::setCurveVisible(int channel, bool visible) {
 void GraphController::toggleCurve(int channel) { setCurveVisible(channel, !isCurveVisible(channel)); }
 
 QList<int> GraphController::popOutVisibleChannels() const {
-    if (popOutFollows()) return visibleChannels();
+    if (popoutFollowsSelection()) return visibleChannels();
     if (m_popOutSet) return channelsOf(m_popOut);
     // Until its first change, the pop-out's own set is the defaults
     Visibility v{};
@@ -317,7 +320,7 @@ bool GraphController::isPopOutCurveVisible(int channel) const {
 }
 
 void GraphController::togglePopOutCurve(int channel) {
-    if (popOutFollows()) {
+    if (popoutFollowsSelection()) {
         toggleCurve(channel);
         return;
     }
@@ -362,71 +365,55 @@ void GraphController::store(const QString &key, const QVariant &value) {
     emit preferencesChanged();
 }
 
-void GraphController::setFlag(const QString &key, bool on) {
-    if (m_flags.value(key) == on) return;
-    m_flags.insert(key, on);
-    store(key, on);
+void GraphController::setFlag(Flag f, bool on) {
+    if (f < 0 || f >= FlagCount || m_on[size_t(f)] == on) return;
+    m_on[size_t(f)] = on;
+    store(QLatin1String(kFlagKeys[f].key), on);
 }
 
-void GraphController::setPopOutFollows(bool on) {
-    if (popOutFollows() == on) return;
+void GraphController::setPopoutFollowsSelection(bool on) {
+    if (on == popoutFollowsSelection()) return;
+    // Switched off, the pop-out starts again from the default curves
     m_popOutSet = false;
-    setFlag(QStringLiteral("popOutFollows"), on);
+    setFlag(PopoutFollows, on);
     emit visibilityChanged();
 }
 
+// Each setter keeps its value within the setup page's limits and stores it
 void GraphController::setMinFreq(double hz) {
-    hz = nearestOf(kMinFreqs, int(std::size(kMinFreqs)), hz);
-    if (hz == m_minFreq) return;
-    m_minFreq = hz;
-    store(QStringLiteral("minFreq"), hz);
+    const double v = nearestOf(kMinFreqs, int(std::size(kMinFreqs)), hz);
+    if (v != m_scale.lowHz) store(QStringLiteral("minFreq"), m_scale.lowHz = v);
 }
 
 void GraphController::setMaxFreq(double hz) {
-    hz = nearestOf(kMaxFreqs, int(std::size(kMaxFreqs)), hz);
-    if (hz == m_maxFreq) return;
-    m_maxFreq = hz;
-    store(QStringLiteral("maxFreq"), hz);
+    const double v = nearestOf(kMaxFreqs, int(std::size(kMaxFreqs)), hz);
+    if (v != m_scale.highHz) store(QStringLiteral("maxFreq"), m_scale.highHz = v);
 }
 
 void GraphController::setDbRange(double db) {
-    if (!qIsFinite(db)) return;
-    db = qBound(kRangeMin, std::round(db), kRangeMax);
-    if (db == m_dbRange) return;
-    m_dbRange = db;
-    store(QStringLiteral("dbRange"), db);
+    const double v = qIsFinite(db) ? qBound(kRangeMin, std::round(db), kRangeMax) : m_scale.span;
+    if (v != m_scale.span) store(QStringLiteral("dbRange"), m_scale.span = v);
 }
 
 void GraphController::setDbCenter(double db) {
-    if (!qIsFinite(db)) return;
-    db = qBound(kCenterMin, std::round(db), kCenterMax);
-    if (db == m_dbCenter) return;
-    m_dbCenter = db;
-    store(QStringLiteral("dbCenter"), db);
+    const double v = qIsFinite(db) ? qBound(kCenterMin, std::round(db), kCenterMax) : m_scale.centre;
+    if (v != m_scale.centre) store(QStringLiteral("dbCenter"), m_scale.centre = v);
 }
 
-void GraphController::setGridOpacity(double v) {
-    if (!qIsFinite(v)) return;
-    v = qBound(0.0, v, kGridOpacityMax);
-    if (v == m_gridOpacity) return;
-    m_gridOpacity = v;
-    store(QStringLiteral("gridOpacity"), v);
+void GraphController::setGraphGridOpacity(double v) {
+    const double c = qIsFinite(v) ? qBound(0.0, v, kGridOpacityMax) : m_scale.gridOpacity;
+    if (c != m_scale.gridOpacity) store(QStringLiteral("gridOpacity"), m_scale.gridOpacity = c);
 }
 
-void GraphController::setLineWidth(double v) {
-    if (!qIsFinite(v)) return;
-    v = qBound(kLineMin, std::round(v * 2) / 2, kLineMax);
-    if (v == m_lineWidth) return;
-    m_lineWidth = v;
-    store(QStringLiteral("lineWidth"), v);
+void GraphController::setGraphLineWidth(double v) {
+    // Half points, as the Mac's slider steps
+    const double c = qIsFinite(v) ? qBound(kLineMin, std::round(v * 2) / 2, kLineMax) : m_scale.lineWidth;
+    if (c != m_scale.lineWidth) store(QStringLiteral("lineWidth"), m_scale.lineWidth = c);
 }
 
 void GraphController::setGraphHeight(double v) {
-    if (!qIsFinite(v)) return;
-    v = qBound(kHeightMin, v, kHeightMax);
-    if (v == m_height) return;
-    m_height = v;
-    store(QStringLiteral("height"), v);
+    const double c = qIsFinite(v) ? qBound(kHeightMin, v, kHeightMax) : m_scale.height;
+    if (c != m_scale.height) store(QStringLiteral("height"), m_scale.height = c);
 }
 
 void GraphController::resetScale() {

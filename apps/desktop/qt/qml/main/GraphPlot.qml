@@ -23,21 +23,20 @@ import UConsole
 // - the scale itself: GraphController.minFreq, maxFreq, dbTop, dbBottom.
 Rectangle {
     id: plot
-    property bool popOut: false
-
     // The pop-out follows the page unless switched off in its setup page
-    readonly property bool following: !popOut || GraphController.popOutFollows
+    readonly property bool following: !popOut || GraphController.popoutFollowsSelection
     readonly property var channels: popOut ? GraphController.popOutVisibleChannels : GraphController.visibleChannels
     readonly property int activeChannel: GraphController.selectedChannel
     readonly property bool onDashboard: GraphController.selectedChannel < 0
     readonly property var channelColors: colorsOf(DeviceModel.revision)
     readonly property alias optionsOpen: options.open
+    // In the pop-out window (its own visibility, its own names)
+    property bool popOut: false
 
     objectName: popOut ? "GraphWindow.plot" : "GraphHost.plot"
-    radius: Theme.radius
     color: Theme.panel
-    border.width: 1
-    border.color: Theme.separator
+    radius: Theme.radius
+    border { color: Theme.separator; width: 1 }
     clip: true
 
     Accessible.role: Accessible.Graphic
@@ -94,8 +93,8 @@ Rectangle {
         phaseColor: Theme.text
         labelColor: Theme.textMuted
         // Curves fade with the device; the grid underneath stays
-        opacity: DeviceModel.connected ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 300; easing.type: Easing.InOutQuad } }
+        opacity: DeviceModel.connected ? 1.0 : 0.0
+        Behavior on opacity { OpacityAnimator { duration: 300 } }
     }
 
     BodePlot {
@@ -119,13 +118,11 @@ Rectangle {
 
     GraphOptions {
         id: options
-        anchors.top: parent.top
-        anchors.right: parent.right
-        anchors.margins: 6
         popOut: plot.popOut
+        anchors { right: parent.right; top: parent.top; margins: 6 }
         // On hover; an open popover keeps it, or it would vanish from under
         // it; and while it has the keyboard focus
-        opacity: hover.hovered || open || activeFocus ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 150 } }
+        opacity: hover.hovered || open || activeFocus ? 1.0 : 0.0
+        Behavior on opacity { OpacityAnimator { duration: 150 } }
     }
 }

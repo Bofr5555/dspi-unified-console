@@ -57,7 +57,7 @@ class GraphController : public QObject {
     // The pop-out window is open (the main window then hides its graph)
     Q_PROPERTY(bool poppedOut READ poppedOut WRITE setPoppedOut NOTIFY poppedOutChanged)
 
-    // Preferences (Graphing): scale
+    // Preferences (Graphing), the Mac's AppSettings names: scale
     Q_PROPERTY(double minFreq READ minFreq WRITE setMinFreq NOTIFY preferencesChanged)
     Q_PROPERTY(double maxFreq READ maxFreq WRITE setMaxFreq NOTIFY preferencesChanged)
     Q_PROPERTY(double dbRange READ dbRange WRITE setDbRange NOTIFY preferencesChanged)
@@ -65,22 +65,22 @@ class GraphController : public QObject {
     Q_PROPERTY(double dbTop READ dbTop NOTIFY preferencesChanged)
     Q_PROPERTY(double dbBottom READ dbBottom NOTIFY preferencesChanged)
     Q_PROPERTY(double phaseTop READ phaseTop NOTIFY preferencesChanged)
-    // grid and labels
-    Q_PROPERTY(bool showFreqGrid READ showFreqGrid WRITE setShowFreqGrid NOTIFY preferencesChanged)
-    Q_PROPERTY(bool showFreqLabels READ showFreqLabels WRITE setShowFreqLabels NOTIFY preferencesChanged)
-    Q_PROPERTY(bool showDbGrid READ showDbGrid WRITE setShowDbGrid NOTIFY preferencesChanged)
-    Q_PROPERTY(bool showDbLabels READ showDbLabels WRITE setShowDbLabels NOTIFY preferencesChanged)
-    Q_PROPERTY(bool freqReadout READ freqReadout WRITE setFreqReadout NOTIFY preferencesChanged)
-    Q_PROPERTY(bool levelReadout READ levelReadout WRITE setLevelReadout NOTIFY preferencesChanged)
-    Q_PROPERTY(double gridOpacity READ gridOpacity WRITE setGridOpacity NOTIFY preferencesChanged)
+    // grid, labels and the editor's readouts
+    Q_PROPERTY(bool showFrequencyGrid READ showFrequencyGrid WRITE setShowFrequencyGrid NOTIFY preferencesChanged)
+    Q_PROPERTY(bool showFrequencyLabels READ showFrequencyLabels WRITE setShowFrequencyLabels NOTIFY preferencesChanged)
+    Q_PROPERTY(bool showDBGrid READ showDBGrid WRITE setShowDBGrid NOTIFY preferencesChanged)
+    Q_PROPERTY(bool showDBLabels READ showDBLabels WRITE setShowDBLabels NOTIFY preferencesChanged)
+    Q_PROPERTY(bool showFrequencyReadout READ showFrequencyReadout WRITE setShowFrequencyReadout NOTIFY preferencesChanged)
+    Q_PROPERTY(bool showLevelReadout READ showLevelReadout WRITE setShowLevelReadout NOTIFY preferencesChanged)
+    Q_PROPERTY(double graphGridOpacity READ graphGridOpacity WRITE setGraphGridOpacity NOTIFY preferencesChanged)
     // curves
-    Q_PROPERTY(double lineWidth READ lineWidth WRITE setLineWidth NOTIFY preferencesChanged)
-    Q_PROPERTY(bool showGlow READ showGlow WRITE setShowGlow NOTIFY preferencesChanged)
+    Q_PROPERTY(double graphLineWidth READ graphLineWidth WRITE setGraphLineWidth NOTIFY preferencesChanged)
+    Q_PROPERTY(bool showGraphGlow READ showGraphGlow WRITE setShowGraphGlow NOTIFY preferencesChanged)
     Q_PROPERTY(bool showPhase READ showPhase WRITE setShowPhase NOTIFY preferencesChanged)
     Q_PROPERTY(bool phaseUnwrapped READ phaseUnwrapped WRITE setPhaseUnwrapped NOTIFY preferencesChanged)
     // the main window's graph height and the pop-out's follow switch
     Q_PROPERTY(double graphHeight READ graphHeight WRITE setGraphHeight NOTIFY preferencesChanged)
-    Q_PROPERTY(bool popOutFollows READ popOutFollows WRITE setPopOutFollows NOTIFY preferencesChanged)
+    Q_PROPERTY(bool popoutFollowsSelection READ popoutFollowsSelection WRITE setPopoutFollowsSelection NOTIFY preferencesChanged)
 
 public:
     // The places other packages fill (GraphPlot.qml, GraphOptions.qml)
@@ -107,7 +107,7 @@ public:
     static GraphController *create(QQmlEngine *, QJSEngine *) { return Registrar::instance<GraphController>(); }
 
     int selectedChannel() const { return m_selected; }
-    int curveRevision() const { return m_revision; }
+    int curveRevision() const { return m_curveRev; }
     QList<int> visibleChannels() const { return channelsOf(m_visible); }
     QList<int> popOutVisibleChannels() const;
     int overlayChannel() const { return m_overlayChannel; }
@@ -153,43 +153,53 @@ public:
     // A slot's QML type of module UConsole, "" when no package fills it
     Q_INVOKABLE QString slotType(int kind) const;
 
-    double minFreq() const { return m_minFreq; }
+    // The switches, in the order of their keys (GraphController.cpp)
+    enum Flag {
+        FrequencyGrid, FrequencyLabels, DBGrid, DBLabels, FrequencyReadout, LevelReadout,
+        GraphGlow, Phase, PhaseUnwrapped, PopoutFollows, FlagCount
+    };
+    bool flag(Flag f) const { return m_on[f]; }
+    void setFlag(Flag f, bool on);
+
+    double minFreq() const { return m_scale.lowHz; }
+    double maxFreq() const { return m_scale.highHz; }
+    double dbRange() const { return m_scale.span; }
+    double dbCenter() const { return m_scale.centre; }
     void setMinFreq(double hz);
-    double maxFreq() const { return m_maxFreq; }
     void setMaxFreq(double hz);
-    double dbRange() const { return m_dbRange; }
     void setDbRange(double db);
-    double dbCenter() const { return m_dbCenter; }
     void setDbCenter(double db);
-    double dbTop() const { return m_dbCenter + m_dbRange / 2; }
-    double dbBottom() const { return m_dbCenter - m_dbRange / 2; }
+    double dbTop() const { return m_scale.centre + m_scale.span / 2; }
+    double dbBottom() const { return m_scale.centre - m_scale.span / 2; }
     // The phase axis follows the dB zoom: ±180° at the default 50 dB span
-    double phaseTop() const { return 180.0 * m_dbRange / 50.0; }
-    bool showFreqGrid() const { return m_flags.value(QStringLiteral("showFreqGrid")); }
-    void setShowFreqGrid(bool on) { setFlag(QStringLiteral("showFreqGrid"), on); }
-    bool showFreqLabels() const { return m_flags.value(QStringLiteral("showFreqLabels")); }
-    void setShowFreqLabels(bool on) { setFlag(QStringLiteral("showFreqLabels"), on); }
-    bool showDbGrid() const { return m_flags.value(QStringLiteral("showDbGrid")); }
-    void setShowDbGrid(bool on) { setFlag(QStringLiteral("showDbGrid"), on); }
-    bool showDbLabels() const { return m_flags.value(QStringLiteral("showDbLabels")); }
-    void setShowDbLabels(bool on) { setFlag(QStringLiteral("showDbLabels"), on); }
-    bool freqReadout() const { return m_flags.value(QStringLiteral("freqReadout")); }
-    void setFreqReadout(bool on) { setFlag(QStringLiteral("freqReadout"), on); }
-    bool levelReadout() const { return m_flags.value(QStringLiteral("levelReadout")); }
-    void setLevelReadout(bool on) { setFlag(QStringLiteral("levelReadout"), on); }
-    bool showGlow() const { return m_flags.value(QStringLiteral("showGlow")); }
-    void setShowGlow(bool on) { setFlag(QStringLiteral("showGlow"), on); }
-    bool showPhase() const { return m_flags.value(QStringLiteral("showPhase")); }
-    void setShowPhase(bool on) { setFlag(QStringLiteral("showPhase"), on); }
-    bool phaseUnwrapped() const { return m_flags.value(QStringLiteral("phaseUnwrapped")); }
-    void setPhaseUnwrapped(bool on) { setFlag(QStringLiteral("phaseUnwrapped"), on); }
-    bool popOutFollows() const { return m_flags.value(QStringLiteral("popOutFollows")); }
-    void setPopOutFollows(bool on);
-    double gridOpacity() const { return m_gridOpacity; }
-    void setGridOpacity(double v);
-    double lineWidth() const { return m_lineWidth; }
-    void setLineWidth(double v);
-    double graphHeight() const { return m_height; }
+    double phaseTop() const { return 180.0 * m_scale.span / 50.0; }
+
+    bool showFrequencyGrid() const { return flag(FrequencyGrid); }
+    bool showFrequencyLabels() const { return flag(FrequencyLabels); }
+    bool showDBGrid() const { return flag(DBGrid); }
+    bool showDBLabels() const { return flag(DBLabels); }
+    bool showFrequencyReadout() const { return flag(FrequencyReadout); }
+    bool showLevelReadout() const { return flag(LevelReadout); }
+    bool showGraphGlow() const { return flag(GraphGlow); }
+    bool showPhase() const { return flag(Phase); }
+    bool phaseUnwrapped() const { return flag(PhaseUnwrapped); }
+    bool popoutFollowsSelection() const { return flag(PopoutFollows); }
+    void setShowFrequencyGrid(bool on) { setFlag(FrequencyGrid, on); }
+    void setShowFrequencyLabels(bool on) { setFlag(FrequencyLabels, on); }
+    void setShowDBGrid(bool on) { setFlag(DBGrid, on); }
+    void setShowDBLabels(bool on) { setFlag(DBLabels, on); }
+    void setShowFrequencyReadout(bool on) { setFlag(FrequencyReadout, on); }
+    void setShowLevelReadout(bool on) { setFlag(LevelReadout, on); }
+    void setShowGraphGlow(bool on) { setFlag(GraphGlow, on); }
+    void setShowPhase(bool on) { setFlag(Phase, on); }
+    void setPhaseUnwrapped(bool on) { setFlag(PhaseUnwrapped, on); }
+    void setPopoutFollowsSelection(bool on);
+
+    double graphGridOpacity() const { return m_scale.gridOpacity; }
+    double graphLineWidth() const { return m_scale.lineWidth; }
+    double graphHeight() const { return m_scale.height; }
+    void setGraphGridOpacity(double v);
+    void setGraphLineWidth(double v);
     void setGraphHeight(double v);
 
 signals:
@@ -216,7 +226,6 @@ private:
     void applyDefaults(Visibility &v) const;
     int effectiveInputs() const;
     static QList<int> channelsOf(const Visibility &v);
-    void setFlag(const QString &key, bool on);
     void store(const QString &key, const QVariant &value);
 
     DeviceModel *m_device;
@@ -233,7 +242,7 @@ private:
     int m_outputCount = 0;
     uint64_t m_generation = 0;
     std::array<bool, MAX_OUTPUTS> m_enabled{};
-    int m_revision = 0;
+    int m_curveRev = 0;
 
     // Visibility and selection
     Visibility m_visible{};
@@ -247,8 +256,10 @@ private:
     int m_inputsShown = 0;
 
     // Preferences
-    double m_minFreq, m_maxFreq, m_dbRange, m_dbCenter, m_gridOpacity, m_lineWidth, m_height;
-    QHash<QString, bool> m_flags;
+    struct Scale {
+        double lowHz, highHz, span, centre, gridOpacity, lineWidth, height;
+    } m_scale{};
+    std::array<bool, FlagCount> m_on{};
 };
 
 #endif // GRAPHCONTROLLER_H
