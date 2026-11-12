@@ -87,13 +87,13 @@ test("WB6a volume: user and master volume, reset, mute and bypass write and read
   const vol = session.getByRole("region", { name: "Volume" });
 
   // The user taper: position 128 of 200 is -12 dB.
-  await setRange(vol.getByRole("slider", { name: "User Volume" }), 128);
+  await setRange(vol.getByRole("slider", { name: "Volume", exact: true }), 128);
   await expect(vol.locator(".volume-value")).toHaveText("-12.0 dB");
   await expect.poll(async () => (await coreState(page)).userVolumeDb).toBe(-12);
 
   // The master volume, on the firmware's taper: 100 steps of 0.1 dB below 0 is -10 dB.
   await vol.getByRole("combobox", { name: "Volume shown" }).selectOption("master");
-  const master = vol.getByRole("slider", { name: "Master Volume" });
+  const master = vol.getByRole("slider", { name: "Master volume", exact: true });
   await setRange(master, 148);
   await expect(vol.locator(".volume-value")).toHaveText("-10.0 dB");
   await expect.poll(async () => (await coreState(page)).masterVolumeDb).toBe(-10);
@@ -128,7 +128,7 @@ test("WB6a volume: user and master volume, reset, mute and bypass write and read
 
 test("WB6a volume: the keyboard moves the slider and the device follows", async ({ page }) => {
   const session = await openControl(page);
-  const slider = session.getByRole("slider", { name: "User Volume" });
+  const slider = session.getByRole("slider", { name: "Volume", exact: true });
   await setRange(slider, 128);
   await expect(session.locator(".volume-value")).toHaveText("-12.0 dB");
   await slider.focus();

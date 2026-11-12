@@ -97,6 +97,12 @@ pub struct Param {
     pub display: Option<String>,
 }
 
+/// The registry's unit for `path`, as a row shows it ("dB", "dBFS", "dB SPL"),
+/// so a row's unit is the glossary's word (WP P0U, `docs/GLOSSARY.md`).
+pub fn unit_of(path: &str) -> &'static str {
+    dspi_proto::registry::by_path(path).map_or("", |d| d.kind.unit().suffix().trim())
+}
+
 impl Param {
     pub fn new(label: &str, value: f64, min: f64, max: f64, unit: &str) -> Self {
         Self {
@@ -1765,6 +1771,16 @@ mod tests {
 
     fn theme() -> Theme {
         Theme::console(ColorDepth::TrueColor, Glyphs::Braille)
+    }
+
+    #[test]
+    fn wp_p0u_rows_take_their_unit_from_the_registry() {
+        assert_eq!(unit_of("limit.threshold"), "dBFS");
+        assert_eq!(unit_of("lev.gate"), "dBFS");
+        assert_eq!(unit_of("sub.ceiling"), "dBFS");
+        assert_eq!(unit_of("loud.ref"), "dB SPL");
+        assert_eq!(unit_of("out.gain"), "dB");
+        assert_eq!(unit_of("nope"), "");
     }
 
     #[test]

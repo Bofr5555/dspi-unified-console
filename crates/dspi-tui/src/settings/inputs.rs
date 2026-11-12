@@ -167,11 +167,7 @@ impl InputsPage {
             "S/PDIF 1"
         };
         let mut out = vec![
-            (
-                SOURCE_USB,
-                "USB".to_string(),
-                "Audio from the computer".to_string(),
-            ),
+            (SOURCE_USB, "USB".to_string(), "Audio over USB".to_string()),
             (SOURCE_SPDIF, spdif_title.to_string(), receiver(0)),
         ];
         for idx in optional {
@@ -1289,7 +1285,7 @@ mod tests {
         let mut s = s.open(Page::Inputs, &st);
         let f = frame(&mut s, &st, 120, 120);
         assert!(f.contains("SOURCE NAMES"), "{f}");
-        assert!(f.contains("Audio from the computer"), "{f}");
+        assert!(f.contains("Audio over USB"), "{f}");
         assert!(f.contains("Add a name"), "{f}");
 
         s.handle(key(KeyCode::Tab), &st);
