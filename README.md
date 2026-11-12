@@ -138,7 +138,7 @@ What each client lacks against the macOS reference is in
 | `assets/` | Data shared by every client, `about.json` (the About pages) and `onboarding/`. |
 | `tests/fixtures/` | Filter-file fixtures and the DSPi Link fixtures (`link/`, from WeebLabs/DSPi-Link). |
 | `xtask/` | Developer tasks, and the udev rule they install. |
-| `docs/` | `core-merge/` (the core plan `PLAN.md`, the client plan `PLAN-CLIENTS.md`, the hub, the web study, the hardware records), `PARITY.md`, `PORTABILITY.md`, `SWIFT-SEAMS.md`, `licensing/`, `terminal/`. |
+| `docs/` | `core-merge/` (the core plan `PLAN.md`, the client plan `PLAN-CLIENTS.md`, the hub, the web study, the hardware records), `PARITY.md`, `PORTABILITY.md`, `SWIFT-SEAMS.md`, `UI-MODES.md` (Simple, Advanced and Installer), `licensing/`, `terminal/`. |
 | `ci/` | `check.sh` and `run.sh` (the checks and their container wrapper), `matrix.sh` (every client from one commit), the container files, and a **draft** GitHub Actions file that is not enabled. |
 
 ## Building and testing

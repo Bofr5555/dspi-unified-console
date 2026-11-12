@@ -49,4 +49,6 @@ tasks.withType<Test>().configureEach {
     inputs.files(runtime)
     systemProperty("robolectric.offline", "true")
     doFirst { systemProperty("robolectric.dependency.dir", runtime.singleFile.parentFile.path) }
+    // -- WP UIM1 -- HomeShotsWpUim1Test writes its screenshots here when given
+    providers.gradleProperty("dspi.shotsDir").orNull?.let { systemProperty("dspi.shotsDir", it) }
 }

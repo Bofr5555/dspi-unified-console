@@ -5,12 +5,15 @@
 //
 // Layout: a tablet (>= 840 dp wide) keeps the macOS split view, sidebar left
 // and graph + detail right, selection toggled in place. A phone shows the
-// sidebar content as the home page (graph on top, dashboard below) and a
-// channel row opens ChannelScreen (route channel/{ch}).
+// sidebar content as the home page and a channel row opens ChannelScreen
+// (route channel/{ch}). WP UIM1: the phone's page starts with what is used
+// most (docs/UI-MODES.md): volume, preset and source, the output meters with
+// a health line; then the graph, the channel list and tool icons, the dashboard.
 package se.bofr.dspi.feature.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,6 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -46,7 +50,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import se.bofr.dspi.bridge.ChannelMap
@@ -61,13 +71,16 @@ import se.bofr.dspi.feature.graph.LocalPeqGraphSelection
 import se.bofr.dspi.feature.graph.LocalSpectrumPageSelection
 import se.bofr.dspi.feature.graph.PeqGraphSelection
 import se.bofr.dspi.feature.graph.rememberSpectrumPageSelection
+import se.bofr.dspi.feature.home.components.ChannelMeterBar
 import se.bofr.dspi.feature.home.components.ChannelRow
 import se.bofr.dspi.feature.home.components.ConnectionStatusIndicator
 import se.bofr.dspi.feature.home.components.SidebarVolumeMode
 import se.bofr.dspi.feature.home.components.VolumeModeSelector
+import se.bofr.dspi.feature.home.components.homeMeterColor
 import se.bofr.dspi.feature.home.components.setSidebarVolumeMode
 import se.bofr.dspi.feature.home.components.sidebarVolumeMode
 import se.bofr.dspi.ui.ChannelPalette
+import se.bofr.dspi.ui.CpuMeter
 import se.bofr.dspi.ui.CpuSection
 import se.bofr.dspi.ui.CustomSlider
 import se.bofr.dspi.ui.DspiIcons
@@ -198,7 +211,15 @@ fun ContentView(bridge: DspiBridge, onNavigate: (String) -> Unit, modifier: Modi
                 }
             } else {
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                    GraphHeader(bridge, onNavigate, onTools = { onNavigate(DspiRoutes.TOOLS) })
+                    // -- WP UIM1 -- the front: volume, preset, source, output meters and the health line
+                    PhoneTopBar(bridge, onTools = { onNavigate(DspiRoutes.TOOLS) })
+                    Column(Modifier.background(c.sidebar)) {
+                        HomeControls(bridge, homeVm, prefs, volumeFirst = true)
+                        OutputMeters(bridge, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 4.dp))
+                        HealthLineRow(bridge, Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 12.dp))
+                        HorizontalRule(Modifier.fillMaxWidth())
+                    }
+                    GraphHeader(bridge, onNavigate, showConnection = false)
                     GraphView(bridge, Modifier.fillMaxWidth().padding(horizontal = 16.dp))
                     GraphResizeHandle(Modifier.padding(horizontal = 16.dp))
                     Column(Modifier.background(c.sidebar)) {
@@ -209,7 +230,9 @@ fun ContentView(bridge: DspiBridge, onNavigate: (String) -> Unit, modifier: Modi
                                 SidebarSelection.Overview -> Unit
                             }
                         })
-                        SidebarBottomPanel(bridge, homeVm, prefs, onNavigate)
+                        HorizontalRule(Modifier.fillMaxWidth())
+                        QuickIcons(bridge, onNavigate)
+                        HorizontalRule(Modifier.fillMaxWidth())
                     }
                     Spacer(Modifier.height(18.dp))
                     DashboardBarStrip(bridge, onNavigate, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)) // -- WP AN34 --
@@ -244,7 +267,9 @@ internal fun GraphHeader(
     bridge: DspiBridge,
     onNavigate: (String) -> Unit,
     title: String = "Filter Response",
-    onTools: (() -> Unit)? = null
+    onTools: (() -> Unit)? = null,
+    // -- WP UIM1 -- the phone's Home shows the connection in its top bar instead
+    showConnection: Boolean = true
 ) {
     val c = DspiTheme.colors
     Row(
@@ -266,7 +291,95 @@ internal fun GraphHeader(
             )
         }
         Spacer(Modifier.weight(1f))
+        if (showConnection) ConnectionStatusIndicator(bridge)
+    }
+}
+
+// -- WP UIM1 --
+/** The phone Home's top bar: the Tools menu button (AN31) and the connection status. */
+@Composable
+private fun PhoneTopBar(bridge: DspiBridge, onTools: () -> Unit) {
+    val c = DspiTheme.colors
+    Row(
+        Modifier.fillMaxWidth().background(c.sidebar).padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onTools, modifier = Modifier.size(44.dp)) {
+            Icon(DspiIcons.menu, contentDescription = TOOLS_MENU_LABEL, tint = c.label, modifier = Modifier.size(22.dp))
+        }
+        Spacer(Modifier.weight(1f))
         ConnectionStatusIndicator(bridge)
+    }
+}
+
+/**
+ * WP UIM1: every enabled output's level side by side, a neutral bar under a small tag in the
+ * channel's colour (colour as a tag only, docs/UI-MODES.md). The channel list below has the
+ * same meters per row.
+ */
+@Composable
+private fun OutputMeters(bridge: DspiBridge, modifier: Modifier = Modifier) {
+    val s = bridge.observeState()
+    val status = bridge.statusState()
+    val ready = bridge.observeDeviceReady()
+    val outputs = MatrixOutput.visible(bridge.platformName, s.outputTypes).filter { s.outputEnabled.getOrElse(it.index) { false } }
+    if (!ready || outputs.isEmpty()) return
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        for (out in outputs) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(
+                    out.descriptor,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = ChannelPalette.output(out.index, out.isPdm),
+                    maxLines = 1,
+                    modifier = Modifier.clearAndSetSemantics { }
+                )
+                ChannelMeterBar(
+                    bridge,
+                    status,
+                    out.appCh,
+                    homeMeterColor(),
+                    isMuted = s.outputMuted.getOrElse(out.index) { false },
+                    label = "${out.descriptor} level"
+                )
+            }
+        }
+    }
+}
+
+/** WP UIM1: the health line ([HomeModel.healthLine]) with the two cores' load beside it. */
+@Composable
+private fun HealthLineRow(bridge: DspiBridge, modifier: Modifier = Modifier) {
+    val c = DspiTheme.colors
+    val s = bridge.observeState()
+    val connected = bridge.observeStatus { it.connected }
+    val status by bridge.statusState()
+    val outputs = MatrixOutput.visible(bridge.platformName, s.outputTypes).filter { s.outputEnabled.getOrElse(it.index) { false } }
+    val line = HomeModel.healthLine(
+        connected,
+        clipping = outputs.filter { bridge.isClipping(it.appCh) }.map { it.descriptor },
+        limiting = outputs.filter { status.limiterReduction.getOrElse(it.index) { 0f } > 0f }.map { it.descriptor },
+        cpu0 = status.cpu0,
+        cpu1 = status.cpu1
+    )
+    val dot = when (line.health) {
+        HomeModel.Health.OFFLINE -> c.gray
+        HomeModel.Health.OK -> c.green
+        HomeModel.Health.WARNING -> c.orange
+        HomeModel.Health.PROBLEM -> c.red
+    }
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            Modifier.weight(1f).semantics(mergeDescendants = true) { contentDescription = "Health: ${line.text}" },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Box(Modifier.size(6.dp).background(dot, CircleShape))
+            Text(line.text, style = DspiType.caption2, color = c.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        CpuMeter(0, status.cpu0)
+        CpuMeter(1, status.cpu1)
     }
 }
 
@@ -425,72 +538,90 @@ internal const val TOOLS_MENU_LABEL = "Tools menu"
  */
 @Composable
 private fun SidebarBottomPanel(bridge: DspiBridge, vm: HomeViewModel, prefs: AppSettingsStore, onNavigate: (String) -> Unit) {
-    val c = DspiTheme.colors
-    val s = bridge.observeState()
-    val connected = bridge.observeStatus { it.connected }
     Column(Modifier.fillMaxWidth()) {
         HorizontalRule(Modifier.fillMaxWidth())
-        // G1: the effect toggles write; navigation (long-press, Matrix, Stats, Settings) stays
-        val canWrite = writesAllowed()
-        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp, horizontal = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-            SidebarIconButton(DspiIcons.sliders, false, "Matrix Mixer", { onNavigate(DspiRoutes.MATRIX) })
-            SidebarIconButton(
-                DspiIcons.headphones,
-                s.crossfeedEnabled,
-                "Headphone Crossfeed",
-                { bridge.setCrossfeed(!s.crossfeedEnabled) },
-                enabled = canWrite,
-                isToggle = true,
-                onLongClick = { onNavigate(DspiRoutes.tool("crossfeed")) }
-            )
-            SidebarIconButton(
-                DspiIcons.loudness,
-                s.loudnessEnabled,
-                "Loudness Compensation",
-                { bridge.setLoudness(!s.loudnessEnabled) },
-                enabled = canWrite,
-                isToggle = true,
-                onLongClick = { onNavigate(DspiRoutes.tool("loudness")) }
-            )
-            SidebarIconButton(
-                DspiIcons.waveform,
-                s.levellerEnabled,
-                "Volume Leveller",
-                { bridge.setLevellerEnabled(!s.levellerEnabled) },
-                enabled = canWrite,
-                isToggle = true,
-                onLongClick = { onNavigate(DspiRoutes.tool("leveller")) }
-            )
-            SidebarIconButton(
-                DspiIcons.bassClef,
-                s.psybassEnabled,
-                "Psychoacoustic Bass",
-                { bridge.setPsybassEnabled(!s.psybassEnabled) },
-                enabled = canWrite,
-                isToggle = true,
-                onLongClick = { onNavigate(DspiRoutes.tool("psybass")) }
-            )
-            // AN32: the stats icon opens the stats page, not the first analysis page
-            SidebarIconButton(DspiIcons.info, false, "Stats for Nerbs", { onNavigate(DspiRoutes.analysis("stats")) })
-            SidebarIconButton(DspiIcons.gear, false, "Settings", { onNavigate(DspiRoutes.SETTINGS) })
-            SidebarIconButton(DspiIcons.xmark, s.bypass, "Bypass Master EQ", {
-                bridge.setBypass(!s.bypass)
-            }, enabled = canWrite, isToggle = true)
-        }
+        QuickIcons(bridge, onNavigate)
         HorizontalRule(Modifier.fillMaxWidth())
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            PresetPickerRow(bridge, vm, Modifier.fillMaxWidth())
-            if (bridge.inputSources.isNotEmpty()) {
-                SourceRow(bridge, connected)
-            }
+        HomeControls(bridge, vm, prefs, volumeFirst = false)
+        HorizontalRule(Modifier.fillMaxWidth())
+        val status by bridge.statusState()
+        CpuSection(status.cpu0, status.cpu1, Modifier.padding(16.dp))
+    }
+}
+
+/** The quick-access icons: Matrix, the four effect toggles, Stats, Settings, Bypass. */
+@Composable
+private fun QuickIcons(bridge: DspiBridge, onNavigate: (String) -> Unit) {
+    val s = bridge.observeState()
+    // G1: the effect toggles write; navigation (long-press, Matrix, Stats, Settings) stays
+    val canWrite = writesAllowed()
+    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp, horizontal = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+        SidebarIconButton(DspiIcons.sliders, false, "Matrix Mixer", { onNavigate(DspiRoutes.MATRIX) })
+        SidebarIconButton(
+            DspiIcons.headphones,
+            s.crossfeedEnabled,
+            "Headphone Crossfeed",
+            { bridge.setCrossfeed(!s.crossfeedEnabled) },
+            enabled = canWrite,
+            isToggle = true,
+            onLongClick = { onNavigate(DspiRoutes.tool("crossfeed")) }
+        )
+        SidebarIconButton(
+            DspiIcons.loudness,
+            s.loudnessEnabled,
+            "Loudness Compensation",
+            { bridge.setLoudness(!s.loudnessEnabled) },
+            enabled = canWrite,
+            isToggle = true,
+            onLongClick = { onNavigate(DspiRoutes.tool("loudness")) }
+        )
+        SidebarIconButton(
+            DspiIcons.waveform,
+            s.levellerEnabled,
+            "Volume Leveller",
+            { bridge.setLevellerEnabled(!s.levellerEnabled) },
+            enabled = canWrite,
+            isToggle = true,
+            onLongClick = { onNavigate(DspiRoutes.tool("leveller")) }
+        )
+        SidebarIconButton(
+            DspiIcons.bassClef,
+            s.psybassEnabled,
+            "Psychoacoustic Bass",
+            { bridge.setPsybassEnabled(!s.psybassEnabled) },
+            enabled = canWrite,
+            isToggle = true,
+            onLongClick = { onNavigate(DspiRoutes.tool("psybass")) }
+        )
+        // AN32: the stats icon opens the stats page, not the first analysis page
+        SidebarIconButton(DspiIcons.info, false, "Stats for Nerbs", { onNavigate(DspiRoutes.analysis("stats")) })
+        SidebarIconButton(DspiIcons.gear, false, "Settings", { onNavigate(DspiRoutes.SETTINGS) })
+        SidebarIconButton(DspiIcons.xmark, s.bypass, "Bypass Master EQ", {
+            bridge.setBypass(!s.bypass)
+        }, enabled = canWrite, isToggle = true)
+    }
+}
+
+/**
+ * Preset, Source and the volume (macOS order); [volumeFirst] puts the volume on top, as the
+ * phone's Home does (WP UIM1).
+ */
+@Composable
+private fun HomeControls(bridge: DspiBridge, vm: HomeViewModel, prefs: AppSettingsStore, volumeFirst: Boolean) {
+    val connected = bridge.observeStatus { it.connected }
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        val volume = @Composable {
             when (prefs.sidebarVolumeMode()) {
                 SidebarVolumeMode.MASTER -> MasterModeSection(bridge, prefs)
                 SidebarVolumeMode.AUTO -> UserVolumeSection(bridge, prefs)
             }
         }
-        HorizontalRule(Modifier.fillMaxWidth())
-        val status by bridge.statusState()
-        CpuSection(status.cpu0, status.cpu1, Modifier.padding(16.dp))
+        if (volumeFirst) volume()
+        PresetPickerRow(bridge, vm, Modifier.fillMaxWidth())
+        if (bridge.inputSources.isNotEmpty()) {
+            SourceRow(bridge, connected)
+        }
+        if (!volumeFirst) volume()
     }
 }
 
