@@ -111,6 +111,8 @@ mod output_labels;
 mod events;
 // -- WP P0W --
 mod journal;
+// -- WP P0E --
+mod diag;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -166,6 +168,8 @@ pub use output_labels::{
 };
 // -- WP P0W --
 pub use journal::{HistoryEntry, HistoryMove, HistorySource};
+// -- WP P0E --
+pub use diag::REMOVED as DIAG_REMOVED;
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///

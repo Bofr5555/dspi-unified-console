@@ -26,17 +26,18 @@ enum Status {
 }
 
 impl Status {
-    fn print(&self) {
-        match self {
-            Status::Ok(m) => println!("  ok    {m}"),
-            Status::Warn(m) => println!("  note  {m}"),
+    // -- WP P0E -- written to a string, which `uconsole diag` keeps too
+    fn render(&self, out: &mut String) {
+        use std::fmt::Write as _;
+        let _ = match self {
+            Status::Ok(m) => writeln!(out, "  ok    {m}"),
+            Status::Warn(m) => writeln!(out, "  note  {m}"),
             Status::Fail(m, fix) => {
-                println!("  FAIL  {m}");
-                for line in fix.lines() {
-                    println!("          {line}");
-                }
+                let _ = writeln!(out, "  FAIL  {m}");
+                fix.lines()
+                    .try_for_each(|line| writeln!(out, "          {line}"))
             }
-        }
+        };
     }
 
     fn is_fail(&self) -> bool {
@@ -47,7 +48,19 @@ impl Status {
 /// Check the way to `target`; plain `uconsole doctor` is USB, and says whether any
 /// MIDI port is there too.
 pub fn run(target: &Target) -> u8 {
-    println!(
+    // -- WP P0E --
+    let (text, failed) = report(target);
+    print!("{text}");
+    if failed == 0 { 0 } else { 2 }
+}
+
+// -- WP P0E --
+/// What `uconsole doctor` prints, and how many checks failed.
+pub fn report(target: &Target) -> (String, usize) {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
         "{COMMAND} {} on {} {}\n",
         env!("CARGO_PKG_VERSION"),
         std::env::consts::OS,
@@ -75,18 +88,17 @@ pub fn run(target: &Target) -> u8 {
     }
 
     for c in &checks {
-        c.print();
+        c.render(&mut out);
     }
 
     let failed = checks.iter().filter(|c| c.is_fail()).count();
-    println!();
+    out.push('\n');
     if failed == 0 {
-        println!("Everything looks fine.");
-        0
+        out.push_str("Everything looks fine.\n");
     } else {
-        println!("{failed} problem(s) found.");
-        2
+        let _ = writeln!(out, "{failed} problem(s) found.");
     }
+    (out, failed)
 }
 
 fn terminal_check() -> Status {

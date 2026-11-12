@@ -47,6 +47,9 @@ const NOT_EXPORTED: &[&str] = &[
     // object.
     "event_log_page",
     "set_event_sink",
+    // -- WP P0E -- Rust-only: the bundle as bytes, for the web, which has no file
+    // system; UniFFI has `diagnostics_save`.
+    "diagnostics_zip",
 ];
 
 /// `crates/dspi-core/src/link.rs`, exported by WP C15.

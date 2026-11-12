@@ -731,6 +731,16 @@ void uniffi_dspi_core_fn_method_dspicore_device_lock_acquire(void*_Nonnull ptr, 
 void uniffi_dspi_core_fn_method_dspicore_device_lock_release(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DIAGNOSTICS_FILE_NAME
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DIAGNOSTICS_FILE_NAME
+RustBuffer uniffi_dspi_core_fn_method_dspicore_diagnostics_file_name(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DIAGNOSTICS_SAVE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DIAGNOSTICS_SAVE
+RustBuffer uniffi_dspi_core_fn_method_dspicore_diagnostics_save(void*_Nonnull ptr, RustBuffer path, RustBuffer options, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DISCONNECT
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DISCONNECT
 void uniffi_dspi_core_fn_method_dspicore_disconnect(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -2762,6 +2772,18 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_device_lock_acquire(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DEVICE_LOCK_RELEASE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DEVICE_LOCK_RELEASE
 uint16_t uniffi_dspi_core_checksum_method_dspicore_device_lock_release(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DIAGNOSTICS_FILE_NAME
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DIAGNOSTICS_FILE_NAME
+uint16_t uniffi_dspi_core_checksum_method_dspicore_diagnostics_file_name(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DIAGNOSTICS_SAVE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DIAGNOSTICS_SAVE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_diagnostics_save(void
     
 );
 #endif

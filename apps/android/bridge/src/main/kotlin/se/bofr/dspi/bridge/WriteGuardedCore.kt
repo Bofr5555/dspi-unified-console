@@ -867,7 +867,11 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // -- WP P0W -- the change history's reads
             "canUndo",
             "canRedo",
-            "history"
+            "history",
+            // -- WP P0E -- the diagnostics bundle: device reads (the Stats
+            // window's) and a local file; nothing is written to the device.
+            "diagnosticsSave",
+            "diagnosticsFileName"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

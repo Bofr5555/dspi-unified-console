@@ -68,6 +68,10 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun openDemo(): Unit = throw NotImplementedError("open_demo")
 
+    override fun diagnosticsSave(path: String, options: DiagOptions): List<String> = throw NotImplementedError("diagnostics_save")
+
+    override fun diagnosticsFileName(): String = throw NotImplementedError("diagnostics_file_name")
+
     override fun meterBallistics(): MeterBallistics = throw NotImplementedError("meter_ballistics")
 
     override fun setMeterBallistics(config: MeterBallistics): Unit = throw NotImplementedError("set_meter_ballistics")

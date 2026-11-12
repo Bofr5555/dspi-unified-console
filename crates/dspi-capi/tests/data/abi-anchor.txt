@@ -1189,6 +1189,12 @@ char *buf,
 uint32_t buf_len);
 uint32_t dspi_event_log_export(struct FfiCore *core, const char *serial, char *buf, uint32_t len);
 uint32_t dspi_event_log_devices(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_diagnostics_save(struct FfiCore *core,
+const char *path,
+const char *options,
+char *buf,
+uint32_t len);
+uint32_t dspi_diagnostics_file_name(struct FfiCore *core, char *buf, uint32_t len);
 bool dspi_link_browse_start(struct FfiCore *core,
 void (*callback)(void *user_data),
 void *user_data,

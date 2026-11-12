@@ -1484,6 +1484,10 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1668,6 +1672,10 @@ fun uniffi_dspi_core_checksum_method_dspicore_demo_rename_elsewhere(
 fun uniffi_dspi_core_checksum_method_dspicore_device_lock_acquire(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_device_lock_release(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_diagnostics_file_name(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_diagnostics_save(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_disconnect(
 ): Short
@@ -2243,6 +2251,10 @@ fun uniffi_dspi_core_fn_method_dspicore_device_lock_acquire(`ptr`: Pointer,`reas
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_device_lock_release(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_diagnostics_file_name(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_diagnostics_save(`ptr`: Pointer,`path`: RustBuffer.ByValue,`options`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_disconnect(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_enter_bootloader(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -3116,6 +3128,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_device_lock_release() != 10916.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_diagnostics_file_name() != 50086.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_diagnostics_save() != 17479.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_disconnect() != 29066.toShort()) {
@@ -5710,6 +5728,30 @@ public interface DspiCoreInterface {
      * terms. Idempotent; never blocks.
      */
     fun `deviceLockRelease`()
+    
+    /**
+     * A file name for a bundle saved now: `dspi-diagnostics-` and the UTC
+     * date and time, `.zip`. For a Save dialog's suggestion. Never fails.
+     */
+    fun `diagnosticsFileName`(): kotlin.String
+    
+    /**
+     * Write a diagnostics bundle to `path`: one zip with versions, the open
+     * device's dump, stats and monitor lines, every event log, the hub
+     * store at `options.hub_store_dir` with its tokens and secrets removed,
+     * the OS and USB facts, and `options.files`. Nothing is sent anywhere.
+     * Returns the names of the files in the zip.
+     *
+     * Reads the device (a Stats window's reads) and files: not on the UI
+     * thread. The zip is written beside `path` first and renamed over it,
+     * so a failure leaves no half file.
+     *
+     * Errors: [`DspiError::Io`] when the file cannot be written;
+     * [`DspiError::Unsupported`] where there is no file system (the web,
+     * which saves [`DspiCore::diagnostics_zip`]'s bytes itself). What the
+     * bundle could not read is in its `notes.txt`, never an error.
+     */
+    fun `diagnosticsSave`(`path`: kotlin.String, `options`: DiagOptions): List<kotlin.String>
     
     /**
      * Close the open device, whatever its transport, and reset the mirror
@@ -8816,6 +8858,51 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * A file name for a bundle saved now: `dspi-diagnostics-` and the UTC
+     * date and time, `.zip`. For a Save dialog's suggestion. Never fails.
+     */override fun `diagnosticsFileName`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_diagnostics_file_name(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Write a diagnostics bundle to `path`: one zip with versions, the open
+     * device's dump, stats and monitor lines, every event log, the hub
+     * store at `options.hub_store_dir` with its tokens and secrets removed,
+     * the OS and USB facts, and `options.files`. Nothing is sent anywhere.
+     * Returns the names of the files in the zip.
+     *
+     * Reads the device (a Stats window's reads) and files: not on the UI
+     * thread. The zip is written beside `path` first and renamed over it,
+     * so a failure leaves no half file.
+     *
+     * Errors: [`DspiError::Io`] when the file cannot be written;
+     * [`DspiError::Unsupported`] where there is no file system (the web,
+     * which saves [`DspiCore::diagnostics_zip`]'s bytes itself). What the
+     * bundle could not read is in its `notes.txt`, never an error.
+     */
+    @Throws(DspiException::class)override fun `diagnosticsSave`(`path`: kotlin.String, `options`: DiagOptions): List<kotlin.String> {
+            return FfiConverterSequenceString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_diagnostics_save(
+        it, FfiConverterString.lower(`path`),FfiConverterTypeDiagOptions.lower(`options`),_status)
+}
+    }
+    )
+    }
     
 
     
@@ -15620,6 +15707,100 @@ public object FfiConverterTypeDeviceInfo: FfiConverterRustBuffer<DeviceInfo> {
 
 
 /**
+ * A file a client adds to a diagnostics bundle (`client/<name>` in the
+ * zip): its own log, `uconsole doctor`'s report.
+ */
+data class DiagFile (
+    /**
+     * The file's name; anything but letters, digits, `.`, `_` and `-`
+     * becomes `_`.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * Its text, kept up to 4 MiB.
+     */
+    var `text`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeDiagFile: FfiConverterRustBuffer<DiagFile> {
+    override fun read(buf: ByteBuffer): DiagFile {
+        return DiagFile(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: DiagFile) = (
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`text`)
+    )
+
+    override fun write(value: DiagFile, buf: ByteBuffer) {
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`text`, buf)
+    }
+}
+
+
+
+/**
+ * What a client adds to a diagnostics bundle
+ * (`DspiCore::diagnostics_save`).
+ */
+data class DiagOptions (
+    /**
+     * The client and its version, as it names itself ("DSPi Console 1.2.0
+     * (Android)"); "" when it does not say.
+     */
+    var `app`: kotlin.String, 
+    /**
+     * The folder of a hub store (`hub-store.json`) to include with its
+     * tokens and secrets removed; "" for none.
+     */
+    var `hubStoreDir`: kotlin.String, 
+    /**
+     * The client's own files.
+     */
+    var `files`: List<DiagFile>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeDiagOptions: FfiConverterRustBuffer<DiagOptions> {
+    override fun read(buf: ByteBuffer): DiagOptions {
+        return DiagOptions(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeDiagFile.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: DiagOptions) = (
+            FfiConverterString.allocationSize(value.`app`) +
+            FfiConverterString.allocationSize(value.`hubStoreDir`) +
+            FfiConverterSequenceTypeDiagFile.allocationSize(value.`files`)
+    )
+
+    override fun write(value: DiagOptions, buf: ByteBuffer) {
+            FfiConverterString.write(value.`app`, buf)
+            FfiConverterString.write(value.`hubStoreDir`, buf)
+            FfiConverterSequenceTypeDiagFile.write(value.`files`, buf)
+    }
+}
+
+
+
+/**
  * Everything the core knows about the connected device's settings.
  *
  * Per-channel vectors are sized to the protocol maxima, not to the device:
@@ -22164,6 +22345,34 @@ public object FfiConverterSequenceTypeDeviceInfo: FfiConverterRustBuffer<List<De
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeDeviceInfo.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeDiagFile: FfiConverterRustBuffer<List<DiagFile>> {
+    override fun read(buf: ByteBuffer): List<DiagFile> {
+        val len = buf.getInt()
+        return List<DiagFile>(len) {
+            FfiConverterTypeDiagFile.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<DiagFile>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeDiagFile.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<DiagFile>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeDiagFile.write(it, buf)
         }
     }
 }
