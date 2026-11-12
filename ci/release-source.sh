@@ -17,6 +17,8 @@
 # Writes OUTDIR/<name>.tar.gz (OUTDIR default: dist) and prints its path. COMMIT
 # defaults to HEAD; a dirty work tree is refused when it is HEAD, since the
 # archive must be what was built. Runs on the host (git only).
+# -- WP P0E -- Last step of a release: ci/release-sums.sh signs the folder's
+# SHA256SUMS (docs/RELEASING.md).
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 desktop=0
