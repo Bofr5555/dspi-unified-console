@@ -1,0 +1,25 @@
+pkgbase = dspi-uconsole
+	pkgdesc = uConsole for DSPi: set up and control a DSPi audio processor
+	pkgver = 0.13.0
+	pkgrel = 1
+	url = https://github.com/Bofr5555/dspi-unified-console
+	install = dspi-uconsole.install
+	arch = x86_64
+	license = GPL-3.0-only
+	makedepends = cargo
+	makedepends = cmake
+	makedepends = ninja
+	makedepends = qt6-tools
+	depends = qt6-base
+	depends = qt6-declarative
+	depends = qt6-svg
+	depends = alsa-lib
+	depends = gcc-libs
+	depends = glibc
+	depends = hicolor-icon-theme
+	optdepends = qt6-wayland: run on Wayland without XWayland
+	optdepends = polkit: install the udev rule from the app when a DSPi cannot be opened
+	source = https://github.com/Bofr5555/dspi-unified-console/releases/download/v0.13.0/dspi-uconsole-0.13.0-desktop-source.tar.gz
+	sha256sums = SKIP
+
+pkgname = dspi-uconsole

@@ -4,16 +4,24 @@
 #
 #   podman build -t dspi-uconsole-ubuntu -f apps/desktop/packaging/linux/Containerfile.ubuntu apps/desktop/packaging/linux
 #   podman run --rm -v "$PWD":/src:Z -w /src dspi-uconsole-ubuntu apps/desktop/packaging/linux/build-ubuntu.sh
+# (build-release.sh does both, and then make-appimage.sh in the same image)
 FROM docker.io/library/ubuntu:24.04
 
 ARG RUSTUP_VERSION=1.29.2
 ARG RUSTUP_INIT_SHA256=5be191e8c70a5007074254cb74d78dbfdd25cd5a61c27de7b8e5410122ec24f4
 ARG RUST_TOOLCHAIN=1.99.1
 
+# -- WP QP20 -- The AppImage (make-appimage.sh): squashfs-tools and patchelf, and
+# the libraries Qt's platform plugins load that a desktop may lack, so the
+# AppImage bundles them (licences/stage.sh lists each with its copyright file)
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       ca-certificates curl p7zip-full cmake ninja-build g++ pkg-config file binutils \
       libasound2-dev libgl-dev libegl-dev libxkbcommon-dev libfontconfig1-dev libdbus-1-dev \
+      squashfs-tools patchelf python3 \
+      libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+      libxcb-render-util0 libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-xfixes0 libxcb-xkb1 \
+      libxcb-xinput0 libxcb-util1 libwayland-cursor0 libwayland-egl1 libglib2.0-0t64 \
  && rm -rf /var/lib/apt/lists/*
 
 COPY fetch-qt.sh qt-6.8.3.sha256 /opt/qt-pins/

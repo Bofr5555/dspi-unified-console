@@ -1,0 +1,39 @@
+# -- WP QP20 -- Arch Linux package of uConsole for DSPi, for the AUR, built
+# from the release's desktop source archive (ci/release-source.sh
+# --with-desktop) against Arch's Qt. A distribution package: no update feed
+# (pacman updates it). Update pkgver and the sum with each release
+# (updpkgsums), then regenerate .SRCINFO (makepkg --printsrcinfo > .SRCINFO).
+pkgname=dspi-uconsole
+pkgver=0.13.0
+pkgrel=1
+pkgdesc='uConsole for DSPi: set up and control a DSPi audio processor'
+arch=('x86_64')
+url='https://github.com/Bofr5555/dspi-unified-console'
+license=('GPL-3.0-only')
+depends=('qt6-base' 'qt6-declarative' 'qt6-svg' 'alsa-lib' 'gcc-libs' 'glibc' 'hicolor-icon-theme')
+makedepends=('cargo' 'cmake' 'ninja' 'qt6-tools')
+optdepends=('qt6-wayland: run on Wayland without XWayland'
+            'polkit: install the udev rule from the app when a DSPi cannot be opened')
+install=dspi-uconsole.install
+source=("$url/releases/download/v$pkgver/$pkgname-$pkgver-desktop-source.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+    cd "$pkgname-$pkgver-desktop-source"
+    export RUSTUP_TOOLCHAIN=stable
+    cargo fetch --locked --target "$(rustc -vV | sed -n 's/^host: //p')"
+}
+
+build() {
+    cd "$pkgname-$pkgver-desktop-source"
+    export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR="$srcdir/target"
+    cargo build --frozen --release -p dspi-capi --features link,midir,mdns,hub
+    cmake -S apps/desktop/qt -B "$srcdir/build" -G Ninja -DCMAKE_BUILD_TYPE=None \
+        -DCMAKE_INSTALL_PREFIX=/usr -DDSPI_CARGO_TARGET_DIR="$CARGO_TARGET_DIR" \
+        -DDSPI_NOTICES=rpm -DDSPI_UPDATE_FEED_URL=
+    cmake --build "$srcdir/build" --target DSPiConsole
+}
+
+package() {
+    DESTDIR="$pkgdir" cmake --install "$srcdir/build"
+}
