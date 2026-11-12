@@ -244,7 +244,9 @@ pub struct SystemStatus {
     /// `dspi_reset_meter_max`.
     pub peak_max: [f32; MAX_CHANNELS],
     /// The clip hold, one bit per wire channel: draw the clip marker from
-    /// this. The core clears the device's flags when it ends.
+    /// this. The core clears the device's flags when it ends; a channel still
+    /// clipping lights again, and where the clear is refused (a viewer on a
+    /// hub) the hold follows the device's sticky flags.
     pub clip_hold: u32,
 }
 

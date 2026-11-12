@@ -2375,7 +2375,9 @@ typedef struct SystemStatus {
   float peak_max[MAX_CHANNELS];
   /**
    * The clip hold, one bit per wire channel: draw the clip marker from
-   * this. The core clears the device's flags when it ends.
+   * this. The core clears the device's flags when it ends; a channel still
+   * clipping lights again, and where the clear is refused (a viewer on a
+   * hub) the hold follows the device's sticky flags.
    */
   uint32_t clip_hold;
 } SystemStatus;
@@ -5154,20 +5156,22 @@ void dspi_set_meter_ballistics(struct FfiCore *core,
 void dspi_reset_meter_max(struct FfiCore *core);
 
 /**
- * Keep the event history in files under `dir` (the app's data directory),
+ * Keep the event log in files under `dir` (the app's data directory),
  * or in memory only for "" or null. Blocking file I/O. False when the
  * directory cannot be created (`dspi_last_error`).
  */
 bool dspi_event_log_set_dir(struct FfiCore *core, const char *dir);
 
 /**
- * `serial`'s history records with ids above `after_id` into `buf` as JSON
+ * `serial`'s event records with ids above `after_id` into `buf` as JSON
  * lines, oldest first, as many whole lines as fit and at most `limit`: with
  * `after_id` 0 the newest, otherwise the next after it. A null or empty
  * `serial` is the open device. Returns the id to pass next time: the last
  * line written, or past a record too long for the buffer at all, which is
  * dropped. With nothing new, a null buffer, a length of 0 or a null handle it
- * returns `after_id`. Reads files: not on the UI thread.
+ * returns `after_id`. Pass a buffer of at least 4096 bytes (a record's
+ * longest line, NUL included) and no record is ever dropped. Reads files:
+ * not on the UI thread.
  */
 uint64_t dspi_event_log_read(struct FfiCore *core,
                              const char *serial,
@@ -5177,14 +5181,14 @@ uint64_t dspi_event_log_read(struct FfiCore *core,
                              uint32_t buf_len);
 
 /**
- * `serial`'s whole event history as JSON lines (the file format), oldest
+ * `serial`'s whole event log as JSON lines (the file format), oldest
  * first; a null or empty `serial` is the open device. Returns the bytes
- * needed, NUL included; 1 (an empty text) for a device with no history.
+ * needed, NUL included; 1 (an empty text) for a device with no event log.
  */
 uint32_t dspi_event_log_export(struct FfiCore *core, const char *serial, char *buf, uint32_t len);
 
 /**
- * The serials with an event history, as a JSON array of strings, sorted.
+ * The serials with an event log, as a JSON array of strings, sorted.
  * Returns the bytes needed, NUL included.
  */
 uint32_t dspi_event_log_devices(struct FfiCore *core, char *buf, uint32_t len);

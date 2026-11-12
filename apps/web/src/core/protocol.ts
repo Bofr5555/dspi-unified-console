@@ -302,7 +302,7 @@ export interface MeterBallistics {
   clipHoldMs: number;
 }
 
-/** One line of the event history (`dspi_session::events::EventRecord`, the file format). */
+/** One line of the event log (`dspi_session::events::EventRecord`, the file format). */
 export interface EventRecord {
   v: number;
   id: number;
@@ -399,13 +399,13 @@ export interface CoreMethods {
    */
   core1Conflict: { params: { output: number }; result: { conflict: boolean; reason: string | null } };
   meters: { params: undefined; result: SystemStatus };
-  // -- WP P0M -- meter ballistics and the event history (in memory on the web)
+  // -- WP P0M -- meter ballistics and the event log (in memory on the web)
   meterBallistics: { params: undefined; result: MeterBallistics };
   setMeterBallistics: { params: MeterBallistics; result: MeterBallistics };
   resetMeterMax: { params: undefined; result: null };
   /** `serial` absent for the open device; `afterId` 0 (default) for the newest `limit` (default 500). */
   eventLogRead: { params: { serial?: string; afterId?: number; limit?: number }; result: { records: EventRecord[]; lastId: number; skipped: number } };
-  /** The whole history as JSON lines. */
+  /** The whole event log as JSON lines. */
   eventLogExport: { params: { serial?: string }; result: string };
   eventLogDevices: { params: undefined; result: string[] };
   rtaStart: { params: RtaRequest; result: null };

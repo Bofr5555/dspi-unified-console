@@ -283,8 +283,10 @@ data class SystemStatus(
     /**
      * The clip hold, one bit per channel: lit by a clip, dark again
      * `MeterBallistics.clip_hold_ms` after the last new one (the core then
-     * clears the device's sticky `clip_flags`) or after `clear_clips`. Draw
-     * the clip marker from this, not from `clip_flags`.
+     * clears the device's sticky `clip_flags`; a channel still clipping lights
+     * again on the next read) or after `clear_clips`. Where the clear is
+     * refused (a viewer on a hub) it follows the sticky flags. Draw the clip
+     * marker from this, not from `clip_flags`.
      */
     val clipHold: Long,
 )
@@ -1902,7 +1904,7 @@ data class MeterBallistics(
 )
 
 /**
- * One record of a device's event history (`DspiCore::event_log_read`).
+ * One record of a device's event log (`DspiCore::event_log_read`).
  */
 data class EventEntry(
     /**
@@ -1968,7 +1970,7 @@ data class EventEntry(
 )
 
 /**
- * A page of event history.
+ * A page of a device's event log.
  */
 data class EventBatch(
     /**

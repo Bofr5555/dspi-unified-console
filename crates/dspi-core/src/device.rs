@@ -231,7 +231,7 @@ impl DspiCore {
         };
         drop(self.set_meter_path(None)); // -- WP LK2 --
         if let Some(conn) = &old {
-            self.history.disconnected(&conn.serial, "closed"); // -- WP P0M --
+            self.events.disconnected(&conn.serial, "closed"); // -- WP P0M --
         }
         if let Some(worker) = worker {
             worker.stop();
@@ -266,9 +266,9 @@ impl DspiCore {
         drop(self.set_meter_path(None)); // -- WP LK2 --
         // -- WP P0M --
         if let Some(conn) = &displaced {
-            self.history.disconnected(&conn.serial, "replaced");
+            self.events.disconnected(&conn.serial, "replaced");
         }
-        self.history.connected(opened);
+        self.events.connected(opened);
         if let Some(worker) = worker {
             worker.stop();
         }

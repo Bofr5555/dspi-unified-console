@@ -190,8 +190,10 @@ pub struct SystemStatus {
     pub peak_max: Vec<f32>,
     /// The clip hold, one bit per channel: lit by a clip, dark again
     /// `MeterBallistics.clip_hold_ms` after the last new one (the core then
-    /// clears the device's sticky `clip_flags`) or after `clear_clips`. Draw
-    /// the clip marker from this, not from `clip_flags`.
+    /// clears the device's sticky `clip_flags`; a channel still clipping lights
+    /// again on the next read) or after `clear_clips`. Where the clear is
+    /// refused (a viewer on a hub) it follows the sticky flags. Draw the clip
+    /// marker from this, not from `clip_flags`.
     pub clip_hold: u32,
 }
 
@@ -1199,7 +1201,7 @@ pub struct MeterBallistics {
     pub clip_hold_ms: u32,
 }
 
-/// One record of a device's event history (`DspiCore::event_log_read`).
+/// One record of a device's event log (`DspiCore::event_log_read`).
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct EventEntry {
@@ -1237,7 +1239,7 @@ pub struct EventEntry {
     pub count: u32,
 }
 
-/// A page of event history.
+/// A page of a device's event log.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct EventBatch {

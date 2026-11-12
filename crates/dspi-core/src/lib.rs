@@ -201,9 +201,10 @@ pub struct DspiCore {
     #[cfg(feature = "link")]
     pub(crate) probe_lock: Mutex<()>,
     // -- WP P0M --
-    /// The meter ballistics and the event history; `inner.history` is the
-    /// same. Its locks are taken with or without `inner`, never `inner` after.
-    pub(crate) history: Arc<events::History>,
+    /// The meter ballistics and the event log; `inner.events` is the same.
+    /// Its locks are taken with or without `inner`, never `inner` after.
+    /// (Not "history": that is the undo journal's name.)
+    pub(crate) events: Arc<events::Store>,
 }
 
 // -- WP LK4 --
@@ -276,8 +277,8 @@ pub(crate) struct Inner {
     /// The raw notification tap (`raw.rs`).
     pub(crate) notify_tap: raw::NotifyTap,
     // -- WP P0M --
-    /// [`DspiCore::history`], for code that holds only the lock.
-    pub(crate) history: Arc<events::History>,
+    /// [`DspiCore::events`], for code that holds only the lock.
+    pub(crate) events: Arc<events::Store>,
 }
 
 /// An open device.
@@ -575,7 +576,7 @@ impl Inner {
             // -- WP CG23 --
             notify_tap: raw::NotifyTap::default(),
             // -- WP P0M --
-            history: Arc::default(),
+            events: Arc::default(),
         }
     }
 
@@ -654,9 +655,9 @@ impl DspiCore {
     #[cfg_attr(feature = "uniffi", uniffi::constructor)]
     pub fn new() -> Arc<Self> {
         // -- WP P0M --
-        let history = Arc::new(events::History::default());
+        let events = Arc::new(events::Store::default());
         let mut inner = Inner::new();
-        inner.history = Arc::clone(&history);
+        inner.events = Arc::clone(&events);
         Arc::new_cyclic(|me| Self {
             inner: Mutex::new(inner),
             listeners: Arc::new(Listeners::default()),
@@ -675,7 +676,7 @@ impl DspiCore {
             #[cfg(feature = "link")]
             probe_lock: Mutex::new(()),
             // -- WP P0M --
-            history,
+            events,
         })
     }
 }

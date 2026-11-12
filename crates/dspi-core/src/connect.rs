@@ -212,7 +212,9 @@ impl DspiCore {
     /// ballistics over these reads (`set_meter_ballistics`); a `stale` read
     /// leaves them as they were. When the clip hold ends the core clears the
     /// device's sticky flags itself (`REQ_CLEAR_CLIPS`, as `clear_clips`), so
-    /// a client keeps no clip timer. New clips go to the event history.
+    /// a client keeps no clip timer. A channel still clipping lights again on
+    /// the next read; where the clear is refused (a viewer on a hub) the hold
+    /// follows the device's sticky flags. New clips go to the event log.
     ///
     /// Errors: [`DspiError::Disconnected`] with no device open;
     /// [`DspiError::Transfer`] when the read fails or the reply is shorter
@@ -220,7 +222,7 @@ impl DspiCore {
     pub fn fetch_status(&self) -> Result<SystemStatus> {
         // -- WP P0M --
         let mut status = self.fetch_status_raw()?;
-        if self.history.meters(&mut status) {
+        if self.events.meters(&mut status) {
             self.clear_clips_when_free();
         }
         Ok(status)
@@ -251,12 +253,17 @@ impl DspiCore {
     /// Errors: [`DspiError::Disconnected`] with no device open; the
     /// transport's typed error when the transfer fails.
     pub fn clear_clips(&self) -> Result<()> {
-        // -- WP P0M -- the core's clip hold goes dark at once
-        self.history.clear_clip_hold();
-        let mut guard = self.lock();
-        let conn = guard.conn()?;
-        conn.get_upto(op::REQ_CLEAR_CLIPS, 0, 4)?;
-        Ok(())
+        // -- WP P0M -- the core's clip hold goes dark at once; a clear that
+        // fails brings back what the device still reports
+        self.events.clear_clip_hold();
+        let sent = {
+            let mut guard = self.lock();
+            guard
+                .conn()
+                .and_then(|conn| conn.get_upto(op::REQ_CLEAR_CLIPS, 0, 4))
+        };
+        self.events.clear_result(sent.is_ok());
+        sent.map(|_| ())
     }
 }
 

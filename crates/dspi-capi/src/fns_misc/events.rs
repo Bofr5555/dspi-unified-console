@@ -1,7 +1,7 @@
-//! C functions: the meter ballistics and the event history (WP P0M), over
+//! C functions: the meter ballistics and the event log (WP P0M), over
 //! `dspi_core`'s `meter_ballistics` and `event_log_*`.
 //!
-//! The history crosses as JSON lines in the history's file format: one record
+//! The event log crosses as JSON lines in its file format: one record
 //! per line, `{"v":1,"id":..,"t":..,"kind":"..","serial":"..","text":".."...}`
 //! (`dspi_session::events`). A text reply too long for `buf` writes nothing and
 //! returns the length needed, so ask with a null `buf` and call again.
@@ -49,7 +49,7 @@ pub extern "C" fn dspi_reset_meter_max(core: *mut FfiCore) {
     with_core(core, (), |h| h.core.reset_meter_max());
 }
 
-/// Keep the event history in files under `dir` (the app's data directory),
+/// Keep the event log in files under `dir` (the app's data directory),
 /// or in memory only for "" or null. Blocking file I/O. False when the
 /// directory cannot be created (`dspi_last_error`).
 #[unsafe(no_mangle)]
@@ -58,13 +58,15 @@ pub extern "C" fn dspi_event_log_set_dir(core: *mut FfiCore, dir: *const c_char)
     flag(core, |c| c.event_log_set_dir(dir))
 }
 
-/// `serial`'s history records with ids above `after_id` into `buf` as JSON
+/// `serial`'s event records with ids above `after_id` into `buf` as JSON
 /// lines, oldest first, as many whole lines as fit and at most `limit`: with
 /// `after_id` 0 the newest, otherwise the next after it. A null or empty
 /// `serial` is the open device. Returns the id to pass next time: the last
 /// line written, or past a record too long for the buffer at all, which is
 /// dropped. With nothing new, a null buffer, a length of 0 or a null handle it
-/// returns `after_id`. Reads files: not on the UI thread.
+/// returns `after_id`. Pass a buffer of at least 4096 bytes (a record's
+/// longest line, NUL included) and no record is ever dropped. Reads files:
+/// not on the UI thread.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_event_log_read(
     core: *mut FfiCore,
@@ -99,9 +101,9 @@ pub extern "C" fn dspi_event_log_read(
     })
 }
 
-/// `serial`'s whole event history as JSON lines (the file format), oldest
+/// `serial`'s whole event log as JSON lines (the file format), oldest
 /// first; a null or empty `serial` is the open device. Returns the bytes
-/// needed, NUL included; 1 (an empty text) for a device with no history.
+/// needed, NUL included; 1 (an empty text) for a device with no event log.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_event_log_export(
     core: *mut FfiCore,
@@ -113,7 +115,7 @@ pub extern "C" fn dspi_event_log_export(
     text(core, buf, len, |c| c.event_log_export(serial))
 }
 
-/// The serials with an event history, as a JSON array of strings, sorted.
+/// The serials with an event log, as a JSON array of strings, sorted.
 /// Returns the bytes needed, NUL included.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_event_log_devices(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {

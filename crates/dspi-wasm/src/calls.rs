@@ -237,7 +237,7 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
             core.link_service();
             poll(&core)
         }
-        // -- WP P0M -- meter ballistics and the event history (src/calls.rs)
+        // -- WP P0M -- meter ballistics and the event log (src/calls.rs)
         "meterBallistics" => Ok(ballistics(&core)),
         "setMeterBallistics" => {
             #[derive(Deserialize)]
@@ -523,8 +523,8 @@ fn event_limit() -> u32 {
     500
 }
 
-/// `eventLogRead`: the records in the history's file format, oldest first,
-/// and the id to pass next. The web keeps the history in memory (no files).
+/// `eventLogRead`: the records in the event log's file format, oldest first,
+/// and the id to pass next. The web keeps the event log in memory (no files).
 fn event_log_read(core: &DspiCore, p: EventLogParams) -> CallResult {
     let page = core.event_log_page(p.serial, p.after_id, p.limit);
     let records = serde_json::to_value(&page.records)
@@ -889,7 +889,7 @@ mod tests {
     }
 
     #[test]
-    fn wp_p0m_meters_carry_the_holds_and_the_history_reads() {
+    fn wp_p0m_meters_carry_the_holds_and_the_event_log_reads() {
         guard::reset_for_test();
         let h = session_new().unwrap();
         ok(h, "open", json!({ "kind": "demo" }));

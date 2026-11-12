@@ -1772,34 +1772,35 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func enterBootloader() throws 
     
     /**
-     * The serials with an event history, sorted. Never fails.
+     * The serials with an event log, sorted. Never fails.
      */
     func eventLogDevices()  -> [String]
     
     /**
-     * `serial`'s whole event history as JSON lines, oldest first, in the
-     * file format (`docs` in the WP P0M report): for a "Save history…" or a
-     * diagnostics bundle. An empty `serial` is the open device. Never fails;
-     * an unknown serial exports "".
+     * `serial`'s whole event log as JSON lines, oldest first, in the file
+     * format (`dspi_session::events`): for a "Save events…" or a diagnostics
+     * bundle. An empty `serial` is the open device. Never fails; an unknown
+     * serial exports "".
      */
     func eventLogExport(serial: String)  -> String
     
     /**
-     * `serial`'s event history with ids above `after_id`, oldest first, at
+     * `serial`'s event log with ids above `after_id`, oldest first, at
      * most `limit` (capped at [`EVENT_READ_MAX`]): with `after_id` 0 the
      * newest `limit`, otherwise the next `limit` after it, so poll with the
      * batch's `last_id`. An empty `serial` is the open device. Lines in the
      * file that are not records are skipped and counted. Reads files: not on
-     * the UI thread. Never fails; an unknown serial reads empty.
+     * the UI thread; no other call waits for it. Never fails; an unknown
+     * serial reads empty.
      */
     func eventLogRead(serial: String, afterId: UInt64, limit: UInt32)  -> EventBatch
     
     /**
-     * Keep the event history in files under `dir`, the client's own data
+     * Keep the event log in files under `dir`, the client's own data
      * directory, created if missing: one JSON-lines file per device serial,
      * rotated, at most about 1 MiB per device. An empty `dir` keeps it in
      * memory only (the default; the last 1000 records). Call it at start-up,
-     * before connecting; the open device's history carries on in the new
+     * before connecting; the open device's log carries on in the new
      * place. Blocking file I/O: not on the UI thread.
      *
      * Errors: [`DspiError::Io`] when the directory cannot be created;
@@ -2135,7 +2136,9 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * ballistics over these reads (`set_meter_ballistics`); a `stale` read
      * leaves them as they were. When the clip hold ends the core clears the
      * device's sticky flags itself (`REQ_CLEAR_CLIPS`, as `clear_clips`), so
-     * a client keeps no clip timer. New clips go to the event history.
+     * a client keeps no clip timer. A channel still clipping lights again on
+     * the next read; where the clear is refused (a viewer on a hub) the hold
+     * follows the device's sticky flags. New clips go to the event log.
      *
      * Errors: [`DspiError::Disconnected`] with no device open;
      * [`DspiError::Transfer`] when the read fails or the reply is shorter
@@ -4589,7 +4592,7 @@ open func enterBootloader()throws   {try rustCallWithError(FfiConverterTypeDspiE
 }
     
     /**
-     * The serials with an event history, sorted. Never fails.
+     * The serials with an event log, sorted. Never fails.
      */
 open func eventLogDevices() -> [String]  {
     return try!  FfiConverterSequenceString.lift(try! rustCall() {
@@ -4599,10 +4602,10 @@ open func eventLogDevices() -> [String]  {
 }
     
     /**
-     * `serial`'s whole event history as JSON lines, oldest first, in the
-     * file format (`docs` in the WP P0M report): for a "Save history…" or a
-     * diagnostics bundle. An empty `serial` is the open device. Never fails;
-     * an unknown serial exports "".
+     * `serial`'s whole event log as JSON lines, oldest first, in the file
+     * format (`dspi_session::events`): for a "Save events…" or a diagnostics
+     * bundle. An empty `serial` is the open device. Never fails; an unknown
+     * serial exports "".
      */
 open func eventLogExport(serial: String) -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
@@ -4613,12 +4616,13 @@ open func eventLogExport(serial: String) -> String  {
 }
     
     /**
-     * `serial`'s event history with ids above `after_id`, oldest first, at
+     * `serial`'s event log with ids above `after_id`, oldest first, at
      * most `limit` (capped at [`EVENT_READ_MAX`]): with `after_id` 0 the
      * newest `limit`, otherwise the next `limit` after it, so poll with the
      * batch's `last_id`. An empty `serial` is the open device. Lines in the
      * file that are not records are skipped and counted. Reads files: not on
-     * the UI thread. Never fails; an unknown serial reads empty.
+     * the UI thread; no other call waits for it. Never fails; an unknown
+     * serial reads empty.
      */
 open func eventLogRead(serial: String, afterId: UInt64, limit: UInt32) -> EventBatch  {
     return try!  FfiConverterTypeEventBatch_lift(try! rustCall() {
@@ -4631,11 +4635,11 @@ open func eventLogRead(serial: String, afterId: UInt64, limit: UInt32) -> EventB
 }
     
     /**
-     * Keep the event history in files under `dir`, the client's own data
+     * Keep the event log in files under `dir`, the client's own data
      * directory, created if missing: one JSON-lines file per device serial,
      * rotated, at most about 1 MiB per device. An empty `dir` keeps it in
      * memory only (the default; the last 1000 records). Call it at start-up,
-     * before connecting; the open device's history carries on in the new
+     * before connecting; the open device's log carries on in the new
      * place. Blocking file I/O: not on the UI thread.
      *
      * Errors: [`DspiError::Io`] when the directory cannot be created;
@@ -5101,7 +5105,9 @@ open func fetchStatsTick()throws  -> StatsTick  {
      * ballistics over these reads (`set_meter_ballistics`); a `stale` read
      * leaves them as they were. When the clip hold ends the core clears the
      * device's sticky flags itself (`REQ_CLEAR_CLIPS`, as `clear_clips`), so
-     * a client keeps no clip timer. New clips go to the event history.
+     * a client keeps no clip timer. A channel still clipping lights again on
+     * the next read; where the clear is refused (a viewer on a hub) the hold
+     * follows the device's sticky flags. New clips go to the event log.
      *
      * Errors: [`DspiError::Disconnected`] with no device open;
      * [`DspiError::Transfer`] when the read fails or the reply is shorter
@@ -12288,7 +12294,7 @@ public func FfiConverterTypeDspState_lower(_ value: DspState) -> RustBuffer {
 
 
 /**
- * A page of event history.
+ * A page of a device's event log.
  */
 public struct EventBatch {
     /**
@@ -12387,7 +12393,7 @@ public func FfiConverterTypeEventBatch_lower(_ value: EventBatch) -> RustBuffer 
 
 
 /**
- * One record of a device's event history (`DspiCore::event_log_read`).
+ * One record of a device's event log (`DspiCore::event_log_read`).
  */
 public struct EventEntry {
     /**
@@ -18856,8 +18862,10 @@ public struct SystemStatus {
     /**
      * The clip hold, one bit per channel: lit by a clip, dark again
      * `MeterBallistics.clip_hold_ms` after the last new one (the core then
-     * clears the device's sticky `clip_flags`) or after `clear_clips`. Draw
-     * the clip marker from this, not from `clip_flags`.
+     * clears the device's sticky `clip_flags`; a channel still clipping lights
+     * again on the next read) or after `clear_clips`. Where the clear is
+     * refused (a viewer on a hub) it follows the sticky flags. Draw the clip
+     * marker from this, not from `clip_flags`.
      */
     public var clipHold: UInt32
 
@@ -18900,8 +18908,10 @@ public struct SystemStatus {
         /**
          * The clip hold, one bit per channel: lit by a clip, dark again
          * `MeterBallistics.clip_hold_ms` after the last new one (the core then
-         * clears the device's sticky `clip_flags`) or after `clear_clips`. Draw
-         * the clip marker from this, not from `clip_flags`.
+         * clears the device's sticky `clip_flags`; a channel still clipping lights
+         * again on the next read) or after `clear_clips`. Where the clear is
+         * refused (a viewer on a hub) it follows the sticky flags. Draw the clip
+         * marker from this, not from `clip_flags`.
          */clipHold: UInt32) {
         self.peaks = peaks
         self.cpu0 = cpu0
@@ -23189,16 +23199,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_enter_bootloader() != 19680) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_event_log_devices() != 44975) {
+    if (uniffi_dspi_core_checksum_method_dspicore_event_log_devices() != 55922) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_event_log_export() != 56723) {
+    if (uniffi_dspi_core_checksum_method_dspicore_event_log_export() != 41664) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_event_log_read() != 37392) {
+    if (uniffi_dspi_core_checksum_method_dspicore_event_log_read() != 314) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_event_log_set_dir() != 63932) {
+    if (uniffi_dspi_core_checksum_method_dspicore_event_log_set_dir() != 60714) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_ext_status() != 10163) {
@@ -23276,7 +23286,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_stats_tick() != 21250) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_fetch_status() != 5481) {
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_status() != 22027) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_subharm_headroom() != 28745) {

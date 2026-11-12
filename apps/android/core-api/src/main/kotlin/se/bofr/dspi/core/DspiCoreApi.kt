@@ -129,7 +129,9 @@ interface DspiCoreApi : AutoCloseable {
      * ballistics over these reads (`set_meter_ballistics`); a `stale` read
      * leaves them as they were. When the clip hold ends the core clears the
      * device's sticky flags itself (`REQ_CLEAR_CLIPS`, as `clear_clips`), so
-     * a client keeps no clip timer. New clips go to the event history.
+     * a client keeps no clip timer. A channel still clipping lights again on
+     * the next read; where the clear is refused (a viewer on a hub) the hold
+     * follows the device's sticky flags. New clips go to the event log.
      *
      * Errors: [`DspiError::Disconnected`] with no device open;
      * [`DspiError::Transfer`] when the read fails or the reply is shorter
@@ -411,11 +413,11 @@ interface DspiCoreApi : AutoCloseable {
     fun resetMeterMax()
 
     /**
-     * Keep the event history in files under `dir`, the client's own data
+     * Keep the event log in files under `dir`, the client's own data
      * directory, created if missing: one JSON-lines file per device serial,
      * rotated, at most about 1 MiB per device. An empty `dir` keeps it in
      * memory only (the default; the last 1000 records). Call it at start-up,
-     * before connecting; the open device's history carries on in the new
+     * before connecting; the open device's log carries on in the new
      * place. Blocking file I/O: not on the UI thread.
      *
      * Errors: [`DspiError::Io`] when the directory cannot be created;
@@ -425,25 +427,26 @@ interface DspiCoreApi : AutoCloseable {
     fun eventLogSetDir(dir: String)
 
     /**
-     * `serial`'s event history with ids above `after_id`, oldest first, at
+     * `serial`'s event log with ids above `after_id`, oldest first, at
      * most `limit` (capped at [`EVENT_READ_MAX`]): with `after_id` 0 the
      * newest `limit`, otherwise the next `limit` after it, so poll with the
      * batch's `last_id`. An empty `serial` is the open device. Lines in the
      * file that are not records are skipped and counted. Reads files: not on
-     * the UI thread. Never fails; an unknown serial reads empty.
+     * the UI thread; no other call waits for it. Never fails; an unknown
+     * serial reads empty.
      */
     fun eventLogRead(serial: String, afterId: Long, limit: Long): EventBatch
 
     /**
-     * `serial`'s whole event history as JSON lines, oldest first, in the
-     * file format (`docs` in the WP P0M report): for a "Save history…" or a
-     * diagnostics bundle. An empty `serial` is the open device. Never fails;
-     * an unknown serial exports "".
+     * `serial`'s whole event log as JSON lines, oldest first, in the file
+     * format (`dspi_session::events`): for a "Save events…" or a diagnostics
+     * bundle. An empty `serial` is the open device. Never fails; an unknown
+     * serial exports "".
      */
     fun eventLogExport(serial: String): String
 
     /**
-     * The serials with an event history, sorted. Never fails.
+     * The serials with an event log, sorted. Never fails.
      */
     fun eventLogDevices(): List<String>
 

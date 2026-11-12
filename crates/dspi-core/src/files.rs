@@ -1768,7 +1768,7 @@ impl DspiCore {
             let names = self.lock().conn.as_ref().map(|c| c.source_names.to_vec());
             let changed =
                 crate::presets::changes(&before, &built.state, names.as_deref().unwrap_or(&[]));
-            self.history.applied(
+            self.events.applied(
                 dspi_session::events::EventKind::Import,
                 None,
                 "Imported a configuration",

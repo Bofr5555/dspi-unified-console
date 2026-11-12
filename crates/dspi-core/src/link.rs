@@ -841,7 +841,7 @@ impl DspiCore {
         };
         drop(self.set_meter_path(None)); // -- WP LK2 --
         if let Some(conn) = &old {
-            self.history.disconnected(&conn.serial, "link lost"); // -- WP P0M --
+            self.events.disconnected(&conn.serial, "link lost"); // -- WP P0M --
         }
         if let Some(worker) = worker {
             worker.stop();

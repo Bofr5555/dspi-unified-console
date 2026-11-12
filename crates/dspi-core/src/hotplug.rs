@@ -121,7 +121,7 @@ impl Closing {
     /// Stop the RTA worker and the reader, then drop the transport. Call
     /// with the lock released (PLAN §1.2).
     fn finish(self, core: &DspiCore) {
-        core.history.disconnected(&self.conn.serial, "unplugged"); // -- WP P0M --
+        core.events.disconnected(&self.conn.serial, "unplugged"); // -- WP P0M --
         // -- WP LK4 -- (review c6j N1) the meter path goes with its
         // connection: `fetch_status` serves it while no connection is open
         if let Some(side) = &self.conn.side {
