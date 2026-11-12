@@ -15,6 +15,7 @@ use std::path::PathBuf;
 
 use dspi_cmd::COMMAND;
 use dspi_core::{DiagFile, DiagOptions, DspiCore};
+use dspi_session::events::EventLog;
 use dspi_tui::shell::connect::{Target, no_prompt, printable};
 
 use crate::exit;
@@ -26,7 +27,7 @@ struct Request {
     out: Option<PathBuf>,
     /// The hub store's folder: `--store`, else `uconsole hub`'s default.
     store: Option<PathBuf>,
-    /// A client's event log folder to include (`--events`).
+    /// A client's event log folder to include, read only (`--events`).
     events: Option<PathBuf>,
 }
 
@@ -83,13 +84,10 @@ pub fn run(target: &Target, flags: &[&str], json: bool) -> u8 {
 
     let core = DspiCore::new();
     let mut files = Vec::new();
-    if let Some(dir) = &req.events
-        && let Err(e) = core.event_log_set_dir(dir.to_string_lossy().into_owned())
-    {
-        files.push(note(
-            "events.txt",
-            &format!("--events {}: {e}", dir.display()),
-        ));
+    // Read only (review p0e N3): the core's own log stays in memory, so this
+    // run's connect record never lands in the folder it reports on.
+    if let Some(dir) = &req.events {
+        files.extend(events_in(dir));
     }
 
     // Doctor first: it opens and lets go of each device itself.
@@ -144,6 +142,26 @@ pub fn run(target: &Target, flags: &[&str], json: bool) -> u8 {
             exit::TRANSPORT
         }
     }
+}
+
+/// Each device's event log in `dir`, read without writing anything there, as
+/// `client/events-<serial>.jsonl`; a note when there is none.
+fn events_in(dir: &std::path::Path) -> Vec<DiagFile> {
+    let mut serials = EventLog::devices_in(dir);
+    serials.sort();
+    if serials.is_empty() {
+        return vec![note(
+            "events.txt",
+            &format!("--events {}: no event log there", dir.display()),
+        )];
+    }
+    serials
+        .into_iter()
+        .map(|serial| DiagFile {
+            name: format!("events-{serial}.jsonl"),
+            text: EventLog::export_in(dir, &serial),
+        })
+        .collect()
 }
 
 fn note(name: &str, text: &str) -> DiagFile {
@@ -219,6 +237,53 @@ mod tests_wp_p0e {
         }
         assert!(raw.contains("demo device"), "the doctor's demo check");
         assert!(!raw.contains("client/connect.txt"), "the demo opened");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// Review p0e N3: `--events` reads the folder and writes nothing there,
+    /// not even this run's own connect record or a lock file.
+    #[test]
+    fn wp_p0e_events_folder_is_read_not_written() {
+        use dspi_session::events::{EventKind, EventRecord};
+        let d = std::env::temp_dir()
+            .join("wp-p0e-term-events")
+            .join(std::process::id().to_string());
+        let _ = std::fs::remove_dir_all(&d);
+        let events = d.join("events");
+        {
+            let mut log = EventLog::default();
+            log.set_dir(Some(events.clone())).unwrap();
+            log.open_device("SER1");
+            log.record(EventRecord::new(EventKind::Connected, 1_000, "earlier run"));
+            log.close_device();
+        }
+        let snapshot = |dir: &std::path::Path| {
+            let mut v: Vec<(String, Vec<u8>)> = std::fs::read_dir(dir)
+                .unwrap()
+                .map(|e| e.unwrap().path())
+                .map(|p| {
+                    let bytes = std::fs::read(&p).unwrap_or_default();
+                    (p.file_name().unwrap().to_string_lossy().into_owned(), bytes)
+                })
+                .collect();
+            v.sort();
+            v
+        };
+        let before = snapshot(&events);
+        let out = d.join("diag.zip").to_string_lossy().into_owned();
+        let ev = events.to_string_lossy().into_owned();
+        let store = d.join("no-store").to_string_lossy().into_owned();
+        let code = run(
+            &Target::Demo,
+            &["diag", &out, "--events", &ev, "--store", &store],
+            false,
+        );
+        assert_eq!(code, exit::OK);
+        assert_eq!(snapshot(&events), before, "the folder changed");
+        let zip = std::fs::read(&out).unwrap();
+        let raw = String::from_utf8_lossy(&zip);
+        assert!(raw.contains("client/events-SER1.jsonl"));
+        assert!(raw.contains("earlier run"));
         let _ = std::fs::remove_dir_all(&d);
     }
 }

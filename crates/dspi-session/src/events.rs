@@ -510,6 +510,21 @@ impl EventLog {
     pub fn devices_in(dir: &std::path::Path) -> Vec<String> {
         files::devices(dir)
     }
+
+    // -- WP P0E --
+    /// `serial`'s log in `dir` as JSON lines, oldest first, in the file
+    /// format: read only, with no store, no lock file and nothing created,
+    /// for a diagnostics bundle of another program's folder. "" when there
+    /// is none.
+    pub fn export_in(dir: &std::path::Path, serial: &str) -> String {
+        LogReader {
+            dir: Some(dir.to_path_buf()),
+            limits: Limits::DEFAULT,
+            serial: serial.to_string(),
+            memory: Vec::new(),
+        }
+        .export()
+    }
 }
 
 /// A read of one device's log taken out of the store ([`EventLog::reader`]),

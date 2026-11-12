@@ -131,6 +131,7 @@ impl DspiCore {
 
     fn diagnostics_build(&self, options: DiagOptions) -> Result<(Vec<u8>, Vec<String>)> {
         let now = crate::events::now_ms();
+        let scrub = Scrub::from_env();
         let mut b = Bundle::default();
 
         b.json("versions.json", &self.diag_versions(&options.app, now));
@@ -148,8 +149,8 @@ impl DspiCore {
         self.diag_events(&mut b);
         diag_hub_store(&mut b, &options.hub_store_dir);
         b.json("system/os.json", &os_facts());
-        b.json("system/usb.json", &self.diag_usb());
-        diag_client_files(&mut b, options.files);
+        b.json("system/usb.json", &self.diag_usb(&scrub));
+        diag_client_files(&mut b, options.files, &scrub);
 
         let mut readme = readme(now, connected);
         let _ = writeln!(readme, "  README.txt");
@@ -161,7 +162,7 @@ impl DspiCore {
             "Nothing was left out.\n".to_owned()
         } else {
             b.notes.iter().fold(String::new(), |mut s, n| {
-                let _ = writeln!(s, "{n}");
+                let _ = writeln!(s, "{}", scrub.apply(n));
                 s
             })
         };
@@ -335,7 +336,7 @@ impl DspiCore {
         }
     }
 
-    fn diag_usb(&self) -> Value {
+    fn diag_usb(&self, scrub: &Scrub) -> Value {
         let devices: Vec<Value> = self
             .scan_quiet()
             .into_iter()
@@ -344,7 +345,7 @@ impl DspiCore {
         let boot = crate::bootloader_counts();
         let drives: Vec<Value> = crate::bootloader_drives()
             .into_iter()
-            .map(|d| json!({ "path": d.path, "platform": d.platform }))
+            .map(|d| json!({ "path": scrub.apply(&d.path), "platform": d.platform }))
             .collect();
         json!({
             "enumeration": cfg!(all(feature = "usb", not(target_os = "android"))),
@@ -354,6 +355,72 @@ impl DspiCore {
             "bootloaderDrives": drives,
         })
     }
+}
+
+// -- review p0e N4 (the coordinator's decision; the owner may reverse it) --
+/// Takes the user out of paths: the home folder becomes `~`, and the user
+/// name as a whole path segment (`/run/media/<user>/RPI-RP2`) `<user>`.
+/// Only path-shaped text is touched, so a serial or a name that happens to
+/// contain the user name is left alone.
+pub(crate) struct Scrub {
+    home: Option<String>,
+    user: Option<String>,
+}
+
+impl Scrub {
+    /// This process's home folder and user name, where the platform has
+    /// them (`HOME`/`USERPROFILE`, `USER`/`USERNAME`); none on the web.
+    fn from_env() -> Self {
+        let var = |names: &[&str]| {
+            names
+                .iter()
+                .find_map(|n| std::env::var(n).ok())
+                .filter(|v| !v.is_empty())
+        };
+        Self::new(var(&["HOME", "USERPROFILE"]), var(&["USER", "USERNAME"]))
+    }
+
+    pub(crate) fn new(home: Option<String>, user: Option<String>) -> Self {
+        // A home of "/" or "C:\\" would turn every path into "~...".
+        let home = home
+            .map(|h| h.trim_end_matches(['/', '\\']).to_owned())
+            .filter(|h| h.chars().filter(|c| *c != ':').count() > 2);
+        let user = user.filter(|u| !u.contains(['/', '\\']));
+        Self { home, user }
+    }
+
+    pub(crate) fn apply(&self, text: &str) -> String {
+        let mut out = text.to_owned();
+        if let Some(home) = &self.home {
+            out = replace_prefixed(&out, home, "~");
+        }
+        if let Some(user) = &self.user {
+            for sep in ['/', '\\'] {
+                out = out.replace(&format!("{sep}{user}{sep}"), &format!("{sep}<user>{sep}"));
+            }
+        }
+        out
+    }
+}
+
+/// `text` with `from` replaced by `to` where `from` is followed by a path
+/// separator or ends a word: `/home/bob` must not turn `/home/bobby` into
+/// `~by`.
+fn replace_prefixed(text: &str, from: &str, to: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(from) {
+        let (before, tail) = rest.split_at(at);
+        let after = tail.get(from.len()..).unwrap_or("");
+        out.push_str(before);
+        let ends = after.chars().next().is_none_or(|c| {
+            matches!(c, '/' | '\\') || !(c.is_alphanumeric() || c == '_' || c == '-' || c == '.')
+        });
+        out.push_str(if ends { to } else { from });
+        rest = after;
+    }
+    out.push_str(rest);
+    out
 }
 
 /// The files so far, in order, and what could not be read.
@@ -460,9 +527,9 @@ fn is_secret_key(key: &str) -> bool {
     !NOT_SECRET_KEYS.contains(&k.as_str()) && SECRET_KEYS.iter().any(|s| k.contains(s))
 }
 
-fn diag_client_files(b: &mut Bundle, files: Vec<DiagFile>) {
+fn diag_client_files(b: &mut Bundle, files: Vec<DiagFile>, scrub: &Scrub) {
     for f in files {
-        let mut text = f.text;
+        let mut text = scrub.apply(&f.text);
         if text.len() > CLIENT_FILE_MAX {
             let mut cut = CLIENT_FILE_MAX;
             while !text.is_char_boundary(cut) {
@@ -572,8 +639,10 @@ fn readme(now: i64, connected: bool) -> String {
          \n\
          Left out on purpose: the hub's client tokens and their hashes, PINs,\n\
          and every other value whose name marks it as a secret (they read\n\
-         \"{REMOVED}\"). Device serials, device and client names, and file\n\
-         paths are kept, because a supporter needs them to read the rest.\n\
+         \"{REMOVED}\"). In paths, this computer's home folder reads \"~\" and\n\
+         the user name \"<user>\" (notes.txt, bootloader drives, the client's\n\
+         files). Device serials, device and client names, and the rest of\n\
+         each path are kept, because a supporter needs them to read the rest.\n\
          \n\
          notes.txt lists what could not be read.\n\
          \n\

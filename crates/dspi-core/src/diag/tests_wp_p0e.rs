@@ -340,3 +340,64 @@ fn wp_p0e_secret_keys() {
         assert!(!is_secret_key(k), "{k}");
     }
 }
+
+/// Review p0e N4: the home folder reads `~` and the user name `<user>` in
+/// paths, and nothing else is touched.
+#[test]
+fn wp_p0e_paths_lose_the_user() {
+    let s = Scrub::new(Some("/home/bob/".into()), Some("bob".into()));
+    assert_eq!(
+        s.apply("hub: no store at /home/bob/.local/share/uconsole/hub/hub-store.json"),
+        "hub: no store at ~/.local/share/uconsole/hub/hub-store.json"
+    );
+    assert_eq!(
+        s.apply("/run/media/bob/RPI-RP2"),
+        "/run/media/<user>/RPI-RP2"
+    );
+    assert_eq!(s.apply("--events /home/bob: none"), "--events ~: none");
+    for kept in [
+        "/home/bobby/x",
+        "serial bob123",
+        "bob",
+        "/media/bobcat/RP2350",
+    ] {
+        assert_eq!(s.apply(kept), kept);
+    }
+    let w = Scrub::new(Some(r"C:\Users\Bob".into()), Some("Bob".into()));
+    assert_eq!(w.apply(r"C:\Users\Bob\AppData\x; E:\"), r"~\AppData\x; E:\");
+    assert_eq!(w.apply(r"D:\Shares\Bob\y"), r"D:\Shares\<user>\y");
+    // A home of the root is no home to hide.
+    for root in ["/", r"C:\"] {
+        assert_eq!(
+            Scrub::new(Some(root.into()), None).apply("/etc/x"),
+            "/etc/x"
+        );
+    }
+}
+
+#[test]
+fn wp_p0e_notes_and_readme_say_so() {
+    let Some(home) = std::env::var("HOME").ok().filter(|h| h.len() > 2) else {
+        return;
+    };
+    let core = DspiCore::new();
+    let files = unzip(
+        &core
+            .diagnostics_zip(DiagOptions {
+                hub_store_dir: format!("{home}/wp-p0e-no-store"),
+                ..Default::default()
+            })
+            .unwrap(),
+    );
+    let notes = text(&files, "notes.txt");
+    assert!(
+        notes.contains("hub: no store at ~/wp-p0e-no-store/hub-store.json"),
+        "{notes}"
+    );
+    assert!(!notes.contains(&home), "{notes}");
+    let readme = text(&files, "README.txt");
+    assert!(
+        readme.contains("\"~\"") && readme.contains("\"<user>\""),
+        "{readme}"
+    );
+}
