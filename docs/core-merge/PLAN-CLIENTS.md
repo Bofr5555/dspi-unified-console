@@ -700,7 +700,7 @@ M3 and M14 (`fw.install`) are deleted: no hub implements them (section 9).
 | M25 | Host audio format (idle channel count, `DSPViewModel.swift:1947-1951`) | QD18 | skip: the device report collapses when idle, and it has no host API | AN18 | SW20 |
 | M26 | C0 and C1 CPU bars | QD5 | have | have | have |
 | M27 | Pop-out tool windows | have | have (graph) | n.a.: routes | n.a.: sheets |
-| M53 | Stats for Nerds, Reset Watermarks, Output Ring Health (`StatsView.swift:206-223,478-504,918-1187`) | partial: no ring health; CG12, QD29 | partial: no ring health; CG12, TM16 | partial: no ring health; CG12, AN25 | have |
+| M53 | Stats for nerbs, Reset Watermarks, Output Ring Health (`StatsView.swift:206-223,478-504,918-1187`) | partial: no ring health; CG12, QD29 | partial: no ring health; CG12, TM16 | partial: no ring health; CG12, AN25 | have |
 | M54 | Interrupt Monitor (`InterruptMonitor.swift:1001-1010`) | have | have | have | have |
 
 **Files**
@@ -1295,7 +1295,7 @@ waits for. One slice is one WP; letters give the order.
 | **WB6g** Inputs and channels | TODO | The input pages: preamp trims, the L/R link of a pair with which side to keep (M48), input-source names, the 8-channel matrix's per-input trims; the channel clipboard, Copy and Paste Parameters (M45) |
 | **WB6h** Effects | TODO | Crossfeed, loudness, leveller, psychoacoustic bass, tube, subharmonic and upmixer screens, each with its on or off state in the System view |
 | **WB6i** Settings | TODO | Device name, output latency, GPIO pins, Spectrum and Graphing settings, help links, Reset Channel Names, debug information (M55, M61, M62); core voltage behind the Installer mode, or behind Advanced until the mode model exists (M56) |
-| **WB6j** Analyser, generator and Stats | TODO | The analyser overlay and bar strip (M22, M23), the signal generator and Identify (M46), Stats for Nerds and the Interrupt Monitor (M53, M54), dashboard cards per row (M59) |
+| **WB6j** Analyser, generator and Stats | TODO | The analyser overlay and bar strip (M22, M23), the signal generator and Identify (M46), Stats for nerbs and the Interrupt Monitor (M53, M54), dashboard cards per row (M59) |
 | **WB6k** Files and AutoEQ | TODO | Filter import and export, `.dspipreset` with apply options, Save Master Volume and Output Configuration through browser download and upload (M28-M30); AutoEQ with the page supplying the fetch (M31, M32, CG6) |
 | **WB6l** Control surfaces and shortcuts | TODO | The control-surface editor (CG20), the quick strip of effect toggles (M60), and the app shortcuts beyond the graph keys (M24) |
 
