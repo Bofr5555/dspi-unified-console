@@ -6,11 +6,14 @@
 #include "ChannelListModel.h"
 #include "Core.h"
 #include "CoreApi.h"
+#include "CoreWorker.h"
 #include "DeviceModel.h"
 #include "Poller.h"
 
 #include <QThread>
 #include <atomic>
+#include <memory>
+#include <thread>
 
 namespace {
 
@@ -106,11 +109,48 @@ void checkCoalescing(SmokeDriver &d) {
     d.waitIdle();
 }
 
+// -- WP QPI3 -- At shutdown the jobs that never ran, and the `done` closures
+// they carry, are destroyed on the GUI thread, never on the worker's
+void checkUnrunJobs(SmokeDriver &d) {
+    struct Witness {
+        QThread **diedOn;
+        explicit Witness(QThread **out) : diedOn(out) {}
+        Witness(const Witness &) = delete;
+        ~Witness() {
+            if (diedOn) *diedOn = QThread::currentThread();
+        }
+    };
+    QThread *diedOn = nullptr;
+    std::atomic<bool> release{ false }, holding{ false };
+    {
+        CoreWorker worker(nullptr);
+        worker.post([&](FfiCore *) {
+            holding = true;
+            while (!release) QThread::msleep(2);
+        });
+        auto witness = std::make_shared<Witness>(&diedOn);
+        QObject ctx;
+        worker.call(&ctx, [](FfiCore *) { return 1; }, [witness](int) {});
+        witness.reset();
+        d.waitFor(2000, [&]() { return holding.load(); });
+        // stop() waits for the running job: let it end from another thread
+        std::thread releaser([&] {
+            QThread::msleep(50);
+            release = true;
+        });
+        worker.stop();
+        releaser.join();
+        d.check(QStringLiteral("qpi3: a job the worker never ran is dropped on the GUI thread"),
+                diedOn == QThread::currentThread());
+    }
+}
+
 void coreSection(SmokeDriver &d) {
     d.check(QStringLiteral("qp0: a device is open"), d.waitFor(10000, [&]() { return d.app().device->connected(); }));
     checkPolls(d);
     checkCoalescing(d);
     checkNoDevice(d);
+    checkUnrunJobs(d);
 }
 
 const SmokeDriver::Section core("qp0-core", 1, &coreSection);

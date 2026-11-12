@@ -1,10 +1,12 @@
 #ifndef COREWORKER_H
 #define COREWORKER_H
 
+#include <QMutex>
 #include <QObject>
 #include <QPointer>
 #include <QThread>
 #include <atomic>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <type_traits>
@@ -61,16 +63,26 @@ public:
     int pending() const { return m_pending.load(); }
 
     // Lets the running job finish, drops the rest and joins the thread. Called
-    // once, before the core is freed; post() does nothing afterwards.
+    // once, on the GUI thread, before the core is freed; post() does nothing
+    // afterwards. The jobs that never ran are destroyed on the caller's thread.
     void stop();
 
 private:
+    using Job = std::function<void(FfiCore *)>;
+    // On the worker thread: the oldest job, unless stopped
+    void runOne();
+
     FfiCore *m_core;
     QThread m_thread;
     QObject *m_runner = nullptr;   // lives on m_thread
     QObject *m_home = nullptr;     // lives on the GUI thread, delivers results
     std::atomic<int> m_pending{0};
     std::atomic<bool> m_stopped{false};
+    // -- WP QPI3 -- the jobs wait here, not in the runner's event queue, so
+    // stop() can take back the ones that never ran (and the `done` closures
+    // they hold) and destroy them at home
+    QMutex m_lock;
+    std::deque<Job> m_queue;
 };
 
 #endif // COREWORKER_H

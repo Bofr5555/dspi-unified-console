@@ -111,6 +111,9 @@ private:
         bool enabled = true;
         bool inFlight = false;
         Counts counts;
+        // -- WP QPI3 -- checks it dies on its timer's thread (the smoke build
+        // stops there, naming the poll, instead of a later crash)
+        ~Poll();
     };
     Id addRunner(const QString &name, int intervalMs, QObject *ctx, Runner run);
     void tick(Id id);
