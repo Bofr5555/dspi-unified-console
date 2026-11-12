@@ -19,42 +19,31 @@
 class Meter : public QQuickItem {
     Q_OBJECT
     QML_ELEMENT
-    Q_PROPERTY(int channel READ channel WRITE setChannel NOTIFY channelChanged)
+    // Level 0..1 (clamped)
     Q_PROPERTY(qreal level READ level WRITE setLevel NOTIFY levelChanged)
-    Q_PROPERTY(bool clipping READ clipping WRITE setClipping NOTIFY clippingChanged)
-    Q_PROPERTY(QColor color READ color WRITE setColor NOTIFY colorChanged)
-    Q_PROPERTY(QColor trackColor READ trackColor WRITE setTrackColor NOTIFY trackColorChanged)
-    Q_PROPERTY(QColor clipColor READ clipColor WRITE setClipColor NOTIFY clipColorChanged)
+    // The wire channel followed, -1 for none
+    Q_PROPERTY(int channel MEMBER m_channel NOTIFY channelChanged)
+    // How it looks: the bar, the track under it, the clip mark and whether it shows
+    Q_PROPERTY(QColor color MEMBER m_color NOTIFY lookChanged)
+    Q_PROPERTY(QColor trackColor MEMBER m_track NOTIFY lookChanged)
+    Q_PROPERTY(QColor clipColor MEMBER m_clipColor NOTIFY lookChanged)
+    Q_PROPERTY(bool clipping MEMBER m_clipping NOTIFY lookChanged)
 public:
     // Width of the clip mark at the right-hand end (the Mac's 3 pt)
     static constexpr qreal kClipZone = 3;
 
     explicit Meter(QQuickItem *parent = nullptr);
 
-    int channel() const { return m_channel; }
-    void setChannel(int channel);
     qreal level() const { return m_level; }
-    // Clamped to 0..1
     void setLevel(qreal level);
-    bool clipping() const { return m_clipping; }
-    void setClipping(bool clipping);
-    QColor color() const { return m_color; }
-    void setColor(const QColor &color);
-    QColor trackColor() const { return m_track; }
-    void setTrackColor(const QColor &color);
-    QColor clipColor() const { return m_clipColor; }
-    void setClipColor(const QColor &color);
 
     // The bar's drawn width for the current size and level (tests)
     Q_INVOKABLE qreal barWidth() const;
 
 signals:
-    void channelChanged();
     void levelChanged();
-    void clippingChanged();
-    void colorChanged();
-    void trackColorChanged();
-    void clipColorChanged();
+    void channelChanged();
+    void lookChanged();
 
 protected:
     QSGNode *updatePaintNode(QSGNode *old, UpdatePaintNodeData *) override;

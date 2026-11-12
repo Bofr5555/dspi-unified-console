@@ -22,7 +22,8 @@ PopoverPanel {
         return n === 1 ? qsTr("1 card per row") : qsTr("%1 cards per row").arg(n)
     }
 
-    readonly property int chosen: Math.min(Math.max(DashboardController.cardsPerRow, 0), 3)
+    // The controller holds the choice to 0..3
+    readonly property int chosen: DashboardController.cardsPerRow
 
     contentItem: ColumnLayout {
         spacing: 0
@@ -126,7 +127,7 @@ PopoverPanel {
                 Layout.alignment: Qt.AlignHCenter
                 text: tile.count === 0 ? qsTr("Auto") : String(tile.count)
                 font.pixelSize: 9
-                font.weight: tile.on ? Font.DemiBold : Font.Normal
+                font.bold: tile.on
                 color: tile.tone
             }
         }

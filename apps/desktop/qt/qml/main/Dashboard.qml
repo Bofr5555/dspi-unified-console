@@ -21,21 +21,23 @@ Item {
 
     opacity: ready ? 1 : 0
     enabled: ready
-    Behavior on opacity { NumberAnimation { duration: 300; easing.type: Easing.InOutQuad } }
+    Behavior on opacity { OpacityAnimator { duration: 300 } }
 
     Flickable {
         id: flick
         anchors.fill: parent
         contentWidth: width
-        contentHeight: content.implicitHeight
+        // The Mac's 4 px above the cards, and room for the stale note below
+        contentHeight: content.implicitHeight + content.y + Theme.spacingLarge
         clip: true
+        // A desktop pane: no overshoot past the ends
         boundsBehavior: Flickable.StopAtBounds
         ScrollBar.vertical: AppScrollBar {}
 
         ColumnLayout {
             id: content
             x: Theme.spacingLarge
-            y: 4
+            y: Theme.spacingSmall
             width: flick.width - 2 * Theme.spacingLarge
             spacing: dashboard.spacing
 
@@ -69,9 +71,8 @@ Item {
     Rectangle {
         id: staleNote
         objectName: "Dashboard.stale"
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        anchors.margins: Theme.spacingLarge
+        x: dashboard.width - width - Theme.spacingLarge
+        y: dashboard.height - height - Theme.spacingLarge
         visible: DashboardController.stale
         width: staleRow.implicitWidth + 2 * Theme.spacingSmall
         height: staleRow.implicitHeight + Theme.spacingSmall
@@ -79,18 +80,17 @@ Item {
         color: Theme.panel
         border.width: 1
         border.color: Theme.warning
-        Row {
+        RowLayout {
             id: staleRow
-            anchors.centerIn: parent
+            x: Theme.spacingSmall
+            y: Theme.spacingSmall / 2
             spacing: 4
             Icon {
-                anchors.verticalCenter: parent.verticalCenter
                 name: "clock"
                 size: 12
                 color: Theme.warning
             }
             Text {
-                anchors.verticalCenter: parent.verticalCenter
                 text: qsTr("Meters stale")
                 font: Theme.fontSmall
                 color: Theme.warning

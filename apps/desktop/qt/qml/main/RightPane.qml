@@ -38,20 +38,18 @@ Rectangle {
             border.width: 1
             border.color: Theme.separator
 
-            // -- WP QP5 -- The Overview while no channel is selected
-            Dashboard {
-                anchors.fill: parent
-                anchors.topMargin: Theme.spacingSmall
-                anchors.bottomMargin: Theme.spacingSmall
-                visible: pane.selectedChannel < 0
-            }
-
             Text {
                 anchors.centerIn: parent
                 visible: !DeviceModel.connected
                 text: qsTr("No Device Connected")
                 font: Theme.fontTitle
                 color: Theme.textMuted
+            }
+
+            // -- WP QP5 -- The Overview while no channel is selected
+            Dashboard {
+                anchors.fill: parent
+                visible: pane.selectedChannel < 0
             }
         }
     }

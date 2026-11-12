@@ -8,13 +8,8 @@
 Meter::Meter(QQuickItem *parent) : QQuickItem(parent) {
     setFlag(ItemHasContents, true);
     setAcceptedMouseButtons(Qt::NoButton);
-}
-
-void Meter::setChannel(int channel) {
-    if (channel == m_channel) return;
-    m_channel = channel;
-    follow();
-    emit channelChanged();
+    connect(this, &Meter::lookChanged, this, &QQuickItem::update);
+    connect(this, &Meter::channelChanged, this, &Meter::follow);
 }
 
 void Meter::setLevel(qreal level) {
@@ -23,34 +18,6 @@ void Meter::setLevel(qreal level) {
     m_level = clamped;
     update();
     emit levelChanged();
-}
-
-void Meter::setClipping(bool clipping) {
-    if (clipping == m_clipping) return;
-    m_clipping = clipping;
-    update();
-    emit clippingChanged();
-}
-
-void Meter::setColor(const QColor &color) {
-    if (color == m_color) return;
-    m_color = color;
-    update();
-    emit colorChanged();
-}
-
-void Meter::setTrackColor(const QColor &color) {
-    if (color == m_track) return;
-    m_track = color;
-    update();
-    emit trackColorChanged();
-}
-
-void Meter::setClipColor(const QColor &color) {
-    if (color == m_clipColor) return;
-    m_clipColor = color;
-    update();
-    emit clipColorChanged();
 }
 
 qreal Meter::barWidth() const { return m_level * qMax(0.0, width() - kClipZone); }
@@ -103,7 +70,8 @@ QSGNode *Meter::updatePaintNode(QSGNode *old, UpdatePaintNodeData *) {
     track->setColor(m_track);
     bar->setRect(0, 0, m_level * meterWidth, h);
     bar->setColor(m_color);
-    clip->setRect(meterWidth, 0, m_clipping ? kClipZone : 0, h);
-    clip->setColor(m_clipColor);
+    // Not clipping: the mark is left out entirely, not drawn zero wide
+    clip->setRect(meterWidth, 0, m_clipping ? kClipZone : 0, m_clipping ? h : 0);
+    clip->setColor(m_clipping ? m_clipColor : QColor(Qt::transparent));
     return root;
 }
