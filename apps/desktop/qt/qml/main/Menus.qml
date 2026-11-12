@@ -10,27 +10,7 @@ AppMenuBar {
     objectName: "Menu.bar"
     required property Window window
 
-    // Edit's rows act on the focused text field first, as the Mac sends them
-    // to the first responder; otherwise they go to whoever handles the id (the
-    // channel clipboard).
-    readonly property var textEdits: ({
-        "edit.cut": "cut",
-        "edit.copy": "copy",
-        "edit.paste": "paste",
-        "edit.selectAll": "selectAll",
-        "edit.delete": "delete"
-    })
-
-    function triggerRow(id) {
-        const target = window.activeFocusItem
-        const op = textEdits[id]
-        if (op && target && target.selectionStart !== undefined && typeof target.selectAll === "function") {
-            if (op === "delete") target.remove(target.selectionStart, target.selectionEnd)
-            else target[op]()
-            return
-        }
-        Shell.trigger(id)
-    }
+    function triggerRow(id) { MenuTable.trigger(window, id) }
 
     Component { id: menuComponent; AppMenu {} }
     Component { id: itemComponent; AppMenuItem {} }

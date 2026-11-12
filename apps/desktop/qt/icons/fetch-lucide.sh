@@ -1,6 +1,7 @@
 #!/bin/bash
-# Copies the icons manifest.txt names from a pinned Lucide release into
-# lucide/, with Lucide's licence file. Run it in the CI container:
+# Copies the icons named in lucide/manifest.txt and in each work package's
+# lucide/manifest.d/<wp>.txt from a pinned Lucide release into lucide/, with
+# Lucide's licence file. Run it in the CI container:
 #
 #   ci/run.sh 'apps/desktop/qt/icons/fetch-lucide.sh'
 #
@@ -25,7 +26,7 @@ curl -fsSL -o "$work/LICENSE" "https://raw.githubusercontent.com/lucide-icons/lu
 echo "$ZIP_SHA256  $zip" | sha256sum -c --quiet
 echo "$LICENSE_SHA256  $work/LICENSE" | sha256sum -c --quiet
 
-names=$(sed -n 's/^\([a-z0-9-][a-z0-9-]*\).*/\1/p' "$out/manifest.txt")
+names=$({ cat "$out/manifest.txt"; cat "$out"/manifest.d/*.txt 2>/dev/null || true; } | sed -n 's/^\([a-z0-9-][a-z0-9-]*\).*/\1/p' | sort -u)
 find "$out" -name '*.svg' -delete
 missing=0
 for n in $names; do

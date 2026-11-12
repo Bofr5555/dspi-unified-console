@@ -1,5 +1,6 @@
 # The Lucide icons the app ships, one name per line, with what uses it.
-# fetch-lucide.sh copies exactly these from the pinned release into this
+# fetch-lucide.sh copies exactly these (and those in manifest.d/<wp>.txt, one
+# file per work package) from the pinned release into this
 # directory; CMakeLists.txt puts them in the app. Add a name, run the script,
 # commit the new .svg with this file.
 activity            quick strip: leveller

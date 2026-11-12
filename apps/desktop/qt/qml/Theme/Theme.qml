@@ -6,6 +6,12 @@ import UConsole
 // colour literal: it names a token here (or a ChannelPalette entry). Light and
 // dark follow the system; dark is also the look when the system says nothing
 // (offscreen, some desktops).
+//
+// Contrast (WCAG 2 AA, 4.5:1 for text): text, textMuted, accentText,
+// dangerText, warning and success on every surface; textOnAccent on accent
+// and danger; textOnTint on every ChannelPalette colour. textDisabled stays at
+// 3:1 or more (disabled controls are outside 1.4.3). Checked by
+// tools/contrast.py (ci/check.sh --step qt); keep it true when changing a value.
 QtObject {
     id: theme
 
@@ -18,7 +24,7 @@ QtObject {
     readonly property color control: dark ? "#303136" : "#ffffff"
     readonly property color controlHover: dark ? "#3a3b40" : "#f0f0f3"
     readonly property color controlPressed: dark ? "#45464c" : "#e2e2e7"
-    readonly property color selection: dark ? "#2d4a7a" : "#cfe0fb"
+    readonly property color selection: dark ? "#203a63" : "#dbe8fc"
     readonly property color menu: dark ? "#2a2b2f" : "#ffffff"
     readonly property color tooltip: dark ? "#3a3b40" : "#1c1c1e"
     readonly property color tooltipText: "#f2f2f2"
@@ -31,15 +37,21 @@ QtObject {
 
     // Text
     readonly property color text: dark ? "#e6e6e6" : "#1c1c1e"
-    readonly property color textMuted: dark ? "#9a9aa0" : "#6e6e73"
-    readonly property color textDisabled: dark ? "#6a6a70" : "#a8a8ad"
+    readonly property color textMuted: dark ? "#a4a4aa" : "#5f5f64"
+    readonly property color textDisabled: dark ? "#88888e" : "#808085"
     readonly property color textOnAccent: "#ffffff"
+    // Text on a ChannelPalette colour (pills): every palette colour reaches
+    // at least 6.3:1 with it, white none
+    readonly property color textOnTint: "#111214"
 
     // Meaning
-    readonly property color accent: "#3b82f6"
+    readonly property color accent: "#2563eb"
     readonly property color danger: "#c42b1c"
-    readonly property color warning: dark ? "#e0a030" : "#b26b00"
-    readonly property color success: dark ? "#34c759" : "#248a3d"
+    // The accent and danger as text or icons on a surface (fills use the above)
+    readonly property color accentText: dark ? "#7aaeff" : "#1d5bd0"
+    readonly property color dangerText: dark ? "#ff7468" : "#b42318"
+    readonly property color warning: dark ? "#e0a030" : "#875200"
+    readonly property color success: dark ? "#34c759" : "#1c7532"
     readonly property color connected: "#34c759"
     readonly property color disconnected: "#ff3b30"
 
@@ -71,5 +83,5 @@ QtObject {
     readonly property font fontCaption: Qt.font({ pixelSize: 10 })
     readonly property font fontHeading: Qt.font({ pixelSize: 11, weight: Font.DemiBold, capitalization: Font.AllUppercase })
     readonly property font fontTitle: Qt.font({ pixelSize: 15, weight: Font.DemiBold })
-    readonly property font fontMono: Qt.font({ family: "monospace", pixelSize: 12 })
+    readonly property font fontMono: Qt.font({ family: Shell.monospaceFamily, pixelSize: 12 })
 }

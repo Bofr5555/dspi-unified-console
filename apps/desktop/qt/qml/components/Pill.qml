@@ -19,7 +19,7 @@ AbstractButton {
         id: label
         text: pill.text
         font: Theme.fontCaption
-        color: !pill.checkable || pill.checked ? Theme.textOnAccent : pill.tint
+        color: !pill.checkable || pill.checked ? Theme.textOnTint : Theme.text
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
     }

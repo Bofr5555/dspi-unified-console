@@ -112,6 +112,41 @@ QtObject {
         }
     ]
 
+    // The rows with a shortcut, as [{ id, shortcut }]: TableShortcuts gives
+    // them to every tool window, so a shortcut works whichever window is active
+    function shortcutRows() {
+        const rows = []
+        const walk = list => {
+            for (const r of list) {
+                if (r.rows) walk(r.rows)
+                else if (r.id && r.shortcut) rows.push({ id: r.id, shortcut: r.shortcut })
+            }
+        }
+        for (const m of menus) walk(m.rows)
+        return rows
+    }
+
+    // Edit's rows act on the focused text field first, as the Mac sends them
+    // to the first responder; otherwise they go to whoever handles the id (the
+    // channel clipboard). Every other id goes to the shell.
+    readonly property var textEdits: ({
+        "edit.cut": "cut",
+        "edit.copy": "copy",
+        "edit.paste": "paste",
+        "edit.selectAll": "selectAll",
+        "edit.delete": "delete"
+    })
+    function trigger(window, id) {
+        const target = window ? window.activeFocusItem : null
+        const op = textEdits[id]
+        if (op && target && target.selectionStart !== undefined && typeof target.selectAll === "function") {
+            if (op === "delete") target.remove(target.selectionStart, target.selectionEnd)
+            else target[op]()
+            return
+        }
+        Shell.trigger(id)
+    }
+
     // Every action id in the table, in menu order (the smoke driver checks them)
     function allIds() {
         const ids = []

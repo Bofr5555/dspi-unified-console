@@ -4,7 +4,8 @@ import QtQuick.Controls.Basic
 import UConsole
 
 // A tool window (the Mac's NSWindow tools): the system's frame, the theme's
-// background, and its size and place remembered under `windowId`. Default
+// background, the menu table's shortcuts, and its size and place remembered
+// under `windowId` (Wayland ignores the place). Default
 // sizes are the Mac's content sizes (mockups).
 ApplicationWindow {
     id: window
@@ -35,5 +36,10 @@ ApplicationWindow {
     Shortcut {
         sequences: [StandardKey.Close]
         onActivated: window.close()
+    }
+
+    // The menu table's shortcuts work here too
+    TableShortcuts {
+        window: window
     }
 }

@@ -9,7 +9,7 @@ AbstractButton {
     id: button
     property string iconName
     property string toolTip
-    property color iconColor: checked ? Theme.accent : Theme.text
+    property color iconColor: checked ? Theme.accentText : Theme.text
     property int iconSize: 16
     signal secondaryClicked()
 
