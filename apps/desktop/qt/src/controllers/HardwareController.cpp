@@ -1347,17 +1347,31 @@ void HardwareController::restoreOutputs() {
                     dspi_set_adat_input_clock_mode(c, b.adat_input_clock_mode);
                 if (!n.adat_input_enabled && b.adat_input_enabled) dspi_set_adat_input_enabled(c, true);
             }
-            // The output limiters (the output card's) last
-            for (int o = 0; o < MAX_OUTPUTS; ++o) {
-                const auto out = uint8_t(o);
-                if (n.limiter_threshold_db[o] != b.limiter_threshold_db[o])
+            // -- WP QP8 -- The output limiters last, in the Mac's order
+            // (applyLimiterSettings): a write to a linked output moves its whole
+            // group, so a field-by-field pass would spread one output's value
+            // over its old group. Every output leaves its group, takes its own
+            // values unlinked, then rejoins in ascending order so each group's
+            // lowest output leads; enable goes last, onto the new threshold.
+            const int outs = std::clamp(int(n.num_output_channels), 0, int(MAX_OUTPUTS));
+            bool limitersMoved = false;
+            for (int o = 0; o < outs; ++o)
+                limitersMoved = limitersMoved || n.limiter_threshold_db[o] != b.limiter_threshold_db[o] ||
+                                n.limiter_release_ms[o] != b.limiter_release_ms[o] ||
+                                n.limiter_link_group[o] != b.limiter_link_group[o] ||
+                                n.limiter_enabled[o] != b.limiter_enabled[o];
+            if (limitersMoved) {
+                for (int o = 0; o < outs; ++o)
+                    if (n.limiter_link_group[o] != 0) dspi_set_limiter_param(c, uint8_t(o), LIMITER_PARAM_LINK_GROUP, 0.0f);
+                for (int o = 0; o < outs; ++o) {
+                    const auto out = uint8_t(o);
                     dspi_set_limiter_param(c, out, LIMITER_PARAM_THRESHOLD_DB, b.limiter_threshold_db[o]);
-                if (n.limiter_release_ms[o] != b.limiter_release_ms[o])
                     dspi_set_limiter_param(c, out, LIMITER_PARAM_RELEASE_MS, b.limiter_release_ms[o]);
-                if (n.limiter_link_group[o] != b.limiter_link_group[o])
-                    dspi_set_limiter_param(c, out, LIMITER_PARAM_LINK_GROUP, float(b.limiter_link_group[o]));
-                if (n.limiter_enabled[o] != b.limiter_enabled[o])
                     dspi_set_limiter_param(c, out, LIMITER_PARAM_ENABLED, b.limiter_enabled[o] ? 1.0f : 0.0f);
+                }
+                for (int o = 0; o < outs; ++o)
+                    if (b.limiter_link_group[o] != 0)
+                        dspi_set_limiter_param(c, uint8_t(o), LIMITER_PARAM_LINK_GROUP, float(b.limiter_link_group[o]));
             }
             return true;
         },

@@ -292,6 +292,21 @@ Rectangle {
         }
     }
 
+    // -- WP QP8 -- The limiter's settings, a popover over its cell, opened by a right-click
+    LimiterSettings {
+        id: limiterSettings
+        output: card.output
+        parent: limiterButton
+        x: limiterButton.width - width
+        y: limiterButton.height + 4
+    }
+    Connections {
+        target: ChannelController
+        function onLimiterSettingsRequested(output) {
+            if (output === card.output && limiterButton.visible) limiterSettings.open()
+        }
+    }
+
     Component.onCompleted: ChannelController.watchLimiter(true)
     Component.onDestruction: ChannelController.watchLimiter(false)
 
