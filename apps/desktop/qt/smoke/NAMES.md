@@ -50,7 +50,7 @@ names each section uses are in `names/<wp>.md`.
 | `qp3-graph` | 30 | main |
 | `qp4-peq` | 35 | main |
 | `qp10-settings` | 40 | main |
-| `qp11-hardware` | 45 | main |
+| `qp11-hardware`, `qp20-notices` | 45 | main |
 | `qp12-surfaces` | 47 | main |
 | `qp5-dashboard` | 50 | main |
 | `qp6-matrix` | 60 | main |
@@ -61,12 +61,15 @@ names each section uses are in `names/<wp>.md`.
 | `qp14-networking`, `qp14-tray`, `qp14-system` | 140–142 | main |
 | `qp15-files`, `qp15-autoeq` | 150–151 | main |
 | `qp16-firmware`, `qp16-access`, `qp17-onboarding`, `qp16-readonly`, `qp17-updates` | 160–170 | main |
+| `qp18-polish` | 180 | main |
+| `qp18-access` | 190 | main |
 | `qp19-gallery` | 900 | main, last |
 | `qp19-demo-entry` | 10 | `demo-entry/` (`DSPI_SMOKE_DEMO_ENTRY`, no `--demo`) |
 | `qp19-tray-launch` | 10 | `tray-hidden/`, `tray-hidden-quit/`, `tray-app-quit/`, `tray-no-tray/` (`DSPI_SMOKE_TRAY`) |
 | `qp19-hw-preflight`, `-analyser`, `-status`, `-bypass`, `-reconnect`, `-end` | 10–90 | `hw-dry/` (`DSPI_SMOKE_HW=dry`); `run-hw.sh` (`=1`) |
 | `qp19-replug` | 10 | `run-replug.sh` (`DSPI_SMOKE_HW=replug`) |
+| `qp18-pseudo` | 10 | `pseudo-en/`, `pseudo-pseudo/` (`DSPI_SMOKE_PSEUDO=en`, `=pseudo`) |
 | `qp19-selftest` | 10 | by hand: `DSPI_SMOKE_SELFTEST=thread` must exit 1, `=noquit` exit 3 |
 
-A mode with no section in the build (today `DSPI_SMOKE_PSEUDO`, QP18's) exits
-2 and run.sh skips it.
+A mode with no section in the build exits 2 and run.sh skips it (every mode
+has one today).

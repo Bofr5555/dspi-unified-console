@@ -1,7 +1,7 @@
 #!/bin/bash
 # -- WP REL013M -- Mounts the Swift app's .dmg from package-macos.sh read-only
 # and starts the app from it on the demo device (-LocalTransport demo) for 20 s
-# (DMG_RUN_SECONDS), as packaging/macos/test-dmg.sh does for the Qt .dmg.
+# (DMG_RUN_SECONDS).
 # Passes when the signature verifies, the bundle has the unified console's
 # identifier and version and carries the licence texts (Contents/Resources:
 # NOTICE.txt and LICENSES/), the app is still running at the end with no

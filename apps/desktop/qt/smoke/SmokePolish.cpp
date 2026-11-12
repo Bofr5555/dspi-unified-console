@@ -27,7 +27,7 @@
 #include <QJSValue>
 #include <QJsonArray>
 #include <QJsonObject>
-#include <QQmlApplicationEngine>
+#include <QtQml/QQmlApplicationEngine>
 #include <QQmlComponent>
 #include <QQuickItem>
 #include <QQuickWindow>

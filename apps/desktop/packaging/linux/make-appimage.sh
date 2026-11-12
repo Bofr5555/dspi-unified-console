@@ -58,8 +58,7 @@ for m in json.load(sys.stdin):
     mkdir -p "$appdir/usr/qml/$rel"
     find "$dir" -maxdepth 1 -type f ! -name '*.debug' -exec cp {} "$appdir/usr/qml/$rel/" \;
 done
-for extra in QtQuick/Controls/impl QtQuick/Controls/Basic QtQuick/Controls/Basic/impl \
-             QtQuick/Templates QtQml/WorkerScript QtQml/Models QtQml/Base; do
+for extra in $(sed -n 's/^runtime //p' "$here/../qt-modules.txt"); do
     [ -d "$Q/qml/$extra" ] && [ ! -d "$appdir/usr/qml/$extra" ] || continue
     mkdir -p "$appdir/usr/qml/$extra"; find "$Q/qml/$extra" -maxdepth 1 -type f ! -name '*.debug' -exec cp {} "$appdir/usr/qml/$extra/" \;
 done

@@ -20,7 +20,7 @@
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
-#include <QQmlApplicationEngine>
+#include <QtQml/QQmlApplicationEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QTest>
@@ -85,6 +85,7 @@ QString describe(QQuickItem *item) {
 struct Totals {
     int controls = 0, unnamed = 0, windows = 0, traps = 0;
     int texts = 0, unmarked = 0, clipped = 0, elided = 0;
+    QStringList cut; // each clipped or elided text with its window (behaviour.md §22)
 };
 
 // Every control a person reaches with Tab has a name
@@ -139,6 +140,10 @@ void checkTabWalk(SmokeDriver &d, const QString &where, QQuickWindow *w, Totals 
     t.traps += trapped;
     ++t.windows;
     if (trapped) std::printf("smoke: qp18: %s: Tab stays on %s\n", qPrintable(where), qPrintable(trapAt));
+    // -- WP QPI4 -- for the record (review w4 N6): a cycle short of every stop
+    // is not a trap the check above sees
+    if (seen.size() < qMin(stops, 80))
+        std::printf("smoke: qp18: %s: Tab reached %d of %d stops\n", qPrintable(where), int(seen.size()), stops);
     d.check(QStringLiteral("qp18: %1: Tab moves through %2 stops and is never trapped").arg(where).arg(seen.size()), !trapped && !seen.isEmpty());
 }
 
@@ -155,9 +160,13 @@ void countTexts(const QString &where, QQuickItem *root, Totals &t, QStringList *
             ++t.unmarked;
             if (unmarked->size() < 400) unmarked->append(where + QStringLiteral(": ") + text.left(60));
         }
+        // Qt::ElideLeft is 0: any mode but ElideNone is an ellipsis by design;
+        // truncated without one is a maximumLineCount cut
         if (item->property("truncated").toBool()) {
-            if (item->property("elide").toInt() != 0) ++t.elided;
-            else ++t.clipped;
+            const bool elides = item->property("elide").toInt() != Qt::ElideNone;
+            ++(elides ? t.elided : t.clipped);
+            t.cut.append(QStringLiteral("%1 %2: %3").arg(elides ? QStringLiteral("elided") : QStringLiteral("clipped"), where,
+                                                          text.left(60)));
         }
     });
 }
@@ -262,6 +271,7 @@ void pseudoSection(SmokeDriver &d) {
         QFile f(dir + QStringLiteral("/clipped.txt"));
         if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) f.write(QByteArray::number(baseline) + '\n');
         std::printf("smoke: qp18: English: %d texts, %d clipped, %d elided\n", en.texts, en.clipped, en.elided);
+        for (const QString &line : std::as_const(en.cut)) std::printf("smoke: qp18: English %s\n", qPrintable(line));
         unmarked.clear();
     } else {
         QFile f(d.outDir() + QStringLiteral("/../pseudo-en/clipped.txt"));
@@ -290,6 +300,7 @@ void pseudoSection(SmokeDriver &d) {
     std::printf("smoke: qp18: pseudo: %d texts, %d not through a translation (unmarked.txt), %d clipped "
                 "(%d in English), %d elided\n",
                 t.texts, t.unmarked, t.clipped, baseline, t.elided);
+    for (const QString &line : std::as_const(t.cut)) std::printf("smoke: qp18: pseudo %s\n", qPrintable(line));
     d.check(QStringLiteral("qp18: the pseudo locale clips no more than English does"), baseline < 0 || t.clipped <= baseline);
     d.check(QStringLiteral("qp18: back in English after the pass"),
             action && !action->property("text").toString().startsWith(u'['));

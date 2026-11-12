@@ -112,8 +112,17 @@ wine "$unix/Uninstall.exe" /S "_?=$dir"; check "uninstall while the app runs is 
 
 # Quit it: the installer and uninstaller go through
 kill "$app" 2>/dev/null; wineserver -k; wineserver -w; wait "$app" 2>/dev/null
+# -- WP QPI4 -- open at login on, as the app writes it: an update keeps it,
+# the uninstall removes it
+run='HKCU\Software\Microsoft\Windows\CurrentVersion\Run'
+wine reg add "$run" /v "DSPi uConsole" /d "\"$dir\\DSPiConsole.exe\"" /f >/dev/null 2>&1
 wine "$setup" /S "/D=$dir"; check "install after the app quit" 0 $?
+wine reg query "$run" /v "DSPi uConsole" >/dev/null 2>&1 && echo "test-installer: ok: an update keeps open at login" \
+    || { echo "test-installer: FAIL: the update removed the open-at-login entry"; fails=$((fails + 1)); }
 wine "$unix/Uninstall.exe" /S "_?=$dir"; check "uninstall after the app quit" 0 $?
+wine reg query "$run" /v "DSPi uConsole" >/dev/null 2>&1 \
+    && { echo "test-installer: FAIL: the open-at-login entry is still there"; fails=$((fails + 1)); } \
+    || echo "test-installer: ok: the open-at-login entry is removed"
 [ ! -e "$unix/DSPiConsole.exe" ] && echo "test-installer: ok: the app's files are removed" \
     || { echo "test-installer: FAIL: DSPiConsole.exe is still there after the uninstall"; fails=$((fails + 1)); }
 left=$(find "$WINEPREFIX/drive_c/users" -path '*Start Menu/Programs/*' -name '*.lnk' -printf '%f ' 2>/dev/null)

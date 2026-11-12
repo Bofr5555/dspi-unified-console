@@ -32,7 +32,10 @@ void CoreWorker::runOne() {
         m_queue.pop_front();
     }
     job(m_core);
-    job = nullptr;   // a job that ran has sent its `done` home already
+    // -- WP QPI4 -- the job that ran goes home to die: every closure the
+    // worker held (a poll's read and apply, a write's pending done) is
+    // destroyed on the GUI thread, never here
+    QMetaObject::invokeMethod(m_home, [job = std::move(job)] {}, Qt::QueuedConnection);
     m_pending.fetch_sub(1);
 }
 

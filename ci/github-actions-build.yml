@@ -72,8 +72,8 @@ jobs:
           test $? = 124 && ! grep -E 'qrc:.*(Error|is not a type|Cannot assign)' log.txt
 
   # -- WP QP20 -- The MinGW job is on again with the new tree's packaging. The
-  # MSVC job stays off: qt/CMakeLists.txt imports dspi_capi.dll.a, MinGW's import
-  # library, and nothing builds the MSVC one yet.
+  # MSVC job stays off: qt/CMakeLists.txt imports libdspi_capi.dll.a, MinGW's
+  # import library, and nothing builds the MSVC one yet.
   desktop-windows-mingw:
     name: Desktop app, Windows (MinGW cross build)
     runs-on: ubuntu-24.04

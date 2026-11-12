@@ -568,12 +568,15 @@ version, the demo choice, AutoEQ favourites. See §21.3.
 - Pseudo strings: every translatable string gets accented letters, is wrapped in square brackets and padded with
   `~` to about a third longer. Strings from the core and from the device (names, values, units from the core) are not
   translated and stay plain, which is how untranslated strings in the UI are spotted.
-- Per window the driver logs: number of texts, untranslated ones, clipped ones (text cut by its box), how many of
-  those were already clipped in English, and elided ones (text shortened with an ellipsis on purpose), then each
-  elided text with its window. The English run writes `clipped.txt` as the baseline; the pseudo run fails only on new
-  clipping or untranslated strings.
-- Today's result: 0 untranslated, 0 clipped in both runs; 19 elided texts in the pseudo run (output labels in the
-  matrix, some generator and analyser labels).
+- Per run the driver logs: number of texts, untranslated ones (written to `unmarked.txt`), clipped ones (a text cut
+  at its `maximumLineCount`), how many of those were already clipped in English, and elided ones (a text shortened
+  with an ellipsis on purpose, at any end: `Text.ElideLeft` is 0, so a check compares with `ElideNone`), then each
+  clipped and elided text with its window. The English run writes `clipped.txt` as the baseline; the pseudo run
+  fails only on new clipping. (QPI4)
+- What it does not prove: `Text.truncated` is set only by an elide or a line count, so a text that overflows its box
+  without either is not seen; untranslated strings are listed, not a gate (device words, the core's About and journal
+  labels, C++ strings translated once at construction); the device list, Getting Started and the AutoEQ rebuild are
+  not visited.
 
 ## 23. Smoke driver contract
 
@@ -584,22 +587,27 @@ The offscreen driver is kept and adapted (plan). What the CI script and reviewer
   backend, `RUST_LOG=warn`, and `--demo`.
 - **Environment:** `DSPI_SMOKE_OUT` (out dir), `DSPI_SMOKE_HW` (`1` real device, `dry` the hardware pass on the demo,
   `replug` waits for the owner), `DSPI_SMOKE_DEMO_ENTRY` (start without `--demo`), `DSPI_SMOKE_TRAY` (`hidden`,
-  `hidden-quit`, `app-quit`, `no-tray`) with `DSPI_SMOKE_TRAY_PROBE`, `DSPI_SMOKE_PSEUDO` (`en`, `pseudo`) with
-  `DSPI_SMOKE_PSEUDO_BASE`, `DSPI_SMOKE_BUG1`, `DSPI_SMOKE_SECTION_LIMIT` (seconds per section, default 120),
-  `DSPI_SMOKE_FAKEHUB` and `DSPI_SMOKE_TERMINAL` (helper binaries). The plan adds `DSPI_SMOKE_SECTION=<name>`.
+  `hidden-quit`, `app-quit`, `no-tray`) with `DSPI_SMOKE_TRAY_PROBE`, `DSPI_SMOKE_PSEUDO` (`en`, `pseudo`; the
+  pseudo run reads the English run's `clipped.txt` beside its own out dir), `DSPI_SMOKE_SECTION_LIMIT` (seconds per
+  section, default 120), `DSPI_SMOKE_SECTION=<name>`, `DSPI_SMOKE_FAKEHUB` and `DSPI_SMOKE_TERMINAL` (helper
+  binaries).
 - **Log lines** (the CI greps `^smoke:` and `^FAIL`): `smoke: == <section>` at a section's start, `smoke: -- <section>:
   <s> s` at its end, `FAIL <section or check>: <what>` per failure, and the summary lines:
   - `smoke: <n> sections in <s> s; slowest: <name> <s> s; …` (five slowest);
-  - `smoke: <n> checks, <f> failures (<q> QML errors)`, with `, <k> not run` appended in the hardware pass. The CI
-    fails if this line is missing.
+  - `smoke: <n> checks, <f> failures (<q> QML errors, <t> thread warnings)`, with `, <k> not run` appended in the
+    hardware pass. The CI fails if this line is missing. A Qt thread warning is itself a `FAIL thread:` with a
+    backtrace.
   - Tray launches end with `smoke: tray launch <mode>: <n> checks, <f> failures, quitting`.
-- **Exit codes:** 0 pass; non-zero on any failure; 3 when a tray launch does not quit; 4 when the section watchdog
+- **Exit codes:** 0 pass; non-zero on any failure; 2 when the launch's mode has no section in this build (`smoke:
+  <VAR>=<value> has no section in this build`); 3 when a tray launch does not quit; 4 when the section watchdog
   fires (the log names the section). The whole run is also bounded by `timeout` (900 s).
-- **Warning budget:** after the run, any core warning line (`[… WARN …]`) repeated more than five times fails the
-  run, except the firmware guard's log of an accepted typed confirmation. In the replug mode repeats are only
+- **Warning budget:** after the main run (the other launches get the backtrace and summary checks only), any core
+  warning line (`[… WARN …]`) repeated more than five times fails the run, except the firmware guard's log of an accepted typed confirmation. In the replug mode repeats are only
   reported. dspi-capi's own warnings are rate-limited and do not count.
-- **Order of runs in one CI step:** main run, demo-entry run (`demo-entry/`), four tray launches, two pseudo-locale
-  runs, the BUG1 run (`bug1/`), then the hardware pass on the demo (`DSPI_SMOKE_HW=dry`, separate out dir).
+- **Order of runs in one CI step:** main run, demo-entry run (`demo-entry/`), four tray launches (`tray-*/`), two
+  pseudo-locale runs (`pseudo-en/`, `pseudo-pseudo/`), then the hardware pass on the demo (`hw-dry/`). A failure in
+  any launch fails the step. Last, `index.html` in the out dir shows every PNG (the gallery: the gallery section's
+  dark and light pairs first). The K340 (BUG1) launch is not rebuilt.
 - **Outputs:** one PNG per window or state in the out dir. Today's names, which the gallery and reviewers use:
   `window-<name>` for the main window and tool windows (main, main-cpu-bars, graph, matrix, crossfeed, crossfeed-k340,
   crossfeed-stock, crossfeed-editor, crossfeed-editor-short, loudness, leveller, psybass, subharm, tube, upmix, siggen,

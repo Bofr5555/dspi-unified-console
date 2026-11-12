@@ -14,6 +14,7 @@
 #include "SmokeDriver.h"
 
 #include "Core.h"
+#include "CoreWorker.h"
 #include "DeviceModel.h"
 #include "DevicesController.h"
 #include "Registrar.h"
@@ -31,7 +32,10 @@ extern "C" {
 #include <QQuickWindow>
 #include <cmath>
 #include <cstdio>
+#include <array>
+#include <atomic>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace {
@@ -55,10 +59,24 @@ Pass &pass() {
     return p;
 }
 
-FfiCore *handle(SmokeDriver &d) { return d.app().core->handle(); }
+// -- WP QPI4 -- The app's rule: every dspi_* call runs on the core's worker
+// (the state record is rewritten by each call, so it is read where it is
+// fetched). Runs `fn` there and waits; nothing when the worker did not answer.
+template <class F>
+auto onWorker(SmokeDriver &d, F fn) -> std::optional<decltype(fn(static_cast<FfiCore *>(nullptr)))> {
+    using R = decltype(fn(static_cast<FfiCore *>(nullptr)));
+    auto answer = std::make_shared<std::optional<R>>();
+    auto ready = std::make_shared<std::atomic<bool>>(false);
+    d.app().core->worker()->post([fn = std::move(fn), answer, ready](FfiCore *c) {
+        answer->emplace(fn(c));
+        ready->store(true);
+    });
+    if (!d.waitFor(10000, [&] { return ready->load(); })) return std::nullopt;
+    return *answer;
+}
 
-bool readBaseline(SmokeDriver &d, Baseline *out) {
-    FfiCore *core = handle(d);
+// Worker thread
+bool readImage(FfiCore *core, Baseline *out) {
     if (!dspi_fetch_all(core)) return false;
     const DspState *s = dspi_get_state(core);
     if (!s || !s->bulk_valid) return false;
@@ -75,6 +93,17 @@ bool readBaseline(SmokeDriver &d, Baseline *out) {
     return true;
 }
 
+bool readBaseline(SmokeDriver &d, Baseline *out) {
+    const auto read = onWorker(d, [](FfiCore *c) {
+        Baseline b;
+        const bool ok = readImage(c, &b);
+        return std::make_pair(ok, b);
+    });
+    if (!read || !read->first) return false;
+    *out = read->second;
+    return true;
+}
+
 // The device as found, or a loud failure naming the bytes that differ
 bool asFound(SmokeDriver &d, const Baseline &want, const char *when) {
     Baseline now;
@@ -83,7 +112,7 @@ bool asFound(SmokeDriver &d, const Baseline &want, const char *when) {
         return false;
     }
     if (now == want) {
-        std::printf("smoke: qp19-hw: the device as found %s\n", when);
+        d.check(QStringLiteral("qp19-hw: the device as found %1").arg(QLatin1String(when)), true);
         return true;
     }
     QString list;
@@ -123,8 +152,10 @@ QString compact(const QVariantMap &m) {
 }
 
 bool siggenIdle(SmokeDriver &d) {
-    SiggenStatus sg{};
-    return !dspi_siggen_get_status(handle(d), &sg) || sg.state == 0;
+    return onWorker(d, [](FfiCore *c) {
+               SiggenStatus sg{};
+               return !dspi_siggen_get_status(c, &sg) || sg.state == 0;
+           }).value_or(false);
 }
 
 // ---- The sections, in order ----
@@ -157,16 +188,30 @@ void preflight(SmokeDriver &d) {
 
 void analyser(SmokeDriver &d) {
     if (!pass().ready) return;
-    FfiCore *core = handle(d);
-    RtaCapsInfo caps{};
-    dspi_rta_get_caps(core, &caps);
+    const RtaCapsInfo caps = onWorker(d, [](FfiCore *c) {
+                                 RtaCapsInfo k{};
+                                 dspi_rta_get_caps(c, &k);
+                                 return k;
+                             }).value_or(RtaCapsInfo{});
     if (!caps.supported) {
         d.notRun("analyser", QStringLiteral("the device reports none"));
         return;
     }
     std::printf("smoke: qp19-hw: analyser: %d inputs, %d outputs, order %d..%d\n", caps.input_channels, caps.output_channels,
                 caps.order_min, caps.order_max);
-    auto snapshot = std::make_unique<RtaSnapshot>();
+    auto snapshot = std::make_shared<RtaSnapshot>();
+    const auto take = [&d, snapshot] {
+        onWorker(d, [snapshot](FfiCore *c) {
+            dspi_rta_get_snapshot(c, snapshot.get());
+            return true;
+        });
+    };
+    const auto ask = [&d](RtaRequest request) {
+        onWorker(d, [request](FfiCore *c) {
+            dspi_rta_set_request(c, &request);
+            return true;
+        });
+    };
     for (uint8_t tap : { uint8_t(RTA_TAP_INPUT), uint8_t(RTA_TAP_OUTPUT) }) {
         const QString what = QStringLiteral("analyser frames, %1 tap").arg(tap == RTA_TAP_INPUT ? "input" : "output");
         RtaRequest request{};
@@ -175,52 +220,73 @@ void analyser(SmokeDriver &d) {
         request.fft_order = caps.order_min;
         request.avg_ms = 100;
         request.peak_decay_db_s = 12;
-        dspi_rta_set_request(core, &request);
+        ask(request);
         uint32_t first = 0;
         const bool running = d.waitFor(5000, [&] {
-            dspi_rta_get_snapshot(core, snapshot.get());
+            take();
             first = snapshot->version;
             return snapshot->running && snapshot->tap == tap && snapshot->count > 0;
         });
         // The picture's version moves only when the picture does: digital silence never moves it
         const bool moving = running && d.waitFor(5000, [&] {
-            dspi_rta_get_snapshot(core, snapshot.get());
+            take();
             return snapshot->version != first;
         });
         reading(d, what, running && moving,
                 QStringLiteral("running %1, %2 channels%3").arg(running).arg(int(snapshot->count)).arg(moving ? "" : ", no new picture: is a stream playing?"));
     }
-    RtaRequest none{};
-    dspi_rta_set_request(core, &none);
+    ask(RtaRequest{});
     d.spin(500);
 }
 
 void status(SmokeDriver &d) {
     if (!pass().ready) return;
-    FfiCore *core = handle(d);
     SystemStatus s{};
     bool ok = true;
     for (int i = 0; i < 5 && ok; i++) {
-        ok = dspi_fetch_status(core, &s);
+        const auto read = onWorker(d, [](FfiCore *c) {
+            SystemStatus st{};
+            const bool fetched = dspi_fetch_status(c, &st);
+            return std::make_pair(fetched, st);
+        });
+        ok = read && read->first;
+        if (ok) s = read->second;
         d.spin(20);
     }
     reading(d, "system status", ok && s.cpu0 <= 100 && s.cpu1 <= 100,
             QStringLiteral("CPU %1/%2 %, %3 active inputs").arg(int(s.cpu0)).arg(int(s.cpu1)).arg(int(s.active_input_channels)));
-    SpdifRxStatus rx{};
-    reading(d, "S/PDIF input status", dspi_fetch_spdif_rx_status(core, &rx), QStringLiteral("state %1").arg(int(rx.state)));
-    uint32_t starved = 0;
-    reading(d, "starvation counter", dspi_fetch_stat(core, STAT_STARVATION_TOTAL, &starved), QString::number(starved));
-    const QVariantMap latency = coreJson([core](char *b, uint32_t n) { return dspi_fetch_output_latency(core, b, n); });
+    const auto rx = onWorker(d, [](FfiCore *c) {
+        SpdifRxStatus r{};
+        const bool fetched = dspi_fetch_spdif_rx_status(c, &r);
+        return std::make_pair(fetched, r);
+    });
+    reading(d, "S/PDIF input status", rx && rx->first, QStringLiteral("state %1").arg(rx ? int(rx->second.state) : -1));
+    const auto starved = onWorker(d, [](FfiCore *c) {
+        uint32_t n = 0;
+        const bool fetched = dspi_fetch_stat(c, STAT_STARVATION_TOTAL, &n);
+        return std::make_pair(fetched, n);
+    });
+    reading(d, "starvation counter", starved && starved->first, QString::number(starved ? starved->second : 0));
+    const auto json = [&d](uint32_t (*call)(FfiCore *, char *, uint32_t)) {
+        return onWorker(d, [call](FfiCore *c) { return coreJson([c, call](char *b, uint32_t n) { return call(c, b, n); }); })
+            .value_or(QVariantMap());
+    };
+    const QVariantMap latency = json(&dspi_fetch_output_latency);
     reading(d, "output latency", latency.value(QStringLiteral("ok")).toBool(), compact(latency));
-    const QVariantMap ext = coreJson([core](char *b, uint32_t n) { return dspi_ext_status(core, b, n); });
+    const QVariantMap ext = json(&dspi_ext_status);
     reading(d, "extension channel", ext.value(QStringLiteral("ok")).toBool(), compact(ext));
-    const QVariantMap clock = coreJson([core](char *b, uint32_t n) { return dspi_fetch_clock_diag(core, b, n); });
+    const QVariantMap clock = json(&dspi_fetch_clock_diag);
     if (clock.value(QStringLiteral("ok")).toBool() && !clock.value(QStringLiteral("available")).toBool())
         d.notRun("clock diagnostics", QStringLiteral("not built into this firmware"));
     else
         reading(d, "clock diagnostics", clock.value(QStringLiteral("ok")).toBool(), compact(clock));
-    float gr[MAX_OUTPUTS] = {};
-    bool sane = dspi_fetch_limiter_meter(core, gr);
+    const auto meter = onWorker(d, [](FfiCore *c) {
+        std::array<float, MAX_OUTPUTS> g{};
+        const bool fetched = dspi_fetch_limiter_meter(c, g.data());
+        return std::make_pair(fetched, g);
+    });
+    const std::array<float, MAX_OUTPUTS> gr = meter ? meter->second : std::array<float, MAX_OUTPUTS>{};
+    bool sane = meter && meter->first;
     QString values;
     for (int o = 0; o < d.app().device->numOutputs() && o < MAX_OUTPUTS; o++) {
         sane = sane && std::isfinite(gr[o]);
@@ -234,8 +300,9 @@ void status(SmokeDriver &d) {
 void bypass(SmokeDriver &d) {
     if (!pass().ready) return;
     DeviceModel *device = d.app().device;
-    FfiCore *core = handle(d);
-    const auto onDevice = [&] { return dspi_fetch_all(core) ? int(dspi_get_state(core)->bypass) : -1; };
+    const auto onDevice = [&] {
+        return onWorker(d, [](FfiCore *c) { return dspi_fetch_all(c) ? int(dspi_get_state(c)->bypass) : -1; }).value_or(-1);
+    };
     const int original = onDevice();
     d.check("qp19-hw: bypass reads", original >= 0);
     if (original < 0) return;
@@ -270,7 +337,7 @@ void end(SmokeDriver &d) {
     if (!pass().ready) return;
     d.spin(300);
     d.check("qp19-hw: the signal generator is still idle", siggenIdle(d));
-    d.check("qp19-hw: the final image is the first", asFound(d, pass().start, "at the end"));
+    asFound(d, pass().start, "at the end");   // one check, passed or failed
     d.grab(d.mainWindow(), QStringLiteral("window-main.png"));
 }
 
@@ -335,8 +402,10 @@ bool replugCycle(SmokeDriver &d, int cycle, const QString &serial, Baseline *wan
     if (!back) return false;
     d.waitIdle(10000);
     d.spin(800);
-    SystemStatus s{};
-    d.check(name + QStringLiteral(": status reads"), dspi_fetch_status(handle(d), &s));
+    d.check(name + QStringLiteral(": status reads"), onWorker(d, [](FfiCore *c) {
+                                                          SystemStatus s{};
+                                                          return dspi_fetch_status(c, &s);
+                                                      }).value_or(false));
     if (!asFound(d, *want, "after the replug")) {
         // A replug that cut the power drops what RAM held unsaved: the next cycle starts from here
         std::printf("smoke: a power cycle drops unsaved changes: was anything unsaved when this run began?\n");

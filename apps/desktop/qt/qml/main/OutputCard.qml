@@ -10,7 +10,8 @@ import UConsole
 // Sliders send live while dragged and once on release; the delay slider moves
 // in whole milliseconds and a typed delay is kept as typed (rule SL1), up to
 // the device's line (ChannelController.maxDelayMs). A right-click on a slider
-// or a field resets it.
+// or a field resets it; elsewhere on the card it opens the card's menu with
+// Identify, as the output's row in the sidebar has (QPI4).
 Rectangle {
     id: card
     property int output: 0
@@ -38,6 +39,25 @@ Rectangle {
         Layout.fillHeight: true
         Layout.preferredWidth: 1
         color: Theme.separator
+    }
+
+    // -- WP QPI4 -- under the panels: what they don't take reaches here
+    readonly property bool canIdentify: DeviceModel.connected && SidebarController.identifySupported
+    MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.RightButton
+        enabled: card.canIdentify
+        onClicked: mouse => cardMenu.popup(mouse.x, mouse.y)
+    }
+    AppMenu {
+        id: cardMenu
+        objectName: "OutputCard.menu"
+        AppMenuItem {
+            objectName: "OutputCard.menu.identify"
+            text: qsTr("Identify")
+            enabled: card.canIdentify && !DeviceModel.readOnly
+            onTriggered: SiggenController.playIdent(card.output)
+        }
     }
 
     RowLayout {

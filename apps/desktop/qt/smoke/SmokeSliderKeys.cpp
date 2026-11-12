@@ -1,8 +1,8 @@
 // -- WP QP19 -- CustomSlider from the keyboard (carried from QD41): Left and
 // Right move it and commit once per key, on the release as a drag does, and a
 // held key's repeats commit once. On the base's probe window, so no device
-// value changes. Up/Down and an accessibility increase are printed for the
-// record: QD41 had them commit too, and today's component does not (QP18).
+// value changes. Up/Down and an accessibility increase commit once each too,
+// as QD41 had them (QP18's CustomSlider).
 #include "SmokeDriver.h"
 
 #include "Shell.h"
@@ -12,7 +12,6 @@
 #include <QQuickWindow>
 #include <QSignalSpy>
 #include <QTest>
-#include <cstdio>
 
 namespace {
 
@@ -66,7 +65,6 @@ void sliderKeysSection(SmokeDriver &d) {
     const int repeatCommits = commits() - beforeRepeat;
     d.check("qp19-keys: a held key commits once, on its release", repeatCommits == 1);
 
-    // For the record
     const auto commitsFor = [&](Qt::Key key) {
         const int before = commits();
         QTest::keyClick(w, key);
@@ -83,8 +81,11 @@ void sliderKeysSection(SmokeDriver &d) {
             accessibleCommits = commits() - beforeAction;
         }
     }
-    std::printf("smoke: qp19-keys: Up commits %d, Down %d, an accessibility increase %d (QD41 had 1 each)\n", up, down,
-                accessibleCommits);
+    // -- WP QPI4 -- asserted, no longer printed for the record
+    d.check(QStringLiteral("qp19-keys: Up commits once (%1)").arg(up), up == 1);
+    d.check(QStringLiteral("qp19-keys: Down commits once (%1)").arg(down), down == 1);
+    d.check(QStringLiteral("qp19-keys: an accessibility increase commits once (%1)").arg(accessibleCommits),
+            accessibleCommits == 1);
     w->close();
 }
 

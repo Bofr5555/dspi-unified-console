@@ -176,14 +176,9 @@ merges do not conflict, nothing generated or listed is edited by two of them:
 
 ## Parked files
 
-Kept from the previous desktop app and not built yet; the work package named
-adapts each to `Core` and `DeviceModel`, or replaces it:
-
-| File | Work package |
-|---|---|
-| `smoke/SmokeDriverExt.cpp` | its core-voltage half waits for the core-voltage WP (`SmokeEffects.cpp` replaced the rest, QP7) |
-| `smoke/SmokeDriverLatency.cpp`, `SmokeDriverNames.cpp`, `SmokeDriverSaveBar.cpp` | replaced by `SmokeHardware.cpp` (QP11); to be removed |
-| the other `smoke/SmokeDriver*.cpp` section files | the work package of their screens; QP19 for the rest |
+None left: QP19 converted or retired the last smoke files (the core-voltage
+states the old `SmokeDriverExt.cpp` checked are listed in
+`Documentation/behaviour.md` §20 for the core-voltage page's work package).
 
 QP14 built `src/platform/SystemIntegration.*` and `FirewallController.*`, and
 its sections are `SmokeNetworking.cpp`, `SmokeTray.cpp`, `SmokeSystem.cpp`;

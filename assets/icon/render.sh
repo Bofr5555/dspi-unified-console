@@ -8,8 +8,8 @@
 #   1. draws assets/icon/dspi-icon-{square,rounded}-1024.png and .svg
 #      (square: full bleed; rounded: the macOS app icon grid, see icons() there);
 #   2. makes from them the Qt desktop app's apps/desktop/qt/dspi-console.svg (window,
-#      tray, Linux hicolor and the AppImage), packaging/macos/dspi-console.icns,
-#      packaging/windows/dspi-console.ico and the installer's installer-side.bmp;
+#      tray, Linux hicolor and the AppImage), packaging/windows/dspi-console.ico
+#      and the installer's installer-side.bmp (the Qt app ships no macOS build);
 #   3. the Swift app's AppIcon set (apps/apple/Tools/render-app-icon.sh);
 #   4. the web console's favicon.svg, favicon.ico and apple-touch-icon.png.
 # The Play graphics and the launcher layers are make_graphics.py's other outputs;
@@ -35,9 +35,6 @@ png() {  # png <master> <px> <out>: a smaller copy, no metadata
 # Qt desktop app
 cp "$src/dspi-icon-rounded.svg" apps/desktop/qt/dspi-console.svg
 for px in 16 24 32 48 64 128 256 512; do png "$src/dspi-icon-rounded-1024.png" "$px" "$work/r$px.png"; done
-cp "$src/dspi-icon-rounded-1024.png" "$work/r1024.png"
-png2icns apps/desktop/packaging/macos/dspi-console.icns \
-    "$work"/r{16,32,128,256,512,1024}.png >"$work/png2icns.log" 2>&1 || { cat "$work/png2icns.log" >&2; exit 1; }
 icotool -c -o apps/desktop/packaging/windows/dspi-console.ico \
     "$work"/r{16,24,32,48,64,128}.png -r "$work/r256.png"
 # the installer's welcome/finish page (164 x 314, 24-bit BMP): the icon's 86 px tile

@@ -4,7 +4,9 @@
 #
 #   apps/desktop/packaging/build-release.sh [--key MINISIGN_SECRET_KEY] [output dir]
 #
-# Output dir: default $DSPI_BUILD_CACHE/work/release-<version> (never tmpfs).
+# Output dir: default $DSPI_BUILD_CACHE/work/release-<version> (never tmpfs),
+# emptied first since it is this script's own; a dir you name must be empty
+# or not exist yet, so nothing of yours is ever deleted.
 # In it (the names packaging/README.md lists; the app's update checker relies
 # on the first four):
 #   DSPi-uConsole-<v>-windows-x86_64.zip           windows/build-windows.sh
@@ -31,7 +33,11 @@ key=${DSPI_MINISIGN_KEY:-}
 if [ "${1:-}" = --key ]; then key=${2:?--key needs a file}; shift 2; fi
 version=$(sed -n 's/^project(DSPiConsole VERSION \([0-9.]*\).*/\1/p' "$here/../qt/CMakeLists.txt")
 [ -n "$version" ] || { echo "build-release: no version in qt/CMakeLists.txt" >&2; exit 1; }
-out=${1:-$B/work/release-$version}
+own=$B/work/release-$version
+out=${1:-$own}
+if [ "$out" != "$own" ] && [ -d "$out" ] && [ -n "$(ls -A "$out")" ]; then
+    echo "build-release: $out is not empty; name an empty or new folder" >&2; exit 2
+fi
 [ -z "$(git -C "$repo" status --porcelain)" ] || { echo "build-release: the work tree has changes; a release is built from a commit" >&2; exit 1; }
 [ -z "$key" ] || [ -f "$key" ] || { echo "build-release: no key file at $key" >&2; exit 2; }
 
@@ -72,7 +78,8 @@ want=("DSPi-uConsole-$version-windows-x86_64.zip" "DSPi-uConsole-$version-window
       "DSPi-uConsole-$version-x86_64.AppImage" "DSPi-uConsole-$version-linux-x86_64.tar.gz"
       "dspi-uconsole_${version}_amd64.deb" "dspi-uconsole-$version-desktop-source.tar.gz")
 for fc in $FEDORAS; do want+=("dspi-uconsole-$version-1.fc$fc.x86_64.rpm"); done
-rm -rf "$out"; mkdir -p "$out"
+[ "$out" != "$own" ] || rm -rf "$own"
+mkdir -p "$out"
 for f in "${want[@]}"; do
     [ -f "$dist/$f" ] || { echo "build-release: $f was not made" >&2; exit 1; }
     cp "$dist/$f" "$out/"

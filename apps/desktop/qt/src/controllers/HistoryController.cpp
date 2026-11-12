@@ -76,8 +76,10 @@ QString labelOf(const QString &path) {
 QString unitOf(const QString &path) {
     if (path == QLatin1String("eq.freq") || path == QLatin1String("cf.freq")) return QStringLiteral("Hz");
     if (path.endsWith(QLatin1String(".delay")) || path.endsWith(QLatin1String(".release"))) return QStringLiteral("ms");
+    if (path == QLatin1String("limit.threshold") || path == QLatin1String("lev.gate")) return QStringLiteral("dBFS");
+    if (path == QLatin1String("loud.ref")) return QStringLiteral("dB SPL");
     if (path.startsWith(QLatin1String("vol.")) || path == QLatin1String("pre") || path.endsWith(QLatin1String(".gain"))
-        || path == QLatin1String("mix"))
+        || path == QLatin1String("mix") || path == QLatin1String("cf.feed"))
         return QStringLiteral("dB");
     return QString();
 }
@@ -107,8 +109,8 @@ HistoryController::HistoryController(const AppContext &ctx, QObject *parent) : Q
     ctx.shell->addHandler(QStringLiteral("edit.undo"), this, [this] { undo(); });
     ctx.shell->addHandler(QStringLiteral("edit.redo"), this, [this] { redo(); });
     // Every snapshot: this app's own writes raise no notification, and a
-    // NOTIFY_HISTORY batch ends in one too
-    connect(ctx.device, &DeviceModel::stateChanged, this, [this](uint) { reload(); });
+    // NOTIFY_HISTORY batch ends in one too. DeviceModel::apply emits
+    // stateChanged beside it, so one connection reads the journal once.
     connect(ctx.device, &DeviceModel::snapshotApplied, this, [this] { reload(); });
 }
 
@@ -219,11 +221,13 @@ void HistoryController::step(bool forward) {
                                   : tr("Stepped over changes that cannot be undone: %1").arg(names.join(QStringLiteral("; "))),
                               QStringLiteral("info"));
             }
+            // The C API's failure reply is {ok:false, code, error}
             if (!ok && notices) {
-                const QString message = r.value(QLatin1String("message")).toString();
-                if (!message.isEmpty()) notices->post(message, QStringLiteral("error"));
+                const QString error = r.value(QLatin1String("error")).toString();
+                if (!error.isEmpty()) notices->post(error, QStringLiteral("error"));
             }
             emit moved(ok, title);
-            reload();
+            // A failed step brings no snapshot; a done one reloads through it
+            if (!ok) reload();
         });
 }

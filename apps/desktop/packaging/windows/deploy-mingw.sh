@@ -48,8 +48,7 @@ for m in json.load(sys.stdin):
     find "$dir" -maxdepth 1 -type f ! -name '*.a' ! -name '*d.dll' -exec cp {} "$out/qml/$rel/" \;
 done
 # The Basic style and the controls load their implementation modules at run time
-for extra in QtQuick/Controls/impl QtQuick/Controls/Basic QtQuick/Controls/Basic/impl \
-             QtQuick/Templates QtQml/WorkerScript QtQml/Models QtQml/Base; do
+for extra in $(sed -n 's/^runtime //p' "$here/../qt-modules.txt"); do
     [ -d "$qml/$extra" ] && [ ! -d "$out/qml/$extra" ] || continue
     mkdir -p "$out/qml/$extra"; find "$qml/$extra" -maxdepth 1 -type f ! -name '*.a' -exec cp {} "$out/qml/$extra/" \;
 done

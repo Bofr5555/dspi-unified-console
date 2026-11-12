@@ -7,17 +7,15 @@ set(DSPI_PACKAGING "${CMAKE_CURRENT_SOURCE_DIR}/../packaging")
 # The name people see, from AppIdentity (one place for it)
 file(STRINGS src/AppIdentity.h DSPI_QP20_NAME_LINE REGEX "displayName = \"")
 string(REGEX REPLACE ".*displayName = \"([^\"]*)\".*" "\\1" DSPI_DISPLAY_NAME "${DSPI_QP20_NAME_LINE}")
+if(NOT DSPI_DISPLAY_NAME)   # -- WP QPI4 -- never an empty name in a package
+    message(FATAL_ERROR "no displayName = \"...\" line in src/AppIdentity.h")
+endif()
 
 # The release's source archive the notices name (ci/release-source.sh --with-desktop)
 set(DSPI_SOURCE_ASSET "dspi-uconsole-${PROJECT_VERSION}-desktop-source.tar.gz")
 
 # ---- Windows: the exe's icon and version information --------------------------
 if(WIN32)
-    # cargo names the MinGW import library libdspi_capi.dll.a; the base's
-    # import looks for dspi_capi.dll.a (the name older toolchains wrote)
-    if(NOT EXISTS "${DSPI_CAPI_DIR}/dspi_capi.dll.a")
-        set_target_properties(dspi_capi PROPERTIES IMPORTED_LOCATION "${DSPI_CAPI_DIR}/libdspi_capi.dll.a")
-    endif()
     set(DSPI_WIN_DIR "${DSPI_PACKAGING}/windows")
     set(DSPI_VERSION "${PROJECT_VERSION}")
     set(DSPI_VER_MAJOR "${PROJECT_VERSION_MAJOR}")
@@ -91,13 +89,38 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # The packaging's own revision of a version, the same for both formats
     set(DSPI_PACKAGE_RELEASE 1)
 
-    # Debian: the QML modules and Qt's plugins the app loads at run time are
-    # listed by hand; the libraries it links come from dpkg-shlibdeps
+    # Debian: the QML modules and Qt's plugins the app loads at run time come
+    # from packaging/qt-modules.txt; the libraries it links from dpkg-shlibdeps
     set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)   # dspi-uconsole_<version>_amd64.deb, the release's name
     set(CPACK_DEBIAN_PACKAGE_SECTION sound)   # Debian's section for audio applications
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)    # needs dpkg-dev (Containerfile.debian)
-    set(CPACK_DEBIAN_PACKAGE_DEPENDS
-        "qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-templates, qml6-module-qtquick-layouts, qml6-module-qtquick-window, qml6-module-qtqml, qml6-module-qtqml-workerscript, qml6-module-qtcore, qt6-qpa-plugins, qt6-svg-plugins")
+    # -- WP QPI4 -- from packaging/qt-modules.txt, which must name every
+    # module qml/ imports
+    file(STRINGS "${DSPI_PACKAGING}/qt-modules.txt" qpi4_rows REGEX "^(import|package) ")
+    set(qpi4_listed "")
+    set(qpi4_debs "")
+    foreach(row IN LISTS qpi4_rows)
+        string(REPLACE " " ";" row "${row}")
+        list(GET row -1 deb)
+        list(APPEND qpi4_debs "${deb}")
+        list(GET row 0 kind)
+        if(kind STREQUAL "import")
+            list(GET row 1 module)
+            list(APPEND qpi4_listed "${module}")
+        endif()
+    endforeach()
+    file(GLOB_RECURSE qpi4_qml "${CMAKE_CURRENT_SOURCE_DIR}/qml/*.qml")
+    foreach(f IN LISTS qpi4_qml)
+        file(STRINGS "${f}" imports REGEX "^import Qt[A-Za-z.]+")
+        foreach(line IN LISTS imports)
+            string(REGEX MATCH "^import (Qt[A-Za-z.]+)" _ "${line}")
+            if(NOT CMAKE_MATCH_1 IN_LIST qpi4_listed)
+                message(FATAL_ERROR "${f} imports ${CMAKE_MATCH_1}, which packaging/qt-modules.txt does not list")
+            endif()
+        endforeach()
+    endforeach()
+    list(REMOVE_DUPLICATES qpi4_debs)
+    list(JOIN qpi4_debs ", " CPACK_DEBIAN_PACKAGE_DEPENDS)
     set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "qt6-wayland, pkexec")
     set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${DSPI_PACKAGING}/linux/postinst;${DSPI_PACKAGING}/linux/postrm")
     set(CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION ON)

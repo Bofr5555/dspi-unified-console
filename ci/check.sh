@@ -211,9 +211,9 @@ for s in "${steps[@]}"; do
       # -- WP QD40 -- only the .ts check (the qt step runs it too)
       $RUN "$TSCHECK" ;;
     qt-offscreen)
-      # -- WP QP0 -- The smoke driver's sections on the demo device. The fake hub and
-      # the Terminal come back with the sections that use them (QP13, QP14), the
-      # hardware dry run with QP19. DSPI_SMOKE_SECTION=<name> runs one section.
+      # -- WP QP0 -- The smoke driver's sections on the demo device; run.sh then
+      # runs its other launches (demo entry, tray, pseudo locale, the hardware
+      # dry run, QP19). DSPI_SMOKE_SECTION=<name> runs one section.
       # -- WP QP13 -- The fake hub is back, for the Link sections (DSPI_SMOKE_FAKEHUB).
       $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && $FAKEHUB && cmake -S apps/desktop/qt -B /work/build-desktop-qt-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt-smoke --target DSPiConsoleSmoke && DSPI_SMOKE_FAKEHUB=/target/release/dspi-link-fakehub DSPI_SMOKE_SECTION=${DSPI_SMOKE_SECTION:-} apps/desktop/qt/smoke/run.sh /work/build-desktop-qt-smoke/DSPiConsoleSmoke /work/smoke-out" ;;
     qt-windows)

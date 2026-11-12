@@ -11,6 +11,15 @@ static const Registrar::Banner demoBanner("DemoBanner", 35);
 
 DemoController::DemoController(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {
     connect(ctx.device, &DeviceModel::snapshotApplied, this, &DemoController::changed);
+    // -- WP QPI4 -- a Link session's start ends "nothing connected" before its
+    // first snapshot; the Link controller exists once every one is made
+    QMetaObject::invokeMethod(
+        this,
+        [this] {
+            if (LinkController *link = Registrar::instance<LinkController>())
+                connect(link, &LinkController::statusChanged, this, &DemoController::changed);
+        },
+        Qt::QueuedConnection);
 }
 
 DemoController *DemoController::create(QQmlEngine *, QJSEngine *) {

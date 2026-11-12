@@ -10,7 +10,9 @@
 ; folder itself when one is recorded there. The earlier Start menu shortcut
 ; ("DSPi uConsole.lnk") is replaced by the new one. The app's own entries
 ; (the Run value "DSPi uConsole" for open at login, the settings under
-; %APPDATA%\DSPi) are the app's and stay as they are.
+; %APPDATA%\DSPi) are the app's and stay as they are on an install or an
+; update; the uninstaller removes the Run value (-- WP QPI4 --), whose name
+; stays the one the app writes (SystemIntegration.cpp's kRunName).
 
 Unicode true
 !include "MUI2.nsh"
@@ -30,6 +32,8 @@ Unicode true
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\DSPiuConsole"
 !define DIR_KEY "Software\DSPi\DSPi uConsole"
 !define OLD_LINK "DSPi uConsole.lnk"
+!define RUN_KEY "Software\Microsoft\Windows\CurrentVersion\Run"
+!define RUN_NAME "DSPi uConsole"
 
 Name "${APP}"
 OutFile "${OUTFILE}"
@@ -121,4 +125,6 @@ Section "Uninstall"
   RMDir /r "$INSTDIR"
   DeleteRegKey HKCU "${UNINST_KEY}"
   DeleteRegKey HKCU "${DIR_KEY}"
+  ; -- WP QPI4 -- open at login would start a deleted exe
+  DeleteRegValue HKCU "${RUN_KEY}" "${RUN_NAME}"
 SectionEnd

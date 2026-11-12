@@ -54,7 +54,7 @@ FocusScope {
         const suffix = m[3] || ""
         if (suffix === "khz") v *= 1000
         else if (suffix === "s" && unit === "ms") v *= 1000
-        else if (suffix.length && suffix !== "s" && suffix !== unit.toLowerCase()) {
+        else if (suffix.length && suffix !== unit.toLowerCase()) {   // "s" only in a ms field (QPI4)
             // dB and dBFS name the same number; anything else is another unit
             const db = suffix.startsWith("db") && unit.toLowerCase().startsWith("db")
             if (!db && !(suffix === "hz" && unit === "Hz")) return { ok: false }
