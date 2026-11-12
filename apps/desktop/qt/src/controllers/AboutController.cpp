@@ -34,13 +34,28 @@ QString findNotices() {
     if (!env.isEmpty()) roots << env;
     const QString app = QCoreApplication::applicationDirPath();
     roots << app << app + QStringLiteral("/../Resources") << app + QStringLiteral("/../share/doc/dspi-uconsole")
-          << app + QStringLiteral("/notices");
+          << app + QStringLiteral("/notices")
+          // -- WP QP20 -- an .rpm's, an Arch package's and a plain cmake --install's
+          << app + QStringLiteral("/../share/licenses/dspi-uconsole");
     for (const QString &r : std::as_const(roots)) {
         const QDir dir(r);
         if (dir.exists(QStringLiteral("LICENSES")) || dir.exists(QStringLiteral("NOTICE.txt")))
             return dir.canonicalPath();
     }
     return {};
+}
+
+// -- WP QP20 -- The licence label the core's About table gives the app
+// (GPL-3.0-only), shown beside the GPL's text as the Mac's About does
+QString licenceLabel() {
+    static const QString label =
+        QJsonDocument::fromJson(readSized([](char *buf, uint32_t len) { return dspi_about_json(buf, len); }, 8192))
+            .object()
+            .value(QLatin1String("licence"))
+            .toObject()
+            .value(QLatin1String("spdx"))
+            .toString();
+    return label;
 }
 
 } // namespace
@@ -112,16 +127,20 @@ QVariantList AboutController::noticesIn(const QString &root) {
         { "LICENSES/rust-crates.txt", QT_TRANSLATE_NOOP("AboutController", "Rust crates: licences and notices"),
           QT_TRANSLATE_NOOP("AboutController", "The crates the core links") },
         { "LICENSES/BUNDLED.txt", QT_TRANSLATE_NOOP("AboutController", "Bundled libraries"), nullptr },
+        // -- WP QP20 -- the icons' licence, which every package stages
+        { "LICENSES/Lucide/LICENSE", QT_TRANSLATE_NOOP("AboutController", "Lucide icons"),
+          QT_TRANSLATE_NOOP("AboutController", "ISC; MIT for the icons from Feather") },
     };
     QStringList listed;
     for (const Known &k : known) {
         const QString path = QString::fromLatin1(k.path);
         if (!QFileInfo(dir.filePath(path)).isFile()) continue;
         listed << path;
+        QString detail = k.detail ? QCoreApplication::translate("AboutController", k.detail) : AppIdentity::displayName();
+        if (path == QLatin1String("LICENSES/GPL-3.0.txt") && !licenceLabel().isEmpty()) detail = licenceLabel();   // -- WP QP20 --
         rows.append(QVariantMap{
             { QStringLiteral("title"), QCoreApplication::translate("AboutController", k.title) },
-            { QStringLiteral("detail"),
-              k.detail ? QCoreApplication::translate("AboutController", k.detail) : AppIdentity::displayName() },
+            { QStringLiteral("detail"), detail },
             { QStringLiteral("path"), dir.filePath(path) } });
     }
     QStringList others;
