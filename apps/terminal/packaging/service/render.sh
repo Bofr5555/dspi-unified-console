@@ -1,7 +1,7 @@
 #!/bin/bash
 # Writes the hub's service files with the Terminal's command name (WP CLEAN1):
 # @CMD@ in the templates becomes `ci/command-name.sh`'s name, and each file takes
-# its installed name. The release archives carry the result (ci/release.sh).
+# its installed name. The release archives carry the result (ci/release-terminal.sh).
 #
 #   apps/terminal/packaging/service/render.sh OUTDIR
 set -euo pipefail
