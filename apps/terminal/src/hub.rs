@@ -273,7 +273,8 @@ do that on this machine. Logs go to standard error (RUST_LOG).
 
 /// Where a hub keeps its store when nobody says: the user's local data directory,
 /// since the hub id and the token hashes belong to this machine.
-fn default_store() -> Option<PathBuf> {
+// -- WP P0E -- `uconsole diag` includes this store, its secrets removed.
+pub(crate) fn default_store() -> Option<PathBuf> {
     dirs::data_local_dir().map(|d| d.join(COMMAND).join("hub"))
 }
 

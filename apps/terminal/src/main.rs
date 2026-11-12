@@ -104,6 +104,8 @@ mod transfer;
 mod flash;
 // -- WP TM11 --
 mod hub;
+// -- WP P0E --
+mod diag;
 
 use dspi_cmd::COMMAND;
 use std::process::ExitCode;
@@ -242,6 +244,8 @@ fn main() -> ExitCode {
         // -- WP WB7 --
         Some("web") => hub::run(target, &flags, json),
         Some("dump") => cmd_dump(target, json),
+        // -- WP P0E --
+        Some("diag") => diag::run(target, &flags, json),
         Some("watch") => cmd_watch(target, json),
         // No arguments opens the interface; arguments run one command and exit.
         None => cmd_tui(target, &flags, palette),
@@ -275,6 +279,8 @@ fn is_command_word(word: &str) -> bool {
         "hub",
         // -- WP WB7 --
         "web",
+        // -- WP P0E --
+        "diag",
     ];
     TERMINAL_VERBS.contains(&word)
         || dspi_cmd::VERBS.iter().any(|(n, _)| *n == word)
@@ -559,6 +565,10 @@ USAGE:
                              it asks for typed; --force does not count
     {COMMAND} completions <shell> generate shell completions
     {COMMAND} doctor          diagnose connection problems
+    {COMMAND} diag [file]     write a diagnostics zip for a support request:
+                             versions, the device's state, stats and event
+                             log, doctor's report, the hub store without its
+                             tokens (--store DIR, --events DIR). Nothing is sent
     {COMMAND} undo            put back the value the last change replaced
     {COMMAND} redo            re-apply the change undo reversed
     {COMMAND} raw <op> <len> [v] read any vendor opcode and hex-dump the reply
