@@ -183,6 +183,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>This build&apos;s version cannot be compared with the releases.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The release feed answered %1.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1270,6 +1274,10 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     </message>
     <message>
         <source>Not connected. Right-click the device name to retry.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A DSPi was found that cannot be opened. Show how to give access.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -6137,6 +6145,10 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>The analyser is not available while the device is read-only.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Following another console</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7668,6 +7680,10 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>The analyser is not available while the device is read-only. Update the firmware to use it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Inputs</source>
         <translation type="unfinished"></translation>
     </message>
@@ -9109,7 +9125,7 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Requires an RP2350 device with firmware wire format V25 or newer.</source>
+        <source>Requires an RP2350 device with firmware that includes the upmixer.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
