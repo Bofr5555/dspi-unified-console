@@ -1,0 +1,3 @@
+# -- WP QP11 -- Hardware settings pages (see ../manifest.txt for the format)
+tag                 settings: device name, source names
+timer               settings: output latency
