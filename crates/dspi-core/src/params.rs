@@ -31,6 +31,7 @@ use dspi_proto::registry::{Kind, by_path};
 use dspi_proto::value::{EqParamPacket, Value};
 
 use crate::consts::*;
+use crate::journal::journal;
 use crate::records::*;
 use crate::{DspiCore, DspiError, Inner, Result, quantize_delay, quantize_gain, state};
 
@@ -94,6 +95,7 @@ impl DspiCore {
         if !FilterType::from_raw(p.filter_type).is_linkwitz() {
             p.gain = quantize_gain(p.gain);
         }
+        let change = band_journal(&inner, ch, band)?;
         send_band(&mut inner, ch, band, &p)?;
         if let Some(slot) = inner
             .state
@@ -104,6 +106,7 @@ impl DspiCore {
             *slot = p;
         }
         commit(&mut inner);
+        change.done(&mut inner);
         Ok(())
     }
 
@@ -133,6 +136,7 @@ impl DspiCore {
         let band = XOVER_BASE
             .checked_add(xband)
             .ok_or_else(|| invalid(format!("crossover band {xband}")))?;
+        let change = band_journal(&inner, ch, band)?;
         send_band(&mut inner, ch, band, &p)?;
         if let Some(slot) = inner
             .state
@@ -143,6 +147,7 @@ impl DspiCore {
             *slot = p;
         }
         commit(&mut inner);
+        change.done(&mut inner);
         Ok(())
     }
 
@@ -164,6 +169,7 @@ impl DspiCore {
         if xband.is_some() {
             output_channel_index(&inner.state, ch)?;
         }
+        let change = inner.journal_begin("eq.bypass", &[ch, band])?;
         send(&mut inner, "eq.bypass", &[ch, band], Value::Bool(bypass))?;
         let slot = match xband {
             Some(x) => inner
@@ -181,6 +187,7 @@ impl DspiCore {
             slot.bypass = bypass;
         }
         commit(&mut inner);
+        change.done(&mut inner, Value::Bool(bypass));
         Ok(())
     }
 
@@ -193,6 +200,7 @@ impl DspiCore {
     pub fn set_preamp(&self, db: f32) -> Result<()> {
         let mut inner = self.writing()?;
         let val = preamp_db(&inner, db)?;
+        let change = inner.journal_begin("pre.all", &[])?;
         send(&mut inner, "pre.all", &[], Value::Float(val))?;
         inner.state.preamp_db = val;
         inner
@@ -201,6 +209,7 @@ impl DspiCore {
             .iter_mut()
             .for_each(|v| *v = val);
         commit(&mut inner);
+        change.done(&mut inner, Value::Float(val));
         Ok(())
     }
 
@@ -214,6 +223,7 @@ impl DspiCore {
         let mut inner = self.writing()?;
         let i = input_index(&inner.state, input)?;
         let val = preamp_db(&inner, db)?;
+        let change = inner.journal_begin("pre", &[input])?;
         send(&mut inner, "pre", &[input], Value::Float(val))?;
         if let Some(v) = inner.state.input_preamp_db.get_mut(i) {
             *v = val;
@@ -222,6 +232,7 @@ impl DspiCore {
             inner.state.preamp_db = val;
         }
         commit(&mut inner);
+        change.done(&mut inner, Value::Float(val));
         Ok(())
     }
 
@@ -278,7 +289,9 @@ impl DspiCore {
             .ok_or_else(|| DspiError::Transfer {
                 msg: "no status reply to the master-volume save".into(),
             })?;
-        crate::error::status(code)
+        crate::error::status(code)?;
+        journal(&mut inner, "vol.master.save", &[], Value::Trigger);
+        Ok(())
     }
 
     /// User volume (what the host's volume slider drives) in dB, clamped to
@@ -314,11 +327,13 @@ impl DspiCore {
             return self.set_output_delay(out, ms);
         }
         let val = delay_ms(&inner, "ch.delay", ms)?;
+        let change = inner.journal_begin("ch.delay", &[ch])?;
         send(&mut inner, "ch.delay", &[ch], Value::Float(val))?;
         if let Some(d) = inner.state.channel_delays.get_mut(c) {
             *d = val;
         }
         commit(&mut inner);
+        change.done(&mut inner, Value::Float(val));
         Ok(())
     }
 
@@ -507,9 +522,11 @@ impl DspiCore {
                 "input source {source} (0..={INPUT_SOURCE_MAX})"
             )));
         }
+        let change = inner.journal_begin("in.source", &[])?;
         send(&mut inner, "in.source", &[], Value::Choice(source))?;
         inner.state.input_source = source;
         commit(&mut inner);
+        change.done(&mut inner, Value::Choice(source));
         Ok(())
     }
 
@@ -538,6 +555,7 @@ impl DspiCore {
             phase_invert: invert,
             gain_db: gain,
         };
+        let change = inner.journal_begin("mix", &[input, output])?;
         send(
             &mut inner,
             "mix",
@@ -555,6 +573,7 @@ impl DspiCore {
             *v = invert;
         }
         commit(&mut inner);
+        change.done(&mut inner, Value::Bytes(packet.encode().to_vec()));
         Ok(())
     }
 
@@ -582,11 +601,13 @@ impl DspiCore {
         let mut inner = self.writing()?;
         let o = output_index(&inner.state, output)?;
         let val = quantize_gain(clamped("out.gain", db)?);
+        let change = inner.journal_begin("out.gain", &[output])?;
         send(&mut inner, "out.gain", &[output], Value::Float(val))?;
         if let Some(v) = inner.state.output_gain_db.get_mut(o) {
             *v = val;
         }
         commit(&mut inner);
+        change.done(&mut inner, Value::Float(val));
         Ok(())
     }
 
@@ -597,11 +618,13 @@ impl DspiCore {
     pub fn set_output_mute(&self, output: u8, muted: bool) -> Result<()> {
         let mut inner = self.writing()?;
         let o = output_index(&inner.state, output)?;
+        let change = inner.journal_begin("out.mute", &[output])?;
         send(&mut inner, "out.mute", &[output], Value::Bool(muted))?;
         if let Some(v) = inner.state.output_muted.get_mut(o) {
             *v = muted;
         }
         commit(&mut inner);
+        change.done(&mut inner, Value::Bool(muted));
         Ok(())
     }
 
@@ -616,6 +639,7 @@ impl DspiCore {
         let mut inner = self.writing()?;
         let o = output_index(&inner.state, output)?;
         let val = delay_ms(&inner, "out.delay", ms)?;
+        let change = inner.journal_begin("out.delay", &[output])?;
         send(&mut inner, "out.delay", &[output], Value::Float(val))?;
         let s = &mut inner.state;
         if let Some(v) = s.output_delay_ms.get_mut(o) {
@@ -626,6 +650,7 @@ impl DspiCore {
             *v = val;
         }
         commit(&mut inner);
+        change.done(&mut inner, Value::Float(val));
         Ok(())
     }
 
@@ -638,11 +663,13 @@ impl DspiCore {
         let mut inner = self.writing()?;
         let c = channel_index(&inner.state, ch)?;
         let name = cut_name(&name).to_owned();
+        let change = inner.journal_begin("ch.name", &[ch])?;
         send(&mut inner, "ch.name", &[ch], Value::Text(name.clone()))?;
         if let Some(v) = inner.state.channel_names.get_mut(c) {
-            *v = name;
+            v.clone_from(&name);
         }
         commit(&mut inner);
+        change.done(&mut inner, Value::Text(name));
         Ok(())
     }
 
@@ -684,6 +711,7 @@ impl DspiCore {
         let mut inner = self.writing()?;
         let o = output_index(&inner.state, output)?;
         let before = inner.state.output_enabled.get(o).copied().unwrap_or(false);
+        let change = inner.journal_begin("out.enable", &[output])?;
         // `Session::send` runs no interlock, and the firmware would skip a
         // colliding enable without a word.
         let conflict = enabled
@@ -714,6 +742,9 @@ impl DspiCore {
             inner.state.core1_mode = mode;
         }
         commit(&mut inner);
+        if !conflict {
+            change.done(&mut inner, Value::Bool(actual));
+        }
         Ok((actual, conflict))
     }
 
@@ -730,19 +761,64 @@ impl DspiCore {
     /// to the mirror.
     fn set_scalar(
         &self,
-        path: &str,
+        path: &'static str,
         value: Value,
         update: impl FnOnce(&mut DspState),
     ) -> Result<()> {
         let mut inner = self.writing()?;
-        send(&mut inner, path, &[], value)?;
+        let change = inner.journal_begin(path, &[])?;
+        send(&mut inner, path, &[], value.clone())?;
         update(&mut inner.state);
         commit(&mut inner);
+        change.done(&mut inner, value);
         Ok(())
     }
 }
 
 // ── Sending ────────────────────────────────────────────────────────────
+
+// -- WP P0W --
+/// Begin the journal entry of a whole-band write: journalled under the one
+/// field it moves (`eq.freq`, ...) or as a whole band (`journal::EQ_BAND`).
+fn band_journal(inner: &Inner, ch: u8, band: u8) -> Result<BandChange> {
+    crate::journal::check_replay(inner)?;
+    Ok(BandChange {
+        ch,
+        band,
+        was: crate::write_param::band(&inner.state, ch, band),
+    })
+}
+
+/// A whole-band write in progress: the band as it was.
+struct BandChange {
+    ch: u8,
+    band: u8,
+    was: Option<FilterParams>,
+}
+
+impl BandChange {
+    /// Record the write, the band now in the mirror.
+    fn done(self, inner: &mut Inner) {
+        let Some(now) = crate::write_param::band(&inner.state, self.ch, self.band) else {
+            return;
+        };
+        let was = self.was.unwrap_or(now);
+        let path = crate::journal::band_change(&was, &now);
+        let ix = [self.ch, self.band];
+        let pick = |p: &FilterParams| -> Value {
+            match path {
+                "eq.bypass" => Value::Bool(p.bypass),
+                "eq.freq" => Value::Float(p.freq),
+                "eq.q" => Value::Float(p.q),
+                "eq.gain" | "eq.fp" => Value::Float(p.gain),
+                "eq.qp" => Value::Float(p.qp),
+                _ => Value::Bytes(crate::journal::band_bytes(p)),
+            }
+        };
+        let change = crate::journal::Pending::of(path, &ix, self.was.as_ref().map(pick));
+        change.done_with(inner, pick(&now));
+    }
+}
 
 /// Send through the session's fast path (registry-validated). The image
 /// `attach_probed` read no longer describes the device after a write, so

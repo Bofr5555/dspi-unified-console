@@ -350,7 +350,11 @@ impl DspiCore {
         w.conn()
             .transport()
             .control_out(op::REQ_SIGGEN_SET_CONFIG, 0, &bytes)
-            .map_err(refusal)
+            .map_err(refusal)?;
+        // -- WP P0W -- audible: history only
+        let after = dspi_proto::value::Value::Bytes(bytes.to_vec());
+        crate::journal::journal(&mut guard, "sig.config", &[], after);
+        Ok(())
     }
 
     /// Run a control action: `SIGGEN_CTL_START` plays the staged config,
@@ -379,7 +383,11 @@ impl DspiCore {
             .transport()
             .control_in(op::REQ_SIGGEN_CONTROL, action, 1)
             .map_err(refusal)?;
-        acked(&reply)
+        acked(&reply)?;
+        // -- WP P0W -- audible: history only, so undo never starts it again
+        let after = dspi_proto::value::Value::Choice(u8::try_from(action).unwrap_or(u8::MAX));
+        crate::journal::journal(&mut guard, "sig.control", &[], after);
+        Ok(())
     }
 
     /// What the generator is doing now: state (`SIGGEN_STATE_*`: idle, fade
@@ -427,7 +435,9 @@ impl DspiCore {
             .get(..4)
             .and_then(|s| <[u8; 4]>::try_from(s).ok())
             .ok_or_else(|| malformed("status counter", "too short"))?;
-        Ok(u32::from_le_bytes(v))
+        let v = u32::from_le_bytes(v);
+        self.events.stat(which, v); // -- WP P0M --
+        Ok(v)
     }
 
     /// The output rings' health (Output Ring Health in the Stats window), or
@@ -444,7 +454,13 @@ impl DspiCore {
         let mut cache = conn.ring_target;
         let health = ring_health::read_ring_health_cached(conn.transport(), &mut cache);
         conn.ring_target = cache;
-        Ok(health?.map(ring_health_record))
+        let health = health?.map(ring_health_record);
+        // -- WP P0M -- the event log once `Inner` is released
+        drop(inner);
+        if let Some(h) = &health {
+            self.events.ring_health(h);
+        }
+        Ok(health)
     }
 
     /// The live outputs' fill for the Stats rows: to frame resolution, on the

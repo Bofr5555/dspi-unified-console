@@ -244,3 +244,8 @@ pub const IMPORT_HARDWARE: u32 = 2;
 pub const NOTIFY_STALE: u32 = 1 << 10;
 /// An input or output stream changed state (ADAT, I2S slave, ...).
 pub const NOTIFY_STREAMS: u32 = 1 << 11;
+// -- WP P0W --
+/// The change history moved: a change, an undo or a redo was journalled, or
+/// a new connection started a new history (`DspiCore::history`,
+/// `can_undo`, `can_redo` may answer differently).
+pub const NOTIFY_HISTORY: u32 = 1 << 12;

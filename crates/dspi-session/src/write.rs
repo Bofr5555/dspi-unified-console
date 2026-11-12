@@ -173,6 +173,14 @@ pub struct JournalEntry {
     /// in order; redo needs only `after`, since writing it again makes the
     /// device do the same thing again.
     pub companions: Vec<Companion>,
+    // -- WP P0W --
+    /// Who made the change.
+    pub source: crate::history::ChangeSource,
+    /// When, in milliseconds since the Unix epoch (the last write of a
+    /// coalesced drag).
+    pub at_ms: u64,
+    /// A later repeat may join this entry (`history::Change::coalesce`).
+    pub(crate) coalesce: bool,
 }
 
 /// One value a write moved besides its own, as it was before the write.
@@ -220,7 +228,18 @@ const LIMITER_SHARED: [&str; 3] = ["limit.on", "limit.threshold", "limit.release
 ///   has no single value to read before it, so each output's own value is
 ///   kept; a link write to every output also re-gangs the groups
 ///   (limiter.c:177-179, 159-170), so the shared settings are kept too.
-pub fn side_effects(path: &str, indices: &[u8], num_outputs: u8) -> Vec<(&'static str, Vec<u8>)> {
+/// - The legacy preamp (`pre.all`) sets every input to one value, so each
+///   input's own preamp is kept (WP P0W).
+pub fn side_effects(
+    path: &str,
+    indices: &[u8],
+    num_inputs: u8,
+    num_outputs: u8,
+) -> Vec<(&'static str, Vec<u8>)> {
+    // -- WP P0W --
+    if path == "pre.all" {
+        return (0..num_inputs).map(|i| ("pre", vec![i])).collect();
+    }
     if TUBE_VOICING.contains(&path) {
         return TUBE_VOICING
             .iter()
@@ -281,6 +300,12 @@ pub struct Session {
     /// then quietly keep the old value, so the caller that wants to say *why*
     /// a step was refused needs the code, not just the readback.
     pub(crate) last_status: Option<u8>,
+    // -- WP P0W --
+    /// Who a replay is for while `replaying` is set: undo or redo.
+    pub(crate) replay_source: crate::history::ChangeSource,
+    /// Moves on every change to the journal or the stacks
+    /// ([`Session::history_version`]).
+    pub(crate) history_version: u64,
 }
 
 impl Session {
@@ -299,6 +324,9 @@ impl Session {
             core1_checked: false,
             last_status: None,
             provisional: false,
+            // -- WP P0W --
+            replay_source: crate::history::ChangeSource::Undo,
+            history_version: 0,
         })
     }
 
@@ -867,31 +895,30 @@ impl Session {
         after: Value,
         outcome: Outcome,
     ) {
-        let entry = JournalEntry {
+        // -- WP P0W -- one door into the journal, the embedder API's too
+        // (`history.rs`).
+        let change = crate::history::Change {
             path: d.path,
             indices: indices.to_vec(),
             before,
             after,
-            outcome,
-            undoable: is_reversible(d),
             companions,
+            hazard: d.hazard,
+            source: if self.replaying {
+                self.replay_source
+            } else {
+                crate::history::ChangeSource::Local
+            },
+            coalesce: false,
         };
-        self.journal.push(entry.clone());
-
-        // A replay is already accounted for by the stack it came from. A fresh
-        // write is a new branch of history, so anything that had been undone is
-        // no longer reachable.
-        if !self.replaying {
-            self.redo_stack.clear();
-            self.undo_stack.push(entry);
-        }
+        self.record_with_outcome(change, outcome);
     }
 
     /// Read the values a write is about to move besides its own (see
     /// [`side_effects`]). One that cannot be read is left out: undo then
     /// restores what it can.
     fn read_companions(&mut self, path: &str, indices: &[u8]) -> Vec<Companion> {
-        side_effects(path, indices, self.caps.num_outputs)
+        side_effects(path, indices, self.caps.num_inputs, self.caps.num_outputs)
             .into_iter()
             .filter_map(|(path, indices)| {
                 let before = self.read(path, &indices).ok()?;
@@ -1785,7 +1812,7 @@ mod tests {
         fn tm18_undo_cannot_reach_the_generator_as_a_companion() {
             for d in REGISTRY {
                 for at in [vec![0], vec![ALL_OUTPUTS], Vec::new()] {
-                    for (path, _) in side_effects(d.path, &at, 9) {
+                    for (path, _) in side_effects(d.path, &at, 8, 9) {
                         let hazard = by_path(path).map(|c| c.hazard);
                         assert!(
                             hazard == Some(Hazard::None) || path == "limit.on",

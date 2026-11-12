@@ -125,6 +125,14 @@ interface DspiCoreApi : AutoCloseable {
      * poll is read directly at a low rate; a repeat of the last such read is
      * `stale` too.
      *
+     * WP P0M: `peak_hold`, `peak_max` and `clip_hold` are the core's meter
+     * ballistics over these reads (`set_meter_ballistics`); a `stale` read
+     * leaves them as they were. When the clip hold ends the core clears the
+     * device's sticky flags itself (`REQ_CLEAR_CLIPS`, as `clear_clips`), so
+     * a client keeps no clip timer. A channel still clipping lights again on
+     * the next read; where the clear is refused (a viewer on a hub) the hold
+     * follows the device's sticky flags. New clips go to the event log.
+     *
      * Errors: [`DspiError::Disconnected`] with no device open;
      * [`DspiError::Transfer`] when the read fails or the reply is shorter
      * than `num_channels * 2 + 6` bytes.
@@ -382,6 +390,65 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun openDemo()
+
+    /**
+     * The meter ballistics' timing (`SystemStatus.peak_hold`, `clip_hold`).
+     * Defaults: hold 1000 ms, then a fall of 0.5 full scale per second; clip
+     * hold 10 000 ms after the last new clip. Never fails.
+     */
+    fun meterBallistics(): MeterBallistics
+
+    /**
+     * Change the meter ballistics' timing for every later `fetch_status`.
+     * What is held stays. A `decay_per_s` below 0 or not finite reads as 0
+     * (a held peak then stays until a higher one); a `clip_hold_ms` of 0
+     * holds clips until `clear_clips`. Never fails.
+     */
+    fun setMeterBallistics(config: MeterBallistics)
+
+    /**
+     * Start every channel's `SystemStatus.peak_max` again from the next
+     * read. A new connection does this too. Never fails.
+     */
+    fun resetMeterMax()
+
+    /**
+     * Keep the event log in files under `dir`, the client's own data
+     * directory, created if missing: one JSON-lines file per device serial,
+     * rotated, at most about 1 MiB per device. An empty `dir` keeps it in
+     * memory only (the default; the last 1000 records). Call it at start-up,
+     * before connecting; the open device's log carries on in the new
+     * place. Blocking file I/O: not on the UI thread.
+     *
+     * Errors: [`DspiError::Io`] when the directory cannot be created;
+     * [`DspiError::Unsupported`] on the web, which keeps it in memory.
+     */
+    @Throws(DspiException::class)
+    fun eventLogSetDir(dir: String)
+
+    /**
+     * `serial`'s event log with ids above `after_id`, oldest first, at
+     * most `limit` (capped at [`EVENT_READ_MAX`]): with `after_id` 0 the
+     * newest `limit`, otherwise the next `limit` after it, so poll with the
+     * batch's `last_id`. An empty `serial` is the open device. Lines in the
+     * file that are not records are skipped and counted. Reads files: not on
+     * the UI thread; no other call waits for it. Never fails; an unknown
+     * serial reads empty.
+     */
+    fun eventLogRead(serial: String, afterId: Long, limit: Long): EventBatch
+
+    /**
+     * `serial`'s whole event log as JSON lines, oldest first, in the file
+     * format (`dspi_session::events`): for a "Save events…" or a diagnostics
+     * bundle. An empty `serial` is the open device. Never fails; an unknown
+     * serial exports "".
+     */
+    fun eventLogExport(serial: String): String
+
+    /**
+     * The serials with an event log, sorted. Never fails.
+     */
+    fun eventLogDevices(): List<String>
 
     /**
      * `EXT_CROSSFEED_PAIR_MAP` (Bofr5555/DSPi fork, the K340 build): the
@@ -1214,6 +1281,51 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun fetchClockDiag(): ClockDiag
+
+    /**
+     * Step back: write back the value the newest undoable change replaced
+     * (then what the device moved with it), through the typed setter for
+     * its path. Changes that cannot be undone are stepped over and named in
+     * [`HistoryMove::skipped`]. Nothing to undo is not an error: `entry` is
+     * then `None`.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device, or when the
+     * connection changed during the call (nothing is sent to another
+     * device); the setter's errors, after which the change stays to be
+     * undone.
+     */
+    @Throws(DspiException::class)
+    fun undo(): HistoryMove
+
+    /**
+     * Step forward: write again the change [`DspiCore::undo`] most recently
+     * reversed. A new change since then ends what can be redone.
+     *
+     * Errors: as [`DspiCore::undo`]; after a setter's error the change
+     * stays to be redone.
+     */
+    @Throws(DspiException::class)
+    fun redo(): HistoryMove
+
+    /**
+     * Whether [`DspiCore::undo`] has a change to reverse. False with no
+     * device.
+     */
+    fun canUndo(): Boolean
+
+    /**
+     * Whether [`DspiCore::redo`] has a change to apply again. False with no
+     * device.
+     */
+    fun canRedo(): Boolean
+
+    /**
+     * The newest `n` changes of this connection, newest first: every typed
+     * setter's, undo's and redo's, with the value before and after, who
+     * made it and when. The connection's session keeps the newest 1000; a
+     * reconnect starts with none. Empty with no device.
+     */
+    fun history(n: Long): List<HistoryEntry>
 
     /**
      * Open a DSPi Link session to `url` (`link_ws_url`), replacing any

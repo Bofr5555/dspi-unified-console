@@ -516,6 +516,16 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_cached_device_name(void*_Nonnull 
 RustBuffer uniffi_dspi_core_fn_method_dspicore_cached_input_source_name(void*_Nonnull ptr, uint8_t source, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CAN_REDO
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CAN_REDO
+int8_t uniffi_dspi_core_fn_method_dspicore_can_redo(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CAN_UNDO
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CAN_UNDO
+int8_t uniffi_dspi_core_fn_method_dspicore_can_undo(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CAPTURE_BASELINE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CAPTURE_BASELINE
 void uniffi_dspi_core_fn_method_dspicore_capture_baseline(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -731,6 +741,26 @@ void uniffi_dspi_core_fn_method_dspicore_disconnect(void*_Nonnull ptr, RustCallS
 void uniffi_dspi_core_fn_method_dspicore_enter_bootloader(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_EVENT_LOG_DEVICES
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_EVENT_LOG_DEVICES
+RustBuffer uniffi_dspi_core_fn_method_dspicore_event_log_devices(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_EVENT_LOG_EXPORT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_EVENT_LOG_EXPORT
+RustBuffer uniffi_dspi_core_fn_method_dspicore_event_log_export(void*_Nonnull ptr, RustBuffer serial, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_EVENT_LOG_READ
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_EVENT_LOG_READ
+RustBuffer uniffi_dspi_core_fn_method_dspicore_event_log_read(void*_Nonnull ptr, RustBuffer serial, uint64_t after_id, uint32_t limit, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_EVENT_LOG_SET_DIR
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_EVENT_LOG_SET_DIR
+void uniffi_dspi_core_fn_method_dspicore_event_log_set_dir(void*_Nonnull ptr, RustBuffer dir, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_EXT_STATUS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_EXT_STATUS
 RustBuffer uniffi_dspi_core_fn_method_dspicore_ext_status(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -931,6 +961,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_get_preset_name(void*_Nonnull ptr
 RustBuffer uniffi_dspi_core_fn_method_dspicore_get_state(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HISTORY
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HISTORY
+RustBuffer uniffi_dspi_core_fn_method_dspicore_history(void*_Nonnull ptr, uint32_t n, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HOST_NOTIFY
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HOST_NOTIFY
 void uniffi_dspi_core_fn_method_dspicore_host_notify(void*_Nonnull ptr, RustBuffer packet, RustBuffer origin, RustCallStatus *_Nonnull out_status
@@ -999,6 +1034,11 @@ void uniffi_dspi_core_fn_method_dspicore_load_preset(void*_Nonnull ptr, uint8_t 
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MAX_DELAY_MS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MAX_DELAY_MS
 float uniffi_dspi_core_fn_method_dspicore_max_delay_ms(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_METER_BALLISTICS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_METER_BALLISTICS
+RustBuffer uniffi_dspi_core_fn_method_dspicore_meter_ballistics(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MONITOR_CLEAR
@@ -1086,6 +1126,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_raw_get(void*_Nonnull ptr, uint8_
 void uniffi_dspi_core_fn_method_dspicore_raw_set(void*_Nonnull ptr, uint8_t opcode, uint16_t value, RustBuffer data, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_REDO
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_REDO
+RustBuffer uniffi_dspi_core_fn_method_dspicore_redo(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_REFRESH_PARAMS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_REFRESH_PARAMS
 void uniffi_dspi_core_fn_method_dspicore_refresh_params(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -1094,6 +1139,11 @@ void uniffi_dspi_core_fn_method_dspicore_refresh_params(void*_Nonnull ptr, RustC
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RESET_BUFFER_STATS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RESET_BUFFER_STATS
 void uniffi_dspi_core_fn_method_dspicore_reset_buffer_stats(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RESET_METER_MAX
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RESET_METER_MAX
+void uniffi_dspi_core_fn_method_dspicore_reset_meter_max(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RTA_GET_CAPS
@@ -1416,6 +1466,11 @@ void uniffi_dspi_core_fn_method_dspicore_set_mck_multiplier(void*_Nonnull ptr, u
 void uniffi_dspi_core_fn_method_dspicore_set_mck_pin(void*_Nonnull ptr, uint8_t pin, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_METER_BALLISTICS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_METER_BALLISTICS
+void uniffi_dspi_core_fn_method_dspicore_set_meter_ballistics(void*_Nonnull ptr, RustBuffer config, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_NOTIFY_LISTENER
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_NOTIFY_LISTENER
 void uniffi_dspi_core_fn_method_dspicore_set_notify_listener(void*_Nonnull ptr, RustBuffer listener, RustCallStatus *_Nonnull out_status
@@ -1564,6 +1619,11 @@ void uniffi_dspi_core_fn_method_dspicore_siggen_set_config(void*_Nonnull ptr, Ru
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_TEST_DAC_MUTE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_TEST_DAC_MUTE
 void uniffi_dspi_core_fn_method_dspicore_test_dac_mute(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_UNDO
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_UNDO
+RustBuffer uniffi_dspi_core_fn_method_dspicore_undo(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_WIRE_FEATURES
@@ -2447,6 +2507,18 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_cached_input_source_name(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CAN_REDO
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CAN_REDO
+uint16_t uniffi_dspi_core_checksum_method_dspicore_can_redo(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CAN_UNDO
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CAN_UNDO
+uint16_t uniffi_dspi_core_checksum_method_dspicore_can_undo(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CAPTURE_BASELINE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CAPTURE_BASELINE
 uint16_t uniffi_dspi_core_checksum_method_dspicore_capture_baseline(void
@@ -2705,6 +2777,30 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_enter_bootloader(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_EVENT_LOG_DEVICES
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_EVENT_LOG_DEVICES
+uint16_t uniffi_dspi_core_checksum_method_dspicore_event_log_devices(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_EVENT_LOG_EXPORT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_EVENT_LOG_EXPORT
+uint16_t uniffi_dspi_core_checksum_method_dspicore_event_log_export(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_EVENT_LOG_READ
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_EVENT_LOG_READ
+uint16_t uniffi_dspi_core_checksum_method_dspicore_event_log_read(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_EVENT_LOG_SET_DIR
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_EVENT_LOG_SET_DIR
+uint16_t uniffi_dspi_core_checksum_method_dspicore_event_log_set_dir(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_EXT_STATUS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_EXT_STATUS
 uint16_t uniffi_dspi_core_checksum_method_dspicore_ext_status(void
@@ -2945,6 +3041,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_get_state(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HISTORY
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HISTORY
+uint16_t uniffi_dspi_core_checksum_method_dspicore_history(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HOST_NOTIFY
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HOST_NOTIFY
 uint16_t uniffi_dspi_core_checksum_method_dspicore_host_notify(void
@@ -3026,6 +3128,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_load_preset(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MAX_DELAY_MS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MAX_DELAY_MS
 uint16_t uniffi_dspi_core_checksum_method_dspicore_max_delay_ms(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_METER_BALLISTICS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_METER_BALLISTICS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_meter_ballistics(void
     
 );
 #endif
@@ -3131,6 +3239,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_raw_set(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_REDO
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_REDO
+uint16_t uniffi_dspi_core_checksum_method_dspicore_redo(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_REFRESH_PARAMS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_REFRESH_PARAMS
 uint16_t uniffi_dspi_core_checksum_method_dspicore_refresh_params(void
@@ -3140,6 +3254,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_refresh_params(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_RESET_BUFFER_STATS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_RESET_BUFFER_STATS
 uint16_t uniffi_dspi_core_checksum_method_dspicore_reset_buffer_stats(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_RESET_METER_MAX
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_RESET_METER_MAX
+uint16_t uniffi_dspi_core_checksum_method_dspicore_reset_meter_max(void
     
 );
 #endif
@@ -3527,6 +3647,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_set_mck_pin(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_METER_BALLISTICS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_METER_BALLISTICS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_set_meter_ballistics(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_NOTIFY_LISTENER
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_NOTIFY_LISTENER
 uint16_t uniffi_dspi_core_checksum_method_dspicore_set_notify_listener(void
@@ -3704,6 +3830,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_siggen_set_config(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_TEST_DAC_MUTE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_TEST_DAC_MUTE
 uint16_t uniffi_dspi_core_checksum_method_dspicore_test_dac_mute(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_UNDO
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_UNDO
+uint16_t uniffi_dspi_core_checksum_method_dspicore_undo(void
     
 );
 #endif

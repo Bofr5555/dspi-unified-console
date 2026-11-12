@@ -485,17 +485,20 @@ impl Inner {
     /// `update` patch the mirror and re-encode `bulk_raw`.
     fn fx_write(
         &mut self,
-        path: &str,
+        path: &'static str,
         indices: &[u8],
         v: f32,
         update: impl FnOnce(&mut DspState),
     ) -> Result<()> {
         let value = value_for(path, v)?;
+        // -- WP P0W --
+        let change = self.journal_begin(path, indices)?;
         self.writable_conn()?
             .session()?
-            .send(path, indices, value)?;
+            .send(path, indices, value.clone())?;
         update(&mut self.state);
         self.state.bulk_raw = state::encode_bulk(&self.state);
+        change.done(self, value);
         Ok(())
     }
 

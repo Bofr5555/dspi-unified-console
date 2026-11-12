@@ -165,13 +165,20 @@ impl DspiCore {
     /// [`DspiCore::process_notifications`] at `now` (tests move the clock).
     pub(crate) fn process_notifications_at(&self, now: Instant) -> NotifyResult {
         let mut result = NotifyResult::default();
+        let mut records = Vec::new(); // -- WP P0M --
         let follow = {
             let mut guard = self.lock();
-            let mut follow = apply_queued(&mut guard, &mut result);
+            let mut follow = apply_queued(&mut guard, &mut result, &mut records);
             if let Some(conn) = guard.conn.as_mut()
                 && std::mem::take(&mut conn.announce_refresh)
             {
                 result.flags |= NOTIFY_STATE | NOTIFY_CURVES | NOTIFY_REFRESHED;
+            }
+            // -- WP P0W --
+            let mark = crate::journal::history_mark(&mut guard);
+            if mark != guard.history_seen {
+                guard.history_seen = mark;
+                result.flags |= NOTIFY_HISTORY;
             }
             if let Some(conn) = guard.conn.as_mut()
                 && let Some(p) = conn.refresh_pending.as_mut()
@@ -186,6 +193,8 @@ impl DspiCore {
             }
             follow
         };
+        // -- WP P0M -- the event log, never written with `Inner` held
+        self.events.record_all(records);
         if follow.refresh {
             self.refresh_after_notifications(follow.rebaseline, now, &mut result);
         }
@@ -353,7 +362,12 @@ fn refresh_failed(
 
 /// The locked phase of `process_notifications`: drain, log, classify and
 /// patch. Returns whether a re-read is needed.
-fn apply_queued(inner: &mut Inner, r: &mut NotifyResult) -> FollowUp {
+/// -- WP P0M -- `records`: the event log's, written once `Inner` is released.
+fn apply_queued(
+    inner: &mut Inner,
+    r: &mut NotifyResult,
+    records: &mut Vec<dspi_session::events::EventRecord>,
+) -> FollowUp {
     let mut follow = FollowUp::default();
     let ended = stream_ended_locked(inner);
     let Some(conn) = inner.conn.as_mut() else {
@@ -379,6 +393,10 @@ fn apply_queued(inner: &mut Inner, r: &mut NotifyResult) -> FollowUp {
         let own = conn.echo.classify_notification(kind, session, note);
         // -- WP CG23 --
         inner.notify_tap.record(note, own);
+        // -- WP P0M --
+        inner
+            .events
+            .notification(note, own, conn.ext.notify_features, records);
         if note.lost {
             follow.refresh = true;
             // -- WP CG13 --
@@ -396,7 +414,15 @@ fn apply_queued(inner: &mut Inner, r: &mut NotifyResult) -> FollowUp {
             conn.ring_target.invalidate();
         }
         match &note.event {
-            Event::ParamChanged { offset, bytes, .. } => {
+            Event::ParamChanged {
+                offset,
+                bytes,
+                source,
+            } => {
+                // -- WP P0W -- who, for undo's foreign-change rule
+                if !own {
+                    crate::journal::note_foreign(conn, *source, note.origin);
+                }
                 if !patchable {
                     follow.refresh = true;
                     continue;
@@ -413,6 +439,7 @@ fn apply_queued(inner: &mut Inner, r: &mut NotifyResult) -> FollowUp {
             }
             Event::BulkInvalidated { source } => {
                 if !own {
+                    crate::journal::note_foreign(conn, *source, note.origin); // -- WP P0W --
                     follow.refresh = true;
                     if matches!(source, Source::Preset | Source::Factory) {
                         follow.rebaseline = true;

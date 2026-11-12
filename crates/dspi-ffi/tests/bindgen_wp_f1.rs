@@ -42,6 +42,11 @@ const NOT_EXPORTED: &[&str] = &[
     "link_connect_over",
     "link_service",
     "link_tick",
+    // -- WP P0M -- Rust-only: the history's own records (for the C ABI's and
+    // wasm's JSON lines; UniFFI has `event_log_read`) and the hub's sink, a trait
+    // object.
+    "event_log_page",
+    "set_event_sink",
 ];
 
 /// `crates/dspi-core/src/link.rs`, exported by WP C15.

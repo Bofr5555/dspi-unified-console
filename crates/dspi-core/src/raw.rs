@@ -123,7 +123,12 @@ impl DspiCore {
         }
         conn.transport()
             .control_out(opcode, value, &data)
-            .map_err(refusal)
+            .map_err(refusal)?;
+        // -- WP P0W -- history only: nobody knows what a raw write moved
+        let [lo, hi] = value.to_le_bytes();
+        let after = dspi_proto::value::Value::Bytes(data);
+        crate::journal::journal(&mut guard, "raw", &[opcode, lo, hi], after);
+        Ok(())
     }
 }
 
