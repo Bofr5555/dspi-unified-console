@@ -1160,19 +1160,19 @@ object Opcodes {
      */
     const val REQ_FACTORY_RESET: Int = 0x53
     /**
-     * Upstream firmware opcode; not in the vendored headers.
+     * Older firmware's opcode, kept for the ABI; current firmware uses this value for a name request.
      */
     const val REQ_SET_CHANNEL_GAIN: Int = 0x54
     /**
-     * Upstream firmware opcode; not in the vendored headers.
+     * Older firmware's opcode, kept for the ABI; current firmware uses this value for a name request.
      */
     const val REQ_GET_CHANNEL_GAIN: Int = 0x55
     /**
-     * Upstream firmware opcode; not in the vendored headers.
+     * Older firmware's opcode, kept for the ABI; current firmware uses this value for a name request.
      */
     const val REQ_SET_CHANNEL_MUTE: Int = 0x56
     /**
-     * Upstream firmware opcode; not in the vendored headers.
+     * Older firmware's opcode, kept for the ABI; current firmware uses this value for a name request.
      */
     const val REQ_GET_CHANNEL_MUTE: Int = 0x57
     /**

@@ -250,8 +250,10 @@ fn not_in_the_protocol(
     wire: &mut Group,
     files: &mut Group,
 ) {
-    // The upstream firmware's per-channel gain and mute (config.h 0x54..0x57);
-    // the vendored headers no longer define them.
+    // Older firmware's per-channel gain and mute. Current firmware reuses
+    // 0x54..0x57 for the input-source and device name requests (config.h), so
+    // these symbols are kept for the ABI only: sending them to current firmware
+    // reads or sets a name. Nothing calls them.
     let channel_ops: [(&str, u8); 4] = [
         ("REQ_SET_CHANNEL_GAIN", 0x54),
         ("REQ_GET_CHANNEL_GAIN", 0x55),
@@ -264,7 +266,9 @@ fn not_in_the_protocol(
             ty: "u8",
             value: v.value(),
             style: Style::Hex,
-            doc: "Upstream firmware opcode; not in the vendored headers.".to_string(),
+            doc: "Older firmware's opcode, kept for the ABI; current firmware uses this value \
+                  for a name request."
+                .to_string(),
         });
     }
     usb.add(

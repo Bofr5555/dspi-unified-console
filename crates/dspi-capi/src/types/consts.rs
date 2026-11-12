@@ -269,16 +269,16 @@ pub const REQ_SAVE_OUTPUT_CONFIG: u8 = 0x52;
 /// `dspi_proto::generated::opcodes::REQ_FACTORY_RESET`.
 pub const REQ_FACTORY_RESET: u8 = 0x53;
 
-/// Upstream firmware opcode; not in the vendored headers.
+/// Older firmware's opcode, kept for the ABI; current firmware uses this value for a name request.
 pub const REQ_SET_CHANNEL_GAIN: u8 = 0x54;
 
-/// Upstream firmware opcode; not in the vendored headers.
+/// Older firmware's opcode, kept for the ABI; current firmware uses this value for a name request.
 pub const REQ_GET_CHANNEL_GAIN: u8 = 0x55;
 
-/// Upstream firmware opcode; not in the vendored headers.
+/// Older firmware's opcode, kept for the ABI; current firmware uses this value for a name request.
 pub const REQ_SET_CHANNEL_MUTE: u8 = 0x56;
 
-/// Upstream firmware opcode; not in the vendored headers.
+/// Older firmware's opcode, kept for the ABI; current firmware uses this value for a name request.
 pub const REQ_GET_CHANNEL_MUTE: u8 = 0x57;
 
 /// `dspi_proto::generated::opcodes::REQ_SET_LOUDNESS`.

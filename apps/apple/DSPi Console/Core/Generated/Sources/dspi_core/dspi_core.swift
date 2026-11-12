@@ -1781,8 +1781,10 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     
     /**
      * Restore the factory defaults on the live state (stored presets stay),
-     * then read everything again as [`DspiCore::fetch_all`] does; the result
-     * is the baseline. Runs under the device lock.
+     * give the device [`FACTORY_RESET_SETTLE`] to apply them (it defers the
+     * reset to its main loop), then read everything again as
+     * [`DspiCore::fetch_all`] does; the result is the baseline. Runs under the
+     * device lock; the core lock is not held while it waits.
      *
      * Errors: `Refused` with the device's `FLASH_*` status;
      * [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
@@ -4538,8 +4540,10 @@ open func extStatus()throws  -> ExtStatus  {
     
     /**
      * Restore the factory defaults on the live state (stored presets stay),
-     * then read everything again as [`DspiCore::fetch_all`] does; the result
-     * is the baseline. Runs under the device lock.
+     * give the device [`FACTORY_RESET_SETTLE`] to apply them (it defers the
+     * reset to its main loop), then read everything again as
+     * [`DspiCore::fetch_all`] does; the result is the baseline. Runs under the
+     * device lock; the core lock is not held while it waits.
      *
      * Errors: `Refused` with the device's `FLASH_*` status;
      * [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
@@ -22458,7 +22462,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_ext_status() != 10163) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_factory_reset() != 10591) {
+    if (uniffi_dspi_core_checksum_method_dspicore_factory_reset() != 27488) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_adat_out_status() != 51824) {

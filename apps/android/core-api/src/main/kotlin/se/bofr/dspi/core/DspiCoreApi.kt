@@ -2043,8 +2043,10 @@ interface DspiCoreApi : AutoCloseable {
 
     /**
      * Restore the factory defaults on the live state (stored presets stay),
-     * then read everything again as [`DspiCore::fetch_all`] does; the result
-     * is the baseline. Runs under the device lock.
+     * give the device [`FACTORY_RESET_SETTLE`] to apply them (it defers the
+     * reset to its main loop), then read everything again as
+     * [`DspiCore::fetch_all`] does; the result is the baseline. Runs under the
+     * device lock; the core lock is not held while it waits.
      *
      * Errors: `Refused` with the device's `FLASH_*` status;
      * [`DspiError::Locked`] / [`DspiError::Denied`] (Link);

@@ -642,13 +642,13 @@ public enum Opcodes {
     public static let REQ_SAVE_OUTPUT_CONFIG: UInt8 = 0x52
     /// `dspi_proto::generated::opcodes::REQ_FACTORY_RESET`.
     public static let REQ_FACTORY_RESET: UInt8 = 0x53
-    /// Upstream firmware opcode; not in the vendored headers.
+    /// Older firmware's opcode, kept for the ABI; current firmware uses this value for a name request.
     public static let REQ_SET_CHANNEL_GAIN: UInt8 = 0x54
-    /// Upstream firmware opcode; not in the vendored headers.
+    /// Older firmware's opcode, kept for the ABI; current firmware uses this value for a name request.
     public static let REQ_GET_CHANNEL_GAIN: UInt8 = 0x55
-    /// Upstream firmware opcode; not in the vendored headers.
+    /// Older firmware's opcode, kept for the ABI; current firmware uses this value for a name request.
     public static let REQ_SET_CHANNEL_MUTE: UInt8 = 0x56
-    /// Upstream firmware opcode; not in the vendored headers.
+    /// Older firmware's opcode, kept for the ABI; current firmware uses this value for a name request.
     public static let REQ_GET_CHANNEL_MUTE: UInt8 = 0x57
     /// `dspi_proto::generated::opcodes::REQ_SET_LOUDNESS`.
     public static let REQ_SET_LOUDNESS: UInt8 = 0x58

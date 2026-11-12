@@ -444,22 +444,22 @@
 #define REQ_FACTORY_RESET 83
 
 /**
- * Upstream firmware opcode; not in the vendored headers.
+ * Older firmware's opcode, kept for the ABI; current firmware uses this value for a name request.
  */
 #define REQ_SET_CHANNEL_GAIN 84
 
 /**
- * Upstream firmware opcode; not in the vendored headers.
+ * Older firmware's opcode, kept for the ABI; current firmware uses this value for a name request.
  */
 #define REQ_GET_CHANNEL_GAIN 85
 
 /**
- * Upstream firmware opcode; not in the vendored headers.
+ * Older firmware's opcode, kept for the ABI; current firmware uses this value for a name request.
  */
 #define REQ_SET_CHANNEL_MUTE 86
 
 /**
- * Upstream firmware opcode; not in the vendored headers.
+ * Older firmware's opcode, kept for the ABI; current firmware uses this value for a name request.
  */
 #define REQ_GET_CHANNEL_MUTE 87
 
