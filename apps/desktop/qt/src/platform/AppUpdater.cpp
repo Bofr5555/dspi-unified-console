@@ -19,6 +19,7 @@
 #include <QRegularExpression>
 #include <QSettings>
 #include <QTimer>
+#include <algorithm>
 
 #ifndef DSPI_UPDATE_FEED_URL
 #define DSPI_UPDATE_FEED_URL ""
@@ -69,64 +70,48 @@ bool onThisMachine(const QString &host) {
 // ---- versions -------------------------------------------------------------
 
 AppUpdater::Version AppUpdater::Version::parse(QString text) {
-    static const QRegularExpression form(
+    static const QRegularExpression tagForm(
         QStringLiteral("^v?(\\d{1,4})\\.(\\d{1,4})(?:\\.(\\d{1,4}))?(?:-beta(\\d{1,4}))?$"),
         QRegularExpression::CaseInsensitiveOption);
-    Version v;
-    const QRegularExpressionMatch m = form.match(text.trimmed());
-    if (!m.hasMatch()) return v;
-    v.major = m.captured(1).toInt();
-    v.minor = m.captured(2).toInt();
-    v.patch = m.captured(3).toInt();
-    v.beta = m.captured(4).toInt();
-    v.valid = true;
-    return v;
+    Version read;
+    const QRegularExpressionMatch found = tagForm.match(text.trimmed());
+    if (!found.hasMatch()) return read;
+    // An absent group (no patch, no beta) reads as 0
+    for (size_t part = 0; part < read.parts.size(); ++part) read.parts[part] = found.captured(int(part) + 1).toInt();
+    read.valid = true;
+    return read;
 }
 
 QString AppUpdater::Version::text() const {
     if (!valid) return {};
-    QString s = QStringLiteral("%1.%2.%3").arg(major).arg(minor).arg(patch);
-    if (beta) s += QStringLiteral("-beta%1").arg(beta);
-    return s;
-}
-
-bool AppUpdater::Version::operator<(const Version &o) const {
-    if (major != o.major) return major < o.major;
-    if (minor != o.minor) return minor < o.minor;
-    if (patch != o.patch) return patch < o.patch;
-    // A final (beta 0) comes after every beta of the same number
-    if (beta == o.beta) return false;
-    if (beta == 0) return false;
-    if (o.beta == 0) return true;
-    return beta < o.beta;
-}
-
-bool AppUpdater::Version::operator==(const Version &o) const {
-    return valid == o.valid && major == o.major && minor == o.minor && patch == o.patch && beta == o.beta;
+    const QString release = QStringList{ QString::number(parts[0]), QString::number(parts[1]), QString::number(parts[2]) }
+                                .join(QLatin1Char('.'));
+    return isBeta() ? release + QStringLiteral("-beta") + QString::number(parts[3]) : release;
 }
 
 // ---- the feed -------------------------------------------------------------
 
 QVector<AppUpdater::Release> AppUpdater::parseFeed(const QByteArray &json) {
-    QVector<Release> out;
+    QVector<Release> kept;
     const QJsonDocument doc = QJsonDocument::fromJson(json);
-    if (!doc.isArray()) return out;
-    for (const QJsonValue &v : doc.array()) {
-        const QJsonObject o = v.toObject();
-        if (o.isEmpty() || o.value(QLatin1String("draft")).toBool()) continue;
+    const QJsonArray list = doc.array();
+    for (const QJsonValue &entry : list) {
+        const QJsonObject rel = entry.toObject();
+        if (rel.isEmpty() || rel.value(QLatin1String("draft")).toBool()) continue;
+        const QUrl page(rel.value(QLatin1String("html_url")).toString());
         Release r;
-        r.tag = o.value(QLatin1String("tag_name")).toString();
+        r.tag = rel.value(QLatin1String("tag_name")).toString();
         r.version = Version::parse(r.tag);
-        const QUrl page(o.value(QLatin1String("html_url")).toString());
+        // Only a page the browser may open safely, and a tag that is a version
         if (!r.version.valid || page.scheme() != QLatin1String("https") || page.host().isEmpty()) continue;
         r.page = page.toString();
-        r.name = o.value(QLatin1String("name")).toString().trimmed();
-        r.notes = o.value(QLatin1String("body")).toString().left(kMaxNotes);
-        for (const QJsonValue &a : o.value(QLatin1String("assets")).toArray())
-            r.assets << a.toObject().value(QLatin1String("name")).toString();
-        out.append(r);
+        r.name = rel.value(QLatin1String("name")).toString().trimmed();
+        r.notes = rel.value(QLatin1String("body")).toString().left(kMaxNotes);
+        const QJsonArray files = rel.value(QLatin1String("assets")).toArray();
+        for (const QJsonValue &file : files) r.assets << file.toObject().value(QLatin1String("name")).toString();
+        kept.append(r);
     }
-    return out;
+    return kept;
 }
 
 bool AppUpdater::carriesApp(const Release &r, const QString &platform) {
@@ -135,25 +120,23 @@ bool AppUpdater::carriesApp(const Release &r, const QString &platform) {
     // The tag's own version follows the prefix, so the Swift app's and the
     // other clients' packages in the same repository do not count.
     const QString prefix = QStringLiteral("DSPi-uConsole-%1-").arg(r.version.text());
-    for (const QString &a : r.assets) {
-        if (!a.startsWith(prefix)) continue;
-        const QString rest = a.mid(prefix.size());
-        if (platform == QLatin1String("windows") && rest.startsWith(QLatin1String("windows-"))) return true;
-        if (platform == QLatin1String("linux")
-            && (rest.startsWith(QLatin1String("linux-")) || rest.endsWith(QLatin1String(".AppImage"))))
-            return true;
-    }
-    return false;
+    const bool windows = platform == QLatin1String("windows");
+    return std::any_of(r.assets.cbegin(), r.assets.cend(), [&](const QString &asset) {
+        if (!asset.startsWith(prefix)) return false;
+        const QStringView rest = QStringView(asset).mid(prefix.size());
+        return windows ? rest.startsWith(QLatin1String("windows-"))
+                       : rest.startsWith(QLatin1String("linux-")) || rest.endsWith(QLatin1String(".AppImage"));
+    });
 }
 
 const AppUpdater::Release *AppUpdater::newest(const QVector<Release> &releases, const Version &current,
                                               const QString &platform) {
     const Release *best = nullptr;
     for (const Release &r : releases) {
-        if (!platform.isEmpty() && !carriesApp(r, platform)) continue;
-        if (current.beta == 0 && r.version.beta != 0) continue;
-        if (!(current < r.version)) continue;
-        if (!best || best->version < r.version) best = &r;
+        const bool ours = platform.isEmpty() || carriesApp(r, platform);
+        // Someone on a final release is offered finals only
+        const bool fitting = current.isBeta() || !r.version.isBeta();
+        if (ours && fitting && current < r.version && (!best || best->version < r.version)) best = &r;
     }
     return best;
 }
@@ -173,37 +156,37 @@ QUrl AppUpdater::resolveFeed(const QUrl &override, const QUrl &builtIn) {
 
 // ---- the controller -------------------------------------------------------
 
-AppUpdater::AppUpdater(const AppContext &ctx, QObject *parent)
-    : QObject(parent), m_ctx(ctx), m_net(new QNetworkAccessManager(this)), m_daily(new QTimer(this)) {
+AppUpdater::AppUpdater(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {
+    m_net = new QNetworkAccessManager(this);
     m_net->setCookieJar(new NoCookies(m_net));
     m_net->setRedirectPolicy(QNetworkRequest::NoLessSafeRedirectPolicy);
     m_current = Version::parse(AppIdentity::version());
-    QSettings s;
-    m_automatic = s.value(QLatin1String(kAutomaticKey), false).toBool();
-    m_lastChecked = s.value(QLatin1String(kLastCheckedKey)).toDateTime();
-    m_feed = resolveFeed(QUrl(s.value(QLatin1String(kFeedOverrideKey)).toString()),
+    const QSettings stored;
+    m_automatic = stored.value(QLatin1String(kAutomaticKey), false).toBool();
+    m_lastChecked = stored.value(QLatin1String(kLastCheckedKey)).toDateTime();
+    m_feed = resolveFeed(QUrl(stored.value(QLatin1String(kFeedOverrideKey)).toString()),
                          QUrl(QStringLiteral(DSPI_UPDATE_FEED_URL)));
 
+    m_daily = new QTimer(this);
     m_daily->setInterval(kDailyMs);
-    connect(m_daily, &QTimer::timeout, this, [this]() { check(true); });
-    if (m_automatic && hasFeed()) {
-        QTimer::singleShot(kLaunchDelayMs, this, [this]() { check(true); });
+    QObject::connect(m_daily, &QTimer::timeout, this, &AppUpdater::launchCheck);
+    if (hasFeed() && m_automatic) {
         m_daily->start();
+        QTimer::singleShot(kLaunchDelayMs, this, &AppUpdater::launchCheck);
     }
     // One row handler: a second checker (the smoke driver's launch test) leaves it
-    if (hasFeed() && !m_ctx.shell->handles(QStringLiteral("help.checkForUpdates"))) {
-        m_ctx.shell->addHandler(QStringLiteral("help.checkForUpdates"), this, [this]() {
-            checkNow();
-            details();
-        });
-    }
+    const QString row = QStringLiteral("help.checkForUpdates");
+    if (hasFeed() && !ctx.shell->handles(row)) ctx.shell->addHandler(row, this, [this] {
+        checkNow();
+        details();
+    });
     // Controllers are made in no set order: hand this to the Updates page
     // once they all exist
     QMetaObject::invokeMethod(this, &AppUpdater::attach, Qt::QueuedConnection);
 }
 
 AppUpdater::~AppUpdater() {
-    if (m_reply) m_reply->abort();
+    if (!m_reply.isNull()) m_reply->abort();
 }
 
 AppUpdater *AppUpdater::create(QQmlEngine *, QJSEngine *) {
@@ -219,100 +202,88 @@ void AppUpdater::attach() {
 }
 
 QByteArray AppUpdater::userAgent() const {
-    return "DSPiConsole/" + (m_current.valid ? m_current.text() : AppIdentity::version()).toLatin1();
+    const QString version = m_current.valid ? m_current.text() : AppIdentity::version();
+    return QByteArrayLiteral("DSPiConsole/") + version.toLatin1();
 }
 
 void AppUpdater::setAutomatic(bool on) {
-    if (on == m_automatic) return;
+    if (m_automatic == on) return;
     m_automatic = on;
     QSettings().setValue(QLatin1String(kAutomaticKey), on);
     emit automaticChanged();
-    if (on && hasFeed()) {
-        m_daily->start();
-        check(true);
-    } else {
+    if (!on || !hasFeed()) {
         m_daily->stop();
+        return;
     }
+    m_daily->start();
+    check(true);
 }
 
 void AppUpdater::checkNow() { check(false); }
 
 void AppUpdater::check(bool automatic) {
-    if (m_reply) return;
-    if (automatic && !m_automatic) return;
-    if (!hasFeed()) {
-        fail(tr("This build has no release feed."));
-        return;
-    }
-    QNetworkRequest request(m_feed);
-    request.setHeader(QNetworkRequest::UserAgentHeader, userAgent());
-    request.setRawHeader("Accept", "application/vnd.github+json");
+    if (!m_reply.isNull() || (automatic && !m_automatic)) return;
+    if (!hasFeed()) return settle(QStringLiteral("failed"), tr("This build has no release feed."));
+    QNetworkRequest ask(m_feed);
+    ask.setRawHeader("User-Agent", userAgent());
+    ask.setRawHeader("Accept", "application/vnd.github+json");
     // Not the system's languages: they would say more about the user than the
     // privacy line does
-    request.setRawHeader("Accept-Language", "en");
-    request.setAttribute(QNetworkRequest::CookieLoadControlAttribute, QNetworkRequest::Manual);
-    request.setAttribute(QNetworkRequest::CookieSaveControlAttribute, QNetworkRequest::Manual);
-    request.setAttribute(QNetworkRequest::CacheSaveControlAttribute, false);
-    request.setTransferTimeout(kTimeoutMs);
-    QNetworkReply *reply = m_net->get(request);
-    m_reply = reply;
-    connect(reply, &QNetworkReply::downloadProgress, reply, [reply](qint64 received, qint64) {
-        if (received > kMaxReply) reply->abort();
+    ask.setRawHeader("Accept-Language", "en");
+    ask.setAttribute(QNetworkRequest::CookieLoadControlAttribute, QNetworkRequest::Manual);
+    ask.setAttribute(QNetworkRequest::CookieSaveControlAttribute, QNetworkRequest::Manual);
+    ask.setAttribute(QNetworkRequest::CacheSaveControlAttribute, false);
+    ask.setTransferTimeout(kTimeoutMs);
+    m_replyAutomatic = automatic;
+    m_reply = m_net->get(ask);
+    QNetworkReply *pending = m_reply;
+    QObject::connect(pending, &QNetworkReply::downloadProgress, pending, [pending](qint64 got, qint64) {
+        if (got > kMaxReply) pending->abort();
     });
-    connect(reply, &QNetworkReply::finished, this, [this, reply, automatic]() { finished(reply, automatic); });
+    QObject::connect(pending, &QNetworkReply::finished, this, &AppUpdater::replied);
     emit stateChanged();
 }
 
-void AppUpdater::finished(QNetworkReply *reply, bool automatic) {
-    reply->deleteLater();
-    m_reply = nullptr;
-    const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-    if (reply->error() != QNetworkReply::NoError || status != 200) {
-        // The Mac's rule: a feed that answers 404 (a private repository, or no
-        // releases yet) is no news, not a failure to report
-        if (status == 404) {
-            m_result = QStringLiteral("current");
-            m_error.clear();
-            m_lastChecked = QDateTime::currentDateTime();
-            QSettings().setValue(QLatin1String(kLastCheckedKey), m_lastChecked);
-            emit stateChanged();
-            return;
-        }
-        fail(status ? tr("The release feed answered %1.").arg(status)
-                    : tr("The release feed could not be reached: %1").arg(reply->errorString()));
-        return;
+void AppUpdater::replied() {
+    const QScopedPointer<QNetworkReply, QScopedPointerDeleteLater> done(m_reply.data());
+    m_reply.clear();
+    if (!done) return;
+    const int status = done->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    // The Mac's rule: a feed that answers 404 (a private repository, or no
+    // releases yet) is no news, not a failure to report
+    if (status == 404) {
+        m_release = Release();
+        return settle(QStringLiteral("current"), QString());
     }
-    const QByteArray body = reply->read(kMaxReply + 1);
-    if (body.size() > kMaxReply || !QJsonDocument::fromJson(body).isArray()) {
-        fail(tr("The release feed's answer is not a list of releases."));
-        return;
-    }
+    if (status != 200 || done->error() != QNetworkReply::NoError)
+        return settle(QStringLiteral("failed"),
+                      status ? tr("The release feed answered %1.").arg(status)
+                             : tr("The release feed could not be reached: %1").arg(done->errorString()));
+    const QByteArray body = done->read(kMaxReply + 1);
+    if (body.size() > kMaxReply || !QJsonDocument::fromJson(body).isArray())
+        return settle(QStringLiteral("failed"), tr("The release feed's answer is not a list of releases."));
+
     const QVector<Release> releases = parseFeed(body);
     const Release *best = newest(releases, m_current, thisPlatform());
-    m_error.clear();
-    m_lastChecked = QDateTime::currentDateTime();
-    QSettings().setValue(QLatin1String(kLastCheckedKey), m_lastChecked);
-    if (best) {
-        m_release = *best;
-        if (m_release.name.isEmpty()) m_release.name = AppIdentity::displayName();
-        m_result = QStringLiteral("available");
-        const QString skipped = QSettings().value(QLatin1String(kSkippedKey)).toString();
-        // A check the user asked for shows its answer on the page; only an
-        // automatic one raises the banner
-        if (automatic && m_release.tag != skipped) m_announce = true;
-    } else {
-        m_release = Release();
-        m_result = QStringLiteral("current");
-        m_announce = false;
-    }
-    emit stateChanged();
+    m_release = best ? *best : Release();
+    if (best && m_release.name.isEmpty()) m_release.name = AppIdentity::displayName();
+    settle(best ? QStringLiteral("available") : QStringLiteral("current"), QString());
 }
 
-void AppUpdater::fail(const QString &why) {
-    m_result = QStringLiteral("failed");
+void AppUpdater::settle(const QString &result, const QString &why) {
+    m_result = result;
     m_error = why;
-    m_release = Release();
-    m_announce = false;
+    if (result == QLatin1String("failed")) m_release = Release();
+    if (why.isEmpty()) {
+        m_lastChecked = QDateTime::currentDateTime();
+        QSettings().setValue(QLatin1String(kLastCheckedKey), m_lastChecked);
+    }
+    // Only an automatic check raises the banner, and never for a skipped
+    // release; a check the user asked for shows its answer on the page
+    const QString skipped = QSettings().value(QLatin1String(kSkippedKey)).toString();
+    if (!available()) m_announce = false;
+    else if (m_replyAutomatic && m_release.tag != skipped) m_announce = true;
+    m_replyAutomatic = false;
     emit stateChanged();
 }
 
@@ -324,8 +295,7 @@ void AppUpdater::openRelease() {
 void AppUpdater::skipVersion() {
     if (!available()) return;
     QSettings().setValue(QLatin1String(kSkippedKey), m_release.tag);
-    m_announce = false;
-    emit stateChanged();
+    later();
 }
 
 void AppUpdater::later() {
@@ -336,12 +306,14 @@ void AppUpdater::later() {
 
 void AppUpdater::details() {
     later();
-    if (auto *settings = Registrar::instance<SettingsController>()) settings->showPage(QStringLiteral("updates"));
+    auto *settings = Registrar::instance<SettingsController>();
+    if (settings) settings->showPage(QStringLiteral("updates"));
 }
 
 void AppUpdater::setFeed(const QUrl &url) {
-    m_feed = url.isEmpty() ? resolveFeed(QUrl(), QUrl(QStringLiteral(DSPI_UPDATE_FEED_URL)))
-                           : (feedAllowed(url, false) || feedAllowed(url, true) ? url : QUrl());
+    const QUrl builtIn(QStringLiteral(DSPI_UPDATE_FEED_URL));
+    if (url.isEmpty()) m_feed = resolveFeed(QUrl(), builtIn);
+    else m_feed = feedAllowed(url, false) || feedAllowed(url, true) ? url : QUrl();
     emit feedChanged();
 }
 

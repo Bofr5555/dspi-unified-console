@@ -176,13 +176,18 @@ Rectangle {
                     }
                 }
             }
-            StepDots {
-                objectName: "GettingStarted.steps"
-                Layout.alignment: Qt.AlignHCenter
+            // The dots, at most 460 wide, centred under the header
+            Item {
                 Layout.fillWidth: true
-                Layout.maximumWidth: 460
-                labels: wizard.stages.map(s => s.label || "")
-                current: wizard.current
+                implicitHeight: dotStrip.implicitHeight
+                StepDots {
+                    id: dotStrip
+                    objectName: "GettingStarted.steps"
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: Math.min(460, parent.width)
+                    steps: wizard.stages.map(s => s.label || "")
+                    at: wizard.current
+                }
             }
         }
         Rectangle {
@@ -253,15 +258,15 @@ Rectangle {
                     InstallCard {
                         objectName: "GettingStarted.card"
                         property string cardId: wizard.cardSpec[0]
-                        iconName: wizard.cardSpec[1]
+                        glyph: wizard.cardSpec[1]
                         tint: wizard.cardSpec[2]
-                        spinning: wizard.cardSpec[3]
-                        iconSize: cardId === "card.verified" || cardId === "card.already_installed" ? 36 : 28
-                        title: wizard.fill(wizard.card.title)
-                        message: wizard.fill(wizard.card.text)
+                        busy: wizard.cardSpec[3]
+                        glyphSize: cardId === "card.verified" || cardId === "card.already_installed" ? 36 : 28
+                        heading: wizard.fill(wizard.card.title)
+                        detail: wizard.fill(wizard.card.text)
                         actionText: wizard.cardSpec[4].length ? wizard.card.action || "" : ""
                         actionPrimary: cardId !== "card.downgrade"
-                        fraction: wizard.installState === "writing" && wizard.installer ? Number(wizard.installer.fraction) || 0 : -1
+                        progress: wizard.installState === "writing" && wizard.installer ? Number(wizard.installer.fraction) || 0 : -1
                         onAction: wizard.cardSpec[4] === "connected" ? wizard.beginConnectedInstall() : wizard.beginInstall()
                     }
                     AppButton {

@@ -3,86 +3,96 @@ import QtQuick.Layouts
 import UConsole
 
 // -- WP QP17 -- The board step's card (the Mac's InstallStateCard): an icon,
-// spinning while the app or the board is at work, a title, the message and an
-// optional action button; or a progress bar while firmware is written.
+// turning while the app or the board is at work, a heading, the detail and an
+// optional button; a bar shows how much is written.
 Rectangle {
     id: card
-    property string iconName
+    property string glyph
     property color tint: Theme.accentText
-    property bool spinning: false
-    property int iconSize: 28
-    property string title
-    property string message
+    property bool busy: false
+    property int glyphSize: 28
+    property string heading
+    property string detail
     property string actionText
     property bool actionPrimary: true
-    // 0..1 shows a bar under the message; below 0 none
-    property real fraction: -1
+    // Written so far, 0..1; below 0 there is no bar
+    property real progress: -1
     signal action()
 
     Layout.fillWidth: true
-    implicitHeight: column.implicitHeight + 2 * Theme.spacingLarge
+    implicitHeight: stack.implicitHeight + 2 * Theme.spacingLarge
     radius: Theme.radius
     color: Theme.panel
-    border.width: 1
-    border.color: Theme.separator
+    border {
+        width: 1
+        color: Theme.separator
+    }
 
     ColumnLayout {
-        id: column
-        anchors.fill: parent
-        anchors.margins: Theme.spacingLarge
+        id: stack
+        anchors {
+            fill: parent
+            margins: Theme.spacingLarge
+        }
         spacing: Theme.spacing
 
         Icon {
-            id: glyph
+            id: mark
             Layout.alignment: Qt.AlignHCenter
-            name: card.spinning ? "loader-circle" : card.iconName
-            size: card.iconSize
+            name: card.busy ? "loader-circle" : card.glyph
+            size: card.glyphSize
             color: card.tint
         }
         RotationAnimator {
-            target: glyph
-            running: card.spinning && card.visible
+            id: turning
+            target: mark
             from: 0
             to: 360
             duration: 1200
             loops: Animation.Infinite
-            // Back upright when it stops
-            onRunningChanged: if (!running) glyph.rotation = 0
+            running: card.busy && card.visible
+            // Upright again once the work is done
+            onStopped: mark.rotation = 0
         }
         Text {
             objectName: "GettingStarted.cardTitle"
             Layout.fillWidth: true
+            text: card.heading
             horizontalAlignment: Text.AlignHCenter
-            text: card.title
-            font: Qt.font({ pixelSize: 15, weight: Font.DemiBold })
-            color: Theme.text
             wrapMode: Text.Wrap
+            color: Theme.text
+            font.pixelSize: Theme.fontTitle.pixelSize
+            font.weight: Font.DemiBold
         }
         Text {
             objectName: "GettingStarted.cardText"
             Layout.fillWidth: true
+            text: card.detail
             horizontalAlignment: Text.AlignHCenter
-            text: card.message
-            font: Theme.fontBody
-            color: Theme.textMuted
             wrapMode: Text.Wrap
+            color: Theme.textMuted
+            font: Theme.fontBody
         }
-        Rectangle {
-            visible: card.fraction >= 0
-            Layout.fillWidth: true
-            Layout.maximumWidth: 360
+        Item {
+            visible: card.progress >= 0
             Layout.alignment: Qt.AlignHCenter
+            Layout.preferredWidth: Math.min(360, stack.width)
             implicitHeight: 6
-            radius: 3
-            color: Theme.separator
+            readonly property real share: Math.min(Math.max(card.progress, 0), 1)
             Rectangle {
-                width: parent.width * Math.max(0, Math.min(1, card.fraction))
-                height: parent.height
+                id: groove
+                anchors.fill: parent
                 radius: 3
+                color: Theme.separator
+            }
+            Rectangle {
+                height: groove.height
+                width: Math.round(groove.width * parent.share)
+                radius: groove.radius
                 color: Theme.accent
             }
             Accessible.role: Accessible.ProgressBar
-            Accessible.name: qsTr("%1 percent written").arg(Math.round(card.fraction * 100))
+            Accessible.name: qsTr("%1 percent written").arg(Math.round(share * 100))
         }
         AppButton {
             objectName: "GettingStarted.cardAction"
@@ -95,5 +105,5 @@ Rectangle {
     }
 
     Accessible.role: Accessible.Grouping
-    Accessible.name: title
+    Accessible.name: heading
 }

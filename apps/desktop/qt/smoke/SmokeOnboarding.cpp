@@ -148,8 +148,9 @@ void onboardingSection(SmokeDriver &d) {
     d.check(QStringLiteral("qp17: after an update What's New opens by itself"),
             notes && notes->isVisible() && ob->whatsNewShown() == ob->bundledFirmware());
     if (notes) {
-        int releases = 0;
-        while (qp17Item(notes->contentItem(), QStringLiteral("WhatsNew.release.%1").arg(releases))) ++releases;
+        // A list view makes the rows it shows; its count is every release
+        QObject *list = qp17Item(notes->contentItem(), QStringLiteral("WhatsNew.list"));
+        const int releases = list ? list->property("count").toInt() : 0;
         QStringList shown;
         qp17Texts(notes->contentItem(), &shown);
         d.check(QStringLiteral("qp17: What's New lists every release"), releases == ob->releases().size());

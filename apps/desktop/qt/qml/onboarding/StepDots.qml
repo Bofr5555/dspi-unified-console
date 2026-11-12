@@ -1,66 +1,70 @@
 import QtQuick
-import QtQuick.Layouts
 import UConsole
 
 // -- WP QP17 -- The wizard's progress (the Mac's StepDotStrip): a dot per
-// step on a line, the steps done and the current one in the accent colour,
-// each with its label under it.
+// step on a track, those reached and the current one in the accent colour,
+// each step's name under its dot.
 Item {
-    id: strip
-    property var labels: []
-    property int current: 0
-    property int dotWidth: 60
+    id: dots
+    property var steps: []
+    property int at: 0
+    property int slot: 60
+    readonly property int count: steps.length
+    readonly property real pitch: count > 0 ? width / count : 0
 
+    implicitWidth: slot * Math.max(count, 1)
     implicitHeight: 34
-    implicitWidth: Math.max(1, labels.length) * dotWidth
 
-    // The line between the first and the last dot
+    // The track, then the part already walked
     Rectangle {
-        x: strip.dotWidth / 2
+        id: track
+        x: dots.pitch / 2
         y: 5
-        width: Math.max(0, strip.width - strip.dotWidth)
+        width: dots.pitch * Math.max(dots.count - 1, 0)
         height: 2
-        radius: 1
+        radius: height / 2
         color: Theme.separator
     }
     Rectangle {
-        x: strip.dotWidth / 2
-        y: 5
-        width: strip.labels.length > 1 ? (strip.width - strip.dotWidth) * strip.current / (strip.labels.length - 1) : 0
-        height: 2
-        radius: 1
+        x: track.x
+        y: track.y
+        height: track.height
+        radius: track.radius
+        width: dots.count > 1 ? track.width * dots.at / (dots.count - 1) : 0
         color: Theme.accent
     }
-    Row {
-        anchors.fill: parent
-        Repeater {
-            model: strip.labels
-            delegate: Item {
-                required property string modelData
-                required property int index
-                width: strip.labels.length ? strip.width / strip.labels.length : 0
-                height: strip.height
-                Rectangle {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    y: 0
-                    width: 12
-                    height: 12
-                    radius: 6
-                    color: index <= strip.current ? Theme.accent : Theme.panel
-                    border.width: index <= strip.current ? 0 : 2
-                    border.color: Theme.border
+
+    Repeater {
+        model: dots.count
+        delegate: Column {
+            id: step
+            required property int index
+            readonly property bool reached: index <= dots.at
+            x: dots.pitch * index
+            width: dots.pitch
+            spacing: 8
+            Rectangle {
+                x: (step.width - width) / 2
+                implicitWidth: 12
+                implicitHeight: 12
+                radius: implicitWidth / 2
+                color: step.reached ? Theme.accent : Theme.panel
+                border {
+                    width: step.reached ? 0 : 2
+                    color: Theme.border
                 }
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    anchors.bottom: parent.bottom
-                    text: modelData
-                    font: Theme.fontSmall
-                    color: index === strip.current ? Theme.text : Theme.textMuted
-                }
+            }
+            Text {
+                width: step.width
+                horizontalAlignment: Text.AlignHCenter
+                text: dots.steps[step.index] || ""
+                font: Theme.fontSmall
+                color: step.index === dots.at ? Theme.text : Theme.textMuted
+                elide: Text.ElideRight
             }
         }
     }
 
     Accessible.role: Accessible.ProgressBar
-    Accessible.name: labels.length ? qsTr("Step %1 of %2: %3").arg(current + 1).arg(labels.length).arg(labels[current] || "") : ""
+    Accessible.name: count ? qsTr("Step %1 of %2: %3").arg(at + 1).arg(count).arg(steps[at] || "") : ""
 }

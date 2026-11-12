@@ -2,11 +2,14 @@
 #define APPUPDATER_H
 
 #include <QDateTime>
+#include <QScopedPointer>
 #include <QObject>
 #include <QPointer>
 #include <QUrl>
 #include <QVector>
 #include <QtQml/qqmlregistration.h>
+#include <array>
+#include <climits>
 
 #include "Registrar.h"
 
@@ -62,15 +65,18 @@ class AppUpdater : public QObject {
     // The update banner shows
     Q_PROPERTY(bool announce READ announce NOTIFY stateChanged)
 public:
-    // A version as the tags spell them: "v1.2.0", "1.1.6-beta3". beta 0 is a
-    // final release, which sorts above its betas.
+    // A version as the tags spell them: "v1.2.0", "1.1.6-beta3"
     struct Version {
-        int major = 0, minor = 0, patch = 0, beta = 0;
+        // major, minor, patch, then the beta's number (0: a final release)
+        std::array<int, 4> parts{};
         bool valid = false;
         static Version parse(QString text);
         QString text() const;
-        bool operator<(const Version &o) const;
-        bool operator==(const Version &o) const;
+        bool isBeta() const { return parts[3] != 0; }
+        // The order of releases: a final comes after every beta of its number
+        std::array<int, 4> rank() const { return { parts[0], parts[1], parts[2], isBeta() ? parts[3] : INT_MAX }; }
+        bool operator<(const Version &later) const { return rank() < later.rank(); }
+        bool operator==(const Version &same) const { return valid == same.valid && parts == same.parts; }
     };
     struct Release {
         QString tag, name, notes, page;
@@ -101,7 +107,7 @@ public:
     QString userAgentText() const { return QString::fromLatin1(userAgent()); }
     bool automatic() const { return m_automatic; }
     void setAutomatic(bool on);
-    bool checking() const { return m_reply != nullptr; }
+    bool checking() const { return !m_reply.isNull(); }
     QDateTime lastChecked() const { return m_lastChecked; }
     QString currentVersion() const { return m_current.text(); }
     QString result() const { return m_result; }
@@ -133,14 +139,17 @@ signals:
 
 private:
     void check(bool automatic);
-    void finished(QNetworkReply *reply, bool automatic);
-    void fail(const QString &why);
+    void launchCheck() { check(true); }
+    void replied();
+    // Records what a check found and tells the page and the banner
+    void settle(const QString &result, const QString &why);
     void attach();
 
     AppContext m_ctx;
     QNetworkAccessManager *m_net;
     QTimer *m_daily;
     QPointer<QNetworkReply> m_reply;
+    bool m_replyAutomatic = false;
     QUrl m_feed;
     Version m_current;
     bool m_automatic = false;
