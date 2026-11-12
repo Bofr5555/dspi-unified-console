@@ -1,0 +1,4 @@
+# -- WP QP14 -- Settings > Networking (see ../manifest.txt for the format)
+circle-user         networking: a paired client
+circle-minus        networking: remove a client
+lock-open           networking: an open hub's badge

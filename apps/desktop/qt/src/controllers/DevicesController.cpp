@@ -136,6 +136,13 @@ void DevicesController::setOwnHubId(const QString &id) {
     updateBrowse();
 }
 
+// -- WP QP14 --
+void DevicesController::setPageWatching(bool on) {
+    if (on == m_pageWatching) return;
+    m_pageWatching = on;
+    updateBrowse();
+}
+
 void DevicesController::rescan() {
     m_coreObject->worker()->call(this, [](FfiCore *c) { return scanUsb(c); },
                                  [this](QVariantList found) {
@@ -157,7 +164,7 @@ void DevicesController::updateBrowse() {
     if (m_shutDown) return;
     LinkController *l = m_link;
     const bool reconnecting = l && l->phase() == QLatin1String("reconnecting");
-    const bool want = m_lookForHubs && (m_listShown || reconnecting);
+    const bool want = m_lookForHubs && (m_listShown || reconnecting || m_pageWatching);   // -- WP QP14 -- the page
     if (want && !m_browseRunning) {
         m_browseRunning = dspi_link_browse_start(m_core, &DevicesController::browseThunk, this,
                                                  m_ownHubId.isEmpty() ? nullptr : m_ownHubId.constData());

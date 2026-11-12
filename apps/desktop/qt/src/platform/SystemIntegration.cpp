@@ -1,6 +1,7 @@
 #include "SystemIntegration.h"
+#include "AppIdentity.h"
+#include "HubController.h"
 #include "Registrar.h"
-#include "TrayController.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -23,14 +24,16 @@
 #include <windows.h>
 #endif
 
-static const Registrar::Controller<SystemIntegration> systemRegistered("system");
+static const Registrar::Controller<SystemIntegration> systemRegistered;
 
 namespace {
 
 const char *const kKeepAwakeKey = "system/keepAwake";
 const char *const kReason = "Sharing DSPi devices on the local network";
 // The Run key's value name, and the autostart file's; the latter matches the
-// installed launcher's, so a desktop sees one app
+// installed launcher's, so a desktop sees one app. -- WP QP14 -- Both are OS
+// entries a user's previous install made: kept as they are (behaviour.md §21.3),
+// whatever the display name becomes.
 const char *const kRunName = "DSPi uConsole";
 const char *const kDesktopFile = "dspi-uconsole.desktop";
 
@@ -124,15 +127,18 @@ public:
         QSaveFile f(file());
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text))
             return QCoreApplication::translate("SystemIntegration", "Could not write %1: %2").arg(file(), f.errorString());
+        // -- WP QP14 -- The name and comment of the installed launcher
+        // (packaging/linux/dspi-uconsole.desktop)
         const QString entry = QStringLiteral("[Desktop Entry]\n"
                                              "Type=Application\n"
-                                             "Name=DSPi uConsole\n"
-                                             "Comment=Configure and tune a DSPi audio processor\n"
+                                             "Name=%2\n"
+                                             "Comment=Set up and control a DSPi audio processor\n"
                                              "Exec=%1\n"
-                                             "Icon=dspi-uconsole\n"
+                                             "Icon=%3\n"
                                              "Terminal=false\n"
                                              "X-GNOME-Autostart-enabled=true\n")
-                                  .arg(execArgument(program));
+                                  .arg(execArgument(program), AppIdentity::displayName(),
+                                       QString::fromUtf8(AppIdentityNames::desktopFileName));
         f.write(entry.toUtf8());
         if (!f.commit()) return QCoreApplication::translate("SystemIntegration", "Could not write %1: %2").arg(file(), f.errorString());
         return QString();
@@ -172,8 +178,8 @@ public:
         else m_key->remove(QLatin1String(kRunName));
         m_key->sync();
         if (m_key->status() != QSettings::NoError)
-            return on ? QCoreApplication::translate("SystemIntegration", "Could not add the Console to the programs that start at sign-in.")
-                      : QCoreApplication::translate("SystemIntegration", "Could not remove the Console from the programs that start at sign-in.");
+            return on ? QCoreApplication::translate("SystemIntegration", "Could not add %1 to the programs that start at sign-in.").arg(AppIdentity::displayName())
+                      : QCoreApplication::translate("SystemIntegration", "Could not remove %1 from the programs that start at sign-in.").arg(AppIdentity::displayName());
         return QString();
     }
 
@@ -278,7 +284,7 @@ private:
         QDBusMessage call = QDBusMessage::createMethodCall(m_logind, QLatin1String(kLogindPath),
                                                            QStringLiteral("org.freedesktop.login1.Manager"),
                                                            QStringLiteral("Inhibit"));
-        call << QStringLiteral("idle") << QStringLiteral("DSPi uConsole") << reason << QStringLiteral("block");
+        call << QStringLiteral("idle") << AppIdentity::displayName() << reason << QStringLiteral("block");
         watch(m_logindBus.asyncCall(call), [this, generation, portalError, done](QDBusPendingCallWatcher *w) {
             QDBusPendingReply<QDBusUnixFileDescriptor> reply = *w;
             if (generation != m_generation) return;     // the fd closes with the reply
@@ -331,7 +337,7 @@ std::unique_ptr<LoginItem> makeRunKeyLoginItem(std::unique_ptr<QSettings> key) {
 
 // ── The controller ──
 
-SystemIntegration::SystemIntegration(DSPiBridge *, QObject *parent) : QObject(parent)
+SystemIntegration::SystemIntegration(const AppContext &, QObject *parent) : QObject(parent)
 {
 #if defined(Q_OS_WIN)
     setLoginItem(makeRunKeyLoginItem(std::make_unique<QSettings>(
@@ -345,12 +351,8 @@ SystemIntegration::SystemIntegration(DSPiBridge *, QObject *parent) : QObject(pa
 #endif
     m_keepAwake = QSettings().value(QLatin1String(kKeepAwakeKey), false).toBool();
 
-    // The hub registers alongside, in no set order: look once all are made
-    QTimer::singleShot(0, this, [this]() {
-        if (m_hub || !this->parent()) return;
-        const auto hubs = this->parent()->findChildren<TrayHub *>(QString(), Qt::FindDirectChildrenOnly);
-        if (!hubs.isEmpty()) setHub(hubs.first());
-    });
+    // The hub's controller is made alongside, in no set order: follow it once all are
+    QTimer::singleShot(0, this, [this]() { followHub(Registrar::instance<HubController>()); });
 }
 
 SystemIntegration::~SystemIntegration() {
@@ -413,16 +415,24 @@ void SystemIntegration::setSleepInhibitor(std::unique_ptr<SleepInhibitor> inhibi
     reconcileAwake();
 }
 
-void SystemIntegration::setHub(TrayHub *hub) {
+void SystemIntegration::followHub(HubController *hub) {
     if (m_hub) m_hub->disconnect(this);
     m_hub = hub;
-    if (m_hub) connect(m_hub, &TrayHub::trayStateChanged, this, &SystemIntegration::reconcileAwake);
+    if (m_hub) {
+        connect(m_hub, &HubController::stateChanged, this, [this]() { setHubRunning(m_hub->running()); });
+        setHubRunning(m_hub->running());
+    }
+}
+
+void SystemIntegration::setHubRunning(bool running) {
+    if (running == m_hubRunning) return;
+    m_hubRunning = running;
     reconcileAwake();
 }
 
 // The hold follows the hub: in place exactly while it runs and the user asked
 void SystemIntegration::reconcileAwake() {
-    const bool want = m_inhibitor && m_keepAwake && m_hub && m_hub->trayState().running;
+    const bool want = m_inhibitor && m_keepAwake && m_hubRunning;
     if (want == m_wanted) return;
     m_wanted = want;
     const int generation = ++m_generation;
