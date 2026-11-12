@@ -375,7 +375,7 @@ impl LimiterSettings {
                     l.threshold_db as f64,
                     ranges::LIMITER_THRESHOLD_MIN as f64,
                     ranges::LIMITER_THRESHOLD_MAX as f64,
-                    "dB",
+                    panel::unit_of("limit.threshold"),
                 )
                 .step(0.5)
                 .decimals(1)

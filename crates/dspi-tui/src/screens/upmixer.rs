@@ -255,8 +255,8 @@ impl UpmixerPanel {
                     .step(0.5)
                     .decimals(1)
                     .caption(
-                        "Haas delay on Ls/Rs (precedence effect). Rule of thumb ~1 ms per foot \
-                         of listener distance.",
+                        "Haas delay on Ls/Rs (precedence effect). Rule of thumb: about 3 ms per \
+                         metre of listener distance.",
                     ),
             ));
             rows.push(Row::Param(

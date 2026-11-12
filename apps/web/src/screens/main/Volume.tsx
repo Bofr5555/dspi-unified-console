@@ -53,7 +53,7 @@ export const VolumeCard = memo(function VolumeCard(props: {
   const live = useLiveWrite((db) => session.write(path, { float: db }));
   const db = live.draft ?? (master ? props.masterDb : props.userDb);
   const toDb = master ? posToMaster : posToUser;
-  const name = master ? "Master Volume" : "User Volume";
+  const name = master ? "Master volume" : "Volume";
   const reset = (e: Event) => {
     e.preventDefault();
     if (!disabled) live.release(0);
@@ -72,8 +72,8 @@ export const VolumeCard = memo(function VolumeCard(props: {
             saveMode(m);
           }}
         >
-          <option value="user">User Volume</option>
-          <option value="master">Master Volume</option>
+          <option value="user">Volume</option>
+          <option value="master">Master volume</option>
         </select>
         <output class="volume-value" aria-live="polite">
           {volumeText(db, master)}

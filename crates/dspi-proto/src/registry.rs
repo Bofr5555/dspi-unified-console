@@ -1197,7 +1197,7 @@ pub static REGISTRY: &[ParamDesc] = &[
     p(
         "lev.lookahead",
         "Lookahead",
-        "Anticipate peaks, at the cost of 10 ms delay",
+        "Anticipate peaks; delays every input by 5 ms (240 samples at 48 kHz)",
         Dynamics,
         Advanced,
         Bool,

@@ -62,7 +62,7 @@ const KEYS: &[KeyHelp] = &[
     KeyHelp::new("Space", "Bypass"),
     KeyHelp::new("1-9,0", "Jump to a band"),
     KeyHelp::new("a", "Enable All"),
-    KeyHelp::new("Backspace", "Reset the preamp"),
+    KeyHelp::new("Backspace", "Reset the input trim"),
 ];
 
 impl InputPage {
@@ -125,7 +125,7 @@ impl InputPage {
 
     fn preamp_row<'a>(&self, state: &DeviceState, theme: &'a Theme) -> ParamRow<'a> {
         ParamRow::new(
-            "Preamp",
+            "Input trim",
             state.preamp_db(self.input) as f64,
             -60.0,
             10.0,
@@ -744,7 +744,10 @@ mod tests {
         let f = draw(&mut p, &state, 94, 21);
         let head = f.lines().next().unwrap();
         assert!(head.contains("Link 1/2"), "{head}");
-        assert!(head.contains("Preamp") && head.contains("0.0 dB"), "{head}");
+        assert!(
+            head.contains("Input trim") && head.contains("0.0 dB"),
+            "{head}"
+        );
         assert!(head.contains("Clear PEQ"), "{head}");
         // And the filter list is beneath it.
         assert!(f.contains("TYPE") && f.contains("Low Shelf (12dB)"), "{f}");
