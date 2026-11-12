@@ -246,7 +246,7 @@ The core itself still needs an FFI surface (C ABI or UniFFI) over `dspi-session`
 | DSPi Link hub/sharing | L | Done (`HubController`, `FirewallController`) |
 | Demo device | S | Done (`DemoController`) |
 | Firmware updater: 1.1.6 final images, custom `.uf2`, optional download | S | UI (bundle) / Core (writer) |
-| Tray / menu-bar mode (keep running, quick volume) | M | Done, without quick volume (`TrayController`) |
+| Tray / menu-bar mode (keep running, quick volume) | M | Done, with quick volume (`TrayController`, QP14) |
 | Accessibility (`Accessible.name/role` on custom controls) | M | UI: done in QD22; the Orca pass is left |
 | Localisation (`qsTr` + `.ts` files) | M | UI |
 | Separate C0/C1 CPU bars | S | UI (declined on purpose; optional) |

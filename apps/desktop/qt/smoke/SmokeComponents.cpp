@@ -136,10 +136,18 @@ void componentsSection(SmokeDriver &d) {
     // The menu table's shortcuts work in a tool window too
     w->requestActivate();
     d.spin(100);
+    // -- WP QP7 -- the shell's triggered signal: the row has a window now (QP7)
+    QString reached;
+    const auto seen = QObject::connect(shell, &Shell::triggered, shell, [&](const QString &id) { reached = id; });
     QTest::keyClick(w, Qt::Key_L, Qt::ControlModifier | Qt::ShiftModifier);
     d.check(QStringLiteral("qp0: Ctrl+Shift+L in a tool window reaches the shell"),
-            d.waitFor(2000, [&]() { return shell->lastUnhandled() == QLatin1String("tools.loudness"); }));
+            d.waitFor(2000, [&]() { return reached == QLatin1String("tools.loudness"); }));
+    QObject::disconnect(seen);
+    if (QWindow *opened = shell->openWindow(QStringLiteral("tools.loudness"))) opened->close();
     w->close();
+    // -- WP QP7 -- the main window active again for the sections after this one
+    d.mainWindow()->requestActivate();
+    d.spin(100);
 }
 
 const SmokeDriver::Section components("qp0-components", 2, &componentsSection);

@@ -384,6 +384,17 @@ interface DspiCoreApi : AutoCloseable {
     fun openDemo()
 
     /**
+     * Whether the connect probe found feature `name` on the open device
+     * (`dspi_session::probe`'s names: `spdif_multi_input`, `adat_input`,
+     * `i2s_slave_clock`, ...), so a client hides what the firmware lacks
+     * without comparing versions. `i2s_clock_pin_mode`, which has no probe,
+     * answers whether the parameter image carried the clock-pin mode. False
+     * with no device, before the probe, and for a name the probe does not
+     * know.
+     */
+    fun featurePresent(name: String): Boolean
+
+    /**
      * `EXT_CROSSFEED_PAIR_MAP` (Bofr5555/DSPi fork, the K340 build): the
      * outputs of every crossfeed pair at once, 4 bytes
      * (`DspState.crossfeed_pair_map` encoding).

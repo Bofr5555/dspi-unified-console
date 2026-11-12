@@ -9,8 +9,8 @@ import UConsole
 // graph is not drawn here. No legend: the sidebar's curve pills are the main
 // window's show/hide control.
 //
-// The PEQ editor's band chip docks under the graph (GraphController.PeqDock,
-// QP4's): its item gets `plot` (GraphPlot) when it declares the property.
+// The PEQ editor's band bar docks under the graph (GraphController.PeqDock,
+// PeqBandBar): its item gets `plot` (GraphPlot) when it declares the property.
 // The right pane supplies the side margins.
 ColumnLayout {
     id: host
@@ -67,6 +67,7 @@ ColumnLayout {
         readonly property string type: GraphController.slotType(GraphController.PeqDock)
         visible: !GraphController.poppedOut
         Layout.fillWidth: true
+        Layout.topMargin: item ? 6 : 0 // -- WP QPI2 --
         active: type !== ""
         sourceComponent: active ? Qt.createComponent("UConsole", type) : null
         onLoaded: if ("plot" in item) item.plot = plot

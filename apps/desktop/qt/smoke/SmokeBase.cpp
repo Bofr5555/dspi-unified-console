@@ -123,19 +123,34 @@ void checkMenus(SmokeDriver &d) {
         d.check(QStringLiteral("qp0: menu row %1 exists").arg(id), d.object(QStringLiteral("Menu.") + id) != nullptr);
 
     // A row's action, as a click on it runs it
+    // -- WP QP7 -- the shell's triggered signal: the row has a window now (QP7)
+    QString reached;
+    const auto seen = QObject::connect(shell, &Shell::triggered, shell, [&](const QString &id) { reached = id; });
     QObject *row = d.object(QStringLiteral("Menu.tools.loudness"));
     QObject *action = row ? row->property("action").value<QObject *>() : nullptr;
     if (action) QMetaObject::invokeMethod(action, "trigger");
     d.check(QStringLiteral("qp0: a menu row reaches the shell"),
-            d.waitFor(2000, [&]() { return shell->lastUnhandled() == QLatin1String("tools.loudness"); }));
+            d.waitFor(2000, [&]() { return reached == QLatin1String("tools.loudness"); }));
+    QObject::disconnect(seen);
+    if (QWindow *opened = shell->openWindow(QStringLiteral("tools.loudness"))) opened->close();
+    d.mainWindow()->requestActivate();
+    d.spin(100);
 
     // A shortcut, as a key press
     QQuickWindow *w = d.mainWindow();
     w->requestActivate();
     d.spin(100);
+    // -- WP QP6 -- tools.matrix is handled now (the matrix window): the
+    // shortcut is checked by the shell's triggered signal, and the window it
+    // opens is closed again
+    QString triggered;
+    QMetaObject::Connection seenShortcut = QObject::connect(shell, &Shell::triggered, [&](const QString &a) { triggered = a; });   // review w2: `seen` is QP7's above
     QTest::keyClick(w, Qt::Key_M, Qt::ControlModifier | Qt::ShiftModifier);
     d.check(QStringLiteral("qp0: Ctrl+Shift+M reaches the shell as tools.matrix"),
-            d.waitFor(2000, [&]() { return shell->lastUnhandled() == QLatin1String("tools.matrix"); }));
+            d.waitFor(2000, [&]() { return triggered == QLatin1String("tools.matrix"); }));
+    QObject::disconnect(seenShortcut);
+    if (QWindow *opened = shell->handles(QStringLiteral("tools.matrix")) ? shell->openWindow(QStringLiteral("tools.matrix")) : nullptr)
+        opened->close();
 }
 
 void checkPlugPoints(SmokeDriver &d) {
@@ -148,7 +163,7 @@ void checkPlugPoints(SmokeDriver &d) {
     d.check(QStringLiteral("qp0: a controller's action handler runs"), probe->actions() == 1);
     d.check(QStringLiteral("qp0: the shell knows the handled ids"),
             shell->handles(QStringLiteral("smoke.action")) && shell->handles(QStringLiteral("smoke.window")) &&
-                !shell->handles(QStringLiteral("tools.matrix")));
+                !shell->handles(QStringLiteral("smoke.nothing")));   // -- WP QP6 -- (was tools.matrix, now handled)
 
     d.check(QStringLiteral("qp0: a registered banner is in the host"),
             shell->banners().contains(QStringLiteral("SmokeProbeBanner")));

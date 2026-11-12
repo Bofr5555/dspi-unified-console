@@ -126,7 +126,15 @@ A work package adds its files without editing the shell:
   `ToolWindow`, opened by its menu row;
 - a **menu row's action** with `ctx.shell->addHandler("<action id>", this, ...)`;
   every row of the Mac's menus is in `qml/main/MenuTable.qml` already and does
-  nothing until something handles its id;
+  nothing until something handles its id (one handler per id);
+- a **hardware setting held for the save bar** with a `SaveParticipant`
+  added with `HardwareController::addSaveParticipant(participant, order)` (QP11); an edit of
+  the output configuration made elsewhere calls
+  `HardwareController::beginOutputEdit()` before it writes;
+- **Qt modules and libraries** through the base's lists in the package's
+  cmake file: `list(APPEND DSPI_QT_COMPONENTS Network)`,
+  `list(APPEND DSPI_APP_LIBS Qt6::Network)`, and for anything else per target
+  a `function(<name> target)` appended to `DSPI_APP_HOOKS`;
 - a **smoke section** with `SmokeDriver::Section` in its own file under
   `qt/smoke/`.
 
@@ -163,11 +171,14 @@ adapts each to `Core` and `DeviceModel`, or replaces it:
 
 | File | Work package |
 |---|---|
-| `src/platform/SystemIntegration.h`, `SystemIntegration.cpp` | QP14 |
-| `src/platform/FirewallController.cpp` | QP14 |
 | `src/platform/HostAudioFormatWindows.cpp` | QP18 |
 | `smoke/SmokeDriverRtaFollow.cpp` | QP9 |
-| `smoke/SmokeDriverNetworking.cpp`, `SmokeDriverTray.cpp`, `SmokeDriverSystem.cpp` | QP14 |
+| `smoke/SmokeDriverExt.cpp` | its core-voltage half waits for the core-voltage WP (`SmokeEffects.cpp` replaced the rest, QP7) |
+| `smoke/SmokeDriverLatency.cpp`, `SmokeDriverNames.cpp`, `SmokeDriverSaveBar.cpp` | replaced by `SmokeHardware.cpp` (QP11); to be removed |
 | the other `smoke/SmokeDriver*.cpp` section files | the work package of their screens; QP19 for the rest |
+
+QP14 built `src/platform/SystemIntegration.*` and `FirewallController.*`, and
+its sections are `SmokeNetworking.cpp`, `SmokeTray.cpp`, `SmokeSystem.cpp`;
+QP15 removed `SmokeDriverAutoEq.cpp`.
 
 `src/platform/TokenStore.*` is built (it needs nothing of the app) and wired by QP13.

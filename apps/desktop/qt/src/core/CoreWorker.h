@@ -6,6 +6,8 @@
 #include <QThread>
 #include <atomic>
 #include <functional>
+#include <memory>
+#include <type_traits>
 #include <utility>
 
 struct FfiCore;
@@ -36,11 +38,20 @@ public:
         QPointer<QObject> guard(ctx);
         QObject *home = m_home;
         post([job = std::move(job), done = std::move(done), guard, home](FfiCore *core) mutable {
-            auto result = job(core);
+            // -- WP QPI2 -- `done` and the result cross to the GUI thread in a
+            // move-only box, so nothing they hold can be copied and left behind
+            // on this thread; they are destroyed where `done` runs
+            struct Box {
+                Done done;
+                std::decay_t<decltype(job(core))> result;
+            };
+            auto box = std::make_unique<Box>(Box{ std::move(done), job(core) });
             QMetaObject::invokeMethod(
                 home,
-                [done = std::move(done), guard, result = std::move(result)]() mutable {
-                    if (guard) done(std::move(result));
+                [box = std::move(box), guard]() mutable {
+                    Q_ASSERT(!guard || QThread::currentThread() == guard->thread());
+                    if (guard) box->done(std::move(box->result));
+                    box.reset();
                 },
                 Qt::QueuedConnection);
         });

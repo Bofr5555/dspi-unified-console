@@ -383,6 +383,10 @@ fn collect(root: &Path) -> Vec<Group> {
         wire,
         "u32",
         Bit,
+        // -- WP QPI2 -- the three the desktop's effects windows test
+        WIRE_FEAT_LEVELLER_MASKS = feat::LEVELLER_MASKS,
+        WIRE_FEAT_LOUDNESS_MASK = feat::LOUDNESS_MASK,
+        WIRE_FEAT_CROSSFEED_MASK = feat::CROSSFEED_MASK,
         WIRE_FEAT_PSYBASS = feat::PSYBASS,
         WIRE_FEAT_UPMIX = feat::UPMIX,
         WIRE_FEAT_SUBHARM = feat::SUBHARM,

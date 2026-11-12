@@ -1,0 +1,2 @@
+# -- WP QPI2 -- PEQ band bar
+arrow-down-up       PEQ band bar: invert gain

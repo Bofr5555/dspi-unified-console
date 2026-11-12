@@ -71,6 +71,12 @@ public enum DspiConstants {
     public static let WIRE_FORMAT_VERSION: UInt8 = 32
     /// `dspi_proto::wire_compat::MIN_WIRE_FORMAT_VERSION`.
     public static let MIN_WIRE_FORMAT_VERSION: UInt8 = 16
+    /// `dspi_proto::wire_compat::feat::LEVELLER_MASKS`.
+    public static let WIRE_FEAT_LEVELLER_MASKS: UInt32 = 1 << 1
+    /// `dspi_proto::wire_compat::feat::LOUDNESS_MASK`.
+    public static let WIRE_FEAT_LOUDNESS_MASK: UInt32 = 1 << 2
+    /// `dspi_proto::wire_compat::feat::CROSSFEED_MASK`.
+    public static let WIRE_FEAT_CROSSFEED_MASK: UInt32 = 1 << 3
     /// `dspi_proto::wire_compat::feat::PSYBASS`.
     public static let WIRE_FEAT_PSYBASS: UInt32 = 1 << 6
     /// `dspi_proto::wire_compat::feat::UPMIX`.

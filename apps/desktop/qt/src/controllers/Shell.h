@@ -66,6 +66,10 @@ public:
     Q_INVOKABLE void openUrl(const QString &url);
     Q_INVOKABLE void quit();
 
+    // -- WP QP15 -- Asked before quit() quits (UnsavedGuard: the unsaved-changes
+    // question), while `receiver` exists; `guard` calls `proceed` to quit
+    void setQuitGuard(QObject *receiver, std::function<void(std::function<void()> proceed)> guard);
+
 signals:
     void triggered(const QString &action);
     void bannersChanged();
@@ -84,6 +88,9 @@ private:
     QStringList m_banners;
     QString m_lastUnhandled;
     Qt::ColorScheme m_schemeOverride = Qt::ColorScheme::Unknown;
+    // -- WP QP15 --
+    QPointer<QObject> m_quitGuardReceiver;
+    std::function<void(std::function<void()>)> m_quitGuard;
 };
 
 #endif // SHELL_H

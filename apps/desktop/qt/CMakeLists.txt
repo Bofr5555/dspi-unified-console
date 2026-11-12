@@ -82,8 +82,6 @@ set(DSPI_APP_SOURCES
 )
 # Kept from the previous tree, not built until their work package adapts them to
 # Core and DeviceModel (README.md, "Parked files"):
-#   src/platform/SystemIntegration.{h,cpp}  QP14
-#   src/platform/FirewallController.cpp     QP14
 #   src/platform/HostAudioFormatWindows.cpp QP18
 
 set(DSPI_QML_FILES
@@ -142,12 +140,25 @@ set(DSPI_SMOKE_QML_FILES
 #   list(APPEND DSPI_QML_SINGLETONS qml/...)          # QML files that are singletons
 #   list(APPEND DSPI_SMOKE_SOURCES smoke/SmokeHub.cpp)
 #   list(APPEND DSPI_SMOKE_QML_FILES smoke/...)
+#   list(APPEND DSPI_QT_COMPONENTS Network)           # more Qt modules, found once
+#   list(APPEND DSPI_APP_LIBS Qt6::Network)           # linked into both targets
+#   list(APPEND DSPI_APP_HOOKS dspi_qp15_target)      # a function(target) run on both
+#                                                     # targets once each is made
 #
 # New list files are picked up at the next build (CONFIGURE_DEPENDS).
+# -- WP QPI2 -- the shared modules and libraries are lists, not deferred calls
+set(DSPI_QT_COMPONENTS)
+set(DSPI_APP_LIBS)
+set(DSPI_APP_HOOKS)
 file(GLOB DSPI_WP_LISTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/wp/*.cmake")
 foreach(wp_list IN LISTS DSPI_WP_LISTS)
     include("${wp_list}")
 endforeach()
+if(DSPI_QT_COMPONENTS)
+    list(REMOVE_DUPLICATES DSPI_QT_COMPONENTS)
+    find_package(Qt6 6.8 REQUIRED COMPONENTS ${DSPI_QT_COMPONENTS})
+endif()
+list(REMOVE_DUPLICATES DSPI_APP_LIBS)
 set_source_files_properties(${DSPI_QML_SINGLETONS} PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 # The icons: the names in icons/lucide/manifest.txt and in each work package's
@@ -186,6 +197,10 @@ function(dspi_add_app target)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         target_link_libraries(${target} PRIVATE Qt6::DBus)
     endif()
+    target_link_libraries(${target} PRIVATE ${DSPI_APP_LIBS})
+    foreach(hook IN LISTS DSPI_APP_HOOKS)
+        cmake_language(CALL ${hook} ${target})
+    endforeach()
     if(WIN32)
         target_link_libraries(${target} PRIVATE advapi32 credui ole32 oleaut32)
         add_custom_command(TARGET ${target} POST_BUILD
@@ -212,6 +227,10 @@ if(DSPI_SMOKE)
     target_compile_definitions(DSPiConsoleSmoke PRIVATE DSPI_SMOKE)
     target_include_directories(DSPiConsoleSmoke PRIVATE smoke)
     target_link_libraries(DSPiConsoleSmoke PRIVATE Qt6::Test)
+    # -- WP QPI2 -- readable names in the smoke driver's crash backtraces
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        target_link_options(DSPiConsoleSmoke PRIVATE -rdynamic)
+    endif()
 endif()
 
 # ---- Translations (English only) ------------------------------------------

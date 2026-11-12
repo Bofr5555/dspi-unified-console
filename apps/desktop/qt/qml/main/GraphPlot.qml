@@ -32,6 +32,9 @@ Rectangle {
     readonly property alias optionsOpen: options.open
     // In the pop-out window (its own visibility, its own names)
     property bool popOut: false
+    // -- WP QPI2 -- the PEQ slot's editor (a PeqOverlay), for the band bar
+    // docked under this graph; null without one
+    readonly property var peqEditor: peqSlot.item && peqSlot.item.editor ? peqSlot.item.editor : null
 
     objectName: popOut ? "GraphWindow.plot" : "GraphHost.plot"
     color: Theme.panel
@@ -108,6 +111,7 @@ Rectangle {
     }
 
     SlotLoader {
+        id: peqSlot
         objectName: plot.objectName + ".peqSlot"
         kind: GraphController.PeqOverlay
     }

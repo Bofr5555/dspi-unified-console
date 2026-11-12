@@ -5,10 +5,11 @@
 #include <QDir>
 #include <QUrl>
 
+#include "AppIdentity.h"
 #include "Registrar.h"
 
 // -- WP UPW2 --
-static const Registrar::Controller<FirewallController> firewallRegistered("firewall");
+static const Registrar::Controller<FirewallController> firewallRegistered;
 
 #ifdef Q_OS_WIN
 
@@ -26,8 +27,6 @@ namespace {
 const CLSID kNetFwPolicy2 = { 0xe2b3c97f, 0x6ae1, 0x41ac, { 0x81, 0x7a, 0xf6, 0xf9, 0x21, 0x66, 0xd7, 0xdd } };
 const CLSID kNetworkListManager = { 0xdcb00c01, 0x570f, 0x4a9b, { 0x8d, 0x69, 0x19, 0x9f, 0xdb, 0xa5, 0x72, 0x3b } };
 
-// The rule's name in Windows Defender Firewall's list
-const wchar_t *const kRuleName = L"DSPi uConsole";
 
 template <class T>
 struct Com {
@@ -186,7 +185,7 @@ QString addAllowRule(const QString &exe, bool blocked) {
     // path with % in it cannot be named in a rule at all (netsh refuses it, or
     // the rule names another path).
     if (exe.contains(QLatin1Char('%')))
-        return FirewallController::tr("Windows Firewall cannot name a program whose folder has a % sign in its name. Move DSPi uConsole to another folder.");
+        return FirewallController::tr("Windows Firewall cannot name a program whose folder has a % sign in its name. Move %1 to another folder.").arg(AppIdentity::displayName());
     wchar_t system[MAX_PATH];
     const UINT n = GetSystemDirectoryW(system, MAX_PATH);
     if (n == 0 || n >= MAX_PATH) return FirewallController::tr("Windows could not start the change (error %1).").arg(GetLastError());
@@ -196,7 +195,7 @@ QString addAllowRule(const QString &exe, bool blocked) {
     const QString command = blocked
         ? QStringLiteral("advfirewall firewall set rule name=all %1 new action=allow enable=yes profile=private,domain").arg(program)
         : QStringLiteral("advfirewall firewall add rule name=\"%1\" %2 action=allow enable=yes profile=private,domain")
-              .arg(QString::fromWCharArray(kRuleName), program);
+              .arg(AppIdentity::displayName(), program);   // the rule's name in the firewall's list
     const std::wstring params = command.toStdWString();
     SHELLEXECUTEINFOW info = {};
     info.cbSize = sizeof info;
@@ -234,10 +233,13 @@ auto withCom(F f) -> decltype(f()) {
 
 #endif // Q_OS_WIN
 
-FirewallController::FirewallController(DSPiBridge *, QObject *parent)
+FirewallController::FirewallController(const AppContext &, QObject *parent)
     : QObject(parent), m_exe(QDir::toNativeSeparators(QCoreApplication::applicationFilePath()))
 {
     m_worker.setMaxThreadCount(1);
+    // -- WP QP14 -- A rule deleted from outside shows within one read (behaviour.md §11.1)
+    m_watch.setInterval(5000);
+    connect(&m_watch, &QTimer::timeout, this, &FirewallController::check);
 }
 
 FirewallController::~FirewallController() { m_worker.waitForDone(); }
@@ -247,14 +249,34 @@ bool FirewallController::supported() const
 #ifdef Q_OS_WIN
     return true;
 #else
-    return false;
+    return m_simulated;
 #endif
+}
+
+void FirewallController::setWatching(bool on)
+{
+    if (on == m_watch.isActive()) return;
+    if (on) {
+        m_watch.start();
+        check();
+    } else {
+        m_watch.stop();
+    }
+    emit watchingChanged();
+}
+
+void FirewallController::simulate(const QString &rules, bool onPublic)
+{
+    m_simulated = true;
+    m_rules = rules;
+    m_public = onPublic;
+    emit changed();
 }
 
 void FirewallController::check()
 {
 #ifdef Q_OS_WIN
-    if (m_checking) return;
+    if (m_checking || m_simulated) return;
     m_checking = true;
     emit changed();
     const QString exe = m_exe;
@@ -274,7 +296,7 @@ void FirewallController::check()
 void FirewallController::allow()
 {
 #ifdef Q_OS_WIN
-    if (m_fixing) return;
+    if (m_fixing || m_simulated) return;
     m_fixing = true;
     m_fixError.clear();
     emit changed();

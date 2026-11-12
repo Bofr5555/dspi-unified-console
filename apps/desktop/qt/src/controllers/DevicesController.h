@@ -72,6 +72,9 @@ public:
 
     // This app's own hub (sharing), which is not listed as another one
     void setOwnHubId(const QString &id);
+    // -- WP QP14 -- Settings > Networking shows its Other Hubs: browse while it
+    // does, as while the list shows (behaviour.md §10)
+    Q_INVOKABLE void setPageWatching(bool on);
     // Browsing now (the list shows or a session reconnects), for tests
     bool browseRunning() const { return m_browseRunning; }
     // The main window's host of the list and the prompt, for the smoke driver
@@ -98,6 +101,7 @@ private:
     QPointer<QQuickItem> m_host;
     QPointer<LinkController> m_link;
     bool m_listShown = false;
+    bool m_pageWatching = false;   // -- WP QP14 --
     QVariantList m_usb;
     bool m_lookForHubs = true;
     bool m_browseRunning = false;

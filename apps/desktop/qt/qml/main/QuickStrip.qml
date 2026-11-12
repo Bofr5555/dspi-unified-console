@@ -77,7 +77,7 @@ RowLayout {
         objectName: "QuickStrip.stats"
         windowAction: "tools.stats"
         iconName: "info"
-        toolTip: qsTr("Stats for Nerbs")
+        toolTip: qsTr("Stats for nerbs") // -- WP QPI2 -- the owner's spelling everywhere
     }
     WindowButton {
         objectName: "QuickStrip.settings"

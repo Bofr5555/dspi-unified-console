@@ -1394,6 +1394,21 @@
 #define MIN_WIRE_FORMAT_VERSION 16
 
 /**
+ * `dspi_proto::wire_compat::feat::LEVELLER_MASKS`.
+ */
+#define WIRE_FEAT_LEVELLER_MASKS (1 << 1)
+
+/**
+ * `dspi_proto::wire_compat::feat::LOUDNESS_MASK`.
+ */
+#define WIRE_FEAT_LOUDNESS_MASK (1 << 2)
+
+/**
+ * `dspi_proto::wire_compat::feat::CROSSFEED_MASK`.
+ */
+#define WIRE_FEAT_CROSSFEED_MASK (1 << 3)
+
+/**
  * `dspi_proto::wire_compat::feat::PSYBASS`.
  */
 #define WIRE_FEAT_PSYBASS (1 << 6)
@@ -4660,6 +4675,14 @@ uint32_t dspi_read_only_refusals(struct FfiCore *core);
  * The open device's wire features (`WIRE_FEAT_*`); 0 without one.
  */
 uint32_t dspi_wire_features(struct FfiCore *core);
+
+/**
+ * Whether the connect probe found feature `name` on the open device (the
+ * probe's names: `spdif_multi_input`, `adat_input`, `i2s_slave_clock`, ...;
+ * `i2s_clock_pin_mode`: the parameter image carries the clock-pin mode).
+ * False with no device, for a null name and for a name the probe lacks.
+ */
+bool dspi_feature_present(struct FfiCore *core, const char *name);
 
 /**
  * The output latency the device reports, in JSON: `{ok, raw, fields}`.

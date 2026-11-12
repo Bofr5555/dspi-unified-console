@@ -103,4 +103,14 @@ QtObject {
     readonly property var pinRoleTints: ["#0278c7", "#ba3822", "#04856f", "#9543a7", "#807701"]
     // A free pin on the Overview map
     readonly property color pinFree: dark ? "#303136" : "#e4e4e8"
+
+    // -- WP QP15 -- AutoEQ: the tag behind each measurement source's name (the
+    // Mac's source colours), drawn faint under Theme.text
+    readonly property var autoEqSourceTints: ({
+        "oratory1990": "#e8890c", "crinacle": "#9b51e0", "rtings": "#2f80ed", "innerfidelity": "#27ae60"
+    })
+    readonly property color autoEqSourceTintDefault: dark ? "#88888e" : "#808085"
+    function autoEqSourceTint(source) {
+        return autoEqSourceTints[source] !== undefined ? autoEqSourceTints[source] : autoEqSourceTintDefault
+    }
 }

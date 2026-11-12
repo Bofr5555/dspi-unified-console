@@ -132,4 +132,17 @@ void Shell::openUrl(const QString &url) {
     QDesktopServices::openUrl(u);
 }
 
-void Shell::quit() { QCoreApplication::quit(); }
+void Shell::quit() {
+    // -- WP QP15 -- the quit guard first
+    if (m_quitGuardReceiver && m_quitGuard) {
+        m_quitGuard([] { QCoreApplication::quit(); });
+        return;
+    }
+    QCoreApplication::quit();
+}
+
+// -- WP QP15 --
+void Shell::setQuitGuard(QObject *receiver, std::function<void(std::function<void()>)> guard) {
+    m_quitGuardReceiver = receiver;
+    m_quitGuard = std::move(guard);
+}

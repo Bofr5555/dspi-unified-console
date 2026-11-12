@@ -68,6 +68,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun openDemo(): Unit = throw NotImplementedError("open_demo")
 
+    override fun featurePresent(name: String): Boolean = throw NotImplementedError("feature_present")
+
     override fun setCrossfeedPairMap(map: List<Int>): Unit = throw NotImplementedError("set_crossfeed_pair_map")
 
     override fun fetchCrossfeedPairMap(): List<Int> = throw NotImplementedError("fetch_crossfeed_pair_map")

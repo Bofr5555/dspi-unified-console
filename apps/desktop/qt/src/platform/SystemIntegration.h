@@ -5,15 +5,20 @@
 #include <QPointer>
 #include <QSettings>
 #include <QString>
+#include <QtQml/qqmlregistration.h>
 #include <functional>
 #include <memory>
 
-class DSPiBridge;
-class TrayHub;
+#include "Registrar.h"
+
+class HubController;
+class QQmlEngine;
+class QJSEngine;
 
 // WP QD13: open at login, and keep awake while sharing (MenuBarMode.swift's
-// SMAppService item, LinkService.swift's idleSystemSleepDisabled). QML sees it as
-// `system`; the two rows are in Settings > Networking > Running in the Background.
+// SMAppService item, LinkService.swift's idleSystemSleepDisabled). -- WP QP14 --
+// QML sees it as the singleton `SystemIntegration`; the two rows are in
+// Settings > Networking > Running in the Background (behaviour.md §12.2, §12.3).
 
 // Where the login entry lives. Each backend writes one entry and reads it back;
 // the controller never caches what the system holds.
@@ -60,6 +65,8 @@ std::unique_ptr<SleepInhibitor> makeDBusSleepInhibitor(const QDBusConnection &po
 class SystemIntegration : public QObject
 {
     Q_OBJECT
+    QML_ELEMENT
+    QML_SINGLETON
     // Open at login: read from the entry itself, so a user who removes it sees off
     Q_PROPERTY(bool loginSupported READ loginSupported CONSTANT)
     Q_PROPERTY(bool openAtLogin READ openAtLogin WRITE setOpenAtLogin NOTIFY loginChanged)
@@ -77,8 +84,9 @@ class SystemIntegration : public QObject
     Q_PROPERTY(QString awakeError READ awakeError NOTIFY awakeChanged)
 
 public:
-    SystemIntegration(DSPiBridge *bridge, QObject *parent);
+    SystemIntegration(const AppContext &ctx, QObject *parent);
     ~SystemIntegration() override;
+    static SystemIntegration *create(QQmlEngine *, QJSEngine *) { return Registrar::instance<SystemIntegration>(); }
 
     bool loginSupported() const { return m_login != nullptr; }
     bool openAtLogin() const;
@@ -96,12 +104,14 @@ public:
     // What the entry starts: the AppImage when run from one, else this executable
     static QString programPath();
 
-    // For the smoke driver: other backends, and the hub to follow. The hub is
-    // otherwise found among this controller's siblings once the registrar is done.
+    // For the smoke driver: other backends, and what the hold follows. The app's
+    // HubController is followed from the first turn of the event loop; null stops
+    // following, and setHubRunning() then stands in for it.
     void setLoginItem(std::unique_ptr<LoginItem> item);
     void setSleepInhibitor(std::unique_ptr<SleepInhibitor> inhibitor);
-    void setHub(TrayHub *hub);
-    TrayHub *hub() const { return m_hub; }
+    void followHub(HubController *hub);
+    HubController *hub() const { return m_hub; }
+    void setHubRunning(bool running);
 
 signals:
     void loginChanged();
@@ -115,7 +125,8 @@ private:
     QString m_loginOther;
 
     std::unique_ptr<SleepInhibitor> m_inhibitor;
-    QPointer<TrayHub> m_hub;
+    QPointer<HubController> m_hub;
+    bool m_hubRunning = false;  // sharing is on and the hub runs
     bool m_keepAwake = false;
     bool m_wanted = false;      // a hold is asked for or in place
     bool m_held = false;        // and in place
