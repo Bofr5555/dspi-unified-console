@@ -21,7 +21,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeyEvent>
-#include <QQmlApplicationEngine>
+#include <QtQml/QQmlApplicationEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSettings>

@@ -14,7 +14,7 @@
 
 #include <QDesktopServices>
 #include <QHash>
-#include <QQmlApplicationEngine>
+#include <QtQml/QQmlApplicationEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSettings>
