@@ -30,7 +30,7 @@ pub use card::Card;
 pub use chips::{ChipRow, ChipState};
 pub use dialog::{Button, Dialog, DialogKind, DialogOutcome};
 pub use help::{HelpOverlay, KeyHelp};
-pub use meter::{CpuMeter, LevelMeter, PeakHold};
+pub use meter::{CpuMeter, LevelMeter};
 pub use param::{NumberEdit, ParamRow, Taper};
 pub use picker::{PickerRow, PopupList, Segmented};
 pub use pingrid::{PinCell, PinGrid, PinRole};

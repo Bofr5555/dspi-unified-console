@@ -457,7 +457,11 @@ open class FakeDspiCore(
             activeInputChannels = if (st.numInputChannels > 2) st.numInputChannels else 2,
             numChannels = st.numChannels,
             stale = false,
-            ageMs = 0
+            ageMs = 0,
+            // -- WP P0M -- no ballistics in the fake: the hold is the level
+            peakHold = peaks,
+            peakMax = peaks,
+            clipHold = stickyClips
         )
     }
 

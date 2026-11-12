@@ -269,6 +269,26 @@ data class SystemStatus(
      * Age of the values in milliseconds.
      */
     val ageMs: Long,
+    /**
+     * The held peak per channel (17 entries), linear: a new peak holds for
+     * `MeterBallistics.hold_ms`, then falls at `decay_per_s`. Computed by the
+     * core from `peaks`; draw it as the hold marker.
+     */
+    val peakHold: List<Float>,
+    /**
+     * The highest peak per channel (17 entries) since the connection opened
+     * or `reset_meter_max`.
+     */
+    val peakMax: List<Float>,
+    /**
+     * The clip hold, one bit per channel: lit by a clip, dark again
+     * `MeterBallistics.clip_hold_ms` after the last new one (the core then
+     * clears the device's sticky `clip_flags`; a channel still clipping lights
+     * again on the next read) or after `clear_clips`. Where the clear is
+     * refused (a viewer on a hub) it follows the sticky flags. Draw the clip
+     * marker from this, not from `clip_flags`.
+     */
+    val clipHold: Long,
 )
 
 /**
@@ -1861,6 +1881,110 @@ data class RtaOwnership(
      * Its FFT order.
      */
     val fftOrder: Int,
+)
+
+/**
+ * The meter ballistics' timing (`DspiCore::set_meter_ballistics`).
+ */
+data class MeterBallistics(
+    /**
+     * How long a new peak holds, ms. Default 1000.
+     */
+    val holdMs: Long,
+    /**
+     * How fast a held peak falls after its hold, linear full scale per
+     * second. Default 0.5.
+     */
+    val decayPerS: Float,
+    /**
+     * How long the clip hold lasts after the last new clip, ms; 0 until
+     * cleared. Default 10 000 (the macOS console's).
+     */
+    val clipHoldMs: Long,
+)
+
+/**
+ * One record of a device's event log (`DspiCore::event_log_read`).
+ */
+data class EventEntry(
+    /**
+     * Rising per device, across runs.
+     */
+    val id: Long,
+    /**
+     * When, ms since the Unix epoch.
+     */
+    val timeMs: Long,
+    /**
+     * `notification`, `connected`, `disconnected`, `clip`, `temperature`,
+     * `counter`, `reset`, `firmware`, `import`, `recall`; `unknown` for a
+     * newer build's kind.
+     */
+    val kind: String,
+    /**
+     * The device's serial.
+     */
+    val serial: String,
+    /**
+     * One readable line.
+     */
+    val text: String,
+    /**
+     * Who or what caused it: a notification's source (`HOST`, `PRESET`,
+     * `UART`, ...), a transport, a counter, a reset reason, `meter`; "" when
+     * none.
+     */
+    val source: String,
+    /**
+     * The DSPi Link session that caused it, when another one did.
+     */
+    val session: Long?,
+    /**
+     * This client's own write coming back.
+     */
+    val own: Boolean,
+    /**
+     * A wire channel (clips), or the preset slot (recalls).
+     */
+    val channel: Int?,
+    /**
+     * °C for a temperature, the total for a counter.
+     */
+    val value: Double?,
+    /**
+     * The firmware version, on connects and firmware changes.
+     */
+    val fw: String?,
+    /**
+     * The device's uptime, s, where it reports one.
+     */
+    val uptimeS: Long?,
+    /**
+     * Detail lines: what a recall or an import changed.
+     */
+    val lines: List<String>,
+    /**
+     * Occurrences this record stands for (repeats, counter steps, changes).
+     */
+    val count: Long,
+)
+
+/**
+ * A page of a device's event log.
+ */
+data class EventBatch(
+    /**
+     * The id to pass next time.
+     */
+    val lastId: Long,
+    /**
+     * Lines in the files that were not records.
+     */
+    val skipped: Long,
+    /**
+     * Oldest first.
+     */
+    val entries: List<EventEntry>,
 )
 
 /**

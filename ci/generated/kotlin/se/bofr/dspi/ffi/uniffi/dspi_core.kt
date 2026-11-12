@@ -1460,6 +1460,20 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1645,6 +1659,14 @@ fun uniffi_dspi_core_checksum_method_dspicore_disconnect(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_enter_bootloader(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_event_log_devices(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_event_log_export(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_event_log_read(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_event_log_set_dir(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_ext_status(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_factory_reset(
@@ -1753,6 +1775,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_load_preset(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_max_delay_ms(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_meter_ballistics(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_monitor_clear(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_monitor_read(
@@ -1790,6 +1814,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_raw_set(
 fun uniffi_dspi_core_checksum_method_dspicore_refresh_params(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_reset_buffer_stats(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_reset_meter_max(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_rta_get_caps(
 ): Short
@@ -1918,6 +1944,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_set_mck_enabled(
 fun uniffi_dspi_core_checksum_method_dspicore_set_mck_multiplier(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_set_mck_pin(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_set_meter_ballistics(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_set_notify_listener(
 ): Short
@@ -2195,6 +2223,14 @@ fun uniffi_dspi_core_fn_method_dspicore_disconnect(`ptr`: Pointer,uniffi_out_err
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_enter_bootloader(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_event_log_devices(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_event_log_export(`ptr`: Pointer,`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_event_log_read(`ptr`: Pointer,`serial`: RustBuffer.ByValue,`afterId`: Long,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_event_log_set_dir(`ptr`: Pointer,`dir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_ext_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_factory_reset(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -2303,6 +2339,8 @@ fun uniffi_dspi_core_fn_method_dspicore_load_preset(`ptr`: Pointer,`slot`: Byte,
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_max_delay_ms(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Float
+fun uniffi_dspi_core_fn_method_dspicore_meter_ballistics(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_monitor_clear(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_monitor_read(`ptr`: Pointer,`afterId`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -2340,6 +2378,8 @@ fun uniffi_dspi_core_fn_method_dspicore_raw_set(`ptr`: Pointer,`opcode`: Byte,`v
 fun uniffi_dspi_core_fn_method_dspicore_refresh_params(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_reset_buffer_stats(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_reset_meter_max(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_rta_get_caps(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -2468,6 +2508,8 @@ fun uniffi_dspi_core_fn_method_dspicore_set_mck_enabled(`ptr`: Pointer,`enabled`
 fun uniffi_dspi_core_fn_method_dspicore_set_mck_multiplier(`ptr`: Pointer,`mult`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_set_mck_pin(`ptr`: Pointer,`pin`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_set_meter_ballistics(`ptr`: Pointer,`config`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_set_notify_listener(`ptr`: Pointer,`listener`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -3046,6 +3088,18 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_enter_bootloader() != 19680.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_event_log_devices() != 55922.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_event_log_export() != 41664.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_event_log_read() != 314.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_event_log_set_dir() != 60714.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_ext_status() != 10163.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3121,7 +3175,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_stats_tick() != 21250.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_status() != 58511.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_status() != 22027.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_subharm_headroom() != 28745.toShort()) {
@@ -3208,6 +3262,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_max_delay_ms() != 14810.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_meter_ballistics() != 35146.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_monitor_clear() != 47062.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3263,6 +3320,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_reset_buffer_stats() != 36944.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_reset_meter_max() != 60815.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_rta_get_caps() != 59838.toShort()) {
@@ -3455,6 +3515,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_mck_pin() != 21307.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_meter_ballistics() != 5003.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_notify_listener() != 43429.toShort()) {
@@ -5630,6 +5693,43 @@ public interface DspiCoreInterface {
     fun `enterBootloader`()
     
     /**
+     * The serials with an event log, sorted. Never fails.
+     */
+    fun `eventLogDevices`(): List<kotlin.String>
+    
+    /**
+     * `serial`'s whole event log as JSON lines, oldest first, in the file
+     * format (`dspi_session::events`): for a "Save events…" or a diagnostics
+     * bundle. An empty `serial` is the open device. Never fails; an unknown
+     * serial exports "".
+     */
+    fun `eventLogExport`(`serial`: kotlin.String): kotlin.String
+    
+    /**
+     * `serial`'s event log with ids above `after_id`, oldest first, at
+     * most `limit` (capped at [`EVENT_READ_MAX`]): with `after_id` 0 the
+     * newest `limit`, otherwise the next `limit` after it, so poll with the
+     * batch's `last_id`. An empty `serial` is the open device. Lines in the
+     * file that are not records are skipped and counted. Reads files: not on
+     * the UI thread; no other call waits for it. Never fails; an unknown
+     * serial reads empty.
+     */
+    fun `eventLogRead`(`serial`: kotlin.String, `afterId`: kotlin.ULong, `limit`: kotlin.UInt): EventBatch
+    
+    /**
+     * Keep the event log in files under `dir`, the client's own data
+     * directory, created if missing: one JSON-lines file per device serial,
+     * rotated, at most about 1 MiB per device. An empty `dir` keeps it in
+     * memory only (the default; the last 1000 records). Call it at start-up,
+     * before connecting; the open device's log carries on in the new
+     * place. Blocking file I/O: not on the UI thread.
+     *
+     * Errors: [`DspiError::Io`] when the directory cannot be created;
+     * [`DspiError::Unsupported`] on the web, which keeps it in memory.
+     */
+    fun `eventLogSetDir`(`dir`: kotlin.String)
+    
+    /**
      * What the extension channel offers on the connected device, as probed
      * on connect; no traffic. Empty on stock firmware. `has_pair_map` and
      * `has_core_vreg` are true only when the sub-command was listed *and*
@@ -5953,6 +6053,14 @@ public interface DspiCoreInterface {
      * poll is read directly at a low rate; a repeat of the last such read is
      * `stale` too.
      *
+     * WP P0M: `peak_hold`, `peak_max` and `clip_hold` are the core's meter
+     * ballistics over these reads (`set_meter_ballistics`); a `stale` read
+     * leaves them as they were. When the clip hold ends the core clears the
+     * device's sticky flags itself (`REQ_CLEAR_CLIPS`, as `clear_clips`), so
+     * a client keeps no clip timer. A channel still clipping lights again on
+     * the next read; where the clear is refused (a viewer on a hub) the hold
+     * follows the device's sticky flags. New clips go to the event log.
+     *
      * Errors: [`DspiError::Disconnected`] with no device open;
      * [`DspiError::Transfer`] when the read fails or the reply is shorter
      * than `num_channels * 2 + 6` bytes.
@@ -6262,6 +6370,13 @@ public interface DspiCoreInterface {
     fun `maxDelayMs`(): kotlin.Float
     
     /**
+     * The meter ballistics' timing (`SystemStatus.peak_hold`, `clip_hold`).
+     * Defaults: hold 1000 ms, then a fall of 0.5 full scale per second; clip
+     * hold 10 000 ms after the last new clip. Never fails.
+     */
+    fun `meterBallistics`(): MeterBallistics
+    
+    /**
      * Forget every monitor line. Ids carry on from where they were, so a
      * reader's last id stays valid. Never fails.
      */
@@ -6499,6 +6614,12 @@ public interface DspiCoreInterface {
      * [`DspiError::Disconnected`] or [`DspiError::Transfer`] otherwise.
      */
     fun `resetBufferStats`()
+    
+    /**
+     * Start every channel's `SystemStatus.peak_max` again from the next
+     * read. A new connection does this too. Never fails.
+     */
+    fun `resetMeterMax`()
     
     /**
      * The device's analyser as the worker probed it: `supported` false
@@ -7165,6 +7286,14 @@ public interface DspiCoreInterface {
      * [`DspiError::Locked`] (Link, reset only) or a transfer error.
      */
     fun `setMckPin`(`pin`: kotlin.UByte)
+    
+    /**
+     * Change the meter ballistics' timing for every later `fetch_status`.
+     * What is held stays. A `decay_per_s` below 0 or not finite reads as 0
+     * (a held peak then stays until a higher one); a `clip_hold_ms` of 0
+     * holds clips until `clear_clips`. Never fails.
+     */
+    fun `setMeterBallistics`(`config`: MeterBallistics)
     
     /**
      * Register (`Some`) or clear (`None`) the wake-up listener of the
@@ -8628,6 +8757,83 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * The serials with an event log, sorted. Never fails.
+     */override fun `eventLogDevices`(): List<kotlin.String> {
+            return FfiConverterSequenceString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_event_log_devices(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * `serial`'s whole event log as JSON lines, oldest first, in the file
+     * format (`dspi_session::events`): for a "Save events…" or a diagnostics
+     * bundle. An empty `serial` is the open device. Never fails; an unknown
+     * serial exports "".
+     */override fun `eventLogExport`(`serial`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_event_log_export(
+        it, FfiConverterString.lower(`serial`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * `serial`'s event log with ids above `after_id`, oldest first, at
+     * most `limit` (capped at [`EVENT_READ_MAX`]): with `after_id` 0 the
+     * newest `limit`, otherwise the next `limit` after it, so poll with the
+     * batch's `last_id`. An empty `serial` is the open device. Lines in the
+     * file that are not records are skipped and counted. Reads files: not on
+     * the UI thread; no other call waits for it. Never fails; an unknown
+     * serial reads empty.
+     */override fun `eventLogRead`(`serial`: kotlin.String, `afterId`: kotlin.ULong, `limit`: kotlin.UInt): EventBatch {
+            return FfiConverterTypeEventBatch.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_event_log_read(
+        it, FfiConverterString.lower(`serial`),FfiConverterULong.lower(`afterId`),FfiConverterUInt.lower(`limit`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Keep the event log in files under `dir`, the client's own data
+     * directory, created if missing: one JSON-lines file per device serial,
+     * rotated, at most about 1 MiB per device. An empty `dir` keeps it in
+     * memory only (the default; the last 1000 records). Call it at start-up,
+     * before connecting; the open device's log carries on in the new
+     * place. Blocking file I/O: not on the UI thread.
+     *
+     * Errors: [`DspiError::Io`] when the directory cannot be created;
+     * [`DspiError::Unsupported`] on the web, which keeps it in memory.
+     */
+    @Throws(DspiException::class)override fun `eventLogSetDir`(`dir`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_event_log_set_dir(
+        it, FfiConverterString.lower(`dir`),_status)
+}
+    }
+    
+    
+
+    
+    /**
      * What the extension channel offers on the connected device, as probed
      * on connect; no traffic. Empty on stock firmware. `has_pair_map` and
      * `has_core_vreg` are true only when the sub-command was listed *and*
@@ -9221,6 +9427,14 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * stalls, the block reads all zero with `stale` set. A hub that refuses the
      * poll is read directly at a low rate; a repeat of the last such read is
      * `stale` too.
+     *
+     * WP P0M: `peak_hold`, `peak_max` and `clip_hold` are the core's meter
+     * ballistics over these reads (`set_meter_ballistics`); a `stale` read
+     * leaves them as they were. When the clip hold ends the core clears the
+     * device's sticky flags itself (`REQ_CLEAR_CLIPS`, as `clear_clips`), so
+     * a client keeps no clip timer. A channel still clipping lights again on
+     * the next read; where the clear is refused (a viewer on a hub) the hold
+     * follows the device's sticky flags. New clips go to the event log.
      *
      * Errors: [`DspiError::Disconnected`] with no device open;
      * [`DspiError::Transfer`] when the read fails or the reply is shorter
@@ -9830,6 +10044,23 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * The meter ballistics' timing (`SystemStatus.peak_hold`, `clip_hold`).
+     * Defaults: hold 1000 ms, then a fall of 0.5 full scale per second; clip
+     * hold 10 000 ms after the last new clip. Never fails.
+     */override fun `meterBallistics`(): MeterBallistics {
+            return FfiConverterTypeMeterBallistics.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_meter_ballistics(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Forget every monitor line. Ids carry on from where they were, so a
      * reader's last id stays valid. Never fails.
      */override fun `monitorClear`()
@@ -10249,6 +10480,21 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     callWithPointer {
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_reset_buffer_stats(
+        it, _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Start every channel's `SystemStatus.peak_max` again from the next
+     * read. A new connection does this too. Never fails.
+     */override fun `resetMeterMax`()
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_reset_meter_max(
         it, _status)
 }
     }
@@ -11550,6 +11796,23 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_set_mck_pin(
         it, FfiConverterUByte.lower(`pin`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Change the meter ballistics' timing for every later `fetch_status`.
+     * What is held stays. A `decay_per_s` below 0 or not finite reads as 0
+     * (a held peak then stays until a higher one); a `clip_hold_ms` of 0
+     * holds clips until `clear_clips`. Never fails.
+     */override fun `setMeterBallistics`(`config`: MeterBallistics)
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_set_meter_ballistics(
+        it, FfiConverterTypeMeterBallistics.lower(`config`),_status)
 }
     }
     
@@ -15954,6 +16217,183 @@ public object FfiConverterTypeDspState: FfiConverterRustBuffer<DspState> {
 
 
 /**
+ * A page of a device's event log.
+ */
+data class EventBatch (
+    /**
+     * The id to pass next time.
+     */
+    var `lastId`: kotlin.ULong, 
+    /**
+     * Lines in the files that were not records.
+     */
+    var `skipped`: kotlin.UInt, 
+    /**
+     * Oldest first.
+     */
+    var `entries`: List<EventEntry>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeEventBatch: FfiConverterRustBuffer<EventBatch> {
+    override fun read(buf: ByteBuffer): EventBatch {
+        return EventBatch(
+            FfiConverterULong.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterSequenceTypeEventEntry.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: EventBatch) = (
+            FfiConverterULong.allocationSize(value.`lastId`) +
+            FfiConverterUInt.allocationSize(value.`skipped`) +
+            FfiConverterSequenceTypeEventEntry.allocationSize(value.`entries`)
+    )
+
+    override fun write(value: EventBatch, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`lastId`, buf)
+            FfiConverterUInt.write(value.`skipped`, buf)
+            FfiConverterSequenceTypeEventEntry.write(value.`entries`, buf)
+    }
+}
+
+
+
+/**
+ * One record of a device's event log (`DspiCore::event_log_read`).
+ */
+data class EventEntry (
+    /**
+     * Rising per device, across runs.
+     */
+    var `id`: kotlin.ULong, 
+    /**
+     * When, ms since the Unix epoch.
+     */
+    var `timeMs`: kotlin.Long, 
+    /**
+     * `notification`, `connected`, `disconnected`, `clip`, `temperature`,
+     * `counter`, `reset`, `firmware`, `import`, `recall`; `unknown` for a
+     * newer build's kind.
+     */
+    var `kind`: kotlin.String, 
+    /**
+     * The device's serial.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * One readable line.
+     */
+    var `text`: kotlin.String, 
+    /**
+     * Who or what caused it: a notification's source (`HOST`, `PRESET`,
+     * `UART`, ...), a transport, a counter, a reset reason, `meter`; "" when
+     * none.
+     */
+    var `source`: kotlin.String, 
+    /**
+     * The DSPi Link session that caused it, when another one did.
+     */
+    var `session`: kotlin.UInt?, 
+    /**
+     * This client's own write coming back.
+     */
+    var `own`: kotlin.Boolean, 
+    /**
+     * A wire channel (clips), or the preset slot (recalls).
+     */
+    var `channel`: kotlin.UByte?, 
+    /**
+     * °C for a temperature, the total for a counter.
+     */
+    var `value`: kotlin.Double?, 
+    /**
+     * The firmware version, on connects and firmware changes.
+     */
+    var `fw`: kotlin.String?, 
+    /**
+     * The device's uptime, s, where it reports one.
+     */
+    var `uptimeS`: kotlin.UInt?, 
+    /**
+     * Detail lines: what a recall or an import changed.
+     */
+    var `lines`: List<kotlin.String>, 
+    /**
+     * Occurrences this record stands for (repeats, counter steps, changes).
+     */
+    var `count`: kotlin.UInt
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeEventEntry: FfiConverterRustBuffer<EventEntry> {
+    override fun read(buf: ByteBuffer): EventEntry {
+        return EventEntry(
+            FfiConverterULong.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalUByte.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: EventEntry) = (
+            FfiConverterULong.allocationSize(value.`id`) +
+            FfiConverterLong.allocationSize(value.`timeMs`) +
+            FfiConverterString.allocationSize(value.`kind`) +
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterString.allocationSize(value.`text`) +
+            FfiConverterString.allocationSize(value.`source`) +
+            FfiConverterOptionalUInt.allocationSize(value.`session`) +
+            FfiConverterBoolean.allocationSize(value.`own`) +
+            FfiConverterOptionalUByte.allocationSize(value.`channel`) +
+            FfiConverterOptionalDouble.allocationSize(value.`value`) +
+            FfiConverterOptionalString.allocationSize(value.`fw`) +
+            FfiConverterOptionalUInt.allocationSize(value.`uptimeS`) +
+            FfiConverterSequenceString.allocationSize(value.`lines`) +
+            FfiConverterUInt.allocationSize(value.`count`)
+    )
+
+    override fun write(value: EventEntry, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`id`, buf)
+            FfiConverterLong.write(value.`timeMs`, buf)
+            FfiConverterString.write(value.`kind`, buf)
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterString.write(value.`text`, buf)
+            FfiConverterString.write(value.`source`, buf)
+            FfiConverterOptionalUInt.write(value.`session`, buf)
+            FfiConverterBoolean.write(value.`own`, buf)
+            FfiConverterOptionalUByte.write(value.`channel`, buf)
+            FfiConverterOptionalDouble.write(value.`value`, buf)
+            FfiConverterOptionalString.write(value.`fw`, buf)
+            FfiConverterOptionalUInt.write(value.`uptimeS`, buf)
+            FfiConverterSequenceString.write(value.`lines`, buf)
+            FfiConverterUInt.write(value.`count`, buf)
+    }
+}
+
+
+
+/**
  * What the extension channel supports.
  */
 data class ExtStatus (
@@ -16960,6 +17400,56 @@ public object FfiConverterTypeLinkStatus: FfiConverterRustBuffer<LinkStatus> {
             FfiConverterUInt.write(value.`reconnectInMs`, buf)
             FfiConverterString.write(value.`pinSource`, buf)
             FfiConverterBoolean.write(value.`tokenRefused`, buf)
+    }
+}
+
+
+
+/**
+ * The meter ballistics' timing (`DspiCore::set_meter_ballistics`).
+ */
+data class MeterBallistics (
+    /**
+     * How long a new peak holds, ms. Default 1000.
+     */
+    var `holdMs`: kotlin.UInt, 
+    /**
+     * How fast a held peak falls after its hold, linear full scale per
+     * second. Default 0.5.
+     */
+    var `decayPerS`: kotlin.Float, 
+    /**
+     * How long the clip hold lasts after the last new clip, ms; 0 until
+     * cleared. Default 10 000 (the macOS console's).
+     */
+    var `clipHoldMs`: kotlin.UInt
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeterBallistics: FfiConverterRustBuffer<MeterBallistics> {
+    override fun read(buf: ByteBuffer): MeterBallistics {
+        return MeterBallistics(
+            FfiConverterUInt.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeterBallistics) = (
+            FfiConverterUInt.allocationSize(value.`holdMs`) +
+            FfiConverterFloat.allocationSize(value.`decayPerS`) +
+            FfiConverterUInt.allocationSize(value.`clipHoldMs`)
+    )
+
+    override fun write(value: MeterBallistics, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`holdMs`, buf)
+            FfiConverterFloat.write(value.`decayPerS`, buf)
+            FfiConverterUInt.write(value.`clipHoldMs`, buf)
     }
 }
 
@@ -18954,7 +19444,27 @@ data class SystemStatus (
     /**
      * Age of the values in milliseconds.
      */
-    var `ageMs`: kotlin.UInt
+    var `ageMs`: kotlin.UInt, 
+    /**
+     * The held peak per channel (17 entries), linear: a new peak holds for
+     * `MeterBallistics.hold_ms`, then falls at `decay_per_s`. Computed by the
+     * core from `peaks`; draw it as the hold marker.
+     */
+    var `peakHold`: List<kotlin.Float>, 
+    /**
+     * The highest peak per channel (17 entries) since the connection opened
+     * or `reset_meter_max`.
+     */
+    var `peakMax`: List<kotlin.Float>, 
+    /**
+     * The clip hold, one bit per channel: lit by a clip, dark again
+     * `MeterBallistics.clip_hold_ms` after the last new one (the core then
+     * clears the device's sticky `clip_flags`; a channel still clipping lights
+     * again on the next read) or after `clear_clips`. Where the clear is
+     * refused (a viewer on a hub) it follows the sticky flags. Draw the clip
+     * marker from this, not from `clip_flags`.
+     */
+    var `clipHold`: kotlin.UInt
 ) {
     
     companion object
@@ -18974,6 +19484,9 @@ public object FfiConverterTypeSystemStatus: FfiConverterRustBuffer<SystemStatus>
             FfiConverterUByte.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterUInt.read(buf),
+            FfiConverterSequenceFloat.read(buf),
+            FfiConverterSequenceFloat.read(buf),
+            FfiConverterUInt.read(buf),
         )
     }
 
@@ -18985,7 +19498,10 @@ public object FfiConverterTypeSystemStatus: FfiConverterRustBuffer<SystemStatus>
             FfiConverterUByte.allocationSize(value.`activeInputChannels`) +
             FfiConverterUByte.allocationSize(value.`numChannels`) +
             FfiConverterBoolean.allocationSize(value.`stale`) +
-            FfiConverterUInt.allocationSize(value.`ageMs`)
+            FfiConverterUInt.allocationSize(value.`ageMs`) +
+            FfiConverterSequenceFloat.allocationSize(value.`peakHold`) +
+            FfiConverterSequenceFloat.allocationSize(value.`peakMax`) +
+            FfiConverterUInt.allocationSize(value.`clipHold`)
     )
 
     override fun write(value: SystemStatus, buf: ByteBuffer) {
@@ -18997,6 +19513,9 @@ public object FfiConverterTypeSystemStatus: FfiConverterRustBuffer<SystemStatus>
             FfiConverterUByte.write(value.`numChannels`, buf)
             FfiConverterBoolean.write(value.`stale`, buf)
             FfiConverterUInt.write(value.`ageMs`, buf)
+            FfiConverterSequenceFloat.write(value.`peakHold`, buf)
+            FfiConverterSequenceFloat.write(value.`peakMax`, buf)
+            FfiConverterUInt.write(value.`clipHold`, buf)
     }
 }
 
@@ -20743,6 +21262,38 @@ public object FfiConverterOptionalULong: FfiConverterRustBuffer<kotlin.ULong?> {
 /**
  * @suppress
  */
+public object FfiConverterOptionalDouble: FfiConverterRustBuffer<kotlin.Double?> {
+    override fun read(buf: ByteBuffer): kotlin.Double? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterDouble.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.Double?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterDouble.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.Double?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterDouble.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalString: FfiConverterRustBuffer<kotlin.String?> {
     override fun read(buf: ByteBuffer): kotlin.String? {
         if (buf.get().toInt() == 0) {
@@ -21185,6 +21736,34 @@ public object FfiConverterSequenceTypeDeviceInfo: FfiConverterRustBuffer<List<De
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeDeviceInfo.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeEventEntry: FfiConverterRustBuffer<List<EventEntry>> {
+    override fun read(buf: ByteBuffer): List<EventEntry> {
+        val len = buf.getInt()
+        return List<EventEntry>(len) {
+            FfiConverterTypeEventEntry.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<EventEntry>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeEventEntry.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<EventEntry>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeEventEntry.write(it, buf)
         }
     }
 }

@@ -2363,6 +2363,23 @@ typedef struct SystemStatus {
    * Wire channels of the device.
    */
   uint8_t num_channels;
+  /**
+   * Held peak per wire channel, 0..1: the hold marker (the core's
+   * ballistics, `dspi_set_meter_ballistics`).
+   */
+  float peak_hold[MAX_CHANNELS];
+  /**
+   * Highest peak per wire channel since the connection opened or
+   * `dspi_reset_meter_max`.
+   */
+  float peak_max[MAX_CHANNELS];
+  /**
+   * The clip hold, one bit per wire channel: draw the clip marker from
+   * this. The core clears the device's flags when it ends; a channel still
+   * clipping lights again, and where the clear is refused (a viewer on a
+   * hub) the hold follows the device's sticky flags.
+   */
+  uint32_t clip_hold;
 } SystemStatus;
 
 /**
@@ -3571,6 +3588,26 @@ typedef void (*AutoEqFetchCallback)(void *user_data,
                                     const char *accept,
                                     const char *user_agent,
                                     struct AutoEqFetchSink *sink);
+
+/**
+ * The meter ballistics' timing (`dspi_meter_ballistics`).
+ */
+typedef struct MeterBallistics {
+  /**
+   * How long a new peak holds, ms (default 1000).
+   */
+  uint32_t hold_ms;
+  /**
+   * How fast a held peak falls after its hold, full scale per second
+   * (default 0.5).
+   */
+  float decay_per_s;
+  /**
+   * How long the clip hold lasts after the last new clip, ms; 0 until
+   * cleared (default 10000).
+   */
+  uint32_t clip_hold_ms;
+} MeterBallistics;
 
 /**
  * Platform and firmware version.
@@ -5095,6 +5132,66 @@ uint32_t dspi_onboarding_getting_started_json(char *buf, uint32_t len);
  * Returns the bytes needed including the NUL, 0 for a panic.
  */
 uint32_t dspi_about_json(char *buf, uint32_t len);
+
+/**
+ * The meter ballistics' timing into `out`. False for a null handle or an
+ * unusable `out`.
+ */
+bool dspi_meter_ballistics(struct FfiCore *core, struct MeterBallistics *out);
+
+/**
+ * Change the meter ballistics' timing (`SystemStatus.peak_hold`,
+ * `clip_hold`) for every later `dspi_fetch_status`. A negative or non-finite
+ * `decay_per_s` reads as 0; a `clip_hold_ms` of 0 holds until
+ * `dspi_clear_clips`.
+ */
+void dspi_set_meter_ballistics(struct FfiCore *core,
+                               uint32_t hold_ms,
+                               float decay_per_s,
+                               uint32_t clip_hold_ms);
+
+/**
+ * Start every channel's `SystemStatus.peak_max` again.
+ */
+void dspi_reset_meter_max(struct FfiCore *core);
+
+/**
+ * Keep the event log in files under `dir` (the app's data directory),
+ * or in memory only for "" or null. Blocking file I/O. False when the
+ * directory cannot be created (`dspi_last_error`).
+ */
+bool dspi_event_log_set_dir(struct FfiCore *core, const char *dir);
+
+/**
+ * `serial`'s event records with ids above `after_id` into `buf` as JSON
+ * lines, oldest first, as many whole lines as fit and at most `limit`: with
+ * `after_id` 0 the newest, otherwise the next after it. A null or empty
+ * `serial` is the open device. Returns the id to pass next time: the last
+ * line written, or past a record too long for the buffer at all, which is
+ * dropped. With nothing new, a null buffer, a length of 0 or a null handle it
+ * returns `after_id`. Pass a buffer of at least 4096 bytes (a record's
+ * longest line, NUL included) and no record is ever dropped. Reads files:
+ * not on the UI thread.
+ */
+uint64_t dspi_event_log_read(struct FfiCore *core,
+                             const char *serial,
+                             uint64_t after_id,
+                             uint32_t limit,
+                             char *buf,
+                             uint32_t buf_len);
+
+/**
+ * `serial`'s whole event log as JSON lines (the file format), oldest
+ * first; a null or empty `serial` is the open device. Returns the bytes
+ * needed, NUL included; 1 (an empty text) for a device with no event log.
+ */
+uint32_t dspi_event_log_export(struct FfiCore *core, const char *serial, char *buf, uint32_t len);
+
+/**
+ * The serials with an event log, as a JSON array of strings, sorted.
+ * Returns the bytes needed, NUL included.
+ */
+uint32_t dspi_event_log_devices(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
  * Start looking for hubs on the local network, replacing any browse running.

@@ -42,6 +42,8 @@ use crate::{FfiCore, with_core};
 
 mod autoeq;
 mod link_text;
+// -- WP P0M --
+mod events;
 
 // ── Replies ──────────────────────────────────────────────────────────
 

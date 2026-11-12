@@ -68,6 +68,20 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun openDemo(): Unit = throw NotImplementedError("open_demo")
 
+    override fun meterBallistics(): MeterBallistics = throw NotImplementedError("meter_ballistics")
+
+    override fun setMeterBallistics(config: MeterBallistics): Unit = throw NotImplementedError("set_meter_ballistics")
+
+    override fun resetMeterMax(): Unit = throw NotImplementedError("reset_meter_max")
+
+    override fun eventLogSetDir(dir: String): Unit = throw NotImplementedError("event_log_set_dir")
+
+    override fun eventLogRead(serial: String, afterId: Long, limit: Long): EventBatch = throw NotImplementedError("event_log_read")
+
+    override fun eventLogExport(serial: String): String = throw NotImplementedError("event_log_export")
+
+    override fun eventLogDevices(): List<String> = throw NotImplementedError("event_log_devices")
+
     override fun setCrossfeedPairMap(map: List<Int>): Unit = throw NotImplementedError("set_crossfeed_pair_map")
 
     override fun fetchCrossfeedPairMap(): List<Int> = throw NotImplementedError("fetch_crossfeed_pair_map")

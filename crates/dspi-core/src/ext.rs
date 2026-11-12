@@ -89,7 +89,13 @@ impl DspiCore {
         }
         let status = sx::read_core_vreg(conn.transport()).map_err(read_error)?;
         let info = vreg_info(&status);
-        conn.ext.core_vreg = Some(status);
+        // -- WP P0M -- the event log once `Inner` is released
+        let (uptime, hangs) = (status.uptime_s, status.hang_count);
+        if let Ok(conn) = inner.conn() {
+            conn.ext.core_vreg = Some(status);
+        }
+        drop(inner);
+        self.events.uptime(uptime, hangs);
         Ok(info)
     }
 

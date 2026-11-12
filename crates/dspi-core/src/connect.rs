@@ -208,10 +208,69 @@ impl DspiCore {
     /// poll is read directly at a low rate; a repeat of the last such read is
     /// `stale` too.
     ///
+    /// WP P0M: `peak_hold`, `peak_max` and `clip_hold` are the core's meter
+    /// ballistics over these reads (`set_meter_ballistics`); a `stale` read
+    /// leaves them as they were. When the clip hold ends the core clears the
+    /// device's sticky flags itself (`REQ_CLEAR_CLIPS`, as `clear_clips`), so
+    /// a client keeps no clip timer. A channel still clipping lights again on
+    /// the next read; where the clear is refused (a viewer on a hub) the hold
+    /// follows the device's sticky flags. New clips go to the event log.
+    ///
     /// Errors: [`DspiError::Disconnected`] with no device open;
     /// [`DspiError::Transfer`] when the read fails or the reply is shorter
     /// than `num_channels * 2 + 6` bytes.
     pub fn fetch_status(&self) -> Result<SystemStatus> {
+        // -- WP P0M --
+        let mut status = self.fetch_status_raw()?;
+        if self.events.meters(&mut status) {
+            self.clear_clips_when_free();
+        }
+        Ok(status)
+    }
+
+    /// Copy of the cached state (the C ABI returns a borrowed pointer).
+    /// Defaults while disconnected. Never fails.
+    pub fn get_state(&self) -> DspState {
+        self.lock().state.clone()
+    }
+
+    /// Longest delay the firmware's delay line holds, ms: 42 on RP2350
+    /// (`platform_id` 1, 2048 samples at 48 kHz), 21 otherwise (RP2040,
+    /// 1024 samples). Read from the mirror; never fails.
+    pub fn max_delay_ms(&self) -> f32 {
+        state::max_delay_ms_for(&self.lock().state)
+    }
+
+    /// Clear the device's sticky clip flags (`REQ_CLEAR_CLIPS`, which reads
+    /// the flags back and clears them; the value is not used).
+    ///
+    /// Meter housekeeping, not a parameter: it touches no setting and
+    /// nothing in the bulk image, so it is allowed on a read-only
+    /// connection too. This is the one named exception (PLAN §1.2) to
+    /// "state-changing opcodes only on a `Writable`": it goes out on a plain
+    /// `Connection`.
+    ///
+    /// Errors: [`DspiError::Disconnected`] with no device open; the
+    /// transport's typed error when the transfer fails.
+    pub fn clear_clips(&self) -> Result<()> {
+        // -- WP P0M -- the core's clip hold goes dark at once; a clear that
+        // fails brings back what the device still reports
+        self.events.clear_clip_hold();
+        let sent = {
+            let mut guard = self.lock();
+            guard
+                .conn()
+                .and_then(|conn| conn.get_upto(op::REQ_CLEAR_CLIPS, 0, 4))
+        };
+        self.events.clear_result(sent.is_ok());
+        sent.map(|_| ())
+    }
+}
+
+// -- WP P0M --
+impl DspiCore {
+    /// [`DspiCore::fetch_status`]'s read, before the ballistics.
+    fn fetch_status_raw(&self) -> Result<SystemStatus> {
         // WP LK2: over DSPi Link this never waits for the core lock, so the
         // meters keep going while `fetch_all`, `cs_fetch` or a re-read after a
         // resync runs on another thread (call it from a thread of its own).
@@ -247,37 +306,6 @@ impl DspiCore {
         status.stale = read.stale;
         status.age_ms = read.age_ms;
         Ok(status)
-    }
-
-    /// Copy of the cached state (the C ABI returns a borrowed pointer).
-    /// Defaults while disconnected. Never fails.
-    pub fn get_state(&self) -> DspState {
-        self.lock().state.clone()
-    }
-
-    /// Longest delay the firmware's delay line holds, ms: 42 on RP2350
-    /// (`platform_id` 1, 2048 samples at 48 kHz), 21 otherwise (RP2040,
-    /// 1024 samples). Read from the mirror; never fails.
-    pub fn max_delay_ms(&self) -> f32 {
-        state::max_delay_ms_for(&self.lock().state)
-    }
-
-    /// Clear the device's sticky clip flags (`REQ_CLEAR_CLIPS`, which reads
-    /// the flags back and clears them; the value is not used).
-    ///
-    /// Meter housekeeping, not a parameter: it touches no setting and
-    /// nothing in the bulk image, so it is allowed on a read-only
-    /// connection too. This is the one named exception (PLAN §1.2) to
-    /// "state-changing opcodes only on a `Writable`": it goes out on a plain
-    /// `Connection`.
-    ///
-    /// Errors: [`DspiError::Disconnected`] with no device open; the
-    /// transport's typed error when the transfer fails.
-    pub fn clear_clips(&self) -> Result<()> {
-        let mut guard = self.lock();
-        let conn = guard.conn()?;
-        conn.get_upto(op::REQ_CLEAR_CLIPS, 0, 4)?;
-        Ok(())
     }
 }
 

@@ -41,15 +41,15 @@ use crate::shell::{
 };
 use crate::theme::{ChannelRole, Glyphs, Theme};
 use crate::widgets::text::truncate;
-use crate::widgets::{Button, Dialog, DialogOutcome, PeakHold, PopupList};
+use crate::widgets::{Button, Dialog, DialogOutcome, PopupList};
+// -- WP P0M -- the meters' hold and clip hold are the session's, shared with the core
 use dspi_session::link_words;
+use dspi_session::meters::Ballistics;
 
 /// The connect animation's length.
 const REVEAL: Duration = Duration::from_millis(400);
 /// How long a remotely changed value takes to reach its new position.
 const EASE: Duration = Duration::from_millis(120);
-/// The Console clears a clip latch this long after it lit.
-const CLIP_HOLD: Duration = Duration::from_secs(3);
 
 /// Makes the screens the shell shows. The default makes placeholders; later
 /// phases replace it.
@@ -652,7 +652,8 @@ pub struct Live {
     dialog: Option<(AppDialog, Dialog)>,
     popup: Option<(AppDialog, PopupList)>,
     status_until: Option<Instant>,
-    peaks: Vec<PeakHold>,
+    /// Peak hold, clip hold and peak maximum (`dspi_session::meters`).
+    meters: Ballistics,
     /// Whether a linked partner's curve is drawn under the selected one;
     /// `.` toggles it (DESIGN 12.2).
     partner_shown: bool,
@@ -660,13 +661,10 @@ pub struct Live {
     /// The state the screens share, when the factory keeps one.
     shared: Shared,
     pub should_quit: bool,
-    last_tick: Instant,
     /// The volume the slider is drawn at, easing toward the device's value
     /// when someone else moved it.
     shown_volume: Option<f64>,
     ease_from: Option<(Instant, f64)>,
-    /// When the clip latch was first set, for the Console's auto-clear.
-    clip_since: Option<Instant>,
     /// The notification reader, re-armed on every device switch.
     notes: Option<Notifications>,
     /// The link's kind, and our session id on a shared one: whose a change is
@@ -745,7 +743,6 @@ impl Live {
             num_outputs: caps.num_outputs,
             max_bands: caps.max_bands,
         };
-        let n = caps.num_channels as usize;
         let config = screens.config();
         let mut model = ShellModel::empty();
         model.selection = Selection::Overview;
@@ -763,15 +760,13 @@ impl Live {
             dialog: None,
             popup: None,
             status_until: None,
-            peaks: vec![PeakHold::default(); n],
+            meters: Ballistics::default(),
             partner_shown: true,
             screens,
             shared,
             should_quit: false,
-            last_tick: Instant::now(),
             shown_volume: None,
             ease_from: None,
-            clip_since: None,
             notes: None,
             last_screen_poll: Instant::now(),
             popout_pinned: None,
@@ -825,26 +820,27 @@ impl Live {
         };
         m.preset_dirty = s.has_unsaved_changes();
 
-        let item = |ch: usize, role: ChannelRole, inactive: bool, peaks: &[PeakHold]| ChannelItem {
-            name: {
-                // -- BUG1 -- an output's label, short beside its OUTn: the user's name, else
-                // channel and band from the routing and the filters ("R·Lo")
-                let n = screens::channel_short_label(s, ch);
-                if n.is_empty() {
-                    role.descriptor(no as u8)
-                } else {
-                    n
-                }
-            },
-            descriptor: role.descriptor(no as u8),
-            role,
-            color: t.role_color(role),
-            level: s.meters.peaks.get(ch).copied().unwrap_or(0.0),
-            peak: peaks.get(ch).map(|p| p.peak).unwrap_or(0.0),
-            clipped: s.is_clipped(ch),
-            inactive,
-            index: ch as u8,
-        };
+        let item =
+            |ch: usize, role: ChannelRole, inactive: bool, meters: &Ballistics| ChannelItem {
+                name: {
+                    // -- BUG1 -- an output's label, short beside its OUTn: the user's name, else
+                    // channel and band from the routing and the filters ("R·Lo")
+                    let n = screens::channel_short_label(s, ch);
+                    if n.is_empty() {
+                        role.descriptor(no as u8)
+                    } else {
+                        n
+                    }
+                },
+                descriptor: role.descriptor(no as u8),
+                role,
+                color: t.role_color(role),
+                level: s.meters.peaks.get(ch).copied().unwrap_or(0.0),
+                peak: meters.hold(ch),
+                clipped: s.is_clipped(ch),
+                inactive,
+                index: ch as u8,
+            };
         let active_inputs = s.meters.active_inputs as usize;
         m.inputs = (0..ni)
             .map(|i| {
@@ -852,7 +848,7 @@ impl Live {
                     i,
                     ChannelRole::Input(i as u8),
                     active_inputs > 0 && i >= active_inputs,
-                    &self.peaks,
+                    &self.meters,
                 )
             })
             .collect();
@@ -860,7 +856,7 @@ impl Live {
             .map(|o| {
                 let out = s.output(o);
                 let role = ChannelRole::of((ni + o) as u8, ni as u8, no as u8);
-                item(ni + o, role, !out.enabled || out.mute, &self.peaks)
+                item(ni + o, role, !out.enabled || out.mute, &self.meters)
             })
             .collect();
         // Without a device the sidebar shows no channel rows: they would only
@@ -2067,7 +2063,12 @@ impl Live {
             }
             ShellEvent::ClearClips => {
                 self.state.clear_clip_latch();
-                let _ = session.write("meters.clear", &[], Value::Trigger);
+                let now = Instant::now();
+                self.meters.clear_clips(now);
+                let sent = session.write("meters.clear", &[], Value::Trigger);
+                // A refused clear (a viewer on a hub) brings the clips back.
+                self.meters.clear_result(now, sent.is_ok());
+                self.state.clip_latched = self.meters.clip_hold();
                 self.sync_model();
             }
             ShellEvent::BypassToggle => {
@@ -2477,8 +2478,7 @@ impl Live {
             num_outputs: caps.num_outputs,
             max_bands: caps.max_bands,
         };
-        let n = caps.num_channels as usize;
-        self.peaks = vec![PeakHold::default(); n];
+        self.meters.reset();
         self.popout_pinned = None;
         // A held write was for the old device.
         self.gate = WriteGate::default();
@@ -2758,7 +2758,7 @@ impl Live {
         self.state.meters.peaks.fill(0.0);
         self.state.meters.cpu0 = 0;
         self.state.meters.cpu1 = 0;
-        self.peaks.fill(PeakHold::default());
+        self.meters.reset();
         let serial = self.state.caps.serial.clone();
         let offline = Box::new(connect::Offline::new(&serial));
         if let Some(s) = Session::new(offline, self.state.caps.clone()) {
@@ -3031,34 +3031,30 @@ impl Live {
         self.shared.borrow_mut().stats = stats;
     }
 
-    fn on_meters(&mut self, m: dspi_session::Meters, dt: f32, session: &mut Session) {
-        let now = Instant::now();
-        for (i, p) in self.peaks.iter_mut().enumerate() {
-            p.update(m.peaks.get(i).copied().unwrap_or(0.0), dt);
-        }
+    fn on_meters(&mut self, m: dspi_session::Meters, now: Instant, session: &mut Session) {
+        let clips = m.clipped.iter().enumerate().fold(0u32, |acc, (i, &c)| {
+            let bit = u32::try_from(i).ok().and_then(|i| 1u32.checked_shl(i));
+            if c { acc | bit.unwrap_or(0) } else { acc }
+        });
+        let update = self.meters.update(now, &m.peaks, clips);
         self.state.update_meters(m);
-        match (self.state.clip_latched != 0, self.clip_since) {
-            (true, None) => self.clip_since = Some(now),
-            (true, Some(since)) if now.duration_since(since) >= CLIP_HOLD => {
-                // The Console clears the latch itself after three
-                // seconds and asks the device to forget too.
-                self.state.clear_clip_latch();
-                let _ = session.write("meters.clear", &[], Value::Trigger);
-                self.clip_since = None;
-            }
-            (false, _) => self.clip_since = None,
-            _ => {}
+        // The clip marker is the shared clip hold: the Console's, ten seconds
+        // after the last new clip, when the device is asked to forget too. A
+        // channel still clipping lights again on the next read; where the
+        // clear is refused, the marker follows the device's sticky bits.
+        if update.clear_due {
+            let sent = session.write("meters.clear", &[], Value::Trigger);
+            self.meters.clear_result(now, sent.is_ok());
         }
+        self.state.clip_latched = self.meters.clip_hold();
     }
 
     /// Meters, notifications, status expiry, peak ballistics.
     pub fn tick(&mut self, session: &mut Session, notifications: Option<&Notifications>) {
         let now = Instant::now();
-        let dt = now.duration_since(self.last_tick).as_secs_f32();
-        self.last_tick = now;
 
         match session.meters() {
-            Ok(m) => self.on_meters(m, dt, session),
+            Ok(m) => self.on_meters(m, now, session),
             // The control path is the other witness to a disconnect.
             Err(dspi_session::WriteError::Transport(
                 dspi_transport::TransportError::Disconnected,
@@ -5570,6 +5566,122 @@ mod tests {
         assert_eq!(l.gate.held.len(), 1);
         l.flush_writes(&mut s, true);
         assert!(l.gate.held.is_empty());
+    }
+
+    /// `live()` on a device that answers `REQ_CLEAR_CLIPS` when `clears`,
+    /// and refuses it (as a hub does for a viewer) otherwise.
+    fn live_clips(clears: bool) -> (Live, Session, LogHandle) {
+        let mut mock = MockTransport::new()
+            .window(op::REQ_GET_ALL_PARAMS_CHUNK, packet())
+            .data(op::REQ_GET_STATUS, vec![0; 41]);
+        if clears {
+            mock = mock.data(op::REQ_CLEAR_CLIPS, vec![0; 4]);
+        }
+        let log = mock.log_handle();
+        let session = Session::new(Box::new(mock), caps()).unwrap();
+        let state = DeviceState::new(
+            caps(),
+            dspi_proto::wire::BulkPacket::decode(packet()).unwrap(),
+        );
+        let theme = Theme::console(ColorDepth::TrueColor, Glyphs::Braille);
+        let live = Live::new(state, theme, Performance::lite(), Box::new(StandInScreens));
+        (live, session, log)
+    }
+
+    fn clip_meters(peak: f32, clip: bool) -> dspi_session::Meters {
+        dspi_session::Meters {
+            peaks: vec![peak; 17],
+            clipped: vec![clip; 1],
+            cpu0: 0,
+            cpu1: 0,
+            active_inputs: 2,
+        }
+    }
+
+    fn clears_sent(log: &LogHandle) -> usize {
+        log.lock()
+            .unwrap()
+            .iter()
+            .filter(|x| x.opcode == op::REQ_CLEAR_CLIPS)
+            .count()
+    }
+
+    /// WP P0M: the meters' hold and clip hold are the shared ballistics: the
+    /// clip marker stays ten seconds after the last new clip (the Console's),
+    /// then the device is asked to forget. Review p0m F1: a channel that keeps
+    /// clipping is shown again on the next read, as the old Terminal and the
+    /// Console re-latched.
+    #[test]
+    fn wp_p0m_the_clip_hold_is_the_shared_one() {
+        let (mut l, mut session, log) = live_clips(true);
+        let t0 = Instant::now();
+        let s = |secs: u64, ms: u64| t0 + Duration::from_secs(secs) + Duration::from_millis(ms);
+        l.on_meters(clip_meters(0.7, true), t0, &mut session);
+        assert!(l.state.is_clipped(0));
+        assert_eq!(l.meters.hold(0), 0.7);
+        // Three seconds on: the old Terminal cleared here; the hold stays.
+        l.on_meters(clip_meters(0.1, true), s(3, 0), &mut session);
+        assert!(l.state.is_clipped(0));
+        assert_eq!(clears_sent(&log), 0);
+        // Ten seconds: cleared, dark for this read.
+        l.on_meters(clip_meters(0.1, true), s(10, 0), &mut session);
+        assert_eq!(clears_sent(&log), 1);
+        assert!(!l.state.is_clipped(0));
+        // Still clipping: the next read shows it again.
+        l.on_meters(clip_meters(0.1, true), s(10, 60), &mut session);
+        assert!(l.state.is_clipped(0));
+        // Over two minutes of clipping, dark for one read per clear at most.
+        let (mut dark, mut t) = (0, 10_120u64);
+        while t <= 130_000 {
+            l.on_meters(
+                clip_meters(1.0, true),
+                t0 + Duration::from_millis(t),
+                &mut session,
+            );
+            dark += usize::from(!l.state.is_clipped(0));
+            t += 60;
+        }
+        assert!(clears_sent(&log) >= 12);
+        assert!(dark < clears_sent(&log), "dark {dark} reads");
+        // A user's clear darkens it at once; the device then reads clear.
+        l.handle_event(&mut session, ShellEvent::ClearClips);
+        assert!(!l.state.is_clipped(0));
+        l.on_meters(clip_meters(0.1, false), s(131, 0), &mut session);
+        assert!(!l.state.is_clipped(0));
+        assert_eq!(l.meters.clip_hold(), 0);
+    }
+
+    /// Review p0m D1: where the clear is refused (a viewer on a hub), the
+    /// marker follows the device's sticky bit instead of going dark.
+    #[test]
+    fn wp_p0m_a_refused_clear_keeps_the_clip_shown() {
+        let (mut l, mut session, log) = live_clips(false);
+        let t0 = Instant::now();
+        l.on_meters(clip_meters(0.7, true), t0, &mut session);
+        let mut t = 500u64;
+        while t <= 60_000 {
+            l.on_meters(
+                clip_meters(0.1, true),
+                t0 + Duration::from_millis(t),
+                &mut session,
+            );
+            assert!(l.state.is_clipped(0), "shown at {t} ms");
+            t += 500;
+        }
+        assert_eq!(clears_sent(&log), 1, "asked once, never retried");
+        // Cleared elsewhere: dark ten seconds after the last read with the bit.
+        l.on_meters(
+            clip_meters(0.1, false),
+            t0 + Duration::from_millis(60_500),
+            &mut session,
+        );
+        assert!(l.state.is_clipped(0));
+        l.on_meters(
+            clip_meters(0.1, false),
+            t0 + Duration::from_millis(70_100),
+            &mut session,
+        );
+        assert!(!l.state.is_clipped(0));
     }
 
     /// The writes that reach the wire, by opcode, in order.

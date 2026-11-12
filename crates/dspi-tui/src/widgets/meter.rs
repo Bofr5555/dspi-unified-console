@@ -1,4 +1,5 @@
-//! Level meters with peak hold and a clip cell, and the CPU meter.
+//! Level meters with peak hold and a clip cell, and the CPU meter. The hold's
+//! ballistics are `dspi_session::meters` (WP P0M), shared with the core.
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -7,32 +8,6 @@ use ratatui::widgets::Widget;
 
 use super::text::fit_left;
 use crate::theme::{ColorDepth, Glyphs, Theme};
-
-/// Peak-hold ballistics, owned by the screen per channel. The device sends
-/// raw block peaks with no smoothing; the hold and decay are ours.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub struct PeakHold {
-    pub peak: f32,
-    /// Seconds the hold has left before it starts to fall.
-    pub hold: f32,
-}
-
-impl PeakHold {
-    pub const HOLD_S: f32 = 1.0;
-    /// Linear decay in level units per second once the hold expires.
-    pub const DECAY_PER_S: f32 = 0.5;
-
-    pub fn update(&mut self, level: f32, dt: f32) {
-        if level >= self.peak {
-            self.peak = level;
-            self.hold = Self::HOLD_S;
-        } else if self.hold > 0.0 {
-            self.hold = (self.hold - dt).max(0.0);
-        } else {
-            self.peak = (self.peak - Self::DECAY_PER_S * dt).max(level);
-        }
-    }
-}
 
 /// A meter is read logarithmically; a linear bar spends most of its length on
 /// the top 6 dB.
@@ -243,21 +218,6 @@ mod tests {
             render(LevelMeter::new(0.0, t.inputs[0], &t).peak(0.5), 12, 1),
             "░░░░░░░░░░▌▏"
         );
-    }
-
-    #[test]
-    fn peak_hold_holds_then_falls() {
-        let mut p = PeakHold::default();
-        p.update(0.8, 0.05);
-        assert_eq!(p.peak, 0.8);
-        p.update(0.2, 0.5);
-        assert_eq!(p.peak, 0.8, "still holding");
-        p.update(0.2, 0.6);
-        assert_eq!(p.hold, 0.0);
-        p.update(0.2, 0.2);
-        assert!(p.peak < 0.8 && p.peak > 0.2, "{}", p.peak);
-        p.update(0.9, 0.0);
-        assert_eq!(p.peak, 0.9, "a new peak re-arms the hold");
     }
 
     #[test]

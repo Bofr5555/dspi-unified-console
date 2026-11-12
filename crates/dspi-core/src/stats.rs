@@ -427,7 +427,9 @@ impl DspiCore {
             .get(..4)
             .and_then(|s| <[u8; 4]>::try_from(s).ok())
             .ok_or_else(|| malformed("status counter", "too short"))?;
-        Ok(u32::from_le_bytes(v))
+        let v = u32::from_le_bytes(v);
+        self.events.stat(which, v); // -- WP P0M --
+        Ok(v)
     }
 
     /// The output rings' health (Output Ring Health in the Stats window), or
@@ -444,7 +446,13 @@ impl DspiCore {
         let mut cache = conn.ring_target;
         let health = ring_health::read_ring_health_cached(conn.transport(), &mut cache);
         conn.ring_target = cache;
-        Ok(health?.map(ring_health_record))
+        let health = health?.map(ring_health_record);
+        // -- WP P0M -- the event log once `Inner` is released
+        drop(inner);
+        if let Some(h) = &health {
+            self.events.ring_health(h);
+        }
+        Ok(health)
     }
 
     /// The live outputs' fill for the Stats rows: to frame resolution, on the
