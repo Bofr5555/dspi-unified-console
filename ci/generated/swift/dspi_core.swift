@@ -12994,11 +12994,18 @@ public struct HistoryMove {
      */
     public var entry: HistoryEntry?
     /**
-     * Undo only: the changes stepped over on the way, newest first, which
-     * cannot be undone (see [`HistoryEntry::undoable`]). An entry here that
-     * is undoable had no value before to restore; the walk stopped there.
+     * The changes stepped over on the way, newest first, which cannot be
+     * undone (see [`HistoryEntry::undoable`]). An entry here that is
+     * undoable had no value before to restore, or someone else has changed
+     * it since (`note` says who); the walk stopped there.
      */
     public var skipped: [HistoryEntry]
+    /**
+     * Why nothing moved, in words, when another writer changed the value
+     * since (only where the core leaves such a change alone); `None`
+     * otherwise.
+     */
+    public var note: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -13008,12 +13015,19 @@ public struct HistoryMove {
          * nothing moved.
          */entry: HistoryEntry?, 
         /**
-         * Undo only: the changes stepped over on the way, newest first, which
-         * cannot be undone (see [`HistoryEntry::undoable`]). An entry here that
-         * is undoable had no value before to restore; the walk stopped there.
-         */skipped: [HistoryEntry]) {
+         * The changes stepped over on the way, newest first, which cannot be
+         * undone (see [`HistoryEntry::undoable`]). An entry here that is
+         * undoable had no value before to restore, or someone else has changed
+         * it since (`note` says who); the walk stopped there.
+         */skipped: [HistoryEntry], 
+        /**
+         * Why nothing moved, in words, when another writer changed the value
+         * since (only where the core leaves such a change alone); `None`
+         * otherwise.
+         */note: String?) {
         self.entry = entry
         self.skipped = skipped
+        self.note = note
     }
 }
 
@@ -13030,12 +13044,16 @@ extension HistoryMove: Equatable, Hashable {
         if lhs.skipped != rhs.skipped {
             return false
         }
+        if lhs.note != rhs.note {
+            return false
+        }
         return true
     }
 
     public func hash(into hasher: inout Hasher) {
         hasher.combine(entry)
         hasher.combine(skipped)
+        hasher.combine(note)
     }
 }
 
@@ -13049,13 +13067,15 @@ public struct FfiConverterTypeHistoryMove: FfiConverterRustBuffer {
         return
             try HistoryMove(
                 entry: FfiConverterOptionTypeHistoryEntry.read(from: &buf), 
-                skipped: FfiConverterSequenceTypeHistoryEntry.read(from: &buf)
+                skipped: FfiConverterSequenceTypeHistoryEntry.read(from: &buf), 
+                note: FfiConverterOptionString.read(from: &buf)
         )
     }
 
     public static func write(_ value: HistoryMove, into buf: inout [UInt8]) {
         FfiConverterOptionTypeHistoryEntry.write(value.entry, into: &buf)
         FfiConverterSequenceTypeHistoryEntry.write(value.skipped, into: &buf)
+        FfiConverterOptionString.write(value.note, into: &buf)
     }
 }
 

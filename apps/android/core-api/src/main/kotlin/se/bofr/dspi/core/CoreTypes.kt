@@ -2090,11 +2090,18 @@ data class HistoryMove(
      */
     val entry: HistoryEntry?,
     /**
-     * Undo only: the changes stepped over on the way, newest first, which
-     * cannot be undone (see [`HistoryEntry::undoable`]). An entry here that
-     * is undoable had no value before to restore; the walk stopped there.
+     * The changes stepped over on the way, newest first, which cannot be
+     * undone (see [`HistoryEntry::undoable`]). An entry here that is
+     * undoable had no value before to restore, or someone else has changed
+     * it since (`note` says who); the walk stopped there.
      */
     val skipped: List<HistoryEntry>,
+    /**
+     * Why nothing moved, in words, when another writer changed the value
+     * since (only where the core leaves such a change alone); `None`
+     * otherwise.
+     */
+    val note: String?,
 )
 
 /**
@@ -2678,6 +2685,46 @@ enum class VregDemoEvent {
      * `seconds` pass on the device's clock.
      */
     ADVANCE_UPTIME,
+}
+
+/**
+ * A parameter value: `dspi_proto::value::Value` across the bindings. In
+ * JSON (the C ABI, the web binding) it is tagged by kind in lower case:
+ * `{"float": -12.5}`, `{"bool": true}`, `{"bytes": [1, 2]}`, `"trigger"`.
+ */
+sealed class ParamValue {
+    /**
+     * A yes/no value.
+     */
+    data class Bool(val v1: kotlin.Boolean) : ParamValue()
+    /**
+     * A number.
+     */
+    data class Float(val v1: kotlin.Float) : ParamValue()
+    /**
+     * A whole number.
+     */
+    data class Int(val v1: kotlin.Long) : ParamValue()
+    /**
+     * A choice, as its wire number (the registry has the labels).
+     */
+    data class Choice(val v1: kotlin.Int) : ParamValue()
+    /**
+     * A bit mask.
+     */
+    data class Mask(val v1: kotlin.Long) : ParamValue()
+    /**
+     * Text.
+     */
+    data class Text(val v1: kotlin.String) : ParamValue()
+    /**
+     * A structured payload, as the registry's packet encodes it.
+     */
+    data class Bytes(val v1: kotlin.collections.List<kotlin.Int>) : ParamValue()
+    /**
+     * An action with no value.
+     */
+    data object Trigger : ParamValue()
 }
 
 /**

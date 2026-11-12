@@ -1732,9 +1732,10 @@ pub extern "C" fn dspi_output_cards(core: *mut FfiCore, buf: *mut c_char, len: u
 
 /// Step back through the change history (`DspiCore::undo`): the newest
 /// change that can be undone is written back through its setter. The reply
-/// is `{ok, entry, skipped}`: `entry` the change reversed (`null` when
+/// is `{ok, entry, skipped, note}`: `entry` the change reversed (`null` when
 /// nothing moved), `skipped` the changes stepped over that cannot be undone,
-/// each as `dspi_history` gives them; or a failure.
+/// each as `dspi_history` gives them, `note` why nothing moved when another
+/// writer changed the value since (or `null`); or a failure.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_undo(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
     text(core, buf, len, |c| json_reply(c.undo()))

@@ -7,6 +7,8 @@ import org.junit.Test
 import se.bofr.dspi.core.DspiConstants
 import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.FilterParams
+import se.bofr.dspi.core.HistorySource
+import se.bofr.dspi.core.ParamValue
 import se.bofr.dspi.core.NotifyListener
 
 class FakeDspiCoreTest {
@@ -326,5 +328,30 @@ class FakeDspiCoreTest {
         } catch (_: DspiException.Transfer) {
         }
         assertEquals(listOf(0, 0, 0, 0), core.getState().crossfeedPairMap)
+    }
+
+    // -- WP P0W --
+    @Test
+    fun wpP0wUndoRedoAndHistory() {
+        val core = FakeDspiCore()
+        assertFalse(core.canUndo())
+        val start = core.getState().masterVolumeDb
+        core.setMasterVolume(-20f)
+        assertTrue(core.canUndo())
+        val e = core.history(5).single()
+        assertEquals("setMasterVolume", e.path)
+        assertEquals(ParamValue.Text("-20.0"), e.after)
+        assertEquals(HistorySource.LOCAL, e.source)
+
+        assertEquals("setMasterVolume", core.undo().entry?.path)
+        assertEquals(start, core.getState().masterVolumeDb)
+        assertTrue(core.canRedo())
+        core.redo()
+        assertEquals(-20f, core.getState().masterVolumeDb)
+        assertEquals(HistorySource.REDO, core.history(1).single().source)
+
+        core.disconnect()
+        assertFalse(core.canUndo())
+        assertTrue(core.history(5).isEmpty())
     }
 }

@@ -16514,11 +16514,18 @@ data class HistoryMove (
      */
     var `entry`: HistoryEntry?, 
     /**
-     * Undo only: the changes stepped over on the way, newest first, which
-     * cannot be undone (see [`HistoryEntry::undoable`]). An entry here that
-     * is undoable had no value before to restore; the walk stopped there.
+     * The changes stepped over on the way, newest first, which cannot be
+     * undone (see [`HistoryEntry::undoable`]). An entry here that is
+     * undoable had no value before to restore, or someone else has changed
+     * it since (`note` says who); the walk stopped there.
      */
-    var `skipped`: List<HistoryEntry>
+    var `skipped`: List<HistoryEntry>, 
+    /**
+     * Why nothing moved, in words, when another writer changed the value
+     * since (only where the core leaves such a change alone); `None`
+     * otherwise.
+     */
+    var `note`: kotlin.String?
 ) {
     
     companion object
@@ -16532,17 +16539,20 @@ public object FfiConverterTypeHistoryMove: FfiConverterRustBuffer<HistoryMove> {
         return HistoryMove(
             FfiConverterOptionalTypeHistoryEntry.read(buf),
             FfiConverterSequenceTypeHistoryEntry.read(buf),
+            FfiConverterOptionalString.read(buf),
         )
     }
 
     override fun allocationSize(value: HistoryMove) = (
             FfiConverterOptionalTypeHistoryEntry.allocationSize(value.`entry`) +
-            FfiConverterSequenceTypeHistoryEntry.allocationSize(value.`skipped`)
+            FfiConverterSequenceTypeHistoryEntry.allocationSize(value.`skipped`) +
+            FfiConverterOptionalString.allocationSize(value.`note`)
     )
 
     override fun write(value: HistoryMove, buf: ByteBuffer) {
             FfiConverterOptionalTypeHistoryEntry.write(value.`entry`, buf)
             FfiConverterSequenceTypeHistoryEntry.write(value.`skipped`, buf)
+            FfiConverterOptionalString.write(value.`note`, buf)
     }
 }
 

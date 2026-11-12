@@ -1923,12 +1923,14 @@ internal fun se.bofr.dspi.ffi.uniffi.HistoryMove.toDomain() =
     HistoryMove(
         entry = entry?.let { it.toDomain() },
         skipped = skipped.map { it.toDomain() },
+        note = note,
     )
 
 internal fun HistoryMove.toFfi() =
     se.bofr.dspi.ffi.uniffi.HistoryMove(
         entry = entry?.let { it.toFfi() },
         skipped = skipped.map { it.toFfi() },
+        note = note,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.LinkPhaseText.toDomain() =
@@ -2285,4 +2287,28 @@ internal fun VregDemoEvent.toFfi(): se.bofr.dspi.ffi.uniffi.VregDemoEvent =
         VregDemoEvent.REBOOT -> se.bofr.dspi.ffi.uniffi.VregDemoEvent.REBOOT
         VregDemoEvent.POWER_CYCLE -> se.bofr.dspi.ffi.uniffi.VregDemoEvent.POWER_CYCLE
         VregDemoEvent.ADVANCE_UPTIME -> se.bofr.dspi.ffi.uniffi.VregDemoEvent.ADVANCE_UPTIME
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.ParamValue.toDomain(): ParamValue =
+    when (this) {
+        is se.bofr.dspi.ffi.uniffi.ParamValue.Bool -> ParamValue.Bool(v1)
+        is se.bofr.dspi.ffi.uniffi.ParamValue.Float -> ParamValue.Float(v1)
+        is se.bofr.dspi.ffi.uniffi.ParamValue.Int -> ParamValue.Int(v1)
+        is se.bofr.dspi.ffi.uniffi.ParamValue.Choice -> ParamValue.Choice(v1.toInt())
+        is se.bofr.dspi.ffi.uniffi.ParamValue.Mask -> ParamValue.Mask(v1.toLong())
+        is se.bofr.dspi.ffi.uniffi.ParamValue.Text -> ParamValue.Text(v1)
+        is se.bofr.dspi.ffi.uniffi.ParamValue.Bytes -> ParamValue.Bytes(v1.map { it.toInt() and 0xFF })
+        is se.bofr.dspi.ffi.uniffi.ParamValue.Trigger -> ParamValue.Trigger
+    }
+
+internal fun ParamValue.toFfi(): se.bofr.dspi.ffi.uniffi.ParamValue =
+    when (this) {
+        is ParamValue.Bool -> se.bofr.dspi.ffi.uniffi.ParamValue.Bool(v1)
+        is ParamValue.Float -> se.bofr.dspi.ffi.uniffi.ParamValue.Float(v1)
+        is ParamValue.Int -> se.bofr.dspi.ffi.uniffi.ParamValue.Int(v1)
+        is ParamValue.Choice -> se.bofr.dspi.ffi.uniffi.ParamValue.Choice(v1.toUByte())
+        is ParamValue.Mask -> se.bofr.dspi.ffi.uniffi.ParamValue.Mask(v1.toUInt())
+        is ParamValue.Text -> se.bofr.dspi.ffi.uniffi.ParamValue.Text(v1)
+        is ParamValue.Bytes -> se.bofr.dspi.ffi.uniffi.ParamValue.Bytes(ByteArray(v1.size) { v1[it].toByte() })
+        is ParamValue.Trigger -> se.bofr.dspi.ffi.uniffi.ParamValue.Trigger
     }
