@@ -124,6 +124,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun openDemo() = call { core.openDemo() }
 
+    override fun featurePresent(name: String): Boolean = core.featurePresent(name)
+
     override fun setCrossfeedPairMap(map: List<Int>) = call { core.setCrossfeedPairMap(ByteArray(map.size) { map[it].toByte() }) }
 
     override fun fetchCrossfeedPairMap(): List<Int> = call { core.fetchCrossfeedPairMap().map { it.toInt() and 0xFF } }

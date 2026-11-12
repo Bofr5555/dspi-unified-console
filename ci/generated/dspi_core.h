@@ -1394,6 +1394,21 @@
 #define MIN_WIRE_FORMAT_VERSION 16
 
 /**
+ * `dspi_proto::wire_compat::feat::LEVELLER_MASKS`.
+ */
+#define WIRE_FEAT_LEVELLER_MASKS (1 << 1)
+
+/**
+ * `dspi_proto::wire_compat::feat::LOUDNESS_MASK`.
+ */
+#define WIRE_FEAT_LOUDNESS_MASK (1 << 2)
+
+/**
+ * `dspi_proto::wire_compat::feat::CROSSFEED_MASK`.
+ */
+#define WIRE_FEAT_CROSSFEED_MASK (1 << 3)
+
+/**
  * `dspi_proto::wire_compat::feat::PSYBASS`.
  */
 #define WIRE_FEAT_PSYBASS (1 << 6)

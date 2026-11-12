@@ -481,7 +481,8 @@ impl DspiCore {
     }
 }
 
-// -- WP QP11 --
+// -- WP QP11 -- (exported: WP QPI2)
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
     /// Whether the connect probe found feature `name` on the open device
     /// (`dspi_session::probe`'s names: `spdif_multi_input`, `adat_input`,

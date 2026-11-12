@@ -741,6 +741,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_ext_status(void*_Nonnull ptr, Rus
 void uniffi_dspi_core_fn_method_dspicore_factory_reset(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FEATURE_PRESENT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FEATURE_PRESENT
+int8_t uniffi_dspi_core_fn_method_dspicore_feature_present(void*_Nonnull ptr, RustBuffer name, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_ADAT_OUT_STATUS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_ADAT_OUT_STATUS
 RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_adat_out_status(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -2714,6 +2719,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_ext_status(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FACTORY_RESET
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FACTORY_RESET
 uint16_t uniffi_dspi_core_checksum_method_dspicore_factory_reset(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FEATURE_PRESENT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FEATURE_PRESENT
+uint16_t uniffi_dspi_core_checksum_method_dspicore_feature_present(void
     
 );
 #endif

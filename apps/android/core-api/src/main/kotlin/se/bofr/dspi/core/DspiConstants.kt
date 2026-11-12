@@ -136,6 +136,18 @@ object DspiConstants {
      */
     const val MIN_WIRE_FORMAT_VERSION: Int = 16
     /**
+     * `dspi_proto::wire_compat::feat::LEVELLER_MASKS`.
+     */
+    const val WIRE_FEAT_LEVELLER_MASKS: Int = 1 shl 1
+    /**
+     * `dspi_proto::wire_compat::feat::LOUDNESS_MASK`.
+     */
+    const val WIRE_FEAT_LOUDNESS_MASK: Int = 1 shl 2
+    /**
+     * `dspi_proto::wire_compat::feat::CROSSFEED_MASK`.
+     */
+    const val WIRE_FEAT_CROSSFEED_MASK: Int = 1 shl 3
+    /**
      * `dspi_proto::wire_compat::feat::PSYBASS`.
      */
     const val WIRE_FEAT_PSYBASS: Int = 1 shl 6
