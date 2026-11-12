@@ -144,11 +144,11 @@ void checkMenus(SmokeDriver &d) {
     // shortcut is checked by the shell's triggered signal, and the window it
     // opens is closed again
     QString triggered;
-    QMetaObject::Connection seen = QObject::connect(shell, &Shell::triggered, [&](const QString &a) { triggered = a; });
+    QMetaObject::Connection seenShortcut = QObject::connect(shell, &Shell::triggered, [&](const QString &a) { triggered = a; });   // review w2: `seen` is QP7's above
     QTest::keyClick(w, Qt::Key_M, Qt::ControlModifier | Qt::ShiftModifier);
     d.check(QStringLiteral("qp0: Ctrl+Shift+M reaches the shell as tools.matrix"),
             d.waitFor(2000, [&]() { return triggered == QLatin1String("tools.matrix"); }));
-    QObject::disconnect(seen);
+    QObject::disconnect(seenShortcut);
     if (QWindow *opened = shell->handles(QStringLiteral("tools.matrix")) ? shell->openWindow(QStringLiteral("tools.matrix")) : nullptr)
         opened->close();
 }
