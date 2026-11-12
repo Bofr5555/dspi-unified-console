@@ -387,6 +387,9 @@ fn collect(root: &Path) -> Vec<Group> {
         WIRE_FEAT_LEVELLER_MASKS = feat::LEVELLER_MASKS,
         WIRE_FEAT_LOUDNESS_MASK = feat::LOUDNESS_MASK,
         WIRE_FEAT_CROSSFEED_MASK = feat::CROSSFEED_MASK,
+        // -- WP CS1 -- the two the desktop's tools windows test (QP8)
+        WIRE_FEAT_UPMIX_PRESENCE = feat::UPMIX_PRESENCE,
+        WIRE_FEAT_SUBHARM_EXT = feat::SUBHARM_EXT,
         WIRE_FEAT_PSYBASS = feat::PSYBASS,
         WIRE_FEAT_UPMIX = feat::UPMIX,
         WIRE_FEAT_SUBHARM = feat::SUBHARM,
@@ -560,6 +563,8 @@ fn collect(root: &Path) -> Vec<Group> {
         NOTIFY_SIGGEN,
         NOTIFY_CS_AUX,
         NOTIFY_IR_LEARN,
+        // -- WP P0W --
+        NOTIFY_HISTORY,
     ]);
 
     take!(files, "u32", Dec, dspi_session::filterfile => [FORMAT_VERSION]);

@@ -1409,6 +1409,16 @@
 #define WIRE_FEAT_CROSSFEED_MASK (1 << 3)
 
 /**
+ * `dspi_proto::wire_compat::feat::UPMIX_PRESENCE`.
+ */
+#define WIRE_FEAT_UPMIX_PRESENCE (1 << 9)
+
+/**
+ * `dspi_proto::wire_compat::feat::SUBHARM_EXT`.
+ */
+#define WIRE_FEAT_SUBHARM_EXT (1 << 12)
+
+/**
  * `dspi_proto::wire_compat::feat::PSYBASS`.
  */
 #define WIRE_FEAT_PSYBASS (1 << 6)
@@ -2169,6 +2179,11 @@
 #define NOTIFY_IR_LEARN (1 << 7)
 
 /**
+ * `dspi_core::consts::NOTIFY_HISTORY`.
+ */
+#define NOTIFY_HISTORY (1 << 12)
+
+/**
  * `schemaVersion` of the configuration documents dspi-core writes.
  */
 #define SCHEMA_VERSION 1
@@ -2378,6 +2393,23 @@ typedef struct SystemStatus {
    * Wire channels of the device.
    */
   uint8_t num_channels;
+  /**
+   * Held peak per wire channel, 0..1: the hold marker (the core's
+   * ballistics, `dspi_set_meter_ballistics`).
+   */
+  float peak_hold[MAX_CHANNELS];
+  /**
+   * Highest peak per wire channel since the connection opened or
+   * `dspi_reset_meter_max`.
+   */
+  float peak_max[MAX_CHANNELS];
+  /**
+   * The clip hold, one bit per wire channel: draw the clip marker from
+   * this. The core clears the device's flags when it ends; a channel still
+   * clipping lights again, and where the clear is refused (a viewer on a
+   * hub) the hold follows the device's sticky flags.
+   */
+  uint32_t clip_hold;
 } SystemStatus;
 
 /**
@@ -3588,6 +3620,26 @@ typedef void (*AutoEqFetchCallback)(void *user_data,
                                     struct AutoEqFetchSink *sink);
 
 /**
+ * The meter ballistics' timing (`dspi_meter_ballistics`).
+ */
+typedef struct MeterBallistics {
+  /**
+   * How long a new peak holds, ms (default 1000).
+   */
+  uint32_t hold_ms;
+  /**
+   * How fast a held peak falls after its hold, full scale per second
+   * (default 0.5).
+   */
+  float decay_per_s;
+  /**
+   * How long the clip hold lasts after the last new clip, ms; 0 until
+   * cleared (default 10000).
+   */
+  uint32_t clip_hold_ms;
+} MeterBallistics;
+
+/**
  * Platform and firmware version.
  */
 typedef struct PlatformInfo {
@@ -4429,6 +4481,13 @@ bool dspi_fetch_stat(struct FfiCore *core, uint16_t which, uint32_t *out);
 bool dspi_fetch_buffer_stats(struct FfiCore *core, struct BufferStats *out);
 
 /**
+ * The device's USB error counters (`REQ_GET_USB_ERROR_STATS`), in JSON:
+ * `{ok, total, crc, bitstuff, rxOverflow, rxTimeout, dataSeq}`, or a
+ * failure. Current firmware reports zeros.
+ */
+uint32_t dspi_fetch_usb_error_stats(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * Reset the buffer statistics' watermarks.
  */
 bool dspi_reset_buffer_stats(struct FfiCore *core);
@@ -4987,6 +5046,45 @@ uint32_t dspi_output_labels(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_output_cards(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
+ * Step back through the change history (`DspiCore::undo`): the newest
+ * change that can be undone is written back through its setter. The reply
+ * is `{ok, entry, skipped, note}`: `entry` the change reversed (`null` when
+ * nothing moved), `skipped` the changes stepped over that cannot be undone,
+ * each as `dspi_history` gives them, `note` why nothing moved when another
+ * writer changed the value since (or `null`); or a failure.
+ */
+uint32_t dspi_undo(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Step forward again (`DspiCore::redo`): the change undo most recently
+ * reversed is written again. The reply is as `dspi_undo`'s (`skipped`
+ * always empty).
+ */
+uint32_t dspi_redo(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Whether `dspi_undo` has a change to reverse. False for a null handle or
+ * with no device.
+ */
+bool dspi_can_undo(const struct FfiCore *core);
+
+/**
+ * Whether `dspi_redo` has a change to apply again. False for a null handle
+ * or with no device.
+ */
+bool dspi_can_redo(const struct FfiCore *core);
+
+/**
+ * The newest `n` changes of the open connection, newest first, in JSON
+ * (`value`: a list of `{path, indices, before, after, source, atMs,
+ * undoable}`; `before` and `after` are parameter values as
+ * `dspi_write_param` takes them, `before` null when unknown; `source` is
+ * `local`, `undo` or `redo`; `atMs` milliseconds since the Unix epoch). A
+ * reconnect starts a new history. `NOTIFY_HISTORY` says when it moved.
+ */
+uint32_t dspi_history(struct FfiCore *core, uint32_t n, char *buf, uint32_t len);
+
+/**
  * Answer a fetch: the HTTP status and body, as received, for any status.
  * `retry_after_s`, `rate_limit_remaining` and `rate_limit_reset` (Unix seconds) are
  * the `Retry-After`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` headers, -1 if
@@ -5128,6 +5226,117 @@ uint32_t dspi_onboarding_getting_started_json(char *buf, uint32_t len);
  * Returns the bytes needed including the NUL, 0 for a panic.
  */
 uint32_t dspi_about_json(char *buf, uint32_t len);
+
+/**
+ * The meter ballistics' timing into `out`. False for a null handle or an
+ * unusable `out`.
+ */
+bool dspi_meter_ballistics(struct FfiCore *core, struct MeterBallistics *out);
+
+/**
+ * Change the meter ballistics' timing (`SystemStatus.peak_hold`,
+ * `clip_hold`) for every later `dspi_fetch_status`. A negative or non-finite
+ * `decay_per_s` reads as 0; a `clip_hold_ms` of 0 holds until
+ * `dspi_clear_clips`.
+ */
+void dspi_set_meter_ballistics(struct FfiCore *core,
+                               uint32_t hold_ms,
+                               float decay_per_s,
+                               uint32_t clip_hold_ms);
+
+/**
+ * Start every channel's `SystemStatus.peak_max` again.
+ */
+void dspi_reset_meter_max(struct FfiCore *core);
+
+/**
+ * Keep the event log in files under `dir` (the app's data directory),
+ * or in memory only for "" or null. Blocking file I/O. False when the
+ * directory cannot be created (`dspi_last_error`).
+ */
+bool dspi_event_log_set_dir(struct FfiCore *core, const char *dir);
+
+/**
+ * `serial`'s event records with ids above `after_id` into `buf` as JSON
+ * lines, oldest first, as many whole lines as fit and at most `limit`: with
+ * `after_id` 0 the newest, otherwise the next after it. A null or empty
+ * `serial` is the open device. Returns the id to pass next time: the last
+ * line written, or past a record too long for the buffer at all, which is
+ * dropped. With nothing new, a null buffer, a length of 0 or a null handle it
+ * returns `after_id`. Pass a buffer of at least 4096 bytes (a record's
+ * longest line, NUL included) and no record is ever dropped. Reads files:
+ * not on the UI thread.
+ */
+uint64_t dspi_event_log_read(struct FfiCore *core,
+                             const char *serial,
+                             uint64_t after_id,
+                             uint32_t limit,
+                             char *buf,
+                             uint32_t buf_len);
+
+/**
+ * `serial`'s whole event log as JSON lines (the file format), oldest
+ * first; a null or empty `serial` is the open device. Returns the bytes
+ * needed, NUL included; 1 (an empty text) for a device with no event log.
+ */
+uint32_t dspi_event_log_export(struct FfiCore *core, const char *serial, char *buf, uint32_t len);
+
+/**
+ * The serials with an event log, as a JSON array of strings, sorted.
+ * Returns the bytes needed, NUL included.
+ */
+uint32_t dspi_event_log_devices(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Write a diagnostics bundle (one zip: versions, the open device's dump,
+ * stats and monitor lines, every event log, a hub store without its tokens
+ * and secrets, OS and USB facts, the client's files) to `path`. Nothing is
+ * sent anywhere. `options` is null or JSON: `{"app": "DSPi Console 1.2.0",
+ * "hubStoreDir": "<folder of hub-store.json>", "files": [{"name":
+ * "app.log", "text": "..."}]}`, every key optional.
+ *
+ * Reply (module docs): `{"ok": true, "files": <count>}`, or a failure
+ * (`io` when the file cannot be written, `invalid` for a null `path` or bad
+ * `options`). Writes on every call, whatever the buffer, so pass one of 1024
+ * bytes rather than asking for the length first. Reads the device and
+ * files: not on the UI thread.
+ */
+uint32_t dspi_diagnostics_save(struct FfiCore *core,
+                               const char *path,
+                               const char *options,
+                               char *buf,
+                               uint32_t len);
+
+/**
+ * A file name for a bundle saved now (`dspi-diagnostics-<UTC date and
+ * time>Z.zip`), for a Save dialog. Returns the bytes needed, NUL included.
+ */
+uint32_t dspi_diagnostics_file_name(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Blink the device's LED for `seconds` (0 stops it; the firmware shortens
+ * more than 120 to 120). `tone_output` is an output for the quiet identify
+ * tone (1 kHz, -40 dBFS, 400 ms, through that output's whole chain), or
+ * 0xFF for none; pass 0xFF unless the user asked for sound. Returns a
+ * status byte, 0xFF on failure (unsupported, a tone output past the
+ * outputs, a read-only connection, a refusal).
+ */
+uint8_t dspi_identify(struct FfiCore *core, uint8_t seconds, uint8_t tone_output);
+
+/**
+ * The identify state and the board, in JSON (`remainingS`,
+ * `lastToneOutput`, `chip`, `chipRev`, `chipId`, `board`, `hwRev`), or a
+ * failure (`unsupported` without it).
+ */
+uint32_t dspi_fetch_identify(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Why the device last restarted, in JSON (`reason`, `reasonCode`,
+ * `description`, `uptimeS`, `prevUptimeS` (null after a power-on),
+ * `hangCount`, `chip`, `chipReset`, `watchdogReason`), or a failure
+ * (`unsupported` without it).
+ */
+uint32_t dspi_fetch_reset_info(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
  * Start looking for hubs on the local network, replacing any browse running.

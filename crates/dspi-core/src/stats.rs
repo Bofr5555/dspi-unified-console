@@ -350,7 +350,11 @@ impl DspiCore {
         w.conn()
             .transport()
             .control_out(op::REQ_SIGGEN_SET_CONFIG, 0, &bytes)
-            .map_err(refusal)
+            .map_err(refusal)?;
+        // -- WP P0W -- audible: history only
+        let after = dspi_proto::value::Value::Bytes(bytes.to_vec());
+        crate::journal::journal(&mut guard, "sig.config", &[], after);
+        Ok(())
     }
 
     /// Run a control action: `SIGGEN_CTL_START` plays the staged config,
@@ -379,7 +383,11 @@ impl DspiCore {
             .transport()
             .control_in(op::REQ_SIGGEN_CONTROL, action, 1)
             .map_err(refusal)?;
-        acked(&reply)
+        acked(&reply)?;
+        // -- WP P0W -- audible: history only, so undo never starts it again
+        let after = dspi_proto::value::Value::Choice(u8::try_from(action).unwrap_or(u8::MAX));
+        crate::journal::journal(&mut guard, "sig.control", &[], after);
+        Ok(())
     }
 
     /// What the generator is doing now: state (`SIGGEN_STATE_*`: idle, fade
@@ -427,7 +435,9 @@ impl DspiCore {
             .get(..4)
             .and_then(|s| <[u8; 4]>::try_from(s).ok())
             .ok_or_else(|| malformed("status counter", "too short"))?;
-        Ok(u32::from_le_bytes(v))
+        let v = u32::from_le_bytes(v);
+        self.events.stat(which, v); // -- WP P0M --
+        Ok(v)
     }
 
     /// The output rings' health (Output Ring Health in the Stats window), or
@@ -444,7 +454,13 @@ impl DspiCore {
         let mut cache = conn.ring_target;
         let health = ring_health::read_ring_health_cached(conn.transport(), &mut cache);
         conn.ring_target = cache;
-        Ok(health?.map(ring_health_record))
+        let health = health?.map(ring_health_record);
+        // -- WP P0M -- the event log once `Inner` is released
+        drop(inner);
+        if let Some(h) = &health {
+            self.events.ring_health(h);
+        }
+        Ok(health)
     }
 
     /// The live outputs' fill for the Stats rows: to frame resolution, on the
@@ -575,6 +591,72 @@ impl DspiCore {
             Some(&pin) => Ok(pin),
             None => Err(malformed("S/PDIF RX pin", "empty")),
         }
+    }
+}
+
+// -- WP CS1 --
+/// `REQ_GET_USB_ERROR_STATS`: six `u32` LE (vendor_commands.c).
+const USB_ERROR_STATS_LEN: usize = 24;
+
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl DspiCore {
+    /// The device's USB error counters (`REQ_GET_USB_ERROR_STATS`, 24
+    /// bytes): for the System Statistics window. A read, allowed on a
+    /// read-only connection. Current firmware answers zeros.
+    ///
+    /// Errors: [`DspiError::Disconnected`]; a transfer failure, a stall or a
+    /// short reply as [`DspiError::Transfer`].
+    pub fn fetch_usb_error_stats(&self) -> Result<UsbErrorStats> {
+        let b =
+            self.lock()
+                .conn()?
+                .get(op::REQ_GET_USB_ERROR_STATS, 0, len16(USB_ERROR_STATS_LEN))?;
+        usb_error_stats(&b).ok_or_else(|| malformed("USB error stats", "short"))
+    }
+}
+
+/// The six counters from a `REQ_GET_USB_ERROR_STATS` reply; `None` when it is
+/// short.
+fn usb_error_stats(b: &[u8]) -> Option<UsbErrorStats> {
+    let (words, _) = b.get(..USB_ERROR_STATS_LEN)?.as_chunks::<4>();
+    let mut w = words.iter().map(|c| u32::from_le_bytes(*c));
+    Some(UsbErrorStats {
+        total: w.next()?,
+        crc: w.next()?,
+        bitstuff: w.next()?,
+        rx_overflow: w.next()?,
+        rx_timeout: w.next()?,
+        data_seq: w.next()?,
+    })
+}
+
+#[cfg(test)]
+mod tests_wp_cs1 {
+    use super::*;
+
+    #[test]
+    fn wp_cs1_usb_error_stats_decode_in_order_and_refuse_a_short_reply() {
+        let b: Vec<u8> = (1u32..=6).flat_map(u32::to_le_bytes).collect();
+        assert_eq!(
+            usb_error_stats(&b),
+            Some(UsbErrorStats {
+                total: 1,
+                crc: 2,
+                bitstuff: 3,
+                rx_overflow: 4,
+                rx_timeout: 5,
+                data_seq: 6,
+            })
+        );
+        assert_eq!(usb_error_stats(&b[..23]), None);
+    }
+
+    #[test]
+    fn wp_cs1_usb_error_stats_from_the_demo() {
+        let core = DspiCore::new();
+        assert_eq!(core.fetch_usb_error_stats(), Err(DspiError::Disconnected));
+        core.open_demo().unwrap();
+        assert_eq!(core.fetch_usb_error_stats(), Ok(UsbErrorStats::default()));
     }
 }
 

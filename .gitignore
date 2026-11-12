@@ -12,3 +12,8 @@
 /apps/desktop/qt/build/
 /apps/desktop/qt/build-*/
 /dist/
+
+# -- WP P0E -- A minisign secret key never belongs here (docs/RELEASING.md);
+# only docs/release/minisign.pub is committed.
+/docs/release/minisign.key
+/docs/release/*.key

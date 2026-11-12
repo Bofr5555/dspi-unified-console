@@ -14,7 +14,7 @@
     clippy::arithmetic_side_effects
 )]
 
-use dspi_proto::ext::{CoreVregStatus, LIST_READ_LEN, PairMap, decode_list};
+use dspi_proto::ext::{CoreVregStatus, LIST_READ_LEN, PairMap, ResetInfo, decode_list};
 use dspi_proto::generated::ext as g;
 use dspi_proto::generated::opcodes as op;
 use dspi_transport::{InRead, Transport, TransportError};
@@ -33,6 +33,11 @@ pub struct ExtState {
     /// `EXT_NOTIFY_FEATURES`, when supported and readable: the
     /// `NOTIFY_FEAT_*` flags. See [`ExtState::bulk_source`].
     pub notify_features: Option<u32>,
+    // -- WP FWX --
+    /// `EXT_RESET_INFO`, when supported and readable: why the device last
+    /// reset and how long the run before lasted, as it was at connect (its
+    /// uptime keeps counting; re-read with `ext::read_reset_info`).
+    pub reset_info: Option<ResetInfo>,
 }
 
 /// `wLength` of the `EXT_LIST` read: 64 bytes, room for 32 ids. The
@@ -132,6 +137,15 @@ impl ExtState {
         self.notify_features
             .is_some_and(|f| f & NOTIFY_FEAT_BULK_SOURCE != 0)
     }
+
+    // -- WP FWX --
+    /// Whether the device sends the clip event (`NOTIFY_FEAT_CLIP_EVENT`):
+    /// then `dspi_proto::ext::clip_event` reads its 0xE0 packets. False
+    /// without `EXT_NOTIFY_FEATURES`, as for [`ExtState::bulk_source`].
+    pub fn clip_events(&self) -> bool {
+        self.notify_features
+            .is_some_and(|f| f & dspi_proto::ext::NOTIFY_FEAT_CLIP_EVENT != 0)
+    }
 }
 
 /// Sorts a failed read into "absent" (`Ok`) or a transport failure (`Err`).
@@ -176,10 +190,16 @@ fn reads_for(supported: &[u16]) -> Vec<(u16, u16)> {
         assert!(CoreVregStatus::SIZE <= u16::MAX as usize);
         CoreVregStatus::SIZE as u16
     };
-    const KNOWN: [(u16, u16); 3] = [
+    // -- WP FWX --
+    const RESET_INFO_LEN: u16 = {
+        assert!(ResetInfo::SIZE <= u16::MAX as usize);
+        ResetInfo::SIZE as u16
+    };
+    const KNOWN: [(u16, u16); 4] = [
         (g::EXT_CROSSFEED_PAIR_MAP, PAIR_MAP_LEN),
         (g::EXT_CORE_VREG, CORE_VREG_LEN),
         (g::EXT_NOTIFY_FEATURES, NOTIFY_FEATURES_LEN),
+        (g::EXT_RESET_INFO, RESET_INFO_LEN),
     ];
     KNOWN
         .into_iter()
@@ -205,11 +225,14 @@ fn from_replies(supported: Vec<u16>, replies: &[(u16, Vec<u8>)]) -> ExtState {
     let notify_features = reply(g::EXT_NOTIFY_FEATURES)
         .and_then(|b| b.first_chunk::<4>())
         .map(|b| u32::from_le_bytes(*b));
+    // -- WP FWX --
+    let reset_info = reply(g::EXT_RESET_INFO).and_then(ResetInfo::decode);
     ExtState {
         supported,
         pair_map,
         core_vreg,
         notify_features,
+        reset_info,
     }
 }
 
@@ -483,3 +506,8 @@ mod tests_wp_s3 {
         ));
     }
 }
+
+// -- WP FWX --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_fwx;

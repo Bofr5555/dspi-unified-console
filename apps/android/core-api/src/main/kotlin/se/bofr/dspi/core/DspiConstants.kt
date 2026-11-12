@@ -148,6 +148,14 @@ object DspiConstants {
      */
     const val WIRE_FEAT_CROSSFEED_MASK: Int = 1 shl 3
     /**
+     * `dspi_proto::wire_compat::feat::UPMIX_PRESENCE`.
+     */
+    const val WIRE_FEAT_UPMIX_PRESENCE: Int = 1 shl 9
+    /**
+     * `dspi_proto::wire_compat::feat::SUBHARM_EXT`.
+     */
+    const val WIRE_FEAT_SUBHARM_EXT: Int = 1 shl 12
+    /**
      * `dspi_proto::wire_compat::feat::PSYBASS`.
      */
     const val WIRE_FEAT_PSYBASS: Int = 1 shl 6
@@ -771,6 +779,10 @@ object DspiConstants {
      * `dspi_core::consts::NOTIFY_IR_LEARN`.
      */
     const val NOTIFY_IR_LEARN: Int = 1 shl 7
+    /**
+     * `dspi_core::consts::NOTIFY_HISTORY`.
+     */
+    const val NOTIFY_HISTORY: Int = 1 shl 12
 
     // ── files ──
     /**

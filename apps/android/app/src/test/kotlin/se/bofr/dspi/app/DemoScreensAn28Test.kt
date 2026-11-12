@@ -15,6 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
@@ -24,6 +25,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -283,7 +285,9 @@ class DemoScreensAn28Test {
         rule.onNode(hasText(ConnectionStrip.Demo.text) and inStrip).assertIsDisplayed()
         rule.onNode(hasText("Exit demo") and inStrip).assertIsDisplayed()
         rule.onNodeWithText("Filter Response").assertIsDisplayed()
-        rule.onNode(hasContentDescription("Settings")).performClick()
+        // -- WP UIM1 -- the phone's Home has the tool icons below the graph and the channel list, off
+        // screen here: the click action, as TalkBack's (performScrollTo hangs on the paused clock)
+        rule.onNode(hasContentDescription("Settings")).performSemanticsAction(SemanticsActions.OnClick)
         settle()
         rule.onNodeWithText("Application").assertIsDisplayed()
         rule.onNode(hasText(ConnectionStrip.Demo.text) and inStrip).assertIsDisplayed()

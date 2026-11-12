@@ -269,6 +269,26 @@ data class SystemStatus(
      * Age of the values in milliseconds.
      */
     val ageMs: Long,
+    /**
+     * The held peak per channel (17 entries), linear: a new peak holds for
+     * `MeterBallistics.hold_ms`, then falls at `decay_per_s`. Computed by the
+     * core from `peaks`; draw it as the hold marker.
+     */
+    val peakHold: List<Float>,
+    /**
+     * The highest peak per channel (17 entries) since the connection opened
+     * or `reset_meter_max`.
+     */
+    val peakMax: List<Float>,
+    /**
+     * The clip hold, one bit per channel: lit by a clip, dark again
+     * `MeterBallistics.clip_hold_ms` after the last new one (the core then
+     * clears the device's sticky `clip_flags`; a channel still clipping lights
+     * again on the next read) or after `clear_clips`. Where the clear is
+     * refused (a viewer on a hub) it follows the sticky flags. Draw the clip
+     * marker from this, not from `clip_flags`.
+     */
+    val clipHold: Long,
 )
 
 /**
@@ -1864,6 +1884,179 @@ data class RtaOwnership(
 )
 
 /**
+ * The meter ballistics' timing (`DspiCore::set_meter_ballistics`).
+ */
+data class MeterBallistics(
+    /**
+     * How long a new peak holds, ms. Default 1000.
+     */
+    val holdMs: Long,
+    /**
+     * How fast a held peak falls after its hold, linear full scale per
+     * second. Default 0.5.
+     */
+    val decayPerS: Float,
+    /**
+     * How long the clip hold lasts after the last new clip, ms; 0 until
+     * cleared. Default 10 000 (the macOS console's).
+     */
+    val clipHoldMs: Long,
+)
+
+/**
+ * One record of a device's event log (`DspiCore::event_log_read`).
+ */
+data class EventEntry(
+    /**
+     * Rising per device, across runs.
+     */
+    val id: Long,
+    /**
+     * When, ms since the Unix epoch.
+     */
+    val timeMs: Long,
+    /**
+     * `notification`, `connected`, `disconnected`, `clip`, `temperature`,
+     * `counter`, `reset`, `firmware`, `import`, `recall`; `unknown` for a
+     * newer build's kind.
+     */
+    val kind: String,
+    /**
+     * The device's serial.
+     */
+    val serial: String,
+    /**
+     * One readable line.
+     */
+    val text: String,
+    /**
+     * Who or what caused it: a notification's source (`HOST`, `PRESET`,
+     * `UART`, ...), a transport, a counter, a reset reason, `meter`; "" when
+     * none.
+     */
+    val source: String,
+    /**
+     * The DSPi Link session that caused it, when another one did.
+     */
+    val session: Long?,
+    /**
+     * This client's own write coming back.
+     */
+    val own: Boolean,
+    /**
+     * A wire channel (clips), or the preset slot (recalls).
+     */
+    val channel: Int?,
+    /**
+     * °C for a temperature, the total for a counter.
+     */
+    val value: Double?,
+    /**
+     * The firmware version, on connects and firmware changes.
+     */
+    val fw: String?,
+    /**
+     * The device's uptime, s, where it reports one.
+     */
+    val uptimeS: Long?,
+    /**
+     * Detail lines: what a recall or an import changed.
+     */
+    val lines: List<String>,
+    /**
+     * Occurrences this record stands for (repeats, counter steps, changes).
+     */
+    val count: Long,
+)
+
+/**
+ * A page of a device's event log.
+ */
+data class EventBatch(
+    /**
+     * The id to pass next time.
+     */
+    val lastId: Long,
+    /**
+     * Lines in the files that were not records.
+     */
+    val skipped: Long,
+    /**
+     * Oldest first.
+     */
+    val entries: List<EventEntry>,
+)
+
+/**
+ * A file a client adds to a diagnostics bundle (`client/<name>` in the
+ * zip): its own log, `uconsole doctor`'s report.
+ */
+data class DiagFile(
+    /**
+     * The file's name; anything but letters, digits, `.`, `_` and `-`
+     * becomes `_`.
+     */
+    val name: String,
+    /**
+     * Its text, kept up to 4 MiB.
+     */
+    val text: String,
+)
+
+/**
+ * What a client adds to a diagnostics bundle
+ * (`DspiCore::diagnostics_save`).
+ */
+data class DiagOptions(
+    /**
+     * The client and its version, as it names itself ("DSPi Console 1.2.0
+     * (Android)"); "" when it does not say.
+     */
+    val app: String,
+    /**
+     * The folder of a hub store (`hub-store.json`) to include with its
+     * tokens and secrets removed; "" for none.
+     */
+    val hubStoreDir: String,
+    /**
+     * The client's own files.
+     */
+    val files: List<DiagFile>,
+)
+
+/**
+ * The device's USB error counters (`REQ_GET_USB_ERROR_STATS` 0xB2,
+ * registry `diag.usb`): six `u32` since boot or the last reset
+ * (`diag.usb.reset`). Current firmware reports them all as zero.
+ */
+data class UsbErrorStats(
+    /**
+     * Every error counted.
+     */
+    val total: Long,
+    /**
+     * CRC errors.
+     */
+    val crc: Long,
+    /**
+     * Bit-stuffing errors.
+     */
+    val bitstuff: Long,
+    /**
+     * Receive overflows.
+     */
+    val rxOverflow: Long,
+    /**
+     * Receive timeouts.
+     */
+    val rxTimeout: Long,
+    /**
+     * Data sequence errors.
+     */
+    val dataSeq: Long,
+)
+
+/**
  * One GET the host is asked to make.
  */
 data class AutoEqFetchRequest(
@@ -1987,6 +2180,87 @@ data class AutoEqRebuildProgress(
 )
 
 /**
+ * What `EXT_IDENTIFY` reports: the blink state and what the board is.
+ */
+data class IdentifyInfo(
+    /**
+     * Blink time left in seconds, rounded up; 0 when not blinking.
+     */
+    val remainingS: Int,
+    /**
+     * The output of the last identify tone since the device started.
+     */
+    val lastToneOutput: Int?,
+    /**
+     * `RP2040` or `RP2350` (`chip N` for a value this build does not know).
+     */
+    val chip: String,
+    /**
+     * The SDK's chip revision number.
+     */
+    val chipRev: Int,
+    /**
+     * The raw `SYSINFO.CHIP_ID` register.
+     */
+    val chipId: Long,
+    /**
+     * The board the firmware was built for (`pico`, `pico2`).
+     */
+    val board: String,
+    /**
+     * The hardware revision the firmware build was given; empty when the
+     * build set none (the firmware cannot sense it).
+     */
+    val hwRev: String,
+)
+
+/**
+ * What `EXT_RESET_INFO` reports: why the device last restarted.
+ */
+data class DeviceResetInfo(
+    /**
+     * A stable name: `power_on`, `brownout`, `run_pin`, `watchdog`,
+     * `software`, `debugger`, `glitch` or `unknown`.
+     */
+    val reason: String,
+    /**
+     * The firmware's reason code (reset_info.h), for a code this build does
+     * not know too.
+     */
+    val reasonCode: Int,
+    /**
+     * The reason in words.
+     */
+    val description: String,
+    /**
+     * Seconds since that restart.
+     */
+    val uptimeS: Long,
+    /**
+     * How long the run before it lasted, in seconds; `None` after a power-on
+     * or a brown-out, which clear the record.
+     */
+    val prevUptimeS: Long?,
+    /**
+     * Watchdog hangs this power session not yet acted on (the core voltage
+     * extension's count).
+     */
+    val hangCount: Int,
+    /**
+     * `RP2040` or `RP2350`.
+     */
+    val chip: String,
+    /**
+     * The raw reset-cause register at boot, for a support report.
+     */
+    val chipReset: Long,
+    /**
+     * The raw `WATCHDOG.REASON` at boot (bit 8: the firmware's own timeout).
+     */
+    val watchdogReason: Long,
+)
+
+/**
  * What a board needs, read before it enters the bootloader. The default is
  * the safe one: unknown.
  */
@@ -2036,6 +2310,72 @@ data class FirmwareGuardVerdict(
      * The board record's `required_mv`, as given.
      */
     val requiredMv: Int,
+)
+
+/**
+ * One change in the history ([`DspiCore::history`]).
+ */
+data class HistoryEntry(
+    /**
+     * The registry path (`out.gain`, `eq.freq`, ...), or one of the
+     * journal's own: `eq.band` (a whole band: type, bypass, then freq, Q,
+     * gain and the Linkwitz target Q as little-endian `f32`s), `ext.pairmap`
+     * (the crossfeed pair map's four bytes), `ext.vreg` (a core-voltage
+     * request: op and value), `raw` (a raw request: opcode and `wValue` as
+     * indices, the payload as the value). A control-surface operation is
+     * under its `cs.*` path with the operation's JSON as text.
+     */
+    val path: String,
+    /**
+     * The path's indices (an output, a channel and a band, ...).
+     */
+    val indices: List<Int>,
+    /**
+     * The value before, when known; undo writes it back.
+     */
+    val before: ParamValue?,
+    /**
+     * The value after (`trigger` for an action).
+     */
+    val after: ParamValue,
+    /**
+     * Who made it.
+     */
+    val source: HistorySource,
+    /**
+     * When, in milliseconds since the Unix epoch (a drag: its last step).
+     */
+    val atMs: Long,
+    /**
+     * Whether undo may reverse it. The registry decides: only a parameter
+     * with no hazard (not a flash write, an audible one, a reconfiguration,
+     * a deferred or an irreversible one).
+     */
+    val undoable: Boolean,
+)
+
+/**
+ * What [`DspiCore::undo`] or [`DspiCore::redo`] did.
+ */
+data class HistoryMove(
+    /**
+     * The change reversed (undo) or applied again (redo); `None` when
+     * nothing moved.
+     */
+    val entry: HistoryEntry?,
+    /**
+     * The changes stepped over on the way, newest first, which cannot be
+     * undone (see [`HistoryEntry::undoable`]). An entry here that is
+     * undoable had no value before to restore, or someone else has changed
+     * it since (`note` says who); the walk stopped there.
+     */
+    val skipped: List<HistoryEntry>,
+    /**
+     * Why nothing moved, in words, when another writer changed the value
+     * since (only where the core leaves such a change alone); `None`
+     * otherwise.
+     */
+    val note: String?,
 )
 
 /**
@@ -2516,6 +2856,24 @@ enum class FirmwareGuardReason {
 }
 
 /**
+ * Who made a change in the history.
+ */
+enum class HistorySource {
+    /**
+     * A write this program asked for.
+     */
+    LOCAL,
+    /**
+     * The reversal of an earlier change, sent by [`DspiCore::undo`].
+     */
+    UNDO,
+    /**
+     * The repeat of an undone change, sent by [`DspiCore::redo`].
+     */
+    REDO,
+}
+
+/**
  * Where a run is: [`VregCalView::phase`]. The details are in the view.
  */
 enum class VregCalPhase {
@@ -2601,6 +2959,46 @@ enum class VregDemoEvent {
      * `seconds` pass on the device's clock.
      */
     ADVANCE_UPTIME,
+}
+
+/**
+ * A parameter value: `dspi_proto::value::Value` across the bindings. In
+ * JSON (the C ABI, the web binding) it is tagged by kind in lower case:
+ * `{"float": -12.5}`, `{"bool": true}`, `{"bytes": [1, 2]}`, `"trigger"`.
+ */
+sealed class ParamValue {
+    /**
+     * A yes/no value.
+     */
+    data class Bool(val v1: kotlin.Boolean) : ParamValue()
+    /**
+     * A number.
+     */
+    data class Float(val v1: kotlin.Float) : ParamValue()
+    /**
+     * A whole number.
+     */
+    data class Int(val v1: kotlin.Long) : ParamValue()
+    /**
+     * A choice, as its wire number (the registry has the labels).
+     */
+    data class Choice(val v1: kotlin.Int) : ParamValue()
+    /**
+     * A bit mask.
+     */
+    data class Mask(val v1: kotlin.Long) : ParamValue()
+    /**
+     * Text.
+     */
+    data class Text(val v1: kotlin.String) : ParamValue()
+    /**
+     * A structured payload, as the registry's packet encodes it.
+     */
+    data class Bytes(val v1: kotlin.collections.List<kotlin.Int>) : ParamValue()
+    /**
+     * An action with no value.
+     */
+    data object Trigger : ParamValue()
 }
 
 /**

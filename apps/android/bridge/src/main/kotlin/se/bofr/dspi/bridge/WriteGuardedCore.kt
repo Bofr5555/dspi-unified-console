@@ -4,6 +4,7 @@ package se.bofr.dspi.bridge
 import se.bofr.dspi.core.DspiCoreApi
 import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.FilterParams
+import se.bofr.dspi.core.HistoryMove
 import se.bofr.dspi.core.I2cConfig
 import se.bofr.dspi.core.SiggenConfig
 import se.bofr.dspi.core.UartConfig
@@ -55,6 +56,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
     override fun coreVregOp(op: Int, value: Int, word: String?) {
         guard("coreVregOp")
         return inner.coreVregOp(op, value, word)
+    }
+
+    // -- WP FWX -- blinks the LED, and with a tone output plays a tone
+    override fun identify(seconds: Int, toneOutput: Int?) {
+        guard("identify")
+        return inner.identify(seconds, toneOutput)
     }
 
     // Review w1d (integration with CG11, CG14): the calibration flow's writes.
@@ -135,6 +142,17 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
     override fun applyAllParams() {
         guard("applyAllParams")
         return inner.applyAllParams()
+    }
+
+    // -- WP P0W -- an undo or redo writes the device like the setter it replays
+    override fun undo(): HistoryMove {
+        guard("undo")
+        return inner.undo()
+    }
+
+    override fun redo(): HistoryMove {
+        guard("redo")
+        return inner.redo()
     }
 
     override fun setFilter(ch: Int, band: Int, params: FilterParams) {
@@ -661,6 +679,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "setOutputLatency",
             "coreVregOp",
             "rawSet",
+            // -- WP P0W --
+            "undo",
+            "redo",
             // Review w1d (CG11, CG14): the calibration flow's device writes
             "coreVregCalStart",
             "coreVregCalCommit",
@@ -676,7 +697,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "demoRenameElsewhere",
             "demoLatencyTiming",
             // -- WP QD31 --
-            "demoOutputSaveStatus"
+            "demoOutputSaveStatus",
+            // -- WP FWX --
+            "identify"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -793,6 +816,13 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "openDemo",
             "extStatus",
             "fetchCoreVreg",
+            // -- WP FWX --
+            "fetchIdentify",
+            "fetchResetInfo",
+            "resetInfoAtConnect",
+            "hasClipEvents",
+            // -- WP CS1 -- the USB error counters (0xB2), a read
+            "fetchUsbErrorStats",
             "uf2Inspect",
             "firmwareVersionMatches",
             "bootloaderDrives",
@@ -841,7 +871,24 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // (the firmware-update path, as enterBootloader; the writes
             // inside it are guarded one by one).
             "deviceLockAcquire",
-            "deviceLockRelease"
+            "deviceLockRelease",
+            // -- WP P0M -- the meters' ballistics (local) and the event history
+            // (local files); fetchStatus's own clip clear is as clearClips.
+            "meterBallistics",
+            "setMeterBallistics",
+            "resetMeterMax",
+            "eventLogSetDir",
+            "eventLogRead",
+            "eventLogExport",
+            "eventLogDevices",
+            // -- WP P0W -- the change history's reads
+            "canUndo",
+            "canRedo",
+            "history",
+            // -- WP P0E -- the diagnostics bundle: device reads (the Stats
+            // window's) and a local file; nothing is written to the device.
+            "diagnosticsSave",
+            "diagnosticsFileName"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

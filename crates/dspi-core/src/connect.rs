@@ -183,13 +183,23 @@ impl DspiCore {
         let result = {
             let mut guard = self.lock();
             if lock.is_current(&guard) {
-                apply_all_params_locked(&mut guard)
+                let r = apply_all_params_locked(&mut guard);
+                // -- WP BULKFIX --
+                r.map_err(|e| (e, bulk_left_muted(&guard)))
             } else {
-                Err(DspiError::Disconnected)
+                Err((DspiError::Disconnected, false))
             }
         };
         self.release_device_lock(lock);
-        result
+        // -- WP BULKFIX -- (fixup bf F2) Logged with the lock released.
+        result.map_err(|(e, left_muted)| {
+            if left_muted {
+                let e = with_why(e);
+                self.log_left_muted("Applying the configuration", &e);
+                return e;
+            }
+            e
+        })
     }
 
     /// Read the meter block (`REQ_GET_STATUS` sub-query 9): the peak of each
@@ -208,10 +218,69 @@ impl DspiCore {
     /// poll is read directly at a low rate; a repeat of the last such read is
     /// `stale` too.
     ///
+    /// WP P0M: `peak_hold`, `peak_max` and `clip_hold` are the core's meter
+    /// ballistics over these reads (`set_meter_ballistics`); a `stale` read
+    /// leaves them as they were. When the clip hold ends the core clears the
+    /// device's sticky flags itself (`REQ_CLEAR_CLIPS`, as `clear_clips`), so
+    /// a client keeps no clip timer. A channel still clipping lights again on
+    /// the next read; where the clear is refused (a viewer on a hub) the hold
+    /// follows the device's sticky flags. New clips go to the event log.
+    ///
     /// Errors: [`DspiError::Disconnected`] with no device open;
     /// [`DspiError::Transfer`] when the read fails or the reply is shorter
     /// than `num_channels * 2 + 6` bytes.
     pub fn fetch_status(&self) -> Result<SystemStatus> {
+        // -- WP P0M --
+        let mut status = self.fetch_status_raw()?;
+        if self.events.meters(&mut status) {
+            self.clear_clips_when_free();
+        }
+        Ok(status)
+    }
+
+    /// Copy of the cached state (the C ABI returns a borrowed pointer).
+    /// Defaults while disconnected. Never fails.
+    pub fn get_state(&self) -> DspState {
+        self.lock().state.clone()
+    }
+
+    /// Longest delay the firmware's delay line holds, ms: 42 on RP2350
+    /// (`platform_id` 1, 2048 samples at 48 kHz), 21 otherwise (RP2040,
+    /// 1024 samples). Read from the mirror; never fails.
+    pub fn max_delay_ms(&self) -> f32 {
+        state::max_delay_ms_for(&self.lock().state)
+    }
+
+    /// Clear the device's sticky clip flags (`REQ_CLEAR_CLIPS`, which reads
+    /// the flags back and clears them; the value is not used).
+    ///
+    /// Meter housekeeping, not a parameter: it touches no setting and
+    /// nothing in the bulk image, so it is allowed on a read-only
+    /// connection too. This is the one named exception (PLAN §1.2) to
+    /// "state-changing opcodes only on a `Writable`": it goes out on a plain
+    /// `Connection`.
+    ///
+    /// Errors: [`DspiError::Disconnected`] with no device open; the
+    /// transport's typed error when the transfer fails.
+    pub fn clear_clips(&self) -> Result<()> {
+        // -- WP P0M -- the core's clip hold goes dark at once; a clear that
+        // fails brings back what the device still reports
+        self.events.clear_clip_hold();
+        let sent = {
+            let mut guard = self.lock();
+            guard
+                .conn()
+                .and_then(|conn| conn.get_upto(op::REQ_CLEAR_CLIPS, 0, 4))
+        };
+        self.events.clear_result(sent.is_ok());
+        sent.map(|_| ())
+    }
+}
+
+// -- WP P0M --
+impl DspiCore {
+    /// [`DspiCore::fetch_status`]'s read, before the ballistics.
+    fn fetch_status_raw(&self) -> Result<SystemStatus> {
         // WP LK2: over DSPi Link this never waits for the core lock, so the
         // meters keep going while `fetch_all`, `cs_fetch` or a re-read after a
         // resync runs on another thread (call it from a thread of its own).
@@ -247,37 +316,6 @@ impl DspiCore {
         status.stale = read.stale;
         status.age_ms = read.age_ms;
         Ok(status)
-    }
-
-    /// Copy of the cached state (the C ABI returns a borrowed pointer).
-    /// Defaults while disconnected. Never fails.
-    pub fn get_state(&self) -> DspState {
-        self.lock().state.clone()
-    }
-
-    /// Longest delay the firmware's delay line holds, ms: 42 on RP2350
-    /// (`platform_id` 1, 2048 samples at 48 kHz), 21 otherwise (RP2040,
-    /// 1024 samples). Read from the mirror; never fails.
-    pub fn max_delay_ms(&self) -> f32 {
-        state::max_delay_ms_for(&self.lock().state)
-    }
-
-    /// Clear the device's sticky clip flags (`REQ_CLEAR_CLIPS`, which reads
-    /// the flags back and clears them; the value is not used).
-    ///
-    /// Meter housekeeping, not a parameter: it touches no setting and
-    /// nothing in the bulk image, so it is allowed on a read-only
-    /// connection too. This is the one named exception (PLAN §1.2) to
-    /// "state-changing opcodes only on a `Writable`": it goes out on a plain
-    /// `Connection`.
-    ///
-    /// Errors: [`DspiError::Disconnected`] with no device open; the
-    /// transport's typed error when the transfer fails.
-    pub fn clear_clips(&self) -> Result<()> {
-        let mut guard = self.lock();
-        let conn = guard.conn()?;
-        conn.get_upto(op::REQ_CLEAR_CLIPS, 0, 4)?;
-        Ok(())
     }
 }
 
@@ -916,19 +954,152 @@ pub(crate) fn apply_all_params_locked(inner: &mut Inner) -> Result<()> {
     check_apply_allowed(inner)?;
     let image = state::encode_bulk(&inner.state);
     let mut w = inner.writable_conn()?;
+    // -- WP BULKFIX --
+    w.conn().bulk_left_muted = false;
+    let repair = bulk_gain_repair(w.conn(), &image);
 
     w.conn().echo.bulk_write_started(Instant::now());
-    let sent = write_image(&mut w, &image);
+    // -- WP BULKFIX --
+    let mut unmuted = 0usize;
+    let (sent, left_muted) = match &repair {
+        None => (write_image(&mut w, &image), false),
+        Some(r) => match write_image(&mut w, &r.muted) {
+            Ok(()) => {
+                let repaired = repair_after_write(&mut w, r, &mut unmuted);
+                let failed = repaired.is_err();
+                (repaired, failed)
+            }
+            Err(e) => {
+                // A lost reply may hide an applied image: its gains are unknown.
+                let all = dspi_session::bulk_gain::all_outputs(r.outputs);
+                w.conn().gain_guard.suspect(all);
+                (Err(e), false)
+            }
+        },
+    };
     w.conn()
         .echo
         .bulk_write_finished(Instant::now(), sent.is_ok());
+    if let (true, Some(r)) = (left_muted, &repair) {
+        // -- fixup bf (F2) -- The device holds the muted image: so does the
+        // mirror, and `bulk_left_muted` says why to the caller.
+        w.conn().bulk_left_muted = true;
+        let _ = state::decode_bulk(&r.muted, &mut inner.state);
+        for u in r.unmutes.iter().take(unmuted) {
+            if let Some(m) = inner.state.output_muted.get_mut(usize::from(u.value)) {
+                *m = false;
+            }
+        }
+    }
     sent?;
 
     // Cannot fail: `encode_bulk` always yields a BULK_SIZE V32 image.
     // Were it to, the mirror simply keeps the state that was sent.
     let _ = state::decode_bulk(&image, &mut inner.state);
+    // -- WP P0W -- the whole state replaced: the history before it is gone
+    crate::journal::journal(inner, "bulk", &[], dspi_proto::value::Value::Trigger);
     Ok(())
 }
+
+// -- WP BULKFIX -- (fixup bf F2)
+/// Whether the last bulk write on the open connection left the outputs muted.
+pub(crate) fn bulk_left_muted(inner: &Inner) -> bool {
+    inner.conn.as_ref().is_some_and(|c| c.bulk_left_muted)
+}
+
+/// Why the outputs are muted after a failed bulk write, for an error line.
+pub(crate) const LEFT_MUTED: &str = "the device's outputs were left muted, because the gains it \
+     was sent could not be checked or corrected (its firmware plays a bulk write's gains wrong \
+     until they are re-sent); apply the configuration again or load a preset";
+
+/// `e` with [`LEFT_MUTED`] in its message. Other kinds (a lost device, a
+/// Link refusal) keep theirs, so a client still tells them apart.
+pub(crate) fn with_why(e: DspiError) -> DspiError {
+    match e {
+        DspiError::Transfer { msg } => DspiError::Transfer {
+            msg: format!("{msg}; {LEFT_MUTED}"),
+        },
+        other => other,
+    }
+}
+
+impl DspiCore {
+    /// Record a bulk write whose repair failed in the event history. Call
+    /// with the lock released.
+    pub(crate) fn log_left_muted(&self, what: &str, e: &DspiError) {
+        let text = match e {
+            DspiError::Transfer { .. } => format!("{what} failed: {e}"),
+            _ => format!("{what} failed ({e}): {LEFT_MUTED}"),
+        };
+        let r = dspi_session::events::EventRecord::new(
+            dspi_session::events::EventKind::Import,
+            crate::events::now_ms(),
+            text,
+        );
+        self.events.record_all(vec![r]);
+    }
+}
+
+// -- WP BULKFIX --
+/// The repair a bulk write of `image` needs on this connection: `None` when
+/// the firmware reports the bulk dB fix (`EXT_FIRMWARE_FIXES`, asked once per
+/// connection, and only when `EXT_LIST` named it) or the image is not one the
+/// firmware applies. Firmware v1.1.6 and every fork build without FWX's FW2
+/// convert a bulk SET's gains with a Taylor series that plays deep cuts loud
+/// ([`dspi_proto::bulk_gain`]).
+fn bulk_gain_repair(
+    conn: &mut Connection,
+    image: &[u8],
+) -> Option<dspi_proto::bulk_gain::GainRepair> {
+    let guard = conn.gain_guard.clone();
+    // A Link bind's probe may not have read `EXT_LIST` yet: then ask.
+    let supported = conn
+        .pending_probe
+        .is_none()
+        .then(|| conn.ext.supported.clone());
+    if guard.fixed(conn.transport(), supported.as_deref()) {
+        return None;
+    }
+    dspi_proto::bulk_gain::plan(image)
+}
+
+// -- WP BULKFIX -- (fixup bf F5: the writes go through `Writable`)
+/// After the muted image was sent: wait for its apply and check the read-back,
+/// re-send the gains, then unmute. Every output is suspect if this fails
+/// before the gains are all in ([`dspi_session::bulk_gain::GainGuard`]).
+/// `unmuted` counts the unmutes sent.
+fn repair_after_write(
+    w: &mut Writable<'_>,
+    r: &dspi_proto::bulk_gain::GainRepair,
+    unmuted: &mut usize,
+) -> Result<()> {
+    use dspi_session::bulk_gain::{all_outputs, check_readback, wait_applied};
+    let guard = w.conn().gain_guard.clone();
+    let gains = (|| -> Result<()> {
+        let back = wait_applied(w.conn().transport())?;
+        check_readback(&back, r)?;
+        for g in &r.gains {
+            w.set(g.opcode, g.value, &g.payload)?;
+        }
+        Ok(())
+    })();
+    if gains.is_err() {
+        guard.suspect(all_outputs(r.outputs));
+    } else {
+        guard.clear_all();
+    }
+    gains?;
+    for u in &r.unmutes {
+        w.set(u.opcode, u.value, &u.payload)?;
+        *unmuted = unmuted.saturating_add(1);
+    }
+    Ok(())
+}
+
+// -- WP BULKFIX --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_bulkfix;
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
@@ -1371,13 +1542,17 @@ mod tests_wp_c2 {
         core.apply_all_params().unwrap();
         let entries = log.lock().unwrap().clone();
         let write = format!("out {:02X} 0", op::REQ_SET_ALL_PARAMS);
-        assert_eq!(
-            entries,
-            vec![
-                "lock Applying configuration 60".to_string(),
-                write,
-                "unlock".to_string()
-            ]
+        // -- WP BULKFIX -- The demo lacks the bulk dB fix: the read-back and
+        // the unmutes that follow the write are inside the lock too.
+        assert_eq!(entries.first().unwrap(), "lock Applying configuration 60");
+        assert_eq!(entries[1], write);
+        assert_eq!(entries.last().unwrap(), "unlock");
+        assert_eq!(entries[2], format!("in {:02X} 0", op::REQ_GET_ALL_PARAMS));
+        let unmute = format!("out {:02X} ", op::REQ_SET_OUTPUT_MUTE);
+        assert!(
+            entries[3..entries.len() - 1]
+                .iter()
+                .all(|e| e.starts_with(&unmute))
         );
     }
 

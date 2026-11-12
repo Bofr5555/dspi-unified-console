@@ -1284,6 +1284,18 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func cachedInputSourceName(source: UInt8) throws  -> String
     
     /**
+     * Whether [`DspiCore::redo`] has a change to apply again. False with no
+     * device.
+     */
+    func canRedo()  -> Bool
+    
+    /**
+     * Whether [`DspiCore::undo`] has a change to reverse. False with no
+     * device.
+     */
+    func canUndo()  -> Bool
+    
+    /**
      * Take the live state as what the active preset holds: from now on
      * [`DspiCore::preset_changes`] lists what differs from it. The core
      * does this itself after a connect, a load, a save, a revert and a
@@ -1361,9 +1373,12 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * are shortened to it. Channels the device lacks are named, not moved.
      *
      * Returns JSON. On success `{ok: true, error: "", lines, clean, links,
-     * hardwareWritten, leftAlone}`: `lines` is the report, `clean` false
-     * when anything was missing, skipped, left alone or shortened,
-     * `leftAlone` the keys left alone, `links` the input-pair link mask to
+     * hardwareWritten, leftAlone, outOfRange}`: `lines` is the report,
+     * `clean` false when anything was missing, skipped, left alone,
+     * shortened or out of range, `leftAlone` the keys left alone,
+     * `outOfRange` the numbers past what this device takes, each
+     * `{path, value, applied}` (registry path with indices, the document's
+     * value, the nearest end written instead; WP P0U's rows), `links` the input-pair link mask to
      * restore (null when the document has none), and `hardwareWritten`
      * whether I/O was changed while the device stores its output
      * configuration apart from presets (save that to keep it). Otherwise
@@ -1734,6 +1749,30 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func deviceLockRelease() 
     
     /**
+     * A file name for a bundle saved now: `dspi-diagnostics-` and the UTC
+     * date and time, `.zip`. For a Save dialog's suggestion. Never fails.
+     */
+    func diagnosticsFileName()  -> String
+    
+    /**
+     * Write a diagnostics bundle to `path`: one zip with versions, the open
+     * device's dump, stats and monitor lines, every event log, the hub
+     * store at `options.hub_store_dir` with its tokens and secrets removed,
+     * the OS and USB facts, and `options.files`. Nothing is sent anywhere.
+     * Returns the names of the files in the zip.
+     *
+     * Reads the device (a Stats window's reads) and files: not on the UI
+     * thread. The zip is written beside `path` first and renamed over it,
+     * so a failure leaves no half file.
+     *
+     * Errors: [`DspiError::Io`] when the file cannot be written;
+     * [`DspiError::Unsupported`] where there is no file system (the web,
+     * which saves [`DspiCore::diagnostics_zip`]'s bytes itself). What the
+     * bundle could not read is in its `notes.txt`, never an error.
+     */
+    func diagnosticsSave(path: String, options: DiagOptions) throws  -> [String]
+    
+    /**
      * Close the open device, whatever its transport, and reset the mirror
      * to its defaults. The selected serial is kept, so a replugged device
      * reconnects (WP C1b). Blocks until the notification reader has stopped
@@ -1770,6 +1809,43 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * changed while the hub was asked.
      */
     func enterBootloader() throws 
+    
+    /**
+     * The serials with an event log, sorted. Never fails.
+     */
+    func eventLogDevices()  -> [String]
+    
+    /**
+     * `serial`'s whole event log as JSON lines, oldest first, in the file
+     * format (`dspi_session::events`): for a "Save events…" or a diagnostics
+     * bundle. An empty `serial` is the open device. Never fails; an unknown
+     * serial exports "".
+     */
+    func eventLogExport(serial: String)  -> String
+    
+    /**
+     * `serial`'s event log with ids above `after_id`, oldest first, at
+     * most `limit` (capped at [`EVENT_READ_MAX`]): with `after_id` 0 the
+     * newest `limit`, otherwise the next `limit` after it, so poll with the
+     * batch's `last_id`. An empty `serial` is the open device. Lines in the
+     * file that are not records are skipped and counted. Reads files: not on
+     * the UI thread; no other call waits for it. Never fails; an unknown
+     * serial reads empty.
+     */
+    func eventLogRead(serial: String, afterId: UInt64, limit: UInt32)  -> EventBatch
+    
+    /**
+     * Keep the event log in files under `dir`, the client's own data
+     * directory, created if missing: one JSON-lines file per device serial,
+     * rotated, at most about 1 MiB per device. An empty `dir` keeps it in
+     * memory only (the default; the last 1000 records). Call it at start-up,
+     * before connecting; the open device's log carries on in the new
+     * place. Blocking file I/O: not on the UI thread.
+     *
+     * Errors: [`DspiError::Io`] when the directory cannot be created;
+     * [`DspiError::Unsupported`] on the web, which keeps it in memory.
+     */
+    func eventLogSetDir(dir: String) throws 
     
     /**
      * What the extension channel offers on the connected device, as probed
@@ -1934,6 +2010,15 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func fetchDacMute() throws 
     
     /**
+     * Read `EXT_IDENTIFY`: the blink time left and the board description.
+     *
+     * `Unsupported`, with no traffic, when the device did not list it, and
+     * when the read stalls or a DSPi Link hub refuses it; `Disconnected`
+     * without a device; `Transfer` for a short or failed read.
+     */
+    func fetchIdentify() throws  -> IdentifyInfo
+    
+    /**
      * Lock status of a clocked input. `which`: 0 = I2S slave
      * (`REQ_GET_I2S_SLAVE_STATUS`, 16 bytes; `rate_ok` is always true),
      * 1 = ADAT input (`REQ_GET_ADAT_INPUT_STATUS`, 20 bytes; all zero on
@@ -2016,6 +2101,16 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * have); [`DspiError::Disconnected`].
      */
     func fetchOutputPin(slot: UInt8) throws  -> UInt8
+    
+    /**
+     * Read `EXT_RESET_INFO`: why the device last restarted, its uptime and
+     * the run before. Also refreshes the connection's copy from the probe.
+     *
+     * `Unsupported`, with no traffic, when the device did not list it, and
+     * when the read stalls or a DSPi Link hub refuses it; `Disconnected`
+     * without a device; `Transfer` for a short or failed read.
+     */
+    func fetchResetInfo() throws  -> DeviceResetInfo
     
     /**
      * The output rings' health (Output Ring Health in the Stats window), or
@@ -2106,6 +2201,14 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * poll is read directly at a low rate; a repeat of the last such read is
      * `stale` too.
      *
+     * WP P0M: `peak_hold`, `peak_max` and `clip_hold` are the core's meter
+     * ballistics over these reads (`set_meter_ballistics`); a `stale` read
+     * leaves them as they were. When the clip hold ends the core clears the
+     * device's sticky flags itself (`REQ_CLEAR_CLIPS`, as `clear_clips`), so
+     * a client keeps no clip timer. A channel still clipping lights again on
+     * the next read; where the clear is refused (a viewer on a hub) the hold
+     * follows the device's sticky flags. New clips go to the event log.
+     *
      * Errors: [`DspiError::Disconnected`] with no device open;
      * [`DspiError::Transfer`] when the read fails or the reply is shorter
      * than `num_channels * 2 + 6` bytes.
@@ -2138,6 +2241,16 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * bytes).
      */
     func fetchUpmixStatus() throws  -> UpmixStatus
+    
+    /**
+     * The device's USB error counters (`REQ_GET_USB_ERROR_STATS`, 24
+     * bytes): for the System Statistics window. A read, allowed on a
+     * read-only connection. Current firmware answers zeros.
+     *
+     * Errors: [`DspiError::Disconnected`]; a transfer failure, a stall or a
+     * short reply as [`DspiError::Transfer`].
+     */
+    func fetchUsbErrorStats() throws  -> UsbErrorStats
     
     /**
      * Every channel's bands as a filter file (format 2), from the mirror:
@@ -2255,6 +2368,21 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func getState()  -> DspState
     
     /**
+     * Whether the device sends clip events (`EXT_NOTIFY_FEATURES` bit 1):
+     * then a clip shows without polling the meters fast. No traffic;
+     * `Disconnected` without a device.
+     */
+    func hasClipEvents() throws  -> Bool
+    
+    /**
+     * The newest `n` changes of this connection, newest first: every typed
+     * setter's, undo's and redo's, with the value before and after, who
+     * made it and when. The connection's session keeps the newest 1000; a
+     * reconnect starts with none. Empty with no device.
+     */
+    func history(n: UInt32)  -> [HistoryEntry]
+    
+    /**
      * A notification packet from the device of the [`DspiCore::open_host`]
      * connection, as its endpoint delivered it, with the hub's `origin` (the
      * session whose write caused it, 0 for a change at the device; `None`
@@ -2264,6 +2392,21 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * connects go to the new connection: stop feeding the old device first.
      */
     func hostNotify(packet: Data, origin: UInt16?) 
+    
+    /**
+     * `EXT_IDENTIFY`: blink the device's LED for `seconds` (0 stops it; over
+     * 120 the firmware shortens to 120) and, with `tone_output`, play its
+     * quiet identify tone ([`IDENTIFY_TONE_DBFS`], 400 ms) on that output.
+     * Leave `tone_output` empty unless the user asked for sound.
+     *
+     * Errors, with no traffic: `Disconnected`; `Unsupported` when the device
+     * did not list it; `InvalidArgument` for a tone output past the
+     * device's outputs; `ReadOnly` on a read-only connection. From the
+     * device: `Refused { status: EXT_WRITE_REFUSED }` when it stalls (a tone
+     * while its signal generator runs); `Denied`, `Locked` or `Transfer`
+     * from the link.
+     */
+    func identify(seconds: UInt8, toneOutput: UInt8?) throws 
     
     /**
      * DSPis the last scan saw but could not open: no permission (Linux udev
@@ -2413,6 +2556,13 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * 1024 samples). Read from the mirror; never fails.
      */
     func maxDelayMs()  -> Float
+    
+    /**
+     * The meter ballistics' timing (`SystemStatus.peak_hold`, `clip_hold`).
+     * Defaults: hold 1000 ms, then a fall of 0.5 full scale per second; clip
+     * hold 10 000 ms after the last new clip. Never fails.
+     */
+    func meterBallistics()  -> MeterBallistics
     
     /**
      * Forget every monitor line. Ids carry on from where they were, so a
@@ -2628,6 +2778,15 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func rawSet(opcode: UInt8, value: UInt16, data: Data) throws 
     
     /**
+     * Step forward: write again the change [`DspiCore::undo`] most recently
+     * reversed. A new change since then ends what can be redone.
+     *
+     * Errors: as [`DspiCore::undo`]; after a setter's error the change
+     * stays to be redone.
+     */
+    func redo() throws  -> HistoryMove
+    
+    /**
      * Re-read the bulk image after the device changed state on its own (a
      * preset load, a factory reset) and decode it into the mirror.
      *
@@ -2652,6 +2811,19 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * [`DspiError::Disconnected`] or [`DspiError::Transfer`] otherwise.
      */
     func resetBufferStats() throws 
+    
+    /**
+     * The reset readout as the connect probe found it, without traffic:
+     * `None` when the device has no `EXT_RESET_INFO` or the read failed.
+     * Its uptime is the one at connect. `Disconnected` without a device.
+     */
+    func resetInfoAtConnect() throws  -> DeviceResetInfo?
+    
+    /**
+     * Start every channel's `SystemStatus.peak_max` again from the next
+     * read. A new connection does this too. Never fails.
+     */
+    func resetMeterMax() 
     
     /**
      * The device's analyser as the worker probed it: `supported` false
@@ -3320,6 +3492,14 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func setMckPin(pin: UInt8) throws 
     
     /**
+     * Change the meter ballistics' timing for every later `fetch_status`.
+     * What is held stays. A `decay_per_s` below 0 or not finite reads as 0
+     * (a held peak then stays until a higher one); a `clip_hold_ms` of 0
+     * holds clips until `clear_clips`. Never fails.
+     */
+    func setMeterBallistics(config: MeterBallistics) 
+    
+    /**
      * Register (`Some`) or clear (`None`) the wake-up listener of the
      * notification reader. It is called on the reader thread whenever a
      * packet was queued (and once when the stream ends), and must only
@@ -3653,6 +3833,20 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func testDacMute() throws 
     
     /**
+     * Step back: write back the value the newest undoable change replaced
+     * (then what the device moved with it), through the typed setter for
+     * its path. Changes that cannot be undone are stepped over and named in
+     * [`HistoryMove::skipped`]. Nothing to undo is not an error: `entry` is
+     * then `None`.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device, or when the
+     * connection changed during the call (nothing is sent to another
+     * device); the setter's errors, after which the change stays to be
+     * undone.
+     */
+    func undo() throws  -> HistoryMove
+    
+    /**
      * The `wire_compat::feat` bits the connected firmware's wire format carries:
      * every known bit on V32 and newer, none with no device or below V16.
      */
@@ -3812,6 +4006,28 @@ open func cachedInputSourceName(source: UInt8)throws  -> String  {
 }
     
     /**
+     * Whether [`DspiCore::redo`] has a change to apply again. False with no
+     * device.
+     */
+open func canRedo() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_can_redo(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Whether [`DspiCore::undo`] has a change to reverse. False with no
+     * device.
+     */
+open func canUndo() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_can_undo(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
      * Take the live state as what the active preset holds: from now on
      * [`DspiCore::preset_changes`] lists what differs from it. The core
      * does this itself after a connect, a load, a save, a revert and a
@@ -3915,9 +4131,12 @@ open func configExport(name: String, appVersion: String, links: UInt8)throws  ->
      * are shortened to it. Channels the device lacks are named, not moved.
      *
      * Returns JSON. On success `{ok: true, error: "", lines, clean, links,
-     * hardwareWritten, leftAlone}`: `lines` is the report, `clean` false
-     * when anything was missing, skipped, left alone or shortened,
-     * `leftAlone` the keys left alone, `links` the input-pair link mask to
+     * hardwareWritten, leftAlone, outOfRange}`: `lines` is the report,
+     * `clean` false when anything was missing, skipped, left alone,
+     * shortened or out of range, `leftAlone` the keys left alone,
+     * `outOfRange` the numbers past what this device takes, each
+     * `{path, value, applied}` (registry path with indices, the document's
+     * value, the nearest end written instead; WP P0U's rows), `links` the input-pair link mask to
      * restore (null when the document has none), and `hardwareWritten`
      * whether I/O was changed while the device stores its output
      * configuration apart from presets (save that to keep it). Otherwise
@@ -4491,6 +4710,42 @@ open func deviceLockRelease()  {try! rustCall() {
 }
     
     /**
+     * A file name for a bundle saved now: `dspi-diagnostics-` and the UTC
+     * date and time, `.zip`. For a Save dialog's suggestion. Never fails.
+     */
+open func diagnosticsFileName() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_diagnostics_file_name(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Write a diagnostics bundle to `path`: one zip with versions, the open
+     * device's dump, stats and monitor lines, every event log, the hub
+     * store at `options.hub_store_dir` with its tokens and secrets removed,
+     * the OS and USB facts, and `options.files`. Nothing is sent anywhere.
+     * Returns the names of the files in the zip.
+     *
+     * Reads the device (a Stats window's reads) and files: not on the UI
+     * thread. The zip is written beside `path` first and renamed over it,
+     * so a failure leaves no half file.
+     *
+     * Errors: [`DspiError::Io`] when the file cannot be written;
+     * [`DspiError::Unsupported`] where there is no file system (the web,
+     * which saves [`DspiCore::diagnostics_zip`]'s bytes itself). What the
+     * bundle could not read is in its `notes.txt`, never an error.
+     */
+open func diagnosticsSave(path: String, options: DiagOptions)throws  -> [String]  {
+    return try  FfiConverterSequenceString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_diagnostics_save(self.uniffiClonePointer(),
+        FfiConverterString.lower(path),
+        FfiConverterTypeDiagOptions_lower(options),$0
+    )
+})
+}
+    
+    /**
      * Close the open device, whatever its transport, and reset the mirror
      * to its defaults. The selected serial is kept, so a replugged device
      * reconnects (WP C1b). Blocks until the notification reader has stopped
@@ -4532,6 +4787,67 @@ open func disconnect()  {try! rustCall() {
      */
 open func enterBootloader()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_enter_bootloader(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+    /**
+     * The serials with an event log, sorted. Never fails.
+     */
+open func eventLogDevices() -> [String]  {
+    return try!  FfiConverterSequenceString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_event_log_devices(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * `serial`'s whole event log as JSON lines, oldest first, in the file
+     * format (`dspi_session::events`): for a "Save events…" or a diagnostics
+     * bundle. An empty `serial` is the open device. Never fails; an unknown
+     * serial exports "".
+     */
+open func eventLogExport(serial: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_event_log_export(self.uniffiClonePointer(),
+        FfiConverterString.lower(serial),$0
+    )
+})
+}
+    
+    /**
+     * `serial`'s event log with ids above `after_id`, oldest first, at
+     * most `limit` (capped at [`EVENT_READ_MAX`]): with `after_id` 0 the
+     * newest `limit`, otherwise the next `limit` after it, so poll with the
+     * batch's `last_id`. An empty `serial` is the open device. Lines in the
+     * file that are not records are skipped and counted. Reads files: not on
+     * the UI thread; no other call waits for it. Never fails; an unknown
+     * serial reads empty.
+     */
+open func eventLogRead(serial: String, afterId: UInt64, limit: UInt32) -> EventBatch  {
+    return try!  FfiConverterTypeEventBatch_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_event_log_read(self.uniffiClonePointer(),
+        FfiConverterString.lower(serial),
+        FfiConverterUInt64.lower(afterId),
+        FfiConverterUInt32.lower(limit),$0
+    )
+})
+}
+    
+    /**
+     * Keep the event log in files under `dir`, the client's own data
+     * directory, created if missing: one JSON-lines file per device serial,
+     * rotated, at most about 1 MiB per device. An empty `dir` keeps it in
+     * memory only (the default; the last 1000 records). Call it at start-up,
+     * before connecting; the open device's log carries on in the new
+     * place. Blocking file I/O: not on the UI thread.
+     *
+     * Errors: [`DspiError::Io`] when the directory cannot be created;
+     * [`DspiError::Unsupported`] on the web, which keeps it in memory.
+     */
+open func eventLogSetDir(dir: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_event_log_set_dir(self.uniffiClonePointer(),
+        FfiConverterString.lower(dir),$0
     )
 }
 }
@@ -4756,6 +5072,20 @@ open func fetchDacMute()throws   {try rustCallWithError(FfiConverterTypeDspiErro
 }
     
     /**
+     * Read `EXT_IDENTIFY`: the blink time left and the board description.
+     *
+     * `Unsupported`, with no traffic, when the device did not list it, and
+     * when the read stalls or a DSPi Link hub refuses it; `Disconnected`
+     * without a device; `Transfer` for a short or failed read.
+     */
+open func fetchIdentify()throws  -> IdentifyInfo  {
+    return try  FfiConverterTypeIdentifyInfo_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_fetch_identify(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
      * Lock status of a clocked input. `which`: 0 = I2S slave
      * (`REQ_GET_I2S_SLAVE_STATUS`, 16 bytes; `rate_ok` is always true),
      * 1 = ADAT input (`REQ_GET_ADAT_INPUT_STATUS`, 20 bytes; all zero on
@@ -4882,6 +5212,21 @@ open func fetchOutputPin(slot: UInt8)throws  -> UInt8  {
 }
     
     /**
+     * Read `EXT_RESET_INFO`: why the device last restarted, its uptime and
+     * the run before. Also refreshes the connection's copy from the probe.
+     *
+     * `Unsupported`, with no traffic, when the device did not list it, and
+     * when the read stalls or a DSPi Link hub refuses it; `Disconnected`
+     * without a device; `Transfer` for a short or failed read.
+     */
+open func fetchResetInfo()throws  -> DeviceResetInfo  {
+    return try  FfiConverterTypeDeviceResetInfo_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_fetch_reset_info(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
      * The output rings' health (Output Ring Health in the Stats window), or
      * `None` on firmware without `REQ_OUTPUT_LATENCY` or with a short reply to
      * it: show no section then. Seven transfers.
@@ -5002,6 +5347,14 @@ open func fetchStatsTick()throws  -> StatsTick  {
      * poll is read directly at a low rate; a repeat of the last such read is
      * `stale` too.
      *
+     * WP P0M: `peak_hold`, `peak_max` and `clip_hold` are the core's meter
+     * ballistics over these reads (`set_meter_ballistics`); a `stale` read
+     * leaves them as they were. When the clip hold ends the core clears the
+     * device's sticky flags itself (`REQ_CLEAR_CLIPS`, as `clear_clips`), so
+     * a client keeps no clip timer. A channel still clipping lights again on
+     * the next read; where the clear is refused (a viewer on a hub) the hold
+     * follows the device's sticky flags. New clips go to the event log.
+     *
      * Errors: [`DspiError::Disconnected`] with no device open;
      * [`DspiError::Transfer`] when the read fails or the reply is shorter
      * than `num_channels * 2 + 6` bytes.
@@ -5051,6 +5404,21 @@ open func fetchSubharmMeter()throws  -> [Float]  {
 open func fetchUpmixStatus()throws  -> UpmixStatus  {
     return try  FfiConverterTypeUpmixStatus_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_fetch_upmix_status(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * The device's USB error counters (`REQ_GET_USB_ERROR_STATS`, 24
+     * bytes): for the System Statistics window. A read, allowed on a
+     * read-only connection. Current firmware answers zeros.
+     *
+     * Errors: [`DspiError::Disconnected`]; a transfer failure, a stall or a
+     * short reply as [`DspiError::Transfer`].
+     */
+open func fetchUsbErrorStats()throws  -> UsbErrorStats  {
+    return try  FfiConverterTypeUsbErrorStats_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_fetch_usb_error_stats(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -5235,6 +5603,32 @@ open func getState() -> DspState  {
 }
     
     /**
+     * Whether the device sends clip events (`EXT_NOTIFY_FEATURES` bit 1):
+     * then a clip shows without polling the meters fast. No traffic;
+     * `Disconnected` without a device.
+     */
+open func hasClipEvents()throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_has_clip_events(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * The newest `n` changes of this connection, newest first: every typed
+     * setter's, undo's and redo's, with the value before and after, who
+     * made it and when. The connection's session keeps the newest 1000; a
+     * reconnect starts with none. Empty with no device.
+     */
+open func history(n: UInt32) -> [HistoryEntry]  {
+    return try!  FfiConverterSequenceTypeHistoryEntry.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_history(self.uniffiClonePointer(),
+        FfiConverterUInt32.lower(n),$0
+    )
+})
+}
+    
+    /**
      * A notification packet from the device of the [`DspiCore::open_host`]
      * connection, as its endpoint delivered it, with the hub's `origin` (the
      * session whose write caused it, 0 for a change at the device; `None`
@@ -5247,6 +5641,27 @@ open func hostNotify(packet: Data, origin: UInt16?)  {try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_host_notify(self.uniffiClonePointer(),
         FfiConverterData.lower(packet),
         FfiConverterOptionUInt16.lower(origin),$0
+    )
+}
+}
+    
+    /**
+     * `EXT_IDENTIFY`: blink the device's LED for `seconds` (0 stops it; over
+     * 120 the firmware shortens to 120) and, with `tone_output`, play its
+     * quiet identify tone ([`IDENTIFY_TONE_DBFS`], 400 ms) on that output.
+     * Leave `tone_output` empty unless the user asked for sound.
+     *
+     * Errors, with no traffic: `Disconnected`; `Unsupported` when the device
+     * did not list it; `InvalidArgument` for a tone output past the
+     * device's outputs; `ReadOnly` on a read-only connection. From the
+     * device: `Refused { status: EXT_WRITE_REFUSED }` when it stalls (a tone
+     * while its signal generator runs); `Denied`, `Locked` or `Transfer`
+     * from the link.
+     */
+open func identify(seconds: UInt8, toneOutput: UInt8?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_identify(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(seconds),
+        FfiConverterOptionUInt8.lower(toneOutput),$0
     )
 }
 }
@@ -5465,6 +5880,18 @@ open func loadPreset(slot: UInt8)throws   {try rustCallWithError(FfiConverterTyp
 open func maxDelayMs() -> Float  {
     return try!  FfiConverterFloat.lift(try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_max_delay_ms(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * The meter ballistics' timing (`SystemStatus.peak_hold`, `clip_hold`).
+     * Defaults: hold 1000 ms, then a fall of 0.5 full scale per second; clip
+     * hold 10 000 ms after the last new clip. Never fails.
+     */
+open func meterBallistics() -> MeterBallistics  {
+    return try!  FfiConverterTypeMeterBallistics_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_meter_ballistics(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -5774,6 +6201,20 @@ open func rawSet(opcode: UInt8, value: UInt16, data: Data)throws   {try rustCall
 }
     
     /**
+     * Step forward: write again the change [`DspiCore::undo`] most recently
+     * reversed. A new change since then ends what can be redone.
+     *
+     * Errors: as [`DspiCore::undo`]; after a setter's error the change
+     * stays to be redone.
+     */
+open func redo()throws  -> HistoryMove  {
+    return try  FfiConverterTypeHistoryMove_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_redo(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
      * Re-read the bulk image after the device changed state on its own (a
      * preset load, a factory reset) and decode it into the mirror.
      *
@@ -5803,6 +6244,28 @@ open func refreshParams()throws   {try rustCallWithError(FfiConverterTypeDspiErr
      */
 open func resetBufferStats()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_reset_buffer_stats(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+    /**
+     * The reset readout as the connect probe found it, without traffic:
+     * `None` when the device has no `EXT_RESET_INFO` or the read failed.
+     * Its uptime is the one at connect. `Disconnected` without a device.
+     */
+open func resetInfoAtConnect()throws  -> DeviceResetInfo?  {
+    return try  FfiConverterOptionTypeDeviceResetInfo.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_reset_info_at_connect(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Start every channel's `SystemStatus.peak_max` again from the next
+     * read. A new connection does this too. Never fails.
+     */
+open func resetMeterMax()  {try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_reset_meter_max(self.uniffiClonePointer(),$0
     )
 }
 }
@@ -6812,6 +7275,19 @@ open func setMckPin(pin: UInt8)throws   {try rustCallWithError(FfiConverterTypeD
 }
     
     /**
+     * Change the meter ballistics' timing for every later `fetch_status`.
+     * What is held stays. A `decay_per_s` below 0 or not finite reads as 0
+     * (a held peak then stays until a higher one); a `clip_hold_ms` of 0
+     * holds clips until `clear_clips`. Never fails.
+     */
+open func setMeterBallistics(config: MeterBallistics)  {try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_set_meter_ballistics(self.uniffiClonePointer(),
+        FfiConverterTypeMeterBallistics_lower(config),$0
+    )
+}
+}
+    
+    /**
      * Register (`Some`) or clear (`None`) the wake-up listener of the
      * notification reader. It is called on the reader thread whenever a
      * packet was queued (and once when the stream ends), and must only
@@ -7306,6 +7782,25 @@ open func testDacMute()throws   {try rustCallWithError(FfiConverterTypeDspiError
     uniffi_dspi_core_fn_method_dspicore_test_dac_mute(self.uniffiClonePointer(),$0
     )
 }
+}
+    
+    /**
+     * Step back: write back the value the newest undoable change replaced
+     * (then what the device moved with it), through the typed setter for
+     * its path. Changes that cannot be undone are stepped over and named in
+     * [`HistoryMove::skipped`]. Nothing to undo is not an error: `entry` is
+     * then `None`.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device, or when the
+     * connection changed during the call (nothing is sent to another
+     * device); the setter's errors, after which the change stays to be
+     * undone.
+     */
+open func undo()throws  -> HistoryMove  {
+    return try  FfiConverterTypeHistoryMove_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_undo(self.uniffiClonePointer(),$0
+    )
+})
 }
     
     /**
@@ -10593,6 +11088,389 @@ public func FfiConverterTypeDeviceInfo_lower(_ value: DeviceInfo) -> RustBuffer 
 
 
 /**
+ * What `EXT_RESET_INFO` reports: why the device last restarted.
+ */
+public struct DeviceResetInfo {
+    /**
+     * A stable name: `power_on`, `brownout`, `run_pin`, `watchdog`,
+     * `software`, `debugger`, `glitch` or `unknown`.
+     */
+    public var reason: String
+    /**
+     * The firmware's reason code (reset_info.h), for a code this build does
+     * not know too.
+     */
+    public var reasonCode: UInt8
+    /**
+     * The reason in words.
+     */
+    public var description: String
+    /**
+     * Seconds since that restart.
+     */
+    public var uptimeS: UInt32
+    /**
+     * How long the run before it lasted, in seconds; `None` after a power-on
+     * or a brown-out, which clear the record.
+     */
+    public var prevUptimeS: UInt32?
+    /**
+     * Watchdog hangs this power session not yet acted on (the core voltage
+     * extension's count).
+     */
+    public var hangCount: UInt8
+    /**
+     * `RP2040` or `RP2350`.
+     */
+    public var chip: String
+    /**
+     * The raw reset-cause register at boot, for a support report.
+     */
+    public var chipReset: UInt32
+    /**
+     * The raw `WATCHDOG.REASON` at boot (bit 8: the firmware's own timeout).
+     */
+    public var watchdogReason: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * A stable name: `power_on`, `brownout`, `run_pin`, `watchdog`,
+         * `software`, `debugger`, `glitch` or `unknown`.
+         */reason: String, 
+        /**
+         * The firmware's reason code (reset_info.h), for a code this build does
+         * not know too.
+         */reasonCode: UInt8, 
+        /**
+         * The reason in words.
+         */description: String, 
+        /**
+         * Seconds since that restart.
+         */uptimeS: UInt32, 
+        /**
+         * How long the run before it lasted, in seconds; `None` after a power-on
+         * or a brown-out, which clear the record.
+         */prevUptimeS: UInt32?, 
+        /**
+         * Watchdog hangs this power session not yet acted on (the core voltage
+         * extension's count).
+         */hangCount: UInt8, 
+        /**
+         * `RP2040` or `RP2350`.
+         */chip: String, 
+        /**
+         * The raw reset-cause register at boot, for a support report.
+         */chipReset: UInt32, 
+        /**
+         * The raw `WATCHDOG.REASON` at boot (bit 8: the firmware's own timeout).
+         */watchdogReason: UInt32) {
+        self.reason = reason
+        self.reasonCode = reasonCode
+        self.description = description
+        self.uptimeS = uptimeS
+        self.prevUptimeS = prevUptimeS
+        self.hangCount = hangCount
+        self.chip = chip
+        self.chipReset = chipReset
+        self.watchdogReason = watchdogReason
+    }
+}
+
+#if compiler(>=6)
+extension DeviceResetInfo: Sendable {}
+#endif
+
+
+extension DeviceResetInfo: Equatable, Hashable {
+    public static func ==(lhs: DeviceResetInfo, rhs: DeviceResetInfo) -> Bool {
+        if lhs.reason != rhs.reason {
+            return false
+        }
+        if lhs.reasonCode != rhs.reasonCode {
+            return false
+        }
+        if lhs.description != rhs.description {
+            return false
+        }
+        if lhs.uptimeS != rhs.uptimeS {
+            return false
+        }
+        if lhs.prevUptimeS != rhs.prevUptimeS {
+            return false
+        }
+        if lhs.hangCount != rhs.hangCount {
+            return false
+        }
+        if lhs.chip != rhs.chip {
+            return false
+        }
+        if lhs.chipReset != rhs.chipReset {
+            return false
+        }
+        if lhs.watchdogReason != rhs.watchdogReason {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(reason)
+        hasher.combine(reasonCode)
+        hasher.combine(description)
+        hasher.combine(uptimeS)
+        hasher.combine(prevUptimeS)
+        hasher.combine(hangCount)
+        hasher.combine(chip)
+        hasher.combine(chipReset)
+        hasher.combine(watchdogReason)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDeviceResetInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DeviceResetInfo {
+        return
+            try DeviceResetInfo(
+                reason: FfiConverterString.read(from: &buf), 
+                reasonCode: FfiConverterUInt8.read(from: &buf), 
+                description: FfiConverterString.read(from: &buf), 
+                uptimeS: FfiConverterUInt32.read(from: &buf), 
+                prevUptimeS: FfiConverterOptionUInt32.read(from: &buf), 
+                hangCount: FfiConverterUInt8.read(from: &buf), 
+                chip: FfiConverterString.read(from: &buf), 
+                chipReset: FfiConverterUInt32.read(from: &buf), 
+                watchdogReason: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DeviceResetInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.reason, into: &buf)
+        FfiConverterUInt8.write(value.reasonCode, into: &buf)
+        FfiConverterString.write(value.description, into: &buf)
+        FfiConverterUInt32.write(value.uptimeS, into: &buf)
+        FfiConverterOptionUInt32.write(value.prevUptimeS, into: &buf)
+        FfiConverterUInt8.write(value.hangCount, into: &buf)
+        FfiConverterString.write(value.chip, into: &buf)
+        FfiConverterUInt32.write(value.chipReset, into: &buf)
+        FfiConverterUInt32.write(value.watchdogReason, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDeviceResetInfo_lift(_ buf: RustBuffer) throws -> DeviceResetInfo {
+    return try FfiConverterTypeDeviceResetInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDeviceResetInfo_lower(_ value: DeviceResetInfo) -> RustBuffer {
+    return FfiConverterTypeDeviceResetInfo.lower(value)
+}
+
+
+/**
+ * A file a client adds to a diagnostics bundle (`client/<name>` in the
+ * zip): its own log, `uconsole doctor`'s report.
+ */
+public struct DiagFile {
+    /**
+     * The file's name; anything but letters, digits, `.`, `_` and `-`
+     * becomes `_`.
+     */
+    public var name: String
+    /**
+     * Its text, kept up to 4 MiB.
+     */
+    public var text: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The file's name; anything but letters, digits, `.`, `_` and `-`
+         * becomes `_`.
+         */name: String, 
+        /**
+         * Its text, kept up to 4 MiB.
+         */text: String) {
+        self.name = name
+        self.text = text
+    }
+}
+
+#if compiler(>=6)
+extension DiagFile: Sendable {}
+#endif
+
+
+extension DiagFile: Equatable, Hashable {
+    public static func ==(lhs: DiagFile, rhs: DiagFile) -> Bool {
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.text != rhs.text {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(name)
+        hasher.combine(text)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDiagFile: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DiagFile {
+        return
+            try DiagFile(
+                name: FfiConverterString.read(from: &buf), 
+                text: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DiagFile, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDiagFile_lift(_ buf: RustBuffer) throws -> DiagFile {
+    return try FfiConverterTypeDiagFile.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDiagFile_lower(_ value: DiagFile) -> RustBuffer {
+    return FfiConverterTypeDiagFile.lower(value)
+}
+
+
+/**
+ * What a client adds to a diagnostics bundle
+ * (`DspiCore::diagnostics_save`).
+ */
+public struct DiagOptions {
+    /**
+     * The client and its version, as it names itself ("DSPi Console 1.2.0
+     * (Android)"); "" when it does not say.
+     */
+    public var app: String
+    /**
+     * The folder of a hub store (`hub-store.json`) to include with its
+     * tokens and secrets removed; "" for none.
+     */
+    public var hubStoreDir: String
+    /**
+     * The client's own files.
+     */
+    public var files: [DiagFile]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The client and its version, as it names itself ("DSPi Console 1.2.0
+         * (Android)"); "" when it does not say.
+         */app: String, 
+        /**
+         * The folder of a hub store (`hub-store.json`) to include with its
+         * tokens and secrets removed; "" for none.
+         */hubStoreDir: String, 
+        /**
+         * The client's own files.
+         */files: [DiagFile]) {
+        self.app = app
+        self.hubStoreDir = hubStoreDir
+        self.files = files
+    }
+}
+
+#if compiler(>=6)
+extension DiagOptions: Sendable {}
+#endif
+
+
+extension DiagOptions: Equatable, Hashable {
+    public static func ==(lhs: DiagOptions, rhs: DiagOptions) -> Bool {
+        if lhs.app != rhs.app {
+            return false
+        }
+        if lhs.hubStoreDir != rhs.hubStoreDir {
+            return false
+        }
+        if lhs.files != rhs.files {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(app)
+        hasher.combine(hubStoreDir)
+        hasher.combine(files)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDiagOptions: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DiagOptions {
+        return
+            try DiagOptions(
+                app: FfiConverterString.read(from: &buf), 
+                hubStoreDir: FfiConverterString.read(from: &buf), 
+                files: FfiConverterSequenceTypeDiagFile.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DiagOptions, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.app, into: &buf)
+        FfiConverterString.write(value.hubStoreDir, into: &buf)
+        FfiConverterSequenceTypeDiagFile.write(value.files, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDiagOptions_lift(_ buf: RustBuffer) throws -> DiagOptions {
+    return try FfiConverterTypeDiagOptions.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDiagOptions_lower(_ value: DiagOptions) -> RustBuffer {
+    return FfiConverterTypeDiagOptions.lower(value)
+}
+
+
+/**
  * Everything the core knows about the connected device's settings.
  *
  * Per-channel vectors are sized to the protocol maxima, not to the device:
@@ -12152,6 +13030,366 @@ public func FfiConverterTypeDspState_lower(_ value: DspState) -> RustBuffer {
 
 
 /**
+ * A page of a device's event log.
+ */
+public struct EventBatch {
+    /**
+     * The id to pass next time.
+     */
+    public var lastId: UInt64
+    /**
+     * Lines in the files that were not records.
+     */
+    public var skipped: UInt32
+    /**
+     * Oldest first.
+     */
+    public var entries: [EventEntry]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The id to pass next time.
+         */lastId: UInt64, 
+        /**
+         * Lines in the files that were not records.
+         */skipped: UInt32, 
+        /**
+         * Oldest first.
+         */entries: [EventEntry]) {
+        self.lastId = lastId
+        self.skipped = skipped
+        self.entries = entries
+    }
+}
+
+#if compiler(>=6)
+extension EventBatch: Sendable {}
+#endif
+
+
+extension EventBatch: Equatable, Hashable {
+    public static func ==(lhs: EventBatch, rhs: EventBatch) -> Bool {
+        if lhs.lastId != rhs.lastId {
+            return false
+        }
+        if lhs.skipped != rhs.skipped {
+            return false
+        }
+        if lhs.entries != rhs.entries {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(lastId)
+        hasher.combine(skipped)
+        hasher.combine(entries)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeEventBatch: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> EventBatch {
+        return
+            try EventBatch(
+                lastId: FfiConverterUInt64.read(from: &buf), 
+                skipped: FfiConverterUInt32.read(from: &buf), 
+                entries: FfiConverterSequenceTypeEventEntry.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: EventBatch, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.lastId, into: &buf)
+        FfiConverterUInt32.write(value.skipped, into: &buf)
+        FfiConverterSequenceTypeEventEntry.write(value.entries, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEventBatch_lift(_ buf: RustBuffer) throws -> EventBatch {
+    return try FfiConverterTypeEventBatch.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEventBatch_lower(_ value: EventBatch) -> RustBuffer {
+    return FfiConverterTypeEventBatch.lower(value)
+}
+
+
+/**
+ * One record of a device's event log (`DspiCore::event_log_read`).
+ */
+public struct EventEntry {
+    /**
+     * Rising per device, across runs.
+     */
+    public var id: UInt64
+    /**
+     * When, ms since the Unix epoch.
+     */
+    public var timeMs: Int64
+    /**
+     * `notification`, `connected`, `disconnected`, `clip`, `temperature`,
+     * `counter`, `reset`, `firmware`, `import`, `recall`; `unknown` for a
+     * newer build's kind.
+     */
+    public var kind: String
+    /**
+     * The device's serial.
+     */
+    public var serial: String
+    /**
+     * One readable line.
+     */
+    public var text: String
+    /**
+     * Who or what caused it: a notification's source (`HOST`, `PRESET`,
+     * `UART`, ...), a transport, a counter, a reset reason, `meter`; "" when
+     * none.
+     */
+    public var source: String
+    /**
+     * The DSPi Link session that caused it, when another one did.
+     */
+    public var session: UInt32?
+    /**
+     * This client's own write coming back.
+     */
+    public var own: Bool
+    /**
+     * A wire channel (clips), or the preset slot (recalls).
+     */
+    public var channel: UInt8?
+    /**
+     * °C for a temperature, the total for a counter.
+     */
+    public var value: Double?
+    /**
+     * The firmware version, on connects and firmware changes.
+     */
+    public var fw: String?
+    /**
+     * The device's uptime, s, where it reports one.
+     */
+    public var uptimeS: UInt32?
+    /**
+     * Detail lines: what a recall or an import changed.
+     */
+    public var lines: [String]
+    /**
+     * Occurrences this record stands for (repeats, counter steps, changes).
+     */
+    public var count: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Rising per device, across runs.
+         */id: UInt64, 
+        /**
+         * When, ms since the Unix epoch.
+         */timeMs: Int64, 
+        /**
+         * `notification`, `connected`, `disconnected`, `clip`, `temperature`,
+         * `counter`, `reset`, `firmware`, `import`, `recall`; `unknown` for a
+         * newer build's kind.
+         */kind: String, 
+        /**
+         * The device's serial.
+         */serial: String, 
+        /**
+         * One readable line.
+         */text: String, 
+        /**
+         * Who or what caused it: a notification's source (`HOST`, `PRESET`,
+         * `UART`, ...), a transport, a counter, a reset reason, `meter`; "" when
+         * none.
+         */source: String, 
+        /**
+         * The DSPi Link session that caused it, when another one did.
+         */session: UInt32?, 
+        /**
+         * This client's own write coming back.
+         */own: Bool, 
+        /**
+         * A wire channel (clips), or the preset slot (recalls).
+         */channel: UInt8?, 
+        /**
+         * °C for a temperature, the total for a counter.
+         */value: Double?, 
+        /**
+         * The firmware version, on connects and firmware changes.
+         */fw: String?, 
+        /**
+         * The device's uptime, s, where it reports one.
+         */uptimeS: UInt32?, 
+        /**
+         * Detail lines: what a recall or an import changed.
+         */lines: [String], 
+        /**
+         * Occurrences this record stands for (repeats, counter steps, changes).
+         */count: UInt32) {
+        self.id = id
+        self.timeMs = timeMs
+        self.kind = kind
+        self.serial = serial
+        self.text = text
+        self.source = source
+        self.session = session
+        self.own = own
+        self.channel = channel
+        self.value = value
+        self.fw = fw
+        self.uptimeS = uptimeS
+        self.lines = lines
+        self.count = count
+    }
+}
+
+#if compiler(>=6)
+extension EventEntry: Sendable {}
+#endif
+
+
+extension EventEntry: Equatable, Hashable {
+    public static func ==(lhs: EventEntry, rhs: EventEntry) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.timeMs != rhs.timeMs {
+            return false
+        }
+        if lhs.kind != rhs.kind {
+            return false
+        }
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.text != rhs.text {
+            return false
+        }
+        if lhs.source != rhs.source {
+            return false
+        }
+        if lhs.session != rhs.session {
+            return false
+        }
+        if lhs.own != rhs.own {
+            return false
+        }
+        if lhs.channel != rhs.channel {
+            return false
+        }
+        if lhs.value != rhs.value {
+            return false
+        }
+        if lhs.fw != rhs.fw {
+            return false
+        }
+        if lhs.uptimeS != rhs.uptimeS {
+            return false
+        }
+        if lhs.lines != rhs.lines {
+            return false
+        }
+        if lhs.count != rhs.count {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(timeMs)
+        hasher.combine(kind)
+        hasher.combine(serial)
+        hasher.combine(text)
+        hasher.combine(source)
+        hasher.combine(session)
+        hasher.combine(own)
+        hasher.combine(channel)
+        hasher.combine(value)
+        hasher.combine(fw)
+        hasher.combine(uptimeS)
+        hasher.combine(lines)
+        hasher.combine(count)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeEventEntry: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> EventEntry {
+        return
+            try EventEntry(
+                id: FfiConverterUInt64.read(from: &buf), 
+                timeMs: FfiConverterInt64.read(from: &buf), 
+                kind: FfiConverterString.read(from: &buf), 
+                serial: FfiConverterString.read(from: &buf), 
+                text: FfiConverterString.read(from: &buf), 
+                source: FfiConverterString.read(from: &buf), 
+                session: FfiConverterOptionUInt32.read(from: &buf), 
+                own: FfiConverterBool.read(from: &buf), 
+                channel: FfiConverterOptionUInt8.read(from: &buf), 
+                value: FfiConverterOptionDouble.read(from: &buf), 
+                fw: FfiConverterOptionString.read(from: &buf), 
+                uptimeS: FfiConverterOptionUInt32.read(from: &buf), 
+                lines: FfiConverterSequenceString.read(from: &buf), 
+                count: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: EventEntry, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.id, into: &buf)
+        FfiConverterInt64.write(value.timeMs, into: &buf)
+        FfiConverterString.write(value.kind, into: &buf)
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterString.write(value.source, into: &buf)
+        FfiConverterOptionUInt32.write(value.session, into: &buf)
+        FfiConverterBool.write(value.own, into: &buf)
+        FfiConverterOptionUInt8.write(value.channel, into: &buf)
+        FfiConverterOptionDouble.write(value.value, into: &buf)
+        FfiConverterOptionString.write(value.fw, into: &buf)
+        FfiConverterOptionUInt32.write(value.uptimeS, into: &buf)
+        FfiConverterSequenceString.write(value.lines, into: &buf)
+        FfiConverterUInt32.write(value.count, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEventEntry_lift(_ buf: RustBuffer) throws -> EventEntry {
+    return try FfiConverterTypeEventEntry.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEventEntry_lower(_ value: EventEntry) -> RustBuffer {
+    return FfiConverterTypeEventEntry.lower(value)
+}
+
+
+/**
  * What the extension channel supports.
  */
 public struct ExtStatus {
@@ -12730,6 +13968,288 @@ public func FfiConverterTypeFirmwareGuardVerdict_lower(_ value: FirmwareGuardVer
 
 
 /**
+ * One change in the history ([`DspiCore::history`]).
+ */
+public struct HistoryEntry {
+    /**
+     * The registry path (`out.gain`, `eq.freq`, ...), or one of the
+     * journal's own: `eq.band` (a whole band: type, bypass, then freq, Q,
+     * gain and the Linkwitz target Q as little-endian `f32`s), `ext.pairmap`
+     * (the crossfeed pair map's four bytes), `ext.vreg` (a core-voltage
+     * request: op and value), `raw` (a raw request: opcode and `wValue` as
+     * indices, the payload as the value). A control-surface operation is
+     * under its `cs.*` path with the operation's JSON as text.
+     */
+    public var path: String
+    /**
+     * The path's indices (an output, a channel and a band, ...).
+     */
+    public var indices: Data
+    /**
+     * The value before, when known; undo writes it back.
+     */
+    public var before: ParamValue?
+    /**
+     * The value after (`trigger` for an action).
+     */
+    public var after: ParamValue
+    /**
+     * Who made it.
+     */
+    public var source: HistorySource
+    /**
+     * When, in milliseconds since the Unix epoch (a drag: its last step).
+     */
+    public var atMs: UInt64
+    /**
+     * Whether undo may reverse it. The registry decides: only a parameter
+     * with no hazard (not a flash write, an audible one, a reconfiguration,
+     * a deferred or an irreversible one).
+     */
+    public var undoable: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The registry path (`out.gain`, `eq.freq`, ...), or one of the
+         * journal's own: `eq.band` (a whole band: type, bypass, then freq, Q,
+         * gain and the Linkwitz target Q as little-endian `f32`s), `ext.pairmap`
+         * (the crossfeed pair map's four bytes), `ext.vreg` (a core-voltage
+         * request: op and value), `raw` (a raw request: opcode and `wValue` as
+         * indices, the payload as the value). A control-surface operation is
+         * under its `cs.*` path with the operation's JSON as text.
+         */path: String, 
+        /**
+         * The path's indices (an output, a channel and a band, ...).
+         */indices: Data, 
+        /**
+         * The value before, when known; undo writes it back.
+         */before: ParamValue?, 
+        /**
+         * The value after (`trigger` for an action).
+         */after: ParamValue, 
+        /**
+         * Who made it.
+         */source: HistorySource, 
+        /**
+         * When, in milliseconds since the Unix epoch (a drag: its last step).
+         */atMs: UInt64, 
+        /**
+         * Whether undo may reverse it. The registry decides: only a parameter
+         * with no hazard (not a flash write, an audible one, a reconfiguration,
+         * a deferred or an irreversible one).
+         */undoable: Bool) {
+        self.path = path
+        self.indices = indices
+        self.before = before
+        self.after = after
+        self.source = source
+        self.atMs = atMs
+        self.undoable = undoable
+    }
+}
+
+#if compiler(>=6)
+extension HistoryEntry: Sendable {}
+#endif
+
+
+extension HistoryEntry: Equatable, Hashable {
+    public static func ==(lhs: HistoryEntry, rhs: HistoryEntry) -> Bool {
+        if lhs.path != rhs.path {
+            return false
+        }
+        if lhs.indices != rhs.indices {
+            return false
+        }
+        if lhs.before != rhs.before {
+            return false
+        }
+        if lhs.after != rhs.after {
+            return false
+        }
+        if lhs.source != rhs.source {
+            return false
+        }
+        if lhs.atMs != rhs.atMs {
+            return false
+        }
+        if lhs.undoable != rhs.undoable {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(path)
+        hasher.combine(indices)
+        hasher.combine(before)
+        hasher.combine(after)
+        hasher.combine(source)
+        hasher.combine(atMs)
+        hasher.combine(undoable)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHistoryEntry: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HistoryEntry {
+        return
+            try HistoryEntry(
+                path: FfiConverterString.read(from: &buf), 
+                indices: FfiConverterData.read(from: &buf), 
+                before: FfiConverterOptionTypeParamValue.read(from: &buf), 
+                after: FfiConverterTypeParamValue.read(from: &buf), 
+                source: FfiConverterTypeHistorySource.read(from: &buf), 
+                atMs: FfiConverterUInt64.read(from: &buf), 
+                undoable: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HistoryEntry, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.path, into: &buf)
+        FfiConverterData.write(value.indices, into: &buf)
+        FfiConverterOptionTypeParamValue.write(value.before, into: &buf)
+        FfiConverterTypeParamValue.write(value.after, into: &buf)
+        FfiConverterTypeHistorySource.write(value.source, into: &buf)
+        FfiConverterUInt64.write(value.atMs, into: &buf)
+        FfiConverterBool.write(value.undoable, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHistoryEntry_lift(_ buf: RustBuffer) throws -> HistoryEntry {
+    return try FfiConverterTypeHistoryEntry.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHistoryEntry_lower(_ value: HistoryEntry) -> RustBuffer {
+    return FfiConverterTypeHistoryEntry.lower(value)
+}
+
+
+/**
+ * What [`DspiCore::undo`] or [`DspiCore::redo`] did.
+ */
+public struct HistoryMove {
+    /**
+     * The change reversed (undo) or applied again (redo); `None` when
+     * nothing moved.
+     */
+    public var entry: HistoryEntry?
+    /**
+     * The changes stepped over on the way, newest first, which cannot be
+     * undone (see [`HistoryEntry::undoable`]). An entry here that is
+     * undoable had no value before to restore, or someone else has changed
+     * it since (`note` says who); the walk stopped there.
+     */
+    public var skipped: [HistoryEntry]
+    /**
+     * Why nothing moved, in words, when another writer changed the value
+     * since (only where the core leaves such a change alone); `None`
+     * otherwise.
+     */
+    public var note: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The change reversed (undo) or applied again (redo); `None` when
+         * nothing moved.
+         */entry: HistoryEntry?, 
+        /**
+         * The changes stepped over on the way, newest first, which cannot be
+         * undone (see [`HistoryEntry::undoable`]). An entry here that is
+         * undoable had no value before to restore, or someone else has changed
+         * it since (`note` says who); the walk stopped there.
+         */skipped: [HistoryEntry], 
+        /**
+         * Why nothing moved, in words, when another writer changed the value
+         * since (only where the core leaves such a change alone); `None`
+         * otherwise.
+         */note: String?) {
+        self.entry = entry
+        self.skipped = skipped
+        self.note = note
+    }
+}
+
+#if compiler(>=6)
+extension HistoryMove: Sendable {}
+#endif
+
+
+extension HistoryMove: Equatable, Hashable {
+    public static func ==(lhs: HistoryMove, rhs: HistoryMove) -> Bool {
+        if lhs.entry != rhs.entry {
+            return false
+        }
+        if lhs.skipped != rhs.skipped {
+            return false
+        }
+        if lhs.note != rhs.note {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(entry)
+        hasher.combine(skipped)
+        hasher.combine(note)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHistoryMove: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HistoryMove {
+        return
+            try HistoryMove(
+                entry: FfiConverterOptionTypeHistoryEntry.read(from: &buf), 
+                skipped: FfiConverterSequenceTypeHistoryEntry.read(from: &buf), 
+                note: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HistoryMove, into buf: inout [UInt8]) {
+        FfiConverterOptionTypeHistoryEntry.write(value.entry, into: &buf)
+        FfiConverterSequenceTypeHistoryEntry.write(value.skipped, into: &buf)
+        FfiConverterOptionString.write(value.note, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHistoryMove_lift(_ buf: RustBuffer) throws -> HistoryMove {
+    return try FfiConverterTypeHistoryMove.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHistoryMove_lower(_ value: HistoryMove) -> RustBuffer {
+    return FfiConverterTypeHistoryMove.lower(value)
+}
+
+
+/**
  * Settings of the I2C control interface.
  */
 public struct I2cConfig {
@@ -12839,6 +14359,163 @@ public func FfiConverterTypeI2cConfig_lift(_ buf: RustBuffer) throws -> I2cConfi
 #endif
 public func FfiConverterTypeI2cConfig_lower(_ value: I2cConfig) -> RustBuffer {
     return FfiConverterTypeI2cConfig.lower(value)
+}
+
+
+/**
+ * What `EXT_IDENTIFY` reports: the blink state and what the board is.
+ */
+public struct IdentifyInfo {
+    /**
+     * Blink time left in seconds, rounded up; 0 when not blinking.
+     */
+    public var remainingS: UInt8
+    /**
+     * The output of the last identify tone since the device started.
+     */
+    public var lastToneOutput: UInt8?
+    /**
+     * `RP2040` or `RP2350` (`chip N` for a value this build does not know).
+     */
+    public var chip: String
+    /**
+     * The SDK's chip revision number.
+     */
+    public var chipRev: UInt8
+    /**
+     * The raw `SYSINFO.CHIP_ID` register.
+     */
+    public var chipId: UInt32
+    /**
+     * The board the firmware was built for (`pico`, `pico2`).
+     */
+    public var board: String
+    /**
+     * The hardware revision the firmware build was given; empty when the
+     * build set none (the firmware cannot sense it).
+     */
+    public var hwRev: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Blink time left in seconds, rounded up; 0 when not blinking.
+         */remainingS: UInt8, 
+        /**
+         * The output of the last identify tone since the device started.
+         */lastToneOutput: UInt8?, 
+        /**
+         * `RP2040` or `RP2350` (`chip N` for a value this build does not know).
+         */chip: String, 
+        /**
+         * The SDK's chip revision number.
+         */chipRev: UInt8, 
+        /**
+         * The raw `SYSINFO.CHIP_ID` register.
+         */chipId: UInt32, 
+        /**
+         * The board the firmware was built for (`pico`, `pico2`).
+         */board: String, 
+        /**
+         * The hardware revision the firmware build was given; empty when the
+         * build set none (the firmware cannot sense it).
+         */hwRev: String) {
+        self.remainingS = remainingS
+        self.lastToneOutput = lastToneOutput
+        self.chip = chip
+        self.chipRev = chipRev
+        self.chipId = chipId
+        self.board = board
+        self.hwRev = hwRev
+    }
+}
+
+#if compiler(>=6)
+extension IdentifyInfo: Sendable {}
+#endif
+
+
+extension IdentifyInfo: Equatable, Hashable {
+    public static func ==(lhs: IdentifyInfo, rhs: IdentifyInfo) -> Bool {
+        if lhs.remainingS != rhs.remainingS {
+            return false
+        }
+        if lhs.lastToneOutput != rhs.lastToneOutput {
+            return false
+        }
+        if lhs.chip != rhs.chip {
+            return false
+        }
+        if lhs.chipRev != rhs.chipRev {
+            return false
+        }
+        if lhs.chipId != rhs.chipId {
+            return false
+        }
+        if lhs.board != rhs.board {
+            return false
+        }
+        if lhs.hwRev != rhs.hwRev {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(remainingS)
+        hasher.combine(lastToneOutput)
+        hasher.combine(chip)
+        hasher.combine(chipRev)
+        hasher.combine(chipId)
+        hasher.combine(board)
+        hasher.combine(hwRev)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeIdentifyInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> IdentifyInfo {
+        return
+            try IdentifyInfo(
+                remainingS: FfiConverterUInt8.read(from: &buf), 
+                lastToneOutput: FfiConverterOptionUInt8.read(from: &buf), 
+                chip: FfiConverterString.read(from: &buf), 
+                chipRev: FfiConverterUInt8.read(from: &buf), 
+                chipId: FfiConverterUInt32.read(from: &buf), 
+                board: FfiConverterString.read(from: &buf), 
+                hwRev: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: IdentifyInfo, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.remainingS, into: &buf)
+        FfiConverterOptionUInt8.write(value.lastToneOutput, into: &buf)
+        FfiConverterString.write(value.chip, into: &buf)
+        FfiConverterUInt8.write(value.chipRev, into: &buf)
+        FfiConverterUInt32.write(value.chipId, into: &buf)
+        FfiConverterString.write(value.board, into: &buf)
+        FfiConverterString.write(value.hwRev, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeIdentifyInfo_lift(_ buf: RustBuffer) throws -> IdentifyInfo {
+    return try FfiConverterTypeIdentifyInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeIdentifyInfo_lower(_ value: IdentifyInfo) -> RustBuffer {
+    return FfiConverterTypeIdentifyInfo.lower(value)
 }
 
 
@@ -14212,6 +15889,109 @@ public func FfiConverterTypeLinkStatus_lift(_ buf: RustBuffer) throws -> LinkSta
 #endif
 public func FfiConverterTypeLinkStatus_lower(_ value: LinkStatus) -> RustBuffer {
     return FfiConverterTypeLinkStatus.lower(value)
+}
+
+
+/**
+ * The meter ballistics' timing (`DspiCore::set_meter_ballistics`).
+ */
+public struct MeterBallistics {
+    /**
+     * How long a new peak holds, ms. Default 1000.
+     */
+    public var holdMs: UInt32
+    /**
+     * How fast a held peak falls after its hold, linear full scale per
+     * second. Default 0.5.
+     */
+    public var decayPerS: Float
+    /**
+     * How long the clip hold lasts after the last new clip, ms; 0 until
+     * cleared. Default 10 000 (the macOS console's).
+     */
+    public var clipHoldMs: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * How long a new peak holds, ms. Default 1000.
+         */holdMs: UInt32, 
+        /**
+         * How fast a held peak falls after its hold, linear full scale per
+         * second. Default 0.5.
+         */decayPerS: Float, 
+        /**
+         * How long the clip hold lasts after the last new clip, ms; 0 until
+         * cleared. Default 10 000 (the macOS console's).
+         */clipHoldMs: UInt32) {
+        self.holdMs = holdMs
+        self.decayPerS = decayPerS
+        self.clipHoldMs = clipHoldMs
+    }
+}
+
+#if compiler(>=6)
+extension MeterBallistics: Sendable {}
+#endif
+
+
+extension MeterBallistics: Equatable, Hashable {
+    public static func ==(lhs: MeterBallistics, rhs: MeterBallistics) -> Bool {
+        if lhs.holdMs != rhs.holdMs {
+            return false
+        }
+        if lhs.decayPerS != rhs.decayPerS {
+            return false
+        }
+        if lhs.clipHoldMs != rhs.clipHoldMs {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(holdMs)
+        hasher.combine(decayPerS)
+        hasher.combine(clipHoldMs)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeterBallistics: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeterBallistics {
+        return
+            try MeterBallistics(
+                holdMs: FfiConverterUInt32.read(from: &buf), 
+                decayPerS: FfiConverterFloat.read(from: &buf), 
+                clipHoldMs: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeterBallistics, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.holdMs, into: &buf)
+        FfiConverterFloat.write(value.decayPerS, into: &buf)
+        FfiConverterUInt32.write(value.clipHoldMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeterBallistics_lift(_ buf: RustBuffer) throws -> MeterBallistics {
+    return try FfiConverterTypeMeterBallistics.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeterBallistics_lower(_ value: MeterBallistics) -> RustBuffer {
+    return FfiConverterTypeMeterBallistics.lower(value)
 }
 
 
@@ -18243,6 +20023,26 @@ public struct SystemStatus {
      * Age of the values in milliseconds.
      */
     public var ageMs: UInt32
+    /**
+     * The held peak per channel (17 entries), linear: a new peak holds for
+     * `MeterBallistics.hold_ms`, then falls at `decay_per_s`. Computed by the
+     * core from `peaks`; draw it as the hold marker.
+     */
+    public var peakHold: [Float]
+    /**
+     * The highest peak per channel (17 entries) since the connection opened
+     * or `reset_meter_max`.
+     */
+    public var peakMax: [Float]
+    /**
+     * The clip hold, one bit per channel: lit by a clip, dark again
+     * `MeterBallistics.clip_hold_ms` after the last new one (the core then
+     * clears the device's sticky `clip_flags`; a channel still clipping lights
+     * again on the next read) or after `clear_clips`. Where the clear is
+     * refused (a viewer on a hub) it follows the sticky flags. Draw the clip
+     * marker from this, not from `clip_flags`.
+     */
+    public var clipHold: UInt32
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -18270,7 +20070,24 @@ public struct SystemStatus {
          */stale: Bool, 
         /**
          * Age of the values in milliseconds.
-         */ageMs: UInt32) {
+         */ageMs: UInt32, 
+        /**
+         * The held peak per channel (17 entries), linear: a new peak holds for
+         * `MeterBallistics.hold_ms`, then falls at `decay_per_s`. Computed by the
+         * core from `peaks`; draw it as the hold marker.
+         */peakHold: [Float], 
+        /**
+         * The highest peak per channel (17 entries) since the connection opened
+         * or `reset_meter_max`.
+         */peakMax: [Float], 
+        /**
+         * The clip hold, one bit per channel: lit by a clip, dark again
+         * `MeterBallistics.clip_hold_ms` after the last new one (the core then
+         * clears the device's sticky `clip_flags`; a channel still clipping lights
+         * again on the next read) or after `clear_clips`. Where the clear is
+         * refused (a viewer on a hub) it follows the sticky flags. Draw the clip
+         * marker from this, not from `clip_flags`.
+         */clipHold: UInt32) {
         self.peaks = peaks
         self.cpu0 = cpu0
         self.cpu1 = cpu1
@@ -18279,6 +20096,9 @@ public struct SystemStatus {
         self.numChannels = numChannels
         self.stale = stale
         self.ageMs = ageMs
+        self.peakHold = peakHold
+        self.peakMax = peakMax
+        self.clipHold = clipHold
     }
 }
 
@@ -18313,6 +20133,15 @@ extension SystemStatus: Equatable, Hashable {
         if lhs.ageMs != rhs.ageMs {
             return false
         }
+        if lhs.peakHold != rhs.peakHold {
+            return false
+        }
+        if lhs.peakMax != rhs.peakMax {
+            return false
+        }
+        if lhs.clipHold != rhs.clipHold {
+            return false
+        }
         return true
     }
 
@@ -18325,6 +20154,9 @@ extension SystemStatus: Equatable, Hashable {
         hasher.combine(numChannels)
         hasher.combine(stale)
         hasher.combine(ageMs)
+        hasher.combine(peakHold)
+        hasher.combine(peakMax)
+        hasher.combine(clipHold)
     }
 }
 
@@ -18344,7 +20176,10 @@ public struct FfiConverterTypeSystemStatus: FfiConverterRustBuffer {
                 activeInputChannels: FfiConverterUInt8.read(from: &buf), 
                 numChannels: FfiConverterUInt8.read(from: &buf), 
                 stale: FfiConverterBool.read(from: &buf), 
-                ageMs: FfiConverterUInt32.read(from: &buf)
+                ageMs: FfiConverterUInt32.read(from: &buf), 
+                peakHold: FfiConverterSequenceFloat.read(from: &buf), 
+                peakMax: FfiConverterSequenceFloat.read(from: &buf), 
+                clipHold: FfiConverterUInt32.read(from: &buf)
         )
     }
 
@@ -18357,6 +20192,9 @@ public struct FfiConverterTypeSystemStatus: FfiConverterRustBuffer {
         FfiConverterUInt8.write(value.numChannels, into: &buf)
         FfiConverterBool.write(value.stale, into: &buf)
         FfiConverterUInt32.write(value.ageMs, into: &buf)
+        FfiConverterSequenceFloat.write(value.peakHold, into: &buf)
+        FfiConverterSequenceFloat.write(value.peakMax, into: &buf)
+        FfiConverterUInt32.write(value.clipHold, into: &buf)
     }
 }
 
@@ -18810,6 +20648,149 @@ public func FfiConverterTypeUpmixStatus_lift(_ buf: RustBuffer) throws -> UpmixS
 #endif
 public func FfiConverterTypeUpmixStatus_lower(_ value: UpmixStatus) -> RustBuffer {
     return FfiConverterTypeUpmixStatus.lower(value)
+}
+
+
+/**
+ * The device's USB error counters (`REQ_GET_USB_ERROR_STATS` 0xB2,
+ * registry `diag.usb`): six `u32` since boot or the last reset
+ * (`diag.usb.reset`). Current firmware reports them all as zero.
+ */
+public struct UsbErrorStats {
+    /**
+     * Every error counted.
+     */
+    public var total: UInt32
+    /**
+     * CRC errors.
+     */
+    public var crc: UInt32
+    /**
+     * Bit-stuffing errors.
+     */
+    public var bitstuff: UInt32
+    /**
+     * Receive overflows.
+     */
+    public var rxOverflow: UInt32
+    /**
+     * Receive timeouts.
+     */
+    public var rxTimeout: UInt32
+    /**
+     * Data sequence errors.
+     */
+    public var dataSeq: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Every error counted.
+         */total: UInt32, 
+        /**
+         * CRC errors.
+         */crc: UInt32, 
+        /**
+         * Bit-stuffing errors.
+         */bitstuff: UInt32, 
+        /**
+         * Receive overflows.
+         */rxOverflow: UInt32, 
+        /**
+         * Receive timeouts.
+         */rxTimeout: UInt32, 
+        /**
+         * Data sequence errors.
+         */dataSeq: UInt32) {
+        self.total = total
+        self.crc = crc
+        self.bitstuff = bitstuff
+        self.rxOverflow = rxOverflow
+        self.rxTimeout = rxTimeout
+        self.dataSeq = dataSeq
+    }
+}
+
+#if compiler(>=6)
+extension UsbErrorStats: Sendable {}
+#endif
+
+
+extension UsbErrorStats: Equatable, Hashable {
+    public static func ==(lhs: UsbErrorStats, rhs: UsbErrorStats) -> Bool {
+        if lhs.total != rhs.total {
+            return false
+        }
+        if lhs.crc != rhs.crc {
+            return false
+        }
+        if lhs.bitstuff != rhs.bitstuff {
+            return false
+        }
+        if lhs.rxOverflow != rhs.rxOverflow {
+            return false
+        }
+        if lhs.rxTimeout != rhs.rxTimeout {
+            return false
+        }
+        if lhs.dataSeq != rhs.dataSeq {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(total)
+        hasher.combine(crc)
+        hasher.combine(bitstuff)
+        hasher.combine(rxOverflow)
+        hasher.combine(rxTimeout)
+        hasher.combine(dataSeq)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeUsbErrorStats: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UsbErrorStats {
+        return
+            try UsbErrorStats(
+                total: FfiConverterUInt32.read(from: &buf), 
+                crc: FfiConverterUInt32.read(from: &buf), 
+                bitstuff: FfiConverterUInt32.read(from: &buf), 
+                rxOverflow: FfiConverterUInt32.read(from: &buf), 
+                rxTimeout: FfiConverterUInt32.read(from: &buf), 
+                dataSeq: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: UsbErrorStats, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.total, into: &buf)
+        FfiConverterUInt32.write(value.crc, into: &buf)
+        FfiConverterUInt32.write(value.bitstuff, into: &buf)
+        FfiConverterUInt32.write(value.rxOverflow, into: &buf)
+        FfiConverterUInt32.write(value.rxTimeout, into: &buf)
+        FfiConverterUInt32.write(value.dataSeq, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeUsbErrorStats_lift(_ buf: RustBuffer) throws -> UsbErrorStats {
+    return try FfiConverterTypeUsbErrorStats.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeUsbErrorStats_lower(_ value: UsbErrorStats) -> RustBuffer {
+    return FfiConverterTypeUsbErrorStats.lower(value)
 }
 
 
@@ -20079,6 +22060,95 @@ extension FirmwareGuardReason: Equatable, Hashable {}
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * Who made a change in the history.
+ */
+
+public enum HistorySource {
+    
+    /**
+     * A write this program asked for.
+     */
+    case local
+    /**
+     * The reversal of an earlier change, sent by [`DspiCore::undo`].
+     */
+    case undo
+    /**
+     * The repeat of an undone change, sent by [`DspiCore::redo`].
+     */
+    case redo
+}
+
+
+#if compiler(>=6)
+extension HistorySource: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHistorySource: FfiConverterRustBuffer {
+    typealias SwiftType = HistorySource
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HistorySource {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .local
+        
+        case 2: return .undo
+        
+        case 3: return .redo
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: HistorySource, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .local:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .undo:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .redo:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHistorySource_lift(_ buf: RustBuffer) throws -> HistorySource {
+    return try FfiConverterTypeHistorySource.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHistorySource_lower(_ value: HistorySource) -> RustBuffer {
+    return FfiConverterTypeHistorySource.lower(value)
+}
+
+
+extension HistorySource: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * What kind of link a [`HostTransport`] is. It decides the echo rule (which
  * notifications are this client's own writes, `dspi_transport::is_own_write`)
  * and how bulk transfers go.
@@ -20895,6 +22965,30 @@ fileprivate struct FfiConverterOptionUInt64: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionDouble: FfiConverterRustBuffer {
+    typealias SwiftType = Double?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterDouble.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterDouble.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
     typealias SwiftType = String?
 
@@ -21039,6 +23133,54 @@ fileprivate struct FfiConverterOptionTypeCoreVregInfo: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeDeviceResetInfo: FfiConverterRustBuffer {
+    typealias SwiftType = DeviceResetInfo?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeDeviceResetInfo.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeDeviceResetInfo.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeHistoryEntry: FfiConverterRustBuffer {
+    typealias SwiftType = HistoryEntry?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHistoryEntry.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHistoryEntry.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeRingHealth: FfiConverterRustBuffer {
     typealias SwiftType = RingHealth?
 
@@ -21055,6 +23197,30 @@ fileprivate struct FfiConverterOptionTypeRingHealth: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeRingHealth.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeParamValue: FfiConverterRustBuffer {
+    typealias SwiftType = ParamValue?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeParamValue.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeParamValue.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -21262,6 +23428,56 @@ fileprivate struct FfiConverterSequenceTypeDeviceInfo: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeDiagFile: FfiConverterRustBuffer {
+    typealias SwiftType = [DiagFile]
+
+    public static func write(_ value: [DiagFile], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeDiagFile.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [DiagFile] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [DiagFile]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeDiagFile.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeEventEntry: FfiConverterRustBuffer {
+    typealias SwiftType = [EventEntry]
+
+    public static func write(_ value: [EventEntry], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeEventEntry.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [EventEntry] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [EventEntry]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeEventEntry.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeFilterParams: FfiConverterRustBuffer {
     typealias SwiftType = [FilterParams]
 
@@ -21304,6 +23520,31 @@ fileprivate struct FfiConverterSequenceTypeFilterTypeName: FfiConverterRustBuffe
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeFilterTypeName.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHistoryEntry: FfiConverterRustBuffer {
+    typealias SwiftType = [HistoryEntry]
+
+    public static func write(_ value: [HistoryEntry], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHistoryEntry.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HistoryEntry] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HistoryEntry]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHistoryEntry.read(from: &buf))
         }
         return seq
     }
@@ -22358,6 +24599,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_cached_input_source_name() != 3222) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_can_redo() != 45929) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_can_undo() != 7946) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_capture_baseline() != 36713) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -22373,7 +24620,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_config_export() != 55997) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_config_import() != 18479) {
+    if (uniffi_dspi_core_checksum_method_dspicore_config_import() != 20391) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_connection_generation() != 50111) {
@@ -22481,10 +24728,28 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_device_lock_release() != 10916) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_diagnostics_file_name() != 50086) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_diagnostics_save() != 17479) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_disconnect() != 29066) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_enter_bootloader() != 19680) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_event_log_devices() != 55922) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_event_log_export() != 41664) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_event_log_read() != 314) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_event_log_set_dir() != 60714) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_ext_status() != 10163) {
@@ -22523,6 +24788,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_dac_mute() != 15871) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_identify() != 43866) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_input_lock() != 1042) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -22547,6 +24815,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_output_pin() != 64350) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_reset_info() != 28748) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_ring_health() != 1712) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -22565,7 +24836,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_stats_tick() != 21250) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_fetch_status() != 58511) {
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_status() != 22027) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_subharm_headroom() != 28745) {
@@ -22575,6 +24846,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_upmix_status() != 65322) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_usb_error_stats() != 29618) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_filters_export() != 62927) {
@@ -22610,7 +24884,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_get_state() != 32151) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_has_clip_events() != 9559) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_history() != 15069) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_host_notify() != 19114) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_identify() != 26030) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_inaccessible_devices() != 62282) {
@@ -22650,6 +24933,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_max_delay_ms() != 14810) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_meter_ballistics() != 35146) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_monitor_clear() != 47062) {
@@ -22703,10 +24989,19 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_raw_set() != 35984) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_redo() != 52269) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_refresh_params() != 360) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_reset_buffer_stats() != 36944) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_reset_info_at_connect() != 57433) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_reset_meter_max() != 60815) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_rta_get_caps() != 59838) {
@@ -22901,6 +25196,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_set_mck_pin() != 21307) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_set_meter_ballistics() != 5003) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_set_notify_listener() != 43429) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -22989,6 +25287,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_test_dac_mute() != 36228) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_undo() != 33738) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_wire_features() != 30561) {

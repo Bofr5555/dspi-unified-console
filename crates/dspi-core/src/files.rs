@@ -17,7 +17,8 @@
 //! format carries (`dspi_proto::wire_compat::features`), so a document from an
 //! older device has no key its firmware lacks. An import changes only what the
 //! file holds a readable value for: everything else keeps the device's value,
-//! and the report names it.
+//! and the report names it. A number past what the device takes is held to
+//! the nearest end and named too (WP CS1, WP P0U's rule and rows).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::UNIX_EPOCH;
@@ -28,7 +29,7 @@ use dspi_proto::generated::{limiter, tube};
 use dspi_proto::wire::INPUT_CONFIG_FIELDS;
 use dspi_proto::wire_compat::{self, WireRead, feat};
 use dspi_proto::{Platform, xover};
-use dspi_session::preset_file::{self, ChannelRef};
+use dspi_session::preset_file::{self, ChannelRef, OutOfRange};
 use serde_json::{Map, Value, json};
 
 use crate::connect::{LOCK_REASON, apply_all_params_locked, refresh_params_locked};
@@ -938,6 +939,10 @@ struct Built {
     warnings: Vec<String>,
     /// A value had the wrong type (and was left alone).
     unreadable: bool,
+    // -- WP CS1 --
+    /// Numbers past what this device takes, held to the nearest end (WP
+    /// P0U's rule and rows, `preset_file::clamp_to_range`).
+    out_of_range: Vec<OutOfRange>,
     /// `global.inputPairLinked` as a mask, when the document has it.
     links: Option<u8>,
     /// The crossfeed pair map the document asks for, as applied.
@@ -971,6 +976,7 @@ fn build_config(base: &DspState, doc: &Value, options: u32) -> Built {
             shortened: Vec::new(),
             warnings: Vec::new(),
             unreadable: false,
+            out_of_range: Vec::new(),
             links: None,
             pair_map: None,
         },
@@ -995,7 +1001,78 @@ fn build_config(base: &DspState, doc: &Value, options: u32) -> Built {
     im.out
 }
 
+// -- WP CS1 --
+/// The registry path of a settings block's number (`block.key` in the
+/// document), for its range. `None` for a key that is no number with a
+/// range (switches, masks, choices).
+fn block_path(block: &str, key: &str) -> Option<&'static str> {
+    Some(match (block, key) {
+        ("global", "masterVolumeDb") => "vol.master",
+        ("global", "userVolumeDb") => "vol.user",
+        ("loudness", "refSpl") => "loud.ref",
+        ("loudness", "intensityPct") => "loud.intensity",
+        ("crossfeed", "freqHz") => "cf.freq",
+        ("crossfeed", "feedDb") => "cf.feed",
+        ("leveller", "amountPct") => "lev.amount",
+        ("leveller", "maxGainDb") => "lev.maxgain",
+        ("leveller", "gateDb") => "lev.gate",
+        ("psybass", "cutoffHz") => "bass.cutoff",
+        ("psybass", "harmonicsDb") => "bass.harmonics",
+        ("psybass", "driveDb") => "bass.drive",
+        ("psybass", "characterPct") => "bass.character",
+        ("psybass", "originalDb") => "bass.original",
+        ("upmix", "strengthPct") => "up.strength",
+        ("upmix", "centerWidthPct") => "up.width",
+        ("upmix", "thresholdPct") => "up.threshold",
+        ("upmix", "attackMs") => "up.attack",
+        ("upmix", "releaseMs") => "up.release",
+        ("upmix", "detectorHpfHz") => "up.det_hpf",
+        ("upmix", "surroundDelayMs") => "up.sur_delay",
+        ("upmix", "surroundHpfHz") => "up.sur_hpf",
+        ("upmix", "surroundLpfHz") => "up.sur_lpf",
+        ("upmix", "decorrPct") => "up.decorr",
+        ("upmix", "presenceDb") => "up.presence",
+        ("subharm", "lowDb") => "sub.low",
+        ("subharm", "highDb") => "sub.high",
+        ("subharm", "boostDb") => "sub.boost",
+        ("subharm", "topDb") => "sub.top",
+        ("subharm", "selectDepthPct") => "sub.depth",
+        ("subharm", "selectHoldMs") => "sub.hold",
+        ("subharm", "ceilingDb") => "sub.ceiling",
+        ("tube", "driveDb") => "tube.drive",
+        ("tube", "biasPct") => "tube.bias",
+        ("tube", "asymDb") => "tube.asym",
+        ("tube", "hardnessPct") => "tube.hardness",
+        ("tube", "sagPct") => "tube.sag",
+        ("tube", "xfmrDamping") => "tube.damping",
+        ("tube", "xfmrResHz") => "tube.resonance",
+        ("tube", "mixPct") => "tube.mix",
+        ("tube", "trimDb") => "tube.trim",
+        _ => return None,
+    })
+}
+
+/// The number a slot holds, when it is one read as a level (not a switch,
+/// mask, choice or count).
+fn level_of(s: &mut DspState, slot: Slot) -> Option<&mut f32> {
+    match slot {
+        Slot::Real(f) => Some(f(s)),
+        Slot::Param(f, i, Shape::Level) => f(s).get_mut(i),
+        _ => None,
+    }
+}
+
 impl<'d> Importer<'d> {
+    // -- WP CS1 --
+    /// `v` for `path` held to what this device takes; a clamp is named in
+    /// the report.
+    fn ranged(&mut self, path: &str, indices: &[u8], v: f32) -> f32 {
+        let platform = Platform::from_id(self.out.state.platform_id);
+        let (v, row) = preset_file::clamp_to_range(platform, path, indices, v);
+        self.out.out_of_range.extend(row);
+        v
+    }
+
     fn leave(&mut self, key: impl Into<String>) {
         let key = key.into();
         if !self.out.left_alone.contains(&key) {
@@ -1023,6 +1100,15 @@ impl<'d> Importer<'d> {
         for f in fields {
             let v = obj.and_then(|o| o.get(f.key));
             if put_slot(&mut self.read, &mut self.out.state, f.slot, v) {
+                // -- WP CS1 --
+                if let Some(path) = block_path(prefix, f.key)
+                    && let Some(x) = level_of(&mut self.out.state, f.slot).map(|x| *x)
+                {
+                    let x = self.ranged(path, &[], x);
+                    if let Some(slot) = level_of(&mut self.out.state, f.slot) {
+                        *slot = x;
+                    }
+                }
                 applied.push(f.key);
             } else {
                 self.leave(format!("{prefix}.{}", f.key));
@@ -1116,6 +1202,9 @@ impl<'d> Importer<'d> {
             for (i, v) in list.iter().enumerate().take(n_in) {
                 match self.read.real(Some(v)) {
                     Some(db) => {
+                        // -- WP CS1 --
+                        let at = u8::try_from(i).unwrap_or(u8::MAX);
+                        let db = self.ranged("pre", &[at], db);
                         if let Some(p) = self.out.state.input_preamp_db.get_mut(i) {
                             *p = db;
                         }
@@ -1159,7 +1248,8 @@ impl<'d> Importer<'d> {
         }
 
         let line = state::max_delay_ms_for(&self.out.state);
-        match self.delay(e.get("delayMs"), line, &shown) {
+        let wire8 = place.unified(self.inputs());
+        match self.delay(e.get("delayMs"), line, &shown, ("ch.delay", wire8)) {
             Some(ms) => {
                 if let Some(d) = self.out.state.channel_delays.get_mut(wire) {
                     *d = ms;
@@ -1168,7 +1258,7 @@ impl<'d> Importer<'d> {
             None => self.leave("channels.delayMs"),
         }
 
-        match self.bank(e.get("eq"), BANDS_PER_CHANNEL, false) {
+        match self.bank(e.get("eq"), BANDS_PER_CHANNEL, false, wire8) {
             Some(bank) => replace_bank(self.out.state.filters.get_mut(wire), &bank),
             None => self.leave("channels.eq"),
         }
@@ -1176,10 +1266,12 @@ impl<'d> Importer<'d> {
         let ChannelRef::Output(o) = place else {
             return;
         };
+        let o8 = o;
         let o = usize::from(o);
-        let s = &mut self.out.state;
         if let Some(v) = self.read.real(e.get("gainDb")) {
-            set(&mut s.output_gain_db, o, v);
+            // -- WP CS1 --
+            let v = self.ranged("out.gain", &[o8], v);
+            set(&mut self.out.state.output_gain_db, o, v);
         } else {
             self.leave("channels.gainDb");
         }
@@ -1199,11 +1291,12 @@ impl<'d> Importer<'d> {
             e.get("outputDelayMs"),
             line,
             &format!("{shown} output delay"),
+            ("out.delay", o8),
         ) {
             Some(ms) => set(&mut self.out.state.output_delay_ms, o, ms),
             None => self.leave("channels.outputDelayMs"),
         }
-        match self.bank(e.get("crossover"), MAX_XOVER_BANDS, true) {
+        match self.bank(e.get("crossover"), MAX_XOVER_BANDS, true, wire8) {
             Some(bank) => replace_bank(self.out.state.xover.get_mut(wire), &bank),
             None => self.leave("channels.crossover"),
         }
@@ -1215,14 +1308,24 @@ impl<'d> Importer<'d> {
     }
 
     /// A delay held to the device's line `line`; one past it is shortened
-    /// and named.
-    fn delay(&mut self, v: Option<&Value>, line: f32, what: &str) -> Option<f32> {
+    /// and named. A negative one becomes 0, named as out of range (`at`: its
+    /// registry path and index).
+    fn delay(&mut self, v: Option<&Value>, line: f32, what: &str, at: (&str, u8)) -> Option<f32> {
         let ms = self.read.real(v)?;
         if ms > line {
             self.out.shortened.push(format!("{what} ({ms} ms)"));
             return Some(line);
         }
-        Some(ms.max(0.0))
+        // -- WP CS1 --
+        if ms < 0.0 {
+            self.out.out_of_range.push(OutOfRange {
+                path: format!("{}[{}]", at.0, at.1),
+                value: f64::from(ms),
+                applied: Some(0.0),
+            });
+            return Some(0.0);
+        }
+        Some(ms)
     }
 
     /// A channel's `eq` or `crossover`: `None` (left alone) unless it is a
@@ -1232,6 +1335,7 @@ impl<'d> Importer<'d> {
         v: Option<&Value>,
         width: usize,
         crossover: bool,
+        wire: u8,
     ) -> Option<Vec<FilterParams>> {
         let list = self.read.list(v).filter(|l| !l.is_empty())?;
         if list.len() > width {
@@ -1254,7 +1358,8 @@ impl<'d> Importer<'d> {
             (0..width)
                 .map(|k| match list.get(k) {
                     Some(b) => {
-                        let band = self.band(b);
+                        let at = [wire, u8::try_from(k).unwrap_or(u8::MAX)];
+                        let band = self.band(b, at);
                         self.fit(band, crossover)
                     }
                     None => flat(),
@@ -1263,7 +1368,9 @@ impl<'d> Importer<'d> {
         )
     }
 
-    fn band(&mut self, v: &Value) -> FilterParams {
+    /// One band; its numbers held to the registry's ranges (`at`: channel
+    /// and band, for the report).
+    fn band(&mut self, v: &Value, at: [u8; 2]) -> FilterParams {
         let mut b = flat();
         let Some(o) = self.read.object(Some(v)) else {
             return b;
@@ -1271,17 +1378,18 @@ impl<'d> Importer<'d> {
         if let Some(t) = self.read.byte(o.get("type")) {
             b.filter_type = t;
         }
+        // -- WP CS1 --
         if let Some(x) = self.read.real(o.get("freqHz")) {
-            b.freq = x;
+            b.freq = self.ranged("eq.freq", &at, x);
         }
         if let Some(x) = self.read.real(o.get("q")) {
-            b.q = x;
+            b.q = self.ranged("eq.q", &at, x);
         }
         if let Some(x) = self.read.real(o.get("gain")) {
-            b.gain = x;
+            b.gain = self.ranged("eq.gain", &at, x);
         }
         if let Some(x) = self.read.real(o.get("qp")) {
-            b.qp = x;
+            b.qp = self.ranged("eq.qp", &at, x);
         }
         if let Some(x) = self.read.switch(o.get("bypass")) {
             b.bypass = x;
@@ -1329,14 +1437,15 @@ impl<'d> Importer<'d> {
                     .read
                     .switch(l.get(k))
                     .map(|v| set(&mut s.limiter_enabled, o, v)),
-                LimiterKey::Threshold => self
-                    .read
-                    .real(l.get(k))
-                    .map(|v| set(&mut s.limiter_threshold_db, o, v)),
-                LimiterKey::Release => self
-                    .read
-                    .real(l.get(k))
-                    .map(|v| set(&mut s.limiter_release_ms, o, v)),
+                // -- WP CS1 --
+                LimiterKey::Threshold => self.read.real(l.get(k)).map(|v| {
+                    let v = self.ranged("limit.threshold", &[o8(o)], v);
+                    set(&mut self.out.state.limiter_threshold_db, o, v)
+                }),
+                LimiterKey::Release => self.read.real(l.get(k)).map(|v| {
+                    let v = self.ranged("limit.release", &[o8(o)], v);
+                    set(&mut self.out.state.limiter_release_ms, o, v)
+                }),
                 LimiterKey::LinkGroup => self
                     .read
                     .byte(l.get(k))
@@ -1555,6 +1664,12 @@ fn replace_bank(bank: Option<&mut Vec<FilterParams>>, bands: &[FilterParams]) {
     }
 }
 
+// -- WP CS1 --
+/// An output index (below `MAX_OUTPUTS`) as the report's `u8`.
+fn o8(o: usize) -> u8 {
+    u8::try_from(o).unwrap_or(u8::MAX)
+}
+
 fn set<T>(list: &mut [T], at: usize, v: T) {
     if let Some(slot) = list.get_mut(at) {
         *slot = v;
@@ -1590,6 +1705,14 @@ fn config_report(b: &Built) -> (Vec<String>, bool) {
             b.shortened.join(", ")
         ));
     }
+    // -- WP CS1 -- worded as WP P0U's `ApplyReport::lines`.
+    if !b.out_of_range.is_empty() {
+        let clamped: Vec<String> = b.out_of_range.iter().map(OutOfRange::line).collect();
+        lines.push(format!(
+            "Clamped to what this device takes: {}",
+            clamped.join(", ")
+        ));
+    }
     if b.unreadable {
         lines.push(
             "Some values in the file could not be read; those settings were left as they are."
@@ -1602,6 +1725,7 @@ fn config_report(b: &Built) -> (Vec<String>, bool) {
         && b.skipped.is_empty()
         && b.left_alone.is_empty()
         && b.shortened.is_empty()
+        && b.out_of_range.is_empty()
         && !b.unreadable
         && b.warnings.is_empty();
     (lines, clean)
@@ -1723,9 +1847,12 @@ impl DspiCore {
     /// are shortened to it. Channels the device lacks are named, not moved.
     ///
     /// Returns JSON. On success `{ok: true, error: "", lines, clean, links,
-    /// hardwareWritten, leftAlone}`: `lines` is the report, `clean` false
-    /// when anything was missing, skipped, left alone or shortened,
-    /// `leftAlone` the keys left alone, `links` the input-pair link mask to
+    /// hardwareWritten, leftAlone, outOfRange}`: `lines` is the report,
+    /// `clean` false when anything was missing, skipped, left alone,
+    /// shortened or out of range, `leftAlone` the keys left alone,
+    /// `outOfRange` the numbers past what this device takes, each
+    /// `{path, value, applied}` (registry path with indices, the document's
+    /// value, the nearest end written instead; WP P0U's rows), `links` the input-pair link mask to
     /// restore (null when the document has none), and `hardwareWritten`
     /// whether I/O was changed while the device stores its output
     /// configuration apart from presets (save that to keep it). Otherwise
@@ -1756,7 +1883,20 @@ impl DspiCore {
                 if !lock.is_current(inner) {
                     return Err(DspiError::Disconnected);
                 }
-                self.write_document(inner, doc, options)?
+                // -- WP BULKFIX --
+                let written = self.write_document(inner, doc, options);
+                let left_muted = written.is_err() && crate::connect::bulk_left_muted(inner);
+                drop(guard);
+                match written {
+                    Ok(w) => w,
+                    Err(e) => {
+                        // Logged with the lock released (P0M).
+                        if left_muted {
+                            self.log_left_muted("Importing a configuration", &e);
+                        }
+                        return Err(e);
+                    }
+                }
             };
             let hardware = options & IMPORT_HARDWARE != 0;
             let written = hardware && separate && io_changed(&before, &built.state);
@@ -1764,6 +1904,16 @@ impl DspiCore {
                 self.push_output_config(&before, &built.state, &mut built.skipped);
             }
             let (lines, clean) = config_report(&built);
+            // -- WP P0M --
+            let names = self.lock().conn.as_ref().map(|c| c.source_names.to_vec());
+            let changed =
+                crate::presets::changes(&before, &built.state, names.as_deref().unwrap_or(&[]));
+            self.events.applied(
+                dspi_session::events::EventKind::Import,
+                None,
+                "Imported a configuration",
+                changed,
+            );
             Ok(json!({
                 "ok": true,
                 "error": "",
@@ -1772,6 +1922,12 @@ impl DspiCore {
                 "links": built.links,
                 "hardwareWritten": written,
                 "leftAlone": built.left_alone,
+                // -- WP CS1 --
+                "outOfRange": built
+                    .out_of_range
+                    .iter()
+                    .map(|o| json!({ "path": o.path, "value": o.value, "applied": o.applied }))
+                    .collect::<Vec<_>>(),
             }))
         })();
         self.release_device_lock(lock);
@@ -1800,6 +1956,12 @@ impl DspiCore {
         }
         inner.state = built.state.clone();
         if let Err(e) = apply_all_params_locked(inner) {
+            // -- WP BULKFIX -- (fixup bf F2) A failed repair left the device
+            // muted: the mirror keeps showing that (set by the apply), and the
+            // error says why. Otherwise nothing was applied.
+            if crate::connect::bulk_left_muted(inner) {
+                return Err(crate::connect::with_why(e));
+            }
             inner.state = before;
             return Err(e);
         }
@@ -2810,3 +2972,7 @@ mod tests_wp_cg18;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_dl3;
+// -- WP CS1 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cs1;

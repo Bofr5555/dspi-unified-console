@@ -230,6 +230,9 @@ impl DspiCore {
             (inner.conn.take(), worker)
         };
         drop(self.set_meter_path(None)); // -- WP LK2 --
+        if let Some(conn) = &old {
+            self.events.disconnected(&conn.serial, "closed"); // -- WP P0M --
+        }
         if let Some(worker) = worker {
             worker.stop();
         }
@@ -245,6 +248,19 @@ impl DspiCore {
     /// once, for packets that arrived during the connect.
     pub(crate) fn install(&self, conn: Connection, mirror: DspState, serial: String, vid: u16) {
         let reader = conn.notifications.is_some();
+        // -- WP P0M --
+        let vreg = conn
+            .ext
+            .core_vreg
+            .as_ref()
+            .map(|v| (v.uptime_s, v.hang_count));
+        // -- WP CS1 -- what `reset_info_at_connect` answers.
+        let reset = conn
+            .ext
+            .reset_info
+            .as_ref()
+            .map(crate::ext_diag::reset_info);
+        let opened = crate::events::Opened::new(&conn.serial, conn.caps.kind, &mirror, vreg, reset);
         let (displaced, worker) = {
             let mut inner = self.lock();
             inner.state = mirror;
@@ -254,6 +270,11 @@ impl DspiCore {
             (inner.conn.replace(conn), worker)
         };
         drop(self.set_meter_path(None)); // -- WP LK2 --
+        // -- WP P0M --
+        if let Some(conn) = &displaced {
+            self.events.disconnected(&conn.serial, "replaced");
+        }
+        self.events.connected(opened);
         if let Some(worker) = worker {
             worker.stop();
         }

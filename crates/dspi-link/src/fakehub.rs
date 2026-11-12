@@ -368,6 +368,9 @@ struct State {
     pongs_received: u64,
     /// Every token presented to `auth.token`.
     tokens_seen: Vec<String>,
+    // -- WP P0M --
+    /// `GET_STATUS` 9's block instead of [`STATUS_WVALUE9`] ([`FakeHub::set_status`]).
+    status: Option<Vec<u8>>,
 }
 
 /// A running fake hub; stops when dropped.
@@ -603,7 +606,7 @@ impl State {
             (Dir::Get, req::GET_BUFFER_STATS) if self.cfg.stats => (status::OK, FakeRing::buffer_stats()),
             (Dir::Get, req::GET_PLATFORM) => (status::OK, PLATFORM.to_vec()),
             (Dir::Get, req::GET_SERIAL) => (status::OK, self.cfg.serial.as_bytes().to_vec()),
-            (Dir::Get, req::GET_STATUS) => (status::OK, STATUS_WVALUE9.to_vec()),
+            (Dir::Get, req::GET_STATUS) => (status::OK, self.status.clone().unwrap_or_else(|| STATUS_WVALUE9.to_vec())),
             (Dir::Get, req::GET_ALL_PARAMS) => (status::OK, self.image.clone()),
             (Dir::Get, req::GET_ALL_PARAMS_CHUNK) => {
                 let o = (w_value as usize).min(self.image.len());
@@ -864,6 +867,7 @@ impl FakeHub {
             pings_sent: 0,
             pongs_received: 0,
             tokens_seen: Vec::new(),
+            status: None, // -- WP P0M --
             fw_seq: 0,
             next_session: 12,
             sessions: HashMap::new(),
@@ -964,6 +968,13 @@ impl FakeHub {
 
     pub fn lock_holder(&self) -> Option<u16> {
         lock(&self.state).lock.map(|l| l.0)
+    }
+
+    // -- WP P0M --
+    /// Answer `GET_STATUS` (the meter block, also in snapshots and poll
+    /// frames) with `block` from now on: a test sets the clip flags.
+    pub fn set_status(&self, block: Vec<u8>) {
+        lock(&self.state).status = Some(block);
     }
 
     // -- WP UPW2 --
@@ -1591,7 +1602,7 @@ fn handle_json(state: &Arc<Mutex<State>>, sid: u16, text: &str) -> Vec<String> {
                 return vec![err(&id, "no_device", "")];
             }
             let b64 = data_encoding::BASE64.encode(&s.image);
-            let st = data_encoding::BASE64.encode(STATUS_WVALUE9);
+            let st = data_encoding::BASE64.encode(&self_status(&s));
             vec![ok(
                 &id,
                 json!({"handle": 0, "wire_version": s.image[0], "age_ms": s.cfg.snapshot_age_ms, "bulk_b64": b64, "status_b64": st}),
@@ -1669,4 +1680,10 @@ fn handle_json(state: &Arc<Mutex<State>>, sid: u16, text: &str) -> Vec<String> {
         }
         _ => vec![err(&id, "unknown_type", t)],
     }
+}
+
+// -- WP P0M --
+/// The meter block a snapshot carries: [`FakeHub::set_status`]'s, else the fixture.
+fn self_status(s: &State) -> Vec<u8> {
+    s.status.clone().unwrap_or_else(|| STATUS_WVALUE9.to_vec())
 }

@@ -151,6 +151,41 @@ pub fn core_vreg_op(t: &mut dyn Transport, op: VregOp, word: Option<&str>) -> Re
     write(t, g::EXT_CORE_VREG, &op.encode())
 }
 
+// ------------------------------------------------------------ identify, reset info
+// -- WP FWX --
+
+pub use dspi_proto::ext::{
+    Chip, ClipEvent, IdentifyRequest, IdentifyStatus, ResetInfo, ResetReason, clip_event,
+};
+
+/// `EXT_IDENTIFY` IN: the blink state and what the board is.
+/// [`ExtError::Unsupported`] when the firmware lacks it.
+pub fn read_identify(t: &mut dyn Transport) -> Result<IdentifyStatus> {
+    let b = read(t, g::EXT_IDENTIFY, IdentifyStatus::SIZE)?;
+    IdentifyStatus::decode(&b).ok_or(ExtError::Transport(TransportError::ShortRead {
+        opcode: op::REQ_EXTENSION,
+        wanted: IdentifyStatus::SIZE,
+        got: b.len(),
+    }))
+}
+
+/// `EXT_IDENTIFY` OUT: blink, and the quiet tone when `tone_output` is set.
+/// [`ExtError::Refused`] when the device stalls: no such sub-command, a tone
+/// output out of range, or a tone while its signal generator runs.
+pub fn identify(t: &mut dyn Transport, req: IdentifyRequest) -> Result<()> {
+    write(t, g::EXT_IDENTIFY, &req.encode())
+}
+
+/// `EXT_RESET_INFO` IN: the last reset's cause, the uptimes, the hang count.
+pub fn read_reset_info(t: &mut dyn Transport) -> Result<ResetInfo> {
+    let b = read(t, g::EXT_RESET_INFO, ResetInfo::SIZE)?;
+    ResetInfo::decode(&b).ok_or(ExtError::Transport(TransportError::ShortRead {
+        opcode: op::REQ_EXTENSION,
+        wanted: ResetInfo::SIZE,
+        got: b.len(),
+    }))
+}
+
 fn hex(b: &[u8]) -> String {
     b.iter()
         .map(|x| format!("{x:02x}"))

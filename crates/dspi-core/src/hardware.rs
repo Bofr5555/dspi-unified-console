@@ -37,10 +37,12 @@
 //! Owned by WP C6 (docs/core-merge/PLAN.md).
 
 use dspi_proto::generated::opcodes as op;
+use dspi_proto::value::Value;
 use dspi_transport::TransportError;
 
 use crate::consts::FW_BETA_EARLY;
 use crate::error::status;
+use crate::journal::journal;
 use crate::presets::Holder;
 use crate::records::*;
 use crate::{Connection, DspiCore, DspiError, Inner, Result, connect, state};
@@ -164,17 +166,23 @@ pub(crate) fn version_matches(s: &DspState, version: &str) -> bool {
     }
 }
 
+// -- WP P0W --
+/// The journal path and indices a hardware setter records its change under.
+type Journal<'a> = (&'static str, &'a [u8]);
+
 impl DspiCore {
     /// A write-as-read setter: send `opcode` with `value`, map the status
     /// byte, and on success apply `update` to the mirror and `bulk_raw`.
     fn set_with_status(
         &self,
+        at: Journal,
         opcode: u8,
         value: u16,
         update: impl FnOnce(&mut DspState),
     ) -> Result<()> {
         let mut guard = self.lock();
         let inner = &mut *guard;
+        let change = inner.journal_begin(at.0, at.1)?;
         {
             let mut w = inner.writable_conn()?;
             w.conn().fresh_image = false;
@@ -182,6 +190,7 @@ impl DspiCore {
         }
         update(&mut inner.state);
         sync_image(&mut inner.state);
+        change.done(inner, Value::Int(value.into()));
         Ok(())
     }
 
@@ -193,6 +202,7 @@ impl DspiCore {
     /// old pin.
     fn set_pin_with_status(
         &self,
+        at: Journal,
         opcode: u8,
         value: u16,
         pin: u8,
@@ -200,6 +210,7 @@ impl DspiCore {
         update: impl FnOnce(&mut DspState, u8),
     ) -> Result<()> {
         let apply = |inner: &mut Inner| {
+            let change = inner.journal_begin(at.0, at.1)?;
             let actual = {
                 let mut w = inner.writable_conn()?;
                 w.conn().fresh_image = false;
@@ -212,6 +223,7 @@ impl DspiCore {
             };
             update(&mut inner.state, actual);
             sync_image(&mut inner.state);
+            change.done(inner, Value::Int(actual.into()));
             Ok(())
         };
         if pin == PIN_RESET_TO_DEFAULT {
@@ -225,12 +237,14 @@ impl DspiCore {
     /// completed. `update` then applies to the mirror and `bulk_raw`.
     fn set_payload(
         &self,
+        at: Journal,
         opcode: u8,
         data: &[u8],
         update: impl FnOnce(&mut DspState),
     ) -> Result<()> {
         let mut guard = self.lock();
         let inner = &mut *guard;
+        let change = inner.journal_begin(at.0, at.1)?;
         {
             let mut w = inner.writable_conn()?;
             w.conn().fresh_image = false;
@@ -238,6 +252,7 @@ impl DspiCore {
         }
         update(&mut inner.state);
         sync_image(&mut inner.state);
+        change.done(inner, Value::Bytes(data.to_vec()));
         Ok(())
     }
 
@@ -272,6 +287,7 @@ impl DspiCore {
     /// or a transfer error.
     pub fn set_output_pin(&self, slot: u8, pin: u8) -> Result<()> {
         self.set_pin_with_status(
+            ("out.pin", &[slot]),
             op::REQ_SET_OUTPUT_PIN,
             wv(pin, slot),
             pin,
@@ -314,9 +330,14 @@ impl DspiCore {
                 msg: format!("output config mode {mode} is not 0 or 1"),
             });
         }
-        self.set_payload(op::REQ_SET_OUTPUT_CONFIG_MODE, &[mode], |s| {
-            s.output_config_mode = mode;
-        })
+        self.set_payload(
+            ("preset.iomode", &[]),
+            op::REQ_SET_OUTPUT_CONFIG_MODE,
+            &[mode],
+            |s| {
+                s.output_config_mode = mode;
+            },
+        )
     }
 
     /// FLASH WRITE: persist the live physical I/O configuration (the
@@ -334,7 +355,9 @@ impl DspiCore {
                 inner
                     .writable_conn()?
                     .set_as_read(op::REQ_SAVE_OUTPUT_CONFIG, 0)?,
-            )
+            )?;
+            journal(inner, "dev.save.io", &[], Value::Trigger);
+            Ok(())
         })
     }
 
@@ -366,11 +389,16 @@ impl DspiCore {
     /// or `INVALID_PIN` (a type above 1); [`DspiError::ReadOnly`],
     /// [`DspiError::Disconnected`] or a transfer error.
     pub fn set_output_type(&self, slot: u8, kind: u8) -> Result<()> {
-        self.set_with_status(op::REQ_SET_OUTPUT_TYPE, wv(kind, slot), |s| {
-            if let Some(v) = entry(&mut s.output_types, slot) {
-                *v = kind;
-            }
-        })
+        self.set_with_status(
+            ("out.type", &[slot]),
+            op::REQ_SET_OUTPUT_TYPE,
+            wv(kind, slot),
+            |s| {
+                if let Some(v) = entry(&mut s.output_types, slot) {
+                    *v = kind;
+                }
+            },
+        )
     }
 
     // ── I2S clocks ────────────────────────────────────────────────────
@@ -385,6 +413,14 @@ impl DspiCore {
     /// [`DspiError::Locked`] (Link, reset only) or a transfer error.
     pub fn set_i2s_bck_pin(&self, role: u8, pin: u8) -> Result<()> {
         self.set_pin_with_status(
+            (
+                if role == 0 {
+                    "i2s.bck"
+                } else {
+                    "i2s.bck.slave"
+                },
+                &[],
+            ),
             op::REQ_SET_I2S_BCK_PIN,
             wv(role, pin),
             pin,
@@ -407,9 +443,14 @@ impl DspiCore {
     /// `PIN_IN_USE` (the slave pair is taken); [`DspiError::ReadOnly`],
     /// [`DspiError::Disconnected`] or a transfer error.
     pub fn set_i2s_clock_pin_mode(&self, mode: u8) -> Result<()> {
-        self.set_with_status(op::REQ_SET_I2S_CLOCK_PIN_MODE, u16::from(mode), |s| {
-            s.i2s_clock_pin_mode = mode;
-        })
+        self.set_with_status(
+            ("i2s.clockpins", &[]),
+            op::REQ_SET_I2S_CLOCK_PIN_MODE,
+            u16::from(mode),
+            |s| {
+                s.i2s_clock_pin_mode = mode;
+            },
+        )
     }
 
     /// The I2S master clock output on or off.
@@ -418,9 +459,14 @@ impl DspiCore {
     /// meanwhile); [`DspiError::ReadOnly`], [`DspiError::Disconnected`] or a
     /// transfer error.
     pub fn set_mck_enabled(&self, enabled: bool) -> Result<()> {
-        self.set_with_status(op::REQ_SET_MCK_ENABLE, u16::from(enabled), |s| {
-            s.mck_enabled = enabled;
-        })
+        self.set_with_status(
+            ("i2s.mck", &[]),
+            op::REQ_SET_MCK_ENABLE,
+            u16::from(enabled),
+            |s| {
+                s.mck_enabled = enabled;
+            },
+        )
     }
 
     /// The master clock GPIO (a clock-output-capable pin);
@@ -432,6 +478,7 @@ impl DspiCore {
     /// [`DspiError::Locked`] (Link, reset only) or a transfer error.
     pub fn set_mck_pin(&self, pin: u8) -> Result<()> {
         self.set_pin_with_status(
+            ("i2s.mck.pin", &[]),
             op::REQ_SET_MCK_PIN,
             u16::from(pin),
             pin,
@@ -446,9 +493,14 @@ impl DspiCore {
     /// [`DspiError::ReadOnly`], [`DspiError::Disconnected`] or a transfer
     /// error.
     pub fn set_mck_multiplier(&self, mult: u8) -> Result<()> {
-        self.set_with_status(op::REQ_SET_MCK_MULTIPLIER, u16::from(mult), |s| {
-            s.mck_multiplier = mult;
-        })
+        self.set_with_status(
+            ("i2s.mck.mult", &[]),
+            op::REQ_SET_MCK_MULTIPLIER,
+            u16::from(mult),
+            |s| {
+                s.mck_multiplier = mult;
+            },
+        )
     }
 
     // ── ADAT output ───────────────────────────────────────────────────
@@ -460,9 +512,14 @@ impl DspiCore {
     /// enabling); [`DspiError::ReadOnly`], [`DspiError::Disconnected`] or a
     /// transfer error.
     pub fn set_adat_out_enabled(&self, enabled: bool) -> Result<()> {
-        self.set_with_status(op::REQ_SET_ADAT_ENABLE, u16::from(enabled), |s| {
-            s.adat_out_enabled = enabled;
-        })
+        self.set_with_status(
+            ("adat.enable", &[]),
+            op::REQ_SET_ADAT_ENABLE,
+            u16::from(enabled),
+            |s| {
+                s.adat_out_enabled = enabled;
+            },
+        )
     }
 
     /// The ADAT output GPIO; `PIN_RESET_TO_DEFAULT` restores the default,
@@ -474,6 +531,7 @@ impl DspiCore {
     /// only) or a transfer error.
     pub fn set_adat_out_pin(&self, pin: u8) -> Result<()> {
         self.set_pin_with_status(
+            ("adat.pin", &[]),
             op::REQ_SET_ADAT_PIN,
             u16::from(pin),
             pin,
@@ -494,6 +552,7 @@ impl DspiCore {
     /// only) or a transfer error.
     pub fn set_spdif_rx_pin(&self, index: u8, pin: u8) -> Result<()> {
         self.set_pin_with_status(
+            ("in.spdif.pin", &[index]),
             op::REQ_SET_SPDIF_RX_PIN,
             wv(index, pin),
             pin,
@@ -517,6 +576,7 @@ impl DspiCore {
     /// [`DspiError::Disconnected`] or a transfer error.
     pub fn set_spdif_input_enabled(&self, index: u8, enabled: bool) -> Result<()> {
         self.set_with_status(
+            ("in.spdif.enable", &[index]),
             op::REQ_SET_SPDIF_INPUT_ENABLE,
             wv(index, u8::from(enabled)),
             |s| {
@@ -542,6 +602,7 @@ impl DspiCore {
     /// only) or a transfer error.
     pub fn set_i2s_rx_pin(&self, pair: u8, pin: u8) -> Result<()> {
         self.set_pin_with_status(
+            ("in.i2s.pin", &[pair]),
             op::REQ_SET_I2S_RX_PIN,
             wv(pair, pin),
             pin,
@@ -562,9 +623,14 @@ impl DspiCore {
     /// newly active pair; [`DspiError::ReadOnly`],
     /// [`DspiError::Disconnected`] or a transfer error.
     pub fn set_i2s_input_channels(&self, channels: u8) -> Result<()> {
-        self.set_with_status(op::REQ_SET_I2S_INPUT_CHANNELS, u16::from(channels), |s| {
-            s.i2s_input_channels = channels;
-        })
+        self.set_with_status(
+            ("in.i2s.channels", &[]),
+            op::REQ_SET_I2S_INPUT_CHANNELS,
+            u16::from(channels),
+            |s| {
+                s.i2s_input_channels = channels;
+            },
+        )
     }
 
     /// The ADAT input (RP2350) on or off. Enabling needs a data pin
@@ -577,9 +643,14 @@ impl DspiCore {
     /// [`DspiError::ReadOnly`], [`DspiError::Disconnected`] or a transfer
     /// error.
     pub fn set_adat_input_enabled(&self, enabled: bool) -> Result<()> {
-        self.set_with_status(op::REQ_SET_ADAT_INPUT_ENABLE, u16::from(enabled), |s| {
-            s.adat_input_enabled = enabled;
-        })
+        self.set_with_status(
+            ("in.adat.enable", &[]),
+            op::REQ_SET_ADAT_INPUT_ENABLE,
+            u16::from(enabled),
+            |s| {
+                s.adat_input_enabled = enabled;
+            },
+        )
     }
 
     /// The ADAT input GPIO; 0xFF clears it (allowed only while the input is
@@ -590,9 +661,14 @@ impl DspiCore {
     /// [`DspiError::ReadOnly`], [`DspiError::Disconnected`] or a transfer
     /// error.
     pub fn set_adat_input_pin(&self, pin: u8) -> Result<()> {
-        self.set_with_status(op::REQ_SET_ADAT_INPUT_PIN, u16::from(pin), |s| {
-            s.adat_input_pin = pin;
-        })
+        self.set_with_status(
+            ("in.adat.pin", &[]),
+            op::REQ_SET_ADAT_INPUT_PIN,
+            u16::from(pin),
+            |s| {
+                s.adat_input_pin = pin;
+            },
+        )
     }
 
     /// ADAT input clock: 0 = master (the device sets the rate), 1 = slave
@@ -603,9 +679,14 @@ impl DspiCore {
     /// [`DspiError::ReadOnly`], [`DspiError::Disconnected`] or a transfer
     /// error.
     pub fn set_adat_input_clock_mode(&self, mode: u8) -> Result<()> {
-        self.set_with_status(op::REQ_SET_ADAT_INPUT_CLOCK_MODE, u16::from(mode), |s| {
-            s.adat_input_clock_mode = mode;
-        })
+        self.set_with_status(
+            ("in.adat.clock", &[]),
+            op::REQ_SET_ADAT_INPUT_CLOCK_MODE,
+            u16::from(mode),
+            |s| {
+                s.adat_input_clock_mode = mode;
+            },
+        )
     }
 
     /// I2S/ADAT-master input rate: 0 = 44.1k, 1 = 48k, 2 = 96k (others clamp
@@ -623,9 +704,14 @@ impl DspiCore {
             2 => 96_000,
             _ => 48_000,
         };
-        self.set_payload(op::REQ_SET_INPUT_RATE, &hz.to_le_bytes(), |s| {
-            s.i2s_input_rate = index;
-        })
+        self.set_payload(
+            ("in.rate", &[]),
+            op::REQ_SET_INPUT_RATE,
+            &hz.to_le_bytes(),
+            |s| {
+                s.i2s_input_rate = index;
+            },
+        )
     }
 
     /// Hz the pipeline runs at now (0 if unknown): the LIVE rate (firmware
@@ -658,9 +744,14 @@ impl DspiCore {
                 msg: format!("I2S clock mode {mode} is not 0 (master) or 1 (slave)"),
             });
         }
-        self.set_payload(op::REQ_SET_I2S_CLOCK_MODE, &[mode], |s| {
-            s.i2s_clock_mode = mode;
-        })
+        self.set_payload(
+            ("in.i2s.clock", &[]),
+            op::REQ_SET_I2S_CLOCK_MODE,
+            &[mode],
+            |s| {
+                s.i2s_clock_mode = mode;
+            },
+        )
     }
 
     /// Lock status of a clocked input. `which`: 0 = I2S slave
@@ -756,7 +847,12 @@ impl DspiCore {
         for (dst, src) in d.iter_mut().zip(fields) {
             *dst = src;
         }
-        self.set_payload(op::REQ_SET_DAC_HW_MUTE_CONFIG, &d, |_| {})
+        self.set_payload(
+            ("dev.dacmute", &[]),
+            op::REQ_SET_DAC_HW_MUTE_CONFIG,
+            &d,
+            |_| {},
+        )
     }
 
     /// Re-read the DAC mute config into the state (`dac_mute_*`; also the
@@ -778,7 +874,9 @@ impl DspiCore {
     pub fn test_dac_mute(&self) -> Result<()> {
         let mut guard = self.lock();
         let mut w = guard.writable_conn()?;
-        status(w.set_as_read(op::REQ_TEST_DAC_HW_MUTE, 0)?)
+        status(w.set_as_read(op::REQ_TEST_DAC_HW_MUTE, 0)?)?;
+        journal(&mut guard, "dev.dacmute.test", &[], Value::Trigger);
+        Ok(())
     }
 
     // ── LG Sound Sync ─────────────────────────────────────────────────
@@ -790,6 +888,7 @@ impl DspiCore {
     /// transfer error.
     pub fn set_lg_sound_sync(&self, enabled: bool) -> Result<()> {
         self.set_payload(
+            ("in.lg", &[]),
             op::REQ_SET_LG_SOUND_SYNC_ENABLE,
             &[u8::from(enabled)],
             |s| {
@@ -848,7 +947,7 @@ impl DspiCore {
             b2,
             b3,
         ];
-        self.set_payload(op::REQ_SET_UART_CONFIG, &d, |_| {})
+        self.set_payload(("dev.uart", &[]), op::REQ_SET_UART_CONFIG, &d, |_| {})
     }
 
     /// Send an I2C target control-interface config (pins, 7-bit address).
@@ -868,7 +967,7 @@ impl DspiCore {
             0,
             0,
         ];
-        self.set_payload(op::REQ_SET_I2C_CONFIG, &d, |_| {})
+        self.set_payload(("dev.i2c", &[]), op::REQ_SET_I2C_CONFIG, &d, |_| {})
     }
 
     // ── Bootloader, Core 1 ────────────────────────────────────────────
@@ -908,6 +1007,10 @@ impl DspiCore {
         let current = {
             let mut guard = self.lock();
             let current = lock.is_current(&guard);
+            if current {
+                // -- WP P0W -- before the request: the device leaves with it
+                journal(&mut guard, "dev.bootloader", &[], Value::Trigger);
+            }
             if current
                 && let Some(conn) = guard.conn.as_mut()
                 && let Err(e) = conn.get_upto(op::REQ_ENTER_BOOTLOADER, 0, 1)

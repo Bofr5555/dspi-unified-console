@@ -42,6 +42,12 @@ use crate::{FfiCore, with_core};
 
 mod autoeq;
 mod link_text;
+// -- WP P0M --
+mod events;
+// -- WP P0E --
+mod diag;
+// -- WP FWX --
+mod ext_diag;
 
 // ── Replies ──────────────────────────────────────────────────────────
 
@@ -697,6 +703,19 @@ pub extern "C" fn dspi_fetch_buffer_stats(core: *mut FfiCore, out: *mut BufferSt
     fetch_value(core, out, |c| {
         c.fetch_buffer_stats().map(|s| BufferStats::from(&s))
     })
+}
+
+// -- WP CS1 --
+/// The device's USB error counters (`REQ_GET_USB_ERROR_STATS`), in JSON:
+/// `{ok, total, crc, bitstuff, rxOverflow, rxTimeout, dataSeq}`, or a
+/// failure. Current firmware reports zeros.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_fetch_usb_error_stats(
+    core: *mut FfiCore,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| json_reply(c.fetch_usb_error_stats()))
 }
 
 /// Reset the buffer statistics' watermarks.
@@ -1766,9 +1785,57 @@ pub extern "C" fn dspi_output_cards(core: *mut FfiCore, buf: *mut c_char, len: u
     text(core, buf, len, |c| json_reply(Ok(c.output_cards())))
 }
 
+// -- WP P0W --
+// ── Undo, redo and the change history ───────────────────────────────
+
+/// Step back through the change history (`DspiCore::undo`): the newest
+/// change that can be undone is written back through its setter. The reply
+/// is `{ok, entry, skipped, note}`: `entry` the change reversed (`null` when
+/// nothing moved), `skipped` the changes stepped over that cannot be undone,
+/// each as `dspi_history` gives them, `note` why nothing moved when another
+/// writer changed the value since (or `null`); or a failure.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_undo(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
+    text(core, buf, len, |c| json_reply(c.undo()))
+}
+
+/// Step forward again (`DspiCore::redo`): the change undo most recently
+/// reversed is written again. The reply is as `dspi_undo`'s (`skipped`
+/// always empty).
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_redo(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
+    text(core, buf, len, |c| json_reply(c.redo()))
+}
+
+/// Whether `dspi_undo` has a change to reverse. False for a null handle or
+/// with no device.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_can_undo(core: *const FfiCore) -> bool {
+    with_core(core, false, |h| h.core.can_undo())
+}
+
+/// Whether `dspi_redo` has a change to apply again. False for a null handle
+/// or with no device.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_can_redo(core: *const FfiCore) -> bool {
+    with_core(core, false, |h| h.core.can_redo())
+}
+
+/// The newest `n` changes of the open connection, newest first, in JSON
+/// (`value`: a list of `{path, indices, before, after, source, atMs,
+/// undoable}`; `before` and `after` are parameter values as
+/// `dspi_write_param` takes them, `before` null when unknown; `source` is
+/// `local`, `undo` or `redo`; `atMs` milliseconds since the Unix epoch). A
+/// reconnect starts a new history. `NOTIFY_HISTORY` says when it moved.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_history(core: *mut FfiCore, n: u32, buf: *mut c_char, len: u32) -> u32 {
+    text(core, buf, len, |c| json_reply(Ok(c.history(n))))
+}
+
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_bug1;
+// -- WP P0W --
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_cg11;
@@ -1793,6 +1860,12 @@ mod tests_wp_cg34;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_cg36;
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_p0w;
+// -- WP CS1 --
+#[cfg(test)]
+mod tests_wp_cs1;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_q2b;

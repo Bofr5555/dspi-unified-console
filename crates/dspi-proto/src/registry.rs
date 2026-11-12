@@ -908,7 +908,7 @@ pub static REGISTRY: &[ParamDesc] = &[
     p(
         "limit.on",
         "Output Limiter",
-        "A brickwall limiter on this output; the first one on adds 32 samples of latency everywhere",
+        "A brickwall limiter on this output; the first one on delays every output by 32 samples (0.67 ms at 48 kHz)",
         Matrix,
         Simple,
         Bool,
@@ -924,11 +924,11 @@ pub static REGISTRY: &[ParamDesc] = &[
     p(
         "limit.threshold",
         "Threshold",
-        "The ceiling, in dBFS. No sample leaves this output above it.",
+        "The ceiling: no sample leaves this output above it",
         Matrix,
         Advanced,
         Float {
-            unit: Unit::Db,
+            unit: Unit::Dbfs,
             min: ranges::LIMITER_THRESHOLD_MIN,
             max: ranges::LIMITER_THRESHOLD_MAX,
         },
@@ -1196,8 +1196,8 @@ pub static REGISTRY: &[ParamDesc] = &[
     ),
     p(
         "lev.lookahead",
-        "Look ahead",
-        "Anticipate peaks, at the cost of 10 ms delay",
+        "Lookahead",
+        "Anticipate peaks; delays every input by 5 ms (240 samples at 48 kHz)",
         Dynamics,
         Advanced,
         Bool,
@@ -1217,7 +1217,7 @@ pub static REGISTRY: &[ParamDesc] = &[
         Dynamics,
         Advanced,
         Float {
-            unit: Unit::Db,
+            unit: Unit::Dbfs,
             min: -96.0,
             max: 0.0,
         },
@@ -1281,7 +1281,7 @@ pub static REGISTRY: &[ParamDesc] = &[
     ),
     p(
         "cf.freq",
-        "Crossover frequency",
+        "Cutoff frequency",
         "Below this, the channels blend",
         Spatial,
         Advanced,
@@ -1321,7 +1321,7 @@ pub static REGISTRY: &[ParamDesc] = &[
     ),
     p(
         "cf.itd",
-        "Time delay",
+        "Interaural delay",
         "Model the delay sound takes to reach the far ear",
         Spatial,
         Advanced,
@@ -1353,7 +1353,7 @@ pub static REGISTRY: &[ParamDesc] = &[
     ),
     p(
         "bass.on",
-        "Psychoacoustic bass",
+        "Psychoacoustic Bass",
         "Imply deep bass a small speaker cannot reproduce",
         Spatial,
         Simple,
@@ -1579,8 +1579,10 @@ pub static REGISTRY: &[ParamDesc] = &[
         Expert,
         Float {
             unit: Unit::Percent,
-            min: 0.0,
-            max: 100.0,
+            // The firmware clamps the upmixer's floats to these
+            // (upmix.h:88-109), as the core and the Console do (WP P0U).
+            min: ranges::UPMIX_THRESH_MIN,
+            max: ranges::UPMIX_THRESH_MAX,
         },
         Tg::None,
         Some(op::REQ_UPMIX_SET_PARAM),
@@ -1599,8 +1601,8 @@ pub static REGISTRY: &[ParamDesc] = &[
         Expert,
         Float {
             unit: Unit::Ms,
-            min: 0.0,
-            max: 1000.0,
+            min: ranges::UPMIX_ATTACK_MIN,
+            max: ranges::UPMIX_ATTACK_MAX,
         },
         Tg::None,
         Some(op::REQ_UPMIX_SET_PARAM),
@@ -1619,8 +1621,8 @@ pub static REGISTRY: &[ParamDesc] = &[
         Expert,
         Float {
             unit: Unit::Ms,
-            min: 0.0,
-            max: 5000.0,
+            min: ranges::UPMIX_RELEASE_MIN,
+            max: ranges::UPMIX_RELEASE_MAX,
         },
         Tg::None,
         Some(op::REQ_UPMIX_SET_PARAM),
@@ -1633,14 +1635,14 @@ pub static REGISTRY: &[ParamDesc] = &[
     ),
     p(
         "up.det_hpf",
-        "Detector high pass",
+        "Detector high-pass",
         "Ignore bass when deciding where sound belongs",
         Spatial,
         Expert,
         Float {
             unit: Unit::Hz,
-            min: 20.0,
-            max: 2000.0,
+            min: ranges::UPMIX_DET_HPF_MIN,
+            max: ranges::UPMIX_DET_HPF_MAX,
         },
         Tg::None,
         Some(op::REQ_UPMIX_SET_PARAM),
@@ -1659,8 +1661,8 @@ pub static REGISTRY: &[ParamDesc] = &[
         Advanced,
         Float {
             unit: Unit::Ms,
-            min: 0.0,
-            max: 42.0,
+            min: ranges::UPMIX_SUR_DELAY_MIN,
+            max: ranges::UPMIX_SUR_DELAY_MAX,
         },
         Tg::None,
         Some(op::REQ_UPMIX_SET_PARAM),
@@ -1673,7 +1675,7 @@ pub static REGISTRY: &[ParamDesc] = &[
     ),
     p(
         "up.sur_hpf",
-        "Surround high pass",
+        "Surround high-pass",
         "Roll off bass from the surround channels",
         Spatial,
         Expert,
@@ -1693,7 +1695,7 @@ pub static REGISTRY: &[ParamDesc] = &[
     ),
     p(
         "up.sur_lpf",
-        "Surround low pass",
+        "Surround low-pass",
         "Roll off treble from the surround channels",
         Spatial,
         Expert,
@@ -1960,7 +1962,7 @@ pub static REGISTRY: &[ParamDesc] = &[
         Spatial,
         Advanced,
         Float {
-            unit: Unit::Db,
+            unit: Unit::Dbfs,
             min: ranges::SUBHARM_CEILING_MIN,
             max: ranges::SUBHARM_CEILING_MAX,
         },
@@ -2010,7 +2012,7 @@ pub static REGISTRY: &[ParamDesc] = &[
     p(
         "sub.headroom",
         "Headroom cost",
-        "Worst-case gain the synthesizer adds, as a float in dB",
+        "Worst-case gain the synthesizer adds, in dB",
         Spatial,
         Advanced,
         Status,
@@ -2156,7 +2158,7 @@ pub static REGISTRY: &[ParamDesc] = &[
     ),
     p(
         "tube.hardness",
-        "Knee Hardness",
+        "Knee hardness",
         "Cubic to quintic knee blend",
         Spatial,
         Advanced,
@@ -2228,7 +2230,7 @@ pub static REGISTRY: &[ParamDesc] = &[
     ),
     p(
         "tube.damping",
-        "Damping Factor",
+        "Damping factor",
         "How tightly the output stage holds the speaker",
         Spatial,
         Advanced,
@@ -2248,7 +2250,7 @@ pub static REGISTRY: &[ParamDesc] = &[
     ),
     p(
         "tube.resonance",
-        "Speaker Resonance",
+        "Speaker resonance",
         "Centre of the output stage's bass bump",
         Spatial,
         Advanced,
@@ -2288,7 +2290,7 @@ pub static REGISTRY: &[ParamDesc] = &[
     ),
     p(
         "tube.trim",
-        "Output Trim",
+        "Output trim",
         "Level of the tube path",
         Spatial,
         Advanced,
@@ -2309,7 +2311,7 @@ pub static REGISTRY: &[ParamDesc] = &[
     // ----------------------------------------------------------------- input
     p(
         "in.source",
-        "Input",
+        "Input source",
         "Where the device takes audio from",
         Input,
         Simple,
@@ -2931,7 +2933,7 @@ pub static REGISTRY: &[ParamDesc] = &[
     p(
         "dev.name",
         "Device name",
-        "The board's own name, shown by every host it is plugged into",
+        "The board's own name, kept on the device and shown wherever it is plugged in",
         System,
         Advanced,
         Text { max: 32 },
@@ -3513,7 +3515,7 @@ pub static REGISTRY: &[ParamDesc] = &[
     p(
         "rta.caps",
         "Analyser capabilities",
-        "What this analyser can measure, and its band centres from wValue 1",
+        "What this analyser can measure, and its band centres",
         Diagnostics,
         Expert,
         Status,

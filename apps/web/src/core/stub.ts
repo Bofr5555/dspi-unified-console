@@ -179,7 +179,20 @@ export class StubCore implements CoreImpl {
       const db = Math.min(0, Math.max(-90, level - 60 + 6 * Math.sin((this.tick + i * 7) / 5) - i));
       return 10 ** (db / 20);
     });
-    return { peaks, cpu0: 10, cpu1: 20, clipFlags: 0, activeInputChannels: 2, numChannels: peaks.length, stale: false, ageMs: 0 };
+    return {
+      peaks,
+      cpu0: 10,
+      cpu1: 20,
+      clipFlags: 0,
+      activeInputChannels: 2,
+      numChannels: peaks.length,
+      stale: false,
+      ageMs: 0,
+      // -- WP P0M -- no ballistics in the stub: the hold is the level
+      peakHold: peaks,
+      peakMax: peaks,
+      clipHold: 0,
+    };
   }
 
   private simulate({ what }: { what: "link-lost" | "link-closed" }): null {

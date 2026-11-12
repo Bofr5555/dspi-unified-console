@@ -291,7 +291,7 @@ impl Drop for LostOnExit {
 }
 
 fn worker_loop(
-    mut transport: Box<dyn Transport>,
+    transport: Box<dyn Transport>,
     shared: &DeviceShared,
     rx: &Receiver<Job>,
     sup: Sender<SupMsg>,
@@ -302,6 +302,9 @@ fn worker_loop(
         generation: shared.generation,
     };
     let mut busy = BusyWindow::default();
+    // -- WP BULKFIX -- (fixup bf F1, F4: the guard sees every relayed unmute)
+    let (mut transport, guard) = dspi_session::bulk_gain::GainGuard::wrap(transport, true);
+    let mut chunks = crate::bulk_gain::BulkRelay::new(guard);
     loop {
         let next = match shared.polls.next_due() {
             Some(due) => rx.recv_timeout(due.saturating_duration_since(Instant::now())),
@@ -313,7 +316,7 @@ fn worker_loop(
                 if is_chunk(job.req.b_request) {
                     shared.polls.hold_for_chunks(Instant::now());
                 }
-                run_command(&mut *transport, shared, &sup, &mut busy, job);
+                run_command(&mut *transport, shared, &sup, &mut busy, &mut chunks, job);
             }
             Ok(Job::SnapshotRead) => read_snapshot(&mut *transport, shared),
             Ok(Job::Wake) | Err(RecvTimeoutError::Timeout) => {}
@@ -388,6 +391,7 @@ fn run_command(
     shared: &DeviceShared,
     sup: &Sender<SupMsg>,
     busy: &mut BusyWindow,
+    chunks: &mut crate::bulk_gain::BulkRelay,
     job: CmdJob,
 ) {
     let CmdJob {
@@ -424,7 +428,11 @@ fn run_command(
         }
     };
     let busy_retry = shared.router.retries_stall(req) && busy.is_open(now);
-    let result = execute(t, req, busy_retry);
+    // -- WP BULKFIX --
+    let result = match chunks.take(t, req, write_bulk) {
+        Some(held) => held,
+        None => execute(t, req, busy_retry),
+    };
     if shared.router.mutates(req) {
         busy.note_write(Instant::now());
     }
@@ -492,8 +500,9 @@ pub(crate) fn execute(
             opcode,
         ),
         Dir::Get => t.control_in_upto(opcode, req.w_value, req.w_length),
-        Dir::Set if opcode == op::REQ_SET_ALL_PARAMS && caps.chunked_bulk => {
-            write_chunked(t, &req.payload).map(|()| Vec::new())
+        // -- WP BULKFIX -- (repaired by `BulkRelay::take` before this runs)
+        Dir::Set if opcode == op::REQ_SET_ALL_PARAMS => {
+            write_bulk(t, &req.payload).map(|()| Vec::new())
         }
         Dir::Set => t
             .control_out(opcode, req.w_value, &req.payload)
@@ -528,6 +537,16 @@ fn read_chunked(t: &mut dyn Transport, want: u16) -> Result<Vec<u8>, TransportEr
         }
     }
     Ok(image)
+}
+
+// -- WP BULKFIX --
+/// A whole image, chunked where the transport has chunks, else as one `0xA1`.
+fn write_bulk(t: &mut dyn Transport, image: &[u8]) -> Result<(), TransportError> {
+    if t.caps().chunked_bulk {
+        write_chunked(t, image)
+    } else {
+        t.control_out(op::REQ_SET_ALL_PARAMS, 0, image)
+    }
 }
 
 /// A single-shot write served in chunks. Not retried: a failed chunk closes the

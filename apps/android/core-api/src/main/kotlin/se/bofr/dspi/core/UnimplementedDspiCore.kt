@@ -70,6 +70,24 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun featurePresent(name: String): Boolean = throw NotImplementedError("feature_present")
 
+    override fun diagnosticsSave(path: String, options: DiagOptions): List<String> = throw NotImplementedError("diagnostics_save")
+
+    override fun diagnosticsFileName(): String = throw NotImplementedError("diagnostics_file_name")
+
+    override fun meterBallistics(): MeterBallistics = throw NotImplementedError("meter_ballistics")
+
+    override fun setMeterBallistics(config: MeterBallistics): Unit = throw NotImplementedError("set_meter_ballistics")
+
+    override fun resetMeterMax(): Unit = throw NotImplementedError("reset_meter_max")
+
+    override fun eventLogSetDir(dir: String): Unit = throw NotImplementedError("event_log_set_dir")
+
+    override fun eventLogRead(serial: String, afterId: Long, limit: Long): EventBatch = throw NotImplementedError("event_log_read")
+
+    override fun eventLogExport(serial: String): String = throw NotImplementedError("event_log_export")
+
+    override fun eventLogDevices(): List<String> = throw NotImplementedError("event_log_devices")
+
     override fun setCrossfeedPairMap(map: List<Int>): Unit = throw NotImplementedError("set_crossfeed_pair_map")
 
     override fun fetchCrossfeedPairMap(): List<Int> = throw NotImplementedError("fetch_crossfeed_pair_map")
@@ -79,6 +97,16 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun fetchCoreVreg(): CoreVregInfo = throw NotImplementedError("fetch_core_vreg")
 
     override fun coreVregOp(op: Int, value: Int, word: String?): Unit = throw NotImplementedError("core_vreg_op")
+
+    override fun identify(seconds: Int, toneOutput: Int?): Unit = throw NotImplementedError("identify")
+
+    override fun fetchIdentify(): IdentifyInfo = throw NotImplementedError("fetch_identify")
+
+    override fun fetchResetInfo(): DeviceResetInfo = throw NotImplementedError("fetch_reset_info")
+
+    override fun resetInfoAtConnect(): DeviceResetInfo? = throw NotImplementedError("reset_info_at_connect")
+
+    override fun hasClipEvents(): Boolean = throw NotImplementedError("has_clip_events")
 
     override fun configExport(name: String, appVersion: String, links: Int): String = throw NotImplementedError("config_export")
 
@@ -195,6 +223,16 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun setOutputLatency(id: Int): Unit = throw NotImplementedError("set_output_latency")
 
     override fun fetchClockDiag(): ClockDiag = throw NotImplementedError("fetch_clock_diag")
+
+    override fun undo(): HistoryMove = throw NotImplementedError("undo")
+
+    override fun redo(): HistoryMove = throw NotImplementedError("redo")
+
+    override fun canUndo(): Boolean = throw NotImplementedError("can_undo")
+
+    override fun canRedo(): Boolean = throw NotImplementedError("can_redo")
+
+    override fun history(n: Long): List<HistoryEntry> = throw NotImplementedError("history")
 
     override fun linkConnect(url: String, clientName: String, appVersion: String, token: String, expectedHubId: String): LinkHello = throw NotImplementedError("link_connect")
 
@@ -407,6 +445,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun fetchSpdifRxChannelStatus(): List<Int> = throw NotImplementedError("fetch_spdif_rx_channel_status")
 
     override fun fetchSpdifRxPin(index: Int): Int = throw NotImplementedError("fetch_spdif_rx_pin")
+
+    override fun fetchUsbErrorStats(): UsbErrorStats = throw NotImplementedError("fetch_usb_error_stats")
 
     override fun coreVregCalView(): VregCalView = throw NotImplementedError("core_vreg_cal_view")
 

@@ -10,6 +10,8 @@
 # windows-x86_64 (a .zip for windows-*, a .tar.gz otherwise). The archive's
 # NOTICE.md and README name the source archive ci/release-source.sh writes for
 # the same VERSION, which the release publishes beside it. Runs on the host.
+# -- WP P0E -- Last step of a release: ci/release-sums.sh signs the folder's
+# SHA256SUMS (docs/RELEASING.md).
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 bin=${1:?usage: release-terminal.sh BINARY PLATFORM VERSION [OUTDIR]}

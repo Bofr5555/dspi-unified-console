@@ -13,7 +13,9 @@ dspi-proto.workspace = true
 dspi-transport = { path = "../dspi-transport", default-features = false }
 # Without the Terminal's parts: the mobile libraries (WP F1) carry neither the
 # command grammar nor the bundled AutoEQ database.
-dspi-session = { path = "../dspi-session", default-features = false }
+# -- WP P0E -- `serde`: the diagnostics bundle's device dump is the probe's own
+# serialisation, as `uconsole dump --json` prints it (derives only; serde is here anyway).
+dspi-session = { path = "../dspi-session", default-features = false, features = ["serde"] }
 dspi-link = { workspace = true, optional = true }
 thiserror.workspace = true
 log.workspace = true

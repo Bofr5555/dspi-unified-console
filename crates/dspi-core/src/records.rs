@@ -180,6 +180,21 @@ pub struct SystemStatus {
     pub stale: bool,
     /// Age of the values in milliseconds.
     pub age_ms: u32,
+    // -- WP P0M --
+    /// The held peak per channel (17 entries), linear: a new peak holds for
+    /// `MeterBallistics.hold_ms`, then falls at `decay_per_s`. Computed by the
+    /// core from `peaks`; draw it as the hold marker.
+    pub peak_hold: Vec<f32>,
+    /// The highest peak per channel (17 entries) since the connection opened
+    /// or `reset_meter_max`.
+    pub peak_max: Vec<f32>,
+    /// The clip hold, one bit per channel: lit by a clip, dark again
+    /// `MeterBallistics.clip_hold_ms` after the last new one (the core then
+    /// clears the device's sticky `clip_flags`; a channel still clipping lights
+    /// again on the next read) or after `clear_clips`. Where the clear is
+    /// refused (a viewer on a hub) it follows the sticky flags. Draw the clip
+    /// marker from this, not from `clip_flags`.
+    pub clip_hold: u32,
 }
 
 /// A DSPi found on USB.
@@ -1169,4 +1184,119 @@ pub struct RtaOwnership {
     pub mask: u16,
     /// Its FFT order.
     pub fft_order: u8,
+}
+
+// -- WP P0M --
+/// The meter ballistics' timing (`DspiCore::set_meter_ballistics`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MeterBallistics {
+    /// How long a new peak holds, ms. Default 1000.
+    pub hold_ms: u32,
+    /// How fast a held peak falls after its hold, linear full scale per
+    /// second. Default 0.5.
+    pub decay_per_s: f32,
+    /// How long the clip hold lasts after the last new clip, ms; 0 until
+    /// cleared. Default 10 000 (the macOS console's).
+    pub clip_hold_ms: u32,
+}
+
+/// One record of a device's event log (`DspiCore::event_log_read`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct EventEntry {
+    /// Rising per device, across runs.
+    pub id: u64,
+    /// When, ms since the Unix epoch.
+    pub time_ms: i64,
+    /// `notification`, `connected`, `disconnected`, `clip`, `temperature`,
+    /// `counter`, `reset`, `firmware`, `import`, `recall`; `unknown` for a
+    /// newer build's kind.
+    pub kind: String,
+    /// The device's serial.
+    pub serial: String,
+    /// One readable line.
+    pub text: String,
+    /// Who or what caused it: a notification's source (`HOST`, `PRESET`,
+    /// `UART`, ...), a transport, a counter, a reset reason, `meter`; "" when
+    /// none.
+    pub source: String,
+    /// The DSPi Link session that caused it, when another one did.
+    pub session: Option<u32>,
+    /// This client's own write coming back.
+    pub own: bool,
+    /// A wire channel (clips), or the preset slot (recalls).
+    pub channel: Option<u8>,
+    /// °C for a temperature, the total for a counter.
+    pub value: Option<f64>,
+    /// The firmware version, on connects and firmware changes.
+    pub fw: Option<String>,
+    /// The device's uptime, s, where it reports one.
+    pub uptime_s: Option<u32>,
+    /// Detail lines: what a recall or an import changed.
+    pub lines: Vec<String>,
+    /// Occurrences this record stands for (repeats, counter steps, changes).
+    pub count: u32,
+}
+
+/// A page of a device's event log.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct EventBatch {
+    /// The id to pass next time.
+    pub last_id: u64,
+    /// Lines in the files that were not records.
+    pub skipped: u32,
+    /// Oldest first.
+    pub entries: Vec<EventEntry>,
+}
+
+// -- WP P0E --
+/// A file a client adds to a diagnostics bundle (`client/<name>` in the
+/// zip): its own log, `uconsole doctor`'s report.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct DiagFile {
+    /// The file's name; anything but letters, digits, `.`, `_` and `-`
+    /// becomes `_`.
+    pub name: String,
+    /// Its text, kept up to 4 MiB.
+    pub text: String,
+}
+
+/// What a client adds to a diagnostics bundle
+/// (`DspiCore::diagnostics_save`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct DiagOptions {
+    /// The client and its version, as it names itself ("DSPi Console 1.2.0
+    /// (Android)"); "" when it does not say.
+    pub app: String,
+    /// The folder of a hub store (`hub-store.json`) to include with its
+    /// tokens and secrets removed; "" for none.
+    pub hub_store_dir: String,
+    /// The client's own files.
+    pub files: Vec<DiagFile>,
+}
+
+// -- WP CS1 --
+/// The device's USB error counters (`REQ_GET_USB_ERROR_STATS` 0xB2,
+/// registry `diag.usb`): six `u32` since boot or the last reset
+/// (`diag.usb.reset`). Current firmware reports them all as zero.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsbErrorStats {
+    /// Every error counted.
+    pub total: u32,
+    /// CRC errors.
+    pub crc: u32,
+    /// Bit-stuffing errors.
+    pub bitstuff: u32,
+    /// Receive overflows.
+    pub rx_overflow: u32,
+    /// Receive timeouts.
+    pub rx_timeout: u32,
+    /// Data sequence errors.
+    pub data_seq: u32,
 }
