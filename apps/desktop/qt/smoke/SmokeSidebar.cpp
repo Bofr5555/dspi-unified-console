@@ -17,6 +17,7 @@
 
 #include "CoreApi.h"
 
+#include <QGuiApplication>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSettings>
@@ -301,6 +302,9 @@ void checkQuickStrip(SmokeDriver &d, SidebarController *sc) {
     DeviceModel *device = d.app().device;
     QStringList triggered;
     const auto c = QObject::connect(d.app().shell, &Shell::triggered, [&triggered](const QString &a) { triggered.append(a); });
+    QWindowList shown;
+    for (QWindow *w : QGuiApplication::topLevelWindows())
+        if (w->isVisible()) shown.append(w);
 
     QQuickItem *crossfeed = d.item(QStringLiteral("QuickStrip.crossfeed"));
     const bool was = sc->crossfeedOn();
@@ -334,6 +338,15 @@ void checkQuickStrip(SmokeDriver &d, SidebarController *sc) {
             triggered.contains(QStringLiteral("tools.matrix")) && triggered.contains(QStringLiteral("tools.stats")) &&
                 triggered.contains(QStringLiteral("edit.settings")));
     QObject::disconnect(c);
+    // -- WP QPF1 -- The windows these buttons opened took the focus. Close them and make the main
+    // window active again, as a person's next click there would: Qt Quick drops a
+    // window's active focus item when it loses the focus, so without this the keys
+    // the checks below send to the main window's dialogs would reach nothing
+    for (QWindow *w : QGuiApplication::topLevelWindows())
+        if (w->isVisible() && !shown.contains(w)) w->close();
+    d.mainWindow()->requestActivate();
+    d.check(QStringLiteral("qp1: the main window is active again"),
+            d.waitFor(1000, [&]() { return QGuiApplication::focusWindow() == d.mainWindow(); }));
     d.waitIdle();
 }
 
@@ -380,7 +393,7 @@ void checkPresets(SmokeDriver &d, SidebarController *sc) {
     d.spin(250);
     d.check(QStringLiteral("qp1: screenshot of the unsaved question"), d.grab(d.mainWindow(), QStringLiteral("window-main-unsaved-question.png")));
     QTest::keyClick(d.mainWindow(), Qt::Key_Escape);
-    d.waitFor(2000, [&]() { return !question->property("opened").toBool(); });
+    d.check(QStringLiteral("qp1: Escape closes the question"), d.waitFor(2000, [&]() { return !question->property("opened").toBool(); }));
     d.waitIdle();
     d.check(QStringLiteral("qp1: Cancel stays on the slot"), presets->activeSlot() == start && sc->unsaved());
 
