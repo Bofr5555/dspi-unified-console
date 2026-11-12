@@ -44,6 +44,14 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Lucide icons</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ISC; MIT for the icons from Feather</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>(The rest of this file is not shown.)</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1217,6 +1225,21 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     </message>
     <message>
         <source>Auto</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>DemoBanner</name>
+    <message>
+        <source>This is the demo DSPi, a simulated device: nothing you change here reaches a real DSPi.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No DSPi is connected. Connect one over USB, or try the demo device.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Demo</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -3260,6 +3283,199 @@ Groups are stored on the device alongside the controls and share their Save and 
     </message>
 </context>
 <context>
+    <name>HistoryController</name>
+    <message>
+        <source>Volume</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Master volume</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mute</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Input trim</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>EQ bypass</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Filter band</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Filter type</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Frequency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Q</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gain</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Band bypass</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delay</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Channel name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Crosspoint</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output gain</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output mute</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output on</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Input source</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Device name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output Limiter</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Loudness</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Leveller</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Crossfeed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Psychoacoustic Bass</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Upmixer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Subharmonic Synthesizer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tube Modeller</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Preset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Control surface</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OUT%1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>channel %1</source>
+        <extracomment>A wire channel&apos;s number in the change history</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>band %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>IN%1 to OUT%2</source>
+        <extracomment>A matrix crosspoint: input %1 to output %2</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stepped over a change that cannot be undone: %1</source>
+        <extracomment>%1 names a change that cannot be undone (a preset load, an output switched on)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stepped over changes that cannot be undone: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>HistoryWindow</name>
+    <message>
+        <source>History</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Undo</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Redo</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Undone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Redone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot be undone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No changes yet</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No Device Connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>HubController</name>
     <message>
         <source>Could not start on port %1.</source>
@@ -3837,6 +4053,30 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
     <message>
         <source>Apply</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>LevelMeter</name>
+    <message>
+        <source>Level</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 dB reduction</source>
+        <extracomment>A limiter&apos;s gain reduction; %1 is a number of dB</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 dBFS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No signal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>clipped</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -4561,6 +4801,18 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Undo</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Redo</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>History...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Cut</source>
         <translation type="unfinished"></translation>
     </message>
@@ -4598,6 +4850,23 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Factory Reset...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recall Preset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Preset %1</source>
+        <extracomment>%1 is a preset slot&apos;s number</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mute</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bypass Master EQ</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4697,6 +4966,10 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Mode...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>&amp;Help</source>
         <translation type="unfinished"></translation>
     </message>
@@ -4736,6 +5009,40 @@ Macros are stored on the device alongside the controls and share their Save and 
     <name>Menus</name>
     <message>
         <source>No favorites yet</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ModeController</name>
+    <message>
+        <source>Simple</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Advanced</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ModeWindow</name>
+    <message>
+        <source>Mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use for every device on this console</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Devices without a mode of their own open in this mode.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remembered for this device.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Done</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -5187,6 +5494,18 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Reading…</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>NumericField</name>
+    <message>
+        <source>kHz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Held to the range %1 to %2</source>
+        <extracomment>%1 and %2 are the range&apos;s ends with their unit</extracomment>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -6131,6 +6450,57 @@ Macros are stored on the device alongside the controls and share their Save and 
     <name>RightPane</name>
     <message>
         <source>No Device Connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>RtaController</name>
+    <message>
+        <source>Ch %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dashboard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Channel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>idle</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1 channel, each refreshed every %1 ms</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 channels, each refreshed every %2 ms</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 frames/s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>transform %1 µs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>main loop %1%</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>bass %1%</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>shaded bands below %1 Hz need a larger transform size in Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1/%2 dB range</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -7284,6 +7654,82 @@ Macros are stored on the device alongside the controls and share their Save and 
         <source>Blip length</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Fading in</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Running</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gap</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fading out</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Idle</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No device connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Firmware has no signal generator</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select at least one output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sweep length must be greater than 0</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ready · %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>cycle %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>edits apply live</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Finished after %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stopped</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stopped by preset load</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1 output · peak %1 dBFS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 outputs · peak %2 dBFS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Out %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>cyc</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SiggenOutputChip</name>
@@ -7773,6 +8219,341 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
 </context>
 <context>
+    <name>StatsController</name>
+    <message>
+        <source>Yes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unknown (%1)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Out %1/%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fill Target</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 frames (%2)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>How full the output rings are kept, set by Latency in Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Underrun Episodes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Times the outputs ran dry while a source owed audio. A host that pauses its stream does not count.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Refused Blocks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Audio blocks dropped because the rings had no room for them</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lowest Fill</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 frames</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The emptiest any output ring got just before new audio arrived, since the watermarks were reset. Near zero means the margin is thin.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Worst Input Gap</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Longest wait between input deliveries since the watermarks were reset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Worst USB Gap</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Longest gap between USB audio packets since the watermarks were reset. Long gaps are the host pausing its stream.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Over-Budget Steps</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Background tasks that ran past their time slice in the device&apos;s main loop</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Inactive</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Acquiring</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Locked</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Relocking</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>State</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Active Source</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sample Rate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lock Count</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Loss Count</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Parity Errors</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>FIFO Fill</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>RX Pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>General</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>CD Player</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Synthesizer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Broadcast Receiver</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Musical Instrument</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A/D Converter</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mixer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rate Converter</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sampler</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Digital Signal Processor</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not indicated</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Format</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Professional</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Consumer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Audio</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Category</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Word Length</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Permitted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Prohibited</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No Signal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Waiting Stable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Library State</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stable Callbacks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lost Callbacks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Present</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TV Volume</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TV Mute</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Streaming</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Suspended (rate above 48 kHz)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rate Supported</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Data Pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Resync Count</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Slip Count</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Total</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>CRC Errors</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bit Stuffing Errors</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Receive Overflows</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Receive Timeouts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Data Sequence Errors</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detected Rate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measured Rate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Out %1/%2 (I2S)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Out %1/%2 (SPDIF)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>PDM DMA</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>PDM Ring</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>StatsFillRow</name>
     <message>
         <source>Lowest and highest fill since the watermarks were reset</source>
@@ -7963,6 +8744,29 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Updated every 2 seconds</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>StatusBar</name>
+    <message>
+        <source>Connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Alarm</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not updating</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Status</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
