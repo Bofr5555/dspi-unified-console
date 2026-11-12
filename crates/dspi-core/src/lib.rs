@@ -109,6 +109,8 @@ mod names;
 mod output_labels;
 // -- WP P0M --
 mod events;
+// -- WP P0W --
+mod journal;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -162,6 +164,8 @@ pub use names::{FilterTypeName, filter_type_name, filter_type_names};
 pub use output_labels::{
     OutputCard, OutputLabel, OutputLabelInput, output_cards_for, output_labels_for,
 };
+// -- WP P0W --
+pub use journal::{HistoryEntry, HistoryMove, HistorySource};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///
@@ -279,6 +283,10 @@ pub(crate) struct Inner {
     // -- WP P0M --
     /// [`DspiCore::events`], for code that holds only the lock.
     pub(crate) events: Arc<events::Store>,
+    // -- WP P0W --
+    /// The history as `process_notifications` last reported it
+    /// (`journal::history_mark`), for `NOTIFY_HISTORY`.
+    pub(crate) history_seen: Option<(u64, u64)>,
 }
 
 /// An open device.
@@ -355,6 +363,10 @@ pub(crate) struct Connection {
     /// have to run ([`DspiCore::ensure_probed`]; the Link supervisor runs
     /// them in the background).
     pub(crate) pending_probe: Option<Box<dspi_session::probe::Quick>>,
+    // -- WP P0W --
+    /// The last change another writer made, for undo's foreign-change rule
+    /// (`journal::ForeignChange`). On the connection, as its journal is.
+    pub(crate) last_foreign: Option<journal::ForeignWrite>,
 }
 
 /// A remote device reached without the [`Inner`] lock (WP C15).
@@ -464,6 +476,8 @@ impl Connection {
             held_lock: None,
             // -- WP LK4 --
             pending_probe: None,
+            // -- WP P0W --
+            last_foreign: None,
         }
     }
 
@@ -577,6 +591,8 @@ impl Inner {
             notify_tap: raw::NotifyTap::default(),
             // -- WP P0M --
             events: Arc::default(),
+            // -- WP P0W --
+            history_seen: None,
         }
     }
 

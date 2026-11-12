@@ -264,6 +264,16 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun fetchClockDiag(): ClockDiag = call { core.fetchClockDiag().toDomain() }
 
+    override fun undo(): HistoryMove = call { core.undo().toDomain() }
+
+    override fun redo(): HistoryMove = call { core.redo().toDomain() }
+
+    override fun canUndo(): Boolean = core.canUndo()
+
+    override fun canRedo(): Boolean = core.canRedo()
+
+    override fun history(n: Long): List<HistoryEntry> = core.history(n.toUInt()).map { it.toDomain() }
+
     override fun linkConnect(url: String, clientName: String, appVersion: String, token: String, expectedHubId: String): LinkHello = call { core.linkConnect(url, clientName, appVersion, token, expectedHubId).toDomain() }
 
     override fun linkPair(pin: String): String = call { core.linkPair(pin) }
@@ -1971,6 +1981,42 @@ internal fun FirmwareGuardVerdict.toFfi() =
         requiredMv = requiredMv.toUShort(),
     )
 
+internal fun se.bofr.dspi.ffi.uniffi.HistoryEntry.toDomain() =
+    HistoryEntry(
+        path = path,
+        indices = indices.map { it.toInt() and 0xFF },
+        before = before?.let { it.toDomain() },
+        after = after.toDomain(),
+        source = source.toDomain(),
+        atMs = atMs.toLong(),
+        undoable = undoable,
+    )
+
+internal fun HistoryEntry.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HistoryEntry(
+        path = path,
+        indices = ByteArray(indices.size) { indices[it].toByte() },
+        before = before?.let { it.toFfi() },
+        after = after.toFfi(),
+        source = source.toFfi(),
+        atMs = atMs.toULong(),
+        undoable = undoable,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HistoryMove.toDomain() =
+    HistoryMove(
+        entry = entry?.let { it.toDomain() },
+        skipped = skipped.map { it.toDomain() },
+        note = note,
+    )
+
+internal fun HistoryMove.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HistoryMove(
+        entry = entry?.let { it.toFfi() },
+        skipped = skipped.map { it.toFfi() },
+        note = note,
+    )
+
 internal fun se.bofr.dspi.ffi.uniffi.LinkPhaseText.toDomain() =
     LinkPhaseText(
         key = key,
@@ -2259,6 +2305,20 @@ internal fun FirmwareGuardReason.toFfi(): se.bofr.dspi.ffi.uniffi.FirmwareGuardR
         FirmwareGuardReason.OVERVOLT -> se.bofr.dspi.ffi.uniffi.FirmwareGuardReason.OVERVOLT
     }
 
+internal fun se.bofr.dspi.ffi.uniffi.HistorySource.toDomain(): HistorySource =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.HistorySource.LOCAL -> HistorySource.LOCAL
+        se.bofr.dspi.ffi.uniffi.HistorySource.UNDO -> HistorySource.UNDO
+        se.bofr.dspi.ffi.uniffi.HistorySource.REDO -> HistorySource.REDO
+    }
+
+internal fun HistorySource.toFfi(): se.bofr.dspi.ffi.uniffi.HistorySource =
+    when (this) {
+        HistorySource.LOCAL -> se.bofr.dspi.ffi.uniffi.HistorySource.LOCAL
+        HistorySource.UNDO -> se.bofr.dspi.ffi.uniffi.HistorySource.UNDO
+        HistorySource.REDO -> se.bofr.dspi.ffi.uniffi.HistorySource.REDO
+    }
+
 internal fun se.bofr.dspi.ffi.uniffi.VregCalPhase.toDomain(): VregCalPhase =
     when (this) {
         se.bofr.dspi.ffi.uniffi.VregCalPhase.IDLE -> VregCalPhase.IDLE
@@ -2311,4 +2371,28 @@ internal fun VregDemoEvent.toFfi(): se.bofr.dspi.ffi.uniffi.VregDemoEvent =
         VregDemoEvent.REBOOT -> se.bofr.dspi.ffi.uniffi.VregDemoEvent.REBOOT
         VregDemoEvent.POWER_CYCLE -> se.bofr.dspi.ffi.uniffi.VregDemoEvent.POWER_CYCLE
         VregDemoEvent.ADVANCE_UPTIME -> se.bofr.dspi.ffi.uniffi.VregDemoEvent.ADVANCE_UPTIME
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.ParamValue.toDomain(): ParamValue =
+    when (this) {
+        is se.bofr.dspi.ffi.uniffi.ParamValue.Bool -> ParamValue.Bool(v1)
+        is se.bofr.dspi.ffi.uniffi.ParamValue.Float -> ParamValue.Float(v1)
+        is se.bofr.dspi.ffi.uniffi.ParamValue.Int -> ParamValue.Int(v1)
+        is se.bofr.dspi.ffi.uniffi.ParamValue.Choice -> ParamValue.Choice(v1.toInt())
+        is se.bofr.dspi.ffi.uniffi.ParamValue.Mask -> ParamValue.Mask(v1.toLong())
+        is se.bofr.dspi.ffi.uniffi.ParamValue.Text -> ParamValue.Text(v1)
+        is se.bofr.dspi.ffi.uniffi.ParamValue.Bytes -> ParamValue.Bytes(v1.map { it.toInt() and 0xFF })
+        is se.bofr.dspi.ffi.uniffi.ParamValue.Trigger -> ParamValue.Trigger
+    }
+
+internal fun ParamValue.toFfi(): se.bofr.dspi.ffi.uniffi.ParamValue =
+    when (this) {
+        is ParamValue.Bool -> se.bofr.dspi.ffi.uniffi.ParamValue.Bool(v1)
+        is ParamValue.Float -> se.bofr.dspi.ffi.uniffi.ParamValue.Float(v1)
+        is ParamValue.Int -> se.bofr.dspi.ffi.uniffi.ParamValue.Int(v1)
+        is ParamValue.Choice -> se.bofr.dspi.ffi.uniffi.ParamValue.Choice(v1.toUByte())
+        is ParamValue.Mask -> se.bofr.dspi.ffi.uniffi.ParamValue.Mask(v1.toUInt())
+        is ParamValue.Text -> se.bofr.dspi.ffi.uniffi.ParamValue.Text(v1)
+        is ParamValue.Bytes -> se.bofr.dspi.ffi.uniffi.ParamValue.Bytes(ByteArray(v1.size) { v1[it].toByte() })
+        is ParamValue.Trigger -> se.bofr.dspi.ffi.uniffi.ParamValue.Trigger
     }

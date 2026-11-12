@@ -955,6 +955,8 @@ pub(crate) fn apply_all_params_locked(inner: &mut Inner) -> Result<()> {
     // Cannot fail: `encode_bulk` always yields a BULK_SIZE V32 image.
     // Were it to, the mirror simply keeps the state that was sent.
     let _ = state::decode_bulk(&image, &mut inner.state);
+    // -- WP P0W -- the whole state replaced: the history before it is gone
+    crate::journal::journal(inner, "bulk", &[], dspi_proto::value::Value::Trigger);
     Ok(())
 }
 

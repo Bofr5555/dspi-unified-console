@@ -88,10 +88,12 @@ impl DspiCore {
         // NUL, which clears it.
         check_name(&name)?;
         let mut inner = self.lock();
+        let change = inner.journal_begin("in.name", &[source])?; // -- WP P0W --
         let mut w = inner.writable_conn()?;
         w.session()?
             .send("in.name", &[source], Value::Text(name.clone()))?;
-        note_source_name(w.conn(), source, name);
+        note_source_name(w.conn(), source, name.clone());
+        change.done(&mut inner, Value::Text(name));
         Ok(())
     }
 
@@ -112,10 +114,12 @@ impl DspiCore {
         // As `set_input_source_name`: the cache is updated under the same lock.
         check_name(&name)?;
         let mut inner = self.lock();
+        let change = inner.journal_begin("dev.name", &[])?; // -- WP P0W --
         let mut w = inner.writable_conn()?;
         w.session()?
             .send("dev.name", &[], Value::Text(name.clone()))?;
-        w.conn().device_name = name;
+        w.conn().device_name.clone_from(&name);
+        change.done(&mut inner, Value::Text(name));
         Ok(())
     }
 
@@ -279,6 +283,8 @@ impl DspiCore {
         // -- WP CG21 -- Before the send: a send that fails may still have landed
         w.conn().ring_target.invalidate();
         w.session()?.send("out.latency", &[], Value::Choice(id))?;
+        // -- WP P0W -- a flash write: history only
+        crate::journal::journal(&mut inner, "out.latency", &[], Value::Choice(id));
         Ok(())
     }
 

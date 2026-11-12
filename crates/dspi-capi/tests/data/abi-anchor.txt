@@ -439,6 +439,7 @@
 #define NOTIFY_SIGGEN (1 << 5)
 #define NOTIFY_CS_AUX (1 << 6)
 #define NOTIFY_IR_LEARN (1 << 7)
+#define NOTIFY_HISTORY (1 << 12)
 #define SCHEMA_VERSION 1
 #define FORMAT_VERSION 2
 #define IMPORT_VOLUMES 1
@@ -1134,6 +1135,11 @@ uint32_t dspi_filter_type_name(uint8_t code, char *buf, uint32_t len);
 uint32_t dspi_core1_conflict_reason(struct FfiCore *core, uint8_t output, char *buf, uint32_t len);
 uint32_t dspi_output_labels(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_output_cards(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_undo(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_redo(struct FfiCore *core, char *buf, uint32_t len);
+bool dspi_can_undo(const struct FfiCore *core);
+bool dspi_can_redo(const struct FfiCore *core);
+uint32_t dspi_history(struct FfiCore *core, uint32_t n, char *buf, uint32_t len);
 void dspi_autoeq_fetch_respond(struct AutoEqFetchSink *sink,
 uint16_t status,
 const uint8_t *body,

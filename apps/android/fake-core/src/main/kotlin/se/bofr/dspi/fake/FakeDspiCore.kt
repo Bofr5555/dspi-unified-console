@@ -28,6 +28,9 @@ import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.ExtStatus
 import se.bofr.dspi.core.FillBand
 import se.bofr.dspi.core.FilterParams
+import se.bofr.dspi.core.HistoryEntry
+import se.bofr.dspi.core.HistoryMove
+import se.bofr.dspi.core.HistorySource
 import se.bofr.dspi.core.I2cConfig
 import se.bofr.dspi.core.InputLockStatus
 import se.bofr.dspi.core.LgStatus
@@ -48,6 +51,7 @@ import se.bofr.dspi.core.OutputFill
 import se.bofr.dspi.core.OutputLabel
 import se.bofr.dspi.core.OutputLatency
 import se.bofr.dspi.core.OutputLatencyOption
+import se.bofr.dspi.core.ParamValue
 import se.bofr.dspi.core.PdmBufferStats
 import se.bofr.dspi.core.PinUse
 import se.bofr.dspi.core.PresetDirectory
@@ -226,7 +230,68 @@ open class FakeDspiCore(
         return block()
     }
 
-    private fun set(name: String, args: String = "", f: (DspState) -> DspState) = op(name, args) { state = f(state) }
+    private fun set(name: String, args: String = "", f: (DspState) -> DspState) = op(name, args) {
+        val before = state
+        state = f(state)
+        if (state != before) journal(name, args, before, HistorySource.LOCAL) // -- WP P0W --
+    }
+
+    // -- WP P0W -- The change history, as the core keeps it in spirit: a setter
+    // that moved the state is one entry (named by the setter, its arguments as
+    // the value), undo puts the whole state back, redo the state after. The
+    // core's per-path rules (hazards, coalescing) and NOTIFY_HISTORY are not
+    // modelled.
+    private class Step(val entry: HistoryEntry, val before: DspState, val after: DspState)
+
+    private val journalEntries = ArrayList<HistoryEntry>()
+    private val undoSteps = ArrayList<Step>()
+    private val redoSteps = ArrayList<Step>()
+
+    private fun journal(name: String, args: String, before: DspState, source: HistorySource) {
+        val e = HistoryEntry(
+            path = name,
+            indices = emptyList(),
+            before = null,
+            after = ParamValue.Text(args),
+            source = source,
+            atMs = System.currentTimeMillis(),
+            undoable = true
+        )
+        journalEntries += e
+        if (source == HistorySource.LOCAL) {
+            undoSteps += Step(e, before, state)
+            redoSteps.clear()
+        }
+    }
+
+    private fun forgetHistory() {
+        journalEntries.clear()
+        undoSteps.clear()
+        redoSteps.clear()
+    }
+
+    override fun undo(): HistoryMove = op("undo") {
+        val step = undoSteps.removeLastOrNull() ?: return@op HistoryMove(null, emptyList(), null)
+        state = step.before
+        redoSteps += step
+        journal(step.entry.path, "undo", step.after, HistorySource.UNDO)
+        HistoryMove(step.entry, emptyList(), null)
+    }
+
+    override fun redo(): HistoryMove = op("redo") {
+        val step = redoSteps.removeLastOrNull() ?: return@op HistoryMove(null, emptyList(), null)
+        state = step.after
+        undoSteps += step
+        journal(step.entry.path, "redo", step.before, HistorySource.REDO)
+        HistoryMove(step.entry, emptyList(), null)
+    }
+
+    override fun canUndo(): Boolean = connected && undoSteps.isNotEmpty()
+
+    override fun canRedo(): Boolean = connected && redoSteps.isNotEmpty()
+
+    override fun history(n: Long): List<HistoryEntry> =
+        if (connected) journalEntries.takeLast(n.coerceIn(0, Int.MAX_VALUE.toLong()).toInt()).reversed() else emptyList()
 
     private fun log(text: String) {
         monitor += MonitorEntry(++monitorId, System.currentTimeMillis(), text)
@@ -380,7 +445,10 @@ open class FakeDspiCore(
         connected = true
     }
 
-    override fun disconnect() = op("disconnect", device = false) { connected = false }
+    override fun disconnect() = op("disconnect", device = false) {
+        connected = false
+        forgetHistory() // -- WP P0W -- the history is the connection's
+    }
 
     override fun isConnected(): Boolean = connected
 

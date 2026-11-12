@@ -391,6 +391,8 @@ public enum DspiConstants {
     public static let NOTIFY_CS_AUX: UInt32 = 1 << 6
     /// `dspi_core::consts::NOTIFY_IR_LEARN`.
     public static let NOTIFY_IR_LEARN: UInt32 = 1 << 7
+    /// `dspi_core::consts::NOTIFY_HISTORY`.
+    public static let NOTIFY_HISTORY: UInt32 = 1 << 12
 
     // ── files ──
     /// `schemaVersion` of the configuration documents dspi-core writes.

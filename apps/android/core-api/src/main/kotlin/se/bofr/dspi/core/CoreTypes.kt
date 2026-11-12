@@ -2163,6 +2163,72 @@ data class FirmwareGuardVerdict(
 )
 
 /**
+ * One change in the history ([`DspiCore::history`]).
+ */
+data class HistoryEntry(
+    /**
+     * The registry path (`out.gain`, `eq.freq`, ...), or one of the
+     * journal's own: `eq.band` (a whole band: type, bypass, then freq, Q,
+     * gain and the Linkwitz target Q as little-endian `f32`s), `ext.pairmap`
+     * (the crossfeed pair map's four bytes), `ext.vreg` (a core-voltage
+     * request: op and value), `raw` (a raw request: opcode and `wValue` as
+     * indices, the payload as the value). A control-surface operation is
+     * under its `cs.*` path with the operation's JSON as text.
+     */
+    val path: String,
+    /**
+     * The path's indices (an output, a channel and a band, ...).
+     */
+    val indices: List<Int>,
+    /**
+     * The value before, when known; undo writes it back.
+     */
+    val before: ParamValue?,
+    /**
+     * The value after (`trigger` for an action).
+     */
+    val after: ParamValue,
+    /**
+     * Who made it.
+     */
+    val source: HistorySource,
+    /**
+     * When, in milliseconds since the Unix epoch (a drag: its last step).
+     */
+    val atMs: Long,
+    /**
+     * Whether undo may reverse it. The registry decides: only a parameter
+     * with no hazard (not a flash write, an audible one, a reconfiguration,
+     * a deferred or an irreversible one).
+     */
+    val undoable: Boolean,
+)
+
+/**
+ * What [`DspiCore::undo`] or [`DspiCore::redo`] did.
+ */
+data class HistoryMove(
+    /**
+     * The change reversed (undo) or applied again (redo); `None` when
+     * nothing moved.
+     */
+    val entry: HistoryEntry?,
+    /**
+     * The changes stepped over on the way, newest first, which cannot be
+     * undone (see [`HistoryEntry::undoable`]). An entry here that is
+     * undoable had no value before to restore, or someone else has changed
+     * it since (`note` says who); the walk stopped there.
+     */
+    val skipped: List<HistoryEntry>,
+    /**
+     * Why nothing moved, in words, when another writer changed the value
+     * since (only where the core leaves such a change alone); `None`
+     * otherwise.
+     */
+    val note: String?,
+)
+
+/**
  * What to tell the user about a [`LinkPhase`].
  */
 data class LinkPhaseText(
@@ -2640,6 +2706,24 @@ enum class FirmwareGuardReason {
 }
 
 /**
+ * Who made a change in the history.
+ */
+enum class HistorySource {
+    /**
+     * A write this program asked for.
+     */
+    LOCAL,
+    /**
+     * The reversal of an earlier change, sent by [`DspiCore::undo`].
+     */
+    UNDO,
+    /**
+     * The repeat of an undone change, sent by [`DspiCore::redo`].
+     */
+    REDO,
+}
+
+/**
  * Where a run is: [`VregCalView::phase`]. The details are in the view.
  */
 enum class VregCalPhase {
@@ -2725,6 +2809,46 @@ enum class VregDemoEvent {
      * `seconds` pass on the device's clock.
      */
     ADVANCE_UPTIME,
+}
+
+/**
+ * A parameter value: `dspi_proto::value::Value` across the bindings. In
+ * JSON (the C ABI, the web binding) it is tagged by kind in lower case:
+ * `{"float": -12.5}`, `{"bool": true}`, `{"bytes": [1, 2]}`, `"trigger"`.
+ */
+sealed class ParamValue {
+    /**
+     * A yes/no value.
+     */
+    data class Bool(val v1: kotlin.Boolean) : ParamValue()
+    /**
+     * A number.
+     */
+    data class Float(val v1: kotlin.Float) : ParamValue()
+    /**
+     * A whole number.
+     */
+    data class Int(val v1: kotlin.Long) : ParamValue()
+    /**
+     * A choice, as its wire number (the registry has the labels).
+     */
+    data class Choice(val v1: kotlin.Int) : ParamValue()
+    /**
+     * A bit mask.
+     */
+    data class Mask(val v1: kotlin.Long) : ParamValue()
+    /**
+     * Text.
+     */
+    data class Text(val v1: kotlin.String) : ParamValue()
+    /**
+     * A structured payload, as the registry's packet encodes it.
+     */
+    data class Bytes(val v1: kotlin.collections.List<kotlin.Int>) : ParamValue()
+    /**
+     * An action with no value.
+     */
+    data object Trigger : ParamValue()
 }
 
 /**

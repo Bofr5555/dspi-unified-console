@@ -208,6 +208,16 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun fetchClockDiag(): ClockDiag = throw NotImplementedError("fetch_clock_diag")
 
+    override fun undo(): HistoryMove = throw NotImplementedError("undo")
+
+    override fun redo(): HistoryMove = throw NotImplementedError("redo")
+
+    override fun canUndo(): Boolean = throw NotImplementedError("can_undo")
+
+    override fun canRedo(): Boolean = throw NotImplementedError("can_redo")
+
+    override fun history(n: Long): List<HistoryEntry> = throw NotImplementedError("history")
+
     override fun linkConnect(url: String, clientName: String, appVersion: String, token: String, expectedHubId: String): LinkHello = throw NotImplementedError("link_connect")
 
     override fun linkPair(pin: String): String = throw NotImplementedError("link_pair")

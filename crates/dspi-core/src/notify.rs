@@ -174,6 +174,12 @@ impl DspiCore {
             {
                 result.flags |= NOTIFY_STATE | NOTIFY_CURVES | NOTIFY_REFRESHED;
             }
+            // -- WP P0W --
+            let mark = crate::journal::history_mark(&mut guard);
+            if mark != guard.history_seen {
+                guard.history_seen = mark;
+                result.flags |= NOTIFY_HISTORY;
+            }
             if let Some(conn) = guard.conn.as_mut()
                 && let Some(p) = conn.refresh_pending.as_mut()
             {
@@ -408,7 +414,15 @@ fn apply_queued(
             conn.ring_target.invalidate();
         }
         match &note.event {
-            Event::ParamChanged { offset, bytes, .. } => {
+            Event::ParamChanged {
+                offset,
+                bytes,
+                source,
+            } => {
+                // -- WP P0W -- who, for undo's foreign-change rule
+                if !own {
+                    crate::journal::note_foreign(conn, *source, note.origin);
+                }
                 if !patchable {
                     follow.refresh = true;
                     continue;
@@ -425,6 +439,7 @@ fn apply_queued(
             }
             Event::BulkInvalidated { source } => {
                 if !own {
+                    crate::journal::note_foreign(conn, *source, note.origin); // -- WP P0W --
                     follow.refresh = true;
                     if matches!(source, Source::Preset | Source::Factory) {
                         follow.rebaseline = true;

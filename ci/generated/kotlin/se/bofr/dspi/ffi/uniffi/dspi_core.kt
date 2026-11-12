@@ -1474,6 +1474,16 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1572,6 +1582,10 @@ fun uniffi_dspi_core_checksum_method_dspicore_apply_all_params(
 fun uniffi_dspi_core_checksum_method_dspicore_cached_device_name(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_cached_input_source_name(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_can_redo(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_can_undo(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_capture_baseline(
 ): Short
@@ -1747,6 +1761,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_get_preset_name(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_get_state(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_history(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_host_notify(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_inaccessible_devices(
@@ -1810,6 +1826,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_process_notifications(
 fun uniffi_dspi_core_checksum_method_dspicore_raw_get(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_raw_set(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_redo(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_refresh_params(
 ): Short
@@ -2007,6 +2025,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_siggen_set_config(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_test_dac_mute(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_undo(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_wire_features(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_write_param(
@@ -2137,6 +2157,10 @@ fun uniffi_dspi_core_fn_method_dspicore_cached_device_name(`ptr`: Pointer,uniffi
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_cached_input_source_name(`ptr`: Pointer,`source`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_can_redo(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+fun uniffi_dspi_core_fn_method_dspicore_can_undo(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
 fun uniffi_dspi_core_fn_method_dspicore_capture_baseline(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_check_core1_conflict(`ptr`: Pointer,`output`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -2311,6 +2335,8 @@ fun uniffi_dspi_core_fn_method_dspicore_get_preset_name(`ptr`: Pointer,`slot`: B
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_get_state(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_history(`ptr`: Pointer,`n`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_host_notify(`ptr`: Pointer,`packet`: RustBuffer.ByValue,`origin`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_inaccessible_devices(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -2375,6 +2401,8 @@ fun uniffi_dspi_core_fn_method_dspicore_raw_get(`ptr`: Pointer,`opcode`: Byte,`v
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_raw_set(`ptr`: Pointer,`opcode`: Byte,`value`: Short,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_redo(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_refresh_params(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_reset_buffer_stats(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -2571,6 +2599,8 @@ fun uniffi_dspi_core_fn_method_dspicore_siggen_set_config(`ptr`: Pointer,`config
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_test_dac_mute(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_undo(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_wire_features(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
 fun uniffi_dspi_core_fn_method_dspicore_write_param(`ptr`: Pointer,`path`: RustBuffer.ByValue,`indices`: RustBuffer.ByValue,`value`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -2959,6 +2989,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_cached_input_source_name() != 3222.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_can_redo() != 45929.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_can_undo() != 7946.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_capture_baseline() != 36713.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3220,6 +3256,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_get_state() != 32151.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_history() != 15069.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_host_notify() != 19114.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3314,6 +3353,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_raw_set() != 35984.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_redo() != 52269.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_refresh_params() != 360.toShort()) {
@@ -3608,6 +3650,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_test_dac_mute() != 36228.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_undo() != 33738.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_wire_features() != 30561.toShort()) {
@@ -5205,6 +5250,18 @@ public interface DspiCoreInterface {
     fun `cachedInputSourceName`(`source`: kotlin.UByte): kotlin.String
     
     /**
+     * Whether [`DspiCore::redo`] has a change to apply again. False with no
+     * device.
+     */
+    fun `canRedo`(): kotlin.Boolean
+    
+    /**
+     * Whether [`DspiCore::undo`] has a change to reverse. False with no
+     * device.
+     */
+    fun `canUndo`(): kotlin.Boolean
+    
+    /**
      * Take the live state as what the active preset holds: from now on
      * [`DspiCore::preset_changes`] lists what differs from it. The core
      * does this itself after a connect, a load, a save, a revert and a
@@ -6210,6 +6267,14 @@ public interface DspiCoreInterface {
     fun `getState`(): DspState
     
     /**
+     * The newest `n` changes of this connection, newest first: every typed
+     * setter's, undo's and redo's, with the value before and after, who
+     * made it and when. The connection's session keeps the newest 1000; a
+     * reconnect starts with none. Empty with no device.
+     */
+    fun `history`(`n`: kotlin.UInt): List<HistoryEntry>
+    
+    /**
      * A notification packet from the device of the [`DspiCore::open_host`]
      * connection, as its endpoint delivered it, with the hub's `origin` (the
      * session whose write caused it, 0 for a change at the device; `None`
@@ -6588,6 +6653,15 @@ public interface DspiCoreInterface {
      * or [`DspiError::Transfer`] from the link.
      */
     fun `rawSet`(`opcode`: kotlin.UByte, `value`: kotlin.UShort, `data`: kotlin.ByteArray)
+    
+    /**
+     * Step forward: write again the change [`DspiCore::undo`] most recently
+     * reversed. A new change since then ends what can be redone.
+     *
+     * Errors: as [`DspiCore::undo`]; after a setter's error the change
+     * stays to be redone.
+     */
+    fun `redo`(): HistoryMove
     
     /**
      * Re-read the bulk image after the device changed state on its own (a
@@ -7629,6 +7703,20 @@ public interface DspiCoreInterface {
     fun `testDacMute`()
     
     /**
+     * Step back: write back the value the newest undoable change replaced
+     * (then what the device moved with it), through the typed setter for
+     * its path. Changes that cannot be undone are stepped over and named in
+     * [`HistoryMove::skipped`]. Nothing to undo is not an error: `entry` is
+     * then `None`.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device, or when the
+     * connection changed during the call (nothing is sent to another
+     * device); the setter's errors, after which the change stays to be
+     * undone.
+     */
+    fun `undo`(): HistoryMove
+    
+    /**
      * The `wire_compat::feat` bits the connected firmware's wire format carries:
      * every known bit on V32 and newer, none with no device or below V16.
      */
@@ -7830,6 +7918,38 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_cached_input_source_name(
         it, FfiConverterUByte.lower(`source`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Whether [`DspiCore::redo`] has a change to apply again. False with no
+     * device.
+     */override fun `canRedo`(): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_can_redo(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Whether [`DspiCore::undo`] has a change to reverse. False with no
+     * device.
+     */override fun `canUndo`(): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_can_undo(
+        it, _status)
 }
     }
     )
@@ -9746,6 +9866,24 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * The newest `n` changes of this connection, newest first: every typed
+     * setter's, undo's and redo's, with the value before and after, who
+     * made it and when. The connection's session keeps the newest 1000; a
+     * reconnect starts with none. Empty with no device.
+     */override fun `history`(`n`: kotlin.UInt): List<HistoryEntry> {
+            return FfiConverterSequenceTypeHistoryEntry.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_history(
+        it, FfiConverterUInt.lower(`n`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * A notification packet from the device of the [`DspiCore::open_host`]
      * connection, as its endpoint delivered it, with the hub's `origin` (the
      * session whose write caused it, 0 for a change at the device; `None`
@@ -10438,6 +10576,26 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * Step forward: write again the change [`DspiCore::undo`] most recently
+     * reversed. A new change since then ends what can be redone.
+     *
+     * Errors: as [`DspiCore::undo`]; after a setter's error the change
+     * stays to be redone.
+     */
+    @Throws(DspiException::class)override fun `redo`(): HistoryMove {
+            return FfiConverterTypeHistoryMove.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_redo(
+        it, _status)
+}
+    }
+    )
+    }
     
 
     
@@ -12452,6 +12610,31 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * Step back: write back the value the newest undoable change replaced
+     * (then what the device moved with it), through the typed setter for
+     * its path. Changes that cannot be undone are stepped over and named in
+     * [`HistoryMove::skipped`]. Nothing to undo is not an error: `entry` is
+     * then `None`.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device, or when the
+     * connection changed during the call (nothing is sent to another
+     * device); the setter's errors, after which the change stays to be
+     * undone.
+     */
+    @Throws(DspiException::class)override fun `undo`(): HistoryMove {
+            return FfiConverterTypeHistoryMove.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_undo(
+        it, _status)
+}
+    }
+    )
+    }
     
 
     
@@ -16678,6 +16861,144 @@ public object FfiConverterTypeFirmwareGuardVerdict: FfiConverterRustBuffer<Firmw
 
 
 /**
+ * One change in the history ([`DspiCore::history`]).
+ */
+data class HistoryEntry (
+    /**
+     * The registry path (`out.gain`, `eq.freq`, ...), or one of the
+     * journal's own: `eq.band` (a whole band: type, bypass, then freq, Q,
+     * gain and the Linkwitz target Q as little-endian `f32`s), `ext.pairmap`
+     * (the crossfeed pair map's four bytes), `ext.vreg` (a core-voltage
+     * request: op and value), `raw` (a raw request: opcode and `wValue` as
+     * indices, the payload as the value). A control-surface operation is
+     * under its `cs.*` path with the operation's JSON as text.
+     */
+    var `path`: kotlin.String, 
+    /**
+     * The path's indices (an output, a channel and a band, ...).
+     */
+    var `indices`: kotlin.ByteArray, 
+    /**
+     * The value before, when known; undo writes it back.
+     */
+    var `before`: ParamValue?, 
+    /**
+     * The value after (`trigger` for an action).
+     */
+    var `after`: ParamValue, 
+    /**
+     * Who made it.
+     */
+    var `source`: HistorySource, 
+    /**
+     * When, in milliseconds since the Unix epoch (a drag: its last step).
+     */
+    var `atMs`: kotlin.ULong, 
+    /**
+     * Whether undo may reverse it. The registry decides: only a parameter
+     * with no hazard (not a flash write, an audible one, a reconfiguration,
+     * a deferred or an irreversible one).
+     */
+    var `undoable`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHistoryEntry: FfiConverterRustBuffer<HistoryEntry> {
+    override fun read(buf: ByteBuffer): HistoryEntry {
+        return HistoryEntry(
+            FfiConverterString.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterOptionalTypeParamValue.read(buf),
+            FfiConverterTypeParamValue.read(buf),
+            FfiConverterTypeHistorySource.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HistoryEntry) = (
+            FfiConverterString.allocationSize(value.`path`) +
+            FfiConverterByteArray.allocationSize(value.`indices`) +
+            FfiConverterOptionalTypeParamValue.allocationSize(value.`before`) +
+            FfiConverterTypeParamValue.allocationSize(value.`after`) +
+            FfiConverterTypeHistorySource.allocationSize(value.`source`) +
+            FfiConverterULong.allocationSize(value.`atMs`) +
+            FfiConverterBoolean.allocationSize(value.`undoable`)
+    )
+
+    override fun write(value: HistoryEntry, buf: ByteBuffer) {
+            FfiConverterString.write(value.`path`, buf)
+            FfiConverterByteArray.write(value.`indices`, buf)
+            FfiConverterOptionalTypeParamValue.write(value.`before`, buf)
+            FfiConverterTypeParamValue.write(value.`after`, buf)
+            FfiConverterTypeHistorySource.write(value.`source`, buf)
+            FfiConverterULong.write(value.`atMs`, buf)
+            FfiConverterBoolean.write(value.`undoable`, buf)
+    }
+}
+
+
+
+/**
+ * What [`DspiCore::undo`] or [`DspiCore::redo`] did.
+ */
+data class HistoryMove (
+    /**
+     * The change reversed (undo) or applied again (redo); `None` when
+     * nothing moved.
+     */
+    var `entry`: HistoryEntry?, 
+    /**
+     * The changes stepped over on the way, newest first, which cannot be
+     * undone (see [`HistoryEntry::undoable`]). An entry here that is
+     * undoable had no value before to restore, or someone else has changed
+     * it since (`note` says who); the walk stopped there.
+     */
+    var `skipped`: List<HistoryEntry>, 
+    /**
+     * Why nothing moved, in words, when another writer changed the value
+     * since (only where the core leaves such a change alone); `None`
+     * otherwise.
+     */
+    var `note`: kotlin.String?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHistoryMove: FfiConverterRustBuffer<HistoryMove> {
+    override fun read(buf: ByteBuffer): HistoryMove {
+        return HistoryMove(
+            FfiConverterOptionalTypeHistoryEntry.read(buf),
+            FfiConverterSequenceTypeHistoryEntry.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HistoryMove) = (
+            FfiConverterOptionalTypeHistoryEntry.allocationSize(value.`entry`) +
+            FfiConverterSequenceTypeHistoryEntry.allocationSize(value.`skipped`) +
+            FfiConverterOptionalString.allocationSize(value.`note`)
+    )
+
+    override fun write(value: HistoryMove, buf: ByteBuffer) {
+            FfiConverterOptionalTypeHistoryEntry.write(value.`entry`, buf)
+            FfiConverterSequenceTypeHistoryEntry.write(value.`skipped`, buf)
+            FfiConverterOptionalString.write(value.`note`, buf)
+    }
+}
+
+
+
+/**
  * Settings of the I2C control interface.
  */
 data class I2cConfig (
@@ -20601,6 +20922,49 @@ public object FfiConverterTypeFirmwareGuardReason: FfiConverterRustBuffer<Firmwa
 
 
 /**
+ * Who made a change in the history.
+ */
+
+enum class HistorySource {
+    
+    /**
+     * A write this program asked for.
+     */
+    LOCAL,
+    /**
+     * The reversal of an earlier change, sent by [`DspiCore::undo`].
+     */
+    UNDO,
+    /**
+     * The repeat of an undone change, sent by [`DspiCore::redo`].
+     */
+    REDO;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHistorySource: FfiConverterRustBuffer<HistorySource> {
+    override fun read(buf: ByteBuffer) = try {
+        HistorySource.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: HistorySource) = 4UL
+
+    override fun write(value: HistorySource, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
  * What kind of link a [`HostTransport`] is. It decides the echo rule (which
  * notifications are this client's own writes, `dspi_transport::is_own_write`)
  * and how bulk transfers go.
@@ -21486,6 +21850,38 @@ public object FfiConverterOptionalTypeCoreVregInfo: FfiConverterRustBuffer<CoreV
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeHistoryEntry: FfiConverterRustBuffer<HistoryEntry?> {
+    override fun read(buf: ByteBuffer): HistoryEntry? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeHistoryEntry.read(buf)
+    }
+
+    override fun allocationSize(value: HistoryEntry?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeHistoryEntry.allocationSize(value)
+        }
+    }
+
+    override fun write(value: HistoryEntry?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeHistoryEntry.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypeRingHealth: FfiConverterRustBuffer<RingHealth?> {
     override fun read(buf: ByteBuffer): RingHealth? {
         if (buf.get().toInt() == 0) {
@@ -21508,6 +21904,38 @@ public object FfiConverterOptionalTypeRingHealth: FfiConverterRustBuffer<RingHea
         } else {
             buf.put(1)
             FfiConverterTypeRingHealth.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeParamValue: FfiConverterRustBuffer<ParamValue?> {
+    override fun read(buf: ByteBuffer): ParamValue? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeParamValue.read(buf)
+    }
+
+    override fun allocationSize(value: ParamValue?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeParamValue.allocationSize(value)
+        }
+    }
+
+    override fun write(value: ParamValue?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeParamValue.write(value, buf)
         }
     }
 }
@@ -21820,6 +22248,34 @@ public object FfiConverterSequenceTypeFilterTypeName: FfiConverterRustBuffer<Lis
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeFilterTypeName.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeHistoryEntry: FfiConverterRustBuffer<List<HistoryEntry>> {
+    override fun read(buf: ByteBuffer): List<HistoryEntry> {
+        val len = buf.getInt()
+        return List<HistoryEntry>(len) {
+            FfiConverterTypeHistoryEntry.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HistoryEntry>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHistoryEntry.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HistoryEntry>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHistoryEntry.write(it, buf)
         }
     }
 }

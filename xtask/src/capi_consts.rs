@@ -556,6 +556,8 @@ fn collect(root: &Path) -> Vec<Group> {
         NOTIFY_SIGGEN,
         NOTIFY_CS_AUX,
         NOTIFY_IR_LEARN,
+        // -- WP P0W --
+        NOTIFY_HISTORY,
     ]);
 
     take!(files, "u32", Dec, dspi_session::filterfile => [FORMAT_VERSION]);

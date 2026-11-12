@@ -1283,6 +1283,51 @@ interface DspiCoreApi : AutoCloseable {
     fun fetchClockDiag(): ClockDiag
 
     /**
+     * Step back: write back the value the newest undoable change replaced
+     * (then what the device moved with it), through the typed setter for
+     * its path. Changes that cannot be undone are stepped over and named in
+     * [`HistoryMove::skipped`]. Nothing to undo is not an error: `entry` is
+     * then `None`.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device, or when the
+     * connection changed during the call (nothing is sent to another
+     * device); the setter's errors, after which the change stays to be
+     * undone.
+     */
+    @Throws(DspiException::class)
+    fun undo(): HistoryMove
+
+    /**
+     * Step forward: write again the change [`DspiCore::undo`] most recently
+     * reversed. A new change since then ends what can be redone.
+     *
+     * Errors: as [`DspiCore::undo`]; after a setter's error the change
+     * stays to be redone.
+     */
+    @Throws(DspiException::class)
+    fun redo(): HistoryMove
+
+    /**
+     * Whether [`DspiCore::undo`] has a change to reverse. False with no
+     * device.
+     */
+    fun canUndo(): Boolean
+
+    /**
+     * Whether [`DspiCore::redo`] has a change to apply again. False with no
+     * device.
+     */
+    fun canRedo(): Boolean
+
+    /**
+     * The newest `n` changes of this connection, newest first: every typed
+     * setter's, undo's and redo's, with the value before and after, who
+     * made it and when. The connection's session keeps the newest 1000; a
+     * reconnect starts with none. Empty with no device.
+     */
+    fun history(n: Long): List<HistoryEntry>
+
+    /**
      * Open a DSPi Link session to `url` (`link_ws_url`), replacing any
      * previous one. `token` = the token stored for this hub's id ("" =
      * none). `expected_hub_id` = that id. With it, a token goes out only after

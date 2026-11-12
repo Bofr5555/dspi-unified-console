@@ -350,7 +350,11 @@ impl DspiCore {
         w.conn()
             .transport()
             .control_out(op::REQ_SIGGEN_SET_CONFIG, 0, &bytes)
-            .map_err(refusal)
+            .map_err(refusal)?;
+        // -- WP P0W -- audible: history only
+        let after = dspi_proto::value::Value::Bytes(bytes.to_vec());
+        crate::journal::journal(&mut guard, "sig.config", &[], after);
+        Ok(())
     }
 
     /// Run a control action: `SIGGEN_CTL_START` plays the staged config,
@@ -379,7 +383,11 @@ impl DspiCore {
             .transport()
             .control_in(op::REQ_SIGGEN_CONTROL, action, 1)
             .map_err(refusal)?;
-        acked(&reply)
+        acked(&reply)?;
+        // -- WP P0W -- audible: history only, so undo never starts it again
+        let after = dspi_proto::value::Value::Choice(u8::try_from(action).unwrap_or(u8::MAX));
+        crate::journal::journal(&mut guard, "sig.control", &[], after);
+        Ok(())
     }
 
     /// What the generator is doing now: state (`SIGGEN_STATE_*`: idle, fade

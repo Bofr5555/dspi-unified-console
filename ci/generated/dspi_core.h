@@ -2154,6 +2154,11 @@
 #define NOTIFY_IR_LEARN (1 << 7)
 
 /**
+ * `dspi_core::consts::NOTIFY_HISTORY`.
+ */
+#define NOTIFY_HISTORY (1 << 12)
+
+/**
  * `schemaVersion` of the configuration documents dspi-core writes.
  */
 #define SCHEMA_VERSION 1
@@ -4989,6 +4994,45 @@ uint32_t dspi_output_labels(struct FfiCore *core, char *buf, uint32_t len);
  * list).
  */
 uint32_t dspi_output_cards(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Step back through the change history (`DspiCore::undo`): the newest
+ * change that can be undone is written back through its setter. The reply
+ * is `{ok, entry, skipped, note}`: `entry` the change reversed (`null` when
+ * nothing moved), `skipped` the changes stepped over that cannot be undone,
+ * each as `dspi_history` gives them, `note` why nothing moved when another
+ * writer changed the value since (or `null`); or a failure.
+ */
+uint32_t dspi_undo(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Step forward again (`DspiCore::redo`): the change undo most recently
+ * reversed is written again. The reply is as `dspi_undo`'s (`skipped`
+ * always empty).
+ */
+uint32_t dspi_redo(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Whether `dspi_undo` has a change to reverse. False for a null handle or
+ * with no device.
+ */
+bool dspi_can_undo(const struct FfiCore *core);
+
+/**
+ * Whether `dspi_redo` has a change to apply again. False for a null handle
+ * or with no device.
+ */
+bool dspi_can_redo(const struct FfiCore *core);
+
+/**
+ * The newest `n` changes of the open connection, newest first, in JSON
+ * (`value`: a list of `{path, indices, before, after, source, atMs,
+ * undoable}`; `before` and `after` are parameter values as
+ * `dspi_write_param` takes them, `before` null when unknown; `source` is
+ * `local`, `undo` or `redo`; `atMs` milliseconds since the Unix epoch). A
+ * reconnect starts a new history. `NOTIFY_HISTORY` says when it moved.
+ */
+uint32_t dspi_history(struct FfiCore *core, uint32_t n, char *buf, uint32_t len);
 
 /**
  * Answer a fetch: the HTTP status and body, as received, for any status.

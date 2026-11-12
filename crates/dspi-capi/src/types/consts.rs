@@ -1315,6 +1315,9 @@ pub const NOTIFY_CS_AUX: u32 = 1 << 6;
 /// `dspi_core::consts::NOTIFY_IR_LEARN`.
 pub const NOTIFY_IR_LEARN: u32 = 1 << 7;
 
+/// `dspi_core::consts::NOTIFY_HISTORY`.
+pub const NOTIFY_HISTORY: u32 = 1 << 12;
+
 // ── files ── Configuration and filter files
 
 /// `schemaVersion` of the configuration documents dspi-core writes.
