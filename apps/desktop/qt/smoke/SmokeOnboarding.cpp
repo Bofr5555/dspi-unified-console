@@ -252,7 +252,7 @@ void onboardingSection(SmokeDriver &d) {
     installer.set(QStringLiteral("failed"));
     d.spin(50);
     click("GettingStarted.tryAgain");
-    d.check(QStringLiteral("qp17: Try Again starts over"), installer.resets == 1 && !wizard->property("confirmed").toBool());
+    d.check(QStringLiteral("qp17: Try Again starts over"), installer.resets == 1 && !wizard->property("installChosen").toBool());
     installer.set(QStringLiteral("verified"));
     d.spin(50);
     d.check(QStringLiteral("qp17: a verified install offers Continue"),

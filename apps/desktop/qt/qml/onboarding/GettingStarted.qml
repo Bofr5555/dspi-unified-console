@@ -21,19 +21,22 @@ Rectangle {
     readonly property var stage: stages[current] || ({})
     readonly property bool onBoard: stage.id === "board"
     readonly property bool onLast: current === stages.length - 1
+    // The Mac's step column: at most 560 wide, 28 around it
+    readonly property int columnWidth: 560
+    readonly property int gutter: 28
 
     // ---- the board step's state (the Mac's, over the firmware package's
     // installer when there is one: OnboardingController.h) ----
     readonly property var installer: OnboardingController.installer
     readonly property string installState: installer && installer.state ? installer.state : "idle"
     // The user's one decision to install; nothing is written before it
-    property bool confirmed: false
+    property bool installChosen: false
     // The open device was told to restart into its bootloader
-    property bool rebootRequested: false
+    property bool rebootAsked: false
     readonly property bool idleish: installState === "idle" || installState === "waitingForBoard"
     // "match", "older", "newer" for a connected board running firmware, while
     // nothing is under way; "" otherwise
-    readonly property string match: !confirmed && idleish && DeviceModel.connected
+    readonly property string match: !installChosen && idleish && DeviceModel.connected
                                     ? OnboardingController.firmwareMatch(DeviceModel.firmwareVersion) : ""
     readonly property bool installInFlight: installState === "writing" || installState === "waitingForDevice"
     readonly property string bundledVersion: OnboardingController.bundledFirmware || qsTr("unknown")
@@ -80,7 +83,7 @@ Rectangle {
     readonly property var cardSpec: {
         switch (installState) {
         case "waitingForVolume": return ["card.volume_wait", "hard-drive", Theme.accentText, true, ""]
-        case "ready": return confirmed ? ["card.preparing", "hard-drive", Theme.accentText, true, ""]
+        case "ready": return installChosen ? ["card.preparing", "hard-drive", Theme.accentText, true, ""]
                                        : ["card.ready", "hard-drive", Theme.success, false, "install"]
         case "writing": return ["card.writing", "download", Theme.accentText, false, ""]
         case "waitingForDevice": return ["card.restarting", "refresh-cw", Theme.accentText, true, ""]
@@ -91,7 +94,7 @@ Rectangle {
         case "inBootloader": return ["card.in_bootloader", "hard-drive", Theme.warning, false, "install"]
         case "unconfirmed": return ["card.unconfirmed", "circle-alert", Theme.warning, false, ""]
         }
-        if (confirmed) return ["card.looking", "search", Theme.accentText, true, ""]
+        if (installChosen) return ["card.looking", "search", Theme.accentText, true, ""]
         if (match === "match") return ["card.already_installed", "badge-check", Theme.success, false, ""]
         if (match === "older") return ["card.update_available", "circle-arrow-up", Theme.accentText, false, "connected"]
         if (match === "newer") return ["card.downgrade", "circle-arrow-down", Theme.warning, false, "connected"]
@@ -103,32 +106,32 @@ Rectangle {
     // you" rather than a disabled button
     readonly property bool showsContinue: !onBoard || installState === "verified" || match === "match"
     // The card's install button owns Return while it shows
-    readonly property bool continueIsDefault: !(onBoard && cardSpec[4] === "install" && !confirmed)
+    readonly property bool continueIsDefault: !(onBoard && cardSpec[4] === "install" && !installChosen)
 
     function beginInstall() {
         if (!installer) {
             Shell.trigger("device.firmwareUpdate")
             return
         }
-        confirmed = true
+        installChosen = true
         installer.installWhenReady()
     }
-    function beginConnectedInstall() {
+    function installOnConnected() {
         if (!installer) {
             // Until the firmware package hands its installer over, the update
             // happens in its own window
             Shell.trigger("device.firmwareUpdate")
             return
         }
-        confirmed = true
+        installChosen = true
         installer.installWhenReady()
-        if (rebootRequested) return
-        rebootRequested = true
+        if (rebootAsked) return
+        rebootAsked = true
         installer.installConnected()
     }
     function tryAgain() {
-        confirmed = false
-        rebootRequested = false
+        installChosen = false
+        rebootAsked = false
         if (installer) installer.reset()
     }
     function advance() {
@@ -201,16 +204,16 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            contentHeight: body.implicitHeight + 56
+            contentHeight: body.implicitHeight + 2 * wizard.gutter
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: AppScrollBar {}
 
             ColumnLayout {
                 id: body
                 objectName: "GettingStarted.body"
-                x: Math.max(28, (scroller.width - width) / 2)
-                y: 28
-                width: Math.min(560, scroller.width - 56)
+                x: Math.max(wizard.gutter, (scroller.width - width) / 2)
+                y: wizard.gutter
+                width: Math.min(wizard.columnWidth, scroller.width - 2 * wizard.gutter)
                 spacing: 18
 
                 Text {
@@ -267,7 +270,7 @@ Rectangle {
                         actionText: wizard.cardSpec[4].length ? wizard.card.action || "" : ""
                         actionPrimary: cardId !== "card.downgrade"
                         progress: wizard.installState === "writing" && wizard.installer ? Number(wizard.installer.fraction) || 0 : -1
-                        onAction: wizard.cardSpec[4] === "connected" ? wizard.beginConnectedInstall() : wizard.beginInstall()
+                        onAction: wizard.cardSpec[4] === "connected" ? wizard.installOnConnected() : wizard.beginInstall()
                     }
                     AppButton {
                         objectName: "GettingStarted.tryAgain"
@@ -321,7 +324,7 @@ Rectangle {
     }
 
     Shortcut {
-        sequences: ["Return", "Enter"]
+        sequences: ["Enter", "Return"]
         enabled: wizard.visible && wizard.showsContinue && wizard.continueIsDefault
         onActivated: wizard.advance()
     }
