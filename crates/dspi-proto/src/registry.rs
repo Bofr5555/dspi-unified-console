@@ -421,6 +421,8 @@ const SOURCE: &[(u8, &str)] = &[
     (4, "spdif2"),
     (5, "spdif3"),
     (6, "spdif4"),
+    // -- WP SW1 -- the audio link input (SYS2 5.1); stock firmware refuses it
+    (7, "link"),
 ];
 /// `OutputLatencyId` (output_latency.h): stable ids, 0 is never valid.
 const OUTPUT_LATENCY: &[(u8, &str)] = &[
@@ -4219,7 +4221,7 @@ mod tests {
         }
     }
 
-    /// The firmware's input sources 0..6, and the +24 dB an RP2350 takes (an
+    /// The firmware's input sources 0..7, and the +24 dB an RP2350 takes (an
     /// RP2040's lower limit is a platform fact, checked in the session).
     #[test]
     fn wp_b2_sources_and_preamp_ranges_match_the_firmware() {
@@ -4227,7 +4229,8 @@ mod tests {
             panic!("in.source is a choice");
         };
         let ids: Vec<u8> = sources.iter().map(|(v, _)| *v).collect();
-        assert_eq!(ids, [0, 1, 2, 3, 4, 5, 6]);
+        // -- WP SW1 -- 7: the audio link (extension_channel_spec.md 2.8.3)
+        assert_eq!(ids, [0, 1, 2, 3, 4, 5, 6, 7]);
         for path in ["pre", "pre.all"] {
             assert!(
                 by_path(path)

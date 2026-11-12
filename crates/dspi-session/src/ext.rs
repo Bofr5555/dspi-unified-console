@@ -186,6 +186,97 @@ pub fn read_reset_info(t: &mut dyn Transport) -> Result<ResetInfo> {
     }))
 }
 
+// ------------------------------------------------------------ audio link
+// -- WP SW1 --
+
+pub use dspi_proto::ext::audio_link::{
+    self as alink, ApplyOp, ApplyRequest, ApplyResult, ApplyStatus, FrameCounter, LinkEvent,
+    LinkInfo, LinkPhase, LinkSlots, LinkState, LinkStatus, link_event,
+};
+
+/// One fixed-size link read, decoded; a short reply is a `ShortRead`.
+fn read_link<T>(
+    t: &mut dyn Transport,
+    id: u16,
+    size: usize,
+    decode: impl Fn(&[u8]) -> Option<T>,
+) -> Result<T> {
+    let b = read(t, id, size)?;
+    decode(&b).ok_or(ExtError::Transport(TransportError::ShortRead {
+        opcode: op::REQ_EXTENSION,
+        wanted: size,
+        got: b.len(),
+    }))
+}
+
+/// `EXT_LINK_INFO` IN: the unit's role and link capabilities.
+pub fn read_link_info(t: &mut dyn Transport) -> Result<LinkInfo> {
+    read_link(t, alink::EXT_LINK_INFO, LinkInfo::SIZE, LinkInfo::decode)
+}
+
+/// `EXT_LINK_STATUS` IN: lock state, frame counter, counters, servo.
+pub fn read_link_status(t: &mut dyn Transport) -> Result<LinkStatus> {
+    read_link(
+        t,
+        alink::EXT_LINK_STATUS,
+        LinkStatus::SIZE,
+        LinkStatus::decode,
+    )
+}
+
+/// `EXT_LINK_SLOTS` IN.
+pub fn read_link_slots(t: &mut dyn Transport) -> Result<LinkSlots> {
+    read_link(t, alink::EXT_LINK_SLOTS, LinkSlots::SIZE, LinkSlots::decode)
+}
+
+/// `EXT_LINK_SLOTS` OUT. [`ExtError::Refused`] when the device stalls (a
+/// slot past the frame's channels).
+pub fn write_link_slots(t: &mut dyn Transport, slots: LinkSlots) -> Result<()> {
+    write(t, alink::EXT_LINK_SLOTS, &slots.0)
+}
+
+/// `EXT_LINK_PHASE` IN.
+pub fn read_link_phase(t: &mut dyn Transport) -> Result<LinkPhase> {
+    read_link(t, alink::EXT_LINK_PHASE, LinkPhase::SIZE, LinkPhase::decode)
+}
+
+/// `EXT_LINK_PHASE` OUT (the state byte is the device's; sent as 0).
+pub fn write_link_phase(t: &mut dyn Transport, phase: LinkPhase) -> Result<()> {
+    let p = LinkPhase { state: 0, ..phase };
+    write(t, alink::EXT_LINK_PHASE, &p.encode())
+}
+
+/// `EXT_FRAME_COUNTER` IN.
+pub fn read_frame_counter(t: &mut dyn Transport) -> Result<FrameCounter> {
+    read_link(
+        t,
+        alink::EXT_FRAME_COUNTER,
+        FrameCounter::SIZE,
+        FrameCounter::decode,
+    )
+}
+
+/// `EXT_APPLY_AT_FRAME` OUT: queue an op for a frame. [`ExtError::Refused`]
+/// when the device stalls (its queue of four is full, an unknown op).
+pub fn apply_at_frame(t: &mut dyn Transport, req: ApplyRequest) -> Result<()> {
+    write(t, alink::EXT_APPLY_AT_FRAME, &req.encode())
+}
+
+/// `EXT_APPLY_AT_FRAME` IN: the queue and the last op's result.
+pub fn read_apply_status(t: &mut dyn Transport) -> Result<ApplyStatus> {
+    read_link(
+        t,
+        alink::EXT_APPLY_AT_FRAME,
+        ApplyStatus::SIZE,
+        ApplyStatus::decode,
+    )
+}
+
+/// `EXT_LINK_STATS_RESET` OUT: clear the link's error counters.
+pub fn reset_link_stats(t: &mut dyn Transport) -> Result<()> {
+    write(t, alink::EXT_LINK_STATS_RESET, &alink::LINK_STATS_RESET)
+}
+
 fn hex(b: &[u8]) -> String {
     b.iter()
         .map(|x| format!("{x:02x}"))
