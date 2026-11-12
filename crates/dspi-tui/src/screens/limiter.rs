@@ -379,7 +379,7 @@ impl LimiterSettings {
                 )
                 .step(0.5)
                 .decimals(1)
-                .caption("The ceiling, in dBFS. No sample leaves this output above it.")
+                .caption("No sample leaves this output above it.")
                 .ends("-30 dBFS", "0 dBFS")
                 .enabled(on),
             ),
