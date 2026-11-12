@@ -391,9 +391,9 @@ void ToolsController::setSubharm(const QString &key, double value) {
           });
 }
 
-void ToolsController::setSubharmSolo(bool solo) {
+void ToolsController::setSubharmSolo(bool soloed) {
     if (!subharmExtended()) return;
-    apply(QStringLiteral("subharm solo"), [solo](FfiCore *c) { return dspi_set_subharm_solo(c, solo); });
+    apply(QStringLiteral("subharm solo"), [soloed](FfiCore *c) { return dspi_set_subharm_solo(c, soloed); });
 }
 
 QVariantList ToolsController::subharmStartingPoints() {

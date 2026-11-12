@@ -85,7 +85,7 @@ public:
     static QVariantList subharmStartingPoints();
     Q_INVOKABLE double subharm(const QString &key) const;
     Q_INVOKABLE void setSubharm(const QString &key, double value);
-    Q_INVOKABLE void setSubharmSolo(bool solo);
+    Q_INVOKABLE void setSubharmSolo(bool soloed);
     Q_INVOKABLE void applySubharmStartingPoint(int index);
     Q_INVOKABLE void toggleSubharmOutput(int output);
 

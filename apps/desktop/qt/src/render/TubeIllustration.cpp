@@ -223,7 +223,7 @@ QPainterPath envelope(const Geometry &g) {
     QPainterPath p;
     p.moveTo(left.front());
     smooth(p, left);
-    // An elliptical dome, a quarter each side of the crown
+    // The crown: two quarter ellipses meeting at the top
     p.cubicTo(QPointF(-last.x(), last.y() - rise * k), QPointF(-last.x() * k, g.top), QPointF(0, g.top));
     p.cubicTo(QPointF(last.x() * k, g.top), QPointF(last.x(), last.y() - rise * k), last);
     smooth(p, right);
@@ -453,7 +453,7 @@ void drawGlow(QPainter &p, const Geometry &g, bool bloom) {
         p.setBrush(halo);
         p.drawEllipse(glow.at, r, r);
         if (bloom || dht || g.metal) continue;
-        // The visible end of the heater: a hot streak with a soft edge
+        // Where the heater shows: a short bright bar inside a softer one
         const QRectF streak(glow.at.x() - 1.1, glow.at.y() - 2.6, 2.2, 5.2);
         p.setBrush(withAlpha(kHeater, 0.45));
         p.drawRoundedRect(streak.adjusted(-1.2, -1.2, 1.2, 1.2), 2.3, 2.3);
@@ -505,7 +505,7 @@ void TubeIllustration::paint(QPainter *painter) {
     if (width() <= 0 || height() <= 0) return;
     const Geometry g = geometryOf(m_family);
     painter->setRenderHint(QPainter::Antialiasing);
-    // Centre the 120 x 200 grid, keeping its aspect
+    // The design grid scaled to fit and centred, never stretched
     const double s = std::min(height() / 200, width() / 120);
     painter->translate(width() / 2, (height() - 200 * s) / 2);
     painter->scale(s, s);

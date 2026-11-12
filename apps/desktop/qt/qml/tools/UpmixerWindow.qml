@@ -27,7 +27,7 @@ ToolWindow {
     readonly property int centerMode: value("center")
     readonly property int surroundMode: value("surround")
     readonly property bool centreOff: centerMode === 2
-    readonly property bool surroundOn: surroundMode !== 0
+    readonly property bool surroundOn: surroundMode > 0
     readonly property var status: ToolsController.upmixStatus
     readonly property bool active: ToolsController.connected && status.active === true
 
