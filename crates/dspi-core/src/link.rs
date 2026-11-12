@@ -413,6 +413,28 @@ impl LinkSession {
         }
     }
 
+    // -- WP HUBFLAKE3 --
+    /// `link_pair` got `token` from this session's client. The hub can revoke between
+    /// its answer and this: [`Self::note_loss`] has then cleared the token and asked
+    /// for a person, which this must not undo (it dialled again with the revoked
+    /// token). A loss not judged yet is judged after this, by its close code.
+    fn paired(&mut self, token: &str) {
+        let revoked = self.loss_seen
+            && self
+                .last_close
+                .as_ref()
+                .is_some_and(|(code, _)| *code == Some(4002));
+        if revoked {
+            return;
+        }
+        self.needs_pin = false;
+        self.last_close = None;
+        if !token.is_empty() {
+            self.token_refused = false;
+            token.clone_into(&mut self.target.token);
+        }
+    }
+
     /// The current client's end, once: decide what follows.
     fn note_loss(&mut self, conn_gen: Option<u64>, now: Instant) {
         let Some((code, reason)) = self.client.as_ref().and_then(LinkClient::closed_reason) else {
@@ -559,12 +581,7 @@ impl DspiCore {
         let token = client.pair(pin.trim(), PAIR_ROLE).map_err(map_error)?;
         let mut inner = self.lock();
         if let Some(s) = inner.link.as_mut().filter(|s| s.instance == instance) {
-            s.needs_pin = false;
-            s.last_close = None;
-            if !token.is_empty() {
-                s.token_refused = false;
-                s.target.token.clone_from(&token);
-            }
+            s.paired(&token);
             let _ = s.tx.send(Msg::Kick);
         }
         Ok(token)
@@ -1529,6 +1546,10 @@ impl DspiCore {
         if let Some(s) = inner.link.as_mut().filter(|s| s.id == id) {
             match result {
                 Ok(_) => s.retry = None,
+                // -- WP HUBFLAKE3 -- The session ended under the read: that is no
+                // failed list, and `note_loss` decides by the hub's close code
+                // (4002 asks for a person; as a list failure it ended the session).
+                Err(_) if client.is_closed() => {}
                 Err(e) => {
                     log::info!("reading the hub's device list failed: {e}");
                     s.schedule_retry(Some(&e), Instant::now());
@@ -3140,3 +3161,8 @@ mod tests_wp_lk4;
 #[cfg(test)]
 #[path = "link/tests_wp_wb4b.rs"]
 mod tests_wp_wb4b;
+
+// -- WP LKCLOSE --
+#[cfg(test)]
+#[path = "link/tests_wp_lkclose.rs"]
+mod tests_wp_lkclose;
