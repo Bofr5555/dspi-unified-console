@@ -65,7 +65,7 @@ ToolWindow {
                 objectName: "MonitorWindow.copy"
                 text: qsTr("Copy")
                 iconName: "copy"
-                toolTip: qsTr("Copy every line to the clipboard")
+                toolTip: qsTr("Copies the lines shown, oldest first")
                 enabled: MonitorController.lines.count > 0
                 onClicked: MonitorController.copyAll()
             }

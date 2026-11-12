@@ -158,8 +158,8 @@ void StatsController::applySlow(const Slow &s) {
     const uint32_t total = next.stat[STAT_STARVATION_TOTAL];
     m_delta = m_haveTotal ? total - m_lastTotal : 0;   // wraps as the counter does
     if (m_delta > 0) {
-        m_previousEvent = m_lastEvent;
-        m_lastEvent = QDateTime::currentMSecsSinceEpoch();
+        m_eventBefore = m_eventAt;
+        m_eventAt = QDateTime::currentMSecsSinceEpoch();
     }
     m_lastTotal = total;
     m_haveTotal = true;
@@ -228,7 +228,7 @@ void StatsController::updatePolls() {
     m_ctx.poller->setEnabled(m_fastPoll, m_shown);
 }
 
-void StatsController::resetWatermarks() {
+void StatsController::resetBufferWatermarks() {
     m_ctx.device->write(QStringLiteral("reset watermarks"), [](FfiCore *c) { return dspi_reset_buffer_stats(c); });
 }
 
@@ -286,8 +286,8 @@ QVariantMap StatsController::starvation() const {
     return { { QStringLiteral("total"), qint64(m_slow.stat[STAT_STARVATION_TOTAL]) },
              { QStringLiteral("delta"), qint64(m_delta) },
              { QStringLiteral("slots"), perSlot },
-             { QStringLiteral("lastEventMs"), m_lastEvent },
-             { QStringLiteral("previousEventMs"), m_previousEvent } };
+             { QStringLiteral("lastEventMs"), m_eventAt },
+             { QStringLiteral("previousEventMs"), m_eventBefore } };
 }
 
 QVariantList StatsController::ringHealth() const {

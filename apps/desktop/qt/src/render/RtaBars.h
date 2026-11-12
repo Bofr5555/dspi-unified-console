@@ -24,7 +24,7 @@ class RtaBars : public RtaPaintedItem {
 public:
     int drawnBars() const { return m_drawn; }
     explicit RtaBars(QQuickItem *parent = nullptr);
-    void paint(QPainter *painter) override;
+    void paint(QPainter *target) override;
 
 private:
     // The labels under the bars: decades first, then the others where they fit

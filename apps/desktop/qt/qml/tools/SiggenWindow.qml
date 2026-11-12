@@ -148,17 +148,19 @@ ToolWindow {
                     anchors.centerIn: parent
                     spacing: 6
                     Rectangle {
+                        id: dot
                         width: 8
                         height: 8
                         radius: 4
                         color: pill.tint
-                        SequentialAnimation on scale {
-                            running: SiggenController.playing
-                            loops: Animation.Infinite
-                            alwaysRunToEnd: true
-                            NumberAnimation { from: 1.0; to: 0.75; duration: 700; easing.type: Easing.InOutQuad }
-                            NumberAnimation { from: 0.75; to: 1.0; duration: 700; easing.type: Easing.InOutQuad }
-                        }
+                    }
+                    // While it plays the dot breathes
+                    SequentialAnimation {
+                        running: SiggenController.playing
+                        loops: Animation.Infinite
+                        alwaysRunToEnd: true
+                        NumberAnimation { target: dot; property: "scale"; to: 0.75; duration: 700; easing.type: Easing.InOutQuad }
+                        NumberAnimation { target: dot; property: "scale"; to: 1.0; duration: 700; easing.type: Easing.InOutQuad }
                     }
                     Text {
                         text: pill.shownName

@@ -14,6 +14,7 @@
 #include "CoreApi.h"
 #include "Registrar.h"
 
+class Core;
 class PrefsMap;
 class QQmlEngine;
 class QJSEngine;
@@ -101,13 +102,12 @@ public:
     };
 
     RtaController(const AppContext &ctx, QObject *parent = nullptr);
-    ~RtaController() override;
     static RtaController *create(QQmlEngine *, QJSEngine *) { return Registrar::instance<RtaController>(); }
 
     bool ready() const;
     bool available() const;
     int largestOrder() const;
-    const RtaCapsInfo &caps() const { return m_caps; }
+    const RtaCapsInfo &capabilities() const { return m_caps; }
     // The latest picture (GUI thread)
     const RtaSnapshot &snapshot() const { return *m_snap; }
     int pictureRevision() const;
@@ -185,6 +185,15 @@ signals:
 
 private:
     struct Shared;
+    // Unsets the analyser's callback when the controller goes (after
+    // Core::shutdown there is nothing left to unset)
+    struct CallbackRelease {
+        Core *core = nullptr;
+        CallbackRelease() = default;
+        CallbackRelease(const CallbackRelease &) = delete;
+        CallbackRelease &operator=(const CallbackRelease &) = delete;
+        ~CallbackRelease();
+    };
     static void thunk(void *self);
     Q_INVOKABLE void onPicture();
     // Stores a spectrum/* key of this package's and updates the map QML binds to
@@ -206,6 +215,8 @@ private:
     PrefsMap *m_settings = nullptr;
     std::shared_ptr<Shared> m_shared;
     std::shared_ptr<RtaSnapshot> m_snap;
+    // After m_shared: released first
+    CallbackRelease m_release;
     RtaCapsInfo m_caps{};
     RtaOwnership m_owner{};
     uint32_t m_version = 0;

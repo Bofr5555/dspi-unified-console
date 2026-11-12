@@ -148,8 +148,8 @@ double RtaSurface::xAt(double hz, const QRectF &plot) const {
     return plot.left() + plot.width() * (std::log10(std::max(1.0, hz)) - from) / (to - from);
 }
 
-void RtaSurface::paint(QPainter *painter) {
-    QPainter &g = *painter;
+void RtaSurface::paint(QPainter *target) {
+    QPainter &g = *target;
     const double dt = tick();
     const QRectF plot(QPointF(0, 0), QSizeF(width(), height() - (m_grid ? kLabelRow : 0)));
     if (!m_rta || plot.width() < 2 || plot.height() < 2) return;
@@ -170,7 +170,7 @@ void RtaSurface::paint(QPainter *painter) {
     }
 
     const RtaSnapshot &snap = m_rta->snapshot();
-    const RtaCapsInfo &caps = m_rta->caps();
+    const RtaCapsInfo &probe = m_rta->capabilities();
     if (!m_active || !m_rta->available() || snap.tap != m_tap) return;
     const double tau = m_rta->smoothingTau();
     const double strength = m_rta->graphOpacity();
@@ -181,10 +181,10 @@ void RtaSurface::paint(QPainter *painter) {
     // the first above it
     std::vector<int> bands;
     for (int b = 0, n = std::min(m_rta->bandCount(), int(RTA_MAX_BANDS)); b < n; ++b) {
-        const double hz = caps.centres[b];
+        const double hz = probe.centres[b];
         if (hz <= 0 || !m_rta->bandVisible(b)) continue;
         const bool below = hz < m_minFreq;
-        if (below && !bands.empty() && caps.centres[bands.back()] < m_minFreq) bands.back() = b;
+        if (below && !bands.empty() && probe.centres[bands.back()] < m_minFreq) bands.back() = b;
         else bands.push_back(b);
         if (hz > m_maxFreq) break;
     }
@@ -214,7 +214,7 @@ void RtaSurface::paint(QPainter *painter) {
         moving = m_hold[ch].advance(holds, dt, tau, true) || moving;
         std::vector<double> knotX(bands.size()), knotY(bands.size()), holdY(bands.size());
         for (size_t k = 0; k < bands.size(); ++k) {
-            knotX[k] = xAt(caps.centres[bands[k]], plot);
+            knotX[k] = xAt(probe.centres[bands[k]], plot);
             knotY[k] = yAt(m_level[ch].values()[k]);
             holdY[k] = yAt(m_hold[ch].values()[k]);
         }
@@ -249,10 +249,10 @@ void RtaSurface::paint(QPainter *painter) {
             for (size_t c = 0; c < fine.size(); ++c)
                 if (std::isfinite(loudest[c])) fine[c] = yAt(m_fine.values()[c]);
         }
-        const int bass = caps.bass_bands ? caps.bass_bands : 14;
-        const int total = caps.max_bands ? caps.max_bands : int(RTA_MAX_BANDS);
-        const double blendFrom = xAt(caps.centres[std::clamp(bass - 1, 0, int(RTA_MAX_BANDS) - 1)], plot);
-        const double blendTo = xAt(caps.centres[std::clamp(std::min(bass + kBlendBands, total - 1), 0, int(RTA_MAX_BANDS) - 1)], plot);
+        const int bass = probe.bass_bands ? probe.bass_bands : 14;
+        const int total = probe.max_bands ? probe.max_bands : int(RTA_MAX_BANDS);
+        const double blendFrom = xAt(probe.centres[std::clamp(bass - 1, 0, int(RTA_MAX_BANDS) - 1)], plot);
+        const double blendTo = xAt(probe.centres[std::clamp(std::min(bass + kBlendBands, total - 1), 0, int(RTA_MAX_BANDS) - 1)], plot);
 
         // A point per column: the band curve, giving way to the bins
         QPainterPath edge, contour;

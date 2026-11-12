@@ -27,13 +27,13 @@ bool isDecade(double hz) {
 RtaBars::RtaBars(QQuickItem *parent) : RtaPaintedItem(parent) {}
 
 void RtaBars::paintFrequencies(QPainter &g, const QRectF &plot, const std::vector<int> &bands, double slot) const {
-    const RtaCapsInfo &caps = m_rta->caps();
+    const RtaCapsInfo &probe = m_rta->capabilities();
     std::vector<std::pair<double, double>> taken;   // left and right of each label placed
     g.setPen(m_labelColor);
     g.setFont(m_labelFont);
     const auto place = [&](bool decades) {
         for (size_t pos = 0; pos < bands.size(); ++pos) {
-            const double centre = caps.centres[bands[pos]];
+            const double centre = probe.centres[bands[pos]];
             const auto mark = std::find_if(labelledHz().begin(), labelledHz().end(),
                                            [centre](double hz) { return std::fabs(centre - hz) <= 0.03 * hz; });
             if (mark == labelledHz().end() || isDecade(*mark) != decades) continue;
@@ -53,10 +53,10 @@ void RtaBars::paintFrequencies(QPainter &g, const QRectF &plot, const std::vecto
     place(false);
 }
 
-void RtaBars::paint(QPainter *painter) {
-    QPainter &g = *painter;
+void RtaBars::paint(QPainter *target) {
+    QPainter &g = *target;
     const double dt = tick();
-    if (!m_rta || width() < 4 || height() < 4) return;
+    if (!m_rta || std::min(width(), height()) < 4) return;
     const QRectF plot(QPointF(0, 0), QSizeF(width(), height() - (m_frequencyLabels ? kLabelRow : 0)));
     g.setRenderHint(QPainter::Antialiasing);
     if (m_dbLabels) paintLevels(g, plot, true);
@@ -98,7 +98,7 @@ void RtaBars::paint(QPainter *painter) {
     top.setAlphaF(0.95);
     foot.setAlphaF(0.45);
     cap.setAlphaF(0.9);
-    const bool caps = m_rta->showPeakHold();
+    const bool withCaps = m_rta->showPeakHold();
     int drawn = 0;
     g.setPen(Qt::NoPen);
     for (size_t pos = 0; pos < bands.size(); ++pos) {
@@ -114,7 +114,7 @@ void RtaBars::paint(QPainter *painter) {
             g.drawRoundedRect(bar, corner, corner);
         }
         const double peak = plot.height() * heightOf(m_hold.values()[pos]);
-        if (caps && peak > 0.001 * plot.height())
+        if (withCaps && peak > 0.001 * plot.height())
             g.fillRect(QRectF(left, std::max(plot.top(), plot.bottom() - peak - 1), barWidth, 1.5), cap);
     }
     if (m_frequencyLabels) paintFrequencies(g, plot, bands, slot);

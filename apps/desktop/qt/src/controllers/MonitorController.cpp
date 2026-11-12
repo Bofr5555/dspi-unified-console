@@ -14,13 +14,13 @@
 static const Registrar::Controller<MonitorController> monitorController;
 static const Registrar::Window monitorWindow("tools.interruptMonitor", "MonitorWindow");
 
-int MonitorLines::rowCount(const QModelIndex &parent) const {
-    return parent.isValid() ? 0 : int(m_lines.size());
+int MonitorLines::rowCount(const QModelIndex &under) const {
+    return under.isValid() ? 0 : int(m_lines.size());
 }
 
-QVariant MonitorLines::data(const QModelIndex &index, int role) const {
-    if (role != LineRole || !index.isValid() || index.row() >= m_lines.size()) return {};
-    return m_lines.at(index.row());
+QVariant MonitorLines::data(const QModelIndex &at, int role) const {
+    if (role != LineRole || !at.isValid() || at.row() >= m_lines.size()) return {};
+    return m_lines.at(at.row());
 }
 
 QHash<int, QByteArray> MonitorLines::roleNames() const {
@@ -105,7 +105,7 @@ void MonitorController::setPaused(bool paused) {
     m_paused = paused;
     if (!paused) skipToEnd();
     updatePoll();
-    emit pausedChanged();
+    emit pauseChanged();
     emit stateTextChanged();
 }
 

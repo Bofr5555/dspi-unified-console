@@ -20,7 +20,7 @@ AbstractButton {
         color: chip.on ? Theme.selection : chip.hovered ? Theme.controlHover : Theme.control
         border.width: chip.visualFocus ? 2 : 1
         border.color: chip.visualFocus ? Theme.focusRing : Theme.separator
-        Behavior on color { ColorAnimation { duration: 120 } }
+        Behavior on color { ColorAnimation { duration: 100 } }
     }
     contentItem: Item {
         implicitWidth: dot.width + 6 + name.implicitWidth

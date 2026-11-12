@@ -341,7 +341,7 @@ ToolWindow {
                             objectName: "StatsWindow.reset"
                             text: qsTr("Reset Watermarks")
                             enabled: StatsController.writable
-                            onClicked: StatsController.resetWatermarks()
+                            onClicked: StatsController.resetBufferWatermarks()
                         }
                     }
                     RowLayout {

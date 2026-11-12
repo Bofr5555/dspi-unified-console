@@ -108,6 +108,7 @@ RtaController::RtaController(const AppContext &ctx, QObject *parent)
     });
     m_snap->first_band = 0xFF;
 
+    m_release.core = ctx.core;
     m_shared->target = this;
     m_shared->core = ctx.core->handle();
     Shared *shared = m_shared.get();
@@ -117,9 +118,8 @@ RtaController::RtaController(const AppContext &ctx, QObject *parent)
     QMetaObject::invokeMethod(this, &RtaController::connectLater, Qt::QueuedConnection);
 }
 
-RtaController::~RtaController() {
-    // After Core::shutdown the handle is gone and the core has dropped the callback
-    if (FfiCore *c = m_ctx.core->handle()) dspi_rta_set_callback(c, nullptr, nullptr);
+RtaController::CallbackRelease::~CallbackRelease() {
+    if (FfiCore *c = core ? core->handle() : nullptr) dspi_rta_set_callback(c, nullptr, nullptr);
 }
 
 void RtaController::connectLater() {

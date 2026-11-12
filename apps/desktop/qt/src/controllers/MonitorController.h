@@ -26,8 +26,8 @@ public:
     enum Role { LineRole = Qt::UserRole + 1 };
 
     using QAbstractListModel::QAbstractListModel;
-    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
-    QVariant data(const QModelIndex &index, int role) const override;
+    int rowCount(const QModelIndex &under = QModelIndex()) const override;
+    QVariant data(const QModelIndex &at, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
     // Appends `lines` and drops the oldest past kLimit
@@ -61,7 +61,7 @@ class MonitorController : public QObject {
     QML_ELEMENT
     QML_SINGLETON
     Q_PROPERTY(MonitorLines *lines READ lines CONSTANT)
-    Q_PROPERTY(bool paused READ paused WRITE setPaused NOTIFY pausedChanged)
+    Q_PROPERTY(bool paused READ paused WRITE setPaused NOTIFY pauseChanged)
     Q_PROPERTY(bool windowShown READ windowShown WRITE setWindowShown NOTIFY windowShownChanged)
     // "inactive" without a device, else "paused" or "listening"
     Q_PROPERTY(QString status READ status NOTIFY stateTextChanged)
@@ -93,7 +93,7 @@ public:
     Poller::Id poll() const { return m_poll; }
 
 signals:
-    void pausedChanged();
+    void pauseChanged();
     void windowShownChanged();
     void stateTextChanged();
     // New rows arrived (the view scrolls to the end)

@@ -33,7 +33,7 @@ AbstractButton {
             height: 22
             readonly property color pen: tile.ink
             onPenChanged: requestPaint()
-            onWidthChanged: requestPaint()
+            onWidthChanged: drawing.requestPaint()
             onPaint: {
                 const g = getContext("2d")
                 g.clearRect(0, 0, width, height)

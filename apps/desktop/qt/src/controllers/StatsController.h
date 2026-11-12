@@ -98,7 +98,7 @@ public:
     QVariantList fillRows() const;
 
     // Reset Watermarks (a device write: refused on a read-only device)
-    Q_INVOKABLE void resetWatermarks();
+    Q_INVOKABLE void resetBufferWatermarks();
     // "0m 07s", "1h 02m 03s"
     Q_INVOKABLE static QString formatElapsed(qint64 ms);
     // The fill bands the core does not rate: PDM DMA and PDM ring; S/PDIF
@@ -174,8 +174,8 @@ private:
     bool m_haveTotal = false;
     uint32_t m_lastTotal = 0;
     uint32_t m_delta = 0;
-    qint64 m_lastEvent = 0;
-    qint64 m_previousEvent = 0;
+    qint64 m_eventAt = 0;
+    qint64 m_eventBefore = 0;
     // Connections: the generation seen, how many after the first
     uint64_t m_generation = 0;
     bool m_seenConnect = false;

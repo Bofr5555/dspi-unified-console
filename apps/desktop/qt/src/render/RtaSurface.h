@@ -100,7 +100,7 @@ class RtaSurface : public RtaPaintedItem {
     Q_PROPERTY(int drawnCount READ drawnCount NOTIFY painted)
 public:
     explicit RtaSurface(QQuickItem *parent = nullptr);
-    void paint(QPainter *painter) override;
+    void paint(QPainter *target) override;
     int drawnCount() const { return m_drawn; }
 
 private:
