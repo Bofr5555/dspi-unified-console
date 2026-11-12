@@ -26,7 +26,7 @@ ToolWindow {
 
     readonly property int columnWidth: 72
     readonly property int labelWidth: 80
-    readonly property int rowHeight: 78
+    readonly property int crosspointHeight: 78   // the Mac's row height
     readonly property int controlRowHeight: 30
     readonly property int headerHeight: 58
     readonly property int cols: MatrixController.columns
@@ -166,7 +166,9 @@ ToolWindow {
                                     font: Theme.fontSmall
                                     horizontalAlignment: TextInput.AlignHCenter
                                     label: qsTr("Name of %1").arg(header.shownName)
-                                    onVisibleChanged: if (visible) {
+                                    // Opens on the stored name, all of it selected
+                                    onVisibleChanged: {
+                                        if (!visible) return
                                         text = header.col ? header.col.name : ""
                                         forceActiveFocus()
                                         selectAll()
@@ -246,7 +248,7 @@ ToolWindow {
 
                 Item {
                     width: table.width
-                    height: window.rows * window.rowHeight
+                    height: window.rows * window.crosspointHeight
 
                     // Source labels
                     Column {
@@ -259,7 +261,7 @@ ToolWindow {
                                 objectName: "Matrix.row." + index
                                 property string shownName: src ? src.name : ""
                                 width: window.labelWidth
-                                height: window.rowHeight
+                                height: window.crosspointHeight
                                 Column {
                                     anchors.centerIn: parent
                                     spacing: 4
@@ -310,7 +312,7 @@ ToolWindow {
                             model: MatrixController.model
                             MatrixCell {
                                 width: window.columnWidth
-                                height: window.rowHeight
+                                height: window.crosspointHeight
                                 inputName: { const s = window.source(input); return s ? s.name : "" }
                                 outputName: { const c = window.column(output); return c ? c.label : "" }
                             }
@@ -324,7 +326,7 @@ ToolWindow {
                             required property int index
                             visible: window.dividerAfter(index)
                             indent: window.labelWidth
-                            y: (index + 1) * window.rowHeight
+                            y: (index + 1) * window.crosspointHeight
                             opacity: 0.6
                         }
                     }
