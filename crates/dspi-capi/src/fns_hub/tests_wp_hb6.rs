@@ -247,14 +247,34 @@ fn in_a_process_of_its_own(name: &str, test: impl FnOnce()) {
     );
 }
 
-/// Whether a hub's thread exists in this process. Linux only: elsewhere, nothing to read.
+/// A hub's threads in this process that have not ended. Linux only: elsewhere, nothing
+/// to read.
+///
+/// -- WP HUBFLAKE2 -- A joined thread can still be listed for a moment: `join` returns
+/// when the kernel wakes it from the thread's exit, and the task leaves `/proc` a little
+/// later. By then its own code is over and the kernel has marked it `PF_EXITING`, which
+/// a thread left running never is, so those are not counted.
 fn hub_threads() -> Vec<String> {
+    /// `PF_EXITING`, in the flags of `/proc/<pid>/task/<tid>/stat`.
+    const EXITING: u64 = 0x4;
     let Ok(tasks) = std::fs::read_dir("/proc/self/task") else {
         return Vec::new();
     };
     tasks
-        .filter_map(|t| std::fs::read_to_string(t.ok()?.path().join("comm")).ok())
-        .map(|name| name.trim().to_owned())
+        .filter_map(|t| {
+            let path = t.ok()?.path();
+            let name = std::fs::read_to_string(path.join("comm")).ok()?;
+            let stat = std::fs::read_to_string(path.join("stat")).ok()?;
+            // After the name in parentheses: state, ppid, pgrp, session, tty, tpgid, flags.
+            let flags: u64 = stat
+                .rsplit_once(')')?
+                .1
+                .split_whitespace()
+                .nth(6)?
+                .parse()
+                .ok()?;
+            (flags & EXITING == 0).then(|| name.trim().to_owned())
+        })
         .filter(|name| name.starts_with("hub-"))
         .collect()
 }
