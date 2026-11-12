@@ -79,6 +79,11 @@ const COPY_REASON: &str = "Copying preset";
 const DELETE_REASON: &str = "Deleting preset";
 const SAVE_PARAMS_REASON: &str = "Saving to flash";
 const RESET_REASON: &str = "Restoring factory defaults";
+// -- WP CLEAN1 fixup cl1 --
+/// How long the firmware may take to apply a factory reset: it answers the
+/// request at once and resets in its main loop, so a read straight after the
+/// answer can still see the old state.
+const FACTORY_RESET_SETTLE: Duration = Duration::from_millis(250);
 
 /// `PRESET_GET_DIR`'s reply length (the master-volume mode is its last byte).
 const DIRECTORY_LEN: u16 = 7;
@@ -404,8 +409,10 @@ impl DspiCore {
     }
 
     /// Restore the factory defaults on the live state (stored presets stay),
-    /// then read everything again as [`DspiCore::fetch_all`] does; the result
-    /// is the baseline. Runs under the device lock.
+    /// give the device [`FACTORY_RESET_SETTLE`] to apply them (it defers the
+    /// reset to its main loop), then read everything again as
+    /// [`DspiCore::fetch_all`] does; the result is the baseline. Runs under the
+    /// device lock; the core lock is not held while it waits.
     ///
     /// Errors: `Refused` with the device's `FLASH_*` status;
     /// [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
@@ -424,7 +431,10 @@ impl DspiCore {
                 Err(DspiError::Disconnected)
             }
         };
-        let result = sent.and_then(|()| self.fetch_all());
+        let result = sent.and_then(|()| {
+            clock::sleep(FACTORY_RESET_SETTLE);
+            self.fetch_all()
+        });
         self.release_device_lock(lock);
         result
     }
@@ -1962,6 +1972,11 @@ mod tests {
         /// IN replies by opcode instead of the device's; `None` stalls.
         script: Mutex<HashMap<u8, Option<Vec<u8>>>>,
         refuse_lock: AtomicBool,
+        /// -- WP CLEAN1 fixup cl1 -- Answer a factory reset at once and apply
+        /// it only on a transfer this long after, as the firmware's main loop does.
+        defer_reset: Mutex<Option<Duration>>,
+        /// When the deferred reset was asked for.
+        reset_asked: Mutex<Option<std::time::Instant>>,
     }
 
     impl Probe {
@@ -1995,9 +2010,31 @@ mod tests {
         probe: Arc<Probe>,
     }
 
+    impl Spy {
+        /// Apply a deferred factory reset once its delay has passed.
+        fn catch_up(&mut self) {
+            let due = {
+                let delay = *self.probe.defer_reset.lock().unwrap();
+                let mut asked = self.probe.reset_asked.lock().unwrap();
+                match (delay, *asked) {
+                    (Some(d), Some(t)) if t.elapsed() >= d => asked.take().is_some(),
+                    _ => false,
+                }
+            };
+            if due {
+                self.dev.control_in(op::REQ_FACTORY_RESET, 0, 1).unwrap();
+            }
+        }
+    }
+
     impl Transport for Spy {
         fn control_in(&mut self, op: u8, value: u16, len: u16) -> dspi_transport::Result<Vec<u8>> {
             self.probe.note(format!("in {op:02X} {value}"));
+            self.catch_up();
+            if op == op::REQ_FACTORY_RESET && self.probe.defer_reset.lock().unwrap().is_some() {
+                *self.probe.reset_asked.lock().unwrap() = Some(std::time::Instant::now());
+                return Ok(vec![0]);
+            }
             match self.probe.scripted(op, len) {
                 Some(r) => r,
                 None => self.dev.control_in(op, value, len),
@@ -2010,6 +2047,7 @@ mod tests {
             len: u16,
         ) -> dspi_transport::Result<Vec<u8>> {
             self.probe.note(format!("in {op:02X} {value}"));
+            self.catch_up();
             match self.probe.scripted(op, len) {
                 Some(r) => r,
                 None => self.dev.control_in_upto(op, value, len),
@@ -2018,6 +2056,7 @@ mod tests {
         fn control_out(&mut self, op: u8, value: u16, data: &[u8]) -> dspi_transport::Result<()> {
             let hex: String = data.iter().map(|b| format!("{b:02x}")).collect();
             self.probe.note(format!("out {op:02X} {value} {hex}"));
+            self.catch_up();
             self.dev.control_out(op, value, data)
         }
         fn descriptor(&self) -> &DeviceDescriptor {
@@ -2403,6 +2442,23 @@ mod tests {
         assert_eq!(preamp(&core), factory);
         assert!(!core.preset_dirty());
         assert_eq!(log.last().map(String::as_str), Some("unlock"));
+    }
+
+    /// -- WP CLEAN1 fixup cl1 -- A device that applies the reset a little after
+    /// answering still ends up read as reset, with nothing unsaved.
+    #[test]
+    fn clean1_factory_reset_waits_for_a_deferring_device() {
+        let (core, probe) = fetched();
+        let factory = preamp(&core);
+        core.set_input_preamp(0, factory - 7.0).unwrap();
+        *probe.defer_reset.lock().unwrap() = Some(Duration::from_millis(100));
+        core.factory_reset().unwrap();
+        assert_eq!(preamp(&core), factory);
+        assert!(!core.preset_dirty(), "{:?}", core.preset_changes());
+        assert!(
+            probe.reset_asked.lock().unwrap().is_none(),
+            "the reset was applied"
+        );
     }
 
     #[test]
