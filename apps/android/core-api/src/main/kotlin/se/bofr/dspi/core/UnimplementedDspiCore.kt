@@ -68,6 +68,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun openDemo(): Unit = throw NotImplementedError("open_demo")
 
+    override fun featurePresent(name: String): Boolean = throw NotImplementedError("feature_present")
+
     override fun diagnosticsSave(path: String, options: DiagOptions): List<String> = throw NotImplementedError("diagnostics_save")
 
     override fun diagnosticsFileName(): String = throw NotImplementedError("diagnostics_file_name")
@@ -95,6 +97,16 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun fetchCoreVreg(): CoreVregInfo = throw NotImplementedError("fetch_core_vreg")
 
     override fun coreVregOp(op: Int, value: Int, word: String?): Unit = throw NotImplementedError("core_vreg_op")
+
+    override fun identify(seconds: Int, toneOutput: Int?): Unit = throw NotImplementedError("identify")
+
+    override fun fetchIdentify(): IdentifyInfo = throw NotImplementedError("fetch_identify")
+
+    override fun fetchResetInfo(): DeviceResetInfo = throw NotImplementedError("fetch_reset_info")
+
+    override fun resetInfoAtConnect(): DeviceResetInfo? = throw NotImplementedError("reset_info_at_connect")
+
+    override fun hasClipEvents(): Boolean = throw NotImplementedError("has_clip_events")
 
     override fun configExport(name: String, appVersion: String, links: Int): String = throw NotImplementedError("config_export")
 
@@ -433,6 +445,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun fetchSpdifRxChannelStatus(): List<Int> = throw NotImplementedError("fetch_spdif_rx_channel_status")
 
     override fun fetchSpdifRxPin(index: Int): Int = throw NotImplementedError("fetch_spdif_rx_pin")
+
+    override fun fetchUsbErrorStats(): UsbErrorStats = throw NotImplementedError("fetch_usb_error_stats")
 
     override fun coreVregCalView(): VregCalView = throw NotImplementedError("core_vreg_cal_view")
 

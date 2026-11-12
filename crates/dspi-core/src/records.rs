@@ -1278,3 +1278,25 @@ pub struct DiagOptions {
     /// The client's own files.
     pub files: Vec<DiagFile>,
 }
+
+// -- WP CS1 --
+/// The device's USB error counters (`REQ_GET_USB_ERROR_STATS` 0xB2,
+/// registry `diag.usb`): six `u32` since boot or the last reset
+/// (`diag.usb.reset`). Current firmware reports them all as zero.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsbErrorStats {
+    /// Every error counted.
+    pub total: u32,
+    /// CRC errors.
+    pub crc: u32,
+    /// Bit-stuffing errors.
+    pub bitstuff: u32,
+    /// Receive overflows.
+    pub rx_overflow: u32,
+    /// Receive timeouts.
+    pub rx_timeout: u32,
+    /// Data sequence errors.
+    pub data_seq: u32,
+}

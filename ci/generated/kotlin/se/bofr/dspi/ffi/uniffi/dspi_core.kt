@@ -1488,6 +1488,20 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1693,6 +1707,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_ext_status(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_factory_reset(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_feature_present(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_adat_out_status(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_all(
@@ -1711,6 +1727,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_fetch_ctrl_ifaces(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_dac_mute(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_fetch_identify(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_input_lock(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_input_rate(
@@ -1726,6 +1744,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_fetch_output_latency(
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_output_latency_options(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_output_pin(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_fetch_reset_info(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_ring_health(
 ): Short
@@ -1746,6 +1766,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_fetch_subharm_headroom(
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_subharm_meter(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_upmix_status(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_fetch_usb_error_stats(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_filters_export(
 ): Short
@@ -1769,9 +1791,13 @@ fun uniffi_dspi_core_checksum_method_dspicore_get_preset_name(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_get_state(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_has_clip_events(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_history(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_host_notify(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_identify(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_inaccessible_devices(
 ): Short
@@ -1840,6 +1866,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_redo(
 fun uniffi_dspi_core_checksum_method_dspicore_refresh_params(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_reset_buffer_stats(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_reset_info_at_connect(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_reset_meter_max(
 ): Short
@@ -2271,6 +2299,8 @@ fun uniffi_dspi_core_fn_method_dspicore_ext_status(`ptr`: Pointer,uniffi_out_err
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_factory_reset(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_feature_present(`ptr`: Pointer,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
 fun uniffi_dspi_core_fn_method_dspicore_fetch_adat_out_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_all(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -2289,6 +2319,8 @@ fun uniffi_dspi_core_fn_method_dspicore_fetch_ctrl_ifaces(`ptr`: Pointer,uniffi_
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_fetch_dac_mute(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_fetch_identify(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_input_lock(`ptr`: Pointer,`which`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_input_rate(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -2305,6 +2337,8 @@ fun uniffi_dspi_core_fn_method_dspicore_fetch_output_latency_options(`ptr`: Poin
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_output_pin(`ptr`: Pointer,`slot`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
+fun uniffi_dspi_core_fn_method_dspicore_fetch_reset_info(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_ring_health(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_spdif_rx_channel_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -2324,6 +2358,8 @@ fun uniffi_dspi_core_fn_method_dspicore_fetch_subharm_headroom(`ptr`: Pointer,un
 fun uniffi_dspi_core_fn_method_dspicore_fetch_subharm_meter(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_upmix_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_fetch_usb_error_stats(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_filters_export(`ptr`: Pointer,`inputs`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -2347,9 +2383,13 @@ fun uniffi_dspi_core_fn_method_dspicore_get_preset_name(`ptr`: Pointer,`slot`: B
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_get_state(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_has_clip_events(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
 fun uniffi_dspi_core_fn_method_dspicore_history(`ptr`: Pointer,`n`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_host_notify(`ptr`: Pointer,`packet`: RustBuffer.ByValue,`origin`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_identify(`ptr`: Pointer,`seconds`: Byte,`toneOutput`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_inaccessible_devices(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
@@ -2419,6 +2459,8 @@ fun uniffi_dspi_core_fn_method_dspicore_refresh_params(`ptr`: Pointer,uniffi_out
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_reset_buffer_stats(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_reset_info_at_connect(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_reset_meter_max(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_rta_get_caps(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -3022,7 +3064,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_config_export() != 55997.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_config_import() != 18479.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_config_import() != 20391.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_connection_generation() != 50111.toShort()) {
@@ -3160,6 +3202,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_factory_reset() != 27488.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_feature_present() != 18345.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_adat_out_status() != 51824.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3187,6 +3232,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_dac_mute() != 15871.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_identify() != 43866.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_input_lock() != 1042.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3209,6 +3257,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_output_pin() != 64350.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_reset_info() != 28748.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_ring_health() != 1712.toShort()) {
@@ -3239,6 +3290,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_upmix_status() != 65322.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_usb_error_stats() != 29618.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_filters_export() != 62927.toShort()) {
@@ -3274,10 +3328,16 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_get_state() != 32151.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_has_clip_events() != 9559.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_history() != 15069.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_host_notify() != 19114.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_identify() != 26030.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_inaccessible_devices() != 62282.toShort()) {
@@ -3380,6 +3440,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_reset_buffer_stats() != 36944.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_reset_info_at_connect() != 57433.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_reset_meter_max() != 60815.toShort()) {
@@ -5357,9 +5420,12 @@ public interface DspiCoreInterface {
      * are shortened to it. Channels the device lacks are named, not moved.
      *
      * Returns JSON. On success `{ok: true, error: "", lines, clean, links,
-     * hardwareWritten, leftAlone}`: `lines` is the report, `clean` false
-     * when anything was missing, skipped, left alone or shortened,
-     * `leftAlone` the keys left alone, `links` the input-pair link mask to
+     * hardwareWritten, leftAlone, outOfRange}`: `lines` is the report,
+     * `clean` false when anything was missing, skipped, left alone,
+     * shortened or out of range, `leftAlone` the keys left alone,
+     * `outOfRange` the numbers past what this device takes, each
+     * `{path, value, applied}` (registry path with indices, the document's
+     * value, the nearest end written instead; WP P0U's rows), `links` the input-pair link mask to
      * restore (null when the document has none), and `hardwareWritten`
      * whether I/O was changed while the device stores its output
      * configuration apart from presets (save that to keep it). Otherwise
@@ -5851,6 +5917,17 @@ public interface DspiCoreInterface {
     fun `factoryReset`()
     
     /**
+     * Whether the connect probe found feature `name` on the open device
+     * (`dspi_session::probe`'s names: `spdif_multi_input`, `adat_input`,
+     * `i2s_slave_clock`, ...), so a client hides what the firmware lacks
+     * without comparing versions. `i2s_clock_pin_mode`, which has no probe,
+     * answers whether the parameter image carried the clock-pin mode. False
+     * with no device, before the probe, and for a name the probe does not
+     * know.
+     */
+    fun `featurePresent`(`name`: kotlin.String): kotlin.Boolean
+    
+    /**
      * The ADAT output's status (8 bytes; all zero on RP2040).
      *
      * Errors: a short reply or other transfer error;
@@ -5980,6 +6057,15 @@ public interface DspiCoreInterface {
     fun `fetchDacMute`()
     
     /**
+     * Read `EXT_IDENTIFY`: the blink time left and the board description.
+     *
+     * `Unsupported`, with no traffic, when the device did not list it, and
+     * when the read stalls or a DSPi Link hub refuses it; `Disconnected`
+     * without a device; `Transfer` for a short or failed read.
+     */
+    fun `fetchIdentify`(): IdentifyInfo
+    
+    /**
      * Lock status of a clocked input. `which`: 0 = I2S slave
      * (`REQ_GET_I2S_SLAVE_STATUS`, 16 bytes; `rate_ok` is always true),
      * 1 = ADAT input (`REQ_GET_ADAT_INPUT_STATUS`, 20 bytes; all zero on
@@ -6062,6 +6148,16 @@ public interface DspiCoreInterface {
      * have); [`DspiError::Disconnected`].
      */
     fun `fetchOutputPin`(`slot`: kotlin.UByte): kotlin.UByte
+    
+    /**
+     * Read `EXT_RESET_INFO`: why the device last restarted, its uptime and
+     * the run before. Also refreshes the connection's copy from the probe.
+     *
+     * `Unsupported`, with no traffic, when the device did not list it, and
+     * when the read stalls or a DSPi Link hub refuses it; `Disconnected`
+     * without a device; `Transfer` for a short or failed read.
+     */
+    fun `fetchResetInfo`(): DeviceResetInfo
     
     /**
      * The output rings' health (Output Ring Health in the Stats window), or
@@ -6194,6 +6290,16 @@ public interface DspiCoreInterface {
     fun `fetchUpmixStatus`(): UpmixStatus
     
     /**
+     * The device's USB error counters (`REQ_GET_USB_ERROR_STATS`, 24
+     * bytes): for the System Statistics window. A read, allowed on a
+     * read-only connection. Current firmware answers zeros.
+     *
+     * Errors: [`DspiError::Disconnected`]; a transfer failure, a stall or a
+     * short reply as [`DspiError::Transfer`].
+     */
+    fun `fetchUsbErrorStats`(): UsbErrorStats
+    
+    /**
      * Every channel's bands as a filter file (format 2), from the mirror:
      * the first `inputs` inputs with their preamp and EQ bands, then every
      * output with its EQ and crossover bands and its enable state.
@@ -6309,6 +6415,13 @@ public interface DspiCoreInterface {
     fun `getState`(): DspState
     
     /**
+     * Whether the device sends clip events (`EXT_NOTIFY_FEATURES` bit 1):
+     * then a clip shows without polling the meters fast. No traffic;
+     * `Disconnected` without a device.
+     */
+    fun `hasClipEvents`(): kotlin.Boolean
+    
+    /**
      * The newest `n` changes of this connection, newest first: every typed
      * setter's, undo's and redo's, with the value before and after, who
      * made it and when. The connection's session keeps the newest 1000; a
@@ -6326,6 +6439,21 @@ public interface DspiCoreInterface {
      * connects go to the new connection: stop feeding the old device first.
      */
     fun `hostNotify`(`packet`: kotlin.ByteArray, `origin`: kotlin.UShort?)
+    
+    /**
+     * `EXT_IDENTIFY`: blink the device's LED for `seconds` (0 stops it; over
+     * 120 the firmware shortens to 120) and, with `tone_output`, play its
+     * quiet identify tone ([`IDENTIFY_TONE_DBFS`], 400 ms) on that output.
+     * Leave `tone_output` empty unless the user asked for sound.
+     *
+     * Errors, with no traffic: `Disconnected`; `Unsupported` when the device
+     * did not list it; `InvalidArgument` for a tone output past the
+     * device's outputs; `ReadOnly` on a read-only connection. From the
+     * device: `Refused { status: EXT_WRITE_REFUSED }` when it stalls (a tone
+     * while its signal generator runs); `Denied`, `Locked` or `Transfer`
+     * from the link.
+     */
+    fun `identify`(`seconds`: kotlin.UByte, `toneOutput`: kotlin.UByte?)
     
     /**
      * DSPis the last scan saw but could not open: no permission (Linux udev
@@ -6730,6 +6858,13 @@ public interface DspiCoreInterface {
      * [`DspiError::Disconnected`] or [`DspiError::Transfer`] otherwise.
      */
     fun `resetBufferStats`()
+    
+    /**
+     * The reset readout as the connect probe found it, without traffic:
+     * `None` when the device has no `EXT_RESET_INFO` or the read failed.
+     * Its uptime is the one at connect. `Disconnected` without a device.
+     */
+    fun `resetInfoAtConnect`(): DeviceResetInfo?
     
     /**
      * Start every channel's `SystemStatus.peak_max` again from the next
@@ -8127,9 +8262,12 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * are shortened to it. Channels the device lacks are named, not moved.
      *
      * Returns JSON. On success `{ok: true, error: "", lines, clean, links,
-     * hardwareWritten, leftAlone}`: `lines` is the report, `clean` false
-     * when anything was missing, skipped, left alone or shortened,
-     * `leftAlone` the keys left alone, `links` the input-pair link mask to
+     * hardwareWritten, leftAlone, outOfRange}`: `lines` is the report,
+     * `clean` false when anything was missing, skipped, left alone,
+     * shortened or out of range, `leftAlone` the keys left alone,
+     * `outOfRange` the numbers past what this device takes, each
+     * `{path, value, applied}` (registry path with indices, the document's
+     * value, the nearest end written instead; WP P0U's rows), `links` the input-pair link mask to
      * restore (null when the document has none), and `hardwareWritten`
      * whether I/O was changed while the device stores its output
      * configuration apart from presets (save that to keep it). Otherwise
@@ -9084,6 +9222,27 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Whether the connect probe found feature `name` on the open device
+     * (`dspi_session::probe`'s names: `spdif_multi_input`, `adat_input`,
+     * `i2s_slave_clock`, ...), so a client hides what the firmware lacks
+     * without comparing versions. `i2s_clock_pin_mode`, which has no probe,
+     * answers whether the parameter image carried the clock-pin mode. False
+     * with no device, before the probe, and for a name the probe does not
+     * know.
+     */override fun `featurePresent`(`name`: kotlin.String): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_feature_present(
+        it, FfiConverterString.lower(`name`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * The ADAT output's status (8 bytes; all zero on RP2040).
      *
      * Errors: a short reply or other transfer error;
@@ -9309,6 +9468,26 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Read `EXT_IDENTIFY`: the blink time left and the board description.
+     *
+     * `Unsupported`, with no traffic, when the device did not list it, and
+     * when the read stalls or a DSPi Link hub refuses it; `Disconnected`
+     * without a device; `Transfer` for a short or failed read.
+     */
+    @Throws(DspiException::class)override fun `fetchIdentify`(): IdentifyInfo {
+            return FfiConverterTypeIdentifyInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_identify(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Lock status of a clocked input. `which`: 0 = I2S slave
      * (`REQ_GET_I2S_SLAVE_STATUS`, 16 bytes; `rate_ok` is always true),
      * 1 = ADAT input (`REQ_GET_ADAT_INPUT_STATUS`, 20 bytes; all zero on
@@ -9473,6 +9652,27 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_output_pin(
         it, FfiConverterUByte.lower(`slot`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Read `EXT_RESET_INFO`: why the device last restarted, its uptime and
+     * the run before. Also refreshes the connection's copy from the probe.
+     *
+     * `Unsupported`, with no traffic, when the device did not list it, and
+     * when the read stalls or a DSPi Link hub refuses it; `Disconnected`
+     * without a device; `Transfer` for a short or failed read.
+     */
+    @Throws(DspiException::class)override fun `fetchResetInfo`(): DeviceResetInfo {
+            return FfiConverterTypeDeviceResetInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_reset_info(
+        it, _status)
 }
     }
     )
@@ -9721,6 +9921,27 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * The device's USB error counters (`REQ_GET_USB_ERROR_STATS`, 24
+     * bytes): for the System Statistics window. A read, allowed on a
+     * read-only connection. Current firmware answers zeros.
+     *
+     * Errors: [`DspiError::Disconnected`]; a transfer failure, a stall or a
+     * short reply as [`DspiError::Transfer`].
+     */
+    @Throws(DspiException::class)override fun `fetchUsbErrorStats`(): UsbErrorStats {
+            return FfiConverterTypeUsbErrorStats.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_usb_error_stats(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Every channel's bands as a filter file (format 2), from the mirror:
      * the first `inputs` inputs with their preamp and EQ bands, then every
      * output with its EQ and crossover bands and its enable state.
@@ -9953,6 +10174,24 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Whether the device sends clip events (`EXT_NOTIFY_FEATURES` bit 1):
+     * then a clip shows without polling the meters fast. No traffic;
+     * `Disconnected` without a device.
+     */
+    @Throws(DspiException::class)override fun `hasClipEvents`(): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_has_clip_events(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * The newest `n` changes of this connection, newest first: every typed
      * setter's, undo's and redo's, with the value before and after, who
      * made it and when. The connection's session keeps the newest 1000; a
@@ -9984,6 +10223,31 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_host_notify(
         it, FfiConverterByteArray.lower(`packet`),FfiConverterOptionalUShort.lower(`origin`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * `EXT_IDENTIFY`: blink the device's LED for `seconds` (0 stops it; over
+     * 120 the firmware shortens to 120) and, with `tone_output`, play its
+     * quiet identify tone ([`IDENTIFY_TONE_DBFS`], 400 ms) on that output.
+     * Leave `tone_output` empty unless the user asked for sound.
+     *
+     * Errors, with no traffic: `Disconnected`; `Unsupported` when the device
+     * did not list it; `InvalidArgument` for a tone output past the
+     * device's outputs; `ReadOnly` on a read-only connection. From the
+     * device: `Refused { status: EXT_WRITE_REFUSED }` when it stalls (a tone
+     * while its signal generator runs); `Denied`, `Locked` or `Transfer`
+     * from the link.
+     */
+    @Throws(DspiException::class)override fun `identify`(`seconds`: kotlin.UByte, `toneOutput`: kotlin.UByte?)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_identify(
+        it, FfiConverterUByte.lower(`seconds`),FfiConverterOptionalUByte.lower(`toneOutput`),_status)
 }
     }
     
@@ -10729,6 +10993,24 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * The reset readout as the connect probe found it, without traffic:
+     * `None` when the device has no `EXT_RESET_INFO` or the read failed.
+     * Its uptime is the one at connect. `Disconnected` without a device.
+     */
+    @Throws(DspiException::class)override fun `resetInfoAtConnect`(): DeviceResetInfo? {
+            return FfiConverterOptionalTypeDeviceResetInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_reset_info_at_connect(
+        it, _status)
+}
+    }
+    )
+    }
     
 
     
@@ -15707,6 +15989,100 @@ public object FfiConverterTypeDeviceInfo: FfiConverterRustBuffer<DeviceInfo> {
 
 
 /**
+ * What `EXT_RESET_INFO` reports: why the device last restarted.
+ */
+data class DeviceResetInfo (
+    /**
+     * A stable name: `power_on`, `brownout`, `run_pin`, `watchdog`,
+     * `software`, `debugger`, `glitch` or `unknown`.
+     */
+    var `reason`: kotlin.String, 
+    /**
+     * The firmware's reason code (reset_info.h), for a code this build does
+     * not know too.
+     */
+    var `reasonCode`: kotlin.UByte, 
+    /**
+     * The reason in words.
+     */
+    var `description`: kotlin.String, 
+    /**
+     * Seconds since that restart.
+     */
+    var `uptimeS`: kotlin.UInt, 
+    /**
+     * How long the run before it lasted, in seconds; `None` after a power-on
+     * or a brown-out, which clear the record.
+     */
+    var `prevUptimeS`: kotlin.UInt?, 
+    /**
+     * Watchdog hangs this power session not yet acted on (the core voltage
+     * extension's count).
+     */
+    var `hangCount`: kotlin.UByte, 
+    /**
+     * `RP2040` or `RP2350`.
+     */
+    var `chip`: kotlin.String, 
+    /**
+     * The raw reset-cause register at boot, for a support report.
+     */
+    var `chipReset`: kotlin.UInt, 
+    /**
+     * The raw `WATCHDOG.REASON` at boot (bit 8: the firmware's own timeout).
+     */
+    var `watchdogReason`: kotlin.UInt
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeDeviceResetInfo: FfiConverterRustBuffer<DeviceResetInfo> {
+    override fun read(buf: ByteBuffer): DeviceResetInfo {
+        return DeviceResetInfo(
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: DeviceResetInfo) = (
+            FfiConverterString.allocationSize(value.`reason`) +
+            FfiConverterUByte.allocationSize(value.`reasonCode`) +
+            FfiConverterString.allocationSize(value.`description`) +
+            FfiConverterUInt.allocationSize(value.`uptimeS`) +
+            FfiConverterOptionalUInt.allocationSize(value.`prevUptimeS`) +
+            FfiConverterUByte.allocationSize(value.`hangCount`) +
+            FfiConverterString.allocationSize(value.`chip`) +
+            FfiConverterUInt.allocationSize(value.`chipReset`) +
+            FfiConverterUInt.allocationSize(value.`watchdogReason`)
+    )
+
+    override fun write(value: DeviceResetInfo, buf: ByteBuffer) {
+            FfiConverterString.write(value.`reason`, buf)
+            FfiConverterUByte.write(value.`reasonCode`, buf)
+            FfiConverterString.write(value.`description`, buf)
+            FfiConverterUInt.write(value.`uptimeS`, buf)
+            FfiConverterOptionalUInt.write(value.`prevUptimeS`, buf)
+            FfiConverterUByte.write(value.`hangCount`, buf)
+            FfiConverterString.write(value.`chip`, buf)
+            FfiConverterUInt.write(value.`chipReset`, buf)
+            FfiConverterUInt.write(value.`watchdogReason`, buf)
+    }
+}
+
+
+
+/**
  * A file a client adds to a diagnostics bundle (`client/<name>` in the
  * zip): its own log, `uconsole doctor`'s report.
  */
@@ -17229,6 +17605,83 @@ public object FfiConverterTypeI2cConfig: FfiConverterRustBuffer<I2cConfig> {
             FfiConverterUByte.write(value.`sdaPin`, buf)
             FfiConverterUByte.write(value.`sclPin`, buf)
             FfiConverterUByte.write(value.`address`, buf)
+    }
+}
+
+
+
+/**
+ * What `EXT_IDENTIFY` reports: the blink state and what the board is.
+ */
+data class IdentifyInfo (
+    /**
+     * Blink time left in seconds, rounded up; 0 when not blinking.
+     */
+    var `remainingS`: kotlin.UByte, 
+    /**
+     * The output of the last identify tone since the device started.
+     */
+    var `lastToneOutput`: kotlin.UByte?, 
+    /**
+     * `RP2040` or `RP2350` (`chip N` for a value this build does not know).
+     */
+    var `chip`: kotlin.String, 
+    /**
+     * The SDK's chip revision number.
+     */
+    var `chipRev`: kotlin.UByte, 
+    /**
+     * The raw `SYSINFO.CHIP_ID` register.
+     */
+    var `chipId`: kotlin.UInt, 
+    /**
+     * The board the firmware was built for (`pico`, `pico2`).
+     */
+    var `board`: kotlin.String, 
+    /**
+     * The hardware revision the firmware build was given; empty when the
+     * build set none (the firmware cannot sense it).
+     */
+    var `hwRev`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeIdentifyInfo: FfiConverterRustBuffer<IdentifyInfo> {
+    override fun read(buf: ByteBuffer): IdentifyInfo {
+        return IdentifyInfo(
+            FfiConverterUByte.read(buf),
+            FfiConverterOptionalUByte.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: IdentifyInfo) = (
+            FfiConverterUByte.allocationSize(value.`remainingS`) +
+            FfiConverterOptionalUByte.allocationSize(value.`lastToneOutput`) +
+            FfiConverterString.allocationSize(value.`chip`) +
+            FfiConverterUByte.allocationSize(value.`chipRev`) +
+            FfiConverterUInt.allocationSize(value.`chipId`) +
+            FfiConverterString.allocationSize(value.`board`) +
+            FfiConverterString.allocationSize(value.`hwRev`)
+    )
+
+    override fun write(value: IdentifyInfo, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`remainingS`, buf)
+            FfiConverterOptionalUByte.write(value.`lastToneOutput`, buf)
+            FfiConverterString.write(value.`chip`, buf)
+            FfiConverterUByte.write(value.`chipRev`, buf)
+            FfiConverterUInt.write(value.`chipId`, buf)
+            FfiConverterString.write(value.`board`, buf)
+            FfiConverterString.write(value.`hwRev`, buf)
     }
 }
 
@@ -20238,6 +20691,77 @@ public object FfiConverterTypeUpmixStatus: FfiConverterRustBuffer<UpmixStatus> {
 
 
 /**
+ * The device's USB error counters (`REQ_GET_USB_ERROR_STATS` 0xB2,
+ * registry `diag.usb`): six `u32` since boot or the last reset
+ * (`diag.usb.reset`). Current firmware reports them all as zero.
+ */
+data class UsbErrorStats (
+    /**
+     * Every error counted.
+     */
+    var `total`: kotlin.UInt, 
+    /**
+     * CRC errors.
+     */
+    var `crc`: kotlin.UInt, 
+    /**
+     * Bit-stuffing errors.
+     */
+    var `bitstuff`: kotlin.UInt, 
+    /**
+     * Receive overflows.
+     */
+    var `rxOverflow`: kotlin.UInt, 
+    /**
+     * Receive timeouts.
+     */
+    var `rxTimeout`: kotlin.UInt, 
+    /**
+     * Data sequence errors.
+     */
+    var `dataSeq`: kotlin.UInt
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeUsbErrorStats: FfiConverterRustBuffer<UsbErrorStats> {
+    override fun read(buf: ByteBuffer): UsbErrorStats {
+        return UsbErrorStats(
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: UsbErrorStats) = (
+            FfiConverterUInt.allocationSize(value.`total`) +
+            FfiConverterUInt.allocationSize(value.`crc`) +
+            FfiConverterUInt.allocationSize(value.`bitstuff`) +
+            FfiConverterUInt.allocationSize(value.`rxOverflow`) +
+            FfiConverterUInt.allocationSize(value.`rxTimeout`) +
+            FfiConverterUInt.allocationSize(value.`dataSeq`)
+    )
+
+    override fun write(value: UsbErrorStats, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`total`, buf)
+            FfiConverterUInt.write(value.`crc`, buf)
+            FfiConverterUInt.write(value.`bitstuff`, buf)
+            FfiConverterUInt.write(value.`rxOverflow`, buf)
+            FfiConverterUInt.write(value.`rxTimeout`, buf)
+            FfiConverterUInt.write(value.`dataSeq`, buf)
+    }
+}
+
+
+
+/**
  * The flow as a client shows it.
  */
 data class VregCalView (
@@ -22021,6 +22545,38 @@ public object FfiConverterOptionalTypeCoreVregInfo: FfiConverterRustBuffer<CoreV
         } else {
             buf.put(1)
             FfiConverterTypeCoreVregInfo.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeDeviceResetInfo: FfiConverterRustBuffer<DeviceResetInfo?> {
+    override fun read(buf: ByteBuffer): DeviceResetInfo? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeDeviceResetInfo.read(buf)
+    }
+
+    override fun allocationSize(value: DeviceResetInfo?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeDeviceResetInfo.allocationSize(value)
+        }
+    }
+
+    override fun write(value: DeviceResetInfo?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeDeviceResetInfo.write(value, buf)
         }
     }
 }

@@ -254,7 +254,13 @@ impl DspiCore {
             .core_vreg
             .as_ref()
             .map(|v| (v.uptime_s, v.hang_count));
-        let opened = crate::events::Opened::new(&conn.serial, conn.caps.kind, &mirror, vreg);
+        // -- WP CS1 -- what `reset_info_at_connect` answers.
+        let reset = conn
+            .ext
+            .reset_info
+            .as_ref()
+            .map(crate::ext_diag::reset_info);
+        let opened = crate::events::Opened::new(&conn.serial, conn.caps.kind, &mirror, vreg, reset);
         let (displaced, worker) = {
             let mut inner = self.lock();
             inner.state = mirror;
@@ -493,6 +499,34 @@ impl DspiCore {
     /// A client's read-only mode keeps this from moving.
     pub fn read_only_refusals(&self) -> u32 {
         self.lock().read_only_refusals
+    }
+}
+
+// -- WP QP11 -- (exported: WP QPI2)
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl DspiCore {
+    /// Whether the connect probe found feature `name` on the open device
+    /// (`dspi_session::probe`'s names: `spdif_multi_input`, `adat_input`,
+    /// `i2s_slave_clock`, ...), so a client hides what the firmware lacks
+    /// without comparing versions. `i2s_clock_pin_mode`, which has no probe,
+    /// answers whether the parameter image carried the clock-pin mode. False
+    /// with no device, before the probe, and for a name the probe does not
+    /// know.
+    pub fn feature_present(&self, name: &str) -> bool {
+        self.ensure_probed();
+        let mut inner = self.lock();
+        if name == "i2s_clock_pin_mode" {
+            return inner.conn.is_some() && inner.state.i2s_clock_pin_mode_present;
+        }
+        let Ok(conn) = inner.conn() else {
+            return false;
+        };
+        conn.session().is_ok_and(|s| {
+            s.capabilities()
+                .features
+                .iter()
+                .any(|f| f.name == name && f.present)
+        })
     }
 }
 
@@ -1320,5 +1354,37 @@ mod tests_wp_f1 {
             Mutex::new(Vec::new()),
         )));
         assert_eq!(failed.send(&[]), Err(PipeError::Failed("busy".into())));
+    }
+}
+
+// -- WP QP11 --
+#[cfg(test)]
+mod tests_wp_qp11 {
+    use super::*;
+
+    #[test]
+    fn wp_qp11_no_device_has_no_features() {
+        let core = DspiCore::new();
+        assert!(!core.feature_present("input_source"));
+        assert!(!core.feature_present("i2s_clock_pin_mode"));
+    }
+
+    #[test]
+    fn wp_qp11_features_follow_the_probe() {
+        let core = DspiCore::new();
+        core.open_demo().unwrap();
+        // The demo is current firmware: the hardware pages' features answer
+        for name in [
+            "input_source",
+            "spdif_multi_input",
+            "i2s_input_channels",
+            "dac_hardware_mute",
+            "output_latency",
+        ] {
+            assert!(core.feature_present(name), "{name}");
+        }
+        assert!(core.feature_present("i2s_clock_pin_mode"));
+        assert!(!core.feature_present("no_such_feature"));
+        assert!(!core.feature_present(""));
     }
 }

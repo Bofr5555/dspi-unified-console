@@ -71,6 +71,16 @@ public enum DspiConstants {
     public static let WIRE_FORMAT_VERSION: UInt8 = 32
     /// `dspi_proto::wire_compat::MIN_WIRE_FORMAT_VERSION`.
     public static let MIN_WIRE_FORMAT_VERSION: UInt8 = 16
+    /// `dspi_proto::wire_compat::feat::LEVELLER_MASKS`.
+    public static let WIRE_FEAT_LEVELLER_MASKS: UInt32 = 1 << 1
+    /// `dspi_proto::wire_compat::feat::LOUDNESS_MASK`.
+    public static let WIRE_FEAT_LOUDNESS_MASK: UInt32 = 1 << 2
+    /// `dspi_proto::wire_compat::feat::CROSSFEED_MASK`.
+    public static let WIRE_FEAT_CROSSFEED_MASK: UInt32 = 1 << 3
+    /// `dspi_proto::wire_compat::feat::UPMIX_PRESENCE`.
+    public static let WIRE_FEAT_UPMIX_PRESENCE: UInt32 = 1 << 9
+    /// `dspi_proto::wire_compat::feat::SUBHARM_EXT`.
+    public static let WIRE_FEAT_SUBHARM_EXT: UInt32 = 1 << 12
     /// `dspi_proto::wire_compat::feat::PSYBASS`.
     public static let WIRE_FEAT_PSYBASS: UInt32 = 1 << 6
     /// `dspi_proto::wire_compat::feat::UPMIX`.
@@ -449,6 +459,12 @@ public enum DspiConstants {
     public static let EXT_CORE_VREG: UInt16 = 0x0002
     /// IN: uint32 LE NOTIFY_FEAT_* flags (notify.h); no OUT
     public static let EXT_NOTIFY_FEATURES: UInt16 = 0x0003
+    /// IN: IdentifyStatus (56 B); OUT: IdentifyRequest (4 B) (identify.h)
+    public static let EXT_IDENTIFY: UInt16 = 0x0004
+    /// IN: ResetInfo (20 B) (reset_info.h); no OUT
+    public static let EXT_RESET_INFO: UInt16 = 0x0005
+    /// IN: uint32 LE FW_FIX_* flags; no OUT
+    public static let EXT_FIRMWARE_FIXES: UInt16 = 0x0006
 
     // ── firmware notify.h ──
     /// v1 legacy master-volume packet (8 bytes: [0x01, 0, 0, 0, float_db_LE]).
@@ -479,9 +495,12 @@ public enum DspiConstants {
     public static let NOTIFY_EVT_RTA_CONFIG: UInt8 = 0x0D
     /// v2 board name stored (REQ_SET_DEVICE_NAME); same layout as 0x0F with
     public static let NOTIFY_EVT_INPUT_SOURCE_NAME: UInt8 = 0x0F
-    /// v2 protocol version byte (first byte of every v2 packet)
+    /// 0xE0..0xEF: fork extension events (extension_channel_spec.md, section 2.4).
     public static let NOTIFY_EVT_DEVICE_NAME: UInt8 = 0x10
+    public static let NOTIFY_EVT_EXT_CLIP: UInt8 = 0xE0
+    /// NOTIFY_EVT_EXT_CLIP (0xE0) is sent when a clip flag sets, rate-limited to
     public static let NOTIFY_FEAT_BULK_SOURCE: UInt32 = 1 << 0
+    public static let NOTIFY_FEAT_CLIP_EVENT: UInt32 = 1 << 1
 }
 
 /// Vendor request opcodes (`REQ_*`, the bRequest byte).

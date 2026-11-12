@@ -46,6 +46,8 @@ mod link_text;
 mod events;
 // -- WP P0E --
 mod diag;
+// -- WP FWX --
+mod ext_diag;
 
 // ── Replies ──────────────────────────────────────────────────────────
 
@@ -703,6 +705,19 @@ pub extern "C" fn dspi_fetch_buffer_stats(core: *mut FfiCore, out: *mut BufferSt
     })
 }
 
+// -- WP CS1 --
+/// The device's USB error counters (`REQ_GET_USB_ERROR_STATS`), in JSON:
+/// `{ok, total, crc, bitstuff, rxOverflow, rxTimeout, dataSeq}`, or a
+/// failure. Current firmware reports zeros.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_fetch_usb_error_stats(
+    core: *mut FfiCore,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| json_reply(c.fetch_usb_error_stats()))
+}
+
 /// Reset the buffer statistics' watermarks.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_reset_buffer_stats(core: *mut FfiCore) -> bool {
@@ -1203,6 +1218,45 @@ pub extern "C" fn dspi_read_only_refusals(core: *mut FfiCore) -> u32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_wire_features(core: *mut FfiCore) -> u32 {
     with_core(core, 0, |h| h.core.wire_features())
+}
+
+// -- WP QP11 --
+/// Whether the connect probe found feature `name` on the open device (the
+/// probe's names: `spdif_multi_input`, `adat_input`, `i2s_slave_clock`, ...;
+/// `i2s_clock_pin_mode`: the parameter image carries the clock-pin mode).
+/// False with no device, for a null name and for a name the probe lacks.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_feature_present(core: *mut FfiCore, name: *const c_char) -> bool {
+    let Some(name) = c_str(name) else {
+        return false;
+    };
+    with_core(core, false, |h| h.core.feature_present(name))
+}
+
+// -- WP QP16 --
+/// The last call that failed on the calling thread, as its failure reply
+/// (`{ok: false, code, error}`: the core's own sentence), or `{ok: true}`
+/// when none failed since the last take. It is taken (cleared) only when the
+/// reply fits in `len`. For a client that wants the reason after a `bool`
+/// setter returned false: take it once before the call to clear an older one,
+/// then again after. Takes no handle; never fails.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_take_failure(buf: *mut c_char, len: u32) -> u32 {
+    guard(0, || {
+        let reply = |e: Option<DspiError>| match e {
+            Some(e) => json_reply::<()>(Err(e)),
+            None => json!({ "ok": true }).to_string(),
+        };
+        let needed = copy_text(
+            &reply(crate::fns_device::last_failure(false)),
+            ptr::null_mut(),
+            0,
+        );
+        if buf.is_null() || needed > len {
+            return needed;
+        }
+        copy_text(&reply(crate::fns_device::last_failure(true)), buf, len)
+    })
 }
 
 // ── Diagnostics ──────────────────────────────────────────────────────
@@ -1809,6 +1863,9 @@ mod tests_wp_cg36;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p0w;
+// -- WP CS1 --
+#[cfg(test)]
+mod tests_wp_cs1;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_q2b;
@@ -1824,6 +1881,10 @@ mod tests_wp_qd5;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_qd6;
+// -- WP QP16 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_qp16;
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]

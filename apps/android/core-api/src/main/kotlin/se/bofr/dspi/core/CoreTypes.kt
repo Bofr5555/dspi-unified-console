@@ -2025,6 +2025,38 @@ data class DiagOptions(
 )
 
 /**
+ * The device's USB error counters (`REQ_GET_USB_ERROR_STATS` 0xB2,
+ * registry `diag.usb`): six `u32` since boot or the last reset
+ * (`diag.usb.reset`). Current firmware reports them all as zero.
+ */
+data class UsbErrorStats(
+    /**
+     * Every error counted.
+     */
+    val total: Long,
+    /**
+     * CRC errors.
+     */
+    val crc: Long,
+    /**
+     * Bit-stuffing errors.
+     */
+    val bitstuff: Long,
+    /**
+     * Receive overflows.
+     */
+    val rxOverflow: Long,
+    /**
+     * Receive timeouts.
+     */
+    val rxTimeout: Long,
+    /**
+     * Data sequence errors.
+     */
+    val dataSeq: Long,
+)
+
+/**
  * One GET the host is asked to make.
  */
 data class AutoEqFetchRequest(
@@ -2145,6 +2177,87 @@ data class AutoEqRebuildProgress(
      * Folders with no usable profile, which is normal upstream.
      */
     val skippedProfiles: Long,
+)
+
+/**
+ * What `EXT_IDENTIFY` reports: the blink state and what the board is.
+ */
+data class IdentifyInfo(
+    /**
+     * Blink time left in seconds, rounded up; 0 when not blinking.
+     */
+    val remainingS: Int,
+    /**
+     * The output of the last identify tone since the device started.
+     */
+    val lastToneOutput: Int?,
+    /**
+     * `RP2040` or `RP2350` (`chip N` for a value this build does not know).
+     */
+    val chip: String,
+    /**
+     * The SDK's chip revision number.
+     */
+    val chipRev: Int,
+    /**
+     * The raw `SYSINFO.CHIP_ID` register.
+     */
+    val chipId: Long,
+    /**
+     * The board the firmware was built for (`pico`, `pico2`).
+     */
+    val board: String,
+    /**
+     * The hardware revision the firmware build was given; empty when the
+     * build set none (the firmware cannot sense it).
+     */
+    val hwRev: String,
+)
+
+/**
+ * What `EXT_RESET_INFO` reports: why the device last restarted.
+ */
+data class DeviceResetInfo(
+    /**
+     * A stable name: `power_on`, `brownout`, `run_pin`, `watchdog`,
+     * `software`, `debugger`, `glitch` or `unknown`.
+     */
+    val reason: String,
+    /**
+     * The firmware's reason code (reset_info.h), for a code this build does
+     * not know too.
+     */
+    val reasonCode: Int,
+    /**
+     * The reason in words.
+     */
+    val description: String,
+    /**
+     * Seconds since that restart.
+     */
+    val uptimeS: Long,
+    /**
+     * How long the run before it lasted, in seconds; `None` after a power-on
+     * or a brown-out, which clear the record.
+     */
+    val prevUptimeS: Long?,
+    /**
+     * Watchdog hangs this power session not yet acted on (the core voltage
+     * extension's count).
+     */
+    val hangCount: Int,
+    /**
+     * `RP2040` or `RP2350`.
+     */
+    val chip: String,
+    /**
+     * The raw reset-cause register at boot, for a support report.
+     */
+    val chipReset: Long,
+    /**
+     * The raw `WATCHDOG.REASON` at boot (bit 8: the firmware's own timeout).
+     */
+    val watchdogReason: Long,
 )
 
 /**

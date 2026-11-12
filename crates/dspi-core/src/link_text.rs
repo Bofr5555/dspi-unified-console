@@ -1154,7 +1154,7 @@ mod tests_wp_qd32 {
             "The graph can also show phase.",
             "Control Surfaces wire buttons, knobs, encoders",
             ".dspipreset) shared with the other Consoles",
-            "Stats for Nerds and Interrupt Monitor have been rebuilt",
+            "Stats for nerbs and Interrupt Monitor have been rebuilt",
             "Find it under Device > Firmware Update.",
         ];
         for line in QT_ONLY {

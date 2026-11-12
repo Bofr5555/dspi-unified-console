@@ -1394,6 +1394,31 @@
 #define MIN_WIRE_FORMAT_VERSION 16
 
 /**
+ * `dspi_proto::wire_compat::feat::LEVELLER_MASKS`.
+ */
+#define WIRE_FEAT_LEVELLER_MASKS (1 << 1)
+
+/**
+ * `dspi_proto::wire_compat::feat::LOUDNESS_MASK`.
+ */
+#define WIRE_FEAT_LOUDNESS_MASK (1 << 2)
+
+/**
+ * `dspi_proto::wire_compat::feat::CROSSFEED_MASK`.
+ */
+#define WIRE_FEAT_CROSSFEED_MASK (1 << 3)
+
+/**
+ * `dspi_proto::wire_compat::feat::UPMIX_PRESENCE`.
+ */
+#define WIRE_FEAT_UPMIX_PRESENCE (1 << 9)
+
+/**
+ * `dspi_proto::wire_compat::feat::SUBHARM_EXT`.
+ */
+#define WIRE_FEAT_SUBHARM_EXT (1 << 12)
+
+/**
  * `dspi_proto::wire_compat::feat::PSYBASS`.
  */
 #define WIRE_FEAT_PSYBASS (1 << 6)
@@ -4456,6 +4481,13 @@ bool dspi_fetch_stat(struct FfiCore *core, uint16_t which, uint32_t *out);
 bool dspi_fetch_buffer_stats(struct FfiCore *core, struct BufferStats *out);
 
 /**
+ * The device's USB error counters (`REQ_GET_USB_ERROR_STATS`), in JSON:
+ * `{ok, total, crc, bitstuff, rxOverflow, rxTimeout, dataSeq}`, or a
+ * failure. Current firmware reports zeros.
+ */
+uint32_t dspi_fetch_usb_error_stats(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * Reset the buffer statistics' watermarks.
  */
 bool dspi_reset_buffer_stats(struct FfiCore *core);
@@ -4702,6 +4734,24 @@ uint32_t dspi_read_only_refusals(struct FfiCore *core);
  * The open device's wire features (`WIRE_FEAT_*`); 0 without one.
  */
 uint32_t dspi_wire_features(struct FfiCore *core);
+
+/**
+ * Whether the connect probe found feature `name` on the open device (the
+ * probe's names: `spdif_multi_input`, `adat_input`, `i2s_slave_clock`, ...;
+ * `i2s_clock_pin_mode`: the parameter image carries the clock-pin mode).
+ * False with no device, for a null name and for a name the probe lacks.
+ */
+bool dspi_feature_present(struct FfiCore *core, const char *name);
+
+/**
+ * The last call that failed on the calling thread, as its failure reply
+ * (`{ok: false, code, error}`: the core's own sentence), or `{ok: true}`
+ * when none failed since the last take. It is taken (cleared) only when the
+ * reply fits in `len`. For a client that wants the reason after a `bool`
+ * setter returned false: take it once before the call to clear an older one,
+ * then again after. Takes no handle; never fails.
+ */
+uint32_t dspi_take_failure(char *buf, uint32_t len);
 
 /**
  * The output latency the device reports, in JSON: `{ok, raw, fields}`.
@@ -5262,6 +5312,31 @@ uint32_t dspi_diagnostics_save(struct FfiCore *core,
  * time>Z.zip`), for a Save dialog. Returns the bytes needed, NUL included.
  */
 uint32_t dspi_diagnostics_file_name(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Blink the device's LED for `seconds` (0 stops it; the firmware shortens
+ * more than 120 to 120). `tone_output` is an output for the quiet identify
+ * tone (1 kHz, -40 dBFS, 400 ms, through that output's whole chain), or
+ * 0xFF for none; pass 0xFF unless the user asked for sound. Returns a
+ * status byte, 0xFF on failure (unsupported, a tone output past the
+ * outputs, a read-only connection, a refusal).
+ */
+uint8_t dspi_identify(struct FfiCore *core, uint8_t seconds, uint8_t tone_output);
+
+/**
+ * The identify state and the board, in JSON (`remainingS`,
+ * `lastToneOutput`, `chip`, `chipRev`, `chipId`, `board`, `hwRev`), or a
+ * failure (`unsupported` without it).
+ */
+uint32_t dspi_fetch_identify(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Why the device last restarted, in JSON (`reason`, `reasonCode`,
+ * `description`, `uptimeS`, `prevUptimeS` (null after a power-on),
+ * `hangCount`, `chip`, `chipReset`, `watchdogReason`), or a failure
+ * (`unsupported` without it).
+ */
+uint32_t dspi_fetch_reset_info(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
  * Start looking for hubs on the local network, replacing any browse running.

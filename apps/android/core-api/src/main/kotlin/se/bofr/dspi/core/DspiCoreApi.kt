@@ -392,6 +392,17 @@ interface DspiCoreApi : AutoCloseable {
     fun openDemo()
 
     /**
+     * Whether the connect probe found feature `name` on the open device
+     * (`dspi_session::probe`'s names: `spdif_multi_input`, `adat_input`,
+     * `i2s_slave_clock`, ...), so a client hides what the firmware lacks
+     * without comparing versions. `i2s_clock_pin_mode`, which has no probe,
+     * answers whether the parameter image carried the clock-pin mode. False
+     * with no device, before the probe, and for a name the probe does not
+     * know.
+     */
+    fun featurePresent(name: String): Boolean
+
+    /**
      * Write a diagnostics bundle to `path`: one zip with versions, the open
      * device's dump, stats and monitor lines, every event log, the hub
      * store at `options.hub_store_dir` with its tokens and secrets removed,
@@ -557,6 +568,59 @@ interface DspiCoreApi : AutoCloseable {
     fun coreVregOp(op: Int, value: Int, word: String?)
 
     /**
+     * `EXT_IDENTIFY`: blink the device's LED for `seconds` (0 stops it; over
+     * 120 the firmware shortens to 120) and, with `tone_output`, play its
+     * quiet identify tone ([`IDENTIFY_TONE_DBFS`], 400 ms) on that output.
+     * Leave `tone_output` empty unless the user asked for sound.
+     *
+     * Errors, with no traffic: `Disconnected`; `Unsupported` when the device
+     * did not list it; `InvalidArgument` for a tone output past the
+     * device's outputs; `ReadOnly` on a read-only connection. From the
+     * device: `Refused { status: EXT_WRITE_REFUSED }` when it stalls (a tone
+     * while its signal generator runs); `Denied`, `Locked` or `Transfer`
+     * from the link.
+     */
+    @Throws(DspiException::class)
+    fun identify(seconds: Int, toneOutput: Int?)
+
+    /**
+     * Read `EXT_IDENTIFY`: the blink time left and the board description.
+     *
+     * `Unsupported`, with no traffic, when the device did not list it, and
+     * when the read stalls or a DSPi Link hub refuses it; `Disconnected`
+     * without a device; `Transfer` for a short or failed read.
+     */
+    @Throws(DspiException::class)
+    fun fetchIdentify(): IdentifyInfo
+
+    /**
+     * Read `EXT_RESET_INFO`: why the device last restarted, its uptime and
+     * the run before. Also refreshes the connection's copy from the probe.
+     *
+     * `Unsupported`, with no traffic, when the device did not list it, and
+     * when the read stalls or a DSPi Link hub refuses it; `Disconnected`
+     * without a device; `Transfer` for a short or failed read.
+     */
+    @Throws(DspiException::class)
+    fun fetchResetInfo(): DeviceResetInfo
+
+    /**
+     * The reset readout as the connect probe found it, without traffic:
+     * `None` when the device has no `EXT_RESET_INFO` or the read failed.
+     * Its uptime is the one at connect. `Disconnected` without a device.
+     */
+    @Throws(DspiException::class)
+    fun resetInfoAtConnect(): DeviceResetInfo?
+
+    /**
+     * Whether the device sends clip events (`EXT_NOTIFY_FEATURES` bit 1):
+     * then a clip shows without polling the meters fast. No traffic;
+     * `Disconnected` without a device.
+     */
+    @Throws(DspiException::class)
+    fun hasClipEvents(): Boolean
+
+    /**
      * The device's configuration as a `.dspipreset` document (JSON, schema
      * 1), from the mirror: no transfer. `name` and `app_version` go into
      * `meta`; `links` is the app's input-pair link mask (bit p: pair p),
@@ -590,9 +654,12 @@ interface DspiCoreApi : AutoCloseable {
      * are shortened to it. Channels the device lacks are named, not moved.
      *
      * Returns JSON. On success `{ok: true, error: "", lines, clean, links,
-     * hardwareWritten, leftAlone}`: `lines` is the report, `clean` false
-     * when anything was missing, skipped, left alone or shortened,
-     * `leftAlone` the keys left alone, `links` the input-pair link mask to
+     * hardwareWritten, leftAlone, outOfRange}`: `lines` is the report,
+     * `clean` false when anything was missing, skipped, left alone,
+     * shortened or out of range, `leftAlone` the keys left alone,
+     * `outOfRange` the numbers past what this device takes, each
+     * `{path, value, applied}` (registry path with indices, the document's
+     * value, the nearest end written instead; WP P0U's rows), `links` the input-pair link mask to
      * restore (null when the document has none), and `hardwareWritten`
      * whether I/O was changed while the device stores its output
      * configuration apart from presets (save that to keep it). Otherwise
@@ -2570,6 +2637,17 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun fetchSpdifRxPin(index: Int): Int
+
+    /**
+     * The device's USB error counters (`REQ_GET_USB_ERROR_STATS`, 24
+     * bytes): for the System Statistics window. A read, allowed on a
+     * read-only connection. Current firmware answers zeros.
+     *
+     * Errors: [`DspiError::Disconnected`]; a transfer failure, a stall or a
+     * short reply as [`DspiError::Transfer`].
+     */
+    @Throws(DspiException::class)
+    fun fetchUsbErrorStats(): UsbErrorStats
 
     /**
      * The calibration flow as it stands, from memory: no traffic. It waits

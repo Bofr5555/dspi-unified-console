@@ -781,6 +781,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_ext_status(void*_Nonnull ptr, Rus
 void uniffi_dspi_core_fn_method_dspicore_factory_reset(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FEATURE_PRESENT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FEATURE_PRESENT
+int8_t uniffi_dspi_core_fn_method_dspicore_feature_present(void*_Nonnull ptr, RustBuffer name, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_ADAT_OUT_STATUS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_ADAT_OUT_STATUS
 RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_adat_out_status(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -826,6 +831,11 @@ void uniffi_dspi_core_fn_method_dspicore_fetch_ctrl_ifaces(void*_Nonnull ptr, Ru
 void uniffi_dspi_core_fn_method_dspicore_fetch_dac_mute(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_IDENTIFY
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_IDENTIFY
+RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_identify(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_INPUT_LOCK
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_INPUT_LOCK
 RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_input_lock(void*_Nonnull ptr, uint8_t which, RustCallStatus *_Nonnull out_status
@@ -864,6 +874,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_output_latency_options(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_OUTPUT_PIN
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_OUTPUT_PIN
 uint8_t uniffi_dspi_core_fn_method_dspicore_fetch_output_pin(void*_Nonnull ptr, uint8_t slot, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_RESET_INFO
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_RESET_INFO
+RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_reset_info(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_RING_HEALTH
@@ -914,6 +929,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_subharm_meter(void*_Nonnull
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_UPMIX_STATUS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_UPMIX_STATUS
 RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_upmix_status(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_USB_ERROR_STATS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_USB_ERROR_STATS
+RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_usb_error_stats(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FILTERS_EXPORT
@@ -971,6 +991,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_get_preset_name(void*_Nonnull ptr
 RustBuffer uniffi_dspi_core_fn_method_dspicore_get_state(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HAS_CLIP_EVENTS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HAS_CLIP_EVENTS
+int8_t uniffi_dspi_core_fn_method_dspicore_has_clip_events(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HISTORY
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HISTORY
 RustBuffer uniffi_dspi_core_fn_method_dspicore_history(void*_Nonnull ptr, uint32_t n, RustCallStatus *_Nonnull out_status
@@ -979,6 +1004,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_history(void*_Nonnull ptr, uint32
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HOST_NOTIFY
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HOST_NOTIFY
 void uniffi_dspi_core_fn_method_dspicore_host_notify(void*_Nonnull ptr, RustBuffer packet, RustBuffer origin, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_IDENTIFY
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_IDENTIFY
+void uniffi_dspi_core_fn_method_dspicore_identify(void*_Nonnull ptr, uint8_t seconds, RustBuffer tone_output, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_INACCESSIBLE_DEVICES
@@ -1149,6 +1179,11 @@ void uniffi_dspi_core_fn_method_dspicore_refresh_params(void*_Nonnull ptr, RustC
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RESET_BUFFER_STATS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RESET_BUFFER_STATS
 void uniffi_dspi_core_fn_method_dspicore_reset_buffer_stats(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RESET_INFO_AT_CONNECT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RESET_INFO_AT_CONNECT
+RustBuffer uniffi_dspi_core_fn_method_dspicore_reset_info_at_connect(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RESET_METER_MAX
@@ -2835,6 +2870,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_factory_reset(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FEATURE_PRESENT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FEATURE_PRESENT
+uint16_t uniffi_dspi_core_checksum_method_dspicore_feature_present(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_ADAT_OUT_STATUS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_ADAT_OUT_STATUS
 uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_adat_out_status(void
@@ -2889,6 +2930,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_dac_mute(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_IDENTIFY
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_IDENTIFY
+uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_identify(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_INPUT_LOCK
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_INPUT_LOCK
 uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_input_lock(void
@@ -2934,6 +2981,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_output_latency_options(
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_OUTPUT_PIN
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_OUTPUT_PIN
 uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_output_pin(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_RESET_INFO
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_RESET_INFO
+uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_reset_info(void
     
 );
 #endif
@@ -2994,6 +3047,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_subharm_meter(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_UPMIX_STATUS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_UPMIX_STATUS
 uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_upmix_status(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_USB_ERROR_STATS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_USB_ERROR_STATS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_usb_error_stats(void
     
 );
 #endif
@@ -3063,6 +3122,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_get_state(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HAS_CLIP_EVENTS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HAS_CLIP_EVENTS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_has_clip_events(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HISTORY
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HISTORY
 uint16_t uniffi_dspi_core_checksum_method_dspicore_history(void
@@ -3072,6 +3137,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_history(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HOST_NOTIFY
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HOST_NOTIFY
 uint16_t uniffi_dspi_core_checksum_method_dspicore_host_notify(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_IDENTIFY
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_IDENTIFY
+uint16_t uniffi_dspi_core_checksum_method_dspicore_identify(void
     
 );
 #endif
@@ -3276,6 +3347,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_refresh_params(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_RESET_BUFFER_STATS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_RESET_BUFFER_STATS
 uint16_t uniffi_dspi_core_checksum_method_dspicore_reset_buffer_stats(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_RESET_INFO_AT_CONNECT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_RESET_INFO_AT_CONNECT
+uint16_t uniffi_dspi_core_checksum_method_dspicore_reset_info_at_connect(void
     
 );
 #endif

@@ -1483,6 +1483,36 @@ fn fit(
     })
 }
 
+// -- WP CS1 --
+/// A finite `value` for `path` held to what that parameter takes on
+/// `platform` (the rule [`apply`] uses, [`Session::write_range`]): the value
+/// itself when in range or not a number parameter, else the nearest end and
+/// its [`OutOfRange`] row. For an importer that builds a whole image instead
+/// of writing through a session (the core's `config_import`).
+pub fn clamp_to_range(
+    platform: dspi_proto::Platform,
+    path: &str,
+    indices: &[u8],
+    value: f32,
+) -> (f32, Option<OutOfRange>) {
+    let Some((min, max)) =
+        dspi_proto::registry::by_path(path).and_then(|d| crate::fast::write_range_on(platform, d))
+    else {
+        return (value, None);
+    };
+    let v = f64::from(value);
+    if !v.is_finite() || (min..=max).contains(&v) {
+        return (value, None);
+    }
+    let to = v.clamp(min, max);
+    let row = OutOfRange {
+        path: shown(path, indices),
+        value: v,
+        applied: Some(to),
+    };
+    (to as f32, Some(row))
+}
+
 /// Write one value from the document through [`fit`], and name a refusal in
 /// the report rather than drop it. An absent feature is the caller's to word
 /// (most say "not on this device"), and a transport failure is the whole

@@ -28,13 +28,13 @@ use crate::packets::MatrixRoutePacket;
 use crate::wire::WireHeader;
 
 /// Extension sub-command (`REQ_EXTENSION` `wValue`): IN, a `uint32` LE of
-/// firmware fixes a host may rely on. Spelled by hand: it matches bofr-main
-/// de9614c (`wp/FWFIX` merged; `config.h` `EXT_FIRMWARE_FIXES` and
-/// `FW_FIX_BULK_DB_POWF`), which the vendored headers are not pinned to yet.
-/// Switch both constants to the generated ones once they are.
-pub const EXT_FIRMWARE_FIXES: u16 = 0x0006;
+/// firmware fixes a host may rely on (`config.h` `EXT_FIRMWARE_FIXES`, from
+/// bofr-main de9614c, `wp/FWFIX` merged).
+pub const EXT_FIRMWARE_FIXES: u16 = generated::ext::EXT_FIRMWARE_FIXES;
 /// `EXT_FIRMWARE_FIXES` bit 0: a bulk SET converts dB with `powf`, so a host
-/// need not repair the gains after one.
+/// need not repair the gains after one. `config.h` `FW_FIX_BULK_DB_POWF`,
+/// spelled by hand: it is `(1u << 0)`, an expression the build script does
+/// not evaluate (as `NOTIFY_FEAT_*`).
 pub const FIX_BULK_DB_POWF: u32 = 1 << 0;
 
 /// A gain the series misses by at most this much is left as the bulk SET put
