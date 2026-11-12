@@ -45,6 +45,12 @@ class Poller : public QObject {
     QML_SINGLETON
     Q_PROPERTY(QVariantList peaks READ peaks NOTIFY metersChanged)
     Q_PROPERTY(uint clipFlags READ clipFlags NOTIFY metersChanged)
+    // -- WP QP18 -- the core's ballistics (P0M): the held peak per wire
+    // channel (the hold marker), the highest since the connection opened, and
+    // the clip hold (one bit per wire channel), which the clip marker shows
+    Q_PROPERTY(QVariantList peakHold READ peakHold NOTIFY metersChanged)
+    Q_PROPERTY(QVariantList peakMax READ peakMax NOTIFY metersChanged)
+    Q_PROPERTY(uint clipHold READ clipHold NOTIFY metersChanged)
     Q_PROPERTY(int cpu0 READ cpu0 NOTIFY statusChanged)
     Q_PROPERTY(int cpu1 READ cpu1 NOTIFY statusChanged)
     Q_PROPERTY(int activeInputs READ activeInputs NOTIFY statusChanged)
@@ -86,6 +92,9 @@ public:
 
     QVariantList peaks() const { return m_peaks; }
     uint clipFlags() const { return m_clipFlags; }
+    QVariantList peakHold() const { return m_peakHold; }   // -- WP QP18 --
+    QVariantList peakMax() const { return m_peakMax; }
+    uint clipHold() const { return m_clipHold; }
     int cpu0() const { return m_cpu0; }
     int cpu1() const { return m_cpu1; }
     int activeInputs() const { return m_activeInputs; }
@@ -130,6 +139,9 @@ private:
     bool m_slow = false;
     QVariantList m_peaks;
     uint m_clipFlags = 0;
+    QVariantList m_peakHold;   // -- WP QP18 --
+    QVariantList m_peakMax;
+    uint m_clipHold = 0;
     int m_cpu0 = 0;
     int m_cpu1 = 0;
     int m_activeInputs = 0;

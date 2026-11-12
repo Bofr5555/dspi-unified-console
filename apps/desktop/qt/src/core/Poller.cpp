@@ -27,11 +27,20 @@ Poller::Poller(Core *core, DeviceModel *device, QObject *parent) : QObject(paren
     m_meterPoll = add(QStringLiteral("meters"), 60, this, &readStatus, [this](const StatusRead &r) {
         if (!r.ok) return;
         const int n = qMin(int(r.status.num_channels), MAX_CHANNELS);
-        QVariantList peaks;
+        QVariantList peaks, hold, max;
         peaks.reserve(n);
-        for (int i = 0; i < n; ++i) peaks.append(double(r.status.peaks[i]));
+        hold.reserve(n);
+        max.reserve(n);
+        for (int i = 0; i < n; ++i) {
+            peaks.append(double(r.status.peaks[i]));
+            hold.append(double(r.status.peak_hold[i]));   // -- WP QP18 --
+            max.append(double(r.status.peak_max[i]));
+        }
         m_peaks = peaks;
         m_clipFlags = r.status.clip_flags;
+        m_peakHold = hold;
+        m_peakMax = max;
+        m_clipHold = r.status.clip_hold;
         emit metersChanged();
     });
     m_statusPoll = add(QStringLiteral("status"), 1000, this, &readStatus, [this](const StatusRead &r) {

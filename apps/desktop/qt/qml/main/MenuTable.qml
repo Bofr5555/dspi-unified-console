@@ -9,7 +9,8 @@ import UConsole
 // for Command and Alt for Option.
 //
 // A row: { id, text, shortcut (optional), optional (shown only while
-// Shell.handles(id)), platformHidden (a platform name it is hidden on) }.
+// Shell.handles(id)), platformHidden (a platform name it is hidden on),
+// enabled (optional: a function, bound to the row's and shortcut's enabled) }.
 // { separator: true } is a line; { submenu: "<title>", rows: [...] } nests.
 // Work packages add rows under their own marker; ids are "<menu>.<name>".
 QtObject {
@@ -32,6 +33,11 @@ QtObject {
         {
             title: qsTr("&Edit"),
             rows: [
+                // -- WP QP18 -- the core's change journal (HistoryController)
+                { id: "edit.undo", text: qsTr("Undo"), shortcut: "Ctrl+Z", enabled: () => HistoryController.canUndo },
+                { id: "edit.redo", text: qsTr("Redo"), shortcut: "Ctrl+Shift+Z", enabled: () => HistoryController.canRedo },
+                { id: "edit.history", text: qsTr("History..."), shortcut: "Ctrl+Shift+H" },
+                { separator: true },
                 { id: "edit.cut", text: qsTr("Cut"), shortcut: "Ctrl+X" },
                 { id: "edit.copy", text: qsTr("Copy"), shortcut: "Ctrl+C" },
                 { id: "edit.paste", text: qsTr("Paste"), shortcut: "Ctrl+V" },
@@ -44,9 +50,21 @@ QtObject {
         {
             title: qsTr("&Device"),
             rows: [
-                { id: "device.commit", text: qsTr("Commit Parameters...") },
-                { id: "device.revert", text: qsTr("Revert to Saved...") },
+                // -- WP QP18 -- Commit and Revert get shortcuts (owner, 2026-11-12)
+                { id: "device.commit", text: qsTr("Commit Parameters..."), shortcut: "Ctrl+S" },
+                { id: "device.revert", text: qsTr("Revert to Saved..."), shortcut: "Ctrl+Shift+R" },
                 { id: "device.factoryReset", text: qsTr("Factory Reset...") },
+                { separator: true },
+                // -- WP QP18 -- presets 1-9, mute and bypass from the keyboard (ShortcutController)
+                {
+                    submenu: qsTr("Recall Preset"),
+                    rows: [1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => ({
+                        //: %1 is a preset slot's number
+                        id: "device.preset" + n, text: qsTr("Preset %1").arg(n), shortcut: "Ctrl+" + n
+                    }))
+                },
+                { id: "device.mute", text: qsTr("Mute"), shortcut: "Ctrl+M" },
+                { id: "device.bypass", text: qsTr("Bypass Master EQ"), shortcut: "Ctrl+B" },
                 { separator: true },
                 { id: "device.firmwareUpdate", text: qsTr("Firmware Update..."), platformHidden: "STM32H723" },
                 { separator: true },
@@ -90,7 +108,10 @@ QtObject {
             title: qsTr("&Window"),
             rows: [
                 { id: "window.minimiseToTray", text: qsTr("Minimise to Tray"), shortcut: "Ctrl+Alt+M" },
-                { id: "window.popOutGraph", text: qsTr("Pop Out Graph") }
+                { id: "window.popOutGraph", text: qsTr("Pop Out Graph") },
+                // -- WP QP18 -- docs/UI-MODES.md §5 (ModeController)
+                { separator: true },
+                { id: "window.mode", text: qsTr("Mode...") }
             ]
         },
         {
@@ -121,7 +142,7 @@ QtObject {
         const walk = list => {
             for (const r of list) {
                 if (r.rows) walk(r.rows)
-                else if (r.id && r.shortcut) rows.push({ id: r.id, shortcut: r.shortcut })
+                else if (r.id && r.shortcut) rows.push({ id: r.id, shortcut: r.shortcut, enabled: r.enabled })
             }
         }
         for (const m of menus) walk(m.rows)
@@ -140,6 +161,12 @@ QtObject {
     })
     function trigger(window, id) {
         const target = window ? window.activeFocusItem : null
+        // -- WP QP18 -- Undo and Redo: the focused field's own typing first
+        if (target && ((id === "edit.undo" && target.canUndo) || (id === "edit.redo" && target.canRedo))) {
+            if (id === "edit.undo") target.undo()
+            else target.redo()
+            return
+        }
         const op = textEdits[id]
         if (op && target && target.selectionStart !== undefined && typeof target.selectAll === "function") {
             if (op === "delete") target.remove(target.selectionStart, target.selectionEnd)

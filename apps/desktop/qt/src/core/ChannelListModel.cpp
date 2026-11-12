@@ -55,8 +55,11 @@ QVariant ChannelListModel::get(int row, const QString &role) const {
 
 // -- WP QPI2 -- The input strips the source feeds (the Mac's
 // effectiveInputChannels): S/PDIF 2, I2S its channel count, ADAT 8; USB the
-// device's count until QP18 brings the host's audio format. At least the
-// stereo pair, at most the device's inputs.
+// OS's format (QP18, HostAudioFormat), or the device's count when the OS
+// gives none. At least the stereo pair, at most the device's inputs.
+static int s_hostInputs = 0;   // -- WP QP18 --
+void ChannelListModel::setHostInputs(int channels) { s_hostInputs = channels; }
+
 int ChannelListModel::effectiveInputs(const DspState &s) {
     const int device = qBound(2, int(s.num_input_channels), MAX_INPUTS);
     int fed = device;
@@ -64,7 +67,7 @@ int ChannelListModel::effectiveInputs(const DspState &s) {
     case 1: case 4: case 5: case 6: fed = 2; break;          // S/PDIF 1-4
     case 2: fed = int(s.i2s_input_channels); break;           // I2S
     case 3: fed = 8; break;                                   // ADAT
-    default: break;                                           // USB
+    default: if (s_hostInputs > 0) fed = s_hostInputs; break; // USB
     }
     return qBound(2, fed, device);
 }

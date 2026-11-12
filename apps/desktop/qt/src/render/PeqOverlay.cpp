@@ -1524,8 +1524,10 @@ bool PeqOverlay::takesKey(const QKeyEvent *ev) const {
     case Qt::Key_Return:
     case Qt::Key_Enter:
     case Qt::Key_Menu: return true;
+    // -- WP QP18 -- With nothing selected Tab leaves the graph (WCAG 2.1.2: no
+    // keyboard trap); Escape deselects, so Escape then Tab always gets out
     case Qt::Key_Tab:
-    case Qt::Key_Backtab: return !graphBands().isEmpty();
+    case Qt::Key_Backtab: return !graphBands().isEmpty() && !selection().isEmpty();
     case Qt::Key_F10: return mods == Qt::ShiftModifier;
     case Qt::Key_A: return mods == kCommand;
     default: return false;
@@ -1568,7 +1570,11 @@ void PeqOverlay::keyPressEvent(QKeyEvent *ev) {
     case Qt::Key_Left:
     case Qt::Key_Right:
     case Qt::Key_Up:
-    case Qt::Key_Down: nudge(ev->key(), mods); break;
+    case Qt::Key_Down:
+        // -- WP QP18 -- with nothing selected an arrow picks a band (Tab then leaves)
+        if (selection().isEmpty()) stepSelection(ev->key() == Qt::Key_Left || ev->key() == Qt::Key_Up);
+        else nudge(ev->key(), mods);
+        break;
     case Qt::Key_Return:
     case Qt::Key_Enter: {
         // Type the values of the band the chip stays on, as a double-click does

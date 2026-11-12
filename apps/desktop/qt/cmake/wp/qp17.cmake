@@ -38,14 +38,6 @@ endforeach()
 set_property(SOURCE src/controllers/OnboardingController.cpp APPEND PROPERTY
     COMPILE_DEFINITIONS "DSPI_BUNDLED_FIRMWARE=\"${DSPI_QP17_FIRMWARE}\"")
 
-# Help > Save Diagnostics... needs the core's dspi_diagnostics_save (P0E); a
-# core without it builds the app with the row hidden
-file(STRINGS "${DSPI_CAPI_INCLUDE}/dspi_core.h" DSPI_QP17_DIAG REGEX "dspi_diagnostics_save\\(")
-if(DSPI_QP17_DIAG)
-    set_property(SOURCE src/controllers/OnboardingController.cpp APPEND PROPERTY
-        COMPILE_DEFINITIONS DSPI_HAVE_DIAGNOSTICS)
-endif()
-
 # The checker's requests
 list(APPEND DSPI_QT_COMPONENTS Network)
 list(APPEND DSPI_APP_LIBS Qt6::Network)

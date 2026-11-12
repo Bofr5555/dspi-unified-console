@@ -36,8 +36,11 @@ AppMenuBar {
             } else {
                 const id = row.id
                 const shown = row.optional ? Shell.handles(id) : true
-                const action = actionComponent.createObject(menu, { text: row.text, shortcut: row.shortcut || "" })
+                // -- WP QP18 -- owned by the bar, an item of the window: a submenu's
+                // action finds no window through its menu, and its shortcut would not work
+                const action = actionComponent.createObject(bar, { text: row.text, shortcut: row.shortcut || "" })
                 action.triggered.connect(() => bar.triggerRow(id))
+                if (row.enabled) action.enabled = Qt.binding(row.enabled)   // -- WP QP18 --
                 if (row.platformHidden) {
                     const hidden = row.platformHidden
                     action.enabled = Qt.binding(() => DeviceModel.platformName !== hidden)

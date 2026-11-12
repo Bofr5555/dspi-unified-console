@@ -118,6 +118,7 @@ private:
 class WasapiBackend : public Backend {
 public:
     ~WasapiBackend() override { WasapiBackend::stopWatching(); }
+    bool notifies() const override { return true; }
 
     std::vector<Endpoint> read() override {
         // A worker thread of ours: it joins the multithreaded apartment for this read

@@ -15,6 +15,7 @@ Item {
             required property var modelData
             sequences: [modelData.shortcut]
             context: Qt.WindowShortcut
+            enabled: modelData.enabled ? modelData.enabled() : true   // -- WP QP18 --
             onActivated: MenuTable.trigger(shortcuts.window, modelData.id)
         }
     }

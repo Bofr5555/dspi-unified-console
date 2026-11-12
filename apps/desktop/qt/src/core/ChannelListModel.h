@@ -41,6 +41,9 @@ public:
     // The wire's input count (where the outputs start) is DspState's.
     int inputCount() const;
     static int effectiveInputs(const DspState &s); // -- WP QPI2 --
+    // -- WP QP18 -- The OS's channel count to the open DSPi (HostAudioFormat),
+    // 0 when it gives none: on USB it decides the input strips
+    static void setHostInputs(int channels);
 
     // The row of a wire channel, -1 if none.
     Q_INVOKABLE int rowOfChannel(int channel) const;

@@ -3,6 +3,7 @@
 // configuration out and back in with its options and report, the two saves,
 // and the unsaved-changes question before a device switch, quitting and
 // closing the window. Every change is undone before the section ends.
+#include "Qp18Notices.h"   // -- WP QP18 --
 #include "SmokeDriver.h"
 
 #include "ChannelController.h"
@@ -47,7 +48,13 @@ struct Notice {
 };
 Notice takeNotice(SmokeDriver &d, QObject *notice, int ms = 8000) {
     Notice n;
-    if (!notice || !d.waitFor(ms, [&]() { return opened(notice); })) return n;
+    // -- WP QP18 -- or a success's notice in the banner stack
+    if (!notice || !d.waitFor(ms, [&]() { return opened(notice) || qp18NoticeNew(); })) return n;
+    if (!opened(notice)) {
+        n.title = QStringLiteral("Success");
+        n.text = qp18TakeNotice();
+        return n;
+    }
     n.title = notice->property("title").toString();
     n.text = notice->property("text").toString();
     n.error = notice->property("error").toBool();
@@ -77,6 +84,7 @@ bool sameBand(const FilterParams &a, const FilterParams &b) {
 } // namespace
 
 static void filesSection(SmokeDriver &d) {
+    qp18NoticeMark();   // -- WP QP18 --
     DeviceModel *device = d.app().device;
     Shell *shell = d.app().shell;
     FilesController *files = Registrar::instance<FilesController>();

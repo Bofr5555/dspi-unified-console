@@ -4,6 +4,7 @@
 // built-in one, a rebuild against a scripted GitHub, and the real fetch
 // against a server on the loopback interface. Nothing reaches a real network;
 // every change is undone before the section ends.
+#include "Qp18Notices.h"   // -- WP QP18 --
 #include "SmokeDriver.h"
 
 #include "AutoEqController.h"
@@ -35,7 +36,12 @@ const QByteArray kRaw = "https://raw.githubusercontent.com/jaakkopasanen/AutoEq/
 bool opened(QObject *popup) { return popup && popup->property("opened").toBool(); }
 
 QString takeNoticeText(SmokeDriver &d, QObject *notice, bool *error = nullptr, int ms = 8000) {
-    if (!notice || !d.waitFor(ms, [&]() { return opened(notice); })) return {};
+    // -- WP QP18 -- or a success's notice in the banner stack
+    if (!notice || !d.waitFor(ms, [&]() { return opened(notice) || qp18NoticeNew(); })) return {};
+    if (!opened(notice)) {
+        if (error) *error = false;
+        return qp18TakeNotice();
+    }
     const QString text = notice->property("text").toString();
     if (error) *error = notice->property("error").toBool();
     QMetaObject::invokeMethod(notice, "close");
@@ -66,6 +72,7 @@ QByteArray profileUrl(const QByteArray &headphone) {
 } // namespace
 
 static void autoEqSection(SmokeDriver &d) {
+    qp18NoticeMark();   // -- WP QP18 --
     DeviceModel *device = d.app().device;
     Shell *shell = d.app().shell;
     AutoEqController *aeq = Registrar::instance<AutoEqController>();

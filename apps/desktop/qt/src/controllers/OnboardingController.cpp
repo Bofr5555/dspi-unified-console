@@ -140,20 +140,13 @@ void OnboardingController::resetOnboarding() {
 }
 
 // ---- Help > Save Diagnostics... ----------------------------------------------
-// The core's bundle (dspi_diagnostics_save, PRO1 E2) is on main with P0E; a
-// core without it builds this app with the row hidden (cmake/wp/qp17.cmake
-// looks for the function in dspi_core.h and sets DSPI_HAVE_DIAGNOSTICS).
+// The core's bundle (dspi_diagnostics_save, PRO1 E2)
 
 bool OnboardingController::diagnosticsAvailable() const {
-#ifdef DSPI_HAVE_DIAGNOSTICS
     return true;
-#else
-    return false;
-#endif
 }
 
 void OnboardingController::saveDiagnostics() {
-#ifdef DSPI_HAVE_DIAGNOSTICS
     if (m_saving) return;
     m_ctx.core->worker()->call(
         this,
@@ -165,11 +158,9 @@ void OnboardingController::saveDiagnostics() {
             FilesController::pickFile(true, tr("Save Diagnostics"), tr("Zip archives (*.zip)"), start, this,
                                       [this](const QString &path) { saveDiagnosticsTo(path); });
         });
-#endif
 }
 
 void OnboardingController::saveDiagnosticsTo(const QString &path) {
-#ifdef DSPI_HAVE_DIAGNOSTICS
     if (m_saving || path.isEmpty()) return;
     m_saving = true;
     emit savingDiagnosticsChanged();
@@ -204,7 +195,4 @@ void OnboardingController::saveDiagnosticsTo(const QString &path) {
                                 : reply.value(QLatin1String("error")).toString(),
                             true);
         });
-#else
-    Q_UNUSED(path)
-#endif
 }

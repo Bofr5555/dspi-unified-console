@@ -511,20 +511,20 @@ void SiggenController::updatePoll() {
 
 QString SiggenController::phaseText() const {
     switch (m_status.state) {
-    case FadeIn: return tr(QT_TRANSLATE_NOOP("SiggenController", "Fading in"));
-    case Run: return tr(QT_TRANSLATE_NOOP("SiggenController", "Running"));
-    case Gap: return tr(QT_TRANSLATE_NOOP("SiggenController", "Gap"));
-    case FadeOut: return tr(QT_TRANSLATE_NOOP("SiggenController", "Fading out"));
-    default: return tr(QT_TRANSLATE_NOOP("SiggenController", "Idle"));
+    case FadeIn: return QCoreApplication::translate("SiggenController", "Fading in");
+    case Run: return QCoreApplication::translate("SiggenController", "Running");
+    case Gap: return QCoreApplication::translate("SiggenController", "Gap");
+    case FadeOut: return QCoreApplication::translate("SiggenController", "Fading out");
+    default: return QCoreApplication::translate("SiggenController", "Idle");
     }
 }
 
 QString SiggenController::startBlocker() const {
-    if (!connected()) return tr(QT_TRANSLATE_NOOP("SiggenController", "No device connected"));
-    if (!m_supported) return tr(QT_TRANSLATE_NOOP("SiggenController", "Firmware has no signal generator"));
-    if (m_draft.channel_mask == 0) return tr(QT_TRANSLATE_NOOP("SiggenController", "Select at least one output"));
+    if (!connected()) return QCoreApplication::translate("SiggenController", "No device connected");
+    if (!m_supported) return QCoreApplication::translate("SiggenController", "Firmware has no signal generator");
+    if (m_draft.channel_mask == 0) return QCoreApplication::translate("SiggenController", "Select at least one output");
     if (timing() == Sweep && m_draft.duration_ms == 0)
-        return tr(QT_TRANSLATE_NOOP("SiggenController", "Sweep length must be greater than 0"));
+        return QCoreApplication::translate("SiggenController", "Sweep length must be greater than 0");
     return QString();
 }
 
@@ -533,29 +533,29 @@ QString SiggenController::transportTitle() const {
     if (playing()) return phaseText() + QStringLiteral(" · ") + nameOf(m_status.signal_type);
     const QString blocker = startBlocker();
     if (!blocker.isEmpty() && connected() && m_supported) return blocker;
-    return tr(QT_TRANSLATE_NOOP("SiggenController", "Ready · %1")).arg(nameOf(m_draft.signal_type));
+    return QCoreApplication::translate("SiggenController", "Ready · %1").arg(nameOf(m_draft.signal_type));
 }
 
 QString SiggenController::transportDetail() const {
     if (playing()) {
         QStringList parts{ formatElapsed(m_status.elapsed_ms) };
         if (m_status.current_freq > 0) parts.append(formatFrequency(m_status.current_freq));
-        if (m_status.cycles_done > 0) parts.append(tr(QT_TRANSLATE_NOOP("SiggenController", "cycle %1")).arg(m_status.cycles_done));
+        if (m_status.cycles_done > 0) parts.append(QCoreApplication::translate("SiggenController", "cycle %1").arg(m_status.cycles_done));
         if (m_status.active_channel != kNotWalking) parts.append(outputName(m_status.active_channel));
-        parts.append(tr(QT_TRANSLATE_NOOP("SiggenController", "edits apply live")));
+        parts.append(QCoreApplication::translate("SiggenController", "edits apply live"));
         return parts.join(QStringLiteral(" · "));
     }
     switch (m_status.stop_reason) {
     case StopCompleted:
-        return tr(QT_TRANSLATE_NOOP("SiggenController", "Finished after %1")).arg(formatElapsed(m_status.elapsed_ms));
-    case StopHost: return tr(QT_TRANSLATE_NOOP("SiggenController", "Stopped"));
-    case StopPreset: return tr(QT_TRANSLATE_NOOP("SiggenController", "Stopped by preset load"));
+        return QCoreApplication::translate("SiggenController", "Finished after %1").arg(formatElapsed(m_status.elapsed_ms));
+    case StopHost: return QCoreApplication::translate("SiggenController", "Stopped");
+    case StopPreset: return QCoreApplication::translate("SiggenController", "Stopped by preset load");
     default: break;
     }
     const int n = int(qPopulationCount(quint32(m_draft.channel_mask)));
     const QString level = QString::number(double(m_draft.level_db), 'f', 1);
-    return n == 1 ? tr(QT_TRANSLATE_NOOP("SiggenController", "1 output · peak %1 dBFS")).arg(level)
-                  : tr(QT_TRANSLATE_NOOP("SiggenController", "%1 outputs · peak %2 dBFS")).arg(n).arg(level);
+    return n == 1 ? QCoreApplication::translate("SiggenController", "1 output · peak %1 dBFS").arg(level)
+                  : QCoreApplication::translate("SiggenController", "%1 outputs · peak %2 dBFS").arg(n).arg(level);
 }
 
 QString SiggenController::outputName(int output) const {
@@ -565,7 +565,7 @@ QString SiggenController::outputName(int output) const {
         const QString label = rows->get(row, QStringLiteral("label")).toString();
         if (!label.isEmpty()) return label;
     }
-    return tr(QT_TRANSLATE_NOOP("SiggenController", "Out %1")).arg(output + 1);
+    return QCoreApplication::translate("SiggenController", "Out %1").arg(output + 1);
 }
 
 bool SiggenController::outputEnabled(int output) const {
@@ -590,7 +590,7 @@ QString SiggenController::unitFor(int semantic) {
     switch (semantic) {
     case FreqHz: return QStringLiteral("Hz");
     case Ms: return QStringLiteral("ms");
-    case Cycles: return tr(QT_TRANSLATE_NOOP("SiggenController", "cyc"));
+    case Cycles: return QCoreApplication::translate("SiggenController", "cyc");
     case Ratio: return QStringLiteral("×");
     default: return QString();
     }
