@@ -20,12 +20,6 @@ static const Registrar::Window upmixerWindow("tools.upmixer", "UpmixerWindow");
 
 namespace {
 
-// Feature bits the C header does not export yet (dspi_proto::wire_compat::feat):
-// the subharmonic's third band, selectivity, ceiling, pair link and solo (V30),
-// and the upmixer's presence (V26), which the Mac's upmixer window needs.
-constexpr uint32_t kFeatSubharmExtended = 1u << 12;
-constexpr uint32_t kFeatUpmixPresence = 1u << 9;
-
 // One parameter of an effect: its key, the core's id, the Mac's range and default
 struct Param {
     const char *key;
@@ -365,7 +359,7 @@ bool ToolsController::subharmSupported() const {
     return connected() && (m_ctx.device->snapshot().wireFeatures & WIRE_FEAT_SUBHARM) != 0;
 }
 bool ToolsController::subharmExtended() const {
-    return subharmSupported() && (m_ctx.device->snapshot().wireFeatures & kFeatSubharmExtended) != 0;
+    return subharmSupported() && (m_ctx.device->snapshot().wireFeatures & WIRE_FEAT_SUBHARM_EXT) != 0;
 }
 bool ToolsController::subharmSolo() const { return connected() && m_ctx.device->state()->subharm_solo; }
 
@@ -667,7 +661,7 @@ QVariantMap ToolsController::transformerLift(double damping) {
 bool ToolsController::upmixSupported() const {
     if (!connected()) return false;
     const uint32_t f = m_ctx.device->snapshot().wireFeatures;
-    return (f & WIRE_FEAT_UPMIX) && (f & kFeatUpmixPresence) && m_ctx.device->state()->platform_id == 1;
+    return (f & WIRE_FEAT_UPMIX) && (f & WIRE_FEAT_UPMIX_PRESENCE) && m_ctx.device->state()->platform_id == 1;
 }
 
 double ToolsController::upmix(const QString &key) const {

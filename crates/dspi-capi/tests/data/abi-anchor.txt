@@ -290,6 +290,8 @@
 #define WIRE_FEAT_LEVELLER_MASKS (1 << 1)
 #define WIRE_FEAT_LOUDNESS_MASK (1 << 2)
 #define WIRE_FEAT_CROSSFEED_MASK (1 << 3)
+#define WIRE_FEAT_UPMIX_PRESENCE (1 << 9)
+#define WIRE_FEAT_SUBHARM_EXT (1 << 12)
 #define WIRE_FEAT_PSYBASS (1 << 6)
 #define WIRE_FEAT_UPMIX (1 << 8)
 #define WIRE_FEAT_SUBHARM (1 << 11)
@@ -442,6 +444,7 @@
 #define NOTIFY_SIGGEN (1 << 5)
 #define NOTIFY_CS_AUX (1 << 6)
 #define NOTIFY_IR_LEARN (1 << 7)
+#define NOTIFY_HISTORY (1 << 12)
 #define SCHEMA_VERSION 1
 #define FORMAT_VERSION 2
 #define IMPORT_VOLUMES 1
@@ -485,6 +488,9 @@ uint8_t cpu1;
 uint32_t clip_flags;
 uint8_t active_input_channels;
 uint8_t num_channels;
+float peak_hold[MAX_CHANNELS];
+float peak_max[MAX_CHANNELS];
+uint32_t clip_hold;
 } SystemStatus;
 typedef struct FilterParams {
 uint8_t filter_type;
@@ -802,6 +808,11 @@ const char *url,
 const char *accept,
 const char *user_agent,
 struct AutoEqFetchSink *sink);
+typedef struct MeterBallistics {
+uint32_t hold_ms;
+float decay_per_s;
+uint32_t clip_hold_ms;
+} MeterBallistics;
 typedef struct PlatformInfo {
 uint8_t platform_id;
 uint8_t num_output_channels;
@@ -987,6 +998,7 @@ bool dspi_siggen_control(struct FfiCore *core, uint16_t action);
 bool dspi_siggen_get_status(struct FfiCore *core, struct SiggenStatus *out);
 bool dspi_fetch_stat(struct FfiCore *core, uint16_t which, uint32_t *out);
 bool dspi_fetch_buffer_stats(struct FfiCore *core, struct BufferStats *out);
+uint32_t dspi_fetch_usb_error_stats(struct FfiCore *core, char *buf, uint32_t len);
 bool dspi_reset_buffer_stats(struct FfiCore *core);
 bool dspi_fetch_spdif_rx_status(struct FfiCore *core, struct SpdifRxStatus *out);
 bool dspi_fetch_spdif_rx_channel_status(struct FfiCore *core, uint8_t *out);
@@ -1131,6 +1143,11 @@ uint32_t dspi_filter_type_name(uint8_t code, char *buf, uint32_t len);
 uint32_t dspi_core1_conflict_reason(struct FfiCore *core, uint8_t output, char *buf, uint32_t len);
 uint32_t dspi_output_labels(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_output_cards(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_undo(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_redo(struct FfiCore *core, char *buf, uint32_t len);
+bool dspi_can_undo(const struct FfiCore *core);
+bool dspi_can_redo(const struct FfiCore *core);
+uint32_t dspi_history(struct FfiCore *core, uint32_t n, char *buf, uint32_t len);
 void dspi_autoeq_fetch_respond(struct AutoEqFetchSink *sink,
 uint16_t status,
 const uint8_t *body,
@@ -1165,6 +1182,30 @@ uint32_t dspi_onboarding_whats_new_json(char *buf,
 uint32_t len);
 uint32_t dspi_onboarding_getting_started_json(char *buf, uint32_t len);
 uint32_t dspi_about_json(char *buf, uint32_t len);
+bool dspi_meter_ballistics(struct FfiCore *core, struct MeterBallistics *out);
+void dspi_set_meter_ballistics(struct FfiCore *core,
+uint32_t hold_ms,
+float decay_per_s,
+uint32_t clip_hold_ms);
+void dspi_reset_meter_max(struct FfiCore *core);
+bool dspi_event_log_set_dir(struct FfiCore *core, const char *dir);
+uint64_t dspi_event_log_read(struct FfiCore *core,
+const char *serial,
+uint64_t after_id,
+uint32_t limit,
+char *buf,
+uint32_t buf_len);
+uint32_t dspi_event_log_export(struct FfiCore *core, const char *serial, char *buf, uint32_t len);
+uint32_t dspi_event_log_devices(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_diagnostics_save(struct FfiCore *core,
+const char *path,
+const char *options,
+char *buf,
+uint32_t len);
+uint32_t dspi_diagnostics_file_name(struct FfiCore *core, char *buf, uint32_t len);
+uint8_t dspi_identify(struct FfiCore *core, uint8_t seconds, uint8_t tone_output);
+uint32_t dspi_fetch_identify(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_fetch_reset_info(struct FfiCore *core, char *buf, uint32_t len);
 bool dspi_link_browse_start(struct FfiCore *core,
 void (*callback)(void *user_data),
 void *user_data,

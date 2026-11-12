@@ -285,6 +285,41 @@ export interface SystemStatus {
   /** Not a fresh reading (Link): grey the meters. */
   stale: boolean;
   ageMs: number;
+  // -- WP P0M -- the core's ballistics
+  /** Held peak per wire channel, 0..1: the hold marker. */
+  peakHold: number[];
+  /** Highest peak per wire channel since the connection opened or `resetMeterMax`. */
+  peakMax: number[];
+  /** The clip hold, one bit per wire channel: draw the clip marker from this. */
+  clipHold: number;
+}
+
+// -- WP P0M --
+/** `dspi_core::MeterBallistics`. */
+export interface MeterBallistics {
+  holdMs: number;
+  decayPerS: number;
+  clipHoldMs: number;
+}
+
+/** One line of the event log (`dspi_session::events::EventRecord`, the file format). */
+export interface EventRecord {
+  v: number;
+  id: number;
+  /** ms since the epoch. */
+  t: number;
+  kind: "notification" | "connected" | "disconnected" | "clip" | "temperature" | "counter" | "reset" | "firmware" | "import" | "recall" | "unknown";
+  serial?: string;
+  text: string;
+  source?: string;
+  session?: number;
+  own?: boolean;
+  channel?: number;
+  value?: number;
+  fw?: string;
+  uptime_s?: number;
+  lines?: string[];
+  count?: number;
 }
 
 /** `dspi_core::RtaRequest`, the fields the page sets. */
@@ -364,6 +399,15 @@ export interface CoreMethods {
    */
   core1Conflict: { params: { output: number }; result: { conflict: boolean; reason: string | null } };
   meters: { params: undefined; result: SystemStatus };
+  // -- WP P0M -- meter ballistics and the event log (in memory on the web)
+  meterBallistics: { params: undefined; result: MeterBallistics };
+  setMeterBallistics: { params: MeterBallistics; result: MeterBallistics };
+  resetMeterMax: { params: undefined; result: null };
+  /** `serial` absent for the open device; `afterId` 0 (default) for the newest `limit` (default 500). */
+  eventLogRead: { params: { serial?: string; afterId?: number; limit?: number }; result: { records: EventRecord[]; lastId: number; skipped: number } };
+  /** The whole event log as JSON lines. */
+  eventLogExport: { params: { serial?: string }; result: string };
+  eventLogDevices: { params: undefined; result: string[] };
   rtaStart: { params: RtaRequest; result: null };
   rtaStop: { params: undefined; result: null };
   rta: { params: undefined; result: RtaView };

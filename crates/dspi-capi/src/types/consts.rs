@@ -852,6 +852,12 @@ pub const WIRE_FEAT_LOUDNESS_MASK: u32 = 1 << 2;
 /// `dspi_proto::wire_compat::feat::CROSSFEED_MASK`.
 pub const WIRE_FEAT_CROSSFEED_MASK: u32 = 1 << 3;
 
+/// `dspi_proto::wire_compat::feat::UPMIX_PRESENCE`.
+pub const WIRE_FEAT_UPMIX_PRESENCE: u32 = 1 << 9;
+
+/// `dspi_proto::wire_compat::feat::SUBHARM_EXT`.
+pub const WIRE_FEAT_SUBHARM_EXT: u32 = 1 << 12;
+
 /// `dspi_proto::wire_compat::feat::PSYBASS`.
 pub const WIRE_FEAT_PSYBASS: u32 = 1 << 6;
 
@@ -1323,6 +1329,9 @@ pub const NOTIFY_CS_AUX: u32 = 1 << 6;
 
 /// `dspi_core::consts::NOTIFY_IR_LEARN`.
 pub const NOTIFY_IR_LEARN: u32 = 1 << 7;
+
+/// `dspi_core::consts::NOTIFY_HISTORY`.
+pub const NOTIFY_HISTORY: u32 = 1 << 12;
 
 // ── files ── Configuration and filter files
 

@@ -98,9 +98,9 @@ export function delayText(ms: number): string {
   return `${trimmed(ms, 4, 1)} ms`;
 }
 
-/** A level on the output card: "-3.0 dB". */
-export function levelText(db: number): string {
-  return `${noNegZero(Math.round(db * 10) / 10).toFixed(1)} dB`;
+/** A level on the output card: "-3.0 dB"; a limiter's threshold is "-3.0 dBFS" (`docs/GLOSSARY.md`). */
+export function levelText(db: number, unit: "dB" | "dBFS" = "dB"): string {
+  return `${noNegZero(Math.round(db * 10) / 10).toFixed(1)} ${unit}`;
 }
 
 /** A crosspoint's or the matrix's level (`CompactGainField`): "0 dB", "+3.5 dB", "-12.25 dB". */
@@ -121,6 +121,8 @@ function trimmed(v: number, max: number, min: number): string {
 export function parseLevel(text: string, unit: string): number | null {
   let s = text.trim().toLowerCase().replace(/\s+/g, "").replace("−", "-");
   if (unit && s.endsWith(unit)) s = s.slice(0, -unit.length);
+  // A dBFS field takes "-6 dB" too.
+  else if (unit === "dbfs" && s.endsWith("db")) s = s.slice(0, -2);
   if (s.startsWith("+")) s = s.slice(1);
   if (!/^-?(\d+\.?\d*|\.\d+)$/.test(s)) return null;
   const v = Number(s);

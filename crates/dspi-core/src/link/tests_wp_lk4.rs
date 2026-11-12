@@ -373,18 +373,32 @@ fn wp_lk4_a_stall_on_another_hub_keeps_the_rate() {
     wait_until("live meters", || {
         core.fetch_status().is_ok_and(|s| !s.stale)
     });
-    let full = guard(&side.feed).meter_hz;
+    // -- WP HUBFLAKE -- Frames can flow before the supervisor has read the grant
+    let full = {
+        let mut full = None;
+        wait_until("the grant read", || {
+            let feed = guard(&side.feed);
+            full = feed.meter_hz.filter(|_| feed.meter_pending.is_none());
+            full.is_some()
+        });
+        full
+    };
     side.client.poll_unsubscribe(side.handle, &[METER_SLOT]);
-    std::thread::sleep(Duration::from_millis(300));
+    // -- WP HUBFLAKE -- A round trip behind the unsubscribe: the hub sends its
+    // frames and replies in order, so every meter frame it will send is in
+    // the feed when the answer is back.
+    side.client.poll_subscribe(side.handle, &[]).unwrap();
     let now = Instant::now();
+    let lost = now.checked_sub(FEED_LOST * 2);
     {
         let mut feed = guard(&side.feed);
         side.drain(&mut feed, now);
         feed.latest.remove(&METER_SLOT);
-        feed.meter_subscribed_at = now.checked_sub(FEED_LOST * 2);
+        feed.meter_subscribed_at = lost;
         feed.meter_asked = Some(now);
     }
     side.maintain(now);
+    assert_ne!(guard(&side.feed).meter_subscribed_at, lost, "asked again");
     assert_eq!(guard(&side.feed).meter_hz, full);
     assert!(guard(&side.feed).meter_slow_since.is_none());
     core.link_close();

@@ -28,6 +28,8 @@ pub mod advertise;
 #[cfg(feature = "app")]
 pub mod app;
 pub mod auth;
+// -- WP BULKFIX --
+mod bulk_gain;
 mod device;
 pub mod error;
 pub mod hub;

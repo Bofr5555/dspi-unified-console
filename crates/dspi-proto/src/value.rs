@@ -33,6 +33,7 @@ fn unit_suffix(u: Unit) -> &'static str {
     match u {
         Unit::None => "",
         Unit::Db => " dB",
+        Unit::Dbfs => " dBFS",
         Unit::Hz => " Hz",
         Unit::Q => "",
         Unit::Percent => " %",
@@ -46,11 +47,16 @@ fn unit_suffix(u: Unit) -> &'static str {
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum Unit {
     None,
+    /// A gain or a level difference: a boost, a cut, a trim.
     Db,
+    /// A level against digital full scale, at most 0: a threshold, a ceiling,
+    /// a gate (WP P0U).
+    Dbfs,
     Hz,
     Q,
     Percent,
     Ms,
+    /// A sound pressure level, an absolute acoustic level.
     Spl,
     Gpio,
 }
@@ -134,8 +140,9 @@ impl Value {
         match self {
             Value::Bool(b) => (if *b { "on" } else { "off" }).into(),
             Value::Float(f) => match unit {
-                // Gain reads better signed: "+3.0 dB" versus "3.0 dB".
-                Unit::Db | Unit::Spl => format!("{f:+.1}{}", unit.suffix()),
+                // Gain reads better signed: "+3.0 dB" versus "3.0 dB". A level
+                // (dBFS, dB SPL) is not a change, so it carries no plus sign.
+                Unit::Db => format!("{f:+.1}{}", unit.suffix()),
                 Unit::Hz => {
                     if *f >= 1000.0 {
                         format!("{:.2} kHz", f / 1000.0)
@@ -448,6 +455,9 @@ mod tests {
     fn display_is_readable_per_unit() {
         assert_eq!(Value::Float(3.0).display(Unit::Db), "+3.0 dB");
         assert_eq!(Value::Float(-8.6).display(Unit::Db), "-8.6 dB");
+        assert_eq!(Value::Float(-1.0).display(Unit::Dbfs), "-1.0 dBFS");
+        assert_eq!(Value::Float(0.0).display(Unit::Dbfs), "0.0 dBFS");
+        assert_eq!(Value::Float(85.0).display(Unit::Spl), "85.0 dB SPL");
         assert_eq!(Value::Float(2856.0).display(Unit::Hz), "2.86 kHz");
         assert_eq!(Value::Float(64.0).display(Unit::Hz), "64 Hz");
         assert_eq!(Value::Float(3.58).display(Unit::Q), "3.58");

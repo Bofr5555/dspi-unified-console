@@ -126,6 +126,24 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun featurePresent(name: String): Boolean = core.featurePresent(name)
 
+    override fun diagnosticsSave(path: String, options: DiagOptions): List<String> = call { core.diagnosticsSave(path, options.toFfi()) }
+
+    override fun diagnosticsFileName(): String = core.diagnosticsFileName()
+
+    override fun meterBallistics(): MeterBallistics = core.meterBallistics().toDomain()
+
+    override fun setMeterBallistics(config: MeterBallistics) = core.setMeterBallistics(config.toFfi())
+
+    override fun resetMeterMax() = core.resetMeterMax()
+
+    override fun eventLogSetDir(dir: String) = call { core.eventLogSetDir(dir) }
+
+    override fun eventLogRead(serial: String, afterId: Long, limit: Long): EventBatch = core.eventLogRead(serial, afterId.toULong(), limit.toUInt()).toDomain()
+
+    override fun eventLogExport(serial: String): String = core.eventLogExport(serial)
+
+    override fun eventLogDevices(): List<String> = core.eventLogDevices()
+
     override fun setCrossfeedPairMap(map: List<Int>) = call { core.setCrossfeedPairMap(ByteArray(map.size) { map[it].toByte() }) }
 
     override fun fetchCrossfeedPairMap(): List<Int> = call { core.fetchCrossfeedPairMap().map { it.toInt() and 0xFF } }
@@ -135,6 +153,16 @@ class FfiDspiCore : DspiCoreApi {
     override fun fetchCoreVreg(): CoreVregInfo = call { core.fetchCoreVreg().toDomain() }
 
     override fun coreVregOp(op: Int, value: Int, word: String?) = call { core.coreVregOp(op.toUByte(), value.toUByte(), word) }
+
+    override fun identify(seconds: Int, toneOutput: Int?) = call { core.identify(seconds.toUByte(), toneOutput?.let { it.toUByte() }) }
+
+    override fun fetchIdentify(): IdentifyInfo = call { core.fetchIdentify().toDomain() }
+
+    override fun fetchResetInfo(): DeviceResetInfo = call { core.fetchResetInfo().toDomain() }
+
+    override fun resetInfoAtConnect(): DeviceResetInfo? = call { core.resetInfoAtConnect()?.let { it.toDomain() } }
+
+    override fun hasClipEvents(): Boolean = call { core.hasClipEvents() }
 
     override fun configExport(name: String, appVersion: String, links: Int): String = call { core.configExport(name, appVersion, links.toUByte()) }
 
@@ -251,6 +279,16 @@ class FfiDspiCore : DspiCoreApi {
     override fun setOutputLatency(id: Int) = call { core.setOutputLatency(id.toUByte()) }
 
     override fun fetchClockDiag(): ClockDiag = call { core.fetchClockDiag().toDomain() }
+
+    override fun undo(): HistoryMove = call { core.undo().toDomain() }
+
+    override fun redo(): HistoryMove = call { core.redo().toDomain() }
+
+    override fun canUndo(): Boolean = core.canUndo()
+
+    override fun canRedo(): Boolean = core.canRedo()
+
+    override fun history(n: Long): List<HistoryEntry> = core.history(n.toUInt()).map { it.toDomain() }
 
     override fun linkConnect(url: String, clientName: String, appVersion: String, token: String, expectedHubId: String): LinkHello = call { core.linkConnect(url, clientName, appVersion, token, expectedHubId).toDomain() }
 
@@ -463,6 +501,8 @@ class FfiDspiCore : DspiCoreApi {
     override fun fetchSpdifRxChannelStatus(): List<Int> = call { core.fetchSpdifRxChannelStatus().map { it.toInt() and 0xFF } }
 
     override fun fetchSpdifRxPin(index: Int): Int = call { core.fetchSpdifRxPin(index.toUByte()).toInt() }
+
+    override fun fetchUsbErrorStats(): UsbErrorStats = call { core.fetchUsbErrorStats().toDomain() }
 
     override fun coreVregCalView(): VregCalView = core.coreVregCalView().toDomain()
 
@@ -769,6 +809,9 @@ internal fun se.bofr.dspi.ffi.uniffi.SystemStatus.toDomain() =
         numChannels = numChannels.toInt(),
         stale = stale,
         ageMs = ageMs.toLong(),
+        peakHold = peakHold,
+        peakMax = peakMax,
+        clipHold = clipHold.toLong(),
     )
 
 internal fun SystemStatus.toFfi() =
@@ -781,6 +824,9 @@ internal fun SystemStatus.toFfi() =
         numChannels = numChannels.toUByte(),
         stale = stale,
         ageMs = ageMs.toUInt(),
+        peakHold = peakHold,
+        peakMax = peakMax,
+        clipHold = clipHold.toUInt(),
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.DeviceInfo.toDomain() =
@@ -1777,6 +1823,116 @@ internal fun RtaOwnership.toFfi() =
         fftOrder = fftOrder.toUByte(),
     )
 
+internal fun se.bofr.dspi.ffi.uniffi.MeterBallistics.toDomain() =
+    MeterBallistics(
+        holdMs = holdMs.toLong(),
+        decayPerS = decayPerS,
+        clipHoldMs = clipHoldMs.toLong(),
+    )
+
+internal fun MeterBallistics.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeterBallistics(
+        holdMs = holdMs.toUInt(),
+        decayPerS = decayPerS,
+        clipHoldMs = clipHoldMs.toUInt(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.EventEntry.toDomain() =
+    EventEntry(
+        id = id.toLong(),
+        timeMs = timeMs,
+        kind = kind,
+        serial = serial,
+        text = text,
+        source = source,
+        session = session?.let { it.toLong() },
+        own = own,
+        channel = channel?.let { it.toInt() },
+        value = value,
+        fw = fw,
+        uptimeS = uptimeS?.let { it.toLong() },
+        lines = lines,
+        count = count.toLong(),
+    )
+
+internal fun EventEntry.toFfi() =
+    se.bofr.dspi.ffi.uniffi.EventEntry(
+        id = id.toULong(),
+        timeMs = timeMs,
+        kind = kind,
+        serial = serial,
+        text = text,
+        source = source,
+        session = session?.let { it.toUInt() },
+        own = own,
+        channel = channel?.let { it.toUByte() },
+        value = value,
+        fw = fw,
+        uptimeS = uptimeS?.let { it.toUInt() },
+        lines = lines,
+        count = count.toUInt(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.EventBatch.toDomain() =
+    EventBatch(
+        lastId = lastId.toLong(),
+        skipped = skipped.toLong(),
+        entries = entries.map { it.toDomain() },
+    )
+
+internal fun EventBatch.toFfi() =
+    se.bofr.dspi.ffi.uniffi.EventBatch(
+        lastId = lastId.toULong(),
+        skipped = skipped.toUInt(),
+        entries = entries.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.DiagFile.toDomain() =
+    DiagFile(
+        name = name,
+        text = text,
+    )
+
+internal fun DiagFile.toFfi() =
+    se.bofr.dspi.ffi.uniffi.DiagFile(
+        name = name,
+        text = text,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.DiagOptions.toDomain() =
+    DiagOptions(
+        app = app,
+        hubStoreDir = hubStoreDir,
+        files = files.map { it.toDomain() },
+    )
+
+internal fun DiagOptions.toFfi() =
+    se.bofr.dspi.ffi.uniffi.DiagOptions(
+        app = app,
+        hubStoreDir = hubStoreDir,
+        files = files.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.UsbErrorStats.toDomain() =
+    UsbErrorStats(
+        total = total.toLong(),
+        crc = crc.toLong(),
+        bitstuff = bitstuff.toLong(),
+        rxOverflow = rxOverflow.toLong(),
+        rxTimeout = rxTimeout.toLong(),
+        dataSeq = dataSeq.toLong(),
+    )
+
+internal fun UsbErrorStats.toFfi() =
+    se.bofr.dspi.ffi.uniffi.UsbErrorStats(
+        total = total.toUInt(),
+        crc = crc.toUInt(),
+        bitstuff = bitstuff.toUInt(),
+        rxOverflow = rxOverflow.toUInt(),
+        rxTimeout = rxTimeout.toUInt(),
+        dataSeq = dataSeq.toUInt(),
+    )
+
 internal fun se.bofr.dspi.ffi.uniffi.AutoEqFetchRequest.toDomain() =
     AutoEqFetchRequest(
         url = url,
@@ -1855,6 +2011,54 @@ internal fun AutoEqRebuildProgress.toFfi() =
         skippedProfiles = skippedProfiles.toUInt(),
     )
 
+internal fun se.bofr.dspi.ffi.uniffi.IdentifyInfo.toDomain() =
+    IdentifyInfo(
+        remainingS = remainingS.toInt(),
+        lastToneOutput = lastToneOutput?.let { it.toInt() },
+        chip = chip,
+        chipRev = chipRev.toInt(),
+        chipId = chipId.toLong(),
+        board = board,
+        hwRev = hwRev,
+    )
+
+internal fun IdentifyInfo.toFfi() =
+    se.bofr.dspi.ffi.uniffi.IdentifyInfo(
+        remainingS = remainingS.toUByte(),
+        lastToneOutput = lastToneOutput?.let { it.toUByte() },
+        chip = chip,
+        chipRev = chipRev.toUByte(),
+        chipId = chipId.toUInt(),
+        board = board,
+        hwRev = hwRev,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.DeviceResetInfo.toDomain() =
+    DeviceResetInfo(
+        reason = reason,
+        reasonCode = reasonCode.toInt(),
+        description = description,
+        uptimeS = uptimeS.toLong(),
+        prevUptimeS = prevUptimeS?.let { it.toLong() },
+        hangCount = hangCount.toInt(),
+        chip = chip,
+        chipReset = chipReset.toLong(),
+        watchdogReason = watchdogReason.toLong(),
+    )
+
+internal fun DeviceResetInfo.toFfi() =
+    se.bofr.dspi.ffi.uniffi.DeviceResetInfo(
+        reason = reason,
+        reasonCode = reasonCode.toUByte(),
+        description = description,
+        uptimeS = uptimeS.toUInt(),
+        prevUptimeS = prevUptimeS?.let { it.toUInt() },
+        hangCount = hangCount.toUByte(),
+        chip = chip,
+        chipReset = chipReset.toUInt(),
+        watchdogReason = watchdogReason.toUInt(),
+    )
+
 internal fun se.bofr.dspi.ffi.uniffi.FirmwareGuardBoard.toDomain() =
     FirmwareGuardBoard(
         requiredMv = requiredMv.toInt(),
@@ -1887,6 +2091,42 @@ internal fun FirmwareGuardVerdict.toFfi() =
         confirmationPhrase = confirmationPhrase,
         imageMv = imageMv.toUShort(),
         requiredMv = requiredMv.toUShort(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HistoryEntry.toDomain() =
+    HistoryEntry(
+        path = path,
+        indices = indices.map { it.toInt() and 0xFF },
+        before = before?.let { it.toDomain() },
+        after = after.toDomain(),
+        source = source.toDomain(),
+        atMs = atMs.toLong(),
+        undoable = undoable,
+    )
+
+internal fun HistoryEntry.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HistoryEntry(
+        path = path,
+        indices = ByteArray(indices.size) { indices[it].toByte() },
+        before = before?.let { it.toFfi() },
+        after = after.toFfi(),
+        source = source.toFfi(),
+        atMs = atMs.toULong(),
+        undoable = undoable,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HistoryMove.toDomain() =
+    HistoryMove(
+        entry = entry?.let { it.toDomain() },
+        skipped = skipped.map { it.toDomain() },
+        note = note,
+    )
+
+internal fun HistoryMove.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HistoryMove(
+        entry = entry?.let { it.toFfi() },
+        skipped = skipped.map { it.toFfi() },
+        note = note,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.LinkPhaseText.toDomain() =
@@ -2177,6 +2417,20 @@ internal fun FirmwareGuardReason.toFfi(): se.bofr.dspi.ffi.uniffi.FirmwareGuardR
         FirmwareGuardReason.OVERVOLT -> se.bofr.dspi.ffi.uniffi.FirmwareGuardReason.OVERVOLT
     }
 
+internal fun se.bofr.dspi.ffi.uniffi.HistorySource.toDomain(): HistorySource =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.HistorySource.LOCAL -> HistorySource.LOCAL
+        se.bofr.dspi.ffi.uniffi.HistorySource.UNDO -> HistorySource.UNDO
+        se.bofr.dspi.ffi.uniffi.HistorySource.REDO -> HistorySource.REDO
+    }
+
+internal fun HistorySource.toFfi(): se.bofr.dspi.ffi.uniffi.HistorySource =
+    when (this) {
+        HistorySource.LOCAL -> se.bofr.dspi.ffi.uniffi.HistorySource.LOCAL
+        HistorySource.UNDO -> se.bofr.dspi.ffi.uniffi.HistorySource.UNDO
+        HistorySource.REDO -> se.bofr.dspi.ffi.uniffi.HistorySource.REDO
+    }
+
 internal fun se.bofr.dspi.ffi.uniffi.VregCalPhase.toDomain(): VregCalPhase =
     when (this) {
         se.bofr.dspi.ffi.uniffi.VregCalPhase.IDLE -> VregCalPhase.IDLE
@@ -2229,4 +2483,28 @@ internal fun VregDemoEvent.toFfi(): se.bofr.dspi.ffi.uniffi.VregDemoEvent =
         VregDemoEvent.REBOOT -> se.bofr.dspi.ffi.uniffi.VregDemoEvent.REBOOT
         VregDemoEvent.POWER_CYCLE -> se.bofr.dspi.ffi.uniffi.VregDemoEvent.POWER_CYCLE
         VregDemoEvent.ADVANCE_UPTIME -> se.bofr.dspi.ffi.uniffi.VregDemoEvent.ADVANCE_UPTIME
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.ParamValue.toDomain(): ParamValue =
+    when (this) {
+        is se.bofr.dspi.ffi.uniffi.ParamValue.Bool -> ParamValue.Bool(v1)
+        is se.bofr.dspi.ffi.uniffi.ParamValue.Float -> ParamValue.Float(v1)
+        is se.bofr.dspi.ffi.uniffi.ParamValue.Int -> ParamValue.Int(v1)
+        is se.bofr.dspi.ffi.uniffi.ParamValue.Choice -> ParamValue.Choice(v1.toInt())
+        is se.bofr.dspi.ffi.uniffi.ParamValue.Mask -> ParamValue.Mask(v1.toLong())
+        is se.bofr.dspi.ffi.uniffi.ParamValue.Text -> ParamValue.Text(v1)
+        is se.bofr.dspi.ffi.uniffi.ParamValue.Bytes -> ParamValue.Bytes(v1.map { it.toInt() and 0xFF })
+        is se.bofr.dspi.ffi.uniffi.ParamValue.Trigger -> ParamValue.Trigger
+    }
+
+internal fun ParamValue.toFfi(): se.bofr.dspi.ffi.uniffi.ParamValue =
+    when (this) {
+        is ParamValue.Bool -> se.bofr.dspi.ffi.uniffi.ParamValue.Bool(v1)
+        is ParamValue.Float -> se.bofr.dspi.ffi.uniffi.ParamValue.Float(v1)
+        is ParamValue.Int -> se.bofr.dspi.ffi.uniffi.ParamValue.Int(v1)
+        is ParamValue.Choice -> se.bofr.dspi.ffi.uniffi.ParamValue.Choice(v1.toUByte())
+        is ParamValue.Mask -> se.bofr.dspi.ffi.uniffi.ParamValue.Mask(v1.toUInt())
+        is ParamValue.Text -> se.bofr.dspi.ffi.uniffi.ParamValue.Text(v1)
+        is ParamValue.Bytes -> se.bofr.dspi.ffi.uniffi.ParamValue.Bytes(ByteArray(v1.size) { v1[it].toByte() })
+        is ParamValue.Trigger -> se.bofr.dspi.ffi.uniffi.ParamValue.Trigger
     }

@@ -14,6 +14,9 @@
 #include "SettingsController.h"
 #include "Shell.h"
 
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QJsonDocument>
 #include <QQuickItem>
@@ -130,10 +133,35 @@ void onboardingSection(SmokeDriver &d) {
     d.check(QStringLiteral("qp17: Help's rows are handled"),
             shell->handles(QStringLiteral("help.gettingStarted")) && shell->handles(QStringLiteral("help.whatsNew")));
     QObject *diagRow = d.object(QStringLiteral("Menu.help.saveDiagnostics"));
+    // -- WP SYNC1 -- a row reads visible only while its menu is open, so open Help
+    QObject *helpMenu = diagRow ? diagRow->property("menu").value<QObject *>() : nullptr;
+    if (helpMenu) QMetaObject::invokeMethod(helpMenu, "open");
+    d.waitFor(1000, [&]() { return helpMenu && helpMenu->property("opened").toBool(); });
     d.check(QStringLiteral("qp17: Save Diagnostics waits for the core's bundle"),
             diagRow && (ob->diagnosticsAvailable() == shell->handles(QStringLiteral("help.saveDiagnostics")))
                 && diagRow->property("visible").toBool() == ob->diagnosticsAvailable());
+    if (helpMenu) QMetaObject::invokeMethod(helpMenu, "close");
+    d.spin(100);
     std::printf("smoke: qp17 diagnostics in this core: %s\n", ob->diagnosticsAvailable() ? "yes" : "no");
+    // -- WP SYNC1 -- the core's bundle, written where the row's dialog would put it
+    if (ob->diagnosticsAvailable()) {
+        const QString dir = d.outDir() + QStringLiteral("/sync1");
+        QDir().mkpath(dir);
+        const QString zip = dir + QStringLiteral("/diagnostics.zip");
+        QFile::remove(zip);
+        QString title;
+        bool failed = true;
+        const auto seen = QObject::connect(ob, &OnboardingController::notice, ob,
+                                           [&](const QString &t, const QString &, bool error) { title = t; failed = error; });
+        ob->saveDiagnosticsTo(zip);
+        d.check(QStringLiteral("SYNC1: Save Diagnostics writes the core's bundle"),
+                d.waitFor(15000, [&]() { return !title.isEmpty(); }) && !failed && !ob->savingDiagnostics()
+                    && QFileInfo(zip).size() > 0);
+        QObject::disconnect(seen);
+        QObject *alert = d.object(QStringLiteral("HelpHost.notice"));
+        if (alert) QMetaObject::invokeMethod(alert, "close");
+        d.spin(100);
+    }
 
     // ---- What's New: the launch rule, the window --------------------------
     d.check(QStringLiteral("qp17: a new install starts caught up on the notes"), ob->whatsNewShown() == ob->bundledFirmware());

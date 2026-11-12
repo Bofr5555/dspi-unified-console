@@ -13,6 +13,8 @@ use crate::types::{
 };
 // -- WP QPI2 --
 use crate::types::{WIRE_FEAT_CROSSFEED_MASK, WIRE_FEAT_LEVELLER_MASKS, WIRE_FEAT_LOUDNESS_MASK};
+// -- WP CS1 --
+use crate::types::{WIRE_FEAT_SUBHARM_EXT, WIRE_FEAT_UPMIX_PRESENCE};
 
 #[test]
 fn wp_qd6_feature_bits_match_the_wire_map() {
@@ -25,6 +27,11 @@ fn wp_qd6_feature_bits_match_the_wire_map() {
     assert_eq!(WIRE_FEAT_LEVELLER_MASKS, feat::LEVELLER_MASKS);
     assert_eq!(WIRE_FEAT_LOUDNESS_MASK, feat::LOUDNESS_MASK);
     assert_eq!(WIRE_FEAT_CROSSFEED_MASK, feat::CROSSFEED_MASK);
+    // -- WP CS1 --
+    assert_eq!(WIRE_FEAT_UPMIX_PRESENCE, 1 << 9);
+    assert_eq!(WIRE_FEAT_SUBHARM_EXT, 1 << 12);
+    assert_eq!(WIRE_FEAT_UPMIX_PRESENCE, feat::UPMIX_PRESENCE);
+    assert_eq!(WIRE_FEAT_SUBHARM_EXT, feat::SUBHARM_EXT);
 }
 
 #[test]

@@ -72,6 +72,8 @@ mod cs_rules;
 mod curves;
 mod device;
 mod ext;
+// -- WP FWX --
+mod ext_diag;
 pub mod files;
 mod firmware;
 // -- WP CG8 --
@@ -107,6 +109,12 @@ mod write_param;
 mod names;
 // -- BUG1 --
 mod output_labels;
+// -- WP P0M --
+mod events;
+// -- WP P0W --
+mod journal;
+// -- WP P0E --
+mod diag;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -114,6 +122,9 @@ pub use device::MidiInputHandle;
 pub use error::{DspiError, Result};
 pub use firmware::*;
 pub use records::*;
+// -- WP P0M --
+pub use dspi_session::events::{EventKind, EventRecord, EventSink, ReadBatch};
+pub use events::EVENT_READ_MAX;
 // -- WP CG11 --
 pub use vreg::{VregCalPhase, VregCalView, VregChoice, VregDemoEvent};
 // Work-package sections: add re-exports only inside your own section.
@@ -145,6 +156,8 @@ pub use link_text::*;
 pub use hotplug::{BrokeredDevice, DeviceBroker};
 // -- WP CG17 --
 pub use dspi_proto::ext::PairMap;
+// -- WP FWX --
+pub use ext_diag::{DeviceResetInfo, IDENTIFY_TONE_DBFS, IdentifyInfo};
 // -- WP CG23 --
 pub use raw::RawNotification;
 // -- WP CG26 --
@@ -157,6 +170,10 @@ pub use names::{FilterTypeName, filter_type_name, filter_type_names};
 pub use output_labels::{
     OutputCard, OutputLabel, OutputLabelInput, output_cards_for, output_labels_for,
 };
+// -- WP P0W --
+pub use journal::{HistoryEntry, HistoryMove, HistorySource};
+// -- WP P0E --
+pub use diag::REMOVED as DIAG_REMOVED;
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///
@@ -195,6 +212,11 @@ pub struct DspiCore {
     /// so it runs once. Taken without `inner`, never while holding it.
     #[cfg(feature = "link")]
     pub(crate) probe_lock: Mutex<()>,
+    // -- WP P0M --
+    /// The meter ballistics and the event log; `inner.events` is the same.
+    /// Its locks are taken with or without `inner`, never `inner` after.
+    /// (Not "history": that is the undo journal's name.)
+    pub(crate) events: Arc<events::Store>,
 }
 
 // -- WP LK4 --
@@ -266,6 +288,13 @@ pub(crate) struct Inner {
     // -- WP CG23 --
     /// The raw notification tap (`raw.rs`).
     pub(crate) notify_tap: raw::NotifyTap,
+    // -- WP P0M --
+    /// [`DspiCore::events`], for code that holds only the lock.
+    pub(crate) events: Arc<events::Store>,
+    // -- WP P0W --
+    /// The history as `process_notifications` last reported it
+    /// (`journal::history_mark`), for `NOTIFY_HISTORY`.
+    pub(crate) history_seen: Option<(u64, u64)>,
 }
 
 /// An open device.
@@ -342,6 +371,21 @@ pub(crate) struct Connection {
     /// have to run ([`DspiCore::ensure_probed`]; the Link supervisor runs
     /// them in the background).
     pub(crate) pending_probe: Option<Box<dspi_session::probe::Quick>>,
+    // -- WP P0W --
+    /// The last change another writer made, for undo's foreign-change rule
+    /// (`journal::ForeignChange`). On the connection, as its journal is.
+    pub(crate) last_foreign: Option<journal::ForeignWrite>,
+    // -- WP BULKFIX -- (fixup bf F1, F2, F4)
+    /// The bulk dB bug's state on this connection: whether the firmware has
+    /// the fix, and which outputs may hold the series' gains behind their
+    /// mute. Its transport is wrapped by it, so every unmute is checked.
+    pub(crate) gain_guard: dspi_session::bulk_gain::GainGuard,
+    /// The last bulk write left the device with its outputs muted (its
+    /// repair failed after the muted image was sent).
+    pub(crate) bulk_left_muted: bool,
+    // -- WP FWX --
+    /// Channels named by clip events since `take_clip_mask` (`ext_diag.rs`).
+    pub(crate) clip_mask: u32,
 }
 
 /// A remote device reached without the [`Inner`] lock (WP C15).
@@ -425,6 +469,8 @@ impl Connection {
     pub(crate) fn new(transport: Box<dyn Transport>, serial: String, vid: u16) -> Self {
         let caps = transport.caps();
         let session_id = transport.session_id();
+        // -- WP BULKFIX --
+        let (transport, gain_guard) = dspi_session::bulk_gain::GainGuard::wrap(transport, false);
         Self {
             link: Wire::Raw(transport),
             serial,
@@ -451,6 +497,13 @@ impl Connection {
             held_lock: None,
             // -- WP LK4 --
             pending_probe: None,
+            // -- WP P0W --
+            last_foreign: None,
+            // -- WP BULKFIX --
+            gain_guard,
+            bulk_left_muted: false,
+            // -- WP FWX --
+            clip_mask: 0,
         }
     }
 
@@ -562,6 +615,10 @@ impl Inner {
             hotplug: hotplug::HotplugState::default(),
             // -- WP CG23 --
             notify_tap: raw::NotifyTap::default(),
+            // -- WP P0M --
+            events: Arc::default(),
+            // -- WP P0W --
+            history_seen: None,
         }
     }
 
@@ -639,8 +696,12 @@ impl DspiCore {
     /// A core with no device open. No I/O.
     #[cfg_attr(feature = "uniffi", uniffi::constructor)]
     pub fn new() -> Arc<Self> {
+        // -- WP P0M --
+        let events = Arc::new(events::Store::default());
+        let mut inner = Inner::new();
+        inner.events = Arc::clone(&events);
         Arc::new_cyclic(|me| Self {
-            inner: Mutex::new(Inner::new()),
+            inner: Mutex::new(inner),
             listeners: Arc::new(Listeners::default()),
             me: me.clone(),
             #[cfg(feature = "link")]
@@ -656,6 +717,8 @@ impl DspiCore {
             meter_path: Mutex::new(None),
             #[cfg(feature = "link")]
             probe_lock: Mutex::new(()),
+            // -- WP P0M --
+            events,
         })
     }
 }
@@ -879,6 +942,8 @@ impl DspiCore {
 
         let conn_caps = transport.caps();
         let session_id = transport.session_id();
+        // -- WP BULKFIX --
+        let (transport, gain_guard) = dspi_session::bulk_gain::GainGuard::wrap(transport, false);
         let mut session = Session::new(transport, caps).ok_or(DspiError::InvalidArgument {
             msg: "the device reported an impossible channel layout".into(),
         })?;
@@ -894,6 +959,20 @@ impl DspiCore {
         // The firmware's own word on bulk echoes; without it, the time window.
         conn.echo.set_bulk_source(ext.bulk_source());
         conn.ext = ext;
+        // -- WP BULKFIX -- Outputs muted now may be a cut-short repair's.
+        conn.gain_guard = gain_guard;
+        let muted = dspi_proto::bulk_gain::muted_mask(
+            image.packet.as_bytes(),
+            usize::from(mirror.num_output_channels),
+        );
+        if pending.is_some() {
+            conn.gain_guard.suspect(muted);
+        } else {
+            let supported = conn.ext.supported.clone();
+            let guard = conn.gain_guard.clone();
+            let fixed = guard.fixed(conn.transport(), Some(&supported));
+            guard.seed(fixed, muted);
+        }
         // Without the platform reply the mirror lacks the firmware identity:
         // let `fetch_all` read everything again.
         conn.fresh_image = platform_known;

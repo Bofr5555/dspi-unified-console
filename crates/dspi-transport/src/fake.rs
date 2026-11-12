@@ -79,7 +79,7 @@
 //!   that stalls makes a missing model visible. The firmware ACKs every
 //!   unhandled OUT request on USB except `REQ_EXTENSION`;
 //!   [`FakeOptions::ack_unknown_sets`] does the same. Not modelled at all
-//!   (GETs stall): the subharm headroom, pin SETs (output pins,
+//!   (GETs stall): pin SETs (output pins,
 //!   BCK, MCK, S/PDIF/I2S/ADAT RX pins) and output-pin GETs, the I2S
 //!   clock-pin mode, the S/PDIF RX, ADAT and I2S-slave status reads, the
 //!   control-interface status, the Core 1 mode read, clock diagnostics, the
@@ -120,6 +120,9 @@ use dspi_proto::packets::BuildInfo;
 use dspi_proto::wire::{BulkPacket, WireHeader};
 
 mod features;
+// -- WP FWX --
+mod diag;
+pub use diag::{EXT_FAKE_CLIP, FAKE_HW_REV};
 // -- WP CG22 --
 mod analysis;
 // -- WP CG16 --
@@ -127,6 +130,11 @@ mod surfaces;
 pub use surfaces::{SurfaceSeed, surface_seed};
 // -- WP QD6 --
 mod wire_images;
+// -- WP BULKFIX --
+mod bulk_db;
+pub use bulk_db::{BulkDbDevice, BulkDbOptions, GainProbe};
+// -- WP CS1 --
+mod subharm;
 
 use crate::{
     DeviceDescriptor, NotificationSource, Result, Transport, TransportCaps, TransportError,
@@ -220,6 +228,13 @@ pub struct FakeOptions {
     /// (`fake/analysis.rs`). Off is firmware without them: they stall.
     /// [`FakeDevice::demo`] has it on.
     pub analysis: bool,
+    // -- WP FWX --
+    /// Answer `EXT_IDENTIFY` and `EXT_RESET_INFO`, report
+    /// `NOTIFY_FEAT_CLIP_EVENT` and send the clip event on
+    /// [`EXT_FAKE_CLIP`] (`fake/diag.rs`), as firmware from wp/FWX does. Off:
+    /// bofr-main 04122d3, which has none of them. Only discoverable with
+    /// [`FakeOptions::extensions`] on.
+    pub diag_ext: bool,
 }
 
 /// `wLength` is 16 bits.
@@ -549,6 +564,8 @@ pub const FAKE_ONLY_EXTENSIONS: &[u16] = &[
     EXT_FAKE_OUTPUT_SAVE_SIM,
     // -- WP CG20 --
     EXT_FAKE_CS_LEARN,
+    // -- WP FWX --
+    EXT_FAKE_CLIP,
 ];
 
 /// What can happen to a simulated device's core-voltage state (WP CG11).
@@ -1098,6 +1115,9 @@ struct State {
     // -- WP UPW2 --
     /// `subharm_config.solo`: monitoring only, never in the image.
     subharm_solo: bool,
+    // -- WP FWX --
+    /// Identify's blink and last tone (`fake/diag.rs`).
+    diag: diag::Diag,
     /// Opcodes [`FakeRemote::stall`] made fail.
     stalled: Vec<u8>,
     /// SETs [`FakeRemote::ignore`] made ACK and drop.
@@ -1162,6 +1182,8 @@ impl State {
             output_save_sim: st::PRESET_OK as u8,
             // -- WP UPW2 --
             subharm_solo: false,
+            // -- WP FWX --
+            diag: diag::Diag::default(),
             stalled: Vec::new(),
             ignored: Vec::new(),
             notify_failures: 0,
@@ -1787,15 +1809,21 @@ impl State {
         match value {
             gext::EXT_LIST => {
                 let mut ids = vec![gext::EXT_CROSSFEED_PAIR_MAP, gext::EXT_CORE_VREG];
-                if self.options.bulk_source {
+                // -- WP FWX --
+                if self.options.bulk_source || self.options.diag_ext {
                     ids.push(gext::EXT_NOTIFY_FEATURES);
+                }
+                if self.options.diag_ext {
+                    ids.extend([gext::EXT_IDENTIFY, gext::EXT_RESET_INFO]);
                 }
                 Some(ids.iter().flat_map(|id| id.to_le_bytes()).collect())
             }
-            // `NOTIFY_FEAT_BULK_SOURCE`, bit 0.
-            gext::EXT_NOTIFY_FEATURES if self.options.bulk_source => {
-                Some(1u32.to_le_bytes().to_vec())
+            // `NOTIFY_FEAT_BULK_SOURCE` (bit 0), `NOTIFY_FEAT_CLIP_EVENT` (bit 1).
+            gext::EXT_NOTIFY_FEATURES if self.options.bulk_source || self.options.diag_ext => {
+                Some(self.notify_features().to_le_bytes().to_vec())
             }
+            // -- WP FWX --
+            gext::EXT_IDENTIFY | gext::EXT_RESET_INFO => self.get_diag(value),
             gext::EXT_CROSSFEED_PAIR_MAP => self
                 .locate("crossfeed", 0, 0, X_PAIR_MAP)
                 .and_then(|o| self.bytes(o, X_PAIR_MAP.2)),
@@ -2040,6 +2068,10 @@ impl State {
 
     /// False stalls the request.
     fn set_ext(&mut self, value: u16, data: &[u8]) -> bool {
+        // -- WP FWX --
+        if let Some(ok) = self.set_diag(value, data) {
+            return ok;
+        }
         match value {
             gext::EXT_CROSSFEED_PAIR_MAP => {
                 let Ok(map) = <[u8; PairMap::SIZE]>::try_from(data).map(PairMap) else {

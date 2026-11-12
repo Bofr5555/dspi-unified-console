@@ -15,6 +15,7 @@
 //!
 //! Owned by WP C8 (docs/core-merge/PLAN.md).
 
+use dspi_proto::value::Value;
 use dspi_session::ext::{self as sx, CoreVregStatus, ExtError, PairMap, VregOp};
 use dspi_transport::TransportError;
 
@@ -89,7 +90,13 @@ impl DspiCore {
         }
         let status = sx::read_core_vreg(conn.transport()).map_err(read_error)?;
         let info = vreg_info(&status);
-        conn.ext.core_vreg = Some(status);
+        // -- WP P0M -- the event log once `Inner` is released
+        let (uptime, hangs) = (status.uptime_s, status.hang_count);
+        if let Ok(conn) = inner.conn() {
+            conn.ext.core_vreg = Some(status);
+        }
+        drop(inner);
+        self.events.uptime(uptime, hangs);
         Ok(info)
     }
 
@@ -123,7 +130,10 @@ impl DspiCore {
         };
         let request = vreg_request(op, value, floor)?;
         let mut w = inner.writable_conn()?;
-        sx::core_vreg_op(w.conn().transport(), request, word.as_deref()).map_err(write_error)
+        sx::core_vreg_op(w.conn().transport(), request, word.as_deref()).map_err(write_error)?;
+        // -- WP P0W -- history only: never sent again
+        crate::journal::journal(&mut inner, "ext.vreg", &[op, value], Value::Trigger);
+        Ok(())
     }
 }
 
@@ -148,6 +158,8 @@ pub(crate) fn set_pair_map_locked(inner: &mut Inner, map: &[u8]) -> Result<()> {
     if inner.conn()?.ext.pair_map.is_none() {
         return Err(DspiError::Unsupported);
     }
+    // -- WP P0W --
+    let change = inner.journal_begin(crate::journal::EXT_PAIRMAP, &[])?;
 
     let mut w = inner.writable_conn()?;
     let written = sx::write_pair_map(w.conn().transport(), wanted);
@@ -163,6 +175,7 @@ pub(crate) fn set_pair_map_locked(inner: &mut Inner, map: &[u8]) -> Result<()> {
         Err(e) => return Err(write_error(e)),
     };
     store_pair_map(inner, now);
+    change.done(inner, Value::Bytes(now.0.to_vec()));
     Ok(())
 }
 
@@ -243,7 +256,8 @@ fn vreg_info(s: &CoreVregStatus) -> CoreVregInfo {
 /// A failed extension read: a stall, or a DSPi Link hub refusing this
 /// client's role, is "absent" (`Unsupported`); everything else is the
 /// transport's error.
-fn read_error(e: ExtError) -> DspiError {
+// -- WP FWX -- pub(crate): ext_diag.rs maps its errors the same way
+pub(crate) fn read_error(e: ExtError) -> DspiError {
     match e {
         ExtError::Unsupported { .. } | ExtError::Transport(TransportError::Denied(_)) => {
             DspiError::Unsupported
@@ -260,7 +274,8 @@ fn read_error(e: ExtError) -> DspiError {
 /// A failed extension write: a stall is the device refusing the request
 /// (extension_channel_spec.md 1.1). A refusal by a DSPi Link hub stays
 /// `Denied`: the caller asked to change something it may not.
-fn write_error(e: ExtError) -> DspiError {
+// -- WP FWX -- pub(crate): ext_diag.rs maps its errors the same way
+pub(crate) fn write_error(e: ExtError) -> DspiError {
     match e {
         ExtError::Refused { .. } | ExtError::Unsupported { .. } => refused(),
         ExtError::Transport(t) => t.into(),

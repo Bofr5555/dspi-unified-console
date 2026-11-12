@@ -34,7 +34,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -145,11 +144,8 @@ fun StereoDashboardCard(left: ChannelColumn, right: ChannelColumn, modifier: Mod
         modifier
             .clip(shape)
             .background(c.card, shape)
-            .border(
-                1.dp,
-                Brush.horizontalGradient(0.4f to left.color.copy(alpha = 0.3f), 0.6f to right.color.copy(alpha = 0.3f)),
-                shape
-            )
+            // -- WP UIM1 -- a neutral stroke: a channel's colour is only the header's dot (docs/UI-MODES.md)
+            .border(1.dp, c.cardStroke, shape)
     ) {
         Row(Modifier.height(IntrinsicSize.Min)) {
             CardHeader(left, Modifier.weight(1f), narrow)
@@ -170,7 +166,8 @@ fun StereoDashboardCard(left: ChannelColumn, right: ChannelColumn, modifier: Mod
 fun MonoDashboardCard(channel: ChannelColumn, modifier: Modifier = Modifier, narrow: Boolean = false) {
     val c = DspiTheme.colors
     val shape = RoundedCornerShape(10.dp)
-    Column(modifier.clip(shape).background(c.card, shape).border(1.dp, channel.color.copy(alpha = 0.3f), shape)) {
+    // -- WP UIM1 -- a neutral stroke, as the stereo card
+    Column(modifier.clip(shape).background(c.card, shape).border(1.dp, c.cardStroke, shape)) {
         CardHeader(channel, Modifier.fillMaxWidth().padding(end = 18.dp), narrow)
         HorizontalRule(Modifier.fillMaxWidth())
         BandColumn(channel, Modifier.fillMaxWidth())
@@ -224,14 +221,14 @@ private val NARROW_HEADER = 200.dp
 private fun BandColumn(ch: ChannelColumn, modifier: Modifier) {
     Column(modifier) {
         ch.bands.forEachIndexed { i, p ->
-            DashboardRow(i + 1, p, ch.color, Modifier.background(if (i % 2 == 0) DspiTheme.colors.alternatingRow else Color.Transparent))
+            DashboardRow(i + 1, p, Modifier.background(if (i % 2 == 0) DspiTheme.colors.alternatingRow else Color.Transparent))
         }
     }
 }
 
 /** A compact read-only band row: number, type code, then Hz / dB / Q (peaking only), or a dash when Off. */
 @Composable
-fun DashboardRow(band: Int, params: BandFields, color: Color, modifier: Modifier = Modifier) {
+fun DashboardRow(band: Int, params: BandFields, modifier: Modifier = Modifier) {
     val c = DspiTheme.colors
     val isActive = params.type != FilterType.FLAT
     Row(modifier.fillMaxWidth().height(24.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -245,7 +242,7 @@ fun DashboardRow(band: Int, params: BandFields, color: Color, modifier: Modifier
             params.type.dashboardCode,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
-            color = if (isActive) color else c.secondaryLabel.copy(alpha = 0.4f),
+            color = if (isActive) c.label else c.secondaryLabel.copy(alpha = 0.4f), // -- WP UIM1 -- not the channel colour
             modifier = Modifier.width(34.dp),
             maxLines = 1
         )

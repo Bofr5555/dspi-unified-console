@@ -135,7 +135,7 @@ impl LoudnessPanel {
                 g.loudness_ref_spl as f64,
                 40.0,
                 100.0,
-                "dB",
+                panel::unit_of("loud.ref"),
             )
             .step(1.0)
             .decimals(0)

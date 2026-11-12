@@ -72,7 +72,7 @@ last-wave WPs while workers would otherwise sit idle (WB2 and WB5 now).
 | State | WPs |
 |---|---|
 | **In progress** (7) | **SW8** reads and the mirror (Swift, the VM job; critical path to SW-V1 and OD3), **AN15** R8, **QD21a** Qt packaging for Linux and Windows, **QD22** Qt accessibility, **AN20** Android accessibility, **WB2** core runtime without threads (wasm), **WB5** web client skeleton |
-| **Next** | Plan: QD23 after QD22; AN21 after AN20; QD21b (`.dmg`, VM) after QD21a, then SW-V1 to the owner (OD3); SW-M1, SW17, SW18, SW20, SW19, SW23, SW24 on the VM in that order; HO1's rest after R-Qt and SW8. Web: WB3 after WB2; WB4a and WB4b after WB3; WB6 slices after WB5 and WB4a; WB7; WB8 last. Then OPT0-OPT9, then PL-* |
+| **Next** | Plan: QD23 after QD22; AN21 after AN20; QD21b (`.dmg`, VM) after QD21a, then SW-V1 to the owner (OD3); SW-M1, SW17, SW18, SW20, SW19, SW23, SW24 on the VM in that order; HO1's rest after R-Qt and SW8. Web: WB3 after WB2; WB4a and WB4b after WB3; WB6 slices after WB5 and WB4a, in the order of section 5.5's slice table (WB6d System view, WB6e scene bar, WB6f status rail before the remaining tool screens; UIM1); WB7; WB8 last. Then OPT0-OPT9, then PL-* |
 | **Blocked** | **On the owner:** OD3 (decides SW9-SW14, then SW-M3, SW-M4, SW15, SW22); AN13's Link half and the phone checks of AN15, AN16, AN20; AN16 waits for AN15's release to be uploaded; QD35 hand checks; XC4 and XC5 (an ESP32 bridge); XC6 (go for a VREG write); SW16 (iPhone or iPad); SW-M5 (Apple silicon Mac); WB4c's public use (OD9). **On deps:** SW5, SW6, SW7, SW-M2 behind the VM queue; SW-V1 behind SW8 and QD21b |
 | **Done since the last status (2026-11-07)** | CG3, CG7, AN18 (closed: their moved parts are done); CG23-CG31 with CG29b; HB7, HB8; QD9, QD10, QD13, QD13b, QD14, QD16, QD17, QD19, QD36, QD37, QD38; TM25, TM26; AN14, AN32-AN39; SW4, SW25, SW-U1, SWF1-SWF3; DOC1, HO1a |
 
@@ -327,7 +327,7 @@ last-wave WPs while workers would otherwise sit idle (WB2 and WB5 now).
 | WB4b | Link transport | TODO |  | After WB3 |
 | WB4c | Web MIDI | TODO |  | Later; public use waits on OD9 |
 | WB5 | Web client skeleton | IN PROGRESS | wp/WB5 | Against a stub until WB3 |
-| WB6 | UI floor, in slices | TODO |  | After WB5 and WB4a, demo first |
+| WB6 | UI floor, in slices | IN PROGRESS | WB6a, WB6b, WB6c merged (c7d99131 and before) | WB6d next; the slice table in section 5.5 (order changed by UIM1) |
 | WB7 | Hosting | TODO |  | After WB4b |
 | WB8 | Hardware | TODO |  | Last; parts [HW][OWNER] |
 | WB9 | Gate (R-Web) | TODO |  | After WB8 |
@@ -700,7 +700,7 @@ M3 and M14 (`fw.install`) are deleted: no hub implements them (section 9).
 | M25 | Host audio format (idle channel count, `DSPViewModel.swift:1947-1951`) | QD18 | skip: the device report collapses when idle, and it has no host API | AN18 | SW20 |
 | M26 | C0 and C1 CPU bars | QD5 | have | have | have |
 | M27 | Pop-out tool windows | have | have (graph) | n.a.: routes | n.a.: sheets |
-| M53 | Stats for Nerds, Reset Watermarks, Output Ring Health (`StatsView.swift:206-223,478-504,918-1187`) | partial: no ring health; CG12, QD29 | partial: no ring health; CG12, TM16 | partial: no ring health; CG12, AN25 | have |
+| M53 | Stats for nerbs, Reset Watermarks, Output Ring Health (`StatsView.swift:206-223,478-504,918-1187`) | partial: no ring health; CG12, QD29 | partial: no ring health; CG12, TM16 | partial: no ring health; CG12, AN25 | have |
 | M54 | Interrupt Monitor (`InterruptMonitor.swift:1001-1010`) | have | have | have | have |
 
 **Files**
@@ -1271,13 +1271,33 @@ one call at a time** (WEB-STUDY section 2), so no other client's API changes. No
 | **WB4b** Link transport | 1.5-2 | `crates/dspi-wasm/src/link.rs`, `ws.js` | `dspi-link`'s client over the browser WebSocket; the core's supervisor and the owner's Link rule unchanged | the page, served by `dspi hub` (so the `Origin` check passes), pairs and reconnects against the fake hub in headless Chromium and Firefox |
 | **WB4c** Web MIDI (later) | 0.5-1 | `crates/dspi-wasm/src/midi.rs`, a page-side proxy (Web MIDI is not available in a Worker in Chromium) | SysEx over the page's MIDI port | a fake MIDI port test; **public use waits on OD9 (SysEx ID)** |
 | **WB5** Web client skeleton [IN PROGRESS wp/WB5] | 2 | new `apps/web/` (a pinned build container) | Worker RPC, the device picker (demo, USB, hubs; several at once), the connection strip, the lost-link banner from CG10's wording, About from `assets/about.json`, read-only mode, the auth seam and an embeddable entry point (decision 2) | the demo device shown in headless Chromium in CI; a `web` row in `ci/matrix.sh` |
-| **WB6** UI floor, in slices (each one WP) | 30-45 in all | `apps/web/src/<screen>/` per slice | section 3's floor: main window, volume and presets (M42-M44); EQ graph with editing on a canvas (M21); crossover, outputs, matrix; effects; inputs, names, latency, pins; settings and core voltage (M56, behind Advanced); analyser, bar strip and Stats (M22, M23, M53); files through browser download and upload (M28-M30); AutoEQ (CG6, fetch supplied by the page); control surfaces (CG20) | each slice: its `docs/PARITY.md` web column cells, tests on the demo device |
+| **WB6** UI floor, in slices (each one WP) | 30-45 in all, plus 4-6 for WB6d-WB6f | `apps/web/src/<screen>/` per slice | section 3's floor: main window, volume and presets (M42-M44); EQ graph with editing on a canvas (M21); crossover, outputs, matrix; effects; inputs, names, latency, pins; settings and core voltage (M56, behind Advanced); analyser, bar strip and Stats (M22, M23, M53); files through browser download and upload (M28-M30); AutoEQ (CG6, fetch supplied by the page); control surfaces (CG20). Since UIM1 also the System view, the scene bar and the status rail (`docs/UI-MODES.md`: the web is the first client of the Advanced layer). Slices and order: the table below | each slice: its `docs/PARITY.md` web column cells, tests on the demo device |
 | **WB7** Hosting | 0.5-1 | `crates/dspi-hub/src/web.rs` (HB5's page), `dspi web` or `dspi hub --local` in `apps/terminal` | the hub serves our client beside the upstream page (decision 1; Link, plain http, no WebUSB); `http://localhost` from a local `dspi` gives a secure context with WebUSB and Link together; a static HTTPS build; the embedded build for a fleet server. **Publishing anywhere is the owner's act** | a browser test reaches the demo through each route |
 | **WB8** Hardware | 1 | `docs/WEB-HW.md` | (a) K340 on the Linux host, Chromium in a container; (b) Windows clean machine, the Zadig question: `winvm` with the K340 passed in, or the owner; (c) macOS Chromium on `macvm`; (d) Android Chrome WebUSB: the owner's phone | each row pass or fail |
 | **WB9** Gate | 0.25 | plan sections 5.5 and 7 | R-Web's criteria (section 7); the web column in `docs/PARITY.md` | |
 
 **Order:** WB2 and WB5 in parallel (WB5 against a stub); WB3 after WB2; WB4a and WB4b after WB3; WB6 slices after WB5 and
-WB4a (the demo first); WB7 after WB4b; WB8 last; WB9 closes it. WB4c when OD9 allows public MIDI.
+WB4a (the demo first), in the order of the slice table below; WB7 after WB4b; WB8 last; WB9 closes it. WB4c when OD9 allows public MIDI.
+
+**WB6 slices** (owner, 2026-11-12, UIM1): the web is the first client of the Advanced layer (`docs/UI-MODES.md`), so the System
+view, the scene bar and the status rail come before the remaining tool screens. They are built on what the core has today and
+grow when the core gains host-side scenes, a change history and alarms (not yet planned here); each of the three names what it
+waits for. One slice is one WP; letters give the order.
+
+| Slice | Status | Scope |
+|---|---|---|
+| **WB6a** Main window, volume, presets | DONE | The session's main screen: volume (User and Master), bypass, the preset menu with Commit, Revert and Factory Reset, and the unsaved-changes guard (M42-M44, M47, M50 global bypass) |
+| **WB6b** EQ | DONE | The EQ screen: channel pills, the response graph on a canvas with on-graph editing, the band chip and the band list (M21, M58, B5-B7) |
+| **WB6c** Outputs, crossover, matrix | DONE | An output's settings card, its crossover tab and Linkwitz panel, the limiter, and the Matrix screen (M49, M52, B8, B10-B12) |
+| **WB6d** System view | TODO | A read-mostly screen of the whole device as a signal chain: inputs with meters, the routing summary, the processing blocks per channel with their on or off state (EQ, crossover, limiter, effects), and outputs with meters, gain, mute and delay; a block opens its screen. Over today's `DspState` and status, no new core calls |
+| **WB6e** Scene bar | TODO | A bar across the top of a session with the device's ten preset slots as numbered recall buttons, the active one and its unsaved state marked, Store and Recall as explicit verbs, and recall confirmed when there are unsaved changes; it moves to host-side scenes and A/B compare when the core has them |
+| **WB6f** Status rail | TODO | A persistent strip per console (connection, device, preset, mode) and a health panel that keeps problems until they are acknowledged: clipping, limiter gain reduction, the two cores' load (M26), a lost link; alarms from the hub join it when the hub has them |
+| **WB6g** Inputs and channels | TODO | The input pages: preamp trims, the L/R link of a pair with which side to keep (M48), input-source names, the 8-channel matrix's per-input trims; the channel clipboard, Copy and Paste Parameters (M45) |
+| **WB6h** Effects | TODO | Crossfeed, loudness, leveller, psychoacoustic bass, tube, subharmonic and upmixer screens, each with its on or off state in the System view |
+| **WB6i** Settings | TODO | Device name, output latency, GPIO pins, Spectrum and Graphing settings, help links, Reset Channel Names, debug information (M55, M61, M62); core voltage behind the Installer mode, or behind Advanced until the mode model exists (M56) |
+| **WB6j** Analyser, generator and Stats | TODO | The analyser overlay and bar strip (M22, M23), the signal generator and Identify (M46), Stats for nerbs and the Interrupt Monitor (M53, M54), dashboard cards per row (M59) |
+| **WB6k** Files and AutoEQ | TODO | Filter import and export, `.dspipreset` with apply options, Save Master Volume and Output Configuration through browser download and upload (M28-M30); AutoEQ with the page supplying the fetch (M31, M32, CG6) |
+| **WB6l** Control surfaces and shortcuts | TODO | The control-surface editor (CG20), the quick strip of effect toggles (M60), and the app shortcuts beyond the graph keys (M24) |
 
 ### 5.6 Audit and cross-client tests
 
@@ -1301,6 +1321,12 @@ WB4a (the demo first); WB7 after WB4b; WB8 last; WB9 closes it. WB4c when OD9 al
 - Notices (drafts, pending the owner): the program as a whole under GPL-3.0, Bofr5555's own additions GPL-3.0-or-later with the section 7 terms; each release ships with the source archive of its commit (`ci/release-source.sh`, `--with-desktop` for a Qt release), named by every notice and by the web console's `SOURCE.txt`; the bundled firmware's third-party notices; the Terminal's Rust crate licence texts (`uconsole --third-party-licences`); the Android files ported from DSPi Console for Windows named as GPL-3.0 material; Noto Sans Mono and AutoEq credited; About texts without a first-person donation paragraph.
 - The Terminal's command is `uconsole`, named once in `dspi_proto::command!()` (`ci/command-name.sh` for scripts): help, messages, completions, its config, AutoEQ and hub-store directories, the hub's service files (templates rendered by `render.sh`). `dspi` and `dspi-term` are no longer installed; no compatibility, as `CHANGELOG.md` says.
 **Open (owner):** where the source archive is published; the draft wording; the mirror tag `v1.1.6` in Bofr5555/DSPi; a board check of the configuration import with the output configuration kept apart from presets. **Deps:** none.
+
+**UIM1: UI modes, first steps.** [IN REVIEW, wp/UIM1] Size 1.5. **Owns:** `docs/UI-MODES.md` (new), the WB6 slice table in section 5.5 and the web cells of `docs/PARITY.md`, Android's `feature-home` (Home's phone layout). **Implements** the owner's decisions of 2026-11-12: one app per platform with the modes Simple, Advanced and Installer and a locked-user state, remembered per device with an app default (Simple on phones, Advanced on desktops and the web); nothing locked unless an installer sets a PIN; modes, PIN and roles fitting the hub's future fleet user management; channel colours as small tags only. **Done:**
+- `docs/UI-MODES.md`: the mode model, the no-PIN rule, the fleet mapping, a proposed screen manifest for the core (no code), the channel-colour rule, the client order, the open questions.
+- Android: the phone's Home starts with volume, preset and source, the output meters and a health line, then the graph, the channel list and tool icons, the dashboard; the tablet keeps the macOS sidebar; meters and card strokes neutral (tests `HomeOrderWpUim1Test`, `HealthLineWpUim1Test`).
+- Web: WB6d System view, WB6e scene bar and WB6f status rail before the remaining tool screens (plan only).
+**Follow-ups (not WPs yet):** the core's mode manifest; the mode switch per client; the Qt Pro track after the swap; Android's Pro subset.
 
 ### 5.7 Core and transfer optimisations (after the web)
 

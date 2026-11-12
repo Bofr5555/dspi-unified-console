@@ -70,7 +70,7 @@ A control whose text a check reads exposes it as `shownName`.
 | `StatsWindow.spdifInput`, `.lg`, `.adat`, `.i2s` | the interface sections (shown when the device has them) |
 | `StatsWindow.spdif.<i>` | an S/PDIF input row |
 | `StatsWindow.clockDiagnostics` | clock diagnostics (only on firmware built with them) |
-| `StatsWindow.usbErrors` | USB errors (no core export yet; hidden) |
+| `StatsWindow.usbErrors` | USB errors (shown once the device has counted one) |
 | `StatsWindow.connection` | the footer's Connected / Disconnected |
 
 ## Interrupt Monitor

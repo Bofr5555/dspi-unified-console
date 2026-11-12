@@ -126,6 +126,14 @@ fun ChannelMeterBar(
     )
 }
 
+// -- WP UIM1 --
+/**
+ * Home's level meters: one neutral colour, so a channel's colour appears only as its small tag
+ * (the pill, a card's dot), never as a fill (docs/UI-MODES.md, the channel-colour rule).
+ */
+@Composable
+fun homeMeterColor(): Color = DspiTheme.colors.green
+
 /**
  * One sidebar channel row (macOS `ChannelRow` / `OutputRow`: they differ
  * only in the muted meter): selection bar, name (or the rename field), level
@@ -185,7 +193,16 @@ fun ChannelRow(
                     modifier = Modifier.padding(start = 8.dp).width(NAME_WIDTH)
                 )
             }
-            ChannelMeterBar(bridge, status, ch, color, Modifier.weight(1f).padding(start = 4.dp), isMuted = isMuted, label = "Level")
+            // -- WP UIM1 -- a neutral meter; the pill is the channel's coloured tag
+            ChannelMeterBar(
+                bridge,
+                status,
+                ch,
+                homeMeterColor(),
+                Modifier.weight(1f).padding(start = 4.dp),
+                isMuted = isMuted,
+                label = "Level"
+            )
             ChannelVisibilityPill(descriptor, color, isCurveVisible, onToggleCurve, accessibleName = pillDescription)
         }
         menu()

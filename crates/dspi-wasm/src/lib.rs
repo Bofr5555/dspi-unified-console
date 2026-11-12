@@ -47,6 +47,8 @@ pub mod calls;
 // -- WP WB6b --
 pub mod curves;
 pub mod guard;
+// -- WP P0W --
+pub mod history;
 // -- WP WB4b --
 pub mod link;
 // -- WP WB6c --

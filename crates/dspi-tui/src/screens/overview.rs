@@ -5,7 +5,7 @@
 //! one when their responses are bit-identical after output gain is folded
 //! in. Inputs and outputs never share a cell, because their summary lines
 //! say different things. Each cell carries the member names in its title, a
-//! plot in grey on a 0 dB rule, and one line: `5 bands · preamp -5.3 dB`,
+//! plot in grey on a 0 dB rule, and one line: `5 bands · trim -5.3 dB`,
 //! `HP 80 Hz LR4 · -3.0 dB`, or `no filters`. The focused cell takes its
 //! first channel's hue.
 
@@ -92,7 +92,7 @@ fn summary(state: &DeviceState, channel: usize, flat: bool) -> String {
         }
         let preamp = state.preamp_db(channel) as f64;
         if preamp != 0.0 {
-            parts.push(format!("preamp {}", db(preamp)));
+            parts.push(format!("trim {}", db(preamp)));
         }
     } else {
         let out = state.output(channel - ni);
@@ -609,11 +609,11 @@ mod tests {
         assert_eq!(
             summaries,
             vec![
-                "5 bands · preamp -5.3 dB",
-                "3 bands · preamp -5.3 dB",
-                "2 bands · preamp -5.3 dB",
-                "4 bands · preamp -5.3 dB",
-                "no filters · preamp -5.3 dB",
+                "5 bands · trim -5.3 dB",
+                "3 bands · trim -5.3 dB",
+                "2 bands · trim -5.3 dB",
+                "4 bands · trim -5.3 dB",
+                "no filters · trim -5.3 dB",
                 "HP 80 Hz LR4 · 2 bands",
                 "HP 100 Hz BW2 · -2.0 dB",
                 "no filters",
@@ -776,7 +776,7 @@ mod tests {
             .map(|y| (0..94).map(|x| buf[(x, y)].symbol()).collect::<String>())
             .collect::<Vec<_>>()
             .join("\n");
-        assert!(f.contains(" preamp -5.3 dB "), "{f}");
+        assert!(f.contains(" trim -5.3 dB "), "{f}");
         assert!(!f.contains("…│"), "no summary is cut: {f}");
     }
 

@@ -830,6 +830,40 @@ pub struct ApplyReport {
     /// Delays the document holds past this device's delay line, which were
     /// shortened to it.
     pub shortened: Option<ShortenedDelays>,
+    // -- WP P0U fixup --
+    /// Numbers the document holds outside what this device takes: clamped to
+    /// the nearest end of the range, or skipped when NaN or infinite.
+    pub out_of_range: Vec<OutOfRange>,
+    /// Other values the device or the registry refused, one line each.
+    pub refused: Vec<String>,
+}
+
+// -- WP P0U fixup --
+/// One number from the document outside its parameter's range on this
+/// device ([`Session::write_range`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct OutOfRange {
+    /// The registry path, with its indices: `up.release`, `out.gain[2]`.
+    pub path: String,
+    /// The document's value.
+    pub value: f64,
+    /// What was written: the nearest end of the range. `None` for NaN or
+    /// infinity, which no range holds and which were skipped.
+    pub applied: Option<f64>,
+}
+
+impl OutOfRange {
+    /// "up.release 3000 → 2000 ms", "up.release NaN (skipped)".
+    pub fn line(&self) -> String {
+        let unit = dspi_proto::registry::by_path(self.path.split('[').next().unwrap_or(""))
+            .map_or("", |d| d.kind.unit().suffix());
+        match self.applied {
+            // The document's numbers are f32; shown as such, not as the f64
+            // they widen to ("0.1", not "0.10000000149011612").
+            Some(to) => format!("{} {} → {}{unit}", self.path, self.value as f32, to as f32),
+            None => format!("{} {} (skipped)", self.path, self.value as f32),
+        }
+    }
 }
 
 // -- WP DL3 --
@@ -863,6 +897,8 @@ impl ApplyReport {
             && self.skipped.is_empty()
             && self.left_alone.is_empty()
             && self.shortened.is_none()
+            && self.out_of_range.is_empty()
+            && self.refused.is_empty()
     }
 
     /// The result report, worded as the Console words it.
@@ -903,6 +939,34 @@ impl ApplyReport {
                 d.platform,
                 d.delays.join(", ")
             ));
+        }
+        // -- WP P0U fixup --
+        let clamped: Vec<String> = self
+            .out_of_range
+            .iter()
+            .filter(|o| o.applied.is_some())
+            .map(OutOfRange::line)
+            .collect();
+        if !clamped.is_empty() {
+            lines.push(format!(
+                "Clamped to what this device takes: {}",
+                clamped.join(", ")
+            ));
+        }
+        let skipped: Vec<String> = self
+            .out_of_range
+            .iter()
+            .filter(|o| o.applied.is_none())
+            .map(OutOfRange::line)
+            .collect();
+        if !skipped.is_empty() {
+            lines.push(format!(
+                "Not a number, left as they are: {}",
+                skipped.join(", ")
+            ));
+        }
+        for refused in &self.refused {
+            lines.push(format!("Not applied: {refused}"));
         }
         for warning in &self.warnings {
             lines.push(format!("Warning: {warning}"));
@@ -1053,9 +1117,16 @@ const CROSSOVER_FIRST_BAND: u8 = 20;
 /// Apply a document to a device.
 ///
 /// Everything goes through the ordinary write path, so each value gets the same
-/// clamping, capability gating and readback verification as a typed command.
-/// Nothing is applied that the options did not ask for, and the report says what
-/// actually happened rather than leaving the user to infer it from the UI.
+/// validation, capability gating and readback verification as a typed command.
+/// A number outside its range on this device, which that path would refuse, is
+/// clamped to the nearest end first, as the firmware itself clamps, and named
+/// in [`ApplyReport::out_of_range`] with the document's value and the one
+/// written; NaN and infinity are named there and skipped. Delays past the line
+/// are shortened and named in [`ApplyReport::shortened`]. Any other value the
+/// write refuses is named in [`ApplyReport::refused`], so nothing in the file is
+/// dropped without a line. Nothing is applied that the options did not ask for,
+/// and the report says what actually happened rather than leaving the user to
+/// infer it from the UI.
 ///
 /// The input pair links (`global.inputPairLinked`) are the app's, not the
 /// device's, so this leaves them to the caller; the Terminal applies them to
@@ -1083,12 +1154,22 @@ pub fn apply(session: &mut Session, doc: &PresetDocument, options: ApplyOptions)
             if let ChannelRef::Input(i) = r
                 && let Some(db) = doc.global.input_preamps_db.get(i as usize)
             {
-                let _ = session.write("pre", &[i], Value::Float(*db));
+                let _ = put(session, &mut report, "pre", &[i], Value::Float(*db));
             }
         }
 
         for c in &doc.matrix {
             if c.input as u8 >= caps.num_inputs || c.output as u8 >= caps.num_outputs {
+                continue;
+            }
+            // -- WP P0U fixup -- the device refuses a NaN gain (vendor_commands.c);
+            // named here rather than lost with the whole crosspoint.
+            if !c.gain_db.is_finite() {
+                report.out_of_range.push(OutOfRange {
+                    path: shown("mix", &[c.input as u8, c.output as u8]),
+                    value: f64::from(c.gain_db),
+                    applied: None,
+                });
                 continue;
             }
             // The crosspoint packet carries every field at once.
@@ -1133,7 +1214,9 @@ pub fn apply(session: &mut Session, doc: &PresetDocument, options: ApplyOptions)
         && let Some(source) = doc.global.input_source
     {
         let v = Value::Choice(source);
-        if let Err(crate::WriteError::Unavailable { .. }) = session.write("in.source", &[], v) {
+        if let Err(crate::WriteError::Unavailable { .. }) =
+            put(session, &mut report, "in.source", &[], v)
+        {
             report.skip("Input source (not supported by this firmware)");
         }
     }
@@ -1345,6 +1428,117 @@ fn within_line(
     line
 }
 
+// -- WP P0U fixup --
+/// `path`, or `path[i,j]` with its indices, as the report names a value.
+fn shown(path: &str, indices: &[u8]) -> String {
+    if indices.is_empty() {
+        return path.into();
+    }
+    let at: Vec<String> = indices.iter().map(u8::to_string).collect();
+    format!("{path}[{}]", at.join(","))
+}
+
+/// `value` held to what `path` takes on this device
+/// ([`Session::write_range`]): a number past either end becomes that end and
+/// is named in the report; NaN or infinity is named and refused, since no end
+/// is nearer than the other. Anything else passes as it is.
+fn fit(
+    session: &Session,
+    report: &mut ApplyReport,
+    path: &str,
+    indices: &[u8],
+    value: Value,
+) -> Result<Value, crate::WriteError> {
+    let Some((min, max)) = dspi_proto::registry::by_path(path).and_then(|d| session.write_range(d))
+    else {
+        return Ok(value);
+    };
+    let v = match value {
+        Value::Float(f) => {
+            if let Err(e) = crate::fast::check_finite(f) {
+                report.out_of_range.push(OutOfRange {
+                    path: shown(path, indices),
+                    value: f64::from(f),
+                    applied: None,
+                });
+                return Err(e);
+            }
+            f64::from(f)
+        }
+        Value::Int(i) => i as f64,
+        other => return Ok(other),
+    };
+    if (min..=max).contains(&v) {
+        return Ok(value);
+    }
+    let to = v.clamp(min, max);
+    report.out_of_range.push(OutOfRange {
+        path: shown(path, indices),
+        value: v,
+        applied: Some(to),
+    });
+    Ok(match value {
+        Value::Int(_) => Value::Int(to as i64),
+        _ => Value::Float(to as f32),
+    })
+}
+
+// -- WP CS1 --
+/// A finite `value` for `path` held to what that parameter takes on
+/// `platform` (the rule [`apply`] uses, [`Session::write_range`]): the value
+/// itself when in range or not a number parameter, else the nearest end and
+/// its [`OutOfRange`] row. For an importer that builds a whole image instead
+/// of writing through a session (the core's `config_import`).
+pub fn clamp_to_range(
+    platform: dspi_proto::Platform,
+    path: &str,
+    indices: &[u8],
+    value: f32,
+) -> (f32, Option<OutOfRange>) {
+    let Some((min, max)) =
+        dspi_proto::registry::by_path(path).and_then(|d| crate::fast::write_range_on(platform, d))
+    else {
+        return (value, None);
+    };
+    let v = f64::from(value);
+    if !v.is_finite() || (min..=max).contains(&v) {
+        return (value, None);
+    }
+    let to = v.clamp(min, max);
+    let row = OutOfRange {
+        path: shown(path, indices),
+        value: v,
+        applied: Some(to),
+    };
+    (to as f32, Some(row))
+}
+
+/// Write one value from the document through [`fit`], and name a refusal in
+/// the report rather than drop it. An absent feature is the caller's to word
+/// (most say "not on this device"), and a transport failure is the whole
+/// apply's, not this value's, so those two are left to the caller.
+fn put(
+    session: &mut Session,
+    report: &mut ApplyReport,
+    path: &str,
+    indices: &[u8],
+    value: Value,
+) -> Result<Outcome, crate::WriteError> {
+    let value = fit(session, report, path, indices, value)?;
+    let result = session.write(path, indices, value);
+    if let Err(e) = &result
+        && !matches!(
+            e,
+            crate::WriteError::Unavailable { .. } | crate::WriteError::Transport(_)
+        )
+    {
+        report
+            .refused
+            .push(format!("{} ({e})", shown(path, indices)));
+    }
+    result
+}
+
 /// One channel's name, delay, output strip and filter banks
 /// (PresetDocumentTransfer.swift:451-505).
 fn apply_channel(
@@ -1362,7 +1556,13 @@ fn apply_channel(
         .find(|c| c.index == ch)
         .map(|c| c.name.as_str());
     if !block.name.is_empty() && current_name != Some(block.name.as_str()) {
-        let _ = session.write("ch.name", &[ch], Value::Text(block.name.clone()));
+        let _ = put(
+            session,
+            report,
+            "ch.name",
+            &[ch],
+            Value::Text(block.name.clone()),
+        );
     }
     // -- WP DL3 -- a delay past the line is shortened to it and named, where
     // the write would refuse it and leave the old delay.
@@ -1373,12 +1573,12 @@ fn apply_channel(
     };
     if let Some(ms) = block.delay_ms {
         let ms = within_line(&caps, report, &label, ms);
-        let _ = session.write("ch.delay", &[ch], Value::Float(ms));
+        let _ = put(session, report, "ch.delay", &[ch], Value::Float(ms));
     }
 
     if let ChannelRef::Output(o) = r {
         if let Some(db) = block.gain_db {
-            let _ = session.write("out.gain", &[o], Value::Float(db));
+            let _ = put(session, report, "out.gain", &[o], Value::Float(db));
         }
         if let Some(want) = block.muted {
             let muted = session
@@ -1392,7 +1592,7 @@ fn apply_channel(
         // Additive: a document without it leaves the output delay alone.
         if let Some(ms) = block.output_delay_ms {
             let ms = within_line(&caps, report, &format!("{label} output delay"), ms);
-            let _ = session.write("out.delay", &[o], Value::Float(ms));
+            let _ = put(session, report, "out.delay", &[o], Value::Float(ms));
         }
     }
 
@@ -1403,7 +1603,7 @@ fn apply_channel(
     if !block.eq.is_empty() {
         for band in 0..caps.max_bands {
             let b = block.eq.get(band as usize).unwrap_or(&flat);
-            if apply_band(session, ch, band, b).is_some() {
+            if apply_band(session, report, ch, band, b).is_some() {
                 report.bands_applied += 1;
             }
         }
@@ -1411,7 +1611,7 @@ fn apply_channel(
     if matches!(r, ChannelRef::Output(_)) && !block.crossover.is_empty() {
         for band in 0..CROSSOVER_BANDS {
             let b = block.crossover.get(band as usize).unwrap_or(&flat);
-            if apply_band(session, ch, CROSSOVER_FIRST_BAND + band, b).is_some() {
+            if apply_band(session, report, ch, CROSSOVER_FIRST_BAND + band, b).is_some() {
                 report.crossover_bands_applied += 1;
             }
         }
@@ -1420,7 +1620,35 @@ fn apply_channel(
     report.channels_applied += 1;
 }
 
-fn apply_band(session: &mut Session, channel: u8, band: u8, b: &BandBlock) -> Option<()> {
+fn apply_band(
+    session: &mut Session,
+    report: &mut ApplyReport,
+    channel: u8,
+    band: u8,
+    b: &BandBlock,
+) -> Option<()> {
+    // -- WP P0U fixup -- a band with a NaN or infinite field never reaches the
+    // wire (`write_band`); each such field is named. A finite band goes as it
+    // is, and the firmware clamps its fields as it always has.
+    let fields = [
+        ("eq.freq", b.freq_hz),
+        ("eq.q", b.q),
+        ("eq.gain", b.gain),
+        ("eq.qp", b.qp),
+    ];
+    let bad: Vec<OutOfRange> = fields
+        .iter()
+        .filter(|(_, v)| !v.is_finite())
+        .map(|(path, v)| OutOfRange {
+            path: shown(path, &[channel, band]),
+            value: f64::from(*v),
+            applied: None,
+        })
+        .collect();
+    if !bad.is_empty() {
+        report.out_of_range.extend(bad);
+        return None;
+    }
     let packet = EqParamPacket {
         channel,
         band,
@@ -1445,13 +1673,13 @@ fn apply_volumes(session: &mut Session, doc: &PresetDocument, report: &mut Apply
     let mode = current_u8(session, "vol.master.mode", &[]);
     if let Some(db) = doc.global.master_volume_db {
         if mode == Some(MASTER_VOLUME_MODE_WITH_PRESET) {
-            let _ = session.write("vol.master", &[], Value::Float(db));
+            let _ = put(session, report, "vol.master", &[], Value::Float(db));
         } else {
             report.skip("Master volume (device is in independent master-volume mode)");
         }
     }
     if let Some(db) = doc.global.user_volume_db {
-        let _ = session.write("vol.user", &[], Value::Float(db));
+        let _ = put(session, report, "vol.user", &[], Value::Float(db));
     }
 }
 
@@ -1468,7 +1696,7 @@ fn apply_features(session: &mut Session, doc: &PresetDocument, report: &mut Appl
     // A key the document does not hold is left alone.
     let mut set = |path: &str, v: Option<Value>, label: &str, report: &mut ApplyReport| {
         let Some(v) = v else { return };
-        if let Err(e) = session.write(path, &[], v) {
+        if let Err(e) = put(session, report, path, &[], v) {
             // An absent feature is information, not a failure: a document from a
             // better-equipped device should still apply everything else.
             if matches!(e, crate::WriteError::Unavailable { .. }) {
@@ -1558,7 +1786,7 @@ fn apply_features(session: &mut Session, doc: &PresetDocument, report: &mut Appl
             // UPMIX_PARAM_* (upmix.h:188-201) through the registry's rows.
             let mut set = |path: &str, v: Option<Value>| {
                 if let Some(v) = v {
-                    let _ = session.write(path, &[], v);
+                    let _ = put(session, report, path, &[], v);
                 }
             };
             set("up.center_mode", choice(u.center_mode));
@@ -1591,11 +1819,11 @@ fn apply_features(session: &mut Session, doc: &PresetDocument, report: &mut Appl
 fn apply_subharm_and_tube(session: &mut Session, doc: &PresetDocument, report: &mut ApplyReport) {
     let caps = session.capabilities().clone();
     let has = |name: &str| caps.features.iter().any(|f| f.name == name && f.present);
-    // A refused value is left to the re-read to show; the Console does not
-    // report one either.
-    let mut set = |path: &str, v: Option<Value>| {
+    // -- WP P0U fixup -- a number out of range is clamped and a refused
+    // value named (`put`), where the Console says nothing.
+    let mut set = |path: &str, v: Option<Value>, report: &mut ApplyReport| {
         if let Some(v) = v {
-            let _ = session.write(path, &[], v);
+            let _ = put(session, report, path, &[], v);
         }
     };
     let float = |x: Option<f32>| x.map(Value::Float);
@@ -1605,17 +1833,17 @@ fn apply_subharm_and_tube(session: &mut Session, doc: &PresetDocument, report: &
 
     if let Some(b) = &doc.subharm {
         if has("subharmonic_synth") {
-            set("sub.low", float(b.low_db));
-            set("sub.high", float(b.high_db));
-            set("sub.boost", float(b.boost_db));
-            set("sub.mask", mask(b.output_mask));
-            set("sub.top", float(b.top_db));
-            set("sub.select", choice(b.select_mode));
-            set("sub.depth", float(b.select_depth_pct));
-            set("sub.hold", float(b.select_hold_ms));
-            set("sub.ceiling", float(b.ceiling_db));
-            set("sub.link", flag(b.link_pairs));
-            set("sub.on", flag(b.enabled));
+            set("sub.low", float(b.low_db), report);
+            set("sub.high", float(b.high_db), report);
+            set("sub.boost", float(b.boost_db), report);
+            set("sub.mask", mask(b.output_mask), report);
+            set("sub.top", float(b.top_db), report);
+            set("sub.select", choice(b.select_mode), report);
+            set("sub.depth", float(b.select_depth_pct), report);
+            set("sub.hold", float(b.select_hold_ms), report);
+            set("sub.ceiling", float(b.ceiling_db), report);
+            set("sub.link", flag(b.link_pairs), report);
+            set("sub.on", flag(b.enabled), report);
         } else {
             report.skip("Subharmonic synthesizer (not supported by this firmware)");
         }
@@ -1623,20 +1851,24 @@ fn apply_subharm_and_tube(session: &mut Session, doc: &PresetDocument, report: &
 
     if let Some(b) = &doc.tube {
         if has("tube_preamp") {
-            set("tube.type", b.tube_type.map(|t| Value::Int(t as i64)));
-            set("tube.bias", float(b.bias_pct));
-            set("tube.asym", float(b.asym_db));
-            set("tube.hardness", float(b.hardness_pct));
-            set("tube.sag", float(b.sag_pct));
-            set("tube.drive", float(b.drive_db));
-            set("tube.rectifier", choice(b.rectifier));
-            set("tube.damping", float(b.xfmr_damping));
-            set("tube.resonance", float(b.xfmr_res_hz));
-            set("tube.xfmr", flag(b.xfmr_enabled));
-            set("tube.mix", float(b.mix_pct));
-            set("tube.trim", float(b.trim_db));
-            set("tube.mask", mask(b.output_mask));
-            set("tube.on", flag(b.enabled));
+            set(
+                "tube.type",
+                b.tube_type.map(|t| Value::Int(t as i64)),
+                report,
+            );
+            set("tube.bias", float(b.bias_pct), report);
+            set("tube.asym", float(b.asym_db), report);
+            set("tube.hardness", float(b.hardness_pct), report);
+            set("tube.sag", float(b.sag_pct), report);
+            set("tube.drive", float(b.drive_db), report);
+            set("tube.rectifier", choice(b.rectifier), report);
+            set("tube.damping", float(b.xfmr_damping), report);
+            set("tube.resonance", float(b.xfmr_res_hz), report);
+            set("tube.xfmr", flag(b.xfmr_enabled), report);
+            set("tube.mix", float(b.mix_pct), report);
+            set("tube.trim", float(b.trim_db), report);
+            set("tube.mask", mask(b.output_mask), report);
+            set("tube.on", flag(b.enabled), report);
         } else {
             report.skip("Tube preamp (not supported by this firmware)");
         }
@@ -1684,18 +1916,24 @@ fn apply_limiters(session: &mut Session, placed: &Placement, report: &mut ApplyR
     }
     for (&o, l) in &blocks {
         if let Some(db) = l.threshold_db {
-            let _ = session.write("limit.threshold", &[o], Value::Float(db));
+            let _ = put(session, report, "limit.threshold", &[o], Value::Float(db));
         }
         if let Some(ms) = l.release_ms {
-            let _ = session.write("limit.release", &[o], Value::Float(ms));
+            let _ = put(session, report, "limit.release", &[o], Value::Float(ms));
         }
         if let Some(on) = l.enabled {
-            let _ = session.write("limit.on", &[o], Value::Bool(on));
+            let _ = put(session, report, "limit.on", &[o], Value::Bool(on));
         }
     }
     for (&o, l) in &blocks {
         if let Some(group) = l.link_group.filter(|g| *g != 0) {
-            let _ = session.write("limit.link", &[o], Value::Int(group as i64));
+            let _ = put(
+                session,
+                report,
+                "limit.link",
+                &[o],
+                Value::Int(group as i64),
+            );
         }
     }
 }
@@ -1946,7 +2184,7 @@ fn apply_io(session: &mut Session, io: &IoBlock, report: &mut ApplyReport) {
         );
     }
     if let Some(want) = io.i2s_input_rate_hz {
-        let _ = session.write("in.rate", &[], Value::Int(want as i64));
+        let _ = put(session, report, "in.rate", &[], Value::Int(want as i64));
     }
 
     // 7. Clocking (swift:665-679). The slave pair is a dormant store accepted
@@ -3252,10 +3490,12 @@ pub fn apply_filter_channel(
             report.refused += 1;
         }
     }
+    // A filter import counts a refused band in `refused`; the band's NaN fields
+    // need no second report there.
     for (i, b) in filters.peq.iter().enumerate() {
         if i >= caps.max_bands as usize {
             report.dropped += 1;
-        } else if apply_band(session, channel, i as u8, b).is_some() {
+        } else if apply_band(session, &mut ApplyReport::default(), channel, i as u8, b).is_some() {
             report.bands_applied += 1;
         } else {
             report.refused += 1;
@@ -3264,7 +3504,15 @@ pub fn apply_filter_channel(
     for (i, b) in filters.crossover.iter().enumerate() {
         if !is_output || i >= CROSSOVER_BANDS as usize {
             report.dropped += 1;
-        } else if apply_band(session, channel, CROSSOVER_FIRST_BAND + i as u8, b).is_some() {
+        } else if apply_band(
+            session,
+            &mut ApplyReport::default(),
+            channel,
+            CROSSOVER_FIRST_BAND + i as u8,
+            b,
+        )
+        .is_some()
+        {
             report.crossover_bands_applied += 1;
         } else {
             report.refused += 1;
@@ -6204,6 +6452,115 @@ mod interop_tests {
                     platform: "RP2350".into(),
                     delays: vec!["Sub (85 ms)".into()],
                 })
+            );
+        }
+    }
+
+    // -- WP P0U fixup --
+    mod tests_wp_p0u {
+        use super::*;
+
+        /// The review's file: five upmixer values past the firmware's ranges
+        /// (upmix.h:88-109), which a pre-P0U client could store on a device.
+        const WIDE: &str = r#"{
+          "schemaVersion": 1,
+          "channels": [{"channelId": 0}],
+          "upmix": {"strengthPct": 50, "thresholdPct": 100, "attackMs": 0.5,
+                    "releaseMs": 3000, "detectorHpfHz": 1500, "surroundDelayMs": 30}
+        }"#;
+
+        fn upmix_sent(log: &LogHandle) -> Vec<(u16, f32)> {
+            sent(log, op::REQ_UPMIX_SET_PARAM)
+                .into_iter()
+                .map(|(id, p)| (id, f32::from_le_bytes([p[0], p[1], p[2], p[3]])))
+                .collect()
+        }
+
+        /// Each is clamped to the nearest end, written, and named with the
+        /// file's value and the applied one; the value in range goes as it is.
+        #[test]
+        fn wp_p0u_an_out_of_range_number_is_clamped_and_reported() {
+            let (mut s, log) = rig(Platform::Rp2350);
+            let report = apply(&mut s, &parse(WIDE).unwrap(), ApplyOptions::default());
+            let got = upmix_sent(&log);
+            for want in [
+                (3, 50.0),
+                (5, 95.0),
+                (6, 1.0),
+                (7, 2000.0),
+                (8, 1000.0),
+                (9, 20.0),
+            ] {
+                assert!(got.contains(&want), "{want:?} not in {got:?}");
+            }
+            let rows: Vec<(&str, f64, Option<f64>)> = report
+                .out_of_range
+                .iter()
+                .map(|o| (o.path.as_str(), o.value, o.applied))
+                .collect();
+            assert_eq!(
+                rows,
+                vec![
+                    ("up.threshold", 100.0, Some(95.0)),
+                    ("up.attack", 0.5, Some(1.0)),
+                    ("up.release", 3000.0, Some(2000.0)),
+                    ("up.det_hpf", 1500.0, Some(1000.0)),
+                    ("up.sur_delay", 30.0, Some(20.0)),
+                ]
+            );
+            assert!(report.refused.is_empty(), "{:?}", report.refused);
+            assert!(!report.is_clean());
+            let lines = report.lines(false);
+            assert!(
+                lines.contains(
+                    &"Clamped to what this device takes: up.threshold 100 → 95 %, \
+                      up.attack 0.5 → 1 ms, up.release 3000 → 2000 ms, \
+                      up.det_hpf 1500 → 1000 Hz, up.sur_delay 30 → 20 ms"
+                        .to_string()
+                ),
+                "{lines:?}"
+            );
+        }
+
+        /// NaN and infinity are not clamped: named, skipped, and the rest of
+        /// the block still goes.
+        #[test]
+        fn wp_p0u_nan_and_infinity_are_reported_and_skipped() {
+            let (mut s, log) = rig(Platform::Rp2350);
+            let mut d = parse(r#"{"schemaVersion":1,"channels":[{"channelId":0}]}"#).unwrap();
+            d.upmix = Some(UpmixBlock {
+                strength_pct: Some(50.0),
+                release_ms: Some(f32::NAN),
+                ..Default::default()
+            });
+            d.channels.push(ChannelBlock {
+                channel_id: channel_id::for_output(0),
+                name: "Main L".into(),
+                is_output: true,
+                gain_db: Some(f32::NEG_INFINITY),
+                ..Default::default()
+            });
+            let report = apply(&mut s, &d, ApplyOptions::default());
+            let got = upmix_sent(&log);
+            assert!(got.contains(&(3, 50.0)), "{got:?}");
+            assert!(got.iter().all(|(id, _)| *id != 7), "{got:?}");
+            assert!(sent(&log, op::REQ_SET_OUTPUT_GAIN).is_empty());
+            let rows: Vec<(&str, Option<f64>)> = report
+                .out_of_range
+                .iter()
+                .map(|o| (o.path.as_str(), o.applied))
+                .collect();
+            assert_eq!(rows, vec![("out.gain[0]", None), ("up.release", None)]);
+            assert!(report.out_of_range[0].value == f64::NEG_INFINITY);
+            assert!(report.out_of_range[1].value.is_nan());
+            let lines = report.lines(false);
+            assert!(
+                lines.contains(
+                    &"Not a number, left as they are: out.gain[0] -inf (skipped), \
+                      up.release NaN (skipped)"
+                        .to_string()
+                ),
+                "{lines:?}"
             );
         }
     }

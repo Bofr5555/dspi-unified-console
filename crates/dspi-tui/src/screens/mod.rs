@@ -733,7 +733,7 @@ pub(crate) mod tests {
         for (w, h) in [(120u16, 40u16), (80, 24)] {
             let f = frame(&mut s, w, h);
             assert!(f.contains("Link 1/2"), "{w}x{h}: {f}");
-            assert!(f.contains("Preamp"), "{w}x{h}: {f}");
+            assert!(f.contains("Input trim"), "{w}x{h}: {f}");
             assert!(f.contains("Clear PEQ"), "{w}x{h}: {f}");
             assert!(f.contains("TYPE"), "{w}x{h}: {f}");
             assert!(

@@ -269,10 +269,16 @@ impl DspiCore {
     /// changes nothing in it). The answer is the device's read-back.
     fn write_by_session(&self, d: &ParamDesc, ix: &[u8], value: Value) -> Answer {
         let mut inner = self.writing()?;
+        // -- WP P0W -- `Session::write` journals it; an undo's replay as one
+        crate::journal::check_replay(&inner)?;
         let outcome = {
             let mut w = inner.writable_conn()?;
             w.conn().fresh_image = false;
-            w.session()?.write(d.path, ix, value.clone())?
+            let session = w.session()?;
+            session.replaying_as(crate::journal::replay_source());
+            let r = session.write(d.path, ix, value.clone());
+            session.replaying_as(None);
+            r?
         };
         let back = match outcome {
             Outcome::Confirmed(v) | Outcome::Rejected { actual: v, .. } => v,
@@ -543,28 +549,7 @@ impl DspiCore {
             Fx::Tube => self.set_tube_param(id, x)?,
             Fx::Limiter => self.set_limiter_param(output, id, x)?,
         }
-        // "Every output" reads back as the first output, which it set too.
-        let o = if output == ALL_OUTPUTS { 0 } else { output };
-        let back = self.seen(|s| match fx {
-            Fx::Psybass => match id {
-                PSYBASS_PARAM_CUTOFF => Some(s.psybass_cutoff_hz),
-                PSYBASS_PARAM_HARMONICS => Some(s.psybass_harmonics_db),
-                PSYBASS_PARAM_DRIVE => Some(s.psybass_drive_db),
-                PSYBASS_PARAM_CHARACTER => Some(s.psybass_character_pct),
-                _ => Some(s.psybass_original_db),
-            },
-            Fx::Upmix => at(&s.upmix, id),
-            Fx::Subharm => at(&s.subharm, id),
-            Fx::Tube => at(&s.tube, id),
-            Fx::Limiter => match u16::from(id) {
-                limiter::LIMITER_PARAM_ENABLED => {
-                    at(&s.limiter_enabled, o).map(|b| f32::from(u8::from(b)))
-                }
-                limiter::LIMITER_PARAM_THRESHOLD_DB => at(&s.limiter_threshold_db, o),
-                limiter::LIMITER_PARAM_RELEASE_MS => at(&s.limiter_release_ms, o),
-                _ => at(&s.limiter_link_group, o).map(f32::from),
-            },
-        });
+        let back = self.seen(|s| fx_mirror(s, fx, id, output));
         back.map(|x| as_kind(k, x))
             .ok_or_else(|| invalid(format!("output {output} has no limiter")))
     }
@@ -644,6 +629,33 @@ impl DspiCore {
         })
         .map(|p| ParamValue::Bytes(p.encode().to_vec()))
         .ok_or_else(|| invalid(format!("mix has no crosspoint [{input}, {output}]")))
+    }
+}
+
+// -- WP P0W -- shared with the journal's mirror reads
+/// An effects parameter's value in the mirror's table. "Every output" reads
+/// as the first output, which it set too.
+pub(crate) fn fx_mirror(s: &DspState, fx: Fx, id: u8, output: u8) -> Option<f32> {
+    let o = if output == ALL_OUTPUTS { 0 } else { output };
+    match fx {
+        Fx::Psybass => match id {
+            PSYBASS_PARAM_CUTOFF => Some(s.psybass_cutoff_hz),
+            PSYBASS_PARAM_HARMONICS => Some(s.psybass_harmonics_db),
+            PSYBASS_PARAM_DRIVE => Some(s.psybass_drive_db),
+            PSYBASS_PARAM_CHARACTER => Some(s.psybass_character_pct),
+            _ => Some(s.psybass_original_db),
+        },
+        Fx::Upmix => at(&s.upmix, id),
+        Fx::Subharm => at(&s.subharm, id),
+        Fx::Tube => at(&s.tube, id),
+        Fx::Limiter => match u16::from(id) {
+            limiter::LIMITER_PARAM_ENABLED => {
+                at(&s.limiter_enabled, o).map(|b| f32::from(u8::from(b)))
+            }
+            limiter::LIMITER_PARAM_THRESHOLD_DB => at(&s.limiter_threshold_db, o),
+            limiter::LIMITER_PARAM_RELEASE_MS => at(&s.limiter_release_ms, o),
+            _ => at(&s.limiter_link_group, o).map(f32::from),
+        },
     }
 }
 
@@ -782,7 +794,7 @@ fn at<T: Clone>(v: &[T], i: u8) -> Option<T> {
 }
 
 /// Band `b` of wire channel `ch` in the mirror: PEQ 0..9 or crossover 20..23.
-fn band(s: &DspState, ch: u8, b: u8) -> Option<FilterParams> {
+pub(crate) fn band(s: &DspState, ch: u8, b: u8) -> Option<FilterParams> {
     let ch = usize::from(ch);
     match b.checked_sub(XOVER_BASE) {
         Some(x) => s.xover.get(ch)?.get(usize::from(x)).copied(),
@@ -792,7 +804,7 @@ fn band(s: &DspState, ch: u8, b: u8) -> Option<FilterParams> {
 
 /// A mirror's `f32` as the registry's kind for the path. The effects
 /// tables hold whole numbers for their flags, choices and masks.
-fn as_kind(k: Kind, x: f32) -> ParamValue {
+pub(crate) fn as_kind(k: Kind, x: f32) -> ParamValue {
     match k {
         Kind::Bool => ParamValue::Bool(x != 0.0),
         Kind::Choice(_) => ParamValue::Choice(x as u8),

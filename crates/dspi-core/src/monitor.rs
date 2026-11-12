@@ -268,7 +268,7 @@ fn rta_tap(tap: u8) -> String {
 }
 
 /// The `ParamSource` tag as notify.h spells it, short.
-fn source_label(source: Source) -> String {
+pub(crate) fn source_label(source: Source) -> String {
     match source {
         Source::Unknown => "?".into(),
         Source::HostSet => "HOST".into(),

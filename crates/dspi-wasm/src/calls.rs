@@ -25,6 +25,8 @@ use serde_json::{Value, json};
 use crate::guard::{self, Refusal};
 // -- WP WB6b --
 use crate::curves;
+// -- WP P0W --
+use crate::history;
 // -- WP WB4b --
 use crate::link;
 // -- WP WB6a --
@@ -219,6 +221,11 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         }
         // -- WP CG36 --
         "core1Conflict" => write::core1_conflict(&core, &params(req.params)?),
+        // -- WP P0W -- the change history (src/history.rs)
+        "undo" => history::undo(&core),
+        "redo" => history::redo(&core),
+        "canUndo" | "canRedo" => Ok(history::can(&core)),
+        "history" => Ok(history::history(&core, &params(req.params)?)),
         "describe" => {
             #[derive(Deserialize)]
             struct P {
@@ -237,6 +244,39 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
             core.link_service();
             poll(&core)
         }
+        // -- WP P0M -- meter ballistics and the event log (src/calls.rs)
+        "meterBallistics" => Ok(ballistics(&core)),
+        "setMeterBallistics" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct P {
+                hold_ms: u32,
+                decay_per_s: f32,
+                clip_hold_ms: u32,
+            }
+            let p: P = params(req.params)?;
+            core.set_meter_ballistics(dspi_core::MeterBallistics {
+                hold_ms: p.hold_ms,
+                decay_per_s: p.decay_per_s,
+                clip_hold_ms: p.clip_hold_ms,
+            });
+            Ok(ballistics(&core))
+        }
+        "resetMeterMax" => {
+            core.reset_meter_max();
+            Ok(Value::Null)
+        }
+        "eventLogRead" => event_log_read(&core, params(req.params)?),
+        "eventLogExport" => {
+            #[derive(Deserialize)]
+            struct P {
+                #[serde(default)]
+                serial: String,
+            }
+            let p: P = params(req.params)?;
+            Ok(json!(core.event_log_export(p.serial)))
+        }
+        "eventLogDevices" => Ok(json!(core.event_log_devices())),
         "rtaStart" => rta_start(&core, params(req.params)?),
         "rtaStop" => {
             core.rta_set_request(RtaRequest::default());
@@ -460,7 +500,43 @@ fn meters(core: &DspiCore) -> CallResult {
         "numChannels": st.num_channels,
         "stale": st.stale,
         "ageMs": st.age_ms,
+        // -- WP P0M -- the core's ballistics
+        "peakHold": tidy(&st.peak_hold),
+        "peakMax": tidy(&st.peak_max),
+        "clipHold": st.clip_hold,
     }))
+}
+
+// -- WP P0M --
+/// `meterBallistics`: the timing, camelCase.
+fn ballistics(core: &DspiCore) -> Value {
+    let b = core.meter_ballistics();
+    json!({ "holdMs": b.hold_ms, "decayPerS": b.decay_per_s, "clipHoldMs": b.clip_hold_ms })
+}
+
+/// `eventLogRead`'s parameters: `serial` "" or absent for the open device.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EventLogParams {
+    #[serde(default)]
+    serial: String,
+    #[serde(default)]
+    after_id: u64,
+    #[serde(default = "event_limit")]
+    limit: u32,
+}
+
+fn event_limit() -> u32 {
+    500
+}
+
+/// `eventLogRead`: the records in the event log's file format, oldest first,
+/// and the id to pass next. The web keeps the event log in memory (no files).
+fn event_log_read(core: &DspiCore, p: EventLogParams) -> CallResult {
+    let page = core.event_log_page(p.serial, p.after_id, p.limit);
+    let records = serde_json::to_value(&page.records)
+        .map_err(|e| CallError::new("internal", e.to_string()))?;
+    Ok(json!({ "records": records, "lastId": page.last_id, "skipped": page.skipped }))
 }
 
 /// `poll`: the Worker's notification turn. What changed (`NOTIFY_*` flags),
@@ -619,6 +695,36 @@ mod tests {
 
     fn code(r: &Value) -> &str {
         r["code"].as_str().unwrap_or("")
+    }
+
+    // -- WP P0W --
+    #[test]
+    fn wp_p0w_undo_redo_and_history_through_the_worker_calls() {
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        ok(h, "open", json!({ "kind": "demo" }));
+        let can = ok(h, "canUndo", Value::Null);
+        assert_eq!(can, json!({ "canUndo": false, "canRedo": false }));
+        ok(
+            h,
+            "write",
+            json!({ "path": "out.gain", "indices": [0], "value": { "float": -6.5 } }),
+        );
+        let flags = ok(h, "poll", Value::Null)["flags"].as_u64().unwrap();
+        assert_ne!(flags & u64::from(dspi_core::consts::NOTIFY_HISTORY), 0);
+        let hist = ok(h, "history", json!({ "n": 5 }));
+        assert_eq!(hist[0]["path"], "out.gain");
+        assert_eq!(hist[0]["after"], json!({ "float": -6.5 }));
+        assert_eq!(hist[0]["source"], "local");
+        let undone = ok(h, "undo", Value::Null);
+        assert_eq!(undone["entry"]["path"], "out.gain");
+        assert_eq!(ok(h, "canRedo", Value::Null)["canRedo"], true);
+        let redone = ok(h, "redo", Value::Null);
+        assert_eq!(redone["entry"]["after"], json!({ "float": -6.5 }));
+        assert_eq!(ok(h, "history", json!({ "n": 1 }))[0]["source"], "redo");
+        ok(h, "close", Value::Null);
+        assert_eq!(code(&run(h, "undo", Value::Null)), "not_open");
+        session_free(h).unwrap();
     }
 
     #[test]
@@ -816,6 +922,44 @@ mod tests {
         assert!(count >= 1, "the native worker thread delivered frames");
         assert_eq!(ok(h, "rta", Value::Null)["caps"]["supported"], true);
         ok(h, "rtaStop", Value::Null);
+        session_free(h).unwrap();
+    }
+
+    #[test]
+    fn wp_p0m_meters_carry_the_holds_and_the_event_log_reads() {
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        ok(h, "open", json!({ "kind": "demo" }));
+        let m = ok(h, "meters", Value::Null);
+        assert_eq!(m["peakHold"].as_array().unwrap().len(), 17);
+        assert_eq!(m["peakMax"].as_array().unwrap().len(), 17);
+        assert!(m["clipHold"].is_u64());
+        let b = ok(
+            h,
+            "setMeterBallistics",
+            json!({ "holdMs": 500, "decayPerS": 1.0, "clipHoldMs": 2000 }),
+        );
+        assert_eq!(
+            b,
+            json!({ "holdMs": 500, "decayPerS": 1.0, "clipHoldMs": 2000 })
+        );
+        assert_eq!(ok(h, "meterBallistics", Value::Null), b);
+        assert_eq!(ok(h, "resetMeterMax", Value::Null), Value::Null);
+        let page = ok(h, "eventLogRead", json!({}));
+        assert_eq!(page["records"][0]["kind"], "connected");
+        let last = page["lastId"].as_u64().unwrap();
+        assert!(last >= 1);
+        let none = ok(h, "eventLogRead", json!({ "afterId": last }));
+        assert!(none["records"].as_array().unwrap().is_empty());
+        let export = ok(h, "eventLogExport", json!({}));
+        assert!(export.as_str().unwrap().contains("\"kind\":\"connected\""));
+        assert_eq!(
+            ok(h, "eventLogDevices", Value::Null)
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
         session_free(h).unwrap();
     }
 

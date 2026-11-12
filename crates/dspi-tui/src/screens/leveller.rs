@@ -148,7 +148,7 @@ impl LevellerPanel {
                 l.gate_threshold_db as f64,
                 -96.0,
                 0.0,
-                "dB",
+                panel::unit_of("lev.gate"),
             )
             .step(1.0)
             .decimals(0)
@@ -160,7 +160,7 @@ impl LevellerPanel {
         rows.push(Row::Toggle {
             label: "Lookahead".into(),
             on: l.lookahead,
-            caption: Some("Adds 5ms latency. Improves transient handling.".into()),
+            caption: Some("Adds 5 ms latency on every input. Improves transient handling.".into()),
             enabled: true,
         });
         rows
