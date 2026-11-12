@@ -53,6 +53,13 @@
     </message>
 </context>
 <context>
+    <name>AboutLicenceSection</name>
+    <message>
+        <source>GNU General Public License, version 3</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>AboutPage</name>
     <message>
         <source>USB Audio DSP Controller</source>
@@ -166,6 +173,25 @@
     </message>
     <message>
         <source>Horizontal scroll bar</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>AppUpdater</name>
+    <message>
+        <source>This build has no release feed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The release feed answered %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The release feed could not be reached: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The release feed&apos;s answer is not a list of releases.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -341,6 +367,35 @@ Choose an update method:</source>
     </message>
     <message>
         <source>Apply</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>AuxPage</name>
+    <message>
+        <source>No Auxiliary Outputs Set Up</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Put a relay, lamp or fan on a spare GPIO, then point a button, knob or remote key at it from the Control Surfaces page.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add Output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All %1 control slots are in use.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An auxiliary output is a GPIO the DSPi switches or dims for you and never reads itself: it changes nothing about the sound. It exists so a button, knob, remote key or macro can drive something the device knows nothing about - an amplifier trigger, a speaker relay, a panel lamp, a fan.
+
+An on/off output follows its switch. A dimmable output follows its switch and its level, so one button and one knob can share a lamp. Turn on &quot;Active-Low Output&quot; for the relay and opto-isolator boards that switch when the pin goes low.
+
+A GPIO is a 3.3 V pin good for a few milliamps. Anything real needs a MOSFET, a transistor with a flyback diode, or an opto-isolated relay module in between, and a dimmed load should have its own supply so its switching noise stays out of the DAC.
+
+Switching an output is instant and never writes to flash. The pin, name and power-on behaviour are stored on the device alongside the controls and share their Save and Revert.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -722,6 +777,354 @@ Choose an update method:</source>
     </message>
 </context>
 <context>
+    <name>CsApplyRow</name>
+    <message>
+        <source>Revert</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>CsBindingCard</name>
+    <message>
+        <source>Output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Switches the pin now. Instant, and never written to flash.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply the output first; the switch works once it is running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Level</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>How bright or fast the load runs while the output is on.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1%</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add Remote Button</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>CsCard</name>
+    <message>
+        <source>Collapse</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Expand</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Change the component type</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Click to rename</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>CsController</name>
+    <message>
+        <source>Failed to apply the binding</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Generic</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 min</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No device connected.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The device is read-only.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Push Button</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Toggle Switch</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Potentiometer / Fader</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rotary Encoder</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Indicator LED</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dimmable LED</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>IR Remote</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On/Off Output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dimmable Output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Type %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 - %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pending</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Active</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Inactive</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not running: %1 Reassign the conflicting pin, then apply.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not learned</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Group %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Running - step %1 of %2.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No steps yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1 step</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 steps</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1, %2 total</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Macro %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Point the remote at the receiver and press the button to learn.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No IR receiver is active - apply the receiver first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No remote button was detected - try again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Learn stopped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Learned a %1 code. Apply to keep it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Learn cancelled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Running</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Starting up</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not responding</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not started</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1 I2C error so far. Check wiring, pull-up resistors, and the address.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 I2C errors so far. Check wiring, pull-up resistors, and the address.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reported by the device.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>the control surfaces (%1)</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>CsDisplay</name>
+    <message>
+        <source>Panel State</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Behavior</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dashboard Pages</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On the display now</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove this page</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add Page</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All %1 page slots are in use.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>CsPageState</name>
+    <message>
+        <source>Reading control-surface capabilities from the device...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Try Again</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No Device Connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Control surfaces are stored on the device. Connect a DSPi to view and configure its wired controls.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>CsRemoteButton</name>
+    <message>
+        <source>Collapse</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Expand</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Re-learn</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Learn Button</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>CsRemoteButtons</name>
+    <message>
+        <source>Remote Buttons</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Learn buttons on any remote and bind each to a function.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1/%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply the receiver above before learning remote buttons.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>Dashboard</name>
     <message>
         <source>Meters stale</source>
@@ -810,6 +1213,33 @@ Choose an update method:</source>
     </message>
     <message>
         <source>Auto</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>DeviceAccess</name>
+    <message>
+        <source>The rule was not installed: its file could not be written (%1).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The rule was not installed: pkexec could not be started.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The rule was not installed: the authentication was cancelled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The rule was not installed: the authentication failed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The rule was not installed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The rule was not installed (exit code %1).</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1261,6 +1691,10 @@ This will not overwrite your saved parameters unless you run &apos;Commit Parame
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Discard and Switch</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The current preset has unsaved changes:
 
 %1
@@ -1384,6 +1818,314 @@ Do you wish to proceed?</source>
     </message>
     <message>
         <source>Windows Firewall refused the rule (code %1).</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>FirmwareBanner</name>
+    <message>
+        <source>Details...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Update...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hide</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hide this warning until %1 is next started</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>FirmwareController</name>
+    <message>
+        <source>unknown</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose Firmware</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Firmware images (*.uf2)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This image is for the %1; the connected device is an %2.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 early beta</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 beta %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This device runs firmware %1, which is newer than %2 %3. Some of its features may not be shown.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This device runs firmware %1; %2 expects %3.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Try Again</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Downgrade</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Update Firmware</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Looking for the board</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ready when you are</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connect a board</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 found</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Preparing to write</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 ready</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Writing firmware</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Firmware written</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Update complete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not quite ready</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The update did not complete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Waiting for it to appear in bootloader mode. If nothing happens after a few seconds, unplug the board, hold BOOTSEL, and plug it back in.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Click %1 to begin. The device will restart into bootloader mode, and audio will stop until the update finishes. Nothing is written without this click.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No device is connected. Hold the BOOTSEL button while plugging a board in, and it will appear here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The board is in bootloader mode. Waiting for its %1 drive to mount - this usually takes a second or two.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Opening the %1&apos;s %2 drive.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The board is in bootloader mode and ready to receive firmware %1. Click %2 to begin.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Near the end the board restarts itself and its drive disappears. That is normal - do not unplug it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The board is restarting with its new firmware. This can take up to half a minute; leave it plugged in.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The device is back, running firmware %1. The image does not name its version, so it could not be checked.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The device is back and confirmed running firmware %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 boards are in bootloader mode. Disconnect all but the one you want to update.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The board is connected but its %1 drive has not appeared. Open it in your file manager so that it mounts, then try again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This build of %1 does not include firmware for the %2.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The bundled firmware is version %1 but this Console expects %2. The app was built incorrectly; do not install it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The firmware was written but the device did not reappear. Unplug it, plug it back in, and check whether it works.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The device came back running firmware %1 instead of %2.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Another console is applying changes. Try again when it has finished.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>FirmwareWindow</name>
+    <message>
+        <source>Firmware Update</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Install firmware %1 onto a DSPi board</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This Console</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>unknown</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connected device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Custom image</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bundled image</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Checked</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose .uf2...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use this Console&apos;s firmware instead</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The device is newer than this Console, so this would be a downgrade.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Prepare</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Write</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Verify</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Done</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Writing firmware</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Board</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Firmware</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hold the BOOTSEL button on your Pico-compatible device while plugging it in.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Flashing a UF2 of your own?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enter bootloader mode without installing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Update Another Board</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export Configuration...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Before Installing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>To go ahead, type: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Confirmation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Don&apos;t Install</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Go Ahead</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>GettingStarted</name>
+    <message>
+        <source>unknown</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -2027,6 +2769,45 @@ Save before continuing?</source>
     </message>
     <message>
         <source>Pop-out graph follows channel selection</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>GroupsPage</name>
+    <message>
+        <source>No Channel Groups Configured</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Name a set of channels so one control can drive them together - a stereo pair, a zone, every output at once.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add Group</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pick at least one channel.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Members</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Every channel this group drives together.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All %1 group slots are in use.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A group is a named set of channels one control can drive as a unit: mute a zone, trim a stereo pair, light an LED when any member clips. Turn on &quot;Address a Group&quot; in a control, or in a macro step, to use one.
+
+Relative moves (an encoder, a button) step every member from its own value, so the balance between them survives. A knob moves the group&apos;s average and keeps those offsets unless &quot;Match Members Exactly&quot; is on.
+
+Groups are stored on the device alongside the controls and share their Save and Revert.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -2922,6 +3703,13 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
 </context>
 <context>
+    <name>InstallCard</name>
+    <message>
+        <source>%1 percent written</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>InterfacesPage</name>
     <message>
         <source>UART</source>
@@ -3164,6 +3952,114 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
 </context>
 <context>
+    <name>LimiterSettings</name>
+    <message>
+        <source>Output Limiter</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output limiter</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A test signal from the Signal Generator is limited like any other signal. Switch this output&apos;s limiter off for an unaltered full-scale measurement.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Threshold</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The ceiling, in dBFS. No sample leaves this output above it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>-30 dBFS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>0 dBFS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The limiter runs after every gain stage, so this is the absolute level leaving the device. The -1 dBFS default leaves room for the small overshoot a DAC can produce between samples.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Release</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>How fast the gain recovers after a peak</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ms</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>10 ms</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1000 ms</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The gain recovers 8.7 dB per release time. Short releases keep the level up but can be heard pumping on dense material; long ones are smoother but hold the level down for longer after a peak. Attack is fixed at 16 samples and always completes before the peak arrives.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Link group</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Outputs in the same group act as one limiter: they share on/off, threshold and release, so changing one changes them all, and each applies the deepest gain reduction any of them needs. A stereo image cannot shift and a pair of woofers stays matched. An output joining a group takes on the group&apos;s settings; leaving keeps them.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy to all outputs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Give every output this output&apos;s threshold, release and on/off state. Link groups are left as they are.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All outputs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Link all stereo pairs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unlink all outputs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Protect all outputs</source>
+        <extracomment>Switches every output&apos;s limiter on at -1 dBFS and links the stereo pairs</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Switch every limiter off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Protect all outputs switches every limiter on at -1 dBFS and links the stereo pairs.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>LinkBanner</name>
     <message>
         <source>Disconnect</source>
@@ -3348,6 +4244,61 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
     <message>
         <source>Compensate only the outputs feeding your low-level listening chain. Keep bass-managed pairs (mains + sub) together so the crossover stays coherent.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>MacrosPage</name>
+    <message>
+        <source>No Macros Configured</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Run a short sequence of changes from a single press: select an input and load a preset, switch monitors, mute after a delay.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add Macro</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop this macro</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Run this macro now</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Move up</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Move down</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove this step</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add Step</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A macro holds up to %1 steps.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All %1 macro slots are in use.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A macro runs a short sequence of changes from a single press: select an input and load a preset, switch monitors, mute after a delay. Bind a button, switch, or remote key to &quot;Macro&quot; to fire one.
+
+Each step can wait before it runs, and can address a channel group. One macro runs at a time - firing another cancels the first at its current step.
+
+Macros are stored on the device alongside the controls and share their Save and Revert.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -3760,6 +4711,10 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Save Diagnostics...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Check for Updates...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -3773,6 +4728,66 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     <name>Menus</name>
     <message>
         <source>No favorites yet</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>MonitorWindow</name>
+    <message>
+        <source>Interrupt Monitor</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Resume</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pause</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ctrl+P</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clear</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ctrl+K</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copies the lines shown, oldest first</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Inactive</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Paused</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Listening</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1 event</source>
+        <extracomment>The Interrupt Monitor&apos;s row count</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 events</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Notifications</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -4164,6 +5179,72 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
     <message>
         <source>Reading…</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>OnboardingController</name>
+    <message>
+        <source>Save Diagnostics</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Zip archives (*.zip)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Diagnostics Saved</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The diagnostics were saved to %1. Nothing was sent anywhere; attach the file to a report if you want to share it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Diagnostics Not Saved</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The bundle could not be written.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>OnboardingDeveloperSection</name>
+    <message>
+        <source>Onboarding (Developer)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Start as a new user</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Forgets everything. The next launch runs setup from the top.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset Onboarding</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset. Relaunch to see a first run.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Setup: done</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Setup: not done yet</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Release notes read up to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Release notes: none read yet</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -5020,9 +6101,95 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
 </context>
 <context>
+    <name>ReadOnlyController</name>
+    <message>
+        <source>This device runs firmware %1, which is newer than %2 understands. Its settings are shown read-only, and some of its features may not show. Update %2 to change them.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This device runs firmware %1, which is too old for %2. Its settings are shown read-only, and features it lacks are hidden. Update it to firmware %3 to change them.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Details...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Update...</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>RightPane</name>
     <message>
         <source>No Device Connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>RtaGraphOptions</name>
+    <message>
+        <source>This firmware has no spectrum analyser.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connect a DSPi to show its spectrum.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Following another console</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Take control</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SPECTRUM</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Spectrum side</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Inputs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Outputs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No active inputs.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No enabled outputs.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Spectrum hidden</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1 channel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 channels</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clear</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>FFT Graph</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>RTA Bars</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -5304,7 +6471,115 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Control Surfaces</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Push Button</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Toggle Switch</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Potentiometer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fader</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rotary Encoder</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Indicator LED</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>IR Remote</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remote Buttons</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Learn</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dashboard Pages</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>knob</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Channel Groups</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Members</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Channel Type</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>zone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>stereo pair</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Macros</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Step</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wait Before</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>sequence</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Auxiliary Outputs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On/Off Output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dimmable Output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>relay</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>trigger</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5752,6 +7027,467 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
 </context>
 <context>
+    <name>SiggenController</name>
+    <message>
+        <source>Sine</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pure tone, THD approx -139 dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Frequency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square wave</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Band-limited (polyBLEP) square</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>White</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>White noise</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Uniform white noise</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pink</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pink noise</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>-3 dB/oct, level-safe normalized</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Log Swp</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Log sweep</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Exponential sweep for room measurement</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Start</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>End</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lin Swp</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Linear sweep</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Linear frequency sweep</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Step Swp</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stepped sweep</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Discrete tones stepping up the band</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Steps/octave</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dwell</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Impulse</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Single-sample unit impulses</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Period</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clicks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Alternating clicks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clicks with alternating polarity</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Polarity</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Polarity pulse</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Positive half-sine lobe per period</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pulse width</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Burst</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tone burst</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sine bursts with raised-cosine edges</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On cycles</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off cycles</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Edge cycles</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>2-Tone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tone pair</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>IMD test pair (SMPTE / CCIF)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tone 1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tone 2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ratio A1/A2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Multi</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Multitone</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Log-spaced tones, Schroeder phases</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tones</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Low</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>High</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ISP</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ISP test</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Inter-sample-peak over patterns</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pattern</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Chan ID</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Channel ID</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Counted pentatonic blips per channel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Blip length</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SiggenOutputChip</name>
+    <message>
+        <source>Click: on → inverted → off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output disabled in the matrix mixer - selected but silent until enabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SiggenWindow</name>
+    <message>
+        <source>Signal Generator</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Onboard test and measurement signals</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Signal generator not available</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The connected firmware does not include the onboard test signal generator. Update the DSPi firmware to use this tool.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SIGNAL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OUTPUTS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Click to select, click again to invert polarity (ø). Dimmed outputs are disabled in the matrix mixer and stay silent.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LEVEL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Level</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Peak level in dBFS. Output trim, master volume and mute still apply downstream.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>PARAMETERS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sample-peak-normalized sequences with a known inter-sample true-peak over. Set the level at or below the headroom the over should fit into.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>fs/4 · +3.01 dBTP</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>fs/6 · +1.25 dBTP</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Presets:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SMPTE 60/7k</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>CCIF 19k/20k</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Up to %1 tones on this device.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TIMING</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sweep length</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dwell per channel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Duration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>0 = 2 s default</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>0 = play until stopped</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Passes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Repeat</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>0 = repeat forever</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Full passes over the outputs. 0 = forever</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Passes over the selected outputs. 0 = forever</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pattern periods. 0 = repeat forever</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gap between sweeps</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extra gap per period</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gap</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ms</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OPTIONS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bypass output EQ (RAW)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Skips crossover and PEQ on the selected outputs. Trim, master volume, mute and delay still apply.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Decorrelate channels</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Independent noise per output instead of one copied signal.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Walk outputs one at a time</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Channel ID always walks: each output plays its channel number as counted blips.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Plays the selected outputs sequentially instead of together.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop immediately, no fade</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Start</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Start the generator</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>SpectrumPage</name>
     <message>
         <source>Display</source>
@@ -5895,6 +7631,651 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
 </context>
 <context>
+    <name>SpectrumStrip</name>
+    <message>
+        <source>Spectrum</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Spectrum strip options</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LAYOUT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open in Window</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SpectrumWindow</name>
+    <message>
+        <source>Spectrum Analyser</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Spectrum analyser unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The connected firmware does not provide a compatible analyser. Update the firmware to use it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connect a DSPi to use the analyser.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Inputs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Outputs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show in this window</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hide in this window</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>View</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>How this window draws the page&apos;s spectrum. It does not change the main window.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Curves</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bars</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Both</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No channels selected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Spectrum switched off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This window shows the spectrum of the dashboard. Choose channels and switch the spectrum on from the gear on the response graph.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This window shows the spectrum of the open channel page. Choose channels and switch the spectrum on from the gear on the response graph.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Every channel is hidden in this window</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Click a channel name above to show it again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Running</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Idle</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bass processing time summed across both cores. Already included in the audio CPU meters; ≥ means the counter is saturated.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Device refused this configuration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Following another console</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Take control</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>FFT / bass usable dynamic range. Bass bands use overlapping filters calibrated for tones.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>StatsFillRow</name>
+    <message>
+        <source>Lowest and highest fill since the watermarks were reset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 fill level over the last 15 seconds</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>StatsWindow</name>
+    <message>
+        <source>System Statistics</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>over</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>under</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DEVICE INFORMATION</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Platform</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Firmware</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Serial</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reconnects</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SYSTEM INFORMATION</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clock Frequency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Core Voltage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sample Rate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Temperature</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AUDIO OUTPUT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>USB Ring</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ISR → Main Loop</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Buffer Pool</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>USB → DMA</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OUTPUT RING HEALTH</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>PDM (SUBWOOFER)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ring Buffer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Core 0 → Core 1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DMA Buffer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Core 1 → PIO</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SPDIF DMA STARVATION</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Total</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Time since last event</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Time between last two</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BUFFER FILL LEVELS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset Watermarks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Audio Streaming</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>PDM Active</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>S/PDIF INPUT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>CHANNEL STATUS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DEBUG</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LG SOUND SYNC</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ADAT BULK OUTPUT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>I2S INPUT (SLAVE CLOCK)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>CLOCK DIAGNOSTICS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shown because this firmware was built with clock diagnostics. Values as the device reports them, latched once a second.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>USB ERRORS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shown because the device has counted USB errors.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disconnected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Updated every 2 seconds</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>StepDots</name>
+    <message>
+        <source>Step %1 of %2: %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>StripColumnsTile</name>
+    <message>
+        <source>Stack the channels in one column</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lay the channels out in up to %1 columns</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SubharmonicGraph</name>
+    <message>
+        <source>Disabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LF boost</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ceiling</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All bands off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Subharmonic bands</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SubharmonicWindow</name>
+    <message>
+        <source>Subharmonic Synthesizer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Generates a subharmonic at half the frequency of the source&apos;s bass</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SOLO</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The selected outputs are carrying the synthesized sub only - the program signal is muted on them. Closing this window switches it off.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mute the program signal on the selected outputs so the synthesized sub can be heard or measured on its own. Never saved to a preset.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Requires firmware with wire format V29 or newer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Update the DSPi firmware to use the Subharmonic Synthesizer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bands</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply preset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 - %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Headroom cost</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>+%1 dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>none</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This setting can add up to %1 dB. Lower the preamp on the inputs feeding the selected outputs by that much, or a loud passage will clip.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This setting cannot push the signal past full scale.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Levels</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>24 - 36 Hz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Derived from %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>48 - 72 Hz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>+12 dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Level of the sub synthesized from program content between 48 and 72 Hz. At 0 dB it comes out 1.4 dB below the bass that produced it, which is the divider&apos;s own gain.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>36 - 56 Hz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>72 - 112 Hz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Level of the sub synthesized from program content between 72 and 112 Hz. This band has its own divider, so a bass note here and a kick in the band below are tracked independently.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>56 - 80 Hz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>112 - 160 Hz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Level of the sub synthesized from program content between 112 and 160 Hz. It ships off: this band reaches up into the range where a divided sub starts to compete with the program&apos;s own fundamentals. Turn it up for a subwoofer that cannot reach the lowest octave.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Selectivity</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All material</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Percussive</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sustained</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A short sub burst after each attack - extends kicks, not the bass line.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The sub opens once a band has been ringing - extends bass notes, not kicks.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Every band signal is treated alike.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A short sub burst after each attack, so a kick can be extended without extending the bass line under it. The most robust of the three: a held note gets nothing between kicks.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The sub opens only after a band has been ringing, so bass notes are extended and kicks are not. A kick landing in the same band ducks the held note&apos;s sub, which pumps on a four-on-the-floor line - shorten the hold or lower the depth to soften it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Every band signal is treated alike. Choose percussive or sustained to weight the synthesized sub toward one kind of bass material; the gate decides per band from time behaviour, so it cannot separate two sources sounding at once in the same band.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Depth</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>How far the material this mode does not favour is gated down. At 0% the selectivity is inaudible whatever the mode is set to; 100% is full gating.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hold</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ms</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The length of the sub burst after each attack.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>How long a band must ring before its sub opens. Every note&apos;s first hold period has no sub, so staccato bass lines get little.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sub ceiling</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Threshold</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>-40 dBFS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A soft limit on the synthesized sub just before it is mixed back in, capping how far it can push a driver without touching the program signal. It is an absolute level, so a ceiling at full scale limits nothing and means the stage is off. With it on, the headroom cost is only the ceiling&apos;s worth. A loud onset overshoots it by a few dB for the first few milliseconds while the limiter&apos;s 3 ms attack catches up.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LF boost</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>70 Hz bell</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>+6 dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A gentle bell at 70 Hz, Q 0.9, applied to the whole output after the subs are summed. It fills the gap between the synthesized sub and the program&apos;s own mid-bass. Meant to stay gentle, as on the dbx.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Outputs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Presets</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sub only (recommended)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All outputs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select the outputs that can actually play 24 to 80 Hz. Subharm runs before the crossover, so a satellite with a highpass loses the sub again - mask it off and save the CPU instead.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Link output pairs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>One sub per pair, from its mono sum.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Synthesize one sub per output pair from its mono sum and feed it to both channels, as the dbx does. Bass is near-mono in most material, and two independent dividers can land on opposite polarities, which cancels a centred note&apos;s sub between the speakers.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SurfacesPage</name>
+    <message>
+        <source>No Controls Configured</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wire a button, switch, knob, encoder, or LED to a spare GPIO and bind it to a device function.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add Control</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All %1 control slots are in use.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Control-surface capability version %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wire push buttons, toggle switches, potentiometers, rotary encoders, indicator LEDs, and an IR remote receiver to spare GPIOs and bind each to a device function. Buttons and switches wire between the GPIO and GND (internal pull-up); pots use an ADC pin (GPIO 26, 27, or 28) between 3V3 and GND; encoders use two GPIOs with the common wired to GND. LEDs drive active-high by default. An IR receiver module&apos;s OUT pin connects to any GPIO, and its remote buttons are learned by pressing them at the device.
+
+This wiring is a board-level setting: it is stored on the device, survives preset changes, and survives a factory reset. Changes take effect immediately as a live preview; use Save to keep them across a reboot, or Revert to discard them.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>SystemIntegration</name>
     <message>
         <source>Could not remove %1.</source>
@@ -5933,6 +8314,181 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     <name>TokenNotice</name>
     <message>
         <source>OK</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ToolParameterRow</name>
+    <message>
+        <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ToolsController</name>
+    <message>
+        <source>Subwoofer feed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Subtle added weight</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Club / large PA</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lower two bands, full</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Thin recordings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add a missing bottom</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cinema LFE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lowest octave only</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Custom</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>High-gain preamp triode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cooler 12AX7</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Medium-gain driver, more odd-order</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tweed front end, gentle</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clean line stage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Octal hi-fi line stage, sweet</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Octal high-mu, rounder knee</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clean, hard when pushed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pentode preamp, symmetric bite</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Octal pentode, softer than EF86</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Push-pull power, chimey</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Push-pull power, mid crunch, deep sag</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Push-pull power, tight</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Push-pull power, early breakup, heavy sag</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Push-pull hi-fi power, near linear</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Single-ended DHT, pure even harmonics</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Solid state</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clean default</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>12AX7, level-neutral, output stage on</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Warm hi-fi</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>12AU7 line stage, tightly damped</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Single-ended sweetness</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>300B, loose damping</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Guitar-amp style</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>12AX7 pushed, 5U4, loose damping</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Push-pull power</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>EL34 with the output stage on</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Out %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not linked.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No other outputs in group %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 and %2</source>
+        <extracomment>&quot;Linked with Out 1, Out 3 and Out 4.&quot;</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Linked with %1.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -6008,6 +8564,399 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
 </context>
 <context>
+    <name>TubeTransferGraph</name>
+    <message>
+        <source>Disabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>in</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>out</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>0 dBFS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Transfer curve</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>TubeWindow</name>
+    <message>
+        <source>Tube Modeller</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>none</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Outputs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Presets</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All outputs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Exclude sub</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tube runs before the crossover and the per-output EQ, where a real preamp sits: a sub output saturates the full-band program and then low-passes the result.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Valve-style harmonic colour, supply sag and a tube amplifier&apos;s output stage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Basic or Advanced</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Basic</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Advanced</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Requires firmware with wire format V31 or newer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Update the DSPi firmware to use the Tube Modeller.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Custom</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Character set by hand. Pick a tube to load one, or fine-tune it in Advanced.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1. Meant for use with the output stage, in Advanced.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tube</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Loads the character of a real tube: its bias, asymmetry, knee hardness and sag. Drive, mix and everything in Advanced keep their values.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Preamp triodes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Preamp pentodes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Power stages</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Drive</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clean</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Overdrive</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>How hard the tube is driven. Drive moves the knee, not the level: at the -12 dB default the knee sits 12 dB above full scale and the colour is subtle, the -30 dB floor is close to transparent, and the top of the range is overdrive.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mix</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dry</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All tube</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Blends the tube with the untouched signal. Below 100% the original transients stay intact under the colour, which is the easiest way to use heavy drive subtly.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Transfer curve</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply preset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 - %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>At full scale</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>2nd</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>3rd</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Level of the second and third harmonic relative to the fundamental, for a full-scale sine through the static curve after mix and trim. Sag lowers the drive on sustained loud passages and the output stage adds its own low-frequency lift, so the running figures sit somewhat lower.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Character controls as set, no tube row applied.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1. Meant for use with the output stage on.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Loads the bias, asymmetry, knee hardness and sag of a real tube. Drive, mix, the rectifier and the output stage are left alone. Editing any of the four character controls switches this to Custom.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gain ahead of the shaper. At 0 dB a full-scale signal just reaches the knee, so this alone sets how hard the stage is driven. The shaper carries matching makeup gain, so clean material keeps its level at every drive; harmonics and sag rise with it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Blend of the processed signal with the untouched input. The dry path is sample-aligned with the wet one, so blending never combs.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output Trim</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Level of the processed signal only. A hard-driven, strongly asymmetric setting can push the wet path above full scale; watch the output clip indicators and bring it back here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Character</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>from %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>custom</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bias</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shifts the operating point along the curve. Positive values give the classic warm second harmonic that grows with level; negative values give the same amount with the even products inverted, which only matters when mixed with the dry signal.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Asymmetry</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>How much later the negative half reaches its knee than the positive half. Adds even-order content at heavy drive. Zero is symmetric, as in a push-pull stage.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Knee Hardness</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Blends from a soft cubic knee (0%) to a harder quintic one (100%). Clean material stays at the same level at every setting; only how abruptly the stage runs out changes.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sag</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Supply-sag compression: sustained heavy drive pulls the gain down slowly, then recovers. The rectifier below scales the depth and sets the timing.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rectifier</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sag depth x%1, %2 ms attack, %3 ms release.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No sag: the supply holds up however hard the stage is driven.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The power-supply rectifier sets how deep and how slow the sag is. Solid state switches sag off entirely; the valve rectifiers get progressively softer and slower from GZ34 to 5Y3.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output stage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A valve amplifier&apos;s loose grip on the speaker.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A tube amplifier&apos;s high source impedance lets the speaker&apos;s own impedance curve shape the response: a broad bump at the woofer resonance and a small lift at the top. Nothing here is nonlinear, and the firmware skips the whole stage while it is off.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Damping Factor</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1 (loose)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>20 (tight)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The speaker&apos;s nominal impedance divided by the amplifier&apos;s source impedance. A single-ended triode amplifier without feedback sits around 2 to 3; a push-pull pentode amplifier with feedback around 8 to 15. It sets the size of both the bell and the top lift.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>+%1 dB at resonance, +%2 dB at the top.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Speaker Resonance</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>30 Hz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>150 Hz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Where the loudspeaker resonates in its enclosure, which is where the bell sits. Q is fixed at 0.707, so the bump is broad. 85 Hz suits a typical small to medium woofer; larger drivers sit lower.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>UdevDialog</name>
+    <message>
+        <source>DSPi Needs Permission</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DSPi Cannot Be Opened</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The device rule is installed. If the DSPi does not appear, unplug it and plug it in again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A DSPi is connected, but this account may not open it. A device rule lets the person signed in use it; installing it asks for an administrator&apos;s password once.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A DSPi is connected but cannot be opened. Close other programs that may be using it, then try again. Very old firmware needs the WinUSB driver, which Zadig installs.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A DSPi is connected but cannot be opened. Close other programs that may be using it, then try again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The rule goes in %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Installing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Done</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not Now</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Install Rule...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Try Again</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>UnsavedGuard</name>
     <message>
         <source>Another console is applying changes</source>
@@ -6026,6 +8975,14 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Unsaved Settings Changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Settings has pending changes for the current device that have not been saved. Switching devices will discard them.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Preset %1</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6039,6 +8996,22 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
     <message>
         <source>Failed to save preset (%1). Device switch aborted.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>UpdateBanner</name>
+    <message>
+        <source>%1 %2 is available. You have %3.</source>
+        <extracomment>%1 is the app&apos;s name, %2 the new version, %3 the running one</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Details</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Later</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -6122,6 +9095,228 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
     <message>
         <source>Skip</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>UpmixerWindow</name>
+    <message>
+        <source>Stereo Upmixer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Derive Centre and Surround from stereo</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Requires an RP2350 device with firmware wire format V25 or newer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The upmixer runs on stereo input at 48 kHz or below.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Status</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No device connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Active - processing audio</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Idle: upmixer disabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Idle: input is not stereo</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Idle: sample rate above 48 kHz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Idle</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Correlation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Centre gain</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1%</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ls gain</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rs gain</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Engines</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Centre</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sinner</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Logician</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Surround</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Logician centre gates extraction on running L/R correlation; Logician surround uses a Pro Logic II-style matrix decoder. Sinner modes are fixed (C = 0.7071(L+R), surround = L-R) - a Hafler-style passive matrix like the one in the Schiit Syn.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Strength</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Centre extraction strength; scales both the C output and how much centre energy is removed from L/R. In Sinner mode this is the fixed centre gain.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Centre Width</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>How much extracted centre stays in L/R. 0 = full removal (discrete centre); 100 = L/R untouched (expect combing if a real centre speaker plays).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Presence</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Voice presence bell at 3 kHz (Q 0.6). Positive brings voices forward, negative pushes them back (Syn-style). Stored in 0.5 dB steps.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Correlation Threshold</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Correlation gate. Below this, nothing is extracted; above it, extraction scales up to full. Raise to extract only strongly-correlated content.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Attack</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ms</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Centre gain rise time (Logician mode).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Release</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Centre gain fall time (Logician mode).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detector HPF</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detector bass-cut corner. Content below this is ignored by the steering detector (the audio itself is not filtered) so bass does not pump the centre.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delay</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Haas delay on Ls/Rs (precedence effect). Rule of thumb ~1 ms per foot of listener distance.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Band-limit HPF</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Surround high-pass; keeps rumble out of the rears.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Band-limit LPF</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Surround low-pass. 7 kHz is the classic surround voicing; raise for full-band rears.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Decorrelation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Schroeder allpass decorrelator amount. 0 disables decorrelation.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Routing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The derived channels appear as matrix source rows: row 2 = Centre, row 3 = Left Surround, row 4 = Right Surround. Open the Matrix Mixer to route them to your output slots (a centre crosspoint gain of -3 dB is a safe start, since the centre row can reach +3 dBFS).</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>WhatsNewWindow</name>
+    <message>
+        <source>What&apos;s New</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No release notes are available in this build.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Done</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
