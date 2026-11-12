@@ -503,8 +503,18 @@ void HardwareController::readState() {
 // The control surfaces' live bindings hold pins too; they are the core's
 // cache, not in the record
 void HardwareController::readSurfaces() {
+    // -- WP QPI3 -- a change is told, so an open page offers the pins anew
+    const auto take = [this](const QList<PinMap::SurfacePin> &uses) {
+        const bool same = uses.size() == m_surfaces.size()
+            && std::equal(uses.cbegin(), uses.cend(), m_surfaces.cbegin(),
+                          [](const PinMap::SurfacePin &a, const PinMap::SurfacePin &b) { return a.pin == b.pin && a.slot == b.slot; });
+        if (same) return;
+        m_surfaces = uses;
+        ++m_rev;
+        emit changed();
+    };
     if (!connected()) {
-        m_surfaces.clear();
+        take({});
         return;
     }
     m_ctx.core->worker()->call(
@@ -517,7 +527,7 @@ void HardwareController::readSurfaces() {
             for (uint32_t i = 0; i < n; ++i) uses.append({ pins[i], owners[i] });
             return uses;
         },
-        [this](const QList<PinMap::SurfacePin> &uses) { m_surfaces = uses; });
+        take);
 }
 
 // ---- pins --------------------------------------------------------------------------------

@@ -233,6 +233,7 @@ private:
     int m_rev = 0;
     int m_ops = 0;
     bool m_fetching = false;
+    bool m_fetchAgain = false;   // -- WP QPI3 -- asked for while one was out
     bool m_joined = false;
     bool m_wasDirty = false;
     int m_learningSub = -1;

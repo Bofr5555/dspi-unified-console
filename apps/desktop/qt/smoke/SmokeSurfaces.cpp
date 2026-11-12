@@ -413,6 +413,26 @@ void surfacesSection(SmokeDriver &d) {
     d.check(QStringLiteral("qp12: read-only sends nothing"), device->settersRun() == roSetters);
     d.check(QStringLiteral("qp12: firmware without control surfaces lists no Control Surfaces page"),
             settle([&]() { return cs->supported() || !s->isShown(QStringLiteral("surfaces")); }, 5000));
+    // -- WP QPI3 -- A learned remote button on read-only firmware with
+    // control surfaces (the V26 recording): Remove is neither offered nor sent
+    d.app().core->worker()->post([](FfiCore *c) { dspi_demo_open_wire(c, 26); });
+    device->refresh();
+    const bool v26 = d.waitFor(5000, [&]() { return device->readOnly() && device->wireFormat() == 26; })
+        && settle([&]() { return cs->loaded() && !cs->writable(); }, 5000);
+    d.check(QStringLiteral("qpi3: the V26 recording opens read-only with its control surfaces"), v26);
+    if (v26) {
+        int refused = 0;
+        const QMetaObject::Connection counting = QObject::connect(device, &DeviceModel::writeFailed, device, [&](const QString &what) {
+            if (what.startsWith(QLatin1String("cs "))) ++refused;
+        });
+        const int setters = device->settersRun();
+        const bool learned = rec(QStringLiteral("ir/0")).value(QStringLiteral("liveLearned")).toBool();
+        cs->remove(QStringLiteral("ir/0"));
+        d.waitIdle();
+        d.check(QStringLiteral("qpi3: read-only: removing a learned button asks for no write"),
+                learned && refused == 0 && device->settersRun() == setters && !rec(QStringLiteral("ir/0")).value(QStringLiteral("applying")).toBool());
+        QObject::disconnect(counting);
+    }
     device->openDemo();
     d.check(QStringLiteral("qp12: the demo reopens with its control surfaces"),
             d.waitFor(5000, [&]() { return !device->readOnly() && device->connected(); })

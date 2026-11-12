@@ -80,7 +80,8 @@ Rectangle {
                 iconName: "trash"
                 iconSize: 12
                 toolTip: qsTr("Remove")
-                enabled: !card.learning && card.rec.applying !== true
+                // A button the device has learned is device state: no removing it read-only
+                enabled: !card.learning && card.rec.applying !== true && (CsController.writable || card.rec.liveLearned !== true)
                 onClicked: CsController.remove(card.key)
             }
         }

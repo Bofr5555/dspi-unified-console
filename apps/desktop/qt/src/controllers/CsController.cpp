@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <utility>
 
 static const Registrar::Controller<CsController> csController;
 
@@ -282,11 +283,18 @@ void CsController::clear() {
     m_learnMessage.clear();
     m_ctx.poller->setEnabled(m_macroPoll, false);
     m_ctx.poller->setEnabled(m_displayPoll, false);
+    updatePages();   // -- WP QPI3 -- the old device's pages go with it
     bump();
 }
 
 void CsController::fetch() {
-    if (!connected() || m_fetching) return;
+    if (!connected()) return;
+    // -- WP QPI3 -- one read at a time; one asked for meanwhile (another
+    // device, a new connection) follows it
+    if (m_fetching) {
+        m_fetchAgain = true;
+        return;
+    }
     m_fetching = true;
     const int epoch = m_epoch;
     m_ctx.core->worker()->call(
@@ -298,12 +306,17 @@ void CsController::fetch() {
         },
         [this, epoch](const std::pair<QString, QByteArray> &r) {
             m_fetching = false;
-            if (epoch != m_epoch) return;
+            const bool again = std::exchange(m_fetchAgain, false);
+            if (epoch != m_epoch) {
+                if (again) fetch();
+                return;
+            }
             m_loadError = r.first;
             applySnapshot(r.second);
             updatePages();
             notifyPins();
             bump();
+            if (again) fetch();
         });
 }
 
@@ -963,8 +976,6 @@ void CsController::apply(const QString &key) {
 void CsController::remove(const QString &key) {
     Record *r = rec(key);
     if (!r || r->applying) return;
-    r->message.clear();
-    r->nameEdited = false;
     QList<QJsonObject> ops;
     const QJsonValue index(r->slot);
     if (r->kind == QLatin1String("binding")) {
@@ -984,6 +995,10 @@ void CsController::remove(const QString &key) {
             ops.append(QJsonObject{ { QStringLiteral("op"), r->kind }, { QStringLiteral("index"), index },
                          { QLatin1String(field), QJsonObject() } });
     }
+    // -- WP QPI3 -- what the device holds stays on a read-only one
+    if (!ops.isEmpty() && !writable()) return;
+    r->message.clear();
+    r->nameEdited = false;
     if (ops.isEmpty()) {
         // Never applied: dropping the draft is enough
         r->draft = r->live;
