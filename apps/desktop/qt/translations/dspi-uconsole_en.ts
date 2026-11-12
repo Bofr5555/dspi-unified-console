@@ -5007,7 +5007,7 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Stats for Nerbs</source>
+        <source>Stats for nerbs</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
