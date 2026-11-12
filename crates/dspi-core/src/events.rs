@@ -92,6 +92,11 @@ pub(crate) struct Opened {
     pub(crate) platform_id: u8,
     /// Uptime and hang count, from the core-voltage extension's probe.
     pub(crate) uptime: Option<(u32, u8)>,
+    // -- WP CS1 --
+    /// The reset readout of the connect probe (`reset_info_at_connect`, WP
+    /// FWX): the reason a restart while away is given, and the uptime when
+    /// the core-voltage extension has none.
+    pub(crate) reset: Option<crate::DeviceResetInfo>,
 }
 
 impl Opened {
@@ -101,6 +106,7 @@ impl Opened {
         kind: dspi_transport::TransportKind,
         state: &DspState,
         vreg: Option<(u32, u8)>,
+        reset: Option<crate::DeviceResetInfo>,
     ) -> Self {
         let fw = (state.fw_major != 0 || state.fw_minor != 0 || state.fw_patch != 0).then(|| {
             let mut v = format!("{}.{}.{}", state.fw_major, state.fw_minor, state.fw_patch);
@@ -116,6 +122,7 @@ impl Opened {
             inputs: state.num_input_channels,
             platform_id: state.platform_id,
             uptime: vreg,
+            reset,
         }
     }
 }
@@ -237,14 +244,22 @@ impl Store {
             r.lines = vec![format!("was {was}")];
             l.log.record(r);
         }
-        if let Some((uptime, hangs)) = o.uptime {
+        // -- WP CS1 -- FW5's readout stands in for the core-voltage status.
+        let uptime = o
+            .uptime
+            .or_else(|| o.reset.as_ref().map(|i| (i.uptime_s, i.hang_count)));
+        if let Some((uptime, hangs)) = uptime {
             if last.uptime.is_some_and(|prev| restarted(prev, uptime, t)) {
+                let (why, source) = match &o.reset {
+                    Some(i) => (format!(" ({})", i.description), i.reason.clone()),
+                    None => (String::new(), "unknown".into()),
+                };
                 let mut r = EventRecord::new(
                     EventKind::Reset,
                     t,
-                    format!("The device restarted while away; up {uptime} s"),
+                    format!("The device restarted while away{why}; up {uptime} s"),
                 );
-                r.source = Some("unknown".into());
+                r.source = Some(source);
                 r.uptime_s = Some(uptime);
                 l.log.record(r);
             }
@@ -635,3 +650,7 @@ impl DspiCore {
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p0m;
+// -- WP CS1 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_cs1;

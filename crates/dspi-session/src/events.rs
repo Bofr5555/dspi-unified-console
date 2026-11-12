@@ -1163,7 +1163,7 @@ fn fell_short(was: u32, elapsed_s: u64, now_s: u32) -> bool {
     u64::from(now_s).saturating_add(slack) < expected
 }
 
-// ── WP FWX's events, stubbed until the firmware lands ─────────────────
+// ── WP FWX's events ───────────────────────────────────────────────────
 
 /// Why the device restarted, as FW5's readout will report it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1210,18 +1210,18 @@ pub enum ExtEvent {
     },
 }
 
-/// The hook for WP FWX: decode a notification the session could not
-/// (`Event::Unknown { id, bytes }`) as an extension event, given the device's
-/// `EXT_NOTIFY_FEATURES` flags. `None` until FWX defines the feature bits and
-/// the event layout: then a clip event joins the meters' clip hold (and so the
-/// log's de-duplication) and a reset event becomes a [`EventKind::Reset`]
-/// record with its reason.
+/// Decode a notification the session could not (`Event::Unknown { id,
+/// bytes }`) as an extension event, given the device's `EXT_NOTIFY_FEATURES`
+/// flags (WP FWX, wired by WP CS1): a clip event (0xE0) of a device that
+/// announces them (bit 1) joins the meters' clip hold (and so the log's
+/// de-duplication). One event may name several channels: `mask` has them
+/// all. `None` for anything else, a device without the bit included.
 ///
-/// Only `Event::Unknown` reaches this: until FWX lands, `dspi_session::notify`
-/// must not learn the new event ids, or must route them here too.
+/// FW5 sends no reset event: the reason comes from the `EXT_RESET_INFO`
+/// readout at connect, so [`ExtEvent::Reset`] is not decoded from a
+/// notification yet.
 pub fn decode_ext_event(notify_features: Option<u32>, id: u8, bytes: &[u8]) -> Option<ExtEvent> {
-    let _ = (notify_features, id, bytes);
-    None
+    dspi_proto::ext::clip_event(notify_features, id, bytes).map(|c| ExtEvent::Clip { mask: c.mask })
 }
 
 #[cfg(test)]

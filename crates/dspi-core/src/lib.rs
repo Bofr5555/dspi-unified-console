@@ -72,6 +72,8 @@ mod cs_rules;
 mod curves;
 mod device;
 mod ext;
+// -- WP FWX --
+mod ext_diag;
 pub mod files;
 mod firmware;
 // -- WP CG8 --
@@ -154,6 +156,8 @@ pub use link_text::*;
 pub use hotplug::{BrokeredDevice, DeviceBroker};
 // -- WP CG17 --
 pub use dspi_proto::ext::PairMap;
+// -- WP FWX --
+pub use ext_diag::{DeviceResetInfo, IDENTIFY_TONE_DBFS, IdentifyInfo};
 // -- WP CG23 --
 pub use raw::RawNotification;
 // -- WP CG26 --
@@ -379,6 +383,9 @@ pub(crate) struct Connection {
     /// The last bulk write left the device with its outputs muted (its
     /// repair failed after the muted image was sent).
     pub(crate) bulk_left_muted: bool,
+    // -- WP FWX --
+    /// Channels named by clip events since `take_clip_mask` (`ext_diag.rs`).
+    pub(crate) clip_mask: u32,
 }
 
 /// A remote device reached without the [`Inner`] lock (WP C15).
@@ -495,6 +502,8 @@ impl Connection {
             // -- WP BULKFIX --
             gain_guard,
             bulk_left_muted: false,
+            // -- WP FWX --
+            clip_mask: 0,
         }
     }
 

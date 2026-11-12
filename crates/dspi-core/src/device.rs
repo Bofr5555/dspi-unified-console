@@ -254,7 +254,13 @@ impl DspiCore {
             .core_vreg
             .as_ref()
             .map(|v| (v.uptime_s, v.hang_count));
-        let opened = crate::events::Opened::new(&conn.serial, conn.caps.kind, &mirror, vreg);
+        // -- WP CS1 -- what `reset_info_at_connect` answers.
+        let reset = conn
+            .ext
+            .reset_info
+            .as_ref()
+            .map(crate::ext_diag::reset_info);
+        let opened = crate::events::Opened::new(&conn.serial, conn.caps.kind, &mirror, vreg, reset);
         let (displaced, worker) = {
             let mut inner = self.lock();
             inner.state = mirror;

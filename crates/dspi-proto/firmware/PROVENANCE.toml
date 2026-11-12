@@ -6,15 +6,21 @@
 
 repository = "https://github.com/Bofr5555/DSPi"
 branch     = "bofr-main"
-commit     = "04122d34699204d7dddda4d177072be6187f5e2a"
-short      = "04122d3"
-committed  = "2026-11-06 18:42:41 +0100"
-vendored   = "2026-11-06"
+commit     = "de9614c8d697020aeeedd0b2fcab55d1ceeea4b6"
+short      = "de9614c"
+committed  = "2026-11-12 12:14:43 +0100"
+vendored   = "2026-11-12"
 # bofr-main is Weeb Labs release/v1.1.6 final (9ffce34, caps v22) plus the
 # fork's extension channel (REQ_EXTENSION 0x00, EXT_* sub-commands in
 # config.h; Documentation/Features/extension_channel_spec.md there).
 # It also has EXT_NOTIFY_FEATURES 0x0003 and NOTIFY_FEAT_BULK_SOURCE; only those
 # lines and a bulk_params_apply prototype differ from af001ec.
+# WP FWX: bofr-main 04122d3 plus EXT_IDENTIFY 0x0004, EXT_RESET_INFO 0x0005,
+# NOTIFY_FEAT_CLIP_EVENT and the clip event 0xE0 (config.h, notify.h).
+# WP CS1: re-pinned to bofr-main de9614c, which has wp/FWX (FW1, FW2, FW4, FW5)
+# and wp/FWFIX merged: config.h also has the gain-range macros and
+# gain_db_clamp (FW2) and EXT_FIRMWARE_FIXES 0x0006 with FW_FIX_BULK_DB_POWF.
+# Only config.h differs from wp/FWX 874e96e.
 
 files = [
   "config.h",            # vendor opcodes, channel model, platform constants, firmware version

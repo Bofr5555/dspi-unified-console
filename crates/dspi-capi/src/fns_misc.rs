@@ -46,6 +46,8 @@ mod link_text;
 mod events;
 // -- WP P0E --
 mod diag;
+// -- WP FWX --
+mod ext_diag;
 
 // ── Replies ──────────────────────────────────────────────────────────
 

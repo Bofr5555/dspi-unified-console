@@ -1996,6 +1996,15 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func fetchDacMute() throws 
     
     /**
+     * Read `EXT_IDENTIFY`: the blink time left and the board description.
+     *
+     * `Unsupported`, with no traffic, when the device did not list it, and
+     * when the read stalls or a DSPi Link hub refuses it; `Disconnected`
+     * without a device; `Transfer` for a short or failed read.
+     */
+    func fetchIdentify() throws  -> IdentifyInfo
+    
+    /**
      * Lock status of a clocked input. `which`: 0 = I2S slave
      * (`REQ_GET_I2S_SLAVE_STATUS`, 16 bytes; `rate_ok` is always true),
      * 1 = ADAT input (`REQ_GET_ADAT_INPUT_STATUS`, 20 bytes; all zero on
@@ -2078,6 +2087,16 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * have); [`DspiError::Disconnected`].
      */
     func fetchOutputPin(slot: UInt8) throws  -> UInt8
+    
+    /**
+     * Read `EXT_RESET_INFO`: why the device last restarted, its uptime and
+     * the run before. Also refreshes the connection's copy from the probe.
+     *
+     * `Unsupported`, with no traffic, when the device did not list it, and
+     * when the read stalls or a DSPi Link hub refuses it; `Disconnected`
+     * without a device; `Transfer` for a short or failed read.
+     */
+    func fetchResetInfo() throws  -> DeviceResetInfo
     
     /**
      * The output rings' health (Output Ring Health in the Stats window), or
@@ -2325,6 +2344,13 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func getState()  -> DspState
     
     /**
+     * Whether the device sends clip events (`EXT_NOTIFY_FEATURES` bit 1):
+     * then a clip shows without polling the meters fast. No traffic;
+     * `Disconnected` without a device.
+     */
+    func hasClipEvents() throws  -> Bool
+    
+    /**
      * The newest `n` changes of this connection, newest first: every typed
      * setter's, undo's and redo's, with the value before and after, who
      * made it and when. The connection's session keeps the newest 1000; a
@@ -2342,6 +2368,21 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * connects go to the new connection: stop feeding the old device first.
      */
     func hostNotify(packet: Data, origin: UInt16?) 
+    
+    /**
+     * `EXT_IDENTIFY`: blink the device's LED for `seconds` (0 stops it; over
+     * 120 the firmware shortens to 120) and, with `tone_output`, play its
+     * quiet identify tone ([`IDENTIFY_TONE_DBFS`], 400 ms) on that output.
+     * Leave `tone_output` empty unless the user asked for sound.
+     *
+     * Errors, with no traffic: `Disconnected`; `Unsupported` when the device
+     * did not list it; `InvalidArgument` for a tone output past the
+     * device's outputs; `ReadOnly` on a read-only connection. From the
+     * device: `Refused { status: EXT_WRITE_REFUSED }` when it stalls (a tone
+     * while its signal generator runs); `Denied`, `Locked` or `Transfer`
+     * from the link.
+     */
+    func identify(seconds: UInt8, toneOutput: UInt8?) throws 
     
     /**
      * DSPis the last scan saw but could not open: no permission (Linux udev
@@ -2746,6 +2787,13 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * [`DspiError::Disconnected`] or [`DspiError::Transfer`] otherwise.
      */
     func resetBufferStats() throws 
+    
+    /**
+     * The reset readout as the connect probe found it, without traffic:
+     * `None` when the device has no `EXT_RESET_INFO` or the read failed.
+     * Its uptime is the one at connect. `Disconnected` without a device.
+     */
+    func resetInfoAtConnect() throws  -> DeviceResetInfo?
     
     /**
      * Start every channel's `SystemStatus.peak_max` again from the next
@@ -4980,6 +5028,20 @@ open func fetchDacMute()throws   {try rustCallWithError(FfiConverterTypeDspiErro
 }
     
     /**
+     * Read `EXT_IDENTIFY`: the blink time left and the board description.
+     *
+     * `Unsupported`, with no traffic, when the device did not list it, and
+     * when the read stalls or a DSPi Link hub refuses it; `Disconnected`
+     * without a device; `Transfer` for a short or failed read.
+     */
+open func fetchIdentify()throws  -> IdentifyInfo  {
+    return try  FfiConverterTypeIdentifyInfo_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_fetch_identify(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
      * Lock status of a clocked input. `which`: 0 = I2S slave
      * (`REQ_GET_I2S_SLAVE_STATUS`, 16 bytes; `rate_ok` is always true),
      * 1 = ADAT input (`REQ_GET_ADAT_INPUT_STATUS`, 20 bytes; all zero on
@@ -5101,6 +5163,21 @@ open func fetchOutputPin(slot: UInt8)throws  -> UInt8  {
     return try  FfiConverterUInt8.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_fetch_output_pin(self.uniffiClonePointer(),
         FfiConverterUInt8.lower(slot),$0
+    )
+})
+}
+    
+    /**
+     * Read `EXT_RESET_INFO`: why the device last restarted, its uptime and
+     * the run before. Also refreshes the connection's copy from the probe.
+     *
+     * `Unsupported`, with no traffic, when the device did not list it, and
+     * when the read stalls or a DSPi Link hub refuses it; `Disconnected`
+     * without a device; `Transfer` for a short or failed read.
+     */
+open func fetchResetInfo()throws  -> DeviceResetInfo  {
+    return try  FfiConverterTypeDeviceResetInfo_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_fetch_reset_info(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -5467,6 +5544,18 @@ open func getState() -> DspState  {
 }
     
     /**
+     * Whether the device sends clip events (`EXT_NOTIFY_FEATURES` bit 1):
+     * then a clip shows without polling the meters fast. No traffic;
+     * `Disconnected` without a device.
+     */
+open func hasClipEvents()throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_has_clip_events(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
      * The newest `n` changes of this connection, newest first: every typed
      * setter's, undo's and redo's, with the value before and after, who
      * made it and when. The connection's session keeps the newest 1000; a
@@ -5493,6 +5582,27 @@ open func hostNotify(packet: Data, origin: UInt16?)  {try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_host_notify(self.uniffiClonePointer(),
         FfiConverterData.lower(packet),
         FfiConverterOptionUInt16.lower(origin),$0
+    )
+}
+}
+    
+    /**
+     * `EXT_IDENTIFY`: blink the device's LED for `seconds` (0 stops it; over
+     * 120 the firmware shortens to 120) and, with `tone_output`, play its
+     * quiet identify tone ([`IDENTIFY_TONE_DBFS`], 400 ms) on that output.
+     * Leave `tone_output` empty unless the user asked for sound.
+     *
+     * Errors, with no traffic: `Disconnected`; `Unsupported` when the device
+     * did not list it; `InvalidArgument` for a tone output past the
+     * device's outputs; `ReadOnly` on a read-only connection. From the
+     * device: `Refused { status: EXT_WRITE_REFUSED }` when it stalls (a tone
+     * while its signal generator runs); `Denied`, `Locked` or `Transfer`
+     * from the link.
+     */
+open func identify(seconds: UInt8, toneOutput: UInt8?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_identify(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(seconds),
+        FfiConverterOptionUInt8.lower(toneOutput),$0
     )
 }
 }
@@ -6077,6 +6187,18 @@ open func resetBufferStats()throws   {try rustCallWithError(FfiConverterTypeDspi
     uniffi_dspi_core_fn_method_dspicore_reset_buffer_stats(self.uniffiClonePointer(),$0
     )
 }
+}
+    
+    /**
+     * The reset readout as the connect probe found it, without traffic:
+     * `None` when the device has no `EXT_RESET_INFO` or the read failed.
+     * Its uptime is the one at connect. `Disconnected` without a device.
+     */
+open func resetInfoAtConnect()throws  -> DeviceResetInfo?  {
+    return try  FfiConverterOptionTypeDeviceResetInfo.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_reset_info_at_connect(self.uniffiClonePointer(),$0
+    )
+})
 }
     
     /**
@@ -10907,6 +11029,197 @@ public func FfiConverterTypeDeviceInfo_lower(_ value: DeviceInfo) -> RustBuffer 
 
 
 /**
+ * What `EXT_RESET_INFO` reports: why the device last restarted.
+ */
+public struct DeviceResetInfo {
+    /**
+     * A stable name: `power_on`, `brownout`, `run_pin`, `watchdog`,
+     * `software`, `debugger`, `glitch` or `unknown`.
+     */
+    public var reason: String
+    /**
+     * The firmware's reason code (reset_info.h), for a code this build does
+     * not know too.
+     */
+    public var reasonCode: UInt8
+    /**
+     * The reason in words.
+     */
+    public var description: String
+    /**
+     * Seconds since that restart.
+     */
+    public var uptimeS: UInt32
+    /**
+     * How long the run before it lasted, in seconds; `None` after a power-on
+     * or a brown-out, which clear the record.
+     */
+    public var prevUptimeS: UInt32?
+    /**
+     * Watchdog hangs this power session not yet acted on (the core voltage
+     * extension's count).
+     */
+    public var hangCount: UInt8
+    /**
+     * `RP2040` or `RP2350`.
+     */
+    public var chip: String
+    /**
+     * The raw reset-cause register at boot, for a support report.
+     */
+    public var chipReset: UInt32
+    /**
+     * The raw `WATCHDOG.REASON` at boot (bit 8: the firmware's own timeout).
+     */
+    public var watchdogReason: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * A stable name: `power_on`, `brownout`, `run_pin`, `watchdog`,
+         * `software`, `debugger`, `glitch` or `unknown`.
+         */reason: String, 
+        /**
+         * The firmware's reason code (reset_info.h), for a code this build does
+         * not know too.
+         */reasonCode: UInt8, 
+        /**
+         * The reason in words.
+         */description: String, 
+        /**
+         * Seconds since that restart.
+         */uptimeS: UInt32, 
+        /**
+         * How long the run before it lasted, in seconds; `None` after a power-on
+         * or a brown-out, which clear the record.
+         */prevUptimeS: UInt32?, 
+        /**
+         * Watchdog hangs this power session not yet acted on (the core voltage
+         * extension's count).
+         */hangCount: UInt8, 
+        /**
+         * `RP2040` or `RP2350`.
+         */chip: String, 
+        /**
+         * The raw reset-cause register at boot, for a support report.
+         */chipReset: UInt32, 
+        /**
+         * The raw `WATCHDOG.REASON` at boot (bit 8: the firmware's own timeout).
+         */watchdogReason: UInt32) {
+        self.reason = reason
+        self.reasonCode = reasonCode
+        self.description = description
+        self.uptimeS = uptimeS
+        self.prevUptimeS = prevUptimeS
+        self.hangCount = hangCount
+        self.chip = chip
+        self.chipReset = chipReset
+        self.watchdogReason = watchdogReason
+    }
+}
+
+#if compiler(>=6)
+extension DeviceResetInfo: Sendable {}
+#endif
+
+
+extension DeviceResetInfo: Equatable, Hashable {
+    public static func ==(lhs: DeviceResetInfo, rhs: DeviceResetInfo) -> Bool {
+        if lhs.reason != rhs.reason {
+            return false
+        }
+        if lhs.reasonCode != rhs.reasonCode {
+            return false
+        }
+        if lhs.description != rhs.description {
+            return false
+        }
+        if lhs.uptimeS != rhs.uptimeS {
+            return false
+        }
+        if lhs.prevUptimeS != rhs.prevUptimeS {
+            return false
+        }
+        if lhs.hangCount != rhs.hangCount {
+            return false
+        }
+        if lhs.chip != rhs.chip {
+            return false
+        }
+        if lhs.chipReset != rhs.chipReset {
+            return false
+        }
+        if lhs.watchdogReason != rhs.watchdogReason {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(reason)
+        hasher.combine(reasonCode)
+        hasher.combine(description)
+        hasher.combine(uptimeS)
+        hasher.combine(prevUptimeS)
+        hasher.combine(hangCount)
+        hasher.combine(chip)
+        hasher.combine(chipReset)
+        hasher.combine(watchdogReason)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDeviceResetInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DeviceResetInfo {
+        return
+            try DeviceResetInfo(
+                reason: FfiConverterString.read(from: &buf), 
+                reasonCode: FfiConverterUInt8.read(from: &buf), 
+                description: FfiConverterString.read(from: &buf), 
+                uptimeS: FfiConverterUInt32.read(from: &buf), 
+                prevUptimeS: FfiConverterOptionUInt32.read(from: &buf), 
+                hangCount: FfiConverterUInt8.read(from: &buf), 
+                chip: FfiConverterString.read(from: &buf), 
+                chipReset: FfiConverterUInt32.read(from: &buf), 
+                watchdogReason: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DeviceResetInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.reason, into: &buf)
+        FfiConverterUInt8.write(value.reasonCode, into: &buf)
+        FfiConverterString.write(value.description, into: &buf)
+        FfiConverterUInt32.write(value.uptimeS, into: &buf)
+        FfiConverterOptionUInt32.write(value.prevUptimeS, into: &buf)
+        FfiConverterUInt8.write(value.hangCount, into: &buf)
+        FfiConverterString.write(value.chip, into: &buf)
+        FfiConverterUInt32.write(value.chipReset, into: &buf)
+        FfiConverterUInt32.write(value.watchdogReason, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDeviceResetInfo_lift(_ buf: RustBuffer) throws -> DeviceResetInfo {
+    return try FfiConverterTypeDeviceResetInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDeviceResetInfo_lower(_ value: DeviceResetInfo) -> RustBuffer {
+    return FfiConverterTypeDeviceResetInfo.lower(value)
+}
+
+
+/**
  * A file a client adds to a diagnostics bundle (`client/<name>` in the
  * zip): its own log, `uconsole doctor`'s report.
  */
@@ -13987,6 +14300,163 @@ public func FfiConverterTypeI2cConfig_lift(_ buf: RustBuffer) throws -> I2cConfi
 #endif
 public func FfiConverterTypeI2cConfig_lower(_ value: I2cConfig) -> RustBuffer {
     return FfiConverterTypeI2cConfig.lower(value)
+}
+
+
+/**
+ * What `EXT_IDENTIFY` reports: the blink state and what the board is.
+ */
+public struct IdentifyInfo {
+    /**
+     * Blink time left in seconds, rounded up; 0 when not blinking.
+     */
+    public var remainingS: UInt8
+    /**
+     * The output of the last identify tone since the device started.
+     */
+    public var lastToneOutput: UInt8?
+    /**
+     * `RP2040` or `RP2350` (`chip N` for a value this build does not know).
+     */
+    public var chip: String
+    /**
+     * The SDK's chip revision number.
+     */
+    public var chipRev: UInt8
+    /**
+     * The raw `SYSINFO.CHIP_ID` register.
+     */
+    public var chipId: UInt32
+    /**
+     * The board the firmware was built for (`pico`, `pico2`).
+     */
+    public var board: String
+    /**
+     * The hardware revision the firmware build was given; empty when the
+     * build set none (the firmware cannot sense it).
+     */
+    public var hwRev: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Blink time left in seconds, rounded up; 0 when not blinking.
+         */remainingS: UInt8, 
+        /**
+         * The output of the last identify tone since the device started.
+         */lastToneOutput: UInt8?, 
+        /**
+         * `RP2040` or `RP2350` (`chip N` for a value this build does not know).
+         */chip: String, 
+        /**
+         * The SDK's chip revision number.
+         */chipRev: UInt8, 
+        /**
+         * The raw `SYSINFO.CHIP_ID` register.
+         */chipId: UInt32, 
+        /**
+         * The board the firmware was built for (`pico`, `pico2`).
+         */board: String, 
+        /**
+         * The hardware revision the firmware build was given; empty when the
+         * build set none (the firmware cannot sense it).
+         */hwRev: String) {
+        self.remainingS = remainingS
+        self.lastToneOutput = lastToneOutput
+        self.chip = chip
+        self.chipRev = chipRev
+        self.chipId = chipId
+        self.board = board
+        self.hwRev = hwRev
+    }
+}
+
+#if compiler(>=6)
+extension IdentifyInfo: Sendable {}
+#endif
+
+
+extension IdentifyInfo: Equatable, Hashable {
+    public static func ==(lhs: IdentifyInfo, rhs: IdentifyInfo) -> Bool {
+        if lhs.remainingS != rhs.remainingS {
+            return false
+        }
+        if lhs.lastToneOutput != rhs.lastToneOutput {
+            return false
+        }
+        if lhs.chip != rhs.chip {
+            return false
+        }
+        if lhs.chipRev != rhs.chipRev {
+            return false
+        }
+        if lhs.chipId != rhs.chipId {
+            return false
+        }
+        if lhs.board != rhs.board {
+            return false
+        }
+        if lhs.hwRev != rhs.hwRev {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(remainingS)
+        hasher.combine(lastToneOutput)
+        hasher.combine(chip)
+        hasher.combine(chipRev)
+        hasher.combine(chipId)
+        hasher.combine(board)
+        hasher.combine(hwRev)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeIdentifyInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> IdentifyInfo {
+        return
+            try IdentifyInfo(
+                remainingS: FfiConverterUInt8.read(from: &buf), 
+                lastToneOutput: FfiConverterOptionUInt8.read(from: &buf), 
+                chip: FfiConverterString.read(from: &buf), 
+                chipRev: FfiConverterUInt8.read(from: &buf), 
+                chipId: FfiConverterUInt32.read(from: &buf), 
+                board: FfiConverterString.read(from: &buf), 
+                hwRev: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: IdentifyInfo, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.remainingS, into: &buf)
+        FfiConverterOptionUInt8.write(value.lastToneOutput, into: &buf)
+        FfiConverterString.write(value.chip, into: &buf)
+        FfiConverterUInt8.write(value.chipRev, into: &buf)
+        FfiConverterUInt32.write(value.chipId, into: &buf)
+        FfiConverterString.write(value.board, into: &buf)
+        FfiConverterString.write(value.hwRev, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeIdentifyInfo_lift(_ buf: RustBuffer) throws -> IdentifyInfo {
+    return try FfiConverterTypeIdentifyInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeIdentifyInfo_lower(_ value: IdentifyInfo) -> RustBuffer {
+    return FfiConverterTypeIdentifyInfo.lower(value)
 }
 
 
@@ -22461,6 +22931,30 @@ fileprivate struct FfiConverterOptionTypeCoreVregInfo: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeDeviceResetInfo: FfiConverterRustBuffer {
+    typealias SwiftType = DeviceResetInfo?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeDeviceResetInfo.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeDeviceResetInfo.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeHistoryEntry: FfiConverterRustBuffer {
     typealias SwiftType = HistoryEntry?
 
@@ -24089,6 +24583,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_dac_mute() != 15871) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_identify() != 43866) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_input_lock() != 1042) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -24111,6 +24608,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_output_pin() != 64350) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_reset_info() != 28748) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_ring_health() != 1712) {
@@ -24176,10 +24676,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_get_state() != 32151) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_has_clip_events() != 9559) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_history() != 15069) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_host_notify() != 19114) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_identify() != 26030) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_inaccessible_devices() != 62282) {
@@ -24282,6 +24788,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_reset_buffer_stats() != 36944) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_reset_info_at_connect() != 57433) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_reset_meter_max() != 60815) {

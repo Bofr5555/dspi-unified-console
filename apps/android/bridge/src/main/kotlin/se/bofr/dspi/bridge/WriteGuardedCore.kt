@@ -58,6 +58,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.coreVregOp(op, value, word)
     }
 
+    // -- WP FWX -- blinks the LED, and with a tone output plays a tone
+    override fun identify(seconds: Int, toneOutput: Int?) {
+        guard("identify")
+        return inner.identify(seconds, toneOutput)
+    }
+
     // Review w1d (integration with CG11, CG14): the calibration flow's writes.
     // The core's own poll writes only the next step of a run that start began,
     // and start is guarded, so the poll passes through.
@@ -691,7 +697,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "demoRenameElsewhere",
             "demoLatencyTiming",
             // -- WP QD31 --
-            "demoOutputSaveStatus"
+            "demoOutputSaveStatus",
+            // -- WP FWX --
+            "identify"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -806,6 +814,11 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "openDemo",
             "extStatus",
             "fetchCoreVreg",
+            // -- WP FWX --
+            "fetchIdentify",
+            "fetchResetInfo",
+            "resetInfoAtConnect",
+            "hasClipEvents",
             "uf2Inspect",
             "firmwareVersionMatches",
             "bootloaderDrives",

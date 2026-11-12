@@ -50,6 +50,9 @@ const NOT_EXPORTED: &[&str] = &[
     // -- WP P0E -- Rust-only: the bundle as bytes, for the web, which has no file
     // system; UniFFI has `diagnostics_save`.
     "diagnostics_zip",
+    // -- WP FWX -- The clip events' hand-off to WP P0M's clip hold and history
+    // (ext_diag.rs), Rust-only until a client needs it.
+    "take_clip_mask",
 ];
 
 /// `crates/dspi-core/src/link.rs`, exported by WP C15.

@@ -1195,6 +1195,9 @@ const char *options,
 char *buf,
 uint32_t len);
 uint32_t dspi_diagnostics_file_name(struct FfiCore *core, char *buf, uint32_t len);
+uint8_t dspi_identify(struct FfiCore *core, uint8_t seconds, uint8_t tone_output);
+uint32_t dspi_fetch_identify(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_fetch_reset_info(struct FfiCore *core, char *buf, uint32_t len);
 bool dspi_link_browse_start(struct FfiCore *core,
 void (*callback)(void *user_data),
 void *user_data,

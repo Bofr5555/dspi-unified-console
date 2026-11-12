@@ -150,6 +150,8 @@ mod tests {
             "src/fns_misc/events.rs",
             // -- WP P0E --
             "src/fns_misc/diag.rs",
+            // -- WP FWX --
+            "src/fns_misc/ext_diag.rs",
             "src/fns_browse.rs",
             "src/fns_link.rs",
             "src/fns_hub.rs",

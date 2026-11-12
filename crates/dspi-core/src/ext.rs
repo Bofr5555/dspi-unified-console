@@ -254,7 +254,8 @@ fn vreg_info(s: &CoreVregStatus) -> CoreVregInfo {
 /// A failed extension read: a stall, or a DSPi Link hub refusing this
 /// client's role, is "absent" (`Unsupported`); everything else is the
 /// transport's error.
-fn read_error(e: ExtError) -> DspiError {
+// -- WP FWX -- pub(crate): ext_diag.rs maps its errors the same way
+pub(crate) fn read_error(e: ExtError) -> DspiError {
     match e {
         ExtError::Unsupported { .. } | ExtError::Transport(TransportError::Denied(_)) => {
             DspiError::Unsupported
@@ -271,7 +272,8 @@ fn read_error(e: ExtError) -> DspiError {
 /// A failed extension write: a stall is the device refusing the request
 /// (extension_channel_spec.md 1.1). A refusal by a DSPi Link hub stays
 /// `Denied`: the caller asked to change something it may not.
-fn write_error(e: ExtError) -> DspiError {
+// -- WP FWX -- pub(crate): ext_diag.rs maps its errors the same way
+pub(crate) fn write_error(e: ExtError) -> DspiError {
     match e {
         ExtError::Refused { .. } | ExtError::Unsupported { .. } => refused(),
         ExtError::Transport(t) => t.into(),

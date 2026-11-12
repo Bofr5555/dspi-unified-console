@@ -5264,6 +5264,31 @@ uint32_t dspi_diagnostics_save(struct FfiCore *core,
 uint32_t dspi_diagnostics_file_name(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
+ * Blink the device's LED for `seconds` (0 stops it; the firmware shortens
+ * more than 120 to 120). `tone_output` is an output for the quiet identify
+ * tone (1 kHz, -40 dBFS, 400 ms, through that output's whole chain), or
+ * 0xFF for none; pass 0xFF unless the user asked for sound. Returns a
+ * status byte, 0xFF on failure (unsupported, a tone output past the
+ * outputs, a read-only connection, a refusal).
+ */
+uint8_t dspi_identify(struct FfiCore *core, uint8_t seconds, uint8_t tone_output);
+
+/**
+ * The identify state and the board, in JSON (`remainingS`,
+ * `lastToneOutput`, `chip`, `chipRev`, `chipId`, `board`, `hwRev`), or a
+ * failure (`unsupported` without it).
+ */
+uint32_t dspi_fetch_identify(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Why the device last restarted, in JSON (`reason`, `reasonCode`,
+ * `description`, `uptimeS`, `prevUptimeS` (null after a power-on),
+ * `hangCount`, `chip`, `chipReset`, `watchdogReason`), or a failure
+ * (`unsupported` without it).
+ */
+uint32_t dspi_fetch_reset_info(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * Start looking for hubs on the local network, replacing any browse running.
  * Returns at once; false only with a null handle, in a build without the
  * feature, or when a thread cannot start. A network failure shows in
