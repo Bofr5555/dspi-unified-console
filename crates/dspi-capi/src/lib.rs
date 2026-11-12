@@ -145,6 +145,8 @@ mod tests {
             "src/fns_device.rs",
             "src/fns_misc.rs",
             "src/fns_misc/autoeq.rs",
+            // -- WP FWX --
+            "src/fns_misc/diag.rs",
             "src/fns_misc/link_text.rs",
             "src/fns_browse.rs",
             "src/fns_link.rs",

@@ -72,6 +72,8 @@ mod cs_rules;
 mod curves;
 mod device;
 mod ext;
+// -- WP FWX --
+mod ext_diag;
 pub mod files;
 mod firmware;
 // -- WP CG8 --
@@ -145,6 +147,8 @@ pub use link_text::*;
 pub use hotplug::{BrokeredDevice, DeviceBroker};
 // -- WP CG17 --
 pub use dspi_proto::ext::PairMap;
+// -- WP FWX --
+pub use ext_diag::{DeviceResetInfo, IDENTIFY_TONE_DBFS, IdentifyInfo};
 // -- WP CG23 --
 pub use raw::RawNotification;
 // -- WP CG26 --
@@ -342,6 +346,9 @@ pub(crate) struct Connection {
     /// have to run ([`DspiCore::ensure_probed`]; the Link supervisor runs
     /// them in the background).
     pub(crate) pending_probe: Option<Box<dspi_session::probe::Quick>>,
+    // -- WP FWX --
+    /// Channels named by clip events since `take_clip_mask` (`ext_diag.rs`).
+    pub(crate) clip_mask: u32,
 }
 
 /// A remote device reached without the [`Inner`] lock (WP C15).
@@ -451,6 +458,8 @@ impl Connection {
             held_lock: None,
             // -- WP LK4 --
             pending_probe: None,
+            // -- WP FWX --
+            clip_mask: 0,
         }
     }
 

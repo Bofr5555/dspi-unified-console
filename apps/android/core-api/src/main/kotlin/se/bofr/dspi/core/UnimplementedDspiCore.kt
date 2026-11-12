@@ -78,6 +78,16 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun coreVregOp(op: Int, value: Int, word: String?): Unit = throw NotImplementedError("core_vreg_op")
 
+    override fun identify(seconds: Int, toneOutput: Int?): Unit = throw NotImplementedError("identify")
+
+    override fun fetchIdentify(): IdentifyInfo = throw NotImplementedError("fetch_identify")
+
+    override fun fetchResetInfo(): DeviceResetInfo = throw NotImplementedError("fetch_reset_info")
+
+    override fun resetInfoAtConnect(): DeviceResetInfo? = throw NotImplementedError("reset_info_at_connect")
+
+    override fun hasClipEvents(): Boolean = throw NotImplementedError("has_clip_events")
+
     override fun configExport(name: String, appVersion: String, links: Int): String = throw NotImplementedError("config_export")
 
     override fun configImport(text: String, options: Long): String = throw NotImplementedError("config_import")

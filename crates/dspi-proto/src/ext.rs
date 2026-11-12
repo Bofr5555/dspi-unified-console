@@ -6,6 +6,10 @@
 
 use crate::generated;
 
+// -- WP FWX -- identify, reset info, the clip event
+mod diag;
+pub use diag::*;
+
 /// A user-supplied value that does not parse (a pair map, a voltage).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
@@ -20,6 +24,10 @@ pub fn name(id: u16) -> &'static str {
         generated::ext::EXT_LIST => "list",
         generated::ext::EXT_CROSSFEED_PAIR_MAP => "crossfeed pair map",
         generated::ext::EXT_CORE_VREG => "core voltage",
+        // -- WP FWX --
+        generated::ext::EXT_NOTIFY_FEATURES => "notify features",
+        generated::ext::EXT_IDENTIFY => "identify",
+        generated::ext::EXT_RESET_INFO => "reset info",
         0x8000..=0xFFFF => "experimental",
         _ => "unknown",
     }

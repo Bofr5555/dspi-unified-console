@@ -5,16 +5,21 @@
 # you exactly what changed.
 
 repository = "https://github.com/Bofr5555/DSPi"
-branch     = "bofr-main"
-commit     = "04122d34699204d7dddda4d177072be6187f5e2a"
-short      = "04122d3"
-committed  = "2026-11-06 18:42:41 +0100"
-vendored   = "2026-11-06"
+branch     = "wp/FWX"
+commit     = "874e96eebeb4618851f3a635973c9f0130c87134"
+short      = "874e96e"
+committed  = "2026-11-12 10:45:49 +0100"
+vendored   = "2026-11-12"
 # bofr-main is Weeb Labs release/v1.1.6 final (9ffce34, caps v22) plus the
 # fork's extension channel (REQ_EXTENSION 0x00, EXT_* sub-commands in
 # config.h; Documentation/Features/extension_channel_spec.md there).
 # It also has EXT_NOTIFY_FEATURES 0x0003 and NOTIFY_FEAT_BULK_SOURCE; only those
 # lines and a bulk_params_apply prototype differ from af001ec.
+# WP FWX: wp/FWX 874e96e is bofr-main 04122d3 plus EXT_IDENTIFY 0x0004,
+# EXT_RESET_INFO 0x0005, NOTIFY_FEAT_CLIP_EVENT and the clip event 0xE0; only
+# config.h and notify.h differ from 04122d3. It is not on bofr-main yet: when the
+# owner merges it, re-pin to the bofr-main commit. The later FW2 commit (gain
+# clamps, a separate owner decision) adds only gain-range macros to config.h.
 
 files = [
   "config.h",            # vendor opcodes, channel model, platform constants, firmware version

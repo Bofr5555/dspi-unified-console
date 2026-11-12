@@ -134,6 +134,16 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun coreVregOp(op: Int, value: Int, word: String?) = call { core.coreVregOp(op.toUByte(), value.toUByte(), word) }
 
+    override fun identify(seconds: Int, toneOutput: Int?) = call { core.identify(seconds.toUByte(), toneOutput?.let { it.toUByte() }) }
+
+    override fun fetchIdentify(): IdentifyInfo = call { core.fetchIdentify().toDomain() }
+
+    override fun fetchResetInfo(): DeviceResetInfo = call { core.fetchResetInfo().toDomain() }
+
+    override fun resetInfoAtConnect(): DeviceResetInfo? = call { core.resetInfoAtConnect()?.let { it.toDomain() } }
+
+    override fun hasClipEvents(): Boolean = call { core.hasClipEvents() }
+
     override fun configExport(name: String, appVersion: String, links: Int): String = call { core.configExport(name, appVersion, links.toUByte()) }
 
     override fun configImport(text: String, options: Long): String = core.configImport(text, options.toUInt())
@@ -1851,6 +1861,54 @@ internal fun AutoEqRebuildProgress.toFfi() =
         failedProfiles = failedProfiles.toUInt(),
         failedListings = failedListings.toUInt(),
         skippedProfiles = skippedProfiles.toUInt(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.IdentifyInfo.toDomain() =
+    IdentifyInfo(
+        remainingS = remainingS.toInt(),
+        lastToneOutput = lastToneOutput?.let { it.toInt() },
+        chip = chip,
+        chipRev = chipRev.toInt(),
+        chipId = chipId.toLong(),
+        board = board,
+        hwRev = hwRev,
+    )
+
+internal fun IdentifyInfo.toFfi() =
+    se.bofr.dspi.ffi.uniffi.IdentifyInfo(
+        remainingS = remainingS.toUByte(),
+        lastToneOutput = lastToneOutput?.let { it.toUByte() },
+        chip = chip,
+        chipRev = chipRev.toUByte(),
+        chipId = chipId.toUInt(),
+        board = board,
+        hwRev = hwRev,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.DeviceResetInfo.toDomain() =
+    DeviceResetInfo(
+        reason = reason,
+        reasonCode = reasonCode.toInt(),
+        description = description,
+        uptimeS = uptimeS.toLong(),
+        prevUptimeS = prevUptimeS?.let { it.toLong() },
+        hangCount = hangCount.toInt(),
+        chip = chip,
+        chipReset = chipReset.toLong(),
+        watchdogReason = watchdogReason.toLong(),
+    )
+
+internal fun DeviceResetInfo.toFfi() =
+    se.bofr.dspi.ffi.uniffi.DeviceResetInfo(
+        reason = reason,
+        reasonCode = reasonCode.toUByte(),
+        description = description,
+        uptimeS = uptimeS.toUInt(),
+        prevUptimeS = prevUptimeS?.let { it.toUInt() },
+        hangCount = hangCount.toUByte(),
+        chip = chip,
+        chipReset = chipReset.toUInt(),
+        watchdogReason = watchdogReason.toUInt(),
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.FirmwareGuardBoard.toDomain() =

@@ -41,6 +41,8 @@ use crate::types::*;
 use crate::{FfiCore, with_core};
 
 mod autoeq;
+// -- WP FWX --
+mod diag;
 mod link_text;
 
 // ── Replies ──────────────────────────────────────────────────────────

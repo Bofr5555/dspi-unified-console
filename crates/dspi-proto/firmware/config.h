@@ -147,6 +147,8 @@ extern volatile uint32_t nominal_feedback_10_14;
 #define EXT_CROSSFEED_PAIR_MAP      0x0001  // IN: uint8[4]; OUT: uint8[4] (crossfeed_map.h)
 #define EXT_CORE_VREG               0x0002  // IN: CoreVregStatus (16 B); OUT: {op, value} (core_vreg.h)
 #define EXT_NOTIFY_FEATURES         0x0003  // IN: uint32 LE NOTIFY_FEAT_* flags (notify.h); no OUT
+#define EXT_IDENTIFY                0x0004  // IN: IdentifyStatus (56 B); OUT: IdentifyRequest (4 B) (identify.h)
+#define EXT_RESET_INFO              0x0005  // IN: ResetInfo (20 B) (reset_info.h); no OUT
 
 // Control Surfaces auxiliary outputs (caps v18); see control_surfaces.h and
 // Documentation/Features/control_surfaces_aux_spec.md.  wValue is the binding
@@ -1216,6 +1218,14 @@ typedef struct __attribute__((packed)) {
 
 extern uint8_t channel_band_counts[NUM_CHANNELS];
 extern volatile SystemStatusPacket global_status;
+
+// Clip latch for the clip notification (notify.h NOTIFY_EVT_EXT_CLIP).  The
+// metering sites set the same bits as global_status.clip_flags, but this copy
+// is consumed by notify_clip_service() only, so REQ_CLEAR_CLIPS and the status
+// polls keep their exact semantics and the event never waits for a clear.
+extern volatile uint32_t clip_notify_latch;
+#define CLIP_LATCH(bits) do { uint32_t _clip_b = (bits); \
+    global_status.clip_flags |= _clip_b; clip_notify_latch |= _clip_b; } while (0)
 
 // ----------------------------------------------------------------------------
 // Force time-critical functions into RAM. Under the XIP build, .time_critical

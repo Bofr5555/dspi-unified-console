@@ -492,6 +492,11 @@ fn apply_queued(inner: &mut Inner, r: &mut NotifyResult) -> FollowUp {
             Event::I2sSlaveState { .. } | Event::AdatInputState { .. } => {
                 r.flags |= NOTIFY_STREAMS;
             }
+            // -- WP FWX -- A clip event, read only from a device announcing it
+            // (EXT_NOTIFY_FEATURES bit 1); `take_clip_mask` hands it on.
+            Event::Unknown { id, bytes } if *id == dspi_proto::ext::NOTIFY_EVT_EXT_CLIP => {
+                crate::ext_diag::note_clip(conn, *id, bytes);
+            }
             // The v1 master volume is deduplicated against its v2 twin (the
             // `PARAM_CHANGED` that follows it); the link states and unknown
             // events are only logged.

@@ -42,6 +42,9 @@ const NOT_EXPORTED: &[&str] = &[
     "link_connect_over",
     "link_service",
     "link_tick",
+    // -- WP FWX -- The clip events' hand-off to WP P0M's clip hold and history
+    // (ext_diag.rs), Rust-only until a client needs it.
+    "take_clip_mask",
 ];
 
 /// `crates/dspi-core/src/link.rs`, exported by WP C15.

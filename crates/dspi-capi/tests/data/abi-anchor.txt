@@ -1154,6 +1154,9 @@ void *user_data);
 uint32_t dspi_autoeq_rebuild_poll(struct AutoEqRebuildHandle *handle, char *buf, uint32_t len);
 void dspi_autoeq_rebuild_cancel(struct AutoEqRebuildHandle *handle);
 void dspi_autoeq_rebuild_free(struct AutoEqRebuildHandle *handle);
+uint8_t dspi_identify(struct FfiCore *core, uint8_t seconds, uint8_t tone_output);
+uint32_t dspi_fetch_identify(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_fetch_reset_info(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_link_phase_text(const char *phase, const char *pin_source, char *buf, uint32_t len);
 uint32_t dspi_link_phase_texts(char *buf, uint32_t len);
 uint32_t dspi_onboarding_whats_new_json(char *buf,

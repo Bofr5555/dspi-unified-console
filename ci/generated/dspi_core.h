@@ -5055,6 +5055,31 @@ void dspi_autoeq_rebuild_cancel(struct AutoEqRebuildHandle *handle);
 void dspi_autoeq_rebuild_free(struct AutoEqRebuildHandle *handle);
 
 /**
+ * Blink the device's LED for `seconds` (0 stops it; the firmware shortens
+ * more than 120 to 120). `tone_output` is an output for the quiet identify
+ * tone (1 kHz, -40 dBFS, 400 ms, through that output's whole chain), or
+ * 0xFF for none; pass 0xFF unless the user asked for sound. Returns a
+ * status byte, 0xFF on failure (unsupported, a tone output past the
+ * outputs, a read-only connection, a refusal).
+ */
+uint8_t dspi_identify(struct FfiCore *core, uint8_t seconds, uint8_t tone_output);
+
+/**
+ * The identify state and the board, in JSON (`remainingS`,
+ * `lastToneOutput`, `chip`, `chipRev`, `chipId`, `board`, `hwRev`), or a
+ * failure (`unsupported` without it).
+ */
+uint32_t dspi_fetch_identify(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Why the device last restarted, in JSON (`reason`, `reasonCode`,
+ * `description`, `uptimeS`, `prevUptimeS` (null after a power-on),
+ * `hangCount`, `chip`, `chipReset`, `watchdogReason`), or a failure
+ * (`unsupported` without it).
+ */
+uint32_t dspi_fetch_reset_info(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * What to tell the user about a Link phase, in JSON: {ok, key, phase, text,
  * actionKey, action}, or {ok:false, code:"invalid", error} for a `phase` that is
  * no phase. `phase` is the name `dspi_link_status` reports. `pin_source` is its
