@@ -45,6 +45,14 @@ if [ "$code" != 0 ]; then
     tail -30 "$out/log.txt" >&2
     exit 1
 fi
+# -- WP QP0 -- --version names the app by its display name (AppIdentity.h), not
+# by the settings name
+name=$(sed -n 's/.*displayName = "\(.*\)";/\1/p' "$(dirname "$0")/../src/AppIdentity.h")
+version=$("$app" --version 2>/dev/null)
+case "$version" in
+    "$name "[0-9]*) echo "smoke: --version: $version" ;;
+    *) echo "FAIL --version printed '$version', not '$name <version>'" >&2; exit 1 ;;
+esac
 # A run that stopped early has no summary, whatever its exit code.
 grep -q '^smoke: [0-9]* checks' "$out/log.txt" || { echo "no summary line: the driver did not finish" >&2; exit 1; }
 # This catches the core's own warnings only. dspi-capi's limiter turns a message

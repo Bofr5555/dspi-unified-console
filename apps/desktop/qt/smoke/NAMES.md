@@ -21,24 +21,16 @@ A control the driver reads text from exposes what it shows as a `shownName`
 property (`Sidebar.channel.<n>`, `DeviceStatus.button`), so a check does not
 depend on the item tree inside it.
 
-## Names in the base (QP0)
+## Where the names are listed
 
-| Name | What |
-|---|---|
-| `MainWindow` | the main window |
-| `Menu.bar` | its menu bar |
-| `Menu.<action id>` | every menu row (42 in the base) |
-| `BannerHost` | the banner column; `bannerCount` |
-| `BannerHost.<type>` | the loader of a registered banner |
-| `Sidebar` | the sidebar |
-| `Sidebar.list` | its channel list |
-| `Sidebar.channel.<wire channel>` | a channel row; `shownName` |
-| `DeviceStatus.button` | the device button; `shownName` |
-| `RightPane`, `RightPane.graph`, `RightPane.detail` | the right pane and its two placeholders |
-| `SmokeProbeBanner`, `SmokeProbeWindow`, `SmokeProbeWindow.slider` | the smoke build's probes |
+Each work package lists the names it adds in its own file, `names/<wp>.md`
+(`names/qp0.md` is the base's), so packages built in parallel never edit the
+same file. QP19 consolidates them.
 
 ## Sections
 
 Each work package's section is its own file, registered with
-`SmokeDriver::Section("<id>-<screen>", order, fn)`; checks start with the
-work package's id (`"qp1: ..."`). The base's section is `qp0-base` (order 0).
+`SmokeDriver::Section("<id>-<screen>", order, fn)` and listed in its
+`cmake/wp/<wp>.cmake` (`DSPI_SMOKE_SOURCES`); checks start with the work
+package's id (`"qp1: ..."`). The base's sections are `qp0-base` (order 0),
+`qp0-core` (1) and `qp0-components` (2); a work package uses order 10 or more.
