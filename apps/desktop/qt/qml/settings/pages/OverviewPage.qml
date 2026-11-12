@@ -11,7 +11,7 @@ SettingsPage {
     id: page
     objectName: "OverviewPage"
     readonly property var claims: SettingsController.pinClaims
-    readonly property var pins: SettingsController.validPins
+    readonly property var pins: SettingsController.gpioPins
     readonly property var vreg: SettingsController.coreVoltage
     readonly property var roleTitles: [qsTr("Outputs"), qsTr("Clocks"), qsTr("Inputs"), qsTr("Control"), qsTr("Other")]
     readonly property int freeCount: pins.length - grid.heldCount

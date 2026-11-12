@@ -16,7 +16,7 @@
 class PinGrid : public QQuickPaintedItem {
     Q_OBJECT
     QML_ELEMENT
-    // Every pin shown, in order (SettingsController.validPins)
+    // Every pin shown, in order (SettingsController.gpioPins)
     Q_PROPERTY(QVariantList pins READ pins WRITE setPins NOTIFY pinsChanged)
     // [{pin, role, label}] (SettingsController.pinClaims)
     Q_PROPERTY(QVariantList claims READ claims WRITE setClaims NOTIFY claimsChanged)
@@ -58,7 +58,7 @@ public:
     // The chip of `pin` (item coordinates); empty for a pin not shown
     Q_INVOKABLE QRectF chipRect(int pin) const;
 
-    void paint(QPainter *painter) override;
+    void paint(QPainter *p) override;
 
 signals:
     void pinsChanged();

@@ -106,10 +106,9 @@ void PinGrid::hoverMoveEvent(QHoverEvent *event) { setHovered(pinAt(event->posit
 
 void PinGrid::hoverLeaveEvent(QHoverEvent *) { setHovered(-1); }
 
-void PinGrid::paint(QPainter *painter) {
-    painter->setRenderHint(QPainter::Antialiasing);
-    for (const QVariant &p : std::as_const(m_pins)) {
-        const int pin = p.toInt();
+void PinGrid::paint(QPainter *p) {
+    for (const QVariant &entry : std::as_const(m_pins)) {
+        const int pin = entry.toInt();
         const QRectF r = chipRect(pin);
         const auto it = m_byPin.constFind(pin);
         const bool held = it != m_byPin.cend();
@@ -117,11 +116,11 @@ void PinGrid::paint(QPainter *painter) {
         if (held && it->first >= 0 && it->first < m_roleColors.size()) fill = m_roleColors.at(it->first).value<QColor>();
         QPainterPath chip;
         chip.addRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
-        painter->fillPath(chip, fill);
+        p->fillPath(chip, fill);
         QFont f = m_font;
         f.setBold(held);
-        painter->setFont(f);
-        painter->setPen(held ? m_heldTextColor : m_freeTextColor);
-        painter->drawText(r, Qt::AlignCenter, QString::number(pin));
+        p->setFont(f);
+        p->setPen(held ? m_heldTextColor : m_freeTextColor);
+        p->drawText(r, Qt::AlignCenter, QString::number(pin));
     }
 }

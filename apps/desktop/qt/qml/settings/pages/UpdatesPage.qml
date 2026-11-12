@@ -71,15 +71,12 @@ SettingsPage {
                 }
             }
         }
-        RowLayout {
-            Layout.fillWidth: true
-            Item { Layout.fillWidth: true }
-            AppButton {
-                objectName: "Updates.checkNow"
-                text: qsTr("Check Now")
-                enabled: page.hasFeed && !page.checking
-                onClicked: page.updater.checkNow()
-            }
+        AppButton {
+            objectName: "Updates.checkNow"
+            text: qsTr("Check Now")
+            enabled: page.hasFeed && !page.checking
+            onClicked: page.updater.checkNow()
+            Layout.alignment: Qt.AlignRight
         }
     }
 
@@ -144,7 +141,10 @@ SettingsPage {
                 text: qsTr("Skip This Version")
                 onClicked: skipQuestion.open()
             }
-            Item { Layout.fillWidth: true }
+            Item {
+                implicitHeight: 1
+                Layout.fillWidth: true
+            }
             AppButton {
                 objectName: "Updates.viewRelease"
                 text: qsTr("View Release")

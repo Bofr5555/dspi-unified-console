@@ -28,7 +28,7 @@ struct SurfacePin {
 
 // Every GPIO the device offers: 0 to 22 and 26 to 28 (23 to 25 are power and
 // the LED), on both platforms.
-QList<int> validPins();
+QList<int> gpioPins();
 
 // The claims on valid pins, one per pin (the first claim wins, in the
 // firmware's order), sorted by pin.

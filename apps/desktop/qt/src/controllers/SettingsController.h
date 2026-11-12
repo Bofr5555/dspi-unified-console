@@ -122,7 +122,7 @@ class SettingsController : public QObject {
     // Who holds each GPIO: [{pin, role, label}] in pin order (roles: 0 outputs,
     // 1 clocks, 2 inputs, 3 control, 4 other), and every pin the device offers
     Q_PROPERTY(QVariantList pinClaims READ pinClaims NOTIFY pinsChanged)
-    Q_PROPERTY(QVariantList validPins READ validPins CONSTANT)
+    Q_PROPERTY(QVariantList gpioPins READ gpioPins CONSTANT)
     // The core voltage extension: {supported, read, liveVreg, storedSel, ...}
     // (the core's field names); supported is false on firmware without it
     Q_PROPERTY(QVariantMap coreVoltage READ coreVoltage NOTIFY coreVoltageChanged)
@@ -138,7 +138,7 @@ public:
     QString currentType() const { return pageType(m_current); }
     bool canGoBack() const { return m_historyIndex > 0; }
     bool canGoForward() const { return m_historyIndex + 1 < m_history.size(); }
-    int revision() const { return m_revision; }
+    int revision() const { return m_pagesRevision; }
     QStringList footerTypes() const;
     PrefsMap *graph() const { return m_graph; }
     PrefsMap *spectrum() const { return m_spectrum; }
@@ -146,7 +146,7 @@ public:
     void setShowDebugInfo(bool on);
     QObject *updater() const { return m_updater; }
     QVariantList pinClaims() const { return m_pinClaims; }
-    QVariantList validPins() const;
+    QVariantList gpioPins() const;
     QVariantMap coreVoltage() const { return m_coreVoltage; }
     QVariantMap analyser() const { return m_analyser; }
 
@@ -209,7 +209,7 @@ private:
     QString m_current;
     QStringList m_history;
     int m_historyIndex = 0;
-    int m_revision = 0;
+    int m_pagesRevision = 0;
     QHash<QString, bool> m_unavailable;
     QHash<QString, QStringList> m_extraTerms;
     bool m_showDebugInfo = false;

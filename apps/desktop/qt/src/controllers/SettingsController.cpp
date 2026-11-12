@@ -223,14 +223,14 @@ QVariantList SettingsController::sidebarRows(const QString &query) const {
 void SettingsController::setPageAvailable(const QString &id, bool available) {
     if (m_unavailable.value(id) == !available) return;
     m_unavailable.insert(id, !available);
-    ++m_revision;
+    ++m_pagesRevision;
     emit pagesChanged();
     if (!available && id == m_current) ensureShown();
 }
 
 void SettingsController::addSearchTerms(const QString &id, const QStringList &terms) {
     m_extraTerms[id].append(terms);
-    ++m_revision;
+    ++m_pagesRevision;
     emit pagesChanged();
 }
 
@@ -296,7 +296,7 @@ void SettingsController::onSnapshot() {
     const DeviceSnapshot &snap = m_ctx.device->snapshot();
     if (snap.connected != m_connected) {
         m_connected = snap.connected;
-        ++m_revision;
+        ++m_pagesRevision;
         emit pagesChanged();
         ensureShown();
     }
@@ -348,9 +348,9 @@ void SettingsController::readPins() {
         });
 }
 
-QVariantList SettingsController::validPins() const {
+QVariantList SettingsController::gpioPins() const {
     QVariantList list;
-    for (int p : PinMap::validPins()) list.append(p);
+    for (int p : PinMap::gpioPins()) list.append(p);
     return list;
 }
 

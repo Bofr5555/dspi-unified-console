@@ -23,7 +23,7 @@ public:
 
 } // namespace
 
-QList<int> validPins() {
+QList<int> gpioPins() {
     QList<int> pins;
     for (int p = 0; p <= 28; ++p)
         if (Builder::valid(p)) pins.append(p);
