@@ -345,17 +345,6 @@ Choose an update method:</source>
     </message>
 </context>
 <context>
-    <name>BandChip</name>
-    <message>
-        <source>Band %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Back to values</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
     <name>BandRow</name>
     <message>
         <source>Crossover band %1</source>
@@ -1078,6 +1067,46 @@ Choose an update method:</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Save Preset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save current parameters to preset slot %1?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Revert to Saved</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Revert to last saved parameters?
+
+Current unsaved changes will be lost.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Revert</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Factory Reset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Do you wish to clear all active parameters?
+
+This will not overwrite your saved parameters unless you run &apos;Commit Parameters&apos;.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Failed to parse DSPi Console filter file</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1146,6 +1175,42 @@ Choose an update method:</source>
     </message>
     <message>
         <source>Master volume saved (%1). It will be applied on next boot.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Preset %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Preset saved successfully</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to save preset (%1)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>error %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Parameters reverted successfully</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Saved data is corrupted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to load parameters</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Factory reset complete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to reset parameters</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1997,6 +2062,10 @@ Save before continuing?</source>
     </message>
     <message>
         <source>Unknown (%1)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not set</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3832,10 +3901,6 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Lets phones, browsers and other consoles control the DSPi devices plugged into this computer.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Share devices on this network</source>
         <translation type="unfinished"></translation>
     </message>
@@ -3876,7 +3941,11 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Other consoles see this computer as a hub with this name. Sharing works on your local network only. To reach it from elsewhere, use a VPN such as Tailscale. Don&apos;t forward the port on your router.</source>
+        <source>Lets phones, browsers and other consoles control the DSPi devices plugged in here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Other consoles see this console as a hub with this name. Sharing works on your local network only. To reach it from elsewhere, use a VPN such as Tailscale. Don&apos;t forward the port on your router.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4433,6 +4502,52 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
 </context>
 <context>
+    <name>Peq</name>
+    <message>
+        <source>%1 kHz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 Hz</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>PeqBandBar</name>
+    <message>
+        <source>Band %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Band editor</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No band selected. Click a dot or a row in the band list, or double-click the graph to add one.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open a channel&apos;s PEQ to edit its bands here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Freq</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gain</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Q</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Back to values</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>PeqEditor</name>
     <message>
         <source>Bell</source>
@@ -4646,6 +4761,10 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
     <message>
         <source>fp</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invert Gain</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -5575,12 +5694,13 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <source>Preset %1</source>
         <translation type="unfinished"></translation>
     </message>
-    <message numerus="yes">
-        <source>...and %n more change(s)</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
-        </translation>
+    <message>
+        <source>...and 1 more change</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>...and %1 more changes</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Another console is applying changes</source>
@@ -5897,12 +6017,13 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <source>error %1</source>
         <translation type="unfinished"></translation>
     </message>
-    <message numerus="yes">
-        <source>...and %n more change(s)</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
-        </translation>
+    <message>
+        <source>...and 1 more change</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>...and %1 more changes</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Preset %1</source>
