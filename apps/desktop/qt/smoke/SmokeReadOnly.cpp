@@ -461,10 +461,19 @@ void deviceSwitch(Qp16Ro &r) {
     title.clear();
     UnsavedGuard::before(QStringLiteral("device"), &ctx, [&] { switched = true; });
     d.check(QStringLiteral("qp16: asked again"), title == QLatin1String("Unsaved Settings Changes"));
-    guard->answerSettings(QStringLiteral("accept"));
+    // -- WP QP19 -- Answered on the dialogs, as a user does: an answer given to
+    // the guard alone left both open for the rest of the run
+    QObject *presetQuestion = d.object(QStringLiteral("FilesHost.unsavedQuestion"));
+    const auto answer = [&](QObject *dlg, const char *what, const std::function<void()> &orGuard) {
+        if (dlg && d.waitFor(1000, [&]() { return dlg->property("opened").toBool(); }))
+            QMetaObject::invokeMethod(dlg, "finish", Q_ARG(QVariant, QLatin1String(what)));
+        else
+            orGuard();
+    };
+    answer(dialog, "accept", [&]() { guard->answerSettings(QStringLiteral("accept")); });
     // Then the preset's own question, if the preset has unsaved changes
     d.check(QStringLiteral("qp16: Discard and Switch goes on to the switch"), d.waitFor(3000, [&]() {
-        if (guard->asking() && !switched) guard->answer(QStringLiteral("alternative"));
+        if (guard->asking() && !switched) answer(presetQuestion, "alternative", [&]() { guard->answer(QStringLiteral("alternative")); });
         return switched;
     }));
     QObject::disconnect(asked);
@@ -474,7 +483,7 @@ void deviceSwitch(Qp16Ro &r) {
     switched = false;
     UnsavedGuard::before(QStringLiteral("device"), &ctx, [&] { switched = true; });
     d.waitFor(3000, [&]() {
-        if (guard->asking() && !switched) guard->answer(QStringLiteral("alternative"));
+        if (guard->asking() && !switched) answer(presetQuestion, "alternative", [&]() { guard->answer(QStringLiteral("alternative")); });
         return switched;
     });
     d.check(QStringLiteral("qp16: nothing held: no settings question"), title.isEmpty() && switched);
