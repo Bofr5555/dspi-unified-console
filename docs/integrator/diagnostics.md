@@ -9,7 +9,7 @@ Reference: `crates/dspi-core/src/diag.rs`.
 
 | From | Call |
 |---|---|
-| Terminal | `uconsole diag [FILE] [--store DIR] [--events DIR]` (any target: `--demo`, `--device`, `--midi`, `--link`, `--hub`) |
+| Terminal | `uconsole diag [FILE] [--store DIR] [--events DIR]` (any target: `--demo`, `--device`, `--midi`, `--link`, `--hub`). `--events` reads another program's event-log folder without writing to it, into `client/events-<serial>.jsonl` |
 | C | `dspi_diagnostics_save(core, path, options_json, buf, len)`; `dspi_diagnostics_file_name` for a suggested name |
 | Kotlin, Swift | `diagnosticsSave(path, DiagOptions)`; `diagnosticsFileName()` |
 | Rust | `DspiCore::diagnostics_save`, or `diagnostics_zip` for the bytes |
@@ -41,5 +41,6 @@ nothing on the bus is opened.
 
 Every value in the hub store whose key names a token, a hash, a secret, a PIN, a
 password or a key reads `(removed)`; a store that is not JSON is left out
-entirely. Device serials, device and client names and file paths stay, because a
-supporter needs them.
+entirely. In paths (`notes.txt`, bootloader drives, the client's files) the home
+folder reads `~` and the user name `<user>`. Device serials, device and client
+names and the rest of each path stay, because a supporter needs them.

@@ -32,8 +32,10 @@ header says how to install it.
 | macOS | `se.bofr.uconsole.hub.plist` | launchd agent |
 | Windows | `uconsole-hub-task.xml` | scheduled task at logon |
 
-Exit status 1 (the command line or the store) and 4 (the port in use) are not
-restarted by the systemd unit: read the journal.
+Exit status 1 (the command line, a store another hub holds, or a change of
+access mode that needs `--forget-clients`) and 4 (the machine: a store that
+cannot be created or opened, the port in use) are not restarted by the systemd
+unit: read the journal.
 
 To write: a system-wide (not per-user) unit and the account it should run as.
 
