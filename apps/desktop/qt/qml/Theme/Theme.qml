@@ -113,4 +113,11 @@ QtObject {
     function autoEqSourceTint(source) {
         return autoEqSourceTints[source] !== undefined ? autoEqSourceTints[source] : autoEqSourceTintDefault
     }
+
+    // -- WP QP12 -- Control surfaces: the badge of each component type, by the
+    // firmware's type number (the Mac's typeTint: cool hues for the controls,
+    // warm ones for the LEDs), and the badge of a type without one
+    readonly property var csTypeTints: ["#75879e", "#339ebd", "#267d9e", "#367dd1", "#575ecc", "#eda12e",
+                                        "#e67333", "#8c59b8", "#04856f", "#7a5aac", "#9e669e"]
+    function csTypeTint(type) { return type > 0 && type < csTypeTints.length ? csTypeTints[type] : csTypeTints[0] }
 }
