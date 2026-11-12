@@ -69,14 +69,14 @@ IconButton {
                     Layout.topMargin: 6
                     Layout.bottomMargin: 6
                 }
-                ActionRow {
+                MenuRow {
                     objectName: gear.objectName + ".setup"
                     text: qsTr("Graph Setup")
                     iconName: "sliders-horizontal"
                     trailingIcon: "chevron-right"
                     onActivated: panel.setup = true
                 }
-                ActionRow {
+                MenuRow {
                     objectName: gear.objectName + ".popOut"
                     visible: !gear.popOut
                     text: qsTr("Pop Out Graph")
@@ -104,7 +104,7 @@ IconButton {
 
     // A menu-like row: the accent under the pointer or the keyboard focus,
     // a chevron when it opens a page
-    component ActionRow: Rectangle {
+    component MenuRow: Rectangle {
         id: row
         property string text
         property string iconName

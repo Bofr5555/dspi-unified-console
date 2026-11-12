@@ -25,15 +25,16 @@ ColumnLayout {
     onLinkedPartnerChanged: GraphController.select(selectedChannel, linkedPartner)
     Component.onCompleted: GraphController.select(selectedChannel, linkedPartner)
 
-    // ---- Header ----
-    RowLayout {
+    // ---- Header: the title, or while popped out the button that brings it back ----
+    Item {
+        implicitHeight: 22
         Layout.fillWidth: true
         // Popped out, no graph or strip follows, so the header carries the gap
         Layout.bottomMargin: GraphController.poppedOut ? 14 : Theme.spacingLarge
-        implicitHeight: 22
 
         IconButton {
             objectName: "GraphHost.closePopOut"
+            anchors { left: parent.left; verticalCenter: parent.verticalCenter }
             visible: GraphController.poppedOut
             iconName: "minimize-2"
             iconSize: 12
@@ -43,14 +44,14 @@ ColumnLayout {
         }
         Text {
             objectName: "GraphHost.title"
+            anchors { left: parent.left; verticalCenter: parent.verticalCenter }
             visible: !GraphController.poppedOut
             text: qsTr("Filter Response")
-            font: Theme.fontTitle
             color: Theme.text
+            font: Theme.fontTitle
             Accessible.role: Accessible.Heading
             Accessible.name: text
         }
-        Item { Layout.fillWidth: true }
     }
 
     // ---- The graph ----
