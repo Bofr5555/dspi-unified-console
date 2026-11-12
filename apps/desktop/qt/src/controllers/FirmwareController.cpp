@@ -388,6 +388,7 @@ void FirmwareController::resetRun() {
     m_armed = false;
     m_confirmed = false;
     m_rebootRequested = false;
+    m_rebootWanted = false;
     m_boardRead = false;
     m_typed.clear();
     m_unconfirmed = false;
@@ -436,7 +437,7 @@ void FirmwareController::begin(bool reboot) {
         m_armed = true;
         emit stateChanged();
         if (m_state == Ready) install(m_board);
-        if (reboot) enterBootloaderForInstall();
+        if (reboot || m_rebootWanted) enterBootloaderForInstall();
     };
     if (!m_ctx.device->connected()) {
         // A board already in its bootloader cannot be asked: the guard
@@ -446,6 +447,7 @@ void FirmwareController::begin(bool reboot) {
     }
     const Image image = imageFor(deviceChip());
     if (image.bytes.isEmpty()) {
+        m_installing = true;   // -- WP QPI3 -- the outcome stays until reset
         fail(ImageMissing, m_ctx.device->platformName());
         return;
     }
@@ -494,6 +496,7 @@ void FirmwareController::cancelGuard() {
     if (!m_guardAsking) return;
     m_guardAsking = false;
     m_afterGuard = nullptr;
+    if (!m_installing) m_rebootWanted = false;
     emit guardChanged();
     emit stateChanged();
     // Asked at the write: nothing was written, back to detection
@@ -650,7 +653,16 @@ bool FirmwareController::mundane() const {
 void FirmwareController::beginWatching() { watch(true); }
 void FirmwareController::stopWatching() { watch(false); }
 void FirmwareController::installWhenReady() { begin(false); }
-void FirmwareController::installConnected() { begin(true); }
+// The wizard calls installWhenReady() and then this, as the Mac's view does:
+// a run already started for the open device is continued with its restart
+void FirmwareController::installConnected() {
+    if (!m_reading && !m_guardAsking && !(m_confirmed && underWay())) {
+        begin(true);
+        return;
+    }
+    m_rebootWanted = true;
+    if (m_confirmed && !m_installing) enterBootloaderForInstall();
+}
 void FirmwareController::reset() { resetRun(); }
 
 // ---- What the window says ----------------------------------------------------

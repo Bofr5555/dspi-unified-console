@@ -7,6 +7,8 @@
 #include "SmokeDriver.h"
 
 #include "AboutController.h"
+#include "BootloaderLocator.h"
+#include "FirmwareController.h"
 #include "OnboardingController.h"
 #include "Registrar.h"
 #include "SettingsController.h"
@@ -212,10 +214,15 @@ void onboardingSection(SmokeDriver &d) {
     d.grab(d.mainWindow(), QStringLiteral("window-wizard-board.png"));
 
     // Every state of the installer has its header and card, all resolved
+    // -- WP QPI3 -- the app's own installer is put back at the end
+    QObject *appInstaller = ob->installer();
+    auto *firmware = Registrar::instance<FirmwareController>();
     QP17Installer installer;
     ob->setInstaller(&installer);
     d.spin(100);
     d.check(QStringLiteral("qp17: the wizard watches through the installer"), installer.watching > 0);
+    d.check(QStringLiteral("qpi3: and stops watching the one it had"),
+            !firmware || appInstaller != firmware || !firmware->locator()->running());
     bool allWords = true;
     for (const char *state : { "idle", "waitingForBoard", "waitingForVolume", "ready", "writing", "waitingForDevice",
                                "verified", "failed", "checking", "question", "inBootloader", "unconfirmed" }) {
@@ -282,7 +289,9 @@ void onboardingSection(SmokeDriver &d) {
     if (QObject *skip = wizard ? qp17Item(wizard, QStringLiteral("GettingStarted.skip")) : nullptr) QMetaObject::invokeMethod(skip, "click");
     d.spin(200);
     d.check(QStringLiteral("qp17: Skip Setup leaves at once, for good"), !ob->wizardShown() && ob->setupDone());
-    ob->setInstaller(nullptr);
+    ob->setInstaller(appInstaller);
+    d.check(QStringLiteral("qpi3: the app's installer is back, and nothing watches it"),
+            ob->installer() == appInstaller && (!firmware || !firmware->locator()->running()));
 
     // A first start: the flag unset shows the wizard (as a new controller sees it)
     QSettings().remove(QStringLiteral("onboarding/setupDone"));
@@ -352,6 +361,6 @@ void onboardingSection(SmokeDriver &d) {
 
 } // namespace
 
-const SmokeDriver::Section qp17Onboarding("qp17-onboarding", 160, &onboardingSection);
+const SmokeDriver::Section qp17Onboarding("qp17-onboarding", 162, &onboardingSection);
 
 #include "SmokeOnboarding.moc"

@@ -54,6 +54,16 @@ AbstractButton {
             color: button.notice.length ? Theme.warning : DeviceModel.connected ? Theme.text : Theme.dangerText
             elide: Text.ElideRight
         }
+        // -- WP QPI3 -- a DSPi the app sees but cannot open: the help again
+        // (behaviour.md §13, the status area offers it)
+        IconButton {
+            objectName: "DeviceStatus.access"
+            visible: !DeviceModel.connected && DeviceAccess.count > 0
+            iconName: "key-round"
+            iconSize: 12
+            toolTip: qsTr("A DSPi was found that cannot be opened. Show how to give access.")
+            onClicked: DeviceAccess.offer()
+        }
         Icon {
             name: "chevrons-up-down"
             size: 12

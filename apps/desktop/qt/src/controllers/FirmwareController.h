@@ -229,6 +229,7 @@ private:
     bool m_armed = false;
     bool m_installing = false;
     bool m_rebootRequested = false;
+    bool m_rebootWanted = false;   // installConnected() joined a run already started
     int m_lastChip = -1;
     BootloaderLocator::Board m_board;   // the one board detection last saw
     bool m_checking = false;            // a version check after the write is out

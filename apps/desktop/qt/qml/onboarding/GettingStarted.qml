@@ -39,6 +39,10 @@ Rectangle {
     readonly property string match: !installChosen && idleish && DeviceModel.connected
                                     ? OnboardingController.firmwareMatch(DeviceModel.firmwareVersion) : ""
     readonly property bool installInFlight: installState === "writing" || installState === "waitingForDevice"
+    // -- WP QPI3 -- how much is written, when the installer knows (the core
+    // writes in one call: then there is no bar, and the card's glyph turns)
+    readonly property real written: installState === "writing" && installer ? Number(installer.fraction) || 0 : 0
+    readonly property bool wrote: written > 0
     readonly property string bundledVersion: OnboardingController.bundledFirmware || qsTr("unknown")
     readonly property var holes: ({
         chip: installer && installer.chip ? installer.chip : "",
@@ -85,7 +89,7 @@ Rectangle {
         case "waitingForVolume": return ["card.volume_wait", "hard-drive", Theme.accentText, true, ""]
         case "ready": return installChosen ? ["card.preparing", "hard-drive", Theme.accentText, true, ""]
                                        : ["card.ready", "hard-drive", Theme.success, false, "install"]
-        case "writing": return ["card.writing", "download", Theme.accentText, false, ""]
+        case "writing": return ["card.writing", "download", Theme.accentText, !wrote, ""]
         case "waitingForDevice": return ["card.restarting", "refresh-cw", Theme.accentText, true, ""]
         case "verified": return ["card.verified", "badge-check", Theme.success, false, ""]
         case "failed": return [installer && installer.mundane ? "card.failed_mundane" : "card.failed",
@@ -94,6 +98,8 @@ Rectangle {
         case "inBootloader": return ["card.in_bootloader", "hard-drive", Theme.warning, false, "install"]
         case "unconfirmed": return ["card.unconfirmed", "circle-alert", Theme.warning, false, ""]
         }
+        // -- WP QPI3 -- the open device restarts by itself: no BOOTSEL to hold
+        if (installChosen && rebootAsked) return ["card.waiting_for_drive", "refresh-cw", Theme.accentText, true, ""]
         if (installChosen) return ["card.looking", "search", Theme.accentText, true, ""]
         if (match === "match") return ["card.already_installed", "badge-check", Theme.success, false, ""]
         if (match === "older") return ["card.update_available", "circle-arrow-up", Theme.accentText, false, "connected"]
@@ -129,6 +135,10 @@ Rectangle {
         rebootAsked = true
         installer.installConnected()
     }
+    function cardAction() {
+        if (cardSpec[4] === "connected") installOnConnected()
+        else beginInstall()
+    }
     function tryAgain() {
         installChosen = false
         rebootAsked = false
@@ -139,9 +149,18 @@ Rectangle {
         else current = current + 1
     }
 
-    Component.onCompleted: if (installer && installer.beginWatching) installer.beginWatching()
-    Component.onDestruction: if (installer && installer.stopWatching) installer.stopWatching()
-    onInstallerChanged: if (installer && installer.beginWatching) installer.beginWatching()
+    // -- WP QPI3 -- the installer this page began watching is the one it stops,
+    // also when another is handed over meanwhile
+    property var watched: null
+    function watchInstaller() {
+        if (watched === installer) return
+        if (watched && watched.stopWatching) watched.stopWatching()
+        watched = installer && installer.beginWatching ? installer : null
+        if (watched) watched.beginWatching()
+    }
+    Component.onCompleted: watchInstaller()
+    Component.onDestruction: if (watched && watched.stopWatching) watched.stopWatching()
+    onInstallerChanged: watchInstaller()
 
     ColumnLayout {
         anchors.fill: parent
@@ -269,8 +288,8 @@ Rectangle {
                         detail: wizard.fill(wizard.card.text)
                         actionText: wizard.cardSpec[4].length ? wizard.card.action || "" : ""
                         actionPrimary: cardId !== "card.downgrade"
-                        progress: wizard.installState === "writing" && wizard.installer ? Number(wizard.installer.fraction) || 0 : -1
-                        onAction: wizard.cardSpec[4] === "connected" ? wizard.installOnConnected() : wizard.beginInstall()
+                        progress: wizard.wrote ? wizard.written : -1
+                        onAction: wizard.cardAction()
                     }
                     AppButton {
                         objectName: "GettingStarted.tryAgain"
@@ -327,6 +346,14 @@ Rectangle {
         sequences: ["Enter", "Return"]
         enabled: wizard.visible && wizard.showsContinue && wizard.continueIsDefault
         onActivated: wizard.advance()
+    }
+    // -- WP QPI3 -- the card's button is the default one while Continue is not
+    // (the Mac's .defaultAction)
+    Shortcut {
+        sequences: ["Enter", "Return"]
+        enabled: wizard.visible && wizard.onBoard && wizard.cardSpec[4].length > 0
+                 && !(wizard.showsContinue && wizard.continueIsDefault)
+        onActivated: wizard.cardAction()
     }
 
     Accessible.role: Accessible.Pane

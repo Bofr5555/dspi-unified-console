@@ -119,6 +119,13 @@ void DeviceAccess::dismiss() {
     emit changed();
 }
 
+void DeviceAccess::offer() {
+    if (m_count <= 0 || m_offered || m_ctx.device->connected()) return;
+    m_offered = true;
+    m_error.clear();
+    emit changed();
+}
+
 void DeviceAccess::rescan() {
     const int fake = m_countForTest;
     DeviceModel *device = m_ctx.device;

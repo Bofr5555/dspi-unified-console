@@ -365,6 +365,28 @@ void wizardContract(Qp16Fw &f) {
                 }));
     fw->cancelGuard();
     d.check(QStringLiteral("qp16: Don't Install leaves nothing committed"), !fw->confirmed() && !fw->guardAsking());
+    // The wizard's own pair, installWhenReady() then installConnected(), as
+    // the Mac's view calls it: the second joins the run the first started
+    int bootloaderRequests = 0;
+    QMetaObject::Connection c = QObject::connect(d.app().device, &DeviceModel::writeFinished, d.app().device,
+                                                 [&](const QString &what, bool ok, const QString &, const QString &) {
+                                                     if (what == QLatin1String("enter bootloader") && ok) ++bootloaderRequests;
+                                                 });
+    fw->installWhenReady();
+    fw->installConnected();
+    d.check(QStringLiteral("qpi3: the wizard's pair asks the guard's question once"),
+            d.waitFor(3000, [&]() { return fw->guardAsking(); }) && bootloaderRequests == 0);
+    fw->answerGuard(QString::fromLatin1(kPhrase));
+    d.check(QStringLiteral("qpi3: and then restarts the connected device into its bootloader once"),
+            d.waitFor(3000, [&]() { return bootloaderRequests == 1; }) && fw->confirmed());
+    fw->installConnected();
+    d.spin(200);
+    d.check(QStringLiteral("qpi3: a further installConnected() asks no second restart"), bootloaderRequests == 1);
+    QObject::disconnect(c);
+    f.leave();
+    fw->reset();
+    f.back();
+    d.waitIdle();
     f.w->close();
     d.spin(50);
     d.check(QStringLiteral("qp16: the wizard still watching keeps the locator"), fw->locator()->running());
@@ -518,6 +540,14 @@ void accessSection(SmokeDriver &d) {
     access->check();
     d.waitIdle();
     d.check(QStringLiteral("qp16: dismissed, it does not come back while the count stays"), !access->offered());
+    // -- WP QPI3 -- the status area offers it again
+    QQuickItem *offer = d.item(QStringLiteral("DeviceStatus.access"));
+    d.check(QStringLiteral("qpi3: the status area offers the help while a unit cannot be opened"), offer && offer->isVisible());
+    if (offer) QMetaObject::invokeMethod(offer, "clicked");
+    d.check(QStringLiteral("qpi3: and its button shows the dialog again"),
+            d.waitFor(2000, [&]() { return access->offered() && dialog->property("opened").toBool(); }));
+    access->dismiss();
+    d.waitIdle();
     access->setCountForTest(0);
     access->check();
     d.waitIdle();

@@ -63,6 +63,9 @@ public:
     // Scans again (and opens the first DSPi found when none is open)
     Q_INVOKABLE void rescan();
     Q_INVOKABLE void dismiss();
+    // -- WP QPI3 -- the status area's offer: the dialog again, while a unit
+    // still cannot be opened
+    Q_INVOKABLE void offer();
 
     // The smoke driver's: a count instead of the core's (-1: the core's), and an
     // installer instead of pkexec
