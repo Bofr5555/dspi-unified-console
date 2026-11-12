@@ -30,7 +30,7 @@ node=${nodes[0]}
 echo "device node: $node"
 
 # The build has no device: the usual container
-ci/run.sh "cargo build --release -p dspi-capi --features link,midir,mdns,hub && cmake -S apps/desktop/qt -B /work/build-desktop-qt-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt-smoke --target DSPiConsoleSmoke"
+ci/run.sh "cargo build --release -p dspi-capi --features link,midir,mdns,hub && cmake -S apps/desktop/qt -B /work/build-desktop-qt-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt-smoke --target uconsole-for-dspi-smoke"
 
 # The run: real sysfs (ci/run.sh hides it), the one node, no network. No keep-id:
 # the container's root is the host user the node's ACL names.
@@ -39,4 +39,4 @@ exec podman run --rm -i --security-opt label=disable \
     -v "$PWD":/src:ro -v "$B/work/$branch":/work \
     -e HOME=/work/home -e TMPDIR=/work/tmp -e DSPI_SMOKE_HW=1 -w /src \
     "${DSPI_IMAGE:-localhost/dspi-coremerge:2}" \
-    apps/desktop/qt/smoke/run.sh /work/build-desktop-qt-smoke/DSPiConsoleSmoke /work/smoke-hw
+    apps/desktop/qt/smoke/run.sh /work/build-desktop-qt-smoke/uconsole-for-dspi-smoke /work/smoke-hw

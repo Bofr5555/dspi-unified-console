@@ -35,18 +35,19 @@ if [ "$code" = 124 ] && [ -z "$bad" ]; then echo "app ran for 15 s, no load erro
 else echo "app exit $code; the log:"; cat /root/app.log; exit 1; fi'
 
 # -- WP REL013R -- In the container: an installed package's files carry its name,
-# uConsole for DSPi / dspi-uconsole (and not dspi-console, upstream's package name)
+# uConsole for DSPi / uconsole-for-dspi (and not dspi-console, upstream's package name,
+# nor dspi-uconsole, this one's name before -- WP RN1 --)
 names_check='
-d=/usr/share/applications/dspi-uconsole.desktop
-grep -qx "Name=uConsole for DSPi" $d && grep -qx "Exec=dspi-uconsole" $d && grep -qx "Icon=dspi-uconsole" $d \
-    && grep -q "<id>dspi-uconsole</id>" /usr/share/metainfo/dspi-uconsole.metainfo.xml \
-    && grep -q "<project_license>GPL-3.0-only</project_license>" /usr/share/metainfo/dspi-uconsole.metainfo.xml \
-    && test -s /usr/share/icons/hicolor/scalable/apps/dspi-uconsole.svg \
-    && grep -q "ATTR{idVendor}==\"2e8b\", TAG+=\"uaccess\"" /usr/lib/udev/rules.d/70-dspi-uconsole.rules \
-    && test -x /usr/bin/dspi-uconsole && ! ls -d /usr/bin/dspi-console /usr/share/applications/dspi-console.desktop /usr/share/doc/dspi-console 2>/dev/null \
-    || { echo "names: the installed files do not carry the name dspi-uconsole"; exit 1; }
-! grep -aqP '"$feed"' /usr/bin/dspi-uconsole || { echo "feed: a distribution package has the update feed"; exit 1; }
-echo "names: dspi-uconsole.desktop (Name=uConsole for DSPi), metainfo, icon, udev rule, /usr/bin/dspi-uconsole; no update feed"'
+d=/usr/share/applications/uconsole-for-dspi.desktop
+grep -qx "Name=uConsole for DSPi" $d && grep -qx "Exec=uconsole-for-dspi" $d && grep -qx "Icon=uconsole-for-dspi" $d \
+    && grep -q "<id>uconsole-for-dspi</id>" /usr/share/metainfo/uconsole-for-dspi.metainfo.xml \
+    && grep -q "<project_license>GPL-3.0-only</project_license>" /usr/share/metainfo/uconsole-for-dspi.metainfo.xml \
+    && test -s /usr/share/icons/hicolor/scalable/apps/uconsole-for-dspi.svg \
+    && grep -q "ATTR{idVendor}==\"2e8b\", TAG+=\"uaccess\"" /usr/lib/udev/rules.d/70-uconsole-for-dspi.rules \
+    && test -x /usr/bin/uconsole-for-dspi && ! ls -d /usr/bin/dspi-console /usr/share/applications/dspi-console.desktop /usr/share/doc/dspi-console /usr/bin/dspi-uconsole 2>/dev/null \
+    || { echo "names: the installed files do not carry the name uconsole-for-dspi"; exit 1; }
+! grep -aqP '"$feed"' /usr/bin/uconsole-for-dspi || { echo "feed: a distribution package has the update feed"; exit 1; }
+echo "names: uconsole-for-dspi.desktop (Name=uConsole for DSPi), metainfo, icon, udev rule, /usr/bin/uconsole-for-dspi; no update feed"'
 
 # -- WP QP20 -- In the container: the notice $1 says GPL-3.0-only, names the
 # additional terms, Lucide and the Rust crates; $2 is the folder of LICENSES/
@@ -97,8 +98,8 @@ t() {  # <name> <image> <script>
 }
 
 t deb-debian-13 docker.io/library/debian:13 "
-    apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends /dist/dspi-uconsole_*_amd64.deb >/dev/null
-    doc=/usr/share/doc/dspi-uconsole
+    apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends /dist/uconsole-for-dspi_*_amd64.deb >/dev/null
+    doc=/usr/share/doc/uconsole-for-dspi
     grep -q /usr/share/common-licenses/GPL-3 \$doc/copyright && test -s /usr/share/common-licenses/GPL-3 \
         && cmp -s \$doc/copyright \$doc/NOTICE.txt \
         || { echo 'licences: no copyright file pointing at the GPL'; exit 1; }
@@ -107,20 +108,20 @@ t deb-debian-13 docker.io/library/debian:13 "
     names() { $names_check
     }; names
     run() { $run_app
-    }; QT_QPA_PLATFORM=offscreen run dspi-uconsole"
+    }; QT_QPA_PLATFORM=offscreen run uconsole-for-dspi"
 # Each Fedora release its own .rpm (Containerfile.fedora)
 for fc in 43 44; do
     t "rpm-fedora-$fc" "registry.fedoraproject.org/fedora:$fc" "
-        dnf -y -q install --setopt=install_weak_deps=False /dist/dspi-uconsole-*.fc$fc.x86_64.rpm >/dev/null
-        lic=/usr/share/licenses/dspi-uconsole
-        grep -q 'GNU GENERAL PUBLIC LICENSE' \$lic/LICENSES/GPL-3.0.txt && [ \"\$(rpm -q --qf '%{LICENSE}' dspi-uconsole)\" = GPL-3.0-only ] \
+        dnf -y -q install --setopt=install_weak_deps=False /dist/uconsole-for-dspi-*.fc$fc.x86_64.rpm >/dev/null
+        lic=/usr/share/licenses/uconsole-for-dspi
+        grep -q 'GNU GENERAL PUBLIC LICENSE' \$lic/LICENSES/GPL-3.0.txt && [ \"\$(rpm -q --qf '%{LICENSE}' uconsole-for-dspi)\" = GPL-3.0-only ] \
             || { echo 'licences: no GPL text in \$lic, or the License field is not GPL-3.0-only'; exit 1; }
         notice() { $notice_check
         }; notice \$lic/NOTICE.txt \$lic
         names() { $names_check
         }; names
         run() { $run_app
-        }; QT_QPA_PLATFORM=offscreen run dspi-uconsole"
+        }; QT_QPA_PLATFORM=offscreen run uconsole-for-dspi"
 done
 # The AppImage on a system with no Qt at all, on X11 (Xvfb): it brings its own.
 # Like every AppImage it uses the host's ALSA, GL, fontconfig and a few more
@@ -133,12 +134,12 @@ for img in docker.io/library/ubuntu:24.04 docker.io/library/debian:13 registry.f
             apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends xvfb xauth libgl1 libegl1 libopengl0 libfontconfig1 libfreetype6 libharfbuzz0b \
                 libx11-6 libx11-xcb1 libxcb1 libsm6 libice6 libwayland-client0 libcom-err2 libgpg-error0 libasound2t64 libdbus-1-3 >/dev/null
         else dnf -y -q install xorg-x11-server-Xvfb mesa-libGL mesa-libEGL fontconfig alsa-lib libglvnd-opengl dbus-libs >/dev/null; fi
-        cp /dist/DSPi-uConsole-*-x86_64.AppImage /root/app.AppImage && chmod +x /root/app.AppImage
+        cp /dist/uConsole-for-DSPi-*-x86_64.AppImage /root/app.AppImage && chmod +x /root/app.AppImage
         cd /root && ./app.AppImage --appimage-extract >/dev/null
         grep -q apprun-hooks squashfs-root/AppRun || { echo 'AppRun does not source apprun-hooks'; exit 1; }
-        grep -aqP '$feed' squashfs-root/usr/bin/dspi-uconsole || { echo 'feed: the AppImage has no update feed'; exit 1; }
+        grep -aqP '$feed' squashfs-root/usr/bin/uconsole-for-dspi || { echo 'feed: the AppImage has no update feed'; exit 1; }
         lic() { $lic_check
-        }; lic squashfs-root/usr/share/doc/dspi-uconsole squashfs-root/usr/lib
+        }; lic squashfs-root/usr/share/doc/uconsole-for-dspi squashfs-root/usr/lib
         Xvfb :5 -nolisten tcp >/dev/null 2>&1 & export DISPLAY=:5; sleep 1
         run() { $run_app
         }; APPIMAGE_EXTRACT_AND_RUN=1 run /root/app.AppImage"
@@ -146,21 +147,21 @@ done
 # -- WP QD42 -- The archive carries the AppImage's licence files beside it;
 # -- WP QP20 -- and its install.sh installs a per-user copy and removes it
 t archive docker.io/library/debian:13 "
-    mkdir /root/x && tar -xzf /dist/DSPi-uConsole-*-linux-x86_64.tar.gz -C /root/x && cd /root/x/DSPi-uConsole-*-linux-x86_64
+    mkdir /root/x && tar -xzf /dist/uConsole-for-DSPi-*-linux-x86_64.tar.gz -C /root/x && cd /root/x/uConsole-for-DSPi-*-linux-x86_64
     for f in NOTICE.txt LICENSES/BUNDLED.txt LICENSES/Qt/THIRD-PARTY.txt LICENSES/TERMS.txt LICENSES/rust-crates.txt LICENSES/Lucide/LICENSE \
-             install.sh README.txt 70-dspi-uconsole.rules dspi-uconsole.desktop dspi-uconsole.svg; do
+             install.sh README.txt 70-uconsole-for-dspi.rules uconsole-for-dspi.desktop uconsole-for-dspi.svg; do
         test -s \$f || { echo \"archive: no \$f\"; exit 1; }
     done
-    ls DSPi-uConsole-*-x86_64.AppImage >/dev/null
+    ls uConsole-for-DSPi-*-x86_64.AppImage >/dev/null
     export HOME='/root/home dir' PATH=\$PATH
     ./install.sh >/dev/null
-    e=\"\$HOME/.local/share/applications/dspi-uconsole.desktop\"
-    test -x \"\$HOME/.local/bin/dspi-uconsole\" && grep -qx 'Name=uConsole for DSPi' \"\$e\" \
-        && grep -qx 'Exec=\"/root/home dir/.local/bin/dspi-uconsole\"' \"\$e\" \
-        && test -s \"\$HOME/.local/share/icons/hicolor/scalable/apps/dspi-uconsole.svg\" \
+    e=\"\$HOME/.local/share/applications/uconsole-for-dspi.desktop\"
+    test -x \"\$HOME/.local/bin/uconsole-for-dspi\" && grep -qx 'Name=uConsole for DSPi' \"\$e\" \
+        && grep -qx 'Exec=\"/root/home dir/.local/bin/uconsole-for-dspi\"' \"\$e\" \
+        && test -s \"\$HOME/.local/share/icons/hicolor/scalable/apps/uconsole-for-dspi.svg\" \
         || { echo 'archive: install.sh did not install the app, its entry (Exec quoted) and its icon'; cat \"\$e\"; exit 1; }
     ./install.sh --uninstall >/dev/null
-    ! test -e \"\$HOME/.local/bin/dspi-uconsole\" && ! test -e \"\$e\" || { echo 'archive: install.sh --uninstall left files'; exit 1; }
+    ! test -e \"\$HOME/.local/bin/uconsole-for-dspi\" && ! test -e \"\$e\" || { echo 'archive: install.sh --uninstall left files'; exit 1; }
     echo 'archive: NOTICE.txt, LICENSES/, install.sh, the rule; install.sh installs and removes a per-user copy'"
 [ "$fails" = 0 ] && echo "test-packages: PASS" || echo "test-packages: $fails failed"
 [ "$fails" = 0 ]

@@ -31,11 +31,11 @@ class QJSEngine;
 // - Opt-in: updates/automatic is off until the user turns it on. Then the app
 //   checks 5 s after launch and once a day. "Check Now" always checks.
 // - A check sends what the privacy line says: the host, a User-Agent of
-//   DSPiConsole/<version>, Accept, "en" as the language, and nothing stored:
+//   uConsole-for-DSPi/<version>, Accept, "en" as the language, and nothing stored:
 //   no cookie is kept or sent.
 // - A release counts when it is no draft, its page is https, its tag parses
 //   as a version above this app's, and it carries a package of this app for
-//   this platform (DSPi-uConsole-<version>-...). A final release's user is not
+//   this platform (uConsole-for-DSPi-<version>-...). A final release's user is not
 //   offered betas.
 // - What an automatic check finds raises the banner (`announce`), unless the
 //   version was skipped; "Later" hides it until a check finds one again.

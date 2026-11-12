@@ -98,7 +98,7 @@ def main():
     out.append("Where a crate offers a choice (\"MIT OR Apache-2.0\"), this program uses it under the\n"
                "licence compatible with GPL-3.0 (MIT or Apache-2.0).\n\n")
     for p in crate_closure():
-        # This project's own (dspi-*): DSPi uConsole's licence, `--license` and NOTICE.md
+        # This project's own (dspi-*): uConsole for DSPi's licence, `--license` and NOTICE.md
         if Path(p["manifest_path"]).resolve().is_relative_to(TOP):
             continue
         lic = p.get("license") or "(see files)"

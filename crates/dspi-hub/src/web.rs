@@ -609,12 +609,12 @@ mod tests_wp_wb7 {
     fn wp_wb7_the_landing_page_links_the_console_and_the_hubs_page() {
         let page = std::str::from_utf8(asset("/").unwrap().body).unwrap();
         assert!(
-            page.contains(r#"<a href="/console/">DSPi uConsole</a>"#),
+            page.contains(r#"<a href="/console/">uConsole for DSPi</a>"#),
             "{page}"
         );
         assert!(page.contains(r#"<a href="/hub/">Hub</a>"#), "{page}");
         assert!(
-            page.contains("DSPi uConsole controls the DSPis this hub shares"),
+            page.contains("uConsole for DSPi controls the DSPis this hub shares"),
             "{page}"
         );
         assert!(page.contains(r#"name="color-scheme" content="light dark""#));

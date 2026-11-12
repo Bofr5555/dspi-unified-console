@@ -68,7 +68,7 @@ jobs:
       # Starts, loads every QML file of the main window, and keeps running
       - run: |
           set +e
-          QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 10 build/DSPiConsole 2> log.txt
+          QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 10 build/uconsole-for-dspi 2> log.txt
           test $? = 124 && ! grep -E 'qrc:.*(Error|is not a type|Cannot assign)' log.txt
 
   # -- WP QP20 -- The MinGW job is on again with the new tree's packaging. The
@@ -83,7 +83,7 @@ jobs:
       - run: podman run --rm -v "$PWD":/src:Z -w /src dspi-windows apps/desktop/packaging/windows/build-windows.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: dspi-uconsole-windows-mingw
+          name: uconsole-for-dspi-windows-mingw
           path: |
             dist/*.zip
             dist/*-setup.exe
@@ -107,11 +107,11 @@ jobs:
       - name: Deploy
         shell: bash
         run: |
-          mkdir -p dist/DSPiConsole
-          cp build/DSPiConsole.exe build/dspi_capi.dll dist/DSPiConsole/
-          windeployqt --release --qmldir apps/desktop/qt/qml dist/DSPiConsole/DSPiConsole.exe
+          mkdir -p dist/uconsole-for-dspi
+          cp build/uconsole-for-dspi.exe build/dspi_capi.dll dist/uconsole-for-dspi/
+          windeployqt --release --qmldir apps/desktop/qt/qml dist/uconsole-for-dspi/uconsole-for-dspi.exe
       # Signing would go here (signtool, with a certificate from the repository's secrets)
       - uses: actions/upload-artifact@v4
         with:
           name: dspi-console-windows-msvc
-          path: dist/DSPiConsole
+          path: dist/uconsole-for-dspi

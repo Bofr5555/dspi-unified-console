@@ -75,7 +75,7 @@ enum FirmwareInstallError: Error, Equatable {
         case .volumeNotMounted(let name):
             return "The board is connected but its \(name) drive has not appeared. If macOS asked for permission to access removable volumes, allow it and try again."
         case .imageMissing(let chip):
-            return "This build of DSPi uConsole does not include firmware for the \(chip)."
+            return "This build of uConsole for DSPi does not include firmware for the \(chip)."
         case .bundledImageStale(let bundled, let expected):
             return "The bundled firmware is version \(bundled) but this Console expects \(expected). The app was built incorrectly; do not install it."
         case .writeFailed(let detail):

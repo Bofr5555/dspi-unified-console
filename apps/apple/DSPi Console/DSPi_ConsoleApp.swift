@@ -93,7 +93,7 @@ class AppState: ObservableObject {
         let composite = CompositeTransport(
             local: local,
             tokens: LinkTokenStore(),
-            clientName: Host.current().localizedName ?? "DSPi uConsole",
+            clientName: Host.current().localizedName ?? "uConsole for DSPi",
             makeClient: { LinkClient() })
         composite.pairingPrompt = { hubName in PairingPrompt.ask(hubName: hubName) }
         return composite
@@ -1042,7 +1042,7 @@ struct GeneralSettingsTab: View {
                         .font(.system(size: 32))
                         .foregroundColor(.accentColor)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("DSPi uConsole")
+                        Text("uConsole for DSPi")
                             .font(.headline)
                         Text("USB Audio DSP Controller")
                             .font(.caption)
@@ -1112,14 +1112,14 @@ struct SoftwareUpdateSettingsTab: View {
         }
         if updates.isChecking { return "Checking for updates..." }
         if let release = updates.available {
-            return "DSPi uConsole \(release.version?.description ?? release.tagName) is available"
+            return "uConsole for DSPi \(release.version?.description ?? release.tagName) is available"
         }
-        return updates.lastChecked == nil ? "Not checked yet" : "DSPi uConsole is up to date"
+        return updates.lastChecked == nil ? "Not checked yet" : "uConsole for DSPi is up to date"
     }
 
     private var statusDetail: String? {
         switch updates.installState {
-        case .waitingForQuit:      return "It will be installed when DSPi uConsole quits."
+        case .waitingForQuit:      return "It will be installed when uConsole for DSPi quits."
         case .failed(let message): return message
         default:                   break
         }
@@ -1205,8 +1205,8 @@ struct SoftwareUpdateSettingsTab: View {
                 Toggle("Check for updates automatically", isOn: $checkAutomatically)
             } footer: {
                 Text(replaceable
-                     ? "DSPi uConsole checks GitHub for new releases at launch and once a day. Each release includes matching DSPi firmware, which the app offers to install when your device is connected."
-                     : "DSPi uConsole can't update itself from where it is running. Move it to the Applications folder with Finder to install updates from here; until then, updates open the release page.")
+                     ? "uConsole for DSPi checks GitHub for new releases at launch and once a day. Each release includes matching DSPi firmware, which the app offers to install when your device is connected."
+                     : "uConsole for DSPi can't update itself from where it is running. Move it to the Applications folder with Finder to install updates from here; until then, updates open the release page.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -11193,7 +11193,7 @@ extension FileMenuActions {
                 lines.append("The file's preamp was not applied to output channels, which have no input trim.")
             }
             if newerFormat {
-                lines.append("This file was written by a newer version of DSPi uConsole; some settings may have been ignored.")
+                lines.append("This file was written by a newer version of uConsole for DSPi; some settings may have been ignored.")
             }
             return lines.isEmpty ? "" : "\n\n" + lines.joined(separator: "\n")
         }
@@ -11807,7 +11807,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] note in
             guard let self = self,
                   let window = note.object as? NSWindow,
-                  window.title == "DSPi uConsole" else { return }
+                  window.title == "uConsole for DSPi" else { return }
             self.originalWindowDelegate = window.delegate
             window.delegate = self
             if let obs = self.mainWindowObserver {
@@ -12013,7 +12013,7 @@ struct DSPi_ConsoleApp: App {
     @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
-        Window("DSPi uConsole", id: "main") {
+        Window("uConsole for DSPi", id: "main") {
             MainWindowRoot(vm: AppState.shared.viewModel)
                 .environmentObject(matrixMixerWindowController)
                 .environmentObject(loudnessWindowController)
@@ -12064,7 +12064,7 @@ struct DSPi_ConsoleApp: App {
             // MARKETING_VERSION) automatically; we supply the credits string so
             // it shows our sign-off.
             CommandGroup(replacing: .appInfo) {
-                Button("About DSPi uConsole") {
+                Button("About uConsole for DSPi") {
                     // -- WP LIC1 -- the attributions and the licence, from the core's About table
                     let table = AboutTable.shared
                     let lines = (table?.creditLines.map(\.text) ?? ["DSPi and its firmware by Weeb Labs"])
@@ -12305,13 +12305,13 @@ struct DSPi_ConsoleApp: App {
 
                 Divider()
 
-                Button("What's New in DSPi uConsole") {
+                Button("What's New in uConsole for DSPi") {
                     whatsNewWindowController.show()
                 }
 
                 Divider()
 
-                Button("DSPi uConsole on GitHub") {
+                Button("uConsole for DSPi on GitHub") {
                     if let url = URL(string: "https://github.com/Bofr5555/dspi-unified-console") {
                         NSWorkspace.shared.open(url)
                     }

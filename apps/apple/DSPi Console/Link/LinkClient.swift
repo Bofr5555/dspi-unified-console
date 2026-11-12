@@ -68,7 +68,7 @@ final class LinkClient: LinkClientProtocol {
     private var task: URLSessionWebSocketTask?
     private var pingTimer: DispatchSourceTimer?
 
-    private var clientName = "DSPi uConsole"
+    private var clientName = "uConsole for DSPi"
     /// The token to offer when the hub's hello says `auth: pin`.  Cleared
     /// once used, so a re-auth on the same socket cannot replay it.
     private var pendingToken: String?
@@ -157,7 +157,7 @@ final class LinkClient: LinkClientProtocol {
         startPing(task: task, generation: generation)
 
         let hello = LinkHelloClient(client: LinkClientInfo(name: clientName,
-                                                           app: "DSPi uConsole",
+                                                           app: "uConsole for DSPi",
                                                            version: Self.appVersion))
         send(.helloClient(hello), generation: generation)
     }

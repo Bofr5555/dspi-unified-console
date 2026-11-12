@@ -5,8 +5,8 @@
 #   apps/desktop/packaging/linux/make-appimage.sh <AppDir> <output dir>
 #
 # writes (the names the app's update checker looks for, packaging/README.md):
-#   DSPi-uConsole-<version>-x86_64.AppImage
-#   DSPi-uConsole-<version>-linux-x86_64.tar.gz   the AppImage with install.sh,
+#   uConsole-for-DSPi-<version>-x86_64.AppImage
+#   uConsole-for-DSPi-<version>-linux-x86_64.tar.gz   the AppImage with install.sh,
 #       README.txt, the desktop entry, the icon, the udev rule and the notices
 #
 # The AppDir gets Qt from /opt/qt as the Qt installer lays it out (usr/lib,
@@ -23,10 +23,10 @@ appdir=$(cd "${1:?usage: make-appimage.sh <AppDir> <output dir>}" && pwd)
 out=${2:?usage: make-appimage.sh <AppDir> <output dir>}
 Q=${QTDIR:-/opt/qt}
 fail() { echo "make-appimage: $*" >&2; exit 1; }
-version=$(sed -n 's/^project(DSPiConsole VERSION \([0-9.]*\).*/\1/p' "$here/../../qt/CMakeLists.txt")
+version=$(sed -n 's/^project(uconsole-for-dspi VERSION \([0-9.]*\).*/\1/p' "$here/../../qt/CMakeLists.txt")
 [ -n "$version" ] || fail "no version in qt/CMakeLists.txt"
-bin=$appdir/usr/bin/dspi-uconsole
-[ -x "$bin" ] || fail "no usr/bin/dspi-uconsole in $appdir (run build-ubuntu.sh)"
+bin=$appdir/usr/bin/uconsole-for-dspi
+[ -x "$bin" ] || fail "no usr/bin/uconsole-for-dspi in $appdir (run build-ubuntu.sh)"
 
 # ---- Qt's plugins: the platforms (X11, Wayland), what they load, images, TLS,
 # the portal theme for file dialogs, input methods
@@ -101,7 +101,7 @@ strip --strip-unneeded "$appdir"/usr/lib/*.so* 2>/dev/null || true
 
 # ---- AppRun, its hooks, the AppImage's desktop entry and icon at the top
 mkdir -p "$appdir/apprun-hooks"
-cp "$here/apprun-hook.sh" "$appdir/apprun-hooks/dspi-uconsole-qt.sh"
+cp "$here/apprun-hook.sh" "$appdir/apprun-hooks/uconsole-for-dspi-qt.sh"
 cat >"$appdir/AppRun" <<'APPRUN'
 #!/bin/sh
 # Starts uConsole for DSPi from its AppImage: the hooks in apprun-hooks/ set
@@ -111,19 +111,19 @@ export APPDIR
 for hook in "$APPDIR"/apprun-hooks/*.sh; do
     [ -f "$hook" ] && . "$hook"
 done
-exec "$APPDIR/usr/bin/dspi-uconsole" "$@"
+exec "$APPDIR/usr/bin/uconsole-for-dspi" "$@"
 APPRUN
 chmod 755 "$appdir/AppRun"
-cp "$appdir/usr/share/applications/dspi-uconsole.desktop" "$appdir/dspi-uconsole.desktop"
-cp "$appdir/usr/share/icons/hicolor/scalable/apps/dspi-uconsole.svg" "$appdir/dspi-uconsole.svg"
-ln -sf dspi-uconsole.svg "$appdir/.DirIcon"
+cp "$appdir/usr/share/applications/uconsole-for-dspi.desktop" "$appdir/uconsole-for-dspi.desktop"
+cp "$appdir/usr/share/icons/hicolor/scalable/apps/uconsole-for-dspi.svg" "$appdir/uconsole-for-dspi.svg"
+ln -sf uconsole-for-dspi.svg "$appdir/.DirIcon"
 
 # ---- The runtime, pinned
 pin=$(grep -v '^#' "$here/appimage-runtime.sha256" | head -n 1)
 sum=${pin%% *}; url=${pin##* }
 runtime=${APPIMAGE_RUNTIME:-}
 if [ -z "$runtime" ]; then
-    runtime=${XDG_CACHE_HOME:-$HOME/.cache}/dspi-uconsole/runtime-x86_64-${sum:0:12}
+    runtime=${XDG_CACHE_HOME:-$HOME/.cache}/uconsole-for-dspi/runtime-x86_64-${sum:0:12}
     if [ ! -f "$runtime" ]; then
         mkdir -p "$(dirname "$runtime")"
         curl -sSfL --retry 4 --retry-all-errors --max-time 120 -o "$runtime.part" "$url"
@@ -134,12 +134,12 @@ echo "$sum  $runtime" | sha256sum -c --quiet - || fail "$runtime is not the pinn
 
 # ---- The notices (they name the runtime's commit, from the runtime itself)
 APPIMAGE_RUNTIME=$runtime QTDIR=$Q "$here/../licences/stage.sh" appimage "$appdir" \
-    "$appdir/usr/share/doc/dspi-uconsole" "$version"
+    "$appdir/usr/share/doc/uconsole-for-dspi" "$version"
 
 # ---- The AppImage: the runtime, then the squashfs it mounts
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
-image=$out/DSPi-uConsole-$version-x86_64.AppImage
+image=$out/uConsole-for-DSPi-$version-x86_64.AppImage
 rm -f "$image" "$out/.appdir.squashfs"
 mksquashfs "$appdir" "$out/.appdir.squashfs" -root-owned -noappend -comp zstd -quiet
 cat "$runtime" "$out/.appdir.squashfs" >"$image"
@@ -147,13 +147,13 @@ rm "$out/.appdir.squashfs"
 chmod 755 "$image"
 
 # ---- The archive: the AppImage and what installs it
-name=DSPi-uConsole-$version-linux-x86_64
+name=uConsole-for-DSPi-$version-linux-x86_64
 stage=$out/.$name
 rm -rf "$stage"; mkdir -p "$stage/$name"
 cp "$image" "$stage/$name/"
-cp "$here/install.sh" "$here/README.txt" "$here/70-dspi-uconsole.rules" "$here/dspi-uconsole.desktop" "$stage/$name/"
-cp "$appdir/dspi-uconsole.svg" "$stage/$name/"
-cp -R "$appdir/usr/share/doc/dspi-uconsole/NOTICE.txt" "$appdir/usr/share/doc/dspi-uconsole/LICENSES" "$stage/$name/"
+cp "$here/install.sh" "$here/README.txt" "$here/70-uconsole-for-dspi.rules" "$here/uconsole-for-dspi.desktop" "$stage/$name/"
+cp "$appdir/uconsole-for-dspi.svg" "$stage/$name/"
+cp -R "$appdir/usr/share/doc/uconsole-for-dspi/NOTICE.txt" "$appdir/usr/share/doc/uconsole-for-dspi/LICENSES" "$stage/$name/"
 chmod 755 "$stage/$name/install.sh"
 tar -C "$stage" --owner=0 --group=0 --sort=name -czf "$out/$name.tar.gz" "$name"
 rm -rf "$stage"

@@ -184,7 +184,7 @@ test.describe("served by uconsole hub --web", () => {
       if (/Content Security Policy|Content-Security-Policy/i.test(m.text())) violations.push(m.text());
     });
     await page.goto(`${HUB}/console/`);
-    await expect(page.getByRole("heading", { name: "DSPi uConsole" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "uConsole for DSPi" })).toBeVisible();
     // The link to the hub's own page, from ours only.
     await expect(page.getByRole("link", { name: "Hub page" })).toHaveAttribute("href", "/hub/");
     const session = await openHubDemo(page, new URL(HUB).host);
@@ -199,10 +199,10 @@ test.describe("served by uconsole hub --web", () => {
     const violations = cspViolations(page);
     await page.goto(`${HUB}/`);
     await expect(page.getByRole("heading", { name: "DSPi hub" })).toBeVisible();
-    await expect(page.getByText("DSPi uConsole controls the DSPis this hub shares")).toBeVisible();
-    await page.getByRole("link", { name: "DSPi uConsole" }).click();
+    await expect(page.getByText("uConsole for DSPi controls the DSPis this hub shares")).toBeVisible();
+    await page.getByRole("link", { name: "uConsole for DSPi" }).click();
     await expect(page).toHaveURL(`${HUB}/console/`);
-    await expect(page.getByRole("heading", { name: "DSPi uConsole" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "uConsole for DSPi" })).toBeVisible();
     await page.goto(`${HUB}/`);
     await page.getByRole("link", { name: "Hub", exact: true }).click();
     await expect(page).toHaveURL(`${HUB}/hub/`);
@@ -262,7 +262,7 @@ test.describe("served by uconsole hub --web", () => {
         await Promise.all(
           pages.map(async (page) => {
             await page.goto(`${HUB}/console/`);
-            await expect(page.getByRole("heading", { name: "DSPi uConsole" })).toBeVisible();
+            await expect(page.getByRole("heading", { name: "uConsole for DSPi" })).toBeVisible();
             const session = await openHubDemo(page, new URL(HUB).host);
             await expect(session.locator(".volume-value")).toHaveText(/dB$/);
           }),
@@ -352,7 +352,7 @@ test.describe("the static build", () => {
     // -- WP CLEAN1 fixup cl1 -- the source notice is served beside the console
     const source = await (await request.get(`${PLAIN}/SOURCE.txt`)).text();
     expect(source).toContain("DRAFT");
-    expect(source).toMatch(/dspi-uconsole-[\d.]+-source\.tar\.gz/);
+    expect(source).toMatch(/uConsole-for-DSPi-[\d.]+-source\.tar\.gz/);
     expect(source).toContain("Whoever serves this console to you");
     expect(errors).toEqual([]);
   });

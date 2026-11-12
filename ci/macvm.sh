@@ -58,7 +58,7 @@ rc=$?
 if [ "${platform%-dmg}" != "$platform" ] && [ "$rc" = 0 ]; then   # -- WP REL013M -- swift-dmg too
   dest=${DSPI_BUILD_CACHE:-$HOME/.cache/dspi-build}/work/matrix/$(git rev-parse --short=12 HEAD)
   mkdir -p "$dest"
-  scp -q -o BatchMode=yes "$host:work/matrix/out/$platform/DSPi-uConsole-*-macos.dmg" "$dest/" || rc=1
+  scp -q -o BatchMode=yes "$host:work/matrix/out/$platform/uConsole-for-DSPi-*-macos.dmg" "$dest/" || rc=1
   echo "macvm: the .dmg is in $dest"
 fi
 exit "$rc"

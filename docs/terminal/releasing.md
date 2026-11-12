@@ -58,11 +58,12 @@ what the app was talking to than an app version ever could.
 
 Every release publishes, beside its downloads, the source archive of the exact commit it
 was built from: `ci/release-source.sh VERSION dist` writes
-`dspi-uconsole-VERSION-source.tar.gz` (a `git archive`, without `apps/desktop` but its shared
+`uConsole-for-DSPi-VERSION-source.tar.gz` (a `git archive`, without `apps/desktop` but its shared
 `packaging/licences/` while the Qt app is not released; `--with-desktop` for a Qt release). The notices of every non-Qt artifact point at that file.
 
 A Terminal archive comes from a release build of `-p dspi-term`:
-`ci/release-terminal.sh target/release/uconsole linux-x86_64 VERSION dist`. It holds the
+`ci/release-terminal.sh target/release/uconsole linux-x86_64 VERSION dist` writes
+`uConsole-for-DSPi-VERSION-terminal-linux-x86_64.tar.gz` (a `.zip` for `windows-*`). It holds the
 binary under its command name (`ci/command-name.sh`), the README, `LICENSE`, `NOTICE.md`,
 `THIRD-PARTY-NOTICES.txt` (the Rust crates' licence texts,
 `apps/terminal/notices/rust-crates.txt`), `SOURCE.txt`, the udev rule and the hub's

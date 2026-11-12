@@ -23,7 +23,7 @@ plugin_list="platforms/qwindows.dll imageformats/qsvg.dll imageformats/qico.dll 
              styles/qmodernwindowsstyle.dll tls/qschannelbackend.dll tls/qcertonlybackend.dll"
 
 rm -rf "$out"; mkdir -p "$out"
-cp "$build/DSPiConsole.exe" "$build/dspi_capi.dll" "$out/"
+cp "$build/uconsole-for-dspi.exe" "$build/dspi_capi.dll" "$out/"
 
 # Plugins, in the folders Qt looks for them next to the exe
 for p in $plugin_list; do

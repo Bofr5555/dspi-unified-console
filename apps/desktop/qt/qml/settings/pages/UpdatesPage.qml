@@ -95,7 +95,7 @@ SettingsPage {
             Layout.fillWidth: true
             text: qsTr("A check asks %1 for the newest release. The request carries only what every web request carries, your IP address, and this app's version in its user agent (%2); nothing about your devices, presets or settings. With automatic checks on, the app checks at launch and once a day.")
                   .arg(page.updater && page.updater.feedHost ? page.updater.feedHost : qsTr("the release feed"))
-                  .arg(page.updater && page.updater.userAgent ? page.updater.userAgent : "DSPiConsole/" + AppIdentity.version)
+                  .arg(page.updater && page.updater.userAgent ? page.updater.userAgent : "uConsole-for-DSPi/" + AppIdentity.version)
             font: Theme.fontSmall
             color: Theme.textMuted
             wrapMode: Text.Wrap

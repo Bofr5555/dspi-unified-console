@@ -31,11 +31,11 @@ namespace {
 const char *const kKeepAwakeKey = "system/keepAwake";
 const char *const kReason = "Sharing DSPi devices on the local network";
 // The Run key's value name, and the autostart file's; the latter matches the
-// installed launcher's, so a desktop sees one app. -- WP QP14 -- Both are OS
-// entries a user's previous install made: kept as they are (behaviour.md §21.3),
-// whatever the display name becomes.
-const char *const kRunName = "DSPi uConsole";
-const char *const kDesktopFile = "dspi-uconsole.desktop";
+// installed launcher's, so a desktop sees one app. -- WP QP14, RN1 -- The
+// display name and the lowercase id; the Windows installer's uninstaller removes
+// the Run value by this name (packaging/windows/uconsole-for-dspi.nsi).
+const char *const kRunName = "uConsole for DSPi";
+const char *const kDesktopFile = "uconsole-for-dspi.desktop";
 
 // ── XDG autostart ──
 
@@ -128,7 +128,7 @@ public:
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text))
             return QCoreApplication::translate("SystemIntegration", "Could not write %1: %2").arg(file(), f.errorString());
         // -- WP QP14 -- The name and comment of the installed launcher
-        // (packaging/linux/dspi-uconsole.desktop)
+        // (packaging/linux/uconsole-for-dspi.desktop)
         const QString entry = QStringLiteral("[Desktop Entry]\n"
                                              "Type=Application\n"
                                              "Name=%2\n"

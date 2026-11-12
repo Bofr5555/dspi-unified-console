@@ -3,15 +3,15 @@
 # Wine prefix: they install and remove the app, and refuse (exit code 2,
 # nothing replaced or removed) while the installed app is running.
 # Runs in the build image, after build-windows.sh:
-#   ci/run.sh 'apps/desktop/packaging/windows/test-installer.sh /work/dist-windows/DSPi-uConsole-<v>-windows-x86_64-setup.exe'
+#   ci/run.sh 'apps/desktop/packaging/windows/test-installer.sh /work/dist-windows/uConsole-for-DSPi-<v>-windows-x86_64-setup.exe'
 # The app runs on the demo device under Xvfb; no device, no network needed.
 # -- WP QD42 -- The install, and the zip beside the installer, carry the licence
 # texts: NOTICE.txt and LICENSES/ (Qt's, GCC's runtime exception, every DLL
 # listed in BUNDLED.txt).
 # -- WP QP20 -- The name people see is "uConsole for DSPi"; the notice labels
-# it GPL-3.0-only and carries Lucide's licence. An install made by an earlier
-# installer (uninstall key DSPiuConsole, the "DSPi uConsole" Start menu
-# shortcut, its folder) is updated in place, not installed twice.
+# it GPL-3.0-only and carries Lucide's licence. -- WP RN1 -- Every entry the
+# installer writes carries that name: the uninstall key, the key recording the
+# folder, the Start menu shortcut, and the open-at-login value it removes.
 set -uo pipefail
 setup=$(realpath "$1")
 export WINEPREFIX=${WINEPREFIX:-$HOME/wine-installer-test} WINEDEBUG=-all WINEDLLOVERRIDES="mscoree,mshtml="
@@ -32,18 +32,11 @@ cleanup() { wineserver -k 2>/dev/null; kill "$xvfb" 2>/dev/null; wait 2>/dev/nul
 trap cleanup EXIT
 wineboot -i >/dev/null 2>&1; wineserver -w
 
-# -- WP QP20 -- An earlier install's entries, as its installer wrote them: the
-# uninstall key, the folder key and the old Start menu shortcut
-key='HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\DSPiuConsole'
-wine reg add "$key" /v DisplayName /d "DSPi uConsole" /f >/dev/null 2>&1
-wine reg add 'HKCU\Software\DSPi\DSPi uConsole' /v InstallDir /d "$dir" /f >/dev/null 2>&1
-programs=$(find "$WINEPREFIX/drive_c/users" -type d -path '*Start Menu/Programs' 2>/dev/null | head -n 1)
-if [ -n "$programs" ]; then : >"$programs/DSPi uConsole.lnk"
-else echo "test-installer: FAIL: no Start menu folder in the Wine prefix to put an earlier shortcut in"; fails=$((fails + 1)); fi
-wineserver -w
+key='HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\uConsole for DSPi'
+dirkey='HKCU\Software\uConsole for DSPi'
 
-wine "$setup" /S; check "install (over an earlier install, into its folder)" 0 $?
-[ -f "$unix/DSPiConsole.exe" ] || { echo "test-installer: FAIL: no DSPiConsole.exe after the install"; exit 1; }
+wine "$setup" /S "/D=$dir"; check "install" 0 $?
+[ -f "$unix/uconsole-for-dspi.exe" ] || { echo "test-installer: FAIL: no uconsole-for-dspi.exe after the install"; exit 1; }
 # -- WP QD21c -- the publisher Apps & features shows
 publisher=$(wine reg query "$key" /v Publisher 2>/dev/null | tr -d '\r' | sed -n 's/.*REG_SZ *//p')
 [ -n "$publisher" ] && echo "test-installer: ok: Publisher \"$publisher\"" \
@@ -52,8 +45,12 @@ publisher=$(wine reg query "$key" /v Publisher 2>/dev/null | tr -d '\r' | sed -n
 display=$(wine reg query "$key" /v DisplayName 2>/dev/null | tr -d '\r' | sed -n 's/.*REG_SZ *//p')
 menu=$(find "$WINEPREFIX/drive_c/users" -path '*Start Menu/Programs/*' -name '*.lnk' -printf '%f\n' 2>/dev/null)
 [ "$display" = "uConsole for DSPi" ] && [ "$menu" = "uConsole for DSPi.lnk" ] \
-    && echo "test-installer: ok: DisplayName \"$display\", Start menu \"$menu\" (the earlier shortcut replaced)" \
+    && echo "test-installer: ok: DisplayName \"$display\", Start menu \"$menu\"" \
     || { echo "test-installer: FAIL: DisplayName \"$display\", Start menu \"$menu\" (expected uConsole for DSPi, one shortcut)"; fails=$((fails + 1)); }
+# -- WP RN1 -- the folder recorded under the app's name, where an update finds it
+recorded=$(wine reg query "$dirkey" /v InstallDir 2>/dev/null | tr -d '\r' | sed -n 's/.*REG_SZ *//p')
+[ "$recorded" = "$dir" ] && echo "test-installer: ok: $dirkey InstallDir $recorded" \
+    || { echo "test-installer: FAIL: $dirkey InstallDir is \"$recorded\", expected $dir"; fails=$((fails + 1)); }
 version=$(wine reg query "$key" /v DisplayVersion 2>/dev/null | tr -d '\r' | sed -n 's/.*REG_SZ *//p')
 case $setup in *"-$version-windows-x86_64-setup.exe") echo "test-installer: ok: DisplayVersion $version" ;;
     *) echo "test-installer: FAIL: DisplayVersion \"$version\" is not the setup's"; fails=$((fails + 1)) ;; esac
@@ -99,14 +96,14 @@ fi
 
 # The installed app, running (on the demo device). Only whether it stays up:
 # under Wine the GUI exe's Qt messages reach no log this script can read
-wine "$unix/DSPiConsole.exe" --demo >/dev/null 2>&1 &
+wine "$unix/uconsole-for-dspi.exe" --demo >/dev/null 2>&1 &
 app=$!
 sleep 15
 kill -0 "$app" 2>/dev/null || { echo "test-installer: FAIL: the app did not stay up under Wine"; exit 1; }
-before=$(stat -c %Y "$unix/DSPiConsole.exe")
+before=$(stat -c %Y "$unix/uconsole-for-dspi.exe")
 wine "$setup" /S "/D=$dir"; check "install while the app runs is refused" 2 $?
 wine "$unix/Uninstall.exe" /S "_?=$dir"; check "uninstall while the app runs is refused" 2 $?
-[ -f "$unix/DSPiConsole.exe" ] && [ "$(stat -c %Y "$unix/DSPiConsole.exe")" = "$before" ] \
+[ -f "$unix/uconsole-for-dspi.exe" ] && [ "$(stat -c %Y "$unix/uconsole-for-dspi.exe")" = "$before" ] \
     && [ -d "$unix/qml" ] && echo "test-installer: ok: the running app's files are untouched" \
     || { echo "test-installer: FAIL: files changed while the app ran"; fails=$((fails + 1)); }
 
@@ -115,19 +112,20 @@ kill "$app" 2>/dev/null; wineserver -k; wineserver -w; wait "$app" 2>/dev/null
 # -- WP QPI4 -- open at login on, as the app writes it: an update keeps it,
 # the uninstall removes it
 run='HKCU\Software\Microsoft\Windows\CurrentVersion\Run'
-wine reg add "$run" /v "DSPi uConsole" /d "\"$dir\\DSPiConsole.exe\"" /f >/dev/null 2>&1
-wine "$setup" /S "/D=$dir"; check "install after the app quit" 0 $?
-wine reg query "$run" /v "DSPi uConsole" >/dev/null 2>&1 && echo "test-installer: ok: an update keeps open at login" \
+wine reg add "$run" /v "uConsole for DSPi" /d "\"$dir\\uconsole-for-dspi.exe\"" /f >/dev/null 2>&1
+wine "$setup" /S; check "install after the app quit (an update: into the recorded folder)" 0 $?
+wine reg query "$run" /v "uConsole for DSPi" >/dev/null 2>&1 && echo "test-installer: ok: an update keeps open at login" \
     || { echo "test-installer: FAIL: the update removed the open-at-login entry"; fails=$((fails + 1)); }
 wine "$unix/Uninstall.exe" /S "_?=$dir"; check "uninstall after the app quit" 0 $?
-wine reg query "$run" /v "DSPi uConsole" >/dev/null 2>&1 \
+wine reg query "$run" /v "uConsole for DSPi" >/dev/null 2>&1 \
     && { echo "test-installer: FAIL: the open-at-login entry is still there"; fails=$((fails + 1)); } \
     || echo "test-installer: ok: the open-at-login entry is removed"
-[ ! -e "$unix/DSPiConsole.exe" ] && echo "test-installer: ok: the app's files are removed" \
-    || { echo "test-installer: FAIL: DSPiConsole.exe is still there after the uninstall"; fails=$((fails + 1)); }
+[ ! -e "$unix/uconsole-for-dspi.exe" ] && echo "test-installer: ok: the app's files are removed" \
+    || { echo "test-installer: FAIL: uconsole-for-dspi.exe is still there after the uninstall"; fails=$((fails + 1)); }
 left=$(find "$WINEPREFIX/drive_c/users" -path '*Start Menu/Programs/*' -name '*.lnk' -printf '%f ' 2>/dev/null)
 wine reg query "$key" >/dev/null 2>&1 && { echo "test-installer: FAIL: the uninstall key is still there"; fails=$((fails + 1)); }
-[ -z "$left" ] && echo "test-installer: ok: no Start menu shortcut and no uninstall key left" \
+wine reg query "$dirkey" >/dev/null 2>&1 && { echo "test-installer: FAIL: $dirkey is still there"; fails=$((fails + 1)); }
+[ -z "$left" ] && echo "test-installer: ok: no Start menu shortcut, uninstall key or folder key left" \
     || { echo "test-installer: FAIL: Start menu shortcuts left: $left"; fails=$((fails + 1)); }
 
 [ "$fails" = 0 ] && echo "test-installer: PASS" || echo "test-installer: $fails failed"

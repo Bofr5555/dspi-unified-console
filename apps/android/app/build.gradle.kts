@@ -22,9 +22,11 @@ val uploadKey: Properties? =
     uploadKeyProps.takeIf { it.isFile }?.let { f -> Properties().apply { f.inputStream().use { load(it) } } }
 
 // The sideload APK (owner 2026-11-09): -Pdspi.sideload=true builds the same app
-// as a separate one, se.bofr.dspi_console_android_apk named "DSPi uConsole (APK)",
+// as a separate one, se.bofr.dspi_console_android_apk named "uConsole for DSPi (APK)",
 // so it installs next to the Play copy instead of colliding with it. Task names
-// and outputs stay the same; without the property the build is the Play one.
+// stay the same; without the property the build is the Play one. -- WP RN1 --
+// Its release APK is the release file itself, uConsole-for-DSPi-<versionName>.apk
+// (in app/build/outputs/apk/release/).
 val sideload: Boolean = providers.gradleProperty("dspi.sideload").map { it.toBoolean() }.getOrElse(false)
 
 android {
@@ -33,7 +35,7 @@ android {
         applicationId = "se.bofr.dspi_console_android" + if (sideload) "_apk" else ""
         // The launcher label, which the About page shows as its title too. The Play
         // build keeps "DSPi Console" until its next release renames it (owner 2026-11-09)
-        resValue("string", "app_name", if (sideload) "DSPi uConsole (APK)" else "DSPi Console")
+        resValue("string", "app_name", if (sideload) "uConsole for DSPi (APK)" else "DSPi Console")
         // The ONE place for the app version (runtime reads PackageInfo).
         // Every upload to Play needs a higher versionCode than any before it.
         versionCode = 13
@@ -80,6 +82,18 @@ android {
         unitTests.isReturnDefaultValues = true
         // AN27: Robolectric reads the merged manifest and resources
         unitTests.isIncludeAndroidResources = true
+    }
+}
+
+// -- WP RN1 -- the sideload release APK under the release's file name
+if (sideload) {
+    androidComponents {
+        onVariants(selector().withBuildType("release")) { variant ->
+            variant.outputs.forEach { output ->
+                (output as com.android.build.api.variant.impl.VariantOutputImpl).outputFileName
+                    .set(output.versionName.map { "uConsole-for-DSPi-$it.apk" })
+            }
+        }
     }
 }
 

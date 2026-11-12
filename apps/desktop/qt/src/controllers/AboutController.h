@@ -20,7 +20,7 @@ class QJSEngine;
 //
 // Where the notices are looked for, first match wins: $DSPI_NOTICES_DIR; the
 // executable's folder (Windows, the AppImage: NOTICE.txt and LICENSES/ beside
-// it); ../Resources (macOS); ../share/doc/dspi-uconsole (Linux packages); and
+// it); ../Resources (macOS); ../share/doc/uconsole-for-dspi (Linux packages); and
 // notices/ beside the executable (a development build's copy, cmake/wp/qp10.cmake).
 class AboutController : public QObject {
     Q_OBJECT

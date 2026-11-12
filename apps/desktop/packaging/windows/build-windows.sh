@@ -10,7 +10,7 @@
 #
 # -- WP QP20 -- The files it writes keep the names the app's update checker
 # looks for (packaging/README.md, "Release files"):
-#   DSPi-uConsole-<version>-windows-x86_64.zip, ...-windows-x86_64-setup.exe
+#   uConsole-for-DSPi-<version>-windows-x86_64.zip, ...-windows-x86_64-setup.exe
 # This is one of the project's own builds, so it carries the update feed
 # (DSPI_UPDATE_FEED_URL; set it empty for a build that never checks).
 set -euo pipefail
@@ -23,9 +23,9 @@ triple=x86_64-pc-windows-gnu
 feed=${DSPI_UPDATE_FEED_URL-https://api.github.com/repos/Bofr5555/dspi-unified-console/releases?per_page=30}
 
 # -- WP QP20 -- The version is the CMake project's (AppIdentity's version)
-version=$(sed -n 's/^project(DSPiConsole VERSION \([0-9.]*\).*/\1/p' "$root/qt/CMakeLists.txt")
+version=$(sed -n 's/^project(uconsole-for-dspi VERSION \([0-9.]*\).*/\1/p' "$root/qt/CMakeLists.txt")
 [ -n "$version" ] || { echo "build-windows: no version in qt/CMakeLists.txt's project()" >&2; exit 1; }
-name="DSPi-uConsole-$version-windows-x86_64"
+name="uConsole-for-DSPi-$version-windows-x86_64"
 
 (cd "$repo" && cargo build --release --locked -p dspi-capi --features link,midir,mdns,hub --target $triple)
 cmake -S "$root/qt" -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
@@ -51,14 +51,14 @@ if [ -n "$cachegen" ]; then
     fi
     echo "build-windows: qmlcachegen and the MinGW Qt are both Qt $qt_ver"
 fi
-cmake --build "$build" --target DSPiConsole
+cmake --build "$build" --target uconsole-for-dspi
 # -- WP QD21a -- Qt stays dynamic (LGPL-3: users can swap the Qt DLLs)
-imports=$(x86_64-w64-mingw32-objdump -p "$build/DSPiConsole.exe")
+imports=$(x86_64-w64-mingw32-objdump -p "$build/uconsole-for-dspi.exe")
 grep -q 'DLL Name: Qt6Core.dll' <<<"$imports" \
-    || { echo "build-windows: DSPiConsole.exe does not load Qt6Core.dll (Qt linked statically?)" >&2; exit 1; }
-# -- WP QP20 -- and carries its icon and version information (dspi-console.rc.in)
-x86_64-w64-mingw32-objdump -h "$build/DSPiConsole.exe" | grep -q '\.rsrc' \
-    || { echo "build-windows: DSPiConsole.exe has no resources (icon, version)" >&2; exit 1; }
+    || { echo "build-windows: uconsole-for-dspi.exe does not load Qt6Core.dll (Qt linked statically?)" >&2; exit 1; }
+# -- WP QP20 -- and carries its icon and version information (uconsole-for-dspi.rc.in)
+x86_64-w64-mingw32-objdump -h "$build/uconsole-for-dspi.exe" | grep -q '\.rsrc' \
+    || { echo "build-windows: uconsole-for-dspi.exe has no resources (icon, version)" >&2; exit 1; }
 
 mkdir -p "$out"
 "$root/packaging/windows/deploy-mingw.sh" "$build" "$out/$name"
@@ -67,5 +67,5 @@ mkdir -p "$out"
 "$root/packaging/licences/stage.sh" windows "$out/$name" "$out/$name" "$version"
 (cd "$out" && rm -f "$name.zip" && python3 -m zipfile -c "$name.zip" "$name")
 makensis -V2 -DVERSION="$version" -DBUNDLE="$out/$name" -DOUTFILE="$out/$name-setup.exe" \
-         "$root/packaging/windows/dspi-console.nsi"
+         "$root/packaging/windows/uconsole-for-dspi.nsi"
 ls -la "$out/$name.zip" "$out/$name-setup.exe"

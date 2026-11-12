@@ -9,20 +9,20 @@
 # or not exist yet, so nothing of yours is ever deleted.
 # In it (the names packaging/README.md lists; the app's update checker relies
 # on the first four):
-#   DSPi-uConsole-<v>-windows-x86_64.zip           windows/build-windows.sh
-#   DSPi-uConsole-<v>-windows-x86_64-setup.exe     windows/build-windows.sh
-#   DSPi-uConsole-<v>-x86_64.AppImage              linux/build-ubuntu.sh + make-appimage.sh
-#   DSPi-uConsole-<v>-linux-x86_64.tar.gz          linux/build-ubuntu.sh + make-appimage.sh
-#   dspi-uconsole_<v>_amd64.deb                    linux/build-debian.sh (Debian 13)
-#   dspi-uconsole-<v>-1.fc<N>.x86_64.rpm           linux/build-fedora.sh, one per Fedora in FEDORAS
-#   dspi-uconsole-<v>-desktop-source.tar.gz        ci/release-source.sh --with-desktop
+#   uConsole-for-DSPi-<v>-windows-x86_64.zip           windows/build-windows.sh
+#   uConsole-for-DSPi-<v>-windows-x86_64-setup.exe     windows/build-windows.sh
+#   uConsole-for-DSPi-<v>-x86_64.AppImage              linux/build-ubuntu.sh + make-appimage.sh
+#   uConsole-for-DSPi-<v>-linux-x86_64.tar.gz          linux/build-ubuntu.sh + make-appimage.sh
+#   uconsole-for-dspi_<v>_amd64.deb                    linux/build-debian.sh (Debian 13)
+#   uconsole-for-dspi-<v>-1.fc<N>.x86_64.rpm           linux/build-fedora.sh, one per Fedora in FEDORAS
+#   uConsole-for-DSPi-<v>-desktop-source.tar.gz        ci/release-source.sh --with-desktop
 # Then, with a key (--key or DSPI_MINISIGN_KEY): SHA256SUMS and
 # SHA256SUMS.minisig by ci/release-sums.sh. Without one nothing is signed and
 # no SHA256SUMS is written: sign the folder later with ci/release-sums.sh.
 # The release's library sources come from release-sources.sh (README.md).
 #
 # Runs on the host: podman builds the images from their Containerfiles (once;
-# tags dspi-uconsole-*) and runs each build as this user, with the network
+# tags uconsole-for-dspi-*) and runs each build as this user, with the network
 # (cargo's crates) and without USB. Scratch under $DSPI_BUILD_CACHE/work/release-build.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
@@ -31,7 +31,7 @@ B=${DSPI_BUILD_CACHE:-$HOME/.cache/dspi-build}
 FEDORAS=${FEDORAS:-43 44}
 key=${DSPI_MINISIGN_KEY:-}
 if [ "${1:-}" = --key ]; then key=${2:?--key needs a file}; shift 2; fi
-version=$(sed -n 's/^project(DSPiConsole VERSION \([0-9.]*\).*/\1/p' "$here/../qt/CMakeLists.txt")
+version=$(sed -n 's/^project(uconsole-for-dspi VERSION \([0-9.]*\).*/\1/p' "$here/../qt/CMakeLists.txt")
 [ -n "$version" ] || { echo "build-release: no version in qt/CMakeLists.txt" >&2; exit 1; }
 own=$B/work/release-$version
 out=${1:-$own}
@@ -60,24 +60,24 @@ run() {  # <image> <name> <command>: the tree at /src, scratch at /work, files t
 }
 
 L=$here/linux
-image dspi-uconsole-ubuntu "$L/Containerfile.ubuntu" "$L"
-run dspi-uconsole-ubuntu ubuntu 'apps/desktop/packaging/linux/build-ubuntu.sh && apps/desktop/packaging/linux/make-appimage.sh /work/build/AppDir /dist'
-image dspi-uconsole-debian "$L/Containerfile.debian" "$L"
-run dspi-uconsole-debian debian 'apps/desktop/packaging/linux/build-debian.sh /dist'
+image uconsole-for-dspi-ubuntu "$L/Containerfile.ubuntu" "$L"
+run uconsole-for-dspi-ubuntu ubuntu 'apps/desktop/packaging/linux/build-ubuntu.sh && apps/desktop/packaging/linux/make-appimage.sh /work/build/AppDir /dist'
+image uconsole-for-dspi-debian "$L/Containerfile.debian" "$L"
+run uconsole-for-dspi-debian debian 'apps/desktop/packaging/linux/build-debian.sh /dist'
 for fc in $FEDORAS; do
-    image "dspi-uconsole-fedora:$fc" "$L/Containerfile.fedora" "$L" --build-arg "FEDORA=$fc"
-    run "dspi-uconsole-fedora:$fc" "fedora$fc" 'apps/desktop/packaging/linux/build-fedora.sh /dist'
+    image "uconsole-for-dspi-fedora:$fc" "$L/Containerfile.fedora" "$L" --build-arg "FEDORA=$fc"
+    run "uconsole-for-dspi-fedora:$fc" "fedora$fc" 'apps/desktop/packaging/linux/build-fedora.sh /dist'
 done
-image dspi-uconsole-windows "$here/windows/Containerfile" "$here/windows"
-run dspi-uconsole-windows windows 'apps/desktop/packaging/windows/build-windows.sh /work/dist && cp /work/dist/DSPi-uConsole-*-windows-x86_64.zip /work/dist/DSPi-uConsole-*-windows-x86_64-setup.exe /dist/'
+image uconsole-for-dspi-windows "$here/windows/Containerfile" "$here/windows"
+run uconsole-for-dspi-windows windows 'apps/desktop/packaging/windows/build-windows.sh /work/dist && cp /work/dist/uConsole-for-DSPi-*-windows-x86_64.zip /work/dist/uConsole-for-DSPi-*-windows-x86_64-setup.exe /dist/'
 "$repo/ci/release-source.sh" --with-desktop "$version" "$dist" >/dev/null
 
 # The release folder: exactly the files above, nothing else (release-sums.sh
 # sums every file in it)
-want=("DSPi-uConsole-$version-windows-x86_64.zip" "DSPi-uConsole-$version-windows-x86_64-setup.exe"
-      "DSPi-uConsole-$version-x86_64.AppImage" "DSPi-uConsole-$version-linux-x86_64.tar.gz"
-      "dspi-uconsole_${version}_amd64.deb" "dspi-uconsole-$version-desktop-source.tar.gz")
-for fc in $FEDORAS; do want+=("dspi-uconsole-$version-1.fc$fc.x86_64.rpm"); done
+want=("uConsole-for-DSPi-$version-windows-x86_64.zip" "uConsole-for-DSPi-$version-windows-x86_64-setup.exe"
+      "uConsole-for-DSPi-$version-x86_64.AppImage" "uConsole-for-DSPi-$version-linux-x86_64.tar.gz"
+      "uconsole-for-dspi_${version}_amd64.deb" "uConsole-for-DSPi-$version-desktop-source.tar.gz")
+for fc in $FEDORAS; do want+=("uconsole-for-dspi-$version-1.fc$fc.x86_64.rpm"); done
 [ "$out" != "$own" ] || rm -rf "$own"
 mkdir -p "$out"
 for f in "${want[@]}"; do

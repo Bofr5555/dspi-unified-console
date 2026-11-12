@@ -33,10 +33,10 @@ QString findNotices() {
     const QString env = qEnvironmentVariable("DSPI_NOTICES_DIR");
     if (!env.isEmpty()) roots << env;
     const QString app = QCoreApplication::applicationDirPath();
-    roots << app << app + QStringLiteral("/../Resources") << app + QStringLiteral("/../share/doc/dspi-uconsole")
+    roots << app << app + QStringLiteral("/../Resources") << app + QStringLiteral("/../share/doc/uconsole-for-dspi")
           << app + QStringLiteral("/notices")
           // -- WP QP20 -- an .rpm's, an Arch package's and a plain cmake --install's
-          << app + QStringLiteral("/../share/licenses/dspi-uconsole");
+          << app + QStringLiteral("/../share/licenses/uconsole-for-dspi");
     for (const QString &r : std::as_const(roots)) {
         const QDir dir(r);
         if (dir.exists(QStringLiteral("LICENSES")) || dir.exists(QStringLiteral("NOTICE.txt")))

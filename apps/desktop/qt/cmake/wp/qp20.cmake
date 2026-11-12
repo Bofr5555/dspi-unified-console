@@ -12,7 +12,7 @@ if(NOT DSPI_DISPLAY_NAME)   # -- WP QPI4 -- never an empty name in a package
 endif()
 
 # The release's source archive the notices name (ci/release-source.sh --with-desktop)
-set(DSPI_SOURCE_ASSET "dspi-uconsole-${PROJECT_VERSION}-desktop-source.tar.gz")
+set(DSPI_SOURCE_ASSET "uConsole-for-DSPi-${PROJECT_VERSION}-desktop-source.tar.gz")
 
 # ---- Windows: the exe's icon and version information --------------------------
 if(WIN32)
@@ -21,8 +21,8 @@ if(WIN32)
     set(DSPI_VER_MAJOR "${PROJECT_VERSION_MAJOR}")
     set(DSPI_VER_MINOR "${PROJECT_VERSION_MINOR}")
     set(DSPI_VER_PATCH "${PROJECT_VERSION_PATCH}")
-    configure_file("${DSPI_WIN_DIR}/dspi-console.rc.in" "${CMAKE_CURRENT_BINARY_DIR}/dspi-console.rc" @ONLY)
-    list(APPEND DSPI_APP_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/dspi-console.rc")
+    configure_file("${DSPI_WIN_DIR}/uconsole-for-dspi.rc.in" "${CMAKE_CURRENT_BINARY_DIR}/uconsole-for-dspi.rc" @ONLY)
+    list(APPEND DSPI_APP_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/uconsole-for-dspi.rc")
 endif()
 
 # ---- Linux: the udev rule and the notices --------------------------------------
@@ -33,23 +33,23 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(DSPI_UDEV_RULES_DIR "lib/udev/rules.d" CACHE STRING
         "udev rules directory under the prefix; empty: no rule")
     if(DSPI_UDEV_RULES_DIR)
-        install(FILES "${DSPI_PACKAGING}/linux/70-dspi-uconsole.rules" DESTINATION "${DSPI_UDEV_RULES_DIR}")
+        install(FILES "${DSPI_PACKAGING}/linux/70-uconsole-for-dspi.rules" DESTINATION "${DSPI_UDEV_RULES_DIR}")
     endif()
 
     # The licence files, laid out as the AppImage and Windows stage them
     # (NOTICE.txt and LICENSES/, which About lists), where the distribution
     # wants them:
-    #   rpm   share/licenses/dspi-uconsole/ (also a plain cmake --install)
-    #   deb   share/doc/dspi-uconsole/, with Debian's copyright file; the GPL
+    #   rpm   share/licenses/uconsole-for-dspi/ (also a plain cmake --install)
+    #   deb   share/doc/uconsole-for-dspi/, with Debian's copyright file; the GPL
     #         is the system's /usr/share/common-licenses/GPL-3
     #   none  nothing (the AppImage: packaging/licences/stage.sh)
     set(DSPI_NOTICES "rpm" CACHE STRING "Licence files to install: rpm, deb or none")
     set_property(CACHE DSPI_NOTICES PROPERTY STRINGS rpm deb none)
     if(DSPI_NOTICES STREQUAL "rpm")
-        set(DSPI_NOTICES_DIR "${CMAKE_INSTALL_DATADIR}/licenses/dspi-uconsole")
+        set(DSPI_NOTICES_DIR "${CMAKE_INSTALL_DATADIR}/licenses/uconsole-for-dspi")
         set(DSPI_GPL_TEXT "LICENSES/GPL-3.0.txt")
     elseif(DSPI_NOTICES STREQUAL "deb")
-        set(DSPI_NOTICES_DIR "${CMAKE_INSTALL_DATADIR}/doc/dspi-uconsole")
+        set(DSPI_NOTICES_DIR "${CMAKE_INSTALL_DATADIR}/doc/uconsole-for-dspi")
         set(DSPI_GPL_TEXT "/usr/share/common-licenses/GPL-3")
     elseif(NOT DSPI_NOTICES STREQUAL "none")
         message(FATAL_ERROR "DSPI_NOTICES=${DSPI_NOTICES}: rpm, deb or none")
@@ -74,7 +74,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     endif()
 
     # ---- The .deb and the .rpm (cpack -G DEB / RPM, in packaging/linux's images)
-    set(CPACK_PACKAGE_NAME dspi-uconsole)
+    set(CPACK_PACKAGE_NAME uconsole-for-dspi)
     set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
     set(CPACK_PACKAGE_VENDOR "DSPi unified console maintainers")
     set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${DSPI_DISPLAY_NAME}: set up and control a DSPi audio processor")
@@ -85,13 +85,13 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # The package installs where the build was configured to (the scripts pass /usr)
     set(CPACK_PACKAGING_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
     set(CPACK_STRIP_FILES ON)
-    set(CPACK_PACKAGE_FILE_NAME "dspi-uconsole-${PROJECT_VERSION}")
+    set(CPACK_PACKAGE_FILE_NAME "uconsole-for-dspi-${PROJECT_VERSION}")
     # The packaging's own revision of a version, the same for both formats
     set(DSPI_PACKAGE_RELEASE 1)
 
     # Debian: the QML modules and Qt's plugins the app loads at run time come
     # from packaging/qt-modules.txt; the libraries it links from dpkg-shlibdeps
-    set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)   # dspi-uconsole_<version>_amd64.deb, the release's name
+    set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)   # uconsole-for-dspi_<version>_amd64.deb, the release's name
     set(CPACK_DEBIAN_PACKAGE_SECTION sound)   # Debian's section for audio applications
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)    # needs dpkg-dev (Containerfile.debian)
     # -- WP QPI4 -- from packaging/qt-modules.txt, which must name every
@@ -126,7 +126,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION ON)
 
     # Fedora: libraries from rpmbuild's dependency generator; the QML modules by package
-    set(CPACK_RPM_FILE_NAME RPM-DEFAULT)   # dspi-uconsole-<version>-<release>.fc<N>.x86_64.rpm
+    set(CPACK_RPM_FILE_NAME RPM-DEFAULT)   # uconsole-for-dspi-<version>-<release>.fc<N>.x86_64.rpm
     set(CPACK_RPM_PACKAGE_LICENSE "GPL-3.0-only")
     set(CPACK_RPM_PACKAGE_RELEASE ${DSPI_PACKAGE_RELEASE})
     set(CPACK_RPM_PACKAGE_RELEASE_DIST ON)

@@ -10,12 +10,13 @@
 namespace AppIdentityNames {
 // What people see: window titles, the About page, menu items
 inline const char *const displayName = "uConsole for DSPi";
-// QSettings' organisation and application. Unchanged from the previous desktop
-// app, so a user's settings carry over.
-inline const char *const settingsOrganisation = "DSPi";
-inline const char *const settingsApplication = "DSPi Console";
-// The desktop entry's name without .desktop, the binary's installed name
-inline const char *const desktopFileName = "dspi-uconsole";
+// QSettings' organisation and application, so the settings live in
+// $XDG_CONFIG_HOME/uconsole-for-dspi/ and %APPDATA%\uconsole-for-dspi\
+// (-- WP RN1 --: new names, no earlier release's settings to carry over)
+inline const char *const settingsOrganisation = "uconsole-for-dspi";
+inline const char *const settingsApplication = "uconsole-for-dspi";
+// The desktop entry's name without .desktop, the binary's name
+inline const char *const desktopFileName = "uconsole-for-dspi";
 // The project's home page and the firmware's (the Help menu)
 inline const char *const projectUrl = "https://github.com/Bofr5555/dspi-unified-console";
 inline const char *const firmwareUrl = "https://github.com/WeebLabs/DSPi";

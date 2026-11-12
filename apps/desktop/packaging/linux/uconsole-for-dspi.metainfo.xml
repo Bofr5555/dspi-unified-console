@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- AppStream metadata (freedesktop.org AppStream specification, desktop-application) -->
 <component type="desktop-application">
-  <id>dspi-uconsole</id>
+  <id>uconsole-for-dspi</id>
   <!-- WP QP20: the app's licence label, and this file's -->
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-only</project_license>
@@ -20,7 +20,7 @@
       <li>Share devices on the local network</li>
     </ul>
   </description>
-  <launchable type="desktop-id">dspi-uconsole.desktop</launchable>
+  <launchable type="desktop-id">uconsole-for-dspi.desktop</launchable>
   <url type="homepage">https://github.com/Bofr5555/dspi-unified-console</url>
   <url type="bugtracker">https://github.com/Bofr5555/dspi-unified-console/issues</url>
   <categories>
@@ -28,7 +28,7 @@
     <category>Audio</category>
   </categories>
   <provides>
-    <binary>dspi-uconsole</binary>
+    <binary>uconsole-for-dspi</binary>
   </provides>
   <content_rating type="oars-1.1"/>
 </component>

@@ -15,7 +15,7 @@ plugs in.
   (`dspi_link_phase_text`, the onboarding JSON, `dspi_output_labels`,
   `dspi_about_json`), never rewritten in the app.
 - Every user-visible string through `qsTr` (QML) or `tr` (C++). A work
-  package does not commit `translations/dspi-uconsole_en.ts`; the coordinator
+  package does not commit `translations/uconsole-for-dspi_en.ts`; the coordinator
   regenerates it on qtport (README.md, "Shared files: the merge rule").
 - No colour literals in screens: `Theme` and `ChannelPalette` tokens only, and
   the components in `qml/components` (README.md, "Components") instead of the

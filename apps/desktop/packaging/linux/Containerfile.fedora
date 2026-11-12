@@ -5,8 +5,8 @@
 # so each Fedora release gets its own .rpm (…-1.fc<N>.x86_64.rpm), built in its
 # own image:
 #
-#   podman build --build-arg FEDORA=44 -t dspi-uconsole-fedora:44 -f apps/desktop/packaging/linux/Containerfile.fedora apps/desktop/packaging/linux
-#   podman run --rm -v "$PWD":/src:Z -w /src dspi-uconsole-fedora:44 apps/desktop/packaging/linux/build-fedora.sh
+#   podman build --build-arg FEDORA=44 -t uconsole-for-dspi-fedora:44 -f apps/desktop/packaging/linux/Containerfile.fedora apps/desktop/packaging/linux
+#   podman run --rm -v "$PWD":/src:Z -w /src uconsole-for-dspi-fedora:44 apps/desktop/packaging/linux/build-fedora.sh
 ARG FEDORA=43
 FROM registry.fedoraproject.org/fedora:${FEDORA}
 

@@ -61,7 +61,7 @@ void noticesSection(SmokeDriver &d) {
                     && about->noticeTitle() == QLatin1String("Lucide icons"));
     }
 
-    // A folder as the .rpm installs it (/usr/share/licenses/dspi-uconsole)
+    // A folder as the .rpm installs it (/usr/share/licenses/uconsole-for-dspi)
     const QString root = QDir(d.outDir()).filePath(QStringLiteral("qp20-rpm-notices"));
     QDir(root).removeRecursively();
     const bool made = writeFile(root + QStringLiteral("/NOTICE.txt"), "Licence: GPL-3.0-only\n")

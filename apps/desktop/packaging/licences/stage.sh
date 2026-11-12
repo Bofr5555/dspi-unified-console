@@ -51,12 +51,12 @@ cp "$here/../../../../assets/licences/firmware-THIRD-PARTY-NOTICES.txt" \
 # notice names: published beside the downloads, not a link into the repository.
 # -- WP QP20 -- The Qt app's is the one with apps/desktop (--with-desktop).
 if [ "$kind" = swift ]; then
-    app_name="DSPi uConsole"
-    source_asset=${DSPI_SOURCE_ASSET:-dspi-uconsole-$version-source.tar.gz}
+    app_name="uConsole for DSPi"
+    source_asset=${DSPI_SOURCE_ASSET:-uConsole-for-DSPi-$version-source.tar.gz}
 else
     app_name=$(sed -n 's/.*displayName = "\(.*\)";/\1/p' "$here/../../qt/src/AppIdentity.h")
     [ -n "$app_name" ] || fail "no displayName in qt/src/AppIdentity.h"
-    source_asset=${DSPI_SOURCE_ASSET:-dspi-uconsole-$version-desktop-source.tar.gz}
+    source_asset=${DSPI_SOURCE_ASSET:-uConsole-for-DSPi-$version-desktop-source.tar.gz}
     mkdir -p "$L/Lucide"
     cp "$here/../../qt/icons/lucide/LICENSE" "$L/Lucide/LICENSE"
 fi
@@ -143,7 +143,7 @@ windows)
     while read -r f; do
         rel=${f#"$pkg"/}
         case $rel in
-            DSPiConsole.exe|dspi_capi.dll|qt.conf|NOTICE.txt|LICENSES/*) continue ;;
+            uconsole-for-dspi.exe|dspi_capi.dll|qt.conf|NOTICE.txt|LICENSES/*) continue ;;
             qml/*) from=$M/lib/qt6/$rel ;;
             */*) from=$M/lib/qt6/plugins/$rel ;;
             *) from=$M/bin/$rel ;;
@@ -205,7 +205,7 @@ swift)
             if [ -f "$f" ]; then cp "$f" "$L/swift/$id/"; fi
         done
         ls "$L/swift/$id"/LICENSE* >/dev/null 2>&1 || fail "$id has no LICENSE file"
-        row "$id" "$ver" "${loc%.git}" "$id at $rev" "LICENSES/swift/$id/" "Contents/MacOS/DSPi uConsole (linked in)"
+        row "$id" "$ver" "${loc%.git}" "$id at $rev" "LICENSES/swift/$id/" "Contents/MacOS/uConsole for DSPi (linked in)"
         i=$((i + 1))
     done
     [ "$i" -gt 0 ] || fail "no Swift packages in $resolved"

@@ -40,7 +40,7 @@ Three paths (the owner's decision, 2026-11-08):
 
 | Path | What |
 |---|---|
-| `/` | a small landing page: "DSPi uConsole" and "Hub", and one line saying which is which |
+| `/` | a small landing page: "uConsole for DSPi" and "Hub", and one line saying which is which |
 | `/console/` | this console, which links to `/hub/` ("Hub page") |
 | `/hub/` | the hub's own page: upstream's DSPi Link web page, built unmodified and compiled into the hub (`crates/dspi-hub/tools/build-link-web.sh`, `assets/web/hub/PROVENANCE.json`; MIT, in the hub's `/THIRD-PARTY-NOTICES.txt`). It finds its hub at the address it was loaded from, so it needs no setting |
 

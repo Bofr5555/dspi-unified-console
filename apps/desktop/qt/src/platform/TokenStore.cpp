@@ -115,7 +115,7 @@ public:
     Outcome write(const QString &hubId, const QString &token) override {
         std::wstring name = target(hubId);
         QByteArray secret = token.toUtf8();
-        std::wstring comment = L"DSPi uConsole: DSPi Link hub token";
+        std::wstring comment = L"uConsole for DSPi: DSPi Link hub token";
         CREDENTIALW cred = {};
         cred.Type = CRED_TYPE_GENERIC;
         cred.TargetName = name.data();
@@ -133,7 +133,7 @@ public:
 
 private:
     static std::wstring target(const QString &hubId) {
-        return (QStringLiteral("DSPiConsole/link/") + hubId).toStdWString();
+        return (QStringLiteral("uconsole-for-dspi/link/") + hubId).toStdWString();
     }
 };
 #endif
@@ -283,7 +283,7 @@ private:
 
     static StringMap attributes(const QString &hubId) {
         StringMap map;
-        map.insert(QStringLiteral("application"), QStringLiteral("io.github.weeblabs.DSPiConsole"));
+        map.insert(QStringLiteral("application"), QStringLiteral("uconsole-for-dspi"));
         map.insert(QStringLiteral("dspi-link-hub-id"), hubId);
         return map;
     }

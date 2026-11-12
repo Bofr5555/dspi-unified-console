@@ -77,7 +77,7 @@ files=$(cd "$dir" && find . -maxdepth 1 -type f ! -name SHA256SUMS ! -name 'SHA2
 rm -f "$dir/SHA256SUMS" "$dir/SHA256SUMS.minisig"
 (cd "$dir" && printf '%s\n' "$files" | while IFS= read -r f; do sha256sum -- "$f"; done) > "$dir/SHA256SUMS.part"
 mv "$dir/SHA256SUMS.part" "$dir/SHA256SUMS"
-[ -n "$comment" ] || comment="dspi-uconsole $(basename "$dir") SHA256SUMS"
+[ -n "$comment" ] || comment="uconsole-for-dspi $(basename "$dir") SHA256SUMS"
 "$here/ci/minisign.sh" --mount "$dir:/dist" --mount "$key:/key/minisign.key:ro" -- \
   -S -s /key/minisign.key -m /dist/SHA256SUMS -x /dist/SHA256SUMS.minisig -t "$comment"
 echo "$dir/SHA256SUMS"
