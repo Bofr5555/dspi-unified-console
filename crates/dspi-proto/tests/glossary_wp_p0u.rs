@@ -355,7 +355,6 @@ fn wp_p0u_one_word_per_concept() {
         "equalizer",
         "analyzer",
         "color",
-        "nerbs",
     ];
     for d in REGISTRY {
         for text in [d.label, d.plain] {

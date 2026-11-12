@@ -19,6 +19,8 @@ through `describe` on the web, `by_path(..)` in the Terminal) and follow this fi
   (S/PDIF, I2S, ADAT, DAC, GPIO, UART, I2C, IR, LG Sound Sync) keep their capitals. A client may set labels in title case
   where its platform does that for controls (the Mac's windows do); the words stay the same.
 - **No full stop** after a label or a one-line help text.
+- **"Stats for nerbs"**, the Mac's menu item for System Statistics, is spelt so on purpose (owner, 2026-11-12): a joke,
+  not a typo. Keep it where a client uses it.
 - **Units** (section 4) are written with a space before them ("-6.0 dB", "120 Hz", "10 ms"), except "%" after a bare number
   in compact layouts.
 - **Gains are signed, levels are not.** "+3.0 dB" for a boost; "-1.0 dBFS", "85 dB SPL" for a level.
