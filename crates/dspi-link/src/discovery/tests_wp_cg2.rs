@@ -23,6 +23,7 @@ fn record(pairs: &[(&str, &str)]) -> ServiceRecord {
         port: 11915,
         addresses: vec![ip("192.168.1.20")],
         txt: txt(pairs),
+        ..ServiceRecord::default() // -- WP DISC2 --
     }
 }
 
@@ -222,6 +223,7 @@ fn wp_cg2_an_advertisement_reads_back_as_itself() {
         port: 4000,
         addresses: vec![ip("10.0.0.1")],
         txt: t,
+        ..ServiceRecord::default() // -- WP DISC2 --
     })
     .unwrap();
     assert_eq!(
@@ -267,6 +269,8 @@ fn fast() -> BrowseOptions {
         own_hub_id: String::new(),
         retry_first: Duration::from_millis(5),
         retry_max: Duration::from_millis(40),
+        // -- WP DISC2 -- These tests are about the list, not the grace (tests_wp_disc2.rs).
+        removal_grace: Duration::ZERO,
     }
 }
 
@@ -402,6 +406,7 @@ fn wp_cg2_a_service_that_stops_making_sense_leaves() {
         port: 11915,
         addresses: vec![ip("10.0.0.1")],
         txt: txt(&[("v", "1")]),
+        ..ServiceRecord::default() // -- WP DISC2 --
     });
     until("gone", || b.snapshot().hubs.is_empty());
 }
@@ -505,6 +510,8 @@ fn wp_cg2_default_options_wait_as_macos_does() {
     let o = BrowseOptions::default();
     assert_eq!((o.retry_first, o.retry_max), (Duration::from_secs(1), Duration::from_secs(30)));
     assert_eq!(o.own_hub_id, "");
+    // -- WP DISC2 --
+    assert_eq!(o.removal_grace, Duration::from_secs(3));
 }
 
 #[test]
@@ -617,7 +624,8 @@ fn wp_cg2_the_json_form_is_camel_case() {
     assert_eq!(v["hubs"][0]["url"], "ws://192.168.1.20:11915/dspi/v1");
 }
 
-#[cfg(feature = "mdns")]
+// -- WP DISC2 -- the embedded daemon is not in a Windows build
+#[cfg(all(feature = "mdns", not(windows)))]
 mod mdns_mapping {
     use mdns_sd::{ServiceEvent, ServiceInfo};
 

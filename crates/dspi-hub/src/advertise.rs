@@ -1,8 +1,10 @@
 //! Bonjour (spec 3.1): `_dspi._tcp` through CG2's responder, on only while sharing.
 //! Owned by WP HB5.
 //!
-//! `dspi_link::discovery::MdnsAdvertiser` does the work, behind this crate's feature
-//! `mdns`. Stopping sends a goodbye and can take a second, so the hub stops it on the
+//! `dspi_link::discovery::LanAdvertiser` does the work, behind this crate's feature
+//! `mdns`: CG2's `MdnsAdvertiser`, or on Windows `DnsSdAdvertiser` (WP DISC2), Windows'
+//! own DNS-SD service, which needs no firewall rule to advertise. What follows about
+//! conflicts and updates is about the former; the latter's are in its own docs. Stopping sends a goodbye and can take a second, so the hub stops it on the
 //! thread that called `stop`, never on a listener's or a worker's.
 //!
 //! Two limits of what is below this are kept here, as a hub is what can break them:
@@ -68,8 +70,11 @@ const CONFLICT_POLL: Duration = Duration::from_millis(20);
 /// Whether this build can advertise at all (feature `mdns`).
 pub const AVAILABLE: bool = cfg!(feature = "mdns");
 
+// -- WP DISC2 -- Windows' own DNS-SD on Windows (`DnsSdAdvertiser`), which has no
+// call to change a registration: an update is a goodbye and a new registration on its
+// thread, and clients' removal grace hides the gap. Its conflict handling is below.
 #[cfg(feature = "mdns")]
-use dspi_link::discovery::MdnsAdvertiser as Responder;
+use dspi_link::discovery::LanAdvertiser as Responder;
 
 /// A build without feature `mdns` has no responder, and so no [`Advertiser`] to call.
 #[cfg(not(feature = "mdns"))]

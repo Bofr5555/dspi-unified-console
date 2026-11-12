@@ -683,6 +683,7 @@ dependencies = [
  "socket2",
  "thiserror",
  "tungstenite",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

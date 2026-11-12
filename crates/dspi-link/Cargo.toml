@@ -22,7 +22,9 @@ fake-hub = []
 # Finding hubs and advertising one over mDNS (discovery.rs). Desktop only: the
 # Qt app and the Terminal have no system API to lean on, while Android and iOS
 # browse with NsdManager and NWBrowser, so their libraries leave it off.
-mdns = ["dep:mdns-sd"]
+# -- WP DISC2 -- On Windows it is Windows' own DNS-SD (dnsapi) instead of the
+# embedded daemon: each dependency exists only on its platform.
+mdns = ["dep:mdns-sd", "dep:windows-sys"]
 
 [dependencies]
 # Sync WebSocket over std::net::TcpStream (RFC 6455), no TLS: the protocol is
@@ -41,7 +43,7 @@ thiserror = { workspace = true }
 # one (HB5 reuses the latter), and it follows interface changes by itself. Writing
 # mDNS by hand is the alternative: a multi-interface RFC 6762 cache is not small.
 # Without `async` (we use its blocking receiver) and with `logging` (log crate).
-mdns-sd = { version = "=0.21.7", default-features = false, features = ["logging"], optional = true }
+# -- WP DISC2 -- Not on Windows (below), moved to the table after this one.
 
 # -- WP WB2 --
 [target.'cfg(not(all(target_arch = "wasm32", target_os = "unknown")))'.dependencies]
@@ -49,6 +51,24 @@ mdns-sd = { version = "=0.21.7", default-features = false, features = ["logging"
 # portable way (Android, Linux, macOS, Windows) without unsafe in this crate.
 # It has no wasm32-unknown-unknown backend, and there are no sockets there.
 socket2 = "=0.6.1"
+
+# -- WP CG2, DISC2 -- The embedded mDNS daemon, everywhere but Windows (see above).
+[target.'cfg(not(windows))'.dependencies]
+mdns-sd = { version = "=0.21.7", default-features = false, features = ["logging"], optional = true }
+
+# -- WP DISC2 --
+# Windows' DNS-SD (dnsapi.dll: DnsServiceBrowse/Resolve/Register, Windows 10 1809+),
+# the machine's DNS host name, and interface changes (iphlpapi), after which a
+# registration is made again. The version the lock already holds.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", optional = true, features = [
+  "Win32_Foundation",
+  "Win32_NetworkManagement_Dns",
+  "Win32_NetworkManagement_IpHelper",
+  "Win32_NetworkManagement_Ndis",
+  "Win32_Networking_WinSock",
+  "Win32_System_SystemInformation",
+] }
 
 # -- WP WB2 --
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
@@ -75,3 +95,8 @@ required-features = ["fake-hub"]
 name = "wp_l1"
 path = "tests/wp_l1/main.rs"
 required-features = ["fake-hub"]
+
+# -- WP DISC2 -- measuring discovery on a real network (Windows' DNS-SD in the VM)
+[[example]]
+name = "lan_probe"
+required-features = ["mdns"]
