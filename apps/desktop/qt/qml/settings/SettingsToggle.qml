@@ -17,29 +17,29 @@ RowLayout {
     spacing: Theme.spacing
 
     ColumnLayout {
-        Layout.fillWidth: true
         spacing: 2
+        Layout.fillWidth: true
         Text {
-            Layout.fillWidth: true
             text: row.title
             font: Theme.fontBody
             color: row.enabled ? Theme.text : Theme.textDisabled
             wrapMode: Text.Wrap
+            Layout.fillWidth: true
         }
         Text {
-            visible: row.caption.length > 0
-            Layout.fillWidth: true
             text: row.caption
             font: Theme.fontSmall
             color: row.enabled ? Theme.textMuted : Theme.textDisabled
             wrapMode: Text.Wrap
+            visible: text.length > 0
+            Layout.fillWidth: true
         }
     }
     AppSwitch {
         id: toggle
         objectName: row.objectName.length ? row.objectName + ".switch" : ""
         checked: row.checked
-        onToggled: row.toggled(checked)
+        onToggled: row.toggled(toggle.checked)
         Accessible.name: row.title
         Accessible.description: row.caption
     }

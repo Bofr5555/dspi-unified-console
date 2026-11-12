@@ -42,9 +42,9 @@ SettingsPage {
         SettingsSliderRow {
             objectName: "Graphing.lineWidth"
             label: qsTr("Line Width: %1pt").arg(Number(page.prefs.lineWidth).toFixed(1))
-            from: 1.0
-            to: 4.0
-            stepSize: 0.5
+            minimum: 1.0
+            maximum: 4.0
+            step: 0.5
             resetValue: 1.5
             value: page.prefs.lineWidth
             onMoved: v => page.prefs.lineWidth = v
@@ -94,8 +94,8 @@ SettingsPage {
             objectName: "Graphing.gridOpacity"
             label: qsTr("Grid Opacity: %1%").arg(Math.round(page.prefs.gridOpacity * 100))
             enabled: page.prefs.showFreqGrid || page.prefs.showDbGrid
-            from: 0
-            to: 2
+            minimum: 0
+            maximum: 2
             resetValue: 0.5
             value: page.prefs.gridOpacity
             onMoved: v => page.prefs.gridOpacity = v
@@ -108,8 +108,8 @@ SettingsPage {
         SettingsSliderRow {
             objectName: "Graphing.dbRange"
             label: qsTr("Vertical Range: %1 dB").arg(Math.round(page.prefs.dbRange))
-            from: 10
-            to: 100
+            minimum: 10
+            maximum: 100
             resetValue: 50
             value: page.prefs.dbRange
             onMoved: v => page.prefs.dbRange = Math.round(v)
@@ -118,10 +118,10 @@ SettingsPage {
             objectName: "Graphing.dbCenter"
             readonly property real dbTop: page.prefs.dbCenter + page.prefs.dbRange / 2
             readonly property real dbBottom: page.prefs.dbCenter - page.prefs.dbRange / 2
-            function signedDb(v) { return (v > 0 ? "+" : "") + Math.round(v) }
+            function signedDb(db) { const n = Math.round(db); return n > 0 ? "+" + n : String(n) }
             label: qsTr("Center: %1 dB → %2 to %3").arg(Math.round(page.prefs.dbCenter)).arg(signedDb(dbTop)).arg(signedDb(dbBottom))
-            from: -40
-            to: 20
+            minimum: -40
+            maximum: 20
             resetValue: 0
             value: page.prefs.dbCenter
             onMoved: v => page.prefs.dbCenter = Math.round(v)
@@ -137,17 +137,16 @@ SettingsPage {
             SettingsPickerRow {
                 objectName: "Graphing.minFreq"
                 label: qsTr("Min Frequency")
-                options: [{ text: qsTr("10 Hz"), value: 10 }, { text: qsTr("15 Hz"), value: 15 },
-                          { text: qsTr("20 Hz"), value: 20 }, { text: qsTr("50 Hz"), value: 50 },
-                          { text: qsTr("100 Hz"), value: 100 }]
+                values: [10, 15, 20, 50, 100]
+                texts: [qsTr("10 Hz"), qsTr("15 Hz"), qsTr("20 Hz"), qsTr("50 Hz"), qsTr("100 Hz")]
                 value: Number(page.prefs.minFreq)
                 onChosen: v => page.prefs.minFreq = v
             }
             SettingsPickerRow {
                 objectName: "Graphing.maxFreq"
                 label: qsTr("Max Frequency")
-                options: [{ text: qsTr("5 kHz"), value: 5000 }, { text: qsTr("10 kHz"), value: 10000 },
-                          { text: qsTr("20 kHz"), value: 20000 }]
+                values: [5000, 10000, 20000]
+                texts: [qsTr("5 kHz"), qsTr("10 kHz"), qsTr("20 kHz")]
                 value: Number(page.prefs.maxFreq)
                 onChosen: v => page.prefs.maxFreq = v
             }

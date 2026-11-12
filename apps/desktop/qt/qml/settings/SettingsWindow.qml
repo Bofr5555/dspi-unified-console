@@ -24,10 +24,10 @@ ToolWindow {
         SettingsController.revision   // re-read when pages come and go
         return SettingsController.sidebarRows(query)
     }
+    // The first page the search leaves, for Down and Return
     readonly property string firstMatch: {
-        for (let i = 0; i < rows.length; ++i)
-            if (rows[i].id !== undefined) return rows[i].id
-        return ""
+        const hit = rows.find(r => r.id !== undefined)
+        return hit ? hit.id : ""
     }
 
     onVisibleChanged: if (visible) SettingsController.ensureShown()

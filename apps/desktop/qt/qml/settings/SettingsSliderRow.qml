@@ -3,35 +3,39 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import UConsole
 
-// A slider with its label above it, the label carrying the value ("Line
-// Width: 1.5pt"); it applies while dragging. Right-click resets to `resetValue`.
+// A slider under its label, the label carrying the value ("Line Width:
+// 1.5pt"); it applies while dragging and on release. Right-click puts it back
+// to `resetValue`. `step` 0 slides freely.
 ColumnLayout {
     id: row
     property string label
-    property alias from: slider.from
-    property alias to: slider.to
-    property alias stepSize: slider.stepSize
-    property alias resetValue: slider.resetValue
+    property real minimum: 0
+    property real maximum: 1
+    property real step: 0
+    property real resetValue: NaN
     property real value
     signal moved(real value)
 
-    Layout.fillWidth: true
     spacing: 4
+    Layout.fillWidth: true
 
     Text {
-        Layout.fillWidth: true
         text: row.label
-        font: Theme.fontBody
         color: row.enabled ? Theme.text : Theme.textDisabled
+        font: Theme.fontBody
+        Layout.fillWidth: true
     }
     CustomSlider {
-        id: slider
         objectName: row.objectName.length ? row.objectName + ".slider" : ""
-        Layout.fillWidth: true
         label: row.label
+        from: row.minimum
+        to: row.maximum
+        stepSize: row.step
+        snapMode: row.step > 0 ? Slider.SnapAlways : Slider.NoSnap
+        resetValue: row.resetValue
         value: row.value
-        snapMode: stepSize > 0 ? Slider.SnapAlways : Slider.NoSnap
         onValueMoved: v => row.moved(v)
         onCommitted: v => row.moved(v)
+        Layout.fillWidth: true
     }
 }

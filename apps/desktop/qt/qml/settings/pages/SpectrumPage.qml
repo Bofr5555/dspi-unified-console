@@ -14,20 +14,12 @@ SettingsPage {
 
     // The sizes this device offers, from its caps, else the protocol's range
     // (the Mac's RTA_ORDER_MIN...RTA_ORDER_MAX), so no size the device would refuse
-    readonly property var orders: {
-        let lo = 8, hi = 10
-        if (supported && caps.orderMax >= caps.orderMin) {
-            lo = caps.orderMin
-            hi = caps.orderMax
-        }
-        let list = []
-        for (let o = lo; o <= hi; ++o) list.push({ text: qsTr("%1 points").arg(1 << o), value: o })
-        return list
-    }
+    readonly property int orderLow: supported && caps.orderMax >= caps.orderMin ? caps.orderMin : 8
+    readonly property int orderHigh: supported && caps.orderMax >= caps.orderMin ? caps.orderMax : 10
+    readonly property var orderValues: Array.from({ length: orderHigh - orderLow + 1 }, (_, n) => orderLow + n)
     // The offered size nearest the stored one
-    readonly property int selectedOrder: orders.length
-        ? Math.min(Math.max(page.prefs.fftOrder, orders[0].value), orders[orders.length - 1].value)
-        : page.prefs.fftOrder
+    readonly property int selectedOrder: page.prefs.fftOrder < orderLow ? orderLow
+                                         : page.prefs.fftOrder > orderHigh ? orderHigh : page.prefs.fftOrder
 
     Component.onCompleted: SettingsController.refreshDeviceFacts()
 
@@ -38,9 +30,9 @@ SettingsPage {
         SettingsSliderRow {
             objectName: "Spectrum.graphOpacity"
             label: qsTr("Spectrum Strength: %1%").arg(Math.round(page.prefs.graphOpacity * 100))
-            from: 0.3
-            to: 1.0
-            stepSize: 0.05
+            minimum: 0.3
+            maximum: 1.0
+            step: 0.05
             resetValue: 1.0
             value: page.prefs.graphOpacity
             onMoved: v => page.prefs.graphOpacity = v
@@ -77,16 +69,16 @@ SettingsPage {
             SettingsPickerRow {
                 objectName: "Spectrum.floorDb"
                 label: qsTr("Floor")
-                options: [{ text: qsTr("-60 dB"), value: -60 }, { text: qsTr("-90 dB"), value: -90 },
-                          { text: qsTr("-120 dB"), value: -120 }]
+                values: [-60, -90, -120]
+                texts: [qsTr("-60 dB"), qsTr("-90 dB"), qsTr("-120 dB")]
                 value: Number(page.prefs.floorDb)
                 onChosen: v => page.prefs.floorDb = v
             }
             SettingsPickerRow {
                 objectName: "Spectrum.ceilingDb"
                 label: qsTr("Ceiling")
-                options: [{ text: qsTr("0 dBFS"), value: 0 }, { text: qsTr("+6 dBFS"), value: 6 },
-                          { text: qsTr("+12 dBFS"), value: 12 }]
+                values: [0, 6, 12]
+                texts: [qsTr("0 dBFS"), qsTr("+6 dBFS"), qsTr("+12 dBFS")]
                 value: Number(page.prefs.ceilingDb)
                 onChosen: v => page.prefs.ceilingDb = v
             }
@@ -112,7 +104,8 @@ SettingsPage {
         SettingsPickerRow {
             objectName: "Spectrum.fftOrder"
             label: qsTr("Transform Size")
-            options: page.orders
+            values: page.orderValues
+            texts: page.orderValues.map(o => qsTr("%1 points").arg(1 << o))
             value: page.selectedOrder
             onChosen: v => page.prefs.fftOrder = v
         }
@@ -134,9 +127,8 @@ SettingsPage {
             SettingsPickerRow {
                 objectName: "Spectrum.avgMs"
                 label: qsTr("Averaging")
-                options: [{ text: qsTr("Off"), value: 0 }, { text: qsTr("50 ms"), value: 50 },
-                          { text: qsTr("125 ms"), value: 125 }, { text: qsTr("300 ms"), value: 300 },
-                          { text: qsTr("1 s"), value: 1000 }, { text: qsTr("3 s"), value: 3000 }]
+                values: [0, 50, 125, 300, 1000, 3000]
+                texts: [qsTr("Off"), qsTr("50 ms"), qsTr("125 ms"), qsTr("300 ms"), qsTr("1 s"), qsTr("3 s")]
                 value: Number(page.prefs.avgMs)
                 onChosen: v => page.prefs.avgMs = v
             }
@@ -144,8 +136,8 @@ SettingsPage {
                 objectName: "Spectrum.peakDecay"
                 label: qsTr("Peak Decay")
                 enabled: page.prefs.showPeakHold
-                options: [{ text: qsTr("Off"), value: 0 }, { text: qsTr("4 dB/s"), value: 4 },
-                          { text: qsTr("12 dB/s"), value: 12 }, { text: qsTr("30 dB/s"), value: 30 }]
+                values: [0, 4, 12, 30]
+                texts: [qsTr("Off"), qsTr("4 dB/s"), qsTr("12 dB/s"), qsTr("30 dB/s")]
                 value: Number(page.prefs.peakDecay)
                 onChosen: v => page.prefs.peakDecay = v
             }

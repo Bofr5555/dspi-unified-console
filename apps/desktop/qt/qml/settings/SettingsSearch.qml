@@ -39,10 +39,10 @@ TextField {
         border.width: field.activeFocus ? 2 : 1
         border.color: field.activeFocus ? Theme.focusRing : Theme.border
         Icon {
-            x: 6
-            anchors.verticalCenter: parent.verticalCenter
             name: "search"
             size: 13
+            x: 6
+            y: (parent.height - height) / 2
             color: Theme.textMuted
         }
     }
@@ -51,8 +51,8 @@ TextField {
         id: clear
         objectName: "Settings.searchClear"
         visible: field.text.length > 0
-        anchors.right: parent.right
-        anchors.verticalCenter: parent.verticalCenter
+        x: field.width - width
+        y: (field.height - height) / 2
         iconName: "x"
         iconSize: 12
         toolTip: qsTr("Clear Search")

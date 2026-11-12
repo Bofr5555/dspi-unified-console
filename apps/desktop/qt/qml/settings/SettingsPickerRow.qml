@@ -2,38 +2,33 @@ import QtQuick
 import QtQuick.Layouts
 import UConsole
 
-// A labelled popup choice over [{text, value}] options: the label above, the
-// popup under it (the Mac's labelled Picker). `chosen(value)` on a person's choice.
+// A labelled popup choice (the Mac's labelled Picker): `texts` are shown,
+// `values` are what they stand for, index by index; the popup shows the entry
+// of `value`. `chosen(value)` fires on a person's choice only.
 ColumnLayout {
     id: row
     property string label
-    property var options: []
+    property var values: []
+    property var texts: []
     property var value
     signal chosen(var value)
 
-    Layout.fillWidth: true
     spacing: 4
-
-    function indexOf(v) {
-        for (let i = 0; i < options.length; ++i)
-            if (options[i].value === v) return i
-        return -1
-    }
+    Layout.fillWidth: true
 
     Text {
-        Layout.fillWidth: true
         text: row.label
-        font: Theme.fontBody
         color: row.enabled ? Theme.text : Theme.textDisabled
+        font: Theme.fontBody
+        Layout.fillWidth: true
     }
     AppComboBox {
         objectName: row.objectName.length ? row.objectName + ".combo" : ""
+        label: row.label
+        model: row.texts
+        currentIndex: row.values.indexOf(row.value)
+        onActivated: choice => row.chosen(row.values[choice])
         Layout.fillWidth: true
         Layout.maximumWidth: 220
-        label: row.label
-        model: row.options
-        textRole: "text"
-        currentIndex: row.indexOf(row.value)
-        onActivated: index => row.chosen(row.options[index].value)
     }
 }
