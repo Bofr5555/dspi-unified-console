@@ -506,6 +506,16 @@ void*_Nonnull uniffi_dspi_core_fn_constructor_dspicore_new(RustCallStatus *_Nonn
 void uniffi_dspi_core_fn_method_dspicore_apply_all_params(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_APPLY_AT_FRAME
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_APPLY_AT_FRAME
+void uniffi_dspi_core_fn_method_dspicore_apply_at_frame(void*_Nonnull ptr, uint64_t frame, uint8_t op, uint8_t arg, int16_t value, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_AUDIO_LINK_INFO
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_AUDIO_LINK_INFO
+RustBuffer uniffi_dspi_core_fn_method_dspicore_audio_link_info(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CACHED_DEVICE_NAME
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CACHED_DEVICE_NAME
 RustBuffer uniffi_dspi_core_fn_method_dspicore_cached_device_name(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -796,6 +806,31 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_adat_out_status(void*_Nonnu
 void uniffi_dspi_core_fn_method_dspicore_fetch_all(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_APPLY_AT_FRAME_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_APPLY_AT_FRAME_STATUS
+RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_apply_at_frame_status(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_AUDIO_LINK_INFO
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_AUDIO_LINK_INFO
+RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_audio_link_info(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_AUDIO_LINK_PHASE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_AUDIO_LINK_PHASE
+RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_audio_link_phase(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_AUDIO_LINK_SLOTS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_AUDIO_LINK_SLOTS
+RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_audio_link_slots(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_AUDIO_LINK_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_AUDIO_LINK_STATUS
+RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_audio_link_status(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_BUFFER_STATS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_BUFFER_STATS
 RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_buffer_stats(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -854,6 +889,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_lg_status(void*_Nonnull ptr
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_LIMITER_METER
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_LIMITER_METER
 RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_limiter_meter(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_LINK_FRAME_COUNTER
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_LINK_FRAME_COUNTER
+RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_link_frame_counter(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_OUTPUT_FILLS
@@ -1106,6 +1146,11 @@ void uniffi_dspi_core_fn_method_dspicore_notify_tap_set(void*_Nonnull ptr, int8_
 void uniffi_dspi_core_fn_method_dspicore_open_demo(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OPEN_DEMO_AUDIO_LINK
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OPEN_DEMO_AUDIO_LINK
+void uniffi_dspi_core_fn_method_dspicore_open_demo_audio_link(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OPEN_FD
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OPEN_FD
 void uniffi_dspi_core_fn_method_dspicore_open_fd(void*_Nonnull ptr, int32_t fd, RustBuffer serial, uint16_t vid, RustCallStatus *_Nonnull out_status
@@ -1174,6 +1219,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_redo(void*_Nonnull ptr, RustCallS
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_REFRESH_PARAMS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_REFRESH_PARAMS
 void uniffi_dspi_core_fn_method_dspicore_refresh_params(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RESET_AUDIO_LINK_STATS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RESET_AUDIO_LINK_STATS
+void uniffi_dspi_core_fn_method_dspicore_reset_audio_link_stats(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RESET_BUFFER_STATS
@@ -1279,6 +1329,16 @@ void uniffi_dspi_core_fn_method_dspicore_set_adat_out_enabled(void*_Nonnull ptr,
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_ADAT_OUT_PIN
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_ADAT_OUT_PIN
 void uniffi_dspi_core_fn_method_dspicore_set_adat_out_pin(void*_Nonnull ptr, uint8_t pin, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_AUDIO_LINK_PHASE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_AUDIO_LINK_PHASE
+void uniffi_dspi_core_fn_method_dspicore_set_audio_link_phase(void*_Nonnull ptr, uint8_t mode, uint16_t d_local, int16_t hops_offset, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_AUDIO_LINK_SLOTS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_AUDIO_LINK_SLOTS
+void uniffi_dspi_core_fn_method_dspicore_set_audio_link_slots(void*_Nonnull ptr, RustBuffer slots, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_BAND_BYPASS
@@ -2540,6 +2600,18 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_apply_all_params(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_APPLY_AT_FRAME
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_APPLY_AT_FRAME
+uint16_t uniffi_dspi_core_checksum_method_dspicore_apply_at_frame(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_AUDIO_LINK_INFO
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_AUDIO_LINK_INFO
+uint16_t uniffi_dspi_core_checksum_method_dspicore_audio_link_info(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CACHED_DEVICE_NAME
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CACHED_DEVICE_NAME
 uint16_t uniffi_dspi_core_checksum_method_dspicore_cached_device_name(void
@@ -2888,6 +2960,36 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_all(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_APPLY_AT_FRAME_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_APPLY_AT_FRAME_STATUS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_apply_at_frame_status(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_AUDIO_LINK_INFO
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_AUDIO_LINK_INFO
+uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_audio_link_info(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_AUDIO_LINK_PHASE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_AUDIO_LINK_PHASE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_audio_link_phase(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_AUDIO_LINK_SLOTS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_AUDIO_LINK_SLOTS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_audio_link_slots(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_AUDIO_LINK_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_AUDIO_LINK_STATUS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_audio_link_status(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_BUFFER_STATS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_BUFFER_STATS
 uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_buffer_stats(void
@@ -2957,6 +3059,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_lg_status(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_LIMITER_METER
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_LIMITER_METER
 uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_limiter_meter(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_LINK_FRAME_COUNTER
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_LINK_FRAME_COUNTER
+uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_link_frame_counter(void
     
 );
 #endif
@@ -3260,6 +3368,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_open_demo(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OPEN_DEMO_AUDIO_LINK
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OPEN_DEMO_AUDIO_LINK
+uint16_t uniffi_dspi_core_checksum_method_dspicore_open_demo_audio_link(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OPEN_FD
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OPEN_FD
 uint16_t uniffi_dspi_core_checksum_method_dspicore_open_fd(void
@@ -3341,6 +3455,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_redo(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_REFRESH_PARAMS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_REFRESH_PARAMS
 uint16_t uniffi_dspi_core_checksum_method_dspicore_refresh_params(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_RESET_AUDIO_LINK_STATS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_RESET_AUDIO_LINK_STATS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_reset_audio_link_stats(void
     
 );
 #endif
@@ -3467,6 +3587,18 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_set_adat_out_enabled(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_ADAT_OUT_PIN
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_ADAT_OUT_PIN
 uint16_t uniffi_dspi_core_checksum_method_dspicore_set_adat_out_pin(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_AUDIO_LINK_PHASE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_AUDIO_LINK_PHASE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_set_audio_link_phase(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_AUDIO_LINK_SLOTS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_AUDIO_LINK_SLOTS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_set_audio_link_slots(void
     
 );
 #endif

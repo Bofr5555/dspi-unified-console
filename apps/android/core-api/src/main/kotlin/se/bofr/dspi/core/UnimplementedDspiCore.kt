@@ -12,6 +12,30 @@ package se.bofr.dspi.core
 open class UnimplementedDspiCore : DspiCoreApi {
     override fun close() {}
 
+    override fun audioLinkInfo(): AudioLinkInfo? = throw NotImplementedError("audio_link_info")
+
+    override fun fetchAudioLinkInfo(): AudioLinkInfo = throw NotImplementedError("fetch_audio_link_info")
+
+    override fun fetchAudioLinkStatus(): AudioLinkStatus = throw NotImplementedError("fetch_audio_link_status")
+
+    override fun fetchAudioLinkSlots(): List<Int> = throw NotImplementedError("fetch_audio_link_slots")
+
+    override fun setAudioLinkSlots(slots: List<Int>): Unit = throw NotImplementedError("set_audio_link_slots")
+
+    override fun fetchAudioLinkPhase(): AudioLinkPhase = throw NotImplementedError("fetch_audio_link_phase")
+
+    override fun setAudioLinkPhase(mode: Int, dLocal: Int, hopsOffset: Int): Unit = throw NotImplementedError("set_audio_link_phase")
+
+    override fun fetchLinkFrameCounter(): LinkFrameCounter = throw NotImplementedError("fetch_link_frame_counter")
+
+    override fun applyAtFrame(frame: Long, op: Int, arg: Int, value: Int): Unit = throw NotImplementedError("apply_at_frame")
+
+    override fun fetchApplyAtFrameStatus(): ApplyAtFrameStatus = throw NotImplementedError("fetch_apply_at_frame_status")
+
+    override fun resetAudioLinkStats(): Unit = throw NotImplementedError("reset_audio_link_stats")
+
+    override fun openDemoAudioLink(): Unit = throw NotImplementedError("open_demo_audio_link")
+
     override fun fetchAll(): Unit = throw NotImplementedError("fetch_all")
 
     override fun refreshParams(): Unit = throw NotImplementedError("refresh_params")

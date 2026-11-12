@@ -64,6 +64,27 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.identify(seconds, toneOutput)
     }
 
+    // -- WP SW1 -- the audio link's writes (slots, phase lock, apply at frame, counters)
+    override fun setAudioLinkSlots(slots: List<Int>) {
+        guard("setAudioLinkSlots")
+        return inner.setAudioLinkSlots(slots)
+    }
+
+    override fun setAudioLinkPhase(mode: Int, dLocal: Int, hopsOffset: Int) {
+        guard("setAudioLinkPhase")
+        return inner.setAudioLinkPhase(mode, dLocal, hopsOffset)
+    }
+
+    override fun applyAtFrame(frame: Long, op: Int, arg: Int, value: Int) {
+        guard("applyAtFrame")
+        return inner.applyAtFrame(frame, op, arg, value)
+    }
+
+    override fun resetAudioLinkStats() {
+        guard("resetAudioLinkStats")
+        return inner.resetAudioLinkStats()
+    }
+
     // Review w1d (integration with CG11, CG14): the calibration flow's writes.
     // The core's own poll writes only the next step of a run that start began,
     // and start is guarded, so the poll passes through.
@@ -699,7 +720,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // -- WP QD31 --
             "demoOutputSaveStatus",
             // -- WP FWX --
-            "identify"
+            "identify",
+            // -- WP SW1 --
+            "setAudioLinkSlots",
+            "setAudioLinkPhase",
+            "applyAtFrame",
+            "resetAudioLinkStats"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -821,6 +847,15 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "fetchResetInfo",
             "resetInfoAtConnect",
             "hasClipEvents",
+            // -- WP SW1 -- the audio link's reads, and the demo with it (as openDemo)
+            "audioLinkInfo",
+            "fetchAudioLinkInfo",
+            "fetchAudioLinkStatus",
+            "fetchAudioLinkSlots",
+            "fetchAudioLinkPhase",
+            "fetchLinkFrameCounter",
+            "fetchApplyAtFrameStatus",
+            "openDemoAudioLink",
             // -- WP CS1 -- the USB error counters (0xB2), a read
             "fetchUsbErrorStats",
             "uf2Inspect",

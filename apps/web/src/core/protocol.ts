@@ -17,7 +17,7 @@
 /** Where a session's device is. A fleet server may add its own kinds later. */
 export type DeviceTarget =
   /** The core's own demo device; `readOnly` opens it as older firmware, which the core only reads. */
-  | { kind: "demo"; readOnly?: boolean }
+  | { kind: "demo"; readOnly?: boolean; /** -- WP SW1 -- the demo as a unit receiving the audio link */ audioLink?: boolean }
   /**
    * A DSPi on USB (WebUSB, WB4a): the serial the page's picker or
    * `getDevices()` gave. The Worker claims that device and completes the target
@@ -308,7 +308,7 @@ export interface EventRecord {
   id: number;
   /** ms since the epoch. */
   t: number;
-  kind: "notification" | "connected" | "disconnected" | "clip" | "temperature" | "counter" | "reset" | "firmware" | "import" | "recall" | "unknown";
+  kind: "notification" | "connected" | "disconnected" | "clip" | "temperature" | "counter" | "reset" | "firmware" | "import" | "recall" | "link" | "unknown";
   serial?: string;
   text: string;
   source?: string;
@@ -381,7 +381,7 @@ export type CoreEvent =
   | { event: "lost"; reason: string };
 
 /** Every call a core Worker answers. `params` and the result per method. */
-export interface CoreMethods {
+export interface CoreMethods extends AudioLinkMethods {
   open: { params: DeviceTarget; result: DeviceSnapshot };
   state: { params: undefined; result: DeviceSnapshot };
   /**
@@ -459,6 +459,88 @@ export interface CoreMethods {
   outputLimits: { params: undefined; result: { maxDelayMs: number } };
   /** Tests only: make the stub core lose its link. The real core answers `unknown_method`. */
   simulate: { params: { what: "link-lost" | "link-closed" }; result: null };
+}
+
+// -- WP SW1 -- the audio link (crates/dspi-wasm/src/audio_link.rs; not DSPi Link)
+/** `EXT_LINK_INFO` as the core keeps it (extension_channel_spec.md 2.8.1). */
+export interface AudioLinkInfo {
+  role: string;
+  roleCode: number;
+  protocolVersion: number;
+  classMask: number;
+  maxLinks: number;
+  maxChannels: number;
+  slotsPerUnit: number;
+  rxPin: number;
+  txPin: number;
+  featureBits: number;
+  dLocalMin: number;
+  dLocalMax: number;
+  linkInput: boolean;
+  stateEvents: boolean;
+  applyEvents: boolean;
+}
+
+/** `EXT_LINK_STATUS` (2.8.2). */
+export interface AudioLinkStatus {
+  state: "off" | "searching" | "locked" | "holdover" | "unknown";
+  stateCode: number;
+  linkClass: number;
+  rateCode: number;
+  channels: number;
+  hops: number;
+  losPin: number;
+  senderId: number;
+  flags: number;
+  frame: number;
+  lockCount: number;
+  lossCount: number;
+  crc8Errors: number;
+  crc16Errors: number;
+  bitSlips: number;
+  superframeErrors: number;
+  vcxoPpm: number;
+  phaseErrorFrames: number;
+  fillFrames: number;
+}
+
+/** `EXT_LINK_PHASE` (2.8.5). */
+export interface AudioLinkPhase {
+  mode: number;
+  dLocal: number;
+  hopsOffset: number;
+  flags: number;
+  state: number;
+}
+
+/** `EXT_APPLY_AT_FRAME` IN (2.8.7). */
+export interface ApplyAtFrameStatus {
+  pending: number;
+  lastOp: string;
+  lastOpCode: number;
+  lastResult: string;
+  lastResultCode: number;
+  lastFrame: number;
+}
+
+/** The audio link's methods: `unsupported` on a unit without the link. */
+export interface AudioLinkMethods {
+  /** No traffic; null without the link. */
+  audioLinkInfo: { params: undefined; result: AudioLinkInfo | null };
+  /** Re-read: the delay limits follow the output latency option. */
+  fetchAudioLinkInfo: { params: undefined; result: AudioLinkInfo };
+  audioLinkStatus: { params: undefined; result: AudioLinkStatus };
+  /** 8 values, one per matrix input: a link channel 0..63, or 255 for silence. */
+  audioLinkSlots: { params: undefined; result: number[] };
+  setAudioLinkSlots: { params: { slots: number[] }; result: null };
+  audioLinkPhase: { params: undefined; result: AudioLinkPhase };
+  /** `mode` 0 fill servo, 1 phase lock; `dLocal` in link frames; `hopsOffset` -64..64. */
+  setAudioLinkPhase: { params: { mode: number; dLocal: number; hopsOffset?: number }; result: null };
+  linkFrameCounter: { params: undefined; result: { frame: number; timeUs: number; outputFrames: number } };
+  /** `op` 0 cancel all, 1 mute, 2 unmute, 3 preset load, 4 master volume, 5 output delay, 6 rate, 7 click, 8 sync pulse. */
+  applyAtFrame: { params: { frame: number; op: number; arg?: number; value?: number }; result: null };
+  applyAtFrameStatus: { params: undefined; result: ApplyAtFrameStatus };
+  resetAudioLinkStats: { params: undefined; result: null };
 }
 
 export type Method = keyof CoreMethods;

@@ -68,6 +68,30 @@ class FfiDspiCore : DspiCoreApi {
         }
     }
 
+    override fun audioLinkInfo(): AudioLinkInfo? = call { core.audioLinkInfo()?.let { it.toDomain() } }
+
+    override fun fetchAudioLinkInfo(): AudioLinkInfo = call { core.fetchAudioLinkInfo().toDomain() }
+
+    override fun fetchAudioLinkStatus(): AudioLinkStatus = call { core.fetchAudioLinkStatus().toDomain() }
+
+    override fun fetchAudioLinkSlots(): List<Int> = call { core.fetchAudioLinkSlots().map { it.toInt() and 0xFF } }
+
+    override fun setAudioLinkSlots(slots: List<Int>) = call { core.setAudioLinkSlots(ByteArray(slots.size) { slots[it].toByte() }) }
+
+    override fun fetchAudioLinkPhase(): AudioLinkPhase = call { core.fetchAudioLinkPhase().toDomain() }
+
+    override fun setAudioLinkPhase(mode: Int, dLocal: Int, hopsOffset: Int) = call { core.setAudioLinkPhase(mode.toUByte(), dLocal.toUShort(), hopsOffset.toShort()) }
+
+    override fun fetchLinkFrameCounter(): LinkFrameCounter = call { core.fetchLinkFrameCounter().toDomain() }
+
+    override fun applyAtFrame(frame: Long, op: Int, arg: Int, value: Int) = call { core.applyAtFrame(frame.toULong(), op.toUByte(), arg.toUByte(), value.toShort()) }
+
+    override fun fetchApplyAtFrameStatus(): ApplyAtFrameStatus = call { core.fetchApplyAtFrameStatus().toDomain() }
+
+    override fun resetAudioLinkStats() = call { core.resetAudioLinkStats() }
+
+    override fun openDemoAudioLink() = call { core.openDemoAudioLink() }
+
     override fun fetchAll() = call { core.fetchAll() }
 
     override fun refreshParams() = call { core.refreshParams() }
@@ -1931,6 +1955,142 @@ internal fun UsbErrorStats.toFfi() =
         rxOverflow = rxOverflow.toUInt(),
         rxTimeout = rxTimeout.toUInt(),
         dataSeq = dataSeq.toUInt(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AudioLinkInfo.toDomain() =
+    AudioLinkInfo(
+        role = role,
+        roleCode = roleCode.toInt(),
+        protocolVersion = protocolVersion.toInt(),
+        classMask = classMask.toInt(),
+        maxLinks = maxLinks.toInt(),
+        maxChannels = maxChannels.toInt(),
+        slotsPerUnit = slotsPerUnit.toInt(),
+        rxPin = rxPin.toInt(),
+        txPin = txPin.toInt(),
+        featureBits = featureBits.toLong(),
+        dLocalMin = dLocalMin.toInt(),
+        dLocalMax = dLocalMax.toInt(),
+        linkInput = linkInput,
+        stateEvents = stateEvents,
+        applyEvents = applyEvents,
+    )
+
+internal fun AudioLinkInfo.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AudioLinkInfo(
+        role = role,
+        roleCode = roleCode.toUByte(),
+        protocolVersion = protocolVersion.toUByte(),
+        classMask = classMask.toUByte(),
+        maxLinks = maxLinks.toUByte(),
+        maxChannels = maxChannels.toUByte(),
+        slotsPerUnit = slotsPerUnit.toUByte(),
+        rxPin = rxPin.toUByte(),
+        txPin = txPin.toUByte(),
+        featureBits = featureBits.toUInt(),
+        dLocalMin = dLocalMin.toUShort(),
+        dLocalMax = dLocalMax.toUShort(),
+        linkInput = linkInput,
+        stateEvents = stateEvents,
+        applyEvents = applyEvents,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AudioLinkStatus.toDomain() =
+    AudioLinkStatus(
+        state = state,
+        stateCode = stateCode.toInt(),
+        linkClass = linkClass.toInt(),
+        rateCode = rateCode.toInt(),
+        channels = channels.toInt(),
+        hops = hops.toInt(),
+        losPin = losPin.toInt(),
+        senderId = senderId.toInt(),
+        flags = flags.toInt(),
+        frame = frame.toLong(),
+        lockCount = lockCount.toLong(),
+        lossCount = lossCount.toLong(),
+        crc8Errors = crc8Errors.toLong(),
+        crc16Errors = crc16Errors.toLong(),
+        bitSlips = bitSlips.toLong(),
+        superframeErrors = superframeErrors.toLong(),
+        vcxoPpm = vcxoPpm,
+        phaseErrorFrames = phaseErrorFrames,
+        fillFrames = fillFrames.toInt(),
+    )
+
+internal fun AudioLinkStatus.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AudioLinkStatus(
+        state = state,
+        stateCode = stateCode.toUByte(),
+        linkClass = linkClass.toUByte(),
+        rateCode = rateCode.toUByte(),
+        channels = channels.toUByte(),
+        hops = hops.toUByte(),
+        losPin = losPin.toUByte(),
+        senderId = senderId.toUByte(),
+        flags = flags.toUByte(),
+        frame = frame.toULong(),
+        lockCount = lockCount.toUInt(),
+        lossCount = lossCount.toUInt(),
+        crc8Errors = crc8Errors.toUInt(),
+        crc16Errors = crc16Errors.toUInt(),
+        bitSlips = bitSlips.toUInt(),
+        superframeErrors = superframeErrors.toUInt(),
+        vcxoPpm = vcxoPpm,
+        phaseErrorFrames = phaseErrorFrames,
+        fillFrames = fillFrames.toUShort(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AudioLinkPhase.toDomain() =
+    AudioLinkPhase(
+        mode = mode.toInt(),
+        dLocal = dLocal.toInt(),
+        hopsOffset = hopsOffset.toInt(),
+        flags = flags.toInt(),
+        state = state.toInt(),
+    )
+
+internal fun AudioLinkPhase.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AudioLinkPhase(
+        mode = mode.toUByte(),
+        dLocal = dLocal.toUShort(),
+        hopsOffset = hopsOffset.toShort(),
+        flags = flags.toUByte(),
+        state = state.toUByte(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.LinkFrameCounter.toDomain() =
+    LinkFrameCounter(
+        frame = frame.toLong(),
+        timeUs = timeUs.toLong(),
+        outputFrames = outputFrames.toLong(),
+    )
+
+internal fun LinkFrameCounter.toFfi() =
+    se.bofr.dspi.ffi.uniffi.LinkFrameCounter(
+        frame = frame.toULong(),
+        timeUs = timeUs.toUInt(),
+        outputFrames = outputFrames.toUInt(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.ApplyAtFrameStatus.toDomain() =
+    ApplyAtFrameStatus(
+        pending = pending.toInt(),
+        lastOp = lastOp,
+        lastOpCode = lastOpCode.toInt(),
+        lastResult = lastResult,
+        lastResultCode = lastResultCode.toInt(),
+        lastFrame = lastFrame.toLong(),
+    )
+
+internal fun ApplyAtFrameStatus.toFfi() =
+    se.bofr.dspi.ffi.uniffi.ApplyAtFrameStatus(
+        pending = pending.toUByte(),
+        lastOp = lastOp,
+        lastOpCode = lastOpCode.toUByte(),
+        lastResult = lastResult,
+        lastResultCode = lastResultCode.toUByte(),
+        lastFrame = lastFrame.toULong(),
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.AutoEqFetchRequest.toDomain() =

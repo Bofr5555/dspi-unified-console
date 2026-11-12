@@ -454,6 +454,22 @@ fileprivate struct FfiConverterUInt16: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterInt16: FfiConverterPrimitive {
+    typealias FfiType = Int16
+    typealias SwiftType = Int16
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Int16 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: Int16, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
     typealias FfiType = UInt32
     typealias SwiftType = UInt32
@@ -1263,6 +1279,30 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func applyAllParams() throws 
     
     /**
+     * `EXT_APPLY_AT_FRAME`: run `op` ([`APPLY_OP_MAX`] lists them) on the
+     * samples of link frame `frame`, heard `d_local` frames later on every
+     * phase-locked unit at once; a frame already passed runs at once and
+     * reports "late". Op 0 cancels every pending op (`frame` ignored). The
+     * unit queues up to four.
+     *
+     * Errors as [`DspiCore::set_audio_link_slots`]; `InvalidArgument` for an
+     * op above [`APPLY_OP_MAX`] or an `arg` or `value` outside its range
+     * (unused ones 0; a preset slot 0-9, a master volume of -12800..0
+     * hundredths of a dB, a rate code 0-2, a delay of 0 samples or more).
+     * `Refused` when the queue is full, the link is not locked, or an
+     * output or delay is past the device's.
+     */
+    func applyAtFrame(frame: UInt64, op: UInt8, arg: UInt8, value: Int16) throws 
+    
+    /**
+     * The unit's audio link as the connect probe found it, without
+     * traffic: `None` when the device has no link (stock firmware, the fork
+     * without it, role 0, a protocol version this build does not speak, or
+     * a hub that refused the read). `Disconnected` without a device.
+     */
+    func audioLinkInfo() throws  -> AudioLinkInfo?
+    
+    /**
      * The device's name as last known, with no traffic, kept as
      * [`DspiCore::cached_input_source_name`] keeps source names. "" when
      * unnamed. Errors: `Unsupported` on firmware without device names;
@@ -1933,6 +1973,42 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func fetchAll() throws 
     
     /**
+     * Read `EXT_APPLY_AT_FRAME`: ops pending and how the last one ended.
+     * Errors as [`DspiCore::fetch_audio_link_status`].
+     */
+    func fetchApplyAtFrameStatus() throws  -> ApplyAtFrameStatus
+    
+    /**
+     * Read `EXT_LINK_INFO` again and keep it: its delay limits follow the
+     * output latency option, so re-read after changing that. Errors as
+     * [`DspiCore::fetch_audio_link_status`].
+     */
+    func fetchAudioLinkInfo() throws  -> AudioLinkInfo
+    
+    /**
+     * Read `EXT_LINK_PHASE`: the phase-lock mode, the fixed delay and the
+     * lock's state. Errors as [`DspiCore::fetch_audio_link_status`].
+     */
+    func fetchAudioLinkPhase() throws  -> AudioLinkPhase
+    
+    /**
+     * Read `EXT_LINK_SLOTS`: for each of the 8 matrix inputs, the link slot
+     * it takes, or [`AUDIO_LINK_SLOT_SILENT`]. Errors as
+     * [`DspiCore::fetch_audio_link_status`].
+     */
+    func fetchAudioLinkSlots() throws  -> Data
+    
+    /**
+     * Read `EXT_LINK_STATUS`: lock state, frame counter, error counters,
+     * clock trim and phase error.
+     *
+     * `Unsupported`, with no traffic, without the link; also when the read
+     * stalls or a DSPi Link hub refuses it. `Disconnected` without a device;
+     * `Transfer` for a short or failed read.
+     */
+    func fetchAudioLinkStatus() throws  -> AudioLinkStatus
+    
+    /**
      * The buffer fill levels (%) and their watermarks
      * (`REQ_GET_BUFFER_STATS`, 44 bytes). `spdif` has 4 entries; the first
      * `num_spdif` (at most 4) are live.
@@ -2058,6 +2134,13 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * (including a short reply).
      */
     func fetchLimiterMeter() throws  -> [Float]
+    
+    /**
+     * Read `EXT_FRAME_COUNTER`: the link frame, the unit's clock and its
+     * output frames at one instant. Errors as
+     * [`DspiCore::fetch_audio_link_status`].
+     */
+    func fetchLinkFrameCounter() throws  -> LinkFrameCounter
     
     /**
      * The live outputs' fill for the Stats rows: to frame resolution, on the
@@ -2601,6 +2684,15 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func openDemo() throws 
     
     /**
+     * Open the demo device as a unit receiving the audio link (the fake
+     * device's link model, `extension_channel_spec.md` 2.8's example
+     * receiver: locked on L1, 8 channels at 48 kHz, its frame counter
+     * running), for clients and the hub without hardware. Replaces any open
+     * device.
+     */
+    func openDemoAudioLink() throws 
+    
+    /**
      * Adopt a USB device the platform already opened: Android's
      * `UsbDeviceConnection.getFileDescriptor()`. The core `dup(2)`s the fd
      * and owns the duplicate, so the app keeps (and later closes) its own;
@@ -2800,6 +2892,12 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * mapped onto this build's layout.
      */
     func refreshParams() throws 
+    
+    /**
+     * `EXT_LINK_STATS_RESET`: clear the link's error and lock counters.
+     * Errors as [`DspiCore::set_audio_link_slots`].
+     */
+    func resetAudioLinkStats() throws 
     
     /**
      * Start the buffer watermarks again from now
@@ -3028,6 +3126,31 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * only) or a transfer error.
      */
     func setAdatOutPin(pin: UInt8) throws 
+    
+    /**
+     * Write `EXT_LINK_PHASE`: `mode` 0 (fill servo) or 1 (phase lock), the
+     * fixed delay `d_local` in link frames, and `hops_offset` (normally 0, a
+     * trim of -64..64). A change of mode or delay while phase-locked
+     * re-anchors: 2-6 ms of silence.
+     *
+     * Errors as [`DspiCore::set_audio_link_slots`]; `InvalidArgument` for a
+     * mode above 1 or an offset past 64. `Refused` when the effective delay
+     * is outside the unit's limits ([`DspiCore::fetch_audio_link_info`] has
+     * them as they are now).
+     */
+    func setAudioLinkPhase(mode: UInt8, dLocal: UInt16, hopsOffset: Int16) throws 
+    
+    /**
+     * Write `EXT_LINK_SLOTS`: which link channel (0-63) feeds each of the 8
+     * matrix inputs, [`AUDIO_LINK_SLOT_SILENT`] for none. A channel the
+     * stream does not carry yet plays silence until it does.
+     *
+     * Errors, with no traffic: `Disconnected`; `Unsupported` without the
+     * link; `InvalidArgument` for a length other than 8 or a value from 64
+     * to 254; `ReadOnly`. From the device: `Refused` when it stalls;
+     * `Denied`, `Locked` or `Transfer` from the link.
+     */
+    func setAudioLinkSlots(slots: Data) throws 
     
     /**
      * Bypass (`true`) or re-enable one band of wire channel `ch`, keeping
@@ -3290,12 +3413,14 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func setInputRate(index: UInt8) throws 
     
     /**
-     * Input source: 0 USB, 1 S/PDIF, 2 I2S, 3 ADAT, 4..6 S/PDIF inputs 2..4.
-     * The firmware switches on its main loop and ignores a source that is
-     * not selectable (a disabled S/PDIF input); its notification at the
-     * switch, or a re-read, corrects the mirror.
+     * Input source: 0 USB, 1 S/PDIF, 2 I2S, 3 ADAT, 4..6 S/PDIF inputs 2..4,
+     * 7 the audio link (WP SW1). The firmware switches on its main loop and
+     * ignores a source that is not selectable (a disabled S/PDIF input); its
+     * notification at the switch, or a re-read, corrects the mirror.
      *
-     * Errors: [`DspiError::InvalidArgument`] above 6; the connection and
+     * Errors: [`DspiError::InvalidArgument`] above 7;
+     * [`DspiError::Unsupported`], with no traffic, for 7 on a unit without
+     * the link input (`audio_link_info`'s `link_input`); the connection and
      * transfer errors of every setter.
      */
     func setInputSource(source: UInt8) throws 
@@ -3971,6 +4096,43 @@ open func applyAllParams()throws   {try rustCallWithError(FfiConverterTypeDspiEr
     uniffi_dspi_core_fn_method_dspicore_apply_all_params(self.uniffiClonePointer(),$0
     )
 }
+}
+    
+    /**
+     * `EXT_APPLY_AT_FRAME`: run `op` ([`APPLY_OP_MAX`] lists them) on the
+     * samples of link frame `frame`, heard `d_local` frames later on every
+     * phase-locked unit at once; a frame already passed runs at once and
+     * reports "late". Op 0 cancels every pending op (`frame` ignored). The
+     * unit queues up to four.
+     *
+     * Errors as [`DspiCore::set_audio_link_slots`]; `InvalidArgument` for an
+     * op above [`APPLY_OP_MAX`] or an `arg` or `value` outside its range
+     * (unused ones 0; a preset slot 0-9, a master volume of -12800..0
+     * hundredths of a dB, a rate code 0-2, a delay of 0 samples or more).
+     * `Refused` when the queue is full, the link is not locked, or an
+     * output or delay is past the device's.
+     */
+open func applyAtFrame(frame: UInt64, op: UInt8, arg: UInt8, value: Int16)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_apply_at_frame(self.uniffiClonePointer(),
+        FfiConverterUInt64.lower(frame),
+        FfiConverterUInt8.lower(op),
+        FfiConverterUInt8.lower(arg),
+        FfiConverterInt16.lower(value),$0
+    )
+}
+}
+    
+    /**
+     * The unit's audio link as the connect probe found it, without
+     * traffic: `None` when the device has no link (stock firmware, the fork
+     * without it, role 0, a protocol version this build does not speak, or
+     * a hub that refused the read). `Disconnected` without a device.
+     */
+open func audioLinkInfo()throws  -> AudioLinkInfo?  {
+    return try  FfiConverterOptionTypeAudioLinkInfo.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_audio_link_info(self.uniffiClonePointer(),$0
+    )
+})
 }
     
     /**
@@ -4962,6 +5124,67 @@ open func fetchAll()throws   {try rustCallWithError(FfiConverterTypeDspiError_li
 }
     
     /**
+     * Read `EXT_APPLY_AT_FRAME`: ops pending and how the last one ended.
+     * Errors as [`DspiCore::fetch_audio_link_status`].
+     */
+open func fetchApplyAtFrameStatus()throws  -> ApplyAtFrameStatus  {
+    return try  FfiConverterTypeApplyAtFrameStatus_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_fetch_apply_at_frame_status(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Read `EXT_LINK_INFO` again and keep it: its delay limits follow the
+     * output latency option, so re-read after changing that. Errors as
+     * [`DspiCore::fetch_audio_link_status`].
+     */
+open func fetchAudioLinkInfo()throws  -> AudioLinkInfo  {
+    return try  FfiConverterTypeAudioLinkInfo_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_fetch_audio_link_info(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Read `EXT_LINK_PHASE`: the phase-lock mode, the fixed delay and the
+     * lock's state. Errors as [`DspiCore::fetch_audio_link_status`].
+     */
+open func fetchAudioLinkPhase()throws  -> AudioLinkPhase  {
+    return try  FfiConverterTypeAudioLinkPhase_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_fetch_audio_link_phase(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Read `EXT_LINK_SLOTS`: for each of the 8 matrix inputs, the link slot
+     * it takes, or [`AUDIO_LINK_SLOT_SILENT`]. Errors as
+     * [`DspiCore::fetch_audio_link_status`].
+     */
+open func fetchAudioLinkSlots()throws  -> Data  {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_fetch_audio_link_slots(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Read `EXT_LINK_STATUS`: lock state, frame counter, error counters,
+     * clock trim and phase error.
+     *
+     * `Unsupported`, with no traffic, without the link; also when the read
+     * stalls or a DSPi Link hub refuses it. `Disconnected` without a device;
+     * `Transfer` for a short or failed read.
+     */
+open func fetchAudioLinkStatus()throws  -> AudioLinkStatus  {
+    return try  FfiConverterTypeAudioLinkStatus_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_fetch_audio_link_status(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
      * The buffer fill levels (%) and their watermarks
      * (`REQ_GET_BUFFER_STATS`, 44 bytes). `spdif` has 4 entries; the first
      * `num_spdif` (at most 4) are live.
@@ -5143,6 +5366,18 @@ open func fetchLgStatus()throws  -> LgStatus  {
 open func fetchLimiterMeter()throws  -> [Float]  {
     return try  FfiConverterSequenceFloat.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_fetch_limiter_meter(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Read `EXT_FRAME_COUNTER`: the link frame, the unit's clock and its
+     * output frames at one instant. Errors as
+     * [`DspiCore::fetch_audio_link_status`].
+     */
+open func fetchLinkFrameCounter()throws  -> LinkFrameCounter  {
+    return try  FfiConverterTypeLinkFrameCounter_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_fetch_link_frame_counter(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -5957,6 +6192,19 @@ open func openDemo()throws   {try rustCallWithError(FfiConverterTypeDspiError_li
 }
     
     /**
+     * Open the demo device as a unit receiving the audio link (the fake
+     * device's link model, `extension_channel_spec.md` 2.8's example
+     * receiver: locked on L1, 8 channels at 48 kHz, its frame counter
+     * running), for clients and the hub without hardware. Replaces any open
+     * device.
+     */
+open func openDemoAudioLink()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_open_demo_audio_link(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+    /**
      * Adopt a USB device the platform already opened: Android's
      * `UsbDeviceConnection.getFileDescriptor()`. The core `dup(2)`s the fd
      * and owns the duplicate, so the app keeps (and later closes) its own;
@@ -6229,6 +6477,16 @@ open func redo()throws  -> HistoryMove  {
      */
 open func refreshParams()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_refresh_params(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+    /**
+     * `EXT_LINK_STATS_RESET`: clear the link's error and lock counters.
+     * Errors as [`DspiCore::set_audio_link_slots`].
+     */
+open func resetAudioLinkStats()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_reset_audio_link_stats(self.uniffiClonePointer(),$0
     )
 }
 }
@@ -6555,6 +6813,43 @@ open func setAdatOutEnabled(enabled: Bool)throws   {try rustCallWithError(FfiCon
 open func setAdatOutPin(pin: UInt8)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_set_adat_out_pin(self.uniffiClonePointer(),
         FfiConverterUInt8.lower(pin),$0
+    )
+}
+}
+    
+    /**
+     * Write `EXT_LINK_PHASE`: `mode` 0 (fill servo) or 1 (phase lock), the
+     * fixed delay `d_local` in link frames, and `hops_offset` (normally 0, a
+     * trim of -64..64). A change of mode or delay while phase-locked
+     * re-anchors: 2-6 ms of silence.
+     *
+     * Errors as [`DspiCore::set_audio_link_slots`]; `InvalidArgument` for a
+     * mode above 1 or an offset past 64. `Refused` when the effective delay
+     * is outside the unit's limits ([`DspiCore::fetch_audio_link_info`] has
+     * them as they are now).
+     */
+open func setAudioLinkPhase(mode: UInt8, dLocal: UInt16, hopsOffset: Int16)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_set_audio_link_phase(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(mode),
+        FfiConverterUInt16.lower(dLocal),
+        FfiConverterInt16.lower(hopsOffset),$0
+    )
+}
+}
+    
+    /**
+     * Write `EXT_LINK_SLOTS`: which link channel (0-63) feeds each of the 8
+     * matrix inputs, [`AUDIO_LINK_SLOT_SILENT`] for none. A channel the
+     * stream does not carry yet plays silence until it does.
+     *
+     * Errors, with no traffic: `Disconnected`; `Unsupported` without the
+     * link; `InvalidArgument` for a length other than 8 or a value from 64
+     * to 254; `ReadOnly`. From the device: `Refused` when it stalls;
+     * `Denied`, `Locked` or `Transfer` from the link.
+     */
+open func setAudioLinkSlots(slots: Data)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_set_audio_link_slots(self.uniffiClonePointer(),
+        FfiConverterData.lower(slots),$0
     )
 }
 }
@@ -6955,12 +7250,14 @@ open func setInputRate(index: UInt8)throws   {try rustCallWithError(FfiConverter
 }
     
     /**
-     * Input source: 0 USB, 1 S/PDIF, 2 I2S, 3 ADAT, 4..6 S/PDIF inputs 2..4.
-     * The firmware switches on its main loop and ignores a source that is
-     * not selectable (a disabled S/PDIF input); its notification at the
-     * switch, or a re-read, corrects the mirror.
+     * Input source: 0 USB, 1 S/PDIF, 2 I2S, 3 ADAT, 4..6 S/PDIF inputs 2..4,
+     * 7 the audio link (WP SW1). The firmware switches on its main loop and
+     * ignores a source that is not selectable (a disabled S/PDIF input); its
+     * notification at the switch, or a re-read, corrects the mirror.
      *
-     * Errors: [`DspiError::InvalidArgument`] above 6; the connection and
+     * Errors: [`DspiError::InvalidArgument`] above 7;
+     * [`DspiError::Unsupported`], with no traffic, for 7 on a unit without
+     * the link input (`audio_link_info`'s `link_input`); the connection and
      * transfer errors of every setter.
      */
 open func setInputSource(source: UInt8)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
@@ -9532,6 +9829,874 @@ public func FfiConverterTypeAdatOutStatus_lift(_ buf: RustBuffer) throws -> Adat
 #endif
 public func FfiConverterTypeAdatOutStatus_lower(_ value: AdatOutStatus) -> RustBuffer {
     return FfiConverterTypeAdatOutStatus.lower(value)
+}
+
+
+/**
+ * What `EXT_APPLY_AT_FRAME` reports: the unit's queue of ops.
+ */
+public struct ApplyAtFrameStatus {
+    /**
+     * Ops waiting for their frame (at most 4).
+     */
+    public var pending: UInt8
+    /**
+     * The last op: `cancel_all`, `mute`, `unmute`, `preset_load`,
+     * `master_volume`, `out_delay`, `rate`, `click`, `sync_pulse`.
+     */
+    public var lastOp: String
+    /**
+     * Its code.
+     */
+    public var lastOpCode: UInt8
+    /**
+     * How it ended: `applied`, `late`, `cancelled`, `refused`.
+     */
+    public var lastResult: String
+    /**
+     * Its code.
+     */
+    public var lastResultCode: UInt8
+    /**
+     * The frame it ran at.
+     */
+    public var lastFrame: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Ops waiting for their frame (at most 4).
+         */pending: UInt8, 
+        /**
+         * The last op: `cancel_all`, `mute`, `unmute`, `preset_load`,
+         * `master_volume`, `out_delay`, `rate`, `click`, `sync_pulse`.
+         */lastOp: String, 
+        /**
+         * Its code.
+         */lastOpCode: UInt8, 
+        /**
+         * How it ended: `applied`, `late`, `cancelled`, `refused`.
+         */lastResult: String, 
+        /**
+         * Its code.
+         */lastResultCode: UInt8, 
+        /**
+         * The frame it ran at.
+         */lastFrame: UInt64) {
+        self.pending = pending
+        self.lastOp = lastOp
+        self.lastOpCode = lastOpCode
+        self.lastResult = lastResult
+        self.lastResultCode = lastResultCode
+        self.lastFrame = lastFrame
+    }
+}
+
+#if compiler(>=6)
+extension ApplyAtFrameStatus: Sendable {}
+#endif
+
+
+extension ApplyAtFrameStatus: Equatable, Hashable {
+    public static func ==(lhs: ApplyAtFrameStatus, rhs: ApplyAtFrameStatus) -> Bool {
+        if lhs.pending != rhs.pending {
+            return false
+        }
+        if lhs.lastOp != rhs.lastOp {
+            return false
+        }
+        if lhs.lastOpCode != rhs.lastOpCode {
+            return false
+        }
+        if lhs.lastResult != rhs.lastResult {
+            return false
+        }
+        if lhs.lastResultCode != rhs.lastResultCode {
+            return false
+        }
+        if lhs.lastFrame != rhs.lastFrame {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(pending)
+        hasher.combine(lastOp)
+        hasher.combine(lastOpCode)
+        hasher.combine(lastResult)
+        hasher.combine(lastResultCode)
+        hasher.combine(lastFrame)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeApplyAtFrameStatus: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ApplyAtFrameStatus {
+        return
+            try ApplyAtFrameStatus(
+                pending: FfiConverterUInt8.read(from: &buf), 
+                lastOp: FfiConverterString.read(from: &buf), 
+                lastOpCode: FfiConverterUInt8.read(from: &buf), 
+                lastResult: FfiConverterString.read(from: &buf), 
+                lastResultCode: FfiConverterUInt8.read(from: &buf), 
+                lastFrame: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ApplyAtFrameStatus, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.pending, into: &buf)
+        FfiConverterString.write(value.lastOp, into: &buf)
+        FfiConverterUInt8.write(value.lastOpCode, into: &buf)
+        FfiConverterString.write(value.lastResult, into: &buf)
+        FfiConverterUInt8.write(value.lastResultCode, into: &buf)
+        FfiConverterUInt64.write(value.lastFrame, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeApplyAtFrameStatus_lift(_ buf: RustBuffer) throws -> ApplyAtFrameStatus {
+    return try FfiConverterTypeApplyAtFrameStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeApplyAtFrameStatus_lower(_ value: ApplyAtFrameStatus) -> RustBuffer {
+    return FfiConverterTypeApplyAtFrameStatus.lower(value)
+}
+
+
+/**
+ * What `EXT_LINK_INFO` reports, read once at connect.
+ */
+public struct AudioLinkInfo {
+    /**
+     * `none`, `receiver`, `sender`, `repeater`, `fan_out` or `unknown`.
+     */
+    public var role: String
+    /**
+     * The firmware's role code.
+     */
+    public var roleCode: UInt8
+    /**
+     * The link protocol version the unit speaks.
+     */
+    public var protocolVersion: UInt8
+    /**
+     * Line-rate classes the unit handles: bit 0 L1, bit 1 L2, bit 2 L3.
+     */
+    public var classMask: UInt8
+    /**
+     * A sender's link outputs; 1 on a receiver.
+     */
+    public var maxLinks: UInt8
+    /**
+     * The most channels in a frame the unit decodes.
+     */
+    public var maxChannels: UInt8
+    /**
+     * Matrix inputs the unit takes from the link (8).
+     */
+    public var slotsPerUnit: UInt8
+    /**
+     * The receive GPIO, 0xFF for none.
+     */
+    public var rxPin: UInt8
+    /**
+     * The repeater or sender GPIO, 0xFF for none.
+     */
+    public var txPin: UInt8
+    /**
+     * The firmware's link feature bits: 0 phase lock, 1 apply at frame, 2
+     * repeater, 3 fan-out, 4 test patterns, 5 LOS pin.
+     */
+    public var featureBits: UInt32
+    /**
+     * The smallest fixed delay (`d_local + hops_offset`, frames) the unit
+     * accepts under its current output latency option.
+     */
+    public var dLocalMin: UInt16
+    /**
+     * The largest.
+     */
+    public var dLocalMax: UInt16
+    /**
+     * Whether the unit takes audio from the link, so input source 7 is the
+     * link input.
+     */
+    public var linkInput: Bool
+    /**
+     * Whether the unit sends link lock, loss and re-anchor events.
+     */
+    public var stateEvents: Bool
+    /**
+     * Whether the unit sends apply-at-frame results.
+     */
+    public var applyEvents: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `none`, `receiver`, `sender`, `repeater`, `fan_out` or `unknown`.
+         */role: String, 
+        /**
+         * The firmware's role code.
+         */roleCode: UInt8, 
+        /**
+         * The link protocol version the unit speaks.
+         */protocolVersion: UInt8, 
+        /**
+         * Line-rate classes the unit handles: bit 0 L1, bit 1 L2, bit 2 L3.
+         */classMask: UInt8, 
+        /**
+         * A sender's link outputs; 1 on a receiver.
+         */maxLinks: UInt8, 
+        /**
+         * The most channels in a frame the unit decodes.
+         */maxChannels: UInt8, 
+        /**
+         * Matrix inputs the unit takes from the link (8).
+         */slotsPerUnit: UInt8, 
+        /**
+         * The receive GPIO, 0xFF for none.
+         */rxPin: UInt8, 
+        /**
+         * The repeater or sender GPIO, 0xFF for none.
+         */txPin: UInt8, 
+        /**
+         * The firmware's link feature bits: 0 phase lock, 1 apply at frame, 2
+         * repeater, 3 fan-out, 4 test patterns, 5 LOS pin.
+         */featureBits: UInt32, 
+        /**
+         * The smallest fixed delay (`d_local + hops_offset`, frames) the unit
+         * accepts under its current output latency option.
+         */dLocalMin: UInt16, 
+        /**
+         * The largest.
+         */dLocalMax: UInt16, 
+        /**
+         * Whether the unit takes audio from the link, so input source 7 is the
+         * link input.
+         */linkInput: Bool, 
+        /**
+         * Whether the unit sends link lock, loss and re-anchor events.
+         */stateEvents: Bool, 
+        /**
+         * Whether the unit sends apply-at-frame results.
+         */applyEvents: Bool) {
+        self.role = role
+        self.roleCode = roleCode
+        self.protocolVersion = protocolVersion
+        self.classMask = classMask
+        self.maxLinks = maxLinks
+        self.maxChannels = maxChannels
+        self.slotsPerUnit = slotsPerUnit
+        self.rxPin = rxPin
+        self.txPin = txPin
+        self.featureBits = featureBits
+        self.dLocalMin = dLocalMin
+        self.dLocalMax = dLocalMax
+        self.linkInput = linkInput
+        self.stateEvents = stateEvents
+        self.applyEvents = applyEvents
+    }
+}
+
+#if compiler(>=6)
+extension AudioLinkInfo: Sendable {}
+#endif
+
+
+extension AudioLinkInfo: Equatable, Hashable {
+    public static func ==(lhs: AudioLinkInfo, rhs: AudioLinkInfo) -> Bool {
+        if lhs.role != rhs.role {
+            return false
+        }
+        if lhs.roleCode != rhs.roleCode {
+            return false
+        }
+        if lhs.protocolVersion != rhs.protocolVersion {
+            return false
+        }
+        if lhs.classMask != rhs.classMask {
+            return false
+        }
+        if lhs.maxLinks != rhs.maxLinks {
+            return false
+        }
+        if lhs.maxChannels != rhs.maxChannels {
+            return false
+        }
+        if lhs.slotsPerUnit != rhs.slotsPerUnit {
+            return false
+        }
+        if lhs.rxPin != rhs.rxPin {
+            return false
+        }
+        if lhs.txPin != rhs.txPin {
+            return false
+        }
+        if lhs.featureBits != rhs.featureBits {
+            return false
+        }
+        if lhs.dLocalMin != rhs.dLocalMin {
+            return false
+        }
+        if lhs.dLocalMax != rhs.dLocalMax {
+            return false
+        }
+        if lhs.linkInput != rhs.linkInput {
+            return false
+        }
+        if lhs.stateEvents != rhs.stateEvents {
+            return false
+        }
+        if lhs.applyEvents != rhs.applyEvents {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(role)
+        hasher.combine(roleCode)
+        hasher.combine(protocolVersion)
+        hasher.combine(classMask)
+        hasher.combine(maxLinks)
+        hasher.combine(maxChannels)
+        hasher.combine(slotsPerUnit)
+        hasher.combine(rxPin)
+        hasher.combine(txPin)
+        hasher.combine(featureBits)
+        hasher.combine(dLocalMin)
+        hasher.combine(dLocalMax)
+        hasher.combine(linkInput)
+        hasher.combine(stateEvents)
+        hasher.combine(applyEvents)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAudioLinkInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AudioLinkInfo {
+        return
+            try AudioLinkInfo(
+                role: FfiConverterString.read(from: &buf), 
+                roleCode: FfiConverterUInt8.read(from: &buf), 
+                protocolVersion: FfiConverterUInt8.read(from: &buf), 
+                classMask: FfiConverterUInt8.read(from: &buf), 
+                maxLinks: FfiConverterUInt8.read(from: &buf), 
+                maxChannels: FfiConverterUInt8.read(from: &buf), 
+                slotsPerUnit: FfiConverterUInt8.read(from: &buf), 
+                rxPin: FfiConverterUInt8.read(from: &buf), 
+                txPin: FfiConverterUInt8.read(from: &buf), 
+                featureBits: FfiConverterUInt32.read(from: &buf), 
+                dLocalMin: FfiConverterUInt16.read(from: &buf), 
+                dLocalMax: FfiConverterUInt16.read(from: &buf), 
+                linkInput: FfiConverterBool.read(from: &buf), 
+                stateEvents: FfiConverterBool.read(from: &buf), 
+                applyEvents: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AudioLinkInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.role, into: &buf)
+        FfiConverterUInt8.write(value.roleCode, into: &buf)
+        FfiConverterUInt8.write(value.protocolVersion, into: &buf)
+        FfiConverterUInt8.write(value.classMask, into: &buf)
+        FfiConverterUInt8.write(value.maxLinks, into: &buf)
+        FfiConverterUInt8.write(value.maxChannels, into: &buf)
+        FfiConverterUInt8.write(value.slotsPerUnit, into: &buf)
+        FfiConverterUInt8.write(value.rxPin, into: &buf)
+        FfiConverterUInt8.write(value.txPin, into: &buf)
+        FfiConverterUInt32.write(value.featureBits, into: &buf)
+        FfiConverterUInt16.write(value.dLocalMin, into: &buf)
+        FfiConverterUInt16.write(value.dLocalMax, into: &buf)
+        FfiConverterBool.write(value.linkInput, into: &buf)
+        FfiConverterBool.write(value.stateEvents, into: &buf)
+        FfiConverterBool.write(value.applyEvents, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAudioLinkInfo_lift(_ buf: RustBuffer) throws -> AudioLinkInfo {
+    return try FfiConverterTypeAudioLinkInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAudioLinkInfo_lower(_ value: AudioLinkInfo) -> RustBuffer {
+    return FfiConverterTypeAudioLinkInfo.lower(value)
+}
+
+
+/**
+ * What `EXT_LINK_PHASE` reports: the phase-lock mode and the fixed delay.
+ */
+public struct AudioLinkPhase {
+    /**
+     * 0 fill servo (as S/PDIF and ADAT), 1 phase lock.
+     */
+    public var mode: UInt8
+    /**
+     * The unit's fixed delay in link frames (the system's D less its hops).
+     */
+    public var dLocal: UInt16
+    /**
+     * Normally 0: `d_local` already includes the hops.
+     */
+    public var hopsOffset: Int16
+    /**
+     * The firmware's phase flags.
+     */
+    public var flags: UInt8
+    /**
+     * 0 free, 1 anchoring, 2 locked, 3 re-anchor pending.
+     */
+    public var state: UInt8
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * 0 fill servo (as S/PDIF and ADAT), 1 phase lock.
+         */mode: UInt8, 
+        /**
+         * The unit's fixed delay in link frames (the system's D less its hops).
+         */dLocal: UInt16, 
+        /**
+         * Normally 0: `d_local` already includes the hops.
+         */hopsOffset: Int16, 
+        /**
+         * The firmware's phase flags.
+         */flags: UInt8, 
+        /**
+         * 0 free, 1 anchoring, 2 locked, 3 re-anchor pending.
+         */state: UInt8) {
+        self.mode = mode
+        self.dLocal = dLocal
+        self.hopsOffset = hopsOffset
+        self.flags = flags
+        self.state = state
+    }
+}
+
+#if compiler(>=6)
+extension AudioLinkPhase: Sendable {}
+#endif
+
+
+extension AudioLinkPhase: Equatable, Hashable {
+    public static func ==(lhs: AudioLinkPhase, rhs: AudioLinkPhase) -> Bool {
+        if lhs.mode != rhs.mode {
+            return false
+        }
+        if lhs.dLocal != rhs.dLocal {
+            return false
+        }
+        if lhs.hopsOffset != rhs.hopsOffset {
+            return false
+        }
+        if lhs.flags != rhs.flags {
+            return false
+        }
+        if lhs.state != rhs.state {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(mode)
+        hasher.combine(dLocal)
+        hasher.combine(hopsOffset)
+        hasher.combine(flags)
+        hasher.combine(state)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAudioLinkPhase: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AudioLinkPhase {
+        return
+            try AudioLinkPhase(
+                mode: FfiConverterUInt8.read(from: &buf), 
+                dLocal: FfiConverterUInt16.read(from: &buf), 
+                hopsOffset: FfiConverterInt16.read(from: &buf), 
+                flags: FfiConverterUInt8.read(from: &buf), 
+                state: FfiConverterUInt8.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AudioLinkPhase, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.mode, into: &buf)
+        FfiConverterUInt16.write(value.dLocal, into: &buf)
+        FfiConverterInt16.write(value.hopsOffset, into: &buf)
+        FfiConverterUInt8.write(value.flags, into: &buf)
+        FfiConverterUInt8.write(value.state, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAudioLinkPhase_lift(_ buf: RustBuffer) throws -> AudioLinkPhase {
+    return try FfiConverterTypeAudioLinkPhase.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAudioLinkPhase_lower(_ value: AudioLinkPhase) -> RustBuffer {
+    return FfiConverterTypeAudioLinkPhase.lower(value)
+}
+
+
+/**
+ * What `EXT_LINK_STATUS` reports.
+ */
+public struct AudioLinkStatus {
+    /**
+     * `off`, `searching`, `locked`, `holdover` (lost: muted, clock held) or
+     * `unknown`.
+     */
+    public var state: String
+    /**
+     * The firmware's state code.
+     */
+    public var stateCode: UInt8
+    /**
+     * The line-rate class, 1-3 (L1-L3); 0 while unknown.
+     */
+    public var linkClass: UInt8
+    /**
+     * 0 = 44.1, 1 = 48, 2 = 96 kHz.
+     */
+    public var rateCode: UInt8
+    /**
+     * Channels in the frame.
+     */
+    public var channels: UInt8
+    /**
+     * Repeaters between the sender and this unit.
+     */
+    public var hops: UInt8
+    /**
+     * The LOS input's level, 0xFF without one.
+     */
+    public var losPin: UInt8
+    /**
+     * The sender's id (the low byte of its serial).
+     */
+    public var senderId: UInt8
+    /**
+     * The superframe's flags.
+     */
+    public var flags: UInt8
+    /**
+     * The link frame counter.
+     */
+    public var frame: UInt64
+    /**
+     * Times the link locked since the counters were cleared.
+     */
+    public var lockCount: UInt32
+    /**
+     * Times the link was lost.
+     */
+    public var lossCount: UInt32
+    /**
+     * Frame header check errors.
+     */
+    public var crc8Errors: UInt32
+    /**
+     * Audio bank check errors.
+     */
+    public var crc16Errors: UInt32
+    /**
+     * Bit slips.
+     */
+    public var bitSlips: UInt32
+    /**
+     * Superframe check errors.
+     */
+    public var superframeErrors: UInt32
+    /**
+     * The clock trim, ppm.
+     */
+    public var vcxoPpm: Float
+    /**
+     * The phase error, frames (phase lock).
+     */
+    public var phaseErrorFrames: Float
+    /**
+     * The output ring's fill, frames.
+     */
+    public var fillFrames: UInt16
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `off`, `searching`, `locked`, `holdover` (lost: muted, clock held) or
+         * `unknown`.
+         */state: String, 
+        /**
+         * The firmware's state code.
+         */stateCode: UInt8, 
+        /**
+         * The line-rate class, 1-3 (L1-L3); 0 while unknown.
+         */linkClass: UInt8, 
+        /**
+         * 0 = 44.1, 1 = 48, 2 = 96 kHz.
+         */rateCode: UInt8, 
+        /**
+         * Channels in the frame.
+         */channels: UInt8, 
+        /**
+         * Repeaters between the sender and this unit.
+         */hops: UInt8, 
+        /**
+         * The LOS input's level, 0xFF without one.
+         */losPin: UInt8, 
+        /**
+         * The sender's id (the low byte of its serial).
+         */senderId: UInt8, 
+        /**
+         * The superframe's flags.
+         */flags: UInt8, 
+        /**
+         * The link frame counter.
+         */frame: UInt64, 
+        /**
+         * Times the link locked since the counters were cleared.
+         */lockCount: UInt32, 
+        /**
+         * Times the link was lost.
+         */lossCount: UInt32, 
+        /**
+         * Frame header check errors.
+         */crc8Errors: UInt32, 
+        /**
+         * Audio bank check errors.
+         */crc16Errors: UInt32, 
+        /**
+         * Bit slips.
+         */bitSlips: UInt32, 
+        /**
+         * Superframe check errors.
+         */superframeErrors: UInt32, 
+        /**
+         * The clock trim, ppm.
+         */vcxoPpm: Float, 
+        /**
+         * The phase error, frames (phase lock).
+         */phaseErrorFrames: Float, 
+        /**
+         * The output ring's fill, frames.
+         */fillFrames: UInt16) {
+        self.state = state
+        self.stateCode = stateCode
+        self.linkClass = linkClass
+        self.rateCode = rateCode
+        self.channels = channels
+        self.hops = hops
+        self.losPin = losPin
+        self.senderId = senderId
+        self.flags = flags
+        self.frame = frame
+        self.lockCount = lockCount
+        self.lossCount = lossCount
+        self.crc8Errors = crc8Errors
+        self.crc16Errors = crc16Errors
+        self.bitSlips = bitSlips
+        self.superframeErrors = superframeErrors
+        self.vcxoPpm = vcxoPpm
+        self.phaseErrorFrames = phaseErrorFrames
+        self.fillFrames = fillFrames
+    }
+}
+
+#if compiler(>=6)
+extension AudioLinkStatus: Sendable {}
+#endif
+
+
+extension AudioLinkStatus: Equatable, Hashable {
+    public static func ==(lhs: AudioLinkStatus, rhs: AudioLinkStatus) -> Bool {
+        if lhs.state != rhs.state {
+            return false
+        }
+        if lhs.stateCode != rhs.stateCode {
+            return false
+        }
+        if lhs.linkClass != rhs.linkClass {
+            return false
+        }
+        if lhs.rateCode != rhs.rateCode {
+            return false
+        }
+        if lhs.channels != rhs.channels {
+            return false
+        }
+        if lhs.hops != rhs.hops {
+            return false
+        }
+        if lhs.losPin != rhs.losPin {
+            return false
+        }
+        if lhs.senderId != rhs.senderId {
+            return false
+        }
+        if lhs.flags != rhs.flags {
+            return false
+        }
+        if lhs.frame != rhs.frame {
+            return false
+        }
+        if lhs.lockCount != rhs.lockCount {
+            return false
+        }
+        if lhs.lossCount != rhs.lossCount {
+            return false
+        }
+        if lhs.crc8Errors != rhs.crc8Errors {
+            return false
+        }
+        if lhs.crc16Errors != rhs.crc16Errors {
+            return false
+        }
+        if lhs.bitSlips != rhs.bitSlips {
+            return false
+        }
+        if lhs.superframeErrors != rhs.superframeErrors {
+            return false
+        }
+        if lhs.vcxoPpm != rhs.vcxoPpm {
+            return false
+        }
+        if lhs.phaseErrorFrames != rhs.phaseErrorFrames {
+            return false
+        }
+        if lhs.fillFrames != rhs.fillFrames {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(state)
+        hasher.combine(stateCode)
+        hasher.combine(linkClass)
+        hasher.combine(rateCode)
+        hasher.combine(channels)
+        hasher.combine(hops)
+        hasher.combine(losPin)
+        hasher.combine(senderId)
+        hasher.combine(flags)
+        hasher.combine(frame)
+        hasher.combine(lockCount)
+        hasher.combine(lossCount)
+        hasher.combine(crc8Errors)
+        hasher.combine(crc16Errors)
+        hasher.combine(bitSlips)
+        hasher.combine(superframeErrors)
+        hasher.combine(vcxoPpm)
+        hasher.combine(phaseErrorFrames)
+        hasher.combine(fillFrames)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAudioLinkStatus: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AudioLinkStatus {
+        return
+            try AudioLinkStatus(
+                state: FfiConverterString.read(from: &buf), 
+                stateCode: FfiConverterUInt8.read(from: &buf), 
+                linkClass: FfiConverterUInt8.read(from: &buf), 
+                rateCode: FfiConverterUInt8.read(from: &buf), 
+                channels: FfiConverterUInt8.read(from: &buf), 
+                hops: FfiConverterUInt8.read(from: &buf), 
+                losPin: FfiConverterUInt8.read(from: &buf), 
+                senderId: FfiConverterUInt8.read(from: &buf), 
+                flags: FfiConverterUInt8.read(from: &buf), 
+                frame: FfiConverterUInt64.read(from: &buf), 
+                lockCount: FfiConverterUInt32.read(from: &buf), 
+                lossCount: FfiConverterUInt32.read(from: &buf), 
+                crc8Errors: FfiConverterUInt32.read(from: &buf), 
+                crc16Errors: FfiConverterUInt32.read(from: &buf), 
+                bitSlips: FfiConverterUInt32.read(from: &buf), 
+                superframeErrors: FfiConverterUInt32.read(from: &buf), 
+                vcxoPpm: FfiConverterFloat.read(from: &buf), 
+                phaseErrorFrames: FfiConverterFloat.read(from: &buf), 
+                fillFrames: FfiConverterUInt16.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AudioLinkStatus, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.state, into: &buf)
+        FfiConverterUInt8.write(value.stateCode, into: &buf)
+        FfiConverterUInt8.write(value.linkClass, into: &buf)
+        FfiConverterUInt8.write(value.rateCode, into: &buf)
+        FfiConverterUInt8.write(value.channels, into: &buf)
+        FfiConverterUInt8.write(value.hops, into: &buf)
+        FfiConverterUInt8.write(value.losPin, into: &buf)
+        FfiConverterUInt8.write(value.senderId, into: &buf)
+        FfiConverterUInt8.write(value.flags, into: &buf)
+        FfiConverterUInt64.write(value.frame, into: &buf)
+        FfiConverterUInt32.write(value.lockCount, into: &buf)
+        FfiConverterUInt32.write(value.lossCount, into: &buf)
+        FfiConverterUInt32.write(value.crc8Errors, into: &buf)
+        FfiConverterUInt32.write(value.crc16Errors, into: &buf)
+        FfiConverterUInt32.write(value.bitSlips, into: &buf)
+        FfiConverterUInt32.write(value.superframeErrors, into: &buf)
+        FfiConverterFloat.write(value.vcxoPpm, into: &buf)
+        FfiConverterFloat.write(value.phaseErrorFrames, into: &buf)
+        FfiConverterUInt16.write(value.fillFrames, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAudioLinkStatus_lift(_ buf: RustBuffer) throws -> AudioLinkStatus {
+    return try FfiConverterTypeAudioLinkStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAudioLinkStatus_lower(_ value: AudioLinkStatus) -> RustBuffer {
+    return FfiConverterTypeAudioLinkStatus.lower(value)
 }
 
 
@@ -15137,6 +16302,105 @@ public func FfiConverterTypeLinkDevice_lift(_ buf: RustBuffer) throws -> LinkDev
 #endif
 public func FfiConverterTypeLinkDevice_lower(_ value: LinkDevice) -> RustBuffer {
     return FfiConverterTypeLinkDevice.lower(value)
+}
+
+
+/**
+ * What `EXT_FRAME_COUNTER` reports.
+ */
+public struct LinkFrameCounter {
+    /**
+     * The link frame at the read.
+     */
+    public var frame: UInt64
+    /**
+     * The unit's clock at the read, µs (wraps).
+     */
+    public var timeUs: UInt32
+    /**
+     * Output frames played, low 32 bits.
+     */
+    public var outputFrames: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The link frame at the read.
+         */frame: UInt64, 
+        /**
+         * The unit's clock at the read, µs (wraps).
+         */timeUs: UInt32, 
+        /**
+         * Output frames played, low 32 bits.
+         */outputFrames: UInt32) {
+        self.frame = frame
+        self.timeUs = timeUs
+        self.outputFrames = outputFrames
+    }
+}
+
+#if compiler(>=6)
+extension LinkFrameCounter: Sendable {}
+#endif
+
+
+extension LinkFrameCounter: Equatable, Hashable {
+    public static func ==(lhs: LinkFrameCounter, rhs: LinkFrameCounter) -> Bool {
+        if lhs.frame != rhs.frame {
+            return false
+        }
+        if lhs.timeUs != rhs.timeUs {
+            return false
+        }
+        if lhs.outputFrames != rhs.outputFrames {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(frame)
+        hasher.combine(timeUs)
+        hasher.combine(outputFrames)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLinkFrameCounter: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LinkFrameCounter {
+        return
+            try LinkFrameCounter(
+                frame: FfiConverterUInt64.read(from: &buf), 
+                timeUs: FfiConverterUInt32.read(from: &buf), 
+                outputFrames: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LinkFrameCounter, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.frame, into: &buf)
+        FfiConverterUInt32.write(value.timeUs, into: &buf)
+        FfiConverterUInt32.write(value.outputFrames, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkFrameCounter_lift(_ buf: RustBuffer) throws -> LinkFrameCounter {
+    return try FfiConverterTypeLinkFrameCounter.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkFrameCounter_lower(_ value: LinkFrameCounter) -> RustBuffer {
+    return FfiConverterTypeLinkFrameCounter.lower(value)
 }
 
 
@@ -23109,6 +24373,30 @@ fileprivate struct FfiConverterOptionTypeRtaListener: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeAudioLinkInfo: FfiConverterRustBuffer {
+    typealias SwiftType = AudioLinkInfo?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeAudioLinkInfo.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeAudioLinkInfo.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeCoreVregInfo: FfiConverterRustBuffer {
     typealias SwiftType = CoreVregInfo?
 
@@ -24593,6 +25881,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_apply_all_params() != 8407) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_apply_at_frame() != 10586) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_audio_link_info() != 38734) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_cached_device_name() != 27756) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -24767,6 +26061,21 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_all() != 28305) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_apply_at_frame_status() != 42011) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_audio_link_info() != 56667) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_audio_link_phase() != 55602) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_audio_link_slots() != 61062) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_audio_link_status() != 5298) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_buffer_stats() != 4897) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -24801,6 +26110,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_limiter_meter() != 57932) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_link_frame_counter() != 25885) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_output_fills() != 8756) {
@@ -24953,6 +26265,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_open_demo() != 35962) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_open_demo_audio_link() != 48376) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_open_fd() != 57502) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -24993,6 +26308,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_refresh_params() != 360) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_reset_audio_link_stats() != 13598) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_reset_buffer_stats() != 36944) {
@@ -25056,6 +26374,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_adat_out_pin() != 46187) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_set_audio_link_phase() != 62020) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_set_audio_link_slots() != 32007) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_band_bypass() != 64308) {
@@ -25130,7 +26454,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_set_input_rate() != 50712) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_set_input_source() != 11619) {
+    if (uniffi_dspi_core_checksum_method_dspicore_set_input_source() != 40082) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_input_source_name() != 20965) {

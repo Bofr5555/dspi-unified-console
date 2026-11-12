@@ -33,7 +33,7 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use dspi_session::events::{
     EventKind, EventLog, EventRecord, EventSink, ExtEvent, LogReader, ReadBatch, Watch,
-    decode_ext_event, restarted,
+    decode_ext_event, link_record, restarted,
 };
 use dspi_session::meters::{Ballistics, BallisticsConfig, MeterUpdate};
 use dspi_session::notify::{Event, Notification};
@@ -325,6 +325,12 @@ impl Store {
                             let inputs = self.inputs.load(Ordering::Relaxed);
                             out.extend(clip_records(new.new_clips, inputs, t, "notification"));
                         }
+                        return;
+                    }
+                    // -- WP SW1 -- the audio link's loss, lock, resync and
+                    // apply results (0xE1/0xE2 behind their feature bits)
+                    Some(e @ (ExtEvent::LinkState(_) | ExtEvent::ApplyResult(_))) => {
+                        out.extend(link_record(&e, t));
                         return;
                     }
                     Some(ExtEvent::Reset { reason }) => {

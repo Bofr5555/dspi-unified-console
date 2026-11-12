@@ -5339,6 +5339,96 @@ uint32_t dspi_fetch_identify(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_fetch_reset_info(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
+ * The unit's audio link as the connect probe found it, in JSON, with no
+ * traffic: `value` null without a link, else `role`, `roleCode`,
+ * `protocolVersion`, `classMask`, `maxLinks`, `maxChannels`,
+ * `slotsPerUnit`, `rxPin`, `txPin`, `featureBits`, `dLocalMin`,
+ * `dLocalMax`, `linkInput`, `stateEvents`, `applyEvents`.
+ */
+uint32_t dspi_audio_link_info(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Read `EXT_LINK_INFO` again (its delay limits follow the output latency
+ * option), in JSON as [`dspi_audio_link_info`]'s fields, or a failure
+ * (`unsupported` without the link).
+ */
+uint32_t dspi_fetch_audio_link_info(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The link's status in JSON (`state`, `stateCode`, `linkClass`, `rateCode`,
+ * `channels`, `hops`, `losPin`, `senderId`, `flags`, `frame`, `lockCount`,
+ * `lossCount`, `crc8Errors`, `crc16Errors`, `bitSlips`, `superframeErrors`,
+ * `vcxoPpm`, `phaseErrorFrames`, `fillFrames`), or a failure.
+ */
+uint32_t dspi_fetch_audio_link_status(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The link slot of each of the 8 matrix inputs (0xFF silent) into `out` of
+ * `out_len` bytes. False for a buffer under 8 bytes, with nothing written,
+ * or a failure.
+ */
+bool dspi_fetch_audio_link_slots(struct FfiCore *core, uint8_t *out, uint32_t out_len);
+
+/**
+ * Write the 8 slots (`slots_len` must be 8; 0..63 a link channel, 0xFF
+ * silence). Returns a status byte; 0xFF for a null or short buffer without
+ * asking the device, or a failure.
+ */
+uint8_t dspi_set_audio_link_slots(struct FfiCore *core, const uint8_t *slots, uint32_t slots_len);
+
+/**
+ * The phase-lock mode and delay in JSON (`mode`, `dLocal`, `hopsOffset`,
+ * `flags`, `state`), or a failure.
+ */
+uint32_t dspi_fetch_audio_link_phase(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Set the phase-lock `mode` (0 fill servo, 1 phase lock), the fixed delay
+ * `d_local` in link frames and `hops_offset` (-64..64, normally 0).
+ * Returns a status byte, 0xFF on failure.
+ */
+uint8_t dspi_set_audio_link_phase(struct FfiCore *core,
+                                  uint8_t mode,
+                                  uint16_t d_local,
+                                  int16_t hops_offset);
+
+/**
+ * The link frame counter in JSON (`frame`, `timeUs`, `outputFrames`), or a
+ * failure.
+ */
+uint32_t dspi_fetch_link_frame_counter(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Queue `op` (0 cancel all, 1 mute, 2 unmute, 3 preset load, 4 master
+ * volume, 5 output delay, 6 rate, 7 click, 8 sync pulse) with `arg` and
+ * `value` for link frame `frame`. Returns a status byte, 0xFF on failure
+ * (arguments out of range, a full queue, no lock).
+ */
+uint8_t dspi_apply_at_frame(struct FfiCore *core,
+                            uint64_t frame,
+                            uint8_t op,
+                            uint8_t arg,
+                            int16_t value);
+
+/**
+ * The apply queue in JSON (`pending`, `lastOp`, `lastOpCode`, `lastResult`,
+ * `lastResultCode`, `lastFrame`), or a failure.
+ */
+uint32_t dspi_fetch_apply_at_frame_status(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Clear the link's error and lock counters. Returns a status byte, 0xFF on
+ * failure.
+ */
+uint8_t dspi_reset_audio_link_stats(struct FfiCore *core);
+
+/**
+ * Open the demo device as a unit receiving the audio link, in place of any
+ * open device.
+ */
+bool dspi_open_demo_audio_link(struct FfiCore *core);
+
+/**
  * Start looking for hubs on the local network, replacing any browse running.
  * Returns at once; false only with a null handle, in a build without the
  * feature, or when a thread cannot start. A network failure shows in

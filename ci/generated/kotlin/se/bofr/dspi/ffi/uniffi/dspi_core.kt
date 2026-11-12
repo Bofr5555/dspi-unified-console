@@ -1502,6 +1502,30 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1596,6 +1620,10 @@ fun uniffi_dspi_core_checksum_method_deviceevents_on_arrived(
 fun uniffi_dspi_core_checksum_method_deviceevents_on_departed(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_apply_all_params(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_apply_at_frame(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_audio_link_info(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_cached_device_name(
 ): Short
@@ -1713,6 +1741,16 @@ fun uniffi_dspi_core_checksum_method_dspicore_fetch_adat_out_status(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_all(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_fetch_apply_at_frame_status(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_fetch_audio_link_info(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_fetch_audio_link_phase(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_fetch_audio_link_slots(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_fetch_audio_link_status(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_buffer_stats(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_clock_diag(
@@ -1736,6 +1774,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_fetch_input_rate(
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_lg_status(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_limiter_meter(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_fetch_link_frame_counter(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_output_fills(
 ): Short
@@ -1837,6 +1877,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_notify_tap_set(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_open_demo(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_open_demo_audio_link(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_open_fd(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_open_host(
@@ -1864,6 +1906,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_raw_set(
 fun uniffi_dspi_core_checksum_method_dspicore_redo(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_refresh_params(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_reset_audio_link_stats(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_reset_buffer_stats(
 ): Short
@@ -1906,6 +1950,10 @@ fun uniffi_dspi_core_checksum_method_dspicore_set_adat_input_pin(
 fun uniffi_dspi_core_checksum_method_dspicore_set_adat_out_enabled(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_set_adat_out_pin(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_set_audio_link_phase(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_set_audio_link_slots(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_set_band_bypass(
 ): Short
@@ -2189,6 +2237,10 @@ fun uniffi_dspi_core_fn_constructor_dspicore_new(uniffi_out_err: UniffiRustCallS
 ): Pointer
 fun uniffi_dspi_core_fn_method_dspicore_apply_all_params(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_apply_at_frame(`ptr`: Pointer,`frame`: Long,`op`: Byte,`arg`: Byte,`value`: Short,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_audio_link_info(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_cached_device_name(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_cached_input_source_name(`ptr`: Pointer,`source`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -2305,6 +2357,16 @@ fun uniffi_dspi_core_fn_method_dspicore_fetch_adat_out_status(`ptr`: Pointer,uni
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_all(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_fetch_apply_at_frame_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_fetch_audio_link_info(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_fetch_audio_link_phase(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_fetch_audio_link_slots(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_fetch_audio_link_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_buffer_stats(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_clock_diag(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -2328,6 +2390,8 @@ fun uniffi_dspi_core_fn_method_dspicore_fetch_input_rate(`ptr`: Pointer,uniffi_o
 fun uniffi_dspi_core_fn_method_dspicore_fetch_lg_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_limiter_meter(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_fetch_link_frame_counter(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_output_fills(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -2429,6 +2493,8 @@ fun uniffi_dspi_core_fn_method_dspicore_notify_tap_set(`ptr`: Pointer,`enabled`:
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_open_demo(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_open_demo_audio_link(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_open_fd(`ptr`: Pointer,`fd`: Int,`serial`: RustBuffer.ByValue,`vid`: Short,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_open_host(`ptr`: Pointer,`transport`: Pointer,`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -2456,6 +2522,8 @@ fun uniffi_dspi_core_fn_method_dspicore_raw_set(`ptr`: Pointer,`opcode`: Byte,`v
 fun uniffi_dspi_core_fn_method_dspicore_redo(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_refresh_params(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_reset_audio_link_stats(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_reset_buffer_stats(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -2498,6 +2566,10 @@ fun uniffi_dspi_core_fn_method_dspicore_set_adat_input_pin(`ptr`: Pointer,`pin`:
 fun uniffi_dspi_core_fn_method_dspicore_set_adat_out_enabled(`ptr`: Pointer,`enabled`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_set_adat_out_pin(`ptr`: Pointer,`pin`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_set_audio_link_phase(`ptr`: Pointer,`mode`: Byte,`dLocal`: Short,`hopsOffset`: Short,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_set_audio_link_slots(`ptr`: Pointer,`slots`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_set_band_bypass(`ptr`: Pointer,`ch`: Byte,`band`: Byte,`bypass`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -3037,6 +3109,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_apply_all_params() != 8407.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_apply_at_frame() != 10586.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_audio_link_info() != 38734.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_cached_device_name() != 27756.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3211,6 +3289,21 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_all() != 28305.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_apply_at_frame_status() != 42011.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_audio_link_info() != 56667.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_audio_link_phase() != 55602.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_audio_link_slots() != 61062.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_audio_link_status() != 5298.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_buffer_stats() != 4897.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3245,6 +3338,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_limiter_meter() != 57932.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_link_frame_counter() != 25885.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_output_fills() != 8756.toShort()) {
@@ -3397,6 +3493,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_open_demo() != 35962.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_open_demo_audio_link() != 48376.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_open_fd() != 57502.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3437,6 +3536,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_refresh_params() != 360.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_reset_audio_link_stats() != 13598.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_reset_buffer_stats() != 36944.toShort()) {
@@ -3500,6 +3602,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_adat_out_pin() != 46187.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_audio_link_phase() != 62020.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_audio_link_slots() != 32007.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_band_bypass() != 64308.toShort()) {
@@ -3574,7 +3682,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_input_rate() != 50712.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_input_source() != 11619.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_input_source() != 40082.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_input_source_name() != 20965.toShort()) {
@@ -4030,6 +4138,29 @@ public object FfiConverterUShort: FfiConverter<UShort, Short> {
 
     override fun write(value: UShort, buf: ByteBuffer) {
         buf.putShort(value.toShort())
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterShort: FfiConverter<Short, Short> {
+    override fun lift(value: Short): Short {
+        return value
+    }
+
+    override fun read(buf: ByteBuffer): Short {
+        return buf.getShort()
+    }
+
+    override fun lower(value: Short): Short {
+        return value
+    }
+
+    override fun allocationSize(value: Short) = 2UL
+
+    override fun write(value: Short, buf: ByteBuffer) {
+        buf.putShort(value)
     }
 }
 
@@ -5310,6 +5441,30 @@ public interface DspiCoreInterface {
     fun `applyAllParams`()
     
     /**
+     * `EXT_APPLY_AT_FRAME`: run `op` ([`APPLY_OP_MAX`] lists them) on the
+     * samples of link frame `frame`, heard `d_local` frames later on every
+     * phase-locked unit at once; a frame already passed runs at once and
+     * reports "late". Op 0 cancels every pending op (`frame` ignored). The
+     * unit queues up to four.
+     *
+     * Errors as [`DspiCore::set_audio_link_slots`]; `InvalidArgument` for an
+     * op above [`APPLY_OP_MAX`] or an `arg` or `value` outside its range
+     * (unused ones 0; a preset slot 0-9, a master volume of -12800..0
+     * hundredths of a dB, a rate code 0-2, a delay of 0 samples or more).
+     * `Refused` when the queue is full, the link is not locked, or an
+     * output or delay is past the device's.
+     */
+    fun `applyAtFrame`(`frame`: kotlin.ULong, `op`: kotlin.UByte, `arg`: kotlin.UByte, `value`: kotlin.Short)
+    
+    /**
+     * The unit's audio link as the connect probe found it, without
+     * traffic: `None` when the device has no link (stock firmware, the fork
+     * without it, role 0, a protocol version this build does not speak, or
+     * a hub that refused the read). `Disconnected` without a device.
+     */
+    fun `audioLinkInfo`(): AudioLinkInfo?
+    
+    /**
      * The device's name as last known, with no traffic, kept as
      * [`DspiCore::cached_input_source_name`] keeps source names. "" when
      * unnamed. Errors: `Unsupported` on firmware without device names;
@@ -5980,6 +6135,42 @@ public interface DspiCoreInterface {
     fun `fetchAll`()
     
     /**
+     * Read `EXT_APPLY_AT_FRAME`: ops pending and how the last one ended.
+     * Errors as [`DspiCore::fetch_audio_link_status`].
+     */
+    fun `fetchApplyAtFrameStatus`(): ApplyAtFrameStatus
+    
+    /**
+     * Read `EXT_LINK_INFO` again and keep it: its delay limits follow the
+     * output latency option, so re-read after changing that. Errors as
+     * [`DspiCore::fetch_audio_link_status`].
+     */
+    fun `fetchAudioLinkInfo`(): AudioLinkInfo
+    
+    /**
+     * Read `EXT_LINK_PHASE`: the phase-lock mode, the fixed delay and the
+     * lock's state. Errors as [`DspiCore::fetch_audio_link_status`].
+     */
+    fun `fetchAudioLinkPhase`(): AudioLinkPhase
+    
+    /**
+     * Read `EXT_LINK_SLOTS`: for each of the 8 matrix inputs, the link slot
+     * it takes, or [`AUDIO_LINK_SLOT_SILENT`]. Errors as
+     * [`DspiCore::fetch_audio_link_status`].
+     */
+    fun `fetchAudioLinkSlots`(): kotlin.ByteArray
+    
+    /**
+     * Read `EXT_LINK_STATUS`: lock state, frame counter, error counters,
+     * clock trim and phase error.
+     *
+     * `Unsupported`, with no traffic, without the link; also when the read
+     * stalls or a DSPi Link hub refuses it. `Disconnected` without a device;
+     * `Transfer` for a short or failed read.
+     */
+    fun `fetchAudioLinkStatus`(): AudioLinkStatus
+    
+    /**
      * The buffer fill levels (%) and their watermarks
      * (`REQ_GET_BUFFER_STATS`, 44 bytes). `spdif` has 4 entries; the first
      * `num_spdif` (at most 4) are live.
@@ -6105,6 +6296,13 @@ public interface DspiCoreInterface {
      * (including a short reply).
      */
     fun `fetchLimiterMeter`(): List<kotlin.Float>
+    
+    /**
+     * Read `EXT_FRAME_COUNTER`: the link frame, the unit's clock and its
+     * output frames at one instant. Errors as
+     * [`DspiCore::fetch_audio_link_status`].
+     */
+    fun `fetchLinkFrameCounter`(): LinkFrameCounter
     
     /**
      * The live outputs' fill for the Stats rows: to frame resolution, on the
@@ -6648,6 +6846,15 @@ public interface DspiCoreInterface {
     fun `openDemo`()
     
     /**
+     * Open the demo device as a unit receiving the audio link (the fake
+     * device's link model, `extension_channel_spec.md` 2.8's example
+     * receiver: locked on L1, 8 channels at 48 kHz, its frame counter
+     * running), for clients and the hub without hardware. Replaces any open
+     * device.
+     */
+    fun `openDemoAudioLink`()
+    
+    /**
      * Adopt a USB device the platform already opened: Android's
      * `UsbDeviceConnection.getFileDescriptor()`. The core `dup(2)`s the fd
      * and owns the duplicate, so the app keeps (and later closes) its own;
@@ -6847,6 +7054,12 @@ public interface DspiCoreInterface {
      * mapped onto this build's layout.
      */
     fun `refreshParams`()
+    
+    /**
+     * `EXT_LINK_STATS_RESET`: clear the link's error and lock counters.
+     * Errors as [`DspiCore::set_audio_link_slots`].
+     */
+    fun `resetAudioLinkStats`()
     
     /**
      * Start the buffer watermarks again from now
@@ -7075,6 +7288,31 @@ public interface DspiCoreInterface {
      * only) or a transfer error.
      */
     fun `setAdatOutPin`(`pin`: kotlin.UByte)
+    
+    /**
+     * Write `EXT_LINK_PHASE`: `mode` 0 (fill servo) or 1 (phase lock), the
+     * fixed delay `d_local` in link frames, and `hops_offset` (normally 0, a
+     * trim of -64..64). A change of mode or delay while phase-locked
+     * re-anchors: 2-6 ms of silence.
+     *
+     * Errors as [`DspiCore::set_audio_link_slots`]; `InvalidArgument` for a
+     * mode above 1 or an offset past 64. `Refused` when the effective delay
+     * is outside the unit's limits ([`DspiCore::fetch_audio_link_info`] has
+     * them as they are now).
+     */
+    fun `setAudioLinkPhase`(`mode`: kotlin.UByte, `dLocal`: kotlin.UShort, `hopsOffset`: kotlin.Short)
+    
+    /**
+     * Write `EXT_LINK_SLOTS`: which link channel (0-63) feeds each of the 8
+     * matrix inputs, [`AUDIO_LINK_SLOT_SILENT`] for none. A channel the
+     * stream does not carry yet plays silence until it does.
+     *
+     * Errors, with no traffic: `Disconnected`; `Unsupported` without the
+     * link; `InvalidArgument` for a length other than 8 or a value from 64
+     * to 254; `ReadOnly`. From the device: `Refused` when it stalls;
+     * `Denied`, `Locked` or `Transfer` from the link.
+     */
+    fun `setAudioLinkSlots`(`slots`: kotlin.ByteArray)
     
     /**
      * Bypass (`true`) or re-enable one band of wire channel `ch`, keeping
@@ -7337,12 +7575,14 @@ public interface DspiCoreInterface {
     fun `setInputRate`(`index`: kotlin.UByte)
     
     /**
-     * Input source: 0 USB, 1 S/PDIF, 2 I2S, 3 ADAT, 4..6 S/PDIF inputs 2..4.
-     * The firmware switches on its main loop and ignores a source that is
-     * not selectable (a disabled S/PDIF input); its notification at the
-     * switch, or a re-read, corrects the mirror.
+     * Input source: 0 USB, 1 S/PDIF, 2 I2S, 3 ADAT, 4..6 S/PDIF inputs 2..4,
+     * 7 the audio link (WP SW1). The firmware switches on its main loop and
+     * ignores a source that is not selectable (a disabled S/PDIF input); its
+     * notification at the switch, or a re-read, corrects the mirror.
      *
-     * Errors: [`DspiError::InvalidArgument`] above 6; the connection and
+     * Errors: [`DspiError::InvalidArgument`] above 7;
+     * [`DspiError::Unsupported`], with no traffic, for 7 on a unit without
+     * the link input (`audio_link_info`'s `link_input`); the connection and
      * transfer errors of every setter.
      */
     fun `setInputSource`(`source`: kotlin.UByte)
@@ -8056,6 +8296,51 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * `EXT_APPLY_AT_FRAME`: run `op` ([`APPLY_OP_MAX`] lists them) on the
+     * samples of link frame `frame`, heard `d_local` frames later on every
+     * phase-locked unit at once; a frame already passed runs at once and
+     * reports "late". Op 0 cancels every pending op (`frame` ignored). The
+     * unit queues up to four.
+     *
+     * Errors as [`DspiCore::set_audio_link_slots`]; `InvalidArgument` for an
+     * op above [`APPLY_OP_MAX`] or an `arg` or `value` outside its range
+     * (unused ones 0; a preset slot 0-9, a master volume of -12800..0
+     * hundredths of a dB, a rate code 0-2, a delay of 0 samples or more).
+     * `Refused` when the queue is full, the link is not locked, or an
+     * output or delay is past the device's.
+     */
+    @Throws(DspiException::class)override fun `applyAtFrame`(`frame`: kotlin.ULong, `op`: kotlin.UByte, `arg`: kotlin.UByte, `value`: kotlin.Short)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_apply_at_frame(
+        it, FfiConverterULong.lower(`frame`),FfiConverterUByte.lower(`op`),FfiConverterUByte.lower(`arg`),FfiConverterShort.lower(`value`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * The unit's audio link as the connect probe found it, without
+     * traffic: `None` when the device has no link (stock firmware, the fork
+     * without it, role 0, a protocol version this build does not speak, or
+     * a hub that refused the read). `Disconnected` without a device.
+     */
+    @Throws(DspiException::class)override fun `audioLinkInfo`(): AudioLinkInfo? {
+            return FfiConverterOptionalTypeAudioLinkInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_audio_link_info(
+        it, _status)
+}
+    }
+    )
+    }
     
 
     
@@ -9316,6 +9601,97 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Read `EXT_APPLY_AT_FRAME`: ops pending and how the last one ended.
+     * Errors as [`DspiCore::fetch_audio_link_status`].
+     */
+    @Throws(DspiException::class)override fun `fetchApplyAtFrameStatus`(): ApplyAtFrameStatus {
+            return FfiConverterTypeApplyAtFrameStatus.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_apply_at_frame_status(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Read `EXT_LINK_INFO` again and keep it: its delay limits follow the
+     * output latency option, so re-read after changing that. Errors as
+     * [`DspiCore::fetch_audio_link_status`].
+     */
+    @Throws(DspiException::class)override fun `fetchAudioLinkInfo`(): AudioLinkInfo {
+            return FfiConverterTypeAudioLinkInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_audio_link_info(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Read `EXT_LINK_PHASE`: the phase-lock mode, the fixed delay and the
+     * lock's state. Errors as [`DspiCore::fetch_audio_link_status`].
+     */
+    @Throws(DspiException::class)override fun `fetchAudioLinkPhase`(): AudioLinkPhase {
+            return FfiConverterTypeAudioLinkPhase.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_audio_link_phase(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Read `EXT_LINK_SLOTS`: for each of the 8 matrix inputs, the link slot
+     * it takes, or [`AUDIO_LINK_SLOT_SILENT`]. Errors as
+     * [`DspiCore::fetch_audio_link_status`].
+     */
+    @Throws(DspiException::class)override fun `fetchAudioLinkSlots`(): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_audio_link_slots(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Read `EXT_LINK_STATUS`: lock state, frame counter, error counters,
+     * clock trim and phase error.
+     *
+     * `Unsupported`, with no traffic, without the link; also when the read
+     * stalls or a DSPi Link hub refuses it. `Disconnected` without a device;
+     * `Transfer` for a short or failed read.
+     */
+    @Throws(DspiException::class)override fun `fetchAudioLinkStatus`(): AudioLinkStatus {
+            return FfiConverterTypeAudioLinkStatus.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_audio_link_status(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * The buffer fill levels (%) and their watermarks
      * (`REQ_GET_BUFFER_STATS`, 44 bytes). `spdif` has 4 entries; the first
      * `num_spdif` (at most 4) are live.
@@ -9564,6 +9940,24 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     callWithPointer {
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_limiter_meter(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Read `EXT_FRAME_COUNTER`: the link frame, the unit's clock and its
+     * output frames at one instant. Errors as
+     * [`DspiCore::fetch_audio_link_status`].
+     */
+    @Throws(DspiException::class)override fun `fetchLinkFrameCounter`(): LinkFrameCounter {
+            return FfiConverterTypeLinkFrameCounter.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_link_frame_counter(
         it, _status)
 }
     }
@@ -10634,6 +11028,25 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Open the demo device as a unit receiving the audio link (the fake
+     * device's link model, `extension_channel_spec.md` 2.8's example
+     * receiver: locked on L1, 8 channels at 48 kHz, its frame counter
+     * running), for clients and the hub without hardware. Replaces any open
+     * device.
+     */
+    @Throws(DspiException::class)override fun `openDemoAudioLink`()
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_open_demo_audio_link(
+        it, _status)
+}
+    }
+    
+    
+
+    
+    /**
      * Adopt a USB device the platform already opened: Android's
      * `UsbDeviceConnection.getFileDescriptor()`. The core `dup(2)`s the fd
      * and owns the duplicate, so the app keeps (and later closes) its own;
@@ -10968,6 +11381,22 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     callWithPointer {
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_refresh_params(
+        it, _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * `EXT_LINK_STATS_RESET`: clear the link's error and lock counters.
+     * Errors as [`DspiCore::set_audio_link_slots`].
+     */
+    @Throws(DspiException::class)override fun `resetAudioLinkStats`()
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_reset_audio_link_stats(
         it, _status)
 }
     }
@@ -11403,6 +11832,51 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_set_adat_out_pin(
         it, FfiConverterUByte.lower(`pin`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Write `EXT_LINK_PHASE`: `mode` 0 (fill servo) or 1 (phase lock), the
+     * fixed delay `d_local` in link frames, and `hops_offset` (normally 0, a
+     * trim of -64..64). A change of mode or delay while phase-locked
+     * re-anchors: 2-6 ms of silence.
+     *
+     * Errors as [`DspiCore::set_audio_link_slots`]; `InvalidArgument` for a
+     * mode above 1 or an offset past 64. `Refused` when the effective delay
+     * is outside the unit's limits ([`DspiCore::fetch_audio_link_info`] has
+     * them as they are now).
+     */
+    @Throws(DspiException::class)override fun `setAudioLinkPhase`(`mode`: kotlin.UByte, `dLocal`: kotlin.UShort, `hopsOffset`: kotlin.Short)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_set_audio_link_phase(
+        it, FfiConverterUByte.lower(`mode`),FfiConverterUShort.lower(`dLocal`),FfiConverterShort.lower(`hopsOffset`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Write `EXT_LINK_SLOTS`: which link channel (0-63) feeds each of the 8
+     * matrix inputs, [`AUDIO_LINK_SLOT_SILENT`] for none. A channel the
+     * stream does not carry yet plays silence until it does.
+     *
+     * Errors, with no traffic: `Disconnected`; `Unsupported` without the
+     * link; `InvalidArgument` for a length other than 8 or a value from 64
+     * to 254; `ReadOnly`. From the device: `Refused` when it stalls;
+     * `Denied`, `Locked` or `Transfer` from the link.
+     */
+    @Throws(DspiException::class)override fun `setAudioLinkSlots`(`slots`: kotlin.ByteArray)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_set_audio_link_slots(
+        it, FfiConverterByteArray.lower(`slots`),_status)
 }
     }
     
@@ -11909,12 +12383,14 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
-     * Input source: 0 USB, 1 S/PDIF, 2 I2S, 3 ADAT, 4..6 S/PDIF inputs 2..4.
-     * The firmware switches on its main loop and ignores a source that is
-     * not selectable (a disabled S/PDIF input); its notification at the
-     * switch, or a re-read, corrects the mirror.
+     * Input source: 0 USB, 1 S/PDIF, 2 I2S, 3 ADAT, 4..6 S/PDIF inputs 2..4,
+     * 7 the audio link (WP SW1). The firmware switches on its main loop and
+     * ignores a source that is not selectable (a disabled S/PDIF input); its
+     * notification at the switch, or a re-read, corrects the mirror.
      *
-     * Errors: [`DspiError::InvalidArgument`] above 6; the connection and
+     * Errors: [`DspiError::InvalidArgument`] above 7;
+     * [`DspiError::Unsupported`], with no traffic, for 7 on a unit without
+     * the link input (`audio_link_info`'s `link_input`); the connection and
      * transfer errors of every setter.
      */
     @Throws(DspiException::class)override fun `setInputSource`(`source`: kotlin.UByte)
@@ -15231,6 +15707,434 @@ public object FfiConverterTypeAdatOutStatus: FfiConverterRustBuffer<AdatOutStatu
 
 
 /**
+ * What `EXT_APPLY_AT_FRAME` reports: the unit's queue of ops.
+ */
+data class ApplyAtFrameStatus (
+    /**
+     * Ops waiting for their frame (at most 4).
+     */
+    var `pending`: kotlin.UByte, 
+    /**
+     * The last op: `cancel_all`, `mute`, `unmute`, `preset_load`,
+     * `master_volume`, `out_delay`, `rate`, `click`, `sync_pulse`.
+     */
+    var `lastOp`: kotlin.String, 
+    /**
+     * Its code.
+     */
+    var `lastOpCode`: kotlin.UByte, 
+    /**
+     * How it ended: `applied`, `late`, `cancelled`, `refused`.
+     */
+    var `lastResult`: kotlin.String, 
+    /**
+     * Its code.
+     */
+    var `lastResultCode`: kotlin.UByte, 
+    /**
+     * The frame it ran at.
+     */
+    var `lastFrame`: kotlin.ULong
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeApplyAtFrameStatus: FfiConverterRustBuffer<ApplyAtFrameStatus> {
+    override fun read(buf: ByteBuffer): ApplyAtFrameStatus {
+        return ApplyAtFrameStatus(
+            FfiConverterUByte.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ApplyAtFrameStatus) = (
+            FfiConverterUByte.allocationSize(value.`pending`) +
+            FfiConverterString.allocationSize(value.`lastOp`) +
+            FfiConverterUByte.allocationSize(value.`lastOpCode`) +
+            FfiConverterString.allocationSize(value.`lastResult`) +
+            FfiConverterUByte.allocationSize(value.`lastResultCode`) +
+            FfiConverterULong.allocationSize(value.`lastFrame`)
+    )
+
+    override fun write(value: ApplyAtFrameStatus, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`pending`, buf)
+            FfiConverterString.write(value.`lastOp`, buf)
+            FfiConverterUByte.write(value.`lastOpCode`, buf)
+            FfiConverterString.write(value.`lastResult`, buf)
+            FfiConverterUByte.write(value.`lastResultCode`, buf)
+            FfiConverterULong.write(value.`lastFrame`, buf)
+    }
+}
+
+
+
+/**
+ * What `EXT_LINK_INFO` reports, read once at connect.
+ */
+data class AudioLinkInfo (
+    /**
+     * `none`, `receiver`, `sender`, `repeater`, `fan_out` or `unknown`.
+     */
+    var `role`: kotlin.String, 
+    /**
+     * The firmware's role code.
+     */
+    var `roleCode`: kotlin.UByte, 
+    /**
+     * The link protocol version the unit speaks.
+     */
+    var `protocolVersion`: kotlin.UByte, 
+    /**
+     * Line-rate classes the unit handles: bit 0 L1, bit 1 L2, bit 2 L3.
+     */
+    var `classMask`: kotlin.UByte, 
+    /**
+     * A sender's link outputs; 1 on a receiver.
+     */
+    var `maxLinks`: kotlin.UByte, 
+    /**
+     * The most channels in a frame the unit decodes.
+     */
+    var `maxChannels`: kotlin.UByte, 
+    /**
+     * Matrix inputs the unit takes from the link (8).
+     */
+    var `slotsPerUnit`: kotlin.UByte, 
+    /**
+     * The receive GPIO, 0xFF for none.
+     */
+    var `rxPin`: kotlin.UByte, 
+    /**
+     * The repeater or sender GPIO, 0xFF for none.
+     */
+    var `txPin`: kotlin.UByte, 
+    /**
+     * The firmware's link feature bits: 0 phase lock, 1 apply at frame, 2
+     * repeater, 3 fan-out, 4 test patterns, 5 LOS pin.
+     */
+    var `featureBits`: kotlin.UInt, 
+    /**
+     * The smallest fixed delay (`d_local + hops_offset`, frames) the unit
+     * accepts under its current output latency option.
+     */
+    var `dLocalMin`: kotlin.UShort, 
+    /**
+     * The largest.
+     */
+    var `dLocalMax`: kotlin.UShort, 
+    /**
+     * Whether the unit takes audio from the link, so input source 7 is the
+     * link input.
+     */
+    var `linkInput`: kotlin.Boolean, 
+    /**
+     * Whether the unit sends link lock, loss and re-anchor events.
+     */
+    var `stateEvents`: kotlin.Boolean, 
+    /**
+     * Whether the unit sends apply-at-frame results.
+     */
+    var `applyEvents`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAudioLinkInfo: FfiConverterRustBuffer<AudioLinkInfo> {
+    override fun read(buf: ByteBuffer): AudioLinkInfo {
+        return AudioLinkInfo(
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AudioLinkInfo) = (
+            FfiConverterString.allocationSize(value.`role`) +
+            FfiConverterUByte.allocationSize(value.`roleCode`) +
+            FfiConverterUByte.allocationSize(value.`protocolVersion`) +
+            FfiConverterUByte.allocationSize(value.`classMask`) +
+            FfiConverterUByte.allocationSize(value.`maxLinks`) +
+            FfiConverterUByte.allocationSize(value.`maxChannels`) +
+            FfiConverterUByte.allocationSize(value.`slotsPerUnit`) +
+            FfiConverterUByte.allocationSize(value.`rxPin`) +
+            FfiConverterUByte.allocationSize(value.`txPin`) +
+            FfiConverterUInt.allocationSize(value.`featureBits`) +
+            FfiConverterUShort.allocationSize(value.`dLocalMin`) +
+            FfiConverterUShort.allocationSize(value.`dLocalMax`) +
+            FfiConverterBoolean.allocationSize(value.`linkInput`) +
+            FfiConverterBoolean.allocationSize(value.`stateEvents`) +
+            FfiConverterBoolean.allocationSize(value.`applyEvents`)
+    )
+
+    override fun write(value: AudioLinkInfo, buf: ByteBuffer) {
+            FfiConverterString.write(value.`role`, buf)
+            FfiConverterUByte.write(value.`roleCode`, buf)
+            FfiConverterUByte.write(value.`protocolVersion`, buf)
+            FfiConverterUByte.write(value.`classMask`, buf)
+            FfiConverterUByte.write(value.`maxLinks`, buf)
+            FfiConverterUByte.write(value.`maxChannels`, buf)
+            FfiConverterUByte.write(value.`slotsPerUnit`, buf)
+            FfiConverterUByte.write(value.`rxPin`, buf)
+            FfiConverterUByte.write(value.`txPin`, buf)
+            FfiConverterUInt.write(value.`featureBits`, buf)
+            FfiConverterUShort.write(value.`dLocalMin`, buf)
+            FfiConverterUShort.write(value.`dLocalMax`, buf)
+            FfiConverterBoolean.write(value.`linkInput`, buf)
+            FfiConverterBoolean.write(value.`stateEvents`, buf)
+            FfiConverterBoolean.write(value.`applyEvents`, buf)
+    }
+}
+
+
+
+/**
+ * What `EXT_LINK_PHASE` reports: the phase-lock mode and the fixed delay.
+ */
+data class AudioLinkPhase (
+    /**
+     * 0 fill servo (as S/PDIF and ADAT), 1 phase lock.
+     */
+    var `mode`: kotlin.UByte, 
+    /**
+     * The unit's fixed delay in link frames (the system's D less its hops).
+     */
+    var `dLocal`: kotlin.UShort, 
+    /**
+     * Normally 0: `d_local` already includes the hops.
+     */
+    var `hopsOffset`: kotlin.Short, 
+    /**
+     * The firmware's phase flags.
+     */
+    var `flags`: kotlin.UByte, 
+    /**
+     * 0 free, 1 anchoring, 2 locked, 3 re-anchor pending.
+     */
+    var `state`: kotlin.UByte
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAudioLinkPhase: FfiConverterRustBuffer<AudioLinkPhase> {
+    override fun read(buf: ByteBuffer): AudioLinkPhase {
+        return AudioLinkPhase(
+            FfiConverterUByte.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterShort.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AudioLinkPhase) = (
+            FfiConverterUByte.allocationSize(value.`mode`) +
+            FfiConverterUShort.allocationSize(value.`dLocal`) +
+            FfiConverterShort.allocationSize(value.`hopsOffset`) +
+            FfiConverterUByte.allocationSize(value.`flags`) +
+            FfiConverterUByte.allocationSize(value.`state`)
+    )
+
+    override fun write(value: AudioLinkPhase, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`mode`, buf)
+            FfiConverterUShort.write(value.`dLocal`, buf)
+            FfiConverterShort.write(value.`hopsOffset`, buf)
+            FfiConverterUByte.write(value.`flags`, buf)
+            FfiConverterUByte.write(value.`state`, buf)
+    }
+}
+
+
+
+/**
+ * What `EXT_LINK_STATUS` reports.
+ */
+data class AudioLinkStatus (
+    /**
+     * `off`, `searching`, `locked`, `holdover` (lost: muted, clock held) or
+     * `unknown`.
+     */
+    var `state`: kotlin.String, 
+    /**
+     * The firmware's state code.
+     */
+    var `stateCode`: kotlin.UByte, 
+    /**
+     * The line-rate class, 1-3 (L1-L3); 0 while unknown.
+     */
+    var `linkClass`: kotlin.UByte, 
+    /**
+     * 0 = 44.1, 1 = 48, 2 = 96 kHz.
+     */
+    var `rateCode`: kotlin.UByte, 
+    /**
+     * Channels in the frame.
+     */
+    var `channels`: kotlin.UByte, 
+    /**
+     * Repeaters between the sender and this unit.
+     */
+    var `hops`: kotlin.UByte, 
+    /**
+     * The LOS input's level, 0xFF without one.
+     */
+    var `losPin`: kotlin.UByte, 
+    /**
+     * The sender's id (the low byte of its serial).
+     */
+    var `senderId`: kotlin.UByte, 
+    /**
+     * The superframe's flags.
+     */
+    var `flags`: kotlin.UByte, 
+    /**
+     * The link frame counter.
+     */
+    var `frame`: kotlin.ULong, 
+    /**
+     * Times the link locked since the counters were cleared.
+     */
+    var `lockCount`: kotlin.UInt, 
+    /**
+     * Times the link was lost.
+     */
+    var `lossCount`: kotlin.UInt, 
+    /**
+     * Frame header check errors.
+     */
+    var `crc8Errors`: kotlin.UInt, 
+    /**
+     * Audio bank check errors.
+     */
+    var `crc16Errors`: kotlin.UInt, 
+    /**
+     * Bit slips.
+     */
+    var `bitSlips`: kotlin.UInt, 
+    /**
+     * Superframe check errors.
+     */
+    var `superframeErrors`: kotlin.UInt, 
+    /**
+     * The clock trim, ppm.
+     */
+    var `vcxoPpm`: kotlin.Float, 
+    /**
+     * The phase error, frames (phase lock).
+     */
+    var `phaseErrorFrames`: kotlin.Float, 
+    /**
+     * The output ring's fill, frames.
+     */
+    var `fillFrames`: kotlin.UShort
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAudioLinkStatus: FfiConverterRustBuffer<AudioLinkStatus> {
+    override fun read(buf: ByteBuffer): AudioLinkStatus {
+        return AudioLinkStatus(
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterUShort.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AudioLinkStatus) = (
+            FfiConverterString.allocationSize(value.`state`) +
+            FfiConverterUByte.allocationSize(value.`stateCode`) +
+            FfiConverterUByte.allocationSize(value.`linkClass`) +
+            FfiConverterUByte.allocationSize(value.`rateCode`) +
+            FfiConverterUByte.allocationSize(value.`channels`) +
+            FfiConverterUByte.allocationSize(value.`hops`) +
+            FfiConverterUByte.allocationSize(value.`losPin`) +
+            FfiConverterUByte.allocationSize(value.`senderId`) +
+            FfiConverterUByte.allocationSize(value.`flags`) +
+            FfiConverterULong.allocationSize(value.`frame`) +
+            FfiConverterUInt.allocationSize(value.`lockCount`) +
+            FfiConverterUInt.allocationSize(value.`lossCount`) +
+            FfiConverterUInt.allocationSize(value.`crc8Errors`) +
+            FfiConverterUInt.allocationSize(value.`crc16Errors`) +
+            FfiConverterUInt.allocationSize(value.`bitSlips`) +
+            FfiConverterUInt.allocationSize(value.`superframeErrors`) +
+            FfiConverterFloat.allocationSize(value.`vcxoPpm`) +
+            FfiConverterFloat.allocationSize(value.`phaseErrorFrames`) +
+            FfiConverterUShort.allocationSize(value.`fillFrames`)
+    )
+
+    override fun write(value: AudioLinkStatus, buf: ByteBuffer) {
+            FfiConverterString.write(value.`state`, buf)
+            FfiConverterUByte.write(value.`stateCode`, buf)
+            FfiConverterUByte.write(value.`linkClass`, buf)
+            FfiConverterUByte.write(value.`rateCode`, buf)
+            FfiConverterUByte.write(value.`channels`, buf)
+            FfiConverterUByte.write(value.`hops`, buf)
+            FfiConverterUByte.write(value.`losPin`, buf)
+            FfiConverterUByte.write(value.`senderId`, buf)
+            FfiConverterUByte.write(value.`flags`, buf)
+            FfiConverterULong.write(value.`frame`, buf)
+            FfiConverterUInt.write(value.`lockCount`, buf)
+            FfiConverterUInt.write(value.`lossCount`, buf)
+            FfiConverterUInt.write(value.`crc8Errors`, buf)
+            FfiConverterUInt.write(value.`crc16Errors`, buf)
+            FfiConverterUInt.write(value.`bitSlips`, buf)
+            FfiConverterUInt.write(value.`superframeErrors`, buf)
+            FfiConverterFloat.write(value.`vcxoPpm`, buf)
+            FfiConverterFloat.write(value.`phaseErrorFrames`, buf)
+            FfiConverterUShort.write(value.`fillFrames`, buf)
+    }
+}
+
+
+
+/**
  * What the "Update Database" dialog shows about the database in place.
  */
 data class AutoEqDatabaseInfo (
@@ -17985,6 +18889,54 @@ public object FfiConverterTypeLinkDevice: FfiConverterRustBuffer<LinkDevice> {
             FfiConverterString.write(value.`state`, buf)
             FfiConverterString.write(value.`link`, buf)
             FfiConverterUInt.write(value.`lockedBy`, buf)
+    }
+}
+
+
+
+/**
+ * What `EXT_FRAME_COUNTER` reports.
+ */
+data class LinkFrameCounter (
+    /**
+     * The link frame at the read.
+     */
+    var `frame`: kotlin.ULong, 
+    /**
+     * The unit's clock at the read, µs (wraps).
+     */
+    var `timeUs`: kotlin.UInt, 
+    /**
+     * Output frames played, low 32 bits.
+     */
+    var `outputFrames`: kotlin.UInt
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLinkFrameCounter: FfiConverterRustBuffer<LinkFrameCounter> {
+    override fun read(buf: ByteBuffer): LinkFrameCounter {
+        return LinkFrameCounter(
+            FfiConverterULong.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LinkFrameCounter) = (
+            FfiConverterULong.allocationSize(value.`frame`) +
+            FfiConverterUInt.allocationSize(value.`timeUs`) +
+            FfiConverterUInt.allocationSize(value.`outputFrames`)
+    )
+
+    override fun write(value: LinkFrameCounter, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`frame`, buf)
+            FfiConverterUInt.write(value.`timeUs`, buf)
+            FfiConverterUInt.write(value.`outputFrames`, buf)
     }
 }
 
@@ -22513,6 +23465,38 @@ public object FfiConverterOptionalTypeRtaListener: FfiConverterRustBuffer<RtaLis
         } else {
             buf.put(1)
             FfiConverterTypeRtaListener.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeAudioLinkInfo: FfiConverterRustBuffer<AudioLinkInfo?> {
+    override fun read(buf: ByteBuffer): AudioLinkInfo? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeAudioLinkInfo.read(buf)
+    }
+
+    override fun allocationSize(value: AudioLinkInfo?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeAudioLinkInfo.allocationSize(value)
+        }
+    }
+
+    override fun write(value: AudioLinkInfo?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeAudioLinkInfo.write(value, buf)
         }
     }
 }

@@ -2057,6 +2057,233 @@ data class UsbErrorStats(
 )
 
 /**
+ * What `EXT_LINK_INFO` reports, read once at connect.
+ */
+data class AudioLinkInfo(
+    /**
+     * `none`, `receiver`, `sender`, `repeater`, `fan_out` or `unknown`.
+     */
+    val role: String,
+    /**
+     * The firmware's role code.
+     */
+    val roleCode: Int,
+    /**
+     * The link protocol version the unit speaks.
+     */
+    val protocolVersion: Int,
+    /**
+     * Line-rate classes the unit handles: bit 0 L1, bit 1 L2, bit 2 L3.
+     */
+    val classMask: Int,
+    /**
+     * A sender's link outputs; 1 on a receiver.
+     */
+    val maxLinks: Int,
+    /**
+     * The most channels in a frame the unit decodes.
+     */
+    val maxChannels: Int,
+    /**
+     * Matrix inputs the unit takes from the link (8).
+     */
+    val slotsPerUnit: Int,
+    /**
+     * The receive GPIO, 0xFF for none.
+     */
+    val rxPin: Int,
+    /**
+     * The repeater or sender GPIO, 0xFF for none.
+     */
+    val txPin: Int,
+    /**
+     * The firmware's link feature bits: 0 phase lock, 1 apply at frame, 2
+     * repeater, 3 fan-out, 4 test patterns, 5 LOS pin.
+     */
+    val featureBits: Long,
+    /**
+     * The smallest fixed delay (`d_local + hops_offset`, frames) the unit
+     * accepts under its current output latency option.
+     */
+    val dLocalMin: Int,
+    /**
+     * The largest.
+     */
+    val dLocalMax: Int,
+    /**
+     * Whether the unit takes audio from the link, so input source 7 is the
+     * link input.
+     */
+    val linkInput: Boolean,
+    /**
+     * Whether the unit sends link lock, loss and re-anchor events.
+     */
+    val stateEvents: Boolean,
+    /**
+     * Whether the unit sends apply-at-frame results.
+     */
+    val applyEvents: Boolean,
+)
+
+/**
+ * What `EXT_LINK_STATUS` reports.
+ */
+data class AudioLinkStatus(
+    /**
+     * `off`, `searching`, `locked`, `holdover` (lost: muted, clock held) or
+     * `unknown`.
+     */
+    val state: String,
+    /**
+     * The firmware's state code.
+     */
+    val stateCode: Int,
+    /**
+     * The line-rate class, 1-3 (L1-L3); 0 while unknown.
+     */
+    val linkClass: Int,
+    /**
+     * 0 = 44.1, 1 = 48, 2 = 96 kHz.
+     */
+    val rateCode: Int,
+    /**
+     * Channels in the frame.
+     */
+    val channels: Int,
+    /**
+     * Repeaters between the sender and this unit.
+     */
+    val hops: Int,
+    /**
+     * The LOS input's level, 0xFF without one.
+     */
+    val losPin: Int,
+    /**
+     * The sender's id (the low byte of its serial).
+     */
+    val senderId: Int,
+    /**
+     * The superframe's flags.
+     */
+    val flags: Int,
+    /**
+     * The link frame counter.
+     */
+    val frame: Long,
+    /**
+     * Times the link locked since the counters were cleared.
+     */
+    val lockCount: Long,
+    /**
+     * Times the link was lost.
+     */
+    val lossCount: Long,
+    /**
+     * Frame header check errors.
+     */
+    val crc8Errors: Long,
+    /**
+     * Audio bank check errors.
+     */
+    val crc16Errors: Long,
+    /**
+     * Bit slips.
+     */
+    val bitSlips: Long,
+    /**
+     * Superframe check errors.
+     */
+    val superframeErrors: Long,
+    /**
+     * The clock trim, ppm.
+     */
+    val vcxoPpm: Float,
+    /**
+     * The phase error, frames (phase lock).
+     */
+    val phaseErrorFrames: Float,
+    /**
+     * The output ring's fill, frames.
+     */
+    val fillFrames: Int,
+)
+
+/**
+ * What `EXT_LINK_PHASE` reports: the phase-lock mode and the fixed delay.
+ */
+data class AudioLinkPhase(
+    /**
+     * 0 fill servo (as S/PDIF and ADAT), 1 phase lock.
+     */
+    val mode: Int,
+    /**
+     * The unit's fixed delay in link frames (the system's D less its hops).
+     */
+    val dLocal: Int,
+    /**
+     * Normally 0: `d_local` already includes the hops.
+     */
+    val hopsOffset: Int,
+    /**
+     * The firmware's phase flags.
+     */
+    val flags: Int,
+    /**
+     * 0 free, 1 anchoring, 2 locked, 3 re-anchor pending.
+     */
+    val state: Int,
+)
+
+/**
+ * What `EXT_FRAME_COUNTER` reports.
+ */
+data class LinkFrameCounter(
+    /**
+     * The link frame at the read.
+     */
+    val frame: Long,
+    /**
+     * The unit's clock at the read, µs (wraps).
+     */
+    val timeUs: Long,
+    /**
+     * Output frames played, low 32 bits.
+     */
+    val outputFrames: Long,
+)
+
+/**
+ * What `EXT_APPLY_AT_FRAME` reports: the unit's queue of ops.
+ */
+data class ApplyAtFrameStatus(
+    /**
+     * Ops waiting for their frame (at most 4).
+     */
+    val pending: Int,
+    /**
+     * The last op: `cancel_all`, `mute`, `unmute`, `preset_load`,
+     * `master_volume`, `out_delay`, `rate`, `click`, `sync_pulse`.
+     */
+    val lastOp: String,
+    /**
+     * Its code.
+     */
+    val lastOpCode: Int,
+    /**
+     * How it ended: `applied`, `late`, `cancelled`, `refused`.
+     */
+    val lastResult: String,
+    /**
+     * Its code.
+     */
+    val lastResultCode: Int,
+    /**
+     * The frame it ran at.
+     */
+    val lastFrame: Long,
+)
+
+/**
  * One GET the host is asked to make.
  */
 data class AutoEqFetchRequest(
