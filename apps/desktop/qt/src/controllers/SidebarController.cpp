@@ -390,7 +390,8 @@ void SidebarController::pasteChannel(int channel) {
             for (int b = 0; b < cb.crossover.size(); ++b)
                 ok = dspi_set_crossover(c, uint8_t(channel), uint8_t(b), cb.crossover.at(b)) && ok;
             ok = dspi_set_output_gain(c, uint8_t(output), cb.gainDb) && ok;
-            ok = dspi_set_output_delay(c, uint8_t(output), cb.delayMs) && ok;
+            // -- WP QP16 -- a delay past this device's line is held at the line (behaviour.md §15)
+            ok = dspi_set_output_delay(c, uint8_t(output), qMin(cb.delayMs, dspi_max_delay_ms(c))) && ok;
             ok = dspi_set_output_mute(c, uint8_t(output), cb.muted) && ok;
         }
         return ok;

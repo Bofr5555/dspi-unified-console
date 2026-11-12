@@ -4685,6 +4685,16 @@ uint32_t dspi_wire_features(struct FfiCore *core);
 bool dspi_feature_present(struct FfiCore *core, const char *name);
 
 /**
+ * The last call that failed on the calling thread, as its failure reply
+ * (`{ok: false, code, error}`: the core's own sentence), or `{ok: true}`
+ * when none failed since the last take. It is taken (cleared) only when the
+ * reply fits in `len`. For a client that wants the reason after a `bool`
+ * setter returned false: take it once before the call to clear an older one,
+ * then again after. Takes no handle; never fails.
+ */
+uint32_t dspi_take_failure(char *buf, uint32_t len);
+
+/**
  * The output latency the device reports, in JSON: `{ok, raw, fields}`.
  */
 uint32_t dspi_fetch_output_latency(struct FfiCore *core, char *buf, uint32_t len);
