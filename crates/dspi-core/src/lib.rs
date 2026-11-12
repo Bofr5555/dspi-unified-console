@@ -367,6 +367,14 @@ pub(crate) struct Connection {
     /// The last change another writer made, for undo's foreign-change rule
     /// (`journal::ForeignChange`). On the connection, as its journal is.
     pub(crate) last_foreign: Option<journal::ForeignWrite>,
+    // -- WP BULKFIX -- (fixup bf F1, F2, F4)
+    /// The bulk dB bug's state on this connection: whether the firmware has
+    /// the fix, and which outputs may hold the series' gains behind their
+    /// mute. Its transport is wrapped by it, so every unmute is checked.
+    pub(crate) gain_guard: dspi_session::bulk_gain::GainGuard,
+    /// The last bulk write left the device with its outputs muted (its
+    /// repair failed after the muted image was sent).
+    pub(crate) bulk_left_muted: bool,
 }
 
 /// A remote device reached without the [`Inner`] lock (WP C15).
@@ -450,6 +458,8 @@ impl Connection {
     pub(crate) fn new(transport: Box<dyn Transport>, serial: String, vid: u16) -> Self {
         let caps = transport.caps();
         let session_id = transport.session_id();
+        // -- WP BULKFIX --
+        let (transport, gain_guard) = dspi_session::bulk_gain::GainGuard::wrap(transport, false);
         Self {
             link: Wire::Raw(transport),
             serial,
@@ -478,6 +488,9 @@ impl Connection {
             pending_probe: None,
             // -- WP P0W --
             last_foreign: None,
+            // -- WP BULKFIX --
+            gain_guard,
+            bulk_left_muted: false,
         }
     }
 
@@ -916,6 +929,8 @@ impl DspiCore {
 
         let conn_caps = transport.caps();
         let session_id = transport.session_id();
+        // -- WP BULKFIX --
+        let (transport, gain_guard) = dspi_session::bulk_gain::GainGuard::wrap(transport, false);
         let mut session = Session::new(transport, caps).ok_or(DspiError::InvalidArgument {
             msg: "the device reported an impossible channel layout".into(),
         })?;
@@ -931,6 +946,20 @@ impl DspiCore {
         // The firmware's own word on bulk echoes; without it, the time window.
         conn.echo.set_bulk_source(ext.bulk_source());
         conn.ext = ext;
+        // -- WP BULKFIX -- Outputs muted now may be a cut-short repair's.
+        conn.gain_guard = gain_guard;
+        let muted = dspi_proto::bulk_gain::muted_mask(
+            image.packet.as_bytes(),
+            usize::from(mirror.num_output_channels),
+        );
+        if pending.is_some() {
+            conn.gain_guard.suspect(muted);
+        } else {
+            let supported = conn.ext.supported.clone();
+            let guard = conn.gain_guard.clone();
+            let fixed = guard.fixed(conn.transport(), Some(&supported));
+            guard.seed(fixed, muted);
+        }
         // Without the platform reply the mirror lacks the firmware identity:
         // let `fetch_all` read everything again.
         conn.fresh_image = platform_known;

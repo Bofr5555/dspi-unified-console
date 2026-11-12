@@ -6,6 +6,8 @@
 // -- WP CG15 --
 pub mod about;
 pub mod autoeq;
+// -- WP BULKFIX --
+pub mod bulk_gain;
 pub mod clipboard;
 pub mod compat;
 pub mod cs_model;

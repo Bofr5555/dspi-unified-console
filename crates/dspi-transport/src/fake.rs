@@ -127,6 +127,9 @@ mod surfaces;
 pub use surfaces::{SurfaceSeed, surface_seed};
 // -- WP QD6 --
 mod wire_images;
+// -- WP BULKFIX --
+mod bulk_db;
+pub use bulk_db::{BulkDbDevice, BulkDbOptions, GainProbe};
 
 use crate::{
     DeviceDescriptor, NotificationSource, Result, Transport, TransportCaps, TransportError,
