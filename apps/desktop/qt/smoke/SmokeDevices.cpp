@@ -213,8 +213,10 @@ void devicesSection(SmokeDriver &d) {
     // -- WP QPI1 -- the device line in the sidebar carries it
     QQuickItem *statusButton = d.item(QStringLiteral("DeviceStatus.button"));
     QQuickItem *statusText = d.item(QStringLiteral("DeviceStatus.text"));
-    d.check("qpi1: the device line's tooltip is the hub session's",
-            statusButton && statusButton->property("tip").toString() == link->sessionTip());
+    // DeviceModel.remote reaches QML with the hub device's first snapshot
+    d.check("qpi1: the device line's tooltip is the hub session's", d.waitFor(3000, [&] {
+        return statusButton && statusButton->property("tip").toString() == link->sessionTip();
+    }));
     d.check("qp13: marked open, and the demo is not", d.waitFor(1000, [&] {
         return (hubRow = row("DevicesPopup.hubDevice.", serial)) && hubRow->property("current").toBool() && !demoRow->property("current").toBool();
     }));
