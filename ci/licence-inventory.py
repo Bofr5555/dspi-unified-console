@@ -69,8 +69,8 @@ IOS_TARGET = "DSPi Console iOS"
 # these when CG3 and SW1 give the iOS build its own features.
 CARGO_SELECT = "-p dspi-ffi --no-default-features --target aarch64-apple-ios --locked"
 
-# The old core dspi-core was ported from: Weeb Labs' Console-Linux core, deleted
-# from the tree by WP Q3 and still in history here.
+# The older desktop core, deleted from the tree by WP Q3 and still in history here;
+# the "old core" column measures how much of a file still matches it.
 OLD_CORE = ("d190535", "crates/dspi-core-linux/src")
 FIRMWARE_TAG = "v1.1.6"
 
@@ -90,9 +90,10 @@ KNOWN_HOLDERS = (WEEB_LABS, OWNER)
 CRATE_ORIGINS = {
     "dspi-core": (
         [WEEB_LABS],
-        "Written in the core merge with Weeb Labs' Console-Linux core as its input "
-        f"(`git show {OLD_CORE[0]}:{OLD_CORE[1]}`). Blame shows only the porter, so "
-        "Weeb Labs is added here whatever a file's blame says.",
+        "Bofr5555's, from the core merge; its records, constants, curves, files, presets "
+        "and monitor were written anew in WP CLEAN1 from dspi-proto, the firmware headers "
+        "and the macOS Console. Its behaviour and texts follow DSPi-Terminal and the macOS "
+        "Console, so Weeb Labs is listed whatever a file's blame says.",
     ),
     "dspi-link": (
         [WEEB_LABS],

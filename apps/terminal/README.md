@@ -248,5 +248,8 @@ in the interface without a refresh, with a note saying who changed it.
 
 ## Licence
 
-The workspace's licence field is GPL-3.0-or-later. What is settled and what is
-still open is in the root [`README.md`](../../README.md), Licensing.
+DRAFT, pending the owner's approval: the program as a whole is distributed under
+the GNU GPL version 3; Bofr5555's own additions, and DSPi-Terminal's parts, are
+GPL-3.0-or-later (Bofr5555's with three section 7 terms). `NOTICE.md`, beside
+this file in a release archive, is the statement; `uconsole --license` prints it
+and `uconsole --third-party-licences` the Rust crates' licence texts.

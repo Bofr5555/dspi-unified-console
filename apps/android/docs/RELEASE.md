@@ -10,15 +10,15 @@ each step.
 
 ## 0. Licensing and name: status
 
-Settled with Weeb Labs (2026-11-02): the app may be published; the
-DSPi-Console-Linux core and the consoles are MIT per the author (the core's
-LICENSE file is still pending upstream — keep the written OK until it lands;
-GitHub currently shows the macOS DSPi-Console repo as GPL-3.0, which the app
-satisfies either way).
+Weeb Labs agreed on 2026-11-02 that the app may be published.
 
-The app is **GPL-3.0 with additional terms** (`LICENSE`, `NOTICE.md`):
-attributions kept, modified versions marked and renamed, no trademark rights to
-"DSPi" / the icon (GPL-3.0 §7 b, c, e). That does not forbid paid or ad-filled
+**DRAFT** (the statement is the project's `NOTICE.md`, pending the owner's
+approval): the app as a whole is distributed under **GPL-3.0**, as it combines
+Weeb Labs' GPL-3.0 parts (the macOS and Windows consoles' ports, the firmware
+images) with Bofr5555's own additions, which are **GPL-3.0-or-later with
+additional terms** (`LICENSE`, `NOTICE.md`): attributions kept, modified versions
+marked and renamed, no trademark rights to "DSPi" / the icon (GPL-3.0 §7 b, c, e).
+Each release is published with its source archive (`ci/release-source.sh`). That does not forbid paid or ad-filled
 copies — the GPL allows charging — but such copies must publish their source,
 cannot use the name or icon, and a copy that does can be reported to Google
 Play (impersonation / IP complaint).

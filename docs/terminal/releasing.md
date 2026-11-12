@@ -58,8 +58,8 @@ what the app was talking to than an app version ever could.
 
 Every release publishes, beside its downloads, the source archive of the exact commit it
 was built from: `ci/release-source.sh VERSION dist` writes
-`dspi-uconsole-VERSION-source.tar.gz` (a `git archive`, without `apps/desktop` while the
-Qt app is not released). The notices of every non-Qt artifact point at that file.
+`dspi-uconsole-VERSION-source.tar.gz` (a `git archive`, without `apps/desktop` but its shared
+`packaging/licences/` while the Qt app is not released; `--with-desktop` for a Qt release). The notices of every non-Qt artifact point at that file.
 
 A Terminal archive comes from a release build of `-p dspi-term`:
 `ci/release-terminal.sh target/release/uconsole linux-x86_64 VERSION dist`. It holds the

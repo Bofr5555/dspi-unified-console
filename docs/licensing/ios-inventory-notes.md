@@ -1,6 +1,6 @@
 ## 8. Notes read by hand
 
-*Written by the LC1 agent and included as is by the generator. Facts with where they came from; not legal text. Dated 2026-11-06: re-read them when the numbers above change.*
+*DRAFT where it states licences (`NOTICE.md` is the statement). Written by the LC1 agent and included as is by the generator. Facts with where they came from; not legal text. Dated 2026-11-06: re-read them when the numbers above change.*
 
 ### What cannot go in on a GPL grant alone
 
@@ -37,15 +37,14 @@ Read 2026-11-06 at the commits named. Authors are the full history of those clon
 | DSPi-Console (`release/v1.1.6`, fork `48cf7c5`) | **`LICENSE` is GPL-3.0; `README.md:5` badge and `:2066` say MIT.** `LICENSE` changed in `5c823ee`, 2026-02-05, by Weeb Labs: "License updated to GPL v3"; the README was not. Weeb Labs told the owner MIT | Weeb Labs, Jonathan Rosser (2), owner on the fork (31) | **Yes, the Swift half** |
 | DSPi firmware (`v1.1.6` = `9ffce34`) | GPL-3.0 (`LICENSE`, README); LUFA and pico-extras have their own files, pico-sdk is a submodule | Weeb Labs, Jonathan Rosser (17), Jeremy Blencowe (1), Tim Prangenberg (1); on `bofr-main` also the owner (20) | Images until SW18; headers as constants |
 | DSPi-Terminal (`8389b20`) | `GPL-3.0-or-later` in `Cargo.toml` and README; **no `LICENSE` file** | Weeb Labs only | **Yes:** `dspi-proto`, `-session`, `-transport` |
-| DSPi-Console-Linux (`4683a2c`) | **No licence anywhere.** Android's `NOTICE.md`: "MIT (per Weeb Labs; licence file pending upstream)". This repo's workspace field calls its port GPL-3.0-or-later on the working assumption alone | Weeb Labs only | **Yes, as the input to `dspi-core`** |
 | DSPi-Console-Windows (`9f65fd0`) | **No `LICENSE` file;** README says GPL-3.0 | Weeb Labs only | No |
 | DSPi-Link (`05949b8`, shallow) | MIT (`LICENSE`, Copyright (c) 2026 Weeb Labs) | Weeb Labs at the tip | Yes: spec behind `dspi-link`, `commands.json`, web bundle |
 | `dspi-android` (`63492af`) | GPL-3.0 with §7 terms by Bofr5555 (`LICENSE`, `NOTICE.md`). Its Rust workspace field says **`UNLICENSED`** | Owner only | Yes: `dspi-link` came from here. Its Kotlin does not |
-| `dspi-unified-console` | Root `LICENSE` GPL-3.0; workspace field `GPL-3.0-or-later`, the owner's working assumption. No §7 terms | Weeb Labs, owner | **Yes** |
+| `dspi-unified-console` | Root `LICENSE` GPL-3.0. DRAFT statement (`NOTICE.md`, WP CLEAN1): the program as a whole is distributed under GPL-3.0; Bofr5555's own additions are GPL-3.0-or-later with three §7 terms, which is what the workspace field `GPL-3.0-or-later` describes | Weeb Labs, owner | **Yes** |
 | sigman78 web console, dspictl (shallow) | MIT | Tips by SiGMan, Steffen Uhlig | No |
 | DSPi-ESP32-Front-Panel, DSPiCliRemote (shallow) | No licence | Not checked beyond the tip | No: do not copy |
 
-**Weeb Labs' earlier statement.** The owner's working memory records, dated 2026-11-02: "core + consoles MIT per author; core LICENSE file pending upstream", when Weeb Labs agreed to the Android app being published. The same entry notes that GitHub shows the macOS Console as GPL-3.0. This is that record of what was said, **not a licence file**: no tree read here carries such a grant, and it does not settle the Console's `LICENSE` against its README.
+**Weeb Labs' agreement.** On 2026-11-02 Weeb Labs agreed to the Android app being published. The project relies on licence files only: the macOS Console's `LICENSE` (GPL-3.0), the firmware's (GPL-3.0), DSPi-Link's (MIT) and DSPi-Terminal's manifests (GPL-3.0-or-later). The project's own statement is `NOTICE.md` (DRAFT).
 
 **The metadata fix for `dspi-link`.** Its manifest now inherits the workspace's `GPL-3.0-or-later`, which is what this repo says and what the plan's entry asks for. Android's words are "version 3" with §7 terms and that crate's old workspace said `UNLICENSED`. The owner is its only author by git, and the coordinator relays the owner's confirmation of the field, 2026-11-06: "gpl3 seems to only be an issue on ios". Nothing relayed covers the absence of the §7 terms here. Its MIT origin (spec, policy, fixtures) is recorded in the manifest.
 

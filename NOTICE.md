@@ -52,7 +52,9 @@ of `uconsole`). The desktop packages carry it in `NOTICE.txt` and `LICENSES/TERM
 
 The complete source code of each release is published with it, as the file ending in -source.tar.gz beside its
 downloads. `ci/release-source.sh` makes it: a `git archive` of the exact commit the
-release was built from (the Qt desktop app's `apps/desktop` left out while that app is not released), named
+release was built from (the Qt desktop app's `apps/desktop` left out while that app is not released, apart from
+`apps/desktop/packaging/licences/`, which builds the Swift app's notices; `--with-desktop` writes a Qt release's
+archive with all of it), named
 `dspi-uconsole-<version>-source.tar.gz`. Every non-Qt artifact of a release (the Terminal archives, the web console,
 the Android packages, the Swift app) is published with it, and their notices point at it rather than at this
 repository.

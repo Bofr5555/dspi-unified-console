@@ -8,10 +8,11 @@ and a Rust DSPi Link hub.
 [DSPi](https://github.com/WeebLabs/DSPi) is Weeb Labs' open-source DSP firmware
 for the Raspberry Pi Pico and Pico 2. Weeb Labs also wrote the original DSPi
 Consoles (macOS in Swift, Windows in C#, Linux in Qt), DSPi-Terminal and DSPi
-Link. This repository grew from those: the core comes from DSPi-Terminal's crates
-and the Linux console's Rust core, the Qt app from DSPi-Console-Linux, the Swift
-app from a fork of the macOS DSPi Console, and the Android app and the Rust Link
-client from Bofr5555's Android console ([Credits](#credits)). The clients talk to
+Link. This repository grew from that work: the core is built on DSPi-Terminal's
+crates and follows the macOS DSPi Console's behaviour, the Swift app is a fork of
+the macOS DSPi Console, and the Android app and the Rust Link client come from
+Bofr5555's Android console ([Credits](#credits)). The Qt app is being ported
+again from the macOS console and is not released at present. The clients talk to
 stock Weeb Labs firmware, and to the extension channel of Bofr5555's firmware
 fork where it is present ([The core](#the-core)).
 
@@ -197,8 +198,8 @@ is in [`docs/core-merge/PLAN.md`](docs/core-merge/PLAN.md); platform notes are i
 
 ## Credits
 
-Everything here builds on Weeb Labs' work: DSPi, the DSPi firmware, the DSPi
-Consoles, DSPi-Terminal and DSPi-Link. The core merge, the Android console, the
+Everything here builds on Weeb Labs' work: DSPi, the DSPi firmware, DSPi Console
+for macOS and for Windows, DSPi-Terminal and DSPi-Link. The core merge, the Android console, the
 Rust Link client and the unified console are Bofr5555's. The full list, the
 same one every client's About page shows, is
 [`assets/about.json`](assets/about.json) (a draft until the owner approves it);
@@ -210,7 +211,6 @@ The imports, with history (each upstream's paths rewritten with
 
 | Component | Upstream | Commit imported |
 |---|---|---|
-| `apps/desktop/`, and the old core since merged into `crates/dspi-core` and `dspi-capi` | WeebLabs/DSPi-Console-Linux `main` | `4683a2c` |
 | `apps/terminal/`, `crates/dspi-{proto,transport,session,cmd,tui}`, `xtask/`, `tests/fixtures/*.txt` | WeebLabs/DSPi-Terminal `main` | `8389b20` |
 | `crates/dspi-link/`, `apps/android/` | Bofr5555's Android console (`dspi-android`) `main` | `63492af` |
 | `apps/apple/` | Bofr5555's fork of the macOS DSPi Console, branch `ext-channel-116` | `48cf7c5` |
@@ -218,26 +218,30 @@ The imports, with history (each upstream's paths rewritten with
 
 ## Licensing
 
-**The project's licence statement is [`NOTICE.md`](NOTICE.md)** (WP LIC1, pending
-the owner's approval of its wording): `GPL-3.0-or-later` (owner, 2026-11-08) with
-three additional terms under GPL version 3 section 7 (attributions, modified
-versions marked, no trademark rights), which apply to the material Bofr5555
-added and to every client. `LICENSE` holds the GPL version 3 text, as usual for
-"or later", and the workspace's licence field says `GPL-3.0-or-later`. Every
-client shows the notice and the terms in its About. Final terms for Weeb Labs'
-parts are open between the owner and Weeb Labs. This table says what is known;
-it is not legal text.
+> **DRAFT.** Not legal text: the statement is [`NOTICE.md`](NOTICE.md), pending the
+> owner's approval. This section only summarises it.
 
-| Component | What applies now | Open point |
-|---|---|---|
-| DSPi-Terminal parts and what grew from them (`apps/terminal/`, `crates/dspi-proto`, `dspi-transport`, `dspi-session`, `dspi-cmd`, `dspi-tui`, `xtask/`) | GPL-3.0-or-later, stated in upstream's manifests and README | Upstream has no LICENSE file. `xtask` has no licence field. |
-| DSPi-Console-Linux parts and their ports (`apps/desktop/`, `crates/dspi-core`, `dspi-capi`) | GPL-3.0-or-later here, as the working assumption | **Upstream has no licence file and no licence field.** The Android console's `NOTICE.md` records "MIT per Weeb Labs, file pending". To be confirmed by Weeb Labs. |
-| `crates/dspi-ffi` | GPL-3.0-or-later (the workspace field) | New here, over the parts above. |
-| `crates/dspi-link/` | GPL-3.0-or-later (Bofr5555; confirmed by the owner), the workspace field | Its old workspace said `UNLICENSED`. |
-| `tests/fixtures/link/` | MIT, Weeb Labs | `LICENSE.DSPi-Link` next to the files. |
-| Vendored firmware headers (`crates/dspi-proto/firmware/`) and bundled firmware images (`apps/desktop/qt/firmware/*.uf2`) | GPL-3.0 (DSPi firmware) | |
-| AutoEQ database (`apps/desktop/qt/autoeq/`, `crates/dspi-session/autoeq/`) | MIT (AutoEq measurements, jaakkopasanen/AutoEq), as recorded | Upstream terms to be read (client plan LC1). |
-| Parts ported from Weeb Labs' DSPi Console for macOS (`apps/apple/`, and the UI, behaviour and texts other clients port from it) | GPL-3.0: its `LICENSE` says GPL-3.0, without "or later" | Open, for the owner and Weeb Labs: how that fits the project's GPL-3.0-or-later statement. |
+The program as a whole is distributed under the **GNU GPL version 3**: it combines
+Weeb Labs' parts under GPL-3.0 (the DSPi firmware, DSPi Console for macOS, DSPi
+Console for Windows) or GPL-3.0-or-later (DSPi-Terminal), DSPi-Link under MIT, and
+Bofr5555's own additions, which are licensed **GPL-3.0-or-later with three
+additional terms** under GPL version 3 section 7 (attributions kept, modified
+versions marked, no trademark rights). `LICENSE` holds the GPL version 3 text; the
+workspace's licence field, `GPL-3.0-or-later`, is the licence of Bofr5555's own
+additions. Every client shows the notice and the terms in its About, and every
+release is published with the source archive of the commit it was built from
+(`ci/release-source.sh`).
+
+| Component | What applies |
+|---|---|
+| Bofr5555's additions: the core merge (`crates/dspi-core`, `dspi-capi`, `dspi-ffi`, `dspi-hub`, `dspi-wasm`), the Android console, the Rust Link client (`crates/dspi-link`), the web console | GPL-3.0-or-later with the section 7 terms |
+| DSPi-Terminal parts and what grew from them (`apps/terminal/`, `crates/dspi-proto`, `dspi-transport`, `dspi-session`, `dspi-cmd`, `dspi-tui`, `xtask/`) | GPL-3.0-or-later, as upstream's manifests and README state |
+| `apps/apple/`, and the UI, behaviour and texts other clients follow from it | GPL-3.0 (DSPi Console for macOS; its `LICENSE` says version 3) |
+| The Android files ported from DSPi Console for Windows (listed in `NOTICE.md`) | GPL-3.0 (its README says GPL v3) |
+| Vendored firmware headers (`crates/dspi-proto/firmware/`) and bundled firmware images | GPL-3.0 (DSPi firmware v1.1.6), with the third-party parts in `assets/licences/firmware-THIRD-PARTY-NOTICES.txt` |
+| `tests/fixtures/link/`, the hub's DSPi-Link web page | MIT, Weeb Labs |
+| AutoEQ database (`crates/dspi-session/autoeq/`, `apps/desktop/qt/autoeq/`) | AutoEq data, MIT (`assets/licences/AutoEq-MIT.txt`); the measurement sources' own terms are an open point |
+| `apps/desktop/` (the Qt app) | Not released at present; it is being ported again |
 
 A GPL core conflicts with App Store terms, which matters for the iOS build. The
 owner's direction is in `docs/core-merge/PLAN-CLIENTS.md`, section 0.4. The
