@@ -326,7 +326,9 @@ void graphSection(SmokeDriver &d) {
     d.check(QStringLiteral("qp3: the graph has its curve layer"), curves != nullptr);
     d.check(QStringLiteral("qp3: the plot is an accessible graphic"), d.item(QStringLiteral("GraphHost.plot")) != nullptr);
     // -- WP QP4 -- the PEQ slot is QP4's editor now (its section checks it)
-    d.check(QStringLiteral("qp3: no package fills the analyser's slot yet"), g->slotType(GraphController::RtaOverlay).isEmpty());
+    // -- WP QP9 -- the analyser's slots are QP9's now (qp9-spectrum checks them)
+    d.check(QStringLiteral("qp3: the analyser fills its slots"), g->slotType(GraphController::RtaOverlay) == QLatin1String("RtaGraphOverlay")
+                                                                     && g->slotType(GraphController::RtaOptions) == QLatin1String("RtaGraphOptions"));
 
     curvesFromTheCore(d, g);
     visibility(d, g, curves);

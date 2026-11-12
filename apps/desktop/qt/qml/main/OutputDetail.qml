@@ -42,6 +42,12 @@ ColumnLayout {
     Component.onCompleted: ChannelController.crossoverTabShown = showsCrossover
     Component.onDestruction: ChannelController.crossoverTabShown = false
 
+    // -- WP QP9 -- The spectrum as bars, at the top of the page
+    SpectrumStrip {
+        place: "page"
+        Layout.fillWidth: true
+    }
+
     RowLayout {
         Layout.fillWidth: true
         spacing: Theme.spacingSmall

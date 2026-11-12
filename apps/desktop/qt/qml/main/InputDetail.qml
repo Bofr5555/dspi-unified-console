@@ -44,6 +44,12 @@ ColumnLayout {
         linkQuestion.open()
     }
 
+    // -- WP QP9 -- The spectrum as bars, at the top of the page
+    SpectrumStrip {
+        place: "page"
+        Layout.fillWidth: true
+    }
+
     // ---- Header card ----
     Rectangle {
         objectName: "InputDetail.header"

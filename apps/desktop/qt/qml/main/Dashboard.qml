@@ -41,6 +41,12 @@ Item {
             width: flick.width - 2 * Theme.spacingLarge
             spacing: dashboard.spacing
 
+            // -- WP QP9 -- The spectrum as bars, above the cards
+            SpectrumStrip {
+                place: "dashboard"
+                Layout.fillWidth: true
+            }
+
             GridLayout {
                 id: grid
                 objectName: "Dashboard.grid"
