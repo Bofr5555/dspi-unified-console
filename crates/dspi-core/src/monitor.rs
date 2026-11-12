@@ -1,105 +1,275 @@
-//! The notification monitor (the Interrupt Monitor window): a log of the
-//! device's notification packets, one line each in the macOS Console's
-//! format, with `PARAM_CHANGED` named by its bulk-image offset.
+//! The notification monitor (WP C7): every notification the core drains is
+//! turned into one readable line and kept, with a rising id and the time the
+//! reader received it, for a client's Interrupt Monitor view.
 //!
-//! [`DspiCore::process_notifications`] records every packet it drains (the
-//! reader thread drops the idle keep-alive), stamped with the time the
-//! reader received it. The log keeps the last [`MonitorLog::LIMIT`] entries;
-//! ids keep counting across [`DspiCore::monitor_clear`].
+//! The log is bounded ([`MonitorLog::LIMIT`] lines, oldest dropped first).
+//! Ids never restart while the core lives, not even across
+//! [`DspiCore::monitor_clear`], so a client polling with the last id it saw
+//! cannot read a line twice.
 //!
-//! Owned by WP C7 (docs/core-merge/PLAN.md).
+//! A `PARAM_CHANGED` carries only an offset into `WireBulkParams`, so the
+//! line names the field there: the section comes from the generated section
+//! table, the field from the per-section layouts below (bulk_params.h). Every
+//! step has a fallback (`section+0x..`, `offset=0x....`, a hex dump), so no
+//! offset or payload, however odd, can make a line fail.
 
 use std::collections::VecDeque;
-use std::time::UNIX_EPOCH;
+use std::fmt::Write as _;
 
-use dspi_transport::clock::{self, Instant};
-
-use dspi_proto::generated as g;
+use dspi_proto::generated::{SECTIONS, notify as nfy, rta, wire};
+use dspi_proto::packets::RtaConfig;
 use dspi_session::notify::{Event, Notification, Source};
 
 use crate::DspiCore;
-use crate::notify::{EVT_DEVICE_NAME, EVT_INPUT_SOURCE_NAME};
-use crate::records::*;
+use crate::records::{MonitorBatch, MonitorEntry};
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
-    /// The log entries recorded after `after_id`, oldest first, and the id
-    /// to pass next time (`after_id` itself when there are none). Pass 0
-    /// for everything still held. Entries are recorded when
-    /// [`DspiCore::process_notifications`] drains the queue. Never fails.
+    /// The monitor lines with an id above `after_id`, oldest first, and the
+    /// id to pass next time (`after_id` itself when there is nothing new).
+    /// Pass 0 for everything still kept. Never fails.
     pub fn monitor_read(&self, after_id: u64) -> MonitorBatch {
-        self.lock().monitor.read_after(after_id)
+        self.lock().monitor.after(after_id)
     }
 
-    /// Forget the logged entries. Ids are not reused: a reader's last id
-    /// stays valid.
+    /// Forget every monitor line. Ids carry on from where they were, so a
+    /// reader's last id stays valid. Never fails.
     pub fn monitor_clear(&self) {
-        self.lock().monitor.clear();
+        self.lock().monitor.entries.clear();
     }
 }
 
-/// The notification monitor's log: what arrived, decoded, with ids for
-/// `monitor_read(after_id)`. Bounded.
+/// The kept lines and the last id handed out.
 #[derive(Default)]
 pub(crate) struct MonitorLog {
     entries: VecDeque<MonitorEntry>,
-    /// The id of the newest entry ever recorded (0 before the first).
     last_id: u64,
 }
 
 impl MonitorLog {
-    /// The most entries kept; the oldest go first.
+    /// The most lines kept; a client keeps the same number on its side.
     pub(crate) const LIMIT: usize = 2000;
 
-    /// Log one drained notification.
+    /// Add the line for `note`, stamped with the time its packet arrived.
     pub(crate) fn record(&mut self, note: &Notification) {
-        self.push(epoch_ms(note.received), describe(note));
-    }
-
-    fn push(&mut self, time_ms: i64, text: String) {
         self.last_id = self.last_id.saturating_add(1);
-        while self.entries.len() >= Self::LIMIT {
-            self.entries.pop_front();
-        }
         self.entries.push_back(MonitorEntry {
             id: self.last_id,
-            time_ms,
-            text,
+            time_ms: crate::raw::epoch_ms(note.received),
+            text: describe(note),
         });
+        while self.entries.len() > Self::LIMIT {
+            self.entries.pop_front();
+        }
     }
 
-    fn read_after(&self, after_id: u64) -> MonitorBatch {
-        let entries: Vec<MonitorEntry> = self
-            .entries
-            .iter()
-            .filter(|e| e.id > after_id)
-            .cloned()
-            .collect();
+    fn after(&self, after_id: u64) -> MonitorBatch {
+        // Ids rise along the queue, so the new ones are a tail.
+        let first_new = self.entries.partition_point(|e| e.id <= after_id);
+        let entries: Vec<MonitorEntry> = self.entries.iter().skip(first_new).cloned().collect();
         MonitorBatch {
             last_id: entries.last().map_or(after_id, |e| e.id),
             entries,
         }
     }
+}
 
-    fn clear(&mut self) {
-        self.entries.clear();
+/// One readable line for `note`.
+///
+/// Parameter changes read `[seq] [SOURCE  ] section.field  value`; other
+/// events `[seq] v2.EventName  details`; the legacy volume packet, which has
+/// no sequence number, `v1.MasterVolume  value`. A packet that came after a
+/// gap in the sequence says so at the end, as does one a Link peer wrote.
+pub(crate) fn describe(note: &Notification) -> String {
+    let seq = note.seq;
+    let mut line = match &note.event {
+        Event::Idle => event_line(seq, "Idle", String::new()),
+        Event::MasterVolume(db) => format!("{:<16}{}", "v1.MasterVolume", volume(*db)),
+        Event::ParamChanged {
+            offset,
+            source,
+            bytes,
+        } => {
+            let (name, value) = param(usize::from(*offset), bytes);
+            format!(
+                "[{seq:3}] [{:<8}] {name:<32}  {value}",
+                source_label(*source)
+            )
+        }
+        Event::BulkInvalidated { source } => event_line(
+            seq,
+            "BulkInvalidated",
+            format!("source={}", source_label(*source)),
+        ),
+        Event::PresetLoaded { slot } => event_line(seq, "PresetLoaded", format!("slot={slot}")),
+        Event::InputFormat { channels } => {
+            event_line(seq, "InputFormat", format!("channels={channels}"))
+        }
+        Event::SiggenState {
+            state,
+            reason,
+            signal_type,
+            channel,
+        } => {
+            const STATES: &[&str] = &["IDLE", "FADE_IN", "RUN", "GAP", "FADE_OUT"];
+            const REASONS: &[&str] = &["-", "HOST", "COMPLETED", "PRESET", "RECONFIG"];
+            let channel = if *channel == 0xFF {
+                "-".to_string()
+            } else {
+                channel.to_string()
+            };
+            event_line(
+                seq,
+                "SiggenState",
+                format!(
+                    "{} reason={} type={signal_type} ch={channel}",
+                    named(STATES, *state),
+                    named(REASONS, *reason)
+                ),
+            )
+        }
+        Event::AdatState {
+            enabled,
+            active,
+            pin,
+        } => event_line(
+            seq,
+            "AdatState",
+            format!(
+                "enabled={} active={} pin={pin}",
+                u8::from(*enabled),
+                u8::from(*active)
+            ),
+        ),
+        Event::I2sSlaveState { state, rate_hz } => {
+            const STATES: &[&str] = &["INACTIVE", "ACQUIRING", "RELOCKING", "LOCKED"];
+            event_line(
+                seq,
+                "I2sSlaveState",
+                format!("{} rate={rate_hz}", named(STATES, *state)),
+            )
+        }
+        Event::IrLearn {
+            state,
+            protocol,
+            code,
+        } => {
+            // control_surfaces.h: CS_IR_LEARN_* and CS_IR_PROTO_*.
+            const STATES: &[&str] = &["IDLE", "ARMED", "DONE", "TIMEOUT"];
+            const PROTOCOLS: &[&str] = &["NONE", "NEC", "RC5", "RC6", "HASH"];
+            event_line(
+                seq,
+                "IrLearn",
+                format!(
+                    "{} protocol={} code=0x{code:08X}",
+                    named(STATES, *state),
+                    named(PROTOCOLS, *protocol)
+                ),
+            )
+        }
+        Event::AdatInputState {
+            state,
+            rate_hz,
+            clock_mode,
+        } => {
+            const STATES: &[&str] = &["INACTIVE", "ACQUIRING", "SYNCING", "LOCKED", "RELOCKING"];
+            let mode = if *clock_mode == 1 { "slave" } else { "master" };
+            event_line(
+                seq,
+                "AdatInputState",
+                format!("{} rate={rate_hz} mode={mode}", named(STATES, *state)),
+            )
+        }
+        Event::CsAux {
+            slot,
+            state,
+            level_q8,
+            source,
+        } => event_line(
+            seq,
+            "CsAux",
+            format!(
+                "slot={slot} state={state} level={:.1}% src={}",
+                f64::from(*level_q8) / 256.0,
+                source_label(*source)
+            ),
+        ),
+        // The session's stand-in for a packet it could not decode holds the
+        // whole packet (dspi_session::notify, the reader).
+        Event::Unknown { id: 0xFF, bytes } if note.lost && note.seq == 0 => {
+            format!("undecodable packet ({} bytes): {}", bytes.len(), hex(bytes))
+        }
+        Event::Unknown { id, bytes } => undecoded_event(seq, *id, bytes),
+    };
+    if note.lost && !matches!(note.event, Event::Unknown { id: 0xFF, .. }) {
+        line.push_str("  (after a gap)");
+    }
+    if let Some(peer) = note.origin.filter(|&o| o != 0) {
+        let _ = write!(line, "  link session {peer}");
+    }
+    line
+}
+
+/// `[seq] v2.<name>` padded to a column, then `details`.
+fn event_line(seq: u8, name: &str, details: String) -> String {
+    let event = format!("v2.{name}");
+    format!("[{seq:3}] {event:<28} {details}")
+        .trim_end()
+        .to_string()
+}
+
+/// The events the session passes on undecoded: the analyser configuration,
+/// the two name events (notify.h 0x0D, 0x0F, 0x10), and anything newer.
+fn undecoded_event(seq: u8, id: u8, bytes: &[u8]) -> String {
+    let id16 = u16::from(id);
+    if id16 == nfy::NOTIFY_EVT_RTA_CONFIG {
+        // [RtaConfig as applied (12), src]
+        let src = Source::from_raw(bytes.get(RtaConfig::SIZE).copied().unwrap_or(0));
+        let details = match RtaConfig::decode(bytes) {
+            Ok(c) => format!(
+                "tap={} mask=0x{:04X} order={} avg={}ms decay={}dB/s flags=0x{:02X} src={}",
+                rta_tap(c.tap),
+                c.channel_mask,
+                c.fft_order,
+                c.avg_ms,
+                c.peak_decay_db_s,
+                c.flags,
+                source_label(src)
+            ),
+            Err(_) => format!("(unreadable) {}", hex(bytes)),
+        };
+        return event_line(seq, "RtaConfig", details);
+    }
+    if id16 == nfy::NOTIFY_EVT_INPUT_SOURCE_NAME || id16 == nfy::NOTIFY_EVT_DEVICE_NAME {
+        // [source_id, src, 0, 0, name(32)]
+        let src = source_label(Source::from_raw(bytes.get(1).copied().unwrap_or(0)));
+        let name = text(bytes.get(4..).unwrap_or_default());
+        return if id16 == nfy::NOTIFY_EVT_DEVICE_NAME {
+            event_line(seq, "DeviceName", format!("name={name} src={src}"))
+        } else {
+            let input = bytes.first().copied().unwrap_or(0);
+            event_line(
+                seq,
+                "InputSourceName",
+                format!("source={input} name={name} src={src}"),
+            )
+        };
+    }
+    format!("[{seq:3}] v2?evt=0x{id:02X}  {}", hex(bytes))
+}
+
+fn rta_tap(tap: u8) -> String {
+    match u16::from(tap) {
+        rta::RTA_TAP_INPUT => "in".into(),
+        rta::RTA_TAP_OUTPUT => "out".into(),
+        rta::RTA_TAP_NONE => "none".into(),
+        _ => tap.to_string(),
     }
 }
 
-/// `at` as ms since the Unix epoch (0 if the clock is before it).
-fn epoch_ms(at: Instant) -> i64 {
-    let age = Instant::now().saturating_duration_since(at);
-    clock::system_time()
-        .checked_sub(age)
-        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-        .and_then(|d| i64::try_from(d.as_millis()).ok())
-        .unwrap_or(0)
-}
-
-// ── Formatting ───────────────────────────────────────────────────────
-
-fn source_label(s: Source) -> String {
-    match s {
+/// The `ParamSource` tag as notify.h spells it, short.
+fn source_label(source: Source) -> String {
+    match source {
         Source::Unknown => "?".into(),
         Source::HostSet => "HOST".into(),
         Source::BulkSet => "BULK".into(),
@@ -111,582 +281,563 @@ fn source_label(s: Source) -> String {
         Source::Uart => "UART".into(),
         Source::I2c => "I2C".into(),
         Source::Midi => "MIDI".into(),
-        Source::Other(b) => format!("src=0x{b:02X}"),
+        Source::Other(raw) => format!("src=0x{raw:02X}"),
     }
 }
 
-fn hex(b: &[u8]) -> String {
-    b.iter()
-        .map(|x| format!("{x:02X}"))
-        .collect::<Vec<_>>()
-        .join(" ")
+/// `names[n]`, or the number itself when it is past the end.
+fn named(names: &[&str], n: u8) -> String {
+    names
+        .get(usize::from(n))
+        .map_or_else(|| n.to_string(), |s| (*s).to_string())
 }
 
-fn le_f32(p: &[u8]) -> Option<f32> {
-    Some(f32::from_le_bytes(p.get(..4)?.try_into().ok()?))
+// ── Bulk-image fields ────────────────────────────────────────────────
+
+/// How a field's bytes read.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Kind {
+    /// `f32` with a unit suffix (may be empty).
+    Float(&'static str),
+    /// `f32` dB where -128 and below means muted.
+    Volume,
+    /// `u8`, 0 off and 1 on.
+    Flag,
+    Byte,
+    Signed,
+    /// `u16`.
+    Word,
+    Mask8,
+    Mask16,
+    /// A NUL-padded name of this many bytes.
+    Text(usize),
 }
 
-fn le_u16(p: &[u8]) -> Option<u16> {
-    Some(u16::from_le_bytes(p.get(..2)?.try_into().ok()?))
+impl Kind {
+    const fn size(self) -> usize {
+        match self {
+            Kind::Float(_) | Kind::Volume => 4,
+            Kind::Flag | Kind::Byte | Kind::Signed | Kind::Mask8 => 1,
+            Kind::Word | Kind::Mask16 => 2,
+            Kind::Text(n) => n,
+        }
+    }
+
+    /// `bytes` read as this kind, when they have its size.
+    fn show(self, bytes: &[u8]) -> Option<String> {
+        if let Kind::Text(n) = self {
+            return (!bytes.is_empty() && bytes.len() <= n).then(|| text(bytes));
+        }
+        if bytes.len() != self.size() {
+            return None;
+        }
+        Some(match self {
+            Kind::Float(unit) => format!("{}{unit}", f32_le(bytes, 0)?),
+            Kind::Volume => volume(f32_le(bytes, 0)?),
+            Kind::Flag => match bytes.first()? {
+                0 => "off".into(),
+                1 => "on".into(),
+                n => n.to_string(),
+            },
+            Kind::Byte => bytes.first()?.to_string(),
+            Kind::Signed => i8::from_le_bytes([*bytes.first()?]).to_string(),
+            Kind::Word => u16_le(bytes, 0)?.to_string(),
+            Kind::Mask8 => format!("0x{:02X}", bytes.first()?),
+            Kind::Mask16 => format!("0x{:04X}", u16_le(bytes, 0)?),
+            Kind::Text(_) => return None,
+        })
+    }
 }
 
+/// One field of a section's record: `count` consecutive values of `kind`
+/// from byte `at`. An empty name stands for the record itself
+/// (`channel_names[3]` rather than `channel_names.names[3]`).
+#[derive(Debug, Clone, Copy)]
+struct Field {
+    name: &'static str,
+    at: usize,
+    kind: Kind,
+    count: usize,
+}
+
+const fn one(name: &'static str, at: usize, kind: Kind) -> Field {
+    Field {
+        name,
+        at,
+        kind,
+        count: 1,
+    }
+}
+
+const fn many(name: &'static str, at: usize, kind: Kind, count: usize) -> Field {
+    Field {
+        name,
+        at,
+        kind,
+        count,
+    }
+}
+
+/// A record that reads better whole when a packet carries all of it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Whole {
+    Band,
+    Crosspoint,
+}
+
+/// A section's layout: an array of `dims` records of `stride` bytes (no
+/// dims: one record, the whole section).
+struct Layout {
+    dims: &'static [usize],
+    stride: usize,
+    fields: &'static [Field],
+    whole: Option<Whole>,
+}
+
+const CHANNELS: usize = wire::WIRE_MAX_CHANNELS as usize;
+const INPUTS: usize = wire::WIRE_MAX_INPUT_CHANNELS as usize;
+const OUTPUTS: usize = wire::WIRE_MAX_OUTPUT_CHANNELS as usize;
+const BANDS: usize = wire::WIRE_MAX_BANDS as usize;
+const XOVER_BANDS: usize = wire::WIRE_MAX_XOVER_BANDS as usize;
+const PINS: usize = wire::WIRE_MAX_PIN_OUTPUTS as usize;
+const SPDIF_SLOTS: usize = wire::WIRE_MAX_SPDIF_INSTANCES as usize;
+const NAME_LEN: usize = wire::WIRE_NAME_LEN as usize;
+
+const DB: Kind = Kind::Float(" dB");
+const DBFS: Kind = Kind::Float(" dBFS");
+const HZ: Kind = Kind::Float(" Hz");
+const MS: Kind = Kind::Float(" ms");
+const PCT: Kind = Kind::Float("%");
+
+/// WireBandParams, for both the EQ and the crossovers.
+const BAND: &[Field] = &[
+    one("type", 0, Kind::Byte),
+    one("bypass", 1, Kind::Flag),
+    one("freq", 4, HZ),
+    one("q", 8, Kind::Float("")),
+    one("gain_db", 12, DB),
+];
+
+/// A section that is one record.
+const fn single(fields: &'static [Field]) -> Layout {
+    Layout {
+        dims: &[],
+        stride: 0,
+        fields,
+        whole: None,
+    }
+}
+
+/// The record layout of each section, by its name in `SECTIONS`
+/// (bulk_params.h).
+const LAYOUTS: &[(&str, Layout)] = &[
+    (
+        "header",
+        single(&[
+            one("format_version", 0, Kind::Byte),
+            one("platform_id", 1, Kind::Byte),
+            one("num_channels", 2, Kind::Byte),
+            one("num_output_channels", 3, Kind::Byte),
+            one("num_input_channels", 4, Kind::Byte),
+            one("max_bands", 5, Kind::Byte),
+            one("payload_length", 6, Kind::Word),
+            one("fw_version_major", 8, Kind::Word),
+            one("fw_version_minor", 10, Kind::Word),
+        ]),
+    ),
+    (
+        "global",
+        single(&[
+            one("preamp_gain_db", 0, DB),
+            one("bypass", 4, Kind::Flag),
+            one("loudness_enabled", 5, Kind::Flag),
+            one("loudness_output_mask", 6, Kind::Mask16),
+            one("loudness_ref_spl", 8, Kind::Float(" dB SPL")),
+            one("loudness_intensity_pct", 12, PCT),
+        ]),
+    ),
+    (
+        "crossfeed",
+        single(&[
+            one("enabled", 0, Kind::Flag),
+            one("preset", 1, Kind::Byte),
+            one("itd_enabled", 2, Kind::Flag),
+            one("output_pair_mask", 3, Kind::Mask8),
+            one("custom_fc", 4, HZ),
+            one("custom_feed_db", 8, DB),
+            many("pair_map", 12, Kind::Mask8, 4),
+        ]),
+    ),
+    (
+        "legacy",
+        single(&[many("gain_db", 0, DB, 3), many("mute", 12, Kind::Flag, 3)]),
+    ),
+    ("delays", single(&[many("delay_ms", 0, MS, CHANNELS)])),
+    (
+        "crosspoints",
+        Layout {
+            dims: &[INPUTS, OUTPUTS],
+            stride: 8,
+            fields: &[
+                one("enabled", 0, Kind::Flag),
+                one("phase_invert", 1, Kind::Flag),
+                one("gain_db", 4, DB),
+            ],
+            whole: Some(Whole::Crosspoint),
+        },
+    ),
+    (
+        "outputs",
+        Layout {
+            dims: &[OUTPUTS],
+            stride: 12,
+            fields: &[
+                one("enabled", 0, Kind::Flag),
+                one("mute", 1, Kind::Flag),
+                one("gain_db", 4, DB),
+                one("delay_ms", 8, MS),
+            ],
+            whole: None,
+        },
+    ),
+    (
+        "pins",
+        single(&[
+            one("num_pin_outputs", 0, Kind::Byte),
+            many("pins", 1, Kind::Byte, PINS),
+        ]),
+    ),
+    (
+        "eq",
+        Layout {
+            dims: &[CHANNELS, BANDS],
+            stride: 16,
+            fields: BAND,
+            whole: Some(Whole::Band),
+        },
+    ),
+    (
+        "channel_names",
+        single(&[many("", 0, Kind::Text(NAME_LEN), CHANNELS)]),
+    ),
+    (
+        "i2s_config",
+        single(&[
+            many("output_types", 0, Kind::Byte, SPDIF_SLOTS),
+            one("bck_pin", 4, Kind::Byte),
+            one("mck_pin", 5, Kind::Byte),
+            one("mck_enabled", 6, Kind::Flag),
+            one("mck_multiplier", 7, Kind::Byte),
+            one("clock_pin_mode_p1", 8, Kind::Byte),
+            one("bck_pin_slave", 9, Kind::Byte),
+        ]),
+    ),
+    (
+        "leveller",
+        single(&[
+            one("enabled", 0, Kind::Flag),
+            one("speed", 1, Kind::Byte),
+            one("lookahead", 2, Kind::Flag),
+            one("amount", 4, PCT),
+            one("max_gain_db", 8, DB),
+            one("gate_threshold_db", 12, DBFS),
+            one("detector_mask", 16, Kind::Mask8),
+            one("apply_mask", 17, Kind::Mask8),
+        ]),
+    ),
+    ("preamp", single(&[many("preamp_db", 0, DB, INPUTS)])),
+    (
+        "master_volume",
+        single(&[one("master_volume_db", 0, Kind::Volume)]),
+    ),
+    (
+        "input_config",
+        single(&[
+            one("input_source", 0, Kind::Byte),
+            one("spdif_rx_pin", 1, Kind::Byte),
+            one("i2s_rx_pin", 2, Kind::Byte),
+            one("i2s_input_rate", 3, Kind::Byte),
+            one("i2s_input_channels", 4, Kind::Byte),
+            many("i2s_rx_pin_ext", 5, Kind::Byte, 3),
+            many("spdif_rx_pin_ext", 8, Kind::Byte, 3),
+            one("spdif_rx_enabled_ext_p1", 11, Kind::Byte),
+            one("i2s_clock_mode", 12, Kind::Byte),
+            one("adat_input_pin", 13, Kind::Byte),
+            one("adat_input_enabled_p1", 14, Kind::Byte),
+            one("adat_clock_mode_p1", 15, Kind::Byte),
+        ]),
+    ),
+    (
+        "lg_sound_sync",
+        single(&[
+            one("enabled", 0, Kind::Flag),
+            one("present", 1, Kind::Flag),
+            one("volume", 2, Kind::Byte),
+            one("muted", 3, Kind::Flag),
+        ]),
+    ),
+    (
+        "user_volume",
+        single(&[
+            one("user_volume_db", 0, Kind::Volume),
+            one("user_mute", 4, Kind::Flag),
+        ]),
+    ),
+    (
+        "dac_hw_mute",
+        single(&[
+            one("enabled", 0, Kind::Flag),
+            one("active_low", 1, Kind::Flag),
+            one("pin", 2, Kind::Byte),
+            one("hold_ms", 4, Kind::Word),
+            one("release_ms", 6, Kind::Word),
+        ]),
+    ),
+    (
+        "crossovers",
+        Layout {
+            dims: &[CHANNELS, XOVER_BANDS],
+            stride: 16,
+            fields: BAND,
+            whole: Some(Whole::Band),
+        },
+    ),
+    (
+        "adat_config",
+        single(&[one("enabled", 0, Kind::Flag), one("pin", 1, Kind::Byte)]),
+    ),
+    (
+        "psybass",
+        single(&[
+            one("enabled", 0, Kind::Flag),
+            one("output_mask", 2, Kind::Mask16),
+            one("cutoff_hz", 4, HZ),
+            one("harmonics_db", 8, DB),
+            one("drive_db", 12, DB),
+            one("character_pct", 16, PCT),
+            one("original_db", 20, DB),
+        ]),
+    ),
+    (
+        "upmix",
+        single(&[
+            one("enabled", 0, Kind::Flag),
+            one("center_mode", 1, Kind::Byte),
+            one("surround_mode", 2, Kind::Byte),
+            one("presence_q1", 3, Kind::Signed),
+            one("strength_pct", 4, PCT),
+            one("center_width_pct", 8, PCT),
+            one("corr_threshold_pct", 12, PCT),
+            one("attack_ms", 16, MS),
+            one("release_ms", 20, MS),
+            one("detector_hpf_hz", 24, HZ),
+            one("surround_delay_ms", 28, MS),
+            one("surround_hpf_hz", 32, HZ),
+            one("surround_lpf_hz", 36, HZ),
+            one("decorr_pct", 40, PCT),
+        ]),
+    ),
+    (
+        "subharm",
+        single(&[
+            one("enabled", 0, Kind::Flag),
+            one("output_mask", 2, Kind::Mask16),
+            one("low_db", 4, DB),
+            one("high_db", 8, DB),
+            one("boost_db", 12, DB),
+            one("top_db", 16, DB),
+            one("select_depth", 20, PCT),
+            one("select_hold_ms", 24, MS),
+            one("ceiling_db", 28, DBFS),
+            one("select_mode", 32, Kind::Byte),
+            one("link_pairs", 33, Kind::Flag),
+        ]),
+    ),
+    (
+        "tube",
+        single(&[
+            one("enabled", 0, Kind::Flag),
+            one("tube_type", 1, Kind::Byte),
+            one("rectifier", 2, Kind::Byte),
+            one("xfmr_enabled", 3, Kind::Flag),
+            one("output_mask", 4, Kind::Mask16),
+            one("drive_db", 8, DB),
+            one("bias_pct", 12, PCT),
+            one("asym_db", 16, DB),
+            one("hardness_pct", 20, PCT),
+            one("sag_pct", 24, PCT),
+            one("xfmr_damping", 28, Kind::Float("")),
+            one("xfmr_res_hz", 32, HZ),
+            one("mix_pct", 36, PCT),
+            one("trim_db", 40, DB),
+        ]),
+    ),
+    (
+        "limiter",
+        Layout {
+            dims: &[OUTPUTS],
+            stride: 12,
+            fields: &[
+                one("enabled", 0, Kind::Flag),
+                one("link_group", 1, Kind::Byte),
+                one("threshold_db", 4, DBFS),
+                one("release_ms", 8, MS),
+            ],
+            whole: None,
+        },
+    ),
+];
+
+/// The record layout of the section called `section` (bulk_params.h).
+fn layout(section: &str) -> Option<&'static Layout> {
+    LAYOUTS
+        .iter()
+        .find(|(name, _)| *name == section)
+        .map(|(_, l)| l)
+}
+
+/// The field a `PARAM_CHANGED` at `offset` touched, and its new value.
+fn param(offset: usize, bytes: &[u8]) -> (String, String) {
+    let raw = || hex(bytes);
+    let Some(&(section, base, len)) = SECTIONS
+        .iter()
+        .find(|(_, start, len)| offset >= *start && offset < start.saturating_add(*len))
+    else {
+        return (format!("offset=0x{offset:04X}"), raw());
+    };
+    let rel = offset.saturating_sub(base);
+    let Some(shape) = layout(section) else {
+        return (format!("{section}+0x{rel:X}"), raw());
+    };
+    // One record unless the section is an array of them.
+    let stride = if shape.dims.is_empty() {
+        len
+    } else {
+        shape.stride
+    };
+    let record = rel.checked_div(stride).unwrap_or(0);
+    let inside = rel.checked_rem(stride).unwrap_or(rel);
+
+    let mut path = section.to_string();
+    for i in indices(record, shape.dims) {
+        let _ = write!(path, "[{i}]");
+    }
+    if inside == 0
+        && bytes.len() == stride
+        && let Some(whole) = shape.whole
+        && let Some(value) = show_whole(whole, bytes)
+    {
+        return (path, value);
+    }
+    let Some(field) = shape.fields.iter().find(|f| {
+        let end = f.at.saturating_add(f.kind.size().saturating_mul(f.count));
+        inside >= f.at && inside < end
+    }) else {
+        return (format!("{path}+0x{inside:X}"), raw());
+    };
+    if !field.name.is_empty() {
+        let _ = write!(path, ".{}", field.name);
+    }
+    let into = inside.saturating_sub(field.at);
+    let size = field.kind.size();
+    if field.count > 1 {
+        let _ = write!(path, "[{}]", into.checked_div(size).unwrap_or(0));
+    }
+    let within = into.checked_rem(size).unwrap_or(0);
+    if within != 0 {
+        return (format!("{path}+0x{within:X}"), raw());
+    }
+    let value = field.kind.show(bytes).unwrap_or_else(raw);
+    (path, value)
+}
+
+/// `record` as one index per dimension, outermost first.
+fn indices(mut record: usize, dims: &[usize]) -> Vec<usize> {
+    let mut out = Vec::with_capacity(dims.len());
+    for &d in dims.iter().rev() {
+        out.push(record.checked_rem(d).unwrap_or(record));
+        record = record.checked_div(d).unwrap_or(0);
+    }
+    out.reverse();
+    out
+}
+
+fn show_whole(whole: Whole, b: &[u8]) -> Option<String> {
+    Some(match whole {
+        Whole::Band => format!(
+            "type={} bypass={} f={} Hz Q={} gain={} dB",
+            b.first()?,
+            b.get(1)?,
+            f32_le(b, 4)?,
+            f32_le(b, 8)?,
+            f32_le(b, 12)?
+        ),
+        Whole::Crosspoint => format!(
+            "enabled={} invert={} gain={} dB",
+            b.first()?,
+            b.get(1)?,
+            f32_le(b, 4)?
+        ),
+    })
+}
+
+// ── Value helpers ────────────────────────────────────────────────────
+
+fn f32_le(b: &[u8], at: usize) -> Option<f32> {
+    let four: [u8; 4] = b.get(at..at.checked_add(4)?)?.try_into().ok()?;
+    Some(f32::from_le_bytes(four))
+}
+
+fn u16_le(b: &[u8], at: usize) -> Option<u16> {
+    let two: [u8; 2] = b.get(at..at.checked_add(2)?)?.try_into().ok()?;
+    Some(u16::from_le_bytes(two))
+}
+
+/// A volume in dB; -128 is the firmware's mute sentinel.
 fn volume(db: f32) -> String {
     if db <= -128.0 {
         "MUTE".into()
     } else {
-        format!("{db:+7.2} dB")
+        format!("{db:+.2} dB")
     }
 }
 
-fn name_text(p: &[u8]) -> String {
-    let end = p.iter().position(|&c| c == 0).unwrap_or(p.len());
+/// A NUL-padded name, quoted.
+fn text(b: &[u8]) -> String {
+    let end = b.iter().position(|&c| c == 0).unwrap_or(b.len());
     format!(
         "\"{}\"",
-        String::from_utf8_lossy(p.get(..end).unwrap_or_default())
+        String::from_utf8_lossy(b.get(..end).unwrap_or_default())
     )
 }
 
-/// One notification as a log line (without the timestamp).
-pub(crate) fn describe(note: &Notification) -> String {
-    let seq = format!("[{:3}]", note.seq);
-    let mut line = match &note.event {
-        Event::Idle => "Idle".into(),
-        Event::MasterVolume(db) => format!("{:<14}  {}", "v1.MasterVolume", volume(*db)),
-        Event::ParamChanged {
-            offset,
-            source,
-            bytes,
-        } => {
-            let (name, value) = param(usize::from(*offset), bytes);
-            format!("{seq} [{:<8}] {name:<32}  {value}", source_label(*source))
+fn hex(b: &[u8]) -> String {
+    if b.is_empty() {
+        return "(empty)".into();
+    }
+    let mut s = String::with_capacity(b.len().saturating_mul(3));
+    for (i, byte) in b.iter().enumerate() {
+        if i > 0 {
+            s.push(' ');
         }
-        Event::BulkInvalidated { source } => format!(
-            "{seq} v2.BulkInvalidated            source={}",
-            source_label(*source)
-        ),
-        Event::PresetLoaded { slot } => format!("{seq} v2.PresetLoaded                slot={slot}"),
-        Event::InputFormat { channels } => {
-            format!("{seq} v2.InputFormat                 channels={channels}")
-        }
-        Event::SiggenState {
-            state,
-            reason,
-            signal_type,
-            channel,
-        } => {
-            let state = ["IDLE", "FADE_IN", "RUN", "GAP", "FADE_OUT"]
-                .get(usize::from(*state))
-                .map_or_else(|| format!("state={state}"), |s| s.to_string());
-            let reason = ["-", "HOST", "COMPLETED", "PRESET", "RECONFIG"]
-                .get(usize::from(*reason))
-                .map_or_else(|| format!("reason={reason}"), |s| s.to_string());
-            let ch = if *channel == 0xFF {
-                "-".to_string()
-            } else {
-                channel.to_string()
-            };
-            format!(
-                "{seq} v2.SiggenState                 {state} reason={reason} type={signal_type} ch={ch}"
-            )
-        }
-        Event::AdatState {
-            enabled,
-            active,
-            pin,
-        } => format!(
-            "{seq} v2.AdatState                   enabled={} active={} pin={pin}",
-            u8::from(*enabled),
-            u8::from(*active)
-        ),
-        Event::I2sSlaveState { state, rate_hz } => {
-            let state = ["INACTIVE", "ACQUIRING", "RELOCKING", "LOCKED"]
-                .get(usize::from(*state))
-                .map_or_else(|| format!("state={state}"), |s| s.to_string());
-            format!("{seq} v2.I2sSlaveState              {state} rate={rate_hz}")
-        }
-        Event::IrLearn {
-            state,
-            protocol,
-            code,
-        } => {
-            let proto = ["NONE", "NEC", "RC5", "RC6", "HASH"]
-                .get(usize::from(*protocol))
-                .copied()
-                .unwrap_or("?");
-            if *state == 2 {
-                format!("{seq} v2.IrLearn                     DONE {proto} code=0x{code:08X}")
-            } else {
-                format!("{seq} v2.IrLearn                     TIMEOUT")
-            }
-        }
-        Event::AdatInputState {
-            state,
-            rate_hz,
-            clock_mode,
-        } => {
-            let state = ["INACTIVE", "ACQUIRING", "SYNCING", "LOCKED", "RELOCKING"]
-                .get(usize::from(*state))
-                .map_or_else(|| format!("state={state}"), |s| s.to_string());
-            let mode = if *clock_mode == 1 { "slave" } else { "master" };
-            format!("{seq} v2.AdatInputState             {state} rate={rate_hz} mode={mode}")
-        }
-        Event::CsAux {
-            slot,
-            state,
-            level_q8,
-            source,
-        } => {
-            let pct = f32::from(*level_q8) / 256.0;
-            format!(
-                "{seq} v2.CsAux                      slot={slot} state={state} level={pct:.1}% src={}",
-                source_label(*source)
-            )
-        }
-        Event::Unknown { id, bytes } if *id == EVT_INPUT_SOURCE_NAME || *id == EVT_DEVICE_NAME => {
-            let what = if *id == EVT_DEVICE_NAME {
-                "v2.DeviceName                 ".to_string()
-            } else {
-                format!(
-                    "v2.InputSourceName            source={}",
-                    bytes.first().copied().unwrap_or(0)
-                )
-            };
-            let src = source_label(Source::from_raw(bytes.get(1).copied().unwrap_or(0)));
-            let name = name_text(bytes.get(4..).unwrap_or_default());
-            format!("{seq} {what} {name} src={src}")
-        }
-        // -- WP UPW2 --
-        Event::Unknown { id, bytes } if *id == crate::rta::EVT_RTA_CONFIG => {
-            let src = source_label(Source::from_raw(bytes.get(12).copied().unwrap_or(0)));
-            match dspi_proto::packets::RtaConfig::decode(bytes) {
-                Ok(c) => format!(
-                    "{seq} v2.RtaConfig                  tap={} mask=0x{:04X} order={} avg={}ms decay={}dB/s src={src}",
-                    c.tap, c.channel_mask, c.fft_order, c.avg_ms, c.peak_decay_db_s
-                ),
-                Err(_) => format!(
-                    "{seq} v2.RtaConfig                  {} src={src}",
-                    hex(bytes)
-                ),
-            }
-        }
-        // The reader's marker for a packet it could not decode.
-        Event::Unknown { id: 0xFF, bytes } if note.lost => {
-            format!("(undecodable, {} bytes)  {}", bytes.len(), hex(bytes))
-        }
-        Event::Unknown { id, bytes } => format!("{seq} v2?evt=0x{id:02X}  {}", hex(bytes)),
-    };
-    if note.lost {
-        line.push_str("  (packets lost before this one)");
+        let _ = write!(s, "{byte:02X}");
     }
-    line
-}
-
-fn f(p: &[u8], suffix: &str) -> String {
-    match le_f32(p) {
-        Some(v) => format!("{v:+.3}{suffix}"),
-        None => "(short)".into(),
-    }
-}
-
-fn flag(p: &[u8]) -> String {
-    match p.first() {
-        Some(0) => "0 (false)".into(),
-        Some(_) => "1 (true)".into(),
-        None => "(empty)".into(),
-    }
-}
-
-fn byte(p: &[u8]) -> String {
-    p.first()
-        .map_or_else(|| "(empty)".into(), |v| v.to_string())
-}
-
-fn band(p: &[u8]) -> String {
-    match (
-        p.first(),
-        p.get(1),
-        le_f32(p.get(4..).unwrap_or_default()),
-        le_f32(p.get(8..).unwrap_or_default()),
-        le_f32(p.get(12..).unwrap_or_default()),
-    ) {
-        (Some(t), Some(b), Some(fr), Some(q), Some(gain)) => {
-            format!("type={t}  byp={b}  f={fr:.1} Hz  Q={q:.2}  g={gain:+.2} dB")
-        }
-        _ => hex(p),
-    }
-}
-
-/// `offset - base` when it lies inside `base..base + len`.
-fn within(off: usize, base: usize, len: usize) -> Option<usize> {
-    off.checked_sub(base).filter(|r| *r < len)
-}
-
-/// `(rel / size, rel % size)`, for the record index and the offset inside
-/// it (`size` is a non-zero constant of the layout).
-fn split(rel: usize, size: usize) -> (usize, usize) {
-    (
-        rel.checked_div(size).unwrap_or(0),
-        rel.checked_rem(size).unwrap_or(0),
-    )
-}
-
-/// A bulk-image offset's field name and its value, formatted by type.
-fn param(off: usize, p: &[u8]) -> (String, String) {
-    let n = |s: &str| s.to_string();
-    let size = p.len();
-    if off < g::OFF_GLOBAL {
-        return (format!("header+0x{off:02X}"), hex(p));
-    }
-    if let Some(k) = within(off, g::OFF_GLOBAL, g::LEN_GLOBAL) {
-        match k {
-            0 => return (n("global.preamp_gain_db"), f(p, " dB")),
-            4 => return (n("global.bypass"), flag(p)),
-            5 => return (n("global.loudness_enabled"), flag(p)),
-            6 => return (n("global.loudness_output_mask"), hex(p)),
-            8 => return (n("global.loudness_ref_spl"), f(p, " dB SPL")),
-            12 => return (n("global.loudness_intensity_pct"), f(p, "%")),
-            _ => {}
-        }
-    }
-    if let Some(k) = within(off, g::OFF_CROSSFEED, g::LEN_CROSSFEED) {
-        match k {
-            0 => return (n("crossfeed.enabled"), flag(p)),
-            1 => return (n("crossfeed.preset"), byte(p)),
-            2 => return (n("crossfeed.itd_enabled"), flag(p)),
-            4 => return (n("crossfeed.custom_fc"), f(p, " Hz")),
-            8 => return (n("crossfeed.custom_feed_db"), f(p, " dB")),
-            _ => {}
-        }
-    }
-    if let Some(k) = within(off, g::OFF_LEGACY, 12) {
-        let (i, sub) = split(k, 4);
-        if sub == 0 && size == 4 {
-            return (format!("legacy.gain_db[{i}]"), f(p, " dB"));
-        }
-    }
-    if let Some(k) = within(off, g::OFF_LEGACY + 12, 3)
-        && size == 1
-    {
-        return (format!("legacy.mute[{k}]"), flag(p));
-    }
-    if let Some(k) = within(off, g::OFF_DELAYS, g::LEN_DELAYS) {
-        let (i, sub) = split(k, 4);
-        if sub == 0 && size == 4 {
-            return (format!("delays.delay_ms[{i}]"), f(p, " ms"));
-        }
-    }
-    if let Some(rel) = within(off, g::OFF_CROSSPOINTS, g::LEN_CROSSPOINTS) {
-        let (cell, sub) = split(rel, 8);
-        let (input, output) = split(cell, g::wire::WIRE_MAX_OUTPUT_CHANNELS as usize);
-        if sub == 0
-            && let (Some(en), Some(inv), Some(gain)) =
-                (p.first(), p.get(1), le_f32(p.get(4..).unwrap_or_default()))
-        {
-            return (
-                format!("crosspoints[{input}][{output}]"),
-                format!(
-                    "en={} inv={} {gain:+6.2} dB",
-                    u8::from(*en != 0),
-                    u8::from(*inv != 0)
-                ),
-            );
-        }
-        return (format!("crosspoints[{input}][{output}]+0x{sub:X}"), hex(p));
-    }
-    if let Some(rel) = within(off, g::OFF_OUTPUTS, g::LEN_OUTPUTS) {
-        let (i, sub) = split(rel, 12);
-        return match sub {
-            0 => (format!("outputs[{i}].enabled"), flag(p)),
-            1 => (format!("outputs[{i}].mute"), flag(p)),
-            4 => (format!("outputs[{i}].gain_db"), f(p, " dB")),
-            8 => (format!("outputs[{i}].delay_ms"), f(p, " ms")),
-            _ => (format!("outputs[{i}]+0x{sub:X}"), hex(p)),
-        };
-    }
-    if off == g::OFF_PINS && size == 1 {
-        return (n("pins.num_pin_outputs"), byte(p));
-    }
-    if let Some(k) = within(off, g::OFF_PINS + 1, 5)
-        && size == 1
-    {
-        return (format!("pins.pins[{k}]"), byte(p));
-    }
-    if let Some(rel) = within(off, g::OFF_EQ, g::LEN_EQ) {
-        let (slot, sub) = split(rel, 16);
-        let (ch, b) = split(slot, g::wire::WIRE_MAX_BANDS as usize);
-        if sub == 0 && size == 16 {
-            return (format!("eq[{ch}][{b}]"), band(p));
-        }
-        return (format!("eq[{ch}][{b}]+0x{sub:X}"), hex(p));
-    }
-    if let Some(rel) = within(off, g::OFF_CHANNEL_NAMES, g::LEN_CHANNEL_NAMES) {
-        let (i, sub) = split(rel, 32);
-        if sub == 0 {
-            return (format!("channel_names[{i}]"), name_text(p));
-        }
-    }
-    if let Some(k) = within(off, g::OFF_I2S_CONFIG, g::LEN_I2S_CONFIG) {
-        let v = p.first().copied().unwrap_or(0);
-        match k {
-            0..=3 if size == 1 => {
-                let kind = if v == 1 { "I2S" } else { "SPDIF" };
-                return (
-                    format!("i2s_config.output_types[{k}]"),
-                    format!("{v} ({kind})"),
-                );
-            }
-            4 => return (n("i2s_config.bck_pin"), byte(p)),
-            5 => return (n("i2s_config.mck_pin"), byte(p)),
-            6 => return (n("i2s_config.mck_enabled"), flag(p)),
-            7 => {
-                let mult = if v == 1 { "256x" } else { "128x" };
-                return (n("i2s_config.mck_multiplier"), format!("{v} ({mult})"));
-            }
-            _ => {}
-        }
-    }
-    if let Some(k) = within(off, g::OFF_LEVELLER, g::LEN_LEVELLER) {
-        match k {
-            0 => return (n("leveller.enabled"), flag(p)),
-            1 => return (n("leveller.speed"), byte(p)),
-            2 => return (n("leveller.lookahead"), flag(p)),
-            4 => return (n("leveller.amount"), f(p, "%")),
-            8 => return (n("leveller.max_gain_db"), f(p, " dB")),
-            12 => return (n("leveller.gate_threshold_db"), f(p, " dB")),
-            16 => return (n("leveller.detector_mask"), hex(p)),
-            17 => return (n("leveller.apply_mask"), hex(p)),
-            _ => {}
-        }
-    }
-    if let Some(k) = within(off, g::OFF_PREAMP, g::LEN_PREAMP) {
-        let (i, sub) = split(k, 4);
-        if sub == 0 && size == 4 {
-            return (format!("preamp.preamp_db[{i}]"), f(p, " dB"));
-        }
-    }
-    if off == g::OFF_MASTER_VOLUME && size == 4 {
-        return (
-            n("master_volume.master_volume_db"),
-            le_f32(p).map_or_else(|| hex(p), volume),
-        );
-    }
-    if let Some(k) = within(off, g::OFF_INPUT_CONFIG, g::LEN_INPUT_CONFIG)
-        && size == 1
-    {
-        let v = p.first().copied().unwrap_or(0);
-        let name = match k {
-            0 => {
-                let src = ["USB", "SPDIF", "I2S", "ADAT", "SPDIF2", "SPDIF3", "SPDIF4"]
-                    .get(usize::from(v))
-                    .copied()
-                    .unwrap_or("?");
-                return (n("input_config.input_source"), format!("{v} ({src})"));
-            }
-            1 => n("input_config.spdif_rx_pin"),
-            2 => n("input_config.i2s_rx_pin"),
-            3 => {
-                let rate = ["44100", "48000", "96000"]
-                    .get(usize::from(v))
-                    .copied()
-                    .unwrap_or("?");
-                return (n("input_config.i2s_input_rate"), format!("{v} ({rate} Hz)"));
-            }
-            4 => n("input_config.i2s_input_channels"),
-            5..=7 => format!("input_config.i2s_rx_pin_ext[{}]", k.saturating_sub(5)),
-            8..=10 => format!("input_config.spdif_rx_pin_ext[{}]", k.saturating_sub(8)),
-            11 => n("input_config.spdif_ext_enable_p1"),
-            12 => n("input_config.i2s_clock_mode"),
-            13 => {
-                let pin = if v == 0 {
-                    "unset".into()
-                } else {
-                    format!("GPIO {v}")
-                };
-                return (n("input_config.adat_input_pin"), pin);
-            }
-            14 => {
-                let what = match v {
-                    0 => "absent",
-                    2 => "enabled",
-                    _ => "disabled",
-                };
-                return (
-                    n("input_config.adat_input_enabled_p1"),
-                    format!("{v} ({what})"),
-                );
-            }
-            _ => {
-                let what = match v {
-                    0 => "absent",
-                    2 => "slave",
-                    _ => "master",
-                };
-                return (
-                    n("input_config.adat_clock_mode_p1"),
-                    format!("{v} ({what})"),
-                );
-            }
-        };
-        return (name, v.to_string());
-    }
-    if let Some(k) = within(off, g::OFF_LG_SOUND_SYNC, 4)
-        && size == 1
-    {
-        return match k {
-            0 => (n("lg_sound_sync.enabled"), flag(p)),
-            1 => (n("lg_sound_sync.present"), flag(p)),
-            2 => {
-                let v = p.first().copied().unwrap_or(0xFF);
-                let text = if v == 0xFF {
-                    "-".into()
-                } else {
-                    format!("{v} / 100")
-                };
-                (n("lg_sound_sync.volume"), text)
-            }
-            _ => (n("lg_sound_sync.muted"), flag(p)),
-        };
-    }
-    if off == g::OFF_USER_VOLUME && size == 4 {
-        return (
-            n("user_volume.user_volume_db"),
-            le_f32(p).map_or_else(|| hex(p), volume),
-        );
-    }
-    if off == g::OFF_USER_VOLUME + 4 && size == 1 {
-        return (n("user_volume.user_mute"), flag(p));
-    }
-    if let Some(k) = within(off, g::OFF_DAC_HW_MUTE, g::LEN_DAC_HW_MUTE) {
-        let ms = || le_u16(p).map_or_else(|| hex(p), |v| format!("{v} ms"));
-        match k {
-            0 => return (n("dac_mute.enabled"), flag(p)),
-            1 => return (n("dac_mute.active_low"), flag(p)),
-            2 => return (n("dac_mute.pin"), byte(p)),
-            4 => return (n("dac_mute.hold_ms"), ms()),
-            6 => return (n("dac_mute.release_ms"), ms()),
-            _ => {}
-        }
-    }
-    if let Some(rel) = within(off, g::OFF_CROSSOVERS, g::LEN_CROSSOVERS) {
-        let (slot, sub) = split(rel, 16);
-        let (ch, b) = split(slot, g::wire::WIRE_MAX_XOVER_BANDS as usize);
-        if sub == 0 && size == 16 {
-            return (format!("xover[{ch}][{b}]"), band(p));
-        }
-        return (format!("xover[{ch}][{b}]+0x{sub:X}"), hex(p));
-    }
-    if off == g::OFF_ADAT_CONFIG && size == 1 {
-        return (n("adat_config.enabled"), flag(p));
-    }
-    if off == g::OFF_ADAT_CONFIG + 1 && size == 1 {
-        let v = p.first().copied().unwrap_or(0);
-        let pin = if v == 0 {
-            "default".into()
-        } else {
-            format!("GPIO {v}")
-        };
-        return (n("adat_config.pin"), pin);
-    }
-    if let Some(k) = within(off, g::OFF_PSYBASS, g::LEN_PSYBASS) {
-        match k {
-            0 => return (n("psybass.enabled"), flag(p)),
-            2 => return (n("psybass.output_mask"), hex(p)),
-            4 => return (n("psybass.cutoff_hz"), f(p, " Hz")),
-            8 => return (n("psybass.harmonics_db"), f(p, " dB")),
-            12 => return (n("psybass.drive_db"), f(p, " dB")),
-            16 => return (n("psybass.character_pct"), f(p, "%")),
-            20 => return (n("psybass.original_db"), f(p, " dB")),
-            _ => {}
-        }
-    }
-    if let Some(k) = within(off, g::OFF_UPMIX, g::LEN_UPMIX) {
-        return match k {
-            0 => (n("upmix.enabled"), flag(p)),
-            1 => (n("upmix.engine"), byte(p)),
-            2 => (n("upmix.mode"), byte(p)),
-            3 => (
-                n("upmix.center_trim_halfdb"),
-                p.first()
-                    .map(|&v| format!("{:+.1} dB", f32::from(v.cast_signed()) * 0.5))
-                    .unwrap_or_default(),
-            ),
-            _ => {
-                let (i, sub) = split(k.saturating_sub(4), 4);
-                if sub == 0 {
-                    (format!("upmix.param[{}]", i.saturating_add(3)), f(p, ""))
-                } else {
-                    (format!("upmix+0x{k:X}"), hex(p))
-                }
-            }
-        };
-    }
-    if let Some(k) = within(off, g::OFF_SUBHARM, g::LEN_SUBHARM) {
-        match k {
-            0 => return (n("subharm.enabled"), flag(p)),
-            2 => return (n("subharm.output_mask"), hex(p)),
-            4 => return (n("subharm.low_db"), f(p, " dB")),
-            8 => return (n("subharm.high_db"), f(p, " dB")),
-            12 => return (n("subharm.boost_db"), f(p, " dB")),
-            16 => return (n("subharm.top_db"), f(p, " dB")),
-            20 => return (n("subharm.select_depth"), f(p, "%")),
-            24 => return (n("subharm.select_hold_ms"), f(p, " ms")),
-            28 => return (n("subharm.ceiling_db"), f(p, " dBFS")),
-            32 => return (n("subharm.select_mode"), hex(p)),
-            33 => return (n("subharm.link_pairs"), flag(p)),
-            _ => {}
-        }
-    }
-    if let Some(k) = within(off, g::OFF_TUBE, g::LEN_TUBE) {
-        match k {
-            0 => return (n("tube.enabled"), flag(p)),
-            1 => return (n("tube.tube_type"), byte(p)),
-            2 => return (n("tube.rectifier"), byte(p)),
-            3 => return (n("tube.xfmr_enabled"), flag(p)),
-            4 => return (n("tube.output_mask"), hex(p)),
-            8 => return (n("tube.drive_db"), f(p, " dB")),
-            12 => return (n("tube.bias_pct"), f(p, "%")),
-            16 => return (n("tube.asym_db"), f(p, " dB")),
-            20 => return (n("tube.hardness_pct"), f(p, "%")),
-            24 => return (n("tube.sag_pct"), f(p, "%")),
-            28 => return (n("tube.xfmr_damping"), f(p, "")),
-            32 => return (n("tube.xfmr_res_hz"), f(p, " Hz")),
-            36 => return (n("tube.mix_pct"), f(p, "%")),
-            40 => return (n("tube.trim_db"), f(p, " dB")),
-            _ => {}
-        }
-    }
-    if let Some(rel) = within(off, g::OFF_LIMITER, g::LEN_LIMITER) {
-        let (o, sub) = split(rel, 12);
-        return match sub {
-            0 => (format!("limiter[{o}].enabled"), flag(p)),
-            1 => (
-                format!("limiter[{o}].link_group"),
-                p.first()
-                    .map(|&v| {
-                        if v == 0 {
-                            "off".into()
-                        } else {
-                            format!("group {v}")
-                        }
-                    })
-                    .unwrap_or_default(),
-            ),
-            4 => (format!("limiter[{o}].threshold_db"), f(p, " dBFS")),
-            8 => (format!("limiter[{o}].release_ms"), f(p, " ms")),
-            s => (format!("limiter[{o}]+0x{s:X}"), hex(p)),
-        };
-    }
-    (format!("offset=0x{off:04X} size={size}"), hex(p))
+    s
 }
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
-mod tests_wp_c7 {
+mod tests_clean1 {
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    use dspi_proto::generated as g;
+    use dspi_transport::clock::Instant;
+
     use super::*;
 
-    fn note(event: Event) -> Notification {
+    fn note(seq: u8, event: Event) -> Notification {
         Notification {
-            seq: 7,
+            seq,
             event,
             lost: false,
             origin: None,
@@ -694,167 +845,369 @@ mod tests_wp_c7 {
         }
     }
 
-    fn changed(off: usize, src: u8, bytes: &[u8]) -> String {
-        describe(&note(Event::ParamChanged {
-            offset: off as u16,
-            source: Source::from_raw(src),
-            bytes: bytes.to_vec(),
-        }))
+    fn changed(offset: usize, source: Source, bytes: &[u8]) -> String {
+        describe(&note(
+            9,
+            Event::ParamChanged {
+                offset: offset as u16,
+                source,
+                bytes: bytes.to_vec(),
+            },
+        ))
+    }
+
+    fn unknown(id: u16, bytes: Vec<u8>) -> String {
+        describe(&note(
+            4,
+            Event::Unknown {
+                id: id as u8,
+                bytes,
+            },
+        ))
     }
 
     #[test]
-    fn wp_c7_param_changes_are_named() {
-        let line = changed(g::OFF_MASTER_VOLUME, 7, &(-12.5f32).to_le_bytes());
+    fn clean1_param_changes_are_named() {
+        let line = changed(
+            g::OFF_MASTER_VOLUME,
+            Source::HostSet,
+            &(-7.0f32).to_le_bytes(),
+        );
         assert!(
-            line.starts_with("[  7] [UAC1    ] master_volume.master_volume_db"),
+            line.contains("[HOST    ] master_volume.master_volume_db"),
             "{line}"
         );
-        assert!(line.ends_with(" -12.50 dB"), "{line}");
-        let gain = changed(g::OFF_OUTPUTS + 12 * 2 + 4, 1, &3.0f32.to_le_bytes());
+        assert!(line.ends_with("-7.00 dB"), "{line}");
         assert!(
-            gain.contains("outputs[2].gain_db") && gain.ends_with("+3.000 dB"),
-            "{gain}"
+            changed(
+                g::OFF_MASTER_VOLUME,
+                Source::Gpio,
+                &(-128.0f32).to_le_bytes()
+            )
+            .ends_with("MUTE")
         );
-        let mut band = [0u8; 16];
-        band[0] = 1;
-        band[4..8].copy_from_slice(&1000.0f32.to_le_bytes());
-        band[8..12].copy_from_slice(&0.7f32.to_le_bytes());
-        band[12..16].copy_from_slice(&(-3.0f32).to_le_bytes());
-        let eq = changed(g::OFF_EQ + (12 * 3 + 2) * 16, 5, &band);
+
+        // Arrays of records resolve every index.
+        let out3_gain = g::OFF_OUTPUTS + 3 * 12 + 4;
+        let line = changed(out3_gain, Source::Gpio, &(-3.5f32).to_le_bytes());
+        assert!(line.contains("[GPIO    ] outputs[3].gain_db"), "{line}");
+        assert!(line.ends_with("-3.5 dB"), "{line}");
+
+        let band = g::OFF_EQ + (2 * BANDS + 5) * 16;
+        let mut whole = vec![1u8, 0, 0, 0];
+        for v in [1000.0f32, 0.7, -2.0] {
+            whole.extend(v.to_le_bytes());
+        }
+        let line = changed(band, Source::Preset, &whole);
+        assert!(line.contains("eq[2][5] "), "{line}");
+        assert!(line.contains("f=1000 Hz"), "{line}");
         assert!(
-            eq.contains("eq[3][2]") && eq.contains("f=1000.0 Hz") && eq.contains("g=-3.00 dB"),
-            "{eq}"
+            changed(band + 4, Source::HostSet, &440.0f32.to_le_bytes()).contains("eq[2][5].freq")
         );
-        let midi = changed(g::OFF_GLOBAL + 4, 10, &[1]);
+
+        let xp = g::OFF_CROSSPOINTS + (OUTPUTS + 2) * 8 + 4;
         assert!(
-            midi.contains("[MIDI    ] global.bypass") && midi.ends_with("1 (true)"),
-            "{midi}"
+            changed(xp, Source::HostSet, &0.0f32.to_le_bytes())
+                .contains("crosspoints[1][2].gain_db")
         );
-        let x = changed(
-            g::OFF_CROSSPOINTS + (9 + 2) * 8,
+        assert!(
+            changed(g::OFF_DELAYS + 8, Source::HostSet, &1.5f32.to_le_bytes())
+                .contains("delays.delay_ms[2]")
+        );
+        let mut name = b"Sub".to_vec();
+        name.resize(NAME_LEN, 0);
+        let line = changed(g::OFF_CHANNEL_NAMES + NAME_LEN, Source::HostSet, &name);
+        assert!(line.contains("channel_names[1]"), "{line}");
+        assert!(line.ends_with("\"Sub\""), "{line}");
+        assert!(
+            changed(g::OFF_USER_VOLUME + 4, Source::Uac1, &[1])
+                .contains("[UAC1    ] user_volume.user_mute")
+        );
+        assert!(
+            changed(
+                g::OFF_LIMITER + 12 + 4,
+                Source::HostSet,
+                &(-1.0f32).to_le_bytes()
+            )
+            .contains("limiter[1].threshold_db")
+        );
+        assert!(changed(g::OFF_GLOBAL + 6, Source::HostSet, &[0x05, 0]).ends_with("0x0005"));
+    }
+
+    #[test]
+    fn clean1_layouts_match_the_wire_tables() {
+        // Every field fits its section and record.
+        for (section, _, len) in SECTIONS {
+            let Some(shape) = layout(section) else {
+                panic!("{section} has no layout");
+            };
+            let stride = if shape.dims.is_empty() {
+                len
+            } else {
+                shape.stride
+            };
+            if !shape.dims.is_empty() {
+                assert_eq!(
+                    shape.dims.iter().product::<usize>() * stride,
+                    len,
+                    "{section}"
+                );
+            }
+            for f in shape.fields {
+                assert!(
+                    f.at + f.kind.size() * f.count <= stride,
+                    "{section}.{}",
+                    f.name
+                );
+            }
+        }
+        // The tables dspi-proto keeps for the sections that changed shape.
+        let check = |section: &str, table: &[(&str, usize, usize)]| {
+            let shape = layout(section).unwrap();
+            for (name, at, len) in table {
+                if name.starts_with("reserved") {
+                    continue;
+                }
+                let f = shape.fields.iter().find(|f| f.name == *name).unwrap();
+                assert_eq!(
+                    (f.at, f.kind.size() * f.count),
+                    (*at, *len),
+                    "{section}.{name}"
+                );
+            }
+        };
+        check("input_config", &dspi_proto::wire::INPUT_CONFIG_FIELDS);
+        check("subharm", &dspi_proto::wire::SUBHARM_FIELDS);
+        check("tube", &dspi_proto::wire::TUBE_FIELDS);
+        check("limiter", &dspi_proto::wire::LIMITER_OUTPUT_FIELDS);
+    }
+
+    #[test]
+    fn clean1_events_and_fallbacks() {
+        let v1 = describe(&note(0, Event::MasterVolume(-12.0)));
+        assert!(v1.starts_with("v1.MasterVolume"), "{v1}");
+        assert!(v1.ends_with("-12.00 dB"), "{v1}");
+
+        let preset = describe(&note(7, Event::PresetLoaded { slot: 2 }));
+        assert!(preset.starts_with("[  7] v2.PresetLoaded"), "{preset}");
+        assert!(preset.ends_with("slot=2"), "{preset}");
+        let bulk = describe(&note(
+            8,
+            Event::BulkInvalidated {
+                source: Source::BulkSet,
+            },
+        ));
+        assert!(
+            bulk.contains("v2.BulkInvalidated") && bulk.ends_with("source=BULK"),
+            "{bulk}"
+        );
+        let siggen = describe(&note(
             1,
-            &[1, 0, 0, 0, 0, 0, 0, 0],
+            Event::SiggenState {
+                state: 2,
+                reason: 9,
+                signal_type: 3,
+                channel: 0xFF,
+            },
+        ));
+        assert!(siggen.contains("RUN reason=9 type=3 ch=-"), "{siggen}");
+        let aux = describe(&note(
+            1,
+            Event::CsAux {
+                slot: 4,
+                state: 1,
+                level_q8: 128 * 256,
+                source: Source::Gpio,
+            },
+        ));
+        assert!(
+            aux.contains("slot=4 state=1 level=128.0% src=GPIO"),
+            "{aux}"
         );
-        assert!(x.contains("crosspoints[1][2]"), "{x}");
-        let lim = changed(g::OFF_LIMITER + 12 * 8 + 4, 1, &(-1.0f32).to_le_bytes());
-        assert!(lim.contains("limiter[8].threshold_db"), "{lim}");
-    }
+        let ir = describe(&note(
+            1,
+            Event::IrLearn {
+                state: 2,
+                protocol: 1,
+                code: 0xABCD,
+            },
+        ));
+        assert!(ir.contains("DONE protocol=NEC code=0x0000ABCD"), "{ir}");
 
-    #[test]
-    fn wp_c7_events_and_fallbacks() {
-        let s = describe(&note(Event::SiggenState {
-            state: 2,
-            reason: 0,
-            signal_type: 4,
-            channel: 0xFF,
-        }));
+        // Names arrive as events the session does not decode.
+        let mut p = vec![0u8, nfy::PARAM_SRC_GPIO as u8, 0, 0];
+        let mut field = [0u8; 32];
+        field[..7].copy_from_slice(b"Kitchen");
+        p.extend(field);
+        let line = unknown(nfy::NOTIFY_EVT_DEVICE_NAME, p.clone());
         assert!(
-            s.contains("v2.SiggenState                 RUN reason=- type=4 ch=-"),
-            "{s}"
+            line.contains("v2.DeviceName") && line.contains("name=\"Kitchen\" src=GPIO"),
+            "{line}"
         );
-        assert!(describe(&note(Event::PresetLoaded { slot: 3 })).ends_with("slot=3"));
-        let u = describe(&note(Event::Unknown {
-            id: 0x0E,
-            bytes: vec![0xAB],
-        }));
-        assert!(u.contains("v2?evt=0x0E  AB"), "{u}");
-        let v1 = describe(&note(Event::MasterVolume(-10.0)));
+        p[0] = 3;
+        let line = unknown(nfy::NOTIFY_EVT_INPUT_SOURCE_NAME, p);
+        assert!(line.contains("source=3 name=\"Kitchen\""), "{line}");
+
+        // Fallbacks: an unknown event, an offset past the image, a payload
+        // that does not fit the field, an offset inside a field, a gap.
+        assert_eq!(unknown(0x42, vec![1, 0xAB]), "[  4] v2?evt=0x42  01 AB");
+        let past = changed(g::BULK_SIZE + 2, Source::Other(0x33), &[1, 2]);
+        assert!(past.contains("[src=0x33] offset=0x"), "{past}");
+        assert!(past.ends_with("01 02"), "{past}");
+        assert!(changed(g::OFF_MASTER_VOLUME, Source::HostSet, &[1, 2]).ends_with("01 02"));
         assert!(
-            v1.starts_with("v1.MasterVolume") && v1.ends_with("-10.00 dB"),
-            "{v1}"
+            changed(g::OFF_MASTER_VOLUME + 1, Source::HostSet, &[1])
+                .contains("master_volume.master_volume_db+0x1")
         );
-        let mut lost = note(Event::Unknown {
-            id: 0xFF,
-            bytes: vec![3, 2],
-        });
+        assert!(
+            changed(g::OFF_MASTER_VOLUME + 8, Source::HostSet, &[]).contains("master_volume+0x8")
+        );
+        let mut lost = note(5, Event::PresetLoaded { slot: 0 });
         lost.lost = true;
-        let l = describe(&lost);
+        lost.origin = Some(12);
+        let line = describe(&lost);
         assert!(
-            l.starts_with("(undecodable, 2 bytes)  03 02") && l.ends_with("lost before this one)"),
-            "{l}"
+            line.contains("(after a gap)") && line.ends_with("link session 12"),
+            "{line}"
         );
-        let mut name = vec![2, 5, 0, 0];
-        name.extend(b"TV\0\0");
-        let n = describe(&note(Event::Unknown {
-            id: EVT_INPUT_SOURCE_NAME,
-            bytes: name,
-        }));
-        assert!(
-            n.contains("InputSourceName") && n.contains("source=2") && n.contains("\"TV\""),
-            "{n}"
+        let mut bad = note(
+            0,
+            Event::Unknown {
+                id: 0xFF,
+                bytes: vec![3, 2, 0],
+            },
         );
+        bad.lost = true;
+        assert_eq!(describe(&bad), "undecodable packet (3 bytes): 03 02 00");
     }
 
-    // -- WP UPW2 --
     #[test]
-    fn wp_upw2_the_monitor_names_the_analyser_configuration_event() {
-        let cfg = dspi_proto::packets::RtaConfig {
-            tap: 1,
-            channel_mask: 0x0101,
-            fft_order: 11,
-            avg_ms: 0,
-            peak_decay_db_s: 0,
+    fn clean1_the_monitor_names_the_analyser_configuration_event() {
+        let cfg = RtaConfig {
+            tap: g::rta::RTA_TAP_OUTPUT as u8,
+            channel_mask: 0x0003,
+            fft_order: 10,
+            avg_ms: 250,
+            peak_decay_db_s: 12,
             flags: 0,
         };
         let mut bytes = cfg.encode().to_vec();
-        bytes.push(g::notify::PARAM_SRC_HOST_SET as u8);
-        let r = describe(&note(Event::Unknown {
-            id: crate::rta::EVT_RTA_CONFIG,
-            bytes,
-        }));
+        bytes.push(nfy::PARAM_SRC_MIDI as u8);
+        let line = unknown(nfy::NOTIFY_EVT_RTA_CONFIG, bytes);
+        assert!(line.contains("v2.RtaConfig"), "{line}");
         assert!(
-            r.contains("v2.RtaConfig")
-                && r.contains("tap=1 mask=0x0101 order=11")
-                && r.ends_with("src=HOST"),
-            "{r}"
+            line.contains("tap=out mask=0x0003 order=10 avg=250ms decay=12dB/s"),
+            "{line}"
         );
-        let bad = describe(&note(Event::Unknown {
-            id: crate::rta::EVT_RTA_CONFIG,
-            bytes: vec![9],
-        }));
-        assert!(bad.contains("v2.RtaConfig") && bad.contains("09"), "{bad}");
+        assert!(line.ends_with("src=MIDI"), "{line}");
+        // Short or of another version: named, with its bytes.
+        let line = unknown(nfy::NOTIFY_EVT_RTA_CONFIG, vec![9, 1]);
+        assert!(
+            line.contains("v2.RtaConfig") && line.ends_with("09 01"),
+            "{line}"
+        );
     }
 
     #[test]
-    fn wp_c7_no_offset_or_payload_panics() {
-        for off in (0..g::BULK_SIZE + 64).step_by(1) {
-            for len in [0usize, 1, 2, 3, 4, 8, 16, 52] {
-                let _ = param(off, &vec![0xA5; len]);
+    fn clean1_no_offset_or_payload_panics() {
+        let payloads: Vec<Vec<u8>> = (0..=40usize)
+            .chain([52, 64, 255, 300])
+            .map(|n| (0..n).map(|i| (i * 37) as u8).collect())
+            .collect();
+        for offset in 0..=u16::MAX {
+            if offset as usize > g::BULK_SIZE + 64 && offset % 997 != 0 {
+                continue;
+            }
+            for p in payloads
+                .iter()
+                .filter(|p| p.len() <= 17 || offset % 61 == 0)
+            {
+                let line = changed(offset as usize, Source::Other(0xEE), p);
+                assert!(!line.is_empty());
             }
         }
-    }
-
-    #[test]
-    fn wp_c7_the_log_is_bounded_and_ids_survive_a_clear() {
-        let mut log = MonitorLog::default();
-        for i in 0..MonitorLog::LIMIT + 5 {
-            log.push(i as i64, format!("{i}"));
+        for id in 0..=u8::MAX {
+            for p in &payloads {
+                let mut n = note(
+                    id,
+                    Event::Unknown {
+                        id,
+                        bytes: p.clone(),
+                    },
+                );
+                n.lost = id % 2 == 0;
+                assert!(!describe(&n).is_empty());
+            }
         }
-        let all = log.read_after(0);
-        assert_eq!(all.entries.len(), MonitorLog::LIMIT);
-        assert_eq!(all.entries[0].id, 6);
-        assert_eq!(all.last_id, (MonitorLog::LIMIT + 5) as u64);
-        let none = log.read_after(all.last_id);
-        assert!(none.entries.is_empty());
-        assert_eq!(none.last_id, all.last_id);
-        log.clear();
-        assert!(log.read_after(0).entries.is_empty());
-        log.push(0, "x".into());
-        let next = log.read_after(all.last_id);
-        assert_eq!(next.entries.len(), 1);
-        assert_eq!(next.entries[0].id, all.last_id + 1);
+        for v in [f32::NAN, f32::INFINITY, f32::MIN, -128.0, 0.0] {
+            assert!(!describe(&note(0, Event::MasterVolume(v))).is_empty());
+        }
     }
 
     #[test]
-    fn wp_c7_entries_carry_the_receive_time() {
+    fn clean1_the_log_is_bounded_and_ids_survive_a_clear() {
         let mut log = MonitorLog::default();
-        log.record(&note(Event::Idle));
-        let now = clock::system_time()
+        assert_eq!(
+            log.after(0),
+            MonitorBatch {
+                last_id: 0,
+                entries: vec![]
+            }
+        );
+        let total = MonitorLog::LIMIT + 25;
+        for i in 0..total {
+            log.record(&note(i as u8, Event::PresetLoaded { slot: 1 }));
+        }
+        let all = log.after(0);
+        assert_eq!(all.entries.len(), MonitorLog::LIMIT);
+        assert_eq!(all.entries[0].id, 26, "the oldest went first");
+        assert_eq!(all.last_id, total as u64);
+        assert!(all.entries.windows(2).all(|w| w[1].id == w[0].id + 1));
+
+        let tail = log.after(total as u64 - 3);
+        assert_eq!(tail.entries.len(), 3);
+        assert_eq!(tail.last_id, total as u64);
+        let none = log.after(total as u64);
+        assert!(none.entries.is_empty());
+        assert_eq!(none.last_id, total as u64);
+
+        log.entries.clear();
+        assert_eq!(log.after(5).last_id, 5, "nothing new: the caller's id");
+        log.record(&note(0, Event::InputFormat { channels: 2 }));
+        let after = log.after(total as u64);
+        assert_eq!(after.entries.len(), 1);
+        assert_eq!(after.entries[0].id, total as u64 + 1, "ids carry on");
+    }
+
+    #[test]
+    fn clean1_clear_through_the_core() {
+        let core = DspiCore::new();
+        core.lock()
+            .monitor
+            .record(&note(1, Event::PresetLoaded { slot: 0 }));
+        let first = core.monitor_read(0);
+        assert_eq!(first.entries.len(), 1);
+        core.monitor_clear();
+        assert_eq!(core.monitor_read(first.last_id).last_id, first.last_id);
+        assert!(core.monitor_read(0).entries.is_empty());
+    }
+
+    #[test]
+    fn clean1_entries_carry_the_receive_time() {
+        let mut log = MonitorLog::default();
+        let mut old = note(1, Event::PresetLoaded { slot: 0 });
+        old.received = Instant::now() - Duration::from_secs(30);
+        log.record(&old);
+        log.record(&note(2, Event::PresetLoaded { slot: 0 }));
+        let now_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_millis() as i64;
-        let e = &log.read_after(0).entries[0];
-        assert!((now - e.time_ms).abs() < 5_000, "{} vs {now}", e.time_ms);
-        assert_eq!(e.text, "Idle");
+        let got = log.after(0).entries;
+        assert!(
+            (got[0].time_ms - (now_ms - 30_000)).abs() < 2_000,
+            "{got:?}"
+        );
+        assert!((got[1].time_ms - now_ms).abs() < 2_000, "{got:?}");
     }
 }

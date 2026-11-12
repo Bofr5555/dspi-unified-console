@@ -14,6 +14,8 @@ here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 . "$root/ci/container/images.conf"
 work=${ESP_RIG_WORK:-${DSPI_BUILD_CACHE:-$HOME/.cache/dspi-build}/work/esp-rig}
+# -- WP CLEAN1 -- the Terminal's command name
+ci_cmd() { "$root/ci/command-name.sh"; }
 
 node() {
   local nodes=() d
@@ -31,11 +33,11 @@ node() {
 dump() {
   local out=$1
   mkdir -p "$out"
-  [ -x "$work/dspi" ] || { echo "k340.sh: no $work/dspi (ESP_RIG_DSPI_CLI=1 rig.sh build)" >&2; exit 2; }
+  [ -x "$work/$(ci_cmd)" ] || { echo "k340.sh: no $work/$(ci_cmd) (ESP_RIG_DSPI_CLI=1 rig.sh build)" >&2; exit 2; }
   podman run --rm -i --security-opt label=disable --network none --device "$(node)" \
-    -v "$work":/rig:ro -v "$out":/out:z -e HOME=/out "$COREMERGE" bash -s <<'EOF'
+    -v "$work":/rig:ro -v "$out":/out:z -e HOME=/out -e D="/rig/$(ci_cmd)" "$COREMERGE" bash -s <<'EOF'
 set -u
-D=/rig/dspi; out=/out
+out=/out
 $D export "$out/device.dspipreset" --format preset > "$out/export.log" 2>&1; echo "export rc=$?" > "$out/rc.txt"
 $D export "$out/filters.txt" --format filters >> "$out/export.log" 2>&1; echo "filters rc=$?" >> "$out/rc.txt"
 $D cs export "$out/cs.json" >> "$out/export.log" 2>&1; echo "cs rc=$?" >> "$out/rc.txt"

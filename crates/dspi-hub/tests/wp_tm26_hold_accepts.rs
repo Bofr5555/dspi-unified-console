@@ -1,6 +1,6 @@
 //! WP TM26: a hub that holds its accepts until its device is in (hw-1 M2).
 //!
-//! `dspi hub` listened about 0.3 s before the USB device attached, and a client in that
+//! `uconsole hub` listened about 0.3 s before the USB device attached, and a client in that
 //! window was told "No DSPi found". With `NetworkConfig::hold_accepts` the port is bound
 //! at once and clients wait in the backlog until the embedder calls `start_accepting`.
 //! The attach here is slowed down on purpose. Loopback only.

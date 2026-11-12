@@ -1,4 +1,4 @@
-//! WP TM12: `dspi autoeq` update commands as a script sees them. None of these
+//! WP TM12: `uconsole autoeq` update commands as a script sees them. None of these
 //! touches the network: `rebuild` without `--yes` stops first, and the fetching
 //! paths are tested in the binary's own unit tests, on a scripted fetch.
 //! Scratch lives in the target directory, never a tmpfs.
@@ -6,13 +6,13 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
-const DSPI: &str = env!("CARGO_BIN_EXE_dspi");
+const DSPI: &str = env!(concat!("CARGO_BIN_EXE_", dspi_cmd::command!()));
 const DB: &str = r#"{"version":1,"generatedAt":"2026","entries":[{"id":"a"},{"id":"b"}]}"#;
 
 fn home(name: &str) -> PathBuf {
     let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("tm12-{name}"));
     let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(dir.join("config/dspi-term")).unwrap();
+    std::fs::create_dir_all(dir.join(concat!("config/", dspi_cmd::command!()))).unwrap();
     dir
 }
 
@@ -28,7 +28,11 @@ fn dspi(home: &Path, args: &[&str]) -> Output {
 }
 
 fn db_path(home: &Path) -> PathBuf {
-    home.join("config/dspi-term/autoeq_database.json")
+    home.join(concat!(
+        "config/",
+        dspi_cmd::command!(),
+        "/autoeq_database.json"
+    ))
 }
 
 fn stdout(o: &Output) -> String {

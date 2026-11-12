@@ -1,13 +1,13 @@
 //! WP TM26: a boolean flag before the command (hw-1 D1).
 //!
-//! `dspi --dry-run set ...` used to read `--dry-run` as "no command", open the
+//! `uconsole --dry-run set ...` used to read `--dry-run` as "no command", open the
 //! interface and, with no terminal, panic in ratatui (exit 101). These run the
 //! real binary on the demo device with no terminal on either side.
 
 use std::path::PathBuf;
 use std::process::{Command, Output, Stdio};
 
-const DSPI: &str = env!("CARGO_BIN_EXE_dspi");
+const DSPI: &str = env!(concat!("CARGO_BIN_EXE_", dspi_cmd::command!()));
 
 /// A scratch directory under the target directory, never on tmpfs, doubling as
 /// `HOME` so that the config and undo history stay out of the way.
@@ -19,7 +19,7 @@ fn scratch(name: &str) -> PathBuf {
     dir
 }
 
-/// Run `dspi` with standard input and output that are not terminals.
+/// Run `uconsole` with standard input and output that are not terminals.
 fn run(name: &str, args: &[&str]) -> Output {
     let home = scratch(name);
     Command::new(DSPI)
@@ -93,6 +93,9 @@ fn tm26_the_interface_without_a_terminal_fails_cleanly() {
     assert_eq!(o.status.code(), Some(1), "{}", text(&o.stderr));
     let err = text(&o.stderr);
     assert!(err.contains("the interface needs a terminal"), "{err}");
-    assert!(err.contains("dspi --help"), "{err}");
+    assert!(
+        err.contains(concat!(dspi_cmd::command!(), " --help")),
+        "{err}"
+    );
     assert!(o.stdout.is_empty(), "drew into a pipe: {}", text(&o.stdout));
 }

@@ -129,7 +129,7 @@ plus one. Writing a plain zero disables things silently. See
 ## 6. Verify against hardware
 
 ```sh
-cargo run --bin dspi -- dump
+cargo run --bin uconsole -- dump
 ```
 
 Confirm the channel count, wire version, firmware version (with its beta),

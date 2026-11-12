@@ -47,8 +47,8 @@ class AboutInfoAn26Test {
         val a = parseAbout(asset)
         assertEquals("Weeb Labs: links and support", a.linksTitle)
         assertEquals(
-            "Weeb Labs' channels for DSPi, its firmware and the original DSPi Consoles. " +
-                "This console is made by Bofr5555, not Weeb Labs.",
+            "Weeb Labs makes DSPi, its firmware and the original DSPi Consoles; these are their channels, " +
+                "and Patreon and Ko-fi are where to support their work. This console is made by Bofr5555, not Weeb Labs.",
             a.linksNote
         )
         val words = (a.linksTitle + " " + a.linksNote).lowercase().split(Regex("[^a-z0-9']+"))

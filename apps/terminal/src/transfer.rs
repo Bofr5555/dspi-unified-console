@@ -1,4 +1,4 @@
-//! `dspi export`, `dspi import` and `dspi cs export|import` (WP TM10).
+//! `uconsole export`, `uconsole import` and `uconsole cs export|import` (WP TM10).
 //!
 //! Three documents move through here: the whole-device `.dspipreset`, a filter
 //! bank (the Console's text file or its JSON form) and the control-surface
@@ -15,6 +15,7 @@
 //! standard output. Writing a document to `-` keeps standard output for the
 //! document alone, so the report goes to standard error.
 
+use dspi_cmd::COMMAND;
 use std::io::{Read, Write};
 
 use dspi_session::Session;
@@ -169,15 +170,15 @@ pub(crate) fn cmd_export(target: &Target, flags: &[&str], json: bool) -> u8 {
     let (chosen, flags) = match take_format(flags) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("dspi: {e}");
+            eprintln!("{COMMAND}: {e}");
             return exit::USAGE;
         }
     };
     let args = positional(&flags);
     let Some(&path) = args.first() else {
         eprintln!(
-            "dspi: export needs a file name, or - for standard output, \
-             e.g. `dspi export tuning.txt`"
+            "{COMMAND}: export needs a file name, or - for standard output, \
+             e.g. `{COMMAND} export tuning.txt`"
         );
         return exit::USAGE;
     };
@@ -195,7 +196,7 @@ fn run_export(session: &mut Session, path: &str, format: Format, json: bool) -> 
     match export_text(session, path, format) {
         Ok((text, summary)) => finish_export(path, format.name(), &text, summary, json),
         Err(e) => {
-            eprintln!("dspi: export failed, nothing was written: {e}");
+            eprintln!("{COMMAND}: export failed, nothing was written: {e}");
             exit::TRANSPORT
         }
     }
@@ -230,7 +231,7 @@ fn export_text(
         // -- WP TM21 --
         let shown = if path == "-" { "the document" } else { path };
         if let Some(w) = read_only::export_warning(&doc, shown) {
-            eprintln!("dspi: warning: {w}");
+            eprintln!("{COMMAND}: warning: {w}");
             fields["warning"] = json!(w);
         }
         return Ok((preset_file::write(&doc), (line, fields)));
@@ -249,7 +250,7 @@ fn export_text(
              leaves them alone: {}",
             left.join("; ")
         );
-        eprintln!("dspi: warning: {w}");
+        eprintln!("{COMMAND}: warning: {w}");
         fields["warning"] = json!(w);
     }
     let text = if format == Format::FiltersJson {
@@ -269,7 +270,7 @@ fn finish_export(
     json: bool,
 ) -> u8 {
     if let Err(e) = write_document(path, text) {
-        eprintln!("dspi: {e}");
+        eprintln!("{COMMAND}: {e}");
         return exit::TRANSPORT;
     }
     if path == "-" {
@@ -292,19 +293,19 @@ pub(crate) fn cmd_import(target: &Target, flags: &[&str], json: bool) -> u8 {
     let (chosen, flags) = match take_format(flags) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("dspi: {e}");
+            eprintln!("{COMMAND}: {e}");
             return exit::USAGE;
         }
     };
     let args = positional(&flags);
     let Some(&path) = args.first() else {
-        eprintln!("dspi: import needs a file name, or - for standard input");
+        eprintln!("{COMMAND}: import needs a file name, or - for standard input");
         return exit::USAGE;
     };
     let text = match read_document(path) {
         Ok(t) => t,
         Err(e) => {
-            eprintln!("dspi: {e}");
+            eprintln!("{COMMAND}: {e}");
             return exit::USAGE;
         }
     };
@@ -318,15 +319,16 @@ pub(crate) fn cmd_import(target: &Target, flags: &[&str], json: bool) -> u8 {
             Ok(d) => import_filters(target, &d, path, &flags, json),
             Err(e) => usage_error(&e.to_string()),
         },
-        DocumentKind::ControlSurfaces => usage_error(
-            "this is a control-surface document; `dspi cs import` applies those, \
-             since they move pins",
-        ),
+        DocumentKind::ControlSurfaces => usage_error(concat!(
+            "this is a control-surface document; `",
+            dspi_cmd::command!(),
+            " cs import` applies those, since they move pins"
+        )),
     }
 }
 
 fn usage_error(e: &str) -> u8 {
-    eprintln!("dspi: {e}");
+    eprintln!("{COMMAND}: {e}");
     exit::USAGE
 }
 
@@ -550,20 +552,24 @@ fn apply_filters(
 
 // ---------------------------------------------------------- control surfaces
 
-/// `dspi cs export <file|->` and `dspi cs import <file|-> [--dry-run] [--save]`.
+/// `uconsole cs export <file|->` and `uconsole cs import <file|-> [--dry-run] [--save]`.
 pub(crate) fn cmd_cs(target: &Target, flags: &[&str], json: bool) -> u8 {
     let args = positional(flags);
     match args.as_slice() {
         ["export", path] => cs_export(target, path, json),
         ["import", path] => cs_import(target, path, flags, json),
-        _ => usage_error(
-            "usage: dspi cs export <file|-> | dspi cs import <file|-> [--dry-run] [--save]",
-        ),
+        _ => usage_error(concat!(
+            "usage: ",
+            dspi_cmd::command!(),
+            " cs export <file|-> | ",
+            dspi_cmd::command!(),
+            " cs import <file|-> [--dry-run] [--save]"
+        )),
     }
 }
 
 fn cs_failure(e: &CsFileError) -> u8 {
-    eprintln!("dspi: {e}");
+    eprintln!("{COMMAND}: {e}");
     match e {
         CsFileError::Unsupported => exit::USAGE,
         CsFileError::Device(_) => exit::TRANSPORT,
@@ -1202,7 +1208,7 @@ mod wp_tm10_tests {
         ));
     }
 
-    /// `dspi cs export` is a subset of Qt's `cs_snapshot`, key for key, so a
+    /// `uconsole cs export` is a subset of Qt's `cs_snapshot`, key for key, so a
     /// Qt or Swift importer can hand it to `cs_apply` as it is.
     #[test]
     fn wp_tm10_the_cs_document_uses_the_snapshots_keys() {
@@ -1276,7 +1282,7 @@ mod tests_wp_tm4 {
         }
     }
 
-    /// `dspi cs import --save`, which writes through `Surfaces`: it does write
+    /// `uconsole cs import --save`, which writes through `Surfaces`: it does write
     /// on this build's format, and sends nothing on another.
     #[test]
     fn wp_tm4_cs_import_sends_nothing_to_a_read_only_device() {

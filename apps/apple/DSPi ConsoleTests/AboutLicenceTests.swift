@@ -7,11 +7,11 @@ final class AboutLicenceTests: XCTestCase {
 
     func testLic1TheCoreTableParsesWithTheLicenceAndThreeTerms() throws {
         let table = try XCTUnwrap(AboutTable.shared)
-        XCTAssertEqual(table.licence.spdx, "GPL-3.0-or-later")
+        XCTAssertEqual(table.licence.spdx, "GPL-3.0-only")
         XCTAssertTrue(table.licence.statement.contains("either version 3 of the License, or (at your option) any later version"))
         XCTAssertEqual(table.licence.terms.map(\.id), ["attributions", "modified_versions", "no_trademark_rights"])
         let texts = table.creditLines.map(\.text)
-        XCTAssertTrue(texts.contains("Made with love by Weeb Labs"))
+        XCTAssertTrue(texts.contains("DSPi and its firmware by Weeb Labs"))
         for line in texts {
             XCTAssertTrue(table.licence.terms[0].text.contains("\"\(line)\""), line)
         }

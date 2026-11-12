@@ -25,7 +25,7 @@ mock cannot be wrong in the same way a device can. The hardware smoke suite
 (`--features hardware`, still to be written) is the missing piece, and it needs
 a device attached to a runner.
 
-Until then, `dspi doctor` on the target machine is the real check. It
+Until then, `uconsole doctor` on the target machine is the real check. It
 enumerates, opens, claims the interface and probes the firmware, which is
 exactly the sequence that fails when a platform assumption is wrong.
 
@@ -43,13 +43,30 @@ someone unpacks the wrong archive on a Pi.
 
 ## Version numbers
 
-The application version is independent of the firmware version. `dspi --version`
+The application version is independent of the firmware version. `uconsole --version`
 prints both, plus the wire format:
 
 ```
-dspi 2.0.0 (protocol from DSPi release/v1.1.5 @ 9776c2f)
+uconsole 2.0.0 (protocol from DSPi release/v1.1.5 @ 9776c2f)
 wire format V26, 190 vendor opcodes
 ```
 
 That pairing is what makes a bug report actionable: "wire V26" says more about
 what the app was talking to than an app version ever could.
+
+## Release archives and the source archive (WP CLEAN1)
+
+Every release publishes, beside its downloads, the source archive of the exact commit it
+was built from: `ci/release-source.sh VERSION dist` writes
+`dspi-uconsole-VERSION-source.tar.gz` (a `git archive`, without `apps/desktop` but its shared
+`packaging/licences/` while the Qt app is not released; `--with-desktop` for a Qt release). The notices of every non-Qt artifact point at that file.
+
+A Terminal archive comes from a release build of `-p dspi-term`:
+`ci/release-terminal.sh target/release/uconsole linux-x86_64 VERSION dist`. It holds the
+binary under its command name (`ci/command-name.sh`), the README, `LICENSE`, `NOTICE.md`,
+`THIRD-PARTY-NOTICES.txt` (the Rust crates' licence texts,
+`apps/terminal/notices/rust-crates.txt`), `SOURCE.txt`, the udev rule and the hub's
+service files (`service/`, rendered from `apps/terminal/packaging/service/`). Regenerate the
+crates' texts after a dependency change with
+`ci/run.sh 'python3 apps/terminal/tools/gen_rust_notices.py'`; the `terminal` check step
+fails while they are stale.

@@ -19,6 +19,7 @@
     clippy::arithmetic_side_effects
 )]
 
+use dspi_cmd::COMMAND;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
@@ -200,10 +201,13 @@ pub enum OpenError {
         flag: &'static str,
         names: Vec<String>,
     },
-    #[error("this build of dspi has no MIDI support")]
+    #[error("this build of {cmd} has no MIDI support", cmd = COMMAND)]
     NoMidi,
     // -- WP TM9 --
-    #[error("this build of dspi cannot look for hubs on the network; use --link HOST[:PORT]")]
+    #[error(
+        "this build of {cmd} cannot look for hubs on the network; use --link HOST[:PORT]",
+        cmd = COMMAND
+    )]
     NoMdns,
     /// Looking for hubs did not work; the network, not the hubs.
     #[error("could not look for hubs: {0}")]
@@ -273,9 +277,17 @@ impl OpenError {
 
 fn pin_hint(pin_source: &str) -> &'static str {
     if pin_source == "fixed" {
-        "pass the hub's PIN with --pin, or run `dspi --link` in a terminal"
+        concat!(
+            "pass the hub's PIN with --pin, or run `",
+            dspi_cmd::command!(),
+            " --link` in a terminal"
+        )
     } else {
-        "open pairing on the hub, then pass the PIN it shows with --pin, or run `dspi --link` in a terminal"
+        concat!(
+            "open pairing on the hub, then pass the PIN it shows with --pin, or run `",
+            dspi_cmd::command!(),
+            " --link` in a terminal"
+        )
     }
 }
 
@@ -290,7 +302,7 @@ pub trait Prompt {
 
     /// Something the person should know.
     fn warn(&self, message: &str) {
-        eprintln!("dspi: warning: {message}");
+        eprintln!("{COMMAND}: warning: {message}");
     }
 
     // -- WP TM9 --
@@ -381,7 +393,7 @@ pub fn connected_on(t: Box<dyn Transport>) -> Result<Connected, OpenError> {
 
 /// [`Target::open_raw`] on a link already open. Fails closed: a device whose
 /// wire format cannot be read may be anything, so it is not written to either.
-/// Only a lost link is an error; `dspi raw` is how such a device gets looked at.
+/// Only a lost link is an error; `uconsole raw` is how such a device gets looked at.
 pub fn guard_raw(mut t: Box<dyn Transport>) -> Result<Box<dyn Transport>, OpenError> {
     let wire = match compat::read_bulk_bytes(t.as_mut()) {
         Ok(image) => image.first().copied(),
@@ -406,7 +418,7 @@ pub fn guard_raw(mut t: Box<dyn Transport>) -> Result<Box<dyn Transport>, OpenEr
     )))
 }
 
-/// One device a target can see, for `dspi list`.
+/// One device a target can see, for `uconsole list`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Listed {
     pub serial: String,
@@ -444,7 +456,7 @@ impl Target {
     }
 
     // -- WP TM4 --
-    /// Open a link for `dspi raw`, which asks for transfers by number and has
+    /// Open a link for `uconsole raw`, which asks for transfers by number and has
     /// no use for a probe: guarded against writes like everything else, but its
     /// bulk reads answer the device's own bytes.
     pub fn open_raw(&self, pin: PinPrompt<'_>) -> Result<Box<dyn Transport>, OpenError> {
@@ -488,7 +500,7 @@ impl Target {
     }
 
     /// What this target can see, without choosing among it. USB has its own
-    /// listing in `dspi list`.
+    /// listing in `uconsole list`.
     pub fn list(&self, pin: PinPrompt<'_>) -> Result<Vec<Listed>, OpenError> {
         match self {
             Self::Usb { .. } => Ok(dspi_transport::list_devices()?
@@ -616,7 +628,7 @@ fn midi_names() -> Result<Vec<String>, OpenError> {
     Err(OpenError::NoMidi)
 }
 
-/// The DSPi MIDI ports this host can see, for `dspi doctor`. `None` in a build
+/// The DSPi MIDI ports this host can see, for `uconsole doctor`. `None` in a build
 /// without MIDI.
 pub fn midi_ports() -> Option<Vec<String>> {
     midi_names().ok()
@@ -651,7 +663,7 @@ pub fn link_client(l: &LinkTarget, pin: PinPrompt<'_>) -> Result<LinkClient, Ope
     };
     let opts = ConnectOptions {
         client_name: "DSPi Terminal".into(),
-        app: "dspi".into(),
+        app: COMMAND.into(),
         app_version: env!("CARGO_PKG_VERSION").into(),
         token: None,
     };
@@ -831,7 +843,7 @@ fn bind_link_device(l: &LinkTarget, client: &LinkClient) -> Result<Box<dyn Trans
     )))
 }
 
-/// Pairing tokens, by hub id, in `~/.config/dspi/link-tokens.toml`. It is kept
+/// Pairing tokens, by hub id, in `~/.config/uconsole/link-tokens.toml`. It is kept
 /// apart from `config.toml` so settings can be shared without the secrets, and
 /// is readable only by its owner.
 #[derive(Debug, Clone)]
@@ -852,7 +864,7 @@ impl TokenStore {
 
     fn default_location() -> Self {
         Self {
-            path: dirs::config_dir().map(|d| d.join("dspi").join("link-tokens.toml")),
+            path: dirs::config_dir().map(|d| d.join(COMMAND).join("link-tokens.toml")),
         }
     }
 

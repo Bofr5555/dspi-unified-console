@@ -75,6 +75,8 @@ if (args.has("--unit")) {
   // -- job ICON1 -- the standalone page's icons (assets/icon/render.sh makes them)
   cpSync(join(root, "icons"), out, { recursive: true });
   writeFileSync(join(out, "THIRD-PARTY-NOTICES.txt"), notices());
+  // -- WP CLEAN1 fixup cl1 -- where this build's source is, for whoever serves it
+  writeFileSync(join(out, "SOURCE.txt"), sourceNotice());
   if (!sourceUrl) {
     if (process.env.DSPI_WEB_RELEASE === "1") {
       console.error("build: a release needs DSPI_WEB_SOURCE_URL, the link to its source (GPL)");
@@ -123,6 +125,31 @@ function projectLicence() {
 
 // -- WP WB7 --
 /** dist/THIRD-PARTY-NOTICES.txt: the page's JavaScript (Preact) and the core's Rust crates. */
+// -- WP CLEAN1 fixup cl1 -- SOURCE.txt (DRAFT wording, pending the owner's approval):
+// the web console reaches people from whatever serves it, a hub or a web server, so
+// the notice says where the source is and that it comes with the program.
+function sourceNotice() {
+  const version = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
+  const where = sourceUrl
+    ? `It is at ${sourceUrl}`
+    : "This build names no address for it (DSPI_WEB_SOURCE_URL was not set)";
+  return [
+    "DRAFT notice, pending the owner's approval.",
+    "",
+    `DSPi uConsole's web console ${version}. The program as a whole is distributed`,
+    "under the GNU General Public License version 3; Bofr5555's own additions are",
+    "licensed under version 3 or later, with additional terms (About > Licence).",
+    "",
+    "Its complete source code is published with each release of DSPi uConsole as",
+    `dspi-uconsole-${version}-source.tar.gz. ${where}.`,
+    "Whoever serves this console to you, a DSPi Link hub or any web server, passes",
+    "the program on to you, and with it your right to that source.",
+    "",
+    "The licences of the parts it contains: THIRD-PARTY-NOTICES.txt.",
+    "",
+  ].join("\n");
+}
+
 function notices() {
   const preactDir = join(root, "node_modules/preact");
   const preact = JSON.parse(readFileSync(join(preactDir, "package.json"), "utf8"));

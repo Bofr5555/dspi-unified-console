@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-const DSPI: &str = env!("CARGO_BIN_EXE_dspi");
+const DSPI: &str = env!(concat!("CARGO_BIN_EXE_", dspi_cmd::command!()));
 
 /// A scratch directory under the target directory, never on tmpfs, doubling as
 /// `HOME` so that the config, undo history and AutoEQ store stay out of the way.
@@ -30,7 +30,7 @@ fn wp_cg27_the_demo_run_shows_no_firmware_banner() {
         .env_remove("DSPI_PIN")
         .stdin(Stdio::null())
         .output()
-        .expect("dspi runs");
+        .expect("the binary runs");
     let frame = String::from_utf8_lossy(&out.stdout);
     assert!(out.status.success(), "{frame}");
     let title = frame.lines().next().unwrap_or_default();

@@ -128,7 +128,7 @@ test("About: the licence notice and its three section 7 terms, from assets/about
     await expect(terms.nth(i)).toHaveText(`${t.title}. ${t.text}`);
   }
   await expect(about.getByText(licence.freedoms)).toBeVisible();
-  await expect(about.getByText("Made with love by Weeb Labs", { exact: true })).toBeVisible();
+  await expect(about.getByText("DSPi and its firmware by Weeb Labs", { exact: true })).toBeVisible();
   await expect(about.getByRole("link", { name: "Third-party notices" })).toHaveAttribute("href", "THIRD-PARTY-NOTICES.txt");
 });
 

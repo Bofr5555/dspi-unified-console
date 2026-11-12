@@ -2,14 +2,14 @@
 
 Cross-platform terminal control for [DSPi](https://github.com/WeebLabs/DSPi)
 audio processors: the DSPi Console's layout and controls in a full-screen
-terminal interface, plus a scriptable one-shot CLI. The command is `dspi`
+terminal interface, plus a scriptable one-shot CLI. The command is `uconsole`
 (package `dspi-term`).
 
 It is one of the clients in this repository. It came from Weeb Labs'
 DSPi-Terminal (see the root [`README.md`](../../README.md), Credits) and uses the
 repository's session crates directly (`crates/dspi-proto`, `dspi-transport`,
-`dspi-session`, `dspi-cmd`, `dspi-tui`), with `dspi-core` for `dspi flash` and
-`dspi-hub` for `dspi hub`.
+`dspi-session`, `dspi-cmd`, `dspi-tui`), with `dspi-core` for `uconsole flash` and
+`dspi-hub` for `uconsole hub`.
 
 **Status:** the terminal's work packages are done except its hardware pass on a
 real board (TM13 in
@@ -107,7 +107,7 @@ anything done in the interface can be pasted into a script.
 From the repository root:
 
 ```sh
-cargo build --release -p dspi-term     # the binary is target/release/dspi
+cargo build --release -p dspi-term     # the binary is target/release/uconsole
 cargo test -p dspi-term
 ```
 
@@ -123,43 +123,43 @@ hubs on the network (mDNS); `--no-default-features` builds without both.
 ## One-shot commands
 
 ```sh
-dspi                              # open the interface
-dspi --demo                       # the same, on the built-in simulated device
-dspi doctor                       # why can't it see my device?
-dspi dump                         # the whole device state
-dspi watch                        # notifications as they arrive
+uconsole                              # open the interface
+uconsole --demo                       # the same, on the built-in simulated device
+uconsole doctor                       # why can't it see my device?
+uconsole dump                         # the whole device state
+uconsole watch                        # notifications as they arrive
 
-dspi get vol.user                 # read anything
-dspi vol.user -18                 # write anything; `set` is optional
-dspi eq in.1 3 peak 2856 3.58 -8.6
-dspi mix 0 4 on -3 inv            # a crosspoint
-dspi set cs.binding 3 type=encoder noun=user_volume action=step gpio=10,11
-dspi params                       # every parameter this build knows
+uconsole get vol.user                 # read anything
+uconsole vol.user -18                 # write anything; `set` is optional
+uconsole eq in.1 3 peak 2856 3.58 -8.6
+uconsole mix 0 4 on -3 inv            # a crosspoint
+uconsole set cs.binding 3 type=encoder noun=user_volume action=step gpio=10,11
+uconsole params                       # every parameter this build knows
 
-dspi export tuning.txt            # Console-compatible filter file
-dspi export room.dspipreset       # whole-device document
-dspi import tuning.txt            # apply one back
-dspi export - --json | jq .meta   # whole-device document on standard output
-dspi export f.json --format filters-json   # filters as JSON
-dspi import - --dry-run --json < room.dspipreset
-dspi cs export surfaces.json      # control-surface configuration
-dspi cs import surfaces.json --save
-dspi -f evening.dspi              # a script, one command per line
+uconsole export tuning.txt            # Console-compatible filter file
+uconsole export room.dspipreset       # whole-device document
+uconsole import tuning.txt            # apply one back
+uconsole export - --json | jq .meta   # whole-device document on standard output
+uconsole export f.json --format filters-json   # filters as JSON
+uconsole import - --dry-run --json < room.dspipreset
+uconsole cs export surfaces.json      # control-surface configuration
+uconsole cs import surfaces.json --save
+uconsole -f evening.dspi              # a script, one command per line
 
-dspi autoeq search hd600          # headphone corrections
-dspi autoeq rebuild --yes         # download the profiles from GitHub again
-dspi undo                         # put back what the last change replaced
-dspi raw 0x87 41                  # any opcode, hex-dumped
-dspi completions zsh              # shell completion
+uconsole autoeq search hd600          # headphone corrections
+uconsole autoeq rebuild --yes         # download the profiles from GitHub again
+uconsole undo                         # put back what the last change replaced
+uconsole raw 0x87 41                  # any opcode, hex-dumped
+uconsole completions zsh              # shell completion
 ```
 
 ### Firmware
 
 ```sh
-dspi export backup.dspipreset     # first: updating can reset settings
-dspi flash DSPi.uf2               # check, reboot to bootloader, write, confirm
-dspi flash                        # only reboot into the bootloader
-dspi flash DSPi.uf2 --dry-run     # what would happen; changes nothing
+uconsole export backup.dspipreset     # first: updating can reset settings
+uconsole flash DSPi.uf2               # check, reboot to bootloader, write, confirm
+uconsole flash                        # only reboot into the bootloader
+uconsole flash DSPi.uf2 --dry-run     # what would happen; changes nothing
 ```
 
 The board has to be on this machine's USB, and read-only devices can update too.
@@ -173,30 +173,30 @@ past this. Success means the board came back running the image's version.
 Every command takes `--json` for machine-readable output, `--dry-run` to change
 nothing, `--quiet`, and `--device <serial>` to pick a unit. Exit codes
 distinguish bad input (1) from no device (2) from a write the device refused
-(3) from a transport failure (4). `dspi --help` lists every command and option.
+(3) from a transport failure (4). `uconsole --help` lists every command and option.
 
 ### Other ways to reach a device
 
-Without a flag, `dspi` uses a DSPi on this machine's USB. These choose another
+Without a flag, `uconsole` uses a DSPi on this machine's USB. These choose another
 link, for the interface and for every command:
 
 ```sh
-dspi --demo dump                  # the built-in simulated device
-dspi --midi list                  # the MIDI ports; --midi [PORT] connects over USB MIDI
-dspi link scan                    # the DSPi Link hubs on this network
-dspi --hub dump                   # a device behind a hub found on this network
-dspi --link host:port dump        # a device behind a hub at that address
+uconsole --demo dump                  # the built-in simulated device
+uconsole --midi list                  # the MIDI ports; --midi [PORT] connects over USB MIDI
+uconsole link scan                    # the DSPi Link hubs on this network
+uconsole --hub dump                   # a device behind a hub found on this network
+uconsole --link host:port dump        # a device behind a hub at that address
 ```
 
 A hub asks for its PIN the first time; `--pin -` or the `DSPI_PIN` environment
 variable gives it to a script. Link traffic, the PIN included, is plain text, so
 use it on a network you trust.
 
-### Sharing devices: `dspi hub`
+### Sharing devices: `uconsole hub`
 
 ```sh
-dspi hub                          # share this machine's devices on the network
-dspi hub --help                   # pairing, clients and roles
+uconsole hub                          # share this machine's devices on the network
+uconsole hub --help                   # pairing, clients and roles
 ```
 
 The hub pairs clients by PIN. Example service files for systemd, launchd and the
@@ -206,10 +206,10 @@ install notes.
 The web console (WP WB7, `apps/web`'s built dist; [`apps/web/DEPLOY.md`](../web/DEPLOY.md)):
 
 ```sh
-dspi hub --web --console <dist>   # / links both: the console at /console/,
+uconsole hub --web --console <dist>   # / links both: the console at /console/,
                                   # the hub's own page (DSPi Link's) at /hub/
-dspi web [--demo]                 # this machine only: http://localhost:11916/console/,
-                                  # WebUSB and Link in one page (dspi hub --local)
+uconsole web [--demo]                 # this machine only: http://localhost:11916/console/,
+                                  # WebUSB and Link in one page (uconsole hub --local)
 ```
 
 ## Device access
@@ -218,7 +218,7 @@ dspi web [--demo]                 # this machine only: http://localhost:11916/co
   WinUSB binds automatically.
 - **macOS**: nothing to install. The vendor interface is *exclusive*, so DSPi
   Console and this tool cannot hold the device at the same time.
-- **Linux and Raspberry Pi**: `sudo dspi --install-udev`, then
+- **Linux and Raspberry Pi**: `sudo uconsole --install-udev`, then
   `sudo udevadm control --reload`, then unplug and replug the device.
 
 See [`docs/terminal/platforms.md`](../../docs/terminal/platforms.md) for what
@@ -248,5 +248,8 @@ in the interface without a refresh, with a note saying who changed it.
 
 ## Licence
 
-The workspace's licence field is GPL-3.0-or-later. What is settled and what is
-still open is in the root [`README.md`](../../README.md), Licensing.
+DRAFT, pending the owner's approval: the program as a whole is distributed under
+the GNU GPL version 3; Bofr5555's own additions, and DSPi-Terminal's parts, are
+GPL-3.0-or-later (Bofr5555's with three section 7 terms). `NOTICE.md`, beside
+this file in a release archive, is the statement; `uconsole --license` prints it
+and `uconsole --third-party-licences` the Rust crates' licence texts.

@@ -10,7 +10,7 @@ as every other client runs in a dedicated Worker under JSPI
 WebUSB (WB4a, Chromium only; tested on a WebUSB mock, real hardware is WB8),
 and DSPis behind hubs over DSPi Link (WB4b; tested against dspi-link's fake hub
 behind a host that enforces the hub's `Origin` rule, in Chromium and Firefox),
-served by a real hub, by `dspi web` on this machine and by any static host (WB7,
+served by a real hub, by `uconsole web` on this machine and by any static host (WB7,
 [`DEPLOY.md`](DEPLOY.md)). The screens of the other clients arrive in WB6 slices;
 the main window (WB6a), the EQ (WB6b) and the outputs and matrix (WB6c) are in. Nothing here is published.
 
@@ -86,7 +86,7 @@ every DSPi firmware since 1.1.5 has, stock and bofr-main alike.
 **Linux: the udev rule.** Chromium opens the device through usbfs, so without a
 rule the open fails ("Access denied") and the session says the udev rule must be
 installed. It is the same rule as for the other consoles:
-`xtask/70-dspi.rules` (installed by `sudo dspi --install-udev`) or
+`xtask/70-dspi.rules` (installed by `sudo uconsole --install-udev`) or
 `apps/desktop/packaging/linux/70-dspi.rules`, then `sudo udevadm control
 --reload` and replug. A Flatpak or Snap Chromium may also need its own USB
 permission. ChromeOS and Android Chrome: WB8 checks them.
@@ -224,7 +224,7 @@ answer as it comes, so a drag over a slow queue never freezes the curve.
 ```js
 import { mount } from "/static/dspi-web/dspi-web.js";   // serve dist/ as a directory
 
-const console = mount(document.getElementById("dspi"), {
+const console = mount(document.getElementById("uconsole"), {
   backend: myFleetBackend,          // see src/fleet/types.ts
   title: "Acme venues",
   sourceUrl: "https://…/source",    // GPL: link to this build's source
@@ -261,7 +261,7 @@ rule: a hub accepts only its own pages (WEB-STUDY section 5). A fleet product
 therefore carries Link to its hubs through its own server (a hub `url` on the
 server's origin, as `tools/hub-host.mjs` does in the tests; behind TLS that is a
 `wss://` address, which the core accepts), or serves the console from each hub
-(`dspi hub --web`, WB7).
+(`uconsole hub --web`, WB7).
 
 ## Build and test
 
@@ -296,8 +296,8 @@ licence and the core's Rust crates (`notices/rust-crates.txt`, written by
 -- WP WB7 -- Build settings: `DSPI_WEB_SOURCE_URL` is the GPL source link About shows
 (an embedder's `sourceUrl` overrides it); `DSPI_WEB_RELEASE=1` refuses a build without
 it. `tools/dist.sh <out>` is the release build, an artefact only ([`DEPLOY.md`](DEPLOY.md)).
-The web step also runs the hosting routes on the real `dspi` (`test/e2e/hosting.spec.ts`:
-`dspi hub --web` and `dspi web`, built in the cross container as `DSPI_TERM`).
+The web step also runs the hosting routes on the real `uconsole` (`test/e2e/hosting.spec.ts`:
+`uconsole hub --web` and `uconsole web`, built in the cross container as `DSPI_TERM`).
 
 ## Files
 
@@ -322,7 +322,7 @@ The web step also runs the hosting routes on the real `dspi` (`test/e2e/hosting.
 | `src/index.tsx` | `mount()` and the public types |
 | `src/standalone.ts`, `index.html` | the standalone page (`?readonly` for a display page) |
 | `test/unit/` | `node --test` |
-| `test/e2e/hosting.spec.ts` | WB7: the console through each route, on the real `dspi` (hub, `dspi web`) and a static host |
+| `test/e2e/hosting.spec.ts` | WB7: the console through each route, on the real `uconsole` (hub, `uconsole web`) and a static host |
 | `DEPLOY.md`, `tools/dist.sh` | WB7: serving the build; the release artefact |
 | `notices/rust-crates.txt`, `tools/gen_rust_notices.py` | WB7: the core's crates for `THIRD-PARTY-NOTICES.txt` |
 | `test/e2e/`, `test/pages/` | Playwright; `embed.html` mounts two consoles with a server-like backend (`?core=stub`: on the fake core, `stub-worker.ts`); `usb.html` runs USB sessions over a WebUSB mock (`webusb-mock.ts`) whose devices are the core's simulated DSPi in the test module (Chromium); `fleet-hub.html` a fleet page with two hubs, `hubDevices` and `hubCredentials`, served by `tools/hub-host.mjs` (`link.spec.ts`, WB4b) |

@@ -1,5 +1,5 @@
 {
- "repo_commit": "6046707d",
+ "repo_commit": "29d95125",
  "rust": {
   "authors": [
    "Weeb Labs",
@@ -409,7 +409,7 @@
    "Weeb Labs",
    "owner (bofr)"
   ],
-  "commit": "6046707d790de96c83bdbdae49be5b52c903d7ba",
+  "commit": "29d9512533262c32d184497e5cc1f801851879c2",
   "files": [
    "DSPi Console iOS/Info.plist",
    "DSPi Console/AboutLicence.swift",

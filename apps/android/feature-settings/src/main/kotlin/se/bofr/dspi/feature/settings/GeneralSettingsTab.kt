@@ -120,10 +120,6 @@ private fun AboutPage(onOpenLicenses: () -> Unit, onNavigate: (String) -> Unit) 
                 // WP CG29: the heading and note are the table's; they say whose links these are.
                 SettingsSection(about.linksTitle) {
                     about.linksNote?.let { FormCaption(it) }
-                    FormCaption(
-                        "DSPi Firmware and Console are free, open-source software that I (Weeb Labs) develop in my spare time. " +
-                            "Contributions of any kind - code, feedback, funding, or otherwise - are always immensely appreciated."
-                    )
                     about.links.forEach { link ->
                         SettingRow(link.title, link.detail, onClick = uri.opener(link.url)) {
                             Text("●", color = LINK_COLORS[link.id] ?: MaterialTheme.colorScheme.onSurfaceVariant)
@@ -152,10 +148,10 @@ private fun AboutPage(onOpenLicenses: () -> Unit, onNavigate: (String) -> Unit) 
             SettingsSection("Licence") {
                 SettingRow(
                     "Licences",
-                    "${about.licence.spdx ?: "GPL-3.0-or-later"} with additional terms · third-party notices",
+                    "${about.licence.spdx ?: "GPL-3.0-only"} with additional terms · third-party notices",
                     onClick = onOpenLicenses
                 )
-                SettingRow("Source code", APP_SOURCE_URL, onClick = { runCatching { uri.openUri(APP_SOURCE_URL) } })
+                SettingRow("Source code", APP_SOURCE_NOTE)
                 SettingRow(
                     "Privacy policy",
                     "No data collected; no network access",

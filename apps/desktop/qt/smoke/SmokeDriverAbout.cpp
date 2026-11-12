@@ -168,8 +168,9 @@ void SmokeDriver::testAbout() {
     check("QD33: a row for each maker, link and credit", rowsOf(page).size() == rowCount);
     check("CG29: the links section is titled and noted as Weeb Labs'",
           shown.contains(QStringLiteral("Weeb Labs: links and support"))
-          && shown.contains(QStringLiteral("Weeb Labs' channels for DSPi, its firmware and the original DSPi Consoles. "
-                                           "This console is made by Bofr5555, not Weeb Labs."))
+          && shown.contains(QStringLiteral("Weeb Labs makes DSPi, its firmware and the original DSPi Consoles; these are "
+                                           "their channels, and Patreon and Ko-fi are where to support their "
+                                           "work. This console is made by Bofr5555, not Weeb Labs."))
           && !shown.contains(QStringLiteral("Links")));
 
     // Each row with a link opens that link, and only those are clickable

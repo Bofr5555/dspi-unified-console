@@ -49,16 +49,16 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          BIN=target/${{ matrix.target }}/release/dspi
+          BIN=target/${{ matrix.target }}/release/uconsole
           [ -f "$BIN.exe" ] && BIN="$BIN.exe"
           cp "$BIN" dist/
           cp README.md dist/
           # The udev rule matters on Linux and is harmless elsewhere; shipping it
           # in every archive means the fix is always to hand.
           cp xtask/70-dspi.rules dist/
-          tar -czf dspi-${{ matrix.target }}.tar.gz -C dist .
+          tar -czf uconsole-${{ matrix.target }}.tar.gz -C dist .
 
       - uses: actions/upload-artifact@v4
         with:
-          name: dspi-${{ matrix.target }}
-          path: dspi-${{ matrix.target }}.tar.gz
+          name: uconsole-${{ matrix.target }}
+          path: uconsole-${{ matrix.target }}.tar.gz

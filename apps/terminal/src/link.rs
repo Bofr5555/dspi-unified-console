@@ -1,8 +1,9 @@
-//! `dspi link scan`, and asking a person which hub `--hub` means.
+//! `uconsole link scan`, and asking a person which hub `--hub` means.
 //!
 //! Owned by WP TM9. Looking at the network itself is in
 //! `dspi_tui::shell::connect`, which the reconnect uses too.
 
+use dspi_cmd::COMMAND;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -43,12 +44,12 @@ fn parse_choice(line: &str, count: usize) -> Option<usize> {
     (index < count).then_some(index)
 }
 
-/// `dspi link ...`; `flags` starts at the word `link`.
+/// `uconsole link ...`; `flags` starts at the word `link`.
 pub fn run(flags: &[&str], json: bool) -> u8 {
     let window = match parse_args(flags.get(1..).unwrap_or_default()) {
         Ok(window) => window,
         Err(e) => {
-            eprintln!("dspi: {e}");
+            eprintln!("{COMMAND}: {e}");
             return exit::USAGE;
         }
     };
@@ -86,7 +87,7 @@ fn parse_args(args: &[&str]) -> Result<Duration, String> {
     }
 }
 
-/// As `dspi list` does: nothing there is exit code 2, and `[]` for a script.
+/// As `uconsole list` does: nothing there is exit code 2, and `[]` for a script.
 fn scan(source: Arc<dyn BrowseSource>, window: Duration, json: bool) -> u8 {
     let hubs = match connect::scan_hubs(source, window, |_| false) {
         Ok(hubs) => hubs,
@@ -96,7 +97,7 @@ fn scan(source: Arc<dyn BrowseSource>, window: Duration, json: bool) -> u8 {
         match serde_json::to_string_pretty(&hubs) {
             Ok(text) => println!("{text}"),
             Err(e) => {
-                eprintln!("dspi: {e}");
+                eprintln!("{COMMAND}: {e}");
                 return exit::TRANSPORT;
             }
         }

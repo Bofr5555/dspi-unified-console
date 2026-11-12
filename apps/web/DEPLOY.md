@@ -22,6 +22,7 @@ build refuses to build without one; `mount({ sourceUrl })` overrides it per host
 | `dspi-web.js`, `dspi-web.css` | the library, for embedding (`mount()`) |
 | `worker.js`, `dspi_wasm.wasm` | one Worker per session; the core (about 1.1 MB, 360 KB gzip) |
 | `THIRD-PARTY-NOTICES.txt` | Preact's licence and the Rust crates in the core; serve it with the rest |
+| `SOURCE.txt` | (DRAFT) where the source of this build is and that it comes with the console; serve it with the rest |
 | `*.map` | source maps (optional) |
 | `SHA256SUMS` | of the files above |
 
@@ -29,10 +30,10 @@ Every URL inside is relative, so the directory can sit at any path. File names c
 hash: serve them with `Cache-Control: no-cache` and a validator (ETag or Last-Modified),
 not a long max-age.
 
-## 1. From a hub: `dspi hub --web`
+## 1. From a hub: `uconsole hub --web`
 
 ```bash
-dspi hub --web --console <out-dir>      # a hub on the LAN
+uconsole hub --web --console <out-dir>      # a hub on the LAN
 ```
 
 Three paths (the owner's decision, 2026-11-08):
@@ -69,13 +70,13 @@ No directory listing (only files are keys; `/console/test/` is a 404), no hidden
 no symbolic links, only the file kinds a build writes. The files are read once, whole,
 when the hub starts. Without a console found, `/console/` is a 404 (the hub says so when
 it starts; `/` and `/hub/` are served all the same). Without `--console` a hub looks in `$DSPI_WEB_CONSOLE`, then `web/`
-beside the `dspi` binary, then `../share/dspi/web/` above it; an installer puts the dist
+beside the `uconsole` binary, then `../share/uconsole/web/` above it; an installer puts the dist
 in one of those.
 
-## 2. On this machine: `dspi web`
+## 2. On this machine: `uconsole web`
 
 ```bash
-dspi web [--demo] [--console <out-dir>]   # = dspi hub --local
+uconsole web [--demo] [--console <out-dir>]   # = uconsole hub --local
 ```
 
 A hub on loopback only, serving the console at `http://localhost:11916/console/`.
@@ -84,7 +85,7 @@ together**: a DSPi on this machine's USB through the browser (Chromium), and thi
 devices over Link. The hub holds no USB device itself, so the browser can claim it;
 `--share-usb` makes the hub hold them instead (any browser, over Link); `--demo` shares
 the simulated device. PIN pairing as any hub (`--open` to skip it on a machine with no
-other users). Its store is separate from `dspi hub`'s, so both can run at once. The
+other users). Its store is separate from `uconsole hub`'s, so both can run at once. The
 port stays the same between runs, so the page's origin, its hub token and the DSPis the
 browser was allowed on USB stay too.
 

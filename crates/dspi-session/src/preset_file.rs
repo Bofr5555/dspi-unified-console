@@ -520,19 +520,48 @@ pub mod channel_id {
         OUTPUT_BASE + output as i32
     }
 
+    // -- WP CLEAN1 --
+    /// Why an id names no channel.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+    pub enum ChannelIdError {
+        /// Ids are never negative.
+        #[error("channel id {0} is negative")]
+        Negative(i32),
+        /// Past the last output an id could name.
+        #[error("channel id {0} names no channel")]
+        OutOfRange(i32),
+    }
+
     /// The channel an id names, before asking whether the device has it
     /// (`PresetChannelID.ref(forID:platform:)`). Inputs are tested first, so
-    /// 11..16 are always inputs.
-    pub fn resolve(id: i32) -> Option<ChannelRef> {
+    /// 11..16 are always inputs. File data: every step is checked, so any
+    /// `i32` gives an answer, never an overflow.
+    pub fn try_resolve(id: i32) -> Result<ChannelRef, ChannelIdError> {
+        if id < 0 {
+            return Err(ChannelIdError::Negative(id));
+        }
         if (0..STEREO_INPUTS).contains(&id) {
-            return Some(ChannelRef::Input(id as u8));
+            return u8::try_from(id)
+                .map(ChannelRef::Input)
+                .map_err(|_| ChannelIdError::OutOfRange(id));
         }
         if (EXTRA_INPUT_BASE..EXTRA_INPUT_BASE + EXTRA_INPUTS).contains(&id) {
-            return Some(ChannelRef::Input(
-                (STEREO_INPUTS + id - EXTRA_INPUT_BASE) as u8,
-            ));
+            return id
+                .checked_sub(EXTRA_INPUT_BASE)
+                .and_then(|k| k.checked_add(STEREO_INPUTS))
+                .and_then(|k| u8::try_from(k).ok())
+                .map(ChannelRef::Input)
+                .ok_or(ChannelIdError::OutOfRange(id));
         }
-        u8::try_from(id - OUTPUT_BASE).ok().map(ChannelRef::Output)
+        id.checked_sub(OUTPUT_BASE)
+            .and_then(|k| u8::try_from(k).ok())
+            .map(ChannelRef::Output)
+            .ok_or(ChannelIdError::OutOfRange(id))
+    }
+
+    /// [`try_resolve`] without the reason.
+    pub fn resolve(id: i32) -> Option<ChannelRef> {
+        try_resolve(id).ok()
     }
 
     /// Whether an entry's direction agrees with the id table. Every file
@@ -570,7 +599,10 @@ impl ChannelBlock {
             let n = n as i32;
             return match self.channel_id {
                 id if (0..n).contains(&id) => Some(ChannelRef::Input(id as u8)),
-                id => u8::try_from(id - n).ok().map(ChannelRef::Output),
+                id => id
+                    .checked_sub(n)
+                    .and_then(|k| u8::try_from(k).ok())
+                    .map(ChannelRef::Output),
             };
         }
         channel_id::resolve(self.channel_id)
@@ -6859,5 +6891,41 @@ mod wp_tm21_tests {
             capture_filters(&mut s).unwrap().unreported(),
             Vec::<String>::new()
         );
+    }
+}
+
+// -- WP CLEAN1 --
+#[cfg(test)]
+mod tests_wp_clean1 {
+    use super::channel_id::{ChannelIdError, resolve, try_resolve};
+    use super::*;
+
+    /// Every extreme id answers with a reason, never an overflow.
+    #[test]
+    fn wp_clean1_extreme_channel_ids_are_refused_with_a_reason() {
+        for id in [i32::MIN, i32::MIN + 1, i32::MIN + 2, -3, -2, -1] {
+            assert_eq!(try_resolve(id), Err(ChannelIdError::Negative(id)));
+            assert_eq!(resolve(id), None);
+        }
+        assert_eq!(
+            try_resolve(i32::MAX),
+            Err(ChannelIdError::OutOfRange(i32::MAX))
+        );
+        assert_eq!(try_resolve(0), Ok(ChannelRef::Input(0)));
+        assert_eq!(try_resolve(2), Ok(ChannelRef::Output(0)));
+        assert_eq!(try_resolve(11), Ok(ChannelRef::Input(2)));
+        assert_eq!(try_resolve(257), Ok(ChannelRef::Output(255)));
+        assert_eq!(try_resolve(258), Err(ChannelIdError::OutOfRange(258)));
+    }
+
+    /// The legacy numbering of an older Terminal file is checked too.
+    #[test]
+    fn wp_clean1_a_legacy_extreme_id_places_nothing() {
+        let block = ChannelBlock {
+            channel_id: i32::MIN,
+            ..ChannelBlock::default()
+        };
+        assert_eq!(block.placement(Some(8)), None);
+        assert_eq!(block.placement(None), None);
     }
 }

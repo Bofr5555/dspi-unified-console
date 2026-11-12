@@ -1,4 +1,4 @@
-//! WP TM26: what `dspi hub` logs (hw-1 M3), on a real hub process.
+//! WP TM26: what `uconsole hub` logs (hw-1 M3), on a real hub process.
 //!
 //! A demo hub on loopback opens pairing; the Terminal pairs with the PIN, comes back
 //! on its token and leaves, which is what makes tungstenite log its close frames. At
@@ -11,7 +11,7 @@ use std::process::{Child, ChildStdout, Command, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
 
-const DSPI: &str = env!("CARGO_BIN_EXE_dspi");
+const DSPI: &str = env!(concat!("CARGO_BIN_EXE_", dspi_cmd::command!()));
 const WAIT: Duration = Duration::from_secs(60);
 
 /// A scratch directory under the target directory, never on tmpfs.
@@ -125,8 +125,12 @@ fn session_at(name: &str, rust_log: &str) -> (String, String, String) {
         "{}",
         String::from_utf8_lossy(&again.stderr)
     );
-    let tokens = std::fs::read_to_string(client.join("config/dspi/link-tokens.toml"))
-        .expect("the client kept a token");
+    let tokens = std::fs::read_to_string(client.join(concat!(
+        "config/",
+        dspi_cmd::command!(),
+        "/link-tokens.toml"
+    )))
+    .expect("the client kept a token");
     let token = tokens
         .lines()
         .find_map(|l| l.split_once(" = \"").map(|(_, v)| v.trim_end_matches('"')))

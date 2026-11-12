@@ -7,7 +7,7 @@
 //! Writes reach a device by more routes than [`dspi_session::Session::write`]:
 //! `Session::send` and `write_band`, the pair map and core voltage over
 //! `Session::transport_mut`, control surfaces, macros and groups over
-//! `Surfaces`, the analyser's own pushes, the preset flows, and `dspi raw`.
+//! `Surfaces`, the analyser's own pushes, the preset flows, and `uconsole raw`.
 //! All of them end at a [`Transport`], so that is where the refusal sits:
 //! [`ReadOnlyTransport`] wraps the link, and nothing else in the terminal needs
 //! to know. It also keeps the layers above in step with the mapped image, so a
@@ -250,7 +250,7 @@ pub enum BulkReads {
     ///
     /// [`Session`]: dspi_session::Session
     Mapped,
-    /// The device's own bytes: for `dspi raw`, which exists to show them.
+    /// The device's own bytes: for `uconsole raw`, which exists to show them.
     AsIs,
 }
 
@@ -395,7 +395,7 @@ impl Transport for ReadOnlyTransport {
     /// and is taken only around a write. Refused first, so such a flow fails
     /// before its first step.
     ///
-    /// -- WP TM25 -- Except under [`BulkReads::AsIs`] (`dspi raw`, `dspi
+    /// -- WP TM25 -- Except under [`BulkReads::AsIs`] (`uconsole raw`, `uconsole
     /// flash`): the core above sees the device's own image, so it knows the
     /// device is read-only and refuses a write's lock itself; the one it takes
     /// there is the bootloader reboot's (WP CG24), which must still work.
@@ -745,7 +745,7 @@ mod tests_wp_tm4 {
         assert!(frame.contains("read-only"), "{frame}");
     }
 
-    /// What `dspi raw` and everything else that fails hears.
+    /// What `uconsole raw` and everything else that fails hears.
     #[test]
     fn wp_tm4_a_refusal_is_typed_and_names_the_firmware() {
         let (mut session, _) = read_only_session(17);
@@ -820,7 +820,7 @@ mod tests_wp_tm4 {
             let _ = s.enable_output_confirmed(0);
         });
 
-        // Pair map: screens/crossfeed.rs write_map and `dspi ext xfeed-map`.
+        // Pair map: screens/crossfeed.rs write_map and `uconsole ext xfeed-map`.
         assert_refused("ext::write_pair_map, transport_mut", |s| {
             let _ = ext::write_pair_map(s.transport_mut(), ext::PairMap([2, 0x13, 0, 0]));
         });
@@ -830,7 +830,7 @@ mod tests_wp_tm4 {
                 Ok(())
             });
         });
-        // Core voltage: `dspi ext vreg`, settings/overview.rs.
+        // Core voltage: `uconsole ext vreg`, settings/overview.rs.
         assert_refused("ext::core_vreg_op", |s| {
             // With the word, so only the guard stands between it and the wire.
             let _ = ext::core_vreg_op(
@@ -910,7 +910,7 @@ mod tests_wp_tm4 {
             let _ = surfaces::revert(s.transport_mut());
         });
 
-        // The model's own entry points: `dspi cs import --save`, the IR screen.
+        // The model's own entry points: `uconsole cs import --save`, the IR screen.
         assert_refused("cs_model::apply", |s| {
             let _ = dspi_session::cs_model::apply(s, |c| c.save());
         });
@@ -953,7 +953,7 @@ mod tests_wp_tm4 {
             );
         });
 
-        // `dspi raw out`, `dspi raw war`, and a raw IN of a mutating opcode.
+        // `uconsole raw out`, `uconsole raw war`, and a raw IN of a mutating opcode.
         assert_refused("raw OUT", |s| {
             let _ = s
                 .transport_mut()
@@ -1321,7 +1321,7 @@ mod tests_wp_tm4 {
         );
     }
 
-    // `dspi raw`
+    // `uconsole raw`
 
     #[test]
     fn wp_tm4_raw_is_guarded_and_shows_the_devices_own_bytes() {

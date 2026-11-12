@@ -127,7 +127,7 @@ pub enum AutoEqError {
 pub fn config_dir() -> std::path::PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("dspi-term")
+        .join(dspi_proto::command!())
 }
 
 /// Where a user-supplied database would live.
@@ -1560,7 +1560,7 @@ mod tests {
     fn the_user_path_is_somewhere_sensible() {
         let p = user_db_path();
         assert!(p.ends_with(USER_DB_NAME));
-        assert!(p.to_string_lossy().contains("dspi-term"));
+        assert!(p.to_string_lossy().contains(dspi_proto::command!()));
         assert!(favourites_path().ends_with(FAVOURITES_NAME));
     }
 

@@ -68,10 +68,10 @@ jobs:
       - name: Check generated completions parse
         run: |
           cargo build --release
-          ./target/release/dspi completions bash > /tmp/dspi.bash
-          ./target/release/dspi completions zsh  > /tmp/_dspi
-          ./target/release/dspi completions fish > /tmp/dspi.fish
-          bash -n /tmp/dspi.bash
+          ./target/release/uconsole completions bash > /tmp/uconsole.bash
+          ./target/release/uconsole completions zsh  > /tmp/_uconsole
+          ./target/release/uconsole completions fish > /tmp/uconsole.fish
+          bash -n /tmp/uconsole.bash
           sudo apt-get update && sudo apt-get install -y zsh fish
-          zsh -n /tmp/_dspi
-          fish --no-execute /tmp/dspi.fish
+          zsh -n /tmp/_uconsole
+          fish --no-execute /tmp/uconsole.fish

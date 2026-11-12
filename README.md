@@ -1,17 +1,18 @@
 # dspi-unified-console
 
 One repository with one Rust core and every DSPi console client built on it:
-the Qt app for Windows and Linux, the Android app, the `dspi` terminal client,
+the Qt app for Windows and Linux, the Android app, the `uconsole` terminal client,
 the Swift app for macOS and iOS (partly moved onto the core), a web console,
 and a Rust DSPi Link hub.
 
 [DSPi](https://github.com/WeebLabs/DSPi) is Weeb Labs' open-source DSP firmware
 for the Raspberry Pi Pico and Pico 2. Weeb Labs also wrote the original DSPi
 Consoles (macOS in Swift, Windows in C#, Linux in Qt), DSPi-Terminal and DSPi
-Link. This repository grew from those: the core comes from DSPi-Terminal's crates
-and the Linux console's Rust core, the Qt app from DSPi-Console-Linux, the Swift
-app from a fork of the macOS DSPi Console, and the Android app and the Rust Link
-client from Bofr5555's Android console ([Credits](#credits)). The clients talk to
+Link. This repository grew from that work: the core is built on DSPi-Terminal's
+crates and follows the macOS DSPi Console's behaviour, the Swift app is a fork of
+the macOS DSPi Console, and the Android app and the Rust Link client come from
+Bofr5555's Android console ([Credits](#credits)). The Qt app is being ported
+again from the macOS console and is not released at present. The clients talk to
 stock Weeb Labs firmware, and to the extension channel of Bofr5555's firmware
 fork where it is present ([The core](#the-core)).
 
@@ -40,7 +41,7 @@ so each system warns the first time (how to get past it is below).
 | **Arch Linux** | `dspi-uconsole-0.13.0-arch-PKGBUILD.tar.gz` (or the test-built `…pkg.tar.zst`) | `makepkg -si` in the unpacked folder. |
 | **Android** 8+ | Google Play: *DSPi Console for Android* (renamed with its next update). Without Play: `DSPi-uConsole-APK-0.13.0.apk` | The APK is a separate app, *DSPi uConsole (APK)*, so it installs next to the Play version. Allow installs from your browser or file manager when asked. |
 | **iOS / iPadOS** | none | Not distributed (an unsigned build cannot be installed). |
-| **Terminal** (`dspi`, every system) | `dspi-0.13.0-<system>.tar.gz` / `.zip`: Linux x86_64 and aarch64 (glibc 2.39+), Windows x86_64, macOS universal | Unpack and run `dspi`. On Linux, `sudo dspi --install-udev` once for USB access. The aarch64 build has no MIDI. |
+| **Terminal** (`uconsole`, every system) | `dspi-0.13.0-<system>.tar.gz` / `.zip`: Linux x86_64 and aarch64 (glibc 2.39+), Windows x86_64, macOS universal | Unpack and run `uconsole`. On Linux, `sudo uconsole --install-udev` once for USB access. The aarch64 build has no MIDI. |
 | **Web console** | `dspi-uconsole-web-0.13.0.tar.gz` | See below. |
 
 If you installed the first 0.13.0 files (named DSPi Console), the renamed ones install next to them, not over
@@ -50,14 +51,14 @@ The Qt app keeps its settings.
 
 ### The web console
 
-The web console runs in the browser and is served by the `dspi` Terminal program or by a
+The web console runs in the browser and is served by the `uconsole` Terminal program or by a
 web server. Pick one:
 
 1. **On this computer, with USB and hubs:** unpack the web download into a folder named
-   `web` next to the `dspi` program (or pass `--console <folder>`), run `dspi web`, and open
+   `web` next to the `uconsole` program (or pass `--console <folder>`), run `uconsole web`, and open
    **http://localhost:11916/console/** in Chrome or Edge. USB needs a Chromium-based browser
    (Firefox and Safari have no WebUSB); on Linux the USB rule above is needed.
-2. **From a hub on the network:** run `dspi hub --web --console <folder>` on the machine
+2. **From a hub on the network:** run `uconsole hub --web --console <folder>` on the machine
    the DSPi is plugged into, then open **http://&lt;that machine&gt;:11915/** from any
    browser on the network. The page links to the console (`/console/`) and to the hub page
    (`/hub/`). Pair with the hub's PIN when asked.
@@ -85,8 +86,8 @@ Hardware runs are recorded in `docs/core-merge/HW-*.md` and
 | Android | `apps/android/` | On the core through UniFFI. **0.12.0, the first release on the core, is on Google Play.** On `main` for the next release: R8 shrinking, accessibility (TalkBack labels and roles, with the layout unchanged), faster Link meters (they start in seconds, not minutes, on a lossy network), fractional delays kept, delay sliders in whole milliseconds, and the delay limit from the core. Open: edge-to-edge, localisation. |
 | Terminal | `apps/terminal/` | Done but for a physical replug in its hardware pass (TM13). Refuses delays past the limit and non-finite numbers. |
 | Swift, macOS and iOS | `apps/apple/` | On the core for reads: the bulk read, notifications, the view model's mirror, the unsaved-changes list and the delay limit. Read-only is enforced everywhere. iOS imports and exports files through the system document picker. Still Swift-only: writes, USB, MIDI, Link, firmware updates and the hub. Moving those depends on the owner's look-and-feel decision (OD3). |
-| Link hub | `crates/dspi-hub/` | Server, pairing, roles, registry, advertising, conformance and a C ABI are merged; `dspi hub` runs it. With `--web` it serves `/` (a landing page without scripts), `/console/` (our web console) and `/hub/` (Weeb Labs' DSPi-Link page, built from a pinned commit). Connection budgets: plain HTTP 48 in all and 16 per address; WebSocket 16 in all and 4 per address before sign-in, so web pages cannot use up the app's slots. |
-| Web | `apps/web/`, `crates/dspi-wasm/` | The same core in wasm, in one Worker per session, without threads. Works: the core's demo device, USB through WebUSB (Chromium, tested on a mock), DSPis behind hubs over Link (Chromium and Firefox), hosting by a hub, by `dspi web` or by any static server. Screens: main window, EQ (with Linkwitz), crossover, outputs and matrix. Next: the remaining screens (WB6), Web MIDI (WB4c), hardware runs (WB8) and its gate (WB9). Not published. |
+| Link hub | `crates/dspi-hub/` | Server, pairing, roles, registry, advertising, conformance and a C ABI are merged; `uconsole hub` runs it. With `--web` it serves `/` (a landing page without scripts), `/console/` (our web console) and `/hub/` (Weeb Labs' DSPi-Link page, built from a pinned commit). Connection budgets: plain HTTP 48 in all and 16 per address; WebSocket 16 in all and 4 per address before sign-in, so web pages cannot use up the app's slots. |
+| Web | `apps/web/`, `crates/dspi-wasm/` | The same core in wasm, in one Worker per session, without threads. Works: the core's demo device, USB through WebUSB (Chromium, tested on a mock), DSPis behind hubs over Link (Chromium and Firefox), hosting by a hub, by `uconsole web` or by any static server. Screens: main window, EQ (with Linkwitz), crossover, outputs and matrix. Next: the remaining screens (WB6), Web MIDI (WB4c), hardware runs (WB8) and its gate (WB9). Not published. |
 | Link over the ESP32 bridge | `crates/dspi-link/`, `tools/esp-rig/` | LK1 and LK2 are merged: meters no longer wait behind start-up reads, and Link tolerates short silences (5 s ping, closes only after a long silence). LK3 (an emulated bridge: the real bridge firmware in Espressif's QEMU, its UART tunnelled to a DSPi, with set baud rates and network loss) and LK4 (a faster connect, and a silent bridge session replaced as soon as a new one connects) are on their branches, not merged yet. Target: at least as fast as Weeb Labs' own Link client. |
 | CI | `ci/` | `ci/check.sh` is the gate (27 steps with `--all`, the web console included); `ci/matrix.sh` builds and tests every client from one commit, one row each, with the macOS Swift app, the iOS Simulator and the Qt `.dmg` on a macOS VM. The ESP32 rig comes with LK3 as an opt-in step (`--step esp-rig`), not in `--all`. The GitHub Actions file is a draft and not enabled. |
 
@@ -131,7 +132,7 @@ What each client lacks against the macOS reference is in
 | `apps/desktop/packaging/` | Qt packages: `linux/` (`.deb`, `.rpm`, AppImage, udev rule), `arch/`, `windows/` (zip and installer), `macos/` (`.dmg`). |
 | `apps/android/` | The Android app, Kotlin and Compose, Gradle. |
 | `apps/apple/` | The Swift app, one Xcode project with macOS and iOS targets. |
-| `apps/terminal/` | The `dspi` terminal client, a TUI and CLI (package `dspi-term`). |
+| `apps/terminal/` | The `uconsole` terminal client, a TUI and CLI (package `dspi-term`). |
 | `apps/web/` | The web console, TypeScript and Preact, Playwright tests ([`apps/web/DEPLOY.md`](apps/web/DEPLOY.md) for hosting). |
 | `tools/esp-rig/` | The emulated ESP32 Link bridge rig (on `wp/LK3` and `wp/LK4`, not yet on `main`). |
 | `assets/` | Data shared by every client, `about.json` (the About pages) and `onboarding/`. |
@@ -165,7 +166,7 @@ Per client:
 | Qt, Windows | `--step qt-windows` (MinGW app, zip and installer); `--step windows-msvc` builds the core and terminal with MSVC | `apps/desktop/packaging/windows/build-windows.sh` |
 | Android | `--step android` (core libraries), `android-tests`, `android-aab` | `apps/android/tools/ci.sh` |
 | Swift, macOS and iOS | not in a container: `ci/macvm.sh macos` or `ios` runs it in the macOS VM | `apps/apple/build-xcframework.sh`, then `apps/apple/ci-test.sh macos` or `ios` |
-| Web | `--step web` (Chromium and Firefox on the core's demo) | `apps/web/README.md`; `dspi web --demo` serves it on localhost |
+| Web | `--step web` (Chromium and Firefox on the core's demo) | `apps/web/README.md`; `uconsole web --demo` serves it on localhost |
 | Qt, macOS | not in a container: `ci/macvm.sh qt-dmg` builds the `.dmg` and starts it on the demo device | `apps/desktop/packaging/macos/ci-dmg.sh` |
 | Swift, macOS `.dmg` | not in a container: `ci/macvm.sh swift-dmg` builds the release `.dmg` and starts it on the demo device | `apps/apple/package-macos.sh`, then `apps/apple/test-dmg.sh` |
 | Bindings | `--step kotlin`, `--step swift`, `--step drift` | `ci/compile-bindings.sh` |
@@ -197,8 +198,8 @@ is in [`docs/core-merge/PLAN.md`](docs/core-merge/PLAN.md); platform notes are i
 
 ## Credits
 
-Everything here builds on Weeb Labs' work: DSPi, the DSPi firmware, the DSPi
-Consoles, DSPi-Terminal and DSPi-Link. The core merge, the Android console, the
+Everything here builds on Weeb Labs' work: DSPi, the DSPi firmware, DSPi Console
+for macOS and for Windows, DSPi-Terminal and DSPi-Link. The core merge, the Android console, the
 Rust Link client and the unified console are Bofr5555's. The full list, the
 same one every client's About page shows, is
 [`assets/about.json`](assets/about.json) (a draft until the owner approves it);
@@ -210,7 +211,6 @@ The imports, with history (each upstream's paths rewritten with
 
 | Component | Upstream | Commit imported |
 |---|---|---|
-| `apps/desktop/`, and the old core since merged into `crates/dspi-core` and `dspi-capi` | WeebLabs/DSPi-Console-Linux `main` | `4683a2c` |
 | `apps/terminal/`, `crates/dspi-{proto,transport,session,cmd,tui}`, `xtask/`, `tests/fixtures/*.txt` | WeebLabs/DSPi-Terminal `main` | `8389b20` |
 | `crates/dspi-link/`, `apps/android/` | Bofr5555's Android console (`dspi-android`) `main` | `63492af` |
 | `apps/apple/` | Bofr5555's fork of the macOS DSPi Console, branch `ext-channel-116` | `48cf7c5` |
@@ -218,26 +218,30 @@ The imports, with history (each upstream's paths rewritten with
 
 ## Licensing
 
-**The project's licence statement is [`NOTICE.md`](NOTICE.md)** (WP LIC1, pending
-the owner's approval of its wording): `GPL-3.0-or-later` (owner, 2026-11-08) with
-three additional terms under GPL version 3 section 7 (attributions, modified
-versions marked, no trademark rights), which apply to the material Bofr5555
-added and to every client. `LICENSE` holds the GPL version 3 text, as usual for
-"or later", and the workspace's licence field says `GPL-3.0-or-later`. Every
-client shows the notice and the terms in its About. Final terms for Weeb Labs'
-parts are open between the owner and Weeb Labs. This table says what is known;
-it is not legal text.
+> **DRAFT.** Not legal text: the statement is [`NOTICE.md`](NOTICE.md), pending the
+> owner's approval. This section only summarises it.
 
-| Component | What applies now | Open point |
-|---|---|---|
-| DSPi-Terminal parts and what grew from them (`apps/terminal/`, `crates/dspi-proto`, `dspi-transport`, `dspi-session`, `dspi-cmd`, `dspi-tui`, `xtask/`) | GPL-3.0-or-later, stated in upstream's manifests and README | Upstream has no LICENSE file. `xtask` has no licence field. |
-| DSPi-Console-Linux parts and their ports (`apps/desktop/`, `crates/dspi-core`, `dspi-capi`) | GPL-3.0-or-later here, as the working assumption | **Upstream has no licence file and no licence field.** The Android console's `NOTICE.md` records "MIT per Weeb Labs, file pending". To be confirmed by Weeb Labs. |
-| `crates/dspi-ffi` | GPL-3.0-or-later (the workspace field) | New here, over the parts above. |
-| `crates/dspi-link/` | GPL-3.0-or-later (Bofr5555; confirmed by the owner), the workspace field | Its old workspace said `UNLICENSED`. |
-| `tests/fixtures/link/` | MIT, Weeb Labs | `LICENSE.DSPi-Link` next to the files. |
-| Vendored firmware headers (`crates/dspi-proto/firmware/`) and bundled firmware images (`apps/desktop/qt/firmware/*.uf2`) | GPL-3.0 (DSPi firmware) | |
-| AutoEQ database (`apps/desktop/qt/autoeq/`, `crates/dspi-session/autoeq/`) | MIT (AutoEq measurements, jaakkopasanen/AutoEq), as recorded | Upstream terms to be read (client plan LC1). |
-| Parts ported from Weeb Labs' DSPi Console for macOS (`apps/apple/`, and the UI, behaviour and texts other clients port from it) | GPL-3.0: its `LICENSE` says GPL-3.0, without "or later" | Open, for the owner and Weeb Labs: how that fits the project's GPL-3.0-or-later statement. |
+The program as a whole is distributed under the **GNU GPL version 3**: it combines
+Weeb Labs' parts under GPL-3.0 (the DSPi firmware, DSPi Console for macOS, DSPi
+Console for Windows) or GPL-3.0-or-later (DSPi-Terminal), DSPi-Link under MIT, and
+Bofr5555's own additions, which are licensed **GPL-3.0-or-later with three
+additional terms** under GPL version 3 section 7 (attributions kept, modified
+versions marked, no trademark rights). `LICENSE` holds the GPL version 3 text; the
+workspace's licence field, `GPL-3.0-or-later`, is the licence of Bofr5555's own
+additions. Every client shows the notice and the terms in its About, and every
+release is published with the source archive of the commit it was built from
+(`ci/release-source.sh`).
+
+| Component | What applies |
+|---|---|
+| Bofr5555's additions: the core merge (`crates/dspi-core`, `dspi-capi`, `dspi-ffi`, `dspi-hub`, `dspi-wasm`), the Android console, the Rust Link client (`crates/dspi-link`), the web console | GPL-3.0-or-later with the section 7 terms |
+| DSPi-Terminal parts and what grew from them (`apps/terminal/`, `crates/dspi-proto`, `dspi-transport`, `dspi-session`, `dspi-cmd`, `dspi-tui`, `xtask/`) | GPL-3.0-or-later, as upstream's manifests and README state |
+| `apps/apple/`, and the UI, behaviour and texts other clients follow from it | GPL-3.0 (DSPi Console for macOS; its `LICENSE` says version 3) |
+| The Android files ported from DSPi Console for Windows (listed in `NOTICE.md`) | GPL-3.0 (its README says GPL v3) |
+| Vendored firmware headers (`crates/dspi-proto/firmware/`) and bundled firmware images | GPL-3.0 (DSPi firmware v1.1.6), with the third-party parts in `assets/licences/firmware-THIRD-PARTY-NOTICES.txt` |
+| `tests/fixtures/link/`, the hub's DSPi-Link web page | MIT, Weeb Labs |
+| AutoEQ database (`crates/dspi-session/autoeq/`, `apps/desktop/qt/autoeq/`) | AutoEq data, MIT (`assets/licences/AutoEq-MIT.txt`); the measurement sources' own terms are an open point |
+| `apps/desktop/` (the Qt app) | Not released at present; it is being ported again |
 
 A GPL core conflicts with App Store terms, which matters for the iOS build. The
 owner's direction is in `docs/core-merge/PLAN-CLIENTS.md`, section 0.4. The

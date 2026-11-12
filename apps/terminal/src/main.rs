@@ -1,4 +1,4 @@
-//! `dspi` - terminal control for DSPi audio processors.
+//! `uconsole` - terminal control for DSPi audio processors.
 //!
 //! M1 scope: connect, discover, and dump state. The TUI and the one-shot command
 //! grammar arrive in later milestones; this binary exists now so that every
@@ -26,7 +26,7 @@ macro_rules! eprint {
 
 /// Standard output and error that outlive whoever is reading them.
 ///
-/// std's macros panic when a write fails, which `dspi dump | head -5` makes
+/// std's macros panic when a write fails, which `uconsole dump | head -5` makes
 /// routine. Here a reader that has gone only ends the output: the command
 /// finishes and exits with the status it would have had, so a device change
 /// is never left half done by a closed pipe, and a refusal is still a refusal.
@@ -71,7 +71,10 @@ mod stdio {
             }
             Err(e) => {
                 err(
-                    format_args!("dspi: could not write to standard output: {e}"),
+                    format_args!(
+                        "{}: could not write to standard output: {e}",
+                        dspi_cmd::COMMAND
+                    ),
                     true,
                 );
                 std::process::exit(i32::from(super::exit::TRANSPORT));
@@ -102,6 +105,7 @@ mod flash;
 // -- WP TM11 --
 mod hub;
 
+use dspi_cmd::COMMAND;
 use std::process::ExitCode;
 
 use dspi_cmd::{Command, Context};
@@ -130,15 +134,15 @@ fn main() -> ExitCode {
     let flags: Vec<&str> = args.iter().map(String::as_str).collect();
 
     // Where the device is comes off first, so the rest reads the same on every
-    // link: `dspi --demo dump` and `dspi dump --demo` are one command.
+    // link: `uconsole --demo dump` and `uconsole dump --demo` are one command.
     let (target, flags) = match parse_target(&flags) {
         Ok(parsed) => parsed,
         Err(e) => {
-            eprintln!("dspi: {e}");
+            eprintln!("{COMMAND}: {e}");
             return ExitCode::from(exit::USAGE);
         }
     };
-    // -- WP TM26 -- `dspi --dry-run set ...` is `dspi set ... --dry-run`.
+    // -- WP TM26 -- `uconsole --dry-run set ...` is `uconsole set ... --dry-run`.
     let flags = command_first(flags);
     // -- WP TM11 -- Before a PIN is read or a `--hub` looked for: a hub runs here.
     // -- WP WB7 -- `web` is a hub too.
@@ -150,7 +154,7 @@ fn main() -> ExitCode {
     let target = match resolve_pin(target, std::env::var("DSPI_PIN").ok(), read_stdin_line) {
         Ok(t) => t,
         Err(e) => {
-            eprintln!("dspi: {e}");
+            eprintln!("{COMMAND}: {e}");
             return ExitCode::from(exit::USAGE);
         }
     };
@@ -167,7 +171,7 @@ fn main() -> ExitCode {
             Some(p) => p,
             None => {
                 eprintln!(
-                    "dspi: no theme called `{name}`; try one of: {}",
+                    "{COMMAND}: no theme called `{name}`; try one of: {}",
                     dspi_tui::theme::Palette::NAMES.join(", ")
                 );
                 return ExitCode::from(exit::USAGE);
@@ -204,6 +208,11 @@ fn main() -> ExitCode {
         // -- WP LIC1 --
         Some("--license" | "--licence") => {
             print!("{}", dspi_tui::settings::about::licence_text(79));
+            exit::OK
+        }
+        // -- WP CLEAN1 --
+        Some("--third-party-licences" | "--third-party-licenses") => {
+            print!("{THIRD_PARTY_LICENCES}");
             exit::OK
         }
         Some("list") => cmd_list(target, json),
@@ -262,7 +271,7 @@ fn is_command_word(word: &str) -> bool {
         "link",
         // -- WP TM3 --
         "flash",
-        // -- WP TM11 -- `dspi --hub hub` is the `hub` command, not a hub called "hub".
+        // -- WP TM11 -- `uconsole --hub hub` is the `hub` command, not a hub called "hub".
         "hub",
         // -- WP WB7 --
         "web",
@@ -281,7 +290,7 @@ const LEADING_SWITCHES: &[&str] = &["--json", "--quiet", "--dry-run", "--force",
 /// The flags with the command first, as the dispatch reads them: leading
 /// [`LEADING_SWITCHES`] move behind the first word that is not one, when that
 /// word is a command or a flag that acts as one (`--version`). Anything else
-/// stays as it was, so `dspi --json` alone still opens the interface.
+/// stays as it was, so `uconsole --json` alone still opens the interface.
 fn command_first(flags: Vec<&str>) -> Vec<&str> {
     const FLAG_COMMANDS: &[&str] = &[
         "--help",
@@ -290,6 +299,8 @@ fn command_first(flags: Vec<&str>) -> Vec<&str> {
         "-V",
         "--license",
         "--licence",
+        "--third-party-licences",
+        "--third-party-licenses",
         "--doctor",
         "--install-udev",
     ];
@@ -477,7 +488,7 @@ fn flag_value<'a>(flags: &'a [&'a str], name: &str) -> Option<&'a str> {
 
 fn version() {
     println!(
-        "dspi {} (protocol from DSPi {} @ {})",
+        "{COMMAND} {} (protocol from DSPi {} @ {})",
         env!("CARGO_PKG_VERSION"),
         dspi_proto::generated::provenance::BRANCH,
         dspi_proto::generated::provenance::SHORT,
@@ -492,98 +503,107 @@ fn version() {
     for line in dspi_tui::settings::about::credit_lines() {
         println!("{line}");
     }
-    // -- WP LIC1 --
-    println!("GPL-3.0-or-later, with additional terms: dspi --license");
+    // -- WP LIC1 -- -- WP CLEAN1 -- the label is the About table's
+    let spdx =
+        dspi_session::about::about().map_or_else(|_| "GPL-3.0-only".to_owned(), |a| a.licence.spdx);
+    println!("{spdx}, with additional terms: {COMMAND} --license");
 }
+
+// -- WP CLEAN1 --
+/// The licence texts of the third-party Rust crates in this binary, generated by
+/// apps/terminal/tools/gen_rust_notices.py; the release archives also carry them.
+const THIRD_PARTY_LICENCES: &str = include_str!("../notices/rust-crates.txt");
 
 fn usage() {
     println!(
         "\
-dspi - terminal control for DSPi audio processors
+{COMMAND} - terminal control for DSPi audio processors
 
 USAGE:
-    dspi                     open the interface
-    dspi dump                connect and print the full device state
-    dspi screenshot [w] [h] [screen]
+    {COMMAND}                 open the interface
+    {COMMAND} dump            connect and print the full device state
+    {COMMAND} screenshot [w] [h] [screen]
                              render one frame of the interface as text
                              (--ansi for colour; --fixture, or no device,
                              draws the built-in example device)
-    dspi watch               print the device's notifications as they arrive
-    dspi list                list every connected DSPi
+    {COMMAND} watch           print the device's notifications as they arrive
+    {COMMAND} list            list every connected DSPi
                              (--midi: the MIDI ports; --link: the hub's devices)
-    dspi link scan           list the DSPi Link hubs on this network
+    {COMMAND} link scan       list the DSPi Link hubs on this network
                              (--timeout <seconds> to listen longer, --json)
-    dspi params              list every parameter this build knows
-    dspi get <path> [i..]    read one parameter
-    dspi set <path> [i..] v  write one parameter, and confirm it
-    dspi <path> [i..] v      the same, without the `set`
-    dspi eq <ch> <band> <type> [freq] [q] [gain]
+    {COMMAND} params          list every parameter this build knows
+    {COMMAND} get <path> [i..] read one parameter
+    {COMMAND} set <path> [i..] v write one parameter, and confirm it
+    {COMMAND} <path> [i..] v  the same, without the `set`
+    {COMMAND} eq <ch> <band> <type> [freq] [q] [gain]
                              set a whole filter band in one transfer
-    dspi export <file|->     write the device out; - is standard output.
+    {COMMAND} export <file|-> write the device out; - is standard output.
                              .dspipreset or .json: the whole-device document;
                              otherwise, a Console-compatible filter file
                              (--format preset|filters|filters-json to choose;
                              `export - --json` is the whole-device document)
-    dspi import <file|->     apply a document; - is standard input. Goes by
+    {COMMAND} import <file|-> apply a document; - is standard input. Goes by
                              what the file holds, or --format
                              (--volume, --hardware to include those blocks)
                              (--map-legacy for pre-2026 channel names)
                              (--dry-run to report only, --json for the report)
-    dspi cs export <file|->  write the control-surface configuration
-    dspi cs import <file|->  apply one, live; bindings move pins, so only here
+    {COMMAND} cs export <file|-> write the control-surface configuration
+    {COMMAND} cs import <file|-> apply one, live; bindings move pins, so only here
                              (--dry-run to report only, --save to store it)
-    dspi flash [file]        install a .uf2 on this machine's USB-connected
+    {COMMAND} flash [file]    install a .uf2 on this machine's USB-connected
                              board; with no file, only reboot it into its
                              bootloader. Asks first, or --force (--drive PATH
                              to name the drive, --dry-run to report only).
                              An image that risks the board's core voltage also
                              needs --accept-core-voltage-risk and the answer
                              it asks for typed; --force does not count
-    dspi completions <shell> generate shell completions
-    dspi doctor              diagnose connection problems
-    dspi undo                put back the value the last change replaced
-    dspi redo                re-apply the change undo reversed
-    dspi raw <op> <len> [v]  read any vendor opcode and hex-dump the reply
-    dspi raw out <op> <v> <hex...>
+    {COMMAND} completions <shell> generate shell completions
+    {COMMAND} doctor          diagnose connection problems
+    {COMMAND} undo            put back the value the last change replaced
+    {COMMAND} redo            re-apply the change undo reversed
+    {COMMAND} raw <op> <len> [v] read any vendor opcode and hex-dump the reply
+    {COMMAND} raw out <op> <v> <hex...>
                              write any vendor opcode with a payload
-    dspi raw war <op> <v>    issue a write-as-read and print its status byte
-    dspi ext [list]          list the firmware's extension channel commands
-    dspi ext xfeed-map [p0 p1 p2 p3]
+    {COMMAND} raw war <op> <v> issue a write-as-read and print its status byte
+    {COMMAND} ext [list]      list the firmware's extension channel commands
+    {COMMAND} ext xfeed-map [p0 p1 p2 p3]
                              read, or set, the crossfeed output pairs:
                              each L:R (output numbers), default, or 0xNN
-    dspi ext vreg            read the core-voltage status
-    dspi ext vreg set <V|default> | trial <V> | trial-end
+    {COMMAND} ext vreg        read the core-voltage status
+    {COMMAND} ext vreg set <V|default> | trial <V> | trial-end
              | auto on|off | clear
                              core-voltage operations (V: 1.20, 1250, 0x0E).
                              Raising it above 1.20 V from what the unit reports
                              now asks for the word OVERVOLT, or takes it from
                              --word OVERVOLT in a script; --force does not count
-    dspi autoeq search <q>   find a headphone correction profile
-    dspi autoeq apply <id>   apply one to the input channels
-    dspi autoeq rebuild --yes
+    {COMMAND} autoeq search <q> find a headphone correction profile
+    {COMMAND} autoeq apply <id> apply one to the input channels
+    {COMMAND} autoeq rebuild --yes
                              download every profile from GitHub again
-    dspi autoeq update <url> replace the database with a download
-    dspi autoeq import <f>   replace the database with a file
-    dspi autoeq reset        go back to the built-in database
-    dspi -f <script>         run one command per line, `#` starts a comment
-    dspi < script            the same, from standard input
-    dspi --install-udev      install the Linux udev rule (needs root)
-    dspi hub [run]           share this machine's devices on the network, with
-                             PIN pairing; clients, roles: dspi hub --help
-    dspi web                 the web console on this machine, at
-                             http://localhost:11916/console/ (dspi hub --local)
-    dspi --version           show app and protocol versions, and credits
-    dspi --license           show the licence notice and its additional terms
+    {COMMAND} autoeq update <url> replace the database with a download
+    {COMMAND} autoeq import <f> replace the database with a file
+    {COMMAND} autoeq reset    go back to the built-in database
+    {COMMAND} -f <script>     run one command per line, `#` starts a comment
+    {COMMAND} < script        the same, from standard input
+    {COMMAND} --install-udev  install the Linux udev rule (needs root)
+    {COMMAND} hub [run]       share this machine's devices on the network, with
+                             PIN pairing; clients, roles: {COMMAND} hub --help
+    {COMMAND} web             the web console on this machine, at
+                             http://localhost:11916/console/ ({COMMAND} hub --local)
+    {COMMAND} --version       show app and protocol versions, and credits
+    {COMMAND} --license       show the licence notice and its additional terms
+    {COMMAND} --third-party-licences
+                             the licence texts of the Rust crates compiled in
 
 EXAMPLES:
-    dspi get vol.user
-    dspi set vol.user -18
-    dspi get eq.freq 8 3
-    dspi set bass.drive 12
-    dspi eq usb.1 3 peak 2856 3.58 -8.6
-    dspi ch.delay i2s.1.l 5
-    dspi raw out 0x42 0 08 03 01 00
-    printf 'vol.user -18\\nbass.on on\\n' | dspi
+    {COMMAND} get vol.user
+    {COMMAND} set vol.user -18
+    {COMMAND} get eq.freq 8 3
+    {COMMAND} set bass.drive 12
+    {COMMAND} eq usb.1 3 peak 2856 3.58 -8.6
+    {COMMAND} ch.delay i2s.1.l 5
+    {COMMAND} raw out 0x42 0 08 03 01 00
+    printf 'vol.user -18\\nbass.on on\\n' | {COMMAND}
 
 OPTIONS:
     --device <serial>        target a specific device (on USB or on a hub)
@@ -683,7 +703,7 @@ fn cmd_list(target: &Target, json: bool) -> u8 {
     exit::OK
 }
 
-/// `dspi dump --json`'s document.
+/// `uconsole dump --json`'s document.
 // -- WP TM4 --
 fn dump_json(
     caps: &dspi_session::Capabilities,
@@ -718,7 +738,7 @@ fn cmd_dump(target: &Target, json: bool) -> u8 {
         match dump_json(caps, &ext).and_then(|d| serde_json::to_string_pretty(&d)) {
             Ok(s) => println!("{s}"),
             Err(e) => {
-                eprintln!("dspi: could not serialise state: {e}");
+                eprintln!("{COMMAND}: could not serialise state: {e}");
                 return exit::TRANSPORT;
             }
         }
@@ -902,7 +922,7 @@ fn cmd_screenshot(target: &Target, args: &[&str], flags: &[&str]) -> u8 {
     live.refresh_presets(&mut session);
     live.tick(&mut session, None);
     if !live.show(&mut session, screen) {
-        eprintln!("dspi: unknown screen {screen}; see `dspi screenshot --help`");
+        eprintln!("{COMMAND}: unknown screen {screen}; see `{COMMAND} screenshot --help`");
         return exit::USAGE;
     }
     live.tick(&mut session, None);
@@ -924,7 +944,7 @@ fn cmd_tui(target: &Target, flags: &[&str], palette: dspi_tui::theme::Palette) -
             std::io::stdin().is_terminal(),
             std::io::stdout().is_terminal(),
         ) {
-            eprintln!("dspi: {why}");
+            eprintln!("{COMMAND}: {why}");
             return exit::USAGE;
         }
     }
@@ -967,7 +987,7 @@ fn no_terminal(stdin_is_terminal: bool, stdout_is_terminal: bool) -> Option<Stri
     };
     Some(format!(
         "the interface needs a terminal, and {which} not one; \
-         give a command to run instead (see `dspi --help`)"
+         give a command to run instead (see `{COMMAND} --help`)"
     ))
 }
 
@@ -1007,7 +1027,7 @@ fn run_tui(
     match dspi_tui::live::run(live, session) {
         Ok(()) => exit::OK,
         Err(e) => {
-            eprintln!("dspi: {e}");
+            eprintln!("{COMMAND}: {e}");
             exit::TRANSPORT
         }
     }
@@ -1026,14 +1046,14 @@ fn cmd_watch(target: &Target, json: bool) -> u8 {
     let source = match session.with_transport(|t| Ok(t.notifications())) {
         Ok(Some(s)) => s,
         _ => {
-            eprintln!("dspi: this transport has no notification endpoint");
+            eprintln!("{COMMAND}: this transport has no notification endpoint");
             return exit::TRANSPORT;
         }
     };
     let notes = match dspi_session::Notifications::start(source) {
         Ok(n) => n,
         Err(e) => {
-            eprintln!("dspi: cannot start the notification reader: {e}");
+            eprintln!("{COMMAND}: cannot start the notification reader: {e}");
             return exit::TRANSPORT;
         }
     };
@@ -1055,7 +1075,7 @@ fn cmd_watch(target: &Target, json: bool) -> u8 {
             return exit::OK;
         }
         if notes.is_disconnected() {
-            eprintln!("dspi: device disconnected");
+            eprintln!("{COMMAND}: device disconnected");
             return exit::TRANSPORT;
         }
         let Some(n) = notes.next(std::time::Duration::from_millis(500)) else {
@@ -1233,7 +1253,7 @@ fn cmd_autoeq(target: &Target, args: &[&str], flags: &[&str]) -> u8 {
     let db = match autoeq::load() {
         Ok(d) => d,
         Err(e) => {
-            eprintln!("dspi: {e}");
+            eprintln!("{COMMAND}: {e}");
             return exit::USAGE;
         }
     };
@@ -1242,7 +1262,7 @@ fn cmd_autoeq(target: &Target, args: &[&str], flags: &[&str]) -> u8 {
         Some("search") => {
             let query = args[1..].join(" ");
             if query.is_empty() {
-                eprintln!("dspi: autoeq search needs something to look for");
+                eprintln!("{COMMAND}: autoeq search needs something to look for");
                 return exit::USAGE;
             }
             let hits = db.search(&query);
@@ -1266,11 +1286,11 @@ fn cmd_autoeq(target: &Target, args: &[&str], flags: &[&str]) -> u8 {
 
         Some("apply") => {
             let Some(id) = args.get(1) else {
-                eprintln!("dspi: autoeq apply needs a profile id from `autoeq search`");
+                eprintln!("{COMMAND}: autoeq apply needs a profile id from `autoeq search`");
                 return exit::USAGE;
             };
             let Some(entry) = db.get(id) else {
-                eprintln!("dspi: no profile called `{id}`");
+                eprintln!("{COMMAND}: no profile called `{id}`");
                 return exit::USAGE;
             };
 
@@ -1295,7 +1315,7 @@ fn cmd_autoeq(target: &Target, args: &[&str], flags: &[&str]) -> u8 {
                     {
                         Some(c) => vec![c.index],
                         None => {
-                            eprintln!("dspi: no channel called `{name}`");
+                            eprintln!("{COMMAND}: no channel called `{name}`");
                             return exit::USAGE;
                         }
                     }
@@ -1392,13 +1412,13 @@ fn cmd_autoeq(target: &Target, args: &[&str], flags: &[&str]) -> u8 {
                     format!(", generated {}", db.generated_at)
                 }
             );
-            println!("\n  dspi autoeq search <words>");
-            println!("  dspi autoeq apply <id> [channel]");
+            println!("\n  {COMMAND} autoeq search <words>");
+            println!("  {COMMAND} autoeq apply <id> [channel]");
             // -- WP TM12 --
-            println!("  dspi autoeq rebuild --yes");
-            println!("  dspi autoeq update <https url>");
-            println!("  dspi autoeq import <file>");
-            println!("  dspi autoeq reset");
+            println!("  {COMMAND} autoeq rebuild --yes");
+            println!("  {COMMAND} autoeq update <https url>");
+            println!("  {COMMAND} autoeq import <file>");
+            println!("  {COMMAND} autoeq reset");
             exit::OK
         }
     }
@@ -1444,14 +1464,18 @@ fn cmd_ext(target: &Target, args: &[&str], json: bool, word: Option<&str>) -> u8
         ["vreg", "auto", "off"] => Ok(Do::VregOp(VregOp::Auto(false))),
         ["vreg", "clear"] => Ok(Do::VregOp(VregOp::Clear)),
         _ => Err(ExtError::BadArgument(
-            "usage: dspi ext [list] | xfeed-map [pairs] | vreg [set|trial|trial-end|auto|clear]"
-                .into(),
+            concat!(
+                "usage: ",
+                dspi_cmd::command!(),
+                " ext [list] | xfeed-map [pairs] | vreg [set|trial|trial-end|auto|clear]"
+            )
+            .into(),
         )),
     };
     let action = match parsed {
         Ok(a) => a,
         Err(e) => {
-            eprintln!("dspi: {e}");
+            eprintln!("{COMMAND}: {e}");
             return exit::USAGE;
         }
     };
@@ -1500,7 +1524,7 @@ fn cmd_ext(target: &Target, args: &[&str], json: bool, word: Option<&str>) -> u8
                     if json {
                         "{\"ok\":true}".into()
                     } else {
-                        format!("sent {op:?}; read `dspi ext vreg` to confirm")
+                        format!("sent {op:?}; read `{COMMAND} ext vreg` to confirm")
                     }
                 }),
             })
@@ -1513,15 +1537,15 @@ fn cmd_ext(target: &Target, args: &[&str], json: bool, word: Option<&str>) -> u8
             exit::OK
         }
         Err(e @ (ExtError::Unsupported { .. } | ExtError::Refused { .. })) => {
-            eprintln!("dspi: {e}");
+            eprintln!("{COMMAND}: {e}");
             exit::REJECTED
         }
         Err(e @ ExtError::NotApplied(_)) => {
-            eprintln!("dspi: {e}");
+            eprintln!("{COMMAND}: {e}");
             exit::REJECTED
         }
         Err(e @ ExtError::WordRequired { .. }) => {
-            eprintln!("dspi: {e}");
+            eprintln!("{COMMAND}: {e}");
             eprintln!(
                 "      On a terminal it asks; in a script, pass --word {}. --force does not count.",
                 dspi_session::overvolt::WORD
@@ -1529,7 +1553,7 @@ fn cmd_ext(target: &Target, args: &[&str], json: bool, word: Option<&str>) -> u8
             exit::REJECTED
         }
         Err(e @ ExtError::BadArgument(_)) => {
-            eprintln!("dspi: {e}");
+            eprintln!("{COMMAND}: {e}");
             exit::USAGE
         }
         Err(ExtError::Transport(e)) => fail(e),
@@ -1605,12 +1629,12 @@ fn parse_num(s: &str) -> Option<u32> {
 
 fn raw_in(target: &Target, args: &[&str], json: bool) -> u8 {
     let (Some(op_s), Some(len_s)) = (args.first(), args.get(1)) else {
-        eprintln!("dspi: raw needs an opcode and a length, e.g. `dspi raw 0x87 32`");
+        eprintln!("{COMMAND}: raw needs an opcode and a length, e.g. `{COMMAND} raw 0x87 32`");
         eprintln!("      an optional third argument is wValue.");
         return exit::USAGE;
     };
     let (Some(opcode), Some(len)) = (parse_num(op_s), parse_num(len_s)) else {
-        eprintln!("dspi: opcode and length must be numbers");
+        eprintln!("{COMMAND}: opcode and length must be numbers");
         return exit::USAGE;
     };
     let value = args.get(2).and_then(|v| parse_num(v)).unwrap_or(0) as u16;
@@ -1653,34 +1677,36 @@ fn raw_in(target: &Target, args: &[&str], json: bool) -> u8 {
             exit::OK
         }
         Err(e) => {
-            eprintln!("dspi: {e}");
+            eprintln!("{COMMAND}: {e}");
             transfer_exit(&e)
         }
     }
 }
 
-/// `dspi raw out <op> <wValue> <hex bytes...>`
+/// `uconsole raw out <op> <wValue> <hex bytes...>`
 fn raw_out(target: &Target, args: &[&str], json: bool) -> u8 {
     let (Some(op_s), Some(val_s)) = (args.first(), args.get(1)) else {
-        eprintln!("dspi: raw out needs an opcode, a wValue and the payload,");
-        eprintln!("      e.g. `dspi raw out 0x42 0 08 03 01 00`");
+        eprintln!("{COMMAND}: raw out needs an opcode, a wValue and the payload,");
+        eprintln!("      e.g. `{COMMAND} raw out 0x42 0 08 03 01 00`");
         return exit::USAGE;
     };
     let (Some(opcode), Some(value)) = (parse_num(op_s), parse_num(val_s)) else {
-        eprintln!("dspi: opcode and wValue must be numbers");
+        eprintln!("{COMMAND}: opcode and wValue must be numbers");
         return exit::USAGE;
     };
     let payload = match parse_hex(&args[2..]) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("dspi: {e}");
+            eprintln!("{COMMAND}: {e}");
             return exit::USAGE;
         }
     };
 
     // WP CG14: this path could not carry the confirmation word.
     if dspi_session::overvolt::is_core_vreg_write(opcode as u8, value as u16) {
-        eprintln!("dspi: core-voltage requests go through `dspi ext vreg`, not `raw out`");
+        eprintln!(
+            "{COMMAND}: core-voltage requests go through `{COMMAND} ext vreg`, not `raw out`"
+        );
         return exit::USAGE;
     }
 
@@ -1708,20 +1734,22 @@ fn raw_out(target: &Target, args: &[&str], json: bool) -> u8 {
             exit::OK
         }
         Err(e) => {
-            eprintln!("dspi: {e}");
+            eprintln!("{COMMAND}: {e}");
             transfer_exit(&e)
         }
     }
 }
 
-/// `dspi raw war <op> <wValue>`
+/// `uconsole raw war <op> <wValue>`
 ///
 /// Write-as-read: a mutation issued as a one-byte IN with the parameters in
 /// `wValue`. Several of the pin and clock setters are only reachable this way,
 /// and the byte that comes back is the status code, not data.
 fn raw_war(target: &Target, args: &[&str], json: bool) -> u8 {
     let Some(opcode) = args.first().and_then(|s| parse_num(s)) else {
-        eprintln!("dspi: raw war needs an opcode and a wValue, e.g. `dspi raw war 0xC2 0x010E`");
+        eprintln!(
+            "{COMMAND}: raw war needs an opcode and a wValue, e.g. `{COMMAND} raw war 0xC2 0x010E`"
+        );
         return exit::USAGE;
     };
     let value = args.get(1).and_then(|v| parse_num(v)).unwrap_or(0) as u16;
@@ -1756,7 +1784,7 @@ fn raw_war(target: &Target, args: &[&str], json: bool) -> u8 {
             }
         }
         Err(e) => {
-            eprintln!("dspi: {e}");
+            eprintln!("{COMMAND}: {e}");
             transfer_exit(&e)
         }
     }
@@ -1801,7 +1829,7 @@ fn parse_hex(args: &[&str]) -> Result<Vec<u8>, String> {
 fn cmd_completions(args: &[&str]) -> u8 {
     let Some(shell) = args.first() else {
         eprintln!(
-            "dspi: which shell? one of: {}",
+            "{COMMAND}: which shell? one of: {}",
             dspi_cmd::shell::SHELLS.join(", ")
         );
         return exit::USAGE;
@@ -1813,7 +1841,7 @@ fn cmd_completions(args: &[&str]) -> u8 {
         }
         None => {
             eprintln!(
-                "dspi: no completions for `{shell}`; try one of: {}",
+                "{COMMAND}: no completions for `{shell}`; try one of: {}",
                 dspi_cmd::shell::SHELLS.join(", ")
             );
             exit::USAGE
@@ -1824,7 +1852,7 @@ fn cmd_completions(args: &[&str]) -> u8 {
 /// Parse with the shared grammar, then run it.
 ///
 /// Parsing needs the device's channel names, so this connects first. That costs
-/// a little latency on a bad command, but it means `dspi ch.delay i2s.1.l 5`
+/// a little latency on a bad command, but it means `uconsole ch.delay i2s.1.l 5`
 /// works with the names the device actually reports.
 fn cmd_run(target: &Target, flags: &[&str], json: bool) -> u8 {
     let args = positional_all(flags);
@@ -1841,7 +1869,7 @@ fn cmd_run(target: &Target, flags: &[&str], json: bool) -> u8 {
     let cmd = match dspi_cmd::parse(&refs, &ctx) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("dspi: {e}");
+            eprintln!("{COMMAND}: {e}");
             return exit::USAGE;
         }
     };
@@ -1867,14 +1895,14 @@ fn cmd_script(target: &Target, path: Option<&str>, flags: &[&str], json: bool) -
         Some(p) => match std::fs::read_to_string(p) {
             Ok(t) => t,
             Err(e) => {
-                eprintln!("dspi: could not read {p}: {e}");
+                eprintln!("{COMMAND}: could not read {p}: {e}");
                 return exit::USAGE;
             }
         },
         None => {
             let mut buf = String::new();
             if let Err(e) = std::io::Read::read_to_string(&mut std::io::stdin(), &mut buf) {
-                eprintln!("dspi: could not read standard input: {e}");
+                eprintln!("{COMMAND}: could not read standard input: {e}");
                 return exit::USAGE;
             }
             buf
@@ -1906,7 +1934,7 @@ fn cmd_script(target: &Target, path: Option<&str>, flags: &[&str], json: bool) -
         let code = match dspi_cmd::parse(&refs, &ctx) {
             Ok(cmd) => run(&mut s, cmd, json, quiet, force),
             Err(e) => {
-                eprintln!("dspi: line {}: {e}", n + 1);
+                eprintln!("{COMMAND}: line {}: {e}", n + 1);
                 exit::USAGE
             }
         };
@@ -1918,7 +1946,7 @@ fn cmd_script(target: &Target, path: Option<&str>, flags: &[&str], json: bool) -
                 first_failure = code;
             }
             if !keep_going {
-                eprintln!("dspi: stopped at line {} (`{line}`)", n + 1);
+                eprintln!("{COMMAND}: stopped at line {} (`{line}`)", n + 1);
                 return first_failure;
             }
         }
@@ -1952,7 +1980,7 @@ fn strip_comment(line: &str) -> &str {
 }
 
 /// Flags that mean "do something other than run commands", so that a piped
-/// standard input does not turn `dspi --version` into an empty script.
+/// standard input does not turn `uconsole --version` into an empty script.
 const NOT_A_SCRIPT: &[&str] = &[
     "--help",
     "-h",
@@ -1960,6 +1988,8 @@ const NOT_A_SCRIPT: &[&str] = &[
     "-V",
     "--license",
     "--licence",
+    "--third-party-licences",
+    "--third-party-licenses",
     "--doctor",
     "--install-udev",
     "--lite",
@@ -1969,7 +1999,7 @@ const NOT_A_SCRIPT: &[&str] = &[
 /// Should this invocation read commands from standard input?
 ///
 /// Only when there is nothing else to do and stdin is not a terminal, so
-/// `dspi < script.dspi` and `generate | dspi` work while an interactive `dspi`
+/// `uconsole < script.dspi` and `generate | uconsole` work while an interactive `uconsole`
 /// still opens the interface.
 fn wants_stdin_script(flags: &[&str], stdin_is_terminal: bool) -> bool {
     !stdin_is_terminal
@@ -2006,7 +2036,7 @@ fn run(s: &mut Session, cmd: Command, json: bool, quiet: bool, force: bool) -> u
                 }
                 Ok(None) => {}
                 Err(e) => {
-                    eprintln!("dspi: {e}");
+                    eprintln!("{COMMAND}: {e}");
                     return write_exit(&e);
                 }
             }
@@ -2023,7 +2053,7 @@ fn run(s: &mut Session, cmd: Command, json: bool, quiet: bool, force: bool) -> u
                     exit::OK
                 }
                 Err(e) => {
-                    eprintln!("dspi: {e}");
+                    eprintln!("{COMMAND}: {e}");
                     write_exit(&e)
                 }
             }
@@ -2042,7 +2072,7 @@ fn run(s: &mut Session, cmd: Command, json: bool, quiet: bool, force: bool) -> u
             if force && path == "out.enable" && value.as_bool() == Some(true) {
                 return match s.enable_output_confirmed(indices[0]) {
                     Ok(dspi_session::EnableOutcome::Rejected) => {
-                        eprintln!("dspi: output {} did not come on.", indices[0]);
+                        eprintln!("{COMMAND}: output {} did not come on.", indices[0]);
                         exit::REJECTED
                     }
                     Ok(_) => {
@@ -2052,7 +2082,7 @@ fn run(s: &mut Session, cmd: Command, json: bool, quiet: bool, force: bool) -> u
                         exit::OK
                     }
                     Err(e) => {
-                        eprintln!("dspi: {e}");
+                        eprintln!("{COMMAND}: {e}");
                         write_exit(&e)
                     }
                 };
@@ -2061,7 +2091,7 @@ fn run(s: &mut Session, cmd: Command, json: bool, quiet: bool, force: bool) -> u
             match s.write(path, &indices, value.clone()) {
                 Ok(Outcome::Rejected { sent, actual }) => {
                     eprintln!(
-                        "dspi: {path} was not applied. Asked for {}, device kept {}.",
+                        "{COMMAND}: {path} was not applied. Asked for {}, device kept {}.",
                         show(d.kind, &sent),
                         show(d.kind, &actual)
                     );
@@ -2083,7 +2113,7 @@ fn run(s: &mut Session, cmd: Command, json: bool, quiet: bool, force: bool) -> u
                     exit::OK
                 }
                 Err(e) => {
-                    eprintln!("dspi: {e}");
+                    eprintln!("{COMMAND}: {e}");
                     if let dspi_session::WriteError::Core1Conflict { confirm, .. } = &e {
                         eprintln!("      Re-run with --force to {confirm}.");
                     }
@@ -2115,7 +2145,7 @@ fn run(s: &mut Session, cmd: Command, json: bool, quiet: bool, force: bool) -> u
             };
             match s.write_band(&packet) {
                 Ok(Outcome::Rejected { .. }) => {
-                    eprintln!("dspi: the band was not applied as sent");
+                    eprintln!("{COMMAND}: the band was not applied as sent");
                     exit::REJECTED
                 }
                 Ok(_) => {
@@ -2129,13 +2159,13 @@ fn run(s: &mut Session, cmd: Command, json: bool, quiet: bool, force: bool) -> u
                     exit::OK
                 }
                 Err(e) => {
-                    eprintln!("dspi: {e}");
+                    eprintln!("{COMMAND}: {e}");
                     write_exit(&e)
                 }
             }
         }
 
-        // `dspi undo` on a fresh process has nothing to undo, and says so:
+        // `uconsole undo` on a fresh process has nothing to undo, and says so:
         // the journal lives with the connection. The interface is where these
         // earn their keep; the CLI form exists so a script can walk one back
         // inside a batch.
@@ -2155,7 +2185,7 @@ fn run(s: &mut Session, cmd: Command, json: bool, quiet: bool, force: bool) -> u
                 exit::OK
             }
             Err(e) => {
-                eprintln!("dspi: {e}");
+                eprintln!("{COMMAND}: {e}");
                 write_exit(&e)
             }
         },
@@ -2172,13 +2202,13 @@ fn run(s: &mut Session, cmd: Command, json: bool, quiet: bool, force: bool) -> u
                 exit::OK
             }
             Err(e) => {
-                eprintln!("dspi: {e}");
+                eprintln!("{COMMAND}: {e}");
                 write_exit(&e)
             }
         },
 
         Command::Verb { name, .. } => {
-            eprintln!("dspi: `{name}` is not usable here");
+            eprintln!("{COMMAND}: `{name}` is not usable here");
             exit::USAGE
         }
     }
@@ -2338,13 +2368,13 @@ fn fail_open(e: OpenError) -> u8 {
         OpenError::Transport(t) => fail(t),
         // -- WP TM9 --
         other @ OpenError::NoHub { .. } => {
-            eprintln!("dspi: {other}");
+            eprintln!("{COMMAND}: {other}");
             exit::NO_DEVICE
         }
         // A hub without the device is a device that is not there; everything
         // else about opening is a transport failure.
         other => {
-            eprintln!("dspi: {other}");
+            eprintln!("{COMMAND}: {other}");
             if matches!(
                 other,
                 OpenError::NeedsPin { .. } | OpenError::PinRefused { .. }
@@ -2358,7 +2388,7 @@ fn fail_open(e: OpenError) -> u8 {
 }
 
 fn fail(e: TransportError) -> u8 {
-    eprintln!("dspi: {e}");
+    eprintln!("{COMMAND}: {e}");
     match e {
         TransportError::NotFound | TransportError::SerialNotFound(_) => exit::NO_DEVICE,
         // -- WP TM4 --
@@ -2862,7 +2892,7 @@ mod tests_wp_tm4 {
     }
 }
 
-/// WP CG14: `dspi ext vreg` against the fake, reading what reached it.
+/// WP CG14: `uconsole ext vreg` against the fake, reading what reached it.
 #[cfg(test)]
 mod tests_wp_cg14 {
     use super::*;
@@ -2997,7 +3027,7 @@ mod tests_wp_cg14 {
 mod tests_wp_cg37 {
     use super::*;
 
-    /// `dspi set` takes a delay up to the line (42 ms on the demo's RP2350)
+    /// `uconsole set` takes a delay up to the line (42 ms on the demo's RP2350)
     /// and refuses past it or below 0 as bad input, before the wire.
     #[test]
     fn wp_cg37_set_holds_a_delay_to_the_line() {
@@ -3037,7 +3067,7 @@ mod tests_wp_cg37 {
 mod tests_wp_dl3 {
     use super::*;
 
-    /// `dspi set out.delay 1 nan` is refused as bad input: the parser does not
+    /// `uconsole set out.delay 1 nan` is refused as bad input: the parser does not
     /// take the word, and a NaN that reaches the session some other way is
     /// refused there, before the wire, the stored delay unchanged.
     #[test]
@@ -3148,5 +3178,15 @@ mod tests_wp_upw2 {
             let e = parse_target(flags).unwrap_err();
             assert_eq!(e, "--link needs a hub address, HOST[:PORT]", "{flags:?}");
         }
+    }
+}
+
+// -- WP CLEAN1 --
+#[cfg(test)]
+mod tests_wp_clean1 {
+    /// The binary cargo builds is the command every text names.
+    #[test]
+    fn wp_clean1_the_binary_is_the_named_command() {
+        assert_eq!(env!("CARGO_BIN_NAME"), dspi_cmd::COMMAND);
     }
 }

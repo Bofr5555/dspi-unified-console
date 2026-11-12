@@ -2,27 +2,28 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
   DSPi Link hub as a launchd agent: shares this Mac's DSPi devices on the network
-  while you are logged in. A placeholder to adapt (WP TM11): see README.md.
+  while you are logged in. A placeholder to adapt (WP TM11): see README.md. A template:
+  render.sh fills in the command name (WP CLEAN1).
 
   Install:
-    cp se.bofr.dspi.hub.plist ~/Library/LaunchAgents/
-    (edit the dspi path, and USERNAME in the log paths)
-    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/se.bofr.dspi.hub.plist
+    cp se.bofr.@CMD@.hub.plist ~/Library/LaunchAgents/
+    (edit the @CMD@ path, and USERNAME in the log paths)
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/se.bofr.@CMD@.hub.plist
   Remove:
-    launchctl bootout gui/$(id -u)/se.bofr.dspi.hub
+    launchctl bootout gui/$(id -u)/se.bofr.@CMD@.hub
 
   PIN pairing is the default: do not add the open option here. To pair a client,
-  bootout the agent, run `dspi hub` in Terminal, type `pair`, and bootstrap it
-  again when the client has paired. `dspi hub` keeps the Mac awake while it runs
+  bootout the agent, run `@CMD@ hub` in Terminal, type `pair`, and bootstrap it
+  again when the client has paired. `@CMD@ hub` keeps the Mac awake while it runs
   (caffeinate); to let it sleep, add the no-keep-awake option (README.md).
 -->
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>se.bofr.dspi.hub</string>
+    <string>se.bofr.@CMD@.hub</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/dspi</string>
+        <string>/usr/local/bin/@CMD@</string>
         <string>hub</string>
     </array>
     <key>RunAtLoad</key>
@@ -40,8 +41,8 @@
         <string>warn</string>
     </dict>
     <key>StandardOutPath</key>
-    <string>/Users/USERNAME/Library/Logs/dspi-hub.log</string>
+    <string>/Users/USERNAME/Library/Logs/@CMD@-hub.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/USERNAME/Library/Logs/dspi-hub.log</string>
+    <string>/Users/USERNAME/Library/Logs/@CMD@-hub.log</string>
 </dict>
 </plist>

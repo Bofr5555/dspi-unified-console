@@ -1051,7 +1051,7 @@ struct GeneralSettingsTab: View {
                             .font(.caption)
                             .foregroundColor(.secondary)
                         // -- WP LIC1 -- the attributions, from the core's About table
-                        ForEach(AboutTable.shared?.creditLines.map(\.text) ?? ["Made with love by Weeb Labs"], id: \.self) { line in
+                        ForEach(AboutTable.shared?.creditLines.map(\.text) ?? ["DSPi and its firmware by Weeb Labs"], id: \.self) { line in
                             Text(line)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
@@ -1062,10 +1062,13 @@ struct GeneralSettingsTab: View {
             }
 
             Section {
-                Text("DSPi Firmware and Console are free, open-source software that I develop in my spare time. Contributions of any kind - code, feedback, funding, or otherwise - are always immensely appreciated.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, 4)
+                // -- WP CLEAN1 -- whose links these are, from the core's About table (DRAFT wording)
+                if let note = AboutTable.shared?.linksNote {
+                    Text(note)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 4)
+                }
 
                 supportLink("YouTube", "https://youtube.com/weeblabs",
                             icon: "play.rectangle.fill", color: .red)
@@ -12064,7 +12067,7 @@ struct DSPi_ConsoleApp: App {
                 Button("About DSPi uConsole") {
                     // -- WP LIC1 -- the attributions and the licence, from the core's About table
                     let table = AboutTable.shared
-                    let lines = (table?.creditLines.map(\.text) ?? ["Made with love by Weeb Labs"])
+                    let lines = (table?.creditLines.map(\.text) ?? ["DSPi and its firmware by Weeb Labs"])
                         + (table.map { ["\($0.licence.spdx), with additional terms: Settings > About"] } ?? [])
                     let credits = NSAttributedString(
                         string: lines.joined(separator: "\n"),

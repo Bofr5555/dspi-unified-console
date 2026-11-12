@@ -1,5 +1,5 @@
 // WP HB6: the hub's C ABI from the app's side: a demo hub on loopback, with the Terminal
-// (DSPI_SMOKE_TERMINAL, the `dspi` binary) as a real client over a real socket. The UI on
+// (DSPI_SMOKE_TERMINAL, the `uconsole` binary) as a real client over a real socket. The UI on
 // top of this is QD14's. All of it blocks: the app keeps these calls off its GUI thread.
 #include "SmokeDriver.h"
 
@@ -200,7 +200,7 @@ void SmokeDriver::testHub() {
 
     run = terminal(binary, port, pin);
     check("HB6: the Terminal connects with the PIN and reads the demo device", run.code == 0 && run.out.contains(serial));
-    if (run.code != 0) fprintf(stderr, "dspi: exit %d: %s\n", run.code, qPrintable(run.out));
+    if (run.code != 0) fprintf(stderr, "uconsole: exit %d: %s\n", run.code, qPrintable(run.out));
     check("HB6: the hub saw its session", waitFor(5000, [&]() { return events.sessions.load() > 0; }));
     check("HB6: the Terminal is a paired client", clients().size() == 1);
     check("HB6: a right PIN ends the window",

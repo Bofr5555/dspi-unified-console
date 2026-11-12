@@ -113,18 +113,26 @@ pub enum TransportError {
 /// it has to name the actual fix.
 fn permission_help() -> String {
     if cfg!(target_os = "linux") {
-        "permission denied opening the DSPi. This is almost always a missing \
-         udev rule; run `dspi --doctor` for the exact fix."
-            .into()
+        concat!(
+            "permission denied opening the DSPi. This is almost always a missing \
+             udev rule; run `",
+            dspi_proto::command!(),
+            " --doctor` for the exact fix."
+        )
+        .into()
     } else if cfg!(target_os = "macos") {
         "could not claim the DSPi vendor interface. Another application is \
          probably holding it: quit DSPi uConsole (or any other DSPi tool) and \
          try again."
             .into()
     } else {
-        "could not claim the DSPi vendor interface. Another application may be \
-         holding it, or the WinUSB driver is not bound; run `dspi --doctor`."
-            .into()
+        concat!(
+            "could not claim the DSPi vendor interface. Another application may be \
+             holding it, or the WinUSB driver is not bound; run `",
+            dspi_proto::command!(),
+            " --doctor`."
+        )
+        .into()
     }
 }
 

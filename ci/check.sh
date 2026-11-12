@@ -13,7 +13,7 @@
 #                                     `cargo tree --offline --target all`)
 #       fmt clippy test               the three gates, whole workspace
 #       windows-gnu                   cargo build --workspace, x86_64-pc-windows-gnu
-#       windows-msvc                  cargo xwin build of dspi-core, dspi-capi, dspi-term
+#       windows-msvc                  cargo xwin build of dspi-core, dspi-capi, dspi-term (uconsole)
 #       android                       cargo ndk build of dspi-core and dspi-ffi (arm64, armv7, x86_64)
 #       android-aab                   the Android app's signed release bundle, with a
 #                                     throwaway key, in its Gradle container
@@ -41,7 +41,7 @@
 #       qt-offscreen                  the Qt 6 app with its smoke driver, on the
 #                                     demo device, offscreen (apps/desktop/qt/smoke)
 #       qt5-offscreen                 the same on Qt 5.15
-#       terminal                      the Linux terminal binary (dspi-term), run once
+#       terminal                      the Linux terminal binary (dspi-term: uconsole), run once
 #       qt-windows                    packaging/windows/build-windows.sh: the
 #                                     MinGW Qt 6 app, zip and installer
 #       proptest                      the property tests (functions named
@@ -101,6 +101,8 @@ CAPI_FEATURES=link,midir,mdns,hub
 FAKEHUB="cargo build --release -p dspi-link --features fake-hub --bin dspi-link-fakehub"
 # -- WP HB6 -- The Terminal, as the smoke driver's client of a demo hub
 TERMINAL="cargo build --release --locked -p dspi-term"
+# -- WP CLEAN1 -- The Terminal's command name (crates/dspi-cmd's command!())
+CMD=$(ci/command-name.sh)
 # -- WP QD40 -- The Qt app's .ts is what lupdate makes of the sources now: lupdate
 # runs as the dspi_lupdate target does (apps/desktop/qt/CMakeLists.txt, the same
 # arguments) on a copy of qml/, src/ and translations/ laid out as in the tree,
@@ -199,9 +201,9 @@ for s in "${steps[@]}"; do
     qt5)
       $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && cmake -S apps/desktop/qt -B /work/build-desktop-qt5 -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=5 -DDSPI_CARGO_TARGET_DIR=/target && cmake --build /work/build-desktop-qt5" ;;
     qt-offscreen)
-      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && $FAKEHUB && $TERMINAL && cmake -S apps/desktop/qt -B /work/build-desktop-qt6-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt6-smoke --target DSPiConsoleSmoke && DSPI_SMOKE_FAKEHUB=/target/release/dspi-link-fakehub DSPI_SMOKE_TERMINAL=/target/release/dspi apps/desktop/qt/smoke/run.sh /work/build-desktop-qt6-smoke/DSPiConsoleSmoke /work/smoke-out && DSPI_SMOKE_HW=dry apps/desktop/qt/smoke/run.sh /work/build-desktop-qt6-smoke/DSPiConsoleSmoke /work/smoke-out-hw-dry" ;;
+      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && $FAKEHUB && $TERMINAL && cmake -S apps/desktop/qt -B /work/build-desktop-qt6-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt6-smoke --target DSPiConsoleSmoke && DSPI_SMOKE_FAKEHUB=/target/release/dspi-link-fakehub DSPI_SMOKE_TERMINAL=/target/release/$CMD apps/desktop/qt/smoke/run.sh /work/build-desktop-qt6-smoke/DSPiConsoleSmoke /work/smoke-out && DSPI_SMOKE_HW=dry apps/desktop/qt/smoke/run.sh /work/build-desktop-qt6-smoke/DSPiConsoleSmoke /work/smoke-out-hw-dry" ;;
     qt5-offscreen)
-      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && $FAKEHUB && $TERMINAL && cmake -S apps/desktop/qt -B /work/build-desktop-qt5-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=5 -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt5-smoke --target DSPiConsoleSmoke && DSPI_SMOKE_FAKEHUB=/target/release/dspi-link-fakehub DSPI_SMOKE_TERMINAL=/target/release/dspi apps/desktop/qt/smoke/run.sh /work/build-desktop-qt5-smoke/DSPiConsoleSmoke /work/smoke-out-qt5" ;;
+      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && $FAKEHUB && $TERMINAL && cmake -S apps/desktop/qt -B /work/build-desktop-qt5-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=5 -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt5-smoke --target DSPiConsoleSmoke && DSPI_SMOKE_FAKEHUB=/target/release/dspi-link-fakehub DSPI_SMOKE_TERMINAL=/target/release/$CMD apps/desktop/qt/smoke/run.sh /work/build-desktop-qt5-smoke/DSPiConsoleSmoke /work/smoke-out-qt5" ;;
     qt-windows)
       $RUN "BUILD_DIR=/work/build-desktop-win64 apps/desktop/packaging/windows/build-windows.sh /work/dist-windows" ;;
     proptest)
@@ -209,7 +211,7 @@ for s in "${steps[@]}"; do
       $RUN "PROPTEST_CASES=20000 cargo test --workspace --all-features --release -- proptest_" ;;
     terminal)
       # -- WP MR2 --
-      $RUN "cargo build --release --locked -p dspi-term && /target/release/dspi --version" ;;
+      $RUN "cargo build --release --locked -p dspi-term && /target/release/$CMD --version && python3 apps/terminal/tools/gen_rust_notices.py --check" ;;
     kotlin|swift)
       $RUN "ci/compile-bindings.sh $s"
       # -- WP REL013M -- and the Swift macOS app's Rust crates notice is current

@@ -1,31 +1,15 @@
-//! The `#[repr(C)]` records of the C ABI and their conversions (WP Q1).
+//! The C ABI's records: `#[repr(C)]` structs with fixed arrays, as
+//! `dspi_core.h` declares them, and their conversions from (and, for the
+//! records a caller passes in, to) `dspi_core::records`.
 //!
-//! Every struct here has the old desktop core's layout, field for field
-//! (snapshot `tests/data/dspi_core_old.h`): same names, same order,
-//! same types, so the Qt app compiles and runs unchanged. The tests
-//! (`types/tests_wp_q1.rs`) check `size_of`, `align_of` and every
-//! `offset_of` against the old header (a snapshot in
-//! `tests/data/dspi_core_old.h`) with the C compiler, and diff the generated
-//! `include/dspi_core.h` against it.
+//! The binding-friendly records carry `Vec`s and `String`s; here each becomes
+//! a fixed array of the header's size. Every conversion is total: a vector
+//! shorter than its array leaves the rest at the field's neutral value (zero,
+//! `false`, a default record, or the analyser floor for levels), a longer one
+//! is cut, and a string is cut at a character boundary so that at least one
+//! NUL byte ends it.
 //!
-//! Fields of type `bool` are C `_Bool`: a caller must store only 0 or 1 in
-//! them, as with the old ABI. Any other byte is undefined behaviour on both
-//! sides.
-//!
-//! The records of `dspi_core::records` carry `Vec`s and `String`s where these
-//! carry fixed arrays and NUL-padded buffers. The conversions never panic: a
-//! short vector leaves the rest of the array at zero (or the documented
-//! floor), a long one is cut to the array, and a string is cut at a
-//! character boundary so that its buffer always ends in at least one NUL.
-//!
-//! The one record that is not copied out per call is [`DspState`] (about
-//! 12 KB): `dspi_get_state` returns a pointer to one cached per core handle
-//! and refreshed on each call (WP Q2a).
-//!
-//! Channel indices are firmware *wire* indices:
-//! `[ inputs 0..num_input_channels-1 ][ outputs num_input_channels.. ]`.
-//! Output-relative fields (matrix columns, output gain/mute/delay, limiter)
-//! take an output index 0..num_output_channels-1.
+//! The constants (`#define`s) are generated into `types/consts.rs`.
 
 use std::ffi::{c_char, c_void};
 
@@ -34,93 +18,143 @@ use dspi_core::records as r;
 mod consts;
 pub use consts::*;
 
-// ── Callbacks ─────────────────────────────────────────────────────────
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_q1;
 
-/// Hot-plug event callback: `event` 0 = arrived, 1 = departed; `serial` is
-/// the NUL-terminated ASCII device serial, valid during the call only.
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_clean1;
+
+/// Hotplug callback (`dspi_set_hotplug_callback`): `event` 0 when a device
+/// arrived; `serial` is valid during the call only.
 pub type DeviceEventCallback =
     extern "C" fn(event: u8, serial: *const c_char, user_data: *mut c_void);
 
-/// Called from the notification thread when packets are waiting. It must
-/// only schedule `dspi_process_notifications` on the GUI thread.
+/// Wake-up callback (`dspi_set_notify_callback` and the analyser's): data is
+/// waiting for the GUI thread.
 pub type NotifyCallback = extern "C" fn(user_data: *mut c_void);
 
-// ── types.rs ──────────────────────────────────────────────────────────
+// ── Building fixed arrays ─────────────────────────────────────────────
 
-/// Parameters for a single filter band (PEQ or crossover).
+/// `src` mapped through `f` into an array of `N`, `pad` where `src` runs out.
+fn array_from<S, T: Copy, const N: usize>(src: &[S], pad: T, f: impl Fn(&S) -> T) -> [T; N] {
+    let mut out = [pad; N];
+    for (slot, item) in out.iter_mut().zip(src) {
+        *slot = f(item);
+    }
+    out
+}
+
+/// `src` copied into an array of `N`, `pad` where it runs out.
+fn copied<T: Copy, const N: usize>(src: &[T], pad: T) -> [T; N] {
+    array_from(src, pad, |v| *v)
+}
+
+/// A `[outer][inner]` table from nested vectors, `pad` in every missing cell.
+fn table<T: Copy, const I: usize, const O: usize>(src: &[Vec<T>], pad: T) -> [[T; I]; O] {
+    array_from(src, [pad; I], |row| copied(row, pad))
+}
+
+/// `s` as a NUL-terminated byte buffer of `N`: at most `N - 1` bytes of it,
+/// cut back to a character boundary, then zeros. An empty buffer stays empty.
+pub(crate) fn name_buf<const N: usize>(s: &str) -> [u8; N] {
+    let mut out = [0u8; N];
+    let Some(room) = N.checked_sub(1) else {
+        return out;
+    };
+    let cut = (0..=room.min(s.len()))
+        .rev()
+        .find(|&i| s.is_char_boundary(i))
+        .unwrap_or(0);
+    let bytes = s.as_bytes().get(..cut).unwrap_or_default();
+    for (slot, b) in out.iter_mut().zip(bytes) {
+        *slot = *b;
+    }
+    out
+}
+
+/// The text in a C byte buffer: up to `len` bytes and no further than the
+/// first NUL, invalid UTF-8 replaced.
+fn text_of(buf: &[u8], len: usize) -> String {
+    let bytes = buf.get(..len.min(buf.len())).unwrap_or(buf);
+    let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+    String::from_utf8_lossy(bytes.get(..end).unwrap_or_default()).into_owned()
+}
+
+// ── Records ───────────────────────────────────────────────────────────
+
+/// One filter band, PEQ or crossover.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct FilterParams {
-    /// Firmware filter type (`FILTER_*`).
+    /// `FILTER_*`: 0..13 PEQ types, 32..63 crossover types.
     pub filter_type: u8,
-    /// User bypass: the band keeps its settings but is not processed.
+    /// The band is bypassed.
     pub bypass: bool,
-    /// Centre or corner frequency in Hz.
+    /// Centre or corner frequency, Hz.
     pub freq: f32,
-    /// Quality factor (ignored by first-order types).
+    /// Q.
     pub q: f32,
-    /// Gain in dB; for the Linkwitz Transform, the target frequency fp in Hz.
+    /// Gain, dB; the Linkwitz Transform's target frequency, Hz.
     pub gain: f32,
-    /// Linkwitz Transform target Q (ignored by every other type).
+    /// The Linkwitz Transform's target Q; unused by the other types.
     pub qp: f32,
 }
 
-/// External-clock lock of the I2S input in slave mode, or of the ADAT input.
-/// state: I2S 0 inactive, 1 acquiring, 2 relocking, 3 locked;
-///        ADAT 0 inactive, 1 acquiring, 2 syncing, 3 locked, 4 relocking.
+/// Lock status of a clocked input.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct InputLockStatus {
-    /// Lock state (see the struct docs).
+    /// Receiver state as the firmware reports it; 0 inactive.
     pub state: u8,
-    /// 0 = master (DSPi drives the clock), 1 = slave.
+    /// 0 clock master, 1 slave.
     pub clock_mode: u8,
-    /// Rate locked to (Hz, 0 until locked).
+    /// The rate the receiver settled on, Hz.
     pub detected_rate: u32,
-    /// Raw measured rate in Hz.
+    /// The rate measured on the signal, Hz.
     pub measured_hz: u32,
-    /// ADAT: the rate is supported (44.1/48 kHz).
+    /// The rate can be used.
     pub rate_ok: bool,
-    /// Locks since the input started (saturates at 255).
+    /// Locks so far (wraps).
     pub lock_count: u8,
-    /// Lock losses since the input started (saturates at 255).
+    /// Losses of lock so far (wraps).
     pub loss_count: u8,
 }
 
-/// ADAT bulk output state (REQ_GET_ADAT_STATUS, RP2350).
+/// The ADAT output's status.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct AdatOutStatus {
-    /// The output is configured on.
+    /// Enabled in the configuration.
     pub enabled: bool,
-    /// Streaming now (suspended above 48 kHz).
+    /// Running now.
     pub active: bool,
-    /// Output GPIO.
+    /// Its GPIO.
     pub pin: u8,
-    /// The current rate is one ADAT carries.
+    /// The sample rate suits ADAT.
     pub rate_ok: bool,
-    /// Resynchronisations since start.
+    /// Resynchronisations (wraps).
     pub resync_count: u16,
-    /// Sample slips since start.
+    /// Sample slips (wraps).
     pub slip_count: u16,
 }
 
-/// LG Sound Sync live state (REQ_GET_LG_SOUND_SYNC_STATUS).
+/// LG Sound Sync status.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct LgStatus {
-    /// The decoder is enabled.
+    /// LG Sound Sync is on.
     pub enabled: bool,
-    /// An LG TV's volume signalling is being decoded.
+    /// A TV was seen.
     pub present: bool,
-    /// TV volume 0..100; 0xFF until one has been decoded.
+    /// The TV's volume 0..100, 0xFF before the first one decoded.
     pub volume: u8,
-    /// The TV is muted.
+    /// The TV reports mute.
     pub muted: bool,
 }
 
-/// UART control interface config (REQ_GET/SET_UART_CONFIG). Device-level,
-/// stored in the flash directory, not in the bulk image.
+/// The UART control interface's configuration.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct UartConfig {
@@ -130,13 +164,13 @@ pub struct UartConfig {
     pub tx_pin: u8,
     /// RX GPIO.
     pub rx_pin: u8,
-    /// Push change notifications to the controller.
+    /// Notification frames go out over the UART.
     pub notify: bool,
-    /// Baud rate.
+    /// Bits per second.
     pub baud: u32,
 }
 
-/// I2C target control interface config (REQ_GET/SET_I2C_CONFIG).
+/// The I2C control interface's configuration.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct I2cConfig {
@@ -146,74 +180,73 @@ pub struct I2cConfig {
     pub sda_pin: u8,
     /// SCL GPIO.
     pub scl_pin: u8,
-    /// 7-bit target address, 0x08..0x77.
+    /// 7-bit target address.
     pub address: u8,
 }
 
-/// Control interface outcome and run state (REQ_GET_CTRL_IFACE_STATUS).
-/// `*_last_status`: 0 OK, 1 invalid pin, 2 pin in use, 5 invalid parameter.
+/// The control interfaces' status.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct CtrlIfaceStatus {
-    /// Outcome of the last UART configuration.
+    /// `PIN_CONFIG_*` of the last UART configuration.
     pub uart_last_status: u8,
-    /// The UART interface is running.
+    /// The UART interface is up.
     pub uart_live: bool,
-    /// Outcome of the last I2C configuration.
+    /// `PIN_CONFIG_*` of the last I2C configuration.
     pub i2c_last_status: u8,
-    /// The I2C interface is running.
+    /// The I2C interface is up.
     pub i2c_live: bool,
-    /// Control protocol version the firmware speaks.
+    /// The control protocol's version.
     pub protocol_version: u8,
 }
 
-/// Live upmixer state (REQ_UPMIX_GET_STATUS).
+/// The upmixer's live telemetry.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct UpmixStatus {
-    /// True while the upmixer is processing audio.
+    /// Processing audio now.
     pub active: bool,
-    /// Why it is idle: 0 active, 1 disabled, 2 input not stereo, 3 rate above 48 kHz.
+    /// Why not: 0 active, 1 disabled, 2 input not stereo, 3 rate above 48 kHz.
     pub parked_reason: u8,
-    /// Running L/R correlation, -1..1 (0 with a passive centre).
+    /// L/R correlation, -1..1.
     pub correlation: f32,
-    /// Running L/R balance, -1..1.
+    /// L/R balance, 0..1.
     pub balance: f32,
-    /// Current gains of the derived channels, 0..1.
+    /// Centre gain, linear.
     pub center_gain: f32,
-    /// Left surround gain, 0..1.
+    /// Left surround gain, linear.
     pub ls_gain: f32,
-    /// Right surround gain, 0..1.
+    /// Right surround gain, linear.
     pub rs_gain: f32,
 }
 
-/// System status from the device (REQ_GET_STATUS wValue = 9).
+/// Meters and load, polled.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct SystemStatus {
-    /// Peak level per wire channel, 0.0..1.0.
+    /// Peak per wire channel, 0..1.
     pub peaks: [f32; MAX_CHANNELS],
-    /// Core 0 load in %.
+    /// Core 0 load, %.
     pub cpu0: u8,
-    /// Core 1 load in %.
+    /// Core 1 load, %.
     pub cpu1: u8,
     /// Sticky clip flags, one bit per wire channel.
     pub clip_flags: u32,
-    /// Live active input channel count (source-aware).
+    /// Input channels of the active source.
     pub active_input_channels: u8,
-    /// Wire channels (inputs + outputs).
+    /// Wire channels of the device.
     pub num_channels: u8,
 }
 
-/// Information about a discovered DSPi device.
+/// A device found by a scan.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DeviceInfo {
-    /// NUL-terminated ASCII serial number.
+    /// USB serial number, NUL-terminated.
     pub serial: [u8; 64],
-    /// Bytes of `serial` before the NUL.
+    /// Its length in bytes, without the NUL.
     pub serial_len: u32,
-    /// Bus location id (0 where the platform has none).
+    /// The unit's place on the bus.
     pub location_id: u32,
 }
 
@@ -227,13 +260,13 @@ impl Default for DeviceInfo {
     }
 }
 
-/// Platform and firmware identification (REQ_GET_PLATFORM, 7-byte reply).
+/// Platform and firmware version.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PlatformInfo {
-    /// 0 = RP2040, 1 = RP2350.
+    /// 0 RP2040, 1 RP2350.
     pub platform_id: u8,
-    /// Output channels of this build.
+    /// Output channels of the platform.
     pub num_output_channels: u8,
     /// Firmware major version.
     pub fw_major: u8,
@@ -241,45 +274,42 @@ pub struct PlatformInfo {
     pub fw_minor: u8,
     /// Firmware patch version.
     pub fw_patch: u8,
-    /// Pre-release ordinal: 0 = final release, N = beta N.
+    /// Firmware beta number, 0 for a release.
     pub fw_beta: u8,
 }
 
-/// Preset directory (REQ_PRESET_GET_DIR, 7-byte reply).
+/// The preset directory.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct PresetDirectory {
-    /// Bitmask of occupied preset slots (10 slots).
+    /// One bit per occupied slot.
     pub occupied_mask: u16,
-    /// 0 = load the specified default slot, 1 = load the last active slot.
+    /// 0 load `default_slot` at boot, 1 the last active.
     pub startup_mode: u8,
-    /// Slot loaded at startup in mode 0.
+    /// The slot loaded at boot in mode 0.
     pub default_slot: u8,
-    /// Last slot loaded or saved.
+    /// The slot last loaded or saved.
     pub last_active: u8,
-    /// 0 = output config is stored independently, 1 = it travels with presets.
+    /// 0 outputs stored apart from presets, 1 with them.
     pub output_config_mode: u8,
-    /// 0 = master volume is stored independently, 1 = it travels with presets.
+    /// 0 master volume stored apart from presets, 1 with them.
     pub master_volume_mode: u8,
 }
 
-// ── state.rs ──────────────────────────────────────────────────────────
-
-/// Complete DSP parameter state for the connected device.
-/// Owned by the core handle; the GUI reads it through `dspi_get_state`.
+/// The whole device state, as `dspi_get_state` returns it. Channel-indexed
+/// arrays use wire channels; matrices are `[input][output]`.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DspState {
-    // ── Device / firmware ───────────────────────────────────────────
-    /// 0 = RP2040, 1 = RP2350.
+    /// 0 RP2040, 1 RP2350.
     pub platform_id: u8,
-    /// Wire channels (inputs + outputs).
+    /// Wire channels.
     pub num_channels: u8,
     /// Input channels.
     pub num_input_channels: u8,
     /// Output channels.
     pub num_output_channels: u8,
-    /// Wire format version of the bulk image.
+    /// Wire format of the bulk image read.
     pub format_version: u8,
     /// Firmware major version.
     pub fw_major: u8,
@@ -287,68 +317,52 @@ pub struct DspState {
     pub fw_minor: u8,
     /// Firmware patch version.
     pub fw_patch: u8,
-    /// Firmware beta number, 0 = final.
+    /// Firmware beta number.
     pub fw_beta: u8,
     /// `COMPAT_*`.
     pub compat: u8,
-
-    // ── Global ──────────────────────────────────────────────────────
-    /// Legacy global preamp (mirrors input 0's preamp on current firmware).
+    /// Global preamp, dB.
     pub preamp_db: f32,
-    /// Global DSP bypass.
+    /// Global bypass.
     pub bypass: bool,
-
-    // ── Per-input preamp ────────────────────────────────────────────
     /// Preamp per input, dB.
     pub input_preamp_db: [f32; MAX_INPUTS],
-
-    // ── Volume ──────────────────────────────────────────────────────
-    /// Device master volume: −128 = mute sentinel, −127..0 dB.
+    /// Master volume, dB.
     pub master_volume_db: f32,
-    /// 0 = independent of presets, 1 = saved with presets.
+    /// 0 independent of presets, 1 with them.
     pub master_volume_mode: u8,
     /// User volume, dB.
     pub user_volume_db: f32,
     /// User mute.
     pub user_mute: bool,
-
-    // ── Loudness ────────────────────────────────────────────────────
-    /// Loudness compensation on.
+    /// Loudness on.
     pub loudness_enabled: bool,
-    /// Reference level, dB SPL.
+    /// Loudness reference level, dB SPL.
     pub loudness_ref_spl: f32,
-    /// Intensity, %.
+    /// Loudness intensity, %.
     pub loudness_intensity: f32,
-    /// Bit k: loudness processes output k.
+    /// Outputs loudness applies to, one bit each.
     pub loudness_output_mask: u16,
-
-    // ── Crossfeed ───────────────────────────────────────────────────
     /// Crossfeed on.
     pub crossfeed_enabled: bool,
-    /// Crossfeed preset id.
+    /// Crossfeed preset.
     pub crossfeed_preset: u8,
-    /// Custom cutoff, Hz.
+    /// Crossfeed cutoff, Hz.
     pub crossfeed_freq: f32,
-    /// Custom feed level, dB.
+    /// Crossfeed level, dB.
     pub crossfeed_feed: f32,
-    /// Interaural time delay on.
+    /// Crossfeed interaural delay on.
     pub crossfeed_itd: bool,
-    /// Bit p: crossfeed runs on output pair p.
+    /// Output pairs crossfeed applies to, one bit each.
     pub crossfeed_output_pair_mask: u8,
-
-    // ── Per-channel delays (wire channel index) ─────────────────────
     /// Delay per wire channel, ms.
     pub channel_delays: [f32; MAX_CHANNELS],
-
-    // ── Matrix mixer [input][output] ────────────────────────────────
-    /// Crosspoint on.
+    /// Matrix crosspoint on.
     pub matrix_routing: [[bool; MAX_OUTPUTS]; MAX_INPUTS],
-    /// Crosspoint gain, dB.
+    /// Matrix crosspoint gain, dB.
     pub matrix_gain: [[f32; MAX_OUTPUTS]; MAX_INPUTS],
-    /// Crosspoint polarity inverted.
+    /// Matrix crosspoint inverted.
     pub matrix_invert: [[bool; MAX_OUTPUTS]; MAX_INPUTS],
-
-    // ── Outputs ─────────────────────────────────────────────────────
     /// Output enabled.
     pub output_enabled: [bool; MAX_OUTPUTS],
     /// Output muted.
@@ -357,233 +371,195 @@ pub struct DspState {
     pub output_gain_db: [f32; MAX_OUTPUTS],
     /// Output delay, ms.
     pub output_delay_ms: [f32; MAX_OUTPUTS],
-
-    // ── Output limiter (per output) ─────────────────────────────────
-    /// Limiter on.
+    /// Limiter on, per output.
     pub limiter_enabled: [bool; MAX_OUTPUTS],
-    /// 0 = unlinked, 1..4 = link group.
+    /// Limiter link group, per output.
     pub limiter_link_group: [u8; MAX_OUTPUTS],
-    /// Threshold, dBFS.
+    /// Limiter threshold, dB, per output.
     pub limiter_threshold_db: [f32; MAX_OUTPUTS],
-    /// Release time, ms.
+    /// Limiter release, ms, per output.
     pub limiter_release_ms: [f32; MAX_OUTPUTS],
-
-    // ── Pin configuration ───────────────────────────────────────────
-    /// Physical output slots in use.
+    /// Output pins in use.
     pub num_pin_outputs: u8,
-    /// GPIO per physical output slot.
+    /// GPIO per output pin.
     pub output_pins: [u8; MAX_PHYSICAL_OUTPUTS],
-    /// 0 = output config stored independently, 1 = saved with presets.
+    /// 0 outputs independent of presets, 1 with them.
     pub output_config_mode: u8,
-
-    // ── EQ (wire channel index) ─────────────────────────────────────
-    /// PEQ bands [wire channel][band].
+    /// PEQ bands per wire channel.
     pub filters: [[FilterParams; BANDS_PER_CHANNEL]; MAX_CHANNELS],
-    /// Crossover bands; input rows are unused (crossovers are output-only).
+    /// Crossover bands per wire channel.
     pub xover: [[FilterParams; MAX_XOVER_BANDS]; MAX_CHANNELS],
-
-    // ── Channel names (wire channel index) ──────────────────────────
-    /// NUL-padded UTF-8 name per wire channel.
+    /// Channel names, NUL-terminated UTF-8.
     pub channel_names: [[u8; CHANNEL_NAME_LEN]; MAX_CHANNELS],
-
-    // ── Volume leveller ─────────────────────────────────────────────
     /// Leveller on.
     pub leveller_enabled: bool,
-    /// 0 = slow, 1 = medium, 2 = fast.
+    /// Leveller speed.
     pub leveller_speed: u8,
-    /// Lookahead on.
+    /// Leveller look-ahead on.
     pub leveller_lookahead: bool,
-    /// Amount, %.
+    /// Leveller amount, %.
     pub leveller_amount: f32,
-    /// Maximum gain, dB.
+    /// Leveller maximum gain, dB.
     pub leveller_max_gain_db: f32,
-    /// Gate threshold, dBFS.
+    /// Leveller gate, dB.
     pub leveller_gate_db: f32,
-    /// Bit k: input k feeds the detector.
+    /// Channels the leveller listens to.
     pub leveller_detector_mask: u8,
-    /// Bit k: gain applied to input k.
+    /// Channels the leveller acts on.
     pub leveller_apply_mask: u8,
-
-    // ── Input / misc ────────────────────────────────────────────────
-    /// 0 = USB, 1 = S/PDIF, 2 = I2S, ...
+    /// Active input source.
     pub input_source: u8,
-    /// LG Sound Sync decoding on.
+    /// LG Sound Sync on.
     pub lg_sound_sync_enabled: bool,
-    /// Bit k: S/PDIF input k+1 is enabled (input 1 is always on).
+    /// S/PDIF inputs enabled, one bit each.
     pub spdif_inputs_enabled: u8,
     /// ADAT input on.
     pub adat_input_enabled: bool,
-    /// RX pin of each S/PDIF input (1-4).
+    /// S/PDIF receiver GPIOs.
     pub spdif_rx_pins: [u8; 4],
-    /// Data pin of each I2S input pair; active pairs = channels / 2.
+    /// I2S receiver GPIOs.
     pub i2s_rx_pins: [u8; 4],
     /// I2S input channels.
     pub i2s_input_channels: u8,
-    /// Master-mode rate shared by I2S and ADAT: 0 = 44.1k, 1 = 48k, 2 = 96k.
+    /// I2S input rate code.
     pub i2s_input_rate: u8,
-    /// 0 = master (DSPi drives BCK/LRCLK), 1 = slave.
+    /// I2S clock mode, 0 master, 1 slave.
     pub i2s_clock_mode: u8,
-    /// ADAT input data pin, 0xFF = not set (it ships unset).
+    /// ADAT input GPIO.
     pub adat_input_pin: u8,
-    /// ADAT input clock: 0 = master, 1 = slave.
+    /// ADAT input clock mode.
     pub adat_input_clock_mode: u8,
-
-    // ── Psychoacoustic bass ─────────────────────────────────────────
     /// Psychoacoustic bass on.
     pub psybass_enabled: bool,
-    /// Bit k: psybass processes output k.
+    /// Outputs it applies to.
     pub psybass_output_mask: u16,
-    /// Cutoff, Hz.
+    /// Its cutoff, Hz.
     pub psybass_cutoff_hz: f32,
-    /// Harmonics level, dB.
+    /// Its harmonics level, dB.
     pub psybass_harmonics_db: f32,
-    /// Drive, dB.
+    /// Its drive, dB.
     pub psybass_drive_db: f32,
-    /// Character, %.
+    /// Its character, %.
     pub psybass_character_pct: f32,
-    /// Original signal level, dB.
+    /// Its original-signal level, dB.
     pub psybass_original_db: f32,
-
-    // ── Stereo upmixer (RP2350 only) ────────────────────────────────
-    /// By `UPMIX_PARAM_*` id; enable and modes as whole numbers.
+    /// Upmixer parameters by `UPMIX_PARAM_*`.
     pub upmix: [f32; UPMIX_PARAM_COUNT],
-
-    // ── Subharmonic synthesizer ─────────────────────────────────────
-    /// By `SUBHARM_PARAM_*` id; flags, mask and mode as whole numbers.
+    /// Subharmonic synthesizer parameters by `SUBHARM_PARAM_*`.
     pub subharm: [f32; SUBHARM_PARAM_COUNT],
-    /// Program muted on the masked outputs. Runtime only: not in the bulk
-    /// image, never saved.
+    /// Subharmonic solo.
     pub subharm_solo: bool,
-
-    // ── Tube modeller ───────────────────────────────────────────────
-    /// By `TUBE_PARAM_*` index; flags, mask and enums as whole numbers.
+    /// Tube parameters by `TUBE_PARAM_*`.
     pub tube: [f32; TUBE_PARAM_COUNT],
-
-    // ── Output types and clocks (i2s_config / adat_config sections) ─
-    /// Per S/PDIF-or-I2S slot: 0 = S/PDIF, 1 = I2S.
+    /// Output type per output pair.
     pub output_types: [u8; 4],
-    /// I2S bit clock (LRCLK is the next GPIO).
+    /// I2S BCK GPIO.
     pub i2s_bck_pin: u8,
-    /// I2S bit clock of the slave pair in split mode.
+    /// I2S BCK GPIO in slave mode.
     pub i2s_bck_pin_slave: u8,
-    /// 0 = master and slave share the clock pins, 1 = separate pins.
+    /// I2S clock pin mode.
     pub i2s_clock_pin_mode: u8,
-    /// MCK output on.
+    /// Master clock on.
     pub mck_enabled: bool,
-    /// MCK GPIO.
+    /// Master clock GPIO.
     pub mck_pin: u8,
-    /// 0 = 128 x fs, 1 = 256 x fs.
+    /// Master clock multiplier.
     pub mck_multiplier: u8,
-    /// ADAT optical output (RP2350).
+    /// ADAT output on.
     pub adat_out_enabled: bool,
     /// ADAT output GPIO.
     pub adat_out_pin: u8,
-
-    // ── DAC hardware mute (device-level; in the bulk image) ────────
-    /// The firmware has the DAC mute feature.
+    /// The firmware has the DAC hardware mute.
     pub dac_mute_supported: bool,
-    /// DAC mute on.
+    /// DAC hardware mute on.
     pub dac_mute_enabled: bool,
     /// The mute line is active low.
     pub dac_mute_active_low: bool,
-    /// GPIO, 0xFF = none.
+    /// Mute line GPIO.
     pub dac_mute_pin: u8,
-    /// Hold time, ms.
+    /// Mute hold, ms.
     pub dac_mute_hold_ms: u16,
-    /// Release time, ms.
+    /// Mute release, ms.
     pub dac_mute_release_ms: u16,
-
-    // ── UART / I2C control interfaces (flash directory, not bulk) ──
     /// The firmware has the control interfaces.
     pub ctrl_iface_supported: bool,
-    /// UART interface config.
+    /// UART control interface.
     pub uart: UartConfig,
-    /// I2C interface config.
+    /// I2C control interface.
     pub i2c: I2cConfig,
-    /// Control interface status.
+    /// Their status.
     pub ctrl_status: CtrlIfaceStatus,
-
-    // ── Core 1 mode ─────────────────────────────────────────────────
-    /// What core 1 runs (firmware `Core1Mode`).
+    /// What core 1 runs.
     pub core1_mode: u8,
-
-    // ── Presets ─────────────────────────────────────────────────────
-    /// Bitmask of occupied preset slots.
+    /// One bit per occupied preset slot.
     pub preset_occupied: u16,
-    /// NUL-padded UTF-8 name per preset slot.
+    /// Preset names, NUL-terminated UTF-8.
     pub preset_names: [[u8; CHANNEL_NAME_LEN]; MAX_PRESETS],
-    /// Active preset slot.
+    /// The active preset slot.
     pub active_preset_slot: u8,
-    /// 0 = load the default slot at startup, 1 = the last active one.
+    /// Preset startup mode.
     pub preset_startup_mode: u8,
-    /// Slot loaded at startup in mode 0.
+    /// Preset loaded at boot.
     pub preset_default_slot: u8,
-
-    // ── Raw bulk image ──────────────────────────────────────────────
-    /// True once a bulk image has been read from the device.
+    /// `bulk_raw` holds an image.
     pub bulk_valid: bool,
-    /// The last bulk image read, kept so unmodeled sections round-trip.
+    /// The bulk parameter image as read.
     pub bulk_raw: [u8; BULK_PARAMS_SIZE],
 }
 
-// ── notify.rs ─────────────────────────────────────────────────────────
-
-/// What a batch of notifications changed.
+/// What a notification poll found.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct NotifyResult {
     /// `NOTIFY_*` bits.
     pub flags: u32,
-    /// Wire channels whose PEQ or crossover bands changed (bit per channel).
+    /// Channels whose filters changed, one bit each.
     pub filter_channels: u32,
 }
 
-// ── rta.rs ────────────────────────────────────────────────────────────
-
-/// What the GUI wants. A zero mask releases the analyser.
+/// An analyser request.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct RtaRequest {
-    /// RTA_TAP_INPUT or RTA_TAP_OUTPUT.
+    /// `RTA_TAP_*`.
     pub tap: u8,
-    /// Bit i = channel i at that tap (input index or output index).
+    /// Channels, one bit each.
     pub mask: u16,
-    /// Also read the FFT bins (single-channel selections only).
+    /// FFT bins wanted too.
     pub wants_bins: bool,
-    /// FFT size as a power of two.
+    /// Transform size as a power of two.
     pub fft_order: u8,
     /// Averaging time, ms.
     pub avg_ms: u16,
-    /// Peak hold decay, dB/s.
+    /// Peak decay, dB/s.
     pub peak_decay_db_s: u8,
 }
 
-/// The device's analyser. `supported` is false until probed, and stays
-/// false on firmware without one.
+/// What the analyser can do.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RtaCapsInfo {
-    /// The firmware has an analyser.
+    /// The firmware has the analyser.
     pub supported: bool,
-    /// Input channels it can tap.
+    /// Input channels it can watch.
     pub input_channels: u8,
-    /// Output channels it can tap.
+    /// Output channels it can watch.
     pub output_channels: u8,
-    /// Smallest FFT order.
+    /// Smallest transform order.
     pub order_min: u8,
-    /// Largest FFT order.
+    /// Largest transform order.
     pub order_max: u8,
-    /// Default FFT order.
+    /// Default transform order.
     pub order_default: u8,
-    /// Bands computed by the bass filter bank.
+    /// Bands from the bass filter bank.
     pub bass_bands: u8,
-    /// Bands in total.
+    /// Bands in all.
     pub max_bands: u8,
-    /// Dynamic range of the FFT bands, dB.
+    /// Dynamic range, dB.
     pub dynamic_range_db: u8,
-    /// Dynamic range of the bass bands, dB.
+    /// Bass bank dynamic range, dB.
     pub bass_dynamic_range_db: u16,
-    /// Nominal band centres in Hz (max_bands of them).
+    /// Band centres, Hz.
     pub centres: [u16; RTA_MAX_BANDS],
 }
 
@@ -605,91 +581,87 @@ impl Default for RtaCapsInfo {
     }
 }
 
-/// One channel's band levels in dBFS. A silent channel (no audio, or not
-/// published yet) reads the floor.
+/// One channel's band levels.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RtaChannelFrame {
-    /// Channel at the snapshot's tap.
+    /// Channel.
     pub channel: u8,
-    /// Bands carried.
+    /// Bands valid in the arrays.
     pub n_bands: u8,
-    /// No level yet: the bands read the floor.
+    /// Nothing above the floor.
     pub silent: bool,
-    /// Averaged level per band, dBFS.
+    /// Averaged level per band, dB.
     pub avg_db: [f32; RTA_MAX_BANDS],
-    /// Peak-hold level per band, dBFS.
+    /// Peak level per band, dB.
     pub peak_db: [f32; RTA_MAX_BANDS],
 }
 
 impl Default for RtaChannelFrame {
-    /// A silent frame at `RTA_FLOOR_DB`, as the old core's.
+    /// No bands, every level at the floor.
     fn default() -> Self {
         Self {
             channel: 0,
             n_bands: 0,
-            silent: true,
+            silent: false,
             avg_db: [RTA_FLOOR_DB; RTA_MAX_BANDS],
             peak_db: [RTA_FLOOR_DB; RTA_MAX_BANDS],
         }
     }
 }
 
-/// The latest picture and telemetry. `version` changes only when what is
-/// drawn changed; `telemetry_version` when the status line did.
+/// The analyser's latest data.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RtaSnapshot {
-    /// Changes when what is drawn changed.
+    /// Increases with every new frame.
     pub version: u32,
-    /// Changes when the telemetry changed.
+    /// Increases with every status read.
     pub telemetry_version: u32,
-    /// RTA_TAP_INPUT or RTA_TAP_OUTPUT.
+    /// `RTA_TAP_*` of the frames.
     pub tap: u8,
-    /// Valid entries of `frames`.
+    /// Frames valid.
     pub count: u8,
-    /// Analysed channels, packed in ascending channel order.
+    /// The frames.
     pub frames: [RtaChannelFrame; RTA_MAX_CHANNELS],
-    /// Bands with a level at this rate and transform size (bit per band).
+    /// Channels that have had a frame, one bit each.
     pub populated: u64,
-    /// Averaged and 1/6-octave smoothed bins in dBFS; bin k at
-    /// k * bins_sample_rate / (2 * bins_count). 0 = none.
+    /// Bins valid.
     pub bins_count: u16,
-    /// Channel the bins belong to.
+    /// Channel of the bins.
     pub bins_channel: u8,
     /// Sample rate of the bins, Hz.
     pub bins_sample_rate: u32,
-    /// The bins, dBFS (first `bins_count` valid).
+    /// Bin levels, dB.
     pub bins_db: [f32; RTA_MAX_BINS],
-    // Telemetry
-    /// The analyser is running.
+    /// The analyser runs.
     pub running: bool,
-    /// Channels being analysed.
+    /// Channels analysed.
     pub live_count: u8,
-    /// Mask of the channels being analysed.
+    /// Channels analysed, one bit each.
     pub live_mask: u16,
     /// Frames per second.
     pub frames_per_s: u16,
-    /// FFT CPU time, µs per second.
+    /// Processing time, µs per second.
     pub busy_us_per_s: u16,
-    /// CPU time of the last frame, µs.
+    /// Time of the last frame, µs.
     pub last_frame_us: u16,
-    /// Bass bank CPU time, µs per second.
+    /// Bass bank time, µs per second.
     pub bass_busy_us_per_s: u16,
     /// Sample rate, Hz.
     pub sample_rate: u32,
-    /// Lowest band carrying a level, 0xFF = none.
+    /// First band shown.
     pub first_band: u8,
-    /// FFT order in use.
+    /// Transform order in use.
     pub fft_order: u8,
-    /// The device would not take the requested configuration.
+    /// The device refused the last configuration.
     pub config_rejected: bool,
-    /// How often each channel gets a new frame, in seconds.
+    /// Seconds between frames.
     pub refresh_interval_s: f32,
 }
 
 impl Default for RtaSnapshot {
-    /// Silent frames at the floor and no bins, as the old core's.
+    /// Nothing analysed: empty frames, bins at the floor.
     fn default() -> Self {
         Self {
             version: 0,
@@ -710,7 +682,7 @@ impl Default for RtaSnapshot {
             last_frame_us: 0,
             bass_busy_us_per_s: 0,
             sample_rate: 0,
-            first_band: 0xFF,
+            first_band: 0,
             fft_order: 0,
             config_rejected: false,
             refresh_interval_s: 0.0,
@@ -718,50 +690,47 @@ impl Default for RtaSnapshot {
     }
 }
 
-// ── siggen.rs ─────────────────────────────────────────────────────────
-
-/// One signal's settings. `p` holds the type's parameters (see the caps).
+/// A signal generator configuration.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct SiggenConfig {
     /// Signal type id.
     pub signal_type: u8,
-    /// Bit i = output i.
+    /// Channels it plays on.
     pub channel_mask: u16,
-    /// Polarity-inverted subset of channel_mask.
+    /// Channels it plays inverted on.
     pub invert_mask: u16,
-    /// SIGGEN_FLAG_*.
+    /// `SIGGEN_FLAG_*`.
     pub flags: u8,
-    /// Peak level, dBFS (-120..0).
+    /// Level, dBFS.
     pub level_db: f32,
-    /// Continuous: play time (0 = forever), or per-output dwell when walking;
-    /// sweep: one sweep. Unused by patterns.
+    /// Duration, ms; 0 continuous.
     pub duration_ms: u32,
-    /// Sweeps, pattern periods or walk passes (0 = forever).
+    /// Repeats.
     pub repeat: u16,
     /// Gap between repeats, ms.
     pub gap_ms: u16,
-    /// Type-specific parameters.
+    /// The type's parameters.
     pub p: [f32; 4],
 }
 
-/// What the generator is doing.
+/// The signal generator's status.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct SiggenStatus {
-    /// 0 idle, 1 fading in, 2 running, 3 gap, 4 fading out.
+    /// Running state.
     pub state: u8,
     /// Signal type id.
     pub signal_type: u8,
-    /// Output being played when walking, else 0xFF.
+    /// Channel playing now.
     pub active_channel: u8,
-    /// Time since start, ms.
+    /// Time played, ms.
     pub elapsed_ms: u32,
-    /// Completed repeats.
+    /// Cycles completed.
     pub cycles_done: u16,
-    /// Of the last stop: 0 none, 1 host, 2 completed, 3 preset load, 4 reconfigured.
+    /// Why it stopped.
     pub stop_reason: u8,
-    /// Sweep frequency now, else 0.
+    /// Frequency now, Hz.
     pub current_freq: f32,
 }
 
@@ -769,51 +738,49 @@ pub struct SiggenStatus {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct SiggenParam {
-    /// 0 unused, 1 Hz, 2 ms, 3 cycles, 4 count, 5 ratio, 6 pattern.
+    /// What it means.
     pub semantic: u8,
-    /// Smallest value.
+    /// Lowest value.
     pub min: f32,
-    /// Largest value.
+    /// Highest value.
     pub max: f32,
     /// Default value.
     pub def: f32,
 }
 
-/// One signal type the generator offers.
+/// A signal type.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct SiggenTypeInfo {
-    /// Signal type id.
+    /// Its id.
     pub id: u8,
-    /// Short firmware name, NUL-terminated.
+    /// Its name, NUL-terminated.
     pub name: [u8; 9],
-    /// 0 continuous, 1 sweep, 2 pattern.
+    /// Timing class.
     pub timing: u8,
-    /// The type's parameters (`p` of [`SiggenConfig`]).
+    /// Its parameters.
     pub params: [SiggenParam; 4],
 }
 
-/// The generator on this device. `supported` false without one.
+/// What the signal generator can do.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct SiggenCaps {
-    /// The firmware has a generator.
+    /// The firmware has it.
     pub supported: bool,
-    /// Valid entries of `types`.
+    /// Types valid in `types`.
     pub type_count: u8,
-    /// Outputs it can drive.
+    /// Output channels.
     pub output_channels: u8,
-    /// Most tones of a multitone signal.
+    /// Most tones of the multitone signal.
     pub multitone_max: u8,
-    /// Bit t: type id t is valid.
+    /// Valid channel bits.
     pub valid_mask: u16,
-    /// The signal types.
+    /// The types.
     pub types: [SiggenTypeInfo; SIGGEN_TYPE_COUNT],
 }
 
-// ── stats.rs ──────────────────────────────────────────────────────────
-
-/// One S/PDIF output's buffer pipeline.
+/// One S/PDIF output's buffers.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct SpdifBufferStats {
@@ -823,43 +790,43 @@ pub struct SpdifBufferStats {
     pub prepared: u8,
     /// Buffers playing.
     pub playing: u8,
-    /// Consumer pipeline fill now, in %.
+    /// Fill now, %.
     pub fill_pct: u8,
-    /// Lowest fill since the watermarks were reset, %.
+    /// Lowest fill, %.
     pub min_pct: u8,
-    /// Highest fill since the watermarks were reset, %.
+    /// Highest fill, %.
     pub max_pct: u8,
 }
 
-/// The PDM output's DMA and ring buffers, fill now / lowest / highest in %.
+/// The PDM output's buffers.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct PdmBufferStats {
     /// DMA fill now, %.
     pub dma_fill_pct: u8,
-    /// DMA lowest fill, %.
+    /// Lowest DMA fill, %.
     pub dma_min_pct: u8,
-    /// DMA highest fill, %.
+    /// Highest DMA fill, %.
     pub dma_max_pct: u8,
     /// Ring fill now, %.
     pub ring_fill_pct: u8,
-    /// Ring lowest fill, %.
+    /// Lowest ring fill, %.
     pub ring_min_pct: u8,
-    /// Ring highest fill, %.
+    /// Highest ring fill, %.
     pub ring_max_pct: u8,
 }
 
-/// REQ_GET_BUFFER_STATS (44 bytes).
+/// Output buffer statistics.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct BufferStats {
-    /// Valid entries of `spdif`.
+    /// S/PDIF outputs reported.
     pub num_spdif: u8,
-    /// The PDM output is active.
+    /// The PDM output runs.
     pub pdm_active: bool,
-    /// USB audio is streaming.
+    /// USB audio streams.
     pub streaming: bool,
-    /// Increments with each snapshot.
+    /// Increases with every reading.
     pub sequence: u16,
     /// Per S/PDIF output.
     pub spdif: [SpdifBufferStats; 4],
@@ -867,667 +834,608 @@ pub struct BufferStats {
     pub pdm: PdmBufferStats,
 }
 
-/// REQ_GET_SPDIF_RX_STATUS (16 bytes).
+/// The S/PDIF receiver's status.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct SpdifRxStatus {
-    /// 0 inactive, 1 acquiring, 2 locked, 3 relocking.
+    /// Receiver state.
     pub state: u8,
-    /// InputSource: 0 USB, 1 S/PDIF, 2 I2S, 3 ADAT, 4-6 S/PDIF 2-4.
+    /// Input source.
     pub input_source: u8,
-    /// Locks since start.
+    /// Locks so far (wraps).
     pub lock_count: u8,
-    /// Lock losses since start.
+    /// Losses of lock so far (wraps).
     pub loss_count: u8,
-    /// Hz when locked (else the receiver's raw estimate or 0).
+    /// Sample rate, Hz.
     pub sample_rate: u32,
-    /// Parity errors since start.
+    /// Parity errors.
     pub parity_errors: u32,
-    /// Receive FIFO fill, %.
+    /// FIFO fill, %.
     pub fifo_fill_pct: u16,
-    /// Receiver library debug: 0 no signal, 1 waiting stable, 2 stable.
+    /// The receiver library's state.
     pub lib_state: u8,
-    /// Stable callbacks of the receiver library (4 bits).
+    /// Stable callbacks.
     pub stable_callbacks: u8,
-    /// Lost callbacks of the receiver library (4 bits).
+    /// Lost callbacks.
     pub lost_callbacks: u8,
 }
 
-// ── Conversion helpers ────────────────────────────────────────────────
-
-/// `src` mapped into a fixed array: missing entries are `fill`, extra ones
-/// are dropped.
-fn arr<T: Copy, U, const N: usize>(src: &[U], fill: T, f: impl Fn(&U) -> T) -> [T; N] {
-    let mut out = [fill; N];
-    for (d, s) in out.iter_mut().zip(src) {
-        *d = f(s);
-    }
-    out
+/// Who chose the analyser configuration the device holds.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct RtaOwnership {
+    /// Another console's configuration; the fields below are 0 otherwise.
+    pub following: bool,
+    /// The session that pushed it, 0 when unknown.
+    pub origin: u16,
+    /// Its tap.
+    pub tap: u8,
+    /// Its channels.
+    pub mask: u16,
+    /// Its transform order.
+    pub fft_order: u8,
 }
 
-/// `src` copied into a fixed array (see [`arr`]); missing entries are zero.
-fn copy<T: Copy + Default, const N: usize>(src: &[T]) -> [T; N] {
-    arr(src, T::default(), |x| *x)
-}
-
-/// A two-level `src` mapped into a fixed 2-D array (see [`arr`]).
-fn arr2<T: Copy, U, const N: usize, const M: usize>(
-    src: &[Vec<U>],
-    fill: T,
-    f: impl Fn(&U) -> T + Copy,
-) -> [[T; M]; N] {
-    let mut out = [[fill; M]; N];
-    for (d, s) in out.iter_mut().zip(src) {
-        *d = arr(s, fill, f);
-    }
-    out
-}
-
-/// `s` as a NUL-padded buffer: cut at a character boundary to at most
-/// `N - 1` bytes, so the buffer always holds a terminating NUL.
-fn name_buf<const N: usize>(s: &str) -> [u8; N] {
-    let mut end = s.len().min(N.saturating_sub(1));
-    while !s.is_char_boundary(end) {
-        // Terminates: 0 is always a char boundary.
-        end = end.saturating_sub(1);
-    }
-    let mut out = [0u8; N];
-    for (d, b) in out.iter_mut().zip(s.as_bytes().iter().take(end)) {
-        *d = *b;
-    }
-    out
-}
-
-/// The text of a NUL-padded buffer up to the first NUL; invalid UTF-8 is
-/// replaced, never a panic.
-fn buf_str(b: &[u8]) -> String {
-    let len = b.iter().position(|&c| c == 0).unwrap_or(b.len());
-    String::from_utf8_lossy(b.get(..len).unwrap_or_default()).into_owned()
-}
-
-// ── Records -> C ──────────────────────────────────────────────────────
+// ── From the core's records ───────────────────────────────────────────
 
 impl From<&r::FilterParams> for FilterParams {
-    fn from(v: &r::FilterParams) -> Self {
+    fn from(f: &r::FilterParams) -> Self {
         Self {
-            filter_type: v.filter_type,
-            bypass: v.bypass,
-            freq: v.freq,
-            q: v.q,
-            gain: v.gain,
-            qp: v.qp,
+            filter_type: f.filter_type,
+            bypass: f.bypass,
+            freq: f.freq,
+            q: f.q,
+            gain: f.gain,
+            qp: f.qp,
         }
     }
 }
 
 impl From<&r::InputLockStatus> for InputLockStatus {
-    fn from(v: &r::InputLockStatus) -> Self {
+    fn from(s: &r::InputLockStatus) -> Self {
         Self {
-            state: v.state,
-            clock_mode: v.clock_mode,
-            detected_rate: v.detected_rate,
-            measured_hz: v.measured_hz,
-            rate_ok: v.rate_ok,
-            lock_count: v.lock_count,
-            loss_count: v.loss_count,
+            state: s.state,
+            clock_mode: s.clock_mode,
+            detected_rate: s.detected_rate,
+            measured_hz: s.measured_hz,
+            rate_ok: s.rate_ok,
+            lock_count: s.lock_count,
+            loss_count: s.loss_count,
         }
     }
 }
 
 impl From<&r::AdatOutStatus> for AdatOutStatus {
-    fn from(v: &r::AdatOutStatus) -> Self {
+    fn from(s: &r::AdatOutStatus) -> Self {
         Self {
-            enabled: v.enabled,
-            active: v.active,
-            pin: v.pin,
-            rate_ok: v.rate_ok,
-            resync_count: v.resync_count,
-            slip_count: v.slip_count,
+            enabled: s.enabled,
+            active: s.active,
+            pin: s.pin,
+            rate_ok: s.rate_ok,
+            resync_count: s.resync_count,
+            slip_count: s.slip_count,
         }
     }
 }
 
 impl From<&r::LgStatus> for LgStatus {
-    fn from(v: &r::LgStatus) -> Self {
+    fn from(s: &r::LgStatus) -> Self {
         Self {
-            enabled: v.enabled,
-            present: v.present,
-            volume: v.volume,
-            muted: v.muted,
+            enabled: s.enabled,
+            present: s.present,
+            volume: s.volume,
+            muted: s.muted,
         }
     }
 }
 
 impl From<&r::UartConfig> for UartConfig {
-    fn from(v: &r::UartConfig) -> Self {
+    fn from(c: &r::UartConfig) -> Self {
         Self {
-            enabled: v.enabled,
-            tx_pin: v.tx_pin,
-            rx_pin: v.rx_pin,
-            notify: v.notify,
-            baud: v.baud,
+            enabled: c.enabled,
+            tx_pin: c.tx_pin,
+            rx_pin: c.rx_pin,
+            notify: c.notify,
+            baud: c.baud,
         }
     }
 }
 
 impl From<&r::I2cConfig> for I2cConfig {
-    fn from(v: &r::I2cConfig) -> Self {
+    fn from(c: &r::I2cConfig) -> Self {
         Self {
-            enabled: v.enabled,
-            sda_pin: v.sda_pin,
-            scl_pin: v.scl_pin,
-            address: v.address,
+            enabled: c.enabled,
+            sda_pin: c.sda_pin,
+            scl_pin: c.scl_pin,
+            address: c.address,
         }
     }
 }
 
 impl From<&r::CtrlIfaceStatus> for CtrlIfaceStatus {
-    fn from(v: &r::CtrlIfaceStatus) -> Self {
+    fn from(s: &r::CtrlIfaceStatus) -> Self {
         Self {
-            uart_last_status: v.uart_last_status,
-            uart_live: v.uart_live,
-            i2c_last_status: v.i2c_last_status,
-            i2c_live: v.i2c_live,
-            protocol_version: v.protocol_version,
+            uart_last_status: s.uart_last_status,
+            uart_live: s.uart_live,
+            i2c_last_status: s.i2c_last_status,
+            i2c_live: s.i2c_live,
+            protocol_version: s.protocol_version,
         }
     }
 }
 
 impl From<&r::UpmixStatus> for UpmixStatus {
-    fn from(v: &r::UpmixStatus) -> Self {
+    fn from(s: &r::UpmixStatus) -> Self {
         Self {
-            active: v.active,
-            parked_reason: v.parked_reason,
-            correlation: v.correlation,
-            balance: v.balance,
-            center_gain: v.center_gain,
-            ls_gain: v.ls_gain,
-            rs_gain: v.rs_gain,
+            active: s.active,
+            parked_reason: s.parked_reason,
+            correlation: s.correlation,
+            balance: s.balance,
+            center_gain: s.center_gain,
+            ls_gain: s.ls_gain,
+            rs_gain: s.rs_gain,
         }
     }
 }
 
 impl From<&r::SystemStatus> for SystemStatus {
-    fn from(v: &r::SystemStatus) -> Self {
+    /// `stale` and `age_ms` have no place in the C record.
+    fn from(s: &r::SystemStatus) -> Self {
         Self {
-            peaks: copy(&v.peaks),
-            cpu0: v.cpu0,
-            cpu1: v.cpu1,
-            clip_flags: v.clip_flags,
-            active_input_channels: v.active_input_channels,
-            num_channels: v.num_channels,
+            peaks: copied(&s.peaks, 0.0),
+            cpu0: s.cpu0,
+            cpu1: s.cpu1,
+            clip_flags: s.clip_flags,
+            active_input_channels: s.active_input_channels,
+            num_channels: s.num_channels,
         }
     }
 }
 
 impl From<&r::DeviceInfo> for DeviceInfo {
-    /// The serial is cut to 63 bytes (at a character boundary) and
-    /// NUL-terminated; `serial_len` counts the bytes before the NUL.
-    fn from(v: &r::DeviceInfo) -> Self {
-        let serial: [u8; 64] = name_buf(&v.serial);
-        let len = serial.iter().position(|&c| c == 0).unwrap_or(0);
+    /// The serial is cut to 63 bytes (at a character boundary) and terminated.
+    fn from(d: &r::DeviceInfo) -> Self {
+        let serial: [u8; 64] = name_buf(&d.serial);
+        let len = serial.iter().position(|&b| b == 0).unwrap_or(serial.len());
         Self {
             serial,
-            // At most 63 (name_buf leaves a NUL), so the fallback is unreachable.
             serial_len: u32::try_from(len).unwrap_or(0),
-            location_id: v.location_id,
+            location_id: d.location_id,
         }
     }
 }
 
 impl From<&r::PresetDirectory> for PresetDirectory {
-    fn from(v: &r::PresetDirectory) -> Self {
+    fn from(d: &r::PresetDirectory) -> Self {
         Self {
-            occupied_mask: v.occupied_mask,
-            startup_mode: v.startup_mode,
-            default_slot: v.default_slot,
-            last_active: v.last_active,
-            output_config_mode: v.output_config_mode,
-            master_volume_mode: v.master_volume_mode,
+            occupied_mask: d.occupied_mask,
+            startup_mode: d.startup_mode,
+            default_slot: d.default_slot,
+            last_active: d.last_active,
+            output_config_mode: d.output_config_mode,
+            master_volume_mode: d.master_volume_mode,
         }
     }
 }
 
 impl From<&r::DspState> for DspState {
-    /// Field for field. Vectors fill their arrays from index 0 (missing
-    /// entries zero, extra ones dropped); names become NUL-padded buffers
-    /// (at most 31 bytes, cut at a character boundary). The record's
-    /// `crossfeed_pair_map` has no place in the old layout and is left out:
-    /// the C ABI reaches it through the extension-channel functions (Q2b).
-    fn from(v: &r::DspState) -> Self {
-        let fp = FilterParams::default();
-        let filt = |f: &r::FilterParams| FilterParams::from(f);
+    /// Field for field; the record's `crossfeed_pair_map` and `*_present`
+    /// flags have no place in the C layout.
+    fn from(s: &r::DspState) -> Self {
+        let band = |f: &r::FilterParams| FilterParams::from(f);
         Self {
-            platform_id: v.platform_id,
-            num_channels: v.num_channels,
-            num_input_channels: v.num_input_channels,
-            num_output_channels: v.num_output_channels,
-            format_version: v.format_version,
-            fw_major: v.fw_major,
-            fw_minor: v.fw_minor,
-            fw_patch: v.fw_patch,
-            fw_beta: v.fw_beta,
-            compat: v.compat,
-            preamp_db: v.preamp_db,
-            bypass: v.bypass,
-            input_preamp_db: copy(&v.input_preamp_db),
-            master_volume_db: v.master_volume_db,
-            master_volume_mode: v.master_volume_mode,
-            user_volume_db: v.user_volume_db,
-            user_mute: v.user_mute,
-            loudness_enabled: v.loudness_enabled,
-            loudness_ref_spl: v.loudness_ref_spl,
-            loudness_intensity: v.loudness_intensity,
-            loudness_output_mask: v.loudness_output_mask,
-            crossfeed_enabled: v.crossfeed_enabled,
-            crossfeed_preset: v.crossfeed_preset,
-            crossfeed_freq: v.crossfeed_freq,
-            crossfeed_feed: v.crossfeed_feed,
-            crossfeed_itd: v.crossfeed_itd,
-            crossfeed_output_pair_mask: v.crossfeed_output_pair_mask,
-            channel_delays: copy(&v.channel_delays),
-            matrix_routing: arr2(&v.matrix_routing, false, |x| *x),
-            matrix_gain: arr2(&v.matrix_gain, 0.0, |x| *x),
-            matrix_invert: arr2(&v.matrix_invert, false, |x| *x),
-            output_enabled: copy(&v.output_enabled),
-            output_muted: copy(&v.output_muted),
-            output_gain_db: copy(&v.output_gain_db),
-            output_delay_ms: copy(&v.output_delay_ms),
-            limiter_enabled: copy(&v.limiter_enabled),
-            limiter_link_group: copy(&v.limiter_link_group),
-            limiter_threshold_db: copy(&v.limiter_threshold_db),
-            limiter_release_ms: copy(&v.limiter_release_ms),
-            num_pin_outputs: v.num_pin_outputs,
-            output_pins: copy(&v.output_pins),
-            output_config_mode: v.output_config_mode,
-            filters: arr2(&v.filters, fp, filt),
-            xover: arr2(&v.xover, fp, filt),
-            channel_names: arr(&v.channel_names, [0; CHANNEL_NAME_LEN], |s| name_buf(s)),
-            leveller_enabled: v.leveller_enabled,
-            leveller_speed: v.leveller_speed,
-            leveller_lookahead: v.leveller_lookahead,
-            leveller_amount: v.leveller_amount,
-            leveller_max_gain_db: v.leveller_max_gain_db,
-            leveller_gate_db: v.leveller_gate_db,
-            leveller_detector_mask: v.leveller_detector_mask,
-            leveller_apply_mask: v.leveller_apply_mask,
-            input_source: v.input_source,
-            lg_sound_sync_enabled: v.lg_sound_sync_enabled,
-            spdif_inputs_enabled: v.spdif_inputs_enabled,
-            adat_input_enabled: v.adat_input_enabled,
-            spdif_rx_pins: copy(&v.spdif_rx_pins),
-            i2s_rx_pins: copy(&v.i2s_rx_pins),
-            i2s_input_channels: v.i2s_input_channels,
-            i2s_input_rate: v.i2s_input_rate,
-            i2s_clock_mode: v.i2s_clock_mode,
-            adat_input_pin: v.adat_input_pin,
-            adat_input_clock_mode: v.adat_input_clock_mode,
-            psybass_enabled: v.psybass_enabled,
-            psybass_output_mask: v.psybass_output_mask,
-            psybass_cutoff_hz: v.psybass_cutoff_hz,
-            psybass_harmonics_db: v.psybass_harmonics_db,
-            psybass_drive_db: v.psybass_drive_db,
-            psybass_character_pct: v.psybass_character_pct,
-            psybass_original_db: v.psybass_original_db,
-            upmix: copy(&v.upmix),
-            subharm: copy(&v.subharm),
-            subharm_solo: v.subharm_solo,
-            tube: copy(&v.tube),
-            output_types: copy(&v.output_types),
-            i2s_bck_pin: v.i2s_bck_pin,
-            i2s_bck_pin_slave: v.i2s_bck_pin_slave,
-            i2s_clock_pin_mode: v.i2s_clock_pin_mode,
-            mck_enabled: v.mck_enabled,
-            mck_pin: v.mck_pin,
-            mck_multiplier: v.mck_multiplier,
-            adat_out_enabled: v.adat_out_enabled,
-            adat_out_pin: v.adat_out_pin,
-            dac_mute_supported: v.dac_mute_supported,
-            dac_mute_enabled: v.dac_mute_enabled,
-            dac_mute_active_low: v.dac_mute_active_low,
-            dac_mute_pin: v.dac_mute_pin,
-            dac_mute_hold_ms: v.dac_mute_hold_ms,
-            dac_mute_release_ms: v.dac_mute_release_ms,
-            ctrl_iface_supported: v.ctrl_iface_supported,
-            uart: UartConfig::from(&v.uart),
-            i2c: I2cConfig::from(&v.i2c),
-            ctrl_status: CtrlIfaceStatus::from(&v.ctrl_status),
-            core1_mode: v.core1_mode,
-            preset_occupied: v.preset_occupied,
-            preset_names: arr(&v.preset_names, [0; CHANNEL_NAME_LEN], |s| name_buf(s)),
-            active_preset_slot: v.active_preset_slot,
-            preset_startup_mode: v.preset_startup_mode,
-            preset_default_slot: v.preset_default_slot,
-            bulk_valid: v.bulk_valid,
-            bulk_raw: copy(&v.bulk_raw),
+            platform_id: s.platform_id,
+            num_channels: s.num_channels,
+            num_input_channels: s.num_input_channels,
+            num_output_channels: s.num_output_channels,
+            format_version: s.format_version,
+            fw_major: s.fw_major,
+            fw_minor: s.fw_minor,
+            fw_patch: s.fw_patch,
+            fw_beta: s.fw_beta,
+            compat: s.compat,
+            preamp_db: s.preamp_db,
+            bypass: s.bypass,
+            input_preamp_db: copied(&s.input_preamp_db, 0.0),
+            master_volume_db: s.master_volume_db,
+            master_volume_mode: s.master_volume_mode,
+            user_volume_db: s.user_volume_db,
+            user_mute: s.user_mute,
+            loudness_enabled: s.loudness_enabled,
+            loudness_ref_spl: s.loudness_ref_spl,
+            loudness_intensity: s.loudness_intensity,
+            loudness_output_mask: s.loudness_output_mask,
+            crossfeed_enabled: s.crossfeed_enabled,
+            crossfeed_preset: s.crossfeed_preset,
+            crossfeed_freq: s.crossfeed_freq,
+            crossfeed_feed: s.crossfeed_feed,
+            crossfeed_itd: s.crossfeed_itd,
+            crossfeed_output_pair_mask: s.crossfeed_output_pair_mask,
+            channel_delays: copied(&s.channel_delays, 0.0),
+            matrix_routing: table(&s.matrix_routing, false),
+            matrix_gain: table(&s.matrix_gain, 0.0),
+            matrix_invert: table(&s.matrix_invert, false),
+            output_enabled: copied(&s.output_enabled, false),
+            output_muted: copied(&s.output_muted, false),
+            output_gain_db: copied(&s.output_gain_db, 0.0),
+            output_delay_ms: copied(&s.output_delay_ms, 0.0),
+            limiter_enabled: copied(&s.limiter_enabled, false),
+            limiter_link_group: copied(&s.limiter_link_group, 0),
+            limiter_threshold_db: copied(&s.limiter_threshold_db, 0.0),
+            limiter_release_ms: copied(&s.limiter_release_ms, 0.0),
+            num_pin_outputs: s.num_pin_outputs,
+            output_pins: copied(&s.output_pins, 0),
+            output_config_mode: s.output_config_mode,
+            filters: array_from(
+                &s.filters,
+                [FilterParams::default(); BANDS_PER_CHANNEL],
+                |ch| array_from(ch, FilterParams::default(), band),
+            ),
+            xover: array_from(&s.xover, [FilterParams::default(); MAX_XOVER_BANDS], |ch| {
+                array_from(ch, FilterParams::default(), band)
+            }),
+            channel_names: array_from(&s.channel_names, [0; CHANNEL_NAME_LEN], |n| name_buf(n)),
+            leveller_enabled: s.leveller_enabled,
+            leveller_speed: s.leveller_speed,
+            leveller_lookahead: s.leveller_lookahead,
+            leveller_amount: s.leveller_amount,
+            leveller_max_gain_db: s.leveller_max_gain_db,
+            leveller_gate_db: s.leveller_gate_db,
+            leveller_detector_mask: s.leveller_detector_mask,
+            leveller_apply_mask: s.leveller_apply_mask,
+            input_source: s.input_source,
+            lg_sound_sync_enabled: s.lg_sound_sync_enabled,
+            spdif_inputs_enabled: s.spdif_inputs_enabled,
+            adat_input_enabled: s.adat_input_enabled,
+            spdif_rx_pins: copied(&s.spdif_rx_pins, 0),
+            i2s_rx_pins: copied(&s.i2s_rx_pins, 0),
+            i2s_input_channels: s.i2s_input_channels,
+            i2s_input_rate: s.i2s_input_rate,
+            i2s_clock_mode: s.i2s_clock_mode,
+            adat_input_pin: s.adat_input_pin,
+            adat_input_clock_mode: s.adat_input_clock_mode,
+            psybass_enabled: s.psybass_enabled,
+            psybass_output_mask: s.psybass_output_mask,
+            psybass_cutoff_hz: s.psybass_cutoff_hz,
+            psybass_harmonics_db: s.psybass_harmonics_db,
+            psybass_drive_db: s.psybass_drive_db,
+            psybass_character_pct: s.psybass_character_pct,
+            psybass_original_db: s.psybass_original_db,
+            upmix: copied(&s.upmix, 0.0),
+            subharm: copied(&s.subharm, 0.0),
+            subharm_solo: s.subharm_solo,
+            tube: copied(&s.tube, 0.0),
+            output_types: copied(&s.output_types, 0),
+            i2s_bck_pin: s.i2s_bck_pin,
+            i2s_bck_pin_slave: s.i2s_bck_pin_slave,
+            i2s_clock_pin_mode: s.i2s_clock_pin_mode,
+            mck_enabled: s.mck_enabled,
+            mck_pin: s.mck_pin,
+            mck_multiplier: s.mck_multiplier,
+            adat_out_enabled: s.adat_out_enabled,
+            adat_out_pin: s.adat_out_pin,
+            dac_mute_supported: s.dac_mute_supported,
+            dac_mute_enabled: s.dac_mute_enabled,
+            dac_mute_active_low: s.dac_mute_active_low,
+            dac_mute_pin: s.dac_mute_pin,
+            dac_mute_hold_ms: s.dac_mute_hold_ms,
+            dac_mute_release_ms: s.dac_mute_release_ms,
+            ctrl_iface_supported: s.ctrl_iface_supported,
+            uart: UartConfig::from(&s.uart),
+            i2c: I2cConfig::from(&s.i2c),
+            ctrl_status: CtrlIfaceStatus::from(&s.ctrl_status),
+            core1_mode: s.core1_mode,
+            preset_occupied: s.preset_occupied,
+            preset_names: array_from(&s.preset_names, [0; CHANNEL_NAME_LEN], |n| name_buf(n)),
+            active_preset_slot: s.active_preset_slot,
+            preset_startup_mode: s.preset_startup_mode,
+            preset_default_slot: s.preset_default_slot,
+            bulk_valid: s.bulk_valid,
+            bulk_raw: copied(&s.bulk_raw, 0),
         }
     }
 }
 
 impl From<&r::NotifyResult> for NotifyResult {
-    fn from(v: &r::NotifyResult) -> Self {
+    fn from(n: &r::NotifyResult) -> Self {
         Self {
-            flags: v.flags,
-            filter_channels: v.filter_channels,
+            flags: n.flags,
+            filter_channels: n.filter_channels,
         }
     }
 }
 
-// -- WP CG5 --
-/// Who chose the analyser configuration the device holds.
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct RtaOwnership {
-    /// False: this console drives, and the rest is 0. True: it follows
-    /// someone else's configuration.
-    pub following: bool,
-    /// The session that pushed it; 0 when the writer is unknown.
-    pub origin: u16,
-    /// The device's tap: RTA_TAP_INPUT or RTA_TAP_OUTPUT.
-    pub tap: u8,
-    /// The device's channels.
-    pub mask: u16,
-    /// The device's FFT size as a power of two.
-    pub fft_order: u8,
-}
-
 impl From<&r::RtaOwnership> for RtaOwnership {
-    fn from(v: &r::RtaOwnership) -> Self {
+    fn from(o: &r::RtaOwnership) -> Self {
         Self {
-            following: v.following,
-            origin: v.origin,
-            tap: v.tap,
-            mask: v.mask,
-            fft_order: v.fft_order,
+            following: o.following,
+            origin: o.origin,
+            tap: o.tap,
+            mask: o.mask,
+            fft_order: o.fft_order,
         }
     }
 }
 
 impl From<&r::RtaRequest> for RtaRequest {
-    fn from(v: &r::RtaRequest) -> Self {
+    /// `watching` stays behind: the C caller always asks to drive.
+    fn from(q: &r::RtaRequest) -> Self {
         Self {
-            tap: v.tap,
-            mask: v.mask,
-            wants_bins: v.wants_bins,
-            fft_order: v.fft_order,
-            avg_ms: v.avg_ms,
-            peak_decay_db_s: v.peak_decay_db_s,
+            tap: q.tap,
+            mask: q.mask,
+            wants_bins: q.wants_bins,
+            fft_order: q.fft_order,
+            avg_ms: q.avg_ms,
+            peak_decay_db_s: q.peak_decay_db_s,
         }
     }
 }
 
 impl From<&r::RtaCapsInfo> for RtaCapsInfo {
-    fn from(v: &r::RtaCapsInfo) -> Self {
+    fn from(c: &r::RtaCapsInfo) -> Self {
         Self {
-            supported: v.supported,
-            input_channels: v.input_channels,
-            output_channels: v.output_channels,
-            order_min: v.order_min,
-            order_max: v.order_max,
-            order_default: v.order_default,
-            bass_bands: v.bass_bands,
-            max_bands: v.max_bands,
-            dynamic_range_db: v.dynamic_range_db,
-            bass_dynamic_range_db: v.bass_dynamic_range_db,
-            centres: copy(&v.centres),
+            supported: c.supported,
+            input_channels: c.input_channels,
+            output_channels: c.output_channels,
+            order_min: c.order_min,
+            order_max: c.order_max,
+            order_default: c.order_default,
+            bass_bands: c.bass_bands,
+            max_bands: c.max_bands,
+            dynamic_range_db: c.dynamic_range_db,
+            bass_dynamic_range_db: c.bass_dynamic_range_db,
+            centres: copied(&c.centres, 0),
         }
     }
 }
 
 impl From<&r::RtaChannelFrame> for RtaChannelFrame {
-    /// Missing band levels read `RTA_FLOOR_DB`.
-    fn from(v: &r::RtaChannelFrame) -> Self {
+    /// Bands past the record's are at the floor.
+    fn from(f: &r::RtaChannelFrame) -> Self {
         Self {
-            channel: v.channel,
-            n_bands: v.n_bands,
-            silent: v.silent,
-            avg_db: arr(&v.avg_db, RTA_FLOOR_DB, |x| *x),
-            peak_db: arr(&v.peak_db, RTA_FLOOR_DB, |x| *x),
+            channel: f.channel,
+            n_bands: f.n_bands,
+            silent: f.silent,
+            avg_db: copied(&f.avg_db, RTA_FLOOR_DB),
+            peak_db: copied(&f.peak_db, RTA_FLOOR_DB),
         }
     }
 }
 
 impl From<&r::RtaSnapshot> for RtaSnapshot {
-    /// Missing frames are silent ones, missing bins read `RTA_FLOOR_DB`.
-    fn from(v: &r::RtaSnapshot) -> Self {
+    /// Missing frames are empty ones, missing bins at the floor.
+    fn from(s: &r::RtaSnapshot) -> Self {
         Self {
-            version: v.version,
-            telemetry_version: v.telemetry_version,
-            tap: v.tap,
-            count: v.count,
-            frames: arr(&v.frames, RtaChannelFrame::default(), |x| {
-                RtaChannelFrame::from(x)
+            version: s.version,
+            telemetry_version: s.telemetry_version,
+            tap: s.tap,
+            count: s.count,
+            frames: array_from(&s.frames, RtaChannelFrame::default(), |f| {
+                RtaChannelFrame::from(f)
             }),
-            populated: v.populated,
-            bins_count: v.bins_count,
-            bins_channel: v.bins_channel,
-            bins_sample_rate: v.bins_sample_rate,
-            bins_db: arr(&v.bins_db, RTA_FLOOR_DB, |x| *x),
-            running: v.running,
-            live_count: v.live_count,
-            live_mask: v.live_mask,
-            frames_per_s: v.frames_per_s,
-            busy_us_per_s: v.busy_us_per_s,
-            last_frame_us: v.last_frame_us,
-            bass_busy_us_per_s: v.bass_busy_us_per_s,
-            sample_rate: v.sample_rate,
-            first_band: v.first_band,
-            fft_order: v.fft_order,
-            config_rejected: v.config_rejected,
-            refresh_interval_s: v.refresh_interval_s,
+            populated: s.populated,
+            bins_count: s.bins_count,
+            bins_channel: s.bins_channel,
+            bins_sample_rate: s.bins_sample_rate,
+            bins_db: copied(&s.bins_db, RTA_FLOOR_DB),
+            running: s.running,
+            live_count: s.live_count,
+            live_mask: s.live_mask,
+            frames_per_s: s.frames_per_s,
+            busy_us_per_s: s.busy_us_per_s,
+            last_frame_us: s.last_frame_us,
+            bass_busy_us_per_s: s.bass_busy_us_per_s,
+            sample_rate: s.sample_rate,
+            first_band: s.first_band,
+            fft_order: s.fft_order,
+            config_rejected: s.config_rejected,
+            refresh_interval_s: s.refresh_interval_s,
         }
     }
 }
 
 impl From<&r::SiggenConfig> for SiggenConfig {
-    fn from(v: &r::SiggenConfig) -> Self {
+    fn from(c: &r::SiggenConfig) -> Self {
         Self {
-            signal_type: v.signal_type,
-            channel_mask: v.channel_mask,
-            invert_mask: v.invert_mask,
-            flags: v.flags,
-            level_db: v.level_db,
-            duration_ms: v.duration_ms,
-            repeat: v.repeat,
-            gap_ms: v.gap_ms,
-            p: copy(&v.p),
+            signal_type: c.signal_type,
+            channel_mask: c.channel_mask,
+            invert_mask: c.invert_mask,
+            flags: c.flags,
+            level_db: c.level_db,
+            duration_ms: c.duration_ms,
+            repeat: c.repeat,
+            gap_ms: c.gap_ms,
+            p: copied(&c.p, 0.0),
         }
     }
 }
 
 impl From<&r::SiggenStatus> for SiggenStatus {
-    fn from(v: &r::SiggenStatus) -> Self {
+    fn from(s: &r::SiggenStatus) -> Self {
         Self {
-            state: v.state,
-            signal_type: v.signal_type,
-            active_channel: v.active_channel,
-            elapsed_ms: v.elapsed_ms,
-            cycles_done: v.cycles_done,
-            stop_reason: v.stop_reason,
-            current_freq: v.current_freq,
+            state: s.state,
+            signal_type: s.signal_type,
+            active_channel: s.active_channel,
+            elapsed_ms: s.elapsed_ms,
+            cycles_done: s.cycles_done,
+            stop_reason: s.stop_reason,
+            current_freq: s.current_freq,
         }
     }
 }
 
 impl From<&r::SiggenParam> for SiggenParam {
-    fn from(v: &r::SiggenParam) -> Self {
+    fn from(p: &r::SiggenParam) -> Self {
         Self {
-            semantic: v.semantic,
-            min: v.min,
-            max: v.max,
-            def: v.def,
+            semantic: p.semantic,
+            min: p.min,
+            max: p.max,
+            def: p.def,
         }
     }
 }
 
 impl From<&r::SiggenTypeInfo> for SiggenTypeInfo {
-    /// The name is cut to 8 bytes and NUL-terminated.
-    fn from(v: &r::SiggenTypeInfo) -> Self {
+    /// The name is cut to 8 bytes and terminated.
+    fn from(t: &r::SiggenTypeInfo) -> Self {
         Self {
-            id: v.id,
-            name: name_buf(&v.name),
-            timing: v.timing,
-            params: arr(&v.params, SiggenParam::default(), |x| SiggenParam::from(x)),
+            id: t.id,
+            name: name_buf(&t.name),
+            timing: t.timing,
+            params: array_from(&t.params, SiggenParam::default(), |p| SiggenParam::from(p)),
         }
     }
 }
 
 impl From<&r::SiggenCaps> for SiggenCaps {
-    fn from(v: &r::SiggenCaps) -> Self {
+    fn from(c: &r::SiggenCaps) -> Self {
         Self {
-            supported: v.supported,
-            type_count: v.type_count,
-            output_channels: v.output_channels,
-            multitone_max: v.multitone_max,
-            valid_mask: v.valid_mask,
-            types: arr(&v.types, SiggenTypeInfo::default(), |x| {
-                SiggenTypeInfo::from(x)
+            supported: c.supported,
+            type_count: c.type_count,
+            output_channels: c.output_channels,
+            multitone_max: c.multitone_max,
+            valid_mask: c.valid_mask,
+            types: array_from(&c.types, SiggenTypeInfo::default(), |t| {
+                SiggenTypeInfo::from(t)
             }),
         }
     }
 }
 
 impl From<&r::SpdifBufferStats> for SpdifBufferStats {
-    fn from(v: &r::SpdifBufferStats) -> Self {
+    fn from(s: &r::SpdifBufferStats) -> Self {
         Self {
-            free: v.free,
-            prepared: v.prepared,
-            playing: v.playing,
-            fill_pct: v.fill_pct,
-            min_pct: v.min_pct,
-            max_pct: v.max_pct,
+            free: s.free,
+            prepared: s.prepared,
+            playing: s.playing,
+            fill_pct: s.fill_pct,
+            min_pct: s.min_pct,
+            max_pct: s.max_pct,
         }
     }
 }
 
 impl From<&r::PdmBufferStats> for PdmBufferStats {
-    fn from(v: &r::PdmBufferStats) -> Self {
+    fn from(s: &r::PdmBufferStats) -> Self {
         Self {
-            dma_fill_pct: v.dma_fill_pct,
-            dma_min_pct: v.dma_min_pct,
-            dma_max_pct: v.dma_max_pct,
-            ring_fill_pct: v.ring_fill_pct,
-            ring_min_pct: v.ring_min_pct,
-            ring_max_pct: v.ring_max_pct,
+            dma_fill_pct: s.dma_fill_pct,
+            dma_min_pct: s.dma_min_pct,
+            dma_max_pct: s.dma_max_pct,
+            ring_fill_pct: s.ring_fill_pct,
+            ring_min_pct: s.ring_min_pct,
+            ring_max_pct: s.ring_max_pct,
         }
     }
 }
 
 impl From<&r::BufferStats> for BufferStats {
-    fn from(v: &r::BufferStats) -> Self {
+    fn from(s: &r::BufferStats) -> Self {
         Self {
-            num_spdif: v.num_spdif,
-            pdm_active: v.pdm_active,
-            streaming: v.streaming,
-            sequence: v.sequence,
-            spdif: arr(&v.spdif, SpdifBufferStats::default(), |x| {
-                SpdifBufferStats::from(x)
+            num_spdif: s.num_spdif,
+            pdm_active: s.pdm_active,
+            streaming: s.streaming,
+            sequence: s.sequence,
+            spdif: array_from(&s.spdif, SpdifBufferStats::default(), |b| {
+                SpdifBufferStats::from(b)
             }),
-            pdm: PdmBufferStats::from(&v.pdm),
+            pdm: PdmBufferStats::from(&s.pdm),
         }
     }
 }
 
 impl From<&r::SpdifRxStatus> for SpdifRxStatus {
-    fn from(v: &r::SpdifRxStatus) -> Self {
+    fn from(s: &r::SpdifRxStatus) -> Self {
         Self {
-            state: v.state,
-            input_source: v.input_source,
-            lock_count: v.lock_count,
-            loss_count: v.loss_count,
-            sample_rate: v.sample_rate,
-            parity_errors: v.parity_errors,
-            fifo_fill_pct: v.fifo_fill_pct,
-            lib_state: v.lib_state,
-            stable_callbacks: v.stable_callbacks,
-            lost_callbacks: v.lost_callbacks,
+            state: s.state,
+            input_source: s.input_source,
+            lock_count: s.lock_count,
+            loss_count: s.loss_count,
+            sample_rate: s.sample_rate,
+            parity_errors: s.parity_errors,
+            fifo_fill_pct: s.fifo_fill_pct,
+            lib_state: s.lib_state,
+            stable_callbacks: s.stable_callbacks,
+            lost_callbacks: s.lost_callbacks,
         }
     }
 }
 
-// ── C -> records (the records a C caller passes in) ───────────────────
+// ── Back to the core's records (what a C caller passes in) ────────────
 
 impl From<&FilterParams> for r::FilterParams {
-    fn from(v: &FilterParams) -> Self {
+    fn from(f: &FilterParams) -> Self {
         Self {
-            filter_type: v.filter_type,
-            bypass: v.bypass,
-            freq: v.freq,
-            q: v.q,
-            gain: v.gain,
-            qp: v.qp,
+            filter_type: f.filter_type,
+            bypass: f.bypass,
+            freq: f.freq,
+            q: f.q,
+            gain: f.gain,
+            qp: f.qp,
         }
     }
 }
 
 impl From<&UartConfig> for r::UartConfig {
-    fn from(v: &UartConfig) -> Self {
+    fn from(c: &UartConfig) -> Self {
         Self {
-            enabled: v.enabled,
-            tx_pin: v.tx_pin,
-            rx_pin: v.rx_pin,
-            notify: v.notify,
-            baud: v.baud,
+            enabled: c.enabled,
+            tx_pin: c.tx_pin,
+            rx_pin: c.rx_pin,
+            notify: c.notify,
+            baud: c.baud,
         }
     }
 }
 
 impl From<&I2cConfig> for r::I2cConfig {
-    fn from(v: &I2cConfig) -> Self {
+    fn from(c: &I2cConfig) -> Self {
         Self {
-            enabled: v.enabled,
-            sda_pin: v.sda_pin,
-            scl_pin: v.scl_pin,
-            address: v.address,
+            enabled: c.enabled,
+            sda_pin: c.sda_pin,
+            scl_pin: c.scl_pin,
+            address: c.address,
         }
     }
 }
 
-/// Not watching: the old record has no field for it, and a zero mask
-/// releases the analyser (`dspi_rta_set_request_watching` sets it, WP CG30).
 impl From<&RtaRequest> for r::RtaRequest {
-    fn from(v: &RtaRequest) -> Self {
+    /// A C caller drives the analyser: `watching` is false.
+    fn from(q: &RtaRequest) -> Self {
         Self {
-            tap: v.tap,
-            mask: v.mask,
-            wants_bins: v.wants_bins,
-            fft_order: v.fft_order,
-            avg_ms: v.avg_ms,
-            peak_decay_db_s: v.peak_decay_db_s,
+            tap: q.tap,
+            mask: q.mask,
+            wants_bins: q.wants_bins,
+            fft_order: q.fft_order,
+            avg_ms: q.avg_ms,
+            peak_decay_db_s: q.peak_decay_db_s,
             watching: false,
         }
     }
 }
 
 impl From<&SiggenConfig> for r::SiggenConfig {
-    fn from(v: &SiggenConfig) -> Self {
+    fn from(c: &SiggenConfig) -> Self {
         Self {
-            signal_type: v.signal_type,
-            channel_mask: v.channel_mask,
-            invert_mask: v.invert_mask,
-            flags: v.flags,
-            level_db: v.level_db,
-            duration_ms: v.duration_ms,
-            repeat: v.repeat,
-            gap_ms: v.gap_ms,
-            p: v.p.to_vec(),
+            signal_type: c.signal_type,
+            channel_mask: c.channel_mask,
+            invert_mask: c.invert_mask,
+            flags: c.flags,
+            level_db: c.level_db,
+            duration_ms: c.duration_ms,
+            repeat: c.repeat,
+            gap_ms: c.gap_ms,
+            p: c.p.to_vec(),
         }
     }
 }
 
 impl From<&DeviceInfo> for r::DeviceInfo {
-    /// `serial_len` is clamped to the buffer and stops at the first NUL;
-    /// invalid UTF-8 is replaced.
-    fn from(v: &DeviceInfo) -> Self {
-        let len = usize::try_from(v.serial_len).unwrap_or(usize::MAX);
-        let s = v.serial.get(..len.min(v.serial.len())).unwrap_or_default();
+    /// `serial_len` is trusted no further than the buffer and the first NUL.
+    fn from(d: &DeviceInfo) -> Self {
+        let len = usize::try_from(d.serial_len).unwrap_or(usize::MAX);
         Self {
-            serial: buf_str(s),
-            location_id: v.location_id,
+            serial: text_of(&d.serial, len),
+            location_id: d.location_id,
         }
     }
 }
-
-#[cfg(test)]
-#[allow(clippy::arithmetic_side_effects)]
-mod tests_wp_q1;

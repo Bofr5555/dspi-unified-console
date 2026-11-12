@@ -39,10 +39,6 @@
         <source>The crates the core links</source>
         <translation type="unfinished"></translation>
     </message>
-    <message>
-        <source>DSPi Firmware and Console are free, open-source software developed in spare time. Contributions of any kind - code, feedback, funding, or otherwise - are always immensely appreciated.</source>
-        <translation type="unfinished"></translation>
-    </message>
 </context>
 <context>
     <name>AdvancedPage</name>

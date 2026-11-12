@@ -3,7 +3,7 @@
 //! [`Session::read`] reads a scalar: it asks for the width of the row's wire
 //! representation, which for a status or packet row is one byte of raw data.
 //! That is right for the confirm-after-write path, which never trusts a
-//! packet's first byte, but it made `dspi get limit.meter` print "1 bytes".
+//! packet's first byte, but it made `uconsole get limit.meter` print "1 bytes".
 //! Here each such row asks for the length its reply actually has, and the
 //! reply is decoded with its typed codec into lines for a terminal and a
 //! structured value for `--json`.

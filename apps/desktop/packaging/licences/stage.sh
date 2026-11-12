@@ -39,6 +39,13 @@ L=$dest/LICENSES
 rm -rf "$L"; mkdir -p "$L"
 cp "$here/GPL-3.0.txt" "$here/LGPL-3.0.txt" "$L/"
 cp "$here/TERMS.txt" "$here/rust-crates.txt" "$L/"   # -- WP LIC1 --
+# -- WP CLEAN1 -- the bundled firmware images' third-party notices, and AutoEq's
+# licence (the AutoEQ database ships in every package)
+cp "$here/../../../../assets/licences/firmware-THIRD-PARTY-NOTICES.txt" \
+   "$here/../../../../assets/licences/AutoEq-MIT.txt" "$L/"
+# -- WP CLEAN1 -- the release's source archive (ci/release-source.sh), which the
+# notice names: published beside the downloads, not a link into the repository
+source_asset=${DSPI_SOURCE_ASSET:-dspi-uconsole-$version-source.tar.gz}
 tab=$(printf '\t')
 bundled=$L/BUNDLED.txt
 printf '# Libraries in this package that are not part of DSPi uConsole (tab-separated):\n# package\tversion\tfrom\tsource\tlicence\tfiles\n' >"$bundled"
@@ -216,15 +223,23 @@ swift)
 *) fail "unknown package kind $kind" ;;
 esac
 
-# The notice: plain facts. DSPi Console's licence: GPL-3.0-or-later (owner, 2026-11-08)
+# The notice: plain facts (DRAFT, as TERMS.txt). -- WP CLEAN1 -- The program as a
+# whole: GPL-3.0; Bofr5555's own additions: GPL-3.0-or-later with section 7 terms
 {
     echo "DSPi uConsole $version"
     echo
-    echo "DSPi uConsole is licensed under the GNU General Public License, version 3 or"
-    echo "(at your option) any later version (LICENSES/GPL-3.0.txt holds version 3),"
-    echo "with additional terms under its section 7 (LICENSES/TERMS.txt, also below)."
-    echo "Its source code:"
-    echo "https://github.com/Bofr5555/dspi-unified-console"
+    echo "DRAFT notice, pending the owner's approval."
+    echo
+    echo "DSPi uConsole as a whole is distributed under the GNU General Public License"
+    echo "version 3 (LICENSES/GPL-3.0.txt). Bofr5555's own contributions are licensed"
+    echo "under version 3 or (at your option) any later version, with additional terms"
+    echo "under its section 7 (LICENSES/TERMS.txt, also below)."
+    echo "Its complete source code is published with this release, beside its"
+    echo "downloads, as $source_asset."
+    echo
+    echo "The DSPi firmware images it bundles are Weeb Labs' release v1.1.6 (GPL-3.0);"
+    echo "their third-party notices are in LICENSES/firmware-THIRD-PARTY-NOTICES.txt."
+    echo "Its AutoEQ database holds AutoEq data (MIT, LICENSES/AutoEq-MIT.txt)."
     # -- WP LIC1 -- the Rust crates in its core
     echo
     echo "Its core links third-party Rust crates; they and their licence texts are"

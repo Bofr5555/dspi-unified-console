@@ -1,26 +1,27 @@
 <?xml version="1.0"?>
 <!--
   DSPi Link hub as a Windows scheduled task: shares this PC's DSPi devices on the
-  network from logon. A placeholder to adapt (WP TM11): see README.md.
+  network from logon. A placeholder to adapt (WP TM11): see README.md. A template:
+  render.sh fills in the command name (WP CLEAN1).
 
   Import (PowerShell, as the user who will run it):
-    Register-ScheduledTask -TaskName "DSPi Hub" -Xml (Get-Content -Raw .\dspi-hub-task.xml)
+    Register-ScheduledTask -TaskName "@CMD@ hub" -Xml (Get-Content -Raw .\@CMD@-hub-task.xml)
   Remove:
-    Unregister-ScheduledTask -TaskName "DSPi Hub"
+    Unregister-ScheduledTask -TaskName "@CMD@ hub"
   The declaration names no encoding on purpose: -Xml hands Task Scheduler a UTF-16
   string, and a declared UTF-8 fails with "unable to switch the encoding" (WP CG31).
   `schtasks /create /xml` needs the file saved as UTF-16 first.
 
-  Edit the Command if dspi.exe is installed elsewhere. PIN pairing is the default:
-  do not add the open option here. To pair a client, end the task, run `dspi hub`
+  Edit the Command if @CMD@.exe is installed elsewhere. PIN pairing is the default:
+  do not add the open option here. To pair a client, end the task, run `@CMD@ hub`
   in a terminal, type `pair`, and start the task again when the client has paired.
   The console window this opens is the hub; closing it stops sharing. For no
   window, run it as a service through a wrapper (README.md).
 -->
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>DSPi Link hub: shares this PC's DSPi devices on the network (dspi hub).</Description>
-    <URI>\DSPi Hub</URI>
+    <Description>DSPi Link hub: shares this PC's DSPi devices on the network (@CMD@ hub).</Description>
+    <URI>\@CMD@ hub</URI>
   </RegistrationInfo>
   <Triggers>
     <LogonTrigger>
@@ -61,7 +62,7 @@
   </Settings>
   <Actions Context="Author">
     <Exec>
-      <Command>"C:\Program Files\DSPi\dspi.exe"</Command>
+      <Command>"C:\Program Files\@CMD@\@CMD@.exe"</Command>
       <Arguments>hub</Arguments>
     </Exec>
   </Actions>

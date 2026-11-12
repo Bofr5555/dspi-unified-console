@@ -1,31 +1,74 @@
 {
   "draft": true,
   "credit_lines": [
-    { "id": "made_with_love", "text": "Made with love by Weeb Labs" },
-    { "id": "unified_console", "text": "Unified console by Bofr5555" }
+    {
+      "id": "weeb_labs",
+      "text": "DSPi and its firmware by Weeb Labs"
+    },
+    {
+      "id": "unified_console",
+      "text": "Unified console by Bofr5555"
+    }
   ],
   "makers": [
     {
       "id": "weeb_labs",
       "name": "Weeb Labs",
       "url": "https://github.com/WeebLabs",
-      "made": ["DSPi", "The DSPi firmware", "The DSPi Consoles", "DSPi-Terminal", "DSPi-Link"]
+      "made": [
+        "DSPi",
+        "The DSPi firmware",
+        "DSPi Console for macOS",
+        "DSPi Console for Windows",
+        "DSPi-Terminal",
+        "DSPi-Link"
+      ]
     },
     {
       "id": "bofr5555",
       "name": "Bofr5555",
       "url": "https://github.com/Bofr5555",
-      "made": ["The unified console", "The core merge", "The Android console", "The Rust Link client"]
+      "made": [
+        "The unified console",
+        "The core merge",
+        "The Android console",
+        "The Rust Link client"
+      ]
     }
   ],
   "links_title": "Weeb Labs: links and support",
-  "links_note": "Weeb Labs' channels for DSPi, its firmware and the original DSPi Consoles. This console is made by Bofr5555, not Weeb Labs.",
+  "links_note": "Weeb Labs makes DSPi, its firmware and the original DSPi Consoles; these are their channels, and Patreon and Ko-fi are where to support their work. This console is made by Bofr5555, not Weeb Labs.",
   "links": [
-    { "id": "youtube", "title": "YouTube", "detail": "Builds, demos and how-tos", "url": "https://youtube.com/weeblabs" },
-    { "id": "github", "title": "GitHub", "detail": "DSPi firmware and the Consoles", "url": "https://github.com/weeblabs" },
-    { "id": "discord", "title": "Discord", "detail": "Help and discussion", "url": "https://discord.gg/RCyqxAQ5xS" },
-    { "id": "patreon", "title": "Patreon", "detail": "Support development", "url": "https://patreon.com/weeblabs" },
-    { "id": "ko_fi", "title": "Ko-fi", "detail": "Buy a coffee", "url": "https://ko-fi.com/weeblabs" }
+    {
+      "id": "youtube",
+      "title": "YouTube",
+      "detail": "Builds, demos and how-tos",
+      "url": "https://youtube.com/weeblabs"
+    },
+    {
+      "id": "github",
+      "title": "GitHub",
+      "detail": "DSPi firmware and the Consoles",
+      "url": "https://github.com/weeblabs"
+    },
+    {
+      "id": "discord",
+      "title": "Discord",
+      "detail": "Help and discussion",
+      "url": "https://discord.gg/RCyqxAQ5xS"
+    },
+    {
+      "id": "patreon",
+      "title": "Patreon",
+      "detail": "Support development",
+      "url": "https://patreon.com/weeblabs"
+    },
+    {
+      "id": "ko_fi",
+      "title": "Ko-fi",
+      "detail": "Buy a coffee",
+      "url": "https://ko-fi.com/weeblabs"
+    }
   ],
   "credits": [
     {
@@ -33,36 +76,85 @@
       "name": "Jonathan Rosser",
       "what": "Code in the DSPi firmware, and the notch and all-pass filters in the macOS Console"
     },
-    { "id": "tim_prangenberg", "name": "Tim Prangenberg", "what": "Code in the DSPi firmware" },
-    { "id": "jeremy_blencowe", "name": "Jeremy Blencowe", "what": "A contribution to the DSPi firmware repository" },
+    {
+      "id": "tim_prangenberg",
+      "name": "Tim Prangenberg",
+      "what": "Code in the DSPi firmware"
+    },
+    {
+      "id": "jeremy_blencowe",
+      "name": "Jeremy Blencowe",
+      "what": "A contribution to the DSPi firmware repository"
+    },
     {
       "id": "autoeq",
       "name": "AutoEq",
       "what": "Headphone EQ data by Jaakko Pasanen, from measurements AutoEq credits to crinacle, innerfidelity, oratory1990, rtings and headphone.com",
       "url": "https://github.com/jaakkopasanen/AutoEq"
     },
-    { "id": "qt", "name": "Qt", "what": "The Qt app is built on it" },
-    { "id": "lufa", "name": "LUFA", "what": "Third-party code in the DSPi firmware's source tree" },
-    { "id": "pico_sdk", "name": "pico-sdk", "what": "Third-party code in the DSPi firmware's source tree" },
-    { "id": "pico_extras", "name": "pico-extras", "what": "Third-party code in the DSPi firmware's source tree" },
-    { "id": "rust_crates", "name": "Third-party Rust crates", "what": "The crates listed in Cargo.lock" }
+    {
+      "id": "qt",
+      "name": "Qt",
+      "what": "The Qt app is built on it"
+    },
+    {
+      "id": "lufa",
+      "name": "LUFA",
+      "what": "Third-party code in the DSPi firmware's source tree"
+    },
+    {
+      "id": "pico_sdk",
+      "name": "pico-sdk",
+      "what": "Third-party code in the DSPi firmware's source tree"
+    },
+    {
+      "id": "pico_extras",
+      "name": "pico-extras",
+      "what": "Third-party code in the DSPi firmware's source tree"
+    },
+    {
+      "id": "tinyusb",
+      "name": "TinyUSB",
+      "what": "Third-party code in the DSPi firmware, through pico-sdk"
+    },
+    {
+      "id": "elehobica",
+      "name": "Elehobica",
+      "what": "The S/PDIF receiver (pico_spdif_rx) in the DSPi firmware"
+    },
+    {
+      "id": "alex_stanoev",
+      "name": "Alex Stanoev",
+      "what": "The code the DSPi firmware started from"
+    },
+    {
+      "id": "noto_sans_mono",
+      "name": "Noto Sans Mono",
+      "what": "The glyphs drawn into the app icon, a font by The Noto Project Authors",
+      "url": "https://github.com/notofonts/latin-greek-cyrillic"
+    },
+    {
+      "id": "rust_crates",
+      "name": "Third-party Rust crates",
+      "what": "The crates listed in Cargo.lock"
+    }
   ],
   "licence": {
     "id": "gpl3_or_later_section7",
     "title": "Licence",
-    "spdx": "GPL-3.0-or-later",
+    "spdx": "GPL-3.0-only",
     "copyright": [
       "The unified console, the core merge, the Android console and the Rust Link client: Copyright (C) 2026 Bofr5555 (https://github.com/Bofr5555).",
-      "DSPi, the DSPi firmware, the DSPi Consoles and DSPi-Terminal: Copyright (C) Weeb Labs (https://github.com/WeebLabs)."
+      "DSPi, the DSPi firmware, DSPi Console for macOS, DSPi Console for Windows, DSPi-Terminal and DSPi-Link: Copyright (C) Weeb Labs (https://github.com/WeebLabs)."
     ],
-    "statement": "DSPi uConsole (the Qt console for Linux, Windows and macOS, the Android console, the Swift console for macOS and iOS, the DSPi Terminal, the web console and the hub) is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version, with the additional terms below. It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for details.",
+    "statement": "DSPi uConsole (the Qt console for Linux, Windows and macOS, the Android console, the Swift console for macOS and iOS, the DSPi Terminal, the web console and the hub) combines code under different terms. Bofr5555's own contributions are free software: you can redistribute them and/or modify them under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version, with the additional terms below. The parts by Weeb Labs are under the GNU GPL version 3 (the DSPi firmware, DSPi Console for macOS, DSPi Console for Windows) or version 3 or later (DSPi-Terminal), and DSPi-Link under the MIT licence. The program as a whole is therefore distributed under the GNU GPL version 3. It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for details.",
     "terms_title": "Additional terms (GNU GPL v3, section 7)",
     "terms_note": "These terms apply to the material Bofr5555 added to this work (section 7, paragraph 2). They do not restrict the rights Weeb Labs' GPL-3.0 code carries on its own.",
     "terms": [
       {
         "id": "attributions",
         "title": "Attributions (7b)",
-        "text": "Keep the author attributions — \"Made with love by Weeb Labs\", \"Unified console by Bofr5555\" — and the licence notice and licences view in each client's About, or in an equivalent place a user can reach from the client."
+        "text": "Keep the author attributions — \"DSPi and its firmware by Weeb Labs\", \"Unified console by Bofr5555\" — and the licence notice and licences view in each client's About, or in an equivalent place a user can reach from the client."
       },
       {
         "id": "modified_versions",
@@ -76,6 +168,6 @@
       }
     ],
     "freedoms": "Everything else the GPL-3.0 allows stays allowed: you may study, change, rebuild and share the clients, including for a fee, as long as you pass the same freedoms on and publish your source.",
-    "notices": "The third-party parts and their licences are listed in NOTICE.md in the source code, and in each package's notices."
+    "notices": "The complete source code of each release is published with the release, as its -source.tar.gz archive. Whoever passes this program on, a hub that serves the web console included, passes on your right to that source. The third-party parts and their licences are listed in NOTICE.md in that source, and in each package's notices."
   }
 }

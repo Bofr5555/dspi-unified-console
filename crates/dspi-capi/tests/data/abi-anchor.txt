@@ -1,0 +1,1235 @@
+# The C ABI anchor (WP CLEAN1 fixup cl1): the declarations of include/dspi_core.h,
+# comments stripped and whitespace collapsed, one per line, in cbindgen's order.
+# The test `wp_clean1_the_abi_is_the_anchor` (crates/dspi-capi/src/lib.rs) fails on
+# any difference. An intended ABI change updates this file in the same commit:
+#   ci/run.sh 'cargo test -p dspi-capi --all-features wp_clean1_write_the_abi_anchor -- --ignored'
+# rewrites it from the current header.
+#ifndef DSPI_CORE_H
+#define DSPI_CORE_H
+#include <stdarg.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
+#define AUTOEQ_REPLY_MIN 4096
+#define VENDOR_ID 11915
+#define PRODUCT_ID 65194
+#define VENDOR_INTERFACE 2
+#define NOTIFY_ENDPOINT 131
+#define REQ_TYPE_OUT 65
+#define REQ_TYPE_IN 193
+#define LEGACY_VENDOR_ID 11914
+#define WINDEX_GLOBAL 0
+#define WINDEX_OUTPUT 2
+#define REQ_SET_CS_AUX_STATE 4
+#define REQ_GET_CS_AUX_STATE 5
+#define REQ_SET_CS_AUX_LEVEL 6
+#define REQ_GET_CS_AUX_LEVEL 7
+#define REQ_RTA_SET_CONFIG 8
+#define REQ_RTA_GET_CONFIG 9
+#define REQ_RTA_GET_CAPS 10
+#define REQ_RTA_GET_BANDS 11
+#define REQ_RTA_GET_BINS 12
+#define REQ_RTA_GET_STATUS 13
+#define REQ_RTA_CONTROL 14
+#define REQ_RTA_GET_BANDS_ALL 15
+#define REQ_SET_SUBHARM 16
+#define REQ_GET_SUBHARM 17
+#define REQ_SET_SUBHARM_LOW 18
+#define REQ_GET_SUBHARM_LOW 19
+#define REQ_SET_SUBHARM_HIGH 20
+#define REQ_GET_SUBHARM_HIGH 21
+#define REQ_SET_SUBHARM_BOOST 22
+#define REQ_GET_SUBHARM_BOOST 23
+#define REQ_SET_SUBHARM_MASK 24
+#define REQ_GET_SUBHARM_MASK 25
+#define REQ_GET_SUBHARM_HEADROOM 26
+#define REQ_SET_SUBHARM_TOP 27
+#define REQ_GET_SUBHARM_TOP 28
+#define REQ_SET_SUBHARM_SELECT 29
+#define REQ_GET_SUBHARM_SELECT 30
+#define REQ_GET_SUBHARM_METER 31
+#define REQ_SET_CS_GROUP 32
+#define REQ_GET_CS_GROUP 33
+#define REQ_SET_CS_MACRO 34
+#define REQ_GET_CS_MACRO 35
+#define REQ_SET_CS_MACRO_STEP 36
+#define REQ_CS_MACRO_FIRE 37
+#define REQ_GET_CS_EXT_STATUS 38
+#define REQ_SET_CS_DISPLAY_CFG 39
+#define REQ_GET_CS_DISPLAY_CFG 40
+#define REQ_SET_CS_DISPLAY_PAGE 41
+#define REQ_GET_CS_DISPLAY_PAGE 42
+#define REQ_GET_CS_DISPLAY_STATUS 43
+#define REQ_SET_SUBHARM_SOLO 44
+#define REQ_GET_SUBHARM_SOLO 45
+#define REQ_SET_SUBHARM_LINK 46
+#define REQ_GET_SUBHARM_LINK 47
+#define REQ_SET_PSYBASS 48
+#define REQ_GET_PSYBASS 49
+#define REQ_SET_PSYBASS_CUTOFF 50
+#define REQ_GET_PSYBASS_CUTOFF 51
+#define REQ_SET_PSYBASS_HARMONICS 52
+#define REQ_GET_PSYBASS_HARMONICS 53
+#define REQ_SET_PSYBASS_DRIVE 54
+#define REQ_GET_PSYBASS_DRIVE 55
+#define REQ_SET_PSYBASS_CHARACTER 56
+#define REQ_GET_PSYBASS_CHARACTER 57
+#define REQ_SET_PSYBASS_ORIGINAL 58
+#define REQ_GET_PSYBASS_ORIGINAL 59
+#define REQ_SET_PSYBASS_MASK 60
+#define REQ_GET_PSYBASS_MASK 61
+#define REQ_SET_TUBE_PARAM 62
+#define REQ_GET_TUBE_PARAM 63
+#define REQ_SET_EQ_PARAM 66
+#define REQ_GET_EQ_PARAM 67
+#define REQ_SET_PREAMP 68
+#define REQ_GET_PREAMP 69
+#define REQ_SET_BYPASS 70
+#define REQ_GET_BYPASS 71
+#define REQ_SET_DELAY 72
+#define REQ_GET_DELAY 73
+#define REQ_UPMIX_SET_CONFIG 74
+#define REQ_UPMIX_GET_CONFIG 75
+#define REQ_UPMIX_SET_PARAM 76
+#define REQ_UPMIX_GET_PARAM 77
+#define REQ_UPMIX_GET_STATUS 78
+#define REQ_GET_STATUS 80
+#define REQ_SAVE_PARAMS 81
+#define REQ_SAVE_OUTPUT_CONFIG 82
+#define REQ_FACTORY_RESET 83
+#define REQ_SET_CHANNEL_GAIN 84
+#define REQ_GET_CHANNEL_GAIN 85
+#define REQ_SET_CHANNEL_MUTE 86
+#define REQ_GET_CHANNEL_MUTE 87
+#define REQ_SET_LOUDNESS 88
+#define REQ_GET_LOUDNESS 89
+#define REQ_SET_LOUDNESS_REF 90
+#define REQ_GET_LOUDNESS_REF 91
+#define REQ_SET_LOUDNESS_INTENSITY 92
+#define REQ_GET_LOUDNESS_INTENSITY 93
+#define REQ_SET_CROSSFEED 94
+#define REQ_GET_CROSSFEED 95
+#define REQ_SET_CROSSFEED_PRESET 96
+#define REQ_GET_CROSSFEED_PRESET 97
+#define REQ_SET_CROSSFEED_FREQ 98
+#define REQ_GET_CROSSFEED_FREQ 99
+#define REQ_SET_CROSSFEED_FEED 100
+#define REQ_GET_CROSSFEED_FEED 101
+#define REQ_SET_CROSSFEED_ITD 102
+#define REQ_GET_CROSSFEED_ITD 103
+#define REQ_SET_ADAT_INPUT_ENABLE 104
+#define REQ_GET_ADAT_INPUT_ENABLE 105
+#define REQ_SET_ADAT_INPUT_PIN 106
+#define REQ_GET_ADAT_INPUT_PIN 107
+#define REQ_SET_ADAT_INPUT_CLOCK_MODE 108
+#define REQ_GET_ADAT_INPUT_CLOCK_MODE 109
+#define REQ_GET_ADAT_INPUT_STATUS 110
+#define REQ_SET_MATRIX_ROUTE 112
+#define REQ_GET_MATRIX_ROUTE 113
+#define REQ_SET_OUTPUT_ENABLE 114
+#define REQ_GET_OUTPUT_ENABLE 115
+#define REQ_SET_OUTPUT_GAIN 116
+#define REQ_GET_OUTPUT_GAIN 117
+#define REQ_SET_OUTPUT_MUTE 118
+#define REQ_GET_OUTPUT_MUTE 119
+#define REQ_SET_OUTPUT_DELAY 120
+#define REQ_GET_OUTPUT_DELAY 121
+#define REQ_GET_CORE1_MODE 122
+#define REQ_GET_CORE1_CONFLICT 123
+#define REQ_SET_OUTPUT_PIN 124
+#define REQ_GET_OUTPUT_PIN 125
+#define REQ_GET_SERIAL 126
+#define REQ_GET_PLATFORM 127
+#define REQ_GET_BUILD_INFO 128
+#define REQ_LIMITER 129
+#define REQ_CLEAR_CLIPS 131
+#define REQ_SET_CS_BINDING 132
+#define REQ_GET_CS_BINDING 133
+#define REQ_GET_CS_CAPS 134
+#define REQ_GET_CS_STATUS 135
+#define REQ_SET_I2S_CLOCK_MODE 136
+#define REQ_GET_I2S_CLOCK_MODE 137
+#define REQ_GET_I2S_SLAVE_STATUS 138
+#define REQ_SET_CS_NAME 139
+#define REQ_GET_CS_NAME 140
+#define REQ_SET_CS_IR_CMD 141
+#define REQ_GET_CS_IR_CMD 142
+#define REQ_CS_IR_LEARN 143
+#define REQ_PRESET_SAVE 144
+#define REQ_PRESET_LOAD 145
+#define REQ_PRESET_DELETE 146
+#define REQ_PRESET_GET_NAME 147
+#define REQ_PRESET_SET_NAME 148
+#define REQ_PRESET_GET_DIR 149
+#define REQ_PRESET_SET_STARTUP 150
+#define REQ_PRESET_GET_STARTUP 151
+#define REQ_SET_OUTPUT_CONFIG_MODE 152
+#define REQ_GET_OUTPUT_CONFIG_MODE 153
+#define REQ_PRESET_GET_ACTIVE 154
+#define REQ_SET_CHANNEL_NAME 155
+#define REQ_GET_CHANNEL_NAME 156
+#define REQ_CS_SAVE 157
+#define REQ_CS_REVERT 158
+#define REQ_GET_ALL_PARAMS 160
+#define REQ_SET_ALL_PARAMS 161
+#define REQ_GET_ALL_PARAMS_CHUNK 162
+#define REQ_SET_ALL_PARAMS_CHUNK 163
+#define REQ_SIGGEN_SET_CONFIG 164
+#define REQ_SIGGEN_GET_CONFIG 165
+#define REQ_SIGGEN_CONTROL 166
+#define REQ_SIGGEN_GET_STATUS 167
+#define REQ_SIGGEN_GET_CAPS 168
+#define REQ_SET_SUBHARM_DEPTH 169
+#define REQ_GET_SUBHARM_DEPTH 170
+#define REQ_SET_SUBHARM_HOLD 171
+#define REQ_GET_SUBHARM_HOLD 172
+#define REQ_SET_SUBHARM_CEILING 173
+#define REQ_GET_SUBHARM_CEILING 174
+#define REQ_GET_BUFFER_STATS 176
+#define REQ_RESET_BUFFER_STATS 177
+#define REQ_GET_USB_ERROR_STATS 178
+#define REQ_RESET_USB_ERROR_STATS 179
+#define REQ_SET_LEVELLER_ENABLE 180
+#define REQ_GET_LEVELLER_ENABLE 181
+#define REQ_SET_LEVELLER_AMOUNT 182
+#define REQ_GET_LEVELLER_AMOUNT 183
+#define REQ_SET_LEVELLER_SPEED 184
+#define REQ_GET_LEVELLER_SPEED 185
+#define REQ_SET_LEVELLER_MAX_GAIN 186
+#define REQ_GET_LEVELLER_MAX_GAIN 187
+#define REQ_SET_LEVELLER_LOOKAHEAD 188
+#define REQ_GET_LEVELLER_LOOKAHEAD 189
+#define REQ_SET_LEVELLER_GATE 190
+#define REQ_GET_LEVELLER_GATE 191
+#define REQ_SET_OUTPUT_TYPE 192
+#define REQ_GET_OUTPUT_TYPE 193
+#define REQ_SET_I2S_BCK_PIN 194
+#define REQ_GET_I2S_BCK_PIN 195
+#define REQ_SET_MCK_ENABLE 196
+#define REQ_GET_MCK_ENABLE 197
+#define REQ_SET_MCK_PIN 198
+#define REQ_GET_MCK_PIN 199
+#define REQ_SET_MCK_MULTIPLIER 200
+#define REQ_GET_MCK_MULTIPLIER 201
+#define REQ_SET_ADAT_ENABLE 202
+#define REQ_GET_ADAT_ENABLE 203
+#define REQ_SET_ADAT_PIN 204
+#define REQ_GET_ADAT_PIN 205
+#define REQ_GET_ADAT_STATUS 206
+#define REQ_SET_PREAMP_CH 208
+#define REQ_GET_PREAMP_CH 209
+#define REQ_SET_MASTER_VOLUME 210
+#define REQ_GET_MASTER_VOLUME 211
+#define REQ_SET_MASTER_VOLUME_MODE 212
+#define REQ_GET_MASTER_VOLUME_MODE 213
+#define REQ_SAVE_MASTER_VOLUME 214
+#define REQ_GET_SAVED_MASTER_VOLUME 215
+#define REQ_SET_BAND_BYPASS 216
+#define REQ_GET_BAND_BYPASS 217
+#define REQ_SET_USER_VOLUME 218
+#define REQ_GET_USER_VOLUME 219
+#define REQ_SET_USER_MUTE 220
+#define REQ_GET_USER_MUTE 221
+#define REQ_SET_LEVELLER_MASKS 222
+#define REQ_GET_LEVELLER_MASKS 223
+#define REQ_SET_INPUT_SOURCE 224
+#define REQ_GET_INPUT_SOURCE 225
+#define REQ_GET_SPDIF_RX_STATUS 226
+#define REQ_GET_SPDIF_RX_CH_STATUS 227
+#define REQ_SET_SPDIF_RX_PIN 228
+#define REQ_GET_SPDIF_RX_PIN 229
+#define REQ_SET_LG_SOUND_SYNC_ENABLE 230
+#define REQ_GET_LG_SOUND_SYNC_ENABLE 231
+#define REQ_GET_LG_SOUND_SYNC_STATUS 232
+#define REQ_SET_SPDIF_INPUT_ENABLE 233
+#define REQ_SET_DAC_HW_MUTE_CONFIG 234
+#define REQ_GET_DAC_HW_MUTE_CONFIG 235
+#define REQ_TEST_DAC_HW_MUTE 236
+#define REQ_SET_INPUT_RATE 237
+#define REQ_GET_INPUT_RATE 238
+#define REQ_GET_SPDIF_INPUT_CONFIG 239
+#define REQ_ENTER_BOOTLOADER 240
+#define REQ_SET_I2S_RX_PIN 241
+#define REQ_GET_I2S_RX_PIN 242
+#define REQ_SET_I2S_INPUT_CHANNELS 243
+#define REQ_GET_I2S_INPUT_CHANNELS 244
+#define REQ_SET_UART_CONFIG 245
+#define REQ_GET_UART_CONFIG 246
+#define REQ_SET_I2C_CONFIG 247
+#define REQ_GET_I2C_CONFIG 248
+#define REQ_GET_CTRL_IFACE_STATUS 249
+#define REQ_SET_LOUDNESS_MASK 250
+#define REQ_GET_LOUDNESS_MASK 251
+#define REQ_SET_CROSSFEED_OUTPUTS 252
+#define REQ_GET_CROSSFEED_OUTPUTS 253
+#define REQ_SET_I2S_CLOCK_PIN_MODE 254
+#define REQ_GET_I2S_CLOCK_PIN_MODE 255
+#define PIN_CONFIG_SUCCESS 0
+#define PIN_CONFIG_INVALID_PIN 1
+#define PIN_CONFIG_PIN_IN_USE 2
+#define PIN_CONFIG_INVALID_OUTPUT 3
+#define PIN_CONFIG_OUTPUT_ACTIVE 4
+#define PIN_CONFIG_INVALID_PARAM 5
+#define PIN_RESET_TO_DEFAULT 255
+#define PRESET_OK 0
+#define PRESET_ERR_INVALID_SLOT 1
+#define PRESET_ERR_SLOT_EMPTY 2
+#define PRESET_ERR_CRC 3
+#define PRESET_ERR_FLASH_WRITE 4
+#define FLASH_OK 0
+#define FLASH_ERR_WRITE 1
+#define FLASH_ERR_NO_DATA 2
+#define FLASH_ERR_CRC 3
+#define COMPAT_UNKNOWN 0
+#define COMPAT_OK 1
+#define COMPAT_FIRMWARE_TOO_OLD 2
+#define COMPAT_FIRMWARE_TOO_NEW 3
+#define FW_BETA_EARLY 255
+#define WIRE_FORMAT_VERSION 32
+#define MIN_WIRE_FORMAT_VERSION 16
+#define WIRE_FEAT_PSYBASS (1 << 6)
+#define WIRE_FEAT_UPMIX (1 << 8)
+#define WIRE_FEAT_SUBHARM (1 << 11)
+#define WIRE_FEAT_TUBE (1 << 13)
+#define WIRE_FEAT_LIMITER (1 << 14)
+#define BULK_PARAMS_SIZE 6136
+#define BULK_CHUNK_SIZE 2048
+#define OFF_HEADER 0
+#define OFF_GLOBAL 16
+#define OFF_CROSSFEED 32
+#define OFF_LEGACY 48
+#define OFF_DELAYS 64
+#define OFF_CROSSPOINTS 132
+#define OFF_OUTPUTS 708
+#define OFF_PINS 816
+#define OFF_EQ 824
+#define OFF_CHANNEL_NAMES 4088
+#define OFF_I2S 4632
+#define OFF_LEVELLER 4648
+#define OFF_PREAMP 4668
+#define OFF_MASTER_VOLUME 4700
+#define OFF_INPUT_CONFIG 4716
+#define OFF_LG_SOUND_SYNC 4732
+#define OFF_USER_VOLUME 4748
+#define OFF_DAC_HW_MUTE 4764
+#define OFF_CROSSOVER 4780
+#define OFF_ADAT 5868
+#define OFF_PSYBASS 5876
+#define OFF_UPMIX 5900
+#define OFF_SUBHARM 5944
+#define OFF_TUBE 5980
+#define OFF_LIMITER 6028
+#define MAX_CHANNELS 17
+#define MAX_INPUTS 8
+#define MAX_OUTPUTS 9
+#define BANDS_PER_CHANNEL 10
+#define FIRMWARE_BANDS_PER_CHANNEL 12
+#define MAX_XOVER_BANDS 4
+#define XOVER_BAND_BASE 20
+#define MAX_PRESETS 10
+#define CHANNEL_NAME_LEN 32
+#define MAX_PHYSICAL_OUTPUTS 5
+#define FILTER_FLAT 0
+#define FILTER_PEAKING 1
+#define FILTER_LOWSHELF 2
+#define FILTER_HIGHSHELF 3
+#define FILTER_LOWPASS 4
+#define FILTER_HIGHPASS 5
+#define FILTER_NOTCH 6
+#define FILTER_ALLPASS 7
+#define FILTER_ALLPASS1 8
+#define FILTER_LOWSHELF1 9
+#define FILTER_HIGHSHELF1 10
+#define FILTER_LINKWITZ_TRANSFORM 11
+#define FILTER_LOWPASS1 12
+#define FILTER_HIGHPASS1 13
+#define FILTER_XOVER_FIRST 32
+#define FILTER_XOVER_LAST 63
+#define DEFAULT_Q 0.707
+#define SAMPLE_RATE 48000.0
+#define MAGNITUDE_POINTS 201
+#define MASTER_VOL_MUTE_DB -128.0
+#define PSYBASS_PARAM_CUTOFF 0
+#define PSYBASS_PARAM_HARMONICS 1
+#define PSYBASS_PARAM_DRIVE 2
+#define PSYBASS_PARAM_CHARACTER 3
+#define PSYBASS_PARAM_ORIGINAL 4
+#define UPMIX_PARAM_ENABLED 0
+#define UPMIX_PARAM_CENTER_MODE 1
+#define UPMIX_PARAM_SURROUND_MODE 2
+#define UPMIX_PARAM_STRENGTH 3
+#define UPMIX_PARAM_WIDTH 4
+#define UPMIX_PARAM_THRESHOLD 5
+#define UPMIX_PARAM_ATTACK 6
+#define UPMIX_PARAM_RELEASE 7
+#define UPMIX_PARAM_DETECTOR_HPF 8
+#define UPMIX_PARAM_SURROUND_DELAY 9
+#define UPMIX_PARAM_SURROUND_HPF 10
+#define UPMIX_PARAM_SURROUND_LPF 11
+#define UPMIX_PARAM_DECORRELATION 12
+#define UPMIX_PARAM_PRESENCE 13
+#define UPMIX_PARAM_COUNT 14
+#define SUBHARM_PARAM_ENABLED 0
+#define SUBHARM_PARAM_MASK 1
+#define SUBHARM_PARAM_LOW 2
+#define SUBHARM_PARAM_HIGH 3
+#define SUBHARM_PARAM_TOP 4
+#define SUBHARM_PARAM_BOOST 5
+#define SUBHARM_PARAM_SELECT 6
+#define SUBHARM_PARAM_DEPTH 7
+#define SUBHARM_PARAM_HOLD 8
+#define SUBHARM_PARAM_CEILING 9
+#define SUBHARM_PARAM_LINK 10
+#define SUBHARM_PARAM_COUNT 11
+#define TUBE_PARAM_ENABLED 0
+#define TUBE_PARAM_MASK 1
+#define TUBE_PARAM_TYPE 2
+#define TUBE_PARAM_DRIVE 3
+#define TUBE_PARAM_BIAS 4
+#define TUBE_PARAM_ASYM 5
+#define TUBE_PARAM_HARDNESS 6
+#define TUBE_PARAM_SAG 7
+#define TUBE_PARAM_RECTIFIER 8
+#define TUBE_PARAM_XFMR 9
+#define TUBE_PARAM_DAMPING 10
+#define TUBE_PARAM_RESONANCE 11
+#define TUBE_PARAM_MIX 12
+#define TUBE_PARAM_TRIM 13
+#define TUBE_PARAM_COUNT 14
+#define LIMITER_PARAM_ENABLED 0
+#define LIMITER_PARAM_THRESHOLD_DB 1
+#define LIMITER_PARAM_RELEASE_MS 2
+#define LIMITER_PARAM_LINK_GROUP 3
+#define LIMITER_GET_METER 128
+#define LIMITER_GET_STATUS 129
+#define LIMITER_ALL_OUTPUTS 255
+#define RTA_VERSION 3
+#define RTA_MAX_BANDS 37
+#define RTA_MAX_CHANNELS 16
+#define RTA_MAX_BINS 512
+#define RTA_TAP_INPUT 0
+#define RTA_TAP_OUTPUT 1
+#define RTA_FLOOR_DB -121.5
+#define SIGGEN_VERSION 1
+#define SIGGEN_TYPE_COUNT 15
+#define SIGGEN_FLAG_RAW 1
+#define SIGGEN_FLAG_DECORR 2
+#define SIGGEN_FLAG_WALK 4
+#define SIGGEN_CTL_STOP 0
+#define SIGGEN_CTL_START 1
+#define SIGGEN_CTL_STOP_NOW 2
+#define STAT_PDM_RING_OVERRUNS 3
+#define STAT_PDM_RING_UNDERRUNS 4
+#define STAT_PDM_DMA_OVERRUNS 5
+#define STAT_PDM_DMA_UNDERRUNS 6
+#define STAT_SPDIF_OVERRUNS 7
+#define STAT_SPDIF_UNDERRUNS 8
+#define STAT_CLOCK_HZ 13
+#define STAT_CORE_MV 14
+#define STAT_SAMPLE_RATE 15
+#define STAT_TEMPERATURE 16
+#define STAT_STARVATION_TOTAL 17
+#define STAT_STARVATION_FIRST 18
+#define STAT_USB_RING_OVERRUNS 22
+#define NOTIFY_STATE (1 << 0)
+#define NOTIFY_CURVES (1 << 1)
+#define NOTIFY_REFRESHED (1 << 2)
+#define NOTIFY_INPUT_FORMAT (1 << 3)
+#define NOTIFY_PRESET (1 << 4)
+#define NOTIFY_SIGGEN (1 << 5)
+#define NOTIFY_CS_AUX (1 << 6)
+#define NOTIFY_IR_LEARN (1 << 7)
+#define SCHEMA_VERSION 1
+#define FORMAT_VERSION 2
+#define IMPORT_VOLUMES 1
+#define IMPORT_HARDWARE 2
+#define CS_MAX_BINDINGS 16
+#define CS_MAX_IR 16
+#define CS_MAX_GROUPS 8
+#define CS_MAX_MACROS 8
+#define CS_MAX_STEPS 8
+#define CS_MAX_PAGES 16
+#define LINK_REPLY_MIN 4096
+#define LINK_EVENT_DEVICES_CHANGED 0
+#define LINK_EVENT_CLOSED 1
+#define LINK_EVENT_STATUS_CHANGED 2
+#define LINK_EVENT_TOKEN_ISSUED 3
+#define HUB_REPLY_MIN 4096
+#define HUB_ACCESS_PIN 0
+#define HUB_ACCESS_OPEN 1
+#define HUB_OPT_USB 1
+#define HUB_OPT_APP 2
+#define HUB_OPT_LOOPBACK 4
+#define HUB_EVENT_DEVICE_ONLINE 0
+#define HUB_EVENT_DEVICE_OFFLINE 1
+#define HUB_EVENT_DEVICE_REMOVED 2
+#define HUB_EVENT_SESSION_OPENED 3
+#define HUB_EVENT_SESSION_CLOSED 4
+#define HUB_EVENT_STOPPED 5
+typedef struct AutoEqFetchSink AutoEqFetchSink;
+typedef struct AutoEqRebuildHandle AutoEqRebuildHandle;
+typedef struct FfiCore FfiCore;
+typedef struct FfiHub FfiHub;
+typedef struct DeviceInfo {
+uint8_t serial[64];
+uint32_t serial_len;
+uint32_t location_id;
+} DeviceInfo;
+typedef struct SystemStatus {
+float peaks[MAX_CHANNELS];
+uint8_t cpu0;
+uint8_t cpu1;
+uint32_t clip_flags;
+uint8_t active_input_channels;
+uint8_t num_channels;
+} SystemStatus;
+typedef struct FilterParams {
+uint8_t filter_type;
+bool bypass;
+float freq;
+float q;
+float gain;
+float qp;
+} FilterParams;
+typedef struct UartConfig {
+bool enabled;
+uint8_t tx_pin;
+uint8_t rx_pin;
+bool notify;
+uint32_t baud;
+} UartConfig;
+typedef struct I2cConfig {
+bool enabled;
+uint8_t sda_pin;
+uint8_t scl_pin;
+uint8_t address;
+} I2cConfig;
+typedef struct CtrlIfaceStatus {
+uint8_t uart_last_status;
+bool uart_live;
+uint8_t i2c_last_status;
+bool i2c_live;
+uint8_t protocol_version;
+} CtrlIfaceStatus;
+typedef struct DspState {
+uint8_t platform_id;
+uint8_t num_channels;
+uint8_t num_input_channels;
+uint8_t num_output_channels;
+uint8_t format_version;
+uint8_t fw_major;
+uint8_t fw_minor;
+uint8_t fw_patch;
+uint8_t fw_beta;
+uint8_t compat;
+float preamp_db;
+bool bypass;
+float input_preamp_db[MAX_INPUTS];
+float master_volume_db;
+uint8_t master_volume_mode;
+float user_volume_db;
+bool user_mute;
+bool loudness_enabled;
+float loudness_ref_spl;
+float loudness_intensity;
+uint16_t loudness_output_mask;
+bool crossfeed_enabled;
+uint8_t crossfeed_preset;
+float crossfeed_freq;
+float crossfeed_feed;
+bool crossfeed_itd;
+uint8_t crossfeed_output_pair_mask;
+float channel_delays[MAX_CHANNELS];
+bool matrix_routing[MAX_INPUTS][MAX_OUTPUTS];
+float matrix_gain[MAX_INPUTS][MAX_OUTPUTS];
+bool matrix_invert[MAX_INPUTS][MAX_OUTPUTS];
+bool output_enabled[MAX_OUTPUTS];
+bool output_muted[MAX_OUTPUTS];
+float output_gain_db[MAX_OUTPUTS];
+float output_delay_ms[MAX_OUTPUTS];
+bool limiter_enabled[MAX_OUTPUTS];
+uint8_t limiter_link_group[MAX_OUTPUTS];
+float limiter_threshold_db[MAX_OUTPUTS];
+float limiter_release_ms[MAX_OUTPUTS];
+uint8_t num_pin_outputs;
+uint8_t output_pins[MAX_PHYSICAL_OUTPUTS];
+uint8_t output_config_mode;
+struct FilterParams filters[MAX_CHANNELS][BANDS_PER_CHANNEL];
+struct FilterParams xover[MAX_CHANNELS][MAX_XOVER_BANDS];
+uint8_t channel_names[MAX_CHANNELS][CHANNEL_NAME_LEN];
+bool leveller_enabled;
+uint8_t leveller_speed;
+bool leveller_lookahead;
+float leveller_amount;
+float leveller_max_gain_db;
+float leveller_gate_db;
+uint8_t leveller_detector_mask;
+uint8_t leveller_apply_mask;
+uint8_t input_source;
+bool lg_sound_sync_enabled;
+uint8_t spdif_inputs_enabled;
+bool adat_input_enabled;
+uint8_t spdif_rx_pins[4];
+uint8_t i2s_rx_pins[4];
+uint8_t i2s_input_channels;
+uint8_t i2s_input_rate;
+uint8_t i2s_clock_mode;
+uint8_t adat_input_pin;
+uint8_t adat_input_clock_mode;
+bool psybass_enabled;
+uint16_t psybass_output_mask;
+float psybass_cutoff_hz;
+float psybass_harmonics_db;
+float psybass_drive_db;
+float psybass_character_pct;
+float psybass_original_db;
+float upmix[UPMIX_PARAM_COUNT];
+float subharm[SUBHARM_PARAM_COUNT];
+bool subharm_solo;
+float tube[TUBE_PARAM_COUNT];
+uint8_t output_types[4];
+uint8_t i2s_bck_pin;
+uint8_t i2s_bck_pin_slave;
+uint8_t i2s_clock_pin_mode;
+bool mck_enabled;
+uint8_t mck_pin;
+uint8_t mck_multiplier;
+bool adat_out_enabled;
+uint8_t adat_out_pin;
+bool dac_mute_supported;
+bool dac_mute_enabled;
+bool dac_mute_active_low;
+uint8_t dac_mute_pin;
+uint16_t dac_mute_hold_ms;
+uint16_t dac_mute_release_ms;
+bool ctrl_iface_supported;
+struct UartConfig uart;
+struct I2cConfig i2c;
+struct CtrlIfaceStatus ctrl_status;
+uint8_t core1_mode;
+uint16_t preset_occupied;
+uint8_t preset_names[MAX_PRESETS][CHANNEL_NAME_LEN];
+uint8_t active_preset_slot;
+uint8_t preset_startup_mode;
+uint8_t preset_default_slot;
+bool bulk_valid;
+uint8_t bulk_raw[BULK_PARAMS_SIZE];
+} DspState;
+typedef struct UpmixStatus {
+bool active;
+uint8_t parked_reason;
+float correlation;
+float balance;
+float center_gain;
+float ls_gain;
+float rs_gain;
+} UpmixStatus;
+typedef struct PresetDirectory {
+uint16_t occupied_mask;
+uint8_t startup_mode;
+uint8_t default_slot;
+uint8_t last_active;
+uint8_t output_config_mode;
+uint8_t master_volume_mode;
+} PresetDirectory;
+typedef struct InputLockStatus {
+uint8_t state;
+uint8_t clock_mode;
+uint32_t detected_rate;
+uint32_t measured_hz;
+bool rate_ok;
+uint8_t lock_count;
+uint8_t loss_count;
+} InputLockStatus;
+typedef struct AdatOutStatus {
+bool enabled;
+bool active;
+uint8_t pin;
+bool rate_ok;
+uint16_t resync_count;
+uint16_t slip_count;
+} AdatOutStatus;
+typedef struct LgStatus {
+bool enabled;
+bool present;
+uint8_t volume;
+bool muted;
+} LgStatus;
+typedef struct NotifyResult {
+uint32_t flags;
+uint32_t filter_channels;
+} NotifyResult;
+typedef struct RtaRequest {
+uint8_t tap;
+uint16_t mask;
+bool wants_bins;
+uint8_t fft_order;
+uint16_t avg_ms;
+uint8_t peak_decay_db_s;
+} RtaRequest;
+typedef struct RtaCapsInfo {
+bool supported;
+uint8_t input_channels;
+uint8_t output_channels;
+uint8_t order_min;
+uint8_t order_max;
+uint8_t order_default;
+uint8_t bass_bands;
+uint8_t max_bands;
+uint8_t dynamic_range_db;
+uint16_t bass_dynamic_range_db;
+uint16_t centres[RTA_MAX_BANDS];
+} RtaCapsInfo;
+typedef struct RtaChannelFrame {
+uint8_t channel;
+uint8_t n_bands;
+bool silent;
+float avg_db[RTA_MAX_BANDS];
+float peak_db[RTA_MAX_BANDS];
+} RtaChannelFrame;
+typedef struct RtaSnapshot {
+uint32_t version;
+uint32_t telemetry_version;
+uint8_t tap;
+uint8_t count;
+struct RtaChannelFrame frames[RTA_MAX_CHANNELS];
+uint64_t populated;
+uint16_t bins_count;
+uint8_t bins_channel;
+uint32_t bins_sample_rate;
+float bins_db[RTA_MAX_BINS];
+bool running;
+uint8_t live_count;
+uint16_t live_mask;
+uint16_t frames_per_s;
+uint16_t busy_us_per_s;
+uint16_t last_frame_us;
+uint16_t bass_busy_us_per_s;
+uint32_t sample_rate;
+uint8_t first_band;
+uint8_t fft_order;
+bool config_rejected;
+float refresh_interval_s;
+} RtaSnapshot;
+typedef struct RtaOwnership {
+bool following;
+uint16_t origin;
+uint8_t tap;
+uint16_t mask;
+uint8_t fft_order;
+} RtaOwnership;
+typedef struct SiggenParam {
+uint8_t semantic;
+float min;
+float max;
+float def;
+} SiggenParam;
+typedef struct SiggenTypeInfo {
+uint8_t id;
+uint8_t name[9];
+uint8_t timing;
+struct SiggenParam params[4];
+} SiggenTypeInfo;
+typedef struct SiggenCaps {
+bool supported;
+uint8_t type_count;
+uint8_t output_channels;
+uint8_t multitone_max;
+uint16_t valid_mask;
+struct SiggenTypeInfo types[SIGGEN_TYPE_COUNT];
+} SiggenCaps;
+typedef struct SiggenConfig {
+uint8_t signal_type;
+uint16_t channel_mask;
+uint16_t invert_mask;
+uint8_t flags;
+float level_db;
+uint32_t duration_ms;
+uint16_t repeat;
+uint16_t gap_ms;
+float p[4];
+} SiggenConfig;
+typedef struct SiggenStatus {
+uint8_t state;
+uint8_t signal_type;
+uint8_t active_channel;
+uint32_t elapsed_ms;
+uint16_t cycles_done;
+uint8_t stop_reason;
+float current_freq;
+} SiggenStatus;
+typedef struct SpdifBufferStats {
+uint8_t free;
+uint8_t prepared;
+uint8_t playing;
+uint8_t fill_pct;
+uint8_t min_pct;
+uint8_t max_pct;
+} SpdifBufferStats;
+typedef struct PdmBufferStats {
+uint8_t dma_fill_pct;
+uint8_t dma_min_pct;
+uint8_t dma_max_pct;
+uint8_t ring_fill_pct;
+uint8_t ring_min_pct;
+uint8_t ring_max_pct;
+} PdmBufferStats;
+typedef struct BufferStats {
+uint8_t num_spdif;
+bool pdm_active;
+bool streaming;
+uint16_t sequence;
+struct SpdifBufferStats spdif[4];
+struct PdmBufferStats pdm;
+} BufferStats;
+typedef struct SpdifRxStatus {
+uint8_t state;
+uint8_t input_source;
+uint8_t lock_count;
+uint8_t loss_count;
+uint32_t sample_rate;
+uint32_t parity_errors;
+uint16_t fifo_fill_pct;
+uint8_t lib_state;
+uint8_t stable_callbacks;
+uint8_t lost_callbacks;
+} SpdifRxStatus;
+typedef void (*AutoEqFetchCallback)(void *user_data,
+const char *url,
+const char *accept,
+const char *user_agent,
+struct AutoEqFetchSink *sink);
+typedef struct PlatformInfo {
+uint8_t platform_id;
+uint8_t num_output_channels;
+uint8_t fw_major;
+uint8_t fw_minor;
+uint8_t fw_patch;
+uint8_t fw_beta;
+} PlatformInfo;
+typedef void (*DeviceEventCallback)(uint8_t event, const char *serial, void *user_data);
+typedef void (*NotifyCallback)(void *user_data);
+typedef void (*LinkEventCallback)(uint8_t event,
+int32_t code,
+const char *text,
+const char *token,
+void *user_data);
+typedef void (*HubEventCallback)(uint8_t event, int32_t code, const char *text, void *user_data);
+struct FfiCore *dspi_core_new(void);
+void dspi_core_free(struct FfiCore *core);
+uint32_t dspi_scan_devices(struct FfiCore *core,
+struct DeviceInfo *out_devices,
+uint32_t max_devices);
+float dspi_preamp_max_db(struct FfiCore *core);
+uint32_t dspi_inaccessible_devices(struct FfiCore *core);
+bool dspi_select_device(struct FfiCore *core, const char *serial);
+void dspi_disconnect(struct FfiCore *core);
+bool dspi_is_connected(const struct FfiCore *core);
+bool dspi_fetch_all(struct FfiCore *core);
+bool dspi_refresh_params(struct FfiCore *core);
+bool dspi_apply_all_params(struct FfiCore *core);
+bool dspi_fetch_status(struct FfiCore *core, struct SystemStatus *out_status);
+const struct DspState *dspi_get_state(const struct FfiCore *core);
+float dspi_max_delay_ms(const struct FfiCore *core);
+bool dspi_clear_clips(struct FfiCore *core);
+bool dspi_set_filter(struct FfiCore *core, uint8_t ch, uint8_t band, struct FilterParams params);
+bool dspi_set_crossover(struct FfiCore *core,
+uint8_t ch,
+uint8_t xband,
+struct FilterParams params);
+bool dspi_set_band_bypass(struct FfiCore *core, uint8_t ch, uint8_t band, bool bypass);
+bool dspi_set_preamp(struct FfiCore *core, float db);
+bool dspi_set_input_preamp(struct FfiCore *core, uint8_t input, float db);
+bool dspi_set_bypass(struct FfiCore *core, bool enabled);
+bool dspi_set_master_volume(struct FfiCore *core, float db);
+bool dspi_set_master_volume_mode(struct FfiCore *core, uint8_t mode);
+uint8_t dspi_save_master_volume(struct FfiCore *core);
+bool dspi_set_user_volume(struct FfiCore *core, float db);
+bool dspi_set_user_mute(struct FfiCore *core, bool muted);
+bool dspi_set_delay(struct FfiCore *core, uint8_t ch, float ms);
+bool dspi_set_loudness(struct FfiCore *core, bool enabled);
+bool dspi_set_loudness_ref(struct FfiCore *core, float spl);
+bool dspi_set_loudness_intensity(struct FfiCore *core, float pct);
+bool dspi_set_loudness_mask(struct FfiCore *core, uint16_t mask);
+bool dspi_set_crossfeed(struct FfiCore *core, bool enabled);
+bool dspi_set_crossfeed_preset(struct FfiCore *core, uint8_t preset);
+bool dspi_set_crossfeed_freq(struct FfiCore *core, float freq);
+bool dspi_set_crossfeed_feed(struct FfiCore *core, float feed);
+bool dspi_set_crossfeed_itd(struct FfiCore *core, bool enabled);
+bool dspi_set_crossfeed_outputs(struct FfiCore *core, uint8_t pair_mask);
+bool dspi_set_leveller_enabled(struct FfiCore *core, bool enabled);
+bool dspi_set_leveller_amount(struct FfiCore *core, float pct);
+bool dspi_set_leveller_speed(struct FfiCore *core, uint8_t speed);
+bool dspi_set_leveller_max_gain(struct FfiCore *core, float db);
+bool dspi_set_leveller_lookahead(struct FfiCore *core, bool enabled);
+bool dspi_set_leveller_gate(struct FfiCore *core, float db);
+bool dspi_set_leveller_masks(struct FfiCore *core, uint8_t detector, uint8_t apply);
+bool dspi_set_input_source(struct FfiCore *core, uint8_t source);
+bool dspi_set_psybass_param(struct FfiCore *core, uint8_t param, float value);
+bool dspi_set_psybass_mask(struct FfiCore *core, uint16_t mask);
+bool dspi_set_psybass_enabled(struct FfiCore *core, bool enabled);
+bool dspi_set_matrix_route(struct FfiCore *core,
+uint8_t input,
+uint8_t output,
+bool enabled,
+float gain,
+bool invert);
+int8_t dspi_set_output_enable(struct FfiCore *core, uint8_t output, bool enabled);
+bool dspi_set_output_gain(struct FfiCore *core, uint8_t output, float db);
+bool dspi_set_output_mute(struct FfiCore *core, uint8_t output, bool muted);
+bool dspi_set_output_delay(struct FfiCore *core, uint8_t output, float ms);
+bool dspi_set_limiter_param(struct FfiCore *core, uint8_t output, uint8_t param, float value);
+bool dspi_fetch_limiter_meter(struct FfiCore *core, float *out_gr);
+bool dspi_set_channel_name(struct FfiCore *core, uint8_t ch, const char *name);
+bool dspi_get_channel_name(struct FfiCore *core, uint8_t ch, char *out_buf, uint32_t buf_len);
+bool dspi_set_upmix_param(struct FfiCore *core, uint8_t id, float value);
+bool dspi_fetch_upmix_status(struct FfiCore *core, struct UpmixStatus *out);
+bool dspi_set_subharm_param(struct FfiCore *core, uint8_t id, float value);
+bool dspi_set_subharm_solo(struct FfiCore *core, bool solo);
+bool dspi_fetch_subharm_headroom(struct FfiCore *core, float *out_db);
+bool dspi_fetch_subharm_meter(struct FfiCore *core, float *out);
+bool dspi_set_tube_param(struct FfiCore *core, uint8_t idx, float value);
+uint8_t dspi_save_preset(struct FfiCore *core, uint8_t slot);
+uint8_t dspi_load_preset(struct FfiCore *core, uint8_t slot);
+uint8_t dspi_copy_preset(struct FfiCore *core, uint8_t source, uint8_t dest);
+uint8_t dspi_delete_preset(struct FfiCore *core, uint8_t slot);
+bool dspi_set_preset_name(struct FfiCore *core, uint8_t slot, const char *name);
+bool dspi_get_preset_name(struct FfiCore *core, uint8_t slot, char *out_buf, uint32_t buf_len);
+bool dspi_get_preset_directory(struct FfiCore *core, struct PresetDirectory *out_dir);
+bool dspi_set_preset_startup(struct FfiCore *core, uint8_t mode, uint8_t default_slot);
+uint8_t dspi_save_params(struct FfiCore *core);
+uint8_t dspi_load_params(struct FfiCore *core);
+uint8_t dspi_factory_reset(struct FfiCore *core);
+void dspi_capture_baseline(struct FfiCore *core);
+bool dspi_preset_dirty(struct FfiCore *core);
+uint32_t dspi_preset_changes(struct FfiCore *core, char *buf, uint32_t len);
+float dspi_compute_response(const struct FilterParams *filters, uint32_t num_filters, float freq);
+bool dspi_compute_magnitude_curve(const struct FilterParams *filters,
+uint32_t num_filters,
+double *out_magnitudes);
+bool dspi_compute_phase_curve(const struct FilterParams *filters,
+uint32_t num_filters,
+bool unwrap,
+double *out_phases);
+uint8_t dspi_set_output_pin(struct FfiCore *core, uint8_t slot, uint8_t pin);
+uint8_t dspi_fetch_output_pin(struct FfiCore *core, uint8_t slot);
+bool dspi_set_output_config_mode(struct FfiCore *core, uint8_t mode);
+uint8_t dspi_save_output_config(struct FfiCore *core);
+bool dspi_enter_bootloader(struct FfiCore *core);
+uint32_t dspi_device_lock_acquire(struct FfiCore *core,
+const char *reason,
+uint32_t timeout_ms,
+char *buf,
+uint32_t len);
+void dspi_device_lock_release(struct FfiCore *core);
+int8_t dspi_fetch_core1_mode(struct FfiCore *core);
+int8_t dspi_check_core1_conflict(struct FfiCore *core, uint8_t output);
+bool dspi_set_hotplug_callback(struct FfiCore *core,
+void (*callback)(uint8_t event, const char *serial, void *user_data),
+void *user_data);
+void dspi_poll_hotplug(struct FfiCore *core);
+uint8_t dspi_set_output_type(struct FfiCore *core, uint8_t slot, uint8_t kind);
+uint8_t dspi_set_i2s_bck_pin(struct FfiCore *core, uint8_t role, uint8_t pin);
+uint8_t dspi_set_i2s_clock_pin_mode(struct FfiCore *core, uint8_t mode);
+uint8_t dspi_set_mck_enabled(struct FfiCore *core, bool enabled);
+uint8_t dspi_set_mck_pin(struct FfiCore *core, uint8_t pin);
+uint8_t dspi_set_mck_multiplier(struct FfiCore *core, uint8_t mult);
+uint8_t dspi_set_adat_out_enabled(struct FfiCore *core, bool enabled);
+uint8_t dspi_set_adat_out_pin(struct FfiCore *core, uint8_t pin);
+uint8_t dspi_set_spdif_rx_pin(struct FfiCore *core, uint8_t index, uint8_t pin);
+uint8_t dspi_set_spdif_input_enabled(struct FfiCore *core, uint8_t index, bool enabled);
+uint8_t dspi_set_i2s_rx_pin(struct FfiCore *core, uint8_t pair, uint8_t pin);
+uint8_t dspi_set_i2s_input_channels(struct FfiCore *core, uint8_t channels);
+uint8_t dspi_set_adat_input_enabled(struct FfiCore *core, bool enabled);
+uint8_t dspi_set_adat_input_pin(struct FfiCore *core, uint8_t pin);
+uint8_t dspi_set_adat_input_clock_mode(struct FfiCore *core, uint8_t mode);
+bool dspi_set_input_rate(struct FfiCore *core, uint8_t index);
+uint32_t dspi_fetch_input_rate(struct FfiCore *core);
+bool dspi_set_i2s_clock_mode(struct FfiCore *core, uint8_t mode);
+bool dspi_fetch_input_lock(struct FfiCore *core, uint8_t which, struct InputLockStatus *out);
+bool dspi_fetch_adat_out_status(struct FfiCore *core, struct AdatOutStatus *out);
+bool dspi_set_dac_mute(struct FfiCore *core,
+bool enabled,
+bool active_low,
+uint8_t pin,
+uint16_t hold_ms,
+uint16_t release_ms);
+bool dspi_fetch_dac_mute(struct FfiCore *core);
+uint8_t dspi_test_dac_mute(struct FfiCore *core);
+bool dspi_set_lg_sound_sync(struct FfiCore *core, bool enabled);
+bool dspi_fetch_lg_status(struct FfiCore *core, struct LgStatus *out);
+bool dspi_fetch_ctrl_ifaces(struct FfiCore *core);
+bool dspi_set_uart(struct FfiCore *core, struct UartConfig config);
+bool dspi_set_i2c(struct FfiCore *core, struct I2cConfig config);
+void dspi_set_notify_callback(struct FfiCore *core,
+void (*callback)(void *user_data),
+void *user_data);
+void dspi_process_notifications(struct FfiCore *core, struct NotifyResult *out);
+void dspi_rta_set_callback(struct FfiCore *core,
+void (*callback)(void *user_data),
+void *user_data);
+void dspi_rta_start(struct FfiCore *core);
+void dspi_rta_set_request(struct FfiCore *core, const struct RtaRequest *request);
+void dspi_rta_set_request_watching(struct FfiCore *core,
+const struct RtaRequest *request,
+bool watching);
+void dspi_rta_get_caps(struct FfiCore *core, struct RtaCapsInfo *out);
+void dspi_rta_get_snapshot(struct FfiCore *core, struct RtaSnapshot *out);
+void dspi_rta_get_ownership(struct FfiCore *core, struct RtaOwnership *out);
+void dspi_rta_take_control(struct FfiCore *core);
+bool dspi_siggen_fetch_caps(struct FfiCore *core, struct SiggenCaps *out);
+bool dspi_siggen_get_config(struct FfiCore *core, struct SiggenConfig *out);
+bool dspi_siggen_set_config(struct FfiCore *core, const struct SiggenConfig *cfg);
+bool dspi_siggen_control(struct FfiCore *core, uint16_t action);
+bool dspi_siggen_get_status(struct FfiCore *core, struct SiggenStatus *out);
+bool dspi_fetch_stat(struct FfiCore *core, uint16_t which, uint32_t *out);
+bool dspi_fetch_buffer_stats(struct FfiCore *core, struct BufferStats *out);
+bool dspi_reset_buffer_stats(struct FfiCore *core);
+bool dspi_fetch_spdif_rx_status(struct FfiCore *core, struct SpdifRxStatus *out);
+bool dspi_fetch_spdif_rx_channel_status(struct FfiCore *core, uint8_t *out);
+bool dspi_fetch_spdif_rx_pin(struct FfiCore *core, uint8_t index, uint8_t *out);
+uint64_t dspi_monitor_read(struct FfiCore *core, uint64_t after_id, char *buf, uint32_t buf_len);
+void dspi_monitor_clear(struct FfiCore *core);
+uint32_t dspi_config_export(struct FfiCore *core,
+const char *name,
+const char *app_version,
+uint8_t links,
+char *buf,
+uint32_t len);
+uint32_t dspi_config_inspect(const char *text, char *buf, uint32_t len);
+uint32_t dspi_config_import(struct FfiCore *core,
+const char *text,
+uint32_t options,
+char *buf,
+uint32_t len);
+uint32_t dspi_filters_export(struct FfiCore *core, uint8_t inputs, char *buf, uint32_t len);
+uint32_t dspi_filters_inspect(struct FfiCore *core,
+const char *text,
+uint8_t inputs,
+char *buf,
+uint32_t len);
+uint32_t dspi_filters_import(struct FfiCore *core,
+const char *text,
+const uint8_t *wires,
+uint32_t count,
+char *buf,
+uint32_t len);
+bool dspi_cs_fetch(struct FfiCore *core);
+uint32_t dspi_cs_snapshot(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_cs_apply(struct FfiCore *core, const char *op, char *buf, uint32_t len);
+uint32_t dspi_cs_pin_uses(struct FfiCore *core, uint8_t *pins, uint8_t *slots, uint32_t max);
+void dspi_bootloader_counts(uint32_t *rp2040, uint32_t *rp2350);
+bool dspi_open_demo(struct FfiCore *core);
+uint32_t dspi_ext_status(struct FfiCore *core, char *buf, uint32_t len);
+bool dspi_fetch_crossfeed_pair_map(struct FfiCore *core, uint8_t *out, uint32_t out_len);
+uint8_t dspi_set_crossfeed_pair_map(struct FfiCore *core, const uint8_t *map, uint32_t map_len);
+bool dspi_crossfeed_pair_map_valid(const uint8_t *map, uint32_t map_len, uint8_t num_pairs);
+bool dspi_crossfeed_k340_pair_map(uint8_t *out, uint32_t out_len);
+uint8_t dspi_crossfeed_k340_pair_mask(void);
+uint32_t dspi_fetch_core_vreg(struct FfiCore *core, char *buf, uint32_t len);
+uint8_t dspi_core_vreg_op(struct FfiCore *core, uint8_t op, uint8_t value, const char *word);
+bool dspi_get_input_source_name(struct FfiCore *core,
+uint8_t source,
+char *out_buf,
+uint32_t buf_len);
+bool dspi_set_input_source_name(struct FfiCore *core, uint8_t source, const char *name);
+bool dspi_get_device_name(struct FfiCore *core, char *out_buf, uint32_t buf_len);
+bool dspi_set_device_name(struct FfiCore *core, const char *name);
+bool dspi_cached_input_source_name(struct FfiCore *core,
+uint8_t source,
+char *out_buf,
+uint32_t buf_len);
+bool dspi_cached_device_name(struct FfiCore *core, char *out_buf, uint32_t buf_len);
+bool dspi_demo_rename_elsewhere(struct FfiCore *core, uint8_t target, const char *name);
+bool dspi_demo_latency_timing(struct FfiCore *core, uint8_t mode, uint8_t reads, uint8_t blackout);
+uint32_t dspi_demo_latency_sets(struct FfiCore *core);
+bool dspi_demo_output_save_status(struct FfiCore *core, uint8_t status);
+bool dspi_demo_open_wire(struct FfiCore *core, uint8_t wire);
+uint32_t dspi_read_only_refusals(struct FfiCore *core);
+uint32_t dspi_wire_features(struct FfiCore *core);
+uint32_t dspi_fetch_output_latency(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_fetch_output_latency_options(struct FfiCore *core, char *buf, uint32_t len);
+bool dspi_set_output_latency(struct FfiCore *core, uint8_t id);
+uint32_t dspi_fetch_clock_diag(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_fetch_ring_health(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_fetch_output_fills(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_fetch_stats_tick(struct FfiCore *core, char *buf, uint32_t len);
+void dspi_notify_tap_set(struct FfiCore *core, bool enabled);
+uint32_t dspi_notify_tap_drain(struct FfiCore *core, char *buf, uint32_t len);
+uint64_t dspi_connection_generation(struct FfiCore *core);
+uint32_t dspi_uf2_inspect(const uint8_t *image, uint32_t image_len, char *buf, uint32_t len);
+uint32_t dspi_bootloader_drives(char *buf, uint32_t len);
+uint32_t dspi_flash_to_drive(const uint8_t *image,
+uint32_t image_len,
+const char *drive_path,
+int8_t platform,
+char *buf,
+uint32_t len);
+int8_t dspi_firmware_version_matches(struct FfiCore *core, const char *version);
+uint32_t dspi_core_vreg_cal_view(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_core_vreg_cal_poll(struct FfiCore *core, char *buf, uint32_t len);
+uint8_t dspi_core_vreg_cal_open(struct FfiCore *core);
+uint8_t dspi_core_vreg_cal_close(struct FfiCore *core);
+uint8_t dspi_core_vreg_cal_start(struct FfiCore *core,
+uint8_t target,
+uint32_t soak_s,
+const char *typed);
+uint8_t dspi_core_vreg_cal_keep(struct FfiCore *core, uint32_t soak_s);
+uint8_t dspi_core_vreg_cal_commit(struct FfiCore *core, const char *typed);
+uint8_t dspi_core_vreg_trial_end(struct FfiCore *core);
+uint8_t dspi_core_vreg_manual_set(struct FfiCore *core, uint8_t value, const char *typed);
+uint8_t dspi_core_vreg_manual_trial(struct FfiCore *core, uint8_t value, const char *typed);
+uint8_t dspi_core_vreg_manual_auto(struct FfiCore *core, bool on);
+uint8_t dspi_core_vreg_manual_clear(struct FfiCore *core);
+uint8_t dspi_core_vreg_demo_event(struct FfiCore *core, uint8_t event, uint32_t seconds);
+uint8_t dspi_cs_demo_busy(struct FfiCore *core, bool on);
+uint32_t dspi_cs_describe(struct FfiCore *core,
+const char *kind,
+uint32_t slot,
+const char *draft,
+char *buf,
+uint32_t len);
+uint32_t dspi_cs_edit(struct FfiCore *core,
+const char *kind,
+uint32_t slot,
+const char *draft,
+const char *change,
+char *buf,
+uint32_t len);
+uint32_t dspi_cs_new_binding(struct FfiCore *core,
+uint32_t slot,
+uint8_t component,
+char *buf,
+uint32_t len);
+uint32_t dspi_cs_new_record(struct FfiCore *core, const char *kind, char *buf, uint32_t len);
+uint32_t dspi_cs_status_text(struct FfiCore *core, uint8_t code, char *buf, uint32_t len);
+bool dspi_cs_demo_learn(struct FfiCore *core, uint8_t protocol, uint32_t code);
+uint32_t dspi_firmware_guard_board(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_firmware_guard_check(const uint8_t *image,
+uint32_t image_len,
+uint16_t board_required_mv,
+const char *typed,
+char *buf,
+uint32_t len);
+uint32_t dspi_flash_to_drive_guarded(const uint8_t *image,
+uint32_t image_len,
+const char *drive_path,
+int8_t platform,
+uint16_t board_required_mv,
+const char *typed,
+char *buf,
+uint32_t len);
+uint32_t dspi_write_param(struct FfiCore *core, const char *request, char *buf, uint32_t len);
+uint8_t dspi_state_presence(const struct FfiCore *core);
+uint32_t dspi_filter_type_names(char *buf, uint32_t len);
+uint32_t dspi_filter_type_name(uint8_t code, char *buf, uint32_t len);
+uint32_t dspi_core1_conflict_reason(struct FfiCore *core, uint8_t output, char *buf, uint32_t len);
+uint32_t dspi_output_labels(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_output_cards(struct FfiCore *core, char *buf, uint32_t len);
+void dspi_autoeq_fetch_respond(struct AutoEqFetchSink *sink,
+uint16_t status,
+const uint8_t *body,
+uint32_t body_len,
+int64_t retry_after_s,
+int64_t rate_limit_remaining,
+int64_t rate_limit_reset);
+void dspi_autoeq_fetch_fail(struct AutoEqFetchSink *sink, const char *message);
+uint32_t dspi_autoeq_database_info(const char *db_path, char *buf, uint32_t len);
+uint32_t dspi_autoeq_import(const char *db_path,
+const uint8_t *data,
+uint32_t data_len,
+char *buf,
+uint32_t len);
+uint32_t dspi_autoeq_update(const char *db_path,
+const char *url,
+AutoEqFetchCallback callback,
+void *user_data,
+char *buf,
+uint32_t len);
+uint32_t dspi_autoeq_reset_to_builtin(const char *db_path, char *buf, uint32_t len);
+uint32_t dspi_autoeq_rebuild_warning(const char *db_path, char *buf, uint32_t len);
+struct AutoEqRebuildHandle *dspi_autoeq_rebuild_start(const char *db_path,
+AutoEqFetchCallback callback,
+void *user_data);
+uint32_t dspi_autoeq_rebuild_poll(struct AutoEqRebuildHandle *handle, char *buf, uint32_t len);
+void dspi_autoeq_rebuild_cancel(struct AutoEqRebuildHandle *handle);
+void dspi_autoeq_rebuild_free(struct AutoEqRebuildHandle *handle);
+uint32_t dspi_link_phase_text(const char *phase, const char *pin_source, char *buf, uint32_t len);
+uint32_t dspi_link_phase_texts(char *buf, uint32_t len);
+uint32_t dspi_onboarding_whats_new_json(char *buf,
+uint32_t len);
+uint32_t dspi_onboarding_getting_started_json(char *buf, uint32_t len);
+uint32_t dspi_about_json(char *buf, uint32_t len);
+bool dspi_link_browse_start(struct FfiCore *core,
+void (*callback)(void *user_data),
+void *user_data,
+const char *own_hub_id);
+void dspi_link_browse_stop(struct FfiCore *core);
+uint32_t dspi_link_browse_hubs(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_link_browse_resolve(struct FfiCore *core,
+const char *hub_id,
+char *buf,
+uint32_t len);
+bool dspi_link_browse_reresolve(struct FfiCore *core, const char *hub_id);
+void dspi_link_browse_verify(struct FfiCore *core, const char *hub_id);
+uint32_t dspi_link_connect(struct FfiCore *core,
+const char *url,
+const char *client_name,
+const char *app_version,
+const char *token,
+const char *expected_hub_id,
+char *buf,
+uint32_t len);
+uint32_t dspi_link_pair(struct FfiCore *core, const char *pin, char *buf, uint32_t len);
+uint32_t dspi_link_devices(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_link_status(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_link_select_device(struct FfiCore *core,
+uint32_t handle,
+const char *serial,
+char *buf,
+uint32_t len);
+void dspi_link_close(struct FfiCore *core);
+void dspi_link_retry_now(struct FfiCore *core);
+bool dspi_link_set_url(struct FfiCore *core, const char *url);
+bool dspi_link_set_listener(struct FfiCore *core,
+void (*callback)(uint8_t event,
+int32_t code,
+const char *text,
+const char *token,
+void *user_data),
+void *user_data);
+uint32_t dspi_link_parse_address(const char *text, char *buf, uint32_t len);
+uint32_t dspi_link_ws_url(const char *host,
+uint16_t port,
+const char *path,
+char *buf,
+uint32_t len);
+uint32_t dspi_link_fetch_info(const char *host, uint16_t port, char *buf, uint32_t len);
+uint32_t dspi_midi_ports(char *buf, uint32_t len);
+bool dspi_open_midi(struct FfiCore *core, const char *name);
+struct FfiHub *dspi_hub_new(void);
+void dspi_hub_free(struct FfiHub *hub);
+bool dspi_hub_set_listener(struct FfiHub *hub, void (*callback)(uint8_t event,
+int32_t code,
+const char *text,
+void *user_data), void *user_data);
+uint32_t dspi_hub_saved_settings(const char *store_dir, char *buf, uint32_t len);
+uint32_t dspi_hub_start(struct FfiHub *hub,
+const char *name,
+const char *store_dir,
+uint16_t port,
+uint8_t access,
+uint32_t options,
+char *buf,
+uint32_t len);
+bool dspi_hub_stop(struct FfiHub *hub);
+bool dspi_hub_attach_app(struct FfiHub *hub, struct FfiCore *core);
+int32_t dspi_hub_attach_demo(struct FfiHub *hub);
+uint32_t dspi_hub_status(struct FfiHub *hub, char *buf, uint32_t len);
+uint32_t dspi_hub_devices(struct FfiHub *hub, char *buf, uint32_t len);
+uint32_t dspi_hub_clients(struct FfiHub *hub, char *buf, uint32_t len);
+uint32_t dspi_hub_begin_pairing(struct FfiHub *hub, char *buf, uint32_t len);
+bool dspi_hub_cancel_pairing(struct FfiHub *hub);
+bool dspi_hub_revoke(struct FfiHub *hub, uint32_t cid);
+bool dspi_hub_set_role(struct FfiHub *hub, uint32_t cid, const char *role);
+#endif

@@ -1,0 +1,187 @@
+DSPi firmware images: third-party notices
+=========================================
+
+The DSPi firmware images bundled with these clients (DSPi-RP2040-v1.1.6.uf2,
+DSPi-RP2350-v1.1.6.uf2) are Weeb Labs' release v1.1.6, unmodified:
+https://github.com/WeebLabs/DSPi/releases/tag/v1.1.6 (commit
+9ffce34f13f24513eb1f71952a62fd9dd37db844; mirrored as tag v1.1.6 at
+https://github.com/Bofr5555/DSPi). The firmware is licensed under the GNU GPL
+version 3; its complete source is that tag, with the pico-sdk submodule at
+a1438dff1d38bd9c65dbd693f0e5db4b9ae91779 (TinyUSB at 86ad6e56c1700e85f1c5678607a762cfe3aa2f47).
+
+The firmware contains or is built from the following third-party parts. Their
+notices, as their source files and licence files state them:
+
+
+------------------------------------------------------------------------
+Raspberry Pi Pico SDK (pico-sdk), BSD-3-Clause
+Source: firmware/pico-sdk/LICENSE.TXT
+------------------------------------------------------------------------
+
+Copyright 2020 (c) 2020 Raspberry Pi (Trading) Ltd.
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+   disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following
+   disclaimer in the documentation and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products
+   derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+------------------------------------------------------------------------
+Raspberry Pi Pico Extras (pico-extras), BSD-3-Clause
+Source: firmware/pico-extras/LICENSE.TXT
+------------------------------------------------------------------------
+
+Copyright 2020 (c) 2020 Raspberry Pi (Trading) Ltd.
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+   disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following
+   disclaimer in the documentation and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products
+   derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+------------------------------------------------------------------------
+TinyUSB (through the Pico SDK), MIT
+Source: firmware/pico-sdk/lib/tinyusb/LICENSE
+------------------------------------------------------------------------
+
+The MIT License (MIT)
+
+Copyright (c) 2018, hathach (tinyusb.org)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+------------------------------------------------------------------------
+LUFA Library, Dean Camera
+Source: firmware/DSPi/lufa/LICENSE.TXT
+------------------------------------------------------------------------
+
+                  LUFA Library
+        Copyright (C) Dean Camera, 2020.
+
+     dean [at] fourwalledcubicle [dot] com
+                www.lufa-lib.org
+
+
+Permission to use, copy, modify, and distribute this software
+and its documentation for any purpose is hereby granted without
+fee, provided that the above copyright notice appear in all
+copies and that both that the copyright notice and this
+permission notice and warranty disclaimer appear in supporting
+documentation, and that the name of the author not be used in
+advertising or publicity pertaining to distribution of the
+software without specific, written prior permission.
+
+The author disclaims all warranties with regard to this
+software, including all implied warranties of merchantability
+and fitness.  In no event shall the author be liable for any
+special, indirect or consequential damages or any damages
+whatsoever resulting from loss of use, data or profits, whether
+in an action of contract, negligence or other tortious action,
+arising out of or in connection with the use or performance of
+this software.
+------------------------------------------------------------------------
+pico_spdif_rx (S/PDIF receiver, in pico-extras), Elehobica, BSD-2-Clause
+Source: the headers of firmware/pico-extras/src/rp2_common/pico_spdif_rx/*
+------------------------------------------------------------------------
+
+Copyright (c) 2023, Elehobica
+Released under the BSD-2-Clause
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+------------------------------------------------------------------------
+The DSPi firmware's origin, Alex Stanoev, BSD-3-Clause
+Source: the DSPi repository's LICENSE before commit b548512 (2026-02-05)
+------------------------------------------------------------------------
+
+BSD 3-Clause License
+
+Copyright (c) 2022, Alex Stanoev
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
