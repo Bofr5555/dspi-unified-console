@@ -1,0 +1,29 @@
+# The Linux release build image: Ubuntu 24.04 (glibc 2.39, the oldest the
+# release supports), Qt 6.8 from download.qt.io (qt-6.8.3.sha256, installed
+# by fetch-qt.sh into /opt/qt) and Rust from rustup (the CI image's pins).
+#
+#   podman build -t dspi-uconsole-ubuntu -f apps/desktop/packaging/linux/Containerfile.ubuntu apps/desktop/packaging/linux
+#   podman run --rm -v "$PWD":/src:Z -w /src dspi-uconsole-ubuntu apps/desktop/packaging/linux/build-ubuntu.sh
+FROM docker.io/library/ubuntu:24.04
+
+ARG RUSTUP_VERSION=1.29.2
+ARG RUSTUP_INIT_SHA256=5be191e8c70a5007074254cb74d78dbfdd25cd5a61c27de7b8e5410122ec24f4
+ARG RUST_TOOLCHAIN=1.99.1
+
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      ca-certificates curl p7zip-full cmake ninja-build g++ pkg-config file binutils \
+      libasound2-dev libgl-dev libegl-dev libxkbcommon-dev libfontconfig1-dev libdbus-1-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY fetch-qt.sh qt-6.8.3.sha256 /opt/qt-pins/
+RUN /opt/qt-pins/fetch-qt.sh /opt/qt-pins/qt-6.8.3.sha256 /opt/qt
+
+ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo PATH=/opt/cargo/bin:/opt/qt/bin:$PATH
+RUN d=$(mktemp -d) \
+ && curl --proto '=https' --tlsv1.2 -fsSL -o "$d/rustup-init" \
+      "https://static.rust-lang.org/rustup/archive/$RUSTUP_VERSION/x86_64-unknown-linux-gnu/rustup-init" \
+ && echo "$RUSTUP_INIT_SHA256  $d/rustup-init" | sha256sum -c - \
+ && chmod +x "$d/rustup-init" \
+ && "$d/rustup-init" -y --no-modify-path --profile minimal --default-toolchain "$RUST_TOOLCHAIN" \
+ && rm -rf "$d"
