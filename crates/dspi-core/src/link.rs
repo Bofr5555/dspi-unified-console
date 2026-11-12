@@ -3140,3 +3140,8 @@ mod tests_wp_lk4;
 #[cfg(test)]
 #[path = "link/tests_wp_wb4b.rs"]
 mod tests_wp_wb4b;
+
+// -- WP LKCLOSE --
+#[cfg(test)]
+#[path = "link/tests_wp_lkclose.rs"]
+mod tests_wp_lkclose;
