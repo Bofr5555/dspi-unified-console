@@ -1,6 +1,6 @@
 #!/bin/bash
 # Three unplug and replug cycles on the host's one DSPi, against the real app
-# (SmokeDriverReplug.cpp): disconnected state within 2.5 s, no crash, auto-reconnect,
+# (SmokeHw.cpp): disconnected state within 2.5 s, no crash, auto-reconnect,
 # the image identical after. It writes nothing to the device. Follow the prompts;
 # it gives up after 45 s on a step, and 5.5 minutes overall. Close every other DSPi
 # program first. If the replug cuts the DSPi's power, save or revert anything
@@ -26,7 +26,7 @@ if [ "$count" != 1 ]; then
     exit 2
 fi
 
-ci/run.sh "cargo build --release -p dspi-capi --features link,midir,mdns,hub && cmake -S apps/desktop/qt -B /work/build-desktop-qt6-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt6-smoke --target DSPiConsoleSmoke"
+ci/run.sh "cargo build --release -p dspi-capi --features link,midir,mdns,hub && cmake -S apps/desktop/qt -B /work/build-desktop-qt-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt-smoke --target DSPiConsoleSmoke"
 
 # The node changes on every replug, so the whole of /dev/bus/usb (one devtmpfs, so
 # new nodes show up; `dev` because a volume is nodev by default) and real sysfs
@@ -37,4 +37,4 @@ exec podman run --rm -i --init --security-opt label=disable --network=none \
     -v "$PWD":/src:ro -v "$B/work/$branch":/work \
     -e HOME=/work/home -e TMPDIR=/work/tmp -e DSPI_SMOKE_HW=replug -w /src \
     "${DSPI_IMAGE:-localhost/dspi-coremerge:2}" \
-    apps/desktop/qt/smoke/run.sh /work/build-desktop-qt6-smoke/DSPiConsoleSmoke /work/smoke-replug
+    apps/desktop/qt/smoke/run.sh /work/build-desktop-qt-smoke/DSPiConsoleSmoke /work/smoke-replug
