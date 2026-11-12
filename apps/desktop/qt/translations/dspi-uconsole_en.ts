@@ -631,6 +631,304 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     </message>
 </context>
 <context>
+    <name>CoreVoltageController</name>
+    <message>
+        <source>Not started</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ready</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clearing the record</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Starting the trial</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Soaking</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Passed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Result unknown</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Trial found</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Trial left running</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ending the trial</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Trial ended</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Saving</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Saved</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not confirmed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 h %2 min</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 h</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 min %2 s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 min</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 s</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>CoreVoltagePage</name>
+    <message>
+        <source>Back</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Back to Advanced</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On the Device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reading…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Running at</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>(trial)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Saved</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Build default</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>, raised by the device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Automatic raising</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hangs this session</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Last failed trial</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1, hung after %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Calibrate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>State</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The device stopped answering. The result is still open.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 of %2 at %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Abort</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Trial voltage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Soak time</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 (suggested)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Calibrate…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Start…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Start a trial at %1 for %2? Nothing is saved; a hang or a reboot returns to the saved voltage.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep the trial at %1 and soak it for %2?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save %1 on the device? It runs at this voltage from now on, after every reboot.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>End Trial</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Confirm</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The core asks for its word for this voltage: type %1, exactly, to confirm.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Confirmation word</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Manual</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not available while a calibration runs.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Voltage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Trial…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Try %1 until the next reboot? Nothing is saved.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Go back to the build default (%1)?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Turn On…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Turn Off…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Turn on automatic raising</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Turn off automatic raising</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Let the device raise its saved voltage by itself after repeated hangs?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop the device from raising its saved voltage by itself?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clear…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Forget the hang count and the last failed trial</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Forget the hang count and the last failed trial?</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>CrossfeedPairMap</name>
     <message>
         <source>One DAC per ear (K340)</source>
@@ -6706,6 +7004,18 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Core Voltage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Calibrate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Soak</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Trial</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
