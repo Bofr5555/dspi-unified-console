@@ -181,6 +181,9 @@ void HubController::onEvent(int event, int code) {
     case HUB_EVENT_SESSION_OPENED:
         m_sessions.insert(code);
         emit stateChanged();
+        // -- WP QPI2 -- a client that just paired holds a token: count it in
+        // what a change of access would cost
+        readSaved();
         break;
     case HUB_EVENT_SESSION_CLOSED:
         m_sessions.remove(code);
@@ -249,6 +252,7 @@ void HubController::startHub() {
             m_lastError.clear();
             m_hubId = r.reply.value(QLatin1String("hubId")).toString();
             m_boundPort = r.reply.value(QLatin1String("port")).toInt();
+            m_lanAddress = lanAddress(); // -- WP QPI2 -- once per start, not per tray refresh
             m_ownDemo = r.demo;
             const QString name = r.reply.value(QLatin1String("name")).toString();
             if (!name.isEmpty() && name != m_hubName) {
@@ -473,7 +477,7 @@ void HubController::setRole(int cid, const QString &role) {
 
 QString HubController::address() const {
     if (!m_running || m_boundPort <= 0) return QString();
-    const QString ip = (m_extraOptions & HUB_OPT_LOOPBACK) ? QStringLiteral("127.0.0.1") : lanAddress();
+    const QString ip = (m_extraOptions & HUB_OPT_LOOPBACK) ? QStringLiteral("127.0.0.1") : m_lanAddress;
     return ip.isEmpty() ? QString() : QStringLiteral("%1:%2").arg(ip).arg(m_boundPort);
 }
 

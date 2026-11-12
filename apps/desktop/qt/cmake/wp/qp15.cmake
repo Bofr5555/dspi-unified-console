@@ -17,19 +17,14 @@ list(APPEND DSPI_QML_FILES
 list(APPEND DSPI_SMOKE_SOURCES smoke/SmokeFiles.cpp smoke/SmokeAutoEq.cpp)
 
 # The rebuild's fetch needs Qt Network, and the built-in AutoEQ database (the
-# one every client ships, crates/dspi-session/autoeq) is a resource. Both go on
-# the targets once they exist, at the end of the directory: the targets are
-# made after the work packages' lists are read.
-find_package(Qt6 6.8 REQUIRED COMPONENTS Network)
-function(dspi_qp15_targets)
-    foreach(target DSPiConsole DSPiConsoleSmoke)
-        if(TARGET ${target})
-            target_link_libraries(${target} PRIVATE Qt6::Network)
-            qt_add_resources(${target} dspi_qp15_autoeq
-                PREFIX "/autoeq"
-                BASE "${DSPI_REPO}/crates/dspi-session/autoeq"
-                FILES "${DSPI_REPO}/crates/dspi-session/autoeq/autoeq_database.json")
-        endif()
-    endforeach()
+# one every client ships, crates/dspi-session/autoeq) is a resource on each
+# target (-- WP QPI2 -- through the base's lists and hook)
+list(APPEND DSPI_QT_COMPONENTS Network)
+list(APPEND DSPI_APP_LIBS Qt6::Network)
+function(dspi_qp15_target target)
+    qt_add_resources(${target} dspi_qp15_autoeq
+        PREFIX "/autoeq"
+        BASE "${DSPI_REPO}/crates/dspi-session/autoeq"
+        FILES "${DSPI_REPO}/crates/dspi-session/autoeq/autoeq_database.json")
 endfunction()
-cmake_language(DEFER CALL dspi_qp15_targets)
+list(APPEND DSPI_APP_HOOKS dspi_qp15_target)

@@ -4,7 +4,7 @@ import UConsole
 
 // -- WP QP4 -- The on-graph PEQ editor in the graph's PeqOverlay slot
 // (GraphController.PeqOverlay, GraphPlot.qml): PeqOverlay draws the page's
-// channel and takes the pointer and the keys; on it sit the band chip, the
+// channel and takes the pointer and the keys; on it sit the
 // Ctrl-click shape card, the frequency and level readouts, and the band and
 // graph menus. It edits only while its graph follows the page, on the PEQ
 // tab, with a device that takes writes; otherwise it keeps only the dB zoom
@@ -81,11 +81,6 @@ Item {
                 font: Theme.fontCaption
                 color: Theme.tooltipText
             }
-        }
-
-        BandChip {
-            id: chip
-            editor: overlay
         }
 
         // ---- The Ctrl-click card: a shape, then its slope, for a band not made yet ----

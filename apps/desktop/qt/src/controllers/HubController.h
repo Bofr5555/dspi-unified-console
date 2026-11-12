@@ -155,6 +155,7 @@ private:
     QString m_access = QStringLiteral("pin");
     int m_port;
     int m_boundPort = 0;
+    QString m_lanAddress; // -- WP QPI2 -- read when the hub starts
     int m_ownDemo = -1;
     QSet<int> m_sessions;
     QVariantList m_clients;

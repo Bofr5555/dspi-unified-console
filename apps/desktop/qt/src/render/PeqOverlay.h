@@ -71,12 +71,10 @@ class PeqOverlay : public QQuickPaintedItem {
     Q_PROPERTY(bool ghostShown READ ghostShown NOTIFY viewChanged)
     Q_PROPERTY(bool marqueeShown READ marqueeShown NOTIFY viewChanged)
     Q_PROPERTY(bool animating READ animating NOTIFY viewChanged)
-    // The chip: its band (-1 hidden), place, size and what it shows
+    // The band the bar under the graph shows (PeqBandBar.qml; -1 none) and
+    // what it shows (-- WP QPI2 -- docked, the owner's choice over the
+    // Mac's chip beside the dot)
     Q_PROPERTY(int chipBand READ chipBand NOTIFY viewChanged)
-    Q_PROPERTY(double chipX READ chipX NOTIFY viewChanged)
-    Q_PROPERTY(double chipY READ chipY NOTIFY viewChanged)
-    Q_PROPERTY(double chipWidth READ chipWidth NOTIFY viewChanged)
-    Q_PROPERTY(double chipHeight READ chipHeight NOTIFY viewChanged)
     Q_PROPERTY(QVariantMap chip READ chip NOTIFY viewChanged)
     Q_PROPERTY(bool shapePage READ shapePage NOTIFY viewChanged)
     // The Ctrl-click card
@@ -92,7 +90,7 @@ class PeqOverlay : public QQuickPaintedItem {
     Q_PROPERTY(double levelY READ levelY NOTIFY viewChanged)
 
 public:
-    // The chip's and the card's metrics (the Mac's PeqBandHUD)
+    // The Ctrl-click card's metrics (the size of the Mac's PeqBandHUD)
     static constexpr double kChipWidth = 110;
     static constexpr double kChipFirstRow = 28;
     static constexpr double kChipRow = 15;
@@ -122,10 +120,6 @@ public:
     bool marqueeShown() const { return m_gesture.kind == Gesture::Marquee; }
     bool animating() const { return m_frame.isActive(); }
     int chipBand() const { return m_chipShown ? m_chipBand : -1; }
-    double chipX() const { return m_chipRect.x(); }
-    double chipY() const { return m_chipRect.y(); }
-    double chipWidth() const { return m_chipRect.width(); }
-    double chipHeight() const { return m_chipRect.height(); }
     QVariantMap chip() const { return m_chipInfo; }
     bool shapePage() const { return m_shapePage; }
     bool cardOpen() const { return m_cardPoint.has_value(); }
@@ -137,8 +131,10 @@ public:
     QString levelText() const { return m_levelText; }
     double levelY() const { return m_levelY; }
 
-    // The chip (BandChip.qml)
+    // The band bar (PeqBandBar.qml)
     Q_INVOKABLE void chipBypass();
+    Q_INVOKABLE void chipInvert(); // -- WP QPI2 --
+    Q_INVOKABLE void chipDelete(); // -- WP QPI2 --
     Q_INVOKABLE void chipToggleShapes();
     Q_INVOKABLE void chipPick(int shape, int order);
     // A typed value; false when it did not parse
@@ -329,7 +325,6 @@ private:
     // Chip and card
     void showChip(int b);
     void refreshChip();
-    void layoutChip();
     QRectF panelFrame(const QPointF &point, const QSizeF &size, bool boost) const;
     void pinChipToSelection();
     void scheduleChipHide();
@@ -344,6 +339,7 @@ private:
 
     QPointer<GraphController> m_graph;
     PeqEditorController *m_editor = nullptr;
+    QPointer<QQuickWindow> m_window; // -- WP QPI2 -- the window whose visibility we follow
     int m_pageChannel = -1;
     QColor m_curveColor{ Qt::white };
     QVariantList m_bandColorList;
@@ -384,8 +380,6 @@ private:
     bool m_chipShown = false;
     bool m_chipEditing = false;
     bool m_shapePage = false;
-    std::optional<QPointF> m_pagedOrigin;
-    QRectF m_chipRect;
     QVariantMap m_chipInfo;
     std::optional<FilterParams> m_chipAdjustStart;
     bool m_overChip = false;

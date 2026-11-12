@@ -18,6 +18,8 @@
 #include <cmath>
 
 static const GraphController::Slot peqOverlaySlot(GraphController::PeqOverlay, "PeqGraphOverlay");
+// -- WP QPI2 -- the band bar under the graph
+static const GraphController::Slot peqDockSlot(GraphController::PeqDock, "PeqBandBar");
 
 namespace {
 
@@ -108,6 +110,9 @@ void PeqOverlay::setGraph(GraphController *g) {
         m_editor = Registrar::instance<PeqEditorController>();
         if (m_editor) {
             connect(m_editor, &PeqEditorController::selectionChanged, this, [this] {
+                // -- WP QPI2 -- an overlay that edits nothing (a closed pop-out's)
+                // has no bands to pin the chip to
+                if (!editing()) return;
                 const QSet<int> &s = selection();
                 if (s.size() == 1) m_rangeAnchor = *s.cbegin();
                 pinChipToSelection();
@@ -173,8 +178,13 @@ void PeqOverlay::setInk(const QColor &c) {
 void PeqOverlay::itemChange(ItemChange what, const ItemChangeData &data) {
     QQuickPaintedItem::itemChange(what, data);
     if (what == ItemVisibleHasChanged || what == ItemSceneChange) {
-        if (what == ItemSceneChange && data.window)
-            connect(data.window, &QWindow::visibleChanged, this, &PeqOverlay::reconfigure, Qt::UniqueConnection);
+        // -- WP QPI2 -- follow only the window the item is in now
+        if (what == ItemSceneChange) {
+            if (m_window) disconnect(m_window, &QWindow::visibleChanged, this, &PeqOverlay::reconfigure);
+            m_window = data.window;
+            if (m_window)
+                connect(m_window, &QWindow::visibleChanged, this, &PeqOverlay::reconfigure, Qt::UniqueConnection);
+        }
         QMetaObject::invokeMethod(this, &PeqOverlay::reconfigure, Qt::QueuedConnection);
     }
 }
@@ -256,6 +266,9 @@ void PeqOverlay::configure() {
     }
     updateOwnership();
     refreshChip();
+    // -- WP QPI2 -- an editor taking over (the pop-out, a page) shows the
+    // selection in its band bar at once
+    if (old != next && next >= 0) pinChipToSelection();
     invalidate();
     if (old != next) emit viewChanged();
 }
@@ -283,7 +296,6 @@ void PeqOverlay::resetInteraction() {
     m_chipShown = false;
     m_chipBand = -1;
     m_shapePage = false;
-    m_pagedOrigin.reset();
     m_chipEditing = false;
     m_chipHide.stop();
     m_reveal.stop();
@@ -408,8 +420,10 @@ int PeqOverlay::freeSlot() const {
 }
 
 QList<int> PeqOverlay::frequencyOrder(QList<int> bands) const {
+    // -- WP QPI2 -- through current(), which checks the index
     std::sort(bands.begin(), bands.end(), [this](int a, int b) {
-        return m_shown[a].freq != m_shown[b].freq ? m_shown[a].freq < m_shown[b].freq : a < b;
+        const float fa = current(a).freq, fb = current(b).freq;
+        return fa != fb ? fa < fb : a < b;
     });
     return bands;
 }
@@ -456,7 +470,7 @@ QSet<int> PeqOverlay::targets(int b) const { return selection().contains(b) ? se
 // shows if selected, else the anchor, else the lowest
 int PeqOverlay::selectedChipBand() const {
     const QSet<int> &s = selection();
-    if (s.isEmpty()) return -1;
+    if (s.isEmpty() || !editing()) return -1; // -- WP QPI2 --
     if (m_chipShown && s.contains(m_chipBand)) return m_chipBand;
     if (s.contains(m_rangeAnchor)) return m_rangeAnchor;
     return frequencyOrder(QList<int>(s.cbegin(), s.cend())).value(0, -1);
@@ -537,7 +551,6 @@ bool PeqOverlay::advance(double t) {
             const double eased = 1 - std::pow(1 - f, 3);
             for (int b = 0; b < target.size(); ++b) m_shown[b] = Peq::blend((*m_animFrom)[b], target[b], eased);
             running = true;
-            layoutChip();
         }
     }
 
@@ -745,7 +758,6 @@ void PeqOverlay::paint(QPainter *canvas) {
 void PeqOverlay::geometryChange(const QRectF &now, const QRectF &before) {
     QQuickPaintedItem::geometryChange(now, before);
     if (now.size() == before.size()) return;
-    layoutChip();
     rebuild();
 }
 
@@ -982,23 +994,16 @@ void PeqOverlay::updateHover(const QPointF &p) {
         invalidate();
         return;
     }
-    if (m_chipShown && (m_overChip || m_chipRect.adjusted(-4, -4, 4, 4).contains(p))) {
-        m_chipHide.stop();
-        m_ghost.reset();
-        hideReadouts();
-        unsetCursor();
-        invalidate();
-        return;
-    }
     const int dot = dotUnder(p);
     setHovered(dot >= 0 ? dot : fillUnder(p));
+    // -- WP QPI2 -- The band bar under the graph (the owner's choice over the
+    // Mac's chip at the dot) shows the selection: a hovered dot only lights.
+    // A band a gesture showed without selecting it stays while the pointer is on it.
     const int pin = selectedChipBand();
     if (pin >= 0) {
-        // The chip stays on the selection; another band only lights
         if (!m_chipShown || m_chipBand != pin) showChip(pin);
-    } else if (dot >= 0) {
-        if (m_chipBand != dot || !m_chipShown) showChip(dot);
-        else m_chipHide.stop();
+    } else if (dot >= 0 && m_chipShown && m_chipBand == dot) {
+        m_chipHide.stop();
     } else if (m_chipShown && !m_chipEditing) {
         scheduleChipHide();
     }
@@ -1392,8 +1397,7 @@ bool PeqOverlay::handleWheel(const QPointF &p, double rawDelta, Qt::KeyboardModi
     } else if (!begins && isBand(m_wheelTarget) && t - m_wheelTime < kWheelSession && (owner < 0 || selection().contains(m_wheelTarget))) {
         target = m_wheelTarget;
     } else {
-        // The chip is drawn over the graph, so it wins over a band beneath it
-        const int under = m_chipShown && m_chipRect.contains(p) ? m_chipBand : bandUnder(p);
+        const int under = bandUnder(p);
         if (under >= 0) target = owner >= 0 ? owner : under;
     }
     if (target < 0) {
@@ -1689,26 +1693,14 @@ void PeqOverlay::refreshChip() {
         rows << row(Peq::Freq, tr("f0"), f0.first, f0.second, false);
         rows << row(Peq::Gain, tr("fp"), fp.first, fp.second, false);
     }
+    // -- WP QPI2 -- for the bar: the slope a cut or all-pass can step to,
+    // invert while the band has a gain
+    info[QStringLiteral("invertible")] = Peq::usesGain(p.filter_type);
+    info[QStringLiteral("deleteTip")] = tr("Delete Band");
+    info[QStringLiteral("invertTip")] = tr("Invert Gain");
     info[QStringLiteral("rows")] = rows;
     m_chipInfo = info;
-    layoutChip();
     emit viewChanged();
-}
-
-void PeqOverlay::layoutChip() {
-    if (m_chipBand < 0 || !isBand(m_chipBand)) return;
-    const int rows = m_chipInfo.value(QStringLiteral("rows")).toList().size();
-    QSizeF size(kChipWidth, kChipFirstRow + rows * kChipRow + kChipBottom);
-    // The shape page holds still where it opened: a pick moves the dot, and a
-    // chip that followed it would leave the pointer behind
-    if (m_shapePage && m_pagedOrigin) {
-        m_chipRect = QRectF(*m_pagedOrigin, m_chipRect.size());
-        return;
-    }
-    m_pagedOrigin.reset();
-    const FilterParams p = current(m_chipBand);
-    m_chipRect = panelFrame(dotOf(p), size, Peq::dotDb(Peq::roleOf(p), p) >= 0);
-    if (m_shapePage) m_pagedOrigin = m_chipRect.topLeft();
 }
 
 // Where a panel of `size` sits beside `point`: away from 0 dB first, so a chip
@@ -1765,8 +1757,6 @@ void PeqOverlay::hideChip() {
 void PeqOverlay::closeShapePage() {
     if (!m_shapePage) return;
     m_shapePage = false;
-    m_pagedOrigin.reset();
-    layoutChip();
     emit viewChanged();
 }
 
@@ -1778,12 +1768,22 @@ void PeqOverlay::chipToggleShapes() {
     }
     if (!m_chipInfo.value(QStringLiteral("reshapable")).toBool()) return;
     m_shapePage = true;
-    m_pagedOrigin = m_chipRect.topLeft();
     emit viewChanged();
 }
 
 void PeqOverlay::chipBypass() {
     if (m_chipShown) toggleBypass(targets(m_chipBand));
+}
+
+// -- WP QPI2 -- the bar's invert and delete, on the selection as the band menu's
+void PeqOverlay::chipInvert() {
+    if (m_chipShown && Peq::usesGain(current(m_chipBand).filter_type)) invertGain(targets(m_chipBand));
+}
+
+void PeqOverlay::chipDelete() {
+    if (!m_chipShown) return;
+    deleteBands(targets(m_chipBand));
+    hideChip();
 }
 
 void PeqOverlay::chipPick(int shape, int order) {

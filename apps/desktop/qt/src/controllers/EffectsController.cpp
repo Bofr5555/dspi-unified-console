@@ -18,11 +18,6 @@ static const Registrar::Window psybassWindow("tools.psybass", "PsybassWindow");
 
 namespace {
 
-// dspi_proto::wire_compat::feat bits the header does not export yet
-constexpr uint32_t kFeatLevellerMasks = 1u << 1;
-constexpr uint32_t kFeatLoudnessMask = 1u << 2;
-constexpr uint32_t kFeatCrossfeedMask = 1u << 3;
-
 // The crossfeed presets' own values (Default, Chu Moy, Jan Meier); Custom uses the device's
 struct CrossfeedPresetRow {
     const char *name;
@@ -191,7 +186,7 @@ int EffectsController::crossfeedPairMask() const {
     return connected() ? m_ctx.device->state()->crossfeed_output_pair_mask : 0x01;
 }
 bool EffectsController::crossfeedMaskSupported() const {
-    return connected() && (m_ctx.device->snapshot().wireFeatures & kFeatCrossfeedMask) != 0;
+    return connected() && (m_ctx.device->snapshot().wireFeatures & WIRE_FEAT_CROSSFEED_MASK) != 0;
 }
 // The stereo slots: 2 on RP2040, 4 on RP2350 (the mono PDM sub is never in a pair)
 int EffectsController::crossfeedPairCount() const {
@@ -268,7 +263,7 @@ double EffectsController::loudnessIntensity() const {
 }
 int EffectsController::loudnessMask() const { return connected() ? m_ctx.device->state()->loudness_output_mask : 0xFFFF; }
 bool EffectsController::loudnessMaskSupported() const {
-    return connected() && (m_ctx.device->snapshot().wireFeatures & kFeatLoudnessMask) != 0;
+    return connected() && (m_ctx.device->snapshot().wireFeatures & WIRE_FEAT_LOUDNESS_MASK) != 0;
 }
 
 void EffectsController::setLoudnessRef(double spl) {
@@ -316,7 +311,7 @@ int EffectsController::levellerApplyMask() const { return connected() ? m_ctx.de
 // The inputs the app shows (2..8), as the sidebar lists them
 int EffectsController::levellerChannels() const { return std::clamp(m_ctx.device->channels()->inputCount(), 2, 8); }
 bool EffectsController::levellerMasksShown() const {
-    return connected() && (m_ctx.device->snapshot().wireFeatures & kFeatLevellerMasks) != 0 &&
+    return connected() && (m_ctx.device->snapshot().wireFeatures & WIRE_FEAT_LEVELLER_MASKS) != 0 &&
            m_ctx.device->state()->num_input_channels > 2 && levellerChannels() > 2;
 }
 

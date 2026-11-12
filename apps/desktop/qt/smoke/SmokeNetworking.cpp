@@ -221,7 +221,7 @@ void networkingSection(SmokeDriver &d) {
             d.waitFor(1000, [&]() { return item("Networking.client.0.role")->property("currentIndex").toInt() == 0; }));
 
     // ---- Access: going Open would cost this client, so the page asks first ----
-    hub->refresh();
+    // -- WP QPI2 -- no refresh: the pairing above must have counted itself
     d.check(QStringLiteral("qp14: what going Open would cost"),
             d.waitFor(5000, [&]() { return hub->revokeCost(QStringLiteral("none")) == 1 && hub->revokeCost(QStringLiteral("pin")) == 0; }));
     QQuickItem *access = item("Networking.access");

@@ -214,6 +214,12 @@ void outputRow(Matrix &m) {
     // GAIN
     m.type(QStringLiteral("Matrix.gain.%1").arg(o), QStringLiteral("-4.5"));
     d.check(QStringLiteral("qp6: GAIN sets the output's gain"), near(m.s()->output_gain_db[o], -4.5));
+    // -- WP QPI2 -- the output's range is the device's, +20 dB as on the card
+    m.type(QStringLiteral("Matrix.gain.%1").arg(o), QStringLiteral("18"));
+    d.check(QStringLiteral("qpi2: the OUTPUT GAIN takes +18 dB, past the crosspoints' +12"), near(m.s()->output_gain_db[o], 18));
+    m.type(QStringLiteral("Matrix.gain.%1").arg(o), QStringLiteral("25"));
+    d.check(QStringLiteral("qpi2: and holds a gain above +20 dB at +20"), near(m.s()->output_gain_db[o], 20));
+    m.type(QStringLiteral("Matrix.gain.%1").arg(o), QStringLiteral("-4.5"));
     // DELAY: kept as typed, past the device's line refused
     m.type(QStringLiteral("Matrix.delay.%1").arg(o), QStringLiteral("2.5"));
     d.check(QStringLiteral("qp6: DELAY keeps a typed 2.5 ms"), near(m.s()->output_delay_ms[o], 2.5));

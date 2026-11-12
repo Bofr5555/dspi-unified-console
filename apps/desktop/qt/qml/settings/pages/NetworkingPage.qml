@@ -112,7 +112,7 @@ SettingsPage {
                     Layout.fillWidth: true
                     text: HubController.busy
                           ? (HubController.sharing ? qsTr("Starting…") : qsTr("Stopping…"))
-                          : qsTr("Lets phones, browsers and other consoles control the DSPi devices plugged into this computer.")
+                          : qsTr("Lets phones, browsers and other consoles control the DSPi devices plugged in here.")
                     font: Theme.fontBody
                     color: Theme.textMuted
                     wrapMode: Text.Wrap
@@ -252,7 +252,7 @@ SettingsPage {
     SettingsGroup {
         title: qsTr("This Hub")
         iconName: "radio"
-        footer: [qsTr("Other consoles see this computer as a hub with this name. Sharing works on your local network only. To reach it from elsewhere, use a VPN such as Tailscale. Don't forward the port on your router."),
+        footer: [qsTr("Other consoles see this console as a hub with this name. Sharing works on your local network only. To reach it from elsewhere, use a VPN such as Tailscale. Don't forward the port on your router."),
                  qsTr("The pairing code crosses the network as plain text, without encryption."),
                  HubController.running ? qsTr("Turn sharing off to change the port.") : ""]
                 .filter(line => line.length > 0).join("\n")

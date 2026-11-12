@@ -6,6 +6,7 @@
 #include <QtQml/qqmlregistration.h>
 
 struct DeviceSnapshot;
+struct DspState;
 
 // The sidebar's rows: the device's inputs, then every output, from the last
 // snapshot. Output rows carry the core's label ("Out 1 · R · Low" while the
@@ -36,7 +37,10 @@ public:
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
+    // The input rows: the strips the input source feeds (effectiveInputs).
+    // The wire's input count (where the outputs start) is DspState's.
     int inputCount() const;
+    static int effectiveInputs(const DspState &s); // -- WP QPI2 --
 
     // The row of a wire channel, -1 if none.
     Q_INVOKABLE int rowOfChannel(int channel) const;

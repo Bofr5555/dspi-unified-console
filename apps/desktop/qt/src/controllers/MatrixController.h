@@ -58,6 +58,8 @@ public:
     // The Mac's compact fields: gains from -60 to +12 dB
     static constexpr double GainMin = -60.0;
     static constexpr double GainMax = 12.0;
+    // -- WP QPI2 -- an output's gain: the device's range, as the output card's
+    static constexpr double OutputGainMax = 20.0;
 
     MatrixModel *model() const { return m_model; }
     int revision() const { return m_revision; }

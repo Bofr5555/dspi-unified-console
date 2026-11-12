@@ -250,7 +250,7 @@ void MatrixController::confirmEnable(int output) {
 void MatrixController::setOutputGain(int output, double db) {
     ChannelController *cc = channels();
     if (!writable() || !cc || !std::isfinite(db) || output < 0 || output >= columns()) return;
-    cc->setOutputGain(output, qBound(GainMin, db, GainMax));
+    cc->setOutputGain(output, qBound(GainMin, db, OutputGainMax)); // -- WP QPI2 --
 }
 
 void MatrixController::setOutputDelay(int output, double ms) {

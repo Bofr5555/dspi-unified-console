@@ -341,8 +341,8 @@ void TrayController::restore() {
         for (const QPointer<QWindow> &w : std::as_const(m_hiddenTools))
             if (w) w->show();
         m_hiddenTools.clear();
-    } else if (m_main->visibility() == QWindow::Minimized) {
-        m_main->showNormal();
+    } else if (m_main->visibility() == QWindow::Minimized || !m_main->isVisible()) {
+        m_main->showNormal();   // -- WP QPI2 -- hidden by anyone, not only the tray
     }
     m_main->raise();
     m_main->requestActivate();

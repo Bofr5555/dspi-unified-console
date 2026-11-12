@@ -57,6 +57,8 @@ public:
     Q_INVOKABLE void applyFilters(const QVariantList &wires);
     Q_INVOKABLE void applyConfiguration(bool volumes, bool hardware);
     Q_INVOKABLE void cancelImport();
+    // -- WP QPI2 -- the Device menu's question answered: `op` as deviceQuestion gave it
+    Q_INVOKABLE void answerDevice(const QString &op, const QString &answer);
 
     // A file dialog (the system's; the portal's on Linux) that calls `done`
     // with the chosen path. `save`: a save dialog starting at `name`.
@@ -75,6 +77,10 @@ signals:
     void configurationOptions(const QString &prompt);
     // An alert: `error` gives it the error look
     void notice(const QString &title, const QString &text, bool error);
+    // -- WP QPI2 -- Commit, Revert to Saved, Factory Reset ask first; `op`
+    // goes back in answerDevice()
+    void deviceQuestion(const QString &op, const QString &title, const QString &text, const QString &acceptText,
+                        bool destructive);
 
 private:
     void wire(QQuickWindow *window);

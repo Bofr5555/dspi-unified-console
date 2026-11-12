@@ -12,17 +12,9 @@ list(APPEND DSPI_SMOKE_SOURCES
     smoke/SmokeSystem.cpp)
 
 # The address line needs Qt Network (QNetworkInterface); the firewall rows need
-# Windows' IP helper and shell. The targets are made after this file is read, so
-# the libraries are added once they exist.
-find_package(Qt6 6.8 REQUIRED COMPONENTS Network)
-function(dspi_qp14_link)
-    foreach(target DSPiConsole DSPiConsoleSmoke)
-        if(TARGET ${target})
-            target_link_libraries(${target} PRIVATE Qt6::Network)
-            if(WIN32)
-                target_link_libraries(${target} PRIVATE iphlpapi shell32)
-            endif()
-        endif()
-    endforeach()
-endfunction()
-cmake_language(DEFER CALL dspi_qp14_link)
+# Windows' IP helper and shell (-- WP QPI2 -- through the base's lists)
+list(APPEND DSPI_QT_COMPONENTS Network)
+list(APPEND DSPI_APP_LIBS Qt6::Network)
+if(WIN32)
+    list(APPEND DSPI_APP_LIBS iphlpapi shell32)
+endif()

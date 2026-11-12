@@ -11,8 +11,10 @@
 #include <QQmlApplicationEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QThread>
 #include <QTimer>
 #include <algorithm>
+#include <csignal>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -22,13 +24,41 @@
 #include <thread>
 #include <utility>
 #include <vector>
+#if defined(__GLIBC__)
+#include <execinfo.h>
+#include <unistd.h>
+#endif
 
 
 // QML runtime errors fail the run (TypeError, ReferenceError, a broken binding)
 static int g_qmlErrors = 0;
 static QtMessageHandler g_previous = nullptr;
 
+// -- WP QPI2 -- A crash or a cross-thread timer warning prints a backtrace and
+// the thread, so a flaky run names the object and the thread that broke
+// (review w2, the qp0-core timer crash). Symbols need -rdynamic to read well.
+#if defined(__GLIBC__)
+static void printBacktrace(const char *why) {
+    char head[320];
+    const QThread *t = QThread::currentThread();
+    const int n = snprintf(head, sizeof head, "smoke: BACKTRACE %s on thread %p %s%s\n", why,
+                           reinterpret_cast<void *>(QThread::currentThreadId()), t && t->isMainThread() ? "(main) " : "",
+                           t ? qPrintable(t->objectName()) : "");
+    if (n > 0) (void)!write(2, head, size_t(qMin(n, int(sizeof head) - 1)));
+    void *frames[64];
+    backtrace_symbols_fd(frames, backtrace(frames, 64), 2);
+}
+static void crashHandler(int sig) {
+    printBacktrace(sig == SIGSEGV ? "SIGSEGV" : sig == SIGBUS ? "SIGBUS" : "SIGABRT");
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+#endif
+
 static void messageHandler(QtMsgType type, const QMessageLogContext &ctx, const QString &msg) {
+#if defined(__GLIBC__)
+    if (msg.contains(QLatin1String("another thread"))) printBacktrace(qPrintable(msg));
+#endif
     if (type != QtDebugMsg && msg.contains(QLatin1String("qrc:/")) && !msg.contains(QLatin1String("deprecated"))) {
         g_qmlErrors++;
         fprintf(stderr, "FAIL qml: %s\n", qPrintable(msg));
@@ -117,6 +147,9 @@ SmokeDriver::Section::Section(const char *name, int order, SectionFn run) {
 void SmokeDriver::start() {
     m_out = qEnvironmentVariable("DSPI_SMOKE_OUT", QDir::currentPath());
     g_previous = qInstallMessageHandler(messageHandler);
+#if defined(__GLIBC__)
+    for (int sig : { SIGSEGV, SIGBUS, SIGABRT }) signal(sig, crashHandler); // -- WP QPI2 --
+#endif
     // The hardware, replug and tray passes come back with QP19 and QP14
     for (const char *mode : { "DSPI_SMOKE_HW", "DSPI_SMOKE_TRAY", "DSPI_SMOKE_PSEUDO", "DSPI_SMOKE_DEMO_ENTRY" }) {
         if (!qEnvironmentVariableIsEmpty(mode)) {

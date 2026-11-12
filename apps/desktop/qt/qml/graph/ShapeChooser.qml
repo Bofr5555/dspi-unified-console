@@ -5,7 +5,7 @@ import UConsole
 // a header with a back arrow and the shape's name, a grid of the shapes the
 // firmware offers, and for a shape with two orders a second step with its two
 // slopes (or all-pass phases). Only the last click reports, with shape and
-// order together. The band chip shows it as its shape page, marking the
+// order together. The band bar (PeqBandBar) opens it from its shape button, marking the
 // band's own shape; the Ctrl-click card shows it for a band not made yet.
 Item {
     id: chooser
@@ -16,7 +16,7 @@ Item {
     property color markColor: Theme.text
     // What the back arrow does on the first step
     property string backHelp
-    property string namePrefix: "PeqChip.shapes"
+    property string namePrefix: "PeqBar.shapes"
 
     // Step two's shape, and the shape under the pointer on step one
     property int pendingShape: -1

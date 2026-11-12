@@ -385,6 +385,7 @@ ToolWindow {
                                 objectName: "Matrix.gain." + gainCell.index
                                 anchors.centerIn: parent
                                 kind: "gain"
+                                maxValue: 20 // -- WP QPI2 -- the device's output range, as the card's
                                 value: gainCell.col ? gainCell.col.gain : 0
                                 label: qsTr("%1 gain").arg(gainCell.col ? gainCell.col.label : "")
                                 enabled: MatrixController.writable

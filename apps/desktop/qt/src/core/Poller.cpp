@@ -72,8 +72,10 @@ Poller::Id Poller::addRunner(const QString &name, int intervalMs, QObject *ctx, 
 }
 
 void Poller::remove(Id id) {
-    // A read in flight finds no poll when it comes back, and is dropped
-    m_polls.remove(id);
+    // A read in flight finds no poll when it comes back, and is dropped.
+    // -- WP QPI2 -- the timer stops here, on the GUI thread, whoever still
+    // holds the poll
+    if (const std::shared_ptr<Poll> poll = m_polls.take(id)) poll->timer.stop();
 }
 
 void Poller::setEnabled(Id id, bool enabled) {
@@ -129,11 +131,14 @@ void Poller::tick(Id id) {
     poll->inFlight = true;
     ++poll->counts.posted;
     Runner run = poll->run;
+    // -- WP QPI2 -- the read's closures carry the poll's id, never the poll:
+    // only m_polls (the GUI thread) owns a Poll and its timer
     m_core->worker()->call(
         this, [run](FfiCore *c) mutable { return run(c); },
-        [this, id, poll](std::function<void()> apply) {
+        [this, id](std::function<void()> apply) {
+            const std::shared_ptr<Poll> poll = m_polls.value(id);
+            if (!poll) return;
             poll->inFlight = false;
-            if (!m_polls.contains(id)) return;
             ++poll->counts.completed;
             if (poll->hasCtx && !poll->ctx) return;
             apply();

@@ -20,6 +20,7 @@
 #include "SidebarController.h"
 #include "render/PeqOverlay.h"
 
+#include <QGuiApplication>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSignalSpy>
@@ -170,28 +171,48 @@ void hoverAndCreate(Peqs &p) {
     d.check(QStringLiteral("qp4: at the pointer's frequency and level"),
             nearRatio(b0.freq, p.freqAt(local.x()), 0.01) && near(b0.gain, p.dbAt(local.y()), 0.11) && near(b0.q, 1.0, 1e-3));
     d.check(QStringLiteral("qp4: the new band is selected"), p.selected() == QSet<int>{ 0 });
-    d.check(QStringLiteral("qp4: and its chip shows"), p.ov->chipBand() == 0);
-    QObject *chip = p.obj(QStringLiteral("PeqChip"));
-    const QRectF chipRect(p.ov->chipX(), p.ov->chipY(), p.ov->chipWidth(), p.ov->chipHeight());
-    d.check(QStringLiteral("qp4: the chip sits beside the dot, inside the plot"),
-            chip && chip->property("visible").toBool() && !chipRect.adjusted(-8, -8, 8, 8).contains(p.ov->dotPoint(0))
-                && QRectF(0, 0, p.ov->width(), p.ov->height()).contains(chipRect));
-    d.check(QStringLiteral("qp4: the chip's rows are Freq, Gain and Width"),
-            p.obj(QStringLiteral("PeqChip.row.0")) && p.obj(QStringLiteral("PeqChip.row.1")) && p.obj(QStringLiteral("PeqChip.row.2")));
-    QObject *gainRow = p.obj(QStringLiteral("PeqChip.row.1"));
-    d.check(QStringLiteral("qp4: the gain row shows the band's gain, cut to two places"),
-            gainRow && gainRow->property("shownName").toString() == Peq::truncated(p.ed->band(p.ch, 0, false).gain, true) + QStringLiteral(" dB"));
-    d.check(QStringLiteral("qp4: screenshot of a band with its chip"), d.grab(p.w, QStringLiteral("window-main-peq-chip.png")));
+    // -- WP QPI2 -- the band bar docked under the graph (the owner's choice
+    // over the chip beside the dot)
+    d.check(QStringLiteral("qp4: and the band bar shows it"), p.ov->chipBand() == 0);
+    auto *bar = qobject_cast<QQuickItem *>(p.obj(QStringLiteral("PeqBar")));
+    auto *plotItem = qobject_cast<QQuickItem *>(p.obj(QStringLiteral("GraphHost.plot")));
+    QObject *barBand = p.obj(QStringLiteral("PeqBar.band"));
+    const QRectF barRect = bar ? bar->mapRectToScene(QRectF(0, 0, bar->width(), bar->height())) : QRectF();
+    const QRectF plotRect = plotItem ? plotItem->mapRectToScene(QRectF(0, 0, plotItem->width(), plotItem->height())) : QRectF();
+    d.check(QStringLiteral("qpi2: the bar sits right under the graph, as wide, inside the window"),
+            bar && bar->isVisible() && barRect.top() >= plotRect.bottom() && barRect.top() - plotRect.bottom() <= 8
+                && qAbs(barRect.width() - plotRect.width()) < 1 && barRect.bottom() <= p.w->height());
+    d.check(QStringLiteral("qpi2: it names the band"), barBand && barBand->property("text").toString() == QLatin1String("Band 1"));
+    QObject *tag = p.obj(QStringLiteral("PeqBar.channelTag"));
+    d.check(QStringLiteral("qpi2: and tags its channel with the channel's colour, small"),
+            tag && tag->property("width").toDouble() <= 8 && tag->property("color").value<QColor>() == p.ov->curveColor());
+    for (int f : { 0, 1, 2 })
+        d.check(QStringLiteral("qpi2: the bar has the %1 field").arg(f == 0 ? QStringLiteral("Freq") : f == 1 ? QStringLiteral("Gain") : QStringLiteral("Q")),
+                p.obj(QStringLiteral("PeqBar.input.%1").arg(f)) && p.obj(QStringLiteral("PeqBar.input.%1").arg(f))->property("enabled").toBool());
+    for (const char *b : { "shape", "bypass", "invert", "delete" })
+        d.check(QStringLiteral("qpi2: and the %1 button").arg(QLatin1String(b)), p.obj(QStringLiteral("PeqBar.") + QLatin1String(b)) != nullptr);
+    QObject *gainField = p.obj(QStringLiteral("PeqBar.input.1"));
+    d.check(QStringLiteral("qp4: the gain field shows the band's gain, cut to two places"),
+            gainField && gainField->property("text").toString() == Peq::truncated(p.ed->band(p.ch, 0, false).gain, true));
+    d.check(QStringLiteral("qpi2: screenshot of a band in the bar"), d.grab(p.w, QStringLiteral("window-main-peq-bar.png")));
 
-    // A click on empty graph deselects and lets the chip go at once
+    // A click on empty graph deselects, and the bar says how to pick a band
     QTest::mouseClick(p.w, Qt::LeftButton, Qt::NoModifier, p.empty(0.2, -18));
     p.settle();
     d.check(QStringLiteral("qp4: a click on empty graph deselects"), p.selected().isEmpty() && p.ov->chipBand() < 0);
+    QObject *placeholder = p.obj(QStringLiteral("PeqBar.placeholder"));
+    d.check(QStringLiteral("qpi2: with nothing selected the bar stays, with its placeholder"),
+            bar && bar->isVisible() && placeholder && placeholder->property("visible").toBool());
+    d.check(QStringLiteral("qpi2: screenshot of the empty bar"), d.grab(p.w, QStringLiteral("window-main-peq-bar-empty.png")));
+    // Hovering a dot that is not selected lights it and leaves the bar alone
+    p.hover(p.dot(0) + QPoint(1, 0));
+    p.hover(p.dot(0));
+    d.check(QStringLiteral("qpi2: hovering a dot does not put it in the bar"), p.ov->pointedBand() == 0 && p.ov->chipBand() < 0);
 
     // Double-click on a dot: type its values
     QTest::mouseDClick(p.w, Qt::LeftButton, Qt::NoModifier, p.dot(0));
     p.settle();
-    QObject *input = p.obj(QStringLiteral("PeqChip.input.0"));
+    QObject *input = p.obj(QStringLiteral("PeqBar.input.0"));
     d.check(QStringLiteral("qp4: a double-click on a dot opens its frequency for typing"),
             input && input->property("visible").toBool() && input->property("activeFocus").toBool());
     d.check(QStringLiteral("qp4: the field starts with the bare number"),
@@ -202,7 +223,7 @@ void hoverAndCreate(Peqs &p) {
         p.settle();
     }
     d.check(QStringLiteral("qp4: \"2k\" types 2 kHz"), near(p.band(0).freq, 2000, 0.5));
-    QObject *gainInput = p.obj(QStringLiteral("PeqChip.input.1"));
+    QObject *gainInput = p.obj(QStringLiteral("PeqBar.input.1"));
     d.check(QStringLiteral("qp4: Tab moves on to the gain"), gainInput && gainInput->property("activeFocus").toBool());
     if (gainInput) {
         gainInput->setProperty("text", QStringLiteral("-3.5 dB"));
@@ -316,10 +337,10 @@ void pullAndMarquee(Peqs &p) {
         QTest::mouseClick(p.w, Qt::LeftButton, Qt::AltModifier, p.dot(1));
         p.settle();
         d.check(QStringLiteral("qp4: Alt-click bypasses a band"), p.band(1).bypass && !p.band(0).bypass);
-        QObject *power = p.obj(QStringLiteral("PeqChip.bypass"));
+        QObject *power = p.obj(QStringLiteral("PeqBar.bypass"));
         if (power) QMetaObject::invokeMethod(power, "clicked");
         p.settle();
-        d.check(QStringLiteral("qp4: the chip's power button enables it again"), !p.band(1).bypass);
+        d.check(QStringLiteral("qp4: the bar's power button enables it again"), !p.band(1).bypass);
     }
 }
 
@@ -375,11 +396,12 @@ void wheelAndKeys(Peqs &p) {
     d.check(QStringLiteral("qp4: Tab after Escape goes on from the last band"), p.selected() == QSet<int>{ 1 });
     p.key(Qt::Key_Return);
     p.settle();
-    QObject *input = p.obj(QStringLiteral("PeqChip.input.0"));
-    d.check(QStringLiteral("qp4: Enter opens the chip's values for typing"), input && input->property("visible").toBool());
+    QObject *input = p.obj(QStringLiteral("PeqBar.input.0"));
+    d.check(QStringLiteral("qp4: Enter opens the bar's values for typing"), input && input->property("visible").toBool());
     QTest::keyClick(p.w, Qt::Key_Escape);
     p.settle();
-    d.check(QStringLiteral("qp4: Escape in the field leaves the band as it was"), input && !input->property("visible").toBool());
+    d.check(QStringLiteral("qp4: Escape in the field leaves the band as it was, and the keys go back to the graph"),
+            input && !input->property("activeFocus").toBool() && p.ov->hasActiveFocus() && p.selected() == QSet<int>{ 1 });
     p.ov->forceActiveFocus();
     QSignalSpy menus(p.ov, &PeqOverlay::menuRequested);
     p.key(Qt::Key_F10, Qt::ShiftModifier);
@@ -431,25 +453,28 @@ void chipShapesCardMenus(Peqs &p) {
     p.settle();
     d.check(QStringLiteral("qp4: a click beside the card closes it, adding nothing"), !p.ov->cardOpen() && p.band(1).filter_type == FILTER_FLAT);
 
-    // The chip's shape page: High Cut, then 12 dB
+    // The bar's shape chooser: High Cut, then 12 dB
     QTest::mouseClick(p.w, Qt::LeftButton, Qt::NoModifier, p.dot(0));
     p.settle();
-    p.ov->chipToggleShapes();
+    QObject *shapeButton = p.obj(QStringLiteral("PeqBar.shape"));
+    if (shapeButton) QTest::mouseClick(p.w, Qt::LeftButton, Qt::NoModifier, centre(shapeButton));
     p.settle();
-    d.check(QStringLiteral("qp4: the chip turns to its shape page"), p.ov->shapePage());
-    QObject *own = p.obj(QStringLiteral("PeqChip.shapes.shape.%1").arg(Peq::LowShelf));
+    QObject *shapesPopup = p.obj(QStringLiteral("PeqBar.shapesPopup"));
+    d.check(QStringLiteral("qp4: the bar's shape button opens the shape chooser"),
+            p.ov->shapePage() && shapesPopup && d.waitFor(1000, [&]() { return shapesPopup->property("opened").toBool(); }));
+    QObject *own = p.obj(QStringLiteral("PeqBar.shapes.shape.%1").arg(Peq::LowShelf));
     d.check(QStringLiteral("qp4: the page marks the band's own shape"), own && own->property("marked").toBool());
     d.check(QStringLiteral("qp4: screenshot of the shape page"), d.grab(p.w, QStringLiteral("window-main-peq-shapes.png")));
-    QObject *highCut = p.obj(QStringLiteral("PeqChip.shapes.shape.%1").arg(Peq::HighCut));
+    QObject *highCut = p.obj(QStringLiteral("PeqBar.shapes.shape.%1").arg(Peq::HighCut));
     if (highCut) QTest::mouseClick(p.w, Qt::LeftButton, Qt::NoModifier, centre(highCut));
     p.settle();
     if (types.contains(FILTER_LOWPASS1)) {
-        QObject *twelve = p.obj(QStringLiteral("PeqChip.shapes.order.2"));
+        QObject *twelve = p.obj(QStringLiteral("PeqBar.shapes.order.2"));
         if (twelve) QTest::mouseClick(p.w, Qt::LeftButton, Qt::NoModifier, centre(twelve));
         p.settle();
     }
     d.check(QStringLiteral("qp4: the shape page reshapes the band, keeping its frequency"), p.band(0).filter_type == FILTER_LOWPASS && near(p.band(0).gain, 0, 1e-6));
-    d.check(QStringLiteral("qp4: and turns back to the values"), !p.ov->shapePage());
+    d.check(QStringLiteral("qp4: and closes"), !p.ov->shapePage() && shapesPopup && d.waitFor(1000, [&]() { return !shapesPopup->property("visible").toBool(); }));
 
     // The band menu: slope, invert, delete
     QSignalSpy menus(p.ov, &PeqOverlay::menuRequested);
@@ -490,31 +515,28 @@ void chipShapesCardMenus(Peqs &p) {
 }
 
 void chipValues(Peqs &p) {
+    // -- WP QPI2 -- the bar's values and buttons (the chip's drag on a value is
+    // gone with the chip: the bar's fields are typed or scrolled)
     SmokeDriver &d = p.d;
     p.clear();
-    p.put(0, FILTER_PEAKING, 700, 1.0, 0.0);
+    p.put(0, FILTER_PEAKING, 700, 1.0, 2.0);
     QTest::mouseClick(p.w, Qt::LeftButton, Qt::NoModifier, p.dot(0));
     p.settle();
-    // Dragging a value up raises it: a tenth of a dB per point for the gain
-    QObject *gain = p.obj(QStringLiteral("PeqChip.value.1"));
-    d.check(QStringLiteral("qp4: the chip's gain can be dragged"), gain != nullptr);
-    if (gain) {
-        const QPoint from = centre(gain);
-        QTest::mousePress(p.w, Qt::LeftButton, Qt::NoModifier, from);
-        for (int i = 1; i <= 5; ++i) {
-            QTest::mouseMove(p.w, from - QPoint(0, 4 * i));
-            d.spin(10);
-        }
-        QTest::mouseRelease(p.w, Qt::LeftButton, Qt::NoModifier, from - QPoint(0, 20));
-        p.settle();
-    }
-    d.check(QStringLiteral("qp4: dragging the gain up 20 points adds 2 dB"), near(p.band(0).gain, 2.0, 0.06));
     // Scrolling a value: the Q by an eightieth of an octave per half point
-    QObject *width = p.obj(QStringLiteral("PeqChip.value.2"));
-    if (width) p.wheel(centre(width), 120);
+    QObject *q = p.obj(QStringLiteral("PeqBar.input.2"));
+    if (q) p.wheel(centre(q), 120);
     d.waitFor(1500, [&]() { return p.band(0).q > 1.01; });
-    d.check(QStringLiteral("qp4: scrolling the chip's Width changes Q"), nearRatio(p.band(0).q, std::pow(2.0, 4.0 / 80), 0.01));
+    d.check(QStringLiteral("qp4: scrolling the bar's Q changes Q"), nearRatio(p.band(0).q, std::pow(2.0, 4.0 / 80), 0.01));
     d.check(QStringLiteral("qp4: and leaves the gain"), near(p.band(0).gain, 2.0, 0.06));
+    QObject *invert = p.obj(QStringLiteral("PeqBar.invert"));
+    if (invert) QMetaObject::invokeMethod(invert, "clicked");
+    p.settle();
+    d.check(QStringLiteral("qpi2: the bar's invert flips the gain"), near(p.band(0).gain, -2.0, 0.06));
+    QObject *remove = p.obj(QStringLiteral("PeqBar.delete"));
+    if (remove) QMetaObject::invokeMethod(remove, "clicked");
+    p.settle();
+    d.check(QStringLiteral("qpi2: and its delete removes the band, leaving the bar empty"),
+            p.band(0).filter_type == FILTER_FLAT && p.ov->chipBand() < 0 && p.selected().isEmpty());
 }
 
 void popOut(Peqs &p) {
@@ -529,14 +551,53 @@ void popOut(Peqs &p) {
     d.check(QStringLiteral("qp4: the pop-out has its own editor"), pop != nullptr);
     d.check(QStringLiteral("qp4: it edits the page while it follows, and the main graph's stands aside"),
             pop && d.waitFor(2000, [&]() { return pop->editedChannel() == p.ch; }) && p.ov->editedChannel() == -1 && p.g->overlayChannel() == p.ch);
+    // -- WP QPI2 -- the pop-out has the band bar under its graph too
+    p.put(0, FILTER_PEAKING, 1000, 1, 3);
+    p.ed->rowClicked(0, Qt::NoModifier);
+    p.settle();
+    auto *popBar = qobject_cast<QQuickItem *>(d.item(QStringLiteral("GraphWindow.peqBar"), w->contentItem()));
+    auto *popPlot = qobject_cast<QQuickItem *>(d.item(QStringLiteral("GraphWindow.plot"), w->contentItem()));
+    QObject *popBand = d.item(QStringLiteral("GraphWindow.peqBar.band"), w->contentItem());
+    d.check(QStringLiteral("qpi2: the pop-out's bar sits under its graph and shows the selected band"),
+            popBar && popPlot && popBar->isVisible()
+                && popBar->mapToScene(QPointF(0, 0)).y() >= popPlot->mapToScene(QPointF(0, popPlot->height())).y()
+                && popBand && popBand->property("text").toString() == QLatin1String("Band 1") && pop && pop->chipBand() == 0);
     p.g->setPopoutFollowsSelection(false);
     d.spin(50);
     d.check(QStringLiteral("qp4: a pop-out that does not follow edits nothing"), pop && pop->editedChannel() == -1 && p.g->overlayChannel() == -1);
     p.g->setPopoutFollowsSelection(true);
+    p.ed->rowClicked(0, Qt::NoModifier); // -- WP QPI2 -- the shot shows the bar with a band
+    p.settle();
     d.check(QStringLiteral("qp4: screenshot of the pop-out's editor"), (d.spin(100), d.grab(w, QStringLiteral("window-graph-peq.png"))));
     p.g->closePopOut();
     d.waitFor(3000, [&]() { return !p.g->poppedOut(); });
     d.check(QStringLiteral("qp4: closing it hands the editing back"), d.waitFor(2000, [&]() { return p.ov->editedChannel() == p.ch && p.g->overlayChannel() == p.ch; }));
+}
+
+// -- WP QPI2 -- The closed pop-out keeps its window and its editor; a range of
+// rows picked with a snapshot between the clicks (which resets that editor) once
+// sorted the selection over its empty band list (review w2 F11)
+void closedPopOut(Peqs &p) {
+    SmokeDriver &d = p.d;
+    PeqOverlay *pop = nullptr;
+    for (QWindow *w : QGuiApplication::allWindows())
+        if (auto *q = qobject_cast<QQuickWindow *>(w); q && q->objectName() == QLatin1String("GraphWindow"))
+            pop = qobject_cast<PeqOverlay *>(d.item(QStringLiteral("GraphWindow.peq.overlay"), q->contentItem()));
+    d.check(QStringLiteral("qpi2: the closed pop-out's editor is still there and edits nothing"),
+            pop && !pop->window()->isVisible() && pop->editedChannel() == -1);
+    p.clear();
+    p.put(1, FILTER_PEAKING, 3000, 1, -3);
+    p.put(4, FILTER_PEAKING, 9000, 1, 2);
+    p.ed->rowClicked(1, Qt::NoModifier);
+    p.settle();
+    p.put(2, FILTER_PEAKING, 5000, 1, 1);
+    p.ed->rowClicked(4, Qt::ShiftModifier);
+    p.settle();
+    d.check(QStringLiteral("qpi2: Shift-click after a snapshot selects the run on the main graph"),
+            p.selected() == (QSet<int>{ 1, 2, 4 }) && p.ov->chipBand() >= 0);
+    d.check(QStringLiteral("qpi2: and the closed pop-out's editor shows no chip for it"), pop && pop->chipBand() == -1);
+    p.ed->rowClicked(1, Qt::NoModifier);
+    p.clear();
 }
 
 void bandList(Peqs &p) {
@@ -692,6 +753,7 @@ void peqSection(SmokeDriver &d) {
     animated(p);
     allBands(p);
     popOut(p);
+    closedPopOut(p); // -- WP QPI2 --
 
     QList<QPair<int, FilterParams>> back;
     for (int b = 0; b < BANDS_PER_CHANNEL; ++b) back << qMakePair(b, saved[size_t(b)]);

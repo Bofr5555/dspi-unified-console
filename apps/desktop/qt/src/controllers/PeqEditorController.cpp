@@ -184,9 +184,10 @@ FilterParams blend(const FilterParams &from, const FilterParams &to, double t) {
 }
 
 QString frequencyText(double hz) {
-    if (hz >= 10000) return QStringLiteral("%1 kHz").arg(hz / 1000, 0, 'f', 2);
-    if (hz >= 1000) return QStringLiteral("%1 kHz").arg(hz / 1000, 0, 'f', 3);
-    return QStringLiteral("%1 Hz").arg(hz, 0, 'f', hz >= 100 ? 1 : 2);
+    // -- WP QPI2 -- the units through the translation file
+    if (hz >= 10000) return QCoreApplication::translate("Peq", "%1 kHz").arg(hz / 1000, 0, 'f', 2);
+    if (hz >= 1000) return QCoreApplication::translate("Peq", "%1 kHz").arg(hz / 1000, 0, 'f', 3);
+    return QCoreApplication::translate("Peq", "%1 Hz").arg(hz, 0, 'f', hz >= 100 ? 1 : 2);
 }
 
 QString shortFrequency(double hz) {

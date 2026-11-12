@@ -7,6 +7,8 @@
 #include "Core.h"
 #include "CoreWorker.h"
 #include "DeviceModel.h"
+#include "HardwareController.h"
+#include "PresetModel.h"
 #include "Shell.h"
 #include "Snapshot.h"
 
@@ -124,6 +126,29 @@ FilesController::FilesController(const AppContext &ctx, QObject *parent) : QObje
     });
     shell->addHandler(QStringLiteral("file.saveMasterVolume"), this, [this] { saveMasterVolume(); });
     shell->addHandler(QStringLiteral("file.saveOutputConfiguration"), this, [this] { saveOutputConfiguration(); });
+    // -- WP QPI2 -- the Device menu's flash rows (the Mac's ToolsMenuActions):
+    // each asks first, then works on the active preset
+    shell->addHandler(QStringLiteral("device.commit"), this, [this] {
+        if (!needDevice()) return;
+        const int slot = m_ctx.device->presets()->activeSlot();
+        if (slot < 0) {
+            showError(tr("Still identifying the device. Try again in a moment."));
+            return;
+        }
+        emit deviceQuestion(QStringLiteral("commit"), tr("Save Preset"),
+                            tr("Save current parameters to preset slot %1?").arg(slot + 1), tr("Save"), false);
+    });
+    shell->addHandler(QStringLiteral("device.revert"), this, [this] {
+        emit deviceQuestion(QStringLiteral("revert"), tr("Revert to Saved"),
+                            tr("Revert to last saved parameters?\n\nCurrent unsaved changes will be lost."), tr("Revert"),
+                            false);
+    });
+    shell->addHandler(QStringLiteral("device.factoryReset"), this, [this] {
+        emit deviceQuestion(QStringLiteral("factoryReset"), tr("Factory Reset"),
+                            tr("Do you wish to clear all active parameters?\n\nThis will not overwrite your saved "
+                               "parameters unless you run 'Commit Parameters'."),
+                            tr("Reset"), true);
+    });
 
     // The questions and alerts live in the main window, made once it exists
     if (auto *app = qobject_cast<QQmlApplicationEngine *>(ctx.engine)) {
@@ -396,6 +421,10 @@ void FilesController::applyConfiguration(bool volumes, bool hardware) {
     if (text.isEmpty()) return;
     const uint32_t options = (volumes ? IMPORT_VOLUMES : 0u) | (hardware ? IMPORT_HARDWARE : 0u);
     auto reply = std::make_shared<QJsonObject>();
+    // -- WP QPI2 -- the hardware I/O (pins, limiters) is output configuration:
+    // in Independent mode it lands live and unsaved, so the save bar offers it
+    if (hardware)
+        if (auto *hw = Registrar::instance<HardwareController>()) hw->beginOutputEdit();
     setImporting(true);
     m_ctx.device->write(
         QStringLiteral("configuration import"),
@@ -449,6 +478,62 @@ void FilesController::saveMasterVolume() {
                             const QString shown = db <= kMuteDb ? tr("−∞ dB (mute)") : tr("%1 dB").arg(db, 0, 'f', 1);
                             showSuccess(tr("Master volume saved (%1). It will be applied on next boot.").arg(shown));
                         });
+}
+
+// -- WP QPI2 --
+void FilesController::answerDevice(const QString &op, const QString &answer) {
+    if (answer != QLatin1String("accept") || !needDevice()) return;
+    const int slot = m_ctx.device->presets()->activeSlot();
+    if (slot < 0) {
+        showError(tr("Still identifying the device. Try again in a moment."));
+        return;
+    }
+    auto status = std::make_shared<uint8_t>(0xFF);
+    if (op == QLatin1String("commit")) {
+        // A slot without a name gets "Preset N" first, as the sidebar's save does
+        const QByteArray fallback = tr("Preset %1").arg(slot + 1).toUtf8();
+        m_ctx.device->write(
+            QStringLiteral("preset save"),
+            [slot, fallback, status](FfiCore *c) {
+                char name[CHANNEL_NAME_LEN] = {};
+                if (!dspi_get_preset_name(c, uint8_t(slot), name, sizeof name) || name[0] == 0)
+                    dspi_set_preset_name(c, uint8_t(slot), fallback.constData());
+                *status = dspi_save_preset(c, uint8_t(slot));
+                return *status == PRESET_OK;
+            },
+            [this, status](bool ok) {
+                if (ok) showSuccess(tr("Preset saved successfully"));
+                else
+                    showError(tr("Failed to save preset (%1)")
+                                  .arg(*status == kStatusLocked ? tr("Another console is applying changes")
+                                                                : tr("error %1").arg(*status)));
+            });
+    } else if (op == QLatin1String("revert")) {
+        // The active slot loaded again (the Mac's loadParams), the deferred
+        // load that is safe on every input source
+        m_ctx.device->write(
+            QStringLiteral("preset load"),
+            [slot, status](FfiCore *c) {
+                *status = dspi_load_preset(c, uint8_t(slot));
+                return *status == PRESET_OK;
+            },
+            [this, status](bool ok) {
+                if (ok) showSuccess(tr("Parameters reverted successfully"));
+                else if (*status == PRESET_ERR_CRC) showError(tr("Saved data is corrupted"));
+                else showError(tr("Failed to load parameters"));
+            });
+    } else if (op == QLatin1String("factoryReset")) {
+        m_ctx.device->write(
+            QStringLiteral("factory reset"),
+            [status](FfiCore *c) {
+                *status = dspi_factory_reset(c);
+                return *status == FLASH_OK;
+            },
+            [this](bool ok) {
+                if (ok) showSuccess(tr("Factory reset complete"));
+                else showError(tr("Failed to reset parameters"));
+            });
+    }
 }
 
 void FilesController::saveOutputConfiguration() {

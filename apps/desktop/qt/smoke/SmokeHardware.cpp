@@ -7,6 +7,7 @@
 #include "SmokeDriver.h"
 
 #include "Core.h"
+#include "ChannelController.h"
 #include "CoreWorker.h"
 #include "DeviceModel.h"
 #include "HardwareController.h"
@@ -242,6 +243,18 @@ void hardwareSection(SmokeDriver &d) {
         hw->setDraft(QStringLiteral("outputConfigMode"), 0);
         hw->save();
         d.waitFor(3000, [&]() { return !hw->saving(); });
+    }
+    // -- WP QPI2 -- a limiter switched on the output card is output
+    // configuration too: the bar offers to keep it (the Mac's beginOutputEdit)
+    if (auto *cc = Registrar::instance<ChannelController>(); cc && cc->limiterSupported() && !hw->pending()) {
+        const bool on = device->state()->limiter_enabled[0];
+        cc->setLimiterEnabled(0, !on);
+        d.check(QStringLiteral("qpi2: a limiter switched on the output card brings up the save bar"),
+                d.waitFor(3000, [&]() { return device->state()->limiter_enabled[0] == !on && hw->pending(); }));
+        cc->setLimiterEnabled(0, on);
+        d.waitFor(3000, [&]() { return device->state()->limiter_enabled[0] == on; });
+        hw->revert();
+        d.check(QStringLiteral("qpi2: and Revert lets it go"), d.waitFor(3000, [&]() { return !hw->pending(); }));
     }
     open(d, s, "outputs");
     d.check(QStringLiteral("qp11: Outputs lists the slots and the sub"),

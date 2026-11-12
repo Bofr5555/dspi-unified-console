@@ -3,6 +3,7 @@
 
 #include "Core.h"
 #include "DeviceModel.h"
+#include "HardwareController.h" // -- WP QPI2 --
 #include "Snapshot.h"
 
 #include <QJsonArray>
@@ -519,7 +520,7 @@ QVariantMap ChannelController::output(int output) const {
 void ChannelController::setOutputGain(int output, double db) {
     if (!writable() || output < 0 || output >= numOutputs() || !std::isfinite(db)) return;
     const auto o = uint8_t(output);
-    const float v = float(db);
+    const float v = float(qBound(-60.0, db, 20.0)); // -- WP QPI2 -- the device's range, everywhere
     apply(QStringLiteral("output gain %1").arg(output), [o, v](FfiCore *c) { return dspi_set_output_gain(c, o, v); });
 }
 
@@ -589,6 +590,9 @@ void ChannelController::confirmOutputEnable(int output) {
 void ChannelController::setLimiterEnabled(int output, bool enabled) {
     if (!writable() || !limiterSupported() || output < 0 || output >= numOutputs()) return;
     const auto o = uint8_t(output);
+    // -- WP QPI2 -- a limiter belongs to the output configuration: in
+    // Independent mode the save bar offers to keep it (Components.swift)
+    if (auto *hw = Registrar::instance<HardwareController>()) hw->beginOutputEdit();
     apply(QStringLiteral("output limiter %1").arg(output),
           [o, enabled](FfiCore *c) { return dspi_set_limiter_param(c, o, LIMITER_PARAM_ENABLED, enabled ? 1.0f : 0.0f); });
 }

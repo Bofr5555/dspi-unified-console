@@ -28,6 +28,24 @@ Item {
         function onFiltersPicker(prompt, channels) { filters.ask(prompt, channels) }
         function onConfigurationOptions(prompt) { config.ask(prompt) }
         function onNotice(title, text, error) { notice.show(title, text, error) }
+        // -- WP QPI2 --
+        function onDeviceQuestion(op, title, text, acceptText, destructive) {
+            device.op = op
+            device.title = title
+            device.text = text
+            device.acceptText = acceptText
+            device.destructive = destructive
+            device.open()
+        }
+    }
+
+    // -- WP QPI2 -- Commit Parameters, Revert to Saved, Factory Reset
+    QuestionDialog {
+        id: device
+        objectName: "FilesHost.deviceQuestion"
+        property string op
+        rejectText: qsTr("Cancel")
+        onAnswered: answer => FilesController.answerDevice(op, answer)
     }
 
     // ---- The unsaved-changes question (UnsavedGuard) ----

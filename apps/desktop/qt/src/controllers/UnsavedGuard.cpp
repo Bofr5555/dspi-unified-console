@@ -91,7 +91,9 @@ QString UnsavedGuard::summary(const QStringList &lines) {
     QStringList shown;
     for (int i = 0; i < lines.size() && i < kSummaryLines; ++i) shown.append(QStringLiteral("• ") + lines.at(i));
     const int more = int(lines.size()) - kSummaryLines;
-    if (more > 0) shown.append(tr("...and %n more change(s)", nullptr, more));
+    // -- WP QPI2 -- spelt out: without a .qm "%n ... (s)" shows the "(s)"
+    if (more == 1) shown.append(tr("...and 1 more change"));
+    else if (more > 1) shown.append(tr("...and %1 more changes").arg(more));
     return shown.join(QLatin1Char('\n'));
 }
 
@@ -159,7 +161,9 @@ void UnsavedGuard::answer(const QString &answer) {
             return *status == PRESET_OK;
         },
         [this, status](bool ok) {
-            if (ok) {
+            // -- WP QPI2 -- a device gone meanwhile has nothing left to save:
+            // the switch or the quit goes on
+            if (ok || !m_ctx.device->connected()) {
                 proceed();
                 return;
             }

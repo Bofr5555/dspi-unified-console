@@ -153,7 +153,11 @@ QSet<int> heldBy(const DspState &state, const QList<PinMap::SurfacePin> &surface
     return held;
 }
 
-QVariantMap choice(int pin) { return { { QStringLiteral("pin"), pin }, { QStringLiteral("text"), gpio(pin) } }; }
+// -- WP QPI2 -- an unset pin (255) reads "Not set", as the picker's own line
+QVariantMap choice(int pin) {
+    return { { QStringLiteral("pin"), pin },
+             { QStringLiteral("text"), pin >= 0 && pin < 255 ? gpio(pin) : HardwareController::tr("Not set") } };
+}
 
 } // namespace
 

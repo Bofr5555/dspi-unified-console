@@ -30,11 +30,26 @@ ToolWindow {
         spacing: 0
 
         GraphPlot {
+            id: plot
             popOut: true
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.margins: Theme.spacingLarge
-            Layout.bottomMargin: Theme.spacingLarge
+            Layout.bottomMargin: dock.item ? 0 : Theme.spacingLarge
+        }
+        // -- WP QPI2 -- the band bar under the pop-out's graph too
+        Loader {
+            id: dock
+            objectName: "GraphWindow.peqDock"
+            readonly property string type: GraphController.slotType(GraphController.PeqDock)
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.spacingLarge
+            Layout.rightMargin: Theme.spacingLarge
+            Layout.topMargin: item ? 6 : 0
+            Layout.bottomMargin: item ? Theme.spacingLarge : 0
+            active: type !== ""
+            sourceComponent: active ? Qt.createComponent("UConsole", type) : null
+            onLoaded: if ("plot" in item) item.plot = plot
         }
         GraphLegend {
             Layout.fillWidth: true

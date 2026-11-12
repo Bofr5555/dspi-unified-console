@@ -294,6 +294,40 @@ static void filesSection(SmokeDriver &d) {
     d.app().core->worker()->post([](FfiCore *c) { dspi_demo_output_save_status(c, 0); });
     d.waitIdle();
 
+    // ---- -- WP QPI2 -- the Device menu's flash rows ----
+    QObject *deviceQuestion = find(host, "FilesHost.deviceQuestion");
+    shell->trigger(QStringLiteral("device.commit"));
+    d.check(QStringLiteral("qpi2: Commit Parameters asks first, naming the slot"),
+            deviceQuestion && d.waitFor(3000, [&]() { return opened(deviceQuestion); })
+                && deviceQuestion->property("title").toString() == QLatin1String("Save Preset")
+                && deviceQuestion->property("text").toString()
+                       == QStringLiteral("Save current parameters to preset slot %1?").arg(device->presets()->activeSlot() + 1));
+    if (deviceQuestion) QMetaObject::invokeMethod(deviceQuestion, "finish", Q_ARG(QVariant, QStringLiteral("accept")));
+    n = takeNotice(d, notice);
+    d.check(QStringLiteral("qpi2: and saves the preset"), !n.error && n.text == QLatin1String("Preset saved successfully"));
+    const float kept = device->state()->output_gain_db[0];
+    device->write(QStringLiteral("qpi2 gain"), [kept](FfiCore *c) { return dspi_set_output_gain(c, 0, kept - 2.0f); });
+    d.waitIdle();
+    shell->trigger(QStringLiteral("device.revert"));
+    d.check(QStringLiteral("qpi2: Revert to Saved asks first"),
+            deviceQuestion && d.waitFor(3000, [&]() { return opened(deviceQuestion); })
+                && deviceQuestion->property("title").toString() == QLatin1String("Revert to Saved"));
+    if (deviceQuestion) QMetaObject::invokeMethod(deviceQuestion, "finish", Q_ARG(QVariant, QStringLiteral("accept")));
+    n = takeNotice(d, notice);
+    d.check(QStringLiteral("qpi2: and loads the saved preset back"),
+            !n.error && n.text == QLatin1String("Parameters reverted successfully")
+                && d.waitFor(3000, [&]() { return device->state()->output_gain_db[0] == kept; }));
+    shell->trigger(QStringLiteral("device.factoryReset"));
+    d.check(QStringLiteral("qpi2: Factory Reset asks first, as a destructive question"),
+            deviceQuestion && d.waitFor(3000, [&]() { return opened(deviceQuestion); })
+                && deviceQuestion->property("title").toString() == QLatin1String("Factory Reset")
+                && deviceQuestion->property("destructive").toBool());
+    d.check(QStringLiteral("qpi2: screenshot of the factory reset question"), d.grab(d.mainWindow(), QStringLiteral("window-device-factory-reset.png")));
+    const int writesBefore = device->settersRun();
+    if (deviceQuestion) QMetaObject::invokeMethod(deviceQuestion, "finish", Q_ARG(QVariant, QStringLiteral("reject")));
+    d.spin(300);
+    d.check(QStringLiteral("qpi2: Cancel resets nothing"), !opened(notice) && device->settersRun() == writesBefore);
+
     // ---- The unsaved-changes question ----
     QObject *question = find(host, "FilesHost.unsavedQuestion");
     d.check(QStringLiteral("qp15: the question exists"), question != nullptr);
