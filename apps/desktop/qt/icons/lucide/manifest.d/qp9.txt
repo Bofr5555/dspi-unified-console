@@ -1,0 +1,4 @@
+# -- WP QP9 -- Analysis tools (see ../manifest.txt for the format)
+users               analyser: following another console
+app-window          analyser strip: open in window
+chart-column        analyser: bars, the window's empty state
