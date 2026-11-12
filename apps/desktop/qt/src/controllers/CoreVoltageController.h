@@ -33,23 +33,23 @@ class CoreVoltageController : public QObject {
     QML_SINGLETON
     // The open device has the core voltage extension (the connect probe's
     // answer, ExtController.hasCoreVreg): the page and its entry show only then
-    Q_PROPERTY(bool supported READ supported NOTIFY changed)
+    Q_PROPERTY(bool supported READ supported NOTIFY flowChanged)
     // The core's calibration view (dspi_core_vreg_cal_view's fields: phase,
     // message, warning, soakNote, choices, confirmationWord, canStart, ...)
-    Q_PROPERTY(QVariantMap view READ view NOTIFY changed)
+    Q_PROPERTY(QVariantMap view READ view NOTIFY flowChanged)
     // The device's last status (CoreVregInfo's fields: liveVreg, storedSel,
     // hangCount, ...): the view's, or a plain read while the flow is out of reach
-    Q_PROPERTY(QVariantMap status READ status NOTIFY changed)
-    Q_PROPERTY(QString phase READ phase NOTIFY changed)
+    Q_PROPERTY(QVariantMap status READ status NOTIFY flowChanged)
+    Q_PROPERTY(QString phase READ phase NOTIFY flowChanged)
     // A calibration run is under way: the manual requests wait (the core's
     // Phase::busy, which the view does not carry)
-    Q_PROPERTY(bool calibrating READ calibrating NOTIFY changed)
+    Q_PROPERTY(bool calibrating READ calibrating NOTIFY flowChanged)
     // Requests can go to this device: open, writable, the flow in reach
-    Q_PROPERTY(bool writable READ writable NOTIFY changed)
+    Q_PROPERTY(bool writable READ writable NOTIFY flowChanged)
     // A request is on its way
-    Q_PROPERTY(bool busy READ busy NOTIFY changed)
+    Q_PROPERTY(bool busy READ busy NOTIFY flowChanged)
     // The soak times offered, seconds, the core's suggestion among them
-    Q_PROPERTY(QVariantList soakChoices READ soakChoices NOTIFY changed)
+    Q_PROPERTY(QVariantList soakChoices READ soakChoices NOTIFY flowChanged)
     // The page shows: the flow is polled once a second
     Q_PROPERTY(bool pageShown READ pageShown WRITE setPageShown NOTIFY pageShownChanged)
 public:
@@ -104,7 +104,7 @@ public:
     int requests() const { return m_requests; }
 
 signals:
-    void changed();
+    void flowChanged();
     void pageShownChanged();
     // A request the core refused; the reason is also the view's lastError
     void refused(const QString &what, const QString &reason);

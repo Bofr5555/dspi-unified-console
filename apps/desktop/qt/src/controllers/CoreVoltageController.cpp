@@ -75,7 +75,7 @@ void CoreVoltageController::onState() {
         m_status.clear();
         onExt();
         updatePage();
-        emit changed();
+        emit flowChanged();
         return;
     }
     if (m_open && snap.generation == m_generation) return;
@@ -105,7 +105,7 @@ void CoreVoltageController::apply(const QByteArray &view, const QByteArray &stat
     m_status = s.toVariantMap();
     m_status.remove(QStringLiteral("ok"));
     updatePage();
-    emit changed();
+    emit flowChanged();
 }
 
 void CoreVoltageController::onExt() {
@@ -114,7 +114,7 @@ void CoreVoltageController::onExt() {
     m_supported = has;
     updatePage();
     if (has) refresh();
-    emit changed();
+    emit flowChanged();
 }
 
 void CoreVoltageController::updatePage() {
@@ -215,7 +215,7 @@ bool CoreVoltageController::wordMatches(const QString &typed) const {
 void CoreVoltageController::request(const QString &what, std::function<uint8_t(FfiCore *)> setter) {
     ++m_busy;
     ++m_requests;
-    emit changed();
+    emit flowChanged();
     m_ctx.device->write(
         what, [setter = std::move(setter)](FfiCore *c) { return setter(c) == 0; },
         [this, what](bool ok) {
@@ -227,7 +227,7 @@ void CoreVoltageController::request(const QString &what, std::function<uint8_t(F
                                            if (!ok)
                                                emit refused(what, m_view.value(QStringLiteral("lastError")).toString());
                                        });
-            emit changed();
+            emit flowChanged();
         });
 }
 

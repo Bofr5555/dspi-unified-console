@@ -103,23 +103,18 @@ SettingsPage {
         // Reached only from Advanced: restored as the last page, it goes there
         if (!SettingsController.canGoBack) Qt.callLater(() => SettingsController.open("advanced"))
     }
-    Component.onDestruction: {
-        cv.pageShown = false
-        // Leaving the review closes it; a run goes on until it ends
-        if (phase === "review" && cv.writable) cv.closeFlow()
-    }
+    // Leaving sends nothing: an open review or a run stays as it is, for the
+    // next visit (the core polls a run on every connection)
+    Component.onDestruction: cv.pageShown = false
 
     // ---- Back, and the core's warning ----------------------------------------------
-    RowLayout {
-        Layout.fillWidth: true
-        AppButton {
-            objectName: "CoreVoltage.back"
-            text: qsTr("Back")
-            iconName: "chevron-left"
-            toolTip: qsTr("Back to Advanced")
-            onClicked: SettingsController.open("advanced")
-        }
-        Item { Layout.fillWidth: true }
+    AppButton {
+        objectName: "CoreVoltage.back"
+        Layout.alignment: Qt.AlignLeft
+        text: qsTr("Back")
+        iconName: "chevron-left"
+        toolTip: qsTr("Back to Advanced")
+        onClicked: SettingsController.open("advanced")
     }
 
     Rectangle {
