@@ -13,10 +13,14 @@ pub mod cs_model;
 pub mod cs_rows;
 pub mod ext;
 pub mod ext_state;
+// -- WP P0M --
+pub mod events;
 mod fast;
 pub mod filterfile;
 // -- WP TM8 --
 pub mod link_words;
+// -- WP P0M --
+pub mod meters;
 pub mod notify;
 // -- BUG1 --
 pub mod output_label;
