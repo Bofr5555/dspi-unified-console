@@ -4961,9 +4961,10 @@ uint32_t dspi_output_cards(struct FfiCore *core, char *buf, uint32_t len);
 /**
  * Step back through the change history (`DspiCore::undo`): the newest
  * change that can be undone is written back through its setter. The reply
- * is `{ok, entry, skipped}`: `entry` the change reversed (`null` when
+ * is `{ok, entry, skipped, note}`: `entry` the change reversed (`null` when
  * nothing moved), `skipped` the changes stepped over that cannot be undone,
- * each as `dspi_history` gives them; or a failure.
+ * each as `dspi_history` gives them, `note` why nothing moved when another
+ * writer changed the value since (or `null`); or a failure.
  */
 uint32_t dspi_undo(struct FfiCore *core, char *buf, uint32_t len);
 
