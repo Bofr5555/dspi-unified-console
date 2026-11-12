@@ -7,7 +7,7 @@ use dspi_proto::registry::{Kind, ParamDesc, REGISTRY};
 use dspi_proto::value::Unit;
 
 /// Every row's path, label and unit (the `Unit` name for a number, else the kind),
-/// in registry order.
+/// keyed by path: the order is the registry's business, not this table's.
 const PINNED: &[(&str, &str, &str)] = &[
     ("vol.user", "Volume", "Db"),
     ("vol.mute", "Mute", "bool"),
@@ -225,18 +225,38 @@ fn glossary() -> String {
 
 #[test]
 fn wp_p0u_labels_and_units_are_pinned() {
-    let now: Vec<(String, String, String)> = REGISTRY
-        .iter()
-        .map(|d| (d.path.into(), d.label.into(), unit_or_kind(d)))
-        .collect();
-    let pinned: Vec<(String, String, String)> = PINNED
-        .iter()
-        .map(|(p, l, u)| ((*p).into(), (*l).into(), (*u).into()))
-        .collect();
-    for (a, b) in now.iter().zip(&pinned) {
-        assert_eq!(a, b, "a label or unit changed: update docs/GLOSSARY.md too");
+    use std::collections::BTreeMap;
+    let pinned: BTreeMap<&str, (&str, &str)> =
+        PINNED.iter().map(|(p, l, u)| (*p, (*l, *u))).collect();
+    assert_eq!(pinned.len(), PINNED.len(), "a path is pinned twice");
+    let mut problems = Vec::new();
+    for d in REGISTRY {
+        let unit = unit_or_kind(d);
+        match pinned.get(d.path) {
+            None => problems.push(format!(
+                "{}: row added; pin it here as (\"{}\", \"{}\", \"{unit}\") and give it \
+                 its words in docs/GLOSSARY.md",
+                d.path, d.path, d.label
+            )),
+            Some((label, _)) if *label != d.label => problems.push(format!(
+                "{}: label changed from {label:?} to {:?}; update this table and \
+                 docs/GLOSSARY.md together",
+                d.path, d.label
+            )),
+            Some((_, u)) if *u != unit => problems.push(format!(
+                "{}: unit changed from {u} to {unit}; update this table and \
+                 docs/GLOSSARY.md together",
+                d.path
+            )),
+            Some(_) => {}
+        }
     }
-    assert_eq!(now.len(), pinned.len(), "a row was added or removed");
+    for path in pinned.keys() {
+        if dspi_proto::registry::by_path(path).is_none() {
+            problems.push(format!("{path}: row removed; drop it from this table"));
+        }
+    }
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
 }
 
 /// A level against full scale is dBFS; a gain, boost, cut or trim is dB.
