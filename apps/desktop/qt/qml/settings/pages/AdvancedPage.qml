@@ -76,6 +76,7 @@ SettingsPage {
         objectName: "Advanced.coreVoltage"
         visible: DeviceModel.connected && page.vreg.supported === true
                  && SettingsController.pageType("coreVoltage").length > 0
+                 && CoreVoltageController.supported   // -- WP QP23 -- the probe's answer, as the page's
         title: qsTr("Core Voltage")
         iconName: "gauge"
         RowLayout {
