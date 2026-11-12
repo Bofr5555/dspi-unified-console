@@ -25,6 +25,8 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSettings>
+#include <QTimer>
+#include <thread>
 
 namespace {
 
@@ -146,5 +148,23 @@ void demoEntry(SmokeDriver &d) {
 }
 
 const SmokeDriver::Section demo("qp19-demo-entry", 10, &demoEntry, SmokeDriver::Mode::DemoEntry);
+
+// ---- The driver's own failure paths (DSPI_SMOKE_SELFTEST; not in run.sh) ----
+//   thread  a timer started from a thread with no event loop: the run must end
+//           with "FAIL thread:" and exit 1, every check passing
+//   noquit  a launch that expects a quit that never comes: exit 3
+void selfTest(SmokeDriver &d) {
+    const QString what = SmokeDriver::modeValue();
+    if (what == QLatin1String("thread")) {
+        QTimer *timer = new QTimer;   // lives on the GUI thread
+        std::thread([timer]() { timer->start(10); }).join();
+        delete timer;
+        d.check("qp19-selftest: the run goes on", true);
+    } else if (what == QLatin1String("noquit")) {
+        d.expectQuit(2000);
+    }
+}
+
+const SmokeDriver::Section selftest("qp19-selftest", 10, &selfTest, SmokeDriver::Mode::SelfTest);
 
 } // namespace

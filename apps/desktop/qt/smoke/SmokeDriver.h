@@ -43,6 +43,7 @@ public:
         DemoEntry,   // DSPI_SMOKE_DEMO_ENTRY, started without --demo
         Tray,        // DSPI_SMOKE_TRAY=hidden|hidden-quit|app-quit|no-tray
         Pseudo,      // DSPI_SMOKE_PSEUDO=en|pseudo
+        SelfTest,    // DSPI_SMOKE_SELFTEST=thread|noquit: the driver's own failure paths fire
     };
     struct App {
         QQmlApplicationEngine *engine;

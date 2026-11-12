@@ -169,6 +169,7 @@ const ModeVariable kModeVariables[] = {
     { "DSPI_SMOKE_DEMO_ENTRY", SmokeDriver::Mode::DemoEntry },
     { "DSPI_SMOKE_TRAY", SmokeDriver::Mode::Tray },
     { "DSPI_SMOKE_PSEUDO", SmokeDriver::Mode::Pseudo },
+    { "DSPI_SMOKE_SELFTEST", SmokeDriver::Mode::SelfTest },
 };
 const char *modeVariable() {
     for (const ModeVariable &m : kModeVariables)

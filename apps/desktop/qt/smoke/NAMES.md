@@ -45,6 +45,7 @@ names each section uses are in `names/<wp>.md`.
 |---|---|---|
 | `qp0-base`, `qp0-core`, `qp0-components` | 0–2 | main |
 | `qp1-sidebar` | 10 | main |
+| `qp19-slider-keys` | 15 | main (the probe window) |
 | `qp2-channel` | 20 | main |
 | `qp3-graph` | 30 | main |
 | `qp4-peq` | 35 | main |
@@ -65,6 +66,7 @@ names each section uses are in `names/<wp>.md`.
 | `qp19-tray-launch` | 10 | `tray-hidden/`, `tray-hidden-quit/`, `tray-app-quit/`, `tray-no-tray/` (`DSPI_SMOKE_TRAY`) |
 | `qp19-hw-preflight`, `-analyser`, `-status`, `-bypass`, `-reconnect`, `-end` | 10–90 | `hw-dry/` (`DSPI_SMOKE_HW=dry`); `run-hw.sh` (`=1`) |
 | `qp19-replug` | 10 | `run-replug.sh` (`DSPI_SMOKE_HW=replug`) |
+| `qp19-selftest` | 10 | by hand: `DSPI_SMOKE_SELFTEST=thread` must exit 1, `=noquit` exit 3 |
 
 A mode with no section in the build (today `DSPI_SMOKE_PSEUDO`, QP18's) exits
 2 and run.sh skips it.

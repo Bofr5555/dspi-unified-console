@@ -3,4 +3,5 @@
 list(APPEND DSPI_SMOKE_SOURCES
     smoke/SmokeLaunches.cpp
     smoke/SmokeHw.cpp
-    smoke/SmokeGallery.cpp)
+    smoke/SmokeGallery.cpp
+    smoke/SmokeSliderKeys.cpp)
