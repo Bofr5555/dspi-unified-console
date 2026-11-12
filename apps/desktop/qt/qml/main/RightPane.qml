@@ -62,12 +62,39 @@ Rectangle {
             }
             Component {
                 id: inputPage
-                InputDetail { input: SidebarController.selectedIndex }
+                InputDetail {
+                    input: SidebarController.selectedIndex
+                    // -- WP QP4 -- the on-graph editor's selection on the band list
+                    graphSelection: PeqSelection
+                }
             }
             Component {
                 id: outputPage
-                OutputDetail { output: SidebarController.selectedIndex }
+                OutputDetail {
+                    output: SidebarController.selectedIndex
+                    // -- WP QP4 -- the on-graph editor's selection on the band list
+                    graphSelection: PeqSelection
+                }
             }
+        }
+    }
+
+    // -- WP QP4 -- A band the pointer rests on in the graph: its row scrolls
+    // into view in the page's PEQ list
+    function peqList(item) {
+        if (!item) return null
+        if (item.visible && item.crossover === false && typeof item.showBand === "function") return item
+        for (let i = 0; i < item.children.length; ++i) {
+            const found = peqList(item.children[i])
+            if (found) return found
+        }
+        return null
+    }
+    Connections {
+        target: PeqEditorController
+        function onRevealRow(band) {
+            const list = pane.peqList(pane)
+            if (list) list.showBand(band)
         }
     }
 }

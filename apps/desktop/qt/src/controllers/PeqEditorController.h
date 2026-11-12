@@ -1,0 +1,171 @@
+#ifndef PEQEDITORCONTROLLER_H
+#define PEQEDITORCONTROLLER_H
+
+#include <QHash>
+#include <QList>
+#include <QObject>
+#include <QPair>
+#include <QSet>
+#include <QString>
+#include <QVariant>
+#include <QtQml/qqmlregistration.h>
+
+#include "CoreApi.h"
+#include "Registrar.h"
+
+class QQmlEngine;
+class QJSEngine;
+
+// -- WP QP4 -- What the on-graph PEQ editor knows without a plot (the Mac's
+// PeqGraphModel): the shapes it creates and their firmware types, what a
+// band's dot stands for, the editor's limits, value text in and out, and the
+// blend of an animated move. The response itself is always the core's
+// (dspi_compute_response); nothing here evaluates a filter.
+namespace Peq {
+
+// The shapes the graph makes and offers, in the chooser's order
+enum Shape { Bell, LowShelf, LowCut, HighShelf, HighCut, Notch, AllPass, ShapeCount };
+enum Field { Freq, Gain, Width, FieldCount };
+
+// The firmware type of `shape` at `order` (1 = 6 dB/oct or 180°, 2 = 12 dB/oct
+// or 360°), or -1 when the shape has no such order
+int typeFor(int shape, int order);
+// The shape and order of a type; false for off, crossovers and the Linkwitz
+// Transform, which the graph does not reshape
+bool shapeOf(int type, int *shape, int *order);
+QString shapeTitle(int shape);
+QString shapeCode(int shape);
+// The band menu's slope rows and the chooser's second step
+QString orderTitle(int shape, int order);
+QString orderLabel(int shape, int order);
+QString orderHelp(int shape, int order);
+
+bool isCrossover(int type);
+bool usesGain(int type);
+bool usesQ(int type);
+// The bands the graph draws a dot for: every PEQ type but off
+bool isGraphBand(const FilterParams &p);
+
+// What a dot stands for: where it sits and what a vertical drag changes
+struct Role {
+    enum Kind { Gain, Resonance, Fixed, Locked } kind = Fixed;
+    double value = 0;   // Gain: dB of curve per dB of gain; Fixed, Locked: the dot's level
+};
+Role roleOf(const FilterParams &p);
+double dotDb(const Role &r, const FilterParams &p);
+
+// The core's response of `n` bands at `hz`, in dB
+double response(const FilterParams *bands, int n, double hz);
+double bandDb(FilterParams p, double hz);
+
+// Limits the graph keeps to: the firmware's Q and frequency clamps, and
+// FabFilter's ±30 dB of gain
+constexpr double kGainMin = -30, kGainMax = 30;
+constexpr double kQMin = 0.1, kQMax = 20;
+constexpr double kFreqMin = 10;
+constexpr double kFreqMax = SAMPLE_RATE * 0.45;
+double clamp(double v, double lo, double hi);
+
+FilterParams flatBand();
+FilterParams make(int type, double freq, double q, double gain);
+bool same(const FilterParams &a, const FilterParams &b);
+// A band part-way to `to`: frequency and Q in the log domain; a new type or
+// bypass lands at once
+FilterParams blend(const FilterParams &from, const FilterParams &to, double t);
+
+// Value text: display, and entry with "2k" and note names ("A4", "C#2+13")
+QString frequencyText(double hz);
+QString shortFrequency(double hz);
+QString gainText(double db);
+// Two places, cut rather than rounded, so the chip never shows a value the
+// band does not quite have
+QString truncated(double v, bool sign = false);
+bool parseFrequency(const QString &text, double *hz);
+bool parseNumber(const QString &text, const QString &unit, double *v);
+bool parseNote(const QString &text, double *hz);
+
+} // namespace Peq
+
+// The editor's state shared with the band list (the Mac's PeqGraphSelection
+// and PeqLiveReadouts) and the one place its band writes go: QML sees it as
+// the singleton PeqEditorController, and FilterList's `graphSelection` is
+// PeqSelection.qml over it.
+//
+// - Selection: the bands selected on the graph or by a click on a row's
+//   number, the band under the pointer on the graph (its row lights) and the
+//   row under the pointer (its dot lights). A band the pointer rests on asks
+//   for its row to be shown (revealRow).
+// - Live values: what a drag shows in the rows between device writes.
+// - Writes: through ChannelController's band setters, which stage the edit,
+//   mirror it onto a linked input and coalesce per band.
+class PeqEditorController : public QObject {
+    Q_OBJECT
+    QML_ELEMENT
+    QML_SINGLETON
+
+    Q_PROPERTY(int revision READ revision NOTIFY changed)
+    Q_PROPERTY(QList<int> selected READ selected NOTIFY changed)
+    Q_PROPERTY(int listHovered READ listHovered WRITE setListHovered NOTIFY changed)
+    Q_PROPERTY(int graphHovered READ graphHovered NOTIFY changed)
+    // The channel the graph edits, -1 for none (set by the editor on show)
+    Q_PROPERTY(int channel READ channel NOTIFY changed)
+
+public:
+    PeqEditorController(const AppContext &ctx, QObject *parent);
+    static PeqEditorController *create(QQmlEngine *, QJSEngine *) { return Registrar::instance<PeqEditorController>(); }
+
+    int revision() const { return m_revision; }
+    QList<int> selected() const;
+    const QSet<int> &selection() const { return m_selected; }
+    int listHovered() const { return m_listHovered; }
+    void setListHovered(int band);
+    int graphHovered() const { return m_graphHovered; }
+    void setGraphHovered(int band);
+    int channel() const { return m_channel; }
+    void setChannel(int channel);
+
+    Q_INVOKABLE bool isSelected(int band) const { return m_selected.contains(band); }
+    // {freq, gain, q} while the graph drags the band, else null
+    Q_INVOKABLE QVariant live(int band) const;
+    // A click on a band's number in the list, with the modifiers of a click
+    // on its dot: Ctrl toggles it, Shift takes the run of rows from the last
+    // one clicked (row order, empty rows skipped), a plain click selects it
+    Q_INVOKABLE void listClick(int band, int modifiers);
+    Q_INVOKABLE void reset();
+
+    void setSelection(const QSet<int> &bands);
+    void reveal(int band) { emit revealRow(band); }
+    void showLive(int band, const FilterParams &p);
+    void endLive();
+
+    // The channel's bands as the list shows them (a staged edit at once)
+    FilterParams band(int channel, int band, bool crossover) const;
+    bool writable() const;
+    bool bypassSupported() const;
+    QList<int> availableTypes() const;
+    // Writes each changed band, mirrored onto a linked input
+    void writeBands(int channel, const QList<QPair<int, FilterParams>> &changes);
+    void setBypass(int channel, int band, bool bypass);
+
+signals:
+    void changed();
+    // The selection changed on the list's side (a row's number clicked)
+    void selectionChanged();
+    void listHoveredChanged();
+    // The list should scroll this band's row into view
+    void revealRow(int band);
+
+private:
+    void bump();
+
+    AppContext m_ctx;
+    QSet<int> m_selected;
+    int m_listAnchor = -1;
+    int m_listHovered = -1;
+    int m_graphHovered = -1;
+    int m_channel = -1;
+    QHash<int, FilterParams> m_live;
+    int m_revision = 0;
+};
+
+#endif // PEQEDITORCONTROLLER_H
