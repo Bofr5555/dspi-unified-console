@@ -257,6 +257,21 @@ mod responder {
         (daemon, events)
     }
 
+    // -- WP HUBFLAKE --
+    /// The mDNS port, bound without SO_REUSEADDR/SO_REUSEPORT. A daemon that is going (the
+    /// other test's) closes its sockets on its own thread after saying it has stopped, so
+    /// the port can be busy for a moment: wait for it, as long as a responder gets.
+    fn hold_the_port() -> UdpSocket {
+        let end = Instant::now() + LONG;
+        loop {
+            match UdpSocket::bind("[::]:5353").or_else(|_| UdpSocket::bind("0.0.0.0:5353")) {
+                Ok(socket) => return socket,
+                Err(e) => assert!(Instant::now() < end, "the mDNS port stays taken: {e}"),
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+    }
+
     /// Call `names()` as the hub's tick does, until the browser resolves `hid`.
     fn until_found(adv: &mut MdnsAdvertiser, events: &mdns_sd::Receiver<ServiceEvent>, hid: &str) {
         let end = Instant::now() + LONG;
@@ -291,7 +306,7 @@ mod responder {
     fn wp_disc2_a_responder_that_got_no_socket_says_so_and_tries_again() {
         let _one = PORT.lock().unwrap_or_else(PoisonError::into_inner);
         // Held without SO_REUSEADDR/SO_REUSEPORT: the responder cannot bind beside it.
-        let blocker = UdpSocket::bind("[::]:5353").or_else(|_| UdpSocket::bind("0.0.0.0:5353")).unwrap();
+        let blocker = hold_the_port();
         let hid = format!("{HID}-socket-{}", std::process::id());
         let mut adv = MdnsAdvertiser::start_on(&advert("DISC2 nosock", &hid, 1), AdvertiseScope::LoopbackOnly).unwrap();
         let started = Instant::now();
@@ -306,7 +321,14 @@ mod responder {
         drop(blocker);
         let (browser, events) = loopback_browser();
         until_found(&mut adv, &events, &hid);
-        assert!(adv.unproven.is_none() && adv.reopen_at.is_none(), "healthy again");
+        // -- WP HUBFLAKE -- The browser can hear the announcement before the responder's
+        // own event for it is read: `names()` takes that event as the hub's tick would.
+        let end = Instant::now() + LONG;
+        while adv.unproven.is_some() || adv.reopen_at.is_some() {
+            assert!(Instant::now() < end, "healthy again");
+            adv.names();
+            thread::sleep(Duration::from_millis(50));
+        }
         drop(adv);
         let _ = browser.shutdown();
     }

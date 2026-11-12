@@ -144,7 +144,11 @@ impl Browser {
 
 impl Drop for Browser {
     fn drop(&mut self) {
-        let _ = self.daemon.shutdown();
+        // -- WP HUBFLAKE -- Until its thread has ended, so a browser that is going asks
+        // nothing during the next test, which may be one that runs `alone()`.
+        if let Ok(done) = self.daemon.shutdown() {
+            let _ = done.recv_timeout(Duration::from_secs(5));
+        }
     }
 }
 
@@ -480,8 +484,16 @@ fn wp_hb5_a_second_conflict_counts_on() {
     let mut browser = Browser::new();
     let _first = start_on_loopback(&advert("HB5 thrice", IDS[0]));
     browser.until_hub(IDS[0], |_| true);
-    let _second = start_on_loopback(&advert("HB5 thrice", IDS[1]));
+    let second = start_on_loopback(&advert("HB5 thrice", IDS[1]));
     browser.until_hub(IDS[1], |f| f.name != "HB5 thrice");
+    // -- WP HUBFLAKE -- The responder announces its rename before our re-registering
+    // drops the old name (the source's header), and until then it answers for the first's
+    // name too. The third's probe of that name, sent in that moment, had both answer it,
+    // and the browser kept the second's answer as the first's: the slower the tick, the
+    // wider that moment. The third starts once the second holds its new name.
+    until_names("the second re-registered", || {
+        second.names().instance == "HB5 thrice (2)"
+    });
     let third = start_on_loopback(&advert("HB5 thrice", IDS[2]));
     // Each with a name of its own, the first undisturbed. Which of the others ends up with
     // which depends on who was probing when.
