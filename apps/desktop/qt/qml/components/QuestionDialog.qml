@@ -1,13 +1,13 @@
 import QtQuick
 import QtQuick.Controls.Basic
-import QtQuick.Layouts
 import UConsole
 
 // A question that needs an answer before anything changes (the Mac's
 // confirmation alerts: unsaved changes, the PDM / Core 1 questions, factory
 // reset). Up to three answers: `acceptText` (the default, Enter),
-// `rejectText` (Escape) and an optional `alternativeText` ("Don't Save").
-// `answered(answer)` gives "accept", "reject" or "alternative".
+// `rejectText` (Escape, or closing it) and an optional `alternativeText`
+// ("Don't Save"). `answered(answer)` gives "accept", "reject" or "alternative",
+// exactly once per question.
 //
 //     QuestionDialog {
 //         id: ask
@@ -18,9 +18,8 @@ import UConsole
 //         onAnswered: answer => ...
 //     }
 //     ask.open()
-Popup {
+Dialog {
     id: dialog
-    property string title
     property string text
     property string acceptText: qsTr("OK")
     property string rejectText: qsTr("Cancel")
@@ -28,73 +27,78 @@ Popup {
     property bool destructive: false
     signal answered(string answer)
 
-    // Escape and a close from outside answer "reject"
-    property bool _answered: false
-    function answer(a) {
-        _answered = true
+    // Set when a button answered, so the close that follows is not taken
+    // for a refusal
+    property string pending
+    function finish(answer) {
+        pending = answer
         close()
-        answered(a)
     }
+    onAboutToShow: pending = ""
+    onOpened: acceptButton.forceActiveFocus()
+    onClosed: answered(pending.length ? pending : "reject")
 
-    parent: Overlay.overlay
-    anchors.centerIn: parent
-    width: Math.min(420, parent ? parent.width - 40 : 420)
     modal: true
     focus: true
-    padding: Theme.spacingLarge
     closePolicy: Popup.CloseOnEscape
-    onClosed: if (!_answered) answer("reject")
-    onOpened: {
-        _answered = false
-        acceptButton.forceActiveFocus()
-    }
+    // Centred in the window it belongs to
+    readonly property real hostWidth: parent ? parent.width : 480
+    readonly property real hostHeight: parent ? parent.height : 320
+    width: Math.min(420, hostWidth - 2 * Theme.spacingLarge)
+    x: (hostWidth - width) / 2
+    y: Math.max(Theme.spacingLarge, (hostHeight - implicitHeight) / 3)
+    padding: Theme.spacingLarge
+    topPadding: Theme.spacingSmall
 
-    Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.35) }
+    Overlay.modal: Rectangle { color: Theme.scrim }
     background: Rectangle {
         radius: Theme.radius
         color: Theme.panel
-        border.width: 1
         border.color: Theme.border
     }
 
-    // A Popup is not an Item: its content carries the accessible role and name
-    contentItem: ColumnLayout {
-        spacing: Theme.spacing
+    header: Text {
+        leftPadding: Theme.spacingLarge
+        rightPadding: Theme.spacingLarge
+        topPadding: Theme.spacingLarge
+        text: dialog.title
+        font: Theme.fontTitle
+        color: Theme.text
+        wrapMode: Text.Wrap
+        Accessible.role: Accessible.Heading
+        Accessible.name: text
+    }
+
+    // A Popup is not an Item: the body carries the dialog's accessible role
+    contentItem: Text {
+        text: dialog.text
+        font: Theme.fontBody
+        color: Theme.text
+        wrapMode: Text.Wrap
         Accessible.role: Accessible.AlertMessage
         Accessible.name: dialog.title
         Accessible.description: dialog.text
-        Text {
-            Layout.fillWidth: true
-            text: dialog.title
-            font: Theme.fontTitle
-            color: Theme.text
-            wrapMode: Text.Wrap
-            Accessible.role: Accessible.Heading
-            Accessible.name: text
+    }
+
+    footer: Item {
+        implicitHeight: answers.implicitHeight + 2 * Theme.spacing
+        AppButton {
+            objectName: "QuestionDialog.alternative"
+            x: Theme.spacingLarge
+            y: Theme.spacing
+            visible: dialog.alternativeText.length > 0
+            text: dialog.alternativeText
+            onClicked: dialog.finish("alternative")
         }
-        Text {
-            Layout.fillWidth: true
-            visible: dialog.text.length > 0
-            text: dialog.text
-            font: Theme.fontBody
-            color: Theme.text
-            wrapMode: Text.Wrap
-        }
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.topMargin: Theme.spacingSmall
+        Row {
+            id: answers
+            x: parent.width - width - Theme.spacingLarge
+            y: Theme.spacing
             spacing: Theme.spacingSmall
-            AppButton {
-                objectName: "QuestionDialog.alternative"
-                visible: dialog.alternativeText.length > 0
-                text: dialog.alternativeText
-                onClicked: dialog.answer("alternative")
-            }
-            Item { Layout.fillWidth: true }
             AppButton {
                 objectName: "QuestionDialog.reject"
                 text: dialog.rejectText
-                onClicked: dialog.answer("reject")
+                onClicked: dialog.finish("reject")
             }
             AppButton {
                 id: acceptButton
@@ -102,9 +106,9 @@ Popup {
                 text: dialog.acceptText
                 primary: !dialog.destructive
                 destructive: dialog.destructive
-                onClicked: dialog.answer("accept")
-                Keys.onReturnPressed: dialog.answer("accept")
-                Keys.onEnterPressed: dialog.answer("accept")
+                onClicked: dialog.finish("accept")
+                Keys.onReturnPressed: dialog.finish("accept")
+                Keys.onEnterPressed: dialog.finish("accept")
             }
         }
     }

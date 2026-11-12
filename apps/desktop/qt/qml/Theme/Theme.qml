@@ -28,6 +28,8 @@ QtObject {
     readonly property color menu: dark ? "#2a2b2f" : "#ffffff"
     readonly property color tooltip: dark ? "#3a3b40" : "#1c1c1e"
     readonly property color tooltipText: "#f2f2f2"
+    // Behind a modal question: the window dimmed
+    readonly property color scrim: dark ? "#80000000" : "#59000000"
 
     // Lines
     readonly property color separator: dark ? "#35363a" : "#d9d9de"
