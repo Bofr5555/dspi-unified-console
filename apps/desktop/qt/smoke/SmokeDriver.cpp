@@ -33,6 +33,15 @@
 // QML runtime errors fail the run (TypeError, ReferenceError, a broken binding)
 static int g_qmlErrors = 0;
 static QtMessageHandler g_previous = nullptr;
+// -- WP QP19 -- A timer or an object used from a thread it does not live on
+// fails every run (the qp0-core timer crash of review w2), not only a run that
+// then crashes: Qt says so in a warning before anything breaks
+static std::atomic<int> g_threadErrors{0};
+
+static bool threadWarning(const QString &msg) {
+    return msg.contains(QLatin1String("another thread")) || msg.contains(QLatin1String("different thread"))
+        || msg.contains(QLatin1String("Timers can only be used with threads started with QThread"));
+}
 
 // -- WP QPI2 -- A crash or a cross-thread timer warning prints a backtrace and
 // the thread, so a flaky run names the object and the thread that broke
@@ -56,9 +65,13 @@ static void crashHandler(int sig) {
 #endif
 
 static void messageHandler(QtMsgType type, const QMessageLogContext &ctx, const QString &msg) {
+    if (threadWarning(msg)) {
+        g_threadErrors++;
+        fprintf(stderr, "FAIL thread: %s\n", qPrintable(msg));
 #if defined(__GLIBC__)
-    if (msg.contains(QLatin1String("another thread"))) printBacktrace(qPrintable(msg));
+        printBacktrace(qPrintable(msg));
 #endif
+    }
     if (type != QtDebugMsg && msg.contains(QLatin1String("qrc:/")) && !msg.contains(QLatin1String("deprecated"))) {
         g_qmlErrors++;
         fprintf(stderr, "FAIL qml: %s\n", qPrintable(msg));
@@ -133,6 +146,7 @@ struct SectionEntry {
     const char *name;
     int order;
     SmokeDriver::SectionFn run;
+    SmokeDriver::Mode mode;
 };
 std::vector<SectionEntry> &sections() {
     static std::vector<SectionEntry> list;
@@ -140,8 +154,43 @@ std::vector<SectionEntry> &sections() {
 }
 } // namespace
 
-SmokeDriver::Section::Section(const char *name, int order, SectionFn run) {
-    sections().push_back({ name, order, run });
+SmokeDriver::Section::Section(const char *name, int order, SectionFn run, Mode mode) {
+    sections().push_back({ name, order, run, mode });
+}
+
+// -- WP QP19 -- The variables that choose a launch's mode, first match wins
+namespace {
+struct ModeVariable {
+    const char *variable;
+    SmokeDriver::Mode mode;
+};
+const ModeVariable kModeVariables[] = {
+    { "DSPI_SMOKE_HW", SmokeDriver::Mode::Hardware },   // replug: below
+    { "DSPI_SMOKE_DEMO_ENTRY", SmokeDriver::Mode::DemoEntry },
+    { "DSPI_SMOKE_TRAY", SmokeDriver::Mode::Tray },
+    { "DSPI_SMOKE_PSEUDO", SmokeDriver::Mode::Pseudo },
+};
+const char *modeVariable() {
+    for (const ModeVariable &m : kModeVariables)
+        if (!qEnvironmentVariableIsEmpty(m.variable)) return m.variable;
+    return nullptr;
+}
+} // namespace
+
+SmokeDriver::Mode SmokeDriver::mode() {
+    const char *variable = modeVariable();
+    if (!variable) return Mode::Main;
+    for (const ModeVariable &m : kModeVariables) {
+        if (qstrcmp(m.variable, variable) != 0) continue;
+        if (m.mode == Mode::Hardware && qEnvironmentVariable(variable) == QLatin1String("replug")) return Mode::Replug;
+        return m.mode;
+    }
+    return Mode::Main;
+}
+
+QString SmokeDriver::modeValue() {
+    const char *variable = modeVariable();
+    return variable ? qEnvironmentVariable(variable) : QString();
 }
 
 void SmokeDriver::start() {
@@ -150,14 +199,13 @@ void SmokeDriver::start() {
 #if defined(__GLIBC__)
     for (int sig : { SIGSEGV, SIGBUS, SIGABRT }) signal(sig, crashHandler); // -- WP QPI2 --
 #endif
-    // The hardware, replug and tray passes come back with QP19 and QP14
-    for (const char *mode : { "DSPI_SMOKE_HW", "DSPI_SMOKE_TRAY", "DSPI_SMOKE_PSEUDO", "DSPI_SMOKE_DEMO_ENTRY" }) {
-        if (!qEnvironmentVariableIsEmpty(mode)) {
-            printf("smoke: %s is not in this build yet\n", mode);
-            fflush(stdout);
-            QTimer::singleShot(0, this, []() { QCoreApplication::exit(2); });
-            return;
-        }
+    // -- WP QP19 -- A mode no section of this build runs ends the launch at once
+    const Mode want = mode();
+    if (std::none_of(sections().begin(), sections().end(), [want](const SectionEntry &s) { return s.mode == want; })) {
+        printf("smoke: %s=%s has no section in this build\n", modeVariable(), qPrintable(modeValue()));
+        fflush(stdout);
+        QTimer::singleShot(0, this, []() { QCoreApplication::exit(2); });
+        return;
     }
     // -- WP QD38 --
     bool limitSet = false;
@@ -174,18 +222,53 @@ void SmokeDriver::run() {
     });
     const QStringList only = qEnvironmentVariable("DSPI_SMOKE_SECTION").split(QLatin1Char(','), Qt::SkipEmptyParts);
     int ran = 0;
+    const Mode want = mode();
     for (const SectionEntry &s : list) {
+        if (s.mode != want) continue;
         if (!only.isEmpty() && !only.contains(QString::fromLatin1(s.name))) continue;
         section(s.name);
         s.run(*this);
         ++ran;
     }
     if (!only.isEmpty()) check(QStringLiteral("DSPI_SMOKE_SECTION names a section"), ran > 0);
-    sectionTimes();
-    m_failures += g_qmlErrors;
-    printf("smoke: %d checks, %d failures (%d QML errors)\n", m_checks, m_failures, g_qmlErrors);
-    fflush(stdout);
+    if (m_quitExpected) return;   // the summary is printed; the app quits its own way
+    summary();
     QCoreApplication::exit(m_failures ? 1 : 0);
+}
+
+void SmokeDriver::summary() {
+    sectionTimes();
+    m_failures += g_qmlErrors + g_threadErrors;
+    const Mode m = mode();
+    const QString notRun = m == Mode::Hardware || m == Mode::Replug ? QStringLiteral(", %1 not run").arg(m_notRun) : QString();
+    printf("smoke: %d checks, %d failures (%d QML errors, %d thread warnings)%s\n", m_checks, m_failures, g_qmlErrors,
+           g_threadErrors.load(), qPrintable(notRun));
+    fflush(stdout);
+}
+
+void SmokeDriver::notRun(const QString &what, const QString &why) {
+    m_notRun++;
+    printf("smoke: NOT RUN %s: %s\n", qPrintable(what), qPrintable(why));
+    fflush(stdout);
+}
+
+// -- WP QP19 -- behaviour.md §23: a tray launch that does not quit exits 3
+void SmokeDriver::expectQuit(int withinMs) {
+    m_quitExpected = true;
+    summary();
+    printf("smoke: tray launch %s: %d checks, %d failures, quitting\n", qPrintable(modeValue()), m_checks, m_failures);
+    fflush(stdout);
+    const bool failed = m_failures > 0;
+    // The app's own quit decides the exit code, so a failure ends the launch here
+    connect(qApp, &QCoreApplication::aboutToQuit, this, [failed]() {
+        if (failed) std::_Exit(1);
+    });
+    std::thread([withinMs]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(withinMs));
+        printf("FAIL tray launch: the app did not quit within %d ms\n", withinMs);
+        fflush(stdout);
+        std::_Exit(3);
+    }).detach();
 }
 
 void SmokeDriver::section(const char *name) {
