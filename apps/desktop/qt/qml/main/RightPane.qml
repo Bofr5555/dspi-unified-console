@@ -40,6 +40,12 @@ Rectangle {
                 font: Theme.fontTitle
                 color: Theme.textMuted
             }
+
+            // -- WP QP5 -- The Overview while no channel is selected
+            Dashboard {
+                anchors.fill: parent
+                visible: pane.selectedChannel < 0
+            }
         }
     }
 }
