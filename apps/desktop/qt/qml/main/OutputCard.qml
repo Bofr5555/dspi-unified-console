@@ -45,8 +45,7 @@ Rectangle {
     readonly property bool canIdentify: DeviceModel.connected && SidebarController.identifySupported
     MouseArea {
         anchors.fill: parent
-        acceptedButtons: Qt.RightButton
-        enabled: card.canIdentify
+        acceptedButtons: card.canIdentify ? Qt.RightButton : Qt.NoButton
         onClicked: mouse => cardMenu.popup(mouse.x, mouse.y)
     }
     AppMenu {
