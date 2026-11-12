@@ -25,9 +25,10 @@ See [`LICENSE`](LICENSE) (the GPL version 3 text) and the project's [`NOTICE.md`
 which lists the material under the GPL version 3 only, among it the 13 files of this app ported
 from DSPi Console for Windows.
 
-The complete source code of each release is published with it, as the file ending in
--source.tar.gz beside its downloads. The third-party parts and their licences are listed in
-NOTICE.md in that source, and in each package's notices.
+The complete source code of each release is published with the release, as its -source.tar.gz
+archive. Whoever passes this program on, a hub that serves the web console included, passes on
+your right to that source. The third-party parts and their licences are listed in NOTICE.md in
+that source, and in each package's notices.
 
 ## Additional terms (GNU GPL v3, section 7)
 

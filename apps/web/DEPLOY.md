@@ -22,6 +22,7 @@ build refuses to build without one; `mount({ sourceUrl })` overrides it per host
 | `dspi-web.js`, `dspi-web.css` | the library, for embedding (`mount()`) |
 | `worker.js`, `dspi_wasm.wasm` | one Worker per session; the core (about 1.1 MB, 360 KB gzip) |
 | `THIRD-PARTY-NOTICES.txt` | Preact's licence and the Rust crates in the core; serve it with the rest |
+| `SOURCE.txt` | (DRAFT) where the source of this build is and that it comes with the console; serve it with the rest |
 | `*.map` | source maps (optional) |
 | `SHA256SUMS` | of the files above |
 

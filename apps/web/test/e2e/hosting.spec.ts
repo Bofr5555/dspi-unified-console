@@ -349,6 +349,11 @@ test.describe("the static build", () => {
     expect(notices).toMatch(/^preact \d+\.\d+\.\d+ — MIT$/m);
     expect(notices).toContain("Permission is hereby granted");
     expect(notices).toMatch(/^serde_json [\d.]+ — MIT OR Apache-2\.0$/m);
+    // -- WP CLEAN1 fixup cl1 -- the source notice is served beside the console
+    const source = await (await request.get(`${PLAIN}/SOURCE.txt`)).text();
+    expect(source).toContain("DRAFT");
+    expect(source).toMatch(/dspi-uconsole-[\d.]+-source\.tar\.gz/);
+    expect(source).toContain("Whoever serves this console to you");
     expect(errors).toEqual([]);
   });
 });
