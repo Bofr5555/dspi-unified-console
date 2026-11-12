@@ -5,7 +5,7 @@
 #
 #   DSPI_WEB_SOURCE_URL=https://.../source apps/web/tools/dist.sh <out-dir>
 #
-# <out-dir> gets the dist (what `dspi hub --console`, `dspi web` or any static
+# <out-dir> gets the dist (what `uconsole hub --console`, `uconsole web` or any static
 # host serves; apps/web/DEPLOY.md) and SHA256SUMS. A release build: it refuses to
 # build without DSPI_WEB_SOURCE_URL, the GPL source link About shows.
 set -euo pipefail

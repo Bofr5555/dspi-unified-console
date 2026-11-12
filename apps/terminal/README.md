@@ -107,7 +107,7 @@ anything done in the interface can be pasted into a script.
 From the repository root:
 
 ```sh
-cargo build --release -p dspi-term     # the binary is target/release/dspi
+cargo build --release -p dspi-term     # the binary is target/release/uconsole
 cargo test -p dspi-term
 ```
 

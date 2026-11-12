@@ -1,6 +1,6 @@
 #!/bin/bash
 # WP WB7: upstream's DSPi-Link web page, built unmodified from the pinned source, for
-# `dspi hub --web` to serve at /hub/ (crates/dspi-hub/src/web.rs).
+# `uconsole hub --web` to serve at /hub/ (crates/dspi-hub/src/web.rs).
 #
 #   crates/dspi-hub/tools/build-link-web.sh           build and write the bundle
 #   crates/dspi-hub/tools/build-link-web.sh --check   build and compare with it

@@ -34,7 +34,7 @@ Writing style note: this doc avoids em-dashes, per DSPi project convention.
 
 ## 0. Summary
 
-`dspi-term` is a cross-platform, full-screen terminal application that exposes
+`uconsole` (package `dspi-term`) is a cross-platform, full-screen terminal application that exposes
 **every** parameter of the DSPi firmware, graphs channel responses at parity with
 the DSPi Console, and is usable by someone who has never read a command
 reference.
@@ -1243,14 +1243,14 @@ for their own sake.
 ### 10.2 `:doctor`
 
 ```
-$ dspi-term --doctor
+$ uconsole --doctor
 DSPi Terminal 2.0.0 · linux aarch64
 
   ✓ USB subsystem reachable
   ✓ Device found: 2E8B:FEAA at bus 001 addr 007  (SN 4E3A91C7)
   ✗ Permission denied opening interface 2
       → udev rule not installed.
-        Fix:  sudo dspi-term --install-udev && sudo udevadm control --reload
+        Fix:  sudo uconsole --install-udev && sudo udevadm control --reload
               then unplug and replug the DSPi.
   ✓ Terminal: xterm-256color, 120x40, truecolor, braille OK
   ✓ Firmware 1.1.5, RP2350, wire 26, 17 channels, CS caps 4
@@ -1333,7 +1333,7 @@ model via `ChannelMap`, reporting anything it cannot place.
 bundled copy is used.
 
 ```
-1. $CONFIG_DIR/dspi-term/autoeq_database.json      user-supplied or updated
+1. $CONFIG_DIR/uconsole/autoeq_database.json      user-supplied or updated
 2. embedded copy (include_bytes!)                   shipped in the binary
 ```
 

@@ -17,7 +17,7 @@ default = ["usb"]
 # only what the embedder attaches.
 usb = ["dep:nusb", "dspi-transport/usb"]
 # The embedding app as a hub session (app.rs). Off for a headless hub, which has
-# no DspiCore. Why not always on: `dspi hub` would link the whole embedder API
+# no DspiCore. Why not always on: `uconsole hub` would link the whole embedder API
 # to use none of it.
 app = ["dep:dspi-core"]
 # The Bonjour responder (advertise.rs, WP HB5), CG2's `MdnsAdvertiser`.

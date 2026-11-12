@@ -1,6 +1,6 @@
 //! The confirmation word for raising the core voltage (WP CG14). The owner's
 //! rule, in the one place every path asks: the calibration flow, the core's
-//! and C ABI's raw request, the Terminal's `dspi ext vreg` and the firmware
+//! and C ABI's raw request, the Terminal's `uconsole ext vreg` and the firmware
 //! guard.
 //!
 //! **The word is required exactly when the target is above 1200 mV and above

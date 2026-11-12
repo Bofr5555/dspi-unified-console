@@ -65,9 +65,9 @@ fn bash() -> String {
 
     format!(
         r#"# {COMMAND} completion for bash. Generated; do not edit.
-# Install:  {COMMAND} completions bash > /etc/bash_completion.d/dspi
+# Install:  {COMMAND} completions bash > /etc/bash_completion.d/{COMMAND}
 
-_dspi() {{
+_{COMMAND}() {{
     local cur prev
     cur="${{COMP_WORDS[COMP_CWORD]}}"
     prev="${{COMP_WORDS[COMP_CWORD-1]}}"
@@ -96,7 +96,7 @@ _dspi() {{
     COMPREPLY=($(compgen -W "--json --quiet --dry-run --device" -- "$cur"))
 }}
 
-complete -F _dspi {COMMAND}
+complete -F _{COMMAND} {COMMAND}
 "#
     )
 }
@@ -134,9 +134,9 @@ fn zsh() -> String {
     format!(
         r#"#compdef {COMMAND}
 # {COMMAND} completion for zsh. Generated; do not edit.
-# Install:  {COMMAND} completions zsh > "${{fpath[1]}}/_dspi"
+# Install:  {COMMAND} completions zsh > "${{fpath[1]}}/_{COMMAND}"
 
-_dspi() {{
+_{COMMAND}() {{
     local -a params verbs
     params=(
 {descs}    )
@@ -172,7 +172,7 @@ _dspi() {{
                '--device[target one device]:serial:'
 }}
 
-_dspi "$@"
+_{COMMAND} "$@"
 "#
     )
 }

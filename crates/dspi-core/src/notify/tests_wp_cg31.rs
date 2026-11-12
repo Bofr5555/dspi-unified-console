@@ -40,7 +40,7 @@ fn f32le(v: f32) -> [u8; 4] {
     v.to_le_bytes()
 }
 
-/// `REQ_SET_DELAY` on an output's wire channel (`dspi --midi set ch.delay
+/// `REQ_SET_DELAY` on an output's wire channel (`uconsole --midi set ch.delay
 /// i2s.1.l 1`, the hw-win F1 repro) notifies only `delays[]`: the output's
 /// delay, which the clients show, follows it.
 #[test]

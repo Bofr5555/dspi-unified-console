@@ -22,14 +22,14 @@ dspi-cmd.workspace = true
 dspi-tui = { workspace = true, default-features = false }
 serde_json.workspace = true
 # -- WP R1 --
-# `dspi doctor --link` reads the hub's info endpoint.
+# `uconsole doctor --link` reads the hub's info endpoint.
 dspi-link.workspace = true
 # -- WP TM3 --
-# `dspi flash`: the UF2 check, the drive and the firmware guard. Nothing else in
+# `uconsole flash`: the UF2 check, the drive and the firmware guard. Nothing else in
 # the terminal uses it.
 dspi-core = { workspace = true }
 # -- WP TM11 --
-# `dspi hub`: the hub itself, without `app` (no DspiCore in a headless hub).
+# `uconsole hub`: the hub itself, without `app` (no DspiCore in a headless hub).
 dspi-hub = { workspace = true }
 # The hub's logs on standard error, with tungstenite held at debug (HB6's rule).
 # Same as dspi-capi's.
@@ -41,10 +41,10 @@ signal-hook = "0.3"
 # The hub's default store, in the user's local data directory. As dspi-tui's.
 dirs = "6"
 
-# -- WP TM11 -- `dspi hub` keeps the machine awake on Windows.
+# -- WP TM11 -- `uconsole hub` keeps the machine awake on Windows.
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_System_Power"] }
-# -- WP TM11 -- A background `dspi hub &` must not stop on SIGTTIN (review c4b).
+# -- WP TM11 -- A background `uconsole hub &` must not stop on SIGTTIN (review c4b).
 # Already in the graph.
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
@@ -53,7 +53,7 @@ libc = "0.2"
 # Documents must cross to the code Qt runs: the tests export and import through it.
 [dev-dependencies]
 # -- WP TM9 --
-# `dspi link scan` and `--hub` are tested on a fake network, with no multicast.
+# `uconsole link scan` and `--hub` are tested on a fake network, with no multicast.
 dspi-link = { workspace = true, features = ["fake-hub"] }
 
 [features]
@@ -61,5 +61,5 @@ default = ["midi", "mdns"]
 # `--midi`, through midir (ALSA headers on Linux).
 midi = ["dspi-tui/midi"]
 # -- WP TM9 --
-# `dspi link scan`, `--hub`, and finding a hub that moved while reconnecting.
-mdns = ["dspi-tui/mdns", "dspi-hub/mdns"]  # -- WP TM11 -- `dspi hub` advertises itself
+# `uconsole link scan`, `--hub`, and finding a hub that moved while reconnecting.
+mdns = ["dspi-tui/mdns", "dspi-hub/mdns"]  # -- WP TM11 -- `uconsole hub` advertises itself
