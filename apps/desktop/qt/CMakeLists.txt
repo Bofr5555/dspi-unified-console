@@ -9,9 +9,9 @@
 #   DSPI_SMOKE             also build DSPiConsoleSmoke, the app with the offscreen
 #                          smoke driver (smoke/, ci/check.sh --step qt-offscreen)
 #
-# Every QML file, C++ type and icon belongs to one QML module, UConsole. A work
-# package adds its files to the lists below under its own marker
-# (# -- WP QPn --); nothing else in this file needs to change.
+# Every QML file, C++ type and icon belongs to one QML module, UConsole. The
+# lists below are the base's. A work package lists its own files in its own
+# cmake/wp/<wp>.cmake (see "Work packages' files"); it does not edit this file.
 cmake_minimum_required(VERSION 3.21)
 project(DSPiConsole VERSION 0.13.0 LANGUAGES C CXX)
 
@@ -74,6 +74,7 @@ set(DSPI_APP_SOURCES
     src/core/ChannelListModel.h src/core/ChannelListModel.cpp
     src/core/BandListModel.h src/core/BandListModel.cpp
     src/core/PresetModel.h src/core/PresetModel.cpp
+    src/core/Poller.h src/core/Poller.cpp
     src/controllers/Registrar.h src/controllers/Registrar.cpp
     src/controllers/Shell.h src/controllers/Shell.cpp
     src/platform/IconProvider.h src/platform/IconProvider.cpp
@@ -89,6 +90,17 @@ set(DSPI_APP_SOURCES
 set(DSPI_QML_FILES
     qml/Theme/Theme.qml
     qml/Theme/ChannelPalette.qml
+    qml/components/AppButton.qml
+    qml/components/AppCheckBox.qml
+    qml/components/AppComboBox.qml
+    qml/components/AppScrollBar.qml
+    qml/components/AppSpinBox.qml
+    qml/components/AppSwitch.qml
+    qml/components/AppTabBar.qml
+    qml/components/AppTabButton.qml
+    qml/components/QuestionDialog.qml
+    qml/components/SectionHeading.qml
+    qml/components/TableShortcuts.qml
     qml/components/Icon.qml
     qml/components/IconButton.qml
     qml/components/CustomSlider.qml
@@ -110,28 +122,52 @@ set(DSPI_QML_FILES
     qml/main/RightPane.qml
     qml/main/DeviceStatus.qml
 )
-set_source_files_properties(qml/Theme/Theme.qml qml/Theme/ChannelPalette.qml qml/main/MenuTable.qml
-    PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
-
-# The icons: the files icons/lucide/manifest.txt names, fetched by
-# icons/fetch-lucide.sh, plus any of our own in icons/own/.
-file(STRINGS icons/lucide/manifest.txt DSPI_ICON_LINES REGEX "^[a-z0-9-]+")
-set(DSPI_ICON_FILES icons/lucide/LICENSE)
-foreach(line IN LISTS DSPI_ICON_LINES)
-    string(REGEX MATCH "^[a-z0-9-]+" name "${line}")
-    list(APPEND DSPI_ICON_FILES "icons/lucide/${name}.svg")
-endforeach()
-file(GLOB DSPI_OWN_ICONS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" icons/own/*.svg)
-list(APPEND DSPI_ICON_FILES ${DSPI_OWN_ICONS})
+set(DSPI_QML_SINGLETONS qml/Theme/Theme.qml qml/Theme/ChannelPalette.qml qml/main/MenuTable.qml)
 
 set(DSPI_SMOKE_SOURCES
     smoke/SmokeDriver.h smoke/SmokeDriver.cpp
     smoke/SmokeProbe.h smoke/SmokeBase.cpp
+    smoke/SmokeCore.cpp smoke/SmokeComponents.cpp
 )
 set(DSPI_SMOKE_QML_FILES
     smoke/SmokeProbeBanner.qml
     smoke/SmokeProbeWindow.qml
 )
+
+# ---- Work packages' files ---------------------------------------------------
+# Each work package keeps its own list file, cmake/wp/<wp>.cmake (qp1.cmake, ...),
+# so packages built in parallel never edit the same lines:
+#
+#   list(APPEND DSPI_APP_SOURCES src/controllers/HubController.h src/controllers/HubController.cpp)
+#   list(APPEND DSPI_QML_FILES qml/settings/NetworkingPage.qml)
+#   list(APPEND DSPI_QML_SINGLETONS qml/...)          # QML files that are singletons
+#   list(APPEND DSPI_SMOKE_SOURCES smoke/SmokeHub.cpp)
+#   list(APPEND DSPI_SMOKE_QML_FILES smoke/...)
+#
+# New list files are picked up at the next build (CONFIGURE_DEPENDS).
+file(GLOB DSPI_WP_LISTS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/wp/*.cmake")
+foreach(wp_list IN LISTS DSPI_WP_LISTS)
+    include("${wp_list}")
+endforeach()
+set_source_files_properties(${DSPI_QML_SINGLETONS} PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+
+# The icons: the names in icons/lucide/manifest.txt and in each work package's
+# icons/lucide/manifest.d/<wp>.txt, fetched by icons/fetch-lucide.sh, plus any
+# of our own in icons/own/. A changed manifest re-runs the configure step.
+file(GLOB DSPI_ICON_MANIFESTS CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/icons/lucide/manifest.txt" "${CMAKE_CURRENT_SOURCE_DIR}/icons/lucide/manifest.d/*.txt")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${DSPI_ICON_MANIFESTS})
+set(DSPI_ICON_FILES icons/lucide/LICENSE)
+foreach(manifest IN LISTS DSPI_ICON_MANIFESTS)
+    file(STRINGS "${manifest}" DSPI_ICON_LINES REGEX "^[a-z0-9-]+")
+    foreach(line IN LISTS DSPI_ICON_LINES)
+        string(REGEX MATCH "^[a-z0-9-]+" name "${line}")
+        list(APPEND DSPI_ICON_FILES "icons/lucide/${name}.svg")
+    endforeach()
+endforeach()
+list(REMOVE_DUPLICATES DSPI_ICON_FILES)
+file(GLOB DSPI_OWN_ICONS CONFIGURE_DEPENDS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" icons/own/*.svg)
+list(APPEND DSPI_ICON_FILES ${DSPI_OWN_ICONS})
 
 # ---- Targets -------------------------------------------------------------
 # One function for the app and the smoke build, so both are the same app.
@@ -159,6 +195,16 @@ function(dspi_add_app target)
 endfunction()
 
 dspi_add_app(DSPiConsole)
+
+# ---- Installing (Linux): what a package puts under its prefix ----------------
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    include(GNUInstallDirs)
+    install(PROGRAMS "$<TARGET_FILE:DSPiConsole>" DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME dspi-uconsole)
+    install(FILES ../packaging/linux/dspi-uconsole.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+    install(FILES ../packaging/linux/dspi-uconsole.metainfo.xml DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
+    install(FILES "${DSPI_REPO}/assets/icon/dspi-icon-rounded.svg"
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps RENAME dspi-uconsole.svg)
+endif()
 
 if(DSPI_SMOKE)
     find_package(Qt6 6.8 REQUIRED COMPONENTS Test)

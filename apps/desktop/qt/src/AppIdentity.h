@@ -14,6 +14,8 @@ inline const char *const displayName = "uConsole for DSPi";
 // app, so a user's settings carry over.
 inline const char *const settingsOrganisation = "DSPi";
 inline const char *const settingsApplication = "DSPi Console";
+// The desktop entry's name without .desktop, the binary's installed name
+inline const char *const desktopFileName = "dspi-uconsole";
 // The project's home page and the firmware's (the Help menu)
 inline const char *const projectUrl = "https://github.com/Bofr5555/dspi-unified-console";
 inline const char *const firmwareUrl = "https://github.com/WeebLabs/DSPi";

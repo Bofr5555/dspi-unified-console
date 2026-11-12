@@ -2,6 +2,7 @@
 #include "Core.h"
 #include "DeviceModel.h"
 #include "IconProvider.h"
+#include "Poller.h"
 #include "Registrar.h"
 #include "Shell.h"
 
@@ -33,15 +34,25 @@ int main(int argc, char *argv[]) {
     QApplication::setApplicationVersion(AppIdentity::version());
     QApplication app(argc, argv);
     QApplication::setApplicationDisplayName(AppIdentity::displayName());
+    // The desktop entry (packaging/linux/dspi-uconsole.desktop): Wayland's app id
+    QGuiApplication::setDesktopFileName(QString::fromUtf8(AppIdentityNames::desktopFileName));
     QQuickStyle::setStyle(QStringLiteral("Basic"));
 
     QCommandLineParser args;
     args.setApplicationDescription(AppIdentity::displayName());
     args.addHelpOption();
-    args.addVersionOption();
+    // Not addVersionOption(): that prints the application name, which is the
+    // settings name (AppIdentity.h), not the name people see
+    const QCommandLineOption version({ QStringLiteral("v"), QStringLiteral("version") },
+                                     QApplication::translate("main", "Displays version information."));
+    args.addOption(version);
     const QCommandLineOption demo(QStringLiteral("demo"), QApplication::translate("main", "Open the demo device."));
     args.addOption(demo);
     args.process(app);
+    if (args.isSet(version)) {
+        std::printf("%s %s\n", qPrintable(AppIdentity::displayName()), qPrintable(AppIdentity::version()));
+        return 0;
+    }
 
     FfiCore *ffi = dspi_core_new();
     if (!ffi) {
@@ -50,14 +61,15 @@ int main(int argc, char *argv[]) {
     }
 
     // The QML engine goes first (reset below), then the controllers, the
-    // shell, the device model and last the core.
+    // shell, the poller, the device model and last the core.
     Core core(ffi);
     DeviceModel device(&core);
+    Poller poller(&core, &device);
     auto engine = std::make_unique<QQmlApplicationEngine>();
     Shell shell(engine.get());
     shell.setColorSchemeOverride(colorSchemeOverride());
     QObject controllers;
-    Registrar::install(AppContext{ &core, &device, &shell, engine.get() }, &controllers);
+    Registrar::install(AppContext{ &core, &device, &shell, engine.get(), &poller }, &controllers);
 
     engine->addImageProvider(QStringLiteral("icon"), new IconProvider);
     engine->loadFromModule("UConsole", "MainWindow");

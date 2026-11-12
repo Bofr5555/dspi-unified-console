@@ -6,6 +6,7 @@
 
 class Core;
 class DeviceModel;
+class Poller;
 class Shell;
 class QQmlEngine;
 
@@ -16,6 +17,7 @@ struct AppContext {
     DeviceModel *device;
     Shell *shell;
     QQmlEngine *engine;
+    Poller *poller;   // periodic reads: add a poll here, never a timer of your own
 };
 
 // How a work package adds a controller, a banner or a tool window without
@@ -27,8 +29,8 @@ struct AppContext {
 //     static const Registrar::Banner hubBanner("HubBanner", 40);
 //     static const Registrar::Window hubWindow("tools.hub", "HubWindow");
 //
-// and add the .cpp/.h to DSPI_APP_SOURCES and the QML files to DSPI_QML_FILES
-// (CMakeLists.txt) under a marker for your WP. These registrations run as
+// and list the .cpp/.h in DSPI_APP_SOURCES and the QML files in DSPI_QML_FILES
+// in your own cmake/wp/<wp>.cmake. These registrations run as
 // static initialisers, so the .cpp must be compiled into the executable itself
 // (as DSPI_APP_SOURCES are), not into a static library the linker could drop.
 //
@@ -45,6 +47,10 @@ struct AppContext {
 //   dspi_* write from elsewhere; QML calls the controller. Blocking calls go to
 //   ctx.core->worker(), never on the GUI thread.
 // - A menu row or shortcut: ctx.shell->addHandler("device.commit", this, [this] { ... }).
+// - A periodic read: ctx.poller->add(...) (Poller.h).
+// - Controllers are made in no set order: a constructor must not look up
+//   another controller (Registrar::instance); do that on first use.
+// - Files: add them to your own cmake/wp/<wp>.cmake (README.md, "Shared files").
 //
 // Banner: a QML type of module UConsole that BannerHost stacks under the menu
 // bar; `order` sorts them, lowest on top, then by name. The banner shows and

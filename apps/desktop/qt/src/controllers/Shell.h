@@ -27,6 +27,9 @@ class Shell : public QObject {
     Q_PROPERTY(QStringList banners READ banners NOTIFY bannersChanged)
     Q_PROPERTY(QString lastUnhandled READ lastUnhandled NOTIFY lastUnhandledChanged)
     Q_PROPERTY(bool darkScheme READ darkScheme NOTIFY darkSchemeChanged)
+    // The system's fixed-pitch family (Theme.fontMono): Consolas on Windows,
+    // the desktop's monospace on Linux
+    Q_PROPERTY(QString monospaceFamily READ monospaceFamily CONSTANT)
 public:
     explicit Shell(QQmlEngine *engine, QObject *parent = nullptr);
     ~Shell() override;
@@ -49,6 +52,7 @@ public:
     // Dark unless the scheme in force is light: dark is also the look when the
     // system says nothing
     bool darkScheme() const;
+    static QString monospaceFamily();
 
     QStringList banners() const { return m_banners; }
     QString lastUnhandled() const { return m_lastUnhandled; }

@@ -7,6 +7,8 @@
 #include <QDebug>
 #include <QJSEngine>
 #include <QVector>
+#include <mutex>
+#include <vector>
 
 namespace {
 DeviceModel *s_instance = nullptr;
@@ -200,6 +202,16 @@ void DeviceModel::refresh() {
         });
 }
 
+// A write posted and not started yet. A later write with the same `what`
+// replaces its setter (latest wins) and adds its `done`, so a slider dragged
+// over a slow link sends the newest value, not a queue of old ones.
+struct DeviceModel::PendingWrite {
+    std::mutex lock;                            // the setter and `started`: GUI and worker
+    std::function<bool(FfiCore *)> setter;
+    bool started = false;
+    std::vector<std::function<void(bool)>> done; // GUI thread only
+};
+
 void DeviceModel::write(const QString &what, std::function<bool(FfiCore *)> setter,
                         std::function<void(bool)> done) {
     if (!connected() || readOnly()) {
@@ -208,20 +220,41 @@ void DeviceModel::write(const QString &what, std::function<bool(FfiCore *)> sett
         if (done) done(false);
         return;
     }
+    if (const std::shared_ptr<PendingWrite> queued = m_queuedWrites.value(what)) {
+        std::lock_guard<std::mutex> hold(queued->lock);
+        if (!queued->started) {
+            queued->setter = std::move(setter);
+            if (done) queued->done.push_back(std::move(done));
+            return;
+        }
+    }
+    auto pending = std::make_shared<PendingWrite>();
+    pending->setter = std::move(setter);
+    if (done) pending->done.push_back(std::move(done));
+    m_queuedWrites.insert(what, pending);
     track(1);
+    std::atomic<int> *settersRun = &m_settersRun;
     m_core->worker()->call(
         this,
-        [setter = std::move(setter)](FfiCore *c) {
-            const bool ok = setter(c);
+        [pending, settersRun](FfiCore *c) {
+            std::function<bool(FfiCore *)> run;
+            {
+                std::lock_guard<std::mutex> hold(pending->lock);
+                pending->started = true;
+                run = std::move(pending->setter);
+            }
+            settersRun->fetch_add(1);
+            const bool ok = run(c);
             return Outcome{ ok, 0, readSnapshot(c) };
         },
-        [this, what, done = std::move(done)](Outcome r) {
+        [this, what, pending](Outcome r) {
+            if (m_queuedWrites.value(what) == pending) m_queuedWrites.remove(what);
             apply(r.snap, 0);
             if (!r.ok) {
                 qInfo("DeviceModel: %s refused", qPrintable(what));
                 emit writeFailed(what);
             }
-            if (done) done(r.ok);
+            for (const std::function<void(bool)> &d : pending->done) d(r.ok);
             track(-1);
         });
 }
@@ -230,7 +263,7 @@ bool DeviceModel::setChannelName(int channel, const QString &name) {
     const QByteArray utf8 = name.toUtf8();
     if (channel < 0 || channel >= MAX_CHANNELS || utf8.size() >= CHANNEL_NAME_LEN || !connected()) return false;
     const auto ch = uint8_t(channel);
-    write(QStringLiteral("channel name"), [ch, utf8](FfiCore *c) { return dspi_set_channel_name(c, ch, utf8.constData()); });
+    write(QStringLiteral("channel name %1").arg(channel), [ch, utf8](FfiCore *c) { return dspi_set_channel_name(c, ch, utf8.constData()); });
     return true;
 }
 

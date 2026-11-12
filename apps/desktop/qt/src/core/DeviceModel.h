@@ -4,7 +4,10 @@
 #include <QObject>
 #include <QString>
 #include <QtQml/qqmlregistration.h>
+#include <QHash>
+#include <atomic>
 #include <functional>
+#include <memory>
 
 #include "ChannelListModel.h"
 #include "PresetModel.h"
@@ -79,8 +82,11 @@ public:
     Core *core() const { return m_core; }
 
     // The write path (see the class comment). `what` names the write for
-    // writeFailed and the log. `done` (optional) runs on the GUI thread after
-    // the snapshot is applied.
+    // writeFailed and the log, and is its coalescing key: a write whose `what`
+    // matches one still queued (not started) replaces that one's setter, latest
+    // wins, so name it by its target ("output gain 3", not "output gain").
+    // `done` (optional) runs on the GUI thread after the snapshot is applied,
+    // for a replaced write too, with the outcome of the setter that ran.
     void write(const QString &what, std::function<bool(FfiCore *)> setter,
                std::function<void(bool ok)> done = {});
 
@@ -94,6 +100,9 @@ public:
     // 31 bytes of UTF-8; false, with nothing sent, for a longer name or no device.
     Q_INVOKABLE bool setChannelName(int channel, const QString &name);
 
+    // Setters the worker ran so far (the smoke driver's coalescing check)
+    int settersRun() const { return m_settersRun.load(); }
+
 signals:
     // After every applied snapshot; `flags` are the NOTIFY_* bits that caused
     // it (0 for a read or write of this app's own).
@@ -103,6 +112,7 @@ signals:
     void busyChanged();
 
 private:
+    struct PendingWrite;
     void apply(const DeviceSnapshot &snap, uint flags);
     void onNotifications();
     void onDeviceEvent(int event, const QString &serial);
@@ -117,6 +127,8 @@ private:
     int m_revision = 0;
     int m_inFlight = 0;
     bool m_busy = false;
+    QHash<QString, std::shared_ptr<PendingWrite>> m_queuedWrites;
+    std::atomic<int> m_settersRun{ 0 };
 };
 
 #endif // DEVICEMODEL_H

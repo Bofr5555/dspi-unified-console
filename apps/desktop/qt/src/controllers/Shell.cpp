@@ -4,6 +4,7 @@
 
 #include <QCoreApplication>
 #include <QDesktopServices>
+#include <QFontDatabase>
 #include <QGuiApplication>
 #include <QJSEngine>
 #include <QQmlComponent>
@@ -72,6 +73,8 @@ bool Shell::darkScheme() const {
         m_schemeOverride != Qt::ColorScheme::Unknown ? m_schemeOverride : QGuiApplication::styleHints()->colorScheme();
     return scheme != Qt::ColorScheme::Light;
 }
+
+QString Shell::monospaceFamily() { return QFontDatabase::systemFont(QFontDatabase::FixedFont).family(); }
 
 bool Shell::handles(const QString &action) const {
     const auto it = m_handlers.constFind(action);
