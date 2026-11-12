@@ -2,6 +2,8 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+
+use dspi_transport::clock::Instant;
 use std::sync::{Arc, Mutex};
 
 use super::*;
@@ -141,6 +143,7 @@ fn wp_p0m_rotation_keeps_the_history_bounded() {
     let mut files: Vec<String> = fs::read_dir(&d)
         .unwrap()
         .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .filter(|n| n.ends_with(".jsonl"))
         .collect();
     files.sort();
     assert_eq!(
@@ -423,6 +426,8 @@ fn wp_p0m_counters_record_steps_rate_limited() {
     assert!(w.counter("starvation", "Starvation", 10, 20_000).is_none());
     let r = w.counter("starvation", "Starvation", 11, 40_000).unwrap();
     assert_eq!(r.count, 4);
+    // Steps held back, then a reset: they do not carry over (review p0m F6).
+    assert!(w.counter("starvation", "Starvation", 12, 41_000).is_none());
     // A counter that went down was reset: a new baseline, no record.
     assert!(w.counter("starvation", "Starvation", 0, 80_000).is_none());
     assert_eq!(
@@ -437,19 +442,24 @@ fn wp_p0m_counters_record_steps_rate_limited() {
 
 #[test]
 fn wp_p0m_restarts_from_uptime_and_hangs() {
+    let t0 = Instant::now();
+    let at = |ms: u64| t0 + std::time::Duration::from_millis(ms);
     let mut w = Watch::new();
-    assert!(w.uptime(100, Some(0), 0).is_none());
+    assert!(w.uptime(100, Some(0), at(0), 0).is_none());
     // 60 s later, up 160 s: the same run.
-    assert!(w.uptime(160, Some(0), 60_000).is_none());
+    assert!(w.uptime(160, Some(0), at(60_000), 60_000).is_none());
     // Up 5 s: it restarted.
-    let r = w.uptime(5, Some(0), 120_000).unwrap();
+    let r = w.uptime(5, Some(0), at(120_000), 120_000).unwrap();
     assert_eq!(r.kind, EventKind::Reset);
     assert_eq!(r.uptime_s, Some(5));
     assert_eq!(r.source.as_deref(), Some("unknown"));
     // A hang count step names the watchdog.
-    let r = w.uptime(7, Some(1), 122_000).unwrap();
+    let r = w.uptime(7, Some(1), at(122_000), 122_000).unwrap();
     assert_eq!(r.source.as_deref(), Some("hang"));
-    assert!(w.uptime(9, None, 124_000).is_none());
+    assert!(w.uptime(9, None, at(124_000), 124_000).is_none());
+    // Review p0m F6: the wall clock jumps an hour ahead; the monotonic clock
+    // says 2 s passed and the uptime agrees: no restart.
+    assert!(w.uptime(11, None, at(126_000), 3_726_000).is_none());
     // Across connections, from the persisted last uptime.
     assert!(restarted((0, 1000), 20, 60_000));
     assert!(!restarted((0, 1000), 1055, 60_000));
@@ -460,6 +470,9 @@ fn wp_p0m_restarts_from_uptime_and_hangs() {
 #[test]
 fn wp_p0m_ext_events_are_stubbed_until_fwx() {
     assert_eq!(decode_ext_event(Some(u32::MAX), 0x20, &[1, 2, 3]), None);
+    // The seam carries several channels at once.
+    let e = ExtEvent::Clip { mask: 0b101 };
+    assert!(matches!(e, ExtEvent::Clip { mask } if mask.count_ones() == 2));
     assert_eq!(ResetReason::Brownout.as_str(), "brownout");
 }
 
@@ -476,4 +489,145 @@ fn proptest_wp_p0m_any_bytes_read_without_panic() {
         let after = log.read("P", page.last_id, usize::MAX);
         prop_assert_eq!(after.records.len(), 1);
     });
+}
+
+/// Review p0m F3: two writers of one serial in one directory (two stores here;
+/// two processes alike, the lock is the file's) never write the same id.
+#[test]
+fn wp_p0m_review_f3_two_writers_never_share_an_id() {
+    let d = dir("two");
+    let mut a = store(&d, Limits::DEFAULT);
+    let mut b = store(&d, Limits::DEFAULT);
+    a.open_device("TWO");
+    b.open_device("TWO");
+    for i in 0..3 {
+        a.record(rec(EventKind::Clip, i, "a"));
+        b.record(rec(EventKind::Clip, i, "b"));
+    }
+    let page = a.read("TWO", 0, 100);
+    let ids: Vec<u64> = page.records.iter().map(|r| r.id).collect();
+    assert_eq!(ids, [1, 2, 3, 4, 5, 6]);
+    // A reader paging by id from the first record on sees every record.
+    let mut seen = 1;
+    let mut last = 1;
+    loop {
+        let p = b.read("TWO", last, 2);
+        if p.records.is_empty() {
+            break;
+        }
+        seen += p.records.len();
+        last = p.last_id;
+    }
+    assert_eq!(seen, 6);
+}
+
+/// The same with threads racing, and rotation in the middle.
+#[test]
+fn wp_p0m_review_f3_racing_writers_with_rotation() {
+    let d = dir("race");
+    let limits = Limits {
+        max_file_bytes: 1500,
+        rotated_files: 50,
+        ..Limits::DEFAULT
+    };
+    let threads: Vec<_> = (0..4)
+        .map(|w| {
+            let d = d.clone();
+            std::thread::spawn(move || {
+                let mut log = store(&d, limits);
+                log.open_device("RACE");
+                for i in 0..50 {
+                    log.record(rec(EventKind::Counter, i, &format!("writer {w} step {i}")));
+                }
+                log.write_errors()
+            })
+        })
+        .collect();
+    for t in threads {
+        assert_eq!(t.join().unwrap(), 0);
+    }
+    let mut log = store(&d, limits);
+    let page = log.read("RACE", 0, usize::MAX);
+    let mut ids: Vec<u64> = page.records.iter().map(|r| r.id).collect();
+    assert_eq!(ids.len(), 200, "nothing lost");
+    ids.dedup();
+    assert_eq!(ids.len(), 200, "no id twice");
+    assert_eq!(page.skipped, 0);
+}
+
+/// Review p0m F4: a line with a huge id is not a record, and does not stop
+/// the numbering.
+#[test]
+fn wp_p0m_review_f4_a_huge_id_does_not_saturate() {
+    let d = dir("huge-id");
+    let body = format!(
+        "{{\"id\":5,\"kind\":\"clip\",\"text\":\"ok\"}}\n{{\"id\":{},\"kind\":\"clip\",\"text\":\"bad\"}}\n",
+        u64::MAX
+    );
+    fs::write(d.join("events-s-H.jsonl"), body).unwrap();
+    let mut log = store(&d, Limits::DEFAULT);
+    let page = log.read("H", 0, 100);
+    assert_eq!(page.records.len(), 1);
+    assert_eq!(page.skipped, 1);
+    log.open_device("H");
+    log.record(rec(EventKind::Clip, 1, "a"));
+    log.record(rec(EventKind::Clip, 2, "b"));
+    let ids: Vec<u64> = log.read("H", 0, 100).records.iter().map(|r| r.id).collect();
+    assert_eq!(ids, [5, 6, 7]);
+    assert!(parse_line(&format!("{{\"id\":{MAX_ID},\"text\":\"x\"}}")).is_some());
+    assert!(parse_line(&format!("{{\"id\":{},\"text\":\"x\"}}", MAX_ID + 1)).is_none());
+}
+
+/// Review p0m F6: on Unix the log is the user's alone.
+#[cfg(unix)]
+#[test]
+fn wp_p0m_review_f6_files_are_private() {
+    use std::os::unix::fs::PermissionsExt;
+    let d = dir("perm").join("sub");
+    let mut log = store(&d, Limits::DEFAULT);
+    log.open_device("P");
+    log.record(rec(EventKind::Clip, 1, "x"));
+    let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode(&d), 0o700);
+    assert_eq!(mode(&d.join("events-s-P.jsonl")), 0o600);
+    assert_eq!(mode(&d.join("events-s-P.lock")), 0o600);
+}
+
+/// Review p0m F5: a read taken out of the store needs nothing of it.
+#[test]
+fn wp_p0m_review_f5_a_reader_works_without_the_store() {
+    let d = dir("reader");
+    let mut log = store(&d, Limits::DEFAULT);
+    log.open_device("R");
+    let mut held = rec(EventKind::Notification, 1, "held back");
+    held.coalesce = Some("k".into());
+    log.record(held);
+    let reader = log.reader("R");
+    drop(log);
+    let page = reader.read(0, 10);
+    assert_eq!(page.records.len(), 1, "the held record was written first");
+    assert_eq!(reader.seen().max_id, 1);
+    assert_eq!(reader.export().lines().count(), 1);
+}
+
+/// Review p0m D4: temperature edges per platform.
+#[test]
+fn wp_p0m_review_d4_temperature_edges_per_platform() {
+    assert_eq!(TempEdges::for_platform(0), TempEdges::RP2);
+    assert_eq!(TempEdges::for_platform(1), TempEdges::RP2);
+    assert_eq!(TempEdges::for_platform(2), TempEdges::STM32H723);
+    assert_eq!(TempEdges::for_platform(9), TempEdges::RP2);
+    // 70 °C: warm on an RP2350, normal on the H723.
+    assert!(Watch::for_platform(1).temperature(7000, 0).is_some());
+    let mut h7 = Watch::for_platform(2);
+    assert!(h7.temperature(7000, 0).is_none());
+    assert_eq!(
+        h7.temperature(8000, 1).unwrap().source.as_deref(),
+        Some("warm")
+    );
+    assert!(h7.temperature(7800, 2).is_none(), "hysteresis");
+    assert_eq!(
+        h7.temperature(9600, 3).unwrap().source.as_deref(),
+        Some("hot")
+    );
 }

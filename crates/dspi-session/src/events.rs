@@ -1,4 +1,4 @@
-//! The event history (WP P0M, PRO1 M1, the client half): a persistent,
+//! The event log (WP P0M, PRO1 M1, the client half): a persistent,
 //! bounded log per device of what happened to it, kept as JSON lines.
 //!
 //! Lives in the session so `dspi-core` (which feeds it for C, UniFFI and wasm),
@@ -14,7 +14,7 @@
 //! line is one [`EventRecord`] in JSON, ending in `\n`, oldest first. When a
 //! file would grow past [`Limits::max_file_bytes`] it is rotated: `.1.jsonl` is
 //! the newest older file, up to [`Limits::rotated_files`]; the oldest goes.
-//! A device's history therefore stays under `max_file_bytes * (rotated_files +
+//! A device's log therefore stays under `max_file_bytes * (rotated_files +
 //! 1)` (1 MiB with the defaults), and one line under [`Limits::max_line_bytes`].
 //!
 //! Reading tolerates anything: a line that is not a record (a torn write, a
@@ -23,8 +23,22 @@
 //! its bound is read from its tail only, and an unreadable file reads as
 //! empty. Nothing in a file can make a read panic or fail.
 //!
-//! Ids rise per device across files and runs: a new store reads the newest
-//! record's id when a device opens. A reader pages with the last id it saw.
+//! Ids rise per device across files and runs, up to [`MAX_ID`]: a new store
+//! reads the newest record's id when a device opens. A reader pages with the
+//! last id it saw.
+//!
+//! **Several writers.** Each append takes an exclusive advisory lock on
+//! `<stem>.lock` beside the files (`flock`, `LockFileEx`) for its id, its size
+//! check, a rotation and the write, and settles the id there as one past the
+//! newest in the files. So two writers of one serial in one directory (a hub
+//! and a Terminal on one machine, two cores in one process) never write the
+//! same id or rotate under each other. The rule for any writer of this format:
+//! append only under that lock, with the id taken under it. Readers take no
+//! lock; a torn last line is skipped. A file system without advisory locks
+//! (some network shares) fails the append, and the record is kept in memory.
+//!
+//! On Unix the directory is created 0700 and the files 0600: the log holds
+//! serials, firmware versions and notification text, the user's alone.
 //!
 //! # Coalescing
 //!
@@ -46,6 +60,7 @@ use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use dspi_transport::clock::Instant;
 use serde::{Deserialize, Serialize};
 
 /// The record format's version, written as `v` on every line.
@@ -121,7 +136,7 @@ fn is_false(b: &bool) -> bool {
     !*b
 }
 
-/// One line of the history. Every field but `kind` and `text` is optional in
+/// One line of the event log. Every field but `kind` and `text` is optional in
 /// the file; absent ones read as their defaults.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EventRecord {
@@ -201,7 +216,7 @@ impl EventRecord {
     }
 }
 
-/// Where else records go: the hub's shared history implements this (the hub
+/// Where else records go: the hub's shared event log implements this (the hub
 /// half of M1). Called with each record as it is written, with the store's
 /// lock held: do not call back into the core from it, and do not block.
 pub trait EventSink: Send + Sync {
@@ -238,13 +253,23 @@ impl Default for Limits {
     }
 }
 
-/// What a device's history said about its last connection, when it opened.
+/// What a device's log said about its last connection, when it opened.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LastSeen {
     /// The firmware of the last record that named one.
     pub fw: Option<String>,
     /// The last record with an uptime: when, and the uptime then.
     pub uptime: Option<(i64, u32)>,
+}
+
+/// What a [`LogReader`] found of a device's files and memory, for
+/// [`EventLog::open_device_with`].
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Seen {
+    /// The last connection.
+    pub last: LastSeen,
+    /// The highest id in use.
+    pub max_id: u64,
 }
 
 /// A page of records.
@@ -262,11 +287,9 @@ pub struct ReadBatch {
 struct Open {
     serial: String,
     next_id: u64,
-    /// Whether the file's end has been checked for a torn last line.
-    checked_end: bool,
 }
 
-/// The event history of every device this client sees.
+/// The event log of every device this client sees.
 ///
 /// Not thread-safe by itself; the core keeps it behind a mutex.
 pub struct EventLog {
@@ -302,7 +325,7 @@ impl EventLog {
         }
     }
 
-    /// Keep the history in files under `dir` (created if missing), or in
+    /// Keep the log in files under `dir` (created if missing), or in
     /// memory only with `None`. An open device carries on in the new place.
     ///
     /// Errors: the directory cannot be created; `Unsupported` on the web,
@@ -335,23 +358,42 @@ impl EventLog {
         self.sink = sink;
     }
 
-    /// Make `serial` the device records go to, and say what its history
-    /// remembers of its last connection.
+    /// Make `serial` the device records go to, and say what its log
+    /// remembers of its last connection. Reads files: a caller with a lock
+    /// around the store uses [`EventLog::reader`] and
+    /// [`EventLog::open_device_with`] instead, reading with the lock released.
     pub fn open_device(&mut self, serial: &str) -> LastSeen {
+        let seen = self.reader(serial).seen();
+        self.open_device_with(serial, seen)
+    }
+
+    /// [`EventLog::open_device`] with what a [`LogReader`] found.
+    pub fn open_device_with(&mut self, serial: &str, seen: Seen) -> LastSeen {
         self.close_device();
-        let (tail, _) = self.read_files(serial);
-        let file_id = tail.iter().map(|r| r.id).max().unwrap_or(0);
         let memory_id = self.memory_ids.get(serial).copied().unwrap_or(0);
-        let last = LastSeen {
-            fw: tail.iter().rev().find_map(|r| r.fw.clone()),
-            uptime: tail.iter().rev().find_map(|r| r.uptime_s.map(|u| (r.t, u))),
-        };
         self.open = Some(Open {
             serial: serial.to_string(),
-            next_id: file_id.max(memory_id).saturating_add(1),
-            checked_end: false,
+            next_id: next_after(seen.max_id.max(memory_id)),
         });
-        last
+        seen.last
+    }
+
+    /// What it takes to read `serial`'s log without the store: the
+    /// directory, the bounds and a copy of its records in memory. A held-back
+    /// record is written out first.
+    pub fn reader(&mut self, serial: &str) -> LogReader {
+        self.flush_pending();
+        LogReader {
+            dir: self.dir.clone(),
+            limits: self.limits,
+            serial: serial.to_string(),
+            memory: self
+                .memory
+                .iter()
+                .filter(|r| r.serial == serial)
+                .cloned()
+                .collect(),
+        }
     }
 
     /// Write out what is held back and stop recording for the open device.
@@ -365,7 +407,7 @@ impl EventLog {
         self.open.as_ref().map(|o| o.serial.as_str())
     }
 
-    /// Add `record` to the open device's history. Dropped with no device open.
+    /// Add `record` to the open device's log. Dropped with no device open.
     pub fn record(&mut self, record: EventRecord) {
         if self.open.is_none() {
             return;
@@ -410,20 +452,20 @@ impl EventLog {
         };
         record.v = RECORD_VERSION;
         record.id = open.next_id;
-        open.next_id = open.next_id.saturating_add(1);
         record.serial.clone_from(&open.serial);
         record.coalesce = None;
-        let line = encode(&mut record, self.limits.max_line_bytes);
         let mut on_disk = false;
         if let Some(dir) = &self.dir {
-            let fresh = !open.checked_end;
-            open.checked_end = true;
-            match files::append(dir, &open.serial, &line, &self.limits, fresh) {
+            // The id is settled under the file's lock: another writer of
+            // this serial in this directory may have moved it on.
+            match files::append(dir, &mut record, &self.limits) {
                 Ok(()) => on_disk = true,
                 Err(_) => self.write_errors = self.write_errors.saturating_add(1),
             }
         }
+        open.next_id = next_after(record.id);
         if !on_disk {
+            encode(&mut record, self.limits.max_line_bytes);
             self.memory_ids.insert(record.serial.clone(), record.id);
             self.memory.push_back(record.clone());
             while self.memory.len() > self.limits.memory_records {
@@ -435,12 +477,58 @@ impl EventLog {
         }
     }
 
-    /// `serial`'s records with an id above `after_id`, oldest first, at most
+    /// [`LogReader::read`] of `serial`, reading files with the store held.
+    pub fn read(&mut self, serial: &str, after_id: u64, limit: usize) -> ReadBatch {
+        self.reader(serial).read(after_id, limit)
+    }
+
+    /// [`LogReader::export`] of `serial`, reading files with the store held.
+    pub fn export(&mut self, serial: &str) -> String {
+        self.reader(serial).export()
+    }
+
+    /// The serials with an event log: files in the directory, the open device,
+    /// and those in memory. Sorted.
+    pub fn devices(&self) -> Vec<String> {
+        let mut out = self.devices_in_memory();
+        out.extend(self.dir.as_deref().map(files::devices).unwrap_or_default());
+        out.sort();
+        out.dedup();
+        out
+    }
+
+    /// The open device and the serials in memory, unsorted: with
+    /// [`EventLog::devices_in`] of [`EventLog::dir`], what
+    /// [`EventLog::devices`] lists, with the directory listed outside a lock.
+    pub fn devices_in_memory(&self) -> Vec<String> {
+        let mut out: Vec<String> = self.memory.iter().map(|r| r.serial.clone()).collect();
+        out.extend(self.open.as_ref().map(|o| o.serial.clone()));
+        out
+    }
+
+    /// The serials with files in `dir`, unsorted.
+    pub fn devices_in(dir: &std::path::Path) -> Vec<String> {
+        files::devices(dir)
+    }
+}
+
+/// A read of one device's log taken out of the store ([`EventLog::reader`]),
+/// so files are read and parsed with no lock held. A writer appending
+/// meanwhile is harmless: a torn last line is skipped.
+#[derive(Debug, Clone)]
+pub struct LogReader {
+    dir: Option<PathBuf>,
+    limits: Limits,
+    serial: String,
+    memory: Vec<EventRecord>,
+}
+
+impl LogReader {
+    /// The records with an id above `after_id`, oldest first, at most
     /// `limit`: the oldest such when paging (`after_id` above 0), the newest
     /// `limit` for a first read (`after_id` 0). From the files and memory.
-    pub fn read(&mut self, serial: &str, after_id: u64, limit: usize) -> ReadBatch {
-        self.flush_pending();
-        let (all, skipped) = self.all(serial);
+    pub fn read(&self, after_id: u64, limit: usize) -> ReadBatch {
+        let (all, skipped) = self.all();
         let mut records: Vec<EventRecord> = all.into_iter().filter(|r| r.id > after_id).collect();
         if after_id == 0 {
             let drop = records.len().saturating_sub(limit);
@@ -455,11 +543,10 @@ impl EventLog {
         }
     }
 
-    /// `serial`'s whole history as JSON lines, oldest first, in the file
-    /// format (bad lines left out).
-    pub fn export(&mut self, serial: &str) -> String {
-        self.flush_pending();
-        let (all, _) = self.all(serial);
+    /// The whole log as JSON lines, oldest first, in the file format (bad
+    /// lines left out).
+    pub fn export(&self) -> String {
+        let (all, _) = self.all();
         let mut out = String::new();
         for mut r in all {
             out.push_str(&encode(&mut r, usize::MAX));
@@ -467,31 +554,39 @@ impl EventLog {
         out
     }
 
-    /// The serials with a history: files in the directory, the open device,
-    /// and those in memory. Sorted.
-    pub fn devices(&self) -> Vec<String> {
-        let mut out = self.dir.as_deref().map(files::devices).unwrap_or_default();
-        out.extend(self.memory.iter().map(|r| r.serial.clone()));
-        out.extend(self.open.as_ref().map(|o| o.serial.clone()));
-        out.sort();
-        out.dedup();
-        out
+    /// What the log remembers of the last connection, and its highest id.
+    pub fn seen(&self) -> Seen {
+        let (all, _) = self.all();
+        Seen {
+            max_id: all.iter().map(|r| r.id).max().unwrap_or(0),
+            last: LastSeen {
+                fw: all.iter().rev().find_map(|r| r.fw.clone()),
+                uptime: all.iter().rev().find_map(|r| r.uptime_s.map(|u| (r.t, u))),
+            },
+        }
     }
 
     /// File records, then memory ones, in id order.
-    fn all(&self, serial: &str) -> (Vec<EventRecord>, u32) {
-        let (mut all, skipped) = self.read_files(serial);
-        all.extend(self.memory.iter().filter(|r| r.serial == serial).cloned());
+    fn all(&self) -> (Vec<EventRecord>, u32) {
+        let (mut all, skipped) = match &self.dir {
+            Some(dir) => files::read(dir, &self.serial, &self.limits),
+            None => (Vec::new(), 0),
+        };
+        all.extend(self.memory.iter().cloned());
         all.sort_by_key(|r| r.id);
         (all, skipped)
     }
+}
 
-    fn read_files(&self, serial: &str) -> (Vec<EventRecord>, u32) {
-        match &self.dir {
-            Some(dir) => files::read(dir, serial, &self.limits),
-            None => (Vec::new(), 0),
-        }
-    }
+/// The highest id a record may carry: 2^53 - 1, the largest integer a
+/// JavaScript number holds exactly, so the web reads every id. A line with a
+/// larger one is not a record ([`parse_line`]), so a corrupt or hand-edited
+/// line cannot push the numbering to its end.
+pub const MAX_ID: u64 = (1 << 53) - 1;
+
+/// The id after `id`, never past [`MAX_ID`].
+fn next_after(id: u64) -> u64 {
+    id.saturating_add(1).min(MAX_ID)
 }
 
 /// `record` as one line within `max` bytes: its detail lines are dropped,
@@ -533,7 +628,9 @@ pub fn parse_line(line: &str) -> Option<EventRecord> {
     if !line.starts_with('{') {
         return None;
     }
-    serde_json::from_str(line).ok()
+    serde_json::from_str::<EventRecord>(line)
+        .ok()
+        .filter(|r| r.id <= MAX_ID)
 }
 
 /// The file name stem for `serial` (see the module documentation).
@@ -579,10 +676,25 @@ mod files {
     use std::io::{self, Read, Seek, SeekFrom, Write};
     use std::path::{Path, PathBuf};
 
-    use super::{EventRecord, Limits, file_stem, parse_line, serial_of};
+    use super::{EventRecord, Limits, encode, file_stem, next_after, parse_line, serial_of};
 
+    /// `dir` and its parents; on Unix a directory made here is the user's
+    /// alone (0700). An existing one keeps its mode.
     pub(super) fn create_dir(dir: &Path) -> io::Result<()> {
-        fs::create_dir_all(dir)
+        let mut b = fs::DirBuilder::new();
+        b.recursive(true);
+        #[cfg(unix)]
+        std::os::unix::fs::DirBuilderExt::mode(&mut b, 0o700);
+        b.create(dir)
+    }
+
+    /// For appending to a log file, created as the user's alone on Unix (0600).
+    fn open_append(p: &Path) -> io::Result<fs::File> {
+        let mut o = OpenOptions::new();
+        o.create(true).append(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut o, 0o600);
+        o.open(p)
     }
 
     /// The current file (`n` 0) or the `n`th older one.
@@ -595,35 +707,65 @@ mod files {
         }
     }
 
-    /// Append `line`, rotating first if it would not fit. `fresh`: the file's
-    /// end has not been checked since the device opened; a torn last line then
-    /// gets its own end, so `line` starts on a line of its own.
-    pub(super) fn append(
+    /// The advisory lock file of `serial`'s log (`<stem>.lock`).
+    fn lock_path(dir: &Path, serial: &str) -> PathBuf {
+        dir.join(format!("{}.lock", file_stem(serial)))
+    }
+
+    /// Append `record` to `serial`'s current file, rotating first if it would
+    /// not fit, all under an exclusive advisory lock on `<stem>.lock`
+    /// (`flock` on Unix, `LockFileEx` on Windows), so two writers of one serial
+    /// in one directory (two processes, or two stores in one) take turns.
+    /// Under the lock the record's id becomes the higher of its own and one
+    /// past the newest id in the files, so ids never collide.
+    pub(super) fn append(dir: &Path, record: &mut EventRecord, limits: &Limits) -> io::Result<()> {
+        let serial = record.serial.clone();
+        let lock = open_append(&lock_path(dir, &serial))?;
+        lock.lock()?;
+        let result = append_locked(dir, &serial, record, limits);
+        let _ = lock.unlock();
+        result
+    }
+
+    fn append_locked(
         dir: &Path,
         serial: &str,
-        line: &str,
+        record: &mut EventRecord,
         limits: &Limits,
-        fresh: bool,
     ) -> io::Result<()> {
+        let tail = (0..=limits.rotated_files.min(1))
+            .find_map(|n| last_id(&path(dir, serial, n), limits))
+            .unwrap_or(0);
+        record.id = record.id.max(next_after(tail));
+        let line = encode(record, limits.max_line_bytes);
         let current = path(dir, serial, 0);
         let size = fs::metadata(&current).map_or(0, |m| m.len());
         let len = u64::try_from(line.len()).unwrap_or(u64::MAX);
         let mut torn = false;
         if size > 0 && size.saturating_add(len) > limits.max_file_bytes {
             rotate(dir, serial, limits.rotated_files)?;
-        } else if fresh && size > 0 {
+        } else if size > 0 {
+            // A crash, or another writer, may have left the end torn: the
+            // record then starts on a line of its own. One byte to read.
             torn = ends_torn(&current);
         }
-        let mut f = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&current)?;
+        let mut f = open_append(&current)?;
         let mut out = String::with_capacity(line.len().saturating_add(1));
         if torn {
             out.push('\n');
         }
-        out.push_str(line);
+        out.push_str(&line);
         f.write_all(out.as_bytes())
+    }
+
+    /// The newest valid id in a file's last few lines.
+    fn last_id(p: &Path, limits: &Limits) -> Option<u64> {
+        let cap = u64::try_from(limits.max_line_bytes)
+            .unwrap_or(u64::MAX)
+            .saturating_mul(2)
+            .max(4096);
+        let (text, _) = read_tail(p, cap)?;
+        text.split('\n').rev().find_map(parse_line).map(|r| r.id)
     }
 
     /// Whether the file's last byte is not a line end.
@@ -719,7 +861,7 @@ mod files {
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 mod files {
-    //! The web has no files: the history stays in memory.
+    //! The web has no files: the log stays in memory.
 
     use std::io;
     use std::path::Path;
@@ -730,7 +872,7 @@ mod files {
         Err(io::Error::from(io::ErrorKind::Unsupported))
     }
 
-    pub(super) fn append(_: &Path, _: &str, _: &str, _: &Limits, _: bool) -> io::Result<()> {
+    pub(super) fn append(_: &Path, _: &mut EventRecord, _: &Limits) -> io::Result<()> {
         Err(io::Error::from(io::ErrorKind::Unsupported))
     }
 
@@ -745,15 +887,71 @@ mod files {
 
 // ── Watchers: what turns polled values into records ───────────────────
 
-/// Temperature band edges, °C: at or above [`TEMP_WARM_C`] is warm, at or
-/// above [`TEMP_HOT_C`] hot. A band is left only [`TEMP_HYSTERESIS_C`] below
-/// its edge, so a reading on an edge does not flap. The RP2040 and RP2350 are
-/// specified to 85 °C ambient; the edges leave room before that.
+/// RP2040 and RP2350 temperature edges, °C: at or above [`TEMP_WARM_C`] is
+/// warm, at or above [`TEMP_HOT_C`] hot. A band is left only
+/// [`TEMP_HYSTERESIS_C`] below its edge, so a reading on an edge does not flap.
+/// Both chips are specified to 85 °C ambient; the edges leave room before that.
 pub const TEMP_WARM_C: f64 = 65.0;
 /// See [`TEMP_WARM_C`].
 pub const TEMP_HOT_C: f64 = 75.0;
 /// See [`TEMP_WARM_C`].
 pub const TEMP_HYSTERESIS_C: f64 = 3.0;
+
+/// The band edges for one platform ([`TempEdges::for_platform`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TempEdges {
+    /// At or above: warm, °C.
+    pub warm_c: f64,
+    /// At or above: hot, °C.
+    pub hot_c: f64,
+    /// How far below an edge a band is left, °C.
+    pub hysteresis_c: f64,
+}
+
+impl TempEdges {
+    /// RP2040 and RP2350: 65 / 75 °C, 3 °C hysteresis.
+    pub const RP2: Self = Self {
+        warm_c: TEMP_WARM_C,
+        hot_c: TEMP_HOT_C,
+        hysteresis_c: TEMP_HYSTERESIS_C,
+    };
+
+    /// STM32H723: 80 / 95 °C, 3 °C hysteresis. The ordinary grade (suffix 6)
+    /// is specified to a junction temperature of 105 °C (DS13313, general
+    /// operating conditions; suffix 3 parts go higher), and an H7 die at full
+    /// clock commonly sits at 55-70 °C, so the RP2 edges would read "warm" in
+    /// normal use. Not yet checked against the current DS13313 revision.
+    pub const STM32H723: Self = Self {
+        warm_c: 80.0,
+        hot_c: 95.0,
+        hysteresis_c: 3.0,
+    };
+
+    /// The edges for `DspState.platform_id` (0 RP2040, 1 RP2350, 2
+    /// STM32H723); an unknown platform gets the RP2 ones.
+    pub fn for_platform(platform_id: u8) -> Self {
+        match platform_id {
+            2 => Self::STM32H723,
+            _ => Self::RP2,
+        }
+    }
+
+    fn band(&self, c: f64, below: f64) -> Band {
+        if c >= self.hot_c - below {
+            Band::Hot
+        } else if c >= self.warm_c - below {
+            Band::Warm
+        } else {
+            Band::Normal
+        }
+    }
+}
+
+impl Default for TempEdges {
+    fn default() -> Self {
+        Self::RP2
+    }
+}
 
 /// A counter step is recorded at most this often per counter, ms; steps in
 /// between are added to the next record's `count`.
@@ -792,16 +990,26 @@ struct CounterSeen {
 /// its baseline.
 #[derive(Debug, Clone, Default)]
 pub struct Watch {
+    edges: TempEdges,
     band: Option<Band>,
     counters: HashMap<String, CounterSeen>,
-    uptime: Option<(i64, u32)>,
+    /// The last uptime reading, against the monotonic clock.
+    uptime: Option<(Instant, u32)>,
     hangs: Option<u8>,
 }
 
 impl Watch {
-    /// A watch with nothing seen yet.
+    /// A watch with nothing seen yet, with the RP2040/RP2350 temperature edges.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// A watch for `DspState.platform_id`'s temperature edges.
+    pub fn for_platform(platform_id: u8) -> Self {
+        Self {
+            edges: TempEdges::for_platform(platform_id),
+            ..Self::default()
+        }
     }
 
     /// A temperature reading in centi-°C (`REQ_GET_STATUS` 16) at `t`. A
@@ -809,14 +1017,15 @@ impl Watch {
     /// normal.
     pub fn temperature(&mut self, centi_c: i32, t: i64) -> Option<EventRecord> {
         let c = f64::from(centi_c) / 100.0;
+        let e = self.edges;
         let band = match self.band {
-            None => band_of(c, 0.0),
+            None => e.band(c, 0.0),
             Some(old) => {
-                let up = band_of(c, 0.0);
+                let up = e.band(c, 0.0);
                 if up > old {
                     up
                 } else {
-                    band_of(c, TEMP_HYSTERESIS_C).max(up).min(old)
+                    e.band(c, e.hysteresis_c).max(up).min(old)
                 }
             }
         };
@@ -851,6 +1060,10 @@ impl Watch {
             return None;
         };
         if value <= seen.value {
+            if value < seen.value {
+                // Reset with the device: steps from before do not carry over.
+                seen.unrecorded = 0;
+            }
             seen.value = value;
             return None;
         }
@@ -878,13 +1091,23 @@ impl Watch {
         Some(r)
     }
 
-    /// The device's uptime and hang count at `t` (the core-voltage extension's
-    /// status; FW5's readout later). A [`EventKind::Reset`] record when the
-    /// uptime fell short of the last one plus the time since, or the hang
-    /// count rose.
-    pub fn uptime(&mut self, uptime_s: u32, hang_count: Option<u8>, t: i64) -> Option<EventRecord> {
-        let restarted = self.uptime.is_some_and(|last| restarted(last, uptime_s, t));
-        self.uptime = Some((t, uptime_s));
+    /// The device's uptime and hang count read at `now` (the monotonic clock,
+    /// so a jump of the wall clock is no restart), recorded at `t` (ms since
+    /// the epoch) (the core-voltage extension's status; FW5's readout later).
+    /// A [`EventKind::Reset`] record when the uptime fell short of the last one
+    /// plus the time since, or the hang count rose.
+    pub fn uptime(
+        &mut self,
+        uptime_s: u32,
+        hang_count: Option<u8>,
+        now: Instant,
+        t: i64,
+    ) -> Option<EventRecord> {
+        let restarted = self.uptime.is_some_and(|(then, was)| {
+            let elapsed_s = now.saturating_duration_since(then).as_secs();
+            fell_short(was, elapsed_s, uptime_s)
+        });
+        self.uptime = Some((now, uptime_s));
         let hung = match (self.hangs, hang_count) {
             (Some(old), Some(new)) => new > old,
             _ => false,
@@ -907,23 +1130,22 @@ impl Watch {
     }
 }
 
-fn band_of(c: f64, below: f64) -> Band {
-    if c >= TEMP_HOT_C - below {
-        Band::Hot
-    } else if c >= TEMP_WARM_C - below {
-        Band::Warm
-    } else {
-        Band::Normal
-    }
-}
-
 /// Whether an uptime of `now_s` at `t` means a restart since `last` (when,
-/// uptime then).
+/// uptime then), by the wall clock: across connections and runs, where only
+/// the wall clock is shared. Within a connection [`Watch::uptime`] uses the
+/// monotonic clock.
 pub fn restarted(last: (i64, u32), now_s: u32, t: i64) -> bool {
     let (then, was) = last;
-    let elapsed_s = t.saturating_sub(then).max(0) / 1000;
-    let expected = i64::from(was).saturating_add(elapsed_s);
-    i64::from(now_s).saturating_add(UPTIME_SLACK_S) < expected
+    let elapsed_s = u64::try_from(t.saturating_sub(then).max(0) / 1000).unwrap_or(0);
+    fell_short(was, elapsed_s, now_s)
+}
+
+/// An uptime of `now_s` after `elapsed_s` from one of `was`: short by more
+/// than [`UPTIME_SLACK_S`].
+fn fell_short(was: u32, elapsed_s: u64, now_s: u32) -> bool {
+    let expected = u64::from(was).saturating_add(elapsed_s);
+    let slack = u64::try_from(UPTIME_SLACK_S).unwrap_or(0);
+    u64::from(now_s).saturating_add(slack) < expected
 }
 
 // ── WP FWX's events, stubbed until the firmware lands ─────────────────
@@ -960,10 +1182,11 @@ impl ResetReason {
 /// FW5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExtEvent {
-    /// A clip flag set on `channel`.
+    /// Clip flags set: one bit per wire channel, as `clip_flags` (an event
+    /// may carry several channels at once).
     Clip {
-        /// The wire channel.
-        channel: u8,
+        /// The channels.
+        mask: u32,
     },
     /// The device restarted.
     Reset {
@@ -976,8 +1199,11 @@ pub enum ExtEvent {
 /// (`Event::Unknown { id, bytes }`) as an extension event, given the device's
 /// `EXT_NOTIFY_FEATURES` flags. `None` until FWX defines the feature bits and
 /// the event layout: then a clip event joins the meters' clip hold (and so the
-/// history's de-duplication) and a reset event becomes a
-/// [`EventKind::Reset`] record with its reason.
+/// log's de-duplication) and a reset event becomes a [`EventKind::Reset`]
+/// record with its reason.
+///
+/// Only `Event::Unknown` reaches this: until FWX lands, `dspi_session::notify`
+/// must not learn the new event ids, or must route them here too.
 pub fn decode_ext_event(notify_features: Option<u32>, id: u8, bytes: &[u8]) -> Option<ExtEvent> {
     let _ = (notify_features, id, bytes);
     None
