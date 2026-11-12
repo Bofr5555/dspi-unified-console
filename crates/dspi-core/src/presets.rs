@@ -60,8 +60,10 @@ use crate::consts::{
     UPMIX_PARAM_SURROUND_LPF, UPMIX_PARAM_SURROUND_MODE, UPMIX_PARAM_THRESHOLD, UPMIX_PARAM_WIDTH,
 };
 use crate::error::status;
+use crate::journal::journal;
 use crate::records::{DspState, FilterParams, PresetDirectory};
 use crate::{Connection, DspiCore, DspiError, Inner, Result, SideChannel, connect, state};
+use dspi_proto::value::Value;
 
 /// How long a flow waits for the device to finish a deferred flash operation.
 const CONFIRM_WITHIN: Duration = Duration::from_millis(1500);
@@ -192,6 +194,7 @@ impl DspiCore {
             }
             mark_saved(&mut inner.state, slot);
             capture_baseline_locked(inner);
+            journal(inner, "preset.save", &[slot], Value::Trigger); // -- WP P0W --
             Ok(())
         })
     }
@@ -215,6 +218,8 @@ impl DspiCore {
                 status(w.set_as_read(op::REQ_PRESET_LOAD, u16::from(slot))?)?;
                 wait_for(w.conn(), |c| names_active(c, slot))?
             };
+            // -- WP P0W -- the history before a load is gone with the state
+            journal(inner, "preset.load", &[slot], Value::Trigger);
             connect::refresh_params_locked(inner)?;
             if !refresh_directory(inner) && confirmed {
                 inner.state.active_preset_slot = slot;
@@ -277,6 +282,7 @@ impl DspiCore {
             if !confirmed {
                 return Err(unconfirmed("delete", slot));
             }
+            journal(inner, "preset.delete", &[slot], Value::Trigger); // -- WP P0W --
             inner.state.preset_occupied &= !bit(slot);
             if let Some(name) = inner.state.preset_names.get_mut(usize::from(slot)) {
                 name.clear();
@@ -303,6 +309,7 @@ impl DspiCore {
         payload.extend_from_slice(name.as_bytes());
         payload.push(0);
         let mut inner = self.lock();
+        let change = inner.journal_begin("preset.name", &[slot])?; // -- WP P0W --
         inner
             .writable_conn()?
             .set(op::REQ_PRESET_SET_NAME, u16::from(slot), &payload)?;
@@ -313,6 +320,7 @@ impl DspiCore {
         if let Some(n) = names.get_mut(usize::from(slot)) {
             *n = name.to_owned();
         }
+        change.done(&mut inner, Value::Text(name.to_owned()));
         Ok(())
     }
 
@@ -359,6 +367,7 @@ impl DspiCore {
             });
         }
         let mut inner = self.lock();
+        let change = inner.journal_begin("preset.startup", &[])?; // -- WP P0W --
         {
             let mut w = inner.writable_conn()?;
             w.conn().fresh_image = false;
@@ -366,6 +375,7 @@ impl DspiCore {
         }
         inner.state.preset_startup_mode = mode;
         inner.state.preset_default_slot = default_slot;
+        change.done(&mut inner, Value::Bytes(vec![mode, default_slot]));
         Ok(())
     }
 
@@ -379,6 +389,7 @@ impl DspiCore {
     pub fn save_params(&self) -> Result<()> {
         self.with_device_lock(SAVE_PARAMS_REASON, |inner| {
             status(inner.writable_conn()?.set_as_read(op::REQ_SAVE_PARAMS, 0)?)?;
+            journal(inner, "dev.save", &[], Value::Trigger); // -- WP P0W --
             let active = inner.state.active_preset_slot;
             if !refresh_directory(inner) {
                 mark_saved(&mut inner.state, active);
@@ -423,10 +434,14 @@ impl DspiCore {
         let sent = {
             let mut guard = self.lock();
             if lock.is_current(&guard) {
-                guard.writable_conn().and_then(|mut w| {
-                    w.conn().fresh_image = false;
-                    status(w.set_as_read(op::REQ_FACTORY_RESET, 0)?)
-                })
+                guard
+                    .writable_conn()
+                    .and_then(|mut w| {
+                        w.conn().fresh_image = false;
+                        status(w.set_as_read(op::REQ_FACTORY_RESET, 0)?)
+                    })
+                    // -- WP P0W -- the history before a reset is gone with the state
+                    .map(|()| journal(&mut guard, "dev.reset", &[], Value::Trigger))
             } else {
                 Err(DspiError::Disconnected)
             }

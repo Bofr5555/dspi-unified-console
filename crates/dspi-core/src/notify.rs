@@ -173,6 +173,12 @@ impl DspiCore {
             {
                 result.flags |= NOTIFY_STATE | NOTIFY_CURVES | NOTIFY_REFRESHED;
             }
+            // -- WP P0W --
+            let mark = crate::journal::history_mark(&mut guard);
+            if mark != guard.history_seen {
+                guard.history_seen = mark;
+                result.flags |= NOTIFY_HISTORY;
+            }
             if let Some(conn) = guard.conn.as_mut()
                 && let Some(p) = conn.refresh_pending.as_mut()
             {

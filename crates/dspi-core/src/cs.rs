@@ -771,7 +771,7 @@ impl DspiCore {
             }
             "binding" | "name" | "ir" | "group" | "macro" | "displayConfig" | "displayPage"
             | "save" | "revert" | "macroFire" | "macroCancel" | "auxState" | "auxLevel" => {
-                self.with_cs(|inner, cs| write_op(inner, cs, kind, op))
+                self.with_cs(|inner, cs| journalled_write_op(inner, cs, kind, op))
             }
             other => Err(invalid(format!("unknown operation {other}"))),
         }
@@ -791,7 +791,7 @@ impl DspiCore {
             "learnArm" => {
                 self.end_held_lock(Some(Holder::Learn));
                 let lock = self.take_device_lock(LEARN_REASON, LEARN_WINDOW, true)?;
-                match self.with_cs(|inner, cs| write_op(inner, cs, kind, op)) {
+                match self.with_cs(|inner, cs| journalled_write_op(inner, cs, kind, op)) {
                     Ok(v) => {
                         self.hold_device_lock(lock, LEARN_WINDOW, Holder::Learn);
                         Ok(v)
@@ -813,7 +813,7 @@ impl DspiCore {
             }
             // "learnCancel"
             _ => {
-                let r = self.with_cs(|inner, cs| write_op(inner, cs, kind, op));
+                let r = self.with_cs(|inner, cs| journalled_write_op(inner, cs, kind, op));
                 self.end_held_lock(Some(Holder::Learn));
                 r
             }
@@ -845,6 +845,38 @@ fn read_op(inner: &mut Inner, cs: &mut CsState, kind: &str) -> Result<Value> {
         }
     }
     Ok(json!({ "ok": true }))
+}
+
+// -- WP P0W --
+/// [`write_op`], then the operation in the journal under its registry path,
+/// the operation's JSON as the value: history, never undone (the editor's
+/// own revert is the way back).
+fn journalled_write_op(
+    inner: &mut Inner,
+    cs: &mut CsState,
+    kind: &str,
+    op: &Value,
+) -> Result<Value> {
+    let v = write_op(inner, cs, kind, op)?;
+    let path = match kind {
+        "binding" => "cs.binding",
+        "name" => "cs.name",
+        "ir" => "cs.ir",
+        "group" => "cs.group",
+        "macro" => "cs.macro",
+        "displayConfig" => "cs.display",
+        "displayPage" => "cs.display.page",
+        "save" => "cs.save",
+        "revert" => "cs.revert",
+        "macroFire" | "macroCancel" => "cs.macro.fire",
+        "auxState" => "cs.aux",
+        "auxLevel" => "cs.aux.level",
+        // "learnArm" | "learnCancel"
+        _ => "cs.ir.learn",
+    };
+    let after = dspi_proto::value::Value::Text(op.to_string());
+    crate::journal::journal(inner, path, &[], after);
+    Ok(v)
 }
 
 /// The operations that change the device: refused on a read-only

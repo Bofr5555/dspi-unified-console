@@ -107,6 +107,8 @@ mod write_param;
 mod names;
 // -- BUG1 --
 mod output_labels;
+// -- WP P0W --
+mod journal;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -157,6 +159,8 @@ pub use names::{FilterTypeName, filter_type_name, filter_type_names};
 pub use output_labels::{
     OutputCard, OutputLabel, OutputLabelInput, output_cards_for, output_labels_for,
 };
+// -- WP P0W --
+pub use journal::{HistoryEntry, HistoryMove, HistorySource};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///
@@ -266,6 +270,10 @@ pub(crate) struct Inner {
     // -- WP CG23 --
     /// The raw notification tap (`raw.rs`).
     pub(crate) notify_tap: raw::NotifyTap,
+    // -- WP P0W --
+    /// The history as `process_notifications` last reported it
+    /// (`journal::history_mark`), for `NOTIFY_HISTORY`.
+    pub(crate) history_seen: Option<(u64, u64)>,
 }
 
 /// An open device.
@@ -562,6 +570,8 @@ impl Inner {
             hotplug: hotplug::HotplugState::default(),
             // -- WP CG23 --
             notify_tap: raw::NotifyTap::default(),
+            // -- WP P0W --
+            history_seen: None,
         }
     }
 
