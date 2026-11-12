@@ -204,9 +204,8 @@ void DashboardController::onMeters() {
         m_clipLatched = 0;
         m_lastClip.invalidate();
         emit clipLatchedChanged();
-        // A read-only device keeps its flags; the marks still clear here
-        if (!m_ctx.device->readOnly())
-            m_ctx.device->write(QStringLiteral("clear clips"), [](FfiCore *c) { return dspi_clear_clips(c); });
+        // -- WP QP16 -- A read-only device takes the clear too (behaviour.md §14.2)
+        m_ctx.device->writeEvenReadOnly(QStringLiteral("clear clips"), [](FfiCore *c) { return dspi_clear_clips(c); });
     }
 }
 

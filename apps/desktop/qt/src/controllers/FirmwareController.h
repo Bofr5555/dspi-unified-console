@@ -1,0 +1,220 @@
+#ifndef FIRMWARECONTROLLER_H
+#define FIRMWARECONTROLLER_H
+
+#include <QByteArray>
+#include <QElapsedTimer>
+#include <QObject>
+#include <QString>
+#include <QTimer>
+#include <QtQml/qqmlregistration.h>
+#include <functional>
+
+#include "BootloaderLocator.h"
+#include "Registrar.h"
+
+class QJSEngine;
+class QQmlEngine;
+
+// -- WP QP16 -- Firmware: the update window (the Mac's FirmwareUpdateView and
+// FirmwareInstaller), the version-mismatch banner, and the bundled images.
+//
+// The app carries the firmware of its own release (`:/firmware/DSPi-<chip>-v<version>.uf2`);
+// that version is the one it expects a device to run. The installer never
+// writes on its own: start() is the person's one decision, then it restarts a
+// connected device into its bootloader, waits for exactly one board with a
+// drive (BootloaderLocator), writes the image behind the core's firmware guard
+// (dspi_flash_to_drive_guarded), and calls it done only when the device comes
+// back running the image's version. The guard's typed confirmation (core
+// voltage risk) is asked before the device leaves, while the board can still
+// be read (dspi_firmware_guard_board).
+//
+// A custom .uf2 can stand in for the bundled image; it is checked by the core
+// (dspi_uf2_inspect) when chosen and again by the guard and the write.
+//
+// Hidden on STM32H723: the app bundles no firmware for it and its menu row is
+// hidden there.
+class FirmwareController : public QObject {
+    Q_OBJECT
+    QML_ELEMENT
+    QML_SINGLETON
+    // ---- The mismatch banner ----
+    Q_PROPERTY(QString expectedVersion READ expectedVersion NOTIFY deviceChanged)
+    // "match", "older" (the device is behind), "newer", or "" (unknown: no device, no version)
+    Q_PROPERTY(QString match READ match NOTIFY deviceChanged)
+    Q_PROPERTY(bool mismatchShown READ mismatchShown NOTIFY deviceChanged)
+    Q_PROPERTY(QString mismatchText READ mismatchText NOTIFY deviceChanged)
+    Q_PROPERTY(bool supported READ supported NOTIFY deviceChanged)
+    // ---- The window ----
+    Q_PROPERTY(QString deviceVersion READ deviceVersion NOTIFY deviceChanged)
+    Q_PROPERTY(bool downgrade READ downgrade NOTIFY deviceChanged)
+    Q_PROPERTY(QString state READ state NOTIFY stateChanged)
+    Q_PROPERTY(int step READ step NOTIFY stateChanged)
+    Q_PROPERTY(bool failed READ failed NOTIFY stateChanged)
+    Q_PROPERTY(bool confirmed READ confirmed NOTIFY stateChanged)
+    Q_PROPERTY(QString statusTitle READ statusTitle NOTIFY stateChanged)
+    Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY stateChanged)
+    Q_PROPERTY(QString statusIcon READ statusIcon NOTIFY stateChanged)
+    // "accent", "success", "muted" or "warning"
+    Q_PROPERTY(QString statusTint READ statusTint NOTIFY stateChanged)
+    Q_PROPERTY(bool statusBusy READ statusBusy NOTIFY stateChanged)
+    Q_PROPERTY(QString boardName READ boardName NOTIFY stateChanged)
+    Q_PROPERTY(QString primaryText READ primaryText NOTIFY stateChanged)
+    Q_PROPERTY(bool showBootselHint READ showBootselHint NOTIFY stateChanged)
+    Q_PROPERTY(bool showManualHint READ showManualHint NOTIFY stateChanged)
+    Q_PROPERTY(bool showExport READ showExport NOTIFY stateChanged)
+    // ---- The image ----
+    Q_PROPERTY(QString imageName READ imageName NOTIFY imageChanged)
+    Q_PROPERTY(QString imageVersion READ imageVersion NOTIFY imageChanged)
+    // The bundled image passed the core's check and carries the expected version
+    Q_PROPERTY(bool imageChecked READ imageChecked NOTIFY imageChanged)
+    Q_PROPERTY(bool custom READ custom NOTIFY imageChanged)
+    // Why the custom image cannot be used ("" when it can)
+    Q_PROPERTY(QString imageProblem READ imageProblem NOTIFY imageChanged)
+    // ---- The guard's typed confirmation ----
+    Q_PROPERTY(bool guardAsking READ guardAsking NOTIFY guardChanged)
+    Q_PROPERTY(QString guardMessage READ guardMessage NOTIFY guardChanged)
+    Q_PROPERTY(QString guardPhrase READ guardPhrase NOTIFY guardChanged)
+public:
+    enum State { Idle, WaitingForBoard, WaitingForVolume, Ready, Writing, WaitingForDevice, Verified, Failed };
+    Q_ENUM(State)
+
+    FirmwareController(const AppContext &ctx, QObject *parent = nullptr);
+    static FirmwareController *create(QQmlEngine *, QJSEngine *);
+
+    QString expectedVersion() const { return m_expected; }
+    QString match() const;
+    bool mismatchShown() const;
+    QString mismatchText() const;
+    bool supported() const;
+    QString deviceVersion() const;
+    bool downgrade() const { return match() == QLatin1String("newer"); }
+
+    QString state() const;
+    State stateValue() const { return m_state; }
+    int step() const;
+    bool failed() const { return m_state == Failed; }
+    bool confirmed() const { return m_confirmed; }
+    QString statusTitle() const;
+    QString statusMessage() const;
+    QString statusIcon() const;
+    QString statusTint() const;
+    bool statusBusy() const;
+    QString boardName() const;
+    QString primaryText() const;
+    bool showBootselHint() const;
+    bool showManualHint() const;
+    bool showExport() const;
+
+    QString imageName() const;
+    QString imageVersion() const;
+    bool imageChecked() const;
+    bool custom() const { return !m_customPath.isEmpty(); }
+    QString imageProblem() const { return m_customProblem; }
+
+    bool guardAsking() const { return m_guardAsking; }
+    QString guardMessage() const { return m_guardMessage; }
+    QString guardPhrase() const { return m_guardPhrase; }
+
+    // The window showed (detection starts, a fresh run) or closed (detection
+    // stops; a finished run is forgotten)
+    Q_INVOKABLE void windowShown(bool shown);
+    // The person commits to the update (Update Firmware / Downgrade)
+    Q_INVOKABLE void start();
+    // Try Again, Update Another Board: back to detection, nothing armed
+    Q_INVOKABLE void resetRun();
+    // Restarts the connected device into its bootloader without installing
+    // (allowed on read-only firmware too)
+    Q_INVOKABLE void enterBootloaderOnly();
+    Q_INVOKABLE void exportConfiguration();
+    Q_INVOKABLE void chooseCustomImage();
+    Q_INVOKABLE void useCustomImage(const QString &path);
+    Q_INVOKABLE void useBundledImage();
+    // The guard's question: `typed` must be the phrase exactly; cancel() stops the run
+    Q_INVOKABLE void answerGuard(const QString &typed);
+    Q_INVOKABLE void cancelGuard();
+    // Hides the mismatch banner until the app is next started
+    Q_INVOKABLE void hideMismatch();
+    // Opens the update window (the banners' buttons)
+    Q_INVOKABLE void openWindow();
+
+    BootloaderLocator *locator() const { return m_locator; }
+    // The smoke driver's knobs
+    void setTimeoutsForTest(int volumeWaitMs, int verifyMs);
+    // Another expected version ("": the bundled images' again)
+    void setExpectedVersionForTest(const QString &version);
+    // Parses "1.1.6" out of "DSPi-RP2350-v1.1.6.uf2"; "" when there is none
+    static QString versionFromName(const QString &fileName);
+
+signals:
+    void deviceChanged();
+    void stateChanged();
+    void imageChanged();
+    void guardChanged();
+
+private:
+    struct Image {
+        QString name;
+        QByteArray bytes;
+        QString version;     // from the core's check, "" when it has none
+        int chip = -1;
+        bool valid = false;
+        QString problem;
+    };
+    enum Error {
+        NoError, MultipleBoards, VolumeNotMounted, ImageMissing, ImageStale, WriteFailed, DeviceDidNotReturn,
+        VersionMismatch, DeviceLocked, GuardRefused
+    };
+
+    void setState(State s);
+    void fail(Error e, const QString &detail = QString());
+    void onScan(const QList<BootloaderLocator::Board> &boards);
+    void install(const BootloaderLocator::Board &board);
+    void write(const BootloaderLocator::Board &board, const Image &image);
+    void enterBootloaderForInstall();
+    void checkReturned();
+    void loadBundled();
+    // The image for `chip`: the custom one, else the bundled one (empty bytes: none)
+    Image imageFor(int chip) const;
+    int deviceChip() const;
+    QString describe(int major, int minor, int patch, int beta) const;
+    QString errorText() const;
+
+    AppContext m_ctx;
+    BootloaderLocator *m_locator;
+    QString m_expected;
+    QString m_bundledVersion;
+    QList<Image> m_bundled;
+    QString m_customPath;
+    Image m_customImage;
+    QString m_customProblem;
+
+    State m_state = Idle;
+    Error m_error = NoError;
+    QString m_errorDetail;
+    bool m_shown = false;
+    bool m_confirmed = false;
+    bool m_armed = false;
+    bool m_installing = false;
+    bool m_rebootRequested = false;
+    int m_lastChip = -1;
+    BootloaderLocator::Board m_board;   // the one board detection last saw
+    bool m_checking = false;            // a version check after the write is out
+    QElapsedTimer m_volumeWait;
+    QString m_writtenVersion;
+    QString m_verifiedVersion;
+    uint64_t m_leftGeneration = 0;
+    QTimer m_verifyDeadline;
+    int m_volumeWaitMs = 8000;
+
+    bool m_mismatchHidden = false;
+
+    bool m_guardAsking = false;
+    QString m_guardMessage;
+    QString m_guardPhrase;
+    QString m_typed;
+    int m_requiredMv = 0;
+    bool m_boardRead = false;
+    std::function<void()> m_afterGuard;
+};
+
+#endif // FIRMWARECONTROLLER_H

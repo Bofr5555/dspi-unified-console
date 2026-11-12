@@ -114,6 +114,12 @@ public:
     // Setters the worker ran so far (the smoke driver's coalescing check)
     int settersRun() const { return m_settersRun.load(); }
 
+    // -- WP QP16 -- write() for the few requests a read-only device still
+    // takes: clearing the clip marks and entering the bootloader (behaviour.md
+    // §14.2). Anything else goes through write().
+    void writeEvenReadOnly(const QString &what, std::function<bool(FfiCore *)> setter,
+                           std::function<void(bool ok)> done = {});
+
 signals:
     // After every applied snapshot; `flags` are the NOTIFY_* bits that caused
     // it (0 for a read or write of this app's own).
@@ -121,6 +127,11 @@ signals:
     void snapshotApplied();
     void writeFailed(const QString &what);
     void busyChanged();
+    // -- WP QP16 -- After each write the worker took up: whether it went
+    // through and, if not, the core's reason (`code` and `message` as
+    // dspi_take_failure gives them; "dropped" when another device had opened
+    // since the write was asked for, so it was not sent)
+    void writeFinished(const QString &what, bool ok, const QString &code, const QString &message);
 
 private:
     struct PendingWrite;
@@ -141,6 +152,9 @@ private:
     QHash<QString, std::shared_ptr<PendingWrite>> m_queuedWrites;
     std::atomic<int> m_settersRun{ 0 };
     bool m_remote = false;   // -- WP QP13 --
+    // -- WP QP16 --
+    void post(const QString &what, std::function<bool(FfiCore *)> setter, std::function<void(bool)> done,
+              bool evenReadOnly);
 };
 
 #endif // DEVICEMODEL_H
