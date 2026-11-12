@@ -157,6 +157,26 @@ impl Session {
         }
         Ok(())
     }
+
+    // -- WP P0U fixup --
+    /// The range a number written to `d` must fall in on this device: the
+    /// registry's, narrowed by the platform's limits as
+    /// [`check_platform_range`](Self::check_platform_range) narrows it. `None`
+    /// for a parameter that is not a number.
+    pub fn write_range(&self, d: &ParamDesc) -> Option<(f64, f64)> {
+        let (min, max) = match d.kind {
+            registry::Kind::Float { min, max, .. } => (f64::from(min), f64::from(max)),
+            registry::Kind::Int { min, max, .. } => (min as f64, max as f64),
+            _ => return None,
+        };
+        let platform = self.capabilities().platform;
+        let max = match d.path {
+            "ch.delay" | "out.delay" => max.min(f64::from(platform.max_delay_ms())),
+            "pre" | "pre.all" if platform == Platform::Rp2040 => max.min(18.0),
+            _ => max,
+        };
+        Some((min, max))
+    }
 }
 
 // -- WP DL3 --

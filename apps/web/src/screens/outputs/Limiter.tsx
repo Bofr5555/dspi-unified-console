@@ -23,7 +23,7 @@ export function LimiterButtons(props: { session: Session; s: DspState; output: n
   const on = s.limiterEnabled[output] ?? false;
   const ceiling = s.limiterThresholdDb[output] ?? -1;
   return (
-    <span class="limiter-buttons" role="group" aria-label="Output limiter">
+    <span class="limiter-buttons" role="group" aria-label="Output Limiter">
       <button
         type="button"
         class="toggle limiter-toggle"
@@ -31,8 +31,8 @@ export function LimiterButtons(props: { session: Session; s: DspState; output: n
         aria-label={`Limiter ${props.name}`}
         title={
           on
-            ? `Output limiter on, ceiling ${ceiling.toFixed(1)} dBFS. Click to switch off, right-click for settings.`
-            : "Output limiter off. Click to switch on, right-click for settings."
+            ? `Output Limiter on, ceiling ${ceiling.toFixed(1)} dBFS. Click to switch off, right-click for settings.`
+            : "Output Limiter off. Click to switch on, right-click for settings."
         }
         disabled={props.disabled}
         onClick={() => void session.write("limit.on", { bool: !on }, [output])}
@@ -67,24 +67,24 @@ export function LimiterDialog(props: { session: Session; s: DspState; output: nu
           title="A test signal from the Signal Generator is limited like any other signal. Switch this output's limiter off for an unaltered full-scale measurement."
         >
           <input type="checkbox" role="switch" checked={on} disabled={disabled} onChange={(e) => void session.write("limit.on", { bool: (e.target as HTMLInputElement).checked }, [output])} />
-          Limiter on
+          Output Limiter
         </label>
         <div class={off ? "limiter-params off" : "limiter-params"}>
           <LevelControl
             label="Threshold"
             name="Threshold"
-            unit="dB"
+            unit="dBFS"
             value={s.limiterThresholdDb[output] ?? -1}
             range={THRESHOLD}
             slider={THRESHOLD}
             step={0.5}
             page={6}
-            text={(v) => levelText(v)}
+            text={(v) => levelText(v, "dBFS")}
             write={(v) => session.write("limit.threshold", { float: v }, [output])}
             disabled={off}
             reset={-1}
           />
-          <p class="note">The ceiling, in dBFS. No sample leaves this output above it.</p>
+          <p class="note">The ceiling: no sample leaves this output above it.</p>
           <p class="note limiter-ends" aria-hidden="true">
             <span>-30 dBFS</span>
             <span>0 dBFS</span>

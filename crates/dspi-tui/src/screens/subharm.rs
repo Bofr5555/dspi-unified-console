@@ -255,7 +255,7 @@ impl SubharmPanel {
                 s.ceiling_db as f64,
                 SUBHARM_CEILING_MIN as f64,
                 SUBHARM_CEILING_MAX as f64,
-                "dB",
+                panel::unit_of("sub.ceiling"),
             )
             .step(1.0)
             .decimals(0)

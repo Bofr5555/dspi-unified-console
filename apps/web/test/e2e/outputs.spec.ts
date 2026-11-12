@@ -265,7 +265,7 @@ test("WB6c limiter: toggle, threshold, release, link group and Copy to all outpu
   await expect(dlg).toBeVisible();
   await type(dlg.getByRole("textbox", { name: "Threshold" }), "-6");
   await expect.poll(async () => (await core(page)).limiterThresholdDb[0]).toBe(-6);
-  await expect(dlg.getByRole("textbox", { name: "Threshold" })).toHaveValue("-6.0 dB");
+  await expect(dlg.getByRole("textbox", { name: "Threshold" })).toHaveValue("-6.0 dBFS");
   await type(dlg.getByRole("textbox", { name: "Release" }), "250");
   await expect.poll(async () => (await core(page)).limiterReleaseMs[0]).toBe(250);
   await dlg.getByRole("radio", { name: "Link group 2" }).click();

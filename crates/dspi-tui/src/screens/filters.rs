@@ -82,7 +82,7 @@ const PEQ_COLUMNS: &[Column] = &[
     Column::left("Type", 21),
     Column::right("Freq", 9),
     Column::right("Gain", 9),
-    Column::right("Width", 7),
+    Column::right("Q", 7),
 ];
 
 const XO_COLUMNS: &[Column] = &[
@@ -1101,10 +1101,7 @@ mod tests {
             lines[0].contains("# TYPE") && lines[0].contains("FREQ"),
             "{f}"
         );
-        assert!(
-            lines[0].contains("GAIN") && lines[0].contains("WIDTH"),
-            "{f}"
-        );
+        assert!(lines[0].contains("GAIN") && lines[0].contains(" Q"), "{f}");
         // A 12 dB/oct shelf has a gain and a Q, exactly as DESIGN 2.1's
         // reference row draws it.
         assert!(lines[1].contains("Low Shelf (12dB)"), "{f}");

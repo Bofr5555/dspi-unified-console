@@ -89,6 +89,13 @@ test("WB6c SL1: delays from the device are shown as they are; levels and typed v
   assert.equal(parseLevel("abc", "ms"), null);
 });
 
+test("P0U: a limiter threshold is a full-scale level, dBFS, and takes a typed dB too", () => {
+  assert.equal(levelText(-6, "dBFS"), "-6.0 dBFS");
+  assert.equal(parseLevel("-6 dBFS", "dbfs"), -6);
+  assert.equal(parseLevel("-6 dB", "dbfs"), -6);
+  assert.equal(parseLevel("-6", "dbfs"), -6);
+});
+
 test("WB6c: limiter link groups and summaries, in the Console's words", () => {
   assert.deepEqual(stereoPairGroups({ numOutputChannels: 9 }), [1, 1, 2, 2, 3, 3, 4, 4, 0]);
   assert.deepEqual(stereoPairGroups({ numOutputChannels: 5 }), [1, 1, 2, 2, 0]);
