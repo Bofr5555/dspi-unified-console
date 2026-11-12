@@ -57,10 +57,10 @@ Slider {
     // moves to it, so the right button is caught before it gets there. The
     // left button passes through.
     MouseArea {
-        anchors.fill: parent
         z: 1
         acceptedButtons: Qt.RightButton
         enabled: !isNaN(slider.resetValue)
+        anchors.fill: parent
         onClicked: {
             slider.value = slider.resetValue
             slider.committed(slider.value)
