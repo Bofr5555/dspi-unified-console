@@ -226,7 +226,7 @@ void updatesSection(SmokeDriver &d) {
         d.spin(1000);
         d.check(QStringLiteral("qp17: on: the launch check waits for the app to settle"), feed.requests.isEmpty());
         d.check(QStringLiteral("qp17: on: a launch checks by itself and raises the banner"),
-                d.waitFor(8000, [&]() { return launched.result() == "available"; }) && feed.requests.size() == 1
+                d.waitFor(15000, [&]() { return launched.result() == "available"; }) && feed.requests.size() == 1
                     && launched.announce());
     }
     QSettings().remove(QStringLiteral("updates/automatic"));

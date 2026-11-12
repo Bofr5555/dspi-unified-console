@@ -159,7 +159,8 @@ QUrl AppUpdater::resolveFeed(const QUrl &override, const QUrl &builtIn) {
 AppUpdater::AppUpdater(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {
     m_net = new QNetworkAccessManager(this);
     m_net->setCookieJar(new NoCookies(m_net));
-    m_net->setRedirectPolicy(QNetworkRequest::NoLessSafeRedirectPolicy);
+    // -- WP QPI3 -- every hop is checked as the feed was (check())
+    m_net->setRedirectPolicy(QNetworkRequest::UserVerifiedRedirectPolicy);
     m_current = Version::parse(AppIdentity::version());
     const QSettings stored;
     m_automatic = stored.value(QLatin1String(kAutomaticKey), false).toBool();
@@ -224,6 +225,8 @@ void AppUpdater::checkNow() { check(false); }
 void AppUpdater::check(bool automatic) {
     if (!m_reply.isNull() || (automatic && !m_automatic)) return;
     if (!hasFeed()) return settle(QStringLiteral("failed"), tr("This build has no release feed."));
+    // -- WP QPI3 -- every release would be newer than a version that cannot be read
+    if (!m_current.valid) return settle(QStringLiteral("failed"), tr("This build's version cannot be compared with the releases."));
     QNetworkRequest ask(m_feed);
     ask.setRawHeader("User-Agent", userAgent());
     ask.setRawHeader("Accept", "application/vnd.github+json");
@@ -239,6 +242,14 @@ void AppUpdater::check(bool automatic) {
     QNetworkReply *pending = m_reply;
     QObject::connect(pending, &QNetworkReply::downloadProgress, pending, [pending](qint64 got, qint64) {
         if (got > kMaxReply) pending->abort();
+    });
+    // -- WP QPI3 -- a redirect leads where the feed itself may be: this
+    // machine for a local feed, https for the built-in one
+    const bool local = feedAllowed(m_feed, false);
+    QObject::connect(pending, &QNetworkReply::redirected, pending, [pending, local](const QUrl &to) {
+        const QUrl hop = pending->url().resolved(to);
+        if (feedAllowed(hop, !local)) emit pending->redirectAllowed();
+        else pending->abort();
     });
     QObject::connect(pending, &QNetworkReply::finished, this, &AppUpdater::replied);
     emit stateChanged();
