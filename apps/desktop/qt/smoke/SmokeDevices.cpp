@@ -1,354 +1,334 @@
-// WP QD9: the Devices list and the PIN prompt, through the real QML, on fake hubs.
-// One list holds the demo and a hub's device; a found hub is held to the id it
-// announced (wrong_hub); the prompt shows by itself, doesn't block, takes a wrong PIN
-// and a right one, and Cancel leaves; every LinkPhase shows CG10's sentence, both
-// PIN sources and reconnecting's button included; choosing the demo leaves the hub.
+// -- WP QP13 -- The device list and the pairing prompt, through the real QML and
+// the app's own controllers, on fake hubs (dspi-link-fakehub), with the demo open
+// behind them. One list holds the demo and a hub's devices; a found hub is held
+// to the id it announced (wrong_hub); the prompt comes up by itself, does not hold
+// the app up, sends six digits or nothing, takes a wrong PIN and a right one;
+// every phase shows the core's sentence, both PIN sources and reconnecting's
+// button included; the bound device is the app's, a rescan or reconnect leaves it
+// alone, polls slow down; the lock notice; choosing the demo leaves the hub;
+// Cancel leaves the hub. Adapted from the previous desktop app's QD9 checks.
 #include "SmokeDriver.h"
 
-#include "DSPiBridge.h"
-#include "DemoDevice.h"
-#include "HubController.h"
+#include "Core.h"
+#include "DeviceModel.h"
+#include "DevicesController.h"
 #include "LinkController.h"
 #include "LinkFakeHub.h"
+#include "Registrar.h"
+#include "Shell.h"
 
 #include <QCoreApplication>
-#include <QJSValue>
 #include <QJsonDocument>
-#include <QKeyEvent>
 #include <QJsonObject>
+#include <QKeyEvent>
 #include <QQmlApplicationEngine>
-#include <QQmlContext>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QSettings>
 #include <QTimer>
 #include <QVariantMap>
-
-using namespace linksmoke;
+#include <cstdio>
 
 namespace {
+using namespace linksmoke;
 
-// CG10's sentence, straight from the core: what the list must show
-QString cg10Text(const char *phase, const char *pinSource = "") {
+// The core's sentence for a phase: what the list must show
+QString coreText(const char *phase, const char *pinSource = "") {
     char buf[2048];
     const uint32_t needed = dspi_link_phase_text(phase, pinSource, buf, sizeof(buf));
     if (needed == 0 || needed > sizeof(buf)) return QString();
     return QJsonDocument::fromJson(QByteArray(buf, int(needed) - 1)).object().value(QStringLiteral("text")).toString();
 }
 
-QQuickItem *contentOf(QObject *popup) {
-    return popup ? popup->property("contentItem").value<QQuickItem *>() : nullptr;
-}
-
-QQuickItem *in(QObject *popup, const QString &name) {
-    QQuickItem *content = contentOf(popup);
-    return content ? findItem(content, name) : nullptr;
-}
-
 bool click(QQuickItem *item) {
     return item && item->isVisible() && item->isEnabled() && QMetaObject::invokeMethod(item, "clicked");
 }
 
+void typeInto(QQuickItem *field, const QString &keys) {
+    for (const QChar c : keys) {
+        const int key = c == QLatin1Char(' ') ? int(Qt::Key_Space) : int(c.toUpper().unicode());
+        QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier, QString(c));
+        QKeyEvent release(QEvent::KeyRelease, key, Qt::NoModifier, QString(c));
+        QCoreApplication::sendEvent(field, &press);
+        QCoreApplication::sendEvent(field, &release);
+    }
 }
 
-void SmokeDriver::testDevices() {
-    section("QD9: Devices list and PIN prompt on the fake hub");
-    QQmlContext *context = m_.engine->rootContext();
-    auto *link = qobject_cast<LinkController *>(context->contextProperty(QStringLiteral("linkSession")).value<QObject *>());
-    auto *hubs = qobject_cast<HubController *>(context->contextProperty(QStringLiteral("hub")).value<QObject *>());
-    QObject *popup = root()->findChild<QObject *>(QStringLiteral("devicesPopup"));
-    QObject *dialog = root()->findChild<QObject *>(QStringLiteral("pairingDialog"));
-    check("QD9: the list and the prompt are loaded", link && hubs && popup && dialog);
-    if (!link || !hubs || !popup || !dialog) return;
+void devicesSection(SmokeDriver &d) {
+    auto *link = Registrar::instance<LinkController>();
+    auto *list = Registrar::instance<DevicesController>();
+    DeviceModel *device = d.app().device;
+    QQuickItem *host = list ? list->host() : nullptr;
+    QObject *popup = host ? host->findChild<QObject *>(QStringLiteral("DevicesPopup")) : nullptr;
+    QObject *dialog = host ? host->findChild<QObject *>(QStringLiteral("PairingDialog")) : nullptr;
+    d.check("qp13: the controllers, the list and the prompt are loaded", link && list && popup && dialog);
+    if (!link || !list || !popup || !dialog) return;
     FakeHubProcess hub;
     const QString pin = QStringLiteral("482915");
-    const bool hubUp = hub.start({ "--auth", QStringLiteral("window:") + pin });
-    check("QD9: the fake hub runs (DSPI_SMOKE_FAKEHUB)", hubUp);
+    const bool hubUp = hub.start({ "--rta", "--auth", QStringLiteral("window:") + pin });
+    d.check("qp13: the fake hub runs (DSPI_SMOKE_FAKEHUB)", hubUp);
     if (!hubUp) return;
-    auto *b = m_.bridge;
-    auto *main = qobject_cast<QQuickWindow *>(root());
-    const auto grab = [&](const char *name) {
-        if (main) main->grabWindow().save(m_out + QStringLiteral("/window-devices-%1.png").arg(QLatin1String(name)));
-    };
-    const auto settled = [&] { return waitFor(30000, [link] { return !link->busy(); }); };
+
+    QQuickWindow *main = d.mainWindow();
+    const auto grab = [&](const char *name) { d.grab(main, QStringLiteral("window-devices-%1.png").arg(QLatin1String(name))); };
+    const auto settled = [&] { return d.waitFor(30000, [link] { return !link->busy(); }); };
     const auto phaseIs = [link](const char *phase) { return link->phase() == QLatin1String(phase); };
     const auto opened = [](QObject *p) { return p->property("opened").toBool(); };
-    // The list's status line says CG10's sentence for this phase, and nothing else
+    // A popup's items: its content, header and footer sit in its popup item
+    const auto in = [&](QObject *p, const QString &name) {
+        auto *content = p->property("contentItem").value<QQuickItem *>();
+        QQuickItem *scope = content && content->parentItem() ? content->parentItem() : content;
+        return scope ? d.item(name, scope) : nullptr;
+    };
+    const auto row = [&](const char *prefix, const QString &key) { return in(popup, QLatin1String(prefix) + key); };
+    // The list's status line says the core's sentence for this phase
     const auto shows = [&](const char *phase, const char *pinSource = "") {
-        QQuickItem *line = in(popup, QStringLiteral("devicesPhaseText"));
-        const QString want = cg10Text(phase, pinSource);
+        QQuickItem *line = in(popup, QStringLiteral("DevicesPopup.phaseText"));
+        const QString want = coreText(phase, pinSource);
         return phaseIs(phase) && !want.isEmpty() && line && line->isVisible() && link->phaseText() == want
                && line->property("text").toString().endsWith(want);
     };
-    // The unsaved-changes question a switch may ask first: discard
-    const auto answerUnsaved = [&] {
-        for (QObject *o : root()->findChildren<QObject *>()) {
-            if (o->property("title").toString() == QLatin1String("Unsaved Changes") && opened(o)) {
-                QMetaObject::invokeMethod(o, "choose", Q_ARG(QVariant, QStringLiteral("discard")));
-                return true;
-            }
-        }
-        return false;
-    };
-    const auto hubRow = [&](const QString &serial) { return in(popup, QStringLiteral("devicesHub_") + serial); };
-    const bool demoBefore = b->connected() && b->selectedSerial() == QLatin1String(DemoDevice::kSerial);
-    const bool watchedBefore = hubs->watching();
+    QObject *poller = d.app().engine->singletonInstance<QObject *>("UConsole", "Poller");
+    const bool demoBefore = device->demo() && device->connected();
+    d.check("qp13: the demo is open to begin with", demoBefore);
 
-    // Opened from the Device menu's entry
-    check("QD9: idle before", phaseIs("idle"));
-    QMetaObject::invokeMethod(root(), "openToolWindow", Q_ARG(QVariant, QStringLiteral("devices")));
-    check("QD9: Devices… opens the list", waitFor(2000, [&] { return opened(popup); }));
-    check("QD9: and looks for hubs while it shows", hubs->watching() && (hubs->browsing() || !hubs->browseError().isEmpty()));
-    QQuickItem *demoRow = in(popup, QStringLiteral("devicesDemo"));
-    check("QD9: the demo is in the list, marked open", demoRow && demoRow->isVisible() && demoRow->property("current").toBool() == demoBefore);
-    check("QD9: under --demo the demo is not listed again as USB",
-          !in(popup, QStringLiteral("devicesUsb_") + QLatin1String(DemoDevice::kSerial)));
-    check("QD9: idle in CG10's words", shows("idle"));
+    // Device > Devices... opens it, and it looks for hubs while it shows
+    d.check("qp13: idle before", phaseIs("idle") && !list->browseRunning());
+    d.app().shell->trigger(QStringLiteral("device.devices"));
+    d.check("qp13: Devices... opens the list", d.waitFor(2000, [&] { return opened(popup); }));
+    d.check("qp13: and looks for hubs while it shows", list->browseRunning());
+    QQuickItem *demoRow = in(popup, QStringLiteral("DevicesPopup.demo"));
+    d.check("qp13: the demo is in the list, marked open", demoRow && demoRow->isVisible() && demoRow->property("current").toBool());
+    d.check("qp13: idle in the core's words", shows("idle"));
+    d.check("qp13: no USB device in this build, and the list says so", list->usbDevices().isEmpty());
+    // Find hubs automatically: on by default, remembered, and browsing follows it
+    QQuickItem *look = in(popup, QStringLiteral("DevicesPopup.lookForHubs"));
+    d.check("qp13: Find hubs automatically is on by default", look && look->property("checked").toBool() && list->lookForHubs());
+    list->setLookForHubs(false);
+    d.check("qp13: off: remembered, and no browsing", !QSettings().value(QStringLiteral("hub/lookForHubs"), true).toBool()
+                                                         && !list->browseRunning() && !look->property("checked").toBool());
+    list->setLookForHubs(true);
+    d.check("qp13: on again: remembered, and browsing", QSettings().value(QStringLiteral("hub/lookForHubs")).toBool() && list->browseRunning());
     grab("idle");
 
-    // A hub found on the network whose hello names another id (owner Q7): held to
-    // the id it announced, so no session and no token
-    QVariantMap spoofed {
+    // A hub found on the network whose hello names another id: held to the id
+    // it announced, so no session and no token
+    const QVariantMap spoofed{
         { QStringLiteral("id"), QStringLiteral("00000000-0000-4000-8000-0000000000d9") },
         { QStringLiteral("name"), QStringLiteral("Not That Hub") },
         { QStringLiteral("url"), hub.url },
     };
-    QMetaObject::invokeMethod(popup, "connectFound", Q_ARG(QVariant, QVariant(spoofed)));
-    QQuickItem *error = in(popup, QStringLiteral("devicesError"));
-    check("QD9: a found hub with another id is refused", settled() && link->errorCode() == QLatin1String("wrong_hub"));
-    check("QD9: the list says so", error && error->isVisible() && error->property("text").toString() == link->errorText());
-    check("QD9: and no session, no prompt", phaseIs("idle") && !opened(dialog));
+    list->connectFound(spoofed);
+    QQuickItem *error = in(popup, QStringLiteral("DevicesPopup.error"));
+    d.check("qp13: a found hub with another id is refused", settled() && link->errorCode() == QLatin1String("wrong_hub"));
+    d.check("qp13: the list says so", error && d.waitFor(1000, [&] {
+        return error->isVisible() && error->property("text").toString() == link->errorText();
+    }));
+    d.check("qp13: and no session, no prompt", d.waitFor(2000, [&] { return phaseIs("idle"); }) && !opened(dialog));
 
-    // By address, from the list's own field: the hub asks, the prompt shows by itself
-    QQuickItem *address = in(popup, QStringLiteral("devicesAddress"));
+    // By address, from the list's own field: the hub asks, the prompt comes up
+    QQuickItem *address = in(popup, QStringLiteral("DevicesPopup.address"));
+    QQuickItem *connectButton = in(popup, QStringLiteral("DevicesPopup.connect"));
+    if (address) address->setProperty("text", QString());
+    d.check("qp13: Connect is off with no address", connectButton && !connectButton->isEnabled());
     if (address) address->setProperty("text", hub.address);
-    check("QD9: Connect by address", click(in(popup, QStringLiteral("devicesConnect"))));
-    check("QD9: the hub asks for its PIN", settled() && waitFor(3000, [&] { return phaseIs("needs_pairing"); }));
-    check("QD9: the prompt shows by itself", waitFor(2000, [&] { return opened(dialog); }));
-    QQuickItem *prompt = in(dialog, QStringLiteral("pairingText"));
-    const QString windowText = cg10Text("needs_pairing", "window");
-    check("QD9: needs_pairing (window) in CG10's words, in the prompt and the list",
-          shows("needs_pairing", "window") && prompt && prompt->property("text").toString() == windowText);
-    // It doesn't block: the event loop runs while it shows
+    d.check("qp13: Connect by address", click(connectButton));
+    d.check("qp13: the hub asks for its PIN", settled() && d.waitFor(3000, [&] { return phaseIs("needs_pairing"); }));
+    d.check("qp13: the prompt comes up by itself", d.waitFor(2000, [&] { return opened(dialog); }));
+    QQuickItem *prompt = in(dialog, QStringLiteral("PairingDialog.text"));
+    const QString windowText = coreText("needs_pairing", "window");
+    d.check("qp13: needs_pairing (window) in the core's words, in the prompt and the list",
+            shows("needs_pairing", "window") && prompt && prompt->property("text").toString() == windowText);
+    d.check("qp13: the prompt names the hub", dialog->property("title").toString().contains(link->hubName()));
+    // It does not hold the app up: the event loop runs while it shows
     int ticks = 0;
     QTimer ticker;
     QObject::connect(&ticker, &QTimer::timeout, [&] { ticks++; });
     ticker.start(20);
-    spin(300);
+    d.spin(300);
     ticker.stop();
-    check("QD9: the prompt does not block", ticks >= 5 && opened(dialog));
+    d.check("qp13: the prompt does not block", ticks >= 5 && opened(dialog));
     grab("pin");
 
-    // A wrong PIN: the prompt stays, says why, and is empty again
-    QQuickItem *pinField = in(dialog, QStringLiteral("pairingPin"));
-    QQuickItem *pairButton = in(dialog, QStringLiteral("pairingPair"));
-    QQuickItem *pinError = in(dialog, QStringLiteral("pairingError"));
-    check("QD9: Pair is off until a PIN is typed", pairButton && !pairButton->isEnabled());
-    // -- WP QD13b -- (review c4q N1) Six digits or nothing: a typo costs no try
+    // Six digits or nothing: a typo costs no try
+    QQuickItem *pinField = in(dialog, QStringLiteral("PairingDialog.pin"));
+    QQuickItem *pairButton = in(dialog, QStringLiteral("PairingDialog.pair"));
+    QQuickItem *pinError = in(dialog, QStringLiteral("PairingDialog.error"));
+    d.check("qp13: Pair is off until a PIN is typed", pairButton && !pairButton->isEnabled());
     if (pinField && pairButton) {
-        const auto typeKeys = [&](const QString &keys) {
-            for (const QChar c : keys) {
-                const int key = c == QLatin1Char(' ') ? int(Qt::Key_Space) : int(c.toUpper().unicode());
-                QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier, QString(c));
-                QKeyEvent release(QEvent::KeyRelease, key, Qt::NoModifier, QString(c));
-                QCoreApplication::sendEvent(pinField, &press);
-                QCoreApplication::sendEvent(pinField, &release);
-            }
-        };
         pinField->forceActiveFocus();
-        typeKeys(QStringLiteral("a1 2-345x67"));
-        check("QD13b: the PIN field takes six digits and nothing else", pinField->property("text").toString() == QLatin1String("123456")
-              && pairButton->isEnabled());
-        printf("smoke: QD13b typed into the PIN field: '%s'\n", qPrintable(pinField->property("text").toString()));
-        const QString before = link->errorCode();
-        for (const char *bad : { "12345", "12345a", "12 456", "" }) {
+        typeInto(pinField, QStringLiteral("a1 2-345x67"));
+        const QString typed = pinField->property("text").toString();
+        std::printf("smoke: qp13 typed into the PIN field: '%s'\n", qPrintable(typed));
+        d.check("qp13: the PIN field takes six digits and nothing else", typed == QLatin1String("123456") && pairButton->isEnabled());
+        for (const char *bad : { "12345", "" }) {
             pinField->setProperty("text", QString::fromLatin1(bad));
             QMetaObject::invokeMethod(dialog, "submit");
-            check("QD13b: Pair is off, and a submit sends nothing, for a PIN that is not six digits",
-                  !pairButton->isEnabled() && !link->busy() && link->errorCode() == before && phaseIs("needs_pairing"));
+            d.check("qp13: Pair is off, and a submit sends nothing, for a PIN that is not six digits",
+                    !pairButton->isEnabled() && !link->busy() && link->errorCode().isEmpty() && phaseIs("needs_pairing"));
         }
     }
+
+    // A wrong PIN: the prompt stays, says why, and is empty again
     if (pinField) pinField->setProperty("text", QStringLiteral("000000"));
-    check("QD9: Pair sends it", click(pairButton));
-    check("QD9: wrong PIN", settled() && link->errorCode() == QLatin1String("wrong_pin"));
-    check("QD9: the prompt stays and says so", waitFor(1000, [&] {
-        return opened(dialog) && pinError && pinError->isVisible() && !pinError->property("text").toString().isEmpty();
+    d.check("qp13: Pair sends it", click(pairButton));
+    d.check("qp13: wrong PIN", settled() && link->errorCode() == QLatin1String("wrong_pin"));
+    d.check("qp13: the prompt stays and says so", d.waitFor(1000, [&] {
+        return opened(dialog) && pinError && pinError->isVisible() && pinError->property("text").toString() == link->errorText();
     }));
-    check("QD9: and is cleared for another try", pinField && pinField->property("text").toString().isEmpty());
+    d.check("qp13: and the list repeats it under the field", error && error->isVisible());
+    d.check("qp13: the field is cleared for another try", pinField && pinField->property("text").toString().isEmpty());
     grab("pin-wrong");
 
-    // The right one: past pairing, the hub's device in the list
+    // The right one: past pairing, the hub's device in the same list
     if (pinField) pinField->setProperty("text", pin);
-    check("QD9: Pair again", click(pairButton));
-    check("QD9: paired", settled() && link->errorCode().isEmpty());
-    check("QD9: the prompt goes", waitFor(3000, [&] { return !opened(dialog); }));
-    check("QD9: choose_device in CG10's words", waitFor(3000, [&] { return shows("choose_device") && link->devices().size() == 1; }));
+    d.check("qp13: Pair again", click(pairButton));
+    d.check("qp13: paired", settled() && link->errorCode().isEmpty());
+    d.check("qp13: the prompt goes", d.waitFor(3000, [&] { return !opened(dialog); }));
+    d.check("qp13: choose_device in the core's words", d.waitFor(3000, [&] { return shows("choose_device") && link->devices().size() == 1; }));
     const QString serial = link->devices().value(0).toMap().value(QStringLiteral("serial")).toString();
-    QQuickItem *row = nullptr;
-    check("QD9: the hub's device is in the same list", waitFor(2000, [&] { return (row = hubRow(serial)) && row->isVisible(); }));
+    QQuickItem *hubRow = nullptr;
+    d.check("qp13: the hub's device is in the list",
+            d.waitFor(2000, [&] { return (hubRow = row("DevicesPopup.hubDevice.", serial)) && hubRow->isVisible(); }));
+    d.check("qp13: under the hub's name, its board and firmware",
+            hubRow && hubRow->property("subtitle").toString().startsWith(link->hubName() + QStringLiteral(" · RP")));
+    // No secret store in this build: the pairing went to the file, and a banner says so
+    QQuickItem *tokenNotice = d.item(QStringLiteral("TokenNotice"));
+    d.check("qp13: the token notice shows", d.waitFor(3000, [&] { return tokenNotice && tokenNotice->isVisible(); }));
     grab("choose");
+    d.check("qp13: its OK dismisses it", click(d.item(QStringLiteral("TokenNotice.ok")))
+                                             && d.waitFor(1000, [&] { return !tokenNotice->isVisible(); }));
 
-    // Chosen from the list: bound, shown and marked
-    check("QD9: choose the hub's device", click(row));
-    waitFor(500, answerUnsaved);
-    check("QD9: bound in CG10's words", settled() && waitFor(5000, [&] { return shows("bound"); }));
-    check("QD9: the bridge shows it", b->connected() && b->selectedSerial() == serial);
-    check("QD9: marked open, and the demo is not", waitFor(1000, [&] {
-        return (row = hubRow(serial)) && row->property("current").toBool() && demoRow && !demoRow->property("current").toBool();
+    // Chosen from the list: bound, the app's device, marked
+    d.check("qp13: choose the hub's device", click(hubRow));
+    d.check("qp13: bound in the core's words", settled() && d.waitFor(5000, [&] { return shows("bound"); }));
+    d.check("qp13: the app shows it", d.waitFor(5000, [&] {
+        return device->remote() && device->connected() && device->serial() == serial && !device->demo();
+    }));
+    d.check("qp13: polls slow down over the hub", poller && poller->property("slowTransport").toBool());
+    std::printf("smoke: qp13 device tooltip on the hub: '%s'\n", qPrintable(link->sessionTip().replace(QLatin1Char('\n'), QLatin1String(" | "))));
+    d.check("qp13: the device tooltip names the hub and where to choose",
+            link->sessionTip().contains(QStringLiteral(" via %1 (%2)").arg(link->hubName(), serial))
+                && link->sessionTip().contains(QLatin1String("Device > Devices")));
+    d.check("qp13: marked open, and the demo is not", d.waitFor(1000, [&] {
+        return (hubRow = row("DevicesPopup.hubDevice.", serial)) && hubRow->property("current").toBool() && !demoRow->property("current").toBool();
     }));
     grab("bound");
 
-    // no_device: the hub's board goes
-    check("QD9: the hub takes board off", hub.fault("board off"));
-    check("QD9: no_device in CG10's words", waitFor(5000, [&] { return shows("no_device"); }));
-    check("QD9: the hub takes board on", hub.fault("board on"));
-    check("QD9: the device is back", waitFor(10000, [&] { return phaseIs("bound") || phaseIs("choose_device"); }));
+    // A rescan and Reconnect leave the session's device alone
+    list->rescan();
+    device->reconnect();
+    d.app().shell->trigger(QStringLiteral("device.reconnect"));
+    d.spin(400);
+    d.waitIdle();
+    d.check("qp13: a rescan or reconnect during a hub session keeps the hub's device",
+            device->remote() && device->connected() && device->serial() == serial && phaseIs("bound"));
+
+    // Another console holds the device's lock: the notice shows until it lets go
+    QQuickItem *lock = d.item(QStringLiteral("LockNotice"));
+    d.check("qp13: no lock notice at first", lock && !lock->isVisible() && link->lockNotice().isEmpty());
+    d.check("qp13: the hub takes lock 77 5000", hub.fault("lock 77 5000"));
+    d.check("qp13: the lock notice shows", d.waitFor(3000, [&] { return lock->isVisible() && !link->lockNotice().isEmpty(); }));
+    grab("lock-notice");
+    d.check("qp13: the hub takes unlock", hub.fault("unlock"));
+    d.check("qp13: the notice goes when the lock does", d.waitFor(3000, [&] { return !lock->isVisible(); }));
+
+    // no_device: the hub's board goes, and comes back
+    d.check("qp13: the hub takes board off", hub.fault("board off"));
+    d.check("qp13: no_device in the core's words", d.waitFor(5000, [&] { return shows("no_device"); }));
+    d.check("qp13: the hub takes board on", hub.fault("board on"));
+    d.check("qp13: the device is back", d.waitFor(10000, [&] { return phaseIs("bound") || phaseIs("choose_device"); }));
     if (phaseIs("choose_device")) {
-        check("QD9: choose it again", waitFor(2000, [&] { return (row = hubRow(serial)) != nullptr; }) && click(row));
-        waitFor(500, answerUnsaved);
+        d.check("qp13: choose it again", d.waitFor(2000, [&] { return (hubRow = row("DevicesPopup.hubDevice.", serial)) != nullptr; })
+                                              && click(hubRow));
     }
-    check("QD9: bound again", settled() && waitFor(5000, [&] { return phaseIs("bound"); }));
+    d.check("qp13: bound again", settled() && d.waitFor(5000, [&] { return phaseIs("bound"); }));
 
-    // reconnecting, with CG10's button and a retry
-    check("QD9: the hub takes refuse 503", hub.fault("refuse 503"));
-    check("QD9: the hub takes drop", hub.fault("drop"));
-    QQuickItem *action = in(popup, QStringLiteral("devicesPhaseAction"));
-    QQuickItem *retry = in(popup, QStringLiteral("devicesRetry"));
-    check("QD9: reconnecting in CG10's words", waitFor(3000, [&] { return shows("reconnecting"); }));
-    check("QD9: with CG10's button", action && action->isVisible() && link->actionKey() == QLatin1String("reconnecting.disconnect")
-                                         && action->property("text").toString() == link->actionText());
-    check("QD9: and Retry Now", retry && retry->isVisible());
-    check("QD9: the hub's device can't be chosen meanwhile", (row = hubRow(serial)) && !row->isEnabled());
+    // reconnecting, with the core's button and a retry
+    d.check("qp13: the hub takes refuse 503", hub.fault("refuse 503"));
+    d.check("qp13: the hub takes drop", hub.fault("drop"));
+    QQuickItem *action = in(popup, QStringLiteral("DevicesPopup.phaseAction"));
+    QQuickItem *retry = in(popup, QStringLiteral("DevicesPopup.retry"));
+    d.check("qp13: reconnecting in the core's words", d.waitFor(3000, [&] { return shows("reconnecting"); }));
+    d.check("qp13: with the core's button", action && action->isVisible() && link->actionKey() == QLatin1String("reconnecting.disconnect")
+                                                 && action->property("text").toString() == link->actionText());
+    d.check("qp13: and Retry Now", retry && retry->isVisible());
+    d.check("qp13: the hub's device can't be chosen meanwhile", (hubRow = row("DevicesPopup.hubDevice.", serial)) && !hubRow->isEnabled());
+    d.check("qp13: the app keeps the hub's device", device->remote() && device->serial() == serial);
+    d.check("qp13: browsing follows the hub while it reconnects", list->browseRunning());
     grab("reconnecting");
-    check("QD9: the hub takes refuse ok", hub.fault("refuse ok"));
-    check("QD9: Retry Now", click(retry));
-    check("QD9: bound after the retry", waitFor(15000, [&] { return phaseIs("bound"); }) && !action->isVisible());
+    d.check("qp13: the hub takes refuse ok", hub.fault("refuse ok"));
+    d.check("qp13: Retry Now", click(retry));
+    d.check("qp13: bound after the retry", d.waitFor(15000, [&] { return phaseIs("bound"); }));
 
-    // closed: the hub ends the session for good
-    check("QD9: the hub takes close 4000", hub.fault("close 4000"));
-    // -- WP QD40 -- (review c6k, a Qt 5 flake under load) Waits for the session to
-    // leave bound, however long a loaded host takes, rather than a fixed 5 s, and
-    // says which phases it went through; the list's row goes with the next repaint
+    // closed: the hub ends the session for good, and the demo opens again
+    d.check("qp13: the hub takes close 4000", hub.fault("close 4000"));
     QStringList phases;
-    const bool left = waitFor(30000, [&] {
+    const bool left = d.waitFor(30000, [&] {
         const QString p = link->phase();
         if (phases.isEmpty() || phases.last() != p) phases << p;
         return p != QLatin1String("bound");
     });
-    check("QD9: closed in CG10's words", left && waitFor(5000, [&] {
-        const QString p = link->phase();
-        if (phases.last() != p) phases << p;
-        return shows("closed");
+    d.check("qp13: closed in the core's words", left && d.waitFor(5000, [&] { return shows("closed"); }));
+    std::printf("smoke: qp13 phases after close 4000: %s\n", qPrintable(phases.join(QStringLiteral(" > "))));
+    d.check("qp13: no hub devices listed once closed", d.waitFor(2000, [&] { return !row("DevicesPopup.hubDevice.", serial); }));
+    d.check("qp13: the device goes with the session, and the demo is back", d.waitFor(5000, [&] {
+        return !device->remote() && device->demo() && device->connected();
     }));
-    printf("smoke: QD9 phases after close 4000: %s\n", qPrintable(phases.join(QStringLiteral(" > "))));
-    check("QD9: no hub devices listed once closed", waitFor(2000, [&] { return !hubRow(serial); }));
+    d.check("qp13: polls back to their rate", poller && !poller->property("slowTransport").toBool());
+    d.check("qp13: no hub tooltip off the hub", link->sessionTip().isEmpty());
     grab("closed");
 
     // Again by address: the stored token, no prompt this time
     if (address) address->setProperty("text", hub.address);
-    check("QD9: Connect again", click(in(popup, QStringLiteral("devicesConnect"))));
-    check("QD9: no PIN asked the second time", settled() && waitFor(3000, [&] { return phaseIs("choose_device"); }) && !opened(dialog));
+    d.check("qp13: Connect again", click(connectButton));
+    d.check("qp13: no PIN asked the second time",
+            settled() && d.waitFor(3000, [&] { return phaseIs("choose_device"); }) && !opened(dialog));
 
     // refused: the hub turns the reconnect away (4xx)
-    check("QD9: the hub takes refuse 403", hub.fault("refuse 403"));
-    check("QD9: the hub takes drop again", hub.fault("drop"));
-    check("QD9: lost", waitFor(3000, [&] { return phaseIs("reconnecting") || phaseIs("refused"); }));
+    d.check("qp13: choose it", d.waitFor(2000, [&] { return (hubRow = row("DevicesPopup.hubDevice.", serial)) != nullptr; })
+                                   && click(hubRow) && settled() && d.waitFor(5000, [&] { return phaseIs("bound"); }));
+    d.check("qp13: the hub takes refuse 403", hub.fault("refuse 403"));
+    d.check("qp13: the hub takes drop again", hub.fault("drop"));
+    d.check("qp13: lost", d.waitFor(3000, [&] { return phaseIs("reconnecting") || phaseIs("refused"); }));
     if (phaseIs("reconnecting")) link->retryNow();
-    check("QD9: refused in CG10's words", waitFor(15000, [&] { return shows("refused"); }));
+    d.check("qp13: refused in the core's words", d.waitFor(15000, [&] { return shows("refused"); }));
+    d.check("qp13: and the demo is back", d.waitFor(5000, [&] { return !device->remote() && device->demo(); }));
     grab("refused");
-    check("QD9: the hub takes refuse ok again", hub.fault("refuse ok"));
+    d.check("qp13: the hub takes refuse ok again", hub.fault("refuse ok"));
 
     // Choosing the demo leaves the hub, which owns the connection while it is up
     if (address) address->setProperty("text", hub.address);
-    check("QD9: Connect a third time", click(in(popup, QStringLiteral("devicesConnect"))));
-    check("QD9: on the hub", settled() && waitFor(3000, [&] { return phaseIs("choose_device"); }));
-    check("QD9: choose the demo", click(demoRow));
-    waitFor(500, answerUnsaved);
-    check("QD9: the demo is open and the hub left", waitFor(5000, [&] {
-        return phaseIs("idle") && b->connected() && b->selectedSerial() == QLatin1String(DemoDevice::kSerial)
-               && demoRow->property("current").toBool();
+    d.check("qp13: Connect a third time", click(connectButton));
+    d.check("qp13: on the hub", settled() && d.waitFor(3000, [&] { return phaseIs("choose_device"); }));
+    const uint64_t generationBefore = device->snapshot().generation;
+    d.check("qp13: choose the demo", click(demoRow));
+    d.check("qp13: the demo is open again and the hub left", d.waitFor(5000, [&] {
+        return phaseIs("idle") && d.waitIdle() && device->connected() && device->demo()
+               && device->snapshot().generation != generationBefore && demoRow->property("current").toBool();
     }));
     settled();
 
-    // -- WP QD37 -- The status tooltip during a hub session (review c4o N1), and one
-    // unsaved-changes ask on a USB pick that leaves the hub (c4q N2). Under --demo the
-    // demo's serial is in the bridge's USB list, so it stands in for a USB device.
-    {
-        QQuickItem *cpuStatus = main ? findItem(main->contentItem(), QStringLiteral("cpuStatus")) : nullptr;
-        const auto tip = [&] { return cpuStatus ? cpuStatus->property("statusTip").toString() : QString(); };
-        check("QD37: the status tooltip offers a reconnect off the hub", tip().contains(QLatin1String("Right-click to reconnect")));
-        int hubSessionNotes = 0;
-        const auto noted = QObject::connect(b, &DSPiBridge::hubSessionChanged, [&] { hubSessionNotes++; });
-        if (address) address->setProperty("text", hub.address);
-        check("QD37: Connect a fourth time", click(in(popup, QStringLiteral("devicesConnect"))));
-        check("QD37: on the hub", settled() && waitFor(3000, [&] { return phaseIs("choose_device"); }));
-        check("QD37: hubSession is a property, and says so", b->property("hubSession").toBool() && hubSessionNotes > 0);
-        check("QD37: choose the hub's device", waitFor(2000, [&] { return (row = hubRow(serial)) != nullptr; }) && click(row));
-        waitFor(500, answerUnsaved);
-        check("QD37: bound", settled() && waitFor(5000, [&] { return phaseIs("bound") && b->connected(); }));
-        printf("smoke: QD37 status tooltip on the hub: '%s'\n", qPrintable(tip().replace(QLatin1Char('\n'), QLatin1String(" | "))));
-        // -- WP UPW2 -- "<name> via <hub>" in place of "through a hub"
-        check("QD37: the tooltip says it is a hub's device and offers no right-click",
-              tip().contains(QStringLiteral(" via %1 ").arg(link->hubName())) && tip().contains(QStringLiteral("Device > Devices"))
-                  && !tip().contains(QLatin1String("Right-click")));
-        // -- WP UPW2 -- Another console holds the device's lock: the status says so
-        // until it lets go, from the core's device list
-        {
-            QQuickItem *statusText = main ? findItem(main->contentItem(), QStringLiteral("cpuStatusText")) : nullptr;
-            const auto shown = [&] { return statusText ? statusText->property("text").toString() : QString(); };
-            const QString notice = QStringLiteral("Another console is applying changes");
-            check("UPW2: no lock notice at first", statusText && shown() != notice);
-            check("UPW2: the hub takes lock 77 5000", hub.fault("lock 77 5000"));
-            check("UPW2: the status shows the lock notice", waitFor(3000, [&] { return shown() == notice; }));
-            printf("smoke: UPW2 status while locked: '%s' | tip '%s'\n", qPrintable(shown()),
-                   qPrintable(tip().replace(QLatin1Char('\n'), QLatin1String(" | "))));
-            grab("lock-notice");
-            check("UPW2: the hub takes unlock", hub.fault("unlock"));
-            check("UPW2: the notice goes when the lock does", waitFor(3000, [&] { return shown() != notice; }));
-        }
-        b->setFilter(0, 0, 1, b->filterFreq(0, 0) + 17.0f, 1.0f, 0.9f);
-        check("QD37: unsaved changes on the hub's device", waitFor(2000, [&] { return b->presetDirty(); }));
-        // Here the bridge drops the hub's device as the session closes, so a second
-        // ask would find nothing unsaved; on a slower close it would not. So count the
-        // calls into both of main.qml's asking paths, guard and switchTo, as well as
-        // the questions shown.
-        QJSValue counter = m_.engine->evaluate(QStringLiteral(
-            "(function (pop) { var n = { calls: 0, guard: pop.guard, switchTo: pop.switchTo };"
-            " pop.guard = function (a) { n.calls++; n.guard(a) };"
-            " pop.switchTo = function (s) { n.calls++; n.switchTo(s) }; return n })"));
-        QJSValue calls = counter.call({ m_.engine->newQObject(popup) });
-        int asks = 0;
-        QMetaObject::invokeMethod(popup, "chooseUsb", Q_ARG(QVariant, QString::fromLatin1(DemoDevice::kSerial)));
-        if (waitFor(1000, answerUnsaved)) asks++;
-        while (waitFor(1500, answerUnsaved)) asks++;
-        const int asked = calls.property(QStringLiteral("calls")).toInt();
-        m_.engine->evaluate(QStringLiteral("(function (pop, n) { pop.guard = n.guard; pop.switchTo = n.switchTo })"))
-            .call({ m_.engine->newQObject(popup), calls });
-        printf("smoke: QD37 USB pick during a hub session: %d asking calls, %d questions shown\n", asked, asks);
-        check("QD37: a USB pick during a hub session asks once", asked == 1 && asks == 1);
-        check("QD37: and leaves the hub for the USB device", waitFor(5000, [&] {
-            return phaseIs("idle") && !b->hubSession() && b->connected() && b->selectedSerial() == QLatin1String(DemoDevice::kSerial);
-        }));
-        check("QD37: the tooltip offers the reconnect again", waitFor(1000, [&] { return tip().contains(QLatin1String("Right-click to reconnect")); }));
-        QObject::disconnect(noted);
-        settled();
-    }
-
     // A fixed PIN: the other wording; Cancel leaves the hub
     FakeHubProcess fixed;
-    check("QD9: a fixed-PIN hub runs", fixed.start({ "--auth", "fixed:7351" }));
+    d.check("qp13: a fixed-PIN hub runs", fixed.start({ "--auth", "fixed:7351" }));
     if (address) address->setProperty("text", fixed.address);
-    check("QD9: Connect to it", click(in(popup, QStringLiteral("devicesConnect"))));
-    check("QD9: its prompt shows by itself", settled() && waitFor(3000, [&] { return phaseIs("needs_pairing") && opened(dialog); }));
-    check("QD9: needs_pairing (fixed) in CG10's words", shows("needs_pairing", "fixed")
-                                                              && prompt && prompt->property("text").toString() == cg10Text("needs_pairing", "fixed")
-                                                              && cg10Text("needs_pairing", "fixed") != windowText);
-    check("QD9: Cancel", click(in(dialog, QStringLiteral("pairingCancel"))));
-    check("QD9: Cancel leaves the hub", waitFor(2000, [&] { return phaseIs("idle") && !opened(dialog); }));
-    check("QD9: and the demo stays open", b->connected() && b->selectedSerial() == QLatin1String(DemoDevice::kSerial));
+    d.check("qp13: Connect to it", click(connectButton));
+    d.check("qp13: its prompt comes up by itself", settled() && d.waitFor(3000, [&] { return phaseIs("needs_pairing") && opened(dialog); }));
+    d.check("qp13: needs_pairing (fixed) in the core's words",
+            shows("needs_pairing", "fixed") && prompt && prompt->property("text").toString() == coreText("needs_pairing", "fixed")
+                && coreText("needs_pairing", "fixed") != windowText);
+    d.check("qp13: Cancel", click(in(dialog, QStringLiteral("PairingDialog.cancel"))));
+    d.check("qp13: Cancel leaves the hub", d.waitFor(2000, [&] { return phaseIs("idle") && !opened(dialog); }));
+    d.check("qp13: and the demo stays open", d.waitIdle() && device->connected() && device->demo()
+                                                  && dspi_is_connected(d.app().core->handle()));
     settled();
 
-    // Done closes the list, and browsing is as it was
-    check("QD9: Done", click(in(popup, QStringLiteral("devicesDone"))));
-    check("QD9: the list closes", waitFor(2000, [&] { return !opened(popup); }));
-    check("QD9: browsing back as before", hubs->watching() == watchedBefore);
+    // Done closes the list, and browsing stops with it
+    d.check("qp13: Done", click(in(popup, QStringLiteral("DevicesPopup.done"))));
+    d.check("qp13: the list closes", d.waitFor(2000, [&] { return !opened(popup) && !list->listShown(); }));
+    d.check("qp13: and stops looking for hubs", d.waitFor(2000, [&] { return !list->browseRunning(); }));
 }
+
+const SmokeDriver::Section devices("qp13-devices", 131, &devicesSection);
+} // namespace

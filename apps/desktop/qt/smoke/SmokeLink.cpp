@@ -1,11 +1,16 @@
-// WP QD8: the Link controller and its token store against the fake hub process
-// (crates/dspi-link's dspi-link-fakehub), and the Secret Service backend against a
-// fake of the service on a direct D-Bus connection (the build image has no bus).
+// -- WP QP13 -- The Link controller and its token store, each run on a core of
+// its own against the fake hub process (crates/dspi-link's dspi-link-fakehub):
+// pairing, a wrong PIN, the token used again after a restart (by the hub's id
+// and by address alone), another hub at the address (wrong_hub), the codes that
+// keep a token, a busy hub's dial left with Disconnect, a dial given up and one
+// replaced, and token_refused, the one thing that deletes a token. Then the
+// Secret Service backend against a fake of the service on a direct D-Bus
+// connection (the build image has no session bus), and the file on its own.
+// Adapted from the previous desktop app's QD8 checks.
 #include "SmokeDriver.h"
 
-#include "DSPiBridge.h"
 #include "LinkController.h"
-#include "LinkFakeHub.h"   // -- WP QD10 -- shared with SmokeDriverLinkFault.cpp
+#include "LinkFakeHub.h"
 #include "TokenStore.h"
 
 #include <QDBusArgument>
@@ -16,28 +21,22 @@
 #include <QDBusVariant>
 #include <QDBusVirtualObject>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
-#include <QElapsedTimer>
-#include <QProcess>
-#include <QQmlApplicationEngine>
-#include <QQmlContext>
-#include <QImage>
-#include <QQuickItem>
-#include <QQuickWindow>
-#include <QRegularExpression>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QThreadPool>
-#include <QtNumeric>
 #include <atomic>
 #include <map>
 #include <memory>
 
 namespace {
-using namespace linksmoke;   // -- WP QD10 --
+using namespace linksmoke;
 const char kPin[] = "123456";
 
-// A core and a controller with its own store: what one run of the app has. Delete
-// it and make another on the same file, and that is the next run.
+// A core and a controller with its own store: one run of the app. Delete it
+// and make another on the same file, and that is the next run.
 struct Run {
     FfiCore *core;
     std::unique_ptr<LinkController> link;
@@ -58,6 +57,15 @@ bool onlyOwnerCanRead(const QString &file) {
     const QFile::Permissions others = QFile::ReadGroup | QFile::WriteGroup | QFile::ExeGroup | QFile::ReadOther
                                       | QFile::WriteOther | QFile::ExeOther;
     return QFile::exists(file) && (QFileInfo(file).permissions() & others) == 0;
+}
+
+// The session's phase read straight from the core (the controller's own copy
+// arrives later, through its reader thread)
+QString corePhase(FfiCore *core) {
+    char buf[4096];
+    const uint32_t need = dspi_link_status(core, buf, sizeof buf);
+    if (need == 0 || need > sizeof buf) return QString();
+    return QJsonDocument::fromJson(QByteArray(buf, int(need) - 1)).object().value(QStringLiteral("phase")).toString();
 }
 
 // The parts of org.freedesktop.Secret the backend uses
@@ -138,309 +146,25 @@ public:
         return true;
     }
 };
-}
 
-void SmokeDriver::testLink() {
-    section("QD8: Link controller and token store");
-    const QString scratch = qEnvironmentVariable("DSPI_SMOKE_OUT") + QStringLiteral("/link");
-    QDir(scratch).removeRecursively();
-    QDir().mkpath(scratch);
-    const QString file = scratch + QStringLiteral("/tokens.json");
-    const auto settled = [this](LinkController &l) { return waitFor(30000, [&] { return !l.busy(); }); };
-
-    FakeHubProcess hub;
-    const bool hubUp = hub.start({ "--rta", "--auth", QStringLiteral("window:%1").arg(kPin) });
-    check("QD8: the fake hub runs (DSPI_SMOKE_FAKEHUB)", hubUp);
-    if (!hubUp) return;
-
-    QString firstToken;
-    {
-        // Pairing
-        Run run(file);
-        LinkController &l = *run.link;
-        check("QD8: idle at first, with CG10's text", l.phase() == QLatin1String("idle") && l.phaseKey() == QLatin1String("idle"));
-        check("QD8: a bad address is refused", !l.connectToAddress(QStringLiteral("not a[n] address:x")) && !l.errorCode().isEmpty());
-        check("QD8: dials from the UI thread without waiting", l.connectToAddress(hub.address) && l.busy());
-        check("QD8: the dial ends", settled(l));
-        check("QD8: asks for the PIN", waitFor(2000, [&] { return l.phase() == QLatin1String("needs_pairing"); }));
-        check("QD8: wording by pin source", l.phaseKey() == QLatin1String("needs_pairing.window") && !l.phaseText().isEmpty());
-        check("QD8: the hub's id and name from the hello", l.hubId() == hub.id && !l.hubName().isEmpty());
-        l.pair(QStringLiteral("000000"));
-        check("QD8: wrong PIN", settled(l) && l.errorCode() == QLatin1String("wrong_pin"));
-        check("QD8: a wrong PIN stores nothing", storedIn(file, hub.id).isEmpty());
-        l.pair(QString::fromLatin1(kPin));
-        check("QD8: right PIN", settled(l) && l.errorCode().isEmpty());
-        check("QD8: past pairing", waitFor(3000, [&] { return l.phase() == QLatin1String("choose_device"); }));
-        check("QD8: the hub's device is listed", waitFor(3000, [&] { return l.devices().size() == 1; }));
-        check("QD8: stored", waitFor(3000, [&] { return !l.busy() && !storedIn(file, hub.id).isEmpty(); }));
-        firstToken = storedIn(file, hub.id);
-        check("QD8: no secret store, so a 0600 file", onlyOwnerCanRead(file));
-        check("QD8: and the warning says so", waitFor(1000, [&] { return !l.tokenWarning().isEmpty(); }));
-        l.dismissTokenWarning();
-        check("QD8: the warning can be dismissed", l.tokenWarning().isEmpty());
-        // The PIN window closes with this pairing, so no later run can pair again
-    }
-    {
-        // Reuse after a restart, the hub known
-        Run run(file);
-        LinkController &l = *run.link;
-        l.connectToHub(hub.url, hub.id);
-        check("QD8: restart: the token works", settled(l) && l.errorCode().isEmpty());
-        check("QD8: restart: no PIN asked", waitFor(3000, [&] { return l.phase() == QLatin1String("choose_device"); }));
-    }
-    {
-        // ... and by address alone: no token until the hub has named itself
-        Run run(file);
-        LinkController &l = *run.link;
-        l.connectToHub(hub.url);
-        check("QD8: restart by address: the token works", settled(l) && l.errorCode().isEmpty());
-        check("QD8: restart by address: no PIN asked", waitFor(3000, [&] { return l.phase() == QLatin1String("choose_device"); }));
-        check("QD8: restart: same token, nothing to save", storedIn(file, hub.id) == firstToken);
-        check("QD8: restart: no new warning", l.tokenWarning().isEmpty());
-    }
-    {
-        // Another hub at the address
-        const QString other = QStringLiteral("00000000-0000-4000-8000-000000000001");
-        TokenStore(nullptr, file).save(other, QStringLiteral("other-hubs-token"));
-        Run run(file);
-        LinkController &l = *run.link;
-        l.connectToHub(hub.url, other);
-        check("QD8: wrong_hub", settled(l) && l.errorCode() == QLatin1String("wrong_hub") && !l.errorText().isEmpty());
-        check("QD8: wrong_hub keeps its token", storedIn(file, other) == QLatin1String("other-hubs-token"));
-        check("QD8: wrong_hub keeps the other token", storedIn(file, hub.id) == firstToken);
-        check("QD8: wrong_hub leaves no session", l.phase() == QLatin1String("idle"));
-    }
-    {
-        // rate_limited says nothing about the token
-        check("QD8: the hub takes token rate_limited", hub.fault("token rate_limited"));
-        Run run(file);
-        LinkController &l = *run.link;
-        l.connectToHub(hub.url, hub.id);
-        check("QD8: rate_limited", settled(l) && l.errorCode() == QLatin1String("rate_limited"));
-        check("QD8: rate_limited keeps the token", storedIn(file, hub.id) == firstToken);
-        // -- WP QD43 -- a code that is neither worth another try nor a refusal of the token
-        check("QD8: the hub takes token bad_request", hub.fault("token bad_request"));
-        l.connectToHub(hub.url, hub.id);
-        check("QD8: another failure", settled(l) && l.errorCode() == QLatin1String("bad_request"));
-        check("QD8: another failure keeps the token", storedIn(file, hub.id) == firstToken);
-        // -- WP QD43 -- a busy hub (internal) is worth another try: since LK4 the first
-        // dial keeps trying for 60 s (a release build has no shorter budget), so the
-        // app shows Connecting and Disconnect is the way out
-        check("QD8: the hub takes token internal", hub.fault("token internal"));
-        l.connectToHub(hub.url, hub.id);
-        spin(1500);
-        check("QD8: a busy hub: still dialling", l.busy() && l.errorCode().isEmpty() && l.phase() == QLatin1String("idle"));
-        QElapsedTimer stop;
-        stop.start();
-        l.closeSession();
-        check("QD8: a busy hub: Disconnect stops the dial", settled(l) && stop.elapsed() < 10000 && l.errorCode().isEmpty());
-        check("QD8: a busy hub: no session left", l.phase() == QLatin1String("idle") && !dspi_is_connected(run.core));
-        check("QD8: a busy hub keeps the token", storedIn(file, hub.id) == firstToken);
-        check("QD8: the hub takes token ok", hub.fault("token ok"));
-        l.connectToHub(hub.url, hub.id);
-        check("QD8: after the limit the same token works", settled(l) && l.errorCode().isEmpty());
-        check("QD8: after the limit, no PIN", waitFor(3000, [&] { return l.phase() == QLatin1String("choose_device"); }));
-    }
-    {
-        // The lost-connection rule, and the analyser, on a bound device
-        Run run(file);
-        LinkController &l = *run.link;
-        l.connectToHub(hub.url, hub.id);
-        check("QD8: session for the bind", settled(l) && waitFor(3000, [&] { return l.devices().size() == 1; }));
-        const QVariantMap device = l.devices().value(0).toMap();
-        int bound = 0, back = 0;
-        QObject::connect(&l, &LinkController::deviceBound, &l, [&] { bound++; });
-        QObject::connect(&l, &LinkController::reconnected, &l, [&] { back++; });
-        l.bindDevice(device.value(QStringLiteral("handle")).toInt(), device.value(QStringLiteral("serial")).toString());
-        check("QD8: bound and read", settled(l) && bound == 1 && waitFor(3000, [&] { return l.phase() == QLatin1String("bound"); }));
-        check("QD8: the mirror holds it", dspi_is_connected(run.core));
-        check("QD8: the hub takes drop", hub.fault("drop"));
-        check("QD8: a drop reads as reconnecting, then bound again",
-              waitFor(15000, [&] { return back == 1 && l.phase() == QLatin1String("bound"); }));
-        check("QD8: the mirror came back", dspi_is_connected(run.core));
-        check("QD8: the session is still up", settled(l) && l.errorCode().isEmpty());
-    }
-    {
-        // A way out during a first dial (Disconnect): -- WP QD43 -- since LK4 the
-        // core throws that dial away itself, so its session never comes up
-        check("QD8: the hub takes stall", hub.fault("stall"));
-        Run run(file);
-        LinkController &l = *run.link;
-        l.connectToHub(hub.url, hub.id);
-        spin(200);
-        QElapsedTimer t;
-        t.start();
-        l.closeSession();
-        check("QD8: closing during a dial does not wait", t.elapsed() < 1000 && l.phase() == QLatin1String("idle"));
-        bool staleUp = false;
-        l.setStaleDialHook([&] { staleUp = true; });
-        check("QD8: the hub takes unstall", hub.fault("unstall"));
-        check("QD8: the dial ends", settled(l));
-        // The core ends that dial with "closed"; the app asked for it, so it shows no error
-        check("QD8: a dial Disconnect stopped brings up no session",
-              !staleUp && l.phase() == QLatin1String("idle") && !dspi_is_connected(run.core));
-        spin(300);
-        l.refreshStatus();
-        check("QD8: and none shows later", l.phase() == QLatin1String("idle") && l.errorCode().isEmpty());
-    }
-    {
-        // -- WP QD8b, QD43 -- Replaced during a first dial: that dial's session comes up
-        // and is thrown away. The race: while it is up, an event from it shows its
-        // phase here. Its close is quiet, so nothing else would correct that.
-        check("QD8: the hub takes stall again", hub.fault("stall"));
-        Run run(file);
-        LinkController &l = *run.link;
-        l.connectToHub(hub.url, hub.id);
-        spin(200);
-        QString phaseMeanwhile;
-        l.setStaleDialHook([&] {
-            QMetaObject::invokeMethod(&l, [&] {
-                l.refreshStatus();
-                phaseMeanwhile = l.phase();
-            }, Qt::BlockingQueuedConnection);
-        });
-        l.connectToHub(hub.url, hub.id);
-        check("QD8: the hub takes unstall again", hub.fault("unstall"));
-        check("QD8: both dials end", settled(l) && l.errorCode().isEmpty());
-        check("QD8: the thrown-away session was up for a moment", !phaseMeanwhile.isEmpty() && phaseMeanwhile != QLatin1String("idle"));
-        check("QD8: the replacing session is the one up", waitFor(3000, [&] { return l.phase() == QLatin1String("choose_device"); }));
-        l.closeSession();
-        check("QD8: its session is gone", waitFor(3000, [&] { return l.phase() == QLatin1String("idle"); }));
-    }
-    {
-        // A refused token is the one thing that deletes it
-        TokenStore(nullptr, file).save(hub.id, QStringLiteral("a-token-this-hub-never-issued"));
-        Run run(file);
-        LinkController &l = *run.link;
-        l.connectToHub(hub.url, hub.id);
-        check("QD8: token_refused asks for a PIN", settled(l) && waitFor(3000, [&] { return l.phase() == QLatin1String("needs_pairing"); }));
-        check("QD8: token_refused deletes it", waitFor(3000, [&] { return !l.busy() && storedIn(file, hub.id).isEmpty(); }));
-        check("QD8: and only that one", !storedIn(file, QStringLiteral("00000000-0000-4000-8000-000000000001")).isEmpty());
-    }
-
-    // The app's own controller and banner, with the demo device open behind them
-    auto *app = qobject_cast<LinkController *>(
-        m_.engine->rootContext()->contextProperty(QStringLiteral("linkSession")).value<QObject *>());
-    check("QD8: registered as linkSession", app != nullptr);
-    FakeHubProcess open;
-    if (app && open.start({ "--rta", "--auth", "none" })) {
-        // A Repeater's items are found through the visual tree
-        auto *host = root()->findChild<QQuickItem *>(QStringLiteral("bannerHost"));
-        auto *abort = host ? findItem(host, QStringLiteral("linkLostAbort")) : nullptr;
-        auto *row = host ? findItem(host, QStringLiteral("linkLostRow")) : nullptr;
-        auto *label = host ? findItem(host, QStringLiteral("linkLostText")) : nullptr;
-        check("QD8: the banner is loaded", abort && row && label);
-        const bool demoBefore = m_.bridge->connected();
-        app->connectToHub(open.url);
-        check("QD8: app session", settled(*app) && waitFor(3000, [&] { return app->phase() == QLatin1String("choose_device"); }));
-        check("QD8: no banner while all is well", row && !row->isVisible());
-        // -- WP QD6 -- The bridge beside a hub session
-        auto *b = m_.bridge;
-        b->disconnectDevice();
-        spin(800);   // a hotplug poll or two
-        check("QD6: while choosing on a hub, a scan opens nothing", !b->connected());
-        const QVariantMap hubDevice = app->devices().value(0).toMap();
-        const QString hubSerial = hubDevice.value(QStringLiteral("serial")).toString();
-        int changing = 0;
-        const QMetaObject::Connection counting = QObject::connect(b, &DSPiBridge::deviceChanging, b, [&] { changing++; });
-        app->bindDevice(hubDevice.value(QStringLiteral("handle")).toInt(), hubSerial);
-        check("QD6: the bridge adopts what the session binds", settled(*app) && waitFor(3000, [&] { return app->phase() == QLatin1String("bound"); })
-                                                                  && b->connected() && b->selectedSerial() == hubSerial);
-        check("QD6: and tells the controllers first", changing >= 2);
-        QObject::disconnect(counting);
-        check("QD6: it is writable", b->writable());
-        // -- WP QD36 -- The device name's right-click (rescan) and reconnect leave the
-        // session's device alone: no local device opens under the bound session
-        int rescanned = 0;
-        const QMetaObject::Connection rescanCount = QObject::connect(b, &DSPiBridge::deviceChanging, b, [&] { rescanned++; });
-        b->rescan();
-        b->reconnect();
-        spin(200);
-        QObject::disconnect(rescanCount);
-        check("QD36: a rescan during a hub session keeps the bound device", rescanned == 0 && b->connected()
-                  && b->selectedSerial() == hubSerial && app->phase() == QLatin1String("bound") && b->writable());
-        // -- WP QD18 --
-        testHostAudioOnHub();
-        // -- WP CG31 -- Another client's channel delay reaches the open output page
-        // (hw-win F1: `dspi --midi set ch.delay i2s.1.l 1`). The device notifies only
-        // the channel's delays[] entry, not the output record the page reads.
-        {
-            QMetaObject::invokeMethod(root(), "selectOutput", Q_ARG(QVariant, 0));
-            spin(200);
-            QQuickItem *page = nullptr;
-            for (QQuickItem *i : root()->findChildren<QQuickItem *>())
-                if (QString::fromLatin1(i->metaObject()->className()).startsWith(QLatin1String("ChannelSettingsView"))) page = i;
-            check("CG31: the output page is open", page && page->isVisible());
-            const auto change = [&](float ms) {
-                QByteArray bytes(reinterpret_cast<const char *>(&ms), 4);   // little-endian, as the wire
-                const int off = OFF_DELAYS + b->numInputChannels() * 4;
-                return open.fault("change " + QByteArray::number(off) + ' ' + bytes.toHex() + " 10 30583");
-            };
-            const auto shows = [&](float ms) {
-                return qAbs(b->outputDelayMS(0) - ms) < 0.001f && page && qAbs(page->property("delayMS").toDouble() - ms) < 0.001;
-            };
-            const float before = b->outputDelayMS(0);
-            check("CG31: the hub takes another client's channel delay", change(before + 1.0f));
-            check("CG31: the output page shows it", waitFor(3000, [&] { return shows(before + 1.0f); }));
-            check("CG31: and so does the channel's delay", qAbs(b->channelDelayMS(root()->property("openChannelId").toInt()) - (before + 1.0f)) < 0.001f);
-            check("CG31: the hub takes it back", change(before));
-            check("CG31: the page follows back", waitFor(3000, [&] { return shows(before); }));
-            QMetaObject::invokeMethod(root(), "selectOverview");
-        }
-        // Nothing here starts the analyser: binding does, and a drop starts it again
-        const auto wait = [this](int ms, const std::function<bool()> &done) { return waitFor(ms, done); };
-        RtaRequest request = {};
-        request.tap = RTA_TAP_INPUT;
-        request.mask = 1;
-        dspi_rta_set_request(b->core(), &request);
-        RtaCapsInfo caps;
-        check("QD6: binding probes the analyser", waitFor(5000, [&] { dspi_rta_get_caps(b->core(), &caps); return caps.supported; }));
-        check("QD8: the analyser runs", analyserFollowsHub(b->core(), open, wait));
-        int states = 0, back = 0;
-        const QMetaObject::Connection stateCount = QObject::connect(b, &DSPiBridge::stateChanged, b, [&] { states++; });
-        const QMetaObject::Connection backCount = QObject::connect(app, &LinkController::reconnected, b, [&] { back++; });
-        check("QD8: the hub takes drop", open.fault("drop"));
-        check("QD6: a drop comes back bound", waitFor(15000, [&] { return back == 1 && app->phase() == QLatin1String("bound"); }));
-        check("QD6: a reconnect redraws", states > 0);
-        QObject::disconnect(stateCount);
-        QObject::disconnect(backCount);
-        check("QD8: the analyser's probe came back", settled(*app) && waitFor(5000, [&] { dspi_rta_get_caps(b->core(), &caps); return caps.supported; }));
-        check("QD8: and it polls again", analyserFollowsHub(b->core(), open, wait));
-        check("QD6: still the hub's device", b->selectedSerial() == hubSerial);
-        open.kill();   // gone, not back in a moment
-        check("QD8: banner at once", waitFor(2000, [&] { return app->phase() == QLatin1String("reconnecting") && row && row->isVisible(); }));
-        spin(800);
-        check("QD6: while reconnecting, a scan leaves the device alone", b->selectedSerial() == hubSerial);
-        if (auto *main = qobject_cast<QQuickWindow *>(root())) main->grabWindow().save(m_out + QStringLiteral("/window-link-banner.png"));
-        if (label && abort) {
-            check("QD8: banner in CG10's words", label->property("text").toString() == QLatin1String("Connection lost, reconnecting"));
-            check("QD8: its button in CG10's words", abort->property("text").toString() == QLatin1String("Disconnect") && app->actionKey() == QLatin1String("reconnecting.disconnect"));
-            QMetaObject::invokeMethod(abort, "clicked");
-        }
-        check("QD8: the button leaves the hub", waitFor(2000, [&] { return app->phase() == QLatin1String("idle") && row && !row->isVisible(); }));
-        // -- WP QD6 -- The device goes with the session, and the scan takes over again
-        check("QD6: back to what a scan finds", waitFor(3000, [&] { return b->connected() == demoBefore && b->selectedSerial() != hubSerial; }));
-    } else {
-        check("QD8: a second fake hub runs", false);
-    }
-
+void secretService(SmokeDriver &d, const QString &scratch) {
     // The Secret Service backend
     const QString address = QStringLiteral("unix:path=") + scratch + QStringLiteral("/secrets.sock");
     QDBusServer server(address);
     server.setAnonymousAuthenticationAllowed(true);
-    check("QD8: a D-Bus server for the fake service", server.isConnected());
+    d.check("qp13: a D-Bus server for the fake service", server.isConnected());
     auto fake = std::make_shared<FakeSecretService>();
     QObject::connect(&server, &QDBusServer::newConnection, &server, [fake](const QDBusConnection &c) {
         QDBusConnection(c).registerVirtualObject(QStringLiteral("/"), fake.get(), QDBusConnection::SubPath);
     });
-    QDBusConnection peer = QDBusConnection::connectToPeer(server.address(), QStringLiteral("qd8-secrets"));
-    check("QD8: connected to the fake service", waitFor(3000, [&] { return peer.isConnected(); }));
+    QDBusConnection peer = QDBusConnection::connectToPeer(server.address(), QStringLiteral("qp13-secrets"));
+    d.check("qp13: connected to the fake service", d.waitFor(3000, [&] { return peer.isConnected(); }));
 
     // The backend blocks, and the fake answers on this thread
-    const auto offThread = [this](const std::function<void()> &job) {
+    const auto offThread = [&d](const std::function<void()> &job) {
         std::atomic<bool> done { false };
         QThreadPool::globalInstance()->start([&] { job(); done = true; });
-        return waitFor(20000, [&] { return done.load(); });
+        return d.waitFor(20000, [&] { return done.load(); });
     };
     std::atomic<bool> cancelled { false };
     const QString keyFile = scratch + QStringLiteral("/key-fallback.json");
@@ -449,31 +173,31 @@ void SmokeDriver::testLink() {
 
     TokenStore::Saved saved = TokenStore::Saved::Nowhere;
     QString got;
-    check("QD8: secrets: save", offThread([&] { saved = store->save(hubId, QStringLiteral("tok-1")); }));
-    check("QD8: secrets: in the store, not the file", saved == TokenStore::Saved::InSecretStore && !QFile::exists(keyFile));
-    check("QD8: secrets: one item, under the id without case", fake->items.size() == 1
+    d.check("qp13: secrets: save", offThread([&] { saved = store->save(hubId, QStringLiteral("tok-1")); }));
+    d.check("qp13: secrets: in the store, not the file", saved == TokenStore::Saved::InSecretStore && !QFile::exists(keyFile));
+    d.check("qp13: secrets: one item, under the id without case", fake->items.size() == 1
           && fake->items.begin()->second.attributes.value(QStringLiteral("dspi-link-hub-id")) == QLatin1String("aaaa-hub")
           && fake->items.begin()->second.secret == "tok-1");
     offThread([&] { got = store->load(QStringLiteral("aaaa-HUB")); });
-    check("QD8: secrets: load", got == QLatin1String("tok-1"));
+    d.check("qp13: secrets: load", got == QLatin1String("tok-1"));
     offThread([&] { saved = store->save(hubId, QStringLiteral("tok-2")); });
-    check("QD8: secrets: a new token replaces it", fake->items.size() == 1 && fake->items.begin()->second.secret == "tok-2");
+    d.check("qp13: secrets: a new token replaces it", fake->items.size() == 1 && fake->items.begin()->second.secret == "tok-2");
 
     fake->locked = true;
     offThread([&] { got = store->load(hubId); });
-    check("QD8: secrets: a locked keyring prompts, and then reads", fake->prompts == 1 && got == QLatin1String("tok-2") && !fake->locked);
+    d.check("qp13: secrets: a locked keyring prompts, and then reads", fake->prompts == 1 && got == QLatin1String("tok-2") && !fake->locked);
 
     fake->locked = true;
     fake->dismissPrompt = true;
     offThread([&] { got = store->load(hubId); });
-    check("QD8: secrets: a dismissed prompt reads nothing", got.isEmpty() && fake->items.size() == 1);
+    d.check("qp13: secrets: a dismissed prompt reads nothing", got.isEmpty() && fake->items.size() == 1);
     offThread([&] { saved = store->save(QStringLiteral("hub-b"), QStringLiteral("tok-b")); });
-    check("QD8: secrets: a dismissed prompt falls back to the file", saved == TokenStore::Saved::InFile && onlyOwnerCanRead(keyFile));
+    d.check("qp13: secrets: a dismissed prompt falls back to the file", saved == TokenStore::Saved::InFile && onlyOwnerCanRead(keyFile));
 
     fake->dismissPrompt = false;
     fake->locked = false;
     offThread([&] { got = store->load(QStringLiteral("hub-b")); });
-    check("QD8: secrets: the file's copy moves over when the store answers", got == QLatin1String("tok-b")
+    d.check("qp13: secrets: the file's copy moves over when the store answers", got == QLatin1String("tok-b")
           && fake->items.size() == 2 && storedIn(keyFile, QStringLiteral("hub-b")).isEmpty());
 
     fake->locked = true;
@@ -482,36 +206,231 @@ void SmokeDriver::testLink() {
     waited.start();
     cancelled = true;
     offThread([&] { got = store->load(hubId); });
-    check("QD8: secrets: closing the app ends the wait for a prompt", got.isEmpty() && waited.elapsed() < 2000);
+    d.check("qp13: secrets: closing the app ends the wait for a prompt", got.isEmpty() && waited.elapsed() < 2000);
     cancelled = false;
     fake->silentPrompt = false;
     fake->locked = false;
 
     offThread([&] { store->forget(hubId); });
-    check("QD8: secrets: forget", fake->items.size() == 1);
+    d.check("qp13: secrets: forget", fake->items.size() == 1);
     offThread([&] { got = store->load(hubId); });
-    check("QD8: secrets: forgotten", got.isEmpty());
+    d.check("qp13: secrets: forgotten", got.isEmpty());
 
     // No service at all, as in this container's session bus
     QDBusConnection absent(QStringLiteral("qd8-no-such-connection"));
     const QString absentFile = scratch + QStringLiteral("/absent.json");
     TokenStore noService(makeSecretServiceBackend(absent, QString(), &cancelled, 1000), absentFile);
-    check("QD8: no service: the file", noService.save(hubId, QStringLiteral("tok-3")) == TokenStore::Saved::InFile
+    d.check("qp13: no service: the file", noService.save(hubId, QStringLiteral("tok-3")) == TokenStore::Saved::InFile
           && noService.load(hubId) == QLatin1String("tok-3") && onlyOwnerCanRead(absentFile));
 
     // The file on its own
     QFile::setPermissions(absentFile, QFile::ReadOwner | QFile::WriteOwner | QFile::ReadOther | QFile::ReadGroup);
     noService.save(QStringLiteral("hub-c"), QStringLiteral("tok-c"));
-    check("QD8: file: a file others could read goes back to 0600", onlyOwnerCanRead(absentFile));
+    d.check("qp13: file: a file others could read goes back to 0600", onlyOwnerCanRead(absentFile));
     {
         QFile damaged(absentFile);
-        damaged.open(QIODevice::WriteOnly);
-        damaged.write("not json");
+        if (damaged.open(QIODevice::WriteOnly)) damaged.write("not json");
     }
-    check("QD8: file: damaged reads as nothing", noService.load(hubId).isEmpty());
-    check("QD8: file: damaged is replaced", noService.save(hubId, QStringLiteral("tok-4")) == TokenStore::Saved::InFile
+    d.check("qp13: file: damaged reads as nothing", noService.load(hubId).isEmpty());
+    d.check("qp13: file: damaged is replaced", noService.save(hubId, QStringLiteral("tok-4")) == TokenStore::Saved::InFile
           && noService.load(hubId) == QLatin1String("tok-4"));
 
     store.reset();
-    QDBusConnection::disconnectFromPeer(QStringLiteral("qd8-secrets"));
+    QDBusConnection::disconnectFromPeer(QStringLiteral("qp13-secrets"));
 }
+
+void linkSection(SmokeDriver &d) {
+    const QString scratch = d.outDir() + QStringLiteral("/link");
+    QDir(scratch).removeRecursively();
+    QDir().mkpath(scratch);
+    const QString file = scratch + QStringLiteral("/tokens.json");
+    const auto settled = [&d](LinkController &l) { return d.waitFor(30000, [&] { return !l.busy(); }); };
+    const auto phaseIs = [&d](LinkController &l, const char *phase) {
+        return d.waitFor(3000, [&] { return l.phase() == QLatin1String(phase); });
+    };
+
+    FakeHubProcess hub;
+    const bool hubUp = hub.start({ "--rta", "--auth", QStringLiteral("window:%1").arg(kPin) });
+    d.check("qp13: the fake hub runs (DSPI_SMOKE_FAKEHUB)", hubUp);
+    if (!hubUp) {
+        secretService(d, scratch);
+        return;
+    }
+
+    QString firstToken;
+    {
+        // Pairing
+        Run run(file);
+        LinkController &l = *run.link;
+        d.check("qp13: idle at first, in the core's words", l.phase() == QLatin1String("idle")
+                                                              && l.phaseKey() == QLatin1String("idle") && !l.phaseText().isEmpty());
+        d.check("qp13: a bad address is refused", !l.connectToAddress(QStringLiteral("not a[n] address:x")) && !l.errorCode().isEmpty());
+        d.check("qp13: dials from the UI thread without waiting", l.connectToAddress(hub.address) && l.busy());
+        d.check("qp13: the dial ends", settled(l));
+        d.check("qp13: asks for the PIN", phaseIs(l, "needs_pairing"));
+        d.check("qp13: wording by PIN source", l.phaseKey() == QLatin1String("needs_pairing.window") && !l.phaseText().isEmpty());
+        d.check("qp13: the hub's id and name from the hello", l.hubId() == hub.id && !l.hubName().isEmpty());
+        l.pair(QStringLiteral("12345"));
+        d.check("qp13: a PIN that is not six digits is not sent", !l.busy() && l.errorCode().isEmpty());
+        l.pair(QStringLiteral("000000"));
+        d.check("qp13: wrong PIN", settled(l) && l.errorCode() == QLatin1String("wrong_pin") && !l.errorText().isEmpty());
+        d.check("qp13: a wrong PIN stores nothing", storedIn(file, hub.id).isEmpty());
+        l.pair(QString::fromLatin1(kPin));
+        d.check("qp13: right PIN", settled(l) && l.errorCode().isEmpty());
+        d.check("qp13: past pairing", phaseIs(l, "choose_device"));
+        d.check("qp13: the hub's device is listed", d.waitFor(3000, [&] { return l.devices().size() == 1; }));
+        d.check("qp13: stored", d.waitFor(3000, [&] { return !l.busy() && !storedIn(file, hub.id).isEmpty(); }));
+        firstToken = storedIn(file, hub.id);
+        d.check("qp13: no secret store, so a 0600 file", onlyOwnerCanRead(file));
+        d.check("qp13: and the notice says so", d.waitFor(1000, [&] { return l.tokenWarning().contains(file); }));
+        l.dismissTokenWarning();
+        d.check("qp13: the notice can be dismissed", l.tokenWarning().isEmpty());
+        // The PIN window closes with this pairing, so no later run can pair again
+    }
+    {
+        // Used again after a restart, the hub known
+        Run run(file);
+        LinkController &l = *run.link;
+        l.connectToHub(hub.url, hub.id);
+        d.check("qp13: restart: the token works", settled(l) && l.errorCode().isEmpty());
+        d.check("qp13: restart: no PIN asked", phaseIs(l, "choose_device"));
+    }
+    {
+        // ... and by address alone: no token goes out until the hub has named itself
+        Run run(file);
+        LinkController &l = *run.link;
+        l.connectToHub(hub.url);
+        d.check("qp13: restart by address: the token works", settled(l) && l.errorCode().isEmpty());
+        d.check("qp13: restart by address: no PIN asked", phaseIs(l, "choose_device"));
+        d.check("qp13: restart: same token, nothing to save", storedIn(file, hub.id) == firstToken);
+        d.check("qp13: restart: no new notice", l.tokenWarning().isEmpty());
+    }
+    {
+        // Another hub at the address: expected_hub_id holds the token back
+        const QString other = QStringLiteral("00000000-0000-4000-8000-000000000001");
+        TokenStore(nullptr, file).save(other, QStringLiteral("other-hubs-token"));
+        Run run(file);
+        LinkController &l = *run.link;
+        l.connectToHub(hub.url, other);
+        d.check("qp13: wrong_hub", settled(l) && l.errorCode() == QLatin1String("wrong_hub") && !l.errorText().isEmpty());
+        d.check("qp13: wrong_hub keeps its token", storedIn(file, other) == QLatin1String("other-hubs-token"));
+        d.check("qp13: wrong_hub keeps the other token", storedIn(file, hub.id) == firstToken);
+        d.check("qp13: wrong_hub leaves no session", phaseIs(l, "idle"));
+    }
+    {
+        // rate_limited says nothing about the token, nor does another failure
+        d.check("qp13: the hub takes token rate_limited", hub.fault("token rate_limited"));
+        Run run(file);
+        LinkController &l = *run.link;
+        l.connectToHub(hub.url, hub.id);
+        d.check("qp13: rate_limited", settled(l) && l.errorCode() == QLatin1String("rate_limited"));
+        d.check("qp13: rate_limited keeps the token", storedIn(file, hub.id) == firstToken);
+        d.check("qp13: the hub takes token bad_request", hub.fault("token bad_request"));
+        l.connectToHub(hub.url, hub.id);
+        d.check("qp13: another failure", settled(l) && l.errorCode() == QLatin1String("bad_request"));
+        d.check("qp13: another failure keeps the token", storedIn(file, hub.id) == firstToken);
+        // A busy hub is worth another try: the first dial keeps trying, the app
+        // shows it dialling, and Disconnect is the way out
+        d.check("qp13: the hub takes token internal", hub.fault("token internal"));
+        l.connectToHub(hub.url, hub.id);
+        d.spin(1500);
+        d.check("qp13: a busy hub: still dialling", l.busy() && l.errorCode().isEmpty() && l.phase() == QLatin1String("idle"));
+        QElapsedTimer stop;
+        stop.start();
+        l.closeSession();
+        d.check("qp13: a busy hub: Disconnect stops the dial", settled(l) && stop.elapsed() < 10000 && l.errorCode().isEmpty());
+        d.check("qp13: a busy hub: no session left", phaseIs(l, "idle") && !dspi_is_connected(run.core));
+        d.check("qp13: a busy hub keeps the token", storedIn(file, hub.id) == firstToken);
+        d.check("qp13: the hub takes token ok", hub.fault("token ok"));
+        l.connectToHub(hub.url, hub.id);
+        d.check("qp13: after the limit the same token works", settled(l) && l.errorCode().isEmpty());
+        d.check("qp13: after the limit, no PIN", phaseIs(l, "choose_device"));
+    }
+    {
+        // A bound device: read into the core's mirror, and a drop comes back
+        Run run(file);
+        LinkController &l = *run.link;
+        l.connectToHub(hub.url, hub.id);
+        d.check("qp13: session for the bind", settled(l) && d.waitFor(3000, [&] { return l.devices().size() == 1; }));
+        const QVariantMap device = l.devices().value(0).toMap();
+        int bound = 0, back = 0;
+        QObject::connect(&l, &LinkController::deviceBound, &l, [&] { bound++; });
+        QObject::connect(&l, &LinkController::reconnected, &l, [&] { back++; });
+        l.bindDevice(device.value(QStringLiteral("handle")).toInt(), device.value(QStringLiteral("serial")).toString());
+        d.check("qp13: bound and read", settled(l) && bound == 1 && phaseIs(l, "bound")
+                                            && l.boundSerial() == device.value(QStringLiteral("serial")).toString());
+        d.check("qp13: the mirror holds it", dspi_is_connected(run.core));
+        d.check("qp13: the hub takes drop", hub.fault("drop"));
+        d.check("qp13: a drop reads as reconnecting, then bound again",
+                d.waitFor(15000, [&] { return back == 1 && l.phase() == QLatin1String("bound"); }));
+        d.check("qp13: the mirror came back", dspi_is_connected(run.core));
+        d.check("qp13: the session is still up", settled(l) && l.errorCode().isEmpty());
+    }
+    {
+        // A way out during a first dial: the core throws that dial away, so its
+        // session never comes up
+        d.check("qp13: the hub takes stall", hub.fault("stall"));
+        Run run(file);
+        LinkController &l = *run.link;
+        l.connectToHub(hub.url, hub.id);
+        d.spin(200);
+        QElapsedTimer t;
+        t.start();
+        l.closeSession();
+        d.check("qp13: closing during a dial does not wait", t.elapsed() < 1000 && l.phase() == QLatin1String("idle"));
+        bool staleUp = false;
+        l.setStaleDialHook([&] { staleUp = true; });
+        d.check("qp13: the hub takes unstall", hub.fault("unstall"));
+        d.check("qp13: the dial ends", settled(l));
+        // The app asked for it, so it shows no error
+        d.check("qp13: a dial Disconnect stopped brings up no session",
+                !staleUp && l.phase() == QLatin1String("idle") && !dspi_is_connected(run.core));
+        d.spin(300);
+        l.refreshStatus();
+        d.spin(300);
+        d.check("qp13: and none shows later", l.phase() == QLatin1String("idle") && l.errorCode().isEmpty());
+    }
+    {
+        // Replaced during a first dial: that dial's session may come up for a
+        // moment; the replacing session is the one that stays
+        d.check("qp13: the hub takes stall again", hub.fault("stall"));
+        Run run(file);
+        LinkController &l = *run.link;
+        l.connectToHub(hub.url, hub.id);
+        d.spin(200);
+        l.connectToHub(hub.url, hub.id);
+        d.check("qp13: the hub takes unstall again", hub.fault("unstall"));
+        d.check("qp13: both dials end", settled(l) && l.errorCode().isEmpty());
+        d.check("qp13: the replacing session is the one up", phaseIs(l, "choose_device") && corePhase(run.core) == QLatin1String("choose_device"));
+        l.closeSession();
+        d.check("qp13: its session is gone", phaseIs(l, "idle") && corePhase(run.core) == QLatin1String("idle"));
+    }
+    {
+        // A refused token is the one thing that deletes it
+        TokenStore(nullptr, file).save(hub.id, QStringLiteral("a-token-this-hub-never-issued"));
+        Run run(file);
+        LinkController &l = *run.link;
+        QStringList changed;
+        QObject::connect(&l, &LinkController::tokensChanged, &l, [&](const QString &id) { changed << id; });
+        l.connectToHub(hub.url, hub.id);
+        d.check("qp13: token_refused asks for a PIN", settled(l) && phaseIs(l, "needs_pairing"));
+        d.check("qp13: token_refused deletes it", d.waitFor(3000, [&] { return !l.busy() && storedIn(file, hub.id).isEmpty(); }));
+        d.check("qp13: and says so", changed.contains(hub.id));
+        d.check("qp13: and only that one", !storedIn(file, QStringLiteral("00000000-0000-4000-8000-000000000001")).isEmpty());
+    }
+    {
+        // The token store as the app keeps it: written by the previous desktop
+        // app (one JSON object of hub id to token), read by this one
+        const QString earlier = scratch + QStringLiteral("/earlier.json");
+        QFile f(earlier);
+        d.check("qp13: a token file as the previous app wrote it",
+                f.open(QIODevice::WriteOnly) && f.write("{\"0f0e0d0c-0000-4000-8000-00000000abcd\":\"tok-earlier\"}") > 0);
+        f.close();
+        d.check("qp13: is read, the hub id without case",
+                TokenStore(nullptr, earlier).load(QStringLiteral("0F0E0D0C-0000-4000-8000-00000000ABCD")) == QLatin1String("tok-earlier"));
+    }
+    secretService(d, scratch);
+}
+
+const SmokeDriver::Section link("qp13-link", 130, &linkSection);
+} // namespace

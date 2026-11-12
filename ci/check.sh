@@ -99,7 +99,8 @@ RUN=ci/run.sh
 # -- WP HB6 -- hub: the smoke driver starts one (SmokeDriverHub.cpp)
 CAPI_FEATURES=link,midir,mdns,hub
 # -- WP QD8 -- The smoke driver's Link test talks to this binary. -- WP QP0 -- Unused
-# until the new tree's Link and hub sections come (QP13, QP14).
+# until the new tree's Link and hub sections come (QP13, QP14). -- WP QP13 -- Built
+# by the qt-offscreen step again.
 FAKEHUB="cargo build --release -p dspi-link --features fake-hub --bin dspi-link-fakehub"
 # -- WP HB6 -- The Terminal, as the smoke driver's client of a demo hub
 TERMINAL="cargo build --release --locked -p dspi-term"
@@ -213,7 +214,8 @@ for s in "${steps[@]}"; do
       # -- WP QP0 -- The smoke driver's sections on the demo device. The fake hub and
       # the Terminal come back with the sections that use them (QP13, QP14), the
       # hardware dry run with QP19. DSPI_SMOKE_SECTION=<name> runs one section.
-      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && cmake -S apps/desktop/qt -B /work/build-desktop-qt-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt-smoke --target DSPiConsoleSmoke && DSPI_SMOKE_SECTION=${DSPI_SMOKE_SECTION:-} apps/desktop/qt/smoke/run.sh /work/build-desktop-qt-smoke/DSPiConsoleSmoke /work/smoke-out" ;;
+      # -- WP QP13 -- The fake hub is back, for the Link sections (DSPI_SMOKE_FAKEHUB).
+      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && $FAKEHUB && cmake -S apps/desktop/qt -B /work/build-desktop-qt-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt-smoke --target DSPiConsoleSmoke && DSPI_SMOKE_FAKEHUB=/target/release/dspi-link-fakehub DSPI_SMOKE_SECTION=${DSPI_SMOKE_SECTION:-} apps/desktop/qt/smoke/run.sh /work/build-desktop-qt-smoke/DSPiConsoleSmoke /work/smoke-out" ;;
     qt-windows)
       # -- WP QP0 -- Off: the Windows packaging still expects the previous tree. QP20
       # rewrites it and turns this step back on.

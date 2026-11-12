@@ -1,5 +1,5 @@
 // -- WP QD10 -- The fake hub process and what the Link smoke files share
-// (SmokeDriverLink.cpp, SmokeDriverLinkFault.cpp); moved from SmokeDriverLink.cpp.
+// (-- WP QP13 -- SmokeLink.cpp, SmokeDevices.cpp, SmokeLinkFault.cpp).
 #ifndef LINKFAKEHUB_H
 #define LINKFAKEHUB_H
 
