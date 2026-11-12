@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: GPL-3.0-only -->
-# DSPi uConsole — copyright, licence and additional terms
+# uConsole for DSPi — copyright, licence and additional terms
 
 > **DRAFT.** Not final legal text: pending the owner's approval (and a lawyer's reading). `assets/about.json` is
 > marked `"draft": true` until then, and the release gate fails while it is.
@@ -13,7 +13,7 @@ apps/desktop/packaging/licences/TERMS.txt; a test in crates/dspi-session (about.
 
 "DSPi" and "DSPi Console" are Weeb Labs' names. This repository grants no rights to them.
 
-DSPi uConsole (the Qt console for Linux, Windows and macOS, the Android console, the Swift console for macOS and iOS,
+uConsole for DSPi (the Qt console for Linux, Windows and macOS, the Android console, the Swift console for macOS and iOS,
 the DSPi Terminal, the web console and the hub) combines code under different terms. Bofr5555's own contributions are
 free software: you can redistribute them and/or modify them under the terms of the GNU General Public License as
 published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version, with
@@ -46,7 +46,7 @@ Each client shows this notice and these terms where it shows licences: the Qt co
 Licences, the Android console's Settings › About › Licences, the Swift console's Settings › About (macOS and iOS),
 the web console's About, the DSPi Terminal's Settings › About and `uconsole --license` (which the hub shares, as part
 of `uconsole`). The desktop packages carry it in `NOTICE.txt` and `LICENSES/TERMS.txt` (AppImage, Windows, .dmg), in
-`copyright` (.deb) and in `share/licenses/dspi-uconsole/` (.rpm and a plain install).
+`copyright` (.deb) and in `share/licenses/uconsole-for-dspi/` (.rpm and a plain install).
 
 ## Source code
 
@@ -54,7 +54,7 @@ The complete source code of each release is published with the release, as its -
 this program on, a hub that serves the web console included, passes on your right to that source. `ci/release-source.sh`
 makes it: a `git archive` of the exact commit the release was built from (the Qt desktop app's `apps/desktop` left out
 while that app is not released, apart from `apps/desktop/packaging/licences/`, which builds the Swift app's notices;
-`--with-desktop` writes a Qt release's archive with all of it), named `dspi-uconsole-<version>-source.tar.gz`. Every
+`--with-desktop` writes a Qt release's archive with all of it), named `uConsole-for-DSPi-<version>-source.tar.gz`. Every
 non-Qt artifact of a release (the Terminal archives, the web console, the Android packages, the Swift app) is published
 with it, and their notices point at it rather than at this repository.
 

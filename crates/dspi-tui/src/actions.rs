@@ -1172,7 +1172,7 @@ impl ImportNotes {
         }
         if self.newer_format {
             lines.push(
-                "This file was written by a newer version of DSPi uConsole; some settings may \
+                "This file was written by a newer version of uConsole for DSPi; some settings may \
                  have been ignored."
                     .into(),
             );
@@ -1835,7 +1835,7 @@ mod tests {
                 "Crossover settings were skipped - the connected firmware doesn't support \
                  crossovers.",
                 "The file's preamp was not applied to output channels, which have no input trim.",
-                "This file was written by a newer version of DSPi uConsole; some settings may \
+                "This file was written by a newer version of uConsole for DSPi; some settings may \
                  have been ignored.",
             ]
         );

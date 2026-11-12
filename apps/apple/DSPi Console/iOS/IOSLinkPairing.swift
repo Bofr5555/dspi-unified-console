@@ -74,7 +74,7 @@ struct IOSPairingSheet: View {
                     Text("Pairing code")
                 } footer: {
                     Text("""
-                        On a Mac sharing its DSPi with DSPi uConsole: open Settings, Networking, \
+                        On a Mac sharing its DSPi with uConsole for DSPi: open Settings, Networking, \
                         choose Allow a New Client and enter the code it shows within two minutes. \
                         On a DSPi Link bridge: enter the PIN set on its web page.
                         """)

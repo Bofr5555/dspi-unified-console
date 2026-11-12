@@ -10,7 +10,7 @@ The unified console, the core merge, the Android console and the Rust Link clien
 DSPi, the DSPi firmware, DSPi Console for macOS, DSPi Console for Windows, DSPi-Terminal and
 DSPi-Link: Copyright (C) Weeb Labs (https://github.com/WeebLabs).
 
-DSPi uConsole (the Qt console for Linux, Windows and macOS, the Android console, the Swift
+uConsole for DSPi (the Qt console for Linux, Windows and macOS, the Android console, the Swift
 console for macOS and iOS, the DSPi Terminal, the web console and the hub) combines code under
 different terms. Bofr5555's own contributions are free software: you can redistribute them
 and/or modify them under the terms of the GNU General Public License as published by the Free

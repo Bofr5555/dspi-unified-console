@@ -8,7 +8,7 @@ final class AppUpdateCheckerTests: XCTestCase {
     private func release(_ tag: String, draft: Bool = false, macApp: Bool = true) -> AppUpdateChecker.Release {
         let base = "https://github.com/Bofr5555/dspi-unified-console/releases"
         let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
-        let dmg = "DSPi-uConsole-Swift-\(version)-macos.dmg"
+        let dmg = "uConsole-for-DSPi-\(version)-macos.dmg"
         return AppUpdateChecker.Release(tagName: tag,
                                         htmlURL: URL(string: "\(base)/tag/\(tag)")!,
                                         draft: draft,

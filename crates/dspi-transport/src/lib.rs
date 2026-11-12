@@ -124,7 +124,7 @@ fn permission_help() -> String {
         .into()
     } else if cfg!(target_os = "macos") {
         "could not claim the DSPi vendor interface. Another application is \
-         probably holding it: quit DSPi uConsole (or any other DSPi tool) and \
+         probably holding it: quit uConsole for DSPi (or any other DSPi tool) and \
          try again."
             .into()
     } else {

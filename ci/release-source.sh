@@ -11,7 +11,7 @@
 # swift CI step (gen_rust_notices.py --swift) use, so the Swift artifact's
 # archive holds the scripts that build its notices. --with-desktop keeps all of
 # apps/desktop, for a release that ships the Qt app; it writes
-# dspi-uconsole-VERSION-desktop-source.tar.gz, which the Qt packages' notices
+# uConsole-for-DSPi-VERSION-desktop-source.tar.gz, which the Qt packages' notices
 # would then name (fix-up cl1, item 6).
 #
 # Writes OUTDIR/<name>.tar.gz (OUTDIR default: dist) and prints its path. COMMIT
@@ -33,9 +33,9 @@ fi
 rev=$(git -C "$here" rev-parse --verify "$commit^{commit}")
 paths=(.)
 if [ "$desktop" = 1 ]; then
-  name=dspi-uconsole-$version-desktop-source
+  name=uConsole-for-DSPi-$version-desktop-source
 else
-  name=dspi-uconsole-$version-source
+  name=uConsole-for-DSPi-$version-source
   # Every entry of apps/desktop and apps/desktop/packaging but the shared licences
   while IFS= read -r p; do
     case $p in

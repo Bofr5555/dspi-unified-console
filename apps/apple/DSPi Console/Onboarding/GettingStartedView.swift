@@ -154,7 +154,7 @@ struct GettingStartedView: View {
     // MARK: Welcome
 
     private var welcomeStage: some View {
-        stepBody(title: "Welcome to DSPi uConsole",
+        stepBody(title: "Welcome to uConsole for DSPi",
                  blurb: "DSPi turns a Raspberry Pi Pico into a remarkably capable audio processor: equalisation, crossovers, upmixing, loudness compensation and more, applied live to whatever you play.\n\nSetup is short and has one job: getting the DSPi firmware onto your Pico. Once it is running, everything else is set up in the app as you need it.") {
             infoRow("bolt.horizontal.circle", "Connect your Pico and install the DSPi firmware, right here.")
             infoRow("checkmark.seal", "The board restarts and the app confirms the install worked.")
@@ -418,7 +418,7 @@ struct GettingStartedView: View {
             }
 
             if showsContinue {
-                Button(current == .done ? "Start Using DSPi uConsole" : "Continue") { advance() }
+                Button(current == .done ? "Start Using uConsole for DSPi" : "Continue") { advance() }
                     .keyboardShortcut(continueIsDefault ? .defaultAction : nil)
             }
         }

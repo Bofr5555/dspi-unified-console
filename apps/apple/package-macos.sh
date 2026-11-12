@@ -1,10 +1,10 @@
 #!/bin/bash
 # -- WP REL013M -- macOS release of the Swift app: a universal (arm64 + x86_64)
-# Release "DSPi uConsole.app" with the licence texts and the notice
+# Release "uConsole for DSPi.app" with the licence texts and the notice
 # (Contents/Resources/NOTICE.txt and LICENSES/, from the Qt .dmg's
 # packaging/licences/stage.sh), ad-hoc signed, and a .dmg of it:
-# DSPi-uConsole-Swift-<version>-macos.dmg, apart from the Qt app's
-# DSPi-uConsole-<version>-macos.dmg. Not notarised (no Apple ID).
+# uConsole-for-DSPi-<version>-macos.dmg, the release's only Mac download (WP RN1).
+# Not notarised (no Apple ID).
 #
 #   apps/apple/package-macos.sh [output dir, default dist/]
 #
@@ -29,15 +29,15 @@ settings=$(xcodebuild -showBuildSettings "${build[@]}" 2>/dev/null)
 setting() { sed -n "s/^ *$1 = //p" <<<"$settings" | head -n 1; }
 version=$(setting MARKETING_VERSION)
 [ -n "$version" ] || { echo "package-macos: no MARKETING_VERSION" >&2; exit 1; }
-name="DSPi-uConsole-Swift-$version-macos"
+name="uConsole-for-DSPi-$version-macos"
 
 rm -rf "$dd/Build/Products/Release"
 xcodebuild build -quiet "${build[@]}"
 
 mkdir -p "$out"
-app="$out/DSPi uConsole.app"
-rm -rf "$app"; ditto "$dd/Build/Products/Release/DSPi uConsole.app" "$app"
-exe="$app/Contents/MacOS/DSPi uConsole"
+app="$out/uConsole for DSPi.app"
+rm -rf "$app"; ditto "$dd/Build/Products/Release/uConsole for DSPi.app" "$app"
+exe="$app/Contents/MacOS/uConsole for DSPi"
 for a in arm64 x86_64; do
     lipo "$exe" -verify_arch "$a" || { echo "package-macos: the app has no $a slice" >&2; exit 1; }
 done
@@ -54,6 +54,6 @@ codesign --force --deep --sign - "$app"
 codesign --verify --deep --strict "$app"
 
 rm -f "$out/$name.dmg"
-hdiutil create -quiet -volname "DSPi uConsole" -srcfolder "$app" -format UDZO "$out/$name.dmg"
+hdiutil create -quiet -volname "uConsole for DSPi" -srcfolder "$app" -format UDZO "$out/$name.dmg"
 lipo -info "$exe"
 ls -la "$out/$name.dmg"

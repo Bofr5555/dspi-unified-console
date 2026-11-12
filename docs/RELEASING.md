@@ -12,6 +12,24 @@ client's own docs; this page covers what every release shares.
 4. **Last:** `ci/release-sums.sh --key SECRET_KEY DIR` writes `DIR/SHA256SUMS`
    over every file in `DIR` and signs it as `DIR/SHA256SUMS.minisig`.
 
+### The file names (WP RN1)
+
+Every release file starts with the release's stem, `uConsole-for-DSPi-VERSION-`; distribution packages
+use the package name `uconsole-for-dspi`, as their systems expect.
+
+| File | Made by |
+|---|---|
+| `uConsole-for-DSPi-VERSION-source.tar.gz`, `…-desktop-source.tar.gz` | `ci/release-source.sh [--with-desktop]` |
+| `uConsole-for-DSPi-VERSION-terminal-PLATFORM.tar.gz` / `.zip` | `ci/release-terminal.sh` |
+| `uConsole-for-DSPi-VERSION-windows-x86_64-setup.exe`, `…-windows-x86_64.zip`, `…-x86_64.AppImage`, `…-linux-x86_64.tar.gz` | `apps/desktop/packaging/build-release.sh` |
+| `uconsole-for-dspi_VERSION_amd64.deb`, `uconsole-for-dspi-VERSION-1.fcN.x86_64.rpm` | the same |
+| `uConsole-for-DSPi-VERSION-macos.dmg` | `apps/apple/package-macos.sh` |
+| `uConsole-for-DSPi-VERSION.apk` | `apps/android`: `-Pdspi.sideload=true :app:assembleRelease` |
+| `uConsole-for-DSPi-VERSION-web.tar.gz` | the web dist (`apps/web`), packed by hand |
+
+The Qt app's update check counts a release only when it carries its own platform's files under this stem
+(`apps/desktop/packaging/README.md`), so the names are a contract.
+
 Publish all of `DIR`, `SHA256SUMS` and `SHA256SUMS.minisig` included. The
 release notes say how to check a download
 ([`release/RELEASE-NOTES-TEMPLATE.md`](release/RELEASE-NOTES-TEMPLATE.md)).

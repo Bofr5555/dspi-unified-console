@@ -75,7 +75,7 @@ final class LinkAuthStoreTests: XCTestCase {
         let store = makeStore()
         // Spec 6.1: hubs must default to `pin`.
         XCTAssertEqual(store.authMode, .pin)
-        XCTAssertTrue(store.hubName.hasSuffix("DSPi uConsole"))
+        XCTAssertTrue(store.hubName.hasSuffix("uConsole for DSPi"))
         XCTAssertNil(store.activePIN)
         XCTAssertTrue(store.clients.isEmpty)
     }

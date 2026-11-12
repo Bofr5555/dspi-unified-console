@@ -1269,7 +1269,7 @@ pub struct DiagFile {
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct DiagOptions {
-    /// The client and its version, as it names itself ("DSPi Console 1.2.0
+    /// The client and its version, as it names itself ("uConsole for DSPi 1.2.0
     /// (Android)"); "" when it does not say.
     pub app: String,
     /// The folder of a hub store (`hub-store.json`) to include with its
