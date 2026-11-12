@@ -47,6 +47,8 @@ class DeviceModel : public QObject {
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(ChannelListModel *channels READ channels CONSTANT)
     Q_PROPERTY(PresetModel *presets READ presets CONSTANT)
+    // -- WP QP13 -- The open device is a hub's, bound through DSPi Link
+    Q_PROPERTY(bool remote READ remote NOTIFY snapshotApplied)
 public:
     explicit DeviceModel(Core *core, QObject *parent = nullptr);
     ~DeviceModel() override;
@@ -100,6 +102,15 @@ public:
     // 31 bytes of UTF-8; false, with nothing sent, for a longer name or no device.
     Q_INVOKABLE bool setChannelName(int channel, const QString &name);
 
+    // -- WP QP13 -- A device bound through a DSPi Link session (LinkController).
+    // While one is, a scan, a hot-plug arrival and reconnect() leave the
+    // connection alone: no local device opens under the session.
+    bool remote() const { return m_remote; }
+    // After dspi_link_select_device: reads the device and shows it as `serial`.
+    void adoptRemote(const QString &serial);
+    // The session is gone: forget the hub's device and read what is left.
+    void leaveRemote();
+
     // Setters the worker ran so far (the smoke driver's coalescing check)
     int settersRun() const { return m_settersRun.load(); }
 
@@ -129,6 +140,7 @@ private:
     bool m_busy = false;
     QHash<QString, std::shared_ptr<PendingWrite>> m_queuedWrites;
     std::atomic<int> m_settersRun{ 0 };
+    bool m_remote = false;   // -- WP QP13 --
 };
 
 #endif // DEVICEMODEL_H
