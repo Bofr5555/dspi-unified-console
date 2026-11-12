@@ -1,10 +1,10 @@
 #!/bin/bash
-# Run DSPiConsoleSmoke offscreen on the demo device (ci/check.sh --step
+# Run uconsole-for-dspi-smoke offscreen on the demo device (ci/check.sh --step
 # qt-offscreen). Passes when the driver reports no failure and the core logged
 # no warning more than a few times over the run (a polled call that fails is
 # reported once, not at the poll rate).
 #
-#   run.sh <DSPiConsoleSmoke> <output dir: log.txt and one PNG per window>
+#   run.sh <uconsole-for-dspi-smoke> <output dir: log.txt and one PNG per window>
 #
 # DSPI_SMOKE_SECTION=<name>[,<name>...] runs only those sections of the driver
 # (SmokeDriver.h).
@@ -19,8 +19,8 @@ set -uo pipefail
 app=$1; out=$2
 rm -rf "$out"; mkdir -p "$out/home"
 export HOME="$out/home" XDG_CONFIG_HOME="$out/home/.config"
-mkdir -p "$HOME/.config/DSPi"
-printf '[onboarding]\nsetupDone=true\n' > "$HOME/.config/DSPi/DSPi Console.conf"
+mkdir -p "$HOME/.config/uconsole-for-dspi"
+printf '[onboarding]\nsetupDone=true\n' > "$HOME/.config/uconsole-for-dspi/uconsole-for-dspi.conf"
 export QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_FORCE_STDERR_LOGGING=1
 export RUST_LOG=warn DSPI_SMOKE_OUT="$out"
 args=(--demo)
@@ -45,7 +45,7 @@ else
     grep -E '^(smoke:|FAIL)' "$out/log.txt"
 fi
 if [ "$code" != 0 ]; then
-    echo "DSPiConsoleSmoke exited with $code; the end of its log:" >&2
+    echo "uconsole-for-dspi-smoke exited with $code; the end of its log:" >&2
     tail -30 "$out/log.txt" >&2
     exit 1
 fi
@@ -93,8 +93,8 @@ launch() {
     while [ "$1" != -- ]; do vars+=("$1"); shift; done
     shift
     local o="$out/$dir"
-    mkdir -p "$o/home/.config/DSPi"
-    printf '[onboarding]\nsetupDone=true\n%b' "$settings" > "$o/home/.config/DSPi/DSPi Console.conf"
+    mkdir -p "$o/home/.config/uconsole-for-dspi"
+    printf '[onboarding]\nsetupDone=true\n%b' "$settings" > "$o/home/.config/uconsole-for-dspi/uconsole-for-dspi.conf"
     env HOME="$o/home" XDG_CONFIG_HOME="$o/home/.config" DSPI_SMOKE_OUT="$o" "${vars[@]}" timeout 300 "$app" "$@" > "$o/log.txt" 2>&1
     local c=$?
     grep -E '^(smoke:|FAIL)' "$o/log.txt" | sed "s|^|$dir: |"

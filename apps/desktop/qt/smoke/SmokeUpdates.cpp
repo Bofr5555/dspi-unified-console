@@ -96,8 +96,12 @@ QByteArray reply(const QByteArray &status, const QByteArray &body, const QByteAr
 QByteArray release(const char *tag, const QByteArray &more = {}, const QByteArray &assets = "linux") {
     const QByteArray v = QByteArray(tag).mid(1);
     QByteArray list;
-    if (assets == "linux") list = R"([{"name":"DSPi-uConsole-)" + v + R"(-linux-x86_64.tar.gz"}])";
-    else if (assets == "swift") list = R"([{"name":"DSPi-uConsole-Swift-)" + v + R"(-macos.dmg"}])";
+    if (assets == "linux") list = R"([{"name":"uConsole-for-DSPi-)" + v + R"(-linux-x86_64.tar.gz"}])";
+    // -- WP RN1 -- the other clients' files share the stem; none is this app's
+    else if (assets == "others")
+        list = R"([{"name":"uConsole-for-DSPi-)" + v + R"(-macos.dmg"},{"name":"uConsole-for-DSPi-)" + v
+             + R"(-terminal-linux-x86_64.tar.gz"},{"name":"uConsole-for-DSPi-)" + v + R"(-source.tar.gz"},)"
+             + R"({"name":"uConsole-for-DSPi-)" + v + R"(.apk"},{"name":"uconsole-for-dspi_)" + v + R"(_amd64.deb"}])";
     else list = "[]";
     return R"({"tag_name":")" + QByteArray(tag) + R"(","html_url":"https://example.invalid/releases/tag/)"
          + QByteArray(tag) + R"(","draft":false,"assets":)" + list + more + "}";
@@ -156,7 +160,7 @@ void updatesSection(SmokeDriver &d) {
                            + R"({"tag_name":"v0.20.0","html_url":"https://example.invalid/x","draft":true,"assets":[]},)"
                            + release("v0.14.1-beta1") + ","
                            + R"js({"tag_name":"v9.0.0","html_url":"javascript:alert(1)","assets":[]},)js"
-                           + release("v0.15.0", {}, "swift") + "," + release("v0.16.0", {}, "none") + "]";
+                           + release("v0.15.0", {}, "others") + "," + release("v0.16.0", {}, "none") + "]";
     const QByteArray older = "[" + release("v0.12.0") + "," + release("v0.13.0-beta4") + "]";
     {
         QStringList tags;
@@ -167,6 +171,28 @@ void updatesSection(SmokeDriver &d) {
         const AppUpdater::Release *best = AppUpdater::newest(all, AppUpdater::Version::parse(QStringLiteral("0.13.0")),
                                                              QStringLiteral("linux"));
         d.check(QStringLiteral("qp17: only a release carrying this app's package counts"), best && best->tag == "v0.14.0");
+        // -- WP RN1 -- each release file by its name: this app's for its platform only
+        const auto carries = [](const char *asset, const char *platform) {
+            AppUpdater::Release r;
+            r.version = AppUpdater::Version::parse(QStringLiteral("0.14.0"));
+            r.assets << QString::fromLatin1(asset);
+            return AppUpdater::carriesApp(r, QString::fromLatin1(platform));
+        };
+        d.check(QStringLiteral("rn1: the uConsole-for-DSPi files of this platform count"),
+                carries("uConsole-for-DSPi-0.14.0-windows-x86_64-setup.exe", "windows")
+                    && carries("uConsole-for-DSPi-0.14.0-windows-x86_64.zip", "windows")
+                    && carries("uConsole-for-DSPi-0.14.0-x86_64.AppImage", "linux")
+                    && carries("uConsole-for-DSPi-0.14.0-linux-x86_64.tar.gz", "linux")
+                    && !carries("uConsole-for-DSPi-0.14.0-x86_64.AppImage", "windows")
+                    && !carries("uConsole-for-DSPi-0.14.0-windows-x86_64.zip", "linux"));
+        d.check(QStringLiteral("rn1: other clients' files, other versions and the old names do not count"),
+                !carries("uConsole-for-DSPi-0.14.0-macos.dmg", "linux") && !carries("uConsole-for-DSPi-0.14.0.apk", "linux")
+                    && !carries("uConsole-for-DSPi-0.14.0-terminal-linux-x86_64.tar.gz", "linux")
+                    && !carries("uConsole-for-DSPi-0.14.0-terminal-windows-x86_64.zip", "windows")
+                    && !carries("uConsole-for-DSPi-0.14.0-source.tar.gz", "linux")
+                    && !carries("uConsole-for-DSPi-0.13.0-linux-x86_64.tar.gz", "linux")
+                    && !carries("DSPi-uConsole-0.14.0-linux-x86_64.tar.gz", "linux")
+                    && !carries("DSPi-uConsole-0.14.0-windows-x86_64-setup.exe", "windows"));
         d.check(QStringLiteral("qp17: anything but a list is no release"),
                 AppUpdater::parseFeed(R"({"tag_name":"v2.0.0"})").isEmpty() && AppUpdater::parseFeed("not json").isEmpty()
                     && AppUpdater::parseFeed(R"([1, "x", null])").isEmpty());
@@ -237,7 +263,7 @@ void updatesSection(SmokeDriver &d) {
     up->setFeed(feed.url("/feed"));
     up->setCurrentVersionForTest(QStringLiteral("0.13.0"));
     d.check(QStringLiteral("qp17: the test feed is taken"), up->hasFeed() && up->feedHost() == "127.0.0.1");
-    d.check(QStringLiteral("qp17: the User-Agent is DSPiConsole/<version>"), up->userAgent() == "DSPiConsole/0.13.0");
+    d.check(QStringLiteral("qp17: the User-Agent is uConsole-for-DSPi/<version>"), up->userAgent() == "uConsole-for-DSPi/0.13.0");
     up->checkNow();
     d.check(QStringLiteral("qp17: Check Now asks the feed"), up->checking() && d.waitFor(5000, [&]() { return !up->checking(); }));
     d.check(QStringLiteral("qp17: a newer release is offered"),

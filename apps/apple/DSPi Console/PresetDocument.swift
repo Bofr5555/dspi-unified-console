@@ -710,7 +710,7 @@ enum PresetDocumentError: LocalizedError {
         case .notAPreset(let detail):
             return "Not a valid configuration file: \(detail)"
         case .newerSchema(let version):
-            return "This configuration was written by a newer version of DSPi uConsole "
+            return "This configuration was written by a newer version of uConsole for DSPi "
                  + "(format \(version), this build reads \(PresetDocument.currentSchemaVersion))."
         }
     }

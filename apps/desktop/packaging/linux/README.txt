@@ -4,7 +4,7 @@ This folder holds the app as an AppImage, which runs on most Linux systems
 from 2024 on (glibc 2.39 or newer) and brings its own Qt.
 
 Run it as it is:
-    ./DSPi-uConsole-<version>-x86_64.AppImage
+    ./uConsole-for-DSPi-<version>-x86_64.AppImage
 (It needs FUSE 3 to mount itself. Without it, run it with
 --appimage-extract-and-run, or set APPIMAGE_EXTRACT_AND_RUN=1.)
 
@@ -15,10 +15,10 @@ Opening a DSPi needs permission to use its USB interface. Your distribution
 may already give it to the person at the seat; if not, the app says so and
 offers to install a udev rule (it asks for an administrator's password once).
 ./install.sh --udev installs the same rule now. The rule is
-70-dspi-uconsole.rules in this folder.
+70-uconsole-for-dspi.rules in this folder.
 
 Updating the firmware puts the board in BOOTSEL mode, where it shows as a USB
 drive; your desktop mounts it as it does any drive.
 
-Settings live in ~/.config/DSPi/. The licences of the app and of everything
+Settings live in ~/.config/uconsole-for-dspi/. The licences of the app and of everything
 it bundles are in NOTICE.txt and LICENSES/ (also in the app: Settings > About).

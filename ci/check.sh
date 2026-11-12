@@ -36,7 +36,7 @@
 #                                     (crates/dspi-capi, library dspi_capi); the
 #                                     .ts check only on qtport/main or with
 #                                     DSPI_TS_CHECK=1; the theme's contrast
-#       qt-ts                         translations/dspi-uconsole_en.ts is what
+#       qt-ts                         translations/uconsole-for-dspi_en.ts is what
 #                                     lupdate makes of the sources (WP QD40; the
 #                                     qt step runs it too)
 #       qt-offscreen                  the Qt app with its smoke driver, on the
@@ -113,17 +113,17 @@ CMD=$(ci/command-name.sh)
 # locations (-locations none), so moved lines don't make a difference; the fix
 # names the command, which runs in the CI image (lupdate 6.11.2: another version
 # may write the file differently).
-# -- WP QP0 -- The new tree's file is dspi-uconsole_en.ts.
-TSUPDATE='lupdate-qt6 -silent -locations none -no-obsolete -source-language en -target-language en qml src -ts translations/dspi-uconsole_en.ts'
+# -- WP QP0 -- The new tree's file is uconsole-for-dspi_en.ts.
+TSUPDATE='lupdate-qt6 -silent -locations none -no-obsolete -source-language en -target-language en qml src -ts translations/uconsole-for-dspi_en.ts'
 TSCHECK='set -e; d=/work/ts-check; rm -rf "$d"; mkdir -p "$d"
   cp -r apps/desktop/qt/qml apps/desktop/qt/src apps/desktop/qt/translations "$d"/
   (cd "$d" && '"$TSUPDATE"')
-  if ! diff -u apps/desktop/qt/translations/dspi-uconsole_en.ts "$d"/translations/dspi-uconsole_en.ts; then
-    echo "qt-ts: apps/desktop/qt/translations/dspi-uconsole_en.ts is not current. Regenerate it in the CI image (lupdate $(lupdate-qt6 -version 2>&1 | grep -o "[0-9][0-9.]*" | head -1)) and commit it:" >&2
+  if ! diff -u apps/desktop/qt/translations/uconsole-for-dspi_en.ts "$d"/translations/uconsole-for-dspi_en.ts; then
+    echo "qt-ts: apps/desktop/qt/translations/uconsole-for-dspi_en.ts is not current. Regenerate it in the CI image (lupdate $(lupdate-qt6 -version 2>&1 | grep -o "[0-9][0-9.]*" | head -1)) and commit it:" >&2
     echo "  ci/run.sh '"'"'cd apps/desktop/qt && '"$TSUPDATE"''"'"'" >&2
     exit 1
   fi
-  echo "qt-ts: dspi-uconsole_en.ts is current"'
+  echo "qt-ts: uconsole-for-dspi_en.ts is current"'
 # -- WP QD40 end --
 # -- WP CG9 -- The image with kotlinc and swiftc. Other steps keep ci/run.sh's.
 crates=()
@@ -215,13 +215,13 @@ for s in "${steps[@]}"; do
       # runs its other launches (demo entry, tray, pseudo locale, the hardware
       # dry run, QP19). DSPI_SMOKE_SECTION=<name> runs one section.
       # -- WP QP13 -- The fake hub is back, for the Link sections (DSPI_SMOKE_FAKEHUB).
-      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && $FAKEHUB && cmake -S apps/desktop/qt -B /work/build-desktop-qt-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt-smoke --target DSPiConsoleSmoke && DSPI_SMOKE_FAKEHUB=/target/release/dspi-link-fakehub DSPI_SMOKE_SECTION=${DSPI_SMOKE_SECTION:-} apps/desktop/qt/smoke/run.sh /work/build-desktop-qt-smoke/DSPiConsoleSmoke /work/smoke-out" ;;
+      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && $FAKEHUB && cmake -S apps/desktop/qt -B /work/build-desktop-qt-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt-smoke --target uconsole-for-dspi-smoke && DSPI_SMOKE_FAKEHUB=/target/release/dspi-link-fakehub DSPI_SMOKE_SECTION=${DSPI_SMOKE_SECTION:-} apps/desktop/qt/smoke/run.sh /work/build-desktop-qt-smoke/uconsole-for-dspi-smoke /work/smoke-out" ;;
     qt-windows)
       # -- WP QP20 -- Back on: the zip and the installer, then the installer's
       # test under Wine (install over an earlier install, refused while the app
       # runs, the notices, uninstall). The update feed is left out here: a CI
       # build is not a release.
-      $RUN "BUILD_DIR=/work/build-desktop-win64 DSPI_UPDATE_FEED_URL= apps/desktop/packaging/windows/build-windows.sh /work/dist-windows && apps/desktop/packaging/windows/test-installer.sh /work/dist-windows/DSPi-uConsole-*-windows-x86_64-setup.exe" ;;
+      $RUN "BUILD_DIR=/work/build-desktop-win64 DSPI_UPDATE_FEED_URL= apps/desktop/packaging/windows/build-windows.sh /work/dist-windows && apps/desktop/packaging/windows/test-installer.sh /work/dist-windows/uConsole-for-DSPi-*-windows-x86_64-setup.exe" ;;
     proptest)
       # Every property test function is named proptest_* (PLAN §1.9).
       $RUN "PROPTEST_CASES=20000 cargo test --workspace --all-features --release -- proptest_" ;;

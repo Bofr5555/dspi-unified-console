@@ -34,7 +34,7 @@ int main(int argc, char *argv[]) {
     QApplication::setApplicationVersion(AppIdentity::version());
     QApplication app(argc, argv);
     QApplication::setApplicationDisplayName(AppIdentity::displayName());
-    // The desktop entry (packaging/linux/dspi-uconsole.desktop): Wayland's app id
+    // The desktop entry (packaging/linux/uconsole-for-dspi.desktop): Wayland's app id
     QGuiApplication::setDesktopFileName(QString::fromUtf8(AppIdentityNames::desktopFileName));
     QQuickStyle::setStyle(QStringLiteral("Basic"));
 

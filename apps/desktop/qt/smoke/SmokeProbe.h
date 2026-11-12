@@ -11,7 +11,7 @@ class QJSEngine;
 
 // -- WP QP0 -- A controller registered the way a work package registers one
 // (Registrar::Controller), with a banner and a tool window, so the smoke
-// driver proves each plug-in point works. Only in DSPiConsoleSmoke.
+// driver proves each plug-in point works. Only in uconsole-for-dspi-smoke.
 class SmokeProbe : public QObject {
     Q_OBJECT
     QML_ELEMENT

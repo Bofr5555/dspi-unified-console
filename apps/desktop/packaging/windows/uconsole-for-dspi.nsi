@@ -1,18 +1,16 @@
 ; Per-user installer for uConsole for DSPi on Windows (no administrator rights):
 ; installs to %LOCALAPPDATA%\Programs\uConsole for DSPi, adds a Start menu
 ; shortcut and an entry in Settings > Apps. Build on Linux or Windows with
-;   makensis -DVERSION=0.13.0 -DBUNDLE=<deployed folder> -DOUTFILE=<setup.exe> dspi-console.nsi
+;   makensis -DVERSION=0.13.0 -DBUNDLE=<deployed folder> -DOUTFILE=<setup.exe> uconsole-for-dspi.nsi
 ; (packaging/windows/build-windows.sh does this).
 ;
-; -- WP QP20 -- The name people see is "uConsole for DSPi". What an earlier
-; install wrote keeps its name, so this installer updates it in place: the
-; uninstall key (DSPiuConsole), the key holding the install folder, and the
-; folder itself when one is recorded there. The earlier Start menu shortcut
-; ("DSPi uConsole.lnk") is replaced by the new one. The app's own entries
-; (the Run value "DSPi uConsole" for open at login, the settings under
-; %APPDATA%\DSPi) are the app's and stay as they are on an install or an
-; update; the uninstaller removes the Run value (-- WP QPI4 --), whose name
-; stays the one the app writes (SystemIntegration.cpp's kRunName).
+; -- WP QP20 -- Every name here is "uConsole for DSPi": the uninstall key, the
+; key holding the install folder, the folder and the Start menu shortcut
+; (-- WP RN1 --: no earlier install to carry over). The app's own entries (the
+; Run value "uConsole for DSPi" for open at login, the settings under
+; %APPDATA%\uconsole-for-dspi) are the app's and stay as they are on an install
+; or an update; the uninstaller removes the Run value (-- WP QPI4 --), whose
+; name is the one the app writes (SystemIntegration.cpp's kRunName).
 
 Unicode true
 !include "MUI2.nsh"
@@ -24,16 +22,15 @@ Unicode true
   !error "pass -DBUNDLE=<folder made by deploy-mingw.sh>"
 !endif
 !ifndef OUTFILE
-  !define OUTFILE "DSPi-uConsole-${VERSION}-windows-x86_64-setup.exe"
+  !define OUTFILE "uConsole-for-DSPi-${VERSION}-windows-x86_64-setup.exe"
 !endif
 
 !define APP "uConsole for DSPi"
-!define EXE "DSPiConsole.exe"
-!define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\DSPiuConsole"
-!define DIR_KEY "Software\DSPi\DSPi uConsole"
-!define OLD_LINK "DSPi uConsole.lnk"
+!define EXE "uconsole-for-dspi.exe"
+!define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP}"
+!define DIR_KEY "Software\${APP}"
 !define RUN_KEY "Software\Microsoft\Windows\CurrentVersion\Run"
-!define RUN_NAME "DSPi uConsole"
+!define RUN_NAME "${APP}"
 
 Name "${APP}"
 OutFile "${OUTFILE}"
@@ -47,8 +44,8 @@ VIAddVersionKey /LANG=1033 "FileDescription" "${APP} setup"
 VIAddVersionKey /LANG=1033 "FileVersion" "${VERSION}"
 VIAddVersionKey /LANG=1033 "ProductVersion" "${VERSION}"
 
-!define MUI_ICON "${__FILEDIR__}\dspi-console.ico"
-!define MUI_UNICON "${__FILEDIR__}\dspi-console.ico"
+!define MUI_ICON "${__FILEDIR__}\uconsole-for-dspi.ico"
+!define MUI_UNICON "${__FILEDIR__}\uconsole-for-dspi.ico"
 ; "Run uConsole for DSPi" on the last page, started through the shell like the
 ; Start menu does. The first start after an install takes several seconds
 ; (QML compiled into the cache, files scanned by Defender).
@@ -103,7 +100,6 @@ Section "Install"
   RMDir /r "$INSTDIR\LICENSES"   ; -- WP QD42 -- and no stale licence texts
   File /r "${BUNDLE}\*.*"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
-  Delete "$SMPROGRAMS\${OLD_LINK}"
   CreateShortcut "$SMPROGRAMS\${APP}.lnk" "$INSTDIR\${EXE}"
   WriteRegStr HKCU "${DIR_KEY}" "InstallDir" "$INSTDIR"
   WriteRegStr HKCU "${UNINST_KEY}" "DisplayName" "${APP}"
@@ -118,10 +114,9 @@ Section "Install"
 SectionEnd
 
 Section "Uninstall"
-  ; The settings (%APPDATA%\DSPi) stay, as Windows apps usually leave them
+  ; The settings (%APPDATA%\uconsole-for-dspi) stay, as Windows apps usually leave them
   Call un.CheckNotRunning
   Delete "$SMPROGRAMS\${APP}.lnk"
-  Delete "$SMPROGRAMS\${OLD_LINK}"
   RMDir /r "$INSTDIR"
   DeleteRegKey HKCU "${UNINST_KEY}"
   DeleteRegKey HKCU "${DIR_KEY}"

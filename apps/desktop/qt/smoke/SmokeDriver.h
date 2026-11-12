@@ -14,7 +14,7 @@ class Shell;
 
 // Drives the real app (real QML, real controllers, the merged core) on the demo
 // device, from inside its event loop, and exits with the number of failures.
-// Only in the DSPiConsoleSmoke target (CMake DSPI_SMOKE).
+// Only in the uconsole-for-dspi-smoke target (CMake DSPI_SMOKE).
 //
 // A work package adds its screens' checks as a section of its own, in its own
 // file under smoke/, without editing this driver:

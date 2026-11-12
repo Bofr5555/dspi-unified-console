@@ -37,7 +37,7 @@ public:
     virtual QString program() const = 0;
 };
 
-// XDG autostart: <dir>/dspi-uconsole.desktop, dir being $XDG_CONFIG_HOME/autostart
+// XDG autostart: <dir>/uconsole-for-dspi.desktop, dir being $XDG_CONFIG_HOME/autostart
 std::unique_ptr<LoginItem> makeXdgLoginItem(const QString &dir);
 // Windows' Run key; `key` is HKCU\...\Run in the registry, an INI file in the tests
 std::unique_ptr<LoginItem> makeRunKeyLoginItem(std::unique_ptr<QSettings> key);

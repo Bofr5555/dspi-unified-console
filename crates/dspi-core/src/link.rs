@@ -101,7 +101,7 @@ use dspi_session::ext_state::ExtState;
 
 /// The role asked for when pairing, as the macOS Console does.
 const PAIR_ROLE: &str = "control";
-const APP_NAME: &str = "DSPi uConsole";
+const APP_NAME: &str = "uConsole for DSPi";
 /// `GET /dspi/v1/info`: connect, send and read, each.
 const INFO_TIMEOUT: Duration = Duration::from_secs(3);
 /// The capability that offers `poll.subscribe` (spec 7.6).

@@ -391,7 +391,7 @@ struct IOSDevicesSheet: View {
                 } header: {
                     Text("Devices")
                 } footer: {
-                    Text("A DSPi on USB appears here when its firmware has the MIDI control port (\"DSPi Control\"). Or use the demo device, or a DSPi shared by DSPi uConsole on a Mac (Settings > Networking there) or another DSPi Link hub.")
+                    Text("A DSPi on USB appears here when its firmware has the MIDI control port (\"DSPi Control\"). Or use the demo device, or a DSPi shared by uConsole for DSPi on a Mac (Settings > Networking there) or another DSPi Link hub.")
                 }
 
                 Section {
@@ -400,7 +400,7 @@ struct IOSDevicesSheet: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Label("Local network access is off", systemImage: "wifi.exclamationmark")
                                 .font(.headline)
-                            Text("DSPi uConsole needs it to find and reach DSPi Link hubs. Turn on Local Network for DSPi uConsole in Settings, Privacy & Security, Local Network.")
+                            Text("uConsole for DSPi needs it to find and reach DSPi Link hubs. Turn on Local Network for uConsole for DSPi in Settings, Privacy & Security, Local Network.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Button("Open Settings") {

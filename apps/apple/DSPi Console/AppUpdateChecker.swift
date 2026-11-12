@@ -69,12 +69,12 @@ final class AppUpdateChecker: ObservableObject {
         }
 
         /// -- WP REL013M -- Whether the release carries this app's .dmg
-        /// ("DSPi-uConsole-Swift-0.13.0-macos.dmg").  The repository has other
+        /// ("uConsole-for-DSPi-0.13.0-macos.dmg").  The repository has other
         /// tags (Weeb Labs' "v1.1.6-beta4", the Android app's): only a release
         /// with the Swift app in it is an update for it.
         var hasMacApp: Bool {
             let version = tagName.hasPrefix("v") ? String(tagName.dropFirst()) : tagName
-            return assets.contains { $0.name == "DSPi-uConsole-Swift-\(version)-macos.dmg" }
+            return assets.contains { $0.name == "uConsole-for-DSPi-\(version)-macos.dmg" }
         }
     }
 
@@ -183,7 +183,7 @@ final class AppUpdateChecker: ObservableObject {
                     presentUpdate(release)
                 } else {
                     let alert = NSAlert()
-                    alert.messageText = "DSPi uConsole is up to date"
+                    alert.messageText = "uConsole for DSPi is up to date"
                     alert.informativeText = "Version \(currentVersion?.description ?? GeneralSettingsTab.appVersion) is the newest version available."
                     alert.runModal()
                 }
@@ -231,11 +231,11 @@ final class AppUpdateChecker: ObservableObject {
         let installable = signed && replaceable
 
         let alert = NSAlert()
-        alert.messageText = "DSPi uConsole \(name) is available"
+        alert.messageText = "uConsole for DSPi \(name) is available"
         var text = "You have version \(currentVersion?.description ?? GeneralSettingsTab.appVersion). "
             + "The new version includes matching DSPi firmware, which it will offer to install when your device is connected."
         if signed && !replaceable {
-            text += "\n\nTo let DSPi uConsole update itself, move it to the Applications folder with Finder."
+            text += "\n\nTo let uConsole for DSPi update itself, move it to the Applications folder with Finder."
         }
         alert.informativeText = text
         alert.addButton(withTitle: installable ? "Install and Relaunch" : "View Release")
@@ -389,7 +389,7 @@ private struct UpdateProgressView: View {
                 ProgressView().progressViewStyle(.linear)
                 buttons { EmptyView() }
             case .waitingForQuit:
-                Text("The update will be installed when DSPi uConsole quits.")
+                Text("The update will be installed when uConsole for DSPi quits.")
                 buttons { Button("Close") { checker.closeProgressPanel() } }
             case .failed(let message):
                 Text("The update couldn't be installed.").font(.headline)

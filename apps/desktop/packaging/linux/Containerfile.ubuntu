@@ -2,8 +2,8 @@
 # release supports), Qt 6.8 from download.qt.io (qt-6.8.3.sha256, installed
 # by fetch-qt.sh into /opt/qt) and Rust from rustup (the CI image's pins).
 #
-#   podman build -t dspi-uconsole-ubuntu -f apps/desktop/packaging/linux/Containerfile.ubuntu apps/desktop/packaging/linux
-#   podman run --rm -v "$PWD":/src:Z -w /src dspi-uconsole-ubuntu apps/desktop/packaging/linux/build-ubuntu.sh
+#   podman build -t uconsole-for-dspi-ubuntu -f apps/desktop/packaging/linux/Containerfile.ubuntu apps/desktop/packaging/linux
+#   podman run --rm -v "$PWD":/src:Z -w /src uconsole-for-dspi-ubuntu apps/desktop/packaging/linux/build-ubuntu.sh
 # (build-release.sh does both, and then make-appimage.sh in the same image)
 FROM docker.io/library/ubuntu:24.04
 

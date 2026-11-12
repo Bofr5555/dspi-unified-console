@@ -26,10 +26,10 @@ Cite it by section, for example "behaviour.md §6.3".
 
 ### 1.1 Identity and start-up
 
-- Window title and product name today: "DSPi uConsole". The executable is `DSPiConsole` (`DSPiConsole.exe` on Windows).
+- Window title and product name: "uConsole for DSPi". The executable is `uconsole-for-dspi` (`uconsole-for-dspi.exe` on Windows; WP RN1).
   The rebuilt app takes the window title and every place a text names the product from its one identity constant
   (`AppIdentity`, plan Q15), never from this paragraph: the name may change before packaging.
-- Settings organisation and application are `DSPi` and `DSPi Console` (§21).
+- Settings organisation and application are both `uconsole-for-dspi` (§21; WP RN1).
 - `--demo` on the command line opens the demo device at start. Without it, the app starts with whatever USB device
   is present, or with nothing (§1.3).
 - First start, when the onboarding flag is unset: the main window shows the Getting Started flow (three steps:
@@ -183,11 +183,11 @@ reconnect passes the expected hub id, so a different hub at the same address is 
 
 - A pairing's token is stored per hub id, so the device list can reconnect without the PIN.
 - Primary store: Windows Credential Manager, or the Secret Service on Linux (macOS keychain where the app runs
-  there). The entry names used today are **not observable** here (no keyring in the test environment). The desktop's
-  token-store code is kept from the current tree (plan, salvage list), so the names carry over with it; the migration
-  test must still read a token written by the current app.
+  there). The entries are named `uconsole-for-dspi/link/<hub id>` (Credential Manager) and carry the attribute
+  `application` = `uconsole-for-dspi` (Secret Service); WP RN1 renamed them, with nothing to migrate (no earlier
+  release).
 - Fallback when no secret store answers: a JSON file `link-tokens.json` in the app's config directory (Linux:
-  `$XDG_CONFIG_HOME/DSPi/DSPi Console/link-tokens.json`). It holds one object whose keys are hub ids (UUID strings)
+  `$XDG_CONFIG_HOME/uconsole-for-dspi/uconsole-for-dspi/link-tokens.json`). It holds one object whose keys are hub ids (UUID strings)
   and whose values are the token strings. Mode 0600. A fresh file is `{}`.
 - When the fallback is used, the secret-store notice (§2 item 4) shows once, with "OK".
 - A damaged fallback file is reported in the log (observed) and its tokens are not used. Whether the app rewrites
@@ -315,12 +315,12 @@ States:
 ### 12.2 Open at login
 
 - No setting key: the state is the presence of the OS entry.
-- Linux: an XDG autostart file `$XDG_CONFIG_HOME/autostart/dspi-uconsole.desktop` (Type Application, the app's name and
-  a comment, `Exec` with the executable's absolute path quoted per the desktop-entry rules, Icon `dspi-uconsole`,
+- Linux: an XDG autostart file `$XDG_CONFIG_HOME/autostart/uconsole-for-dspi.desktop` (Type Application, the app's name and
+  a comment, `Exec` with the executable's absolute path quoted per the desktop-entry rules, Icon `uconsole-for-dspi`,
   Terminal false, `X-GNOME-Autostart-enabled=true`). Paths with spaces, quotes, backslashes, `$`, backticks and `%`
   are escaped as the desktop-entry spec requires (observed with such a path).
-- Windows: a value under the user's `Run` key named after the app (the current name is "DSPi Console"; inferred from
-  the test fixture), holding the quoted executable path.
+- Windows: a value under the user's `Run` key named after the app, "uConsole for DSPi", holding the quoted
+  executable path.
 - An entry that belongs to another copy of the program (another path) is left alone, not overwritten; turning the
   switch off removes only this copy's entry. A symlinked or unquoted entry pointing at this executable counts as this
   copy's (QD13b, QD37).
@@ -423,7 +423,7 @@ stats 1/1, analyser 3/3, monitor 3/30, input page 2/37, output page 6/50, main w
 - Rows: "Check for Updates Automatically" (off until the user turns it on), the current version with the time of the
   last check (or that it has not checked yet) and "Check Now".
 - Privacy line under them, always visible: what a check sends and to whom: the feed's host, the request carries only
-  what any web request does (the IP address) and the app's version in the User-Agent (`DSPiConsole/<version>`);
+  what any web request does (the IP address) and the app's version in the User-Agent (`uConsole-for-DSPi/<version>`);
   nothing about devices, presets or settings; with automatic checks on, a check runs at launch and once a day. The
   smoke checks that the request carries no headers beyond host, user-agent, accept, accept-language, connection and
   accept-encoding.
@@ -486,13 +486,13 @@ extension. All warnings, limits and states come from the core (`dspi_core_vreg_*
 
 | What | Linux | Windows |
 |---|---|---|
-| App settings (QSettings, INI) | `$XDG_CONFIG_HOME/DSPi/DSPi Console.conf` | `%APPDATA%\DSPi\DSPi Console.ini` (INI format forced) |
-| Link token fallback (§7) | `$XDG_CONFIG_HOME/DSPi/DSPi Console/link-tokens.json` | Qt's AppConfigLocation + `link-tokens.json` (not observed) |
-| Hub store (paired clients, hub id, name, access) | `$XDG_DATA_HOME/DSPi/DSPi Console/hub/hub-store.json` | Qt's AppDataLocation + `hub/hub-store.json` (not observed) |
-| QML cache | `$XDG_CACHE_HOME/DSPi/DSPi Console/qmlcache` | `%LOCALAPPDATA%\DSPi\DSPi Console` |
-| AutoEQ cache | Qt's AppDataLocation, `$XDG_DATA_HOME/DSPi/DSPi Console` | Qt's AppDataLocation |
-| Login entry | `$XDG_CONFIG_HOME/autostart/dspi-uconsole.desktop` | HKCU `…\Run`, value per §12.2 |
-| Installer record | — | HKCU `Software\DSPi\DSPi uConsole` (`InstallDir`), uninstall key `DSPiuConsole` |
+| App settings (QSettings, INI) | `$XDG_CONFIG_HOME/uconsole-for-dspi/uconsole-for-dspi.conf` | `%APPDATA%\uconsole-for-dspi\uconsole-for-dspi.ini` (INI format forced) |
+| Link token fallback (§7) | `$XDG_CONFIG_HOME/uconsole-for-dspi/uconsole-for-dspi/link-tokens.json` | Qt's AppConfigLocation + `link-tokens.json` (not observed) |
+| Hub store (paired clients, hub id, name, access) | `$XDG_DATA_HOME/uconsole-for-dspi/uconsole-for-dspi/hub/hub-store.json` | Qt's AppDataLocation + `hub/hub-store.json` (not observed) |
+| QML cache | `$XDG_CACHE_HOME/uconsole-for-dspi/uconsole-for-dspi/qmlcache` | `%LOCALAPPDATA%\uconsole-for-dspi\uconsole-for-dspi` |
+| AutoEQ cache | Qt's AppDataLocation, `$XDG_DATA_HOME/uconsole-for-dspi/uconsole-for-dspi` | Qt's AppDataLocation |
+| Login entry | `$XDG_CONFIG_HOME/autostart/uconsole-for-dspi.desktop` | HKCU `…\Run`, value per §12.2 |
+| Installer record | — | HKCU `Software\uConsole for DSPi` (`InstallDir`), uninstall key `uConsole for DSPi` |
 
 macOS uses the standard preferences plist for the same keys.
 
@@ -548,7 +548,8 @@ version, the demo choice, AutoEQ favourites. See §21.3.
 
 ### 21.3 Migration for the new app (plan Q12)
 
-- Keep organisation `DSPi` and application `DSPi Console`, so the same files are read.
+- WP RN1 (owner 2026-11-12): organisation and application are `uconsole-for-dspi`; no release used the old names
+  (`DSPi` / `DSPi Console`), so nothing below is read from them any more.
 - Carry over: `onboarding/setupDone`, `onboarding/whatsNewShown`, `sidebar/showMaster`, `hub/*`, `tray/*`,
   `system/keepAwake`, `inputLinks/*`. Under new names, map them on first start and leave the old keys in place, so
   going back to an old build keeps working.
@@ -629,8 +630,8 @@ The offscreen driver is kept and adapted (plan). What the CI script and reviewer
 
 The NSIS script and its test (`apps/desktop/packaging/windows/`) are kept. Behaviour:
 
-- Per-user install, no administrator rights: `%LOCALAPPDATA%\Programs\DSPi uConsole`, a Start menu shortcut, an entry
-  in Settings > Apps (HKCU uninstall key `DSPiuConsole`: name, version, publisher, icon, location; no modify, no
+- Per-user install, no administrator rights: `%LOCALAPPDATA%\Programs\uConsole for DSPi`, a Start menu shortcut, an entry
+  in Settings > Apps (HKCU uninstall key `uConsole for DSPi`: name, version, publisher, icon, location; no modify, no
   repair).
 - Before installing and before uninstalling, the installer checks that the installed executable is not running, by
   trying to open it for writing (a running exe cannot be). If it is running (also when only in the tray), it asks to
@@ -638,7 +639,7 @@ The NSIS script and its test (`apps/desktop/packaging/windows/`) are kept. Behav
 - An install first removes the previous version's `qml` directory and the other bundled documentation directory, so no stale files stay.
 - The finish page offers to run the app, started through the shell as the Start menu would.
 - Uninstall removes the program directory, the shortcut and the registry entries, and leaves the settings in
-  `%APPDATA%\DSPi`.
+  `%APPDATA%\uconsole-for-dspi`.
 - No firewall rule is added by the installer (§11).
 - The test runs the installer and uninstaller silently under Wine, including the refusal while the app runs.
 

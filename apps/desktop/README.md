@@ -11,8 +11,8 @@ behaviour, with the Windows and Linux additions listed in `docs/PARITY.md`.
 - Light and dark follow the system; dark is the look when the system says
   nothing.
 - The name people see is in one place: `src/AppIdentity.h`.
-- Settings are kept under the organisation `DSPi` and the application
-  `DSPi Console`, as the previous desktop app kept them.
+- Settings are kept under the organisation and application
+  `uconsole-for-dspi` (`AppIdentity.h`).
 
 ## Building
 
@@ -28,7 +28,7 @@ By hand, in the container:
     cmake -S apps/desktop/qt -B /work/build -G Ninja -DDSPI_CARGO_TARGET_DIR=/target [-DDSPI_SMOKE=ON]
     cmake --build /work/build
 
-`DSPiConsole --demo` opens the built-in demo device.
+`uconsole-for-dspi --demo` opens the built-in demo device.
 
 ## Layout
 
@@ -52,7 +52,7 @@ By hand, in the container:
     qt/smoke/                the offscreen smoke driver (NAMES.md: the naming rule;
                              names/<wp>.md: each package's names)
     qt/tools/contrast.py     the theme's WCAG contrast check (ci/check.sh --step qt)
-    qt/translations/         dspi-uconsole_en.ts, generated (English only)
+    qt/translations/         uconsole-for-dspi_en.ts, generated (English only)
     packaging/               installers and packages per platform
 
 ## How the app talks to the core
@@ -161,7 +161,7 @@ merges do not conflict, nothing generated or listed is edited by two of them:
 - **Icons:** each package names the icons it adds in
   `qt/icons/lucide/manifest.d/<wp>.txt` and commits the SVGs
   `icons/fetch-lucide.sh` copies; `manifest.txt` is the base's.
-- **The translation file** `qt/translations/dspi-uconsole_en.ts` is not
+- **The translation file** `qt/translations/uconsole-for-dspi_en.ts` is not
   committed by a package. The coordinator regenerates it on `qtport` after
   each merge (QP18 during its pass), and `ci/check.sh --step qt-ts` checks it
   there. On a package's branch `--step qt` skips the `.ts` check

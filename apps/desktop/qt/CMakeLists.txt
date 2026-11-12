@@ -6,14 +6,14 @@
 # Options:
 #   DSPI_CARGO_TARGET_DIR  where cargo built dspi-capi (default: the repo's target/)
 #   DSPI_RUST_TARGET       the Rust target triple of a cross build (empty: the host's)
-#   DSPI_SMOKE             also build DSPiConsoleSmoke, the app with the offscreen
+#   DSPI_SMOKE             also build uconsole-for-dspi-smoke, the app with the offscreen
 #                          smoke driver (smoke/, ci/check.sh --step qt-offscreen)
 #
 # Every QML file, C++ type and icon belongs to one QML module, UConsole. The
 # lists below are the base's. A work package lists its own files in its own
 # cmake/wp/<wp>.cmake (see "Work packages' files"); it does not edit this file.
 cmake_minimum_required(VERSION 3.21)
-project(DSPiConsole VERSION 0.13.0 LANGUAGES C CXX)
+project(uconsole-for-dspi VERSION 0.13.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -28,7 +28,7 @@ endif()
 get_filename_component(DSPI_REPO "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
 set(DSPI_CARGO_TARGET_DIR "${DSPI_REPO}/target" CACHE PATH "cargo's target directory")
 set(DSPI_RUST_TARGET "" CACHE STRING "Rust target triple of a cross build")
-option(DSPI_SMOKE "Build DSPiConsoleSmoke, the app with its smoke driver" OFF)
+option(DSPI_SMOKE "Build uconsole-for-dspi-smoke, the app with its smoke driver" OFF)
 
 # -- WP QPI4 -- the components, from the one list of Qt modules
 file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/../packaging/qt-modules.txt" DSPI_QT_LINK REGEX "^link ")
@@ -212,28 +212,28 @@ function(dspi_add_app target)
     endif()
 endfunction()
 
-dspi_add_app(DSPiConsole)
+dspi_add_app(uconsole-for-dspi)
 
 # ---- Installing (Linux): what a package puts under its prefix ----------------
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     include(GNUInstallDirs)
-    install(PROGRAMS "$<TARGET_FILE:DSPiConsole>" DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME dspi-uconsole)
-    install(FILES ../packaging/linux/dspi-uconsole.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
-    install(FILES ../packaging/linux/dspi-uconsole.metainfo.xml DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
+    install(PROGRAMS "$<TARGET_FILE:uconsole-for-dspi>" DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(FILES ../packaging/linux/uconsole-for-dspi.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+    install(FILES ../packaging/linux/uconsole-for-dspi.metainfo.xml DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
     install(FILES "${DSPI_REPO}/assets/icon/dspi-icon-rounded.svg"
-            DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps RENAME dspi-uconsole.svg)
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps RENAME uconsole-for-dspi.svg)
 endif()
 
 if(DSPI_SMOKE)
     find_package(Qt6 6.8 REQUIRED COMPONENTS Test)
-    dspi_add_app(DSPiConsoleSmoke ${DSPI_SMOKE_SOURCES})
-    qt_target_qml_sources(DSPiConsoleSmoke QML_FILES ${DSPI_SMOKE_QML_FILES})
-    target_compile_definitions(DSPiConsoleSmoke PRIVATE DSPI_SMOKE)
-    target_include_directories(DSPiConsoleSmoke PRIVATE smoke)
-    target_link_libraries(DSPiConsoleSmoke PRIVATE Qt6::Test)
+    dspi_add_app(uconsole-for-dspi-smoke ${DSPI_SMOKE_SOURCES})
+    qt_target_qml_sources(uconsole-for-dspi-smoke QML_FILES ${DSPI_SMOKE_QML_FILES})
+    target_compile_definitions(uconsole-for-dspi-smoke PRIVATE DSPI_SMOKE)
+    target_include_directories(uconsole-for-dspi-smoke PRIVATE smoke)
+    target_link_libraries(uconsole-for-dspi-smoke PRIVATE Qt6::Test)
     # -- WP QPI2 -- readable names in the smoke driver's crash backtraces
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        target_link_options(DSPiConsoleSmoke PRIVATE -rdynamic)
+        target_link_options(uconsole-for-dspi-smoke PRIVATE -rdynamic)
     endif()
 endif()
 
@@ -243,8 +243,8 @@ endif()
 if(TARGET Qt6::lupdate)
     add_custom_target(dspi_lupdate
         COMMAND Qt6::lupdate -silent -locations none -no-obsolete -source-language en -target-language en
-                qml src -ts translations/dspi-uconsole_en.ts
+                qml src -ts translations/uconsole-for-dspi_en.ts
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-        COMMENT "Regenerating translations/dspi-uconsole_en.ts"
+        COMMENT "Regenerating translations/uconsole-for-dspi_en.ts"
         VERBATIM)
 endif()

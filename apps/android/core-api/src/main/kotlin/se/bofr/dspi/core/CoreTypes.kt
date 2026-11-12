@@ -2009,7 +2009,7 @@ data class DiagFile(
  */
 data class DiagOptions(
     /**
-     * The client and its version, as it names itself ("DSPi Console 1.2.0
+     * The client and its version, as it names itself ("uConsole for DSPi 1.2.0
      * (Android)"); "" when it does not say.
      */
     val app: String,

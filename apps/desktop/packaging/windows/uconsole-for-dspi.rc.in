@@ -2,7 +2,7 @@
 // Properties > Details). -- WP QP20 -- Configured by qt/cmake/wp/qp20.cmake.
 #include <winver.h>
 
-IDI_ICON1 ICON "@DSPI_WIN_DIR@/dspi-console.ico"
+IDI_ICON1 ICON "@DSPI_WIN_DIR@/uconsole-for-dspi.ico"
 
 VS_VERSION_INFO VERSIONINFO
 FILEVERSION @DSPI_VER_MAJOR@,@DSPI_VER_MINOR@,@DSPI_VER_PATCH@,0
@@ -20,8 +20,8 @@ BEGIN
             VALUE "CompanyName", "DSPi unified console maintainers\0"
             VALUE "FileDescription", "@DSPI_DISPLAY_NAME@\0"
             VALUE "FileVersion", "@DSPI_VERSION@\0"
-            VALUE "InternalName", "DSPiConsole\0"
-            VALUE "OriginalFilename", "DSPiConsole.exe\0"
+            VALUE "InternalName", "uconsole-for-dspi\0"
+            VALUE "OriginalFilename", "uconsole-for-dspi.exe\0"
             VALUE "ProductName", "@DSPI_DISPLAY_NAME@\0"
             VALUE "ProductVersion", "@DSPI_VERSION@\0"
         END

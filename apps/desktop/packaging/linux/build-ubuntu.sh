@@ -21,8 +21,8 @@ cmake -S apps/desktop/qt -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_PREFIX_PATH=/opt/qt -DCMAKE_INSTALL_PREFIX=/usr -DDSPI_CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$repo/target}" \
       -DDSPI_NOTICES=none -DDSPI_UDEV_RULES_DIR= \
       -DDSPI_UPDATE_FEED_URL="$feed"
-cmake --build "$build" -j"${JOBS:-4}" --target DSPiConsole
-"$here/check-binary.sh" "$build/DSPiConsole" 2.39
+cmake --build "$build" -j"${JOBS:-4}" --target uconsole-for-dspi
+"$here/check-binary.sh" "$build/uconsole-for-dspi" 2.39
 rm -rf "$build/AppDir"
 DESTDIR="$build/AppDir" cmake --install "$build" --strip
 echo "build-ubuntu: $build/AppDir"

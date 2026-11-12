@@ -2,8 +2,8 @@
 # from, against the distribution's Qt (glibc 2.41). -- WP QP20 -- dpkg-dev for
 # CPack's dependency list (dpkg-shlibdeps).
 #
-#   podman build -t dspi-uconsole-debian -f apps/desktop/packaging/linux/Containerfile.debian apps/desktop/packaging/linux
-#   podman run --rm -v "$PWD":/src:Z -w /src dspi-uconsole-debian apps/desktop/packaging/linux/build-debian.sh
+#   podman build -t uconsole-for-dspi-debian -f apps/desktop/packaging/linux/Containerfile.debian apps/desktop/packaging/linux
+#   podman run --rm -v "$PWD":/src:Z -w /src uconsole-for-dspi-debian apps/desktop/packaging/linux/build-debian.sh
 FROM docker.io/library/debian:trixie
 
 ARG RUSTUP_VERSION=1.29.2

@@ -26,7 +26,7 @@ if [ "$count" != 1 ]; then
     exit 2
 fi
 
-ci/run.sh "cargo build --release -p dspi-capi --features link,midir,mdns,hub && cmake -S apps/desktop/qt -B /work/build-desktop-qt-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt-smoke --target DSPiConsoleSmoke"
+ci/run.sh "cargo build --release -p dspi-capi --features link,midir,mdns,hub && cmake -S apps/desktop/qt -B /work/build-desktop-qt-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt-smoke --target uconsole-for-dspi-smoke"
 
 # The node changes on every replug, so the whole of /dev/bus/usb (one devtmpfs, so
 # new nodes show up; `dev` because a volume is nodev by default) and real sysfs
@@ -37,4 +37,4 @@ exec podman run --rm -i --init --security-opt label=disable --network=none \
     -v "$PWD":/src:ro -v "$B/work/$branch":/work \
     -e HOME=/work/home -e TMPDIR=/work/tmp -e DSPI_SMOKE_HW=replug -w /src \
     "${DSPI_IMAGE:-localhost/dspi-coremerge:2}" \
-    apps/desktop/qt/smoke/run.sh /work/build-desktop-qt-smoke/DSPiConsoleSmoke /work/smoke-replug
+    apps/desktop/qt/smoke/run.sh /work/build-desktop-qt-smoke/uconsole-for-dspi-smoke /work/smoke-replug

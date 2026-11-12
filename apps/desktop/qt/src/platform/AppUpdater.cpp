@@ -115,11 +115,12 @@ QVector<AppUpdater::Release> AppUpdater::parseFeed(const QByteArray &json) {
 }
 
 bool AppUpdater::carriesApp(const Release &r, const QString &platform) {
-    // The release scripts' names: DSPi-uConsole-<v>-windows-x86_64(-setup.exe|.zip),
-    // DSPi-uConsole-<v>-linux-x86_64.tar.gz, DSPi-uConsole-<v>-x86_64.AppImage.
-    // The tag's own version follows the prefix, so the Swift app's and the
-    // other clients' packages in the same repository do not count.
-    const QString prefix = QStringLiteral("DSPi-uConsole-%1-").arg(r.version.text());
+    // The release scripts' names: uConsole-for-DSPi-<v>-windows-x86_64(-setup.exe|.zip),
+    // uConsole-for-DSPi-<v>-linux-x86_64.tar.gz, uConsole-for-DSPi-<v>-x86_64.AppImage.
+    // The tag's own version follows the prefix, and only these platform parts
+    // count, so the other clients' files in the same release (…-macos.dmg,
+    // …-terminal-linux-x86_64.tar.gz, …-source.tar.gz) do not.
+    const QString prefix = QStringLiteral("uConsole-for-DSPi-%1-").arg(r.version.text());
     const bool windows = platform == QLatin1String("windows");
     return std::any_of(r.assets.cbegin(), r.assets.cend(), [&](const QString &asset) {
         if (!asset.startsWith(prefix)) return false;
@@ -204,7 +205,7 @@ void AppUpdater::attach() {
 
 QByteArray AppUpdater::userAgent() const {
     const QString version = m_current.valid ? m_current.text() : AppIdentity::version();
-    return QByteArrayLiteral("DSPiConsole/") + version.toLatin1();
+    return QByteArrayLiteral("uConsole-for-DSPi/") + version.toLatin1();
 }
 
 void AppUpdater::setAutomatic(bool on) {

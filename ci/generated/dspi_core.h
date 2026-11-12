@@ -5291,7 +5291,7 @@ uint32_t dspi_event_log_devices(struct FfiCore *core, char *buf, uint32_t len);
  * Write a diagnostics bundle (one zip: versions, the open device's dump,
  * stats and monitor lines, every event log, a hub store without its tokens
  * and secrets, OS and USB facts, the client's files) to `path`. Nothing is
- * sent anywhere. `options` is null or JSON: `{"app": "DSPi Console 1.2.0",
+ * sent anywhere. `options` is null or JSON: `{"app": "uConsole for DSPi 1.2.0",
  * "hubStoreDir": "<folder of hub-store.json>", "files": [{"name":
  * "app.log", "text": "..."}]}`, every key optional.
  *

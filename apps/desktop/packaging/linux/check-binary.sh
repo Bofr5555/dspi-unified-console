@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Checks a Linux build of the app before it is packaged:
-#   check-binary.sh <DSPiConsole> <newest glibc it may need, e.g. 2.39>
+#   check-binary.sh <uconsole-for-dspi> <newest glibc it may need, e.g. 2.39>
 # - Qt is linked dynamically (LGPL-3: users can swap the Qt libraries), so
 #   libQt6Core.so.6 must be a NEEDED entry (a static Qt leaves none).
 # - The glibc symbol versions it needs are no newer than the floor the

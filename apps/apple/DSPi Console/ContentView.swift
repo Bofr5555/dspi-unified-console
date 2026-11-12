@@ -1128,7 +1128,7 @@ struct ContentView: View {
                 ReadOnlyBanner(vm: vm)
             }
         }
-        .navigationTitle("DSPi uConsole")
+        .navigationTitle("uConsole for DSPi")
         // The tour describes the filter table and the channel header, neither
         // of which exists on the overview the console opens on.  Selecting a
         // channel for those steps is the difference between a coach mark that

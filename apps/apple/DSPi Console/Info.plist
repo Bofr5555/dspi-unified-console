@@ -23,9 +23,9 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>NSRemovableVolumesUsageDescription</key>
-	<string>DSPi uConsole needs access to removable volumes to install firmware onto a board in bootloader mode.</string>
+	<string>uConsole for DSPi needs access to removable volumes to install firmware onto a board in bootloader mode.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>DSPi uConsole shares your connected DSPi devices with apps and browsers on your local network, and discovers devices shared by other machines.</string>
+	<string>uConsole for DSPi shares your connected DSPi devices with apps and browsers on your local network, and discovers devices shared by other machines.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_dspi._tcp</string>

@@ -1,9 +1,9 @@
 # Packaging the Qt desktop app: uConsole for DSPi
 
 <!-- WP QP20 --> The Qt app for Linux and Windows, as people install it. The name they see is
-"uConsole for DSPi" (`qt/src/AppIdentity.h`); files, packages and commands keep `dspi-uconsole`
-(`/usr/bin/dspi-uconsole`, the desktop entry and AppStream id `dspi-uconsole`) and the release files keep
-`DSPi-uConsole-<version>-…`, below. The Mac release is the Swift app (`apps/apple`); there is no Qt `.dmg`.
+"uConsole for DSPi" (`qt/src/AppIdentity.h`); files, packages and commands are `uconsole-for-dspi`
+(`/usr/bin/uconsole-for-dspi`, the desktop entry and AppStream id `uconsole-for-dspi`) and the release files are
+`uConsole-for-DSPi-<version>-…`, below (WP RN1). The Mac release is the Swift app (`apps/apple`); there is no Qt `.dmg`.
 
 ## Building a release
 
@@ -18,20 +18,20 @@ in one flat folder (default `~/.cache/dspi-build/work/release-<version>`):
 
 | File | Built by, in | Installs |
 |---|---|---|
-| `DSPi-uConsole-<v>-windows-x86_64.zip` | `windows/build-windows.sh`, `windows/Containerfile` (Fedora 44, MinGW Qt 6) | a folder that runs as is |
-| `DSPi-uConsole-<v>-windows-x86_64-setup.exe` | the same (NSIS, `windows/dspi-console.nsi`) | per user, `%LOCALAPPDATA%\Programs\uConsole for DSPi`, no administrator |
-| `DSPi-uConsole-<v>-x86_64.AppImage` | `linux/build-ubuntu.sh` + `linux/make-appimage.sh`, `linux/Containerfile.ubuntu` (Ubuntu 24.04, Qt 6.8.3 from download.qt.io) | runs as is; glibc 2.39 or newer |
-| `DSPi-uConsole-<v>-linux-x86_64.tar.gz` | the same | the AppImage with `install.sh` (per user, menu entry; `--udev` adds the rule), `README.txt`, the rule, the notices |
-| `dspi-uconsole_<v>_amd64.deb` | `linux/build-debian.sh`, `linux/Containerfile.debian` (Debian 13's Qt) | Debian 13 |
-| `dspi-uconsole-<v>-1.fc<N>.x86_64.rpm` | `linux/build-fedora.sh`, `linux/Containerfile.fedora` (`FEDORA=<N>`; 43 and 44) | Fedora N only: the QML is compiled against that release's Qt |
-| `dspi-uconsole-<v>-desktop-source.tar.gz` | `ci/release-source.sh --with-desktop` | the source the notices name |
+| `uConsole-for-DSPi-<v>-windows-x86_64.zip` | `windows/build-windows.sh`, `windows/Containerfile` (Fedora 44, MinGW Qt 6) | a folder that runs as is |
+| `uConsole-for-DSPi-<v>-windows-x86_64-setup.exe` | the same (NSIS, `windows/uconsole-for-dspi.nsi`) | per user, `%LOCALAPPDATA%\Programs\uConsole for DSPi`, no administrator |
+| `uConsole-for-DSPi-<v>-x86_64.AppImage` | `linux/build-ubuntu.sh` + `linux/make-appimage.sh`, `linux/Containerfile.ubuntu` (Ubuntu 24.04, Qt 6.8.3 from download.qt.io) | runs as is; glibc 2.39 or newer |
+| `uConsole-for-DSPi-<v>-linux-x86_64.tar.gz` | the same | the AppImage with `install.sh` (per user, menu entry; `--udev` adds the rule), `README.txt`, the rule, the notices |
+| `uconsole-for-dspi_<v>_amd64.deb` | `linux/build-debian.sh`, `linux/Containerfile.debian` (Debian 13's Qt) | Debian 13 |
+| `uconsole-for-dspi-<v>-1.fc<N>.x86_64.rpm` | `linux/build-fedora.sh`, `linux/Containerfile.fedora` (`FEDORA=<N>`; 43 and 44) | Fedora N only: the QML is compiled against that release's Qt |
+| `uConsole-for-DSPi-<v>-desktop-source.tar.gz` | `ci/release-source.sh --with-desktop` | the source the notices name |
 
-The AUR package (`arch/PKGBUILD`, `.SRCINFO`, `dspi-uconsole.install`) builds from that source archive on
+The AUR package (`arch/PKGBUILD`, `.SRCINFO`, `uconsole-for-dspi.install`) builds from that source archive on
 Arch; it is published to the AUR by hand.
 
 **These names are a contract.** The app's update checker (`qt/src/platform/AppUpdater.cpp`) counts a GitHub
-release as one for this app only when it carries `DSPi-uConsole-<v>-windows-…` (Windows) or
-`DSPi-uConsole-<v>-linux-…` / `DSPi-uConsole-<v>-….AppImage` (Linux). Renaming them silently stops update
+release as one for this app only when it carries `uConsole-for-DSPi-<v>-windows-…` (Windows) or
+`uConsole-for-DSPi-<v>-linux-…` / `uConsole-for-DSPi-<v>-….AppImage` (Linux). Renaming them silently stops update
 notices for every installed copy.
 
 **The update feed** (`DSPI_UPDATE_FEED_URL`, QP17) is built into the project's own downloads only: the
@@ -53,22 +53,23 @@ app on the demo device; it checks names, the udev rule, the notices, the feed ru
 `ci/check.sh --step qt-windows` builds the zip and the setup and runs it (also in `ci/matrix.sh`, row
 `windows-qt`).
 
-## Windows: what stays compatible with an earlier install
+## Windows: the names the setup and the app write
 
-An install made by an earlier "DSPi uConsole" setup is updated in place: the setup keeps the uninstall key
-(`HKCU\…\Uninstall\DSPiuConsole`), the key that records the folder (`HKCU\Software\DSPi\DSPi uConsole`,
-`InstallDir`) and so the folder, and replaces the old Start menu shortcut ("DSPi uConsole.lnk") with
-"uConsole for DSPi.lnk". The exe stays `DSPiConsole.exe`. The app's own entries are the app's: open at
-login is the Run value "DSPi uConsole" (QP14), settings stay under `%APPDATA%\DSPi` (QSettings
-`DSPi/DSPi Console`). The setup refuses to replace or remove the files while the app runs (also from the
+Every entry carries the name "uConsole for DSPi": the uninstall key (`HKCU\…\Uninstall\uConsole for DSPi`),
+the key that records the folder (`HKCU\Software\uConsole for DSPi`, `InstallDir`, where an update installs
+again), the folder (`%LOCALAPPDATA%\Programs\uConsole for DSPi`) and the Start menu shortcut
+("uConsole for DSPi.lnk"). The exe is `uconsole-for-dspi.exe`. The app's own entries are the app's: open at
+login is the Run value "uConsole for DSPi" (QP14), which the uninstaller removes; settings are under
+`%APPDATA%\uconsole-for-dspi` (QSettings `uconsole-for-dspi/uconsole-for-dspi`), and stay after an uninstall.
+WP RN1 renamed all of them; no release had used the earlier names, so nothing is carried over. The setup refuses to replace or remove the files while the app runs (also from the
 tray), with Retry; a silent run exits 2.
 
 ## Linux: the udev rule
 
-`linux/70-dspi-uconsole.rules` gives the person at the seat access to a DSPi (USB vendor `2e8b`, and
+`linux/70-uconsole-for-dspi.rules` gives the person at the seat access to a DSPi (USB vendor `2e8b`, and
 `2e8a:feaa` for older firmware) through logind's `uaccess` tag. The `.deb`, the `.rpm` and the AUR package
 install it in `/usr/lib/udev/rules.d/` and reload udev (`linux/postinst`, `postrm`,
-`arch/dspi-uconsole.install`); the archive's `install.sh --udev` installs it in `/etc/udev/rules.d/`. The
+`arch/uconsole-for-dspi.install`); the archive's `install.sh --udev` installs it in `/etc/udev/rules.d/`. The
 app itself offers its own rule (`70-dspi.rules`) when a DSPi cannot be opened.
 
 ## Licence texts in the packages
@@ -83,11 +84,11 @@ Every package carries the app's licence and, where it bundles libraries, theirs:
 
 | Package | Where | What |
 |---|---|---|
-| AppImage | `usr/share/doc/dspi-uconsole/` | `NOTICE.txt`, `LICENSES/`: GPL-3.0, LGPL-3.0, `TERMS.txt`, `rust-crates.txt`, `Lucide/`, the firmware's notices, AutoEq's MIT, `Qt/` (Qt 6.8's licence files and `THIRD-PARTY.txt`), `ICU/`, `AppImage-runtime/` (the runtime's, libfuse's LGPL-2.1, squashfuse's, and Alpine's musl, zlib, zstd and mimalloc it links), `BUNDLED.txt`, `bundled/<Ubuntu package>/copyright` |
+| AppImage | `usr/share/doc/uconsole-for-dspi/` | `NOTICE.txt`, `LICENSES/`: GPL-3.0, LGPL-3.0, `TERMS.txt`, `rust-crates.txt`, `Lucide/`, the firmware's notices, AutoEq's MIT, `Qt/` (Qt 6.8's licence files and `THIRD-PARTY.txt`), `ICU/`, `AppImage-runtime/` (the runtime's, libfuse's LGPL-2.1, squashfuse's, and Alpine's musl, zlib, zstd and mimalloc it links), `BUNDLED.txt`, `bundled/<Ubuntu package>/copyright` |
 | `-linux-x86_64.tar.gz` | top level | the AppImage's `NOTICE.txt` and `LICENSES/` |
-| Windows `.zip` and setup | next to `DSPiConsole.exe` | `NOTICE.txt`, `LICENSES/`: as the AppImage's, with `bundled/<Fedora package>/` (MinGW Qt's, GCC's runtime with its exception, the other DLLs') instead of ICU and the runtime |
-| `.deb` | `/usr/share/doc/dspi-uconsole/` | `copyright` and `NOTICE.txt` (the notice with the additional terms; the GPL is Debian's `/usr/share/common-licenses/GPL-3`), `LICENSES/`: `TERMS.txt`, `rust-crates.txt`, `Lucide/`, the firmware's notices, AutoEq's MIT |
-| `.rpm`, AUR, a plain `cmake --install` | `/usr/share/licenses/dspi-uconsole/` | `NOTICE.txt`, `LICENSES/`: as the `.deb`'s, with `GPL-3.0.txt` |
+| Windows `.zip` and setup | next to `uconsole-for-dspi.exe` | `NOTICE.txt`, `LICENSES/`: as the AppImage's, with `bundled/<Fedora package>/` (MinGW Qt's, GCC's runtime with its exception, the other DLLs') instead of ICU and the runtime |
+| `.deb` | `/usr/share/doc/uconsole-for-dspi/` | `copyright` and `NOTICE.txt` (the notice with the additional terms; the GPL is Debian's `/usr/share/common-licenses/GPL-3`), `LICENSES/`: `TERMS.txt`, `rust-crates.txt`, `Lucide/`, the firmware's notices, AutoEq's MIT |
+| `.rpm`, AUR, a plain `cmake --install` | `/usr/share/licenses/uconsole-for-dspi/` | `NOTICE.txt`, `LICENSES/`: as the `.deb`'s, with `GPL-3.0.txt` |
 
 The app's About lists the files of whichever folder it finds (`AboutController`). The layout and its
 notice (`licences/NOTICE-distro.txt.in`) for the `.deb` and `.rpm` are `qt/cmake/wp/qp20.cmake`'s
