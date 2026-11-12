@@ -1,0 +1,395 @@
+// -- WP QP4 -- The on-graph editor's model and its shared selection;
+// PeqEditorController.h says what each part holds.
+#include "PeqEditorController.h"
+
+#include "ChannelController.h"
+#include "DeviceModel.h"
+
+#include <QCoreApplication>
+#include <QRegularExpression>
+#include <QVariantMap>
+#include <algorithm>
+#include <cmath>
+
+static const Registrar::Controller<PeqEditorController> peqEditorController;
+
+namespace Peq {
+
+namespace {
+// Shape by shape: the type at order 2 and at order 1 (0 for none)
+const struct {
+    int second, first;
+} kShapeTypes[ShapeCount] = {
+    { FILTER_PEAKING, 0 },
+    { FILTER_LOWSHELF, FILTER_LOWSHELF1 },
+    { FILTER_HIGHPASS, FILTER_HIGHPASS1 },
+    { FILTER_HIGHSHELF, FILTER_HIGHSHELF1 },
+    { FILTER_LOWPASS, FILTER_LOWPASS1 },
+    { FILTER_NOTCH, 0 },
+    { FILTER_ALLPASS, FILTER_ALLPASS1 },
+};
+} // namespace
+
+int typeFor(int shape, int order) {
+    if (shape < 0 || shape >= ShapeCount) return -1;
+    const int t = order == 2 ? kShapeTypes[shape].second : order == 1 ? kShapeTypes[shape].first : 0;
+    return t > 0 ? t : -1;
+}
+
+bool shapeOf(int type, int *shape, int *order) {
+    for (int s = 0; s < ShapeCount; ++s)
+        for (int o : { 2, 1 })
+            if (typeFor(s, o) == type) {
+                if (shape) *shape = s;
+                if (order) *order = o;
+                return true;
+            }
+    return false;
+}
+
+QString shapeTitle(int shape) {
+    switch (shape) {
+    case Bell: return QCoreApplication::translate("PeqEditor", "Bell");
+    case LowShelf: return QCoreApplication::translate("PeqEditor", "Low Shelf");
+    case LowCut: return QCoreApplication::translate("PeqEditor", "Low Cut");
+    case HighShelf: return QCoreApplication::translate("PeqEditor", "High Shelf");
+    case HighCut: return QCoreApplication::translate("PeqEditor", "High Cut");
+    case Notch: return QCoreApplication::translate("PeqEditor", "Notch");
+    case AllPass: return QCoreApplication::translate("PeqEditor", "All Pass");
+    default: return {};
+    }
+}
+
+QString shapeCode(int shape) {
+    static const char *const codes[ShapeCount] = { "PK", "LS", "LC", "HS", "HC", "NT", "AP" };
+    return shape >= 0 && shape < ShapeCount ? QString::fromLatin1(codes[shape]) : QString();
+}
+
+QString orderTitle(int shape, int order) {
+    if (shape == AllPass) return order == 1 ? QCoreApplication::translate("PeqEditor", "1st Order") : QCoreApplication::translate("PeqEditor", "2nd Order");
+    return order == 1 ? QCoreApplication::translate("PeqEditor", "6 dB/oct") : QCoreApplication::translate("PeqEditor", "12 dB/oct");
+}
+
+QString orderLabel(int shape, int order) {
+    if (shape == AllPass) return order == 1 ? QCoreApplication::translate("PeqEditor", "180°") : QCoreApplication::translate("PeqEditor", "360°");
+    return order == 1 ? QCoreApplication::translate("PeqEditor", "6 dB") : QCoreApplication::translate("PeqEditor", "12 dB");
+}
+
+QString orderHelp(int shape, int order) {
+    if (shape == AllPass) return order == 1 ? QCoreApplication::translate("PeqEditor", "First order, 180° of phase") : QCoreApplication::translate("PeqEditor", "Second order, 360° of phase");
+    return order == 1 ? QCoreApplication::translate("PeqEditor", "6 dB per octave") : QCoreApplication::translate("PeqEditor", "12 dB per octave");
+}
+
+bool isCrossover(int type) { return type >= FILTER_XOVER_FIRST && type <= FILTER_XOVER_LAST; }
+
+bool usesGain(int type) {
+    return type == FILTER_PEAKING || type == FILTER_LOWSHELF || type == FILTER_HIGHSHELF || type == FILTER_LOWSHELF1
+        || type == FILTER_HIGHSHELF1;
+}
+
+bool usesQ(int type) {
+    switch (type) {
+    case FILTER_FLAT:
+    case FILTER_LINKWITZ_TRANSFORM:
+    case FILTER_ALLPASS1:
+    case FILTER_LOWSHELF1:
+    case FILTER_HIGHSHELF1:
+    case FILTER_LOWPASS1:
+    case FILTER_HIGHPASS1: return false;
+    default: return !isCrossover(type);
+    }
+}
+
+bool isGraphBand(const FilterParams &p) { return p.filter_type != FILTER_FLAT && !isCrossover(p.filter_type); }
+
+double response(const FilterParams *bands, int n, double hz) {
+    return n > 0 ? double(dspi_compute_response(bands, uint32_t(n), float(hz))) : 0.0;
+}
+
+double bandDb(FilterParams p, double hz) {
+    p.bypass = false;
+    return response(&p, 1, hz);
+}
+
+Role roleOf(const FilterParams &p) {
+    Role r;
+    switch (p.filter_type) {
+    case FILTER_PEAKING:
+    case FILTER_LOWSHELF:
+    case FILTER_HIGHSHELF:
+    case FILTER_LOWSHELF1:
+    case FILTER_HIGHSHELF1: {
+        // Measured, so the dot stays on the curve whatever the shelf's formula
+        FilterParams probe = p;
+        probe.gain = 12;
+        r.kind = Role::Gain;
+        r.value = qMax(std::abs(bandDb(probe, p.freq) / 12.0), 0.05);
+        break;
+    }
+    case FILTER_LOWPASS:
+    case FILTER_HIGHPASS: r.kind = Role::Resonance; break;
+    case FILTER_LOWPASS1:
+    case FILTER_HIGHPASS1:
+        r.kind = Role::Fixed;
+        r.value = bandDb(p, p.freq);
+        break;
+    case FILTER_LINKWITZ_TRANSFORM:
+        r.kind = Role::Locked;
+        r.value = bandDb(p, p.freq);
+        break;
+    default: r.kind = Role::Fixed; break;
+    }
+    return r;
+}
+
+double dotDb(const Role &r, const FilterParams &p) {
+    switch (r.kind) {
+    case Role::Gain: return double(p.gain) * r.value;
+    case Role::Resonance: return 20.0 * std::log10(qMax(double(p.q), 0.01));
+    default: return r.value;
+    }
+}
+
+double clamp(double v, double lo, double hi) { return std::isfinite(v) ? qBound(lo, v, hi) : lo; }
+
+FilterParams flatBand() { return make(FILTER_FLAT, 1000, 0.707, 0); }
+
+FilterParams make(int type, double freq, double q, double gain) {
+    FilterParams p{};
+    p.filter_type = uint8_t(type);
+    p.freq = float(freq);
+    p.q = float(q);
+    p.gain = float(gain);
+    p.qp = 0.707f;
+    return p;
+}
+
+bool same(const FilterParams &a, const FilterParams &b) {
+    return a.filter_type == b.filter_type && a.bypass == b.bypass && a.freq == b.freq && a.q == b.q && a.gain == b.gain
+        && a.qp == b.qp;
+}
+
+FilterParams blend(const FilterParams &from, const FilterParams &to, double t) {
+    if (from.filter_type != to.filter_type || from.bypass != to.bypass || t >= 1) return to;
+    FilterParams p = to;
+    auto logMix = [t](double a, double b) {
+        a = qMax(a, 0.01);
+        b = qMax(b, 0.01);
+        return std::exp(std::log(a) + (std::log(b) - std::log(a)) * t);
+    };
+    p.freq = float(logMix(from.freq, to.freq));
+    p.q = float(logMix(from.q, to.q));
+    p.gain = float(from.gain + (to.gain - from.gain) * t);
+    return p;
+}
+
+QString frequencyText(double hz) {
+    if (hz >= 10000) return QStringLiteral("%1 kHz").arg(hz / 1000, 0, 'f', 2);
+    if (hz >= 1000) return QStringLiteral("%1 kHz").arg(hz / 1000, 0, 'f', 3);
+    return QStringLiteral("%1 Hz").arg(hz, 0, 'f', hz >= 100 ? 1 : 2);
+}
+
+QString shortFrequency(double hz) {
+    if (hz >= 1000) return QString::number(hz / 1000, 'f', hz >= 10000 ? 1 : 2) + QLatin1Char('k');
+    return QString::number(hz, 'f', hz >= 100 ? 0 : 1);
+}
+
+QString gainText(double db) {
+    const double v = std::abs(db) < 0.005 ? 0.0 : db;
+    return (v >= 0 ? QStringLiteral("+") : QString()) + QString::number(v, 'f', 2) + QStringLiteral(" dB");
+}
+
+QString truncated(double v, bool sign) {
+    const double t = std::floor(std::abs(v) * 100 + 1e-5) / 100;
+    const QString text = QString::number(t, 'f', 2);
+    if (t == 0) return sign ? QLatin1Char('+') + text : text;
+    return v < 0 ? QLatin1Char('-') + text : (sign ? QLatin1Char('+') + text : text);
+}
+
+bool parseNote(const QString &text, double *hz) {
+    // C4 = middle C; "A4" = 440 Hz; "C#2+13" is C sharp 2 raised 13 cents
+    static const QRegularExpression note(QStringLiteral("^([a-g])(#|b(?=-?\\d))?(-?\\d+)([+-]\\d+(?:\\.\\d+)?)?$"));
+    const QRegularExpressionMatch m = note.match(text);
+    if (!m.hasMatch()) return false;
+    static const int base[] = { 9, 11, 0, 2, 4, 5, 7 };   // a..g
+    int semitone = base[m.captured(1).at(0).unicode() - 'a'];
+    if (m.captured(2) == QLatin1String("#")) semitone += 1;
+    else if (m.captured(2) == QLatin1String("b")) semitone -= 1;
+    const double cents = m.captured(4).isEmpty() ? 0.0 : m.captured(4).toDouble();
+    const double midi = (m.captured(3).toInt() + 1) * 12 + semitone + cents / 100.0;
+    *hz = 440.0 * std::pow(2.0, (midi - 69.0) / 12.0);
+    return true;
+}
+
+bool parseFrequency(const QString &text, double *hz) {
+    QString s = text.trimmed().toLower();
+    if (parseNote(s, hz)) return true;
+    s.remove(QLatin1Char(' '));
+    double scale = 1;
+    if (s.endsWith(QLatin1String("khz"))) {
+        scale = 1000;
+        s.chop(3);
+    } else if (s.endsWith(QLatin1String("hz"))) {
+        s.chop(2);
+    }
+    if (s.endsWith(QLatin1Char('k'))) {
+        scale = 1000;
+        s.chop(1);
+    }
+    bool ok = false;
+    const double v = s.toDouble(&ok);
+    if (!ok || !std::isfinite(v)) return false;
+    *hz = v * scale;
+    return true;
+}
+
+bool parseNumber(const QString &text, const QString &unit, double *v) {
+    QString s = text.trimmed().toLower().remove(QLatin1Char(' '));
+    if (!unit.isEmpty() && s.endsWith(unit)) s.chop(unit.size());
+    if (s.startsWith(QLatin1Char('q'))) s.remove(0, 1);
+    if (s.startsWith(QLatin1Char('+'))) s.remove(0, 1);
+    bool ok = false;
+    const double x = s.toDouble(&ok);
+    if (!ok || !std::isfinite(x)) return false;
+    *v = x;
+    return true;
+}
+
+} // namespace Peq
+
+namespace {
+ChannelController *channels() { return Registrar::instance<ChannelController>(); }
+} // namespace
+
+PeqEditorController::PeqEditorController(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {}
+
+void PeqEditorController::bump() {
+    ++m_rev;
+    emit changed();
+}
+
+QList<int> PeqEditorController::selected() const {
+    QList<int> out(m_selected.cbegin(), m_selected.cend());
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+void PeqEditorController::setRowHovered(int band) {
+    if (band == m_rowHovered) return;
+    m_rowHovered = band;
+    emit rowHoveredChanged();
+    bump();
+}
+
+void PeqEditorController::setPointedBand(int band) {
+    if (band == m_pointed) return;
+    m_pointed = band;
+    bump();
+}
+
+void PeqEditorController::setEditedChannel(int channel) {
+    if (channel == m_edited) return;
+    m_edited = channel;
+    m_selected.clear();
+    m_rowAnchor = m_rowHovered = m_pointed = -1;
+    m_live.clear();
+    emit selectionChanged();
+    bump();
+}
+
+void PeqEditorController::setSelection(const QSet<int> &bands) {
+    if (bands == m_selected) return;
+    m_selected = bands;
+    bump();
+}
+
+void PeqEditorController::forget() {
+    m_rowAnchor = -1;
+    const bool any = !m_selected.isEmpty() || m_pointed >= 0 || m_rowHovered >= 0;
+    m_selected.clear();
+    m_pointed = m_rowHovered = -1;
+    if (!any) return;
+    emit selectionChanged();
+    emit rowHoveredChanged();
+    bump();
+}
+
+void PeqEditorController::rowClicked(int band, int modifiers) {
+    if (m_edited < 0 || band < 0 || band >= BANDS_PER_CHANNEL) return;
+    QSet<int> next;
+    int from = m_rowAnchor >= 0 && m_selected.contains(m_rowAnchor) ? m_rowAnchor
+             : m_selected.size() == 1                                ? *m_selected.cbegin()
+                                                                     : -1;
+    if (modifiers & Qt::ControlModifier) {
+        next = m_selected;
+        if (!next.remove(band)) next.insert(band);
+        m_rowAnchor = band;
+    } else if ((modifiers & Qt::ShiftModifier) && from >= 0) {
+        // The anchor stays, so a second Shift-click reshapes the run
+        for (int b = qMin(from, band); b <= qMax(from, band); ++b)
+            if (Peq::isGraphBand(this->band(m_edited, b, false))) next.insert(b);
+        m_rowAnchor = from;
+    } else {
+        next = { band };
+        m_rowAnchor = band;
+    }
+    if (next == m_selected) return;
+    m_selected = next;
+    emit selectionChanged();
+    bump();
+}
+
+QVariant PeqEditorController::live(int band) const {
+    const auto it = m_live.constFind(band);
+    if (it == m_live.cend()) return {};
+    return QVariantMap{ { QStringLiteral("freq"), double(it->freq) },
+                        { QStringLiteral("gain"), double(it->gain) },
+                        { QStringLiteral("q"), double(it->q) } };
+}
+
+void PeqEditorController::showLive(int band, const FilterParams &p) {
+    m_live.insert(band, p);
+    bump();
+}
+
+void PeqEditorController::endLive() {
+    if (m_live.isEmpty()) return;
+    m_live.clear();
+    bump();
+}
+
+FilterParams PeqEditorController::band(int channel, int band, bool crossover) const {
+    const QVariantMap m = channels()->band(channel, band, crossover);
+    FilterParams p = Peq::make(m.value(QStringLiteral("type")).toInt(), m.value(QStringLiteral("freq")).toDouble(),
+                               m.value(QStringLiteral("q")).toDouble(), m.value(QStringLiteral("gain")).toDouble());
+    p.qp = float(m.value(QStringLiteral("qp")).toDouble());
+    p.bypass = m.value(QStringLiteral("bypass")).toBool();
+    return p;
+}
+
+bool PeqEditorController::writable() const { return channels()->writable(); }
+bool PeqEditorController::bypassSupported() const { return channels()->bypassSupported(); }
+
+QList<int> PeqEditorController::availableTypes() const {
+    QList<int> out;
+    for (const QVariant &t : channels()->availableTypes(false)) out << t.toInt();
+    return out;
+}
+
+void PeqEditorController::writeBands(int channel, const QList<QPair<int, FilterParams>> &changes) {
+    // ChannelController sets one field per call; each call stages the band,
+    // so the next one builds on it, and they share the band's coalescing key
+    ChannelController *cc = channels();
+    for (const auto &[b, p] : changes) {
+        const FilterParams now = band(channel, b, false);
+        if (now.filter_type != p.filter_type) cc->setBandType(channel, b, false, p.filter_type);
+        if (now.freq != p.freq) cc->setBandValue(channel, b, false, QStringLiteral("freq"), p.freq);
+        if (now.q != p.q) cc->setBandValue(channel, b, false, QStringLiteral("q"), p.q);
+        if (band(channel, b, false).gain != p.gain) cc->setBandValue(channel, b, false, QStringLiteral("gain"), p.gain);
+        if (now.bypass != p.bypass && cc->bypassSupported()) cc->setBandBypass(channel, b, false, p.bypass);
+    }
+}
+
+void PeqEditorController::setBandBypassed(int channel, int band, bool bypass) {
+    if (channels()->bypassSupported()) channels()->setBandBypass(channel, band, false, bypass);
+}

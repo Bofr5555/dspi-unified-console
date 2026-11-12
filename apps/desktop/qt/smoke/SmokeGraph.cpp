@@ -325,8 +325,8 @@ void graphSection(SmokeDriver &d) {
     auto *curves = qobject_cast<BodePlot *>(d.item(QStringLiteral("GraphHost.plot.curves")));
     d.check(QStringLiteral("qp3: the graph has its curve layer"), curves != nullptr);
     d.check(QStringLiteral("qp3: the plot is an accessible graphic"), d.item(QStringLiteral("GraphHost.plot")) != nullptr);
-    d.check(QStringLiteral("qp3: no package fills the slots yet"),
-            g->slotType(GraphController::RtaOverlay).isEmpty() && g->slotType(GraphController::PeqOverlay).isEmpty());
+    // -- WP QP4 -- the PEQ slot is QP4's editor now (its section checks it)
+    d.check(QStringLiteral("qp3: no package fills the analyser's slot yet"), g->slotType(GraphController::RtaOverlay).isEmpty());
 
     curvesFromTheCore(d, g);
     visibility(d, g, curves);
