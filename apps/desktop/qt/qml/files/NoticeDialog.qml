@@ -2,8 +2,10 @@ import QtQuick
 import QtQuick.Controls.Basic
 import UConsole
 
-// An alert with one button (the Mac's "Success" and "Error" alerts after a
-// file action). Alerts that come while one shows wait their turn.
+// An alert with one button (the Mac's "Error" alerts after a file action).
+// Alerts that come while one shows wait their turn. -- WP QP18 -- A success
+// is no alert (PRO1 U5): it goes to the banner stack as a notice
+// (NoticeCenter), which needs no click.
 Dialog {
     id: notice
     property string text
@@ -11,6 +13,10 @@ Dialog {
     property var waiting: []
 
     function show(title, text, error) {
+        if (!error) {
+            NoticeCenter.post(text, "info")
+            return
+        }
         if (visible) {
             waiting.push({ title: title, text: text, error: error })
             return

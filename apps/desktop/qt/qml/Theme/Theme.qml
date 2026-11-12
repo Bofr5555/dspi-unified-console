@@ -120,4 +120,33 @@ QtObject {
     readonly property var csTypeTints: ["#75879e", "#339ebd", "#267d9e", "#367dd1", "#575ecc", "#eda12e",
                                         "#e67333", "#8c59b8", "#04856f", "#7a5aac", "#9e669e"]
     function csTypeTint(type) { return type > 0 && type < csTypeTints.length ? csTypeTints[type] : csTypeTints[0] }
+
+    // -- WP QP18 -- The Pro layer's tokens (docs/UI-MODES.md §7): level
+    // meters in one neutral colour on the classic screens, the segmented
+    // meter's three bands and hold line, the offline and alarm states, a
+    // density scale (classic and compact) and the status bar's height. Meter
+    // colours are graphics, not text: each reaches 3:1 on meterTrack (WCAG
+    // 1.4.11), checked by tools/contrast.py.
+    readonly property color meterLevel: dark ? "#8fa3bf" : "#56698a"
+    readonly property color meterTrack: dark ? "#16171a" : "#dcdce1"
+    readonly property color meterLow: dark ? "#3ea65a" : "#2b7d43"
+    readonly property color meterMid: dark ? "#e0a030" : "#9a6200"
+    readonly property color meterHigh: dark ? "#ff3b30" : "#c42b1c"
+    readonly property color meterHold: dark ? "#f2f2f2" : "#1c1c1e"
+    // Where the segments change, in dBFS, and the bottom of a meter's scale
+    readonly property real meterMidDb: -18
+    readonly property real meterHighDb: -6
+    readonly property real meterFloorDb: -60
+    readonly property color offline: dark ? "#6b6c72" : "#76767c"
+    readonly property color alarmRaised: dark ? "#ff7468" : "#b42318"
+    readonly property color alarmAcknowledged: dark ? "#e0a030" : "#875200"
+    readonly property color alarmCleared: textMuted
+    // Row height and font size per density: the classic screens' and the
+    // Pro tables' compact one
+    readonly property var densities: ({
+        "classic": { rowHeight: 26, fontSize: 13 },
+        "compact": { rowHeight: 22, fontSize: 12 }
+    })
+    function density(name) { return densities[name] !== undefined ? densities[name] : densities["classic"] }
+    readonly property int statusBarHeight: 24
 }

@@ -112,6 +112,13 @@ for both schemes; screens use these, not the Basic style's controls:
 | `Icon`, `HelpTip` | Lucide icons tinted by the theme; tooltips |
 | `AppMenu`, `AppMenuItem`, `AppMenuBar` | menus |
 | `ToolWindow` | tool windows: remembered size, the menu table's shortcuts (`TableShortcuts`) |
+| `LevelMeter` | a dBFS meter: three bands or one colour, the core's hold line and clip hold, a gain reduction variant (QP18) |
+| `NumericField` | a number typed in its unit ("2k", "2.5 kHz", "+=3"), nudged by Up/Down, held to its range with a badge (QP18) |
+| `StatusBar` | a window's foot: connection, scene, mode, then the caller's items (QP18) |
+
+A finished action that needs no answer is a notice (`NoticeCenter.post(text)`,
+shown in the banner stack), never a modal "Success" alert; a question is a
+`QuestionDialog`. Undo and redo are the core journal's (`HistoryController`).
 
 Colours come from `Theme` tokens only. Text tokens reach WCAG AA (4.5:1) on
 every surface; `tools/contrast.py` checks it in `ci/check.sh --step qt`.
@@ -174,7 +181,6 @@ adapts each to `Core` and `DeviceModel`, or replaces it:
 
 | File | Work package |
 |---|---|
-| `src/platform/HostAudioFormatWindows.cpp` | QP18 |
 | `smoke/SmokeDriverExt.cpp` | its core-voltage half waits for the core-voltage WP (`SmokeEffects.cpp` replaced the rest, QP7) |
 | `smoke/SmokeDriverLatency.cpp`, `SmokeDriverNames.cpp`, `SmokeDriverSaveBar.cpp` | replaced by `SmokeHardware.cpp` (QP11); to be removed |
 | the other `smoke/SmokeDriver*.cpp` section files | the work package of their screens; QP19 for the rest |

@@ -31,13 +31,19 @@ AppMenuBar {
                 menu.addItem(separatorComponent.createObject(bar))
             } else if (row.rows) {
                 const sub = menuComponent.createObject(menu, { title: row.submenu })
+                const first = row.rows.length ? row.rows[0].id : ""
+                if (first) sub.title = Qt.binding(() => MenuTable.textOf(first, true))   // -- WP QP18 --
                 addRows(sub, row.rows)
                 menu.addMenu(sub)
             } else {
                 const id = row.id
                 const shown = row.optional ? Shell.handles(id) : true
-                const action = actionComponent.createObject(menu, { text: row.text, shortcut: row.shortcut || "" })
+                // -- WP QP18 -- owned by the bar, an item of the window: a submenu's
+                // action finds no window through its menu, and its shortcut would not work
+                const action = actionComponent.createObject(bar, { text: row.text, shortcut: row.shortcut || "" })
                 action.triggered.connect(() => bar.triggerRow(id))
+                action.text = Qt.binding(() => MenuTable.textOf(id, false))   // -- WP QP18 --
+                if (row.enabled) action.enabled = Qt.binding(row.enabled)   // -- WP QP18 --
                 if (row.platformHidden) {
                     const hidden = row.platformHidden
                     action.enabled = Qt.binding(() => DeviceModel.platformName !== hidden)
@@ -54,11 +60,12 @@ AppMenuBar {
     }
 
     Component.onCompleted: {
-        for (const m of MenuTable.menus) {
+        MenuTable.menus.forEach((m, i) => {
             const menu = menuComponent.createObject(bar, { title: m.title })
+            menu.title = Qt.binding(() => MenuTable.menus[i].title)   // -- WP QP18 --
             addRows(menu, m.rows)
             bar.addMenu(menu)
-        }
+        })
         fillFavorites()   // -- WP QP15 --
     }
 

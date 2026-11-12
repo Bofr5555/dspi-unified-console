@@ -442,7 +442,7 @@ QVariantMap RtaController::channelInfo(int tap, int channel) const {
     QVariantMap m{ { QStringLiteral("channel"), channel }, { QStringLiteral("wire"), wire },
                    { QStringLiteral("kind"), tap == RTA_TAP_INPUT ? QStringLiteral("input") : QStringLiteral("output") },
                    { QStringLiteral("number"), channel }, { QStringLiteral("pdm"), false },
-                   { QStringLiteral("name"), tr(QT_TRANSLATE_NOOP("RtaController", "Ch %1")).arg(channel + 1) } };
+                   { QStringLiteral("name"), QCoreApplication::translate("RtaController", "Ch %1").arg(channel + 1) } };
     const ChannelListModel *rows = m_ctx.device->channels();
     const int row = rows ? rows->rowOfChannel(wire) : -1;
     if (row >= 0) {
@@ -461,11 +461,11 @@ QVariantList RtaController::channels(int tap) const {
 }
 
 QString RtaController::pageTitle() const {
-    if (m_page < 0) return tr(QT_TRANSLATE_NOOP("RtaController", "Dashboard"));
+    if (m_page < 0) return QCoreApplication::translate("RtaController", "Dashboard");
     const ChannelListModel *rows = m_ctx.device->channels();
     const int row = rows ? rows->rowOfChannel(m_page) : -1;
     const QString label = row >= 0 ? rows->get(row, QStringLiteral("label")).toString() : QString();
-    return label.isEmpty() ? tr(QT_TRANSLATE_NOOP("RtaController", "Channel")) : label;
+    return label.isEmpty() ? QCoreApplication::translate("RtaController", "Channel") : label;
 }
 
 // ---- The request ----
@@ -580,17 +580,17 @@ QStringList RtaController::statusParts() const {
     const RtaSnapshot &s = *m_snap;
     QStringList parts;
     if (!s.running || s.live_count == 0) {
-        parts.append(tr(QT_TRANSLATE_NOOP("RtaController", "idle")));
+        parts.append(QCoreApplication::translate("RtaController", "idle"));
     } else {
         const int ms = qRound(double(s.refresh_interval_s) * 1000.0);
         parts.append(s.live_count == 1
-                         ? tr(QT_TRANSLATE_NOOP("RtaController", "1 channel, each refreshed every %1 ms")).arg(ms)
-                         : tr(QT_TRANSLATE_NOOP("RtaController", "%1 channels, each refreshed every %2 ms")).arg(s.live_count).arg(ms));
+                         ? QCoreApplication::translate("RtaController", "1 channel, each refreshed every %1 ms").arg(ms)
+                         : QCoreApplication::translate("RtaController", "%1 channels, each refreshed every %2 ms").arg(s.live_count).arg(ms));
     }
-    if (s.frames_per_s > 0) parts.append(tr(QT_TRANSLATE_NOOP("RtaController", "%1 frames/s")).arg(s.frames_per_s));
-    if (s.last_frame_us > 0) parts.append(tr(QT_TRANSLATE_NOOP("RtaController", "transform %1 µs")).arg(s.last_frame_us));
+    if (s.frames_per_s > 0) parts.append(QCoreApplication::translate("RtaController", "%1 frames/s").arg(s.frames_per_s));
+    if (s.last_frame_us > 0) parts.append(QCoreApplication::translate("RtaController", "transform %1 µs").arg(s.last_frame_us));
     if (s.busy_us_per_s > 0)
-        parts.append(tr(QT_TRANSLATE_NOOP("RtaController", "main loop %1%")).arg(s.busy_us_per_s / 10000.0, 0, 'f', 1));
+        parts.append(QCoreApplication::translate("RtaController", "main loop %1%").arg(s.busy_us_per_s / 10000.0, 0, 'f', 1));
     return parts;
 }
 
@@ -598,7 +598,7 @@ QString RtaController::bassText() const {
     const uint16_t b = m_snap->bass_busy_us_per_s;
     if (b == 0) return QString();
     const QString n = QString::number(b / 10000.0, 'f', 2);
-    return tr(QT_TRANSLATE_NOOP("RtaController", "bass %1%")).arg(b == 0xFFFF ? QStringLiteral("≥") + n : n);
+    return QCoreApplication::translate("RtaController", "bass %1%").arg(b == 0xFFFF ? QStringLiteral("≥") + n : n);
 }
 
 QString RtaController::lowBandText() const {
@@ -606,11 +606,11 @@ QString RtaController::lowBandText() const {
     const int order = m_settings ? m_settings->value(QStringLiteral("fftOrder")).toInt() : 10;
     if (!s.running || order >= m_caps.order_max || s.first_band == 0xFF || s.first_band < 1 || s.first_band >= m_caps.max_bands)
         return QString();
-    return tr(QT_TRANSLATE_NOOP("RtaController", "shaded bands below %1 Hz need a larger transform size in Settings"))
+    return QCoreApplication::translate("RtaController", "shaded bands below %1 Hz need a larger transform size in Settings")
         .arg(shortHz(m_caps.centres[s.first_band]));
 }
 
 QString RtaController::rangeText() const {
     if (m_caps.dynamic_range_db == 0) return QString();
-    return tr(QT_TRANSLATE_NOOP("RtaController", "%1/%2 dB range")).arg(m_caps.dynamic_range_db).arg(m_caps.bass_dynamic_range_db);
+    return QCoreApplication::translate("RtaController", "%1/%2 dB range").arg(m_caps.dynamic_range_db).arg(m_caps.bass_dynamic_range_db);
 }

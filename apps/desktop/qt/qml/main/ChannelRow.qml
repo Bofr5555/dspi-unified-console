@@ -33,7 +33,9 @@ ItemDelegate {
     readonly property bool inactive: isOutput && (SidebarController.inactiveOutputs >> number & 1) === 1
     readonly property string slotName: isOutput && number < SidebarController.slotNames.length ? SidebarController.slotNames[number] : ""
     readonly property real level: channel < Poller.peaks.length ? Math.max(0, Math.min(1, Poller.peaks[channel])) : 0
-    readonly property bool clipping: (Poller.clipFlags >> channel & 1) === 1
+    // -- WP QP18 -- the core's ballistics (P0M): the clip hold and the held peak
+    readonly property bool clipping: (Poller.clipHold >> channel & 1) === 1
+    readonly property real held: channel < Poller.peakHold.length ? Math.max(0, Math.min(1, Poller.peakHold[channel])) : 0
 
     objectName: "Sidebar.channel." + channel
     // What the row shows, for the smoke driver
@@ -121,8 +123,18 @@ ItemDelegate {
                 width: Math.max(0, parent.width - 3) * row.level
                 height: parent.height
                 radius: 2
-                color: row.tint
+                // -- WP QP18 -- level in the one meter colour; the pill is the channel's tag
+                color: Theme.meterLevel
                 Behavior on width { NumberAnimation { duration: 60 } }
+            }
+            // -- WP QP18 -- the hold line
+            Rectangle {
+                objectName: "Sidebar.hold." + row.channel
+                visible: row.held > row.level && row.held > 0
+                x: Math.max(0, parent.width - 5) * row.held
+                width: 2
+                height: parent.height
+                color: Theme.meterHold
             }
             Rectangle {
                 visible: row.clipping

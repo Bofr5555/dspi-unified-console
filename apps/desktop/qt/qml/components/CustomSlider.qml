@@ -92,6 +92,28 @@ Slider {
         border.color: slider.visualFocus ? Theme.focusRing : Theme.border
     }
 
+    // -- WP QP18 -- (QD41) Up and Down step a horizontal slider too, as Right
+    // and Left do, and commit; so do assistive technology's increase and decrease
+    function stepBy(up) {
+        if (!enabled) return
+        const before = value
+        if (up) increase()
+        else decrease()
+        if (value !== before) {
+            moved()
+        }
+    }
+    Keys.onUpPressed: event => {
+        if (orientation === Qt.Horizontal) stepBy(true)
+        else event.accepted = false
+    }
+    Keys.onDownPressed: event => {
+        if (orientation === Qt.Horizontal) stepBy(false)
+        else event.accepted = false
+    }
+
     Accessible.role: Accessible.Slider
     Accessible.name: label
+    Accessible.onIncreaseAction: stepBy(true)
+    Accessible.onDecreaseAction: stepBy(false)
 }
