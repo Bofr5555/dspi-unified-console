@@ -112,7 +112,7 @@ SettingsPage {
                     Layout.fillWidth: true
                     text: HubController.busy
                           ? (HubController.sharing ? qsTr("Starting…") : qsTr("Stopping…"))
-                          : qsTr("Lets phones, browsers and other consoles control the DSPi devices plugged in here.")
+                          : qsTr("Lets other consoles and browsers on this network control the DSPi devices plugged in here.")
                     font: Theme.fontBody
                     color: Theme.textMuted
                     wrapMode: Text.Wrap
