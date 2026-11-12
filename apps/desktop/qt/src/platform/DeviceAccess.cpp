@@ -13,7 +13,6 @@
 #include <QQuickWindow>
 #include <QSaveFile>
 #include <QStandardPaths>
-#include <QVector>
 
 static const Registrar::Controller<DeviceAccess> deviceAccess;
 
@@ -87,7 +86,7 @@ void DeviceAccess::setInstallerForTest(Installer installer) { m_installer = std:
 
 void DeviceAccess::check() {
     if (m_checking || m_ctx.device->connected() || m_ctx.device->remote()) return;
-    m_checking = true;
+    m_checking = true;   // one question at a time
     const int fake = m_countForTest;
     m_ctx.core->worker()->call(
         this,
@@ -126,13 +125,12 @@ void DeviceAccess::rescan() {
     m_ctx.core->worker()->call(
         this,
         [fake](FfiCore *c) {
-            QVector<DeviceInfo> found(16);
-            const uint32_t n = dspi_scan_devices(c, found.data(), uint32_t(found.size()));
+            // The first unit the scan opens, if any
+            DeviceInfo first{};
             QString serial;
-            if (n > 0) {
-                const DeviceInfo &d = found[0];
-                serial = QString::fromUtf8(reinterpret_cast<const char *>(d.serial),
-                                           int(qMin<uint32_t>(d.serial_len, uint32_t(sizeof d.serial))));
+            if (dspi_scan_devices(c, &first, 1) > 0) {
+                const QByteArray raw(reinterpret_cast<const char *>(first.serial), int(sizeof first.serial));
+                serial = QString::fromUtf8(raw.left(int(qMin<uint32_t>(first.serial_len, uint32_t(raw.size())))));
             }
             return std::make_pair(fake >= 0 ? fake : int(dspi_inaccessible_devices(c)), serial);
         },
@@ -145,9 +143,9 @@ void DeviceAccess::rescan() {
 void DeviceAccess::installRule() {
     if (m_installing || system() != QLatin1String("linux")) return;
     // The rule file, written where only this account writes (never a shared temporary directory)
-    const QString dir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
-    QDir().mkpath(dir);
-    const QString path = dir + QStringLiteral("/70-dspi.rules");
+    const QDir cache(QStandardPaths::writableLocation(QStandardPaths::CacheLocation));
+    cache.mkpath(QStringLiteral("."));
+    const QString path = cache.filePath(QStringLiteral("70-dspi.rules"));
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly) || file.write(ruleText().toUtf8()) < 0 || !file.commit()) {
         m_error = tr("The rule was not installed: its file could not be written (%1).").arg(file.errorString());
@@ -162,16 +160,18 @@ void DeviceAccess::installRule() {
         m_installer(path, done);
         return;
     }
+    // One outcome per run: how it exited, or that it never started
     auto *pkexec = new QProcess(this);
-    connect(pkexec, &QProcess::finished, this, [this, pkexec](int code, QProcess::ExitStatus status) {
-        const QString detail = QString::fromLocal8Bit(pkexec->readAllStandardError()).trimmed();
+    connect(pkexec, &QProcess::finished, this, [this, pkexec](int code, QProcess::ExitStatus how) {
+        const QByteArray said = pkexec->readAllStandardError();
         pkexec->deleteLater();
-        finished(status == QProcess::NormalExit ? code : -1, detail);
+        finished(how == QProcess::CrashExit ? -1 : code, QString::fromLocal8Bit(said).simplified());
     });
     connect(pkexec, &QProcess::errorOccurred, this, [this, pkexec](QProcess::ProcessError e) {
-        if (e != QProcess::FailedToStart) return;
-        pkexec->deleteLater();
-        finished(-1, QString());
+        if (e == QProcess::FailedToStart) {
+            pkexec->deleteLater();
+            finished(-1, QString());
+        }
     });
     pkexec->start(QStringLiteral("pkexec"), { QStringLiteral("/bin/sh"), QStringLiteral("-c"),
                                               QString::fromLatin1(kInstallScript), QStringLiteral("sh"), path });

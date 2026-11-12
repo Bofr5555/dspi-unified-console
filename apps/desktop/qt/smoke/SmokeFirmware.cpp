@@ -125,7 +125,7 @@ struct Qp16Fw {
     }
     bool state(const char *s, int ms = 4000) {
         const QString want = QString::fromLatin1(s);
-        return d.waitFor(ms, [&]() { return fw->state() == want; });
+        return d.waitFor(ms, [&]() { return fw->stage() == want; });
     }
     QString writeFile(const QString &name, const QByteArray &bytes) {
         const QString path = base + QLatin1Char('/') + name;
@@ -298,6 +298,7 @@ void guardedInstall(Qp16Fw &f) {
                 !fw->guardMessage().isEmpty());
     d.waitIdle();
     d.check(QStringLiteral("qp16: nothing restarted yet, nothing committed"), bootloaderRequests == 0 && !fw->confirmed());
+    d.check(QStringLiteral("qp16: the installer contract says question"), fw->property("state").toString() == QLatin1String("question"));
     QObject *guard = f.w->findChild<QObject *>(QStringLiteral("FirmwareWindow.guard"));
     QQuickItem *typed = guard ? guard->findChild<QQuickItem *>(QStringLiteral("FirmwareWindow.guardTyped")) : nullptr;
     QQuickItem *go = guard ? guard->findChild<QQuickItem *>(QStringLiteral("FirmwareWindow.guardGo")) : nullptr;
@@ -338,6 +339,37 @@ void guardedInstall(Qp16Fw &f) {
             f.shows(QStringLiteral("FirmwareWindow.done")) && f.shows(QStringLiteral("FirmwareWindow.another")));
     d.check(QStringLiteral("qp16: screenshot of a verified update"), d.grab(f.w, QStringLiteral("window-firmware-verified.png")));
     QObject::disconnect(c);
+}
+
+// The installer contract QP17's wizard drives (OnboardingController.h): with
+// the window closed, a guard question opens the window to ask it
+void wizardContract(Qp16Fw &f) {
+    SmokeDriver &d = f.d;
+    FirmwareController *fw = f.fw;
+    f.fresh();
+    f.w->close();
+    d.spin(50);
+    d.check(QStringLiteral("qp16: nothing watching: the locator stops"), !fw->locator()->running());
+    fw->beginWatching();
+    d.check(QStringLiteral("qp16: the wizard watching starts it"), fw->locator()->running());
+    d.waitIdle();
+    d.check(QStringLiteral("qp16: the contract's properties"),
+            fw->property("state").toString() == QLatin1String("waitingForBoard") && fw->property("version").toString() == QLatin1String("1.1.6") &&
+                !fw->property("mundane").toBool() && fw->property("fraction").toDouble() == 0.0);
+    fw->installConnected();
+    d.check(QStringLiteral("qp16: a question from the wizard's run opens the window, asking it"),
+            d.waitFor(3000, [&]() { return fw->guardAsking() && f.w->isVisible(); }) &&
+                d.waitFor(1000, [&]() {
+                    QObject *g = f.w->findChild<QObject *>(QStringLiteral("FirmwareWindow.guard"));
+                    return g && g->property("opened").toBool();
+                }));
+    fw->cancelGuard();
+    d.check(QStringLiteral("qp16: Don't Install leaves nothing committed"), !fw->confirmed() && !fw->guardAsking());
+    f.w->close();
+    d.spin(50);
+    d.check(QStringLiteral("qp16: the wizard still watching keeps the locator"), fw->locator()->running());
+    fw->stopWatching();
+    d.check(QStringLiteral("qp16: and stopping stops it"), !fw->locator()->running());
 }
 
 void failures(Qp16Fw &f) {
@@ -421,6 +453,7 @@ void firmwareSection(SmokeDriver &d) {
     if (!f.w) return;
     customImages(f);
     guardedInstall(f);
+    wizardContract(f);
     failures(f);
     f.w->close();
     d.spin(50);

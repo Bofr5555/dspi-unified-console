@@ -48,7 +48,7 @@ bool ReadOnlyController::newer() const { return m_ctx.device->compat() == COMPAT
 QString ReadOnlyController::text() const {
     if (!active()) return QString();
     const FirmwareController *firmware = Registrar::instance<FirmwareController>();
-    const QString version = firmware && !firmware->deviceVersion().isEmpty() ? firmware->deviceVersion()
+    const QString version = firmware && !firmware->runningVersion().isEmpty() ? firmware->runningVersion()
                                                                             : m_ctx.device->firmwareVersion();
     const QString expected = firmware ? firmware->expectedVersion() : QString();
     if (newer())

@@ -19,14 +19,18 @@ ToolWindow {
 
     readonly property var fw: FirmwareController
 
-    onVisibleChanged: FirmwareController.windowShown(visible)
+    onVisibleChanged: {
+        FirmwareController.windowShown(visible)
+        // A question asked before the window showed (the wizard's run)
+        if (visible && FirmwareController.guardAsking) guard.open()
+    }
 
     // One "LABEL   value" line with a fixed label column (the Mac's LabeledValueRow)
     component ValueRow: RowLayout {
         id: valueRow
         property string label
         property string value
-        property bool secondary: false
+        property bool muted: false
         spacing: Theme.spacingSmall
         Text {
             Layout.preferredWidth: 120
@@ -38,7 +42,7 @@ ToolWindow {
             Layout.fillWidth: true
             text: valueRow.value
             font: Theme.fontMono
-            color: valueRow.secondary ? Theme.textMuted : Theme.text
+            color: valueRow.muted ? Theme.textMuted : Theme.text
             elide: Text.ElideMiddle
         }
         Accessible.role: Accessible.StaticText
@@ -105,8 +109,8 @@ ToolWindow {
                     objectName: "FirmwareWindow.device"
                     Layout.fillWidth: true
                     label: qsTr("Connected device")
-                    value: window.fw.deviceVersion.length ? window.fw.deviceVersion : qsTr("None")
-                    secondary: window.fw.deviceVersion.length === 0
+                    value: window.fw.runningVersion.length ? window.fw.runningVersion : qsTr("None")
+                    muted: window.fw.runningVersion.length === 0
                 }
                 RowLayout {
                     Layout.fillWidth: true
@@ -249,7 +253,7 @@ ToolWindow {
                         id: statusIcon
                         objectName: "FirmwareWindow.statusIcon"
                         anchors.centerIn: parent
-                        size: window.fw.state === "verified" ? 32 : 28
+                        size: window.fw.stage === "verified" ? 32 : 28
                         name: window.fw.statusBusy ? "loader-circle" : window.fw.statusIcon
                         color: window.fw.statusTint === "success" ? Theme.success
                              : window.fw.statusTint === "warning" ? Theme.warning
@@ -286,7 +290,7 @@ ToolWindow {
                 }
                 ColumnLayout {
                     objectName: "FirmwareWindow.writing"
-                    visible: window.fw.state === "writing"
+                    visible: window.fw.stage === "writing"
                     Layout.fillWidth: true
                     spacing: 4
                     ProgressBar {
@@ -374,7 +378,7 @@ ToolWindow {
             Layout.topMargin: Theme.spacing
             Layout.bottomMargin: Theme.spacing
             spacing: Theme.spacingSmall
-            readonly property bool done: window.fw.state === "verified"
+            readonly property bool done: window.fw.stage === "verified"
             AppButton {
                 objectName: "FirmwareWindow.another"
                 visible: parent.done
@@ -414,10 +418,10 @@ ToolWindow {
     }
 
     Shortcut {
-        sequences: ["Return", "Enter"]
+        sequences: ["Enter", "Return"]
         enabled: !guard.visible
         onActivated: {
-            if (window.fw.state === "verified") window.close()
+            if (window.fw.stage === "verified") window.close()
             else if (window.fw.failed) FirmwareController.resetRun()
             else if (window.fw.primaryText.length && !window.fw.confirmed) FirmwareController.start()
         }

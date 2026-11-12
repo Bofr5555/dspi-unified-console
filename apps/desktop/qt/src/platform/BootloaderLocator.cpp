@@ -15,10 +15,10 @@ constexpr int kScanMs = 1000;
 // The core's view of the bus and the drives. Worker thread.
 BootloaderLocator::Scan coreScan() {
     BootloaderLocator::Scan s;
-    uint32_t rp2040 = 0, rp2350 = 0;
-    dspi_bootloader_counts(&rp2040, &rp2350);
-    s.rp2040 = int(rp2040);
-    s.rp2350 = int(rp2350);
+    uint32_t pico = 0, pico2 = 0;
+    dspi_bootloader_counts(&pico, &pico2);
+    s.rp2040 = int(pico);
+    s.rp2350 = int(pico2);
     const QJsonArray drives =
         jsonValue(readSized([](char *b, uint32_t n) { return dspi_bootloader_drives(b, n); })).toArray();
     for (const QJsonValue &v : drives) {
@@ -49,16 +49,17 @@ QList<BootloaderLocator::Board> BootloaderLocator::pair(const Scan &scan) {
         for (const Drive &d : scan.drives)
             if (d.chip == chip) paths.append(d.path);
         const int count = qMax(chip == RP2350 ? scan.rp2350 : scan.rp2040, int(paths.size()));
-        for (int i = 0; i < count; ++i) out.append({ chip, i < paths.size() ? paths.at(i) : QString() });
+        for (int n = 0; n < count; ++n) out.append({ chip, paths.value(n) });
     }
     return out;
 }
 
 void BootloaderLocator::start() {
-    if (m_timer.isActive()) return;
-    m_mountTried.clear();
-    m_timer.start();
-    tick();
+    if (!m_timer.isActive()) {
+        m_mountTried.clear();
+        m_timer.start();
+        tick();
+    }
 }
 
 void BootloaderLocator::stop() {
@@ -93,19 +94,18 @@ void BootloaderLocator::mountByLabel(const Scan &scan) {
         const int count = chip == RP2350 ? scan.rp2350 : scan.rp2040;
         bool mounted = false;
         for (const Drive &d : scan.drives) mounted = mounted || d.chip == chip;
-        if (count == 0) m_mountTried.remove(chip);
-        if (count == 0 || mounted || m_mountTried.contains(chip)) continue;
+        if (!count) {
+            m_mountTried.remove(chip);
+            continue;
+        }
+        if (mounted || m_mountTried.contains(chip)) continue;
         const QString device = QStringLiteral("/dev/disk/by-label/") + volumeName(chip);
         if (!QFileInfo::exists(device)) continue;
         m_mountTried.insert(chip);
-        auto *mount = new QProcess(this);
-        connect(mount, &QProcess::finished, mount, &QObject::deleteLater);
-        connect(mount, &QProcess::errorOccurred, mount, [mount](QProcess::ProcessError e) {
-            qInfo("BootloaderLocator: udisksctl did not run (%d)", int(e));
-            if (e == QProcess::FailedToStart) mount->deleteLater();
-        });
-        mount->start(QStringLiteral("udisksctl"),
-                     { QStringLiteral("mount"), QStringLiteral("--no-user-interaction"), QStringLiteral("-b"), device });
+        // Left to run on its own: the next scans see the drive, or not
+        if (!QProcess::startDetached(QStringLiteral("udisksctl"),
+                                     { QStringLiteral("mount"), QStringLiteral("--no-user-interaction"), QStringLiteral("-b"), device }))
+            qInfo("BootloaderLocator: udisksctl could not be started for %s", qPrintable(device));
     }
 #else
     Q_UNUSED(scan)

@@ -77,8 +77,8 @@ QByteArray deviceSettings(FfiCore *core) {
     QByteArray out;
     const auto add = [&out](const void *p, size_t n) { out.append(static_cast<const char *>(p), int(n)); };
     for (int w = 0; w < s->num_channels; w++) {
-        for (int band = 0; band < BANDS_PER_CHANNEL; band++) {
-            const FilterParams &f = s->filters[w][band];
+        for (int b = 0; b < BANDS_PER_CHANNEL; ++b) {
+            const FilterParams &f = s->filters[w][b];
             add(&f.filter_type, sizeof(f.filter_type));
             add(&f.freq, sizeof(f.freq));
             add(&f.gain, sizeof(f.gain));
@@ -201,7 +201,7 @@ void fixture(Qp16Ro &r, int wire) {
     const QString text = ro ? ro->text() : QString();
     printf("smoke: %s%s\n", qPrintable(tag), qPrintable(text));
     d.check(tag + QStringLiteral("it says read-only, with the device's firmware"),
-            text.contains(QLatin1String("read-only")) && fw && text.contains(fw->deviceVersion()) && !fw->deviceVersion().isEmpty());
+            text.contains(QLatin1String("read-only")) && fw && text.contains(fw->runningVersion()) && !fw->runningVersion().isEmpty());
     d.check(tag + (wire > 32 ? QStringLiteral("newer: it offers Details...") : QStringLiteral("older: it offers Update...")),
             action && action->property("visible").toBool() &&
                 action->property("text").toString() == (wire > 32 ? QLatin1String("Details...") : QLatin1String("Update...")));

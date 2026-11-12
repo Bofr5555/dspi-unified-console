@@ -2,6 +2,7 @@
 #define FIRMWARECONTROLLER_H
 
 #include <QByteArray>
+#include <QJsonObject>
 #include <QElapsedTimer>
 #include <QObject>
 #include <QString>
@@ -45,9 +46,9 @@ class FirmwareController : public QObject {
     Q_PROPERTY(QString mismatchText READ mismatchText NOTIFY deviceChanged)
     Q_PROPERTY(bool supported READ supported NOTIFY deviceChanged)
     // ---- The window ----
-    Q_PROPERTY(QString deviceVersion READ deviceVersion NOTIFY deviceChanged)
+    Q_PROPERTY(QString runningVersion READ runningVersion NOTIFY deviceChanged)
     Q_PROPERTY(bool downgrade READ downgrade NOTIFY deviceChanged)
-    Q_PROPERTY(QString state READ state NOTIFY stateChanged)
+    Q_PROPERTY(QString stage READ stage NOTIFY stateChanged)
     Q_PROPERTY(int step READ step NOTIFY stateChanged)
     Q_PROPERTY(bool failed READ failed NOTIFY stateChanged)
     Q_PROPERTY(bool confirmed READ confirmed NOTIFY stateChanged)
@@ -74,6 +75,18 @@ class FirmwareController : public QObject {
     Q_PROPERTY(bool guardAsking READ guardAsking NOTIFY guardChanged)
     Q_PROPERTY(QString guardMessage READ guardMessage NOTIFY guardChanged)
     Q_PROPERTY(QString guardPhrase READ guardPhrase NOTIFY guardChanged)
+    // ---- The installer contract of QP17's Getting Started wizard
+    // (OnboardingController.h): the Mac's states, and on the desktop
+    // "checking" (the board is read before it restarts), "question" (the
+    // guard's typed confirmation, asked in the window) and "unconfirmed" (back,
+    // but the image names no version)
+    Q_PROPERTY(QString state READ installerState NOTIFY stateChanged)
+    Q_PROPERTY(QString chip READ chip NOTIFY stateChanged)
+    Q_PROPERTY(QString volume READ volume NOTIFY stateChanged)
+    Q_PROPERTY(QString version READ imageVersion NOTIFY imageChanged)
+    Q_PROPERTY(QString failure READ errorText NOTIFY stateChanged)
+    Q_PROPERTY(double fraction READ fraction NOTIFY stateChanged)
+    Q_PROPERTY(bool mundane READ mundane NOTIFY stateChanged)
 public:
     enum State { Idle, WaitingForBoard, WaitingForVolume, Ready, Writing, WaitingForDevice, Verified, Failed };
     Q_ENUM(State)
@@ -86,10 +99,10 @@ public:
     bool mismatchShown() const;
     QString mismatchText() const;
     bool supported() const;
-    QString deviceVersion() const;
+    QString runningVersion() const;
     bool downgrade() const { return match() == QLatin1String("newer"); }
 
-    QString state() const;
+    QString stage() const;
     State stateValue() const { return m_state; }
     int step() const;
     bool failed() const { return m_state == Failed; }
@@ -115,9 +128,20 @@ public:
     QString guardMessage() const { return m_guardMessage; }
     QString guardPhrase() const { return m_guardPhrase; }
 
-    // The window showed (detection starts, a fresh run) or closed (detection
-    // stops; a finished run is forgotten)
+    // The window showed (detection starts; a fresh run unless one is under way)
+    // or closed (detection stops when nothing else watches)
     Q_INVOKABLE void windowShown(bool shown);
+    // The installer contract (QP17)
+    QString installerState() const;
+    QString chip() const;
+    QString volume() const;
+    double fraction() const;
+    bool mundane() const;
+    Q_INVOKABLE void beginWatching();
+    Q_INVOKABLE void stopWatching();
+    Q_INVOKABLE void installWhenReady();
+    Q_INVOKABLE void installConnected();
+    Q_INVOKABLE void reset();
     // The person commits to the update (Update Firmware / Downgrade)
     Q_INVOKABLE void start();
     // Try Again, Update Another Board: back to detection, nothing armed
@@ -177,7 +201,13 @@ private:
     Image imageFor(int chip) const;
     int deviceChip() const;
     QString describe(int major, int minor, int patch, int beta) const;
+    void begin(bool reboot);
+    void watch(bool on);
+    bool underWay() const;
+    void askGuard(const QJsonObject &verdict, std::function<void()> after);
+public:
     QString errorText() const;
+private:
 
     AppContext m_ctx;
     BootloaderLocator *m_locator;
@@ -191,7 +221,10 @@ private:
     State m_state = Idle;
     Error m_error = NoError;
     QString m_errorDetail;
-    bool m_shown = false;
+    int m_watchers = 0;          // the window and the wizard, while they show
+    bool m_windowShown = false;
+    bool m_reading = false;      // the board's needs are being read
+    bool m_unconfirmed = false;  // back, but the image names no version
     bool m_confirmed = false;
     bool m_armed = false;
     bool m_installing = false;
@@ -199,12 +232,12 @@ private:
     int m_lastChip = -1;
     BootloaderLocator::Board m_board;   // the one board detection last saw
     bool m_checking = false;            // a version check after the write is out
-    QElapsedTimer m_volumeWait;
+    QElapsedTimer m_driveWait;
     QString m_writtenVersion;
     QString m_verifiedVersion;
     uint64_t m_leftGeneration = 0;
     QTimer m_verifyDeadline;
-    int m_volumeWaitMs = 8000;
+    int m_driveWaitMs = 8000;
 
     bool m_mismatchHidden = false;
 

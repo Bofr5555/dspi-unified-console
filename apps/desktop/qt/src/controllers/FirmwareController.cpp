@@ -8,6 +8,10 @@
 #include "FilesController.h"
 #include "Shell.h"
 #include "Snapshot.h"
+#if __has_include("OnboardingController.h")
+#include "OnboardingController.h"
+#define DSPI_QP16_ONBOARDING 1
+#endif
 
 #include <QDir>
 #include <QFile>
@@ -69,6 +73,13 @@ FirmwareController::FirmwareController(const AppContext &ctx, QObject *parent)
         emit stateChanged();   // the cards depend on whether a device is connected
         checkReturned();
     });
+    // -- QP17's wizard installs through this controller (OnboardingController.h's
+    // installer contract), handed over once every controller exists
+#if DSPI_QP16_ONBOARDING
+    QTimer::singleShot(0, this, [this] {
+        if (auto *onboarding = Registrar::instance<OnboardingController>()) onboarding->setInstaller(this);
+    });
+#endif
     m_verifyDeadline.setSingleShot(true);
     m_verifyDeadline.setInterval(kVerifyMs);
     connect(&m_verifyDeadline, &QTimer::timeout, this, [this] {
@@ -227,7 +238,7 @@ QString FirmwareController::describe(int major, int minor, int patch, int beta) 
     return tr("%1 beta %2").arg(base).arg(beta);
 }
 
-QString FirmwareController::deviceVersion() const {
+QString FirmwareController::runningVersion() const {
     const DspState *s = m_ctx.device->connected() ? m_ctx.device->state() : nullptr;
     if (!s || (s->fw_major == 0 && s->fw_minor == 0 && s->fw_patch == 0)) return QString();
     return describe(s->fw_major, s->fw_minor, s->fw_patch, s->fw_beta);
@@ -258,7 +269,7 @@ bool FirmwareController::mismatchShown() const {
 }
 
 QString FirmwareController::mismatchText() const {
-    const QString device = deviceVersion().isEmpty() ? tr("unknown") : deviceVersion();
+    const QString device = runningVersion().isEmpty() ? tr("unknown") : runningVersion();
     const QString expected = m_expected.isEmpty() ? tr("unknown") : m_expected;
     if (match() == QLatin1String("newer"))
         return tr("This device runs firmware %1, which is newer than %2 %3. Some of its features may not be shown.")
@@ -278,7 +289,7 @@ void FirmwareController::openWindow() {
 
 // ---- The installer -----------------------------------------------------------
 
-QString FirmwareController::state() const {
+QString FirmwareController::stage() const {
     switch (m_state) {
     case Idle: return QStringLiteral("idle");
     case WaitingForBoard: return QStringLiteral("waitingForBoard");
@@ -319,7 +330,7 @@ void FirmwareController::fail(Error e, const QString &detail) {
 }
 
 void FirmwareController::setTimeoutsForTest(int volumeWaitMs, int verifyMs) {
-    m_volumeWaitMs = volumeWaitMs;
+    m_driveWaitMs = volumeWaitMs;
     m_verifyDeadline.setInterval(verifyMs);
 }
 
@@ -330,26 +341,45 @@ void FirmwareController::setExpectedVersionForTest(const QString &version) {
 }
 
 void FirmwareController::windowShown(bool shown) {
-    m_shown = shown;
-    const bool underWay = m_state == Writing || m_state == WaitingForDevice;
-    if (!shown) {
-        // A write under way finishes and is checked; detection stops otherwise
-        if (!underWay) m_locator->stop();
+    if (shown == m_windowShown) return;
+    m_windowShown = shown;
+    watch(shown);
+}
+
+// A run the person started and that has not ended: the read and the question
+// before it, the hunt for the board, the write and its check. A verified or
+// failed run has ended.
+bool FirmwareController::underWay() const {
+    if (m_guardAsking || m_reading || m_state == Writing || m_state == WaitingForDevice) return true;
+    return m_confirmed && m_state != Verified && m_state != Failed;
+}
+
+// The window and the Getting Started wizard each watch while they show. The
+// first to start watching starts a fresh run (unless one is under way, which
+// it then shows); detection stops when the last one stops, unless a write is
+// still to be checked.
+void FirmwareController::watch(bool on) {
+    m_watchers = qMax(0, m_watchers + (on ? 1 : -1));
+    if (m_watchers == 0) {
+        if (m_state != Writing && m_state != WaitingForDevice) m_locator->stop();
         return;
     }
-    if (!underWay) {
-        m_confirmed = false;
-        m_rebootRequested = false;
-        m_boardRead = false;
-        m_typed.clear();
+    if (on && m_watchers == 1 && !underWay()) {
         m_afterGuard = nullptr;
-        if (m_guardAsking) {
-            m_guardAsking = false;
-            emit guardChanged();
-        }
         resetRun();
     }
     m_locator->start();
+}
+
+void FirmwareController::askGuard(const QJsonObject &verdict, std::function<void()> after) {
+    m_guardMessage = verdict.value(QStringLiteral("message")).toString();
+    m_guardPhrase = verdict.value(QStringLiteral("confirmationPhrase")).toString();
+    m_afterGuard = std::move(after);
+    m_guardAsking = true;
+    emit guardChanged();
+    emit stateChanged();
+    // The typed confirmation is the window's: a run the wizard started shows it there
+    if (!m_windowShown) openWindow();
 }
 
 void FirmwareController::resetRun() {
@@ -360,7 +390,8 @@ void FirmwareController::resetRun() {
     m_rebootRequested = false;
     m_boardRead = false;
     m_typed.clear();
-    m_volumeWait.invalidate();
+    m_unconfirmed = false;
+    m_driveWait.invalidate();
     m_verifyDeadline.stop();
     setState(Idle);
     onScan(m_locator->boards());
@@ -371,36 +402,41 @@ void FirmwareController::resetRun() {
 void FirmwareController::onScan(const QList<BootloaderLocator::Board> &boards) {
     if (m_installing) return;
     if (boards.isEmpty()) {
-        m_volumeWait.invalidate();
+        m_driveWait.invalidate();
         setState(WaitingForBoard);
     } else if (boards.size() == 1) {
         m_board = boards.first();
         m_lastChip = m_board.chip;
         if (!m_board.drive.isEmpty()) {
-            m_volumeWait.invalidate();
+            m_driveWait.invalidate();
             setState(Ready);
         } else {
-            if (!m_volumeWait.isValid()) m_volumeWait.start();
-            if (m_volumeWait.elapsed() >= m_volumeWaitMs) fail(VolumeNotMounted, BootloaderLocator::volumeName(m_board.chip));
+            if (!m_driveWait.isValid()) m_driveWait.start();
+            if (m_driveWait.elapsed() >= m_driveWaitMs) fail(VolumeNotMounted, BootloaderLocator::volumeName(m_board.chip));
             else setState(WaitingForVolume);
         }
     } else {
-        m_volumeWait.invalidate();
+        m_driveWait.invalidate();
         fail(MultipleBoards, QString::number(boards.size()));
     }
     // Committed before the board arrived: write it now that it is here
     if (m_armed && m_state == Ready) install(m_board);
 }
 
-void FirmwareController::start() {
-    if (m_confirmed || m_guardAsking || !m_shown) return;
+void FirmwareController::start() { begin(true); }
+
+// The person's decision: install on the next ready board; with `reboot`, also
+// restart the connected device into its bootloader
+void FirmwareController::begin(bool reboot) {
+    // An ended run is reset first (Try Again, Update Another Board)
+    if (underWay() || m_installing || m_confirmed || m_watchers == 0) return;
     if (custom() && !m_customProblem.isEmpty()) return;
-    const auto proceed = [this] {
+    const auto proceed = [this, reboot] {
         m_confirmed = true;
         m_armed = true;
         emit stateChanged();
         if (m_state == Ready) install(m_board);
-        enterBootloaderForInstall();
+        if (reboot) enterBootloaderForInstall();
     };
     if (!m_ctx.device->connected()) {
         // A board already in its bootloader cannot be asked: the guard
@@ -415,6 +451,8 @@ void FirmwareController::start() {
     }
     // The board's needs, read now: once it is in the bootloader it cannot be asked
     const QByteArray bytes = image.bytes;
+    m_reading = true;
+    emit stateChanged();
     m_ctx.core->worker()->call(
         this,
         [bytes](FfiCore *c) {
@@ -425,6 +463,7 @@ void FirmwareController::start() {
             return std::make_pair(required, guardCheck(bytes, required, QByteArray()));
         },
         [this, proceed](std::pair<int, QJsonObject> r) {
+            m_reading = false;
             m_requiredMv = r.first;
             m_boardRead = true;
             const QJsonObject &verdict = r.second;
@@ -432,11 +471,7 @@ void FirmwareController::start() {
             if (verdict.value(QStringLiteral("allowed")).toBool()) {
                 proceed();
             } else if (decision == QLatin1String("needsConfirmation")) {
-                m_guardMessage = verdict.value(QStringLiteral("message")).toString();
-                m_guardPhrase = verdict.value(QStringLiteral("confirmationPhrase")).toString();
-                m_afterGuard = proceed;
-                m_guardAsking = true;
-                emit guardChanged();
+                askGuard(verdict, proceed);
             } else {
                 m_installing = true;
                 fail(GuardRefused, verdict.value(QStringLiteral("message")).toString());
@@ -449,6 +484,7 @@ void FirmwareController::answerGuard(const QString &typed) {
     m_typed = typed;
     m_guardAsking = false;
     emit guardChanged();
+    emit stateChanged();
     std::function<void()> next = std::move(m_afterGuard);
     m_afterGuard = nullptr;
     if (next) next();
@@ -459,6 +495,7 @@ void FirmwareController::cancelGuard() {
     m_guardAsking = false;
     m_afterGuard = nullptr;
     emit guardChanged();
+    emit stateChanged();
     // Asked at the write: nothing was written, back to detection
     if (m_installing && m_state == Ready) resetRun();
 }
@@ -517,14 +554,10 @@ void FirmwareController::install(const BootloaderLocator::Board &board) {
             if (verdict.value(QStringLiteral("allowed")).toBool()) {
                 write(board, image);
             } else if (decision == QLatin1String("needsConfirmation")) {
-                m_guardMessage = verdict.value(QStringLiteral("message")).toString();
-                m_guardPhrase = verdict.value(QStringLiteral("confirmationPhrase")).toString();
-                m_afterGuard = [this, board] {
+                askGuard(verdict, [this, board] {
                     m_installing = false;
                     install(board);
-                };
-                m_guardAsking = true;
-                emit guardChanged();
+                });
             } else {
                 fail(GuardRefused, verdict.value(QStringLiteral("message")).toString());
             }
@@ -567,7 +600,9 @@ void FirmwareController::checkReturned() {
     // The connection the device left on is not the one it comes back on
     if (m_leftGeneration != 0 && m_ctx.device->snapshot().generation == m_leftGeneration) return;
     if (m_writtenVersion.isEmpty()) {
-        m_verifiedVersion = deviceVersion();
+        // An image that names no version: back, but nothing to check it against
+        m_unconfirmed = true;
+        m_verifiedVersion = runningVersion();
         m_verifyDeadline.stop();
         setState(Verified);
         return;
@@ -580,14 +615,43 @@ void FirmwareController::checkReturned() {
             m_checking = false;
             if (m_state != WaitingForDevice) return;
             if (matches == 1) {
-                m_verifiedVersion = deviceVersion();
+                m_verifiedVersion = runningVersion();
                 m_verifyDeadline.stop();
                 setState(Verified);
             } else if (matches == 0) {
-                fail(VersionMismatch, deviceVersion());
+                fail(VersionMismatch, runningVersion());
             }
         });
 }
+
+// ---- The installer as the Getting Started wizard drives it (QP17) ------------
+
+QString FirmwareController::installerState() const {
+    if (m_guardAsking) return QStringLiteral("question");
+    if (m_reading) return QStringLiteral("checking");
+    if (m_state == Verified && m_unconfirmed) return QStringLiteral("unconfirmed");
+    return stage();
+}
+
+QString FirmwareController::chip() const { return boardName(); }
+
+QString FirmwareController::volume() const {
+    return m_lastChip >= 0 ? BootloaderLocator::volumeName(m_lastChip) : QString();
+}
+
+double FirmwareController::fraction() const {
+    return m_state == WaitingForDevice || m_state == Verified ? 1.0 : 0.0;
+}
+
+bool FirmwareController::mundane() const {
+    return m_state == Failed && (m_error == MultipleBoards || m_error == VolumeNotMounted);
+}
+
+void FirmwareController::beginWatching() { watch(true); }
+void FirmwareController::stopWatching() { watch(false); }
+void FirmwareController::installWhenReady() { begin(false); }
+void FirmwareController::installConnected() { begin(true); }
+void FirmwareController::reset() { resetRun(); }
 
 // ---- What the window says ----------------------------------------------------
 
@@ -699,7 +763,12 @@ QString FirmwareController::statusMessage() const {
         return tr("Near the end the board restarts itself and its drive disappears. That is normal - do not unplug it.");
     case WaitingForDevice:
         return tr("The board is restarting with its new firmware. This can take up to half a minute; leave it plugged in.");
-    case Verified: return tr("The device is back and confirmed running firmware %1.").arg(m_verifiedVersion);
+    case Verified:
+        if (m_unconfirmed)
+            return tr("The device is back, running firmware %1. The image does not name its version, so it could not be "
+                      "checked.")
+                .arg(m_verifiedVersion);
+        return tr("The device is back and confirmed running firmware %1.").arg(m_verifiedVersion);
     case Failed: return errorText();
     }
     return QString();
