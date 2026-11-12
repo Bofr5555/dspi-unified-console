@@ -161,13 +161,14 @@ pub(crate) fn note_foreign(
     let writer = match (origin, source) {
         (Some(sid), _) if sid != 0 => format!("DSPi Link session {sid}"),
         (_, S::Gpio) => "a control surface".into(),
-        (_, S::Uac1) => "the computer's volume control".into(),
+        // -- WP QPI4 -- no host-device noun (GLOSSARY.md §1)
+        (_, S::Uac1) => "the USB audio volume control".into(),
         (_, S::Uart) => "the UART".into(),
         (_, S::I2c) => "the I2C bus".into(),
         (_, S::Midi) => "MIDI".into(),
         (_, S::Preset) => "a preset load".into(),
         (_, S::Factory) => "a factory reset".into(),
-        (_, S::HostSet | S::BulkSet) => "another program on the computer".into(),
+        (_, S::HostSet | S::BulkSet) => "another app".into(),
         _ => "another writer".into(),
     };
     let at_ms = dspi_transport::clock::system_time()
@@ -190,9 +191,10 @@ fn overwritten(inner: &Inner, entry: &JournalEntry, expected: &Value) -> Option<
         .and_then(|c| c.last_foreign.as_ref())
         .filter(|f| f.at_ms >= entry.at_ms)
         .map_or("another writer", |f| f.writer.as_str());
+    // -- WP QPI4 -- the registry's label, not the path in backticks
+    let what = by_path(entry.path).map_or(entry.path, |d| d.label);
     Some(format!(
-        "`{}` was changed by {who} since; it was left as they set it",
-        entry.path
+        "{what} was changed by {who} since; it was left as they set it"
     ))
 }
 
