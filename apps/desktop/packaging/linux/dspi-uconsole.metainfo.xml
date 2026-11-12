@@ -1,38 +1,31 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Placeholder identity until the project has a home of its own: the id is the
-     desktop file's name (a reverse-DNS id needs a domain the maintainers hold), no
-     homepage or bug tracker. -->
+<!-- AppStream metadata (freedesktop.org AppStream specification, desktop-application) -->
 <component type="desktop-application">
   <id>dspi-uconsole</id>
-  <metadata_license>CC0-1.0</metadata_license>
-  <project_license>GPL-3.0-or-later</project_license>
-  <name>DSPi uConsole</name>
-  <summary>Configure and tune a DSPi audio processor</summary>
+  <name>uConsole for DSPi</name>
+  <summary>Set up and control a DSPi audio processor</summary>
   <description>
     <p>
-      DSPi uConsole controls a DSPi, open source DSP firmware that turns a Raspberry Pi Pico
-      into a multi-output USB audio interface with an onboard signal processor.
+      DSPi turns a Raspberry Pi Pico (RP2040) or Pico 2 (RP2350) into a USB sound card with a
+      digital signal processor inside it. This app is where you shape that processing.
     </p>
-    <p>
-      Parametric EQ edited on the response graph, crossovers, routing, delay, a spectrum
-      analyser, loudness, crossfeed, a tube modeller, a subharmonic synthesizer, a limiter on
-      every output, control surfaces and firmware updates, all applied live over USB.
-    </p>
+    <ul>
+      <li>Draw EQ curves directly on a response graph</li>
+      <li>Route any input to any output and align speakers in time</li>
+      <li>Add loudness compensation, headphone crossfeed and other effects</li>
+      <li>Wire up physical knobs and remotes, and keep everything in presets on the device</li>
+      <li>Share devices on the local network</li>
+    </ul>
   </description>
   <launchable type="desktop-id">dspi-uconsole.desktop</launchable>
-  <developer>
-    <name>DSPi unified console maintainers</name>
-  </developer>
+  <url type="homepage">https://github.com/Bofr5555/dspi-unified-console</url>
+  <url type="bugtracker">https://github.com/Bofr5555/dspi-unified-console/issues</url>
   <categories>
     <category>AudioVideo</category>
     <category>Audio</category>
   </categories>
   <provides>
     <binary>dspi-uconsole</binary>
-    <modalias>usb:v2E8BpFEAA*</modalias>
   </provides>
   <content_rating type="oars-1.1"/>
-  <releases>
-    <release version="0.13.0" date="2026-11-09" type="stable"/>
-  </releases>
 </component>

@@ -1,11 +1,13 @@
 [Desktop Entry]
 Type=Application
-Name=DSPi uConsole
+Version=1.5
+Name=uConsole for DSPi
 GenericName=DSP Controller
-Comment=Configure and tune a DSPi audio processor
+Comment=Set up and control a DSPi audio processor
 Exec=dspi-uconsole
 Icon=dspi-uconsole
 Terminal=false
 Categories=AudioVideo;Audio;Mixer;
-Keywords=DSP;EQ;equalizer;crossover;audio;
+Keywords=DSPi;EQ;equalizer;crossover;audio;DSP;
+StartupNotify=true
 StartupWMClass=dspi-uconsole

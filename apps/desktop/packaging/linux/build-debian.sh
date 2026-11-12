@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
-# Runs inside the Debian build container (see build-release.sh): the .deb,
-# against the system Qt 6 (Debian 13 and newer, Ubuntu 25.04 and newer).
+# Builds the app against Debian's own Qt in Containerfile.debian's image, checks
+# the binary and installs it into build-debian/root, the tree the .deb is made
+# from (the .deb itself is the release packaging's, QP20). Run from the
+# repository root:
+#
+#   apps/desktop/packaging/linux/build-debian.sh
 set -euo pipefail
-here=/src/apps/desktop/packaging/linux
-
-# Build from a copy, leaving the host's build directories alone
-rm -rf /work && mkdir /work
-tar -C /src --exclude=./target --exclude=./apps/desktop/qt/build --exclude=./.git --exclude=./dist -cf - . | tar -C /work -xf -
-cd /work
+here=$(cd "$(dirname "$0")" && pwd)
+repo=$(cd "$here/../../../.." && pwd)
+build=${BUILD_DIR:-$repo/apps/desktop/build-debian}
+cd "$repo"
 cargo build --release --locked -p dspi-capi --features link,midir,mdns,hub
-cd /work/apps/desktop
-cmake -S qt -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_PACKAGE_FORMAT=deb   # -- WP QD42 --
-cmake --build build -j"${JOBS:-4}"
-"$here/check-binary.sh" build/DSPiConsole 2.41
-(cd build && cpack -G DEB && cp dspi-uconsole_*.deb /dist/)
+cmake -S apps/desktop/qt -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=/usr -DDSPI_CARGO_TARGET_DIR="$repo/target"
+cmake --build "$build" -j"${JOBS:-4}"
+"$here/check-binary.sh" "$build/DSPiConsole" 2.41
+rm -rf "$build/root"
+DESTDIR="$build/root" cmake --install "$build"
+echo "build-debian: $build/root"

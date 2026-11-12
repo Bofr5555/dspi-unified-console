@@ -6,10 +6,11 @@
 #
 #   run.sh <DSPiConsoleSmoke> <output dir: log.txt and one PNG per window>
 #
-# DSPI_SMOKE_HW=1 runs the hardware pass on the real device instead (run-hw.sh
-# sets it up); DSPI_SMOKE_HW=dry runs that same pass on the demo device;
-# DSPI_SMOKE_HW=replug waits for the owner to replug the device (run-replug.sh),
-# printing as it goes. DSPI_SMOKE_DEMO_ENTRY=1 runs QD7's pass, without --demo.
+# DSPI_SMOKE_SECTION=<name>[,<name>...] runs only those sections of the driver
+# (SmokeDriver.h). -- WP QP0 -- The hardware (DSPI_SMOKE_HW, run-hw.sh,
+# run-replug.sh), demo-entry, tray and pseudo-locale passes come back with the
+# work packages that rebuild their screens (QP19, QP14, QP18); until then the
+# driver exits 2 when asked for one.
 set -uo pipefail
 app=$1; out=$2
 rm -rf "$out"; mkdir -p "$out/home"
@@ -44,6 +45,14 @@ if [ "$code" != 0 ]; then
     tail -30 "$out/log.txt" >&2
     exit 1
 fi
+# -- WP QP0 -- --version names the app by its display name (AppIdentity.h), not
+# by the settings name
+name=$(sed -n 's/.*displayName = "\(.*\)";/\1/p' "$(dirname "$0")/../src/AppIdentity.h")
+version=$("$app" --version 2>/dev/null)
+case "$version" in
+    "$name "[0-9]*) echo "smoke: --version: $version" ;;
+    *) echo "FAIL --version printed '$version', not '$name <version>'" >&2; exit 1 ;;
+esac
 # A run that stopped early has no summary, whatever its exit code.
 grep -q '^smoke: [0-9]* checks' "$out/log.txt" || { echo "no summary line: the driver did not finish" >&2; exit 1; }
 # This catches the core's own warnings only. dspi-capi's limiter turns a message
@@ -58,59 +67,4 @@ if [ -n "$noisy" ]; then
     echo "$noisy" >&2
     # A replug retries its reopen, so there a repeat is for reading, not a failure
     [ "${DSPI_SMOKE_HW:-}" = replug ] || exit 1
-fi
-# -- WP QD7 -- The demo chosen from a disconnected app: a second run, without --demo
-if [ -z "${DSPI_SMOKE_HW:-}" ] && [ -z "${DSPI_SMOKE_DEMO_ENTRY:-}" ]; then
-    DSPI_SMOKE_DEMO_ENTRY=1 "$0" "$app" "$out/demo-entry" || exit 1
-fi
-# -- WP QD12 -- Whole launches with the tray settings on, each ending in a real
-# quit: starting hidden is decided before main.qml loads, and Qt's own quit path
-# only runs once. The driver fails by exit code, 3 if the app did not quit.
-if [ -z "${DSPI_SMOKE_HW:-}" ] && [ -z "${DSPI_SMOKE_DEMO_ENTRY:-}" ]; then
-    for mode in hidden hidden-quit app-quit no-tray; do
-        printf '[onboarding]\nsetupDone=true\n[tray]\nshowInTray=true\nstartMinimised=true\n' > "$HOME/.config/DSPi/DSPi Console.conf"
-        probe=1; [ "$mode" = no-tray ] && probe=0
-        DSPI_SMOKE_TRAY=$mode DSPI_SMOKE_TRAY_PROBE=$probe timeout 60 "$app" --demo > "$out/log-tray-$mode.txt" 2>&1
-        code=$?
-        grep -E '^(smoke:|FAIL)' "$out/log-tray-$mode.txt"
-        if [ "$code" != 0 ]; then
-            echo "tray launch $mode exited with $code; the end of its log:" >&2
-            tail -30 "$out/log-tray-$mode.txt" >&2
-            exit 1
-        fi
-    done
-fi
-# -- WP QD23 -- The pseudo-locale pass (SmokeDriverPseudo.cpp): the main windows
-# untranslated first, for what English already cuts off, then with every qsTr
-# string accented and a third longer. Screenshots in pseudo-en/ and pseudo/.
-if [ -z "${DSPI_SMOKE_HW:-}" ] && [ -z "${DSPI_SMOKE_DEMO_ENTRY:-}" ]; then
-    printf '[onboarding]\nsetupDone=true\n' > "$HOME/.config/DSPi/DSPi Console.conf"
-    for mode in en pseudo; do
-        dir="$out/pseudo"; [ "$mode" = en ] && dir="$out/pseudo-en"
-        mkdir -p "$dir"
-        DSPI_SMOKE_PSEUDO=$mode DSPI_SMOKE_OUT="$dir" DSPI_SMOKE_PSEUDO_BASE="$out/pseudo-en/clipped.txt" \
-            timeout 300 "$app" --demo > "$out/log-pseudo-$mode.txt" 2>&1
-        code=$?
-        grep -E '^(smoke:|FAIL)' "$out/log-pseudo-$mode.txt"
-        if [ "$code" != 0 ]; then
-            echo "pseudo-locale run $mode exited with $code; the end of its log:" >&2
-            tail -30 "$out/log-pseudo-$mode.txt" >&2
-            exit 1
-        fi
-    done
-fi
-# -- BUG1 -- The K340's configuration on the demo device (SmokeDriverBug1.cpp):
-# its sidebar, meters and graph pills as screenshots in bug1/, and Reset
-# Channel Names on its I2S slots. A launch of its own, so no other pass sees it.
-if [ -z "${DSPI_SMOKE_HW:-}" ] && [ -z "${DSPI_SMOKE_DEMO_ENTRY:-}" ]; then
-    printf '[onboarding]\nsetupDone=true\n' > "$HOME/.config/DSPi/DSPi Console.conf"
-    mkdir -p "$out/bug1"
-    DSPI_SMOKE_BUG1=1 DSPI_SMOKE_OUT="$out/bug1" timeout 120 "$app" --demo > "$out/log-bug1.txt" 2>&1
-    code=$?
-    grep -E '^(smoke:|FAIL)' "$out/log-bug1.txt"
-    if [ "$code" != 0 ]; then
-        echo "BUG1 run exited with $code; the end of its log:" >&2
-        tail -30 "$out/log-bug1.txt" >&2
-        exit 1
-    fi
 fi

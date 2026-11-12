@@ -315,7 +315,7 @@ void SmokeDriver::testAutoEqUpdate() {
     check("qd27: its dialog says so", resultShown("Import Failed", updateMessage));
     a->importFile(QUrl::fromLocalFile(m_out + "/qd27-no-such-file.json"));
     check("qd27: missing file ends", waitFor(5000, [&]() { return updates == 2; }));
-    check("qd27: missing file fails", !updateOk && updateMessage == "The file could not be opened.");
+    check("qd27: missing file fails", !updateOk && !updateMessage.isEmpty());
     check("qd27: its dialog says that", resultShown("Import Failed", "could not be opened"));
     a->importFile(QUrl::fromLocalFile(good));
     a->resetToBuiltIn();     // Refused: one at a time

@@ -1,7 +1,9 @@
+# pacman install hooks (PKGBUILD(5), "install"): the package ships a udev rule
+# for the DSPi's USB interface; reload the rules so a DSPi plugged in now is
+# usable without a reboot.
 post_install() {
-    # Apply the udev rule to a DSPi that's already plugged in
-    udevadm control --reload-rules || true
-    udevadm trigger --subsystem-match=usb --attr-match=idProduct=feaa || true
+    udevadm control --reload-rules
+    udevadm trigger --subsystem-match=usb --action=change
 }
 
 post_upgrade() {
@@ -9,5 +11,5 @@ post_upgrade() {
 }
 
 post_remove() {
-    udevadm control --reload-rules || true
+    udevadm control --reload-rules
 }
