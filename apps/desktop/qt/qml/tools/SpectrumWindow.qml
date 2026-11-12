@@ -31,7 +31,11 @@ ToolWindow {
     readonly property bool curvesOn: rendering && available && mode !== 1 && visibleChannels.length > 0
     readonly property bool barsOn: rendering && available && mode !== 0 && visibleChannels.length > 0
 
-    onVisibleChanged: if (visible) mode = RtaController.showGraph && RtaController.showBars ? 2 : RtaController.showBars ? 1 : 0
+    onVisibleChanged: {
+        if (!visible) return
+        mode = RtaController.showGraph && RtaController.showBars ? 2 : RtaController.showBars ? 1 : 0
+        RtaController.openAnalyser()
+    }
     onCurvesOnChanged: RtaController.setView("window.curves", RtaController.Curves, curvesOn)
     onBarsOnChanged: RtaController.setView("window.bars", RtaController.Bars, barsOn)
     // Hidden channels no longer drawn are forgotten
@@ -96,8 +100,9 @@ ToolWindow {
             Layout.margins: 40
             icon: "triangle-alert"
             headline: qsTr("Spectrum analyser unavailable")
-            caption: RtaController.ready ? qsTr("The connected firmware does not provide a compatible analyser. Update the firmware to use it.")
-                                         : qsTr("Connect a DSPi to use the analyser.")
+            caption: !RtaController.ready ? qsTr("Connect a DSPi to use the analyser.")
+                     : RtaController.readOnlyRefused ? qsTr("The analyser is not available while the device is read-only. Update the firmware to use it.")
+                     : qsTr("The connected firmware does not provide a compatible analyser. Update the firmware to use it.")
         }
 
         // ---- Header ----

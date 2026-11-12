@@ -147,6 +147,9 @@ void MonitorController::updatePoll() {
 void MonitorController::clear() {
     m_lines->clear();
     m_ctx.core->worker()->post([](FfiCore *c) { dspi_monitor_clear(c); });
+    // -- WP QPI3 -- a read already out returns lines from before the clear:
+    // dropped, as after a pause
+    skipToEnd();
 }
 
 QString MonitorController::text() const {

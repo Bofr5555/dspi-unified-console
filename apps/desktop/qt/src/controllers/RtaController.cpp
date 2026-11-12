@@ -118,6 +118,8 @@ RtaController::RtaController(const AppContext &ctx, QObject *parent)
     QMetaObject::invokeMethod(this, &RtaController::connectLater, Qt::QueuedConnection);
 }
 
+// Dead in the app: main.cpp shuts the core down before the controllers go,
+// so the handle is null here; the smoke's cores the same
 RtaController::CallbackRelease::~CallbackRelease() {
     if (FfiCore *c = core ? core->handle() : nullptr) dspi_rta_set_callback(c, nullptr, nullptr);
 }
@@ -125,7 +127,9 @@ RtaController::CallbackRelease::~CallbackRelease() {
 void RtaController::connectLater() {
     if (auto *graph = Registrar::instance<GraphController>()) {
         connect(graph, &GraphController::selectionChanged, this, &RtaController::onPageChanged);
-        m_page = graph->selectedChannel();
+        // -- WP QPI3 -- a channel page open at start gets its selection too
+        m_page = -1;
+        onPageChanged();
     }
     if (auto *settings = Registrar::instance<SettingsController>()) {
         m_settings = settings->spectrum();
@@ -135,8 +139,7 @@ void RtaController::connectLater() {
         });
     }
     // After a lost Link session is back the analyser's worker went with the
-    // old connection: start it again (LinkController does it too while it
-    // knows the analyser is wanted). The core keeps the request.
+    // old connection: start it again. The core keeps the request.
     if (auto *link = Registrar::instance<LinkController>())
         connect(link, &LinkController::reconnected, this, &RtaController::startAnalyser);
     emit scaleChanged();
@@ -210,6 +213,7 @@ void RtaController::onSnapshot() {
     if (!snap.connected) {
         if (m_generation != 0) {
             m_generation = 0;
+            m_readOnlyRefused = false;
             emit analyserChanged();
             emit selectionChanged();
         }
@@ -217,6 +221,10 @@ void RtaController::onSnapshot() {
     }
     if (snap.generation != m_generation) {
         m_generation = snap.generation;
+        if (m_readOnlyRefused) {
+            m_readOnlyRefused = false;
+            emit analyserChanged();
+        }
         // The core keeps the request across connections; a new worker is needed
         startAnalyser();
         push();
@@ -226,8 +234,33 @@ void RtaController::onSnapshot() {
 }
 
 void RtaController::startAnalyser() {
-    // A no-op while running for this connection or on a read-only one
+    // A no-op while running for this connection; on a read-only one the core
+    // refuses it and counts the refusal, so only the person's opening asks
+    if (!ready() || m_ctx.device->readOnly()) return;
     m_ctx.core->worker()->post([](FfiCore *c) { dspi_rta_start(c); });
+}
+
+void RtaController::openAnalyser() {
+    if (!ready()) return;
+    if (!m_ctx.device->readOnly()) {
+        startAnalyser();
+        return;
+    }
+    if (m_askedGeneration == m_generation) return;
+    m_askedGeneration = m_generation;
+    const uint64_t generation = m_generation;
+    m_ctx.core->worker()->call(
+        this,
+        [](FfiCore *c) {
+            const uint32_t before = dspi_read_only_refusals(c);
+            dspi_rta_start(c);
+            return dspi_read_only_refusals(c) != before;
+        },
+        [this, generation](bool refused) {
+            if (generation != m_generation || refused == m_readOnlyRefused) return;
+            m_readOnlyRefused = refused;
+            emit analyserChanged();
+        });
 }
 
 void RtaController::onPageChanged() {
@@ -469,9 +502,6 @@ void RtaController::push() {
     m_sentOnce = true;
     ++m_requestsSent;
     m_ctx.core->worker()->post([r, any](FfiCore *c) { dspi_rta_set_request_watching(c, &r, any); });
-    // The Link client starts the analyser again after a reconnect while it is wanted
-    if (auto *link = Registrar::instance<LinkController>(); link && !link->boundSerial().isEmpty())
-        link->setAnalyserWanted(true);
     emit requestChanged();
 }
 

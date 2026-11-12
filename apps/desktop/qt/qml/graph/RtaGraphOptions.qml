@@ -27,7 +27,9 @@ ColumnLayout {
         Layout.fillWidth: true
         Layout.margins: Theme.spacing
         wrapMode: Text.WordWrap
-        text: RtaController.ready ? qsTr("This firmware has no spectrum analyser.") : qsTr("Connect a DSPi to show its spectrum.")
+        text: !RtaController.ready ? qsTr("Connect a DSPi to show its spectrum.")
+              : DeviceModel.readOnly ? qsTr("The analyser is not available while the device is read-only.")
+              : qsTr("This firmware has no spectrum analyser.")
         font: Theme.fontSmall
         color: Theme.textMuted
     }

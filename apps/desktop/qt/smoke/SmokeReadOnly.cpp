@@ -15,6 +15,7 @@
 #include "Poller.h"
 #include "ReadOnlyController.h"
 #include "Registrar.h"
+#include "RtaController.h"
 #include "SettingsController.h"
 #include "Shell.h"
 #include "UnsavedGuard.h"
@@ -223,7 +224,7 @@ void fixture(Qp16Ro &r, int wire) {
 
     const QByteArray settingsBefore = r.settings();
     d.check(tag + QStringLiteral("the settings read back"), !settingsBefore.isEmpty());
-    const uint32_t refusals = r.coreRefusals();
+    uint32_t refusals = r.coreRefusals();
     r.attempts.clear();
     r.clicked = r.total = 0;
 
@@ -273,6 +274,18 @@ void fixture(Qp16Ro &r, int wire) {
             continue;
         }
         d.spin(150);
+        if (id == QLatin1String("tools.spectrum")) {
+            // -- WP QPI3 -- Opening the analyser is the person asking for it:
+            // the core's one refusal, and the window says why
+            auto *rta = Registrar::instance<RtaController>();
+            QObject *notice = d.item(QStringLiteral("SpectrumWindow.unavailable"), w->contentItem());
+            const bool said = d.waitFor(2000, [&]() { return rta && rta->readOnlyRefused(); });
+            const uint32_t after = r.coreRefusals();
+            d.check(tag + QStringLiteral("qpi3: opening the analyser asks the core once; it refuses, and the window says read-only"),
+                    said && after == refusals + 1 && notice && notice->property("visible").toBool() &&
+                        notice->property("caption").toString().contains(QLatin1String("read-only")));
+            refusals = after;
+        }
         r.clickAround(w, w->contentItem(), id);
         w->close();
         d.spin(30);

@@ -370,6 +370,16 @@ void spectrumSection(SmokeDriver &d) {
                                                                  && rta->prefs()->value(QStringLiteral("dashboardOtherSide")).toString() == QLatin1String("in:0"));
     if (gear) QTest::keyClick(main, Qt::Key_Escape);
     d.spin(150);
+    // -- WP QPI3 -- the popover never outlives this section (it would draw
+    // over the wizard and the no-device view later)
+    for (QObject *o : main->findChildren<QObject *>())
+        if (o->inherits("QQuickPopup") && o->property("opened").toBool()) QMetaObject::invokeMethod(o, "close");
+    d.spin(100);
+    d.check("qpi3: the graph's options popover is closed", [&] {
+        QObject *o = main->findChild<QObject *>(QStringLiteral("GraphHost.options.rta"));
+        auto *it = qobject_cast<QQuickItem *>(o);
+        return !it || !it->isVisible();
+    }());
 
     // The bar strip
     rta->setShowBars(true);

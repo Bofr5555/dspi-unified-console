@@ -38,7 +38,10 @@ class QJSEngine;
 // - The core's analyser thread wakes this object; the picture is copied there
 //   (the core allows its reads from that callback) and handed to the GUI
 //   thread, which never takes the core's lock.
-// - dspi_rta_start runs after every connect and after a Link reconnect.
+// - dspi_rta_start runs after every connect and after a Link reconnect (this
+//   controller is its one owner), never by itself on a read-only connection:
+//   the core counts each start there as a refused write. There it runs only
+//   when the person opens the analyser (openAnalyser()), once per connection.
 //
 // The renderers (RtaSurface, RtaBars) read snapshot() and the scale here.
 class RtaController : public QObject {
@@ -49,6 +52,8 @@ class RtaController : public QObject {
     Q_PROPERTY(bool ready READ ready NOTIFY analyserChanged)
     Q_PROPERTY(bool available READ available NOTIFY analyserChanged)
     Q_PROPERTY(int largestOrder READ largestOrder NOTIFY analyserChanged)
+    // The analyser was asked for on a read-only connection and the core refused it
+    Q_PROPERTY(bool readOnlyRefused READ readOnlyRefused NOTIFY analyserChanged)
     // The page: the dashboard, or a channel page
     Q_PROPERTY(bool onDashboard READ onDashboard NOTIFY selectionChanged)
     Q_PROPERTY(QString pageTitle READ pageTitle NOTIFY selectionChanged)
@@ -156,6 +161,9 @@ public:
     Q_INVOKABLE void switchSide(int tap);
     Q_INVOKABLE void clearSelection();
     Q_INVOKABLE void takeControl();
+    // The person opened the analyser (its window): on a read-only connection
+    // the one time it is started for this connection
+    Q_INVOKABLE void openAnalyser();
     // A view draws (`active`) or not; `id` names it ("graph", "graph.popOut",
     // "strip", "window.curves", "window.bars")
     Q_INVOKABLE void setView(const QString &id, int kind, bool active);
@@ -208,6 +216,9 @@ private:
     QList<int> available(int tap) const;
     void push();
     void startAnalyser();
+public:
+    bool readOnlyRefused() const { return m_readOnlyRefused; }
+private:
 
     AppContext m_ctx;
     PrefsMap *m_prefs;
@@ -223,6 +234,8 @@ private:
     uint32_t m_telemetry = 0;
     int m_pictureRevision = 0;
     uint64_t m_generation = 0;
+    uint64_t m_askedGeneration = 0;   // the read-only connection openAnalyser() tried
+    bool m_readOnlyRefused = false;
     // -1 on the dashboard, else the wire channel of the page
     int m_page = -1;
     Selection m_pageSelection;

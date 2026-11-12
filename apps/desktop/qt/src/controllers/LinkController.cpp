@@ -205,10 +205,11 @@ void LinkController::applyStatus(const Status &s) {
     if (m_boundSerial.isEmpty()) return;
     if (before == QLatin1String("reconnecting") && phase == QLatin1String("bound")) {
         // The core bound the device again; the mirror is read again, and the
-        // analyser, whose worker went with the old connection, starts again
+        // analyser, whose worker went with the old connection, starts again:
+        // RtaController's on reconnected(), this one only without the app's
+        // device model
         if (m_device) {
             m_device->refresh();
-            if (m_analyserWanted) m_device->core()->worker()->post([](FfiCore *c) { dspi_rta_start(c); });
         } else if (m_analyserWanted) {
             post([this] {
                 dspi_rta_start(m_core);
@@ -438,12 +439,9 @@ void LinkController::afterBind(const QString &serial) {
     if (m_boundSerial.isEmpty() && m_device && !m_device->remote())
         m_localBefore = m_device->demo() ? QStringLiteral("demo") : m_device->serial();
     m_boundSerial = serial;
-    m_analyserWanted = true;
-    if (m_device) {
-        m_device->adoptRemote(serial);
-        // After the read adoptRemote posted: the analyser probes the device
-        m_device->core()->worker()->post([](FfiCore *c) { dspi_rta_start(c); });
-    }
+    m_analyserWanted = m_device == nullptr;
+    // The new connection starts the analyser (RtaController)
+    if (m_device) m_device->adoptRemote(serial);
     if (m_poller) m_poller->setSlowTransport(true);
     emit devicesChanged();
     emit deviceBound(serial);
