@@ -362,7 +362,7 @@ void SiggenController::play() {
 // -- WP QPI3 -- play() for one output's channel-ID blips: -12 dB, two passes,
 // then the generator goes idle by itself (Commands.swift's identifyOutput).
 // The draft stays; the write is the generator's, so it replaces a queued Start.
-void SiggenController::identify(int output) {
+void SiggenController::playIdent(int output) {
     if (output < 0 || output >= 16 || !controlsEnabled()) return;
     const uint16_t bit = uint16_t(1u << output);
     const uint16_t mask = bit & (m_caps.valid_mask ? m_caps.valid_mask : bit);

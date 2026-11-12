@@ -397,7 +397,7 @@ void SidebarController::pasteChannel(int channel) {
 // -- WP QPI3 -- the generator's controller plays it (one owner of its writes)
 void SidebarController::identifyOutput(int output) {
     if (output < 0 || output >= 16 || !(uint16_t(1u << output) & m_siggenMask)) return;
-    if (auto *siggen = Registrar::instance<SiggenController>()) siggen->identify(output);
+    if (auto *siggen = Registrar::instance<SiggenController>()) siggen->playIdent(output);
 }
 
 void SidebarController::setEffect(const QString &effect, bool on) {

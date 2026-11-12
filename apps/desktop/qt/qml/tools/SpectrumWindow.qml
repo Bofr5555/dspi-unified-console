@@ -31,8 +31,8 @@ ToolWindow {
     readonly property bool curvesOn: rendering && available && mode !== 1 && visibleChannels.length > 0
     readonly property bool barsOn: rendering && available && mode !== 0 && visibleChannels.length > 0
 
-    onVisibleChanged: {
-        if (!visible) return
+    // Shown: the mode from the page, and the person has asked for the analyser
+    onVisibleChanged: if (visible) {
         mode = RtaController.showGraph && RtaController.showBars ? 2 : RtaController.showBars ? 1 : 0
         RtaController.openAnalyser()
     }

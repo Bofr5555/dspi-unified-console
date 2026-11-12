@@ -120,9 +120,11 @@ void DeviceAccess::dismiss() {
 }
 
 void DeviceAccess::offer() {
-    if (m_count <= 0 || m_offered || m_ctx.device->connected()) return;
+    // While a unit cannot be opened and nothing is open
+    const bool helps = m_count > 0 && !m_offered && !m_ctx.device->connected();
+    if (!helps) return;
+    m_error = QString();
     m_offered = true;
-    m_error.clear();
     emit changed();
 }
 
