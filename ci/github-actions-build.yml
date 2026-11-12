@@ -4,8 +4,9 @@
 #
 # The matrix: Rust tests on Linux, Windows and macOS; the desktop app on
 # Linux (Qt 6.8 or newer), on Windows as a MinGW cross build from Linux (the
-# same container as a local release) and natively with MSVC on windows-2022
-# (both off until QP20). The Mac release is the Swift app: no Qt job on macOS.
+# same container as a local release; WP QP20: on again) and natively with MSVC
+# on windows-2022 (off: the app links the core's MinGW import library). The Mac
+# release is the Swift app: no Qt job on macOS.
 name: build
 
 on:
@@ -70,11 +71,11 @@ jobs:
           QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 10 build/DSPiConsole 2> log.txt
           test $? = 124 && ! grep -E 'qrc:.*(Error|is not a type|Cannot assign)' log.txt
 
-  # -- WP QP0 -- The Windows jobs are off until QP20 rewrites the packaging for
-  # the new Qt tree.
+  # -- WP QP20 -- The MinGW job is on again with the new tree's packaging. The
+  # MSVC job stays off: qt/CMakeLists.txt imports dspi_capi.dll.a, MinGW's import
+  # library, and nothing builds the MSVC one yet.
   desktop-windows-mingw:
     name: Desktop app, Windows (MinGW cross build)
-    if: false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -82,7 +83,7 @@ jobs:
       - run: podman run --rm -v "$PWD":/src:Z -w /src dspi-windows apps/desktop/packaging/windows/build-windows.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: dspi-console-windows-mingw
+          name: dspi-uconsole-windows-mingw
           path: |
             dist/*.zip
             dist/*-setup.exe

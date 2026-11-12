@@ -1,8 +1,8 @@
 #!/bin/bash
 # -- WP QD42 -- Refreshes the licence texts in this folder, which the package
-# builds copy into the AppImage, the Windows zip and installer, the .dmg, the
-# .deb and the .rpm (stage.sh). Run after release-sources.sh, whenever a pinned
-# Qt, KWindowSystem or ICU version changes; commit the result. Every text is
+# builds copy into the AppImage, the Windows zip and installer, the .deb and
+# the .rpm (stage.sh). Run after release-sources.sh, whenever a pinned Qt or
+# ICU version changes; commit the result. Every text is
 # copied verbatim from its official source:
 #   GPL-3.0.txt, LGPL-3.0.txt   www.gnu.org/licenses (GPL-3.0.txt must equal the
 #                               repository's LICENSE)
@@ -10,7 +10,6 @@
 #                               source archives release-sources.sh checked
 #                               (qt-third-party.py), one folder per Qt the
 #                               packages bundle (qt-modules.sh)
-#   kwindowsystem-<version>/    KWindowSystem's LICENSES/, from its checked archive
 #   icu-<version>/LICENSE       ICU's licence, from its checked source archive
 #   appimage-runtime-<commit>/  the AppImage runtime's LICENSE, libfuse's LICENSE and
 #                               LGPL2.txt (the LGPL-2.1), squashfuse's LICENSE, from
@@ -41,7 +40,7 @@ for l in gpl-3.0 lgpl-3.0; do
 done
 cmp -s "$here/GPL-3.0.txt" "$repo/LICENSE" || fail "www.gnu.org's GPL-3.0 differs from the repository's LICENSE"
 
-for kind in appimage macos; do
+for kind in appimage windows; do   # -- WP QP20 -- (no .dmg, no KWindowSystem)
     line=$("$here/qt-modules.sh" "$kind"); v=${line%% *}
     archives=()
     for m in ${line#* }; do
@@ -51,13 +50,6 @@ for kind in appimage macos; do
     done
     rm -rf "$here/qt-$v"
     python3 -I "$here/qt-third-party.py" "$here/qt-$v" "${archives[@]}"
-done
-
-for a in "$src"/kde/kwindowsystem-*.tar.xz; do
-    [ -f "$a" ] || fail "no KWindowSystem archive in $src/kde: run release-sources.sh first"
-    v=$(basename "$a" .tar.xz); v=${v#kwindowsystem-}
-    rm -rf "$here/kwindowsystem-$v"; mkdir -p "$here/kwindowsystem-$v"
-    tar -xJf "$a" -C "$here/kwindowsystem-$v" --strip-components=1 --wildcards "kwindowsystem-$v/LICENSES/*"
 done
 
 for a in "$src"/icu/icu4c-*-src.tgz; do

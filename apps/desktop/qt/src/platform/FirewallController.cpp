@@ -282,7 +282,8 @@ void FirewallController::check()
     const QString exe = m_exe;
     m_worker.start([this, exe]() {
         const QString rules = withCom([&] { return readRules(exe); });
-        const bool isPublic = withCom([] { return onPublicNetwork(); });
+        // -- WP QP20 -- the file's own function, not the member of that name
+        const bool isPublic = withCom([] { return ::onPublicNetwork(); });
         QMetaObject::invokeMethod(this, [this, rules, isPublic]() {
             m_checking = false;
             m_rules = rules;
