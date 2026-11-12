@@ -142,8 +142,8 @@ void ChannelController::watchLimiter(bool on) {
     m_ctx.poller->setEnabled(m_limiterPoll, m_limiterWatchers > 0 && limiterSupported());
 }
 
-void ChannelController::apply(const QString &what, std::function<bool(FfiCore *)> setter) {
-    m_ctx.device->write(what, std::move(setter));
+void ChannelController::apply(const QString &what, std::function<bool(FfiCore *)> setter, std::function<void(bool)> done) {
+    m_ctx.device->write(what, std::move(setter), std::move(done));
 }
 
 // ---- Filter types ------------------------------------------------------------
@@ -296,7 +296,7 @@ void ChannelController::writeBand(int channel, int band, bool crossover, const F
     emit changed();
     const auto ch = uint8_t(channel), b = uint8_t(band);
     const QString what = QStringLiteral("%1 band %2 %3").arg(crossover ? QStringLiteral("crossover") : QStringLiteral("filter")).arg(channel).arg(band);
-    m_ctx.device->write(
+    apply(
         what,
         [ch, b, crossover, p](FfiCore *c) { return crossover ? dspi_set_crossover(c, ch, b, p) : dspi_set_filter(c, ch, b, p); },
         [this, key, seq](bool) {

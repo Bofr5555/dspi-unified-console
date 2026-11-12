@@ -46,6 +46,8 @@ class ChannelController : public QObject {
     Q_PROPERTY(double maxDelayMs READ maxDelayMs NOTIFY limitsChanged)
     Q_PROPERTY(double preampMaxDb READ preampMaxDb NOTIFY limitsChanged)
     Q_PROPERTY(int linkedPairs READ linkedPairs NOTIFY changed)
+    // The Linkwitz Transform's type code (its row has a panel instead of fields)
+    Q_PROPERTY(int linkwitzType READ linkwitzType CONSTANT)
     // An output page shows its XO tab (the graph draws crossover bands then)
     Q_PROPERTY(bool crossoverTabShown READ crossoverTabShown WRITE setCrossoverTabShown NOTIFY crossoverTabShownChanged)
     // Each output's limiter gain reduction in dB, polled while a page shows it
@@ -69,6 +71,7 @@ public:
     double maxDelayMs() const { return m_maxDelayMs; }
     double preampMaxDb() const { return m_preampMaxDb; }
     int linkedPairs() const { return m_linkedPairs; }
+    static int linkwitzType() { return FILTER_LINKWITZ_TRANSFORM; }
     bool crossoverTabShown() const { return m_xoTab; }
     void setCrossoverTabShown(bool shown);
     QVariantList limiterReduction() const { return m_reduction; }
@@ -172,7 +175,7 @@ private:
     bool validBand(int channel, int band, bool crossover) const;
     FilterParams current(int channel, int band, bool crossover) const;
     // The one write path: `what` names the target (it is the coalescing key)
-    void apply(const QString &what, std::function<bool(FfiCore *)> setter);
+    void apply(const QString &what, std::function<bool(FfiCore *)> setter, std::function<void(bool)> done = {});
     void writeBand(int channel, int band, bool crossover, const FilterParams &p);
     // The band edit on `channel` and, for half of a linked input pair, its partner
     void editBand(int channel, int band, bool crossover, const std::function<void(FilterParams &)> &edit);

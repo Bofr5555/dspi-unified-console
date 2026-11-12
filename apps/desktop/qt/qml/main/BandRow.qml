@@ -42,7 +42,7 @@ Rectangle {
     readonly property int type: params.type
     readonly property bool active: type !== 0
     readonly property bool bypassed: params.bypass
-    readonly property bool linkwitz: type === 11
+    readonly property bool linkwitz: type === ChannelController.linkwitzType
     readonly property bool hasColor: bandColor.a > 0
     readonly property string what: crossover ? qsTr("Crossover band %1").arg(band + 1) : qsTr("Band %1").arg(band + 1)
 
