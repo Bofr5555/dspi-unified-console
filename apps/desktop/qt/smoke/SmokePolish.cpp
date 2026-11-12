@@ -32,6 +32,7 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSettings>
+#include <QSignalSpy>
 #include <QTest>
 #include <cmath>
 
@@ -432,6 +433,28 @@ void checkComponents(SmokeDriver &d) {
             d.waitFor(2000, [&]() { return m && m->property("hold").toDouble() >= 0 && !Poller::instance()->peakHold().isEmpty(); }));
     delete m;
 
+    // CustomSlider (QD41): Up and Down step a horizontal slider and commit
+    auto *slider = qobject_cast<QQuickItem *>(make(d, "CustomSlider", { { QStringLiteral("from"), 0 }, { QStringLiteral("to"), 10 },
+                                                                        { QStringLiteral("stepSize"), 1 }, { QStringLiteral("value"), 5 },
+                                                                        { QStringLiteral("label"), QStringLiteral("Test") } }));
+    if (slider) {
+        QSignalSpy commits(slider, SIGNAL(committed(double)));
+        d.mainWindow()->requestActivate();
+        d.waitFor(1000, [&]() { return QGuiApplication::focusWindow() == d.mainWindow(); });
+        slider->forceActiveFocus();
+        QTest::keyClick(d.mainWindow(), Qt::Key_Up);
+        QTest::keyClick(d.mainWindow(), Qt::Key_Up);
+        QTest::keyClick(d.mainWindow(), Qt::Key_Down);
+        d.check(QStringLiteral("qp18: Up and Down step a horizontal slider, each step committed"),
+                slider->property("value").toDouble() == 6 && commits.count() == 3);
+        QAccessibleInterface *sa = QAccessible::queryAccessibleInterface(slider);
+        QAccessibleActionInterface *act = sa ? sa->actionInterface() : nullptr;
+        if (act) act->doAction(QAccessibleActionInterface::increaseAction());
+        d.check(QStringLiteral("qp18: the accessibility increase steps and commits"),
+                act && slider->property("value").toDouble() == 7 && commits.count() == 4);
+        delete slider;
+    }
+
     // StatusBar
     auto *bar = qobject_cast<QQuickItem *>(make(d, "StatusBar", { { QStringLiteral("connectionText"), QStringLiteral("Demo DSPi") },
                                                                   { QStringLiteral("connectionState"), QStringLiteral("online") },
@@ -457,6 +480,14 @@ void checkChannelTags(SmokeDriver &d) {
 
 void polishSection(SmokeDriver &d) {
     d.waitIdle();
+    // A question an earlier section left open would hold the keys: say which, and close it
+    QStringList open;
+    for (QObject *o : d.mainWindow()->findChildren<QObject *>())
+        if (o->inherits("QQuickPopup") && o->property("opened").toBool()) {
+            open << o->objectName();
+            QMetaObject::invokeMethod(o, "close");
+        }
+    if (!open.isEmpty()) std::printf("smoke: qp18: closed what was left open: %s\n", qPrintable(open.join(QStringLiteral(", "))));
     checkShortcutTable(d);
     checkDemo(d);
     checkNotices(d);

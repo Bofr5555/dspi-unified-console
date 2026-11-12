@@ -176,6 +176,25 @@ QtObject {
         Shell.trigger(id)
     }
 
+    // -- WP QP18 -- A row's text by its id, or a submenu's title by its first
+    // row's id; Menus binds to it, so a new translation reaches the menus
+    function textOf(id, submenu) {
+        let found = ""
+        const walk = rows => {
+            for (const r of rows) {
+                if (found) return
+                if (r.rows) {
+                    if (submenu && r.rows.length && r.rows[0].id === id) found = r.submenu
+                    else walk(r.rows)
+                } else if (!submenu && r.id === id) {
+                    found = r.text
+                }
+            }
+        }
+        for (const m of menus) walk(m.rows)
+        return found
+    }
+
     // Every action id in the table, in menu order (the smoke driver checks them)
     function allIds() {
         const ids = []

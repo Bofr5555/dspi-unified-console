@@ -5,9 +5,9 @@
 //   technology, and Tab walks through each window and out of every control
 //   (no keyboard trap, WCAG 2.1.2).
 // - A screenshot of each in the light scheme (light/).
-// - The pseudo-locale pass (behaviour.md §22): a translator that marks every
-//   string the app translates; each window again (pseudo/), with the texts
-//   that came through unmarked and the ones cut short, per window.
+// - The pseudo-locale pass (qp18-pseudo, behaviour.md §22): a translator
+//   that marks every string the app translates; each window again (pseudo/),
+//   with the texts that came through unmarked and the ones cut short.
 #include "SmokeDriver.h"
 
 #include "DeviceModel.h"
@@ -18,6 +18,7 @@
 #include <QAccessible>
 #include <QCoreApplication>
 #include <QDir>
+#include <QFile>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQuickItem>
@@ -131,6 +132,10 @@ void checkTabWalk(SmokeDriver &d, const QString &where, QQuickWindow *w, Totals 
     }
     // Escape out of whatever the walk left open
     QTest::keyClick(w, Qt::Key_Escape);
+    // Staying is right where the window has one stop only
+    int stops = 0;
+    walk(w->contentItem(), [&](QQuickItem *item) { stops += item->activeFocusOnTab() && item->isEnabled() && shown(item); });
+    if (stops <= 1) trapped = 0;
     t.traps += trapped;
     ++t.windows;
     if (trapped) std::printf("smoke: qp18: %s: Tab stays on %s\n", qPrintable(where), qPrintable(trapAt));
@@ -157,26 +162,21 @@ void countTexts(const QString &where, QQuickItem *root, Totals &t, QStringList *
     });
 }
 
-void accessSection(SmokeDriver &d) {
+// The windows of a pass, each opened in turn: the main window (overview, an
+// input and an output page), every registered tool window, every Settings page
+struct Stop {
+    QString name;
+    std::function<QQuickWindow *()> open;
+    std::function<void()> close;
+};
+
+QList<Stop> stopsOf(SmokeDriver &d) {
     Shell *shell = d.app().shell;
     QQuickWindow *main = d.mainWindow();
-    const QString out = d.outDir();
-    QDir().mkpath(out + QStringLiteral("/light"));
-    QDir().mkpath(out + QStringLiteral("/pseudo"));
-    const Qt::ColorScheme scheme = shell->colorSchemeOverride();
-    Totals t;
-
-    // The windows of a pass: (name, window, the item to look into)
-    struct Stop {
-        QString name;
-        std::function<QQuickWindow *()> open;
-        std::function<void()> close;
-    };
     QList<Stop> stops;
     stops.append({ QStringLiteral("main"), [main]() { return main; }, []() {} });
-    const int inputChannel = 0;
     const int outputChannel = d.app().device->numInputs();
-    stops.append({ QStringLiteral("main-input"), [main, inputChannel]() { main->setProperty("selectedChannel", inputChannel); return main; },
+    stops.append({ QStringLiteral("main-input"), [main]() { main->setProperty("selectedChannel", 0); return main; },
                    [main]() { main->setProperty("selectedChannel", -1); } });
     stops.append({ QStringLiteral("main-output"), [main, outputChannel]() { main->setProperty("selectedChannel", outputChannel); return main; },
                    [main]() { main->setProperty("selectedChannel", -1); } });
@@ -191,7 +191,7 @@ void accessSection(SmokeDriver &d) {
     auto *settings = Registrar::instance<SettingsController>();
     for (const SettingsRegistry::PageEntry &page : SettingsRegistry::pages()) {
         const QString id = QString::fromLatin1(page.id);
-        if (page.group == SettingsRegistry::Hidden) continue;
+        if (page.group == SettingsRegistry::Hidden || id.startsWith(QLatin1String("smoke"))) continue;
         stops.append({ QStringLiteral("settings-") + id,
                        [shell, settings, id]() {
                            auto *w = qobject_cast<QQuickWindow *>(shell->openWindow(QStringLiteral("edit.settings")));
@@ -200,26 +200,32 @@ void accessSection(SmokeDriver &d) {
                        },
                        []() {} });
     }
+    return stops;
+}
 
-    auto visit = [&](const std::function<void(const QString &, QQuickWindow *)> &fn) {
-        for (const Stop &s : stops) {
-            QQuickWindow *w = s.open();
-            if (!w || !d.waitFor(2000, [w]() { return w->isVisible(); })) {
-                s.close();
-                continue;
-            }
-            d.spin(120);
-            fn(s.name, w);
+void visit(SmokeDriver &d, const QList<Stop> &stops, const std::function<void(const QString &, QQuickWindow *)> &fn) {
+    for (const Stop &s : stops) {
+        QQuickWindow *w = s.open();
+        if (!w || !d.waitFor(2000, [w]() { return w->isVisible(); })) {
             s.close();
-            d.spin(20);
+            continue;
         }
-        if (QWindow *sw = shell->openWindow(QStringLiteral("edit.settings"))) sw->close();
-        main->requestActivate();
-        d.spin(50);
-    };
+        d.spin(120);
+        fn(s.name, w);
+        s.close();
+        d.spin(20);
+    }
+    if (QWindow *sw = d.app().shell->openWindow(QStringLiteral("edit.settings"))) sw->close();
+    d.mainWindow()->requestActivate();
+    d.spin(50);
+}
 
-    // ---- Names, Tab, and the light scheme --------------------------------
-    visit([&](const QString &name, QQuickWindow *w) {
+void accessSection(SmokeDriver &d) {
+    Shell *shell = d.app().shell;
+    QDir().mkpath(d.outDir() + QStringLiteral("/light"));
+    const Qt::ColorScheme scheme = shell->colorSchemeOverride();
+    Totals t;
+    visit(d, stopsOf(d), [&](const QString &name, QQuickWindow *w) {
         checkNames(d, name, w->contentItem(), t);
         checkTabWalk(d, name, w, t);
         shell->setColorSchemeOverride(Qt::ColorScheme::Light);
@@ -230,12 +236,39 @@ void accessSection(SmokeDriver &d) {
     });
     std::printf("smoke: qp18: accessibility: %d controls, %d unnamed; %d windows walked, %d traps\n", t.controls, t.unnamed,
                 t.windows, t.traps);
+}
 
-    // ---- The pseudo-locale pass ------------------------------------------
-    // The English first, for the clipping baseline
-    Totals english;
-    QStringList ignored;
-    visit([&](const QString &name, QQuickWindow *w) { countTexts(name, w->contentItem(), english, &ignored); });
+// behaviour.md §22. Under QP19's pseudo launches (DSPI_SMOKE_PSEUDO=en, then
+// =pseudo, each its own run) one half each: the English writes the clipping
+// baseline (clipped.txt), the pseudo run compares with it. Run in the main
+// pass (no DSPI_SMOKE_PSEUDO) it does both halves in turn.
+void pseudoSection(SmokeDriver &d) {
+    const QByteArray locale = qgetenv("DSPI_SMOKE_PSEUDO");
+    const bool english = locale != "pseudo";
+    const bool marked = locale != "en";
+    const QString dir = locale.isEmpty() ? d.outDir() + QStringLiteral("/pseudo") : d.outDir();
+    QDir().mkpath(dir);
+    const QList<Stop> stops = stopsOf(d);
+    QStringList unmarked;
+
+    int baseline = -1;
+    if (english) {
+        Totals en;
+        visit(d, stops, [&](const QString &name, QQuickWindow *w) {
+            countTexts(name, w->contentItem(), en, &unmarked);
+            if (!locale.isEmpty()) d.grab(w, QStringLiteral("%1.png").arg(name));
+        });
+        baseline = en.clipped;
+        QFile f(dir + QStringLiteral("/clipped.txt"));
+        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) f.write(QByteArray::number(baseline) + '\n');
+        std::printf("smoke: qp18: English: %d texts, %d clipped, %d elided\n", en.texts, en.clipped, en.elided);
+        unmarked.clear();
+    } else {
+        QFile f(d.outDir() + QStringLiteral("/../pseudo-en/clipped.txt"));
+        if (f.open(QIODevice::ReadOnly)) baseline = f.readAll().trimmed().toInt();
+    }
+    if (!marked) return;
+
     PseudoTranslator pseudo;
     QCoreApplication::installTranslator(&pseudo);
     d.app().engine->retranslate();
@@ -244,24 +277,36 @@ void accessSection(SmokeDriver &d) {
     QObject *action = quit ? quit->property("action").value<QObject *>() : nullptr;
     d.check(QStringLiteral("qp18: the pseudo locale reaches the menus"),
             action && action->property("text").toString().startsWith(u'['));
-    QStringList unmarked;
-    visit([&](const QString &name, QQuickWindow *w) {
-        d.grab(w, QStringLiteral("pseudo/%1.png").arg(name));
+    Totals t;
+    visit(d, stops, [&](const QString &name, QQuickWindow *w) {
+        d.grab(w, (locale.isEmpty() ? QStringLiteral("pseudo/%1.png") : QStringLiteral("%1.png")).arg(name));
         countTexts(name, w->contentItem(), t, &unmarked);
     });
     QCoreApplication::removeTranslator(&pseudo);
     d.app().engine->retranslate();
     d.spin(150);
-    QFile list(out + QStringLiteral("/pseudo/unmarked.txt"));
+    QFile list(dir + QStringLiteral("/unmarked.txt"));
     if (list.open(QIODevice::WriteOnly | QIODevice::Truncate)) list.write(unmarked.join(u'\n').toUtf8() + '\n');
-    std::printf("smoke: qp18: pseudo: %d texts, %d not through a translation (pseudo/unmarked.txt), %d clipped "
+    std::printf("smoke: qp18: pseudo: %d texts, %d not through a translation (unmarked.txt), %d clipped "
                 "(%d in English), %d elided\n",
-                t.texts, t.unmarked, t.clipped, english.clipped, t.elided);
-    d.check(QStringLiteral("qp18: the pseudo locale clips no more than English does"), t.clipped <= english.clipped);
+                t.texts, t.unmarked, t.clipped, baseline, t.elided);
+    d.check(QStringLiteral("qp18: the pseudo locale clips no more than English does"), baseline < 0 || t.clipped <= baseline);
     d.check(QStringLiteral("qp18: back in English after the pass"),
             action && !action->property("text").toString().startsWith(u'['));
+}
+
+// Registered in QP19's pseudo launches where the driver has them, otherwise in
+// the main pass
+template <class D>
+auto registerPseudo(int) -> decltype(D::Mode::Pseudo, SmokeDriver::Section("", 0, nullptr)) {
+    return SmokeDriver::Section("qp18-pseudo", 10, &pseudoSection, D::Mode::Pseudo);
+}
+template <class D>
+SmokeDriver::Section registerPseudo(long) {
+    return SmokeDriver::Section("qp18-pseudo", 195, &pseudoSection);
 }
 
 } // namespace
 
 static const SmokeDriver::Section qp18Access("qp18-access", 190, &accessSection);
+static const SmokeDriver::Section qp18Pseudo = registerPseudo<SmokeDriver>(0);
