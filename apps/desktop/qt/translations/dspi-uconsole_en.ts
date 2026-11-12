@@ -3754,7 +3754,7 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Decode the LG TV&apos;s TOSLINK volume + mute signaling and apply it as the host volume - TV remote becomes the volume control. Per-preset; saved with the active preset.</source>
+        <source>Decode the LG TV&apos;s TOSLINK volume + mute signaling and apply it as the volume - TV remote becomes the volume control. Per-preset; saved with the active preset.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5579,6 +5579,10 @@ Macros are stored on the device alongside the controls and share their Save and 
     <name>OutputCard</name>
     <message>
         <source>Out %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Identify</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8253,10 +8257,6 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Times the outputs ran dry while a source owed audio. A host that pauses its stream does not count.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Refused Blocks</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8289,7 +8289,11 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Longest gap between USB audio packets since the watermarks were reset. Long gaps are the host pausing its stream.</source>
+        <source>Times the outputs ran dry while a source owed audio. A paused stream does not count.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Longest gap between USB audio packets since the watermarks were reset. Long gaps are a paused stream.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
