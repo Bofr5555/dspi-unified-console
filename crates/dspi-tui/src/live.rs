@@ -2063,8 +2063,12 @@ impl Live {
             }
             ShellEvent::ClearClips => {
                 self.state.clear_clip_latch();
-                self.meters.clear_clips();
-                let _ = session.write("meters.clear", &[], Value::Trigger);
+                let now = Instant::now();
+                self.meters.clear_clips(now);
+                let sent = session.write("meters.clear", &[], Value::Trigger);
+                // A refused clear (a viewer on a hub) brings the clips back.
+                self.meters.clear_result(now, sent.is_ok());
+                self.state.clip_latched = self.meters.clip_hold();
                 self.sync_model();
             }
             ShellEvent::BypassToggle => {
@@ -3035,11 +3039,14 @@ impl Live {
         let update = self.meters.update(now, &m.peaks, clips);
         self.state.update_meters(m);
         // The clip marker is the shared clip hold: the Console's, ten seconds
-        // after the last new clip, when the device is asked to forget too.
-        self.state.clip_latched = self.meters.clip_hold();
+        // after the last new clip, when the device is asked to forget too. A
+        // channel still clipping lights again on the next read; where the
+        // clear is refused, the marker follows the device's sticky bits.
         if update.clear_due {
-            let _ = session.write("meters.clear", &[], Value::Trigger);
+            let sent = session.write("meters.clear", &[], Value::Trigger);
+            self.meters.clear_result(now, sent.is_ok());
         }
+        self.state.clip_latched = self.meters.clip_hold();
     }
 
     /// Meters, notifications, status expiry, peak ballistics.
@@ -5561,63 +5568,120 @@ mod tests {
         assert!(l.gate.held.is_empty());
     }
 
-    /// WP P0M: the meters' hold and clip hold are the shared ballistics: the
-    /// clip marker stays ten seconds after the last new clip (the Console's),
-    /// then the device is asked to forget.
-    #[test]
-    fn wp_p0m_the_clip_hold_is_the_shared_one() {
-        let (mut l, mut session, log) = live();
-        let t0 = Instant::now();
-        let meters = |peak: f32, clip: bool| dspi_session::Meters {
+    /// `live()` on a device that answers `REQ_CLEAR_CLIPS` when `clears`,
+    /// and refuses it (as a hub does for a viewer) otherwise.
+    fn live_clips(clears: bool) -> (Live, Session, LogHandle) {
+        let mut mock = MockTransport::new()
+            .window(op::REQ_GET_ALL_PARAMS_CHUNK, packet())
+            .data(op::REQ_GET_STATUS, vec![0; 41]);
+        if clears {
+            mock = mock.data(op::REQ_CLEAR_CLIPS, vec![0; 4]);
+        }
+        let log = mock.log_handle();
+        let session = Session::new(Box::new(mock), caps()).unwrap();
+        let state = DeviceState::new(
+            caps(),
+            dspi_proto::wire::BulkPacket::decode(packet()).unwrap(),
+        );
+        let theme = Theme::console(ColorDepth::TrueColor, Glyphs::Braille);
+        let live = Live::new(state, theme, Performance::lite(), Box::new(StandInScreens));
+        (live, session, log)
+    }
+
+    fn clip_meters(peak: f32, clip: bool) -> dspi_session::Meters {
+        dspi_session::Meters {
             peaks: vec![peak; 17],
             clipped: vec![clip; 1],
             cpu0: 0,
             cpu1: 0,
             active_inputs: 2,
-        };
-        let clears = |log: &LogHandle| {
-            log.lock()
-                .unwrap()
-                .iter()
-                .filter(|x| x.opcode == op::REQ_CLEAR_CLIPS)
-                .count()
-        };
-        l.on_meters(meters(0.7, true), t0, &mut session);
+        }
+    }
+
+    fn clears_sent(log: &LogHandle) -> usize {
+        log.lock()
+            .unwrap()
+            .iter()
+            .filter(|x| x.opcode == op::REQ_CLEAR_CLIPS)
+            .count()
+    }
+
+    /// WP P0M: the meters' hold and clip hold are the shared ballistics: the
+    /// clip marker stays ten seconds after the last new clip (the Console's),
+    /// then the device is asked to forget. Review p0m F1: a channel that keeps
+    /// clipping is shown again on the next read, as the old Terminal and the
+    /// Console re-latched.
+    #[test]
+    fn wp_p0m_the_clip_hold_is_the_shared_one() {
+        let (mut l, mut session, log) = live_clips(true);
+        let t0 = Instant::now();
+        let s = |secs: u64, ms: u64| t0 + Duration::from_secs(secs) + Duration::from_millis(ms);
+        l.on_meters(clip_meters(0.7, true), t0, &mut session);
         assert!(l.state.is_clipped(0));
         assert_eq!(l.meters.hold(0), 0.7);
         // Three seconds on: the old Terminal cleared here; the hold stays.
-        l.on_meters(meters(0.1, true), t0 + Duration::from_secs(3), &mut session);
+        l.on_meters(clip_meters(0.1, true), s(3, 0), &mut session);
         assert!(l.state.is_clipped(0));
-        assert_eq!(clears(&log), 0);
-        l.on_meters(
-            meters(0.1, true),
-            t0 + Duration::from_secs(10),
-            &mut session,
-        );
+        assert_eq!(clears_sent(&log), 0);
+        // Ten seconds: cleared, dark for this read.
+        l.on_meters(clip_meters(0.1, true), s(10, 0), &mut session);
+        assert_eq!(clears_sent(&log), 1);
         assert!(!l.state.is_clipped(0));
-        assert_eq!(clears(&log), 1);
-        // The sticky flag until the clear lands is not a new clip.
-        l.on_meters(
-            meters(0.1, true),
-            t0 + Duration::from_secs(11),
-            &mut session,
-        );
-        assert!(!l.state.is_clipped(0));
-        // A user's clear darkens it at once.
-        l.on_meters(
-            meters(0.1, false),
-            t0 + Duration::from_secs(12),
-            &mut session,
-        );
-        l.on_meters(
-            meters(0.1, true),
-            t0 + Duration::from_secs(13),
-            &mut session,
-        );
+        // Still clipping: the next read shows it again.
+        l.on_meters(clip_meters(0.1, true), s(10, 60), &mut session);
         assert!(l.state.is_clipped(0));
+        // Over two minutes of clipping, dark for one read per clear at most.
+        let (mut dark, mut t) = (0, 10_120u64);
+        while t <= 130_000 {
+            l.on_meters(
+                clip_meters(1.0, true),
+                t0 + Duration::from_millis(t),
+                &mut session,
+            );
+            dark += usize::from(!l.state.is_clipped(0));
+            t += 60;
+        }
+        assert!(clears_sent(&log) >= 12);
+        assert!(dark < clears_sent(&log), "dark {dark} reads");
+        // A user's clear darkens it at once; the device then reads clear.
         l.handle_event(&mut session, ShellEvent::ClearClips);
         assert!(!l.state.is_clipped(0));
+        l.on_meters(clip_meters(0.1, false), s(131, 0), &mut session);
+        assert!(!l.state.is_clipped(0));
         assert_eq!(l.meters.clip_hold(), 0);
+    }
+
+    /// Review p0m D1: where the clear is refused (a viewer on a hub), the
+    /// marker follows the device's sticky bit instead of going dark.
+    #[test]
+    fn wp_p0m_a_refused_clear_keeps_the_clip_shown() {
+        let (mut l, mut session, log) = live_clips(false);
+        let t0 = Instant::now();
+        l.on_meters(clip_meters(0.7, true), t0, &mut session);
+        let mut t = 500u64;
+        while t <= 60_000 {
+            l.on_meters(
+                clip_meters(0.1, true),
+                t0 + Duration::from_millis(t),
+                &mut session,
+            );
+            assert!(l.state.is_clipped(0), "shown at {t} ms");
+            t += 500;
+        }
+        assert_eq!(clears_sent(&log), 1, "asked once, never retried");
+        // Cleared elsewhere: dark ten seconds after the last read with the bit.
+        l.on_meters(
+            clip_meters(0.1, false),
+            t0 + Duration::from_millis(60_500),
+            &mut session,
+        );
+        assert!(l.state.is_clipped(0));
+        l.on_meters(
+            clip_meters(0.1, false),
+            t0 + Duration::from_millis(70_100),
+            &mut session,
+        );
+        assert!(!l.state.is_clipped(0));
     }
 
     /// The writes that reach the wire, by opcode, in order.
