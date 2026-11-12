@@ -103,6 +103,15 @@ final class HubBrowser: ObservableObject {
     var resolveRetryBase: TimeInterval = 1
     /// How long a dead browser waits before it is rebuilt.
     var browserRestartDelay: TimeInterval = 1
+    // -- WP DISC2 --
+    /// How long a service that left the browse results stays listed, in case it
+    /// comes straight back: a TXT change through Windows' DNS-SD is a goodbye
+    /// and a new registration a second or two later, and Bonjour drops and
+    /// re-adds a service now and then.  The core's browser (the desktop clients)
+    /// and Android wait the same 3 s.  Zero removes at once.
+    var removalGrace: TimeInterval = 3
+    /// The removal waiting out its grace, per service name.
+    private var leaving: [String: DispatchWorkItem] = [:]
 
     init(ownHubID: String? = nil,
          fetchInfo: @escaping (URL, @escaping (Data?) -> Void) -> Void = HubBrowser.fetchOverHTTP,
@@ -215,6 +224,8 @@ final class HubBrowser: ObservableObject {
         resolveRetries.values.forEach { $0.cancel() }
         resolveRetries.removeAll()
         resolveFailures.removeAll()
+        leaving.values.forEach { $0.cancel() }   // -- WP DISC2 --
+        leaving.removeAll()
         browsed.removeAll()
         endpoints.removeAll()
         isBrowsing = false
@@ -336,12 +347,15 @@ final class HubBrowser: ObservableObject {
     func ingest(_ services: [(name: String, txt: NWTXTRecord?, endpoint: NWEndpoint)],
                 changed: Set<String>? = nil) {
         var seen = Set<String>()
+        var own = Set<String>()
         for (name, txt, endpoint) in services {
             seen.insert(name)
+            // -- WP DISC2 -- back within its grace: it stays
+            leaving.removeValue(forKey: name)?.cancel()
             guard let txt = txt else { continue }
             var hub = Self.hub(fromTXT: txt, serviceName: name)
             // Left out of `seen`, so the sweep below drops it if it was listed.
-            if let own = ownHubID, hub.id.lowercased() == own { seen.remove(name); continue }
+            if let ownID = ownHubID, hub.id.lowercased() == ownID { seen.remove(name); own.insert(name); continue }
             // Keep an already resolved host/port; resolve the rest.
             if let known = browsed[name] { hub.host = known.host; hub.port = known.port }
             if hub.host.isEmpty, case let .hostPort(host, port) = endpoint {
@@ -353,16 +367,42 @@ final class HubBrowser: ObservableObject {
             if case .hostPort = endpoint { continue }
             if hub.host.isEmpty || changed?.contains(name) ?? true { resolve(name: name) }
         }
-        for name in browsed.keys where !seen.contains(name) { forget(name) }
+        for name in browsed.keys where !seen.contains(name) {
+            // -- WP DISC2 -- our own hub goes at once; any other after its grace
+            if own.contains(name) || removalGrace <= 0 { forget(name) } else { leave(name) }
+        }
         publish()
     }
 
     private func forget(_ name: String) {
+        leaving.removeValue(forKey: name)?.cancel()   // -- WP DISC2 --
         browsed[name] = nil
         endpoints[name] = nil
+        abandon(name)
+    }
+
+    // -- WP DISC2 --
+    /// Stop resolving a service that left; it stays listed as it was.
+    private func abandon(_ name: String) {
         resolvers[name]?.attempt.cancel(); resolvers[name] = nil
         resolveRetries[name]?.cancel(); resolveRetries[name] = nil
         resolveFailures[name] = nil
+    }
+
+    // -- WP DISC2 --
+    /// A service left the browse results: keep it listed for `removalGrace`,
+    /// then forget it unless it came back.  A second goodbye does not put the
+    /// end off.
+    private func leave(_ name: String) {
+        abandon(name)
+        guard leaving[name] == nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self = self, self.leaving.removeValue(forKey: name) != nil else { return }
+            self.forget(name)
+            self.publish()
+        }
+        leaving[name] = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + removalGrace, execute: work)
     }
 
     /// Resolve a hub's address again, now.  The composite asks when a

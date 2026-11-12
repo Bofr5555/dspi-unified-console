@@ -13,7 +13,7 @@
 #                                     `cargo tree --offline --target all`)
 #       fmt clippy test               the three gates, whole workspace
 #       windows-gnu                   cargo build --workspace, x86_64-pc-windows-gnu
-#       windows-msvc                  cargo xwin build of dspi-core, dspi-capi, dspi-term
+#       windows-msvc                  cargo xwin build of dspi-core, dspi-capi, dspi-term (uconsole)
 #       android                       cargo ndk build of dspi-core and dspi-ffi (arm64, armv7, x86_64)
 #       android-aab                   the Android app's signed release bundle, with a
 #                                     throwaway key, in its Gradle container
@@ -41,7 +41,7 @@
 #                                     qt step runs it too)
 #       qt-offscreen                  the Qt app with its smoke driver, on the
 #                                     demo device, offscreen (apps/desktop/qt/smoke)
-#       terminal                      the Linux terminal binary (dspi-term), run once
+#       terminal                      the Linux terminal binary (dspi-term: uconsole), run once
 #       qt-windows                    packaging/windows/build-windows.sh: the
 #                                     MinGW Qt 6 app, zip and installer. Off
 #                                     until QP20 rewrites the packaging (exits 3)
@@ -103,6 +103,8 @@ CAPI_FEATURES=link,midir,mdns,hub
 FAKEHUB="cargo build --release -p dspi-link --features fake-hub --bin dspi-link-fakehub"
 # -- WP HB6 -- The Terminal, as the smoke driver's client of a demo hub
 TERMINAL="cargo build --release --locked -p dspi-term"
+# -- WP CLEAN1 -- The Terminal's command name (crates/dspi-cmd's command!())
+CMD=$(ci/command-name.sh)
 # -- WP QD40 -- The Qt app's .ts is what lupdate makes of the sources now: lupdate
 # runs as the dspi_lupdate target does (apps/desktop/qt/CMakeLists.txt, the same
 # arguments) on a copy of qml/, src/ and translations/ laid out as in the tree,
@@ -222,7 +224,7 @@ for s in "${steps[@]}"; do
       $RUN "PROPTEST_CASES=20000 cargo test --workspace --all-features --release -- proptest_" ;;
     terminal)
       # -- WP MR2 --
-      $RUN "cargo build --release --locked -p dspi-term && /target/release/dspi --version" ;;
+      $RUN "cargo build --release --locked -p dspi-term && /target/release/$CMD --version && python3 apps/terminal/tools/gen_rust_notices.py --check" ;;
     kotlin|swift)
       $RUN "ci/compile-bindings.sh $s"
       # -- WP REL013M -- and the Swift macOS app's Rust crates notice is current

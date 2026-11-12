@@ -48,8 +48,9 @@ class AboutPageAn26Test {
     }
 
     private fun assertGoogleRowsStay() {
-        rule.onNodeWithText("Source code").assertHasClickAction()
-        rule.onNodeWithText("https://github.com/Bofr5555/dspi-unified-console").assertExists()
+        // WP CLEAN1: the source is the release's archive, named rather than linked
+        rule.onNodeWithText("Source code").assertExists()
+        rule.onNodeWithText("Published with each release as its -source.tar.gz archive, beside the downloads").assertExists()
         rule.onNodeWithText("Privacy policy").assertHasClickAction()
         rule.onNodeWithText("No data collected; no network access").assertExists()
         rule.onNodeWithText("Licences").assertHasClickAction()
@@ -80,8 +81,8 @@ class AboutPageAn26Test {
         show(File("../../../assets/about.json").readText())
         rule.onNodeWithText("Weeb Labs: links and support").assertExists()
         rule.onNodeWithText(
-            "Weeb Labs' channels for DSPi, its firmware and the original DSPi Consoles. " +
-                "This console is made by Bofr5555, not Weeb Labs."
+            "Weeb Labs makes DSPi, its firmware and the original DSPi Consoles; these are their channels, " +
+                "and Patreon and Ko-fi are where to support their work. This console is made by Bofr5555, not Weeb Labs."
         ).assertExists()
         rule.onNode(hasText("Links & Support")).assertDoesNotExist()
     }
@@ -110,7 +111,7 @@ class AboutPageAn26Test {
         val asset = File("../../../assets/about.json").readText()
         show(asset)
         val licence = Json.parseObject(asset)!!["licence"] as Map<String, Any?>
-        rule.onNodeWithText("GPL-3.0-or-later with additional terms · third-party notices").assertExists()
+        rule.onNodeWithText("GPL-3.0-only with additional terms · third-party notices").assertExists()
         rule.onNodeWithText("Licences").performClick()
         rule.onNodeWithText(licence.str("statement")!!).assertExists()
         rule.onNodeWithText(licence.str("terms_title")!!).assertExists()

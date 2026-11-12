@@ -1818,7 +1818,7 @@ mod tests {
         assert!(e.to_string().contains("read-only"), "{e}");
     }
 
-    // -- WP TM26 -- hw-1 D2: `dspi get rta.control` said "read-only".
+    // -- WP TM26 -- hw-1 D2: `uconsole get rta.control` said "read-only".
     #[test]
     fn tm26_reading_an_action_says_write_only() {
         let t = MockTransport::new();

@@ -58,6 +58,12 @@ class NsdHubBrowser(context: Context, private val scope: CoroutineScope) : HubBr
     /** [start] was called and [stop] was not; a failed start is still wanted. */
     private var wanted = false
 
+    // WP DISC2: a lost hub stays listed a little, in case it is found again at once.
+    private val grace = RemovalGrace(scope) { name ->
+        found.remove(name)
+        publish()
+    }
+
     override fun start() {
         wanted = true
         if (listener != null || nsd == null) return
@@ -88,13 +94,15 @@ class NsdHubBrowser(context: Context, private val scope: CoroutineScope) : HubBr
             override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) = Unit
 
             override fun onServiceFound(info: NsdServiceInfo) = current {
+                // WP DISC2: back within the grace, so it stays; resolved anew for new data.
+                grace.back(info.serviceName)
                 queue.addLast(info)
                 resolveNext()
             }
 
             override fun onServiceLost(info: NsdServiceInfo) = current {
-                found.remove(info.serviceName)
-                publish()
+                // WP DISC2: not at once (RemovalGrace).
+                if (found.containsKey(info.serviceName)) grace.lost(info.serviceName)
             }
         }
         listener = l
@@ -115,6 +123,7 @@ class NsdHubBrowser(context: Context, private val scope: CoroutineScope) : HubBr
         multicast = null
         queue.clear()
         found.clear()
+        grace.clear() // WP DISC2
         publish()
         _browsing.value = false
     }

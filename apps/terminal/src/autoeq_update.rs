@@ -1,8 +1,9 @@
-//! `dspi autoeq rebuild`, `update`, `import` and `reset` (WP TM12).
+//! `uconsole autoeq rebuild`, `update`, `import` and `reset` (WP TM12).
 //!
 //! The same operations as the interface's Update Database menu, for a script or
 //! a machine with no terminal to draw on. None of them needs a device.
 
+use dspi_cmd::COMMAND;
 use std::path::Path;
 use std::time::Duration;
 
@@ -23,14 +24,14 @@ pub fn run(args: &[&str], flags: &[&str]) -> Option<u8> {
         "update" => match args.get(1) {
             Some(url) => update(&HttpFetch::new(), url, &db),
             None => {
-                eprintln!("dspi: autoeq update needs the address of a database");
+                eprintln!("{COMMAND}: autoeq update needs the address of a database");
                 exit::USAGE
             }
         },
         "import" => match args.get(1) {
             Some(file) => import(Path::new(file), &db),
             None => {
-                eprintln!("dspi: autoeq import needs a file");
+                eprintln!("{COMMAND}: autoeq import needs a file");
                 exit::USAGE
             }
         },
@@ -95,7 +96,7 @@ fn import(file: &Path, db: &Path) -> u8 {
     let data = match std::fs::read(file) {
         Ok(data) => data,
         Err(e) => {
-            eprintln!("dspi: could not read {}: {e}", file.display());
+            eprintln!("{COMMAND}: could not read {}: {e}", file.display());
             return exit::USAGE;
         }
     };
@@ -120,7 +121,7 @@ fn reset() -> u8 {
 
 /// Could not get it, as against could not use it: scripts branch on this.
 fn failed(e: &AutoEqError) -> u8 {
-    eprintln!("dspi: {e}");
+    eprintln!("{COMMAND}: {e}");
     match e {
         AutoEqError::Fetch(_)
         | AutoEqError::NoProfiles { .. }

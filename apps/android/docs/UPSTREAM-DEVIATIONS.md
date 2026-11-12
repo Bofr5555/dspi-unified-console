@@ -858,9 +858,11 @@ section above is updated too.
    every other field. HOME's graphs are no longer fixed at 220/260 dp: their
    height is `AppSettings.graphHeight` (default 250, 200–350) with a
    `GraphResizeHandle` under each, as macOS.
-5. **Not merged: GRAPH `PeqDspMath` and fake-core `DspMath`.** One pure-JVM
-   home for both needs a new module in `settings.gradle.kts` (coordinator)
-   and an edit of :fake-core (BRIDGE); left as two copies.
+5. **Two response calculations: GRAPH `PeqDspMath` and fake-core `DspMath`.**
+   GRAPH's is its own, written after the macOS console's `DSPMath.swift`
+   (only `responseAt` and `SAMPLE_RATE`, which the editor uses); the fake
+   core keeps its own. One pure-JVM home for both would need a new module in
+   `settings.gradle.kts` (coordinator) and an edit of :fake-core (BRIDGE).
 
 ## READ-ONLY UI (owner decision G1)
 

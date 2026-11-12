@@ -174,8 +174,9 @@ mod tests_wp_cg29 {
         assert_eq!(table.links_title, "Weeb Labs: links and support");
         assert_eq!(
             table.links_note,
-            "Weeb Labs' channels for DSPi, its firmware and the original DSPi Consoles. \
-             This console is made by Bofr5555, not Weeb Labs."
+            "Weeb Labs makes DSPi, its firmware and the original DSPi Consoles; these are their \
+             channels, and Patreon and Ko-fi are where to support their work. This console is \
+             made by Bofr5555, not Weeb Labs."
         );
         assert!(!table.links.is_empty());
     }
@@ -210,7 +211,8 @@ mod tests_wp_lic1 {
     #[test]
     fn wp_lic1_the_licence_is_gpl3_or_later_with_three_terms() {
         let l = about().unwrap().licence;
-        assert_eq!(l.spdx, "GPL-3.0-or-later");
+        // -- WP CLEAN1 -- the program as a whole is GPL-3.0; Bofr5555's parts "or later"
+        assert_eq!(l.spdx, "GPL-3.0-only");
         assert!(
             l.statement
                 .contains("either version 3 of the License, or (at your option) any later version")
@@ -248,5 +250,38 @@ mod tests_wp_lic1 {
                 assert!(text.contains(&flat(part)), "{path} does not say: {part}");
             }
         }
+    }
+}
+
+// -- WP CLEAN1 --
+#[cfg(test)]
+mod tests_wp_clean1 {
+    use super::*;
+
+    /// The texts are drafts until the owner approves them, and say so.
+    #[test]
+    fn wp_clean1_the_notices_are_marked_draft() {
+        assert!(about().unwrap().draft);
+        for (path, text) in [
+            ("NOTICE.md", include_str!("../../../NOTICE.md")),
+            (
+                "apps/android/NOTICE.md",
+                include_str!("../../../apps/android/NOTICE.md"),
+            ),
+            (
+                "apps/desktop/packaging/licences/TERMS.txt",
+                include_str!("../../../apps/desktop/packaging/licences/TERMS.txt"),
+            ),
+        ] {
+            assert!(text.contains("DRAFT"), "{path} is not marked as a draft");
+        }
+    }
+
+    /// The source pointer is the release's own archive, not a repository link.
+    #[test]
+    fn wp_clean1_the_source_is_the_release_archive() {
+        let l = about().unwrap().licence;
+        assert!(l.notices.contains("-source.tar.gz"), "{}", l.notices);
+        assert!(!l.notices.contains("github.com"), "{}", l.notices);
     }
 }

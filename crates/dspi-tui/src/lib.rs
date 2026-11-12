@@ -23,7 +23,7 @@ pub fn terminal_size() -> Option<(u16, u16)> {
 
 /// Render one frame to text, without a terminal.
 ///
-/// Used by the golden-frame tests and by `dspi screenshot`, so what the tests
+/// Used by the golden-frame tests and by `uconsole screenshot`, so what the tests
 /// check is exactly what a person sees rather than an approximation of it.
 pub fn render_frame(
     width: u16,

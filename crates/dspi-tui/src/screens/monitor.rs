@@ -1,6 +1,6 @@
 //! The Interrupt Monitor: `InterruptMonitor.swift` as a tool panel.
 //!
-//! This is `dspi watch` in a panel. The runner already drains the notification
+//! This is `uconsole watch` in a panel. The runner already drains the notification
 //! reader every tick to keep the device state current, and the log is filled
 //! from that drain, so the panel is a view of
 //! [`actions::EventLog`](crate::actions::EventLog) and never touches the

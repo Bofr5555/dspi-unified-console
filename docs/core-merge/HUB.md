@@ -22,7 +22,7 @@ upstream web page is served at `/hub/` since WB7 (section 9, "WB7 as built").
 - **The hub knows nothing of `dspi-core` unless asked.** `dspi-hub` depends on proto,
   transport and link, and on `dspi-session` without its default features, for the voltage
   rule (section 13). Feature `app` adds the bridge to `DspiCore`, for Qt. A headless
-  `dspi hub` does not link the embedder API.
+  `uconsole hub` does not link the embedder API.
 - **PIN pairing is the default, open access is opt-in** (`AccessMode::default()`).
   This departs from spec 6.1 ("hubs default to `none`"), by owner's decision. A client
   cannot tell except by `hello.auth`, so nothing else changes.
@@ -38,7 +38,8 @@ upstream web page is served at `/hub/` since WB7 (section 9, "WB7 as built").
 | `hub-accept` (HB1) | 1 | the listening socket | `accept` | `stop_accepting` |
 | `hub-conn-rx-<id>`, `hub-conn-tx-<id>` (HB1) | 1 per plain HTTP socket (at most 48, HB9); 2 per WebSocket with a session (at most 16) | the read half; the session's outbox and the write half | the socket; `Outbox::pop` | the outbox closes, or the peer goes |
 | `hub-refuse-<id>` (HB1) | 0–4, short-lived | a socket past the limits | its request, 1 s at most | it has answered 503 |
-| `mdns-sd`'s daemon (HB5) | 1, with `mdns` and while advertised | the responder's sockets | its poller | `Advertiser` dropped; joined then |
+| `mdns-sd`'s daemon (HB5) | 1, with `mdns` and while advertised (not on Windows) | the responder's sockets | its poller | `Advertiser` dropped; joined then |
+| `dspi-dnssd-advertise` (DISC2) | 1, with `mdns` and while advertised, on Windows | the registration with Windows' DNS Client, interface notifications | its channel, with retry and self-check timers | `Advertiser` dropped; joined after the goodbye: normally milliseconds, about 9 s at worst if Windows acknowledges nothing (review d2 F5) |
 | the app's (not ours) | | core's reader, `poll_hotplug` caller | | |
 
 A count for one device, one app and two clients is 2 + 2 + 1 + 4 = 9 threads, idle
@@ -484,7 +485,7 @@ socket can cost.
 - **Snapshot:** warm from attach on a networked hub, cold on an in-process one. `status_b64` and
   the device object's `inputs` and `wire_version` are left out, which the spec allows.
 
-**HB5, `advertise.rs`, `web.rs`.** `Advertiser` wraps `MdnsAdvertiser` behind feature `mdns`.
+**HB5, `advertise.rs`, `web.rs`.** `Advertiser` wraps `MdnsAdvertiser` (on Windows `DnsSdAdvertiser`, DISC2) behind feature `mdns`.
 Start it after the server binds, with the bound port. Update it from `HubInner::publish`. `Hub::stop`
 drops it first, on the caller's thread, since the goodbye can block for a second. `web::asset` is called
 from HB1's HTTP path, and only with `web` on.
@@ -513,6 +514,24 @@ from HB1's HTTP path, and only with `web` on.
   compared equal to what is read off the wire; a returning TXT value not reported by its browser; a
   TXT string past 255 bytes refusing the service. CG2's `MdnsSource` clients get the browser one, which
   `rev` covers for our hubs only.
+<!-- WP DISC2 -->
+- **On Windows the responder is Windows' own** (`dspi_link::discovery::DnsSdAdvertiser`, picked by
+  `LanAdvertiser`): `DnsServiceRegister` in the DNS Client service, so advertising needs no firewall rule
+  (the hub's TCP port still does). It differs from mdns-sd as follows (measured in the VM, DISC2):
+  - A TXT change is a goodbye and a new registration, 1.2 s apart (`REREGISTER_GAP`), since Windows sets
+    the cache-flush bit on the shared PTR record and mdns-sd browsers would otherwise drop the hub; the
+    clients' 3 s removal grace hides the gap. `rev` is still sent and does no harm.
+  - On a name conflict with another machine Windows renames to `Name(1)`, and `Advertiser` then takes
+    `Name (2)` as above. Against another registration on the same machine Windows renames nothing and keeps
+    answering for the first; the advertiser's self-check (2 s after each registration, then every 30 s)
+    sees another `hid` and registers as `Name (2)` itself. A renamed registration is withdrawn by its new
+    name: by the old one nothing goes, and Windows answers for it after the process has ended.
+  - Windows drops registrations when an adapter goes down, with no callback (upstream's app loses its too).
+    The advertiser registers again 3 s after the last interface change (`NotifyIpInterfaceChange`), and the
+    self-check catches anything else: back on the LAN 8–10 s after the adapter returns.
+  - Stopping a browse (`WinSession` dropped, from the Qt UI thread in `dspi_link_browse_stop`) waits up to
+    2 s for dnsapi's cancelled callback; it comes within milliseconds in every run measured.
+  - `AdvertiseScope::LoopbackOnly` is refused, so `tests/wp_hb5_advertise.rs` does not build for Windows.
 - **Tests stay on loopback.** mdns-sd joins the mDNS group on every interface when its daemon starts,
   before any can be turned off, so a test sends IGMP and MLD membership reports there, though no mDNS
   record. `tests/wp_hb5_advertise.rs` and `wp_hb5_web.rs` pass in a container with only `lo`
@@ -557,7 +576,7 @@ reference to the hub (section 3). Set `initial_scan: false` when an app is to at
 - **Start does not scan.** Nothing is claimed until the port is bound and the listener is in place, whatever the options.
   With an app: `HUB_OPT_APP`, then `dspi_hub_attach_app`.
 - **Logs.** The library's logger holds `tungstenite` at debug, since its trace level prints whole frames, PINs and tokens
-  included. A host that installs its own logger, or a binary with its own (`dspi hub`), must do the same.
+  included. A host that installs its own logger, or a binary with its own (`uconsole hub`), must do the same.
 - **Not offered yet:** the web bundle and `mdns_name`, HB5's. Add them to `config_for` and as options when HB5 lands.
 - **QD14 has to add `hub`** to the `dspi-capi` feature lists that build the plain app: `apps/desktop/packaging/*`, the Arch
   `PKGBUILD`, `ci/github-actions-build.yml` and the `windows-msvc` step. The smoke builds have it.
@@ -612,8 +631,8 @@ request's `Host`, only when the `Origin` rule's own names accept it; else left e
 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self' ws://<Host>; style-src 'self'; ...
 frame-ancestors 'none'`, `nosniff`, `no-cache` with an ETag (304), `Referrer-Policy: no-referrer`;
 `/console` redirects to `/console/`. The `Origin` check is untouched. The C ABI (HB6) does not offer
-`console` yet; a desktop app that wants it adds a path option in `config_for`. The Terminal: `dspi hub
---web [--console DIR]`, `dspi web` (= `--local`: loopback, port 11916, no USB bus unless `--share-usb`).
+`console` yet; a desktop app that wants it adds a path option in `config_for`. The Terminal: `uconsole hub
+--web [--console DIR]`, `uconsole web` (= `--local`: loopback, port 11916, no USB bus unless `--share-usb`).
 
 **TM11.** `dspi-hub` without `app`. **SW-M3.** A UniFFI wrapper over the same; `DeviceBroker`
 is a plain Rust trait today and needs no export if the wrapper's `AppLink` stays in Rust.

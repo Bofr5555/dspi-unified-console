@@ -6,470 +6,430 @@
 /// values and widths as in Rust, and the firmware's extension and notification
 /// codes. Use these instead of magic numbers.
 public enum DspiConstants {
-    // ── dsp_math.rs ──
-    /// Filter-response math: the sample rate and the curve size of the response
-    /// functions.
-    public static let SAMPLE_RATE: Double = 48000.0
-    /// Number of magnitude curve points (log-spaced from 10 Hz to 20 kHz).
-    public static let MAGNITUDE_POINTS: Int = 201
-
-    // ── notify.rs ──
-    /// Bulk IN notification endpoint on the vendor interface.
-    public static let NOTIFY_ENDPOINT: UInt8 = 0x83
-    /// `NotifyResult.flags` bits: what a batch of notifications changed.
-    ///
-    /// `NotifyResult.flags`: some parameter changed; re-read the state.
-    public static let NOTIFY_STATE: UInt32 = 1 << 0
-    /// A change that moves the graph (filters, gains, bypass, output enable).
-    public static let NOTIFY_CURVES: UInt32 = 1 << 1
-    /// Everything was re-read from the device (preset load, bulk SET, missed packets).
-    public static let NOTIFY_REFRESHED: UInt32 = 1 << 2
-    /// The active USB input channel count changed.
-    public static let NOTIFY_INPUT_FORMAT: UInt32 = 1 << 3
-    /// A preset was loaded on the device.
-    public static let NOTIFY_PRESET: UInt32 = 1 << 4
-    /// The signal generator started or stopped (re-read its status). Not a
-    /// parameter change: comes without NOTIFY_STATE.
-    public static let NOTIFY_SIGGEN: UInt32 = 1 << 5
-    /// An auxiliary output changed state or level (already in the control
-    /// surfaces snapshot).
-    public static let NOTIFY_CS_AUX: UInt32 = 1 << 6
-    /// IR learning finished: a code was captured or the window timed out
-    /// (the result is in the control surfaces snapshot).
-    public static let NOTIFY_IR_LEARN: UInt32 = 1 << 7
-
-    // ── protocol.rs ──
-    /// USB Device IDs.
-    ///
-    /// DSPi vendor ID. Firmware moved from 0x2E8A (Raspberry Pi's, still used by
-    /// the RP2040/RP2350 ROM bootloader) to 0x2E8B in May 2026.
-    public static let VENDOR_ID: UInt16 = 0x2e8b
-    /// Vendor ID used by firmware before the change; still recognised so an old
-    /// device shows up and can be told it needs a firmware update.
-    public static let LEGACY_VENDOR_ID: UInt16 = 0x2e8a
-    /// USB product id of a DSPi.
-    public static let PRODUCT_ID: UInt16 = 0xfeaa
-    /// Vendor interface number (WinUSB / WCID interface).
+    // ── usb ──
+    /// `dspi_proto::USB_VID`.
+    public static let VENDOR_ID: UInt16 = 0x2E8B
+    /// `dspi_proto::USB_PID`.
+    public static let PRODUCT_ID: UInt16 = 0xFEAA
+    /// `dspi_proto::VENDOR_INTERFACE`.
     public static let VENDOR_INTERFACE: UInt8 = 2
-    /// Psybass parameter ids for `set_psybass_param` (host-side, not wire values).
-    public static let PSYBASS_PARAM_CUTOFF: UInt8 = 0
-    /// `set_psybass_param` id: harmonics level, dB (-24..12).
-    public static let PSYBASS_PARAM_HARMONICS: UInt8 = 1
-    /// `set_psybass_param` id: drive, dB (0..18).
-    public static let PSYBASS_PARAM_DRIVE: UInt8 = 2
-    /// `set_psybass_param` id: character, % (0 warm .. 100 aggressive).
-    public static let PSYBASS_PARAM_CHARACTER: UInt8 = 3
-    /// `set_psybass_param` id: original bass level, dB (-60..0).
-    public static let PSYBASS_PARAM_ORIGINAL: UInt8 = 4
-    /// Tube parameter indices (the firmware's own; wValue of REQ_SET_TUBE_PARAM).
-    /// Every value travels as a float, enums and flags included.
-    public static let TUBE_PARAM_ENABLED: UInt8 = 0
-    /// `set_tube_param` index: output mask (bit k = output k).
-    public static let TUBE_PARAM_MASK: UInt8 = 1
-    /// `set_tube_param` index: tube type.
-    public static let TUBE_PARAM_TYPE: UInt8 = 2
-    /// `set_tube_param` index: drive, dB.
-    public static let TUBE_PARAM_DRIVE: UInt8 = 3
-    /// `set_tube_param` index: bias, %.
-    public static let TUBE_PARAM_BIAS: UInt8 = 4
-    /// `set_tube_param` index: asymmetry, dB.
-    public static let TUBE_PARAM_ASYM: UInt8 = 5
-    /// `set_tube_param` index: hardness, %.
-    public static let TUBE_PARAM_HARDNESS: UInt8 = 6
-    /// `set_tube_param` index: sag, %.
-    public static let TUBE_PARAM_SAG: UInt8 = 7
-    /// `set_tube_param` index: rectifier.
-    public static let TUBE_PARAM_RECTIFIER: UInt8 = 8
-    /// `set_tube_param` index: output transformer on (0/1).
-    public static let TUBE_PARAM_XFMR: UInt8 = 9
-    /// `set_tube_param` index: transformer damping.
-    public static let TUBE_PARAM_DAMPING: UInt8 = 10
-    /// `set_tube_param` index: transformer resonance, Hz.
-    public static let TUBE_PARAM_RESONANCE: UInt8 = 11
-    /// `set_tube_param` index: mix, %.
-    public static let TUBE_PARAM_MIX: UInt8 = 12
-    /// `set_tube_param` index: output trim, dB.
-    public static let TUBE_PARAM_TRIM: UInt8 = 13
-    /// Length of `DspState.tube`, indexed by the firmware's `TUBE_PARAM_*` (`dspi_proto::generated::tube`).
-    public static let TUBE_PARAM_COUNT: Int = 14
-    /// Subharmonic synth parameter ids for `set_subharm_param` (host-side; each
-    /// field has its own request).
-    public static let SUBHARM_PARAM_ENABLED: UInt8 = 0
-    /// `DspState.subharm` index: output mask (bit k = output k).
-    public static let SUBHARM_PARAM_MASK: UInt8 = 1
-    /// `DspState.subharm` index: low band level, dB.
-    public static let SUBHARM_PARAM_LOW: UInt8 = 2
-    /// `DspState.subharm` index: high band level, dB.
-    public static let SUBHARM_PARAM_HIGH: UInt8 = 3
-    /// `DspState.subharm` index: top band level, dB.
-    public static let SUBHARM_PARAM_TOP: UInt8 = 4
-    /// `DspState.subharm` index: boost, dB.
-    public static let SUBHARM_PARAM_BOOST: UInt8 = 5
-    /// `DspState.subharm` index: selectivity mode (0 all, 1 percussive, 2 sustained).
-    public static let SUBHARM_PARAM_SELECT: UInt8 = 6
-    /// `DspState.subharm` index: selectivity depth, %.
-    public static let SUBHARM_PARAM_DEPTH: UInt8 = 7
-    /// `DspState.subharm` index: selectivity hold, ms.
-    public static let SUBHARM_PARAM_HOLD: UInt8 = 8
-    /// `DspState.subharm` index: sub ceiling, dB.
-    public static let SUBHARM_PARAM_CEILING: UInt8 = 9
-    /// `DspState.subharm` index: pair link (0/1).
-    public static let SUBHARM_PARAM_LINK: UInt8 = 10
-    /// Length of `DspState.subharm`.
-    public static let SUBHARM_PARAM_COUNT: Int = 11
-    /// Upmixer parameter ids (the firmware's own; wValue of REQ_UPMIX_SET_PARAM).
-    /// Centre mode: 0 passive, 1 adaptive, 2 off. Surround: 0 off, 1 passive, 2 adaptive.
-    public static let UPMIX_PARAM_ENABLED: UInt8 = 0
-    /// `DspState.upmix` index: centre mode (0 passive, 1 adaptive, 2 off).
-    public static let UPMIX_PARAM_CENTER_MODE: UInt8 = 1
-    /// `DspState.upmix` index: surround mode (0 off, 1 passive, 2 adaptive).
-    public static let UPMIX_PARAM_SURROUND_MODE: UInt8 = 2
-    /// `DspState.upmix` index: strength, %.
-    public static let UPMIX_PARAM_STRENGTH: UInt8 = 3
-    /// `DspState.upmix` index: width, %.
-    public static let UPMIX_PARAM_WIDTH: UInt8 = 4
-    /// `DspState.upmix` index: threshold, %.
-    public static let UPMIX_PARAM_THRESHOLD: UInt8 = 5
-    /// `DspState.upmix` index: attack, ms.
-    public static let UPMIX_PARAM_ATTACK: UInt8 = 6
-    /// `DspState.upmix` index: release, ms.
-    public static let UPMIX_PARAM_RELEASE: UInt8 = 7
-    /// `DspState.upmix` index: detector high-pass, Hz.
-    public static let UPMIX_PARAM_DETECTOR_HPF: UInt8 = 8
-    /// `DspState.upmix` index: surround delay, ms.
-    public static let UPMIX_PARAM_SURROUND_DELAY: UInt8 = 9
-    /// `DspState.upmix` index: surround high-pass, Hz.
-    public static let UPMIX_PARAM_SURROUND_HPF: UInt8 = 10
-    /// `DspState.upmix` index: surround low-pass, Hz.
-    public static let UPMIX_PARAM_SURROUND_LPF: UInt8 = 11
-    /// `DspState.upmix` index: decorrelation, %.
-    public static let UPMIX_PARAM_DECORRELATION: UInt8 = 12
-    /// `DspState.upmix` index: presence bell, dB (0.5 dB steps on the wire).
-    public static let UPMIX_PARAM_PRESENCE: UInt8 = 13
-    /// Length of `DspState.upmix`.
-    public static let UPMIX_PARAM_COUNT: Int = 14
-    /// REQ_LIMITER wValue low byte: parameter index (high byte = output).
-    public static let LIMITER_PARAM_ENABLED: UInt8 = 0
-    /// `set_limiter_param` parameter: threshold, dB.
-    public static let LIMITER_PARAM_THRESHOLD_DB: UInt8 = 1
-    /// `set_limiter_param` parameter: release, ms.
-    public static let LIMITER_PARAM_RELEASE_MS: UInt8 = 2
-    /// `set_limiter_param` parameter: link group (0 = none).
-    public static let LIMITER_PARAM_LINK_GROUP: UInt8 = 3
-    /// GET: per-output gain reduction, u16 in 0.01 dB.
-    public static let LIMITER_GET_METER: UInt8 = 0x80
-    /// GET: engaged, lookahead, block, num_outputs.
-    public static let LIMITER_GET_STATUS: UInt8 = 0x81
-    /// SET output byte: apply to every output.
-    public static let LIMITER_ALL_OUTPUTS: UInt8 = 0xFF
-    /// Status codes.
-    public static let PIN_CONFIG_SUCCESS: UInt8 = 0x00
-    /// Pin configuration status: the GPIO cannot do this.
-    public static let PIN_CONFIG_INVALID_PIN: UInt8 = 0x01
-    /// Pin configuration status: another function holds the GPIO.
-    public static let PIN_CONFIG_PIN_IN_USE: UInt8 = 0x02
-    /// Pin configuration status: no such output slot.
-    public static let PIN_CONFIG_INVALID_OUTPUT: UInt8 = 0x03
-    /// Pin configuration status: the output is running; stop it first.
-    public static let PIN_CONFIG_OUTPUT_ACTIVE: UInt8 = 0x04
-    /// non-pin field out of range (baud, I2C address).
-    public static let PIN_CONFIG_INVALID_PARAM: UInt8 = 0x05
-    /// Sent as the pin byte of any single-pin SET to restore the platform default.
-    public static let PIN_RESET_TO_DEFAULT: UInt8 = 0xFF
-    /// Preset status: done.
-    public static let PRESET_OK: UInt8 = 0x00
-    /// Preset status: no such slot.
-    public static let PRESET_ERR_INVALID_SLOT: UInt8 = 0x01
-    /// Preset status: the slot holds no preset.
-    public static let PRESET_ERR_SLOT_EMPTY: UInt8 = 0x02
-    /// Preset status: the stored preset failed its CRC.
-    public static let PRESET_ERR_CRC: UInt8 = 0x03
-    /// Preset status: the flash write failed.
-    public static let PRESET_ERR_FLASH_WRITE: UInt8 = 0x04
-    /// `save_params` / `load_params` / `factory_reset` status: done. These `FLASH_*` codes are the old core's; the firmware headers do not name them.
-    public static let FLASH_OK: UInt8 = 0
-    /// Flash status: the write failed (also any refused revert-to-saved).
-    public static let FLASH_ERR_WRITE: UInt8 = 1
-    /// Flash status: nothing saved to load.
-    public static let FLASH_ERR_NO_DATA: UInt8 = 2
-    /// Flash status: the stored data failed its CRC.
-    public static let FLASH_ERR_CRC: UInt8 = 3
-    /// wIndex conventions (as used by the macOS Console).
-    ///
-    /// wIndex for EQ, preamp, bypass, delay, status, loudness, crossfeed, volume, core1.
+    /// `dspi_proto::generated::usb::VENDOR_EP_IN`.
+    public static let NOTIFY_ENDPOINT: UInt8 = 0x83
+    /// Raspberry Pi's vendor id, which early DSPi firmware enumerated with.
+    public static let LEGACY_VENDOR_ID: UInt16 = 0x2E8A
+    /// `wIndex` of the old ABI's global requests.
     public static let WINDEX_GLOBAL: UInt16 = 0
-    /// wIndex for matrix/output/pin/preset/channel-name/bulk commands.
+    /// `wIndex` of the old ABI's per-output requests.
     public static let WINDEX_OUTPUT: UInt16 = 2
-    /// Firmware the core is built against.
-    ///
-    /// Wire format this core reads and writes.
-    public static let WIRE_FORMAT_VERSION: UInt8 = 32
-    /// Oldest wire format with the unified channel model. Anything older is
-    /// incompatible (V16 broke compatibility with no migration).
-    public static let MIN_WIRE_FORMAT_VERSION: UInt8 = 16
-    /// Bulk parameter wire format (WireBulkParams, V32).
-    ///
-    /// sizeof(WireBulkParams) at V32.
-    public static let BULK_PARAMS_SIZE: Int = 6136
-    /// Chunk size for REQ_GET/SET_ALL_PARAMS_CHUNK. Kept well under the 4 KB
-    /// control-transfer limit (Linux usbfs caps a control transfer at one page).
-    public static let BULK_CHUNK_SIZE: Int = 2048
-    /// Byte offset of the header in the bulk image.
-    public static let OFF_HEADER: Int = 0
-    /// Byte offset of the global parameters in the bulk image.
-    public static let OFF_GLOBAL: Int = 16
-    /// Byte offset of the crossfeed parameters in the bulk image.
-    public static let OFF_CROSSFEED: Int = 32
-    /// Byte offset of the legacy section in the bulk image.
-    public static let OFF_LEGACY: Int = 48
-    /// Byte offset of the channel delays in the bulk image.
-    public static let OFF_DELAYS: Int = 64
-    /// Byte offset of the matrix crosspoints in the bulk image.
-    public static let OFF_CROSSPOINTS: Int = 132
-    /// Byte offset of the output channels in the bulk image.
-    public static let OFF_OUTPUTS: Int = 708
-    /// Byte offset of the pin configuration in the bulk image.
-    public static let OFF_PINS: Int = 816
-    /// Byte offset of the EQ bands in the bulk image.
-    public static let OFF_EQ: Int = 824
-    /// Byte offset of the channel names in the bulk image.
-    public static let OFF_CHANNEL_NAMES: Int = 4088
-    /// Byte offset of the I2S configuration in the bulk image.
-    public static let OFF_I2S: Int = 4632
-    /// Byte offset of the leveller in the bulk image.
-    public static let OFF_LEVELLER: Int = 4648
-    /// Byte offset of the input preamps in the bulk image.
-    public static let OFF_PREAMP: Int = 4668
-    /// Byte offset of the master volume in the bulk image.
-    public static let OFF_MASTER_VOLUME: Int = 4700
-    /// Byte offset of the input configuration in the bulk image.
-    public static let OFF_INPUT_CONFIG: Int = 4716
-    /// Byte offset of LG Sound Sync in the bulk image.
-    public static let OFF_LG_SOUND_SYNC: Int = 4732
-    /// Byte offset of the user volume in the bulk image.
-    public static let OFF_USER_VOLUME: Int = 4748
-    /// Byte offset of the DAC hardware mute in the bulk image.
-    public static let OFF_DAC_HW_MUTE: Int = 4764
-    /// Byte offset of the crossover bands in the bulk image.
-    public static let OFF_CROSSOVER: Int = 4780
-    /// Byte offset of the ADAT output configuration in the bulk image.
-    public static let OFF_ADAT: Int = 5868
-    /// Byte offset of the psychoacoustic bass in the bulk image.
-    public static let OFF_PSYBASS: Int = 5876
-    /// Byte offset of the upmixer in the bulk image.
-    public static let OFF_UPMIX: Int = 5900
-    /// Byte offset of the subharmonic synthesizer in the bulk image.
-    public static let OFF_SUBHARM: Int = 5944
-    /// Byte offset of the tube preamp in the bulk image.
-    public static let OFF_TUBE: Int = 5980
-    /// Byte offset of the output limiter in the bulk image.
-    public static let OFF_LIMITER: Int = 6028
-    /// Packets.
-    ///
-    /// `fw_beta` for a beta that can't say which one it is: 1.1.6 betas 1 and 2
-    /// predate the ordinal and answer as plain 1.1.6. Sorts below every beta.
+
+    // ── status ──
+    /// `dspi_proto::generated::status::PIN_CONFIG_SUCCESS`.
+    public static let PIN_CONFIG_SUCCESS: UInt8 = 0
+    /// `dspi_proto::generated::status::PIN_CONFIG_INVALID_PIN`.
+    public static let PIN_CONFIG_INVALID_PIN: UInt8 = 1
+    /// `dspi_proto::generated::status::PIN_CONFIG_PIN_IN_USE`.
+    public static let PIN_CONFIG_PIN_IN_USE: UInt8 = 2
+    /// `dspi_proto::generated::status::PIN_CONFIG_INVALID_OUTPUT`.
+    public static let PIN_CONFIG_INVALID_OUTPUT: UInt8 = 3
+    /// `dspi_proto::generated::status::PIN_CONFIG_OUTPUT_ACTIVE`.
+    public static let PIN_CONFIG_OUTPUT_ACTIVE: UInt8 = 4
+    /// `dspi_proto::generated::status::PIN_CONFIG_INVALID_PARAM`.
+    public static let PIN_CONFIG_INVALID_PARAM: UInt8 = 5
+    /// `PIN_RESET_TO_DEFAULT` in the firmware's config.h.
+    public static let PIN_RESET_TO_DEFAULT: UInt8 = 0xFF
+    /// `dspi_proto::generated::status::PRESET_OK`.
+    public static let PRESET_OK: UInt8 = 0
+    /// `dspi_proto::generated::status::PRESET_ERR_INVALID_SLOT`.
+    public static let PRESET_ERR_INVALID_SLOT: UInt8 = 1
+    /// `dspi_proto::generated::status::PRESET_ERR_SLOT_EMPTY`.
+    public static let PRESET_ERR_SLOT_EMPTY: UInt8 = 2
+    /// `dspi_proto::generated::status::PRESET_ERR_CRC`.
+    public static let PRESET_ERR_CRC: UInt8 = 3
+    /// `dspi_proto::generated::status::PRESET_ERR_FLASH_WRITE`.
+    public static let PRESET_ERR_FLASH_WRITE: UInt8 = 4
+    /// `dspi_core::consts::FLASH_OK`.
+    public static let FLASH_OK: UInt8 = 0
+    /// `dspi_core::consts::FLASH_ERR_WRITE`.
+    public static let FLASH_ERR_WRITE: UInt8 = 1
+    /// `dspi_core::consts::FLASH_ERR_NO_DATA`.
+    public static let FLASH_ERR_NO_DATA: UInt8 = 2
+    /// `dspi_core::consts::FLASH_ERR_CRC`.
+    public static let FLASH_ERR_CRC: UInt8 = 3
+    /// `dspi_core::consts::COMPAT_UNKNOWN`.
+    public static let COMPAT_UNKNOWN: UInt8 = 0
+    /// `dspi_core::consts::COMPAT_OK`.
+    public static let COMPAT_OK: UInt8 = 1
+    /// `dspi_core::consts::COMPAT_FIRMWARE_TOO_OLD`.
+    public static let COMPAT_FIRMWARE_TOO_OLD: UInt8 = 2
+    /// `dspi_core::consts::COMPAT_FIRMWARE_TOO_NEW`.
+    public static let COMPAT_FIRMWARE_TOO_NEW: UInt8 = 3
+    /// `dspi_core::consts::FW_BETA_EARLY`.
     public static let FW_BETA_EARLY: UInt8 = 0xFF
 
-    // ── rta.rs ──
-    /// Spectrum analyser (RTA): protocol version, record array sizes, taps and the
-    /// level floor.
-    public static let RTA_VERSION: UInt8 = 3
-    /// Spectrum analyser: band slots per channel (`RtaCapsInfo::centres`, `RtaChannelFrame::avg_db` / `peak_db`), `RTA_MAX_BANDS` (rta_fft.h:42).
-    public static let RTA_MAX_BANDS: Int = 37
-    /// Channels at one tap the snapshot holds (the mask is 16 bits).
-    public static let RTA_MAX_CHANNELS: Int = 16
-    /// Spectrum analyser: bin slots in `RtaSnapshot::bins_db` (N/2 at the largest transform, 1024 points).
-    public static let RTA_MAX_BINS: Int = 512
-    /// Spectrum analyser tap: after the per-input PEQ, before the matrix.
-    public static let RTA_TAP_INPUT: UInt8 = 0
-    /// Spectrum analyser tap: after output gain and delay.
-    public static let RTA_TAP_OUTPUT: UInt8 = 1
-    /// Level byte of the band and bin frames at the floor: -121.5 dBFS.
-    public static let RTA_FLOOR_DB: Float = -121.5
-
-    // ── siggen.rs ──
-    /// Signal generator: protocol version and the number of signal types.
-    public static let SIGGEN_VERSION: UInt8 = 1
-    /// Length of `SiggenCaps.types` (the old core's fixed table size).
-    public static let SIGGEN_TYPE_COUNT: Int = 15
-    /// Signal generator: `SiggenConfig.flags` bits and CONTROL actions.
-    public static let SIGGEN_FLAG_RAW: UInt8 = 0x01
-    /// `SiggenConfig.flags`: noise gets an independent generator per channel.
-    public static let SIGGEN_FLAG_DECORR: UInt8 = 0x02
-    /// `SiggenConfig.flags`: play the masked outputs one at a time.
-    public static let SIGGEN_FLAG_WALK: UInt8 = 0x04
-    /// CONTROL actions.
-    public static let SIGGEN_CTL_STOP: UInt16 = 0
-    /// `siggen_control` action: (re)start with the staged config.
-    public static let SIGGEN_CTL_START: UInt16 = 1
-    /// `siggen_control` action: stop at once, no fade.
-    public static let SIGGEN_CTL_STOP_NOW: UInt16 = 2
-
-    // ── stats.rs ──
-    /// REQ_GET_STATUS sub-queries that return one u32 (cumulative since boot).
-    public static let STAT_PDM_RING_OVERRUNS: UInt16 = 3
-    /// `fetch_stat`: PDM ring underruns since boot.
-    public static let STAT_PDM_RING_UNDERRUNS: UInt16 = 4
-    /// `fetch_stat`: PDM DMA overruns since boot.
-    public static let STAT_PDM_DMA_OVERRUNS: UInt16 = 5
-    /// `fetch_stat`: PDM DMA underruns since boot.
-    public static let STAT_PDM_DMA_UNDERRUNS: UInt16 = 6
-    /// `fetch_stat`: retired (S/PDIF overruns); current firmware answers 0.
-    public static let STAT_SPDIF_OVERRUNS: UInt16 = 7
-    /// `fetch_stat`: S/PDIF underruns since boot.
-    public static let STAT_SPDIF_UNDERRUNS: UInt16 = 8
-    /// `fetch_stat`: system clock, Hz.
-    public static let STAT_CLOCK_HZ: UInt16 = 13
-    /// `fetch_stat`: core voltage, mV.
-    public static let STAT_CORE_MV: UInt16 = 14
-    /// `fetch_stat`: audio sample rate, Hz.
-    public static let STAT_SAMPLE_RATE: UInt16 = 15
-    /// Centi-degrees C, signed (an i16 widened to u32).
-    public static let STAT_TEMPERATURE: UInt16 = 16
-    /// S/PDIF DMA starvations: total, then instances 0-3 (18-21).
-    public static let STAT_STARVATION_TOTAL: UInt16 = 17
-    /// `fetch_stat`: S/PDIF DMA starvations of instance 0; instances 1-3 follow (18-21).
-    public static let STAT_STARVATION_FIRST: UInt16 = 18
-    /// `fetch_stat`: USB audio ring overruns since boot.
-    public static let STAT_USB_RING_OVERRUNS: UInt16 = 22
-
-    // ── presetfile.rs ──
-    /// Preset files (`.dspipreset`): the schema version.
-    public static let SCHEMA_VERSION: Int64 = 1
-    /// Preset import: what is applied besides the DSP settings (bits).
-    public static let IMPORT_VOLUMES: UInt32 = 1
-    /// `config_import` option: also apply the hardware I/O and the limiters.
-    public static let IMPORT_HARDWARE: UInt32 = 2
-
-    // ── filterfile.rs ──
-    /// Filter files: the format version.
-    public static let FORMAT_VERSION: UInt32 = 2
-
-    // ── cs.rs ──
-    /// Control surfaces: table sizes of the binding, IR, group, macro, step and
-    /// page records.
-    public static let CS_MAX_BINDINGS: Int = 16
-    /// Control surfaces: IR command slots.
-    public static let CS_MAX_IR: Int = 16
-    /// Control surfaces: groups.
-    public static let CS_MAX_GROUPS: Int = 8
-    /// Control surfaces: macros.
-    public static let CS_MAX_MACROS: Int = 8
-    /// Control surfaces: steps per macro.
-    public static let CS_MAX_STEPS: Int = 8
-    /// Control surfaces: display pages.
-    public static let CS_MAX_PAGES: Int = 16
-
-    // ── state.rs ──
-    /// `DspState.compat`: the firmware compatibility judged at connect.
-    ///
-    /// Firmware compatibility of the connected device, as judged at connect time.
-    public static let COMPAT_UNKNOWN: UInt8 = 0
-    /// Wire format and firmware match this core.
-    public static let COMPAT_OK: UInt8 = 1
-    /// Firmware is too old (pre-V32 wire format, or the old USB vendor ID).
-    public static let COMPAT_FIRMWARE_TOO_OLD: UInt8 = 2
-    /// Firmware is newer than this core understands.
-    public static let COMPAT_FIRMWARE_TOO_NEW: UInt8 = 3
-    /// `dspi_wire_features`: psychoacoustic bass (V23).
+    // ── wire ──
+    /// `dspi_proto::generated::wire::WIRE_FORMAT_VERSION`.
+    public static let WIRE_FORMAT_VERSION: UInt8 = 32
+    /// `dspi_proto::wire_compat::MIN_WIRE_FORMAT_VERSION`.
+    public static let MIN_WIRE_FORMAT_VERSION: UInt8 = 16
+    /// `dspi_proto::wire_compat::feat::PSYBASS`.
     public static let WIRE_FEAT_PSYBASS: UInt32 = 1 << 6
-    /// `dspi_wire_features`: stereo upmixer (V25).
+    /// `dspi_proto::wire_compat::feat::UPMIX`.
     public static let WIRE_FEAT_UPMIX: UInt32 = 1 << 8
-    /// `dspi_wire_features`: subharmonic synthesizer (V29).
+    /// `dspi_proto::wire_compat::feat::SUBHARM`.
     public static let WIRE_FEAT_SUBHARM: UInt32 = 1 << 11
-    /// `dspi_wire_features`: tube modeller (V31).
+    /// `dspi_proto::wire_compat::feat::TUBE`.
     public static let WIRE_FEAT_TUBE: UInt32 = 1 << 13
-    /// `dspi_wire_features`: output limiter (V32).
+    /// `dspi_proto::wire_compat::feat::LIMITER`.
     public static let WIRE_FEAT_LIMITER: UInt32 = 1 << 14
+    /// `dspi_proto::generated::BULK_SIZE`.
+    public static let BULK_PARAMS_SIZE: Int = 6136
+    /// Bytes per chunked bulk-image transfer (`REQ_*_ALL_PARAMS_CHUNK`).
+    public static let BULK_CHUNK_SIZE: Int = 2048
+    /// Offset of the `header` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_HEADER: Int = 0
+    /// Offset of the `global` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_GLOBAL: Int = 16
+    /// Offset of the `crossfeed` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_CROSSFEED: Int = 32
+    /// Offset of the `legacy` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_LEGACY: Int = 48
+    /// Offset of the `delays` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_DELAYS: Int = 64
+    /// Offset of the `crosspoints` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_CROSSPOINTS: Int = 132
+    /// Offset of the `outputs` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_OUTPUTS: Int = 708
+    /// Offset of the `pins` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_PINS: Int = 816
+    /// Offset of the `eq` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_EQ: Int = 824
+    /// Offset of the `channel_names` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_CHANNEL_NAMES: Int = 4088
+    /// Offset of the `i2s_config` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_I2S: Int = 4632
+    /// Offset of the `leveller` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_LEVELLER: Int = 4648
+    /// Offset of the `preamp` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_PREAMP: Int = 4668
+    /// Offset of the `master_volume` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_MASTER_VOLUME: Int = 4700
+    /// Offset of the `input_config` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_INPUT_CONFIG: Int = 4716
+    /// Offset of the `lg_sound_sync` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_LG_SOUND_SYNC: Int = 4732
+    /// Offset of the `user_volume` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_USER_VOLUME: Int = 4748
+    /// Offset of the `dac_hw_mute` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_DAC_HW_MUTE: Int = 4764
+    /// Offset of the `crossovers` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_CROSSOVER: Int = 4780
+    /// Offset of the `adat_config` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_ADAT: Int = 5868
+    /// Offset of the `psybass` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_PSYBASS: Int = 5876
+    /// Offset of the `upmix` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_UPMIX: Int = 5900
+    /// Offset of the `subharm` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_SUBHARM: Int = 5944
+    /// Offset of the `tube` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_TUBE: Int = 5980
+    /// Offset of the `limiter` section (`dspi_proto::generated::SECTIONS`).
+    public static let OFF_LIMITER: Int = 6028
 
-    // ── types.rs ──
-    /// Filter types (firmware config.h `enum FilterType`). Value space: 0..13 PEQ
-    /// types, 14..31 reserved, 32..63 crossover types (only valid in crossover
-    /// bands), 64+ reserved.
-    public static let FILTER_FLAT: UInt8 = 0
-    /// Filter type: peaking.
-    public static let FILTER_PEAKING: UInt8 = 1
-    /// Filter type: low shelf.
-    public static let FILTER_LOWSHELF: UInt8 = 2
-    /// Filter type: high shelf.
-    public static let FILTER_HIGHSHELF: UInt8 = 3
-    /// Filter type: low-pass.
-    public static let FILTER_LOWPASS: UInt8 = 4
-    /// Filter type: high-pass.
-    public static let FILTER_HIGHPASS: UInt8 = 5
-    /// Filter type: notch.
-    public static let FILTER_NOTCH: UInt8 = 6
-    /// Second-order (RBJ) all-pass.
-    public static let FILTER_ALLPASS: UInt8 = 7
-    /// First-order all-pass: frequency only.
-    public static let FILTER_ALLPASS1: UInt8 = 8
-    /// First-order low shelf: frequency + gain, no Q.
-    public static let FILTER_LOWSHELF1: UInt8 = 9
-    /// First-order high shelf: frequency + gain, no Q.
-    public static let FILTER_HIGHSHELF1: UInt8 = 10
-    /// Linkwitz Transform: freq = f0, q = Q0, gain carries fp in Hz, qp = target Q.
-    public static let FILTER_LINKWITZ_TRANSFORM: UInt8 = 11
-    /// First-order low pass (6 dB/oct): frequency only.
-    public static let FILTER_LOWPASS1: UInt8 = 12
-    /// First-order high pass (6 dB/oct): frequency only.
-    public static let FILTER_HIGHPASS1: UInt8 = 13
-    /// First crossover type (LR2 LP). Crossover types run 32..=63:
-    /// LR2/4/6/8 = 32..39, Butterworth 1..8 = 40..55, Bessel 2/4/6/8 = 56..63,
-    /// each pair LP = even, HP = odd.
-    public static let FILTER_XOVER_FIRST: UInt8 = 32
-    /// Filter type: the last crossover type.
-    public static let FILTER_XOVER_LAST: UInt8 = 63
-    /// Default Q (Butterworth), also the Linkwitz Transform target-Q default.
-    public static let DEFAULT_Q: Float = 0.707
-    /// Array sizes and limits of the records (RP2350 maxima).
-    ///
-    /// Maximum channels in the wire format (inputs + outputs, RP2350).
+    // ── dims ──
+    /// `dspi_core::consts::MAX_CHANNELS`.
     public static let MAX_CHANNELS: Int = 17
-    /// Maximum input channels (RP2350).
+    /// `dspi_core::consts::MAX_INPUTS`.
     public static let MAX_INPUTS: Int = 8
-    /// Maximum output channels (RP2350).
+    /// `dspi_core::consts::MAX_OUTPUTS`.
     public static let MAX_OUTPUTS: Int = 9
-    /// PEQ bands per channel that the firmware processes.
+    /// `dspi_core::consts::BANDS_PER_CHANNEL`.
     public static let BANDS_PER_CHANNEL: Int = 10
-    /// PEQ band storage per channel in the wire layout.
+    /// `dspi_core::consts::FIRMWARE_BANDS_PER_CHANNEL`.
     public static let FIRMWARE_BANDS_PER_CHANNEL: Int = 12
-    /// Crossover bands per output channel.
+    /// `dspi_core::consts::MAX_XOVER_BANDS`.
     public static let MAX_XOVER_BANDS: Int = 4
-    /// Wire band index of crossover band 0 (crossover bands are 20..23).
+    /// `dspi_proto::generated::filter::XOVER_BAND_BASE`.
     public static let XOVER_BAND_BASE: UInt8 = 20
-    /// Maximum preset slots.
+    /// `dspi_core::consts::MAX_PRESETS`.
     public static let MAX_PRESETS: Int = 10
-    /// Channel / preset name buffer size.
+    /// `dspi_core::consts::CHANNEL_NAME_LEN`.
     public static let CHANNEL_NAME_LEN: Int = 32
-    /// Physical output pin slots (4 S/PDIF + 1 PDM on RP2350).
+    /// `dspi_core::consts::MAX_PHYSICAL_OUTPUTS`.
     public static let MAX_PHYSICAL_OUTPUTS: Int = 5
-    /// Master volume mute sentinel (true −∞).
+
+    // ── eq ──
+    /// `dspi_proto::FilterType::Flat`.
+    public static let FILTER_FLAT: UInt8 = 0
+    /// `dspi_proto::FilterType::Peaking`.
+    public static let FILTER_PEAKING: UInt8 = 1
+    /// `dspi_proto::FilterType::LowShelf`.
+    public static let FILTER_LOWSHELF: UInt8 = 2
+    /// `dspi_proto::FilterType::HighShelf`.
+    public static let FILTER_HIGHSHELF: UInt8 = 3
+    /// `dspi_proto::FilterType::LowPass`.
+    public static let FILTER_LOWPASS: UInt8 = 4
+    /// `dspi_proto::FilterType::HighPass`.
+    public static let FILTER_HIGHPASS: UInt8 = 5
+    /// `dspi_proto::FilterType::Notch`.
+    public static let FILTER_NOTCH: UInt8 = 6
+    /// `dspi_proto::FilterType::AllPass`.
+    public static let FILTER_ALLPASS: UInt8 = 7
+    /// `dspi_proto::FilterType::AllPass1`.
+    public static let FILTER_ALLPASS1: UInt8 = 8
+    /// `dspi_proto::FilterType::LowShelf1`.
+    public static let FILTER_LOWSHELF1: UInt8 = 9
+    /// `dspi_proto::FilterType::HighShelf1`.
+    public static let FILTER_HIGHSHELF1: UInt8 = 10
+    /// `dspi_proto::FilterType::LinkwitzTransform`.
+    public static let FILTER_LINKWITZ_TRANSFORM: UInt8 = 11
+    /// `dspi_proto::FilterType::LowPass1`.
+    public static let FILTER_LOWPASS1: UInt8 = 12
+    /// `dspi_proto::FilterType::HighPass1`.
+    public static let FILTER_HIGHPASS1: UInt8 = 13
+    /// `FilterType::XOVER_FIRST`.
+    public static let FILTER_XOVER_FIRST: UInt8 = 32
+    /// `FilterType::XOVER_LAST`.
+    public static let FILTER_XOVER_LAST: UInt8 = 63
+    /// `dspi_core::consts::DEFAULT_Q`.
+    public static let DEFAULT_Q: Float = 0.707
+    /// `dspi_proto::dsp::SAMPLE_RATE`.
+    public static let SAMPLE_RATE: Double = 48000.0
+    /// `dspi_core::CURVE_POINTS`.
+    public static let MAGNITUDE_POINTS: Int = 201
+
+    // ── volume ──
+    /// `MASTER_VOL_MUTE_DB` in the firmware's config.h.
     public static let MASTER_VOL_MUTE_DB: Float = -128.0
 
+    // ── effects ──
+    /// `dspi_core::consts::PSYBASS_PARAM_CUTOFF`.
+    public static let PSYBASS_PARAM_CUTOFF: UInt8 = 0
+    /// `dspi_core::consts::PSYBASS_PARAM_HARMONICS`.
+    public static let PSYBASS_PARAM_HARMONICS: UInt8 = 1
+    /// `dspi_core::consts::PSYBASS_PARAM_DRIVE`.
+    public static let PSYBASS_PARAM_DRIVE: UInt8 = 2
+    /// `dspi_core::consts::PSYBASS_PARAM_CHARACTER`.
+    public static let PSYBASS_PARAM_CHARACTER: UInt8 = 3
+    /// `dspi_core::consts::PSYBASS_PARAM_ORIGINAL`.
+    public static let PSYBASS_PARAM_ORIGINAL: UInt8 = 4
+    /// `dspi_core::consts::UPMIX_PARAM_ENABLED`.
+    public static let UPMIX_PARAM_ENABLED: UInt8 = 0
+    /// `dspi_core::consts::UPMIX_PARAM_CENTER_MODE`.
+    public static let UPMIX_PARAM_CENTER_MODE: UInt8 = 1
+    /// `dspi_core::consts::UPMIX_PARAM_SURROUND_MODE`.
+    public static let UPMIX_PARAM_SURROUND_MODE: UInt8 = 2
+    /// `dspi_core::consts::UPMIX_PARAM_STRENGTH`.
+    public static let UPMIX_PARAM_STRENGTH: UInt8 = 3
+    /// `dspi_core::consts::UPMIX_PARAM_WIDTH`.
+    public static let UPMIX_PARAM_WIDTH: UInt8 = 4
+    /// `dspi_core::consts::UPMIX_PARAM_THRESHOLD`.
+    public static let UPMIX_PARAM_THRESHOLD: UInt8 = 5
+    /// `dspi_core::consts::UPMIX_PARAM_ATTACK`.
+    public static let UPMIX_PARAM_ATTACK: UInt8 = 6
+    /// `dspi_core::consts::UPMIX_PARAM_RELEASE`.
+    public static let UPMIX_PARAM_RELEASE: UInt8 = 7
+    /// `dspi_core::consts::UPMIX_PARAM_DETECTOR_HPF`.
+    public static let UPMIX_PARAM_DETECTOR_HPF: UInt8 = 8
+    /// `dspi_core::consts::UPMIX_PARAM_SURROUND_DELAY`.
+    public static let UPMIX_PARAM_SURROUND_DELAY: UInt8 = 9
+    /// `dspi_core::consts::UPMIX_PARAM_SURROUND_HPF`.
+    public static let UPMIX_PARAM_SURROUND_HPF: UInt8 = 10
+    /// `dspi_core::consts::UPMIX_PARAM_SURROUND_LPF`.
+    public static let UPMIX_PARAM_SURROUND_LPF: UInt8 = 11
+    /// `dspi_core::consts::UPMIX_PARAM_DECORRELATION`.
+    public static let UPMIX_PARAM_DECORRELATION: UInt8 = 12
+    /// `dspi_core::consts::UPMIX_PARAM_PRESENCE`.
+    public static let UPMIX_PARAM_PRESENCE: UInt8 = 13
+    /// `dspi_core::consts::UPMIX_PARAM_COUNT`.
+    public static let UPMIX_PARAM_COUNT: Int = 14
+    /// `dspi_core::consts::SUBHARM_PARAM_ENABLED`.
+    public static let SUBHARM_PARAM_ENABLED: UInt8 = 0
+    /// `dspi_core::consts::SUBHARM_PARAM_MASK`.
+    public static let SUBHARM_PARAM_MASK: UInt8 = 1
+    /// `dspi_core::consts::SUBHARM_PARAM_LOW`.
+    public static let SUBHARM_PARAM_LOW: UInt8 = 2
+    /// `dspi_core::consts::SUBHARM_PARAM_HIGH`.
+    public static let SUBHARM_PARAM_HIGH: UInt8 = 3
+    /// `dspi_core::consts::SUBHARM_PARAM_TOP`.
+    public static let SUBHARM_PARAM_TOP: UInt8 = 4
+    /// `dspi_core::consts::SUBHARM_PARAM_BOOST`.
+    public static let SUBHARM_PARAM_BOOST: UInt8 = 5
+    /// `dspi_core::consts::SUBHARM_PARAM_SELECT`.
+    public static let SUBHARM_PARAM_SELECT: UInt8 = 6
+    /// `dspi_core::consts::SUBHARM_PARAM_DEPTH`.
+    public static let SUBHARM_PARAM_DEPTH: UInt8 = 7
+    /// `dspi_core::consts::SUBHARM_PARAM_HOLD`.
+    public static let SUBHARM_PARAM_HOLD: UInt8 = 8
+    /// `dspi_core::consts::SUBHARM_PARAM_CEILING`.
+    public static let SUBHARM_PARAM_CEILING: UInt8 = 9
+    /// `dspi_core::consts::SUBHARM_PARAM_LINK`.
+    public static let SUBHARM_PARAM_LINK: UInt8 = 10
+    /// `dspi_core::consts::SUBHARM_PARAM_COUNT`.
+    public static let SUBHARM_PARAM_COUNT: Int = 11
+    /// `dspi_proto::generated::tube::TUBE_PARAM_ENABLED`.
+    public static let TUBE_PARAM_ENABLED: UInt8 = 0
+    /// `dspi_proto::generated::tube::TUBE_PARAM_OUTPUT_MASK`.
+    public static let TUBE_PARAM_MASK: UInt8 = 1
+    /// `dspi_proto::generated::tube::TUBE_PARAM_TUBE_TYPE`.
+    public static let TUBE_PARAM_TYPE: UInt8 = 2
+    /// `dspi_proto::generated::tube::TUBE_PARAM_DRIVE_DB`.
+    public static let TUBE_PARAM_DRIVE: UInt8 = 3
+    /// `dspi_proto::generated::tube::TUBE_PARAM_BIAS_PCT`.
+    public static let TUBE_PARAM_BIAS: UInt8 = 4
+    /// `dspi_proto::generated::tube::TUBE_PARAM_ASYM_DB`.
+    public static let TUBE_PARAM_ASYM: UInt8 = 5
+    /// `dspi_proto::generated::tube::TUBE_PARAM_HARDNESS_PCT`.
+    public static let TUBE_PARAM_HARDNESS: UInt8 = 6
+    /// `dspi_proto::generated::tube::TUBE_PARAM_SAG_PCT`.
+    public static let TUBE_PARAM_SAG: UInt8 = 7
+    /// `dspi_proto::generated::tube::TUBE_PARAM_RECTIFIER`.
+    public static let TUBE_PARAM_RECTIFIER: UInt8 = 8
+    /// `dspi_proto::generated::tube::TUBE_PARAM_XFMR_ENABLED`.
+    public static let TUBE_PARAM_XFMR: UInt8 = 9
+    /// `dspi_proto::generated::tube::TUBE_PARAM_XFMR_DAMPING`.
+    public static let TUBE_PARAM_DAMPING: UInt8 = 10
+    /// `dspi_proto::generated::tube::TUBE_PARAM_XFMR_RES_HZ`.
+    public static let TUBE_PARAM_RESONANCE: UInt8 = 11
+    /// `dspi_proto::generated::tube::TUBE_PARAM_MIX_PCT`.
+    public static let TUBE_PARAM_MIX: UInt8 = 12
+    /// `dspi_proto::generated::tube::TUBE_PARAM_TRIM_DB`.
+    public static let TUBE_PARAM_TRIM: UInt8 = 13
+    /// `dspi_core::consts::TUBE_PARAM_COUNT`.
+    public static let TUBE_PARAM_COUNT: Int = 14
+    /// `dspi_proto::generated::limiter::LIMITER_PARAM_ENABLED`.
+    public static let LIMITER_PARAM_ENABLED: UInt8 = 0
+    /// `dspi_proto::generated::limiter::LIMITER_PARAM_THRESHOLD_DB`.
+    public static let LIMITER_PARAM_THRESHOLD_DB: UInt8 = 1
+    /// `dspi_proto::generated::limiter::LIMITER_PARAM_RELEASE_MS`.
+    public static let LIMITER_PARAM_RELEASE_MS: UInt8 = 2
+    /// `dspi_proto::generated::limiter::LIMITER_PARAM_LINK_GROUP`.
+    public static let LIMITER_PARAM_LINK_GROUP: UInt8 = 3
+    /// `dspi_proto::generated::limiter::LIMITER_GET_METER`.
+    public static let LIMITER_GET_METER: UInt8 = 0x80
+    /// `dspi_proto::generated::limiter::LIMITER_GET_STATUS`.
+    public static let LIMITER_GET_STATUS: UInt8 = 0x81
+    /// `dspi_proto::generated::limiter::LIMITER_ALL_OUTPUTS`.
+    public static let LIMITER_ALL_OUTPUTS: UInt8 = 0xFF
+
+    // ── rta ──
+    /// `dspi_proto::packets::RTA_VERSION`.
+    public static let RTA_VERSION: UInt8 = 3
+    /// `dspi_core::consts::RTA_MAX_BANDS`.
+    public static let RTA_MAX_BANDS: Int = 37
+    /// `dspi_core::consts::RTA_MAX_CHANNELS`.
+    public static let RTA_MAX_CHANNELS: Int = 16
+    /// `dspi_core::consts::RTA_MAX_BINS`.
+    public static let RTA_MAX_BINS: Int = 512
+    /// `dspi_core::consts::RTA_TAP_INPUT`.
+    public static let RTA_TAP_INPUT: UInt8 = 0
+    /// `dspi_core::consts::RTA_TAP_OUTPUT`.
+    public static let RTA_TAP_OUTPUT: UInt8 = 1
+    /// `dspi_core::consts::RTA_FLOOR_DB`.
+    public static let RTA_FLOOR_DB: Float = -121.5
+
+    // ── siggen ──
+    /// `dspi_core::consts::SIGGEN_VERSION`.
+    public static let SIGGEN_VERSION: UInt8 = 1
+    /// `dspi_core::consts::SIGGEN_TYPE_COUNT`.
+    public static let SIGGEN_TYPE_COUNT: Int = 15
+    /// `dspi_core::consts::SIGGEN_FLAG_RAW`.
+    public static let SIGGEN_FLAG_RAW: UInt8 = 0x01
+    /// `dspi_core::consts::SIGGEN_FLAG_DECORR`.
+    public static let SIGGEN_FLAG_DECORR: UInt8 = 0x02
+    /// `dspi_core::consts::SIGGEN_FLAG_WALK`.
+    public static let SIGGEN_FLAG_WALK: UInt8 = 0x04
+    /// `dspi_core::consts::SIGGEN_CTL_STOP`.
+    public static let SIGGEN_CTL_STOP: UInt16 = 0
+    /// `dspi_core::consts::SIGGEN_CTL_START`.
+    public static let SIGGEN_CTL_START: UInt16 = 1
+    /// `dspi_core::consts::SIGGEN_CTL_STOP_NOW`.
+    public static let SIGGEN_CTL_STOP_NOW: UInt16 = 2
+
+    // ── stats ──
+    /// `dspi_core::consts::STAT_PDM_RING_OVERRUNS`.
+    public static let STAT_PDM_RING_OVERRUNS: UInt16 = 3
+    /// `dspi_core::consts::STAT_PDM_RING_UNDERRUNS`.
+    public static let STAT_PDM_RING_UNDERRUNS: UInt16 = 4
+    /// `dspi_core::consts::STAT_PDM_DMA_OVERRUNS`.
+    public static let STAT_PDM_DMA_OVERRUNS: UInt16 = 5
+    /// `dspi_core::consts::STAT_PDM_DMA_UNDERRUNS`.
+    public static let STAT_PDM_DMA_UNDERRUNS: UInt16 = 6
+    /// `dspi_core::consts::STAT_SPDIF_OVERRUNS`.
+    public static let STAT_SPDIF_OVERRUNS: UInt16 = 7
+    /// `dspi_core::consts::STAT_SPDIF_UNDERRUNS`.
+    public static let STAT_SPDIF_UNDERRUNS: UInt16 = 8
+    /// `dspi_core::consts::STAT_CLOCK_HZ`.
+    public static let STAT_CLOCK_HZ: UInt16 = 13
+    /// `dspi_core::consts::STAT_CORE_MV`.
+    public static let STAT_CORE_MV: UInt16 = 14
+    /// `dspi_core::consts::STAT_SAMPLE_RATE`.
+    public static let STAT_SAMPLE_RATE: UInt16 = 15
+    /// `dspi_core::consts::STAT_TEMPERATURE`.
+    public static let STAT_TEMPERATURE: UInt16 = 16
+    /// `dspi_core::consts::STAT_STARVATION_TOTAL`.
+    public static let STAT_STARVATION_TOTAL: UInt16 = 17
+    /// `dspi_core::consts::STAT_STARVATION_FIRST`.
+    public static let STAT_STARVATION_FIRST: UInt16 = 18
+    /// `dspi_core::consts::STAT_USB_RING_OVERRUNS`.
+    public static let STAT_USB_RING_OVERRUNS: UInt16 = 22
+
+    // ── notify ──
+    /// `dspi_core::consts::NOTIFY_STATE`.
+    public static let NOTIFY_STATE: UInt32 = 1 << 0
+    /// `dspi_core::consts::NOTIFY_CURVES`.
+    public static let NOTIFY_CURVES: UInt32 = 1 << 1
+    /// `dspi_core::consts::NOTIFY_REFRESHED`.
+    public static let NOTIFY_REFRESHED: UInt32 = 1 << 2
+    /// `dspi_core::consts::NOTIFY_INPUT_FORMAT`.
+    public static let NOTIFY_INPUT_FORMAT: UInt32 = 1 << 3
+    /// `dspi_core::consts::NOTIFY_PRESET`.
+    public static let NOTIFY_PRESET: UInt32 = 1 << 4
+    /// `dspi_core::consts::NOTIFY_SIGGEN`.
+    public static let NOTIFY_SIGGEN: UInt32 = 1 << 5
+    /// `dspi_core::consts::NOTIFY_CS_AUX`.
+    public static let NOTIFY_CS_AUX: UInt32 = 1 << 6
+    /// `dspi_core::consts::NOTIFY_IR_LEARN`.
+    public static let NOTIFY_IR_LEARN: UInt32 = 1 << 7
+
+    // ── files ──
+    /// `schemaVersion` of the configuration documents dspi-core writes.
+    public static let SCHEMA_VERSION: Int64 = 1
+    /// `dspi_session::filterfile::FORMAT_VERSION`.
+    public static let FORMAT_VERSION: UInt32 = 2
+    /// `dspi_core::consts::IMPORT_VOLUMES`.
+    public static let IMPORT_VOLUMES: UInt32 = 1
+    /// `dspi_core::consts::IMPORT_HARDWARE`.
+    public static let IMPORT_HARDWARE: UInt32 = 2
+
+    // ── cs ──
+    /// `dspi_proto::generated::cs::CS_MAX_BINDINGS`.
+    public static let CS_MAX_BINDINGS: Int = 16
+    /// `dspi_proto::generated::cs::CS_MAX_IR_COMMANDS`.
+    public static let CS_MAX_IR: Int = 16
+    /// `dspi_proto::generated::cs::CS_MAX_GROUPS`.
+    public static let CS_MAX_GROUPS: Int = 8
+    /// `dspi_proto::generated::cs::CS_MAX_MACROS`.
+    public static let CS_MAX_MACROS: Int = 8
+    /// `dspi_proto::generated::cs::CS_MAX_MACRO_STEPS`.
+    public static let CS_MAX_STEPS: Int = 8
+    /// `dspi_proto::generated::cs::CS_MAX_DISPLAY_PAGES`.
+    public static let CS_MAX_PAGES: Int = 16
+
     // ── dspi-core consts.rs ──
-    /// Crossfeed output pairs in `DspState.crossfeed_pair_map`.
+    /// Bytes of a crossfeed pair map, one per stereo pair.
     public static let CROSSFEED_MAP_PAIRS: Int = 4
-    /// Number of `PSYBASS_PARAM_*` ids.
+    /// Number of psychoacoustic bass parameters.
     public static let PSYBASS_PARAM_COUNT: Int = 5
-    /// Another host renamed an input source or the device (re-read the names:
-    /// `get_input_source_name`, `get_device_name`). New in the merged core.
+    /// The device name or an input source name changed.
     public static let NOTIFY_NAMES: UInt32 = 1 << 8
-    /// The device's notification stream ended (unplugged, MIDI port closed,
-    /// Link session over): the connection is dead and should be closed. Never
-    /// set after an intentional `disconnect`. New in the merged core.
+    /// The device went away.
     public static let NOTIFY_DISCONNECTED: UInt32 = 1 << 9
-    /// `DspiError::Refused { status }` for an extension-channel write the
-    /// device stalled (`REQ_EXTENSION`, WP C8): the extension channel has no
-    /// status byte, so this code stands for "refused".
+    /// Status of an extension write the device stalled.
     public static let EXT_WRITE_REFUSED: UInt8 = 0xFF
-    /// `process_notifications`: a re-read after a change failed every retry, so
-    /// the mirror may be stale until the next change or an explicit `fetch_all`.
-    /// Reported once.
+    /// The state could not be re-read after retries: it may be out of date.
     public static let NOTIFY_STALE: UInt32 = 1 << 10
-    /// `process_notifications`: an audio stream's state changed (ADAT out, I2S
-    /// clock slave, ADAT in). Re-read `fetch_adat_out_status` or
-    /// `fetch_input_lock(0|1)`. The mirror already follows ADAT out's `enabled`
-    /// and `pin` (with `NOTIFY_STATE` when they changed).
+    /// An input or output stream changed state (ADAT, I2S slave, ...).
     public static let NOTIFY_STREAMS: UInt32 = 1 << 11
 
     // ── firmware config.h (not in the core) ──
@@ -524,549 +484,498 @@ public enum DspiConstants {
 
 /// Vendor request opcodes (`REQ_*`, the bRequest byte).
 public enum Opcodes {
-    /// bmRequestType.
-    ///
-    /// Host→Device | Vendor | Interface
+    /// `dspi_proto::REQ_TYPE_OUT`.
     public static let REQ_TYPE_OUT: UInt8 = 0x41
-    /// Device→Host | Vendor | Interface
+    /// `dspi_proto::REQ_TYPE_IN`.
     public static let REQ_TYPE_IN: UInt8 = 0xC1
-    /// Control Surfaces aux outputs.
+    /// `dspi_proto::generated::opcodes::REQ_SET_CS_AUX_STATE`.
     public static let REQ_SET_CS_AUX_STATE: UInt8 = 0x04
-    /// wValue = slot: 1 byte (STALL if not an aux);
-    /// wValue = 0xFFFF: 48 bytes {state[16],
-    /// level_q8[16] LE}, zeros on non-aux slots
+    /// `dspi_proto::generated::opcodes::REQ_GET_CS_AUX_STATE`.
     public static let REQ_GET_CS_AUX_STATE: UInt8 = 0x05
-    /// wValue = slot, 2 bytes 8.8 percent LE, clamped
-    /// to 100 %; STALL unless a CS_TYPE_AUX_PWM slot
+    /// `dspi_proto::generated::opcodes::REQ_SET_CS_AUX_LEVEL`.
     public static let REQ_SET_CS_AUX_LEVEL: UInt8 = 0x06
-    /// wValue = slot; 2 bytes 8.8 percent LE (0 on
-    /// AUX_OUT; STALL if not an aux)
+    /// `dspi_proto::generated::opcodes::REQ_GET_CS_AUX_LEVEL`.
     public static let REQ_GET_CS_AUX_LEVEL: UInt8 = 0x07
-    /// Spectrum analyser (RTA).
+    /// `dspi_proto::generated::opcodes::REQ_RTA_SET_CONFIG`.
     public static let REQ_RTA_SET_CONFIG: UInt8 = 0x08
-    /// returns RtaConfig (12 B)
+    /// `dspi_proto::generated::opcodes::REQ_RTA_GET_CONFIG`.
     public static let REQ_RTA_GET_CONFIG: UInt8 = 0x09
-    /// wValue 0 = RtaCaps (16 B); 1.. = band centre chunks
+    /// `dspi_proto::generated::opcodes::REQ_RTA_GET_CAPS`.
     public static let REQ_RTA_GET_CAPS: UInt8 = 0x0A
-    /// wValue = channel; returns RtaBandFrame (82 B)
+    /// `dspi_proto::generated::opcodes::REQ_RTA_GET_BANDS`.
     public static let REQ_RTA_GET_BANDS: UInt8 = 0x0B
-    /// wValue = byte offset into the bin frame
+    /// `dspi_proto::generated::opcodes::REQ_RTA_GET_BINS`.
     public static let REQ_RTA_GET_BINS: UInt8 = 0x0C
-    /// returns RtaStatus (24 B)
+    /// `dspi_proto::generated::opcodes::REQ_RTA_GET_STATUS`.
     public static let REQ_RTA_GET_STATUS: UInt8 = 0x0D
-    /// wValue = RTA_CTL_*; returns 1 byte
+    /// `dspi_proto::generated::opcodes::REQ_RTA_CONTROL`.
     public static let REQ_RTA_CONTROL: UInt8 = 0x0E
-    /// USB only: every live channel's RtaBandFrame
+    /// `dspi_proto::generated::opcodes::REQ_RTA_GET_BANDS_ALL`.
     public static let REQ_RTA_GET_BANDS_ALL: UInt8 = 0x0F
-    /// Subharmonic synthesizer.
+    /// `dspi_proto::generated::opcodes::REQ_SET_SUBHARM`.
     public static let REQ_SET_SUBHARM: UInt8 = 0x10
-    /// Reads what `REQ_SET_SUBHARM` writes: 1 byte 0/1
+    /// `dspi_proto::generated::opcodes::REQ_GET_SUBHARM`.
     public static let REQ_GET_SUBHARM: UInt8 = 0x11
-    /// float dB, 24-36 Hz band level
+    /// `dspi_proto::generated::opcodes::REQ_SET_SUBHARM_LOW`.
     public static let REQ_SET_SUBHARM_LOW: UInt8 = 0x12
-    /// Reads what `REQ_SET_SUBHARM_LOW` writes: float dB, 24-36 Hz band level
+    /// `dspi_proto::generated::opcodes::REQ_GET_SUBHARM_LOW`.
     public static let REQ_GET_SUBHARM_LOW: UInt8 = 0x13
-    /// float dB, 36-56 Hz band level
+    /// `dspi_proto::generated::opcodes::REQ_SET_SUBHARM_HIGH`.
     public static let REQ_SET_SUBHARM_HIGH: UInt8 = 0x14
-    /// Reads what `REQ_SET_SUBHARM_HIGH` writes: float dB, 36-56 Hz band level
+    /// `dspi_proto::generated::opcodes::REQ_GET_SUBHARM_HIGH`.
     public static let REQ_GET_SUBHARM_HIGH: UInt8 = 0x15
-    /// float dB, LF boost bell
+    /// `dspi_proto::generated::opcodes::REQ_SET_SUBHARM_BOOST`.
     public static let REQ_SET_SUBHARM_BOOST: UInt8 = 0x16
-    /// Reads what `REQ_SET_SUBHARM_BOOST` writes: float dB, LF boost bell
+    /// `dspi_proto::generated::opcodes::REQ_GET_SUBHARM_BOOST`.
     public static let REQ_GET_SUBHARM_BOOST: UInt8 = 0x17
-    /// uint16 LE output mask
+    /// `dspi_proto::generated::opcodes::REQ_SET_SUBHARM_MASK`.
     public static let REQ_SET_SUBHARM_MASK: UInt8 = 0x18
-    /// Reads what `REQ_SET_SUBHARM_MASK` writes: uint16 LE output mask
+    /// `dspi_proto::generated::opcodes::REQ_GET_SUBHARM_MASK`.
     public static let REQ_GET_SUBHARM_MASK: UInt8 = 0x19
-    /// float dB: preamp headroom to free
+    /// `dspi_proto::generated::opcodes::REQ_GET_SUBHARM_HEADROOM`.
     public static let REQ_GET_SUBHARM_HEADROOM: UInt8 = 0x1A
-    /// float dB, 56-80 Hz band level
+    /// `dspi_proto::generated::opcodes::REQ_SET_SUBHARM_TOP`.
     public static let REQ_SET_SUBHARM_TOP: UInt8 = 0x1B
-    /// Reads what `REQ_SET_SUBHARM_TOP` writes: float dB, 56-80 Hz band level
+    /// `dspi_proto::generated::opcodes::REQ_GET_SUBHARM_TOP`.
     public static let REQ_GET_SUBHARM_TOP: UInt8 = 0x1C
-    /// 1 byte SUBHARM_SELECT_* mode
+    /// `dspi_proto::generated::opcodes::REQ_SET_SUBHARM_SELECT`.
     public static let REQ_SET_SUBHARM_SELECT: UInt8 = 0x1D
-    /// Reads what `REQ_SET_SUBHARM_SELECT` writes: 1 byte SUBHARM_SELECT_* mode
+    /// `dspi_proto::generated::opcodes::REQ_GET_SUBHARM_SELECT`.
     public static let REQ_GET_SUBHARM_SELECT: UInt8 = 0x1E
-    /// NUM_OUTPUT_CHANNELS x uint16 LE sub peaks
+    /// `dspi_proto::generated::opcodes::REQ_GET_SUBHARM_METER`.
     public static let REQ_GET_SUBHARM_METER: UInt8 = 0x1F
-    /// 1 byte 0/1; runtime only, never persisted
-    public static let REQ_SET_SUBHARM_SOLO: UInt8 = 0x2C
-    /// Reads what `REQ_SET_SUBHARM_SOLO` writes: 1 byte 0/1; runtime only, never persisted
-    public static let REQ_GET_SUBHARM_SOLO: UInt8 = 0x2D
-    /// 1 byte 0/1, pair-linked synthesis
-    public static let REQ_SET_SUBHARM_LINK: UInt8 = 0x2E
-    /// Reads what `REQ_SET_SUBHARM_LINK` writes: 1 byte 0/1, pair-linked synthesis
-    public static let REQ_GET_SUBHARM_LINK: UInt8 = 0x2F
-    /// float %, selectivity depth
-    public static let REQ_SET_SUBHARM_DEPTH: UInt8 = 0xA9
-    /// Reads what `REQ_SET_SUBHARM_DEPTH` writes: float %, selectivity depth
-    public static let REQ_GET_SUBHARM_DEPTH: UInt8 = 0xAA
-    /// float ms, selectivity hold time
-    public static let REQ_SET_SUBHARM_HOLD: UInt8 = 0xAB
-    /// Reads what `REQ_SET_SUBHARM_HOLD` writes: float ms, selectivity hold time
-    public static let REQ_GET_SUBHARM_HOLD: UInt8 = 0xAC
-    /// float dBFS sub ceiling (0 = off)
-    public static let REQ_SET_SUBHARM_CEILING: UInt8 = 0xAD
-    /// Reads what `REQ_SET_SUBHARM_CEILING` writes: float dBFS sub ceiling (0 = off)
-    public static let REQ_GET_SUBHARM_CEILING: UInt8 = 0xAE
-    /// Control Surfaces groups, macros, display.
+    /// `dspi_proto::generated::opcodes::REQ_SET_CS_GROUP`.
     public static let REQ_SET_CS_GROUP: UInt8 = 0x20
-    /// wValue = group (0-7); returns 40-byte CsGroup
+    /// `dspi_proto::generated::opcodes::REQ_GET_CS_GROUP`.
     public static let REQ_GET_CS_GROUP: UInt8 = 0x21
-    /// wValue = macro (0-7), payload = 36-byte
-    /// CsMacroHeaderWire (name + step_count)
+    /// `dspi_proto::generated::opcodes::REQ_SET_CS_MACRO`.
     public static let REQ_SET_CS_MACRO: UInt8 = 0x22
-    /// wValue = macro (0-7); returns 132-byte CsMacro
+    /// `dspi_proto::generated::opcodes::REQ_GET_CS_MACRO`.
     public static let REQ_GET_CS_MACRO: UInt8 = 0x23
-    /// wValue = (step << 8) | macro, payload = 12-byte
-    /// CsMacroStep; all-zero record clears the step
+    /// `dspi_proto::generated::opcodes::REQ_SET_CS_MACRO_STEP`.
     public static let REQ_SET_CS_MACRO_STEP: UInt8 = 0x24
-    /// GET; wValue = macro fires it, 0xFFFF cancels the
-    /// running one; returns 1 status byte
+    /// `dspi_proto::generated::opcodes::REQ_CS_MACRO_FIRE`.
     public static let REQ_CS_MACRO_FIRE: UInt8 = 0x25
-    /// returns 24-byte CsExtStatusPacket
+    /// `dspi_proto::generated::opcodes::REQ_GET_CS_EXT_STATUS`.
     public static let REQ_GET_CS_EXT_STATUS: UInt8 = 0x26
-    /// payload = 12-byte CsDisplayCfg
+    /// `dspi_proto::generated::opcodes::REQ_SET_CS_DISPLAY_CFG`.
     public static let REQ_SET_CS_DISPLAY_CFG: UInt8 = 0x27
-    /// returns 16 bytes: {max_pages,
-    /// model_count, reserved[2]} + CsDisplayCfg
+    /// `dspi_proto::generated::opcodes::REQ_GET_CS_DISPLAY_CFG`.
     public static let REQ_GET_CS_DISPLAY_CFG: UInt8 = 0x28
-    /// wValue = page (0-15), payload = 4-byte
-    /// CsDisplayPage; all-zero record clears it
+    /// `dspi_proto::generated::opcodes::REQ_SET_CS_DISPLAY_PAGE`.
     public static let REQ_SET_CS_DISPLAY_PAGE: UInt8 = 0x29
-    /// wValue = page (0-15); returns 4-byte
-    /// CsDisplayPage
+    /// `dspi_proto::generated::opcodes::REQ_GET_CS_DISPLAY_PAGE`.
     public static let REQ_GET_CS_DISPLAY_PAGE: UInt8 = 0x2A
-    /// returns 8-byte CsDisplayStatus
+    /// `dspi_proto::generated::opcodes::REQ_GET_CS_DISPLAY_STATUS`.
     public static let REQ_GET_CS_DISPLAY_STATUS: UInt8 = 0x2B
-    /// Psychoacoustic bass.
+    /// `dspi_proto::generated::opcodes::REQ_SET_SUBHARM_SOLO`.
+    public static let REQ_SET_SUBHARM_SOLO: UInt8 = 0x2C
+    /// `dspi_proto::generated::opcodes::REQ_GET_SUBHARM_SOLO`.
+    public static let REQ_GET_SUBHARM_SOLO: UInt8 = 0x2D
+    /// `dspi_proto::generated::opcodes::REQ_SET_SUBHARM_LINK`.
+    public static let REQ_SET_SUBHARM_LINK: UInt8 = 0x2E
+    /// `dspi_proto::generated::opcodes::REQ_GET_SUBHARM_LINK`.
+    public static let REQ_GET_SUBHARM_LINK: UInt8 = 0x2F
+    /// `dspi_proto::generated::opcodes::REQ_SET_PSYBASS`.
     public static let REQ_SET_PSYBASS: UInt8 = 0x30
-    /// returns 1 byte: psychoacoustic bass on (0/1)
+    /// `dspi_proto::generated::opcodes::REQ_GET_PSYBASS`.
     public static let REQ_GET_PSYBASS: UInt8 = 0x31
-    /// float Hz, 30..300
+    /// `dspi_proto::generated::opcodes::REQ_SET_PSYBASS_CUTOFF`.
     public static let REQ_SET_PSYBASS_CUTOFF: UInt8 = 0x32
-    /// Reads what `REQ_SET_PSYBASS_CUTOFF` writes: float Hz, 30..300
+    /// `dspi_proto::generated::opcodes::REQ_GET_PSYBASS_CUTOFF`.
     public static let REQ_GET_PSYBASS_CUTOFF: UInt8 = 0x33
-    /// float dB, -24..12
+    /// `dspi_proto::generated::opcodes::REQ_SET_PSYBASS_HARMONICS`.
     public static let REQ_SET_PSYBASS_HARMONICS: UInt8 = 0x34
-    /// Reads what `REQ_SET_PSYBASS_HARMONICS` writes: float dB, -24..12
+    /// `dspi_proto::generated::opcodes::REQ_GET_PSYBASS_HARMONICS`.
     public static let REQ_GET_PSYBASS_HARMONICS: UInt8 = 0x35
-    /// float dB, 0..18
+    /// `dspi_proto::generated::opcodes::REQ_SET_PSYBASS_DRIVE`.
     public static let REQ_SET_PSYBASS_DRIVE: UInt8 = 0x36
-    /// Reads what `REQ_SET_PSYBASS_DRIVE` writes: float dB, 0..18
+    /// `dspi_proto::generated::opcodes::REQ_GET_PSYBASS_DRIVE`.
     public static let REQ_GET_PSYBASS_DRIVE: UInt8 = 0x37
-    /// float %, 0..100
+    /// `dspi_proto::generated::opcodes::REQ_SET_PSYBASS_CHARACTER`.
     public static let REQ_SET_PSYBASS_CHARACTER: UInt8 = 0x38
-    /// Reads what `REQ_SET_PSYBASS_CHARACTER` writes: float %, 0..100
+    /// `dspi_proto::generated::opcodes::REQ_GET_PSYBASS_CHARACTER`.
     public static let REQ_GET_PSYBASS_CHARACTER: UInt8 = 0x39
-    /// float dB, -60..0
+    /// `dspi_proto::generated::opcodes::REQ_SET_PSYBASS_ORIGINAL`.
     public static let REQ_SET_PSYBASS_ORIGINAL: UInt8 = 0x3A
-    /// Reads what `REQ_SET_PSYBASS_ORIGINAL` writes: float dB, -60..0
+    /// `dspi_proto::generated::opcodes::REQ_GET_PSYBASS_ORIGINAL`.
     public static let REQ_GET_PSYBASS_ORIGINAL: UInt8 = 0x3B
-    /// uint16 LE output mask
+    /// `dspi_proto::generated::opcodes::REQ_SET_PSYBASS_MASK`.
     public static let REQ_SET_PSYBASS_MASK: UInt8 = 0x3C
-    /// Reads what `REQ_SET_PSYBASS_MASK` writes: uint16 LE output mask
+    /// `dspi_proto::generated::opcodes::REQ_GET_PSYBASS_MASK`.
     public static let REQ_GET_PSYBASS_MASK: UInt8 = 0x3D
-    /// Tube modeller.
+    /// `dspi_proto::generated::opcodes::REQ_SET_TUBE_PARAM`.
     public static let REQ_SET_TUBE_PARAM: UInt8 = 0x3E
-    /// wValue low byte = index, returns 4-byte float32 LE
+    /// `dspi_proto::generated::opcodes::REQ_GET_TUBE_PARAM`.
     public static let REQ_GET_TUBE_PARAM: UInt8 = 0x3F
-    /// EQ / Preamp / Bypass / Delay.
+    /// `dspi_proto::generated::opcodes::REQ_SET_EQ_PARAM`.
     public static let REQ_SET_EQ_PARAM: UInt8 = 0x42
-    /// wValue = channel, band and parameter; returns float (4 bytes)
+    /// `dspi_proto::generated::opcodes::REQ_GET_EQ_PARAM`.
     public static let REQ_GET_EQ_PARAM: UInt8 = 0x43
-    /// Legacy: sets every input channel's preamp to the same value.
+    /// `dspi_proto::generated::opcodes::REQ_SET_PREAMP`.
     public static let REQ_SET_PREAMP: UInt8 = 0x44
-    /// returns float dB
+    /// `dspi_proto::generated::opcodes::REQ_GET_PREAMP`.
     public static let REQ_GET_PREAMP: UInt8 = 0x45
-    /// 1 byte 0/1, master EQ bypass
+    /// `dspi_proto::generated::opcodes::REQ_SET_BYPASS`.
     public static let REQ_SET_BYPASS: UInt8 = 0x46
-    /// Reads what `REQ_SET_BYPASS` writes: 1 byte 0/1, master EQ bypass
+    /// `dspi_proto::generated::opcodes::REQ_GET_BYPASS`.
     public static let REQ_GET_BYPASS: UInt8 = 0x47
-    /// wValue = wire channel, float ms
+    /// `dspi_proto::generated::opcodes::REQ_SET_DELAY`.
     public static let REQ_SET_DELAY: UInt8 = 0x48
-    /// Reads what `REQ_SET_DELAY` writes: wValue = wire channel, float ms
+    /// `dspi_proto::generated::opcodes::REQ_GET_DELAY`.
     public static let REQ_GET_DELAY: UInt8 = 0x49
-    /// Stereo upmixer.
+    /// `dspi_proto::generated::opcodes::REQ_UPMIX_SET_CONFIG`.
     public static let REQ_UPMIX_SET_CONFIG: UInt8 = 0x4A
-    /// returns UpmixConfigPacket
+    /// `dspi_proto::generated::opcodes::REQ_UPMIX_GET_CONFIG`.
     public static let REQ_UPMIX_GET_CONFIG: UInt8 = 0x4B
-    /// wValue = UPMIX_PARAM_*, payload = float (4 B)
+    /// `dspi_proto::generated::opcodes::REQ_UPMIX_SET_PARAM`.
     public static let REQ_UPMIX_SET_PARAM: UInt8 = 0x4C
-    /// wValue = UPMIX_PARAM_*, returns float
+    /// `dspi_proto::generated::opcodes::REQ_UPMIX_GET_PARAM`.
     public static let REQ_UPMIX_GET_PARAM: UInt8 = 0x4D
-    /// returns UpmixStatus (16 B)
+    /// `dspi_proto::generated::opcodes::REQ_UPMIX_GET_STATUS`.
     public static let REQ_UPMIX_GET_STATUS: UInt8 = 0x4E
-    /// Status / flash.
+    /// `dspi_proto::generated::opcodes::REQ_GET_STATUS`.
     public static let REQ_GET_STATUS: UInt8 = 0x50
-    /// GET; saves the live parameters to flash, returns a FLASH_* status byte
+    /// `dspi_proto::generated::opcodes::REQ_SAVE_PARAMS`.
     public static let REQ_SAVE_PARAMS: UInt8 = 0x51
-    /// Persist the live output (IO) config in independent mode. Was the
-    /// deprecated REQ_LOAD_PARAMS, which is gone.
+    /// `dspi_proto::generated::opcodes::REQ_SAVE_OUTPUT_CONFIG`.
     public static let REQ_SAVE_OUTPUT_CONFIG: UInt8 = 0x52
-    /// GET; restores the factory defaults, returns a FLASH_* status byte
+    /// `dspi_proto::generated::opcodes::REQ_FACTORY_RESET`.
     public static let REQ_FACTORY_RESET: UInt8 = 0x53
-    /// Legacy channel gain/mute.
+    /// Older firmware's opcode, kept for the ABI; current firmware uses this value for a name request.
     public static let REQ_SET_CHANNEL_GAIN: UInt8 = 0x54
-    /// Vendor request: read channel gain.
+    /// Older firmware's opcode, kept for the ABI; current firmware uses this value for a name request.
     public static let REQ_GET_CHANNEL_GAIN: UInt8 = 0x55
-    /// Vendor request: write channel mute.
+    /// Older firmware's opcode, kept for the ABI; current firmware uses this value for a name request.
     public static let REQ_SET_CHANNEL_MUTE: UInt8 = 0x56
-    /// Vendor request: read channel mute.
+    /// Older firmware's opcode, kept for the ABI; current firmware uses this value for a name request.
     public static let REQ_GET_CHANNEL_MUTE: UInt8 = 0x57
-    /// Loudness.
+    /// `dspi_proto::generated::opcodes::REQ_SET_LOUDNESS`.
     public static let REQ_SET_LOUDNESS: UInt8 = 0x58
-    /// returns 1 byte: loudness on (0/1)
+    /// `dspi_proto::generated::opcodes::REQ_GET_LOUDNESS`.
     public static let REQ_GET_LOUDNESS: UInt8 = 0x59
-    /// float dB SPL, reference level
+    /// `dspi_proto::generated::opcodes::REQ_SET_LOUDNESS_REF`.
     public static let REQ_SET_LOUDNESS_REF: UInt8 = 0x5A
-    /// Reads what `REQ_SET_LOUDNESS_REF` writes: float dB SPL, reference level
+    /// `dspi_proto::generated::opcodes::REQ_GET_LOUDNESS_REF`.
     public static let REQ_GET_LOUDNESS_REF: UInt8 = 0x5B
-    /// float %, intensity
+    /// `dspi_proto::generated::opcodes::REQ_SET_LOUDNESS_INTENSITY`.
     public static let REQ_SET_LOUDNESS_INTENSITY: UInt8 = 0x5C
-    /// Reads what `REQ_SET_LOUDNESS_INTENSITY` writes: float %, intensity
+    /// `dspi_proto::generated::opcodes::REQ_GET_LOUDNESS_INTENSITY`.
     public static let REQ_GET_LOUDNESS_INTENSITY: UInt8 = 0x5D
-    /// payload = uint16 LE mask
-    public static let REQ_SET_LOUDNESS_MASK: UInt8 = 0xFA
-    /// returns uint16 LE mask
-    public static let REQ_GET_LOUDNESS_MASK: UInt8 = 0xFB
-    /// Crossfeed.
+    /// `dspi_proto::generated::opcodes::REQ_SET_CROSSFEED`.
     public static let REQ_SET_CROSSFEED: UInt8 = 0x5E
-    /// returns 1 byte: crossfeed on (0/1)
+    /// `dspi_proto::generated::opcodes::REQ_GET_CROSSFEED`.
     public static let REQ_GET_CROSSFEED: UInt8 = 0x5F
-    /// 1 byte preset index
+    /// `dspi_proto::generated::opcodes::REQ_SET_CROSSFEED_PRESET`.
     public static let REQ_SET_CROSSFEED_PRESET: UInt8 = 0x60
-    /// Reads what `REQ_SET_CROSSFEED_PRESET` writes: 1 byte preset index
+    /// `dspi_proto::generated::opcodes::REQ_GET_CROSSFEED_PRESET`.
     public static let REQ_GET_CROSSFEED_PRESET: UInt8 = 0x61
-    /// float Hz, custom frequency
+    /// `dspi_proto::generated::opcodes::REQ_SET_CROSSFEED_FREQ`.
     public static let REQ_SET_CROSSFEED_FREQ: UInt8 = 0x62
-    /// Reads what `REQ_SET_CROSSFEED_FREQ` writes: float Hz, custom frequency
+    /// `dspi_proto::generated::opcodes::REQ_GET_CROSSFEED_FREQ`.
     public static let REQ_GET_CROSSFEED_FREQ: UInt8 = 0x63
-    /// float dB, custom feed level
+    /// `dspi_proto::generated::opcodes::REQ_SET_CROSSFEED_FEED`.
     public static let REQ_SET_CROSSFEED_FEED: UInt8 = 0x64
-    /// Reads what `REQ_SET_CROSSFEED_FEED` writes: float dB, custom feed level
+    /// `dspi_proto::generated::opcodes::REQ_GET_CROSSFEED_FEED`.
     public static let REQ_GET_CROSSFEED_FEED: UInt8 = 0x65
-    /// 1 byte 0/1, interaural time delay
+    /// `dspi_proto::generated::opcodes::REQ_SET_CROSSFEED_ITD`.
     public static let REQ_SET_CROSSFEED_ITD: UInt8 = 0x66
-    /// Reads what `REQ_SET_CROSSFEED_ITD` writes: 1 byte 0/1, interaural time delay
+    /// `dspi_proto::generated::opcodes::REQ_GET_CROSSFEED_ITD`.
     public static let REQ_GET_CROSSFEED_ITD: UInt8 = 0x67
-    /// payload = uint8 pair mask
-    public static let REQ_SET_CROSSFEED_OUTPUTS: UInt8 = 0xFC
-    /// returns uint8 pair mask
-    public static let REQ_GET_CROSSFEED_OUTPUTS: UInt8 = 0xFD
-    /// ADAT input (RP2350).
+    /// `dspi_proto::generated::opcodes::REQ_SET_ADAT_INPUT_ENABLE`.
     public static let REQ_SET_ADAT_INPUT_ENABLE: UInt8 = 0x68
-    /// returns 1 byte: ADAT input enabled (0/1)
+    /// `dspi_proto::generated::opcodes::REQ_GET_ADAT_INPUT_ENABLE`.
     public static let REQ_GET_ADAT_INPUT_ENABLE: UInt8 = 0x69
-    /// wValue = GPIO; PIN_RESET_TO_DEFAULT
-    /// clears to unset (only while disabled)
+    /// `dspi_proto::generated::opcodes::REQ_SET_ADAT_INPUT_PIN`.
     public static let REQ_SET_ADAT_INPUT_PIN: UInt8 = 0x6A
-    /// returns uint8_t (0xFF = unset)
+    /// `dspi_proto::generated::opcodes::REQ_GET_ADAT_INPUT_PIN`.
     public static let REQ_GET_ADAT_INPUT_PIN: UInt8 = 0x6B
-    /// GET; wValue = mode (0 master, 1 slave), returns a status byte
+    /// `dspi_proto::generated::opcodes::REQ_SET_ADAT_INPUT_CLOCK_MODE`.
     public static let REQ_SET_ADAT_INPUT_CLOCK_MODE: UInt8 = 0x6C
-    /// Returns the setting `REQ_SET_ADAT_INPUT_CLOCK_MODE` writes.
+    /// `dspi_proto::generated::opcodes::REQ_GET_ADAT_INPUT_CLOCK_MODE`.
     public static let REQ_GET_ADAT_INPUT_CLOCK_MODE: UInt8 = 0x6D
-    /// returns the 20-byte ADAT input status
+    /// `dspi_proto::generated::opcodes::REQ_GET_ADAT_INPUT_STATUS`.
     public static let REQ_GET_ADAT_INPUT_STATUS: UInt8 = 0x6E
-    /// Matrix mixer / outputs.
+    /// `dspi_proto::generated::opcodes::REQ_SET_MATRIX_ROUTE`.
     public static let REQ_SET_MATRIX_ROUTE: UInt8 = 0x70
-    /// reads one matrix crosspoint
+    /// `dspi_proto::generated::opcodes::REQ_GET_MATRIX_ROUTE`.
     public static let REQ_GET_MATRIX_ROUTE: UInt8 = 0x71
-    /// wValue = output, 1 byte 0/1
+    /// `dspi_proto::generated::opcodes::REQ_SET_OUTPUT_ENABLE`.
     public static let REQ_SET_OUTPUT_ENABLE: UInt8 = 0x72
-    /// Reads what `REQ_SET_OUTPUT_ENABLE` writes: wValue = output, 1 byte 0/1
+    /// `dspi_proto::generated::opcodes::REQ_GET_OUTPUT_ENABLE`.
     public static let REQ_GET_OUTPUT_ENABLE: UInt8 = 0x73
-    /// wValue = output, float dB
+    /// `dspi_proto::generated::opcodes::REQ_SET_OUTPUT_GAIN`.
     public static let REQ_SET_OUTPUT_GAIN: UInt8 = 0x74
-    /// Reads what `REQ_SET_OUTPUT_GAIN` writes: wValue = output, float dB
+    /// `dspi_proto::generated::opcodes::REQ_GET_OUTPUT_GAIN`.
     public static let REQ_GET_OUTPUT_GAIN: UInt8 = 0x75
-    /// wValue = output, 1 byte 0/1
+    /// `dspi_proto::generated::opcodes::REQ_SET_OUTPUT_MUTE`.
     public static let REQ_SET_OUTPUT_MUTE: UInt8 = 0x76
-    /// Reads what `REQ_SET_OUTPUT_MUTE` writes: wValue = output, 1 byte 0/1
+    /// `dspi_proto::generated::opcodes::REQ_GET_OUTPUT_MUTE`.
     public static let REQ_GET_OUTPUT_MUTE: UInt8 = 0x77
-    /// wValue = output, float ms
+    /// `dspi_proto::generated::opcodes::REQ_SET_OUTPUT_DELAY`.
     public static let REQ_SET_OUTPUT_DELAY: UInt8 = 0x78
-    /// Reads what `REQ_SET_OUTPUT_DELAY` writes: wValue = output, float ms
+    /// `dspi_proto::generated::opcodes::REQ_GET_OUTPUT_DELAY`.
     public static let REQ_GET_OUTPUT_DELAY: UInt8 = 0x79
-    /// Core 1.
+    /// `dspi_proto::generated::opcodes::REQ_GET_CORE1_MODE`.
     public static let REQ_GET_CORE1_MODE: UInt8 = 0x7A
-    /// wValue = output; returns 1 byte, non-zero when enabling it conflicts with core 1's mode
+    /// `dspi_proto::generated::opcodes::REQ_GET_CORE1_CONFLICT`.
     public static let REQ_GET_CORE1_CONFLICT: UInt8 = 0x7B
-    /// Pins.
+    /// `dspi_proto::generated::opcodes::REQ_SET_OUTPUT_PIN`.
     public static let REQ_SET_OUTPUT_PIN: UInt8 = 0x7C
-    /// Reads what `REQ_SET_OUTPUT_PIN` writes: wValue = (GPIO<<8)|output_index;
-    /// GPIO = PIN_RESET_TO_DEFAULT restores the default
+    /// `dspi_proto::generated::opcodes::REQ_GET_OUTPUT_PIN`.
     public static let REQ_GET_OUTPUT_PIN: UInt8 = 0x7D
-    /// Identification.
+    /// `dspi_proto::generated::opcodes::REQ_GET_SERIAL`.
     public static let REQ_GET_SERIAL: UInt8 = 0x7E
-    /// returns the platform and the firmware version
+    /// `dspi_proto::generated::opcodes::REQ_GET_PLATFORM`.
     public static let REQ_GET_PLATFORM: UInt8 = 0x7F
-    /// 64-byte git-describe/date blob; provenance for
-    /// humans only, no software may gate on it
+    /// `dspi_proto::generated::opcodes::REQ_GET_BUILD_INFO`.
     public static let REQ_GET_BUILD_INFO: UInt8 = 0x80
-    /// Output limiter (sub-command multiplexed).
+    /// `dspi_proto::generated::opcodes::REQ_LIMITER`.
     public static let REQ_LIMITER: UInt8 = 0x81
-    /// Clip detection.
+    /// `dspi_proto::generated::opcodes::REQ_CLEAR_CLIPS`.
     public static let REQ_CLEAR_CLIPS: UInt8 = 0x83
-    /// Control Surfaces bindings / IR.
+    /// `dspi_proto::generated::opcodes::REQ_SET_CS_BINDING`.
     public static let REQ_SET_CS_BINDING: UInt8 = 0x84
-    /// wValue = slot, returns 24-byte CsBinding
+    /// `dspi_proto::generated::opcodes::REQ_GET_CS_BINDING`.
     public static let REQ_GET_CS_BINDING: UInt8 = 0x85
-    /// wValue = 0xFFFF: header + type table; wValue = noun: 12-byte noun descriptor
+    /// `dspi_proto::generated::opcodes::REQ_GET_CS_CAPS`.
     public static let REQ_GET_CS_CAPS: UInt8 = 0x86
-    /// returns 41-byte CsStatusPacket
+    /// `dspi_proto::generated::opcodes::REQ_GET_CS_STATUS`.
     public static let REQ_GET_CS_STATUS: UInt8 = 0x87
-    /// wValue = slot (0-15), payload = 1-32 byte name (a single
-    /// NUL byte clears it); apply-live-only preview, deferred,
-    /// result via REQ_GET_CS_STATUS
-    public static let REQ_SET_CS_NAME: UInt8 = 0x8B
-    /// wValue = slot, returns 32-byte NUL-terminated live name
-    public static let REQ_GET_CS_NAME: UInt8 = 0x8C
-    /// wValue = sub-slot (0-15), payload = 16-byte IrCommand;
-    /// apply-live-only preview, deferred to the main loop
-    public static let REQ_SET_CS_IR_CMD: UInt8 = 0x8D
-    /// wValue = sub-slot, returns 16-byte IrCommand
-    public static let REQ_GET_CS_IR_CMD: UInt8 = 0x8E
-    /// GET; wValue 1 = arm, 0 = cancel (each returns 1 status
-    /// byte), 2 = read result (returns 8-byte
-    /// {state, protocol, 0, 0, code_le32})
-    public static let REQ_CS_IR_LEARN: UInt8 = 0x8F
-    /// GET; persists the whole live CS config in one flash
-    /// write; deferred, result via REQ_GET_CS_STATUS
-    public static let REQ_CS_SAVE: UInt8 = 0x9D
-    /// GET; discards the live preview and re-applies the
-    /// stored config; deferred, result via REQ_GET_CS_STATUS
-    public static let REQ_CS_REVERT: UInt8 = 0x9E
-    /// I2S clock mode.
+    /// `dspi_proto::generated::opcodes::REQ_SET_I2S_CLOCK_MODE`.
     public static let REQ_SET_I2S_CLOCK_MODE: UInt8 = 0x88
-    /// returns uint8_t live mode (pending change not reflected)
+    /// `dspi_proto::generated::opcodes::REQ_GET_I2S_CLOCK_MODE`.
     public static let REQ_GET_I2S_CLOCK_MODE: UInt8 = 0x89
-    /// returns 16-byte I2sSlaveStatusPacket
+    /// `dspi_proto::generated::opcodes::REQ_GET_I2S_SLAVE_STATUS`.
     public static let REQ_GET_I2S_SLAVE_STATUS: UInt8 = 0x8A
-    /// wValue = 0 unified / 1 split; returns PIN_CONFIG_* status
-    public static let REQ_SET_I2S_CLOCK_PIN_MODE: UInt8 = 0xFE
-    /// returns uint8_t live mode
-    public static let REQ_GET_I2S_CLOCK_PIN_MODE: UInt8 = 0xFF
-    /// Presets.
+    /// `dspi_proto::generated::opcodes::REQ_SET_CS_NAME`.
+    public static let REQ_SET_CS_NAME: UInt8 = 0x8B
+    /// `dspi_proto::generated::opcodes::REQ_GET_CS_NAME`.
+    public static let REQ_GET_CS_NAME: UInt8 = 0x8C
+    /// `dspi_proto::generated::opcodes::REQ_SET_CS_IR_CMD`.
+    public static let REQ_SET_CS_IR_CMD: UInt8 = 0x8D
+    /// `dspi_proto::generated::opcodes::REQ_GET_CS_IR_CMD`.
+    public static let REQ_GET_CS_IR_CMD: UInt8 = 0x8E
+    /// `dspi_proto::generated::opcodes::REQ_CS_IR_LEARN`.
+    public static let REQ_CS_IR_LEARN: UInt8 = 0x8F
+    /// `dspi_proto::generated::opcodes::REQ_PRESET_SAVE`.
     public static let REQ_PRESET_SAVE: UInt8 = 0x90
-    /// GET; wValue = slot, returns a PRESET_* status byte
+    /// `dspi_proto::generated::opcodes::REQ_PRESET_LOAD`.
     public static let REQ_PRESET_LOAD: UInt8 = 0x91
-    /// GET; wValue = slot, returns a PRESET_* status byte
+    /// `dspi_proto::generated::opcodes::REQ_PRESET_DELETE`.
     public static let REQ_PRESET_DELETE: UInt8 = 0x92
-    /// wValue = slot; returns the name, at most 32 bytes
+    /// `dspi_proto::generated::opcodes::REQ_PRESET_GET_NAME`.
     public static let REQ_PRESET_GET_NAME: UInt8 = 0x93
-    /// wValue = slot, payload = NUL-terminated name
+    /// `dspi_proto::generated::opcodes::REQ_PRESET_SET_NAME`.
     public static let REQ_PRESET_SET_NAME: UInt8 = 0x94
-    /// returns the preset directory, 7 bytes (5 from older firmware)
+    /// `dspi_proto::generated::opcodes::REQ_PRESET_GET_DIR`.
     public static let REQ_PRESET_GET_DIR: UInt8 = 0x95
-    /// payload = [mode, default_slot]
+    /// `dspi_proto::generated::opcodes::REQ_PRESET_SET_STARTUP`.
     public static let REQ_PRESET_SET_STARTUP: UInt8 = 0x96
-    /// Returns what `REQ_PRESET_SET_STARTUP` writes.
+    /// `dspi_proto::generated::opcodes::REQ_PRESET_GET_STARTUP`.
     public static let REQ_PRESET_GET_STARTUP: UInt8 = 0x97
-    /// Replaced the old include-pins flag (same 0/1 meaning).
+    /// `dspi_proto::generated::opcodes::REQ_SET_OUTPUT_CONFIG_MODE`.
     public static let REQ_SET_OUTPUT_CONFIG_MODE: UInt8 = 0x98
-    /// returns uint8_t mode
+    /// `dspi_proto::generated::opcodes::REQ_GET_OUTPUT_CONFIG_MODE`.
     public static let REQ_GET_OUTPUT_CONFIG_MODE: UInt8 = 0x99
-    /// returns 1 byte: the active slot
+    /// `dspi_proto::generated::opcodes::REQ_PRESET_GET_ACTIVE`.
     public static let REQ_PRESET_GET_ACTIVE: UInt8 = 0x9A
-    /// Channel names.
+    /// `dspi_proto::generated::opcodes::REQ_SET_CHANNEL_NAME`.
     public static let REQ_SET_CHANNEL_NAME: UInt8 = 0x9B
-    /// wValue = wire channel; returns the name, at most 32 bytes
+    /// `dspi_proto::generated::opcodes::REQ_GET_CHANNEL_NAME`.
     public static let REQ_GET_CHANNEL_NAME: UInt8 = 0x9C
-    /// Bulk parameter transfer.
+    /// `dspi_proto::generated::opcodes::REQ_CS_SAVE`.
+    public static let REQ_CS_SAVE: UInt8 = 0x9D
+    /// `dspi_proto::generated::opcodes::REQ_CS_REVERT`.
+    public static let REQ_CS_REVERT: UInt8 = 0x9E
+    /// `dspi_proto::generated::opcodes::REQ_GET_ALL_PARAMS`.
     public static let REQ_GET_ALL_PARAMS: UInt8 = 0xA0
-    /// payload = the whole bulk image in one transfer
+    /// `dspi_proto::generated::opcodes::REQ_SET_ALL_PARAMS`.
     public static let REQ_SET_ALL_PARAMS: UInt8 = 0xA1
-    /// Chunked bulk-params access (USB-only).  Works around the Windows/WinUSB
-    /// 4 KB control-transfer cap that the full WireBulkParams (5864 B at V16)
-    /// cannot cross (GitHub issue #62).  wValue = byte offset, wLength = chunk
-    /// size.  GET: offset 0 snapshots the struct under the bulk lock, later
-    /// offsets read the snapshot out; the lock frees after the final chunk.
-    /// SET: chunks must be sequential from offset 0; the normal deferred apply
-    /// fires when the last byte lands.  UART and I2C have no size cap and use
-    /// plain 0xA0/0xA1; these two commands are refused on those transports.
+    /// `dspi_proto::generated::opcodes::REQ_GET_ALL_PARAMS_CHUNK`.
     public static let REQ_GET_ALL_PARAMS_CHUNK: UInt8 = 0xA2
-    /// Chunked bulk-params access (USB-only).  Works around the Windows/WinUSB
-    /// 4 KB control-transfer cap that the full WireBulkParams (5864 B at V16)
-    /// cannot cross (GitHub issue #62).  wValue = byte offset, wLength = chunk
-    /// size.  GET: offset 0 snapshots the struct under the bulk lock, later
-    /// offsets read the snapshot out; the lock frees after the final chunk.
-    /// SET: chunks must be sequential from offset 0; the normal deferred apply
-    /// fires when the last byte lands.  UART and I2C have no size cap and use
-    /// plain 0xA0/0xA1; these two commands are refused on those transports.
+    /// `dspi_proto::generated::opcodes::REQ_SET_ALL_PARAMS_CHUNK`.
     public static let REQ_SET_ALL_PARAMS_CHUNK: UInt8 = 0xA3
-    /// Signal generator.
+    /// `dspi_proto::generated::opcodes::REQ_SIGGEN_SET_CONFIG`.
     public static let REQ_SIGGEN_SET_CONFIG: UInt8 = 0xA4
-    /// returns SiggenConfig
+    /// `dspi_proto::generated::opcodes::REQ_SIGGEN_GET_CONFIG`.
     public static let REQ_SIGGEN_GET_CONFIG: UInt8 = 0xA5
-    /// wValue = SIGGEN_CTL_*; returns status byte
+    /// `dspi_proto::generated::opcodes::REQ_SIGGEN_CONTROL`.
     public static let REQ_SIGGEN_CONTROL: UInt8 = 0xA6
-    /// returns SiggenStatus (16 B)
+    /// `dspi_proto::generated::opcodes::REQ_SIGGEN_GET_STATUS`.
     public static let REQ_SIGGEN_GET_STATUS: UInt8 = 0xA7
-    /// wValue = type index / 0xFFFF = header
+    /// `dspi_proto::generated::opcodes::REQ_SIGGEN_GET_CAPS`.
     public static let REQ_SIGGEN_GET_CAPS: UInt8 = 0xA8
-    /// Buffer / USB statistics.
+    /// `dspi_proto::generated::opcodes::REQ_SET_SUBHARM_DEPTH`.
+    public static let REQ_SET_SUBHARM_DEPTH: UInt8 = 0xA9
+    /// `dspi_proto::generated::opcodes::REQ_GET_SUBHARM_DEPTH`.
+    public static let REQ_GET_SUBHARM_DEPTH: UInt8 = 0xAA
+    /// `dspi_proto::generated::opcodes::REQ_SET_SUBHARM_HOLD`.
+    public static let REQ_SET_SUBHARM_HOLD: UInt8 = 0xAB
+    /// `dspi_proto::generated::opcodes::REQ_GET_SUBHARM_HOLD`.
+    public static let REQ_GET_SUBHARM_HOLD: UInt8 = 0xAC
+    /// `dspi_proto::generated::opcodes::REQ_SET_SUBHARM_CEILING`.
+    public static let REQ_SET_SUBHARM_CEILING: UInt8 = 0xAD
+    /// `dspi_proto::generated::opcodes::REQ_GET_SUBHARM_CEILING`.
+    public static let REQ_GET_SUBHARM_CEILING: UInt8 = 0xAE
+    /// `dspi_proto::generated::opcodes::REQ_GET_BUFFER_STATS`.
     public static let REQ_GET_BUFFER_STATS: UInt8 = 0xB0
-    /// GET; wValue 1 restarts the watermarks, returns 1 byte (1 = ACK)
+    /// `dspi_proto::generated::opcodes::REQ_RESET_BUFFER_STATS`.
     public static let REQ_RESET_BUFFER_STATS: UInt8 = 0xB1
-    /// Vendor request: read usb error stats.
+    /// `dspi_proto::generated::opcodes::REQ_GET_USB_ERROR_STATS`.
     public static let REQ_GET_USB_ERROR_STATS: UInt8 = 0xB2
-    /// Vendor request: reset the USB error counters.
+    /// `dspi_proto::generated::opcodes::REQ_RESET_USB_ERROR_STATS`.
     public static let REQ_RESET_USB_ERROR_STATS: UInt8 = 0xB3
-    /// Volume leveller.
+    /// `dspi_proto::generated::opcodes::REQ_SET_LEVELLER_ENABLE`.
     public static let REQ_SET_LEVELLER_ENABLE: UInt8 = 0xB4
-    /// returns 1 byte: leveller on (0/1)
+    /// `dspi_proto::generated::opcodes::REQ_GET_LEVELLER_ENABLE`.
     public static let REQ_GET_LEVELLER_ENABLE: UInt8 = 0xB5
-    /// float %
+    /// `dspi_proto::generated::opcodes::REQ_SET_LEVELLER_AMOUNT`.
     public static let REQ_SET_LEVELLER_AMOUNT: UInt8 = 0xB6
-    /// Reads what `REQ_SET_LEVELLER_AMOUNT` writes: float %
+    /// `dspi_proto::generated::opcodes::REQ_GET_LEVELLER_AMOUNT`.
     public static let REQ_GET_LEVELLER_AMOUNT: UInt8 = 0xB7
-    /// 1 byte: 0 slow, 1 medium, 2 fast
+    /// `dspi_proto::generated::opcodes::REQ_SET_LEVELLER_SPEED`.
     public static let REQ_SET_LEVELLER_SPEED: UInt8 = 0xB8
-    /// Reads what `REQ_SET_LEVELLER_SPEED` writes: 1 byte: 0 slow, 1 medium, 2 fast
+    /// `dspi_proto::generated::opcodes::REQ_GET_LEVELLER_SPEED`.
     public static let REQ_GET_LEVELLER_SPEED: UInt8 = 0xB9
-    /// float dB
+    /// `dspi_proto::generated::opcodes::REQ_SET_LEVELLER_MAX_GAIN`.
     public static let REQ_SET_LEVELLER_MAX_GAIN: UInt8 = 0xBA
-    /// Reads what `REQ_SET_LEVELLER_MAX_GAIN` writes: float dB
+    /// `dspi_proto::generated::opcodes::REQ_GET_LEVELLER_MAX_GAIN`.
     public static let REQ_GET_LEVELLER_MAX_GAIN: UInt8 = 0xBB
-    /// 1 byte 0/1
+    /// `dspi_proto::generated::opcodes::REQ_SET_LEVELLER_LOOKAHEAD`.
     public static let REQ_SET_LEVELLER_LOOKAHEAD: UInt8 = 0xBC
-    /// Reads what `REQ_SET_LEVELLER_LOOKAHEAD` writes: 1 byte 0/1
+    /// `dspi_proto::generated::opcodes::REQ_GET_LEVELLER_LOOKAHEAD`.
     public static let REQ_GET_LEVELLER_LOOKAHEAD: UInt8 = 0xBD
-    /// float dB
+    /// `dspi_proto::generated::opcodes::REQ_SET_LEVELLER_GATE`.
     public static let REQ_SET_LEVELLER_GATE: UInt8 = 0xBE
-    /// Reads what `REQ_SET_LEVELLER_GATE` writes: float dB
+    /// `dspi_proto::generated::opcodes::REQ_GET_LEVELLER_GATE`.
     public static let REQ_GET_LEVELLER_GATE: UInt8 = 0xBF
-    /// 2 bytes: [detector_mask, apply_mask]
-    public static let REQ_SET_LEVELLER_MASKS: UInt8 = 0xDE
-    /// Reads what `REQ_SET_LEVELLER_MASKS` writes: 2 bytes: [detector_mask, apply_mask]
-    public static let REQ_GET_LEVELLER_MASKS: UInt8 = 0xDF
-    /// Output types / I2S / MCK.
+    /// `dspi_proto::generated::opcodes::REQ_SET_OUTPUT_TYPE`.
     public static let REQ_SET_OUTPUT_TYPE: UInt8 = 0xC0
-    /// wValue = output slot; returns 1 byte OUTPUT_TYPE_*
+    /// `dspi_proto::generated::opcodes::REQ_GET_OUTPUT_TYPE`.
     public static let REQ_GET_OUTPUT_TYPE: UInt8 = 0xC1
-    /// wValue = (role<<8)|GPIO; GPIO =
-    /// PIN_RESET_TO_DEFAULT restores the role's default
+    /// `dspi_proto::generated::opcodes::REQ_SET_I2S_BCK_PIN`.
     public static let REQ_SET_I2S_BCK_PIN: UInt8 = 0xC2
-    /// Reads what `REQ_SET_I2S_BCK_PIN` writes: wValue = (role<<8)|GPIO; GPIO =
-    /// PIN_RESET_TO_DEFAULT restores the role's default
+    /// `dspi_proto::generated::opcodes::REQ_GET_I2S_BCK_PIN`.
     public static let REQ_GET_I2S_BCK_PIN: UInt8 = 0xC3
-    /// GET; wValue = 0/1, returns a status byte
+    /// `dspi_proto::generated::opcodes::REQ_SET_MCK_ENABLE`.
     public static let REQ_SET_MCK_ENABLE: UInt8 = 0xC4
-    /// Returns the setting `REQ_SET_MCK_ENABLE` writes.
+    /// `dspi_proto::generated::opcodes::REQ_GET_MCK_ENABLE`.
     public static let REQ_GET_MCK_ENABLE: UInt8 = 0xC5
-    /// wValue = GPIO; PIN_RESET_TO_DEFAULT
-    /// restores PICO_I2S_MCK_PIN
+    /// `dspi_proto::generated::opcodes::REQ_SET_MCK_PIN`.
     public static let REQ_SET_MCK_PIN: UInt8 = 0xC6
-    /// Reads what `REQ_SET_MCK_PIN` writes: wValue = GPIO; PIN_RESET_TO_DEFAULT
-    /// restores PICO_I2S_MCK_PIN
+    /// `dspi_proto::generated::opcodes::REQ_GET_MCK_PIN`.
     public static let REQ_GET_MCK_PIN: UInt8 = 0xC7
-    /// GET; wValue = 128 or 256, returns a status byte
+    /// `dspi_proto::generated::opcodes::REQ_SET_MCK_MULTIPLIER`.
     public static let REQ_SET_MCK_MULTIPLIER: UInt8 = 0xC8
-    /// Returns the setting `REQ_SET_MCK_MULTIPLIER` writes.
+    /// `dspi_proto::generated::opcodes::REQ_GET_MCK_MULTIPLIER`.
     public static let REQ_GET_MCK_MULTIPLIER: UInt8 = 0xC9
-    /// ADAT output (RP2350).
+    /// `dspi_proto::generated::opcodes::REQ_SET_ADAT_ENABLE`.
     public static let REQ_SET_ADAT_ENABLE: UInt8 = 0xCA
-    /// returns uint8_t configured enable
+    /// `dspi_proto::generated::opcodes::REQ_GET_ADAT_ENABLE`.
     public static let REQ_GET_ADAT_ENABLE: UInt8 = 0xCB
-    /// wValue = GPIO, returns status byte; GPIO =
-    /// PIN_RESET_TO_DEFAULT restores PICO_ADAT_PIN
+    /// `dspi_proto::generated::opcodes::REQ_SET_ADAT_PIN`.
     public static let REQ_SET_ADAT_PIN: UInt8 = 0xCC
-    /// returns uint8_t
+    /// `dspi_proto::generated::opcodes::REQ_GET_ADAT_PIN`.
     public static let REQ_GET_ADAT_PIN: UInt8 = 0xCD
-    /// returns AdatStatus (8 B)
+    /// `dspi_proto::generated::opcodes::REQ_GET_ADAT_STATUS`.
     public static let REQ_GET_ADAT_STATUS: UInt8 = 0xCE
-    /// Per-input preamp.
+    /// `dspi_proto::generated::opcodes::REQ_SET_PREAMP_CH`.
     public static let REQ_SET_PREAMP_CH: UInt8 = 0xD0
-    /// wValue = channel index, returns float dB
+    /// `dspi_proto::generated::opcodes::REQ_GET_PREAMP_CH`.
     public static let REQ_GET_PREAMP_CH: UInt8 = 0xD1
-    /// Master volume.
+    /// `dspi_proto::generated::opcodes::REQ_SET_MASTER_VOLUME`.
     public static let REQ_SET_MASTER_VOLUME: UInt8 = 0xD2
-    /// returns float dB
+    /// `dspi_proto::generated::opcodes::REQ_GET_MASTER_VOLUME`.
     public static let REQ_GET_MASTER_VOLUME: UInt8 = 0xD3
-    /// payload = uint8_t mode (see MASTER_VOLUME_MODE_*)
+    /// `dspi_proto::generated::opcodes::REQ_SET_MASTER_VOLUME_MODE`.
     public static let REQ_SET_MASTER_VOLUME_MODE: UInt8 = 0xD4
-    /// returns uint8_t mode
+    /// `dspi_proto::generated::opcodes::REQ_GET_MASTER_VOLUME_MODE`.
     public static let REQ_GET_MASTER_VOLUME_MODE: UInt8 = 0xD5
-    /// no payload, stores live master vol to directory
+    /// `dspi_proto::generated::opcodes::REQ_SAVE_MASTER_VOLUME`.
     public static let REQ_SAVE_MASTER_VOLUME: UInt8 = 0xD6
-    /// returns float dB from directory's independent field
+    /// `dspi_proto::generated::opcodes::REQ_GET_SAVED_MASTER_VOLUME`.
     public static let REQ_GET_SAVED_MASTER_VOLUME: UInt8 = 0xD7
-    /// Per-band bypass.
+    /// `dspi_proto::generated::opcodes::REQ_SET_BAND_BYPASS`.
     public static let REQ_SET_BAND_BYPASS: UInt8 = 0xD8
-    /// Per-Band Bypass Commands
-    /// wValue = (channel << 8) | band; payload = uint8_t (1 = bypass, anything else = active)
+    /// `dspi_proto::generated::opcodes::REQ_GET_BAND_BYPASS`.
     public static let REQ_GET_BAND_BYPASS: UInt8 = 0xD9
-    /// User volume / mute.
+    /// `dspi_proto::generated::opcodes::REQ_SET_USER_VOLUME`.
     public static let REQ_SET_USER_VOLUME: UInt8 = 0xDA
-    /// returns float dB (audio_state.volume / 256)
+    /// `dspi_proto::generated::opcodes::REQ_GET_USER_VOLUME`.
     public static let REQ_GET_USER_VOLUME: UInt8 = 0xDB
-    /// payload = uint8_t (0/1)
+    /// `dspi_proto::generated::opcodes::REQ_SET_USER_MUTE`.
     public static let REQ_SET_USER_MUTE: UInt8 = 0xDC
-    /// returns uint8_t (0/1)
+    /// `dspi_proto::generated::opcodes::REQ_GET_USER_MUTE`.
     public static let REQ_GET_USER_MUTE: UInt8 = 0xDD
-    /// Input source / S/PDIF / I2S input.
+    /// `dspi_proto::generated::opcodes::REQ_SET_LEVELLER_MASKS`.
+    public static let REQ_SET_LEVELLER_MASKS: UInt8 = 0xDE
+    /// `dspi_proto::generated::opcodes::REQ_GET_LEVELLER_MASKS`.
+    public static let REQ_GET_LEVELLER_MASKS: UInt8 = 0xDF
+    /// `dspi_proto::generated::opcodes::REQ_SET_INPUT_SOURCE`.
     public static let REQ_SET_INPUT_SOURCE: UInt8 = 0xE0
-    /// returns uint8_t
+    /// `dspi_proto::generated::opcodes::REQ_GET_INPUT_SOURCE`.
     public static let REQ_GET_INPUT_SOURCE: UInt8 = 0xE1
-    /// returns 16-byte status struct (Phase 2)
+    /// `dspi_proto::generated::opcodes::REQ_GET_SPDIF_RX_STATUS`.
     public static let REQ_GET_SPDIF_RX_STATUS: UInt8 = 0xE2
-    /// returns 24-byte IEC 60958 channel status (Phase 2)
+    /// `dspi_proto::generated::opcodes::REQ_GET_SPDIF_RX_CH_STATUS`.
     public static let REQ_GET_SPDIF_RX_CH_STATUS: UInt8 = 0xE3
-    /// wValue = (index<<8)|GPIO; index 0..3 selects the
-    /// SPDIF input (old hosts send wValue=pin => index 0).
-    /// GPIO = PIN_RESET_TO_DEFAULT restores that input's
-    /// default. Returns status byte.
+    /// `dspi_proto::generated::opcodes::REQ_SET_SPDIF_RX_PIN`.
     public static let REQ_SET_SPDIF_RX_PIN: UInt8 = 0xE4
-    /// wValue = index (0..3); returns that input's GPIO
+    /// `dspi_proto::generated::opcodes::REQ_GET_SPDIF_RX_PIN`.
     public static let REQ_GET_SPDIF_RX_PIN: UInt8 = 0xE5
-    /// wValue = (index<<8)|enable; index 1..3, enable 0/1.
-    /// Enables/disables an optional SPDIF input. Returns status byte.
-    public static let REQ_SET_SPDIF_INPUT_ENABLE: UInt8 = 0xE9
-    /// returns 6 bytes: count, enable mask (bit0=input1),
-    /// then the GPIO for inputs 0..3
-    public static let REQ_GET_SPDIF_INPUT_CONFIG: UInt8 = 0xEF
-    /// payload = uint32_t Hz (44100/48000/96000)
-    public static let REQ_SET_INPUT_RATE: UInt8 = 0xED
-    /// returns 2x uint32_t {current Hz, selected I2S Hz}
-    public static let REQ_GET_INPUT_RATE: UInt8 = 0xEE
-    /// wValue = (pair<<8)|GPIO; pair 0..3 selects the
-    /// stereo pair (old hosts send wValue=pin => pair 0).
-    /// GPIO = PIN_RESET_TO_DEFAULT restores that pair's
-    /// default. Returns status byte.
-    public static let REQ_SET_I2S_RX_PIN: UInt8 = 0xF1
-    /// wValue = pair (0..3); returns that pair's GPIO
-    public static let REQ_GET_I2S_RX_PIN: UInt8 = 0xF2
-    /// wValue = channel count (2/4/6/8); returns status byte
-    public static let REQ_SET_I2S_INPUT_CHANNELS: UInt8 = 0xF3
-    /// returns uint8_t (active count)
-    public static let REQ_GET_I2S_INPUT_CHANNELS: UInt8 = 0xF4
-    /// LG Sound Sync.
+    /// `dspi_proto::generated::opcodes::REQ_SET_LG_SOUND_SYNC_ENABLE`.
     public static let REQ_SET_LG_SOUND_SYNC_ENABLE: UInt8 = 0xE6
-    /// returns uint8_t
+    /// `dspi_proto::generated::opcodes::REQ_GET_LG_SOUND_SYNC_ENABLE`.
     public static let REQ_GET_LG_SOUND_SYNC_ENABLE: UInt8 = 0xE7
-    /// returns 16-byte LgSoundSyncStatus
+    /// `dspi_proto::generated::opcodes::REQ_GET_LG_SOUND_SYNC_STATUS`.
     public static let REQ_GET_LG_SOUND_SYNC_STATUS: UInt8 = 0xE8
-    /// DAC hardware mute.
+    /// `dspi_proto::generated::opcodes::REQ_SET_SPDIF_INPUT_ENABLE`.
+    public static let REQ_SET_SPDIF_INPUT_ENABLE: UInt8 = 0xE9
+    /// `dspi_proto::generated::opcodes::REQ_SET_DAC_HW_MUTE_CONFIG`.
     public static let REQ_SET_DAC_HW_MUTE_CONFIG: UInt8 = 0xEA
-    /// returns 16-byte DacHwMuteConfig
+    /// `dspi_proto::generated::opcodes::REQ_GET_DAC_HW_MUTE_CONFIG`.
     public static let REQ_GET_DAC_HW_MUTE_CONFIG: UInt8 = 0xEB
-    /// no payload; pulses mute ~1s
+    /// `dspi_proto::generated::opcodes::REQ_TEST_DAC_HW_MUTE`.
     public static let REQ_TEST_DAC_HW_MUTE: UInt8 = 0xEC
-    /// System.
+    /// `dspi_proto::generated::opcodes::REQ_SET_INPUT_RATE`.
+    public static let REQ_SET_INPUT_RATE: UInt8 = 0xED
+    /// `dspi_proto::generated::opcodes::REQ_GET_INPUT_RATE`.
+    public static let REQ_GET_INPUT_RATE: UInt8 = 0xEE
+    /// `dspi_proto::generated::opcodes::REQ_GET_SPDIF_INPUT_CONFIG`.
+    public static let REQ_GET_SPDIF_INPUT_CONFIG: UInt8 = 0xEF
+    /// `dspi_proto::generated::opcodes::REQ_ENTER_BOOTLOADER`.
     public static let REQ_ENTER_BOOTLOADER: UInt8 = 0xF0
-    /// UART / I2C control interfaces.
+    /// `dspi_proto::generated::opcodes::REQ_SET_I2S_RX_PIN`.
+    public static let REQ_SET_I2S_RX_PIN: UInt8 = 0xF1
+    /// `dspi_proto::generated::opcodes::REQ_GET_I2S_RX_PIN`.
+    public static let REQ_GET_I2S_RX_PIN: UInt8 = 0xF2
+    /// `dspi_proto::generated::opcodes::REQ_SET_I2S_INPUT_CHANNELS`.
+    public static let REQ_SET_I2S_INPUT_CHANNELS: UInt8 = 0xF3
+    /// `dspi_proto::generated::opcodes::REQ_GET_I2S_INPUT_CHANNELS`.
+    public static let REQ_GET_I2S_INPUT_CHANNELS: UInt8 = 0xF4
+    /// `dspi_proto::generated::opcodes::REQ_SET_UART_CONFIG`.
     public static let REQ_SET_UART_CONFIG: UInt8 = 0xF5
-    /// returns UartCtrlConfig (live)
+    /// `dspi_proto::generated::opcodes::REQ_GET_UART_CONFIG`.
     public static let REQ_GET_UART_CONFIG: UInt8 = 0xF6
-    /// payload = I2cCtrlConfig (8 bytes); USB-only
+    /// `dspi_proto::generated::opcodes::REQ_SET_I2C_CONFIG`.
     public static let REQ_SET_I2C_CONFIG: UInt8 = 0xF7
-    /// returns I2cCtrlConfig (live)
+    /// `dspi_proto::generated::opcodes::REQ_GET_I2C_CONFIG`.
     public static let REQ_GET_I2C_CONFIG: UInt8 = 0xF8
-    /// returns CtrlIfaceStatus (8 bytes)
+    /// `dspi_proto::generated::opcodes::REQ_GET_CTRL_IFACE_STATUS`.
     public static let REQ_GET_CTRL_IFACE_STATUS: UInt8 = 0xF9
+    /// `dspi_proto::generated::opcodes::REQ_SET_LOUDNESS_MASK`.
+    public static let REQ_SET_LOUDNESS_MASK: UInt8 = 0xFA
+    /// `dspi_proto::generated::opcodes::REQ_GET_LOUDNESS_MASK`.
+    public static let REQ_GET_LOUDNESS_MASK: UInt8 = 0xFB
+    /// `dspi_proto::generated::opcodes::REQ_SET_CROSSFEED_OUTPUTS`.
+    public static let REQ_SET_CROSSFEED_OUTPUTS: UInt8 = 0xFC
+    /// `dspi_proto::generated::opcodes::REQ_GET_CROSSFEED_OUTPUTS`.
+    public static let REQ_GET_CROSSFEED_OUTPUTS: UInt8 = 0xFD
+    /// `dspi_proto::generated::opcodes::REQ_SET_I2S_CLOCK_PIN_MODE`.
+    public static let REQ_SET_I2S_CLOCK_PIN_MODE: UInt8 = 0xFE
+    /// `dspi_proto::generated::opcodes::REQ_GET_I2S_CLOCK_PIN_MODE`.
+    public static let REQ_GET_I2S_CLOCK_PIN_MODE: UInt8 = 0xFF
     public static let REQ_EXTENSION: UInt8 = 0x00
     public static let REQ_OUTPUT_LATENCY: UInt8 = 0x03
     public static let REQ_SET_INPUT_SOURCE_NAME: UInt8 = 0x54

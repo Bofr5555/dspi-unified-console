@@ -683,6 +683,7 @@ dependencies = [
  "socket2",
  "thiserror",
  "tungstenite",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2555,6 +2556,11 @@ dependencies = [
 [[package]]
 name = "xtask"
 version = "0.13.0"
+dependencies = [
+ "dspi-core",
+ "dspi-proto",
+ "dspi-session",
+]
 
 [[package]]
 name = "zeroize"

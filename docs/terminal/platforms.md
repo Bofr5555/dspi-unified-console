@@ -1,6 +1,6 @@
 # Platform support
 
-*The `dspi` terminal client (`apps/terminal/`, package `dspi-term`). Updated
+*The `uconsole` terminal client (`apps/terminal/`, package `dspi-term`). Updated
 2026-11-07 for this repository at `2f1e95f3`. The earlier version of this page
 described DSPi-Terminal before the merge; its runs are kept below, marked as
 such.*
@@ -21,7 +21,7 @@ What this repository's checks do today, per target. The steps are in
 
 The terminal's hardware pass on this tree is work package TM13 in
 `docs/core-merge/PLAN-CLIENTS.md`, still open. Until it is done, treat every row
-as "expected to work, unverified", and run `dspi doctor` on the machine for the
+as "expected to work, unverified", and run `uconsole doctor` on the machine for the
 real answer.
 
 ### Earlier runs, before the merge
@@ -32,8 +32,8 @@ tree:
 - **macOS on Apple silicon**, 2026-07-27, against `release/v1.1.5`: linked, tests
   run, and run against a device.
 - **macOS x86_64**, 2026-11-06, in a macOS VM with a DSPi passed through, read
-  commands only: `dspi list`, `dspi doctor`, `dspi ext list`, `dspi ext vreg`,
-  `dspi ext xfeed-map`, and the interface on `--fixture` in a pty. A universal
+  commands only: `uconsole list`, `uconsole doctor`, `uconsole ext list`, `uconsole ext vreg`,
+  `uconsole ext xfeed-map`, and the interface on `--fixture` in a pty. A universal
   binary was made with `lipo`. Details: `docs/PORTABILITY.md`, section 9.
 - **Windows**, 2026-11-06, with the headers of firmware `bofr-main` `af001ec`:
   both builds cross-linked on Linux and run under Wine 11 with no device: `--help`, `--version`, `list`, `doctor`, and the interface on
@@ -73,7 +73,7 @@ interface 2 is free.
 
 **The vendor interface is exclusive.** DSPi Console and this tool cannot hold the
 same device at once, and the failure surfaces as a permission-style error that
-has nothing to do with permissions. `dspi doctor` says so explicitly rather than
+has nothing to do with permissions. `uconsole doctor` says so explicitly rather than
 repeating the Linux advice.
 
 ### Linux and Raspberry Pi
@@ -81,7 +81,7 @@ repeating the Linux advice.
 Needs a udev rule for non-root access:
 
 ```sh
-sudo dspi --install-udev
+sudo uconsole --install-udev
 sudo udevadm control --reload
 ```
 
@@ -91,7 +91,7 @@ then unplug and replug the device. The rule also covers the RP2 bootloader the
 device re-enumerates as during a firmware update; without that, an update appears
 to hang at exactly the wrong moment.
 
-`dspi doctor` checks for the rule and prints the exact fix when it is missing.
+`uconsole doctor` checks for the rule and prints the exact fix when it is missing.
 
 ### Raspberry Pi specifically
 
@@ -105,7 +105,7 @@ SSH, where the cost of a repaint is the link rather than the processor.
   usbfs directly. The default `midi` feature is the exception on Linux: `midir`
   needs the ALSA development files there (`--no-default-features` drops it).
 - No hardcoded paths outside the Linux-only udev installer.
-- Few outside programs, each named here: `dspi hub` keeps the machine awake
+- Few outside programs, each named here: `uconsole hub` keeps the machine awake
   through `systemd-inhibit` on Linux and `caffeinate` on macOS, and a filter-file
   export stamps its header with `date`.
 - `NO_COLOR` is honoured, and `TERM=dumb` degrades to plain ASCII, so output
@@ -119,9 +119,9 @@ From the repository root:
 ci/check.sh --step terminal                 # Linux release build, in the container
 ci/check.sh --crate dspi-term               # format, clippy and tests
 cargo check -p dspi-term --target <triple>  # compiles, for a target with no step
-dspi doctor                                 # the real answer, on the machine
+uconsole doctor                                 # the real answer, on the machine
 ```
 
-`dspi doctor` is the one that counts: it enumerates, opens, claims the interface,
+`uconsole doctor` is the one that counts: it enumerates, opens, claims the interface,
 probes the firmware, and reports the terminal's capabilities, with a fix for each
 failure written for the platform it is running on.

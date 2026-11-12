@@ -5,7 +5,7 @@
 #   crates/dspi-proto, -transport, -session, -cmd, -tui  DSPi-Terminal's crates
 #   crates/dspi-link        the DSPi Link client, from the Android console
 #   crates/dspi-hub         the DSPi Link hub (docs/core-merge/HUB.md)
-#   apps/terminal           the `dspi` terminal client
+#   apps/terminal           the `uconsole` terminal client
 #   xtask                   DSPi-Terminal's developer tasks
 # Every crate takes its licence and repository from [workspace.package] below;
 # dspi-link keeps its own version and edition. docs/licensing/ holds the facts

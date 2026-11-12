@@ -465,70 +465,90 @@ interface DspiCoreApi : AutoCloseable {
     fun coreVregOp(op: Int, value: Int, word: String?)
 
     /**
-     * The device configuration (the mirror) as a `.dspipreset` document:
-     * schema 1, pretty-printed JSON with sorted keys. `name` and `app_version`
-     * go into `meta`; `links` = the app's input-pair link mask (bit p = pair
-     * p), which the firmware does not hold.
+     * The device's configuration as a `.dspipreset` document (JSON, schema
+     * 1), from the mirror: no transfer. `name` and `app_version` go into
+     * `meta`; `links` is the app's input-pair link mask (bit p: pair p),
+     * written as `global.inputPairLinked`.
      *
-     * A read-only device of an older wire format exports what that format
-     * carries, and the keys it lacks are left out. There is nothing to export
-     * without a device's state: [`crate::DspiError::Disconnected`] with no
-     * device, [`crate::DspiError::Unsupported`] for firmware whose image cannot
-     * be mapped, and [`crate::DspiError::Transfer`] when it has not been read.
+     * The document holds what the device's wire format carries: a key or
+     * block that firmware lacks is left out, `crossfeed.pairMap` is written
+     * only when the device reports a map over the extension channel, and
+     * the upmixer only on an RP2350. A read-only device (another wire
+     * format) exports what its image showed.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::Transfer`] before its settings were read;
+     * [`DspiError::Unsupported`] for firmware whose image this build cannot
+     * map.
      */
     @Throws(DspiException::class)
     fun configExport(name: String, appVersion: String, links: Int): String
 
     /**
-     * Apply a `.dspipreset` document to the device. `options`: bit
-     * [`IMPORT_VOLUMES`] also applies the master and user volume, bit
-     * [`IMPORT_HARDWARE`] the hardware I/O and the limiters.
+     * Apply a `.dspipreset` document to the device as one bulk write, under
+     * the device lock. `options`: [`IMPORT_VOLUMES`] also applies the master
+     * and user volume, [`IMPORT_HARDWARE`] the hardware I/O and the
+     * limiters. The crossfeed pair map goes over the extension channel when
+     * the device has one.
      *
-     * Returns JSON `{ok, error, lines, clean, links, hardwareWritten}`:
-     * `ok` false with `error` for a file that is not a document of this
-     * schema, or when the device could not be written (disconnected,
-     * read-only firmware, transfer failure; the mirror is then left as it
-     * was). A setting the document holds no value for keeps the device's
-     * value, an `eq` or `crossover` with no entries leaves that bank alone,
-     * and `leftAlone` names them by JSON key. On success `lines` is the report
-     * for the user, `clean` is false when channels or settings were left out,
-     * `links` the input-pair link mask to restore (null when the document has
-     * none) and `hardwareWritten` whether I/O was written outside a preset
-     * (save the output config to keep it).
+     * Every setting the document holds no readable value for keeps the
+     * device's value: a missing key or block, a value of the wrong type, an
+     * `eq` or `crossover` with no entries. A bank with entries replaces the
+     * channel's, the rest going flat. Delays past the device's delay line
+     * are shortened to it. Channels the device lacks are named, not moved.
+     *
+     * Returns JSON. On success `{ok: true, error: "", lines, clean, links,
+     * hardwareWritten, leftAlone}`: `lines` is the report, `clean` false
+     * when anything was missing, skipped, left alone or shortened,
+     * `leftAlone` the keys left alone, `links` the input-pair link mask to
+     * restore (null when the document has none), and `hardwareWritten`
+     * whether I/O was changed while the device stores its output
+     * configuration apart from presets (save that to keep it). Otherwise
+     * `{ok: false, error}`: the text is not a document this build reads, or
+     * the device could not be written (disconnected, read-only firmware,
+     * another console's lock, a failed transfer); the mirror then stays as
+     * it was.
      */
     fun configImport(text: String, options: Long): String
 
     /**
-     * Every channel's filters as a filter text file (format 2): the first
-     * `inputs` live inputs with their preamp and PEQ bands, then every
-     * output with its PEQ and crossover bands and enable state. Reads the
-     * mirror; refused as [`DspiCore::config_export`] is when it holds no
+     * Every channel's bands as a filter file (format 2), from the mirror:
+     * the first `inputs` inputs with their preamp and EQ bands, then every
+     * output with its EQ and crossover bands and its enable state.
+     *
+     * Errors: as [`DspiCore::config_export`], when the mirror holds no
      * device's state.
      */
     @Throws(DspiException::class)
     fun filtersExport(inputs: Int): String
 
     /**
-     * What a filter file holds, for the channel picker, as JSON.
-     *
-     * A DSPi Console file: `{kind: "native", channels: [{wire, label,
-     * bands, checked}], newer}` with the channels this device has (`newer`:
-     * written in a newer format). A REW / AutoEQ list: `{kind: "rew",
-     * channels, filters, preamp}` offering the first `inputs` inputs
-     * (ticked) and every output. An empty `channels` means nothing in the
-     * file applies (`kind` "error" with an `error` for a file over
-     * [`MAX_FILE_BYTES`]). Never fails.
+     * What a filter file holds, for the channel picker, as JSON; never
+     * fails. A Console file (macOS, Windows or this one) gives
+     * `{kind: "native", channels, newer}`: each channel it has a section
+     * for on this device, ticked, and whether a newer format wrote it. A
+     * REW or AutoEQ list gives `{kind: "rew", channels, filters, preamp}`:
+     * the first `inputs` inputs (ticked) and every output (not ticked), the
+     * number of filters and the preamp (null without one). A channel is
+     * `{wire, label, bands, checked}`. An empty `channels` means nothing in
+     * the file applies; a file over [`MAX_FILE_BYTES`] gives `kind`
+     * "error" with an `error`.
      */
     fun filtersInspect(text: String, inputs: Int): String
 
     /**
-     * Apply a filter file to the channels in `wires` (wire indices; other
-     * channels in the file are ignored) through the band, preamp and
-     * output-enable setters. A section with no lines for a bank leaves that
-     * bank alone, and the report says so. Returns JSON `{ok, error, lines}`: `ok` false
-     * with `error` when the file is over [`MAX_FILE_BYTES`] or the device
-     * could not be written (disconnected, read-only firmware, transfer
-     * failure; channels written before a failure stay written).
+     * Apply a filter file to the wire channels in `wires` (sections for
+     * other channels are ignored), through the band, preamp and output
+     * enable setters, under the device lock. A section's EQ or crossover
+     * lines replace that bank, the rest going flat; a section without lines
+     * for a bank leaves it alone, and the report says so. A REW list goes to
+     * every chosen channel, its preamp to the inputs only.
+     *
+     * Returns JSON `{ok, error, lines}`: `ok` false with `error` when the
+     * file is over [`MAX_FILE_BYTES`], nothing in it applies to the chosen
+     * channels, or the device could not be written (disconnected, read-only
+     * firmware, a failed transfer; channels written before a failure stay
+     * written).
      */
     fun filtersImport(text: String, wires: List<Int>): String
 
@@ -1310,16 +1330,15 @@ interface DspiCoreApi : AutoCloseable {
     fun linkSetUrl(url: String)
 
     /**
-     * The log entries recorded after `after_id`, oldest first, and the id
-     * to pass next time (`after_id` itself when there are none). Pass 0
-     * for everything still held. Entries are recorded when
-     * [`DspiCore::process_notifications`] drains the queue. Never fails.
+     * The monitor lines with an id above `after_id`, oldest first, and the
+     * id to pass next time (`after_id` itself when there is nothing new).
+     * Pass 0 for everything still kept. Never fails.
      */
     fun monitorRead(afterId: Long): MonitorBatch
 
     /**
-     * Forget the logged entries. Ids are not reused: a reader's last id
-     * stays valid.
+     * Forget every monitor line. Ids carry on from where they were, so a
+     * reader's last id stays valid. Never fails.
      */
     fun monitorClear()
 
@@ -1897,237 +1916,190 @@ interface DspiCoreApi : AutoCloseable {
     fun setTubeParam(idx: Int, value: Float)
 
     /**
-     * Save the live state to preset `slot` (0..10) and make it the active
-     * slot. **Writes flash.**
+     * Save the live state to `slot` (0..10) and wait until the device has
+     * written it (it names the slot active). Runs under the device lock.
+     * The slot becomes the active one and the live state its baseline.
      *
-     * Sends `REQ_PRESET_SAVE`, then waits up to 1.5 s for the deferred save
-     * to show in the directory. The mirror's active slot and occupied mask
-     * follow, and the baseline becomes the live state (it now matches the
-     * active preset). Runs under the Link device lock.
+     * Without that confirmation the mirror only takes the directory as the
+     * device reports it, the baseline stays, and the call fails.
      *
-     * Errors: [`DspiError::Refused`] with the `PRESET_*` status
-     * (`PRESET_ERR_INVALID_SLOT` for a slot past 9, without sending);
-     * [`DspiError::ReadOnly`] on a read-only connection;
-     * [`DspiError::Disconnected`]; [`DspiError::Locked`] /
-     * [`DspiError::Denied`] when the Link hub refuses its lock;
-     * [`DspiError::Transfer`] when the device does not confirm in time (the
-     * mirror then follows the directory, if it answers, and the baseline
-     * stays); the transport's typed error when a transfer fails.
+     * Errors: [`DspiError::Refused`] with `PRESET_ERR_INVALID_SLOT` for a
+     * slot past the last (nothing is sent) or with the device's `PRESET_*`
+     * status; [`DspiError::Transfer`] when the save was not confirmed;
+     * [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
+     * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`].
      */
     @Throws(DspiException::class)
     fun savePreset(slot: Int)
 
     /**
-     * Load preset `slot` (0..10) and re-read every parameter into the
-     * mirror.
+     * Load preset `slot`, wait until the device runs it, then read the
+     * image and the directory again; the loaded state becomes the baseline.
+     * Runs under the device lock.
      *
-     * Sends `REQ_PRESET_LOAD`, waits up to 1.5 s for the device to report
-     * the slot active, then re-reads the bulk image ([`DspiCore::refresh_params`]) and the
-     * directory. The baseline becomes the loaded state. Runs under the Link
-     * device lock. The device also notifies `PRESET_LOADED` and then
-     * `BULK_INVALIDATED` (source `PRESET`); `process_notifications`
-     * re-reads on those as on any foreign change, and an edit made between
-     * this call and that notification stays unsaved (WP CG33).
+     * The active slot is the directory's after the re-read. When the
+     * directory cannot be read, it is `slot` if the device confirmed the
+     * load, and stays as it was otherwise. A load that is never confirmed
+     * (an empty slot changes nothing) still re-reads and succeeds.
      *
-     * Errors: [`DspiError::Refused`] with the `PRESET_*` status;
-     * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
-     * [`DspiError::Locked`] / [`DspiError::Denied`];
-     * [`DspiError::Transfer`] when the device does not confirm the load in
-     * time (a load that failed on the device looks the same: the image is
-     * not re-read, the active slot follows the directory if it answers, and
-     * the baseline stays); the transport's typed error when a transfer, or
-     * the re-read, fails.
+     * Errors: as [`DspiCore::save_preset`], and the re-read's.
      */
     @Throws(DspiException::class)
     fun loadPreset(slot: Int)
 
     /**
-     * Copy the live state into preset `dest`, then save it back to
-     * `source` so `source` stays the active slot (as the macOS Console
-     * does). **Writes flash twice.**
+     * Copy the live state to `dest` and save it to `source` again, so
+     * `source` stays the active preset (the Mac console's "Copy to"). Each
+     * save waits for the device; one device lock covers both.
      *
-     * Each deferred save must finish (the device reports that slot active)
-     * before the next is sent, or the second would replace the first's
-     * pending save. The baseline becomes the live state. Runs under the
-     * Link device lock.
+     * If the save to `dest` is not confirmed, nothing more is sent and the
+     * baseline stays. After the second save, the live state is the
+     * baseline.
      *
-     * Errors: as [`DspiCore::save_preset`] for either slot, plus
-     * [`DspiError::Transfer`] when the device does not confirm either save
-     * in time (after the first, nothing is saved to `source`; `dest` may
-     * hold the live state and the directory says which slot is active).
+     * Errors: the first failing save's (`Refused` with its `PRESET_*`
+     * status); [`DspiError::Transfer`] when `dest`'s save was not
+     * confirmed; otherwise as [`DspiCore::save_preset`].
      */
     @Throws(DspiException::class)
     fun copyPreset(source: Int, dest: Int)
 
     /**
-     * Delete preset `slot` (0..10) and its name. **Writes flash.**
+     * Delete preset `slot` and wait until the directory no longer holds
+     * it; its name goes with it. Runs under the device lock.
      *
-     * Waits up to 1.5 s for the slot to leave the directory. Deleting the
-     * active slot makes the device apply its factory defaults, so the
-     * image is then re-read (the baseline is kept: the live state matches
-     * no preset). Runs under the Link device lock.
+     * Deleting the active slot makes the device load its factory defaults:
+     * the image is read again and becomes the baseline. A deletion that is
+     * never confirmed leaves the slot and its name in the mirror and fails.
      *
-     * Errors: [`DspiError::Refused`] with the `PRESET_*` status;
-     * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
-     * [`DspiError::Locked`] / [`DspiError::Denied`];
-     * [`DspiError::Transfer`] when the device does not confirm in time (the
-     * mirror's directory fields then follow the directory, if it answers,
-     * and the name is kept); the transport's typed error when a transfer or
-     * the re-read fails.
+     * Errors: as [`DspiCore::save_preset`].
      */
     @Throws(DspiException::class)
     fun deletePreset(slot: Int)
 
     /**
-     * Name preset `slot` (0..10): at most 31 bytes of UTF-8, cut at a
-     * character boundary (and at an embedded NUL); an empty name clears it.
-     * The mirror's `preset_names[slot]` follows.
+     * Name preset `slot`: at most 31 bytes of `name` (cut at a character
+     * boundary), sent NUL-terminated. The mirror takes the name as sent.
      *
-     * Errors: [`DspiError::InvalidArgument`] for a slot past 9;
-     * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; the transport's
-     * typed error when the transfer fails.
+     * Errors: `Refused` with `PRESET_ERR_INVALID_SLOT` for a slot past the
+     * last (nothing is sent); [`DspiError::ReadOnly`];
+     * [`DspiError::Disconnected`]; a transfer error.
      */
     @Throws(DspiException::class)
     fun setPresetName(slot: Int, name: String)
 
     /**
-     * Read the name of preset `slot` (0..10) into the mirror and return it.
-     * Works on a read-only connection.
+     * Read preset `slot`'s name from the device (also into the mirror). An
+     * empty slot has no name: the device stalls, and that is the error.
      *
-     * Errors: [`DspiError::InvalidArgument`] for a slot past 9;
-     * [`DspiError::Disconnected`]; the transport's typed error when the
-     * read fails (an empty slot stalls; its mirrored name is cleared).
+     * Errors: `Refused` with `PRESET_ERR_INVALID_SLOT` for a slot past the
+     * last (nothing is sent); [`DspiError::Disconnected`]; a transfer error.
      */
     @Throws(DspiException::class)
     fun getPresetName(slot: Int): String
 
     /**
-     * Read the preset directory (occupied slots, startup mode and slot,
-     * active slot, the output-config and master-volume persistence modes)
-     * into the mirror and return it. Works on a read-only connection.
+     * Read the preset directory (also into the mirror: occupied slots,
+     * startup mode, default and active slot, both persistence modes).
      *
-     * Errors: [`DspiError::Disconnected`]; the transport's typed error when
-     * the read fails or the reply is shorter than 5 bytes.
+     * Errors: [`DspiError::Disconnected`]; a transfer error or a short reply.
      */
     @Throws(DspiException::class)
     fun getPresetDirectory(): PresetDirectory
 
     /**
-     * Choose the preset loaded at boot: `mode` 0 = load `default_slot`,
-     * 1 = the last active slot. The mirror follows.
+     * What the device loads at boot: `mode` 0 (`PRESET_STARTUP_SPECIFIED`)
+     * loads `default_slot`, 1 (`PRESET_STARTUP_LAST_ACTIVE`) the slot last
+     * active. The mirror takes both.
      *
-     * Errors: [`DspiError::InvalidArgument`] for a mode other than 0 or 1
-     * or a slot past 9; [`DspiError::ReadOnly`];
-     * [`DspiError::Disconnected`]; the transport's typed error when the
-     * transfer fails.
+     * Errors: [`DspiError::InvalidArgument`] for another mode or a slot
+     * past the last (nothing is sent); [`DspiError::ReadOnly`];
+     * [`DspiError::Disconnected`]; a transfer error.
      */
     @Throws(DspiException::class)
     fun setPresetStartup(mode: Int, defaultSlot: Int)
 
     /**
-     * Save the live state to the active preset slot (`REQ_SAVE_PARAMS`,
-     * deferred on the device). **Writes flash.** The baseline becomes the
-     * live state. Runs under the Link device lock.
+     * Save the live state to the active slot (`REQ_SAVE_PARAMS`), under the
+     * device lock; the live state becomes the baseline.
      *
-     * Errors: [`DspiError::Refused`] with the `FLASH_*` status;
-     * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
-     * [`DspiError::Locked`] / [`DspiError::Denied`]; the transport's typed
-     * error when the transfer fails.
+     * Errors: `Refused` with the device's `FLASH_*` status;
+     * [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
+     * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; a transfer
+     * error.
      */
     @Throws(DspiException::class)
     fun saveParams()
 
     /**
-     * Revert to saved: reload the active preset through the deferred,
-     * S/PDIF-safe preset load ([`DspiCore::load_preset`] of the mirror's
-     * `active_preset_slot`).
+     * Revert to saved: load the active slot again ([`DspiCore::load_preset`],
+     * the device's deferred load, safe on every input).
      *
-     * Errors: as [`DspiCore::load_preset`], except that a refusal is
-     * reported as [`DspiError::Refused`] with a `FLASH_*` status:
-     * `FLASH_ERR_CRC` for a corrupt slot, `FLASH_ERR_WRITE` otherwise.
+     * Errors: as `load_preset`, but a refusal carries a `FLASH_*` code:
+     * `FLASH_ERR_CRC` for a slot that failed its check, `FLASH_ERR_WRITE`
+     * for any other.
      */
     @Throws(DspiException::class)
     fun loadParams()
 
     /**
-     * Restore the factory defaults (`REQ_FACTORY_RESET`, deferred on the
-     * device). **Writes flash.** Waits 250 ms, then re-reads everything
-     * ([`DspiCore::fetch_all`]); the baseline becomes the reset state.
-     * Runs under the Link device lock.
+     * Restore the factory defaults on the live state (stored presets stay),
+     * give the device [`FACTORY_RESET_SETTLE`] to apply them (it defers the
+     * reset to its main loop), then read everything again as
+     * [`DspiCore::fetch_all`] does; the result is the baseline. Runs under the
+     * device lock; the core lock is not held while it waits.
      *
-     * Errors: [`DspiError::Refused`] with the `FLASH_*` status;
-     * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`];
-     * [`DspiError::Locked`] / [`DspiError::Denied`]; the transport's typed
-     * error when the transfer or the re-read fails.
+     * Errors: `Refused` with the device's `FLASH_*` status;
+     * [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
+     * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; a transfer
+     * error, of the reset or the re-read.
      */
     @Throws(DspiException::class)
     fun factoryReset()
 
     /**
-     * The live state now matches the active preset: remember its image as
-     * the baseline for [`DspiCore::preset_dirty`] and
-     * [`DspiCore::preset_changes`]. Without a device, or before an image
-     * has been read, the baseline is cleared. Never fails.
+     * Take the live state as what the active preset holds: from now on
+     * [`DspiCore::preset_changes`] lists what differs from it. The core
+     * does this itself after a connect, a load, a save, a revert and a
+     * factory reset. Without a device, or without an image in this build's
+     * format, there is no baseline.
      */
     fun captureBaseline()
 
     /**
-     * Whether the live state differs from the baseline in anything a
-     * preset holds: exactly when [`DspiCore::preset_changes`] is not
-     * empty. False before any baseline. Never fails.
+     * Whether the live state differs from the active preset: exactly when
+     * [`DspiCore::preset_changes`] has something to say. No I/O.
      */
     fun presetDirty(): Boolean
 
     /**
-     * What differs from the baseline (the active preset), one sentence
-     * each, worded as the macOS Console words it ("Preamp L: 0.0 dB →
-     * -3.0 dB", "2 bands changed on Output 1"). The master volume counts
-     * only in WITH_PRESET master-volume mode, the hardware wiring and the
-     * limiters only in WITH_PRESET output-config mode, both judged by the
-     * live mode. The user volume and the DAC mute are no preset change, as
-     * on macOS. An input source goes by the user's name when it has one,
-     * from the connection's cache, so this does no I/O. Empty before any
-     * baseline. Never fails.
+     * What differs from the active preset, one sentence each, in the Mac
+     * console's words and order. Empty without a device or a baseline. No
+     * I/O: input source titles come from the names the core keeps.
      */
     fun presetChanges(): List<String>
 
     /**
-     * Hold the device lock across a flow of several calls, so another
-     * session's commands answer `Locked` until [`DspiCore::device_lock_release`]
-     * (DSPi Link spec 7.7; Swift's `acquireDeviceLock`). It lasts at most
-     * `timeout_ms`, capped at 60 000 (the hub's cap): after that the hub and
-     * the core count it as released. The core's own locked flows
-     * (`save_preset`, `load_preset`, `save_output_config`, ...) run inside it
-     * without asking the hub again. It is given back when the connection
-     * closes or is replaced, a Link re-bind included. On USB, MIDI and the
-     * demo device it succeeds at once, as their flows do. Blocking over
-     * Link: call it off the UI thread.
+     * Hold the device lock across a flow of several calls (a restore, a
+     * firmware install), for at most `timeout_ms` (capped at 60 000), until
+     * [`DspiCore::device_lock_release`]: another DSPi Link session's
+     * commands answer locked meanwhile. The core's own flows nest inside it.
+     * Blocking over Link: call it off the UI thread.
      *
-     * One lock, one timeout: the first holder's. A call while the lock is
-     * already held keeps it as it is (no second request to the hub, the
-     * same remaining time) and makes it the caller's, so
-     * [`DspiCore::device_lock_release`] ends it and an IR learn's end no
-     * longer does. Likewise an IR learn (`cs_apply` `learnArm`) or
-     * [`DspiCore::enter_bootloader`] inside a caller's lock takes nothing of
-     * its own: it lasts as long as the caller's lock, not 15 s or 60 s. So
-     * do not wrap a learn in a short caller lock; to end a firmware install
-     * whose restart never happened, take the caller's lock (60 000 ms)
-     * before `enter_bootloader` and release it afterwards.
+     * An acquire while a lock is held asks nothing more; one held by an IR
+     * learn window or the bootloader restart becomes the caller's. Elsewhere
+     * than over Link it succeeds without asking anyone.
      *
-     * Errors: [`DspiError::InvalidArgument`] for a `timeout_ms` of 0;
-     * [`DspiError::Disconnected`] with no device, or when the connection
-     * changed while the hub was asked; [`DspiError::Locked`] when another
-     * session holds it; [`DspiError::Denied`] for a viewer.
+     * Errors: [`DspiError::InvalidArgument`] for a zero timeout;
+     * [`DspiError::Disconnected`]; [`DspiError::Locked`] while another
+     * session holds it; [`DspiError::Denied`].
      */
     @Throws(DspiException::class)
     fun deviceLockAcquire(reason: String, timeoutMs: Long)
 
     /**
-     * Release the lock [`DspiCore::device_lock_acquire`] took, and only
-     * that one (Swift releases only what it took): an IR learn's lock ends
-     * with its read, cancel or window, and `enter_bootloader`'s when the
-     * device leaves or after 60 s. Idempotent, and never blocks. A closed
-     * or replaced connection gives back every holder's lock.
+     * Give back the lock [`DspiCore::device_lock_acquire`] took, and only
+     * that one: an IR learn window or the bootloader restart ends on its own
+     * terms. Idempotent; never blocks.
      */
     fun deviceLockRelease()
 
@@ -2646,90 +2618,73 @@ interface DspiCoreApi : AutoCloseable {
     fun autoeqRebuildStart(dbPath: String, fetch: AutoEqFetch): AutoEqRebuild
 
     /**
-     * Magnitude in dB at one frequency (Hz) for a chain of bands.
+     * The combined level of `filters` at `freq` Hz, in dB.
      *
-     * Bypassed and off bands are skipped; an empty chain is 0 dB. A total
-     * power below -300 dB (a notch's exact zero) reads -300 dB.
+     * Bypassed and flat bands do not count; a crossover type counts with all
+     * its sections; a type this build does not know counts as flat.
      *
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun computeResponse(filters: List<FilterParams>, freq: Float): Float
 
     /**
-     * 201-point magnitude curve, dB, on the [`curve_freq`] grid.
-     *
-     * Each band is designed once, then evaluated at every point. Same rules
-     * as [`compute_response`].
+     * The combined level of `filters` in dB at each of the [`CURVE_POINTS`]
+     * frequencies of [`curve_freq`]. Never below -300 dB.
      *
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun computeMagnitudeCurve(filters: List<FilterParams>): List<Double>
 
     /**
-     * 201-point phase curve in degrees on the same grid; continuous when
-     * `unwrap`, else wrapped to ±180°.
-     *
-     * The unwrapped curve starts at the wrapped value of the first point and
-     * then takes, between neighbours, the step in (-180°, 180°].
+     * The combined phase of `filters` in degrees at each of the
+     * [`CURVE_POINTS`] frequencies of [`curve_freq`]: within +-180, or, with
+     * `unwrap`, continuous from the first point on.
      *
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun computePhaseCurve(filters: List<FilterParams>, unwrap: Boolean): List<Double>
 
     /**
-     * Frequency (Hz) of curve point `i` (0..200): log-spaced, 10 Hz at 0,
-     * 20 kHz at 200. A larger `i` extrapolates on the same spacing.
+     * The frequency of curve point `i` in Hz: 10 Hz at 0, 20 kHz at
+     * `CURVE_POINTS - 1`, evenly spaced in log frequency. Larger `i` continue
+     * the same spacing past 20 kHz.
      *
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun curveFreq(i: Long): Double
 
     /**
-     * Whether `map` (4 bytes, `DspState.crossfeed_pair_map` encoding) is a pair
-     * map the firmware accepts for `num_pairs` stereo pairs (4 on RP2350, 2 on
-     * RP2040): every pair gets two distinct non-PDM outputs, no output is used
-     * twice, bytes beyond `num_pairs` are 0.
-     *
-     * Byte `p` is pair `p`: `0x00` is the default pairing (`2p`, `2p+1`), any
-     * other value is `(right << 4) | left`. The non-PDM outputs are
-     * `0..2 * num_pairs`. A map that is not exactly 4 bytes, or a `num_pairs`
-     * of 0 or above 4, is invalid (false), never a panic.
+     * Whether the firmware accepts `map` as the crossfeed pair map on a device
+     * with `num_pairs` stereo pairs: exactly [`crate::consts::CROSSFEED_MAP_PAIRS`]
+     * bytes, and the rule of `dspi_proto::ext::PairMap::is_valid`.
      *
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun crossfeedPairMapValid(map: List<Int>, numPairs: Int): Boolean
 
     /**
-     * Version facts of the linked core: this crate's version, the wire format
-     * versions it reads and writes, the bulk image size and the curve size.
+     * The version facts of this build: crate version, the wire format versions
+     * it writes and reads, the bulk image size and the curve size.
      *
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun coreInfo(): CoreInfo
 
     /**
-     * Quantize a gain (dB) to 0.1 dB, as every gain setter does before sending
-     * (the old core's `dsp_math::quantize_gain`, bit for bit).
+     * A gain in dB on the device's 0.1 dB grid, as the gain setters send it.
      *
-     * Rounds half away from zero (`f32::round` of `db * 10`), and maps -0.0
-     * to +0.0 so a zero gain is never stored or sent as negative zero. It does
-     * not clamp: callers clamp to the parameter's range first. NaN stays NaN
-     * and ±inf stays ±inf (as does a finite value whose `* 10` overflows f32);
-     * never panics.
+     * Halves round away from zero and -0 becomes +0. No clamping: NaN and the
+     * infinities come back unchanged, and so does a value too large to scale.
      *
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun quantizeGain(db: Float): Float
 
     /**
-     * Quantize a delay (ms) to 0.0001 ms, as the delay setters do before
-     * sending (the old core's `dsp_math::quantize_delay`, bit for bit; the
-     * Windows Console's step).
+     * A delay in ms on a 0.0001 ms grid, as the delay setters send it.
      *
-     * Rounds half away from zero (`f32::round` of `ms * 10000`), and maps
-     * -0.0 to +0.0. It does not clamp: callers clamp to `0..=max_delay_ms`
-     * afterwards, as the old core did. NaN stays NaN and ±inf stays ±inf (as
-     * does a finite value whose `* 10000` overflows f32); never panics.
+     * Halves round away from zero and -0 becomes +0. No clamping (callers bound
+     * the delay to its range afterwards); NaN and the infinities pass through.
      *
      * Stateless (a free function in dspi-core); needs no device.
      */
@@ -2737,9 +2692,10 @@ interface DspiCoreApi : AutoCloseable {
 
     /**
      * Check a `.dspipreset` document and describe it, as JSON
-     * `{ok, error, name, platform, firmware, savedUtc}` (`dspi_config_inspect`):
-     * `ok` false with an `error` message for text that is not a document of
-     * this schema (or is newer, or over [`MAX_FILE_BYTES`]). Needs no device.
+     * `{ok, error, name, platform, firmware, savedUtc}`. `ok` is false, with the
+     * reason in `error`, for text that is not a document this build reads: not
+     * JSON, no schema version or a newer one, no channels, or over
+     * [`MAX_FILE_BYTES`]. Needs no device.
      *
      * Stateless (a free function in dspi-core); needs no device.
      */

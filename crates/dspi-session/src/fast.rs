@@ -683,7 +683,7 @@ mod tests_wp_dl3 {
         }
     }
 
-    /// `dspi set out.delay 1 nan`, through each session path: refused in
+    /// `uconsole set out.delay 1 nan`, through each session path: refused in
     /// words, nothing on the wire.
     #[test]
     fn wp_dl3_a_nan_delay_is_refused_before_the_wire() {

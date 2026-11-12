@@ -32,6 +32,8 @@ root=$(cd "$here/../.." && pwd)
 . "$root/ci/container/images.conf"
 B=${DSPI_BUILD_CACHE:-$HOME/.cache/dspi-build}
 work=${ESP_RIG_WORK:-$B/work/esp-rig}
+# -- WP CLEAN1 -- the Terminal's command name
+ci_cmd() { "$root/ci/command-name.sh"; }
 fw=$work/fw
 # -- WP LK4 -- a target dir of its own, so two rigs (a WP and a review) do not share one
 target=${ESP_RIG_TARGET:-$B/target/esp-rig}
@@ -96,7 +98,7 @@ cmd_build() {
   # The release Terminal client, for the K340 backup and diff (README).
   if [ "${ESP_RIG_DSPI_CLI:-0}" = 1 ]; then
     cargo_in "$target" "$root" 'cargo build --release -p dspi-term 2>&1 | tail -1'
-    put "$target/release/dspi" "$work/dspi"
+    put "$target/release/$(ci_cmd)" "$work/$(ci_cmd)"
   fi
   echo "built: $work/esp-rig-tunnel, $work/probe-after"
 }

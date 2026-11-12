@@ -1,5 +1,5 @@
 //! The C ABI the Qt desktop app links: the retired desktop core's functions
-//! (header `dspi_core.h`, snapshot in `tests/data/dspi_core_old.h`), same
+//! (header `dspi_core.h`, committed copy in `ci/generated/dspi_core.h`), same
 //! names, same signatures, same `#[repr(C)]` records, now over [`dspi_core::DspiCore`].
 //!
 //! Rules for every `extern "C"` function here:
@@ -127,21 +127,31 @@ mod tests {
             .collect()
     }
 
-    /// Every function of the old core's header (the committed snapshot; the
-    /// crate is gone) is defined by an export here and is in the header the
-    /// build writes. Signatures: `wp_q2a_*`, `wp_q2b_*`.
+    /// Every function of the committed header (`ci/generated/dspi_core.h`,
+    /// the ABI the Qt app is built against) is defined by an export here and
+    /// is in the header the build writes. Signatures: `wp_q2a_*`, `wp_q2b_*`.
     #[test]
     fn wp_q3_every_old_function_is_exported() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let read = |p: &str| std::fs::read_to_string(dir.join(p)).unwrap();
-        let old = called_names(&read("tests/data/dspi_core_old.h"));
+        let old = called_names(&read("../../ci/generated/dspi_core.h"));
         assert!(
             old.len() > 140,
-            "the parser lost the old header: {}",
+            "the parser lost the committed header: {}",
             old.len()
         );
 
-        let source = read("src/fns_device.rs") + &read("src/fns_misc.rs");
+        let source = [
+            "src/fns_device.rs",
+            "src/fns_misc.rs",
+            "src/fns_misc/autoeq.rs",
+            "src/fns_misc/link_text.rs",
+            "src/fns_browse.rs",
+            "src/fns_link.rs",
+            "src/fns_hub.rs",
+        ]
+        .map(read)
+        .concat();
         let exported: std::collections::BTreeSet<&str> = source
             .split("pub extern \"C\" fn ")
             .skip(1)
@@ -177,5 +187,79 @@ mod tests {
             assert_eq!(fns_device::warn_now(&mut t, &i.to_string(), now), Some(0));
         }
         assert!(t.len() <= 64);
+    }
+}
+
+// -- WP CLEAN1 fixup cl1 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_clean1 {
+    use std::path::Path;
+
+    const ANCHOR: &str = "tests/data/abi-anchor.txt";
+
+    /// The header's declarations, without comments, whitespace collapsed, one per
+    /// line: what an ABI change changes and a doc comment does not.
+    fn declarations(header: &str) -> Vec<String> {
+        let mut text = String::new();
+        let mut rest = header;
+        while let Some(start) = rest.find("/*") {
+            text.push_str(&rest[..start]);
+            rest = rest[start..].split_once("*/").map_or("", |p| p.1);
+        }
+        text.push_str(rest);
+        text.lines()
+            .map(|l| l.split("//").next().unwrap_or(""))
+            .map(|l| l.split_whitespace().collect::<Vec<_>>().join(" "))
+            .filter(|l| !l.is_empty())
+            .collect()
+    }
+
+    fn generated() -> Vec<String> {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        declarations(&std::fs::read_to_string(dir.join("include/dspi_core.h")).unwrap())
+    }
+
+    fn anchored() -> Vec<String> {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        std::fs::read_to_string(dir.join(ANCHOR))
+            .unwrap()
+            .lines()
+            .filter(|l| !l.starts_with("# "))
+            .map(str::to_owned)
+            .collect()
+    }
+
+    /// The C ABI the build generates is the committed anchor, declaration for
+    /// declaration: a changed type, field, order, value or symbol fails here.
+    #[test]
+    fn wp_clean1_the_abi_is_the_anchor() {
+        let (now, then) = (generated(), anchored());
+        let first = now.iter().zip(&then).position(|(a, b)| a != b);
+        assert!(
+            now == then,
+            "the C ABI changed (header {} lines, anchor {}; first difference at {:?}: {:?} vs {:?}). \
+             If intended, regenerate {ANCHOR} (see its header) in the same commit.",
+            now.len(),
+            then.len(),
+            first,
+            first.map(|i| &now[i]),
+            first.map(|i| &then[i]),
+        );
+    }
+
+    /// Rewrites the anchor from the current header; run by hand for an intended change.
+    #[test]
+    #[ignore = "rewrites the anchor; run by hand for an intended ABI change"]
+    fn wp_clean1_write_the_abi_anchor() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let path = dir.join(ANCHOR);
+        let old = std::fs::read_to_string(&path).unwrap();
+        let head: String = old
+            .lines()
+            .take_while(|l| l.starts_with("# "))
+            .map(|l| format!("{l}\n"))
+            .collect();
+        std::fs::write(&path, head + &generated().join("\n") + "\n").unwrap();
     }
 }

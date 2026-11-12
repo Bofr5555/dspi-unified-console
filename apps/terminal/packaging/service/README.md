@@ -1,17 +1,21 @@
-# `dspi hub` as a background service
+# `@CMD@ hub` as a background service
 
-Placeholders to adapt, one per OS (WP TM11). Each runs `dspi hub`, which shares
+`@CMD@` is the Terminal's command name (`ci/command-name.sh`, currently `uconsole`). The files
+here are templates: `render.sh OUTDIR` writes them with the name filled in and under their
+installed names, as the release archives carry them.
+
+Placeholders to adapt, one per OS (WP TM11). Each runs `@CMD@ hub`, which shares
 this machine's DSPi devices on the network (DSPi Link) until it is stopped. Run
-`dspi hub --help` for its options.
+`@CMD@ hub --help` for its options.
 
 | OS | File | Runs | Install |
 |---|---|---|---|
-| Linux | `dspi-hub.service` | systemd user service, while logged in (or always, with linger) | header of the file |
-| macOS | `se.bofr.dspi.hub.plist` | launchd agent, while logged in | header of the file |
-| Windows | `dspi-hub-task.xml` | scheduled task at logon | header of the file |
+| Linux | `@CMD@-hub.service` (`hub.service.in`) | systemd user service, while logged in (or always, with linger) | header of the file |
+| macOS | `se.bofr.@CMD@.hub.plist` (`hub.plist.in`) | launchd agent, while logged in | header of the file |
+| Windows | `@CMD@-hub-task.xml` (`hub-task.xml.in`) | scheduled task at logon | header of the file |
 
-Each assumes `dspi` in a fixed place (`/usr/local/bin/dspi`,
-`C:\Program Files\DSPi\dspi.exe`): edit the path to where it is installed.
+Each assumes `@CMD@` in a fixed place (`/usr/local/bin/@CMD@`,
+`C:\Program Files\@CMD@\@CMD@.exe`): edit the path to where it is installed.
 
 ## Pairing stays PIN-based
 
@@ -22,36 +26,36 @@ crosses the network in plain text, so pair on a network you trust.
 
 A service has no terminal, so pair with the service stopped:
 
-1. Stop the service (`systemctl --user stop dspi-hub`, `launchctl bootout
-   gui/$(id -u)/se.bofr.dspi.hub`, or end the task).
-2. Run `dspi hub` in a terminal and type `pair`. It shows a PIN.
+1. Stop the service (`systemctl --user stop @CMD@-hub`, `launchctl bootout
+   gui/$(id -u)/se.bofr.@CMD@.hub`, or end the task).
+2. Run `@CMD@ hub` in a terminal and type `pair`. It shows a PIN.
 3. Connect from the client and enter the PIN. Type `quit`.
 4. Start the service again. The client's token is kept in the hub's store and
    works across restarts.
 
-`dspi hub --pair` opens a window as the hub starts and prints the PIN to its
+`@CMD@ hub --pair` opens a window as the hub starts and prints the PIN to its
 output. Under a service that output is the log (journal, log file), so the PIN
 would end up there. It stops working after two minutes or once used, but a log
 is not a screen: prefer the steps above.
 
-With the service stopped, `dspi hub clients`, `dspi hub role <cid> <role>` and
-`dspi hub revoke <cid>` change the store directly. While a hub runs they refuse,
+With the service stopped, `@CMD@ hub clients`, `@CMD@ hub role <cid> <role>` and
+`@CMD@ hub revoke <cid>` change the store directly. While a hub runs they refuse,
 since the hub owns the store. On a terminal, the running hub takes the same
 commands typed at it, and they take effect on live connections.
 
-Switching between PIN and open access forgets every paired client. `dspi hub`
+Switching between PIN and open access forgets every paired client. `@CMD@ hub`
 refuses to do that unless it is also given `--forget-clients`.
 
 ## Store, logs, sleep
 
 - **Store:** the hub's id, paired clients (token hashes only) and device names,
-  in the user's local data directory: `~/.local/share/dspi/hub` (Linux),
-  `~/Library/Application Support/dspi/hub` (macOS), `%LOCALAPPDATA%\dspi\hub`
+  in the user's local data directory: `~/.local/share/@CMD@/hub` (Linux),
+  `~/Library/Application Support/@CMD@/hub` (macOS), `%LOCALAPPDATA%\@CMD@\hub`
   (Windows). `--store DIR` to choose another. One hub per store.
 - **Logs:** standard error, at `RUST_LOG` (warnings by default). Even at
   `trace`, the WebSocket library's frame dumps are held back, since they would
   carry PINs and tokens.
-- **Sleep:** while it runs, `dspi hub` keeps the machine from sleeping. Linux:
+- **Sleep:** while it runs, `@CMD@ hub` keeps the machine from sleeping. Linux:
   `systemd-inhibit` (a logind lock, gone when the hub ends). macOS: `caffeinate
   -i -w <pid>`. Windows: `SetThreadExecutionState`. If that is refused, it warns
   and shares anyway. `--no-keep-awake` turns it off.
@@ -69,7 +73,7 @@ refuses to do that unless it is also given `--forget-clients`.
 
 A scheduled task runs in the user's session with a console window. To run the
 hub with no window and before anyone logs on, wrap it as a Windows service with
-a service wrapper such as WinSW or NSSM, which runs `dspi.exe hub` and stops it
+a service wrapper such as WinSW or NSSM, which runs `@CMD@.exe hub` and stops it
 with Ctrl-C. Two things change:
 
 - The service account's own data directory holds the store. Give it
@@ -78,14 +82,14 @@ with Ctrl-C. Two things change:
 - A service needs permission to open the USB devices. WinUSB devices are
   usually open to the local system account.
 
-`dspi` is not a native service (it does not answer the service control manager
+`@CMD@` is not a native service (it does not answer the service control manager
 itself), hence the wrapper.
 
 ## Firewall and network
 
 The hub listens on TCP port 11915 (`--port`), and on mDNS so that clients find
 it. Allow both on a private network only. On Windows, the first start asks
-whether `dspi` may use the network: tick private networks only. Cancel there
+whether `@CMD@` may use the network: tick private networks only. Cancel there
 adds rules that block it, which then have to be removed in Windows Defender
 Firewall. Clients on the network cannot raise a unit's core voltage above
 1.20 V, whatever their role: do that on the machine itself.

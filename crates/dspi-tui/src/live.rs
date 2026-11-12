@@ -2181,7 +2181,7 @@ impl Live {
         self.shell.open_tool(tool, screen);
     }
 
-    /// Show a screen by name, as `dspi screenshot` and the gallery ask:
+    /// Show a screen by name, as `uconsole screenshot` and the gallery ask:
     /// `overview`, `input` (the first input), `output` (the first output),
     /// a tool's lowercase title word (`matrix`, `crossfeed`, `loudness`,
     /// `leveller`, `psybass`, `upmixer`, `signals`, `stats`, `monitor`,
@@ -3945,7 +3945,7 @@ mod tests_wp_tm8 {
         KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL)
     }
 
-    /// A live interface on a fake hub, as `dspi --link` starts one.
+    /// A live interface on a fake hub, as `uconsole --link` starts one.
     fn on_hub(name: &str) -> (Live, Session, FakeHub) {
         let hub = FakeHub::start(HubConfig {
             auth: Auth::Window("1234".into()),
@@ -6878,7 +6878,7 @@ mod tests_wp_tm5 {
         .unwrap()
     }
 
-    /// A terminal on `hub`, as `dspi --link` starts one.
+    /// A terminal on `hub`, as `uconsole --link` starts one.
     struct Console {
         live: Live,
         session: Session,

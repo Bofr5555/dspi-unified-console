@@ -271,7 +271,7 @@ impl World for Fake {
             dev,
             world: Arc::clone(&self.board),
         };
-        // The same door `dspi raw` uses, so a read-only device is guarded here.
+        // The same door `uconsole raw` uses, so a read-only device is guarded here.
         guard_raw(Box::new(spy))
     }
 

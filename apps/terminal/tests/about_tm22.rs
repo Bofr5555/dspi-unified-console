@@ -1,8 +1,8 @@
-//! WP TM22: `dspi --version` credits who made it, from the About table.
+//! WP TM22: `uconsole --version` credits who made it, from the About table.
 
 use std::process::{Command, Stdio};
 
-const DSPI: &str = env!("CARGO_BIN_EXE_dspi");
+const DSPI: &str = env!(concat!("CARGO_BIN_EXE_", dspi_cmd::command!()));
 
 #[test]
 fn wp_tm22_version_prints_the_tables_credit_lines_after_the_versions() {
@@ -20,18 +20,25 @@ fn wp_tm22_version_prints_the_tables_credit_lines_after_the_versions() {
     assert!(out.status.success());
     let text = String::from_utf8_lossy(&out.stdout);
     let lines: Vec<&str> = text.lines().collect();
-    assert!(lines[0].starts_with("dspi "), "{text}");
+    assert!(
+        lines[0].starts_with(concat!(dspi_cmd::command!(), " ")),
+        "{text}"
+    );
     assert!(lines[1].starts_with("wire format"), "{text}");
     let credits: Vec<&str> = table.credit_lines.iter().map(|l| l.text.as_str()).collect();
     // -- WP LIC1 -- then where the licence is
     assert_eq!(&lines[2..lines.len() - 1], credits.as_slice(), "{text}");
     assert_eq!(
         lines[lines.len() - 1],
-        "GPL-3.0-or-later, with additional terms: dspi --license"
+        concat!(
+            "GPL-3.0-only, with additional terms: ",
+            dspi_cmd::command!(),
+            " --license"
+        )
     );
 }
 
-/// WP LIC1: `dspi --license` prints the attributions, the licence notice and the three
+/// WP LIC1: `uconsole --license` prints the attributions, the licence notice and the three
 /// additional terms, as the About table words them.
 #[test]
 fn wp_lic1_license_prints_the_notice_and_the_terms() {

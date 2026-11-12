@@ -53,7 +53,7 @@ OUT_MD = OUT_DIR / "IOS-INVENTORY.md"
 OUT_JSON = OUT_DIR / "ios-inventory.json"
 # -- WP WB7 --
 WEB_LOCK = ROOT / "apps/web/package-lock.json"
-# Upstream's DSPi-Link web page, built into `dspi hub` (crates/dspi-hub/tools/build-link-web.sh)
+# Upstream's DSPi-Link web page, built into `uconsole hub` (crates/dspi-hub/tools/build-link-web.sh)
 HUB_PAGE = ROOT / "crates/dspi-hub/assets/web/hub/PROVENANCE.json"
 NOTES_MD = OUT_DIR / "ios-inventory-notes.md"
 
@@ -69,8 +69,8 @@ IOS_TARGET = "DSPi Console iOS"
 # these when CG3 and SW1 give the iOS build its own features.
 CARGO_SELECT = "-p dspi-ffi --no-default-features --target aarch64-apple-ios --locked"
 
-# The old core dspi-core was ported from: Weeb Labs' Console-Linux core, deleted
-# from the tree by WP Q3 and still in history here.
+# The older desktop core, deleted from the tree by WP Q3 and still in history here;
+# the "old core" column measures how much of a file still matches it.
 OLD_CORE = ("d190535", "crates/dspi-core-linux/src")
 FIRMWARE_TAG = "v1.1.6"
 
@@ -90,9 +90,10 @@ KNOWN_HOLDERS = (WEEB_LABS, OWNER)
 CRATE_ORIGINS = {
     "dspi-core": (
         [WEEB_LABS],
-        "Written in the core merge with Weeb Labs' Console-Linux core as its input "
-        f"(`git show {OLD_CORE[0]}:{OLD_CORE[1]}`). Blame shows only the porter, so "
-        "Weeb Labs is added here whatever a file's blame says.",
+        "Bofr5555's, from the core merge; its records, constants, curves, files, presets "
+        "and monitor were written anew in WP CLEAN1 from dspi-proto, the firmware headers "
+        "and the macOS Console. Its behaviour and texts follow DSPi-Terminal and the macOS "
+        "Console, so Weeb Labs is listed whatever a file's blame says.",
     ),
     "dspi-link": (
         [WEEB_LABS],
@@ -1006,7 +1007,7 @@ def render(data: dict) -> str:
         emit("")
         hub = web.get("hub_page")
         if hub:
-            emit(f"**`dspi hub`'s page at `/hub/`** is upstream's DSPi Link web page, built unmodified and compiled into the hub "
+            emit(f"**`uconsole hub`'s page at `/hub/`** is upstream's DSPi Link web page, built unmodified and compiled into the hub "
                  f"(`crates/dspi-hub/assets/web/hub/`, `PROVENANCE.json`): {hub['repository']} at `{hub['commit'][:8]}`, "
                  f"`@dspi/web` {hub['version']}, **{hub['license']}** (its `LICENSE`, served in the hub's `/THIRD-PARTY-NOTICES.txt`). "
                  f"Bundled: {', '.join(f'`{p}`' for p in hub['packages'])}; `@dspi/web` declares no licence field, the repository's "

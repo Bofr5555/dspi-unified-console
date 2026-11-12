@@ -15,7 +15,7 @@
 //!
 //! Above the map, on firmware that lists `EXT_CORE_VREG`, sits the core-voltage
 //! status (the Console's `CoreVoltageSection`). It only reads: the writes stay
-//! in the CLI, `dspi ext vreg`.
+//! in the CLI, `uconsole ext vreg`.
 
 use dspi_proto::ext::{CoreVregStatus, vreg_mv};
 use dspi_session::Session;
@@ -123,11 +123,12 @@ fn core_voltage_rows(s: &CoreVregStatus) -> Vec<Row> {
         },
     ));
     rows.push(Row::pair("Uptime", uptime(s.uptime_s)));
-    rows.push(Row::note(
+    rows.push(Row::note(concat!(
         "At its 307.2 MHz clock the device raises its stored voltage one step by itself after \
-         two watchdog hangs in one power session, up to 1.25 V. To change it, use `dspi ext \
-         vreg`.",
-    ));
+         two watchdog hangs in one power session, up to 1.25 V. To change it, use `",
+        dspi_cmd::command!(),
+        " ext vreg`."
+    )));
     rows.push(Row::Blank);
     rows
 }
@@ -445,7 +446,10 @@ mod tests {
         ] {
             assert!(f.contains(want), "{want}:\n{f}");
         }
-        assert!(f.contains("dspi ext"), "where the writes are:\n{f}");
+        assert!(
+            f.contains(concat!(dspi_cmd::command!(), " ext")),
+            "where the writes are:\n{f}"
+        );
     }
 
     #[test]

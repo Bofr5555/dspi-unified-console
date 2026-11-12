@@ -1,4 +1,4 @@
-//! Fixture models for tests, the gallery and `dspi screenshot`.
+//! Fixture models for tests, the gallery and `uconsole screenshot`.
 
 use dspi_proto::dsp;
 use dspi_proto::generated::{BULK_SIZE, SECTIONS, wire::WIRE_FORMAT_VERSION};

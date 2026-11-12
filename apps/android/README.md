@@ -35,7 +35,7 @@ signals, spectrum analyser, statistics, interrupt monitor · firmware installer 
 images or a local `.uf2`) · demo mode without a device.
 
 DSPi Link (optional, off by default; Settings › Networking): control a DSPi through a DSPi Link hub
-on the local network, such as DSPi Console on a Mac, this repository's `dspi hub` or Qt app, or a DSPi
+on the local network, such as DSPi Console on a Mac, this repository's `uconsole hub` or Qt app, or a DSPi
 ESP32 bridge — hub discovery or address entry, PIN pairing, reconnect. The protocol is plaintext:
 trusted networks only.
 

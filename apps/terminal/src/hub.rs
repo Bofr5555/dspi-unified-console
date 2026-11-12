@@ -1,4 +1,4 @@
-//! `dspi hub`: share this machine's DSPi devices on the network, with no window.
+//! `uconsole hub`: share this machine's DSPi devices on the network, with no window.
 //!
 //! A headless DSPi Link hub over `dspi_hub` (HUB.md; WP HB6 is the same hub behind the
 //! C ABI, and this follows its rules). It runs in the foreground until Ctrl-C or
@@ -10,7 +10,7 @@
 //!   in its log, and only while a window is open: `--pair` opens one at the start, and
 //!   `pair` typed at a running hub opens another. It crosses the network in plain text.
 //! - **Clients and roles** are commands: typed at a running hub on a terminal (they then
-//!   reach the live sessions), or `dspi hub clients|role|revoke` with the hub stopped.
+//!   reach the live sessions), or `uconsole hub clients|role|revoke` with the hub stopped.
 //!   A hub holds a lock file in its store, so those refuse while one runs: the store has
 //!   one owner (HUB.md, HB1), and a second writer would put back what the hub changed.
 //! - **A change of access mode revokes every token** (spec 6.2). Starting in the other
@@ -27,8 +27,8 @@
 //!
 //! -- WP WB7 -- **The web console.** `--web` serves the hub's own page at `/` and the web
 //! console (`apps/web`'s built dist) at `/console/`, read from `--console DIR`, else from
-//! `$DSPI_WEB_CONSOLE`, else from `web/` beside this binary or `../share/dspi/web/` above
-//! it. `dspi web` (the same as `dspi hub --local`) runs a hub on this machine only with
+//! `$DSPI_WEB_CONSOLE`, else from `web/` beside this binary or `../share/uconsole/web/` above
+//! it. `uconsole web` (the same as `uconsole hub --local`) runs a hub on this machine only with
 //! the console, so `http://localhost:PORT/console/` is a secure page: WebUSB and Link in
 //! one browser tab. That hub holds no USB device unless `--share-usb`, so the browser can
 //! take a DSPi over WebUSB; `--demo` shares the simulated device over Link.
@@ -41,6 +41,7 @@
     clippy::arithmetic_side_effects
 )]
 
+use dspi_cmd::COMMAND;
 use std::fs::{File, OpenOptions, TryLockError};
 use std::io::{BufRead, IsTerminal};
 use std::net::{IpAddr, Ipv4Addr};
@@ -68,8 +69,8 @@ const MAX_NAME: usize = 64;
 /// Held by a running hub, in its store.
 const LOCK_FILE: &str = "dspi-hub.lock";
 // -- WP WB7 --
-/// `dspi web`'s port when nobody says: the standard one plus one, so it can run beside
-/// a `dspi hub`, and the same each time, so the page's origin (and with it the hub
+/// `uconsole web`'s port when nobody says: the standard one plus one, so it can run beside
+/// a `uconsole hub`, and the same each time, so the page's origin (and with it the hub
 /// tokens and the DSPis it was allowed on USB) stays the browser's.
 const LOCAL_PORT: u16 = DEFAULT_PORT + 1;
 /// The environment variable naming the web console's directory.
@@ -90,11 +91,11 @@ impl Failure {
     fn report(self) -> u8 {
         match self {
             Failure::Usage(m) => {
-                eprintln!("dspi hub: {m}");
+                eprintln!("{COMMAND} hub: {m}");
                 exit::USAGE
             }
             Failure::Failed(m) => {
-                eprintln!("dspi hub: {m}");
+                eprintln!("{COMMAND} hub: {m}");
                 exit::TRANSPORT
             }
         }
@@ -107,7 +108,7 @@ impl From<HubError> for Failure {
     }
 }
 
-/// How `dspi hub run` starts.
+/// How `uconsole hub run` starts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct RunOptions {
     /// `--name`; otherwise the stored one, otherwise [`DEFAULT_NAME`].
@@ -128,13 +129,13 @@ struct RunOptions {
     web: bool,
     /// `--console DIR`: where the console is; else [`find_console`] looks.
     console: Option<PathBuf>,
-    /// `dspi web`, `--local`: loopback, web on, the console required.
+    /// `uconsole web`, `--local`: loopback, web on, the console required.
     local: bool,
     /// `--share-usb` with `--local`: the hub holds this machine's USB devices.
     share_usb: bool,
 }
 
-/// One `dspi hub` command.
+/// One `uconsole hub` command.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum HubCommand {
     Help,
@@ -153,14 +154,14 @@ enum HubCommand {
     },
 }
 
-/// `dspi hub ...`; `flags` starts at the word `hub`, without the target flags.
+/// `uconsole hub ...`; `flags` starts at the word `hub`, without the target flags.
 pub fn run(target: &Target, flags: &[&str], json: bool) -> u8 {
     if let Some(code) = refuse_target(target) {
         return code;
     }
     let demo = *target == Target::Demo;
-    // -- WP WB7 -- `dspi web` is `dspi hub --local`, with a store of its own, so it can
-    // run beside a `dspi hub`.
+    // -- WP WB7 -- `uconsole web` is `uconsole hub --local`, with a store of its own, so it can
+    // run beside a `uconsole hub`.
     let local = flags.first() == Some(&"web");
     let mut args: Vec<&str> = flags.get(1..).unwrap_or_default().to_vec();
     let store = if local {
@@ -195,7 +196,7 @@ pub fn run(target: &Target, flags: &[&str], json: bool) -> u8 {
 }
 
 /// A target a hub cannot run on, refused with its exit status. `main` asks before it
-/// looks for a `--hub` on the network, so `dspi --hub hub` fails at once (review c4b).
+/// looks for a `--hub` on the network, so `uconsole --hub hub` fails at once (review c4b).
 pub fn refuse_target(target: &Target) -> Option<u8> {
     let why = match target {
         Target::Usb { serial: None } | Target::Demo => return None,
@@ -213,16 +214,16 @@ pub fn refuse_target(target: &Target) -> Option<u8> {
 fn usage() {
     println!(
         "\
-dspi hub - share this machine's DSPi devices on the network (DSPi Link)
+{COMMAND} hub - share this machine's DSPi devices on the network (DSPi Link)
 
 USAGE:
-    dspi hub [run] [OPTIONS]  run a hub in the foreground until Ctrl-C or SIGTERM
-    dspi --demo hub [...]     the same, sharing the built-in simulated device
-    dspi [--demo] web         the web console on this machine (dspi hub --local)
-    dspi hub clients          list the paired clients (hub stopped)
-    dspi hub role <cid> viewer|control|admin
+    {COMMAND} hub [run] [OPTIONS]  run a hub in the foreground until Ctrl-C or SIGTERM
+    {COMMAND} --demo hub [...]     the same, sharing the built-in simulated device
+    {COMMAND} [--demo] web         the web console on this machine ({COMMAND} hub --local)
+    {COMMAND} hub clients          list the paired clients (hub stopped)
+    {COMMAND} hub role <cid> viewer|control|admin
                               change a client's role (hub stopped)
-    dspi hub revoke <cid>     forget a client; it must pair again (hub stopped)
+    {COMMAND} hub revoke <cid>     forget a client; it must pair again (hub stopped)
 
 OPTIONS:
     --name <name>             the hub's name, kept for the next start
@@ -237,8 +238,8 @@ OPTIONS:
                               (DSPi Link's) at /hub/, and a page at / linking both
     --console <dir>           the built web console (apps/web's dist); implies
                               --web. Else ${CONSOLE_ENV}, else web/ beside this
-                              program or ../share/dspi/web/ above it
-    --local                   the same as `dspi web`: this machine only, with
+                              program or ../share/uconsole/web/ above it
+    --local                   the same as `{COMMAND} web`: this machine only, with
                               the console at http://localhost:PORT/console/
                               (default port {LOCAL_PORT}), a secure page with
                               WebUSB and Link together. The hub holds no USB
@@ -273,7 +274,7 @@ do that on this machine. Logs go to standard error (RUST_LOG).
 /// Where a hub keeps its store when nobody says: the user's local data directory,
 /// since the hub id and the token hashes belong to this machine.
 fn default_store() -> Option<PathBuf> {
-    dirs::data_local_dir().map(|d| d.join("dspi").join("hub"))
+    dirs::data_local_dir().map(|d| d.join(COMMAND).join("hub"))
 }
 
 /// The arguments after `hub`. `default_store` is passed in for the tests.
@@ -359,8 +360,11 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
             .ok_or_else(|| usage("this system has no data directory: give --store".into()))
     };
     let cid = |w: Option<&&str>| -> Result<u32, Failure> {
-        let w =
-            w.ok_or_else(|| usage("which client? Give its number from `dspi hub clients`".into()))?;
+        let w = w.ok_or_else(|| {
+            usage(format!(
+                "which client? Give its number from `{COMMAND} hub clients`"
+            ))
+        })?;
         w.parse()
             .map_err(|_| usage(format!("`{w}` is not a client number")))
     };
@@ -368,9 +372,9 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
         [] | ["run"] => {
             // -- WP WB7 --
             if share_usb && !local {
-                return Err(usage(
-                    "--share-usb is for `dspi web`; a hub shares USB anyway".into(),
-                ));
+                return Err(usage(format!(
+                    "--share-usb is for `{COMMAND} web`; a hub shares USB anyway"
+                )));
             }
             if share_usb && demo {
                 return Err(usage(
@@ -410,7 +414,7 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
         },
         _ => {
             return Err(usage(format!(
-                "`{}` is not a hub command; see `dspi hub --help`",
+                "`{}` is not a hub command; see `{COMMAND} hub --help`",
                 printable(&words.join(" "))
             )));
         }
@@ -599,7 +603,7 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
     config.network = Some(network);
     // A scan only once the listener is in, below.
     config.initial_scan = false;
-    // -- WP WB7 -- `dspi web` leaves USB to the browser unless asked.
+    // -- WP WB7 -- `uconsole web` leaves USB to the browser unless asked.
     if !opts.demo && (!opts.local || opts.share_usb) {
         config.bus = Some(Box::new(UsbBus::default()));
     }
@@ -649,7 +653,7 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
 
 // -- WP WB7 --
 /// The web console to serve: `None` when it is not wanted, or (for a LAN hub's `--web`
-/// alone) not found, which is said. `dspi web` and `--console` need one.
+/// alone) not found, which is said. `uconsole web` and `--console` need one.
 fn load_console(opts: &RunOptions) -> Result<Option<Arc<dspi_hub::web::Console>>, Failure> {
     if !opts.web {
         return Ok(None);
@@ -669,7 +673,7 @@ fn load_console(opts: &RunOptions) -> Result<Option<Arc<dspi_hub::web::Console>>
             )));
         }
         eprintln!(
-            "dspi hub: no web console found (--console DIR, {CONSOLE_ENV}): serving / and \
+            "{COMMAND} hub: no web console found (--console DIR, {CONSOLE_ENV}): serving / and \
              /hub/ only"
         );
         return Ok(None);
@@ -677,14 +681,14 @@ fn load_console(opts: &RunOptions) -> Result<Option<Arc<dspi_hub::web::Console>>
     let console = dspi_hub::web::Console::load(&dir).map_err(|e| Failure::Failed(e.to_string()))?;
     let (files, bytes) = console.size();
     log::info!(
-        "dspi hub: web console from {}: {files} files, {bytes} bytes",
+        "{COMMAND} hub: web console from {}: {files} files, {bytes} bytes",
         dir.display()
     );
     Ok(Some(Arc::new(console)))
 }
 
 /// Where the console is when nobody says: `$DSPI_WEB_CONSOLE`, then `web/` beside the
-/// program, then `share/dspi/web/` in the prefix it is installed in. The first that has
+/// program, then `share/uconsole/web/` in the prefix it is installed in. The first that has
 /// an `index.html`.
 fn find_console(env: Option<PathBuf>, exe: Option<&Path>) -> Option<PathBuf> {
     if let Some(dir) = env {
@@ -694,7 +698,7 @@ fn find_console(env: Option<PathBuf>, exe: Option<&Path>) -> Option<PathBuf> {
     let beside = bin.join("web");
     let shared = bin
         .parent()
-        .map(|prefix| prefix.join("share").join("dspi").join("web"));
+        .map(|prefix| prefix.join("share").join(COMMAND).join("web"));
     [Some(beside), shared]
         .into_iter()
         .flatten()
@@ -764,12 +768,12 @@ impl HubListener for Printer {
     }
 }
 
-/// `dspi hub run`: start, serve until asked to stop, stop.
+/// `uconsole hub run`: start, serve until asked to stop, stop.
 fn serve(opts: &RunOptions, json: bool) -> Result<(), Failure> {
     let stop = Arc::new(AtomicBool::new(false));
     for signal in [signal_hook::consts::SIGINT, signal_hook::consts::SIGTERM] {
         if let Err(e) = signal_hook::flag::register(signal, Arc::clone(&stop)) {
-            log::warn!("dspi hub: signal {signal} not caught ({e}): it will stop abruptly");
+            log::warn!("{COMMAND} hub: signal {signal} not caught ({e}): it will stop abruptly");
         }
     }
     let running = start(opts, json)?;
@@ -815,7 +819,7 @@ fn serve(opts: &RunOptions, json: bool) -> Result<(), Failure> {
 /// The lines typed at the terminal, read on a thread of their own, which a blocked
 /// read keeps until the process ends. `None` if that thread could not start.
 ///
-/// A hub started in the background (`dspi hub &`) still has the terminal as its
+/// A hub started in the background (`uconsole hub &`) still has the terminal as its
 /// standard input, and a read from there would stop the whole process with SIGTTIN
 /// (review c4b). So SIGTTIN is ignored, which turns such a read into an error, and an
 /// error is tried again a little later rather than taken for the end of input: brought
@@ -829,7 +833,7 @@ fn read_lines() -> Option<mpsc::Receiver<String>> {
     match spawned {
         Ok(_) => Some(rx),
         Err(e) => {
-            log::warn!("dspi hub: no thread to read commands ({e}); Ctrl-C stops the hub");
+            log::warn!("{COMMAND} hub: no thread to read commands ({e}); Ctrl-C stops the hub");
             None
         }
     }
@@ -865,7 +869,7 @@ fn ignore_background_read() {
     for signal in [libc::SIGTTIN, libc::SIGTTOU] {
         // SAFETY: sets a disposition to SIG_IGN, which runs no code of ours.
         if unsafe { libc::signal(signal, libc::SIG_IGN) } == libc::SIG_ERR {
-            log::warn!("dspi hub: signal {signal} not ignored: in the background it may stop");
+            log::warn!("{COMMAND} hub: signal {signal} not ignored: in the background it may stop");
         }
     }
 }
@@ -979,7 +983,7 @@ fn begin_pairing(running: &Running, json: bool) {
                 );
             }
         }
-        Err(e) => eprintln!("dspi hub: no pairing: {e}"),
+        Err(e) => eprintln!("{COMMAND} hub: no pairing: {e}"),
     }
 }
 
@@ -1075,7 +1079,7 @@ fn print_clients(clients: &[PairedClient], online: Option<&dyn Fn(u32) -> bool>,
     }
 }
 
-/// `dspi hub clients`, with no hub running.
+/// `uconsole hub clients`, with no hub running.
 fn offline_clients(store: &Path, json: bool) -> Result<(), Failure> {
     match SavedHub::peek(store)? {
         Some(saved) => print_clients(&saved.clients, None, json),
@@ -1085,7 +1089,7 @@ fn offline_clients(store: &Path, json: bool) -> Result<(), Failure> {
     Ok(())
 }
 
-/// `dspi hub role|revoke`, with no hub running: through the hub's own store code,
+/// `uconsole hub role|revoke`, with no hub running: through the hub's own store code,
 /// in the mode it last ran in, so nothing else changes.
 fn offline_edit(
     store: &Path,
@@ -1131,7 +1135,7 @@ mod awake {
             "systemd-inhibit",
             [
                 "--what=sleep:idle",
-                "--who=dspi hub",
+                concat!("--who=", dspi_cmd::command!(), " hub"),
                 "--why=Sharing DSPi devices on the network",
                 "--mode=block",
                 "cat",
@@ -1151,8 +1155,9 @@ mod awake {
                 Ok(k) => Some(k),
                 Err(e) => {
                     eprintln!(
-                        "dspi hub: warning: cannot keep the machine awake ({e}); \
-                         sharing stops if it sleeps"
+                        "{} hub: warning: cannot keep the machine awake ({e}); \
+                         sharing stops if it sleeps",
+                        dspi_cmd::COMMAND
                     );
                     None
                 }
@@ -1271,7 +1276,7 @@ mod tests_wp_tm11 {
         }
     }
 
-    /// The Terminal's own way to a hub, as `dspi --link 127.0.0.1:PORT [--pin PIN]`.
+    /// The Terminal's own way to a hub, as `uconsole --link 127.0.0.1:PORT [--pin PIN]`.
     fn client(port: u16, pin: Option<&str>, tokens: &Path) -> Target {
         let mut l = LinkTarget::parse(&format!("127.0.0.1:{port}")).unwrap();
         l.pin = pin.map(str::to_owned);
@@ -1404,7 +1409,7 @@ mod tests_wp_tm11 {
         assert_eq!(
             run(&Target::Link(LinkTarget::find(None)), &["hub"], false),
             exit::USAGE,
-            "dspi --hub hub: a hub is not run on another hub"
+            "{COMMAND} --hub hub: a hub is not run on another hub"
         );
     }
 
@@ -1431,7 +1436,7 @@ mod tests_wp_tm11 {
         assert_eq!(rx.iter().collect::<Vec<_>>(), ["clients", "quit"]);
     }
 
-    /// Review c4b: `dspi --hub hub` is refused before anything looks at the network.
+    /// Review c4b: `uconsole --hub hub` is refused before anything looks at the network.
     #[test]
     fn wp_tm11b_a_hub_on_another_target_is_refused_up_front() {
         assert_eq!(refuse_target(&Target::Usb { serial: None }), None);
@@ -1735,9 +1740,9 @@ mod tests_wp_wb7 {
         let root = scratch("find");
         let bin = root.join("bin");
         std::fs::create_dir_all(&bin).unwrap();
-        let exe = bin.join("dspi");
+        let exe = bin.join(COMMAND);
         assert_eq!(find_console(None, Some(&exe)), None);
-        let shared = root.join("share/dspi/web");
+        let shared = root.join("share").join(COMMAND).join("web");
         std::fs::create_dir_all(&shared).unwrap();
         assert_eq!(
             find_console(None, Some(&exe)),
@@ -1780,7 +1785,7 @@ mod tests_wp_wb7 {
         assert_eq!(running.handle.devices().len(), 1, "the demo device");
         drop(running);
 
-        // Without a console `dspi web` has nothing to serve, and says so.
+        // Without a console `uconsole web` has nothing to serve, and says so.
         let mut none = opts.clone();
         none.console = Some(store.join("nowhere"));
         assert!(matches!(start(&none, false), Err(Failure::Failed(_))));

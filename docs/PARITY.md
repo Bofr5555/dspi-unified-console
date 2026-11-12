@@ -56,7 +56,7 @@ Most of the Qt desktop, many Android packages, and the Terminal's control-surfac
 
 ### Terminal (TUI/CLI)
 1. **No on-graph PEQ editing.** This is out of scope by design (decision 5); the `;` command bar replaces it.
-2. **Extension channel is CLI-only.** `dspi ext list | xfeed-map | vreg` work, but there is no TUI screen and no probe on connect.
+2. **Extension channel is CLI-only.** `uconsole ext list | xfeed-map | vreg` work, but there is no TUI screen and no probe on connect.
 3. **No automatic reconnect after unplug/replug.** You have to run `:reconnect`.
 4. **USB vendor transport only.** No Link client (the `dspi-link` crate exists but isn't wired in), no MIDI, and the demo fixture answers zeros rather than simulating a device.
 5. **Firmware update** only reboots into the bootloader and finds the drive; you copy the `.uf2` by hand.
@@ -91,8 +91,8 @@ It is frozen at wire **V26**. It has nothing from V27–V32 (limiter, subharmoni
 |---|---|---|---|---|---|---|---|
 | A1 | USB vendor transport | ✓ IOKit | n.a. (owner decision: MIDI is the only USB transport on iPhone/iPad) | ✓ rusb/libusb, WinUSB wIndex fix | ✓ nusb, `doctor`, `--install-udev` | ✓ UsbManager fd into the core (patch 0001); claims only the vendor interface | ✓ WinUSB |
 | A2 | USB MIDI (SysEx) | ◐ dev flag `-LocalTransport midi` only *(ours)* | ✓ CoreMIDI, retries, relay port for the Simulator *(ours)* | ✗ | ✗ | ✗ (not needed: vendor works) | ✗ |
-| A3 | DSPi Link client | ✓ Bonjour, typed address (lists the hub's devices), PIN pairing, tokens | ✓ Devices sheet, async PIN, local-network-denied state *(ours UI)* | ✓ Devices list, mDNS discovery, typed address, PIN pairing, tokens, reconnect, lock notice (`LinkController`) | ✗ (`dspi-link` crate exists, not wired in; no mDNS) | ✓ with deviations: opt-in, NSD, Keystore tokens; viewer role makes the app read-only; no reconnect after 4000/4002 | ✗ |
-| A4 | DSPi Link hub / sharing | ✓ Networking page: roles, pairing, revoke, prevent sleep | n.a. (iOS is never a hub) | ✓ Settings > Networking: sharing, name, access, port, pairing, roles, revoke; Windows Firewall and Public-network warnings (`HubController`, `FirewallController`) | ✗ (test fakehub only) | ✗ (owner decision D1/D5) | ✗ |
+| A3 | DSPi Link client | ✓ Bonjour, typed address (lists the hub's devices), PIN pairing, tokens | ✓ Devices sheet, async PIN, local-network-denied state *(ours UI)* | ✓ Devices list, discovery (embedded mDNS on Linux; Windows' own DNS-SD on Windows, so browsing asks nothing of the firewall: DISC2), typed address, PIN pairing, tokens, reconnect, lock notice (`LinkController`) | ✗ (`dspi-link` crate exists, not wired in; no mDNS) | ✓ with deviations: opt-in, NSD, Keystore tokens; viewer role makes the app read-only; no reconnect after 4000/4002 | ✗ |
+| A4 | DSPi Link hub / sharing | ✓ Networking page: roles, pairing, revoke, prevent sleep | n.a. (iOS is never a hub) | ✓ Settings > Networking: sharing, name, access, port, pairing, roles, revoke; Windows Firewall and Public-network warnings (`HubController`, `FirewallController`); advertised through Windows' DNS-SD on Windows (DISC2) | ✗ (test fakehub only) | ✗ (owner decision D1/D5) | ✗ |
 | A5 | Browser client served by the hub / ESP32 bridge | ✓ serves the web UI; ESP32 setup is external, Console sets the UART interface | ✗ (can be a client of a bridge) | ✗ | ✗ | ✗ (can be a client of a bridge) | ✗ |
 | A6 | UART bridge as host transport | n.a. (reached through an ESP32 bridge hub) | n.a. (same) | ✗ | ✗ | ✗ (only via a Link bridge) | ✗ |
 | A7 | Demo device | ◐ dev flag only *(ours)* | ✓ always listed; answers the ext channel; `-DemoPairMap k340` *(ours)* | ✗ | ◐ `--fixture`: render fixture, mock answers zeros | ✓ `FakeDspiCore` from a V32 capture; only while no DSPi is attached | ✗ |
@@ -100,7 +100,7 @@ It is frozen at wire **V26**. It has nothing from V27–V32 (limiter, subharmoni
 | A9 | Wire format V32 | ✓ + per-version/caps gating | ✓ | ✓ (constants hand-copied at beta4) | ✓ (generated from `bofr-main` headers, 247-opcode coverage test) | ✓ | ✗ V26 (floor V16) |
 | A10 | Older/newer firmware | ◐ banner and feature hiding, no read-only fallback; `-MIDIReadOnly` diagnostic *(ours)* | ◐ same | ◐ banner, then blank (no reads, no writes) | ◐ refuses with a message (by design) | ◐ newer: read-only + banner (double write guard); older V17–V30 **unreadable** on `main` | ◐ legacy per-opcode fetch, no warning UI |
 | A11 | Extension channel 0x00, EXT_LIST probe on connect | ✓ once per connect over every transport *(ours)* | ✓ *(ours)* | ✗ | ◐ on demand via CLI, not on connect | ◐ probe is a pair-map GET; EXT_LIST defined but unused | ✗ |
-| A12 | Live sync (notifications, other hosts) | ✓ EP 0x83 v1+v2, echo suppression, Link relay | ✓ MIDI notification frames *(ours)*, Link | ✓ EP 0x83 (other hosts' EP0 writes are dropped as echoes) | ✓ EP 0x83 v2, `dspi watch` | ✓ USB + Link NOTIFY, 30 ms batching, 0 Hz poll when hidden | ✓ |
+| A12 | Live sync (notifications, other hosts) | ✓ EP 0x83 v1+v2, echo suppression, Link relay | ✓ MIDI notification frames *(ours)*, Link | ✓ EP 0x83 (other hosts' EP0 writes are dropped as echoes) | ✓ EP 0x83 v2, `uconsole watch` | ✓ USB + Link NOTIFY, 30 ms batching, 0 Hz poll when hidden | ✓ |
 
 ### B. DSP features
 
@@ -119,7 +119,7 @@ It is frozen at wire **V26**. It has nothing from V27–V32 (limiter, subharmoni
 | B11 | Output delay/gain/mute/invert | ✓ | ✓ | ✓ | ✓ (+ output latency) | ✓ | ✓ |
 | B12 | Output limiter | ✓ | ✓ | ✓ | ✓ | ✓ (gang groups mirrored in Kotlin) | ✗ |
 | B13 | Crossfeed (basic) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| B14 | Crossfeed pair map (ext 0x00) | ✓ Default / K340 / Custom; in presets, files and diff *(ours)* | ✓ one column on iPhone *(ours)* | ✗ (fixed-pair mask only) | ◐ CLI only (`dspi ext xfeed-map`) | ✓ (patch 0002; in presets and diff) | ◐ legacy 0xFC/0xFD pair mask |
+| B14 | Crossfeed pair map (ext 0x00) | ✓ Default / K340 / Custom; in presets, files and diff *(ours)* | ✓ one column on iPhone *(ours)* | ✗ (fixed-pair mask only) | ◐ CLI only (`uconsole ext xfeed-map`) | ✓ (patch 0002; in presets and diff) | ◐ legacy 0xFC/0xFD pair mask |
 | B15 | Loudness | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | B16 | Volume leveller | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | B17 | Psychoacoustic bass | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -189,7 +189,7 @@ It is frozen at wire **V26**. It has nothing from V27–V32 (limiter, subharmoni
 
 | Extra | Where |
 |---|---|
-| Scripting / JSON / dry-run / raw opcodes / `dspi screenshot` | Terminal |
+| Scripting / JSON / dry-run / raw opcodes / `uconsole screenshot` | Terminal |
 | Undo/redo journal | Terminal (full); Windows (IO only) |
 | Full core-voltage control (set/trial/auto) | Terminal CLI only |
 | Strict read-only double write guard; confirmation tokens on flash writes; PICOBOOT flashing without a drive; config share sheet; light theme; auto-launch on plug | Android |
@@ -304,6 +304,11 @@ No gap list: it is being retired in favour of the Qt desktop. To reach parity it
   - Qt: whether Stats shows core voltage;
   - Android: B22.
 - **Qt core vs Terminal crates.** The Qt desktop's `dspi-core-linux` has constants hand-copied at 1.1.6 beta4. The Terminal crates are generated from `bofr-main` `af001ec` (1.1.6 final + ext channel). Moving the desktop onto the Terminal crates closes several Qt rows at once: B2, B3, B23, C2 and A11/B14/B22 (core side).
+- **Hub discovery per platform (WP DISC2).** Each client uses its OS's DNS-SD service where there is one: Bonjour (Swift), NsdManager (Android), Windows' DNS Client (`DnsServiceBrowse`/`DnsServiceRegister`) for the Qt app, the Terminal and `uconsole hub` on Windows. Linux keeps the embedded mDNS daemon (mdns-sd). Shared in the core: TXT parsing, address ranking, own-hub filter, resolve by hub id, `verify()`, and a 3 s removal grace (`REMOVAL_GRACE`; Swift and Android wait the same). On Windows:
+  - browsing opens no socket, so Windows' firewall asks nothing until sharing starts; the Firewall and Public rows then deal with a Cancel, as before;
+  - a hub whose resolve gives only an IPv6 link-local address is listed under its `.local` name, which Windows resolves when dialling (upstream's app and the Mac dial by name too);
+  - a TXT change is a goodbye and a new registration, which the grace hides;
+  - one difference stays: a hub on a dead adapter stays listed (as with Bonjour and NsdManager) until a dial fails and `verify()` removes it, where Linux's embedded browser drops it within seconds.
 - **Reference version.** The macOS reference is `ext-channel-116`. Our additions there (MIDI, demo, ext channel, pair map, core-voltage status, iOS UI) are not in upstream Weeb Labs v1.1.6.
 
 ---
@@ -344,7 +349,7 @@ audit names a file. The rest are carried over from the plan's own reading: M1 to
 | M1 | Share devices: server, hub name, open or pairing, port | HB1–3, HB5, QD14 | TM11 | no (Play); sideload later | no |
 | M2 | Paired clients: roles, revoke, pairing window | HB1, QD14 | TM11 (CLI) | no | no |
 | M4 | Web UI served by the hub | HB5 | TM11 | no | no |
-| M5 | Bonjour advertisement | HB5 | TM11 | no | no |
+| M5 | Bonjour advertisement | HB5; on Windows Windows' own DNS-SD (DISC2) | TM11; the same | no | no |
 | M6 | Menu-bar gateway (`MenuBarMode.swift:104-126`: status, address, pairing code, Open, Share on This Network, Allow a New Client, Quit) | QD12 (tray) | n.a.: no GUI; a service | n.a.: service notification | n.a.: no such surface |
 | M7 | Open at login, start minimised | QD13 | n.a.: a service unit | n.a. | n.a. |
 | M8 | Keep the machine awake while sharing | QD13 | TM11 | n.a.: no hub | n.a.: no hub |

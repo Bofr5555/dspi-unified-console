@@ -2,6 +2,10 @@
 //! (`Advertise::LoopbackOnly`, `AdvertiseScope::LoopbackOnly`). The browser here is kept to
 //! loopback too, which is why it is `mdns-sd` itself and not `MdnsSource`. Each test has
 //! names of its own, since a binary's tests share the interface.
+//!
+//! -- WP DISC2 -- Not on Windows: the responder there is Windows' own, which registers on
+//! every interface or none.
+#![cfg(not(windows))]
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Read, Write};
@@ -97,6 +101,7 @@ impl Browser {
                             (p.key().to_owned(), value.into_owned())
                         })
                         .collect(),
+                    ..ServiceRecord::default() // -- WP DISC2 --
                 };
                 self.heard.insert(record.instance.clone(), record);
             }
