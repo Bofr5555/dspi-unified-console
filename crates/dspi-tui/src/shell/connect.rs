@@ -1236,7 +1236,8 @@ const SCAN_TICK: Duration = Duration::from_millis(50);
 /// get the real one, so none of them depends on multicast.
 #[cfg(all(feature = "mdns", not(test)))]
 pub fn browse_source() -> Result<Arc<dyn BrowseSource>, OpenError> {
-    Ok(Arc::new(dspi_link::discovery::MdnsSource))
+    // -- WP DISC2 -- Windows' own DNS-SD on Windows
+    Ok(Arc::new(dspi_link::discovery::LanSource))
 }
 
 /// The network's hubs, as this build can see them: not at all.

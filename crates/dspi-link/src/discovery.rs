@@ -8,14 +8,18 @@
 //! - [`parse_service`] and [`HubAdvert::txt`]: the TXT record, both ways. No
 //!   network. A TXT record is whatever anyone on the LAN sends, so everything
 //!   is bounded and control characters never get through.
-//! - [`BrowseSource`]: where services come from. The real one is [`MdnsSource`]
-//!   (feature `mdns`); the fake one is [`FakeAdvertiser`] (feature `fake-hub`),
-//!   so nothing above this line needs a network.
+//! - [`BrowseSource`]: where services come from. The real one is [`LanSource`]
+//!   (feature `mdns`): `MdnsSource`, an embedded mDNS daemon, except on Windows,
+//!   where it is `DnsSdSource`, Windows' own DNS-SD service (WP DISC2: browsing
+//!   there opens no socket, so Windows asks nothing until the app shares). The
+//!   fake one is [`FakeAdvertiser`] (feature `fake-hub`), so nothing above this
+//!   line needs a network.
 //! - [`HubBrowser`]: start, stop, the results listener, and resolving a hub id
 //!   to its current address. A hub that took a new DHCP lease announces its
 //!   `hid` from a new address; [`HubBrowser::resolve`] gives that address to
 //!   whoever is reconnecting to it.
-//! - [`MdnsAdvertiser`] (feature `mdns`): the responder half, for the hub.
+//! - [`LanAdvertiser`] (feature `mdns`): the responder half, for the hub:
+//!   `MdnsAdvertiser`, or `DnsSdAdvertiser` on Windows.
 //!
 //! The mobile libraries leave feature `mdns` off: Android browses with
 //! `NsdManager` and iOS with `NWBrowser`, which own the permissions and the
@@ -59,6 +63,15 @@ const MAX_SERIALS: usize = 64;
 const MAX_ADDRESSES: usize = 16;
 /// Hubs kept at once; a LAN holds a handful, and anyone can announce more.
 const MAX_HUBS: usize = 256;
+// -- WP DISC2 --
+/// How long a hub stays listed after its goodbye, in case it comes straight back. A TXT
+/// change through Windows' DNS-SD is a goodbye and a new registration (about 0.75 s
+/// apart), and Bonjour and NsdManager flap a service now and then; a list that showed
+/// each of those would flicker. The Swift and Android browsers use the same value.
+pub const REMOVAL_GRACE: Duration = Duration::from_secs(3);
+/// How long after [`HubBrowser::verify`] a goodbye for that hub counts at once: the
+/// network was asked because dialling it failed, so its answer is not a flap.
+const VERIFY_WINDOW: Duration = Duration::from_secs(15);
 
 /// A hub found on the network. The JSON form (camelCase) is what the C ABI hands out.
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
@@ -86,12 +99,14 @@ pub struct BrowsedHub {
     pub url: String,
     /// Every usable address, best first: IPv4, then routable IPv6, then IPv4
     /// link-local. IPv6 link-local is left out: it needs a zone, which the
-    /// WebSocket URL cannot carry (as on Android).
+    /// WebSocket URL cannot carry (as on Android). With none of those, the
+    /// `.local` host name when the source gives one (WP DISC2, Windows), which
+    /// the system resolves when dialling, zone and all.
     pub addresses: Vec<String>,
 }
 
 /// One service instance as a [`BrowseSource`] resolved it, not yet read.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ServiceRecord {
     /// Full instance name, `Studio Mac._dspi._tcp.local.`, as the source spells it.
     pub instance: String,
@@ -101,6 +116,10 @@ pub struct ServiceRecord {
     pub addresses: Vec<IpAddr>,
     /// TXT keys and values, in record order.
     pub txt: Vec<(String, String)>,
+    // -- WP DISC2 --
+    /// The SRV target, `studio.local`, from a source whose system resolves `.local`
+    /// names when dialling (Windows'). Dialled when no address can be. Empty otherwise.
+    pub host_name: String,
 }
 
 /// Why a service is not listed.
@@ -200,6 +219,23 @@ fn address_rank(ip: &IpAddr) -> Option<u8> {
     }
 }
 
+// -- WP DISC2 --
+/// A `.local` host name that is safe inside `ws://host:port/...` and means one thing:
+/// letters, digits and hyphens in labels, at most 253 bytes, without the root's dot.
+fn dial_name(name: &str) -> Option<String> {
+    let name = name.trim_end_matches('.');
+    let local = name.len() > ".local".len()
+        && name.len() <= 253
+        && name.get(name.len().saturating_sub(".local".len())..).is_some_and(|t| t.eq_ignore_ascii_case(".local"));
+    let labels_ok = name.split('.').all(|l| {
+        !l.is_empty()
+            && l.len() <= 63
+            && !l.starts_with('-')
+            && l.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    });
+    (local && labels_ok).then(|| name.to_ascii_lowercase())
+}
+
 /// A `path` that is safe inside `ws://host:port/...`.
 fn usable_path(path: &str) -> bool {
     path.starts_with('/')
@@ -232,7 +268,11 @@ pub fn parse_service(record: &ServiceRecord) -> Result<BrowsedHub, Rejected> {
     ranked.sort_unstable();
     ranked.dedup();
     ranked.truncate(MAX_ADDRESSES);
-    let addresses: Vec<String> = ranked.iter().map(|(_, ip)| ip.to_string()).collect();
+    let mut addresses: Vec<String> = ranked.iter().map(|(_, ip)| ip.to_string()).collect();
+    // -- WP DISC2 -- the last resort, after every address
+    if addresses.is_empty() {
+        addresses.extend(dial_name(&record.host_name));
+    }
     let host = addresses.first().cloned().ok_or(Rejected::Address)?;
 
     let serials: Vec<String> = txt_value(txt, "d")
@@ -428,12 +468,21 @@ pub struct BrowseOptions {
     pub retry_first: Duration,
     /// The longest such wait.
     pub retry_max: Duration,
+    // -- WP DISC2 --
+    /// How long a hub stays listed after its goodbye ([`REMOVAL_GRACE`]). Zero
+    /// removes it at once.
+    pub removal_grace: Duration,
 }
 
 impl Default for BrowseOptions {
     /// As macOS's first wait, and its 30 s ceiling.
     fn default() -> Self {
-        Self { own_hub_id: String::new(), retry_first: Duration::from_secs(1), retry_max: Duration::from_secs(30) }
+        Self {
+            own_hub_id: String::new(),
+            retry_first: Duration::from_secs(1),
+            retry_max: Duration::from_secs(30),
+            removal_grace: REMOVAL_GRACE,
+        }
     }
 }
 
@@ -441,14 +490,67 @@ impl Default for BrowseOptions {
 struct HubList {
     own_hub_id: String,
     hubs: BTreeMap<String, BrowsedHub>,
+    // -- WP DISC2 --
+    /// Hubs that said goodbye and are still listed, until when.
+    leaving: BTreeMap<String, Instant>,
+    /// Instances [`HubBrowser::verify`] asked about, until when: their goodbye is final.
+    verifying: BTreeMap<String, Instant>,
+    grace: Duration,
 }
 
 impl HubList {
-    fn apply(&mut self, event: SourceEvent) {
+    fn new(own_hub_id: String, grace: Duration) -> Self {
+        Self { own_hub_id, hubs: BTreeMap::new(), leaving: BTreeMap::new(), verifying: BTreeMap::new(), grace }
+    }
+
+    // -- WP DISC2 --
+    /// Forget everything: the source failed or the browse stopped.
+    fn clear(&mut self) {
+        self.hubs.clear();
+        self.leaving.clear();
+        self.verifying.clear();
+    }
+
+    /// Drop the hubs whose grace is over. True if the list changed.
+    fn expire(&mut self, now: Instant) -> bool {
+        self.verifying.retain(|_, until| *until > now);
+        let due: Vec<String> = self.leaving.iter().filter(|(_, at)| **at <= now).map(|(i, _)| i.clone()).collect();
+        for instance in &due {
+            self.leaving.remove(instance);
+            self.hubs.remove(instance);
+        }
+        !due.is_empty()
+    }
+
+    /// When the next hub's grace is over.
+    fn next_expiry(&self) -> Option<Instant> {
+        self.leaving.values().min().copied()
+    }
+
+    /// A verify was asked for this instance. True if that removed it: it had already
+    /// said goodbye.
+    fn verifying(&mut self, instance: &str, now: Instant) -> bool {
+        self.verifying.insert(instance.to_owned(), now.checked_add(VERIFY_WINDOW).unwrap_or(now));
+        self.leaving.remove(instance).is_some() && self.hubs.remove(instance).is_some()
+    }
+
+    fn apply(&mut self, event: SourceEvent, now: Instant) {
+        // -- WP DISC2 -- Heard again: it stays.
+        if let SourceEvent::Resolved(record) = &event {
+            self.leaving.remove(&record.instance);
+        }
         match event {
             SourceEvent::Failed(_) => {}
             SourceEvent::Removed(instance) => {
-                self.hubs.remove(&instance);
+                // -- WP DISC2 -- Listed a little longer, unless the network was asked.
+                let asked = self.verifying.get(&instance).is_some_and(|until| *until > now);
+                if asked || self.grace.is_zero() || !self.hubs.contains_key(&instance) {
+                    self.hubs.remove(&instance);
+                    self.leaving.remove(&instance);
+                } else if let Some(at) = now.checked_add(self.grace) {
+                    // A second goodbye does not put the end off.
+                    self.leaving.entry(instance).or_insert(at);
+                }
             }
             SourceEvent::Resolved(record) => match parse_service(&record) {
                 Err(why) => {
@@ -471,6 +573,9 @@ impl HubList {
                 }
             },
         }
+        // -- WP DISC2 -- Replaced by its new name, or no longer a hub.
+        let hubs = &self.hubs;
+        self.leaving.retain(|instance, _| hubs.contains_key(instance));
     }
 
     fn sorted(&self) -> Vec<BrowsedHub> {
@@ -533,7 +638,7 @@ impl HubBrowser {
             source,
             shared: Arc::clone(&shared),
             tx: tx.clone(),
-            list: HubList { own_hub_id: options.own_hub_id.to_lowercase(), hubs: BTreeMap::new() },
+            list: HubList::new(options.own_hub_id.to_lowercase(), options.removal_grace),
             session: None,
             generation: 0,
             error: None,
@@ -612,16 +717,30 @@ impl Worker {
     fn run(mut self, rx: &Receiver<Event>) {
         loop {
             self.open_if_due();
-            let event = match self.next_open {
+            // -- WP DISC2 -- and the end of a hub's grace.
+            let wake = match (self.next_open, self.list.next_expiry()) {
+                (Some(a), Some(b)) => Some(a.min(b)),
+                (a, b) => a.or(b),
+            };
+            let event = match wake {
                 None => rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
                 Some(at) => rx.recv_timeout(at.saturating_duration_since(Instant::now())),
             };
             match event {
                 Ok(Event::Stop) | Err(RecvTimeoutError::Disconnected) => return,
-                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Timeout) => {
+                    if self.list.expire(Instant::now()) {
+                        self.publish();
+                    }
+                }
                 Ok(Event::Verify(hub_id)) => {
                     if let (Some(session), Some(instance)) = (&self.session, self.list.instance_of(&hub_id)) {
-                        session.verify(instance);
+                        let instance = instance.to_owned();
+                        session.verify(&instance);
+                        // -- WP DISC2 --
+                        if self.list.verifying(&instance, Instant::now()) {
+                            self.publish();
+                        }
                     }
                 }
                 Ok(Event::Source(generation, event)) if generation == self.generation => {
@@ -658,11 +777,14 @@ impl Worker {
             // Drop what it reported too: the new one reports anew, and an entry
             // it does not report again would otherwise never leave.
             self.session = None;
-            self.list.hubs.clear();
+            self.list.clear();
             self.error = Some(why.clone());
             self.schedule_reopen();
         }
-        self.list.apply(event);
+        let now = Instant::now();
+        self.list.apply(event, now);
+        // -- WP DISC2 -- A busy source must not keep a grace from running out.
+        self.list.expire(now);
         self.publish();
     }
 
@@ -680,10 +802,34 @@ impl Worker {
     }
 }
 
-#[cfg(feature = "mdns")]
+#[cfg(all(feature = "mdns", not(windows)))]
 pub use self::mdns::{MdnsAdvertiser, MdnsSource};
 
-#[cfg(feature = "mdns")]
+// -- WP DISC2 --
+#[cfg(all(feature = "mdns", windows))]
+#[path = "discovery/windows.rs"]
+mod win;
+// -- WP DISC2 (review d2 F1) -- the Windows source's browse logic, tested everywhere
+#[cfg(any(test, all(feature = "mdns", windows)))]
+#[path = "discovery/dnssd_browse.rs"]
+mod dnssd_browse;
+#[cfg(all(feature = "mdns", windows))]
+pub use self::win::{native_contexts, DnsSdAdvertiser, DnsSdSource};
+
+// -- WP DISC2 --
+/// How this build advertises a hub; as [`LanSource`].
+#[cfg(all(feature = "mdns", not(windows)))]
+pub use self::mdns::MdnsAdvertiser as LanAdvertiser;
+/// How this build finds hubs on the local network: the embedded daemon, or Windows'
+/// own DNS-SD service on Windows.
+#[cfg(all(feature = "mdns", not(windows)))]
+pub use self::mdns::MdnsSource as LanSource;
+#[cfg(all(feature = "mdns", windows))]
+pub use self::win::DnsSdAdvertiser as LanAdvertiser;
+#[cfg(all(feature = "mdns", windows))]
+pub use self::win::DnsSdSource as LanSource;
+
+#[cfg(all(feature = "mdns", not(windows)))]
 mod mdns {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
@@ -691,6 +837,8 @@ mod mdns {
     use std::time::Duration;
 
     use mdns_sd::{DaemonEvent, IfKind, RRType, Receiver, ResolvedService, ServiceDaemon, ServiceEvent, ServiceInfo};
+
+    use crate::clock::Instant;
 
     use super::{
         instance_label, mdns_host_name, AdvertiseScope, AdvertisedNames, BrowseSession, BrowseSource, DiscoveryError,
@@ -703,6 +851,13 @@ mod mdns {
     const FORWARD_TICK: Duration = Duration::from_millis(500);
     /// How long a closing advertiser waits for its goodbye to go out.
     const GOODBYE_WAIT: Duration = Duration::from_secs(1);
+    // -- WP DISC2 --
+    /// How long a new responder may take to announce on some interface: it probes
+    /// for 0.75 s first. Loopback counts, so a machine offline announces too.
+    const ANNOUNCE_WAIT: Duration = Duration::from_secs(5);
+    /// Waits before opening a failed responder again: doubles to the last.
+    const REOPEN_FIRST: Duration = Duration::from_secs(1);
+    const REOPEN_MAX: Duration = Duration::from_secs(60);
 
     fn network(e: mdns_sd::Error) -> DiscoveryError {
         DiscoveryError::Network(e.to_string())
@@ -713,6 +868,8 @@ mod mdns {
             instance: service.get_fullname().to_owned(),
             port: service.get_port(),
             addresses: service.get_addresses().iter().map(mdns_sd::ScopedIp::to_ip_addr).collect(),
+            // -- WP DISC2 -- Linux resolves `.local` only with nss-mdns: addresses only.
+            host_name: String::new(),
             txt: service
                 .get_properties()
                 .iter()
@@ -821,7 +978,8 @@ mod mdns {
     /// Advertises a hub until stopped or dropped. Dropping it sends a goodbye,
     /// which can take up to a second: stop it off the UI thread.
     pub struct MdnsAdvertiser {
-        daemon: ServiceDaemon,
+        /// `pub(super)` for WP DISC2's tests, which stop it.
+        pub(super) daemon: ServiceDaemon,
         fullname: String,
         // -- WP HB5 --
         /// What the daemon says about name conflicts, read by [`Self::names`].
@@ -829,6 +987,33 @@ mod mdns {
         names: AdvertisedNames,
         /// `rev=` of the next registration.
         revision: u32,
+        // -- WP DISC2 --
+        scope: AdvertiseScope,
+        /// What was last registered, for a responder opened anew.
+        advert: HubAdvert,
+        /// Opened, and not yet heard announcing: since when.
+        pub(super) unproven: Option<Instant>,
+        /// The responder failed: when to open it again, and the wait after that.
+        pub(super) reopen_at: Option<Instant>,
+        reopen_wait: Duration,
+    }
+
+    // -- WP DISC2 (from HB5's start_on) --
+    /// A daemon with `info` registered in `scope`. The monitor and the interface selection
+    /// are in its queue ahead of the registration, so no conflict goes unheard and a
+    /// loopback responder announces nothing anywhere else.
+    fn open(
+        info: ServiceInfo,
+        scope: AdvertiseScope,
+    ) -> Result<(ServiceDaemon, Receiver<DaemonEvent>), DiscoveryError> {
+        let daemon = ServiceDaemon::new().map_err(network)?;
+        let monitor = daemon.monitor().map_err(network)?;
+        if scope == AdvertiseScope::LoopbackOnly {
+            daemon.disable_interface(IfKind::All).map_err(network)?;
+            daemon.enable_interface(IfKind::LoopbackV4).map_err(network)?;
+        }
+        daemon.register(info).map_err(network)?;
+        Ok((daemon, monitor))
     }
 
     fn names_of(info: &ServiceInfo) -> AdvertisedNames {
@@ -850,16 +1035,51 @@ mod mdns {
         /// a loopback responder announces nothing anywhere else.
         pub fn start_on(advert: &HubAdvert, scope: AdvertiseScope) -> Result<Self, DiscoveryError> {
             let info = service_info_rev(advert, Some(1))?;
-            let daemon = ServiceDaemon::new().map_err(network)?;
-            let monitor = daemon.monitor().map_err(network)?;
-            if scope == AdvertiseScope::LoopbackOnly {
-                daemon.disable_interface(IfKind::All).map_err(network)?;
-                daemon.enable_interface(IfKind::LoopbackV4).map_err(network)?;
-            }
             let fullname = info.get_fullname().to_owned();
             let names = names_of(&info);
-            daemon.register(info).map_err(network)?;
-            Ok(Self { daemon, fullname, monitor, names, revision: 1 })
+            let (daemon, monitor) = open(info, scope)?;
+            Ok(Self {
+                daemon,
+                fullname,
+                monitor,
+                names,
+                revision: 1,
+                scope,
+                advert: advert.clone(),
+                unproven: Some(Instant::now()),
+                reopen_at: None,
+                reopen_wait: REOPEN_FIRST,
+            })
+        }
+
+        // -- WP DISC2 --
+        /// The responder seems dead: it ended, or never announced. Open a new one, now or
+        /// after backoff. mdns-sd opens its sockets on its own thread and says only at
+        /// debug level when it cannot, and it ends that thread quietly when it cannot
+        /// watch them: so a responder without a single socket looks like a working one
+        /// unless someone checks (WP DISC1 saw one on Windows).
+        fn failed(&mut self, why: &str) {
+            log::warn!("mDNS: the responder {why}; opening it again");
+            let _ = self.daemon.shutdown();
+            self.unproven = None;
+            self.reopen_at = Instant::now().checked_add(self.reopen_wait);
+            self.reopen_wait = self.reopen_wait.saturating_mul(2).min(REOPEN_MAX);
+        }
+
+        fn reopen_if_due(&mut self) {
+            if !self.reopen_at.is_some_and(|at| at <= Instant::now()) {
+                return;
+            }
+            self.reopen_at = None;
+            let opened = service_info_rev(&self.advert, Some(self.revision)).and_then(|info| open(info, self.scope));
+            match opened {
+                Ok((daemon, monitor)) => {
+                    self.daemon = daemon;
+                    self.monitor = monitor;
+                    self.unproven = Some(Instant::now());
+                }
+                Err(e) => self.failed(&format!("could not be opened: {e}")),
+            }
         }
 
         /// The names held now, after what the daemon has said so far. Read this often
@@ -867,9 +1087,33 @@ mod mdns {
         /// answer. On a machine with several interfaces a conflict is per interface, and
         /// this has the latest. Never blocks.
         pub fn names(&mut self) -> AdvertisedNames {
-            while let Ok(event) = self.monitor.try_recv() {
-                let DaemonEvent::NameChange(change) = event else {
-                    continue;
+            // -- WP DISC2 --
+            self.reopen_if_due();
+            loop {
+                let event = match self.monitor.try_recv() {
+                    Ok(event) => event,
+                    Err(mdns_sd::TryRecvError::Empty) => break,
+                    Err(mdns_sd::TryRecvError::Disconnected) => {
+                        if self.reopen_at.is_none() {
+                            self.failed("stopped");
+                        }
+                        break;
+                    }
+                };
+                // -- WP DISC2 --
+                let change = match event {
+                    DaemonEvent::NameChange(change) => change,
+                    DaemonEvent::Announce(..) => {
+                        if self.unproven.take().is_some() {
+                            self.reopen_wait = REOPEN_FIRST;
+                        }
+                        continue;
+                    }
+                    DaemonEvent::Error(e) => {
+                        log::warn!("mDNS: {e}");
+                        continue;
+                    }
+                    _ => continue,
                 };
                 match change.rr_type {
                     RRType::A | RRType::AAAA => {
@@ -883,6 +1127,10 @@ mod mdns {
                     }
                     _ => {}
                 }
+            }
+            // -- WP DISC2 --
+            if self.unproven.is_some_and(|since| since.elapsed() >= ANNOUNCE_WAIT) {
+                self.failed("has announced nothing on any interface (no socket?)");
             }
             self.names.clone()
         }
@@ -898,6 +1146,8 @@ mod mdns {
                 self.revision = self.revision.wrapping_add(1);
             }
             let mut info = service_info_rev(advert, Some(self.revision))?;
+            // -- WP DISC2 -- for a responder opened anew
+            advert.clone_into(&mut self.advert);
             if info.get_fullname() != self.fullname {
                 self.goodbye();
                 info.get_fullname().clone_into(&mut self.fullname);
@@ -987,6 +1237,7 @@ mod fake {
                 port: advert.port,
                 addresses: addresses.to_vec(),
                 txt: advert.txt(),
+                ..ServiceRecord::default() // -- WP DISC2 --
             });
         }
 
@@ -1077,3 +1328,9 @@ mod fake {
 #[allow(clippy::arithmetic_side_effects)]
 #[path = "discovery/tests_wp_cg2.rs"]
 mod tests_wp_cg2;
+
+// -- WP DISC2 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+#[path = "discovery/tests_wp_disc2.rs"]
+mod tests_wp_disc2;

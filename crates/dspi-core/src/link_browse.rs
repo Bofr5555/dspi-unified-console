@@ -25,8 +25,11 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 pub use dspi_link::discovery::{
     BrowseListener, BrowseOptions, BrowseSession, BrowseSnapshot, BrowseSource, BrowsedHub,
-    DiscoveryError, HubBrowser, MdnsSource, ServiceRecord, SourceEvent, SourceSink,
+    DiscoveryError, HubBrowser, LanSource, ServiceRecord, SourceEvent, SourceSink,
 };
+// -- WP DISC2 -- kept for embedders that name it; not in a Windows build
+#[cfg(not(windows))]
+pub use dspi_link::discovery::MdnsSource;
 
 use crate::{DspiCore, DspiError, Result};
 
@@ -64,7 +67,8 @@ impl DspiCore {
         listener: Option<Arc<dyn BrowseListener>>,
         own_hub_id: String,
     ) -> Result<()> {
-        self.link_browse_start_with(Arc::new(MdnsSource), listener, own_hub_id)
+        // -- WP DISC2 -- Windows' own DNS-SD on Windows, the embedded daemon elsewhere.
+        self.link_browse_start_with(Arc::new(LanSource), listener, own_hub_id)
     }
 
     /// [`DspiCore::link_browse_start`] from another source of services: a test's
