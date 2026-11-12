@@ -170,6 +170,192 @@
     </message>
 </context>
 <context>
+    <name>AutoEqController</name>
+    <message>
+        <source>AutoEQ database not found</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to load database: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>no profiles</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Entries: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Current database: %1
+Entries: %2
+
+Choose an update method:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unknown</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Import AutoEQ Database</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>AutoEQ database (*.json)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Error</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to import database: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Success</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Database updated successfully.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to reset: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset to built-in database.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rebuild failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>the database file cannot be written.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connecting to GitHub...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Database rebuilt successfully!</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>AutoEqRebuild</name>
+    <message>
+        <source>Updating Database</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rebuilding AutoEQ Database</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Done</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>AutoEqRow</name>
+    <message>
+        <source>Remove from favorites</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add to favorites</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>AutoEqUpdateDialog</name>
+    <message>
+        <source>Update AutoEQ Database</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rebuild from GitHub</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Import File...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset to Built-in</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>AutoEqWindow</name>
+    <message>
+        <source>AutoEQ - Browse Profiles</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search headphones...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search headphones</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clear search</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Headphones</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Loading headphone database...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No headphones found matching &quot;%1&quot;</source>
+        <extracomment>%1 is the search text</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select a headphone to apply its EQ profile</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>BandChip</name>
+    <message>
+        <source>Band %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Back to values</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>BandRow</name>
     <message>
         <source>Crossover band %1</source>
@@ -389,6 +575,164 @@
     </message>
 </context>
 <context>
+    <name>CrossfeedPairMap</name>
+    <message>
+        <source>One DAC per ear (K340)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Custom</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Default (1/2, 3/4, …)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Outputs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Custom…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Which two outputs each pair crossfeeds. An output can belong to one pair only.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Crossfeed the woofers and the tweeters?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not Now</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enable Pairs 1 and 2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 — %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pair %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pair %1, one side</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Out %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pair %1, other side</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Each pair needs two different outputs, and no output can be in two pairs.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>CrossfeedWindow</name>
+    <message>
+        <source>Crossfeed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: Out %2 / Out %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BS2B Bauer Stereophonic-to-Binaural</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Frequency Response</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Direct</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Preset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Parameters</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cutoff Frequency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Simulates head shadow lowpass cutoff. Lower = more bass crossfeed. Typical: 650-700 Hz.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Feed Level</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Crossfeed attenuation below direct signal. Higher = more crossfeed. Typical: 4.5-9.5 dB.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Interaural Time Delay</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Simulates ~220 µs path difference via all-pass filter</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output Pairs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Presets</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All pairs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pair 1 only (Headphones)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Crossfeed only the stereo output pairs feeding headphones. Speaker pairs stay bit-accurate. The mono sub is never crossfed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>Dashboard</name>
     <message>
         <source>Meters stale</source>
@@ -594,6 +938,289 @@
     </message>
 </context>
 <context>
+    <name>EffectGraph</name>
+    <message>
+        <source>Disabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>EffectsController</name>
+    <message>
+        <source>Default</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>700 Hz / 4.5 dB - Balanced, most popular</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Chu Moy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>700 Hz / 6.0 dB - Stronger spatial effect</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Jan Meier</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>650 Hz / 9.5 dB - Natural speaker-like</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Custom</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>User-defined parameters</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bookshelf speakers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gentle low-end help</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Small Bluetooth</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Portable speaker</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Laptop / tablet</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tiny drivers, protect them</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Headphone bass feel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extra sub sensation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Out %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ch %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>FilesController</name>
+    <message>
+        <source>Failed to read file: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to write file: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No device connected.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Import Filters</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Text files (*.txt);;All files (*)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export Filters</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Text files (*.txt)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DSPi Filters.txt</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Import Device Configuration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DSPi configurations (*.dspipreset *.json);;All files (*)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Still identifying the device. Try again in a moment.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export Device Configuration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DSPi configurations (*.dspipreset)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DSPi Configuration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to parse DSPi Console filter file</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This file contains filter settings for multiple channels. Select which channels to import:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No valid filters found in file</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Found %1 filter(s) and a %2 dB preamp. Select which channel(s) to apply them to:</source>
+        <extracomment>%1 the number of filters, %2 the preamp in dB with its sign (&quot;-6.5&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Found %1 filter(s). Select which channel(s) to apply them to:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This device&apos;s firmware is read-only in this version; nothing was written.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Filters exported successfully</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Configuration exported.
+
+%1 channels, %2 active EQ bands, %3 crossover bands, %4 crosspoints.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>firmware %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applies the settings in this file to the connected device.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Saved from %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This file came from a %1 device and you are connected to %2. Anything the connected device doesn&apos;t have will be skipped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>EQ, crossover, delays, gains, routing and the DSP features are always applied.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to save master volume — the device did not acknowledge the request.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>−∞ dB (mute)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Master volume saved (%1). It will be applied on next boot.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output configuration saved. It will be applied on next boot.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to save output configuration: %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Another console is applying changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to save output configuration. The device did not acknowledge the request.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Error</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Success</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>FilesHost</name>
+    <message>
+        <source>Unsaved Changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Discard</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Quit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The current preset has unsaved changes:
+
+%1
+
+Save before continuing?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rebuild AutoEQ Database</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>You are about to rebuild the AutoEQ database by downloading all profiles from GitHub.
+
+This requires an internet connection and may take several minutes.
+
+Do you wish to proceed?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rebuild</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>FilterList</name>
     <message>
         <source>FAMILY</source>
@@ -675,7 +1302,7 @@
 <context>
     <name>FirewallController</name>
     <message>
-        <source>Windows Firewall cannot name a program whose folder has a % sign in its name. Move DSPi uConsole to another folder.</source>
+        <source>Windows Firewall cannot name a program whose folder has a % sign in its name. Move %1 to another folder.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -819,6 +1446,189 @@ Save before continuing?</source>
     </message>
     <message>
         <source>OK</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>GlobalPage</name>
+    <message>
+        <source>Device Name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stored on the device, so it keeps this name with any console or DSPi Link hub. Shown in the device picker and on the front panel.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Serial %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove the name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Latency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Target</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Latency target</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>At power-on</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Startup Preset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Startup preset mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Specified Default</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Last Used</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Default Preset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose which preset loads when the device powers on.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Master Volume</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Master volume mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Independent</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>With Preset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Master volume is stored on the device independently of presets and applied at boot. Loading a preset never changes it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Master volume is part of each preset. Saved with the preset, restored on preset load.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hardware Configuration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hardware configuration mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Input and output configuration is stored on the device independently and applied at boot. Loading a preset never changes your wiring.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Input and output configuration is part of each preset. Saved with the preset and restored on preset load.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>External Mute Control</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Adjust only with audio stopped</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Changing these settings while audio is playing can send a loud pop or full-level transient to your amplifier and speakers. Stop playback before making changes.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enable Automatic Mute</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Briefly mute an external DAC or amplifier to suppress loud pops during system state changes.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Polarity</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Active Low</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Active High</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mute Pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hold Time</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mute-attack wait before clock-stop</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 ms</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Release Time</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wait after un-mute before audio resumes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Test</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Toggle automatic mute for one second to confirm hardware configuration.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Start</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save your changes first to test the mute pin.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Begins one-second test.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1156,6 +1966,605 @@ Save before continuing?</source>
     </message>
 </context>
 <context>
+    <name>HardwareController</name>
+    <message>
+        <source>GPIO %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 kHz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Inactive</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Acquiring</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Syncing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Relocking</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Locked</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unknown (%1)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>the output configuration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>the startup preset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>the master volume mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>the hardware configuration mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>the external mute settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OUT %1/%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sub</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Subwoofer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GPIO %1 is already in use</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GPIO %1 is already assigned to %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 set to %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>I2S</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>S/PDIF</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to change %1 type</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 reassigned to GPIO %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GPIO %1 is not available on this platform</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GPIO %1 is already in use by another output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid output index</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>PDM output must be disabled before changing its pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>USB communication error</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All pins reset to defaults</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to reset %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ADAT output enabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ADAT output disabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GPIO %1 isn&apos;t available on this device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ADAT output isn&apos;t supported on this device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to enable ADAT output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to disable ADAT output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ADAT data pin set to GPIO %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to set ADAT pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BCK pin set to GPIO %1, LRCLK = GPIO %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All outputs must be S/PDIF before changing BCK pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GPIO %1 or %2 is already in use</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to set BCK pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Separate clock pins - slave uses GPIO %1/%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shared clock pins for master and slave</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Slave clock pair GPIO %1/%2 conflicts with another function - move it first</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Switch I2S output slots to S/PDIF before changing clock pins</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to change clock pins</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Slave BCK pin set to GPIO %1, LRCLK = GPIO %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Can&apos;t move the slave clock pins while an I2S output is active</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to set slave BCK pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Master clock enabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Master clock disabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to enable master clock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to disable master clock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MCK pin set to GPIO %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disable MCK before changing its pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to set MCK pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MCK multiplier set to %1x</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to set MCK multiplier</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>S/PDIF %1 RX pin set to GPIO %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to set S/PDIF %1 RX pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>S/PDIF inputs set to %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Can&apos;t enable S/PDIF %1: GPIO %2 is unavailable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Can&apos;t enable S/PDIF %1: GPIO %2 is assigned to %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Switch the input source away from S/PDIF %1 before reducing the input count</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>I2S input set to %1 channels (1 pair)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>I2S input set to %1 channels (%2 pairs)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GPIO %1 (pair %2) is used by %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GPIO %1 is set on both Serial Data %2 and %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Can&apos;t switch to %1 channels: a required data pin is already in use. Reassign the new pairs&apos; pins, then try again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Can&apos;t switch to %1 channels - %2. %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reassign it, then try again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reassign them, then try again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Multichannel I2S isn&apos;t supported on this device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Can&apos;t change the bit clock while an I2S output is active</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to set channel count</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Serial Data %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 set to GPIO %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>That pin is already in use</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to set %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ADAT input enabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ADAT input disabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Switch to another input source before disabling ADAT input</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Assign a valid data pin before enabling ADAT input</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid ADAT input pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ADAT input isn&apos;t supported on this device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to set ADAT input %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>enabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>disabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ADAT input pin cleared</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ADAT input pin set to GPIO %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to set ADAT input pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ADAT input clock mode updated</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to set ADAT input clock mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Preset %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Empty</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to apply %1 configuration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UART</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>I2C</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 configuration applied and saved</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A pin is out of range or lacks the required %1 mux function</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A pin is already claimed by another output or interface</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Baud rate is out of range (9600 - 1000000)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Address is out of range (0x08 - 0x77)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not saved: %1.</source>
+        <extracomment>The save bar&apos;s orange line: what the device did not take, e.g. &quot;Not saved: the startup preset, the latency.&quot;</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 ms</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>HubController</name>
+    <message>
+        <source>Could not start on port %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Turn sharing off to change the port.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No clients connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1 client connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 clients connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>I2sPage</name>
+    <message>
+        <source>I2S Clock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BCK Pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LRCK: GPIO %1 (BCK + 1)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clock Pins</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unified: Master and Slave modes share pins.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Split: Separate pins for Master and Slave modes.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unified</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Split</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Slave BCK Pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stored but inactive while clock pins are shared.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Master Clock (MCK)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Forced off in I2S slave mode; a local MCK would be asynchronous to the external clocks. Kept and restored when leaving slave mode.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clock reference for external DACs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MCK Pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MCK Multiplier</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Locked to 128x at %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 kHz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>unknown sample rate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>128x</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>256x</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Input Sample Rate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rate used in master mode. In slave mode the external master sets the rate (detected: %1).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rate for I2S input; DSPi drives the clocks, so the source must follow.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ImportConfig</name>
+    <message>
+        <source>Import Device Configuration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Volume levels (master and listening volume)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hardware I/O (GPIO pins, clocks, ADAT, inputs, output limiters)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Import</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ImportFilters</name>
+    <message>
+        <source>Import Filters</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Import</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ImportProgress</name>
+    <message>
+        <source>Writing settings to the device...</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>InputDetail</name>
     <message>
         <source>different filters and input trims</source>
@@ -1225,6 +2634,463 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
     <message>
         <source>Input %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>InputsPage</name>
+    <message>
+        <source>S/PDIF Input</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Instances</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1 selectable input sharing one receiver</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 selectable inputs sharing one receiver</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>S/PDIF %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SPDIF RX</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GPIO pin for S/PDIF input %1 (TOSLINK RX module or comparator).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GPIO pin for incoming S/PDIF signal from a TOSLINK RX module or comparator.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>S/PDIF %1 pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LG Sound Sync</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Decode the LG TV&apos;s TOSLINK volume + mute signaling and apply it as the host volume - TV remote becomes the volume control. Per-preset; saved with the active preset.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connected device firmware doesn&apos;t support LG Sound Sync. Update to firmware V8 or later.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>I2S Input</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wire one ADC serial-data line per stereo pair to the GPIOs above; the shared bit clock and sample rate live in I2S Configuration. DSPi is the clock master and the pairs are sample-aligned. Save a preset to keep this wiring.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wire the ADC&apos;s serial-data line to the GPIO above. The bit clock and sample rate live in I2S Configuration; DSPi is the clock master, so the source must follow.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clock Mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Master: DSPi drives BCK/LRCLK. Slave: an external master drives the clocks and the rate is auto-detected.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>I2S clock mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Master</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Slave</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lock Status</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Locked to external clock at %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Waiting for external clock (measured %1).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Inactive</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Channels</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1 stereo pair of 24-bit audio, sample-aligned</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 stereo pairs of 24-bit audio, sample-aligned</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hide unused pairs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unused pairs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Serial Data %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GPIO data pin for input channels %1-%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ADAT Input</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pairs with an outboard ADC (for example a Behringer ADA8200) to turn DSPi into an analog-in processor. In master mode, wire DSPi&apos;s ADAT output to the box&apos;s ADAT input and the box&apos;s ADAT output back to the data pin here. The 8 channels arrive as input channels 1-8 with full per-input EQ and metering. Save a preset to keep this wiring.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enable ADAT Input</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Receive 8 channels of 24-bit audio (44.1/48 kHz) from one TOSLINK optical input into input channels 1-8. Assign a data pin below, then select ADAT as the input source.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Serial Data</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GPIO receiving the ADAT optical input. No default - assign a spare pin (it may match the ADAT output pin for a loopback self-test).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ADAT input pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Master: DSPi owns the sample rate (set in I2S Configuration) and the source syncs to the ADAT output. Slave: an external master owns the clock and the rate is auto-detected.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ADAT clock mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clock is free-running</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Master mode uses the ADAT output to clock the outboard device but the ADAT output is off. The source runs on its own clock, asynchronous to DSPi, so you will hear periodic disturbances.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enable ADAT Output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>or switch to Slave mode above</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Locked and decoding at %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Waiting for a valid ADAT signal on the data pin.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Source Names</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shown in the sidebar, on the front panel and in every connected console. An empty name uses the built-in one.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Name of %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use the built-in name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Change I2S clock mode?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>One or more I2S outputs are active. Switching between Master and Slave modes may cause sustained loud noises to be emitted by the connected I2S DAC if wiring has not been adjusted.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Change Clock Mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>InterfacesPage</name>
+    <message>
+        <source>UART</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enable UART</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Asynchronous 3.3V serial link, fixed 8N1 framing.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TX Pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GPIO transmitting to the controller&apos;s RX.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>RX Pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GPIO receiving from the controller&apos;s TX.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Baud Rate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>9600 - 1000000. Must match the controller.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Push Notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stream live parameter/preset/format changes to the controller (type-0x40 frames) instead of polling.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>I2C</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enable I2C Target</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Device acts as an I2C slave; the controller is bus master. Poll-only (no async notifications).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SDA Pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Serial data line (even GPIO).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SCL Pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Serial clock line (next odd GPIO, same instance).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Target Address</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>7-bit address, 0x08 - 0x77.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>External control protocol version %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Both control interfaces are configured over USB only - an external controller can read the configuration but can never reconfigure or disable the transport it is talking on, so it cannot lock itself out. Settings persist across reboots and survive a factory reset.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UART TX/RX and I2C SDA/SCL must land on GPIOs that carry the matching peripheral mux function; the device validates this when you apply. Fit external pull-ups (2.2k - 4.7k) on the I2C bus.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enabled in flash but not running - its pins likely collide with the current output wiring. Reassign the conflicting pin or move this interface, then apply.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Active</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Inactive</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unapplied changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Revert</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>LevellerWindow</name>
+    <message>
+        <source>Volume Leveller</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Slow — Gentle response for music and wide dynamic range content.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Medium — Balanced response for general purpose use.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fast — Tight response for speech, dialogue, and podcasts.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Upward Dynamic Range Compression</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Channels</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Presets</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All channels (Night mode)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Center only (Dialog boost)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Front L / R only</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Detector</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>sets the shared gain</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>receives the gain</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Parameters</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Amount</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Compression strength. Higher values reduce dynamic range more aggressively.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Speed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Slow</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Medium</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fast</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Max Gain</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Maximum boost for quiet passages. Higher values risk amplifying noise.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gate Threshold</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Silence gate. Signals below this level are not boosted, preventing noise amplification.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lookahead</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Adds 5ms latency. Improves transient handling.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1342,6 +3208,289 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
     <message>
         <source>Apply</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>LoudnessWindow</name>
+    <message>
+        <source>Loudness Compensation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ISO 226:2003 Fletcher-Munson</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Compensation Curve</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Curve at -40dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Parameters</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reference SPL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SPL at 1 kHz when USB volume is 0 dB. Lower = more compensation per dB of volume reduction.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Intensity</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scales the ISO 226 compensation. 100% = standard curve. 0% = bypassed. &gt;100% = exaggerated.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Outputs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Presets</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All outputs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Slot 1 only (Headphones)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Compensate only the outputs feeding your low-level listening chain. Keep bass-managed pairs (mains + sub) together so the crossover stays coherent.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>MatrixCell</name>
+    <message>
+        <source>%1 to %2 gain</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disconnect</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connect</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 to %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>INV</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Phase inverted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Normal phase</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 to %2 phase invert</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>MatrixController</name>
+    <message>
+        <source>C</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ls</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Upmix Centre</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Upmix Left Surround</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Upmix Right Surround</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>USB %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Out %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disable output (saves CPU)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Conflict: shared Core 1 resource</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enable output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Warning</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Outputs %1-%2 will be disabled. Are you sure?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enable PDM</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The PDM output will be disabled. Are you sure?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disable PDM</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>MatrixField</name>
+    <message>
+        <source>dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ms</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>MatrixWindow</name>
+    <message>
+        <source>Matrix Mixer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Name of %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 options</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ROUTING</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Direct 1:1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Route each input to the matching output (FL→OUT1, FR→OUT2, …) and disable the PDM sub</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clear</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disconnect every crosspoint</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Input trim (preamp) for %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>OUTPUT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ENABLE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enable %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GAIN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 gain</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DELAY</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 delay</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MUTE</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unmute</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mute</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mute %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Identify</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rename</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy Parameters</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Paste Parameters</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1552,6 +3701,393 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
 </context>
 <context>
+    <name>Menus</name>
+    <message>
+        <source>No favorites yet</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>NameField</name>
+    <message>
+        <source>Not saved yet</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add a name</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>NamesController</name>
+    <message>
+        <source>USB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>S/PDIF 1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>S/PDIF</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>S/PDIF %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>I2S</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ADAT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Source %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Audio over USB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>External I2S device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lightpipe on GPIO %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Receiver on GPIO %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>S/PDIF receiver</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>the device name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>the name of %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>NetworkingPage</name>
+    <message>
+        <source>1 second</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 seconds</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1 minute</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 minutes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1 hour</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 hours</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1 day</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 days</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1 paired client will have to pair again. This cannot be undone.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 paired clients will have to pair again. This cannot be undone.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Share Devices on This Network</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Starting…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stopping…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lets phones, browsers and other consoles control the DSPi devices plugged into this computer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Share devices on this network</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The hub shares a demo device of its own, separate from the one shown here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Windows Firewall blocks %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Windows Firewall has no rule for %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allowing it lets it in on Private networks only. Windows will ask permission for “Network Command Shell”, the part of Windows that changes the rule.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Windows Firewall cannot name a program whose folder has a % sign in its name. Move %1 to another folder.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow in Windows Firewall</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This network is set to Public, so other devices on it may not reach this hub.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Network Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This Hub</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Other consoles see this computer as a hub with this name. Sharing works on your local network only. To reach it from elsewhere, use a VPN such as Tailscale. Don&apos;t forward the port on your router.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The pairing code crosses the network as plain text, without encryption.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Turn sharing off to change the port.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hub name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Access</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Require Pairing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Port</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Paired Clients</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Viewer can only watch. Control can adjust devices. Admin can also change these hub settings.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Turn sharing on to pair a new client.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enter this code on the new client</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pairing code</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Expires in %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No paired clients yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connected now</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Last seen %1 ago</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Never connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Role</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Viewer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Control</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Admin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove this client</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pair a New Client</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pair…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Other Hubs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Devices from these hubs appear in the device list, labelled with their hub.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Find hubs automatically</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1, 1 device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1, %2 devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Private</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Looking for hubs…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No hubs added.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connect by Address</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hub address</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>192.168.1.20 or studio.local</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connect</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hostname or IP address. Add :port if the hub doesn&apos;t use %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Running in the Background</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No tray is available on this desktop, so closing the window quits %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show in the tray</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Closing the window keeps %1 running in the tray.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Start in the tray only</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open at login</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Opens the copy at %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open This Copy at Login</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep awake while sharing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Change the access?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Change</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>NoticeDialog</name>
+    <message>
+        <source>OK</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>NoticeViewer</name>
     <message>
         <source>Close</source>
@@ -1657,6 +4193,92 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
     <message>
         <source>Enabled</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>OutputLatencyController</name>
+    <message>
+        <source>%1 (default)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lower values reduce the delay from input to output. Higher values may benefit sources exhibiting high jitter in the event of audio stutters.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>At the current sample rate the output buffer is smaller than this, so it runs as %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Values less than 2ms have no effect upon USB Audio.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>the latency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The device has not applied the latency yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>OutputsPage</name>
+    <message>
+        <source>Slots</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Default</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 type</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>S/PDIF</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>I2S</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>PDM</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bulk Output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enable ADAT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stream all 8 output channels as one optical ADAT lightpipe (44.1/48 kHz, 24-bit). Runs alongside the existing outputs; drive a TOSLINK transmitter from the data pin.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Serial Data</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GPIO driving the ADAT optical output. Default GPIO %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ADAT data pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset Pins</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1811,6 +4433,223 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
 </context>
 <context>
+    <name>PeqEditor</name>
+    <message>
+        <source>Bell</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Low Shelf</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Low Cut</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>High Shelf</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>High Cut</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Notch</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All Pass</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1st Order</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>2nd Order</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>6 dB/oct</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>12 dB/oct</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>180°</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>360°</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>6 dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>12 dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>First order, 180° of phase</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Second order, 360° of phase</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>6 dB per octave</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>12 dB per octave</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>PeqGraphOverlay</name>
+    <message>
+        <source>Band editor</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Double-click to add a band; drag a dot to move it</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add Band</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invert Gain</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select All Bands</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Deselect All</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>PeqOverlay</name>
+    <message>
+        <source>All %1 bands in use</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 Bands</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Band %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Order</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Slope</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bypass</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delete %1 Bands</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delete Band</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delete %1 Selected Bands</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delete Selected Band</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>kHz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enable band (Alt-click the dot)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bypass band (Alt-click the dot)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 - click for shapes and slopes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Freq</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gain</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Width</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Q</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1st</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dB/oct</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Linkwitz Transform - edit it in the band list</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>f0</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>fp</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>PinMap</name>
     <message>
         <source>Output %1</source>
@@ -1882,6 +4721,136 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
     <message>
         <source>Control Surface %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>PinPicker</name>
+    <message>
+        <source>GPIO %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not set</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>PsybassWindow</name>
+    <message>
+        <source>Psychoacoustic Bass</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Phantom fundamental bass enhancement</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Requires firmware with wire format V23 or newer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Update the DSPi firmware to use Psychoacoustic Bass.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Spectrum</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply preset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 - %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Original</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Harmonics</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cutoff Frequency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hz</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The speaker&apos;s low-frequency limit. Content below this feeds the harmonic generator; generated harmonics span roughly this to 4x.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Level of the synthesized harmonics. The primary amount-of-effect control. Higher = more perceived bass.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Outputs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Presets</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All outputs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Exclude sub (recommended)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enhance only the small-speaker outputs. Mask off the sub and any full-range outputs - synthesizing harmonics on a channel that can reproduce real bass is counterproductive.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shaping</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Drive</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pre-gain into the odd-harmonic soft clipper. Higher makes the effect audible on quieter passages. Mostly affects aggressive character.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Character</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Warm</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Aggressive</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Original Bass</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Level of the un-reproducible fundamental below the cutoff. Lower attenuates it, freeing driver excursion and headroom. -60 dB is full removal. Speaker protection.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -2172,11 +5141,207 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>S/PDIF Input</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Instances</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LG Sound Sync</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>I2S Input</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clock Mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Channels</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Serial Data</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ADAT Input</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lock Status</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Source Names</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>TOSLINK</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>GPIO</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Outputs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Slots</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Subwoofer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>S/PDIF</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>I2S</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>PDM</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bulk Output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enable ADAT</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset Pins</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>I2S Configuration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>BCK Pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clock Pins</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Slave BCK Pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Master Clock (MCK)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MCK Pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>MCK Multiplier</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Input Sample Rate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LRCK</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Global Parameters</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Device Name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Latency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output latency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>At power-on</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Startup Preset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Default Preset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Master Volume</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hardware Configuration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>External Mute Control</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mute Pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DAC mute</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>boot</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Control Interfaces</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>UART</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>I2C</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Baud Rate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Target Address</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Push Notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>serial</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2193,6 +5358,109 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
     <message>
         <source>Hangs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Networking</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Share Devices on This Network</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sharing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hub name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Access</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Port</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Paired Clients</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pair a New Client</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pairing code PIN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Other Hubs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Find hubs automatically</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connect by Address</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Running in the Background</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show in the tray</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Start in the tray only</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open at login</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep awake while sharing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Windows Firewall</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DSPi Link</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SettingsSaveBar</name>
+    <message>
+        <source>Unsaved changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Your controls are live now; saving keeps them across a reboot.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Saving writes these settings to the device&apos;s flash.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Saving</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Revert</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -2235,6 +5503,17 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
     <message>
         <source>Close</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ShapeChooser</name>
+    <message>
+        <source>Back to shapes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add Band</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -2510,11 +5789,11 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Could not add the Console to the programs that start at sign-in.</source>
+        <source>Could not add %1 to the programs that start at sign-in.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Could not remove the Console from the programs that start at sign-in.</source>
+        <source>Could not remove %1 from the programs that start at sign-in.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2534,6 +5813,111 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     <name>TokenNotice</name>
     <message>
         <source>OK</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>TrayController</name>
+    <message>
+        <source>DSPi connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No DSPi connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1, not sharing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1, sharing, 1 client</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1, sharing, %2 clients</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pairing code %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Share on This Network</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow a New Client...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel Pairing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Volume</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Master Volume: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>User Volume: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Volume Up</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Volume Down</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Quit %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>UnsavedGuard</name>
+    <message>
+        <source>Another console is applying changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>error %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <source>...and %n more change(s)</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Preset %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save Failed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to save preset (%1). Quit anyway?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to save preset (%1). Device switch aborted.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
