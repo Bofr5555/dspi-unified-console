@@ -37,6 +37,14 @@
 //! it does every write, and other clients see the device's change as a
 //! foreign one (their own journals do not hold it). The journal records this
 //! client's changes only.
+//!
+//! When someone else has changed a value since (another Link client, a knob,
+//! the UART, the computer's volume), the mirror no longer holds what this
+//! client left there. Undo and redo then leave their value alone, drop the
+//! entry and name the other writer in [`HistoryMove::note`], from the
+//! notification's source and Link origin (owner, 2026-11-12). A value the
+//! mirror holds no single copy of (a limiter write to every output) is not
+//! judged.
 #![warn(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -132,26 +140,10 @@ impl Drop for ReplayMark {
     }
 }
 
-/// What undo and redo do with a change someone else has overwritten since
-/// (another Link client, a knob, the UART): the mirror no longer holds the
-/// value this client left.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ForeignChange {
-    /// (a) Write this client's value back regardless: last writer wins, as
-    /// in a DAW.
-    RestoreMine,
-    /// (b) Leave the other writer's value, drop the entry and say who wrote
-    /// it ([`HistoryMove::note`]).
-    SkipAndName,
-}
-
-/// The switch for [`ForeignChange`], pending the owner's decision (review
-/// p0w): (a) until then, which is the behaviour the Terminal always had.
-pub(crate) const ON_FOREIGN_CHANGE: ForeignChange = ForeignChange::RestoreMine;
-
-/// Who last changed the device besides this client, for
-/// [`ForeignChange::SkipAndName`]: milliseconds since the Unix epoch and the
-/// writer in words.
+/// Who last changed the device besides this client, for undo's
+/// foreign-change rule (owner 2026-11-12: a value someone else has
+/// overwritten since is left as they set it, the entry dropped and the
+/// writer named): milliseconds since the Unix epoch and the writer in words.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ForeignWrite {
     pub(crate) at_ms: u64,
@@ -633,7 +625,7 @@ impl DspiCore {
     /// device); the setter's errors, after which the change stays to be
     /// undone.
     pub fn undo(&self) -> Result<HistoryMove> {
-        self.undo_with(ON_FOREIGN_CHANGE)
+        self.undo_step()
     }
     /// Step forward: write again the change [`DspiCore::undo`] most recently
     /// reversed. A new change since then ends what can be redone.
@@ -641,7 +633,7 @@ impl DspiCore {
     /// Errors: as [`DspiCore::undo`]; after a setter's error the change
     /// stays to be redone.
     pub fn redo(&self) -> Result<HistoryMove> {
-        self.redo_with(ON_FOREIGN_CHANGE)
+        self.redo_step()
     }
 
     /// Whether [`DspiCore::undo`] has a change to reverse. False with no
@@ -680,20 +672,20 @@ impl DspiCore {
 }
 
 impl DspiCore {
-    /// [`DspiCore::undo`] with `on_foreign` for a change someone else has
-    /// overwritten since.
-    pub(crate) fn undo_with(&self, on_foreign: ForeignChange) -> Result<HistoryMove> {
+    /// [`DspiCore::undo`]. A change someone else has overwritten since (the
+    /// mirror no longer holds the value this client left) is not reversed:
+    /// theirs stays, the entry is dropped and [`HistoryMove::note`] names
+    /// them (owner 2026-11-12).
+    fn undo_step(&self) -> Result<HistoryMove> {
         let (step, generation, note) = {
             let mut inner = self.lock();
             let conn = inner.conn()?;
             let generation = conn.generation;
             let mut step = conn.session()?.take_undo();
-            let note = match &step.entry {
-                Some(e) if on_foreign == ForeignChange::SkipAndName => {
-                    overwritten(&inner, e, &e.after)
-                }
-                _ => None,
-            };
+            let note = step
+                .entry
+                .as_ref()
+                .and_then(|e| overwritten(&inner, e, &e.after));
             if note.is_some() {
                 // Theirs now: the entry describes a value that is gone.
                 step.skipped.extend(step.entry.take());
@@ -737,20 +729,17 @@ impl DspiCore {
         })
     }
 
-    /// [`DspiCore::redo`] with `on_foreign` for a change someone else has
-    /// overwritten since undo put it back.
-    pub(crate) fn redo_with(&self, on_foreign: ForeignChange) -> Result<HistoryMove> {
+    /// [`DspiCore::redo`]: as [`DspiCore::undo`], a change someone else has
+    /// overwritten since undo put it back is left as they set it.
+    fn redo_step(&self) -> Result<HistoryMove> {
         let (entry, generation) = {
             let mut inner = self.lock();
             let conn = inner.conn()?;
             let generation = conn.generation;
             let entry = conn.session()?.take_redo();
-            let note = match (&entry, on_foreign) {
-                (Some(e), ForeignChange::SkipAndName) => {
-                    e.before.as_ref().and_then(|b| overwritten(&inner, e, b))
-                }
-                _ => None,
-            };
+            let note = entry
+                .as_ref()
+                .and_then(|e| e.before.as_ref().and_then(|b| overwritten(&inner, e, b)));
             if let Some(note) = note {
                 let skipped = entry.iter().map(HistoryEntry::from).collect();
                 return Ok(HistoryMove {

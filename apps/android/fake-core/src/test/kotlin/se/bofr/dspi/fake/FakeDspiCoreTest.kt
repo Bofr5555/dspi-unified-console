@@ -8,8 +8,8 @@ import se.bofr.dspi.core.DspiConstants
 import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.FilterParams
 import se.bofr.dspi.core.HistorySource
-import se.bofr.dspi.core.ParamValue
 import se.bofr.dspi.core.NotifyListener
+import se.bofr.dspi.core.ParamValue
 
 class FakeDspiCoreTest {
     @Test

@@ -27,10 +27,10 @@ import se.bofr.dspi.core.DspiConstants.XOVER_BAND_BASE
 import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.ExtStatus
 import se.bofr.dspi.core.FillBand
+import se.bofr.dspi.core.FilterParams
 import se.bofr.dspi.core.HistoryEntry
 import se.bofr.dspi.core.HistoryMove
 import se.bofr.dspi.core.HistorySource
-import se.bofr.dspi.core.FilterParams
 import se.bofr.dspi.core.I2cConfig
 import se.bofr.dspi.core.InputLockStatus
 import se.bofr.dspi.core.LgStatus
@@ -255,7 +255,7 @@ open class FakeDspiCore(
             after = ParamValue.Text(args),
             source = source,
             atMs = System.currentTimeMillis(),
-            undoable = true,
+            undoable = true
         )
         journalEntries += e
         if (source == HistorySource.LOCAL) {

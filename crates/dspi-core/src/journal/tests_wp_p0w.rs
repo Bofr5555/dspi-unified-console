@@ -963,25 +963,12 @@ fn overwritten_by_uac1() -> (Arc<DspiCore>, f32) {
     (core, start)
 }
 
-/// Owner decision pending (review p0w): both rules for a value someone else
-/// overwrote, behind `ON_FOREIGN_CHANGE`.
-#[test]
-fn wp_p0w_fixup_a_foreign_change_restore_mine() {
-    let (core, start) = overwritten_by_uac1();
-    let m = core.undo_with(ForeignChange::RestoreMine).unwrap();
-    assert_eq!(m.entry.map(|e| e.path).as_deref(), Some("vol.master"));
-    assert_eq!(m.note, None);
-    assert_eq!(
-        core.get_state().master_volume_db,
-        start,
-        "mine, over theirs"
-    );
-}
-
+/// Owner decision (2026-11-12): a value someone else has overwritten since
+/// is left as they set it; undo drops the entry and names them.
 #[test]
 fn wp_p0w_fixup_a_foreign_change_skip_and_name() {
     let (core, _) = overwritten_by_uac1();
-    let m = core.undo_with(ForeignChange::SkipAndName).unwrap();
+    let m = core.undo().unwrap();
     assert!(m.entry.is_none(), "{m:?}");
     assert_eq!(m.skipped.len(), 1);
     assert_eq!(m.skipped[0].path, "vol.master");
@@ -1007,16 +994,11 @@ fn wp_p0w_fixup_a_foreign_change_after_undo_skips_redo() {
         core.process_notifications();
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
-    let m = core.redo_with(ForeignChange::SkipAndName).unwrap();
+    let m = core.redo().unwrap();
     assert!(m.entry.is_none());
     assert!(m.note.unwrap().contains("the UART"));
     assert_eq!(core.get_state().master_volume_db, other);
     assert!(!core.can_redo());
-}
-
-#[test]
-fn wp_p0w_fixup_the_switch_is_restore_mine_until_the_owner_decides() {
-    assert_eq!(ON_FOREIGN_CHANGE, ForeignChange::RestoreMine);
 }
 
 // ── DSPi Link ───────────────────────────────────────────────────────
