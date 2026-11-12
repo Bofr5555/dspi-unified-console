@@ -350,9 +350,30 @@ void SiggenController::applyPreset(const QString &which) {
 // ---- Transport ----
 
 void SiggenController::play() {
-    if (!startBlocker().isEmpty()) return;
+    if (!controlsEnabled() || !startBlocker().isEmpty()) return;
     m_live.stop();
     const SiggenConfig cfg = m_draft;
+    m_ctx.device->write(
+        QStringLiteral("siggen"),
+        [cfg](FfiCore *c) { return dspi_siggen_set_config(c, &cfg) && dspi_siggen_control(c, SIGGEN_CTL_START); },
+        [this](bool) { fetchStatus(); });
+}
+
+// -- WP QPI3 -- play() for one output's channel-ID blips: -12 dB, two passes,
+// then the generator goes idle by itself (Commands.swift's identifyOutput).
+// The draft stays; the write is the generator's, so it replaces a queued Start.
+void SiggenController::identify(int output) {
+    if (output < 0 || output >= 16 || !controlsEnabled()) return;
+    const uint16_t bit = uint16_t(1u << output);
+    const uint16_t mask = bit & (m_caps.valid_mask ? m_caps.valid_mask : bit);
+    if (!mask) return;
+    m_live.stop();
+    SiggenConfig cfg{};
+    cfg.signal_type = ChannelId;
+    cfg.channel_mask = mask;
+    cfg.level_db = -12.0f;
+    cfg.repeat = 2;
+    cfg.p[0] = 120.0f;   // ms per blip
     m_ctx.device->write(
         QStringLiteral("siggen"),
         [cfg](FfiCore *c) { return dspi_siggen_set_config(c, &cfg) && dspi_siggen_control(c, SIGGEN_CTL_START); },

@@ -140,6 +140,8 @@ public:
     Q_INVOKABLE void stopPlaying(bool immediate = false);
     // Space: Start while idle, the faded Stop while playing
     Q_INVOKABLE void toggle();
+    // Identify (an output's menu): the channel-ID blips on that output alone
+    Q_INVOKABLE void identify(int output);
     // An output's name: the sidebar's label, else "Out n"; enabled in the matrix
     Q_INVOKABLE QString outputName(int output) const;
     Q_INVOKABLE bool outputEnabled(int output) const;

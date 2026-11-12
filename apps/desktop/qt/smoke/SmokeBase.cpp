@@ -196,6 +196,7 @@ QColor background(const QImage &image) { return image.pixelColor(image.width() -
 void checkSchemes(SmokeDriver &d) {
     QQuickWindow *w = d.mainWindow();
     Shell *shell = d.app().shell;
+    const Qt::ColorScheme before = shell->colorSchemeOverride();
     shell->setColorSchemeOverride(Qt::ColorScheme::Dark);
     d.spin(400);
     const QImage dark = w->grabWindow();
@@ -207,7 +208,7 @@ void checkSchemes(SmokeDriver &d) {
             !light.isNull() && light.save(d.outDir() + QStringLiteral("/window-main-light.png")));
     if (!dark.isNull() && !light.isNull())
         d.check(QStringLiteral("qp0: the light scheme is lighter"), background(light).lightness() > background(dark).lightness() + 100);
-    shell->setColorSchemeOverride(Qt::ColorScheme::Unknown);
+    shell->setColorSchemeOverride(before);   // -- WP QPI3 -- DSPI_COLOR_SCHEME's, if it set one
     d.spin(200);
 }
 

@@ -49,6 +49,8 @@ public:
     // Light or dark regardless of the system (Qt::ColorScheme::Unknown follows
     // the system again): DSPI_COLOR_SCHEME and the smoke driver's screenshots.
     void setColorSchemeOverride(Qt::ColorScheme scheme);
+    // -- WP QPI3 -- the override in force, for putting it back after a screenshot
+    Qt::ColorScheme colorSchemeOverride() const { return m_schemeOverride; }
     // Dark unless the scheme in force is light: dark is also the look when the
     // system says nothing
     bool darkScheme() const;

@@ -11,9 +11,11 @@
 #include "GraphController.h"
 #include "ChannelController.h"
 #include "Poller.h"
+#include "Registrar.h"
 #include "PresetModel.h"
 #include "Shell.h"
 #include "SidebarController.h"
+#include "SiggenController.h"
 
 #include "CoreApi.h"
 
@@ -22,6 +24,7 @@
 #include <QQuickWindow>
 #include <QSettings>
 #include <QTest>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 
@@ -289,11 +292,20 @@ void checkIdentify(SmokeDriver &d, SidebarController *sc) {
     d.check(QStringLiteral("qp1: the demo's generator can identify outputs"), d.waitFor(3000, [&]() { return sc->identifySupported(); }));
     bool failed = false;
     const auto c = QObject::connect(device, &DeviceModel::writeFailed, [&failed](const QString &) { failed = true; });
+    auto *siggen = Registrar::instance<SiggenController>();
+    d.waitFor(3000, [&]() { return siggen && siggen->controlsEnabled(); });
     const int before = device->settersRun();
     sc->identifyOutput(0);
     d.waitIdle();
     d.check(QStringLiteral("qp1: Identify starts the generator"), device->settersRun() == before + 1 && !failed);
     QObject::disconnect(c);
+    // -- WP QPI3 -- played by the generator's controller: the blips on that output alone
+    SiggenConfig played{};
+    std::atomic<bool> read{ false };
+    d.app().core->worker()->post([&](FfiCore *core) { read = dspi_siggen_get_config(core, &played); });
+    d.waitIdle();
+    d.check(QStringLiteral("qpi3: Identify leaves the channel-ID signal on output 1 alone on the device"),
+            read && played.signal_type == SiggenController::ChannelId && played.channel_mask == 1 && played.repeat == 2);
     d.app().core->worker()->post([](FfiCore *core) { dspi_siggen_control(core, SIGGEN_CTL_STOP_NOW); });
     d.waitIdle();
 }

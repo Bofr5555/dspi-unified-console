@@ -5,6 +5,7 @@
 #include "Core.h"
 #include "DeviceModel.h"
 #include "Shell.h"
+#include "SiggenController.h"
 #include "Snapshot.h"
 
 #include <QJsonArray>
@@ -26,11 +27,6 @@ enum : int { SourceUsb = 0, SourceSpdif = 1, SourceI2s = 2, SourceAdat = 3, Sour
 constexpr int kSourceNameBytes = 32;
 constexpr uint8_t kAdatPinUnset = 0xFF;
 constexpr uint8_t kPresenceSpdifInputs = 0x02;
-// The generator's channel-identification signal and the Mac's ident settings
-constexpr uint8_t kSiggenChannelId = 14;
-constexpr float kIdentLevelDb = -12.0f;
-constexpr uint16_t kIdentPasses = 2;
-constexpr float kIdentBlipMs = 120.0f;
 constexpr uint8_t kPresetLocked = 0xFE;
 constexpr int kSummaryLines = 15;
 
@@ -398,21 +394,10 @@ void SidebarController::pasteChannel(int channel) {
     });
 }
 
-// The channel-ID blips on one output: -12 dB, two passes, then the generator
-// goes idle by itself (Commands.swift's identifyOutput)
+// -- WP QPI3 -- the generator's controller plays it (one owner of its writes)
 void SidebarController::identifyOutput(int output) {
-    if (output < 0 || output >= 16) return;
-    const uint16_t mask = uint16_t(1u << output) & m_siggenMask;
-    if (!mask) return;
-    apply(QStringLiteral("identify output %1").arg(output), [mask](FfiCore *c) {
-        SiggenConfig cfg{};
-        cfg.signal_type = kSiggenChannelId;
-        cfg.channel_mask = mask;
-        cfg.level_db = kIdentLevelDb;
-        cfg.repeat = kIdentPasses;
-        cfg.p[0] = kIdentBlipMs;
-        return dspi_siggen_set_config(c, &cfg) && dspi_siggen_control(c, SIGGEN_CTL_START);
-    });
+    if (output < 0 || output >= 16 || !(uint16_t(1u << output) & m_siggenMask)) return;
+    if (auto *siggen = Registrar::instance<SiggenController>()) siggen->identify(output);
 }
 
 void SidebarController::setEffect(const QString &effect, bool on) {

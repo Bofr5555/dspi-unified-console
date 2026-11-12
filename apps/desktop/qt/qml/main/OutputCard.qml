@@ -178,7 +178,7 @@ Rectangle {
                 Layout.fillWidth: true
                 label: qsTr("Output gain")
                 from: -60
-                to: 10
+                to: 20
                 stepSize: 0.1
                 resetValue: 0
                 Binding on value {

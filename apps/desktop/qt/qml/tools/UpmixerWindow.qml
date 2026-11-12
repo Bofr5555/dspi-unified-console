@@ -33,7 +33,9 @@ ToolWindow {
 
     function value(key) { return ToolsController.revision < 0 ? 0 : ToolsController.upmix(key) }
 
-    onVisibleChanged: ToolsController.windowShown("upmixer", visible)
+    // -- WP QPI3 -- its polls run while it is on screen, not while minimised
+    readonly property bool polling: visible && visibility !== Window.Minimized
+    onPollingChanged: ToolsController.windowShown("upmixer", polling)
 
     component UpmixRow: ToolParameterRow {
         property string key
@@ -97,7 +99,8 @@ ToolWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.margins: 24
-            text: qsTr("Requires an RP2350 device with firmware wire format V25 or newer.")
+            // -- WP QPI3 -- the Mac names V25, but the upmixer came with wire 26: plain words
+            text: qsTr("Requires an RP2350 device with firmware that includes the upmixer.")
             detail: qsTr("The upmixer runs on stereo input at 48 kHz or below.")
         }
 

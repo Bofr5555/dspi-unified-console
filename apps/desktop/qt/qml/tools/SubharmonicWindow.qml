@@ -28,7 +28,9 @@ ToolWindow {
     function value(key) { return ToolsController.revision < 0 ? 0 : ToolsController.subharm(key) }
     function liveOr(row, key) { return isNaN(row.liveValue) ? value(key) : row.liveValue }
 
-    onVisibleChanged: ToolsController.windowShown("subharmonic", visible)
+    // -- WP QPI3 -- its polls run while it is on screen, not while minimised
+    readonly property bool polling: visible && visibility !== Window.Minimized
+    onPollingChanged: ToolsController.windowShown("subharmonic", polling)
 
     ColumnLayout {
         anchors.fill: parent

@@ -104,10 +104,11 @@ bool qp8Wait(SmokeDriver &d, const std::function<bool(const DspState &)> &done) 
 // A screenshot in the dark scheme and one in the light (<file>-light.png)
 bool qp8Grab(SmokeDriver &d, QQuickWindow *w, const QString &file) {
     bool ok = d.grab(w, file + QStringLiteral(".png"));
+    const Qt::ColorScheme before = d.app().shell->colorSchemeOverride();   // -- WP QPI3 --
     d.app().shell->setColorSchemeOverride(Qt::ColorScheme::Light);
     d.spin(150);
     ok = d.grab(w, file + QStringLiteral("-light.png")) && ok;
-    d.app().shell->setColorSchemeOverride(Qt::ColorScheme::Unknown);
+    d.app().shell->setColorSchemeOverride(before);
     d.spin(150);
     return ok;
 }
