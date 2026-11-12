@@ -107,6 +107,8 @@ mod write_param;
 mod names;
 // -- BUG1 --
 mod output_labels;
+// -- WP P0M --
+mod events;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -114,6 +116,9 @@ pub use device::MidiInputHandle;
 pub use error::{DspiError, Result};
 pub use firmware::*;
 pub use records::*;
+// -- WP P0M --
+pub use dspi_session::events::{EventKind, EventRecord, EventSink, ReadBatch};
+pub use events::EVENT_READ_MAX;
 // -- WP CG11 --
 pub use vreg::{VregCalPhase, VregCalView, VregChoice, VregDemoEvent};
 // Work-package sections: add re-exports only inside your own section.
@@ -195,6 +200,10 @@ pub struct DspiCore {
     /// so it runs once. Taken without `inner`, never while holding it.
     #[cfg(feature = "link")]
     pub(crate) probe_lock: Mutex<()>,
+    // -- WP P0M --
+    /// The meter ballistics and the event history; `inner.history` is the
+    /// same. Its locks are taken with or without `inner`, never `inner` after.
+    pub(crate) history: Arc<events::History>,
 }
 
 // -- WP LK4 --
@@ -266,6 +275,9 @@ pub(crate) struct Inner {
     // -- WP CG23 --
     /// The raw notification tap (`raw.rs`).
     pub(crate) notify_tap: raw::NotifyTap,
+    // -- WP P0M --
+    /// [`DspiCore::history`], for code that holds only the lock.
+    pub(crate) history: Arc<events::History>,
 }
 
 /// An open device.
@@ -562,6 +574,8 @@ impl Inner {
             hotplug: hotplug::HotplugState::default(),
             // -- WP CG23 --
             notify_tap: raw::NotifyTap::default(),
+            // -- WP P0M --
+            history: Arc::default(),
         }
     }
 
@@ -639,8 +653,12 @@ impl DspiCore {
     /// A core with no device open. No I/O.
     #[cfg_attr(feature = "uniffi", uniffi::constructor)]
     pub fn new() -> Arc<Self> {
+        // -- WP P0M --
+        let history = Arc::new(events::History::default());
+        let mut inner = Inner::new();
+        inner.history = Arc::clone(&history);
         Arc::new_cyclic(|me| Self {
-            inner: Mutex::new(Inner::new()),
+            inner: Mutex::new(inner),
             listeners: Arc::new(Listeners::default()),
             me: me.clone(),
             #[cfg(feature = "link")]
@@ -656,6 +674,8 @@ impl DspiCore {
             meter_path: Mutex::new(None),
             #[cfg(feature = "link")]
             probe_lock: Mutex::new(()),
+            // -- WP P0M --
+            history,
         })
     }
 }

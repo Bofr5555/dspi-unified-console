@@ -130,7 +130,8 @@ macro_rules! layouts {
 fn rust_layouts() -> Vec<Layout> {
     layouts! {
         DeviceInfo { serial, serial_len, location_id }
-        SystemStatus { peaks, cpu0, cpu1, clip_flags, active_input_channels, num_channels }
+        SystemStatus { peaks, cpu0, cpu1, clip_flags, active_input_channels, num_channels, peak_hold, peak_max, clip_hold }
+        MeterBallistics { hold_ms, decay_per_s, clip_hold_ms }
         FilterParams { filter_type, bypass, freq, q, gain, qp }
         UartConfig { enabled, tx_pin, rx_pin, notify, baud }
         I2cConfig { enabled, sda_pin, scl_pin, address }

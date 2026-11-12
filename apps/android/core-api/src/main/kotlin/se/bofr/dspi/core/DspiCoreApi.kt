@@ -125,6 +125,12 @@ interface DspiCoreApi : AutoCloseable {
      * poll is read directly at a low rate; a repeat of the last such read is
      * `stale` too.
      *
+     * WP P0M: `peak_hold`, `peak_max` and `clip_hold` are the core's meter
+     * ballistics over these reads (`set_meter_ballistics`); a `stale` read
+     * leaves them as they were. When the clip hold ends the core clears the
+     * device's sticky flags itself (`REQ_CLEAR_CLIPS`, as `clear_clips`), so
+     * a client keeps no clip timer. New clips go to the event history.
+     *
      * Errors: [`DspiError::Disconnected`] with no device open;
      * [`DspiError::Transfer`] when the read fails or the reply is shorter
      * than `num_channels * 2 + 6` bytes.
@@ -382,6 +388,64 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun openDemo()
+
+    /**
+     * The meter ballistics' timing (`SystemStatus.peak_hold`, `clip_hold`).
+     * Defaults: hold 1000 ms, then a fall of 0.5 full scale per second; clip
+     * hold 10 000 ms after the last new clip. Never fails.
+     */
+    fun meterBallistics(): MeterBallistics
+
+    /**
+     * Change the meter ballistics' timing for every later `fetch_status`.
+     * What is held stays. A `decay_per_s` below 0 or not finite reads as 0
+     * (a held peak then stays until a higher one); a `clip_hold_ms` of 0
+     * holds clips until `clear_clips`. Never fails.
+     */
+    fun setMeterBallistics(config: MeterBallistics)
+
+    /**
+     * Start every channel's `SystemStatus.peak_max` again from the next
+     * read. A new connection does this too. Never fails.
+     */
+    fun resetMeterMax()
+
+    /**
+     * Keep the event history in files under `dir`, the client's own data
+     * directory, created if missing: one JSON-lines file per device serial,
+     * rotated, at most about 1 MiB per device. An empty `dir` keeps it in
+     * memory only (the default; the last 1000 records). Call it at start-up,
+     * before connecting; the open device's history carries on in the new
+     * place. Blocking file I/O: not on the UI thread.
+     *
+     * Errors: [`DspiError::Io`] when the directory cannot be created;
+     * [`DspiError::Unsupported`] on the web, which keeps it in memory.
+     */
+    @Throws(DspiException::class)
+    fun eventLogSetDir(dir: String)
+
+    /**
+     * `serial`'s event history with ids above `after_id`, oldest first, at
+     * most `limit` (capped at [`EVENT_READ_MAX`]): with `after_id` 0 the
+     * newest `limit`, otherwise the next `limit` after it, so poll with the
+     * batch's `last_id`. An empty `serial` is the open device. Lines in the
+     * file that are not records are skipped and counted. Reads files: not on
+     * the UI thread. Never fails; an unknown serial reads empty.
+     */
+    fun eventLogRead(serial: String, afterId: Long, limit: Long): EventBatch
+
+    /**
+     * `serial`'s whole event history as JSON lines, oldest first, in the
+     * file format (`docs` in the WP P0M report): for a "Save history…" or a
+     * diagnostics bundle. An empty `serial` is the open device. Never fails;
+     * an unknown serial exports "".
+     */
+    fun eventLogExport(serial: String): String
+
+    /**
+     * The serials with an event history, sorted. Never fails.
+     */
+    fun eventLogDevices(): List<String>
 
     /**
      * `EXT_CROSSFEED_PAIR_MAP` (Bofr5555/DSPi fork, the K340 build): the

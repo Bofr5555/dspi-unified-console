@@ -58,7 +58,11 @@ class FfiMappingTest {
             activeInputChannels = 2u,
             numChannels = 4u,
             stale = true,
-            ageMs = 4_000_000_000u
+            ageMs = 4_000_000_000u,
+            // -- WP P0M --
+            peakHold = listOf(0.5f),
+            peakMax = listOf(0.75f),
+            clipHold = 5u
         )
         val d = ffi.toDomain()
         assertTrue(d.stale)

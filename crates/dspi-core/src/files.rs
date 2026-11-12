@@ -1764,6 +1764,16 @@ impl DspiCore {
                 self.push_output_config(&before, &built.state, &mut built.skipped);
             }
             let (lines, clean) = config_report(&built);
+            // -- WP P0M --
+            let names = self.lock().conn.as_ref().map(|c| c.source_names.to_vec());
+            let changed =
+                crate::presets::changes(&before, &built.state, names.as_deref().unwrap_or(&[]));
+            self.history.applied(
+                dspi_session::events::EventKind::Import,
+                None,
+                "Imported a configuration",
+                changed,
+            );
             Ok(json!({
                 "ok": true,
                 "error": "",

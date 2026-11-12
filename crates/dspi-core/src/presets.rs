@@ -209,6 +209,7 @@ impl DspiCore {
     pub fn load_preset(&self, slot: u8) -> Result<()> {
         slot_in_range(slot)?;
         self.with_device_lock(LOAD_REASON, |inner| {
+            let before = inner.state.clone(); // -- WP P0M --
             let confirmed = {
                 let mut w = inner.writable_conn()?;
                 w.conn().fresh_image = false;
@@ -220,6 +221,15 @@ impl DspiCore {
                 inner.state.active_preset_slot = slot;
             }
             capture_baseline_locked(inner);
+            // -- WP P0M --
+            let names = inner.conn.as_ref().map(|c| c.source_names.to_vec());
+            let lines = changes(&before, &inner.state, names.as_deref().unwrap_or(&[]));
+            inner.history.applied(
+                dspi_session::events::EventKind::Recall,
+                Some(slot),
+                &format!("Recalled preset {}", u16::from(slot).saturating_add(1)),
+                lines,
+            );
             Ok(())
         })
     }
@@ -1017,7 +1027,7 @@ const PIN_UNSET: u8 = 0xFF;
 
 /// The rows for going from `saved` to `live`, in the console's order.
 /// `sources`: the user's input source names ("" for none).
-fn changes(saved: &DspState, live: &DspState, sources: &[String]) -> Vec<String> {
+pub(crate) fn changes(saved: &DspState, live: &DspState, sources: &[String]) -> Vec<String> {
     let mut d = Rows {
         out: Vec::new(),
         live,

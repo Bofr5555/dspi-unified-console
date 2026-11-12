@@ -236,6 +236,16 @@ pub struct SystemStatus {
     pub active_input_channels: u8,
     /// Wire channels of the device.
     pub num_channels: u8,
+    // -- WP P0M --
+    /// Held peak per wire channel, 0..1: the hold marker (the core's
+    /// ballistics, `dspi_set_meter_ballistics`).
+    pub peak_hold: [f32; MAX_CHANNELS],
+    /// Highest peak per wire channel since the connection opened or
+    /// `dspi_reset_meter_max`.
+    pub peak_max: [f32; MAX_CHANNELS],
+    /// The clip hold, one bit per wire channel: draw the clip marker from
+    /// this. The core clears the device's flags when it ends.
+    pub clip_hold: u32,
 }
 
 /// A device found by a scan.
@@ -988,6 +998,10 @@ impl From<&r::SystemStatus> for SystemStatus {
             clip_flags: s.clip_flags,
             active_input_channels: s.active_input_channels,
             num_channels: s.num_channels,
+            // -- WP P0M --
+            peak_hold: copied(&s.peak_hold, 0.0),
+            peak_max: copied(&s.peak_max, 0.0),
+            clip_hold: s.clip_hold,
         }
     }
 }
@@ -1436,6 +1450,31 @@ impl From<&DeviceInfo> for r::DeviceInfo {
         Self {
             serial: text_of(&d.serial, len),
             location_id: d.location_id,
+        }
+    }
+}
+
+// -- WP P0M --
+/// The meter ballistics' timing (`dspi_meter_ballistics`).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MeterBallistics {
+    /// How long a new peak holds, ms (default 1000).
+    pub hold_ms: u32,
+    /// How fast a held peak falls after its hold, full scale per second
+    /// (default 0.5).
+    pub decay_per_s: f32,
+    /// How long the clip hold lasts after the last new clip, ms; 0 until
+    /// cleared (default 10000).
+    pub clip_hold_ms: u32,
+}
+
+impl From<r::MeterBallistics> for MeterBallistics {
+    fn from(m: r::MeterBallistics) -> Self {
+        Self {
+            hold_ms: m.hold_ms,
+            decay_per_s: m.decay_per_s,
+            clip_hold_ms: m.clip_hold_ms,
         }
     }
 }

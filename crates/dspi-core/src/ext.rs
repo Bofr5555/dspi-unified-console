@@ -89,7 +89,11 @@ impl DspiCore {
         }
         let status = sx::read_core_vreg(conn.transport()).map_err(read_error)?;
         let info = vreg_info(&status);
-        conn.ext.core_vreg = Some(status);
+        // -- WP P0M --
+        inner.history.uptime(status.uptime_s, status.hang_count);
+        if let Ok(conn) = inner.conn() {
+            conn.ext.core_vreg = Some(status);
+        }
         Ok(info)
     }
 

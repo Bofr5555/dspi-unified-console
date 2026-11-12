@@ -839,7 +839,16 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // (the firmware-update path, as enterBootloader; the writes
             // inside it are guarded one by one).
             "deviceLockAcquire",
-            "deviceLockRelease"
+            "deviceLockRelease",
+            // -- WP P0M -- the meters' ballistics (local) and the event history
+            // (local files); fetchStatus's own clip clear is as clearClips.
+            "meterBallistics",
+            "setMeterBallistics",
+            "resetMeterMax",
+            "eventLogSetDir",
+            "eventLogRead",
+            "eventLogExport",
+            "eventLogDevices"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

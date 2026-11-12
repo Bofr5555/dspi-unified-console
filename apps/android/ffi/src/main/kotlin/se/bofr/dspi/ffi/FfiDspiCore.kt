@@ -124,6 +124,20 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun openDemo() = call { core.openDemo() }
 
+    override fun meterBallistics(): MeterBallistics = core.meterBallistics().toDomain()
+
+    override fun setMeterBallistics(config: MeterBallistics) = core.setMeterBallistics(config.toFfi())
+
+    override fun resetMeterMax() = core.resetMeterMax()
+
+    override fun eventLogSetDir(dir: String) = call { core.eventLogSetDir(dir) }
+
+    override fun eventLogRead(serial: String, afterId: Long, limit: Long): EventBatch = core.eventLogRead(serial, afterId.toULong(), limit.toUInt()).toDomain()
+
+    override fun eventLogExport(serial: String): String = core.eventLogExport(serial)
+
+    override fun eventLogDevices(): List<String> = core.eventLogDevices()
+
     override fun setCrossfeedPairMap(map: List<Int>) = call { core.setCrossfeedPairMap(ByteArray(map.size) { map[it].toByte() }) }
 
     override fun fetchCrossfeedPairMap(): List<Int> = call { core.fetchCrossfeedPairMap().map { it.toInt() and 0xFF } }
@@ -767,6 +781,9 @@ internal fun se.bofr.dspi.ffi.uniffi.SystemStatus.toDomain() =
         numChannels = numChannels.toInt(),
         stale = stale,
         ageMs = ageMs.toLong(),
+        peakHold = peakHold,
+        peakMax = peakMax,
+        clipHold = clipHold.toLong(),
     )
 
 internal fun SystemStatus.toFfi() =
@@ -779,6 +796,9 @@ internal fun SystemStatus.toFfi() =
         numChannels = numChannels.toUByte(),
         stale = stale,
         ageMs = ageMs.toUInt(),
+        peakHold = peakHold,
+        peakMax = peakMax,
+        clipHold = clipHold.toUInt(),
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.DeviceInfo.toDomain() =
@@ -1773,6 +1793,70 @@ internal fun RtaOwnership.toFfi() =
         tap = tap.toUByte(),
         mask = mask.toUShort(),
         fftOrder = fftOrder.toUByte(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeterBallistics.toDomain() =
+    MeterBallistics(
+        holdMs = holdMs.toLong(),
+        decayPerS = decayPerS,
+        clipHoldMs = clipHoldMs.toLong(),
+    )
+
+internal fun MeterBallistics.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeterBallistics(
+        holdMs = holdMs.toUInt(),
+        decayPerS = decayPerS,
+        clipHoldMs = clipHoldMs.toUInt(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.EventEntry.toDomain() =
+    EventEntry(
+        id = id.toLong(),
+        timeMs = timeMs,
+        kind = kind,
+        serial = serial,
+        text = text,
+        source = source,
+        session = session?.let { it.toLong() },
+        own = own,
+        channel = channel?.let { it.toInt() },
+        value = value,
+        fw = fw,
+        uptimeS = uptimeS?.let { it.toLong() },
+        lines = lines,
+        count = count.toLong(),
+    )
+
+internal fun EventEntry.toFfi() =
+    se.bofr.dspi.ffi.uniffi.EventEntry(
+        id = id.toULong(),
+        timeMs = timeMs,
+        kind = kind,
+        serial = serial,
+        text = text,
+        source = source,
+        session = session?.let { it.toUInt() },
+        own = own,
+        channel = channel?.let { it.toUByte() },
+        value = value,
+        fw = fw,
+        uptimeS = uptimeS?.let { it.toUInt() },
+        lines = lines,
+        count = count.toUInt(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.EventBatch.toDomain() =
+    EventBatch(
+        lastId = lastId.toLong(),
+        skipped = skipped.toLong(),
+        entries = entries.map { it.toDomain() },
+    )
+
+internal fun EventBatch.toFfi() =
+    se.bofr.dspi.ffi.uniffi.EventBatch(
+        lastId = lastId.toULong(),
+        skipped = skipped.toUInt(),
+        entries = entries.map { it.toFfi() },
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.AutoEqFetchRequest.toDomain() =
