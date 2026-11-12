@@ -68,6 +68,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun openDemo(): Unit = throw NotImplementedError("open_demo")
 
+    override fun featurePresent(name: String): Boolean = throw NotImplementedError("feature_present")
+
     override fun diagnosticsSave(path: String, options: DiagOptions): List<String> = throw NotImplementedError("diagnostics_save")
 
     override fun diagnosticsFileName(): String = throw NotImplementedError("diagnostics_file_name")

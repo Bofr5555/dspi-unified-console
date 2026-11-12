@@ -1498,6 +1498,8 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1702,6 +1704,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_event_log_set_dir(
 fun uniffi_dspi_core_checksum_method_dspicore_ext_status(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_factory_reset(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_feature_present(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_adat_out_status(
 ): Short
@@ -2291,6 +2295,8 @@ fun uniffi_dspi_core_fn_method_dspicore_ext_status(`ptr`: Pointer,uniffi_out_err
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_factory_reset(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_feature_present(`ptr`: Pointer,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
 fun uniffi_dspi_core_fn_method_dspicore_fetch_adat_out_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_all(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -3188,6 +3194,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_factory_reset() != 27488.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_feature_present() != 18345.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_adat_out_status() != 51824.toShort()) {
@@ -5894,6 +5903,17 @@ public interface DspiCoreInterface {
      * error, of the reset or the re-read.
      */
     fun `factoryReset`()
+    
+    /**
+     * Whether the connect probe found feature `name` on the open device
+     * (`dspi_session::probe`'s names: `spdif_multi_input`, `adat_input`,
+     * `i2s_slave_clock`, ...), so a client hides what the firmware lacks
+     * without comparing versions. `i2s_clock_pin_mode`, which has no probe,
+     * answers whether the parameter image carried the clock-pin mode. False
+     * with no device, before the probe, and for a name the probe does not
+     * know.
+     */
+    fun `featurePresent`(`name`: kotlin.String): kotlin.Boolean
     
     /**
      * The ADAT output's status (8 bytes; all zero on RP2040).
@@ -9173,6 +9193,27 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * Whether the connect probe found feature `name` on the open device
+     * (`dspi_session::probe`'s names: `spdif_multi_input`, `adat_input`,
+     * `i2s_slave_clock`, ...), so a client hides what the firmware lacks
+     * without comparing versions. `i2s_clock_pin_mode`, which has no probe,
+     * answers whether the parameter image carried the clock-pin mode. False
+     * with no device, before the probe, and for a name the probe does not
+     * know.
+     */override fun `featurePresent`(`name`: kotlin.String): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_feature_present(
+        it, FfiConverterString.lower(`name`),_status)
+}
+    }
+    )
+    }
     
 
     

@@ -124,6 +124,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun openDemo() = call { core.openDemo() }
 
+    override fun featurePresent(name: String): Boolean = core.featurePresent(name)
+
     override fun diagnosticsSave(path: String, options: DiagOptions): List<String> = call { core.diagnosticsSave(path, options.toFfi()) }
 
     override fun diagnosticsFileName(): String = core.diagnosticsFileName()

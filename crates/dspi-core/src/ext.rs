@@ -204,10 +204,12 @@ fn store_pair_map(inner: &mut Inner, map: PairMap) {
     }
 }
 
-/// Crossfeed pairs on the platform: 4 on RP2350, 2 on RP2040 (the stereo
-/// outputs, without the PDM sub). The rule `files.rs` uses too.
+/// Crossfeed pairs on the platform: 2 on RP2040, 4 on RP2350 and STM32H723
+/// (the stereo outputs, without the PDM sub; `NUM_SPDIF_INSTANCES` in both
+/// firmwares' `config.h`). The rule `files.rs` uses too.
+// -- WP QPI2 -- platform 2 (STM32H723) has four pairs, as the Mac counts them
 pub(crate) fn crossfeed_pairs(s: &DspState) -> u8 {
-    if s.platform_id == 1 { 4 } else { 2 }
+    if s.platform_id == 0 { 2 } else { 4 }
 }
 
 /// Check an `EXT_CORE_VREG` request against the spec's limits
@@ -294,3 +296,22 @@ fn refused() -> DspiError {
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 pub(crate) mod tests_wp_c8;
+
+// -- WP QPI2 --
+#[cfg(test)]
+mod tests_wp_qpi2 {
+    use super::*;
+
+    #[test]
+    fn wp_qpi2_crossfeed_pairs_follow_the_output_slots() {
+        let pairs = |platform_id| {
+            crossfeed_pairs(&DspState {
+                platform_id,
+                ..state::default_state()
+            })
+        };
+        assert_eq!(pairs(0), 2, "RP2040");
+        assert_eq!(pairs(1), 4, "RP2350");
+        assert_eq!(pairs(2), 4, "STM32H723");
+    }
+}

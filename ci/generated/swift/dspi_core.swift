@@ -1867,6 +1867,17 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func factoryReset() throws 
     
     /**
+     * Whether the connect probe found feature `name` on the open device
+     * (`dspi_session::probe`'s names: `spdif_multi_input`, `adat_input`,
+     * `i2s_slave_clock`, ...), so a client hides what the firmware lacks
+     * without comparing versions. `i2s_clock_pin_mode`, which has no probe,
+     * answers whether the parameter image carried the clock-pin mode. False
+     * with no device, before the probe, and for a name the probe does not
+     * know.
+     */
+    func featurePresent(name: String)  -> Bool
+    
+    /**
      * The ADAT output's status (8 bytes; all zero on RP2040).
      *
      * Errors: a short reply or other transfer error;
@@ -4854,6 +4865,23 @@ open func factoryReset()throws   {try rustCallWithError(FfiConverterTypeDspiErro
     uniffi_dspi_core_fn_method_dspicore_factory_reset(self.uniffiClonePointer(),$0
     )
 }
+}
+    
+    /**
+     * Whether the connect probe found feature `name` on the open device
+     * (`dspi_session::probe`'s names: `spdif_multi_input`, `adat_input`,
+     * `i2s_slave_clock`, ...), so a client hides what the firmware lacks
+     * without comparing versions. `i2s_clock_pin_mode`, which has no probe,
+     * answers whether the parameter image carried the clock-pin mode. False
+     * with no device, before the probe, and for a name the probe does not
+     * know.
+     */
+open func featurePresent(name: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_feature_present(self.uniffiClonePointer(),
+        FfiConverterString.lower(name),$0
+    )
+})
 }
     
     /**
@@ -24554,6 +24582,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_factory_reset() != 27488) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_feature_present() != 18345) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_adat_out_status() != 51824) {
