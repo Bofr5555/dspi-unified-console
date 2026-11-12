@@ -32,6 +32,7 @@ extern "C" {
 #include <cmath>
 #include <cstdio>
 #include <memory>
+#include <vector>
 
 namespace {
 
@@ -106,14 +107,16 @@ void reading(SmokeDriver &d, const QString &what, bool ok, const QString &detail
     else d.check(QStringLiteral("qp19-hw: ") + what, ok);
 }
 
-// A core call that fills a buffer with JSON
+// A core call that fills a buffer with JSON: what it says, or nothing when the
+// answer did not fit or is not an object
 template <typename F>
 QVariantMap coreJson(F call) {
-    QByteArray buf(16 * 1024, '\0');
-    const uint32_t needed = call(buf.data(), uint32_t(buf.size()));
-    if (needed == 0 || needed > uint32_t(buf.size())) return {};
-    buf.truncate(qsizetype(needed - 1));
-    return QJsonDocument::fromJson(buf).object().toVariantMap();
+    constexpr uint32_t kCapacity = 16384;
+    std::vector<char> text(kCapacity);
+    const uint32_t needed = call(text.data(), kCapacity);   // counts the closing NUL
+    if (needed == 0 || needed > kCapacity) return {};
+    const QJsonDocument doc = QJsonDocument::fromJson(QByteArray(text.data(), qsizetype(needed) - 1));
+    return doc.isObject() ? doc.object().toVariantMap() : QVariantMap();
 }
 QString compact(const QVariantMap &m) {
     return QString::fromUtf8(QJsonDocument(QJsonObject::fromVariantMap(m)).toJson(QJsonDocument::Compact)).left(300);

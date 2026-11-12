@@ -8,7 +8,7 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QImage>
-#include <QQmlApplicationEngine>
+#include <QtQml/QQmlApplicationEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QThread>
