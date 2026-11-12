@@ -1203,7 +1203,8 @@ pub extern "C" fn dspi_wire_features(core: *mut FfiCore) -> u32 {
 
 // -- WP QP11 --
 /// Whether the connect probe found feature `name` on the open device (the
-/// probe's names: `spdif_multi_input`, `adat_input`, `i2s_slave_clock`, ...).
+/// probe's names: `spdif_multi_input`, `adat_input`, `i2s_slave_clock`, ...;
+/// `i2s_clock_pin_mode`: the parameter image carries the clock-pin mode).
 /// False with no device, for a null name and for a name the probe lacks.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_feature_present(core: *mut FfiCore, name: *const c_char) -> bool {

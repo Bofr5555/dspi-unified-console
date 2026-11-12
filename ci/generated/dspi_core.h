@@ -4663,7 +4663,8 @@ uint32_t dspi_wire_features(struct FfiCore *core);
 
 /**
  * Whether the connect probe found feature `name` on the open device (the
- * probe's names: `spdif_multi_input`, `adat_input`, `i2s_slave_clock`, ...).
+ * probe's names: `spdif_multi_input`, `adat_input`, `i2s_slave_clock`, ...;
+ * `i2s_clock_pin_mode`: the parameter image carries the clock-pin mode).
  * False with no device, for a null name and for a name the probe lacks.
  */
 bool dspi_feature_present(struct FfiCore *core, const char *name);

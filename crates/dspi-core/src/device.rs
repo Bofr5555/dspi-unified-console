@@ -486,11 +486,16 @@ impl DspiCore {
     /// Whether the connect probe found feature `name` on the open device
     /// (`dspi_session::probe`'s names: `spdif_multi_input`, `adat_input`,
     /// `i2s_slave_clock`, ...), so a client hides what the firmware lacks
-    /// without comparing versions. False with no device, before the probe,
-    /// and for a name the probe does not know.
+    /// without comparing versions. `i2s_clock_pin_mode`, which has no probe,
+    /// answers whether the parameter image carried the clock-pin mode. False
+    /// with no device, before the probe, and for a name the probe does not
+    /// know.
     pub fn feature_present(&self, name: &str) -> bool {
         self.ensure_probed();
         let mut inner = self.lock();
+        if name == "i2s_clock_pin_mode" {
+            return inner.conn.is_some() && inner.state.i2s_clock_pin_mode_present;
+        }
         let Ok(conn) = inner.conn() else {
             return false;
         };
@@ -1339,6 +1344,7 @@ mod tests_wp_qp11 {
     fn wp_qp11_no_device_has_no_features() {
         let core = DspiCore::new();
         assert!(!core.feature_present("input_source"));
+        assert!(!core.feature_present("i2s_clock_pin_mode"));
     }
 
     #[test]
@@ -1346,9 +1352,16 @@ mod tests_wp_qp11 {
         let core = DspiCore::new();
         core.open_demo().unwrap();
         // The demo is current firmware: the hardware pages' features answer
-        for name in ["input_source", "spdif_multi_input", "i2s_input_channels", "dac_hardware_mute", "output_latency"] {
+        for name in [
+            "input_source",
+            "spdif_multi_input",
+            "i2s_input_channels",
+            "dac_hardware_mute",
+            "output_latency",
+        ] {
             assert!(core.feature_present(name), "{name}");
         }
+        assert!(core.feature_present("i2s_clock_pin_mode"));
         assert!(!core.feature_present("no_such_feature"));
         assert!(!core.feature_present(""));
     }
