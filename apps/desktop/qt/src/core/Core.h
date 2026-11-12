@@ -25,6 +25,11 @@ public:
     ~Core() override;
 
     CoreWorker *worker() { return &m_worker; }
+    // -- WP QP13 -- The handle, for the core's calls documented as safe from any
+    // thread (the Link session's, dspi-capi's fns_link.rs), which LinkController
+    // runs on threads of its own so a dial never holds up this worker. Null
+    // after shutdown().
+    FfiCore *handle() const { return m_ffi; }
 
     // Scans once (the core announces every unit present as arrived otherwise),
     // then polls for hot-plug on the worker.

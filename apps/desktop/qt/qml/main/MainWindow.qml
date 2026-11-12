@@ -56,9 +56,11 @@ ApplicationWindow {
             }
 
             Sidebar {
-                SplitView.preferredWidth: Theme.sidebarWidth
+                // -- WP QPI1 -- the width the person left it at (sidebar/width)
+                SplitView.preferredWidth: SidebarController.sidebarWidth > 0 ? SidebarController.sidebarWidth : Theme.sidebarWidth
                 SplitView.minimumWidth: 220
                 SplitView.maximumWidth: 320
+                onWidthChanged: if (SplitView.view && SplitView.view.resizing) SidebarController.sidebarWidth = Math.round(width)
                 selectedChannel: window.selectedChannel
                 onChannelSelected: channel => window.selectedChannel = channel
             }

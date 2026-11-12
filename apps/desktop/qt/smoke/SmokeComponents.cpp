@@ -76,6 +76,22 @@ void componentsSection(SmokeDriver &d) {
     if (tab2) QMetaObject::invokeMethod(tab2, "click");
     d.check(QStringLiteral("qp0: AppTabBar switches"), tabs && tabs->property("currentIndex").toInt() == 1);
 
+    // -- WP QPI1 -- CustomSlider: a right-click resets, a left click still moves
+    auto *slider = qobject_cast<QQuickItem *>(child(w, "SmokeProbeWindow.slider"));
+    checkAccessible(d, slider, QStringLiteral("CustomSlider"), QAccessible::Slider);
+    if (slider) {
+        const QPoint quarter = slider->mapToScene(QPointF(slider->width() * 0.25, slider->height() / 2)).toPoint();
+        slider->setProperty("value", 12.0);
+        QTest::mouseClick(w, Qt::RightButton, Qt::NoModifier, quarter);
+        d.spin(50);
+        d.check(QStringLiteral("qpi1: a right-click resets CustomSlider to its resetValue"),
+                qAbs(slider->property("value").toDouble()) < 1e-9);
+        QTest::mouseClick(w, Qt::LeftButton, Qt::NoModifier, quarter);
+        d.spin(50);
+        d.check(QStringLiteral("qpi1: a left click still moves CustomSlider"), slider->property("value").toDouble() < -6.0);
+        slider->setProperty("value", 0.0);
+    }
+
     QObject *bar = child(w, "SmokeProbeWindow.scrollBar");
     checkAccessible(d, bar, QStringLiteral("AppScrollBar"), QAccessible::ScrollBar);
     d.check(QStringLiteral("qp0: AppScrollBar has something to scroll"), bar && bar->property("size").toDouble() < 1.0);

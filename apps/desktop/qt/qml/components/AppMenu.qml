@@ -7,6 +7,9 @@ Menu {
     id: menu
     font: Theme.fontBody
     delegate: AppMenuItem {}
+    // A small inset above the first row and below the last, as the system's menus have
+    topPadding: Theme.radiusSmall
+    bottomPadding: Theme.radiusSmall
     background: Rectangle {
         implicitWidth: 240
         color: Theme.menu

@@ -87,4 +87,20 @@ QtObject {
     readonly property font fontHeading: Qt.font({ pixelSize: 11, weight: Font.DemiBold, capitalization: Font.AllUppercase })
     readonly property font fontTitle: Qt.font({ pixelSize: 15, weight: Font.DemiBold })
     readonly property font fontMono: Qt.font({ family: Shell.monospaceFamily, pixelSize: 12 })
+
+    // -- WP QP10 -- Settings: the sidebar badge of each page (the Mac's
+    // SettingsCategory tints, by page id) and the Overview's pin roles (outputs,
+    // clocks, inputs, control, other). Each carries textOnAccent at 4.5:1 or
+    // more and clears 3:1 on the dark window, so one value serves both schemes.
+    readonly property var settingsTints: ({
+        "overview": "#627080", "about": "#646971", "updates": "#5d6a7a", "advanced": "#727880",
+        "graphing": "#587a89", "networking": "#4a7499", "spectrum": "#4c808a",
+        "inputs": "#04856f", "outputs": "#0278c7", "i2s": "#ba3822", "global": "#807701",
+        "surfaces": "#8354a0", "interfaces": "#8f60ad", "groups": "#6c64b7", "macros": "#9e528d", "aux": "#7a5aac"
+    })
+    readonly property color settingsTintDefault: "#646971"
+    function settingsTint(id) { return settingsTints[id] !== undefined ? settingsTints[id] : settingsTintDefault }
+    readonly property var pinRoleTints: ["#0278c7", "#ba3822", "#04856f", "#9543a7", "#807701"]
+    // A free pin on the Overview map
+    readonly property color pinFree: dark ? "#303136" : "#e4e4e8"
 }

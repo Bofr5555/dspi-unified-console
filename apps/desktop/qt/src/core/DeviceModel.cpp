@@ -169,6 +169,7 @@ void DeviceModel::selectDevice(const QString &serial) {
 }
 
 void DeviceModel::reconnect() {
+    if (m_remote) return;   // -- WP QP13 -- the hub's session reconnects by itself
     if (m_demo) {
         openDemo();
         return;
@@ -287,6 +288,7 @@ void DeviceModel::onNotifications() {
 
 void DeviceModel::onDeviceEvent(int event, const QString &serial) {
     if (event == Core::Arrived) {
+        if (m_remote) return;   // -- WP QP13 -- a hub's device stays open
         // Nothing open, nothing chosen: take the DSPi that arrived. The core
         // reopens a chosen one by itself; a fresh read follows.
         if (!connected() && !m_demo && m_serial.isEmpty()) selectDevice(serial);
@@ -300,4 +302,25 @@ void DeviceModel::onDeviceEvent(int event, const QString &serial) {
                 track(-1);
             });
     }
+}
+
+// -- WP QP13 -- Link sessions (LinkController)
+void DeviceModel::adoptRemote(const QString &serial) {
+    m_remote = true;
+    m_demo = false;
+    m_serial = serial;
+    refresh();
+}
+
+void DeviceModel::leaveRemote() {
+    if (!m_remote) return;
+    m_remote = false;
+    m_serial.clear();
+    track(1);
+    m_core->worker()->call(
+        this, [](FfiCore *c) { return readSnapshot(c); },
+        [this](DeviceSnapshot snap) {
+            apply(snap, 0);
+            track(-1);
+        });
 }
