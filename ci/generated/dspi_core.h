@@ -1409,6 +1409,16 @@
 #define WIRE_FEAT_CROSSFEED_MASK (1 << 3)
 
 /**
+ * `dspi_proto::wire_compat::feat::UPMIX_PRESENCE`.
+ */
+#define WIRE_FEAT_UPMIX_PRESENCE (1 << 9)
+
+/**
+ * `dspi_proto::wire_compat::feat::SUBHARM_EXT`.
+ */
+#define WIRE_FEAT_SUBHARM_EXT (1 << 12)
+
+/**
  * `dspi_proto::wire_compat::feat::PSYBASS`.
  */
 #define WIRE_FEAT_PSYBASS (1 << 6)
@@ -4469,6 +4479,13 @@ bool dspi_fetch_stat(struct FfiCore *core, uint16_t which, uint32_t *out);
  * The buffer fill levels into `out`.
  */
 bool dspi_fetch_buffer_stats(struct FfiCore *core, struct BufferStats *out);
+
+/**
+ * The device's USB error counters (`REQ_GET_USB_ERROR_STATS`), in JSON:
+ * `{ok, total, crc, bitstuff, rxOverflow, rxTimeout, dataSeq}`, or a
+ * failure. Current firmware reports zeros.
+ */
+uint32_t dspi_fetch_usb_error_stats(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
  * Reset the buffer statistics' watermarks.

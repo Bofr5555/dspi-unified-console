@@ -654,9 +654,12 @@ interface DspiCoreApi : AutoCloseable {
      * are shortened to it. Channels the device lacks are named, not moved.
      *
      * Returns JSON. On success `{ok: true, error: "", lines, clean, links,
-     * hardwareWritten, leftAlone}`: `lines` is the report, `clean` false
-     * when anything was missing, skipped, left alone or shortened,
-     * `leftAlone` the keys left alone, `links` the input-pair link mask to
+     * hardwareWritten, leftAlone, outOfRange}`: `lines` is the report,
+     * `clean` false when anything was missing, skipped, left alone,
+     * shortened or out of range, `leftAlone` the keys left alone,
+     * `outOfRange` the numbers past what this device takes, each
+     * `{path, value, applied}` (registry path with indices, the document's
+     * value, the nearest end written instead; WP P0U's rows), `links` the input-pair link mask to
      * restore (null when the document has none), and `hardwareWritten`
      * whether I/O was changed while the device stores its output
      * configuration apart from presets (save that to keep it). Otherwise
@@ -2634,6 +2637,17 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun fetchSpdifRxPin(index: Int): Int
+
+    /**
+     * The device's USB error counters (`REQ_GET_USB_ERROR_STATS`, 24
+     * bytes): for the System Statistics window. A read, allowed on a
+     * read-only connection. Current firmware answers zeros.
+     *
+     * Errors: [`DspiError::Disconnected`]; a transfer failure, a stall or a
+     * short reply as [`DspiError::Transfer`].
+     */
+    @Throws(DspiException::class)
+    fun fetchUsbErrorStats(): UsbErrorStats
 
     /**
      * The calibration flow as it stands, from memory: no traffic. It waits

@@ -821,6 +821,8 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "fetchResetInfo",
             "resetInfoAtConnect",
             "hasClipEvents",
+            // -- WP CS1 -- the USB error counters (0xB2), a read
+            "fetchUsbErrorStats",
             "uf2Inspect",
             "firmwareVersionMatches",
             "bootloaderDrives",

@@ -1373,9 +1373,12 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * are shortened to it. Channels the device lacks are named, not moved.
      *
      * Returns JSON. On success `{ok: true, error: "", lines, clean, links,
-     * hardwareWritten, leftAlone}`: `lines` is the report, `clean` false
-     * when anything was missing, skipped, left alone or shortened,
-     * `leftAlone` the keys left alone, `links` the input-pair link mask to
+     * hardwareWritten, leftAlone, outOfRange}`: `lines` is the report,
+     * `clean` false when anything was missing, skipped, left alone,
+     * shortened or out of range, `leftAlone` the keys left alone,
+     * `outOfRange` the numbers past what this device takes, each
+     * `{path, value, applied}` (registry path with indices, the document's
+     * value, the nearest end written instead; WP P0U's rows), `links` the input-pair link mask to
      * restore (null when the document has none), and `hardwareWritten`
      * whether I/O was changed while the device stores its output
      * configuration apart from presets (save that to keep it). Otherwise
@@ -2238,6 +2241,16 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * bytes).
      */
     func fetchUpmixStatus() throws  -> UpmixStatus
+    
+    /**
+     * The device's USB error counters (`REQ_GET_USB_ERROR_STATS`, 24
+     * bytes): for the System Statistics window. A read, allowed on a
+     * read-only connection. Current firmware answers zeros.
+     *
+     * Errors: [`DspiError::Disconnected`]; a transfer failure, a stall or a
+     * short reply as [`DspiError::Transfer`].
+     */
+    func fetchUsbErrorStats() throws  -> UsbErrorStats
     
     /**
      * Every channel's bands as a filter file (format 2), from the mirror:
@@ -4118,9 +4131,12 @@ open func configExport(name: String, appVersion: String, links: UInt8)throws  ->
      * are shortened to it. Channels the device lacks are named, not moved.
      *
      * Returns JSON. On success `{ok: true, error: "", lines, clean, links,
-     * hardwareWritten, leftAlone}`: `lines` is the report, `clean` false
-     * when anything was missing, skipped, left alone or shortened,
-     * `leftAlone` the keys left alone, `links` the input-pair link mask to
+     * hardwareWritten, leftAlone, outOfRange}`: `lines` is the report,
+     * `clean` false when anything was missing, skipped, left alone,
+     * shortened or out of range, `leftAlone` the keys left alone,
+     * `outOfRange` the numbers past what this device takes, each
+     * `{path, value, applied}` (registry path with indices, the document's
+     * value, the nearest end written instead; WP P0U's rows), `links` the input-pair link mask to
      * restore (null when the document has none), and `hardwareWritten`
      * whether I/O was changed while the device stores its output
      * configuration apart from presets (save that to keep it). Otherwise
@@ -5388,6 +5404,21 @@ open func fetchSubharmMeter()throws  -> [Float]  {
 open func fetchUpmixStatus()throws  -> UpmixStatus  {
     return try  FfiConverterTypeUpmixStatus_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_fetch_upmix_status(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * The device's USB error counters (`REQ_GET_USB_ERROR_STATS`, 24
+     * bytes): for the System Statistics window. A read, allowed on a
+     * read-only connection. Current firmware answers zeros.
+     *
+     * Errors: [`DspiError::Disconnected`]; a transfer failure, a stall or a
+     * short reply as [`DspiError::Transfer`].
+     */
+open func fetchUsbErrorStats()throws  -> UsbErrorStats  {
+    return try  FfiConverterTypeUsbErrorStats_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_fetch_usb_error_stats(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -20621,6 +20652,149 @@ public func FfiConverterTypeUpmixStatus_lower(_ value: UpmixStatus) -> RustBuffe
 
 
 /**
+ * The device's USB error counters (`REQ_GET_USB_ERROR_STATS` 0xB2,
+ * registry `diag.usb`): six `u32` since boot or the last reset
+ * (`diag.usb.reset`). Current firmware reports them all as zero.
+ */
+public struct UsbErrorStats {
+    /**
+     * Every error counted.
+     */
+    public var total: UInt32
+    /**
+     * CRC errors.
+     */
+    public var crc: UInt32
+    /**
+     * Bit-stuffing errors.
+     */
+    public var bitstuff: UInt32
+    /**
+     * Receive overflows.
+     */
+    public var rxOverflow: UInt32
+    /**
+     * Receive timeouts.
+     */
+    public var rxTimeout: UInt32
+    /**
+     * Data sequence errors.
+     */
+    public var dataSeq: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Every error counted.
+         */total: UInt32, 
+        /**
+         * CRC errors.
+         */crc: UInt32, 
+        /**
+         * Bit-stuffing errors.
+         */bitstuff: UInt32, 
+        /**
+         * Receive overflows.
+         */rxOverflow: UInt32, 
+        /**
+         * Receive timeouts.
+         */rxTimeout: UInt32, 
+        /**
+         * Data sequence errors.
+         */dataSeq: UInt32) {
+        self.total = total
+        self.crc = crc
+        self.bitstuff = bitstuff
+        self.rxOverflow = rxOverflow
+        self.rxTimeout = rxTimeout
+        self.dataSeq = dataSeq
+    }
+}
+
+#if compiler(>=6)
+extension UsbErrorStats: Sendable {}
+#endif
+
+
+extension UsbErrorStats: Equatable, Hashable {
+    public static func ==(lhs: UsbErrorStats, rhs: UsbErrorStats) -> Bool {
+        if lhs.total != rhs.total {
+            return false
+        }
+        if lhs.crc != rhs.crc {
+            return false
+        }
+        if lhs.bitstuff != rhs.bitstuff {
+            return false
+        }
+        if lhs.rxOverflow != rhs.rxOverflow {
+            return false
+        }
+        if lhs.rxTimeout != rhs.rxTimeout {
+            return false
+        }
+        if lhs.dataSeq != rhs.dataSeq {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(total)
+        hasher.combine(crc)
+        hasher.combine(bitstuff)
+        hasher.combine(rxOverflow)
+        hasher.combine(rxTimeout)
+        hasher.combine(dataSeq)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeUsbErrorStats: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UsbErrorStats {
+        return
+            try UsbErrorStats(
+                total: FfiConverterUInt32.read(from: &buf), 
+                crc: FfiConverterUInt32.read(from: &buf), 
+                bitstuff: FfiConverterUInt32.read(from: &buf), 
+                rxOverflow: FfiConverterUInt32.read(from: &buf), 
+                rxTimeout: FfiConverterUInt32.read(from: &buf), 
+                dataSeq: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: UsbErrorStats, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.total, into: &buf)
+        FfiConverterUInt32.write(value.crc, into: &buf)
+        FfiConverterUInt32.write(value.bitstuff, into: &buf)
+        FfiConverterUInt32.write(value.rxOverflow, into: &buf)
+        FfiConverterUInt32.write(value.rxTimeout, into: &buf)
+        FfiConverterUInt32.write(value.dataSeq, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeUsbErrorStats_lift(_ buf: RustBuffer) throws -> UsbErrorStats {
+    return try FfiConverterTypeUsbErrorStats.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeUsbErrorStats_lower(_ value: UsbErrorStats) -> RustBuffer {
+    return FfiConverterTypeUsbErrorStats.lower(value)
+}
+
+
+/**
  * The flow as a client shows it.
  */
 public struct VregCalView {
@@ -24446,7 +24620,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_config_export() != 55997) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_config_import() != 18479) {
+    if (uniffi_dspi_core_checksum_method_dspicore_config_import() != 20391) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_connection_generation() != 50111) {
@@ -24672,6 +24846,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_upmix_status() != 65322) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_usb_error_stats() != 29618) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_filters_export() != 62927) {

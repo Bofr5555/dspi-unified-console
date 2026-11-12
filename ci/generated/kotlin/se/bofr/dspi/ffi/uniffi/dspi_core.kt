@@ -1500,6 +1500,8 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1764,6 +1766,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_fetch_subharm_headroom(
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_subharm_meter(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_upmix_status(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_fetch_usb_error_stats(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_filters_export(
 ): Short
@@ -2354,6 +2358,8 @@ fun uniffi_dspi_core_fn_method_dspicore_fetch_subharm_headroom(`ptr`: Pointer,un
 fun uniffi_dspi_core_fn_method_dspicore_fetch_subharm_meter(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_upmix_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_fetch_usb_error_stats(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_filters_export(`ptr`: Pointer,`inputs`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -3058,7 +3064,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_config_export() != 55997.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_config_import() != 18479.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_config_import() != 20391.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_connection_generation() != 50111.toShort()) {
@@ -3284,6 +3290,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_upmix_status() != 65322.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_usb_error_stats() != 29618.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_filters_export() != 62927.toShort()) {
@@ -5411,9 +5420,12 @@ public interface DspiCoreInterface {
      * are shortened to it. Channels the device lacks are named, not moved.
      *
      * Returns JSON. On success `{ok: true, error: "", lines, clean, links,
-     * hardwareWritten, leftAlone}`: `lines` is the report, `clean` false
-     * when anything was missing, skipped, left alone or shortened,
-     * `leftAlone` the keys left alone, `links` the input-pair link mask to
+     * hardwareWritten, leftAlone, outOfRange}`: `lines` is the report,
+     * `clean` false when anything was missing, skipped, left alone,
+     * shortened or out of range, `leftAlone` the keys left alone,
+     * `outOfRange` the numbers past what this device takes, each
+     * `{path, value, applied}` (registry path with indices, the document's
+     * value, the nearest end written instead; WP P0U's rows), `links` the input-pair link mask to
      * restore (null when the document has none), and `hardwareWritten`
      * whether I/O was changed while the device stores its output
      * configuration apart from presets (save that to keep it). Otherwise
@@ -6276,6 +6288,16 @@ public interface DspiCoreInterface {
      * bytes).
      */
     fun `fetchUpmixStatus`(): UpmixStatus
+    
+    /**
+     * The device's USB error counters (`REQ_GET_USB_ERROR_STATS`, 24
+     * bytes): for the System Statistics window. A read, allowed on a
+     * read-only connection. Current firmware answers zeros.
+     *
+     * Errors: [`DspiError::Disconnected`]; a transfer failure, a stall or a
+     * short reply as [`DspiError::Transfer`].
+     */
+    fun `fetchUsbErrorStats`(): UsbErrorStats
     
     /**
      * Every channel's bands as a filter file (format 2), from the mirror:
@@ -8240,9 +8262,12 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * are shortened to it. Channels the device lacks are named, not moved.
      *
      * Returns JSON. On success `{ok: true, error: "", lines, clean, links,
-     * hardwareWritten, leftAlone}`: `lines` is the report, `clean` false
-     * when anything was missing, skipped, left alone or shortened,
-     * `leftAlone` the keys left alone, `links` the input-pair link mask to
+     * hardwareWritten, leftAlone, outOfRange}`: `lines` is the report,
+     * `clean` false when anything was missing, skipped, left alone,
+     * shortened or out of range, `leftAlone` the keys left alone,
+     * `outOfRange` the numbers past what this device takes, each
+     * `{path, value, applied}` (registry path with indices, the document's
+     * value, the nearest end written instead; WP P0U's rows), `links` the input-pair link mask to
      * restore (null when the document has none), and `hardwareWritten`
      * whether I/O was changed while the device stores its output
      * configuration apart from presets (save that to keep it). Otherwise
@@ -9887,6 +9912,27 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     callWithPointer {
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_upmix_status(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The device's USB error counters (`REQ_GET_USB_ERROR_STATS`, 24
+     * bytes): for the System Statistics window. A read, allowed on a
+     * read-only connection. Current firmware answers zeros.
+     *
+     * Errors: [`DspiError::Disconnected`]; a transfer failure, a stall or a
+     * short reply as [`DspiError::Transfer`].
+     */
+    @Throws(DspiException::class)override fun `fetchUsbErrorStats`(): UsbErrorStats {
+            return FfiConverterTypeUsbErrorStats.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_usb_error_stats(
         it, _status)
 }
     }
@@ -20639,6 +20685,77 @@ public object FfiConverterTypeUpmixStatus: FfiConverterRustBuffer<UpmixStatus> {
             FfiConverterFloat.write(value.`centerGain`, buf)
             FfiConverterFloat.write(value.`lsGain`, buf)
             FfiConverterFloat.write(value.`rsGain`, buf)
+    }
+}
+
+
+
+/**
+ * The device's USB error counters (`REQ_GET_USB_ERROR_STATS` 0xB2,
+ * registry `diag.usb`): six `u32` since boot or the last reset
+ * (`diag.usb.reset`). Current firmware reports them all as zero.
+ */
+data class UsbErrorStats (
+    /**
+     * Every error counted.
+     */
+    var `total`: kotlin.UInt, 
+    /**
+     * CRC errors.
+     */
+    var `crc`: kotlin.UInt, 
+    /**
+     * Bit-stuffing errors.
+     */
+    var `bitstuff`: kotlin.UInt, 
+    /**
+     * Receive overflows.
+     */
+    var `rxOverflow`: kotlin.UInt, 
+    /**
+     * Receive timeouts.
+     */
+    var `rxTimeout`: kotlin.UInt, 
+    /**
+     * Data sequence errors.
+     */
+    var `dataSeq`: kotlin.UInt
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeUsbErrorStats: FfiConverterRustBuffer<UsbErrorStats> {
+    override fun read(buf: ByteBuffer): UsbErrorStats {
+        return UsbErrorStats(
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: UsbErrorStats) = (
+            FfiConverterUInt.allocationSize(value.`total`) +
+            FfiConverterUInt.allocationSize(value.`crc`) +
+            FfiConverterUInt.allocationSize(value.`bitstuff`) +
+            FfiConverterUInt.allocationSize(value.`rxOverflow`) +
+            FfiConverterUInt.allocationSize(value.`rxTimeout`) +
+            FfiConverterUInt.allocationSize(value.`dataSeq`)
+    )
+
+    override fun write(value: UsbErrorStats, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`total`, buf)
+            FfiConverterUInt.write(value.`crc`, buf)
+            FfiConverterUInt.write(value.`bitstuff`, buf)
+            FfiConverterUInt.write(value.`rxOverflow`, buf)
+            FfiConverterUInt.write(value.`rxTimeout`, buf)
+            FfiConverterUInt.write(value.`dataSeq`, buf)
     }
 }
 

@@ -502,6 +502,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun fetchSpdifRxPin(index: Int): Int = call { core.fetchSpdifRxPin(index.toUByte()).toInt() }
 
+    override fun fetchUsbErrorStats(): UsbErrorStats = call { core.fetchUsbErrorStats().toDomain() }
+
     override fun coreVregCalView(): VregCalView = core.coreVregCalView().toDomain()
 
     override fun coreVregCalPoll(): VregCalView = core.coreVregCalPoll().toDomain()
@@ -1909,6 +1911,26 @@ internal fun DiagOptions.toFfi() =
         app = app,
         hubStoreDir = hubStoreDir,
         files = files.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.UsbErrorStats.toDomain() =
+    UsbErrorStats(
+        total = total.toLong(),
+        crc = crc.toLong(),
+        bitstuff = bitstuff.toLong(),
+        rxOverflow = rxOverflow.toLong(),
+        rxTimeout = rxTimeout.toLong(),
+        dataSeq = dataSeq.toLong(),
+    )
+
+internal fun UsbErrorStats.toFfi() =
+    se.bofr.dspi.ffi.uniffi.UsbErrorStats(
+        total = total.toUInt(),
+        crc = crc.toUInt(),
+        bitstuff = bitstuff.toUInt(),
+        rxOverflow = rxOverflow.toUInt(),
+        rxTimeout = rxTimeout.toUInt(),
+        dataSeq = dataSeq.toUInt(),
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.AutoEqFetchRequest.toDomain() =

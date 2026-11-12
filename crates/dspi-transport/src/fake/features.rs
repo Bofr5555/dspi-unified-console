@@ -726,6 +726,24 @@ impl State {
             .is_some_and(|off| self.write(off, bytes, host))
     }
 
+    // -- WP CS1 --
+    /// The subharmonic config the headroom bound reads; `None` when the
+    /// image has no subharmonic section.
+    fn subharm_config(&self) -> Option<super::subharm::Config> {
+        let f32_of = |f: Field| {
+            let b = self.field_bytes("subharm", 0, 0, f)?;
+            Some(f32::from_le_bytes(b.get(..4)?.try_into().ok()?))
+        };
+        Some(super::subharm::Config {
+            enabled: self.field_bytes("subharm", 0, 0, SH_ENABLED)?.first() != Some(&0),
+            low_db: f32_of(SH_LOW)?,
+            high_db: f32_of(SH_HIGH)?,
+            top_db: f32_of(SH_TOP)?,
+            boost_db: f32_of(SH_BOOST)?,
+            ceiling_db: f32_of(SH_CEILING)?,
+        })
+    }
+
     fn ic(&self, f: Field) -> Option<u8> {
         self.field_bytes("input_config", 0, 0, f)?.first().copied()
     }
@@ -778,6 +796,10 @@ impl State {
         }
         let r = match opcode {
             op::REQ_GET_INPUT_SOURCE => self.ic(IC_SOURCE).map(|v| vec![v]),
+            // -- WP CS1 -- computed from the live config, as the firmware does.
+            op::REQ_GET_SUBHARM_HEADROOM => self
+                .subharm_config()
+                .map(|c| super::subharm::headroom_db(c).to_le_bytes().to_vec()),
             op::REQ_GET_LEVELLER_MASKS => {
                 let d = self.field_bytes("leveller", 0, 0, L_DETECTOR);
                 let a = self.field_bytes("leveller", 0, 0, L_APPLY);

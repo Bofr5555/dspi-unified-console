@@ -594,6 +594,72 @@ impl DspiCore {
     }
 }
 
+// -- WP CS1 --
+/// `REQ_GET_USB_ERROR_STATS`: six `u32` LE (vendor_commands.c).
+const USB_ERROR_STATS_LEN: usize = 24;
+
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl DspiCore {
+    /// The device's USB error counters (`REQ_GET_USB_ERROR_STATS`, 24
+    /// bytes): for the System Statistics window. A read, allowed on a
+    /// read-only connection. Current firmware answers zeros.
+    ///
+    /// Errors: [`DspiError::Disconnected`]; a transfer failure, a stall or a
+    /// short reply as [`DspiError::Transfer`].
+    pub fn fetch_usb_error_stats(&self) -> Result<UsbErrorStats> {
+        let b =
+            self.lock()
+                .conn()?
+                .get(op::REQ_GET_USB_ERROR_STATS, 0, len16(USB_ERROR_STATS_LEN))?;
+        usb_error_stats(&b).ok_or_else(|| malformed("USB error stats", "short"))
+    }
+}
+
+/// The six counters from a `REQ_GET_USB_ERROR_STATS` reply; `None` when it is
+/// short.
+fn usb_error_stats(b: &[u8]) -> Option<UsbErrorStats> {
+    let (words, _) = b.get(..USB_ERROR_STATS_LEN)?.as_chunks::<4>();
+    let mut w = words.iter().map(|c| u32::from_le_bytes(*c));
+    Some(UsbErrorStats {
+        total: w.next()?,
+        crc: w.next()?,
+        bitstuff: w.next()?,
+        rx_overflow: w.next()?,
+        rx_timeout: w.next()?,
+        data_seq: w.next()?,
+    })
+}
+
+#[cfg(test)]
+mod tests_wp_cs1 {
+    use super::*;
+
+    #[test]
+    fn wp_cs1_usb_error_stats_decode_in_order_and_refuse_a_short_reply() {
+        let b: Vec<u8> = (1u32..=6).flat_map(u32::to_le_bytes).collect();
+        assert_eq!(
+            usb_error_stats(&b),
+            Some(UsbErrorStats {
+                total: 1,
+                crc: 2,
+                bitstuff: 3,
+                rx_overflow: 4,
+                rx_timeout: 5,
+                data_seq: 6,
+            })
+        );
+        assert_eq!(usb_error_stats(&b[..23]), None);
+    }
+
+    #[test]
+    fn wp_cs1_usb_error_stats_from_the_demo() {
+        let core = DspiCore::new();
+        assert_eq!(core.fetch_usb_error_stats(), Err(DspiError::Disconnected));
+        core.open_demo().unwrap();
+        assert_eq!(core.fetch_usb_error_stats(), Ok(UsbErrorStats::default()));
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_c10 {

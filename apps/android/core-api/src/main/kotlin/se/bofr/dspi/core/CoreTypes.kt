@@ -2025,6 +2025,38 @@ data class DiagOptions(
 )
 
 /**
+ * The device's USB error counters (`REQ_GET_USB_ERROR_STATS` 0xB2,
+ * registry `diag.usb`): six `u32` since boot or the last reset
+ * (`diag.usb.reset`). Current firmware reports them all as zero.
+ */
+data class UsbErrorStats(
+    /**
+     * Every error counted.
+     */
+    val total: Long,
+    /**
+     * CRC errors.
+     */
+    val crc: Long,
+    /**
+     * Bit-stuffing errors.
+     */
+    val bitstuff: Long,
+    /**
+     * Receive overflows.
+     */
+    val rxOverflow: Long,
+    /**
+     * Receive timeouts.
+     */
+    val rxTimeout: Long,
+    /**
+     * Data sequence errors.
+     */
+    val dataSeq: Long,
+)
+
+/**
  * One GET the host is asked to make.
  */
 data class AutoEqFetchRequest(

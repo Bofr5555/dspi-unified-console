@@ -77,6 +77,10 @@ public enum DspiConstants {
     public static let WIRE_FEAT_LOUDNESS_MASK: UInt32 = 1 << 2
     /// `dspi_proto::wire_compat::feat::CROSSFEED_MASK`.
     public static let WIRE_FEAT_CROSSFEED_MASK: UInt32 = 1 << 3
+    /// `dspi_proto::wire_compat::feat::UPMIX_PRESENCE`.
+    public static let WIRE_FEAT_UPMIX_PRESENCE: UInt32 = 1 << 9
+    /// `dspi_proto::wire_compat::feat::SUBHARM_EXT`.
+    public static let WIRE_FEAT_SUBHARM_EXT: UInt32 = 1 << 12
     /// `dspi_proto::wire_compat::feat::PSYBASS`.
     public static let WIRE_FEAT_PSYBASS: UInt32 = 1 << 6
     /// `dspi_proto::wire_compat::feat::UPMIX`.

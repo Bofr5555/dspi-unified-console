@@ -931,6 +931,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_subharm_meter(void*_Nonnull
 RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_upmix_status(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_USB_ERROR_STATS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_USB_ERROR_STATS
+RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_usb_error_stats(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FILTERS_EXPORT
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FILTERS_EXPORT
 RustBuffer uniffi_dspi_core_fn_method_dspicore_filters_export(void*_Nonnull ptr, uint8_t inputs, RustCallStatus *_Nonnull out_status
@@ -3042,6 +3047,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_subharm_meter(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_UPMIX_STATUS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_UPMIX_STATUS
 uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_upmix_status(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_USB_ERROR_STATS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_USB_ERROR_STATS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_usb_error_stats(void
     
 );
 #endif

@@ -705,6 +705,19 @@ pub extern "C" fn dspi_fetch_buffer_stats(core: *mut FfiCore, out: *mut BufferSt
     })
 }
 
+// -- WP CS1 --
+/// The device's USB error counters (`REQ_GET_USB_ERROR_STATS`), in JSON:
+/// `{ok, total, crc, bitstuff, rxOverflow, rxTimeout, dataSeq}`, or a
+/// failure. Current firmware reports zeros.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_fetch_usb_error_stats(
+    core: *mut FfiCore,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| json_reply(c.fetch_usb_error_stats()))
+}
+
 /// Reset the buffer statistics' watermarks.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_reset_buffer_stats(core: *mut FfiCore) -> bool {
@@ -1850,6 +1863,9 @@ mod tests_wp_cg36;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p0w;
+// -- WP CS1 --
+#[cfg(test)]
+mod tests_wp_cs1;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_q2b;

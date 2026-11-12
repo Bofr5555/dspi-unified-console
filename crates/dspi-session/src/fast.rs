@@ -164,19 +164,27 @@ impl Session {
     /// [`check_platform_range`](Self::check_platform_range) narrows it. `None`
     /// for a parameter that is not a number.
     pub fn write_range(&self, d: &ParamDesc) -> Option<(f64, f64)> {
-        let (min, max) = match d.kind {
-            registry::Kind::Float { min, max, .. } => (f64::from(min), f64::from(max)),
-            registry::Kind::Int { min, max, .. } => (min as f64, max as f64),
-            _ => return None,
-        };
-        let platform = self.capabilities().platform;
-        let max = match d.path {
-            "ch.delay" | "out.delay" => max.min(f64::from(platform.max_delay_ms())),
-            "pre" | "pre.all" if platform == Platform::Rp2040 => max.min(18.0),
-            _ => max,
-        };
-        Some((min, max))
+        write_range_on(self.capabilities().platform, d)
     }
+}
+
+// -- WP CS1 -- the rule of `Session::write_range`, for the core's importer,
+// which has a platform but no session.
+/// The range a number written to `d` must fall in on `platform`: the
+/// registry's, narrowed by the platform's limits. `None` for a parameter
+/// that is not a number.
+pub(crate) fn write_range_on(platform: Platform, d: &ParamDesc) -> Option<(f64, f64)> {
+    let (min, max) = match d.kind {
+        registry::Kind::Float { min, max, .. } => (f64::from(min), f64::from(max)),
+        registry::Kind::Int { min, max, .. } => (min as f64, max as f64),
+        _ => return None,
+    };
+    let max = match d.path {
+        "ch.delay" | "out.delay" => max.min(f64::from(platform.max_delay_ms())),
+        "pre" | "pre.all" if platform == Platform::Rp2040 => max.min(18.0),
+        _ => max,
+    };
+    Some((min, max))
 }
 
 // -- WP DL3 --

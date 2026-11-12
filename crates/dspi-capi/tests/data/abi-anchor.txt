@@ -290,6 +290,8 @@
 #define WIRE_FEAT_LEVELLER_MASKS (1 << 1)
 #define WIRE_FEAT_LOUDNESS_MASK (1 << 2)
 #define WIRE_FEAT_CROSSFEED_MASK (1 << 3)
+#define WIRE_FEAT_UPMIX_PRESENCE (1 << 9)
+#define WIRE_FEAT_SUBHARM_EXT (1 << 12)
 #define WIRE_FEAT_PSYBASS (1 << 6)
 #define WIRE_FEAT_UPMIX (1 << 8)
 #define WIRE_FEAT_SUBHARM (1 << 11)
@@ -996,6 +998,7 @@ bool dspi_siggen_control(struct FfiCore *core, uint16_t action);
 bool dspi_siggen_get_status(struct FfiCore *core, struct SiggenStatus *out);
 bool dspi_fetch_stat(struct FfiCore *core, uint16_t which, uint32_t *out);
 bool dspi_fetch_buffer_stats(struct FfiCore *core, struct BufferStats *out);
+uint32_t dspi_fetch_usb_error_stats(struct FfiCore *core, char *buf, uint32_t len);
 bool dspi_reset_buffer_stats(struct FfiCore *core);
 bool dspi_fetch_spdif_rx_status(struct FfiCore *core, struct SpdifRxStatus *out);
 bool dspi_fetch_spdif_rx_channel_status(struct FfiCore *core, uint8_t *out);

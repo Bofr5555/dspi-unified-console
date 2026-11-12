@@ -446,6 +446,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun fetchSpdifRxPin(index: Int): Int = throw NotImplementedError("fetch_spdif_rx_pin")
 
+    override fun fetchUsbErrorStats(): UsbErrorStats = throw NotImplementedError("fetch_usb_error_stats")
+
     override fun coreVregCalView(): VregCalView = throw NotImplementedError("core_vreg_cal_view")
 
     override fun coreVregCalPoll(): VregCalView = throw NotImplementedError("core_vreg_cal_poll")

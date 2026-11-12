@@ -79,7 +79,7 @@
 //!   that stalls makes a missing model visible. The firmware ACKs every
 //!   unhandled OUT request on USB except `REQ_EXTENSION`;
 //!   [`FakeOptions::ack_unknown_sets`] does the same. Not modelled at all
-//!   (GETs stall): the subharm headroom, pin SETs (output pins,
+//!   (GETs stall): pin SETs (output pins,
 //!   BCK, MCK, S/PDIF/I2S/ADAT RX pins) and output-pin GETs, the I2S
 //!   clock-pin mode, the S/PDIF RX, ADAT and I2S-slave status reads, the
 //!   control-interface status, the Core 1 mode read, clock diagnostics, the
@@ -133,6 +133,8 @@ mod wire_images;
 // -- WP BULKFIX --
 mod bulk_db;
 pub use bulk_db::{BulkDbDevice, BulkDbOptions, GainProbe};
+// -- WP CS1 --
+mod subharm;
 
 use crate::{
     DeviceDescriptor, NotificationSource, Result, Transport, TransportCaps, TransportError,
