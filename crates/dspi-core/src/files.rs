@@ -1099,10 +1099,11 @@ impl<'d> Importer<'d> {
                 ChannelRef::Input(n)
             });
         }
+        // -- WP CLEAN1 fixup cl1 -- a negative id is refused by the table itself
         let id = self
             .read
             .whole(e.get("channelId"), i64::from(i32::MIN), i64::from(i32::MAX))?;
-        preset_file::channel_id::resolve(i32::try_from(id).ok()?)
+        preset_file::channel_id::try_resolve(i32::try_from(id).ok()?).ok()
     }
 
     fn global(&mut self, inputs: usize) {

@@ -982,3 +982,21 @@ proptest! {
         let _ = labelled(&text.split_whitespace().collect::<Vec<_>>());
     }
 }
+
+// -- WP CLEAN1 fixup cl1 -- an id at or past i32's edges is no channel, and says so
+#[test]
+fn clean1_extreme_channel_ids_are_missing_not_a_panic() {
+    for id in [
+        "-1e30",
+        "-2147483648",
+        "-2147483647",
+        "-9223372036854775808",
+        "1e30",
+    ] {
+        let text = format!(r#"{{"schemaVersion":1,"channels":[{{"channelId":{id}}}]}}"#);
+        let inspected = json_of(&config_inspect(text.clone()));
+        assert!(inspected.is_object(), "{id}: {inspected}");
+        let r = json_of(&demo().config_import(text, 0));
+        assert_eq!(r["ok"], true, "{id}: {r}");
+    }
+}
