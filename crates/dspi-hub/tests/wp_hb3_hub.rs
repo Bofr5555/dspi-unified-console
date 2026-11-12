@@ -4,7 +4,8 @@
 #![allow(clippy::arithmetic_side_effects)]
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use dspi_hub::session::Pop;
@@ -40,6 +41,12 @@ struct Probe {
     /// Every request that reached the device, in order.
     log: Arc<Mutex<Vec<u8>>>,
     stall: Arc<Mutex<BTreeSet<u8>>>,
+    /// -- WP HUBFLAKE -- Reads of the image wait while this is set.
+    held: Arc<(Mutex<bool>, Condvar)>,
+    /// `BULK_INVALIDATED` packets handed to the hub's reader, and of those, the ones it
+    /// had dealt with when it next asked for a packet.
+    invalidations: Arc<AtomicUsize>,
+    invalidations_taken: Arc<AtomicUsize>,
 }
 
 impl Probe {
@@ -65,6 +72,48 @@ impl Probe {
     /// Reads of the bulk image, however they were carried.
     fn image_reads(&self) -> usize {
         self.count(op::REQ_GET_ALL_PARAMS) + self.count(op::REQ_GET_ALL_PARAMS_CHUNK)
+    }
+    // -- WP HUBFLAKE --
+    /// Hold every read of the image at the device until released.
+    fn hold_reads(&self, on: bool) {
+        *self.held.0.lock().unwrap() = on;
+        self.held.1.notify_all();
+    }
+    fn wait_while_held(&self, opcode: u8) {
+        if opcode != op::REQ_GET_ALL_PARAMS && opcode != op::REQ_GET_ALL_PARAMS_CHUNK {
+            return;
+        }
+        let mut held = self.held.0.lock().unwrap();
+        while *held {
+            held = self.held.1.wait(held).unwrap();
+        }
+    }
+    /// Invalidations the hub has seen through: its reader is back for the next packet.
+    fn invalidations_taken(&self) -> usize {
+        self.invalidations_taken.load(Ordering::SeqCst)
+    }
+}
+
+// -- WP HUBFLAKE --
+/// The device's notification stream, counted. The hub's reader takes one packet per
+/// `read` and deals with it before the next, so what was handed out before a `read` has
+/// been dealt with.
+struct Counted {
+    inner: Box<dyn NotificationSource>,
+    probe: Probe,
+}
+
+impl NotificationSource for Counted {
+    fn read(&mut self, timeout: Duration) -> dspi_transport::Result<Vec<u8>> {
+        let handed = self.probe.invalidations.load(Ordering::SeqCst);
+        self.probe
+            .invalidations_taken
+            .store(handed, Ordering::SeqCst);
+        let packet = self.inner.read(timeout)?;
+        if packet.get(1) == Some(&(nfy::NOTIFY_EVT_BULK_INVALIDATED as u8)) {
+            self.probe.invalidations.fetch_add(1, Ordering::SeqCst);
+        }
+        Ok(packet)
     }
 }
 
@@ -118,6 +167,7 @@ impl Dev {
         if self.probe.stall.lock().unwrap().contains(&opcode) {
             return Err(TransportError::Stalled { opcode });
         }
+        self.probe.wait_while_held(opcode); // -- WP HUBFLAKE --
         Ok(())
     }
 }
@@ -143,7 +193,12 @@ impl Transport for Dev {
     }
     fn notifications(&self) -> Option<Box<dyn NotificationSource>> {
         if self.stream {
-            self.inner.notifications()
+            // -- WP HUBFLAKE --
+            let inner = self.inner.notifications()?;
+            Some(Box::new(Counted {
+                inner,
+                probe: self.probe.clone(),
+            }))
         } else {
             None
         }
@@ -597,22 +652,47 @@ fn wp_hb3_a_warm_hub_has_the_image_before_anyone_asks() {
     assert_eq!(probe.image_reads(), reads);
 }
 
+/// -- WP HUBFLAKE -- The flood lands while the device is still busy with the read the
+/// first invalidation asked for, so nothing but the hub's coalescing stands between 200
+/// invalidations and 200 reads, however fast or slow the host is: that read, which the
+/// flood makes stale, and one more. Counted in reads of the size this image takes.
 #[test]
 fn wp_hb3_a_flood_of_invalidations_costs_a_bounded_number_of_reads() {
+    const FLOOD: usize = 200;
     let hub = hub();
     let (dev, remote, probe) = Dev::new("A");
     let handle = hub.attach(Box::new(dev), 0).unwrap();
-    hub.snapshot(handle).unwrap();
+    let s = session(&hub, Role::Admin);
     let before = probe.image_reads();
+    hub.snapshot(handle).unwrap();
+    let per_read = probe.image_reads() - before;
+    assert!(per_read > 0);
+
+    let before = probe.image_reads();
+    let taken = probe.invalidations_taken();
     let image = remote.image();
-    for _ in 0..200 {
+    probe.hold_reads(true);
+    for _ in 0..FLOOD {
         remote.load_image(image.clone(), GPIO);
     }
+    wait_until("the hub to take every invalidation", || {
+        probe.invalidations_taken() >= taken + FLOOD
+    });
+    probe.hold_reads(false);
     wait_until("the cache to return", || hub.snapshot(handle).is_ok());
-    std::thread::sleep(Duration::from_millis(100));
-    // Each read is a few chunks; far fewer reads than invalidations.
+    // The device's jobs run in order: a read still queued has run before this answers.
+    let platform = CmdRequest {
+        dir: Dir::Get,
+        w_length: 64,
+        ..set(op::REQ_GET_PLATFORM, Vec::new())
+    };
+    assert_eq!(command(&hub, &s, platform).status, status::OK);
     let reads = probe.image_reads() - before;
-    assert!(reads < 200, "{reads}");
+    assert!(
+        reads <= 2 * per_read,
+        "{reads} requests, {} reads of {per_read}, for {FLOOD} invalidations",
+        reads.div_ceil(per_read)
+    );
     assert_eq!(hub.snapshot(handle).unwrap().bulk(), Some(image));
 }
 

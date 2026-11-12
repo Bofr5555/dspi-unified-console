@@ -736,21 +736,28 @@ fn wp_hb0_a_slow_client_is_slow_alone() {
 
     // Far more than an outbox holds, with one client not reading at all.
     let total = 3 * dspi_hub::session::NOTIFY_CAPACITY;
-    let reader = std::thread::spawn(move || {
-        let mut got = 0;
-        while got < total {
-            quick.next_origin();
-            got += 1;
-        }
-    });
+    // -- WP HUBFLAKE -- The device goes no further ahead of the quick client than half
+    // an outbox, so on a busy host too neither its outbox nor the fake's queue (1024)
+    // overflows: only the slow client's can. A hub that waited on the slow client would
+    // hold the quick one at an outbox's worth, and this would time out.
+    let ahead = dspi_hub::session::NOTIFY_CAPACITY / 2;
+    let got = Arc::new(AtomicUsize::new(0));
+    let reader = {
+        let got = Arc::clone(&got);
+        std::thread::spawn(move || {
+            while got.load(Ordering::SeqCst) < total {
+                quick.next_origin();
+                got.fetch_add(1, Ordering::SeqCst);
+            }
+        })
+    };
     for n in 0..total {
+        wait_until("the quick client to keep up", || {
+            n < got.load(Ordering::SeqCst) + ahead
+        });
         let db = -1.0 - (n % 100) as f32;
         while !remote.poke(at, &db.to_le_bytes(), GPIO) {
             std::thread::yield_now();
-        }
-        // The fake's own queue holds 1024; the hub's reader keeps up with this.
-        if n % 256 == 255 {
-            std::thread::sleep(Duration::from_millis(20));
         }
     }
     reader.join().unwrap();
