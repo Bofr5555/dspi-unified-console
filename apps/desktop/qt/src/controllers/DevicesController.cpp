@@ -6,6 +6,7 @@
 #include "Registrar.h"
 #include "Shell.h"
 #include "Snapshot.h"
+#include "UnsavedGuard.h"   // -- WP QP15 --
 
 #include <QCoreApplication>
 #include <QJSEngine>
@@ -202,14 +203,22 @@ void DevicesController::readHubs() {
 // ---- Choosing ----------------------------------------------------------------
 
 void DevicesController::chooseDemo() {
-    if (LinkController *l = link(); l && (l->inSession() || m_device->remote())) l->leaveForLocal();
-    m_device->openDemo();
+    // -- WP QP15 -- another device: the unsaved-changes question first (M42, QD37)
+    const bool same = m_device->demo() && !m_device->remote();
+    UnsavedGuard::before(same ? QString() : QStringLiteral("device"), this, [this] {
+        if (LinkController *l = link(); l && (l->inSession() || m_device->remote())) l->leaveForLocal();
+        m_device->openDemo();
+    });
 }
 
 void DevicesController::chooseUsb(const QString &serial) {
     if (serial.isEmpty()) return;
-    if (LinkController *l = link(); l && (l->inSession() || m_device->remote())) l->leaveForLocal();
-    m_device->selectDevice(serial);
+    // -- WP QP15 -- another device: the unsaved-changes question first (M42, QD37)
+    const bool same = serial == m_device->serial() && !m_device->demo() && !m_device->remote();
+    UnsavedGuard::before(same ? QString() : QStringLiteral("device"), this, [this, serial] {
+        if (LinkController *l = link(); l && (l->inSession() || m_device->remote())) l->leaveForLocal();
+        m_device->selectDevice(serial);
+    });
 }
 
 void DevicesController::connectFound(const QVariantMap &hub) {
@@ -224,5 +233,9 @@ bool DevicesController::connectAddress(const QString &address) {
 }
 
 void DevicesController::chooseHubDevice(int handle, const QString &serial) {
-    if (LinkController *l = link()) l->bindDevice(handle, serial);
+    // -- WP QP15 -- another device: the unsaved-changes question first (M42)
+    const bool same = serial == m_device->serial() && m_device->remote();
+    UnsavedGuard::before(same ? QString() : QStringLiteral("device"), this, [this, handle, serial] {
+        if (LinkController *l = link()) l->bindDevice(handle, serial);
+    });
 }

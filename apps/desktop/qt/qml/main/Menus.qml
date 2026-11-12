@@ -59,5 +59,58 @@ AppMenuBar {
             addRows(menu, m.rows)
             bar.addMenu(menu)
         }
+        fillFavorites()   // -- WP QP15 --
+    }
+
+    // -- WP QP15 -- AutoEQ > Favorite Profiles: a row per favourite above Clear
+    // Favorites, which works only with something to clear; "No favorites yet"
+    // while there is none. The rows follow AutoEqController.favorites.
+    property Menu favoritesMenu: null
+    property var favoriteRows: []
+    function menuHolding(menu, name) {
+        for (let i = 0; i < menu.count; ++i) {
+            const item = menu.itemAt(i)
+            if (item && item.objectName === name) return menu
+            if (item && item.subMenu) {
+                const found = menuHolding(item.subMenu, name)
+                if (found) return found
+            }
+        }
+        return null
+    }
+    function fillFavorites() {
+        if (!favoritesMenu) {
+            for (let i = 0; i < bar.count && !favoritesMenu; ++i) favoritesMenu = menuHolding(bar.menuAt(i), "Menu.autoeq.clearFavorites")
+            if (!favoritesMenu) return
+            const clear = favoritesMenu.itemAt(favoritesMenu.count - 1)
+            if (clear && clear.action) clear.action.enabled = Qt.binding(() => AutoEqController.favorites.length > 0)
+            favoritesMenu.insertItem(0, separatorComponent.createObject(bar))
+        }
+        for (const row of favoriteRows) {
+            favoritesMenu.removeItem(row)
+            row.objectName = ""   // gone now, though destroyed later
+            row.destroy()
+        }
+        const rows = []
+        const favorites = AutoEqController.favorites
+        favorites.forEach((f, i) => {
+            const item = itemComponent.createObject(bar, { text: f.title, objectName: "Menu.autoeq.favorite." + i })
+            item.Accessible.name = f.title
+            item.enabled = Qt.binding(() => AutoEqController.canApply)
+            const id = f.id
+            item.triggered.connect(() => AutoEqController.apply(id))
+            rows.push(item)
+        })
+        if (favorites.length === 0) {
+            const none = itemComponent.createObject(bar, { text: qsTr("No favorites yet"), enabled: false,
+                                                           objectName: "Menu.autoeq.noFavorites" })
+            rows.push(none)
+        }
+        rows.forEach((r, i) => favoritesMenu.insertItem(i, r))
+        favoriteRows = rows
+    }
+    Connections {
+        target: AutoEqController
+        function onFavoritesChanged() { bar.fillFavorites() }
     }
 }
