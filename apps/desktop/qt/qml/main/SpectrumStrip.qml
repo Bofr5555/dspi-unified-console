@@ -87,7 +87,7 @@ Rectangle {
                     active: strip.onScreen
                     tap: RtaController.drawnTap
                     channel: cell.modelData
-                    color: strip.tintOf(cell.modelData)
+                    tint: strip.tintOf(cell.modelData)
                     frequencyLabels: true
                     dbLabels: false
                     gridColor: Theme.text

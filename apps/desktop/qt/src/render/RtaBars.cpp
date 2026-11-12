@@ -94,7 +94,7 @@ void RtaBars::paint(QPainter *painter) {
     const double gap = std::clamp(0.18 * slot, 0.5, 2.0);
     const double barWidth = std::max(1.0, slot - gap);
     const double corner = std::min(1.5, barWidth / 3);
-    QColor top = m_color, foot = m_color, cap = m_color;
+    QColor top = m_tint, foot = m_tint, cap = m_tint;
     top.setAlphaF(0.95);
     foot.setAlphaF(0.45);
     cap.setAlphaF(0.9);

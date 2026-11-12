@@ -15,22 +15,23 @@ class RtaBars : public RtaPaintedItem {
     QML_ELEMENT
     // The channel at `tap`
     Q_PROPERTY(int channel MEMBER m_channel NOTIFY lookChanged)
-    Q_PROPERTY(QColor color MEMBER m_color NOTIFY lookChanged)
+    // The channel's colour
+    Q_PROPERTY(QColor tint MEMBER m_tint NOTIFY lookChanged)
     Q_PROPERTY(bool frequencyLabels MEMBER m_frequencyLabels NOTIFY lookChanged)
     Q_PROPERTY(bool dbLabels MEMBER m_dbLabels NOTIFY lookChanged)
     // Bars above the floor in the last paint (tests)
     Q_PROPERTY(int drawnBars READ drawnBars NOTIFY painted)
 public:
+    int drawnBars() const { return m_drawn; }
     explicit RtaBars(QQuickItem *parent = nullptr);
     void paint(QPainter *painter) override;
-    int drawnBars() const { return m_drawn; }
 
 private:
     // The labels under the bars: decades first, then the others where they fit
     void paintFrequencies(QPainter &g, const QRectF &plot, const std::vector<int> &bands, double slot) const;
 
     int m_channel = 0;
-    QColor m_color = Qt::white;
+    QColor m_tint{ 255, 255, 255 };
     bool m_frequencyLabels = true;
     bool m_dbLabels = false;
     RtaGlide m_level, m_hold;

@@ -297,7 +297,7 @@ ToolWindow {
                                 active: window.barsOn
                                 tap: RtaController.drawnTap
                                 channel: barCell.modelData
-                                color: window.colorOf(barCell.modelData)
+                                tint: window.colorOf(barCell.modelData)
                                 frequencyLabels: true
                                 dbLabels: true
                                 gridColor: Theme.text

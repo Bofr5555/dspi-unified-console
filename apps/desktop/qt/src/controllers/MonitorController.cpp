@@ -61,7 +61,7 @@ MonitorController::MonitorController(const AppContext &ctx, QObject *parent)
             [this](const Batch &b) { apply(b); });
         updatePoll();
     }
-    connect(ctx.device, &DeviceModel::snapshotApplied, this, &MonitorController::statusChanged);
+    connect(ctx.device, &DeviceModel::snapshotApplied, this, &MonitorController::stateTextChanged);
 }
 
 MonitorController::Batch MonitorController::readAfter(FfiCore *core, uint64_t after) {
@@ -106,7 +106,7 @@ void MonitorController::setPaused(bool paused) {
     if (!paused) skipToEnd();
     updatePoll();
     emit pausedChanged();
-    emit statusChanged();
+    emit stateTextChanged();
 }
 
 void MonitorController::skipToEnd() {
@@ -130,6 +130,9 @@ void MonitorController::setWindowShown(bool shown) {
     updatePoll();
     emit windowShownChanged();
 }
+
+bool MonitorController::paused() const { return m_paused; }
+bool MonitorController::windowShown() const { return m_shown; }
 
 QString MonitorController::status() const {
     if (!m_ctx.device->connected()) return QStringLiteral("inactive");

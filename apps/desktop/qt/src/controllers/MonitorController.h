@@ -64,7 +64,7 @@ class MonitorController : public QObject {
     Q_PROPERTY(bool paused READ paused WRITE setPaused NOTIFY pausedChanged)
     Q_PROPERTY(bool windowShown READ windowShown WRITE setWindowShown NOTIFY windowShownChanged)
     // "inactive" without a device, else "paused" or "listening"
-    Q_PROPERTY(QString status READ status NOTIFY statusChanged)
+    Q_PROPERTY(QString status READ status NOTIFY stateTextChanged)
 public:
     static constexpr int kPollMs = 50;
     // One read's buffer; the core writes whole lines only
@@ -74,9 +74,9 @@ public:
     static MonitorController *create(QQmlEngine *, QJSEngine *) { return Registrar::instance<MonitorController>(); }
 
     MonitorLines *lines() const { return m_lines; }
-    bool paused() const { return m_paused; }
+    bool paused() const;
     void setPaused(bool paused);
-    bool windowShown() const { return m_shown; }
+    bool windowShown() const;
     void setWindowShown(bool shown);
     QString status() const;
 
@@ -95,7 +95,7 @@ public:
 signals:
     void pausedChanged();
     void windowShownChanged();
-    void statusChanged();
+    void stateTextChanged();
     // New rows arrived (the view scrolls to the end)
     void appended();
 
