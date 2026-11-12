@@ -32,10 +32,11 @@ ToolWindow {
     readonly property bool barsOn: rendering && available && mode !== 0 && visibleChannels.length > 0
 
     // Shown: the mode from the page, and the person has asked for the analyser
-    onVisibleChanged: if (visible) {
+    function takeFromPage() {
         mode = RtaController.showGraph && RtaController.showBars ? 2 : RtaController.showBars ? 1 : 0
         RtaController.openAnalyser()
     }
+    onVisibleChanged: if (visible) takeFromPage()
     onCurvesOnChanged: RtaController.setView("window.curves", RtaController.Curves, curvesOn)
     onBarsOnChanged: RtaController.setView("window.bars", RtaController.Bars, barsOn)
     // Hidden channels no longer drawn are forgotten
