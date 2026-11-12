@@ -84,15 +84,18 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         "DSPi turns a Raspberry Pi Pico or Pico 2 into a USB sound card with a digital signal processor inside it. This app shapes that processing: EQ, routing, delays, crossovers and effects, presets on the device, and sharing devices on the local network.")
     set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/Bofr5555/dspi-unified-console")
     set(CPACK_PACKAGE_CONTACT "DSPi unified console maintainers <https://github.com/Bofr5555/dspi-unified-console/issues>")
-    set(CPACK_PACKAGING_INSTALL_PREFIX /usr)
+    # The package installs where the build was configured to (the scripts pass /usr)
+    set(CPACK_PACKAGING_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
     set(CPACK_STRIP_FILES ON)
     set(CPACK_PACKAGE_FILE_NAME "dspi-uconsole-${PROJECT_VERSION}")
+    # The packaging's own revision of a version, the same for both formats
+    set(DSPI_PACKAGE_RELEASE 1)
 
-    # Debian: libraries from dpkg-shlibdeps; the QML modules and Qt's plugins
-    # the app loads at run time are listed by hand
-    set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
-    set(CPACK_DEBIAN_PACKAGE_SECTION sound)
-    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+    # Debian: the QML modules and Qt's plugins the app loads at run time are
+    # listed by hand; the libraries it links come from dpkg-shlibdeps
+    set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)   # dspi-uconsole_<version>_amd64.deb, the release's name
+    set(CPACK_DEBIAN_PACKAGE_SECTION sound)   # Debian's section for audio applications
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)    # needs dpkg-dev (Containerfile.debian)
     set(CPACK_DEBIAN_PACKAGE_DEPENDS
         "qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-templates, qml6-module-qtquick-layouts, qml6-module-qtquick-window, qml6-module-qtqml, qml6-module-qtqml-workerscript, qml6-module-qtcore, qt6-qpa-plugins, qt6-svg-plugins")
     set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "qt6-wayland, pkexec")
@@ -100,9 +103,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION ON)
 
     # Fedora: libraries from rpmbuild's dependency generator; the QML modules by package
-    set(CPACK_RPM_FILE_NAME RPM-DEFAULT)
+    set(CPACK_RPM_FILE_NAME RPM-DEFAULT)   # dspi-uconsole-<version>-<release>.fc<N>.x86_64.rpm
     set(CPACK_RPM_PACKAGE_LICENSE "GPL-3.0-only")
-    set(CPACK_RPM_PACKAGE_RELEASE 1)
+    set(CPACK_RPM_PACKAGE_RELEASE ${DSPI_PACKAGE_RELEASE})
     set(CPACK_RPM_PACKAGE_RELEASE_DIST ON)
     set(CPACK_RPM_PACKAGE_URL "${CPACK_PACKAGE_HOMEPAGE_URL}")
     set(CPACK_RPM_PACKAGE_REQUIRES "qt6-qtdeclarative >= 6.8, qt6-qtsvg >= 6.8")
