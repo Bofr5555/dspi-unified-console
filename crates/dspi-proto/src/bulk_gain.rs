@@ -54,13 +54,8 @@ pub fn firmware_bulk_linear(db: f32) -> f32 {
     if db == 0.0 {
         return 1.0;
     }
-    let db = if db < -60.0 {
-        -60.0
-    } else if db > 20.0 {
-        20.0
-    } else {
-        db
-    };
+    // NaN stays NaN, as through the firmware's two comparisons.
+    let db = db.clamp(-60.0, 20.0);
     let x = db * 0.115_129_25_f32;
     let linear = 1.0 + x + x * x * 0.5 + x * x * x * 0.166_666_7 + x * x * x * x * 0.041_666_7;
     if linear < 0.0 { 0.0 } else { linear }
@@ -224,6 +219,7 @@ pub fn output_enabled(image: &[u8], o: usize) -> bool {
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_bulkfix {
     use super::*;
     use crate::wire::BulkPacket;

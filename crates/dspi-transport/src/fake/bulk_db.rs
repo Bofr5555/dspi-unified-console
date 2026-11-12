@@ -39,6 +39,7 @@ use crate::{
 
 const INS: usize = w::WIRE_MAX_INPUT_CHANNELS as usize;
 const OUTS: usize = w::WIRE_MAX_OUTPUT_CHANNELS as usize;
+const XPS: usize = INS * OUTS;
 
 /// How the wrapped firmware behaves.
 #[derive(Debug, Clone, Copy, Default)]
@@ -62,18 +63,61 @@ pub struct GainProbe {
     model: Arc<Mutex<Model>>,
 }
 
-/// Linear factors, as the firmware holds them.
-#[derive(Debug, Clone)]
-struct Played {
-    preamp: [f32; INS],
-    xp: [[f32; OUTS]; INS],
-    out: [f32; OUTS],
+/// One gain of the image.
+#[derive(Debug, Clone, Copy)]
+enum Gain {
+    Preamp(usize),
+    Xp(usize, usize),
+    Out(usize),
+}
+
+impl Gain {
+    /// Where its dB is in the image.
+    fn offset(self) -> usize {
+        match self {
+            Gain::Preamp(i) => generated::OFF_PREAMP.saturating_add(i.saturating_mul(4)),
+            Gain::Xp(i, o) => xp_at(i, o).saturating_add(4),
+            Gain::Out(o) => out_at(o).saturating_add(4),
+        }
+    }
+
+    /// Its index in [`Model::played`].
+    fn slot(self) -> usize {
+        match self {
+            Gain::Preamp(i) => i,
+            Gain::Xp(i, o) => INS.saturating_add(i.saturating_mul(OUTS)).saturating_add(o),
+            Gain::Out(o) => INS.saturating_add(XPS).saturating_add(o),
+        }
+    }
+
+    /// Every gain of `ins` inputs and `outs` outputs.
+    fn all(ins: usize, outs: usize) -> Vec<Gain> {
+        let mut v: Vec<Gain> = (0..ins).map(Gain::Preamp).collect();
+        for i in 0..ins {
+            v.extend((0..outs).map(|o| Gain::Xp(i, o)));
+        }
+        v.extend((0..outs).map(Gain::Out));
+        v
+    }
+}
+
+/// Linear factors as the firmware holds them, by [`Gain::slot`]: every
+/// gain of `image` through `f`.
+fn played_from(image: &[u8], f: fn(f32) -> f32) -> Vec<f32> {
+    let mut p = vec![1.0; INS.saturating_add(XPS).saturating_add(OUTS)];
+    for g in Gain::all(INS, OUTS) {
+        if let Some(v) = p.get_mut(g.slot()) {
+            *v = f(f32_at(image, g.offset()));
+        }
+    }
+    p
 }
 
 struct Model {
     options: BulkDbOptions,
     remote: FakeRemote,
-    played: Played,
+    /// By [`Gain::slot`].
+    played: Vec<f32>,
     /// A received bulk SET and the requests still served before its apply.
     pending: Option<(Vec<u8>, usize)>,
     /// A chunked bulk SET being received.
@@ -91,19 +135,17 @@ fn powf_linear(db: f32) -> f32 {
 }
 
 fn f32_at(b: &[u8], at: usize) -> f32 {
-    b.get(at..at + 4)
+    b.get(at..at.saturating_add(4))
         .and_then(|s| <[u8; 4]>::try_from(s).ok())
         .map_or(0.0, f32::from_le_bytes)
 }
 
-fn preamp_at(i: usize) -> usize {
-    generated::OFF_PREAMP + i * 4
-}
 fn xp_at(i: usize, o: usize) -> usize {
-    generated::OFF_CROSSPOINTS + (i * OUTS + o) * 8
+    let k = i.saturating_mul(OUTS).saturating_add(o);
+    generated::OFF_CROSSPOINTS.saturating_add(k.saturating_mul(8))
 }
 fn out_at(o: usize) -> usize {
-    generated::OFF_OUTPUTS + o * 12
+    generated::OFF_OUTPUTS.saturating_add(o.saturating_mul(12))
 }
 
 /// The header's channel counts, capped at the wire's maximum.
@@ -112,29 +154,22 @@ fn counts(image: &[u8]) -> (usize, usize) {
     (n(4).min(INS), n(3).min(OUTS))
 }
 
-impl Played {
-    /// Every gain of `image` through `f`.
-    fn from(image: &[u8], f: fn(f32) -> f32) -> Self {
-        let mut p = Played {
-            preamp: [1.0; INS],
-            xp: [[1.0; OUTS]; INS],
-            out: [1.0; OUTS],
-        };
-        for i in 0..INS {
-            p.preamp[i] = f(f32_at(image, preamp_at(i)));
-            for o in 0..OUTS {
-                p.xp[i][o] = f(f32_at(image, xp_at(i, o) + 4));
-            }
-        }
-        for o in 0..OUTS {
-            p.out[o] = f(f32_at(image, out_at(o) + 4));
-        }
-        p
-    }
-}
-
 fn ratio_db(played: f32, stored_db: f32) -> f32 {
     20.0 * (played / powf_linear(stored_db)).log10()
+}
+
+impl Model {
+    /// How far gain `g` plays from what `image` stores, in dB (+ is louder).
+    fn off_db(&self, image: &[u8], g: Gain) -> f32 {
+        let played = self.played.get(g.slot()).copied().unwrap_or(1.0);
+        ratio_db(played, f32_at(image, g.offset()))
+    }
+
+    fn play(&mut self, g: Gain, db: f32) {
+        if let Some(v) = self.played.get_mut(g.slot()) {
+            *v = powf_linear(db);
+        }
+    }
 }
 
 impl Model {
@@ -148,7 +183,7 @@ impl Model {
             return;
         };
         if left > 0 {
-            self.pending = Some((image, left - 1));
+            self.pending = Some((image, left.saturating_sub(1)));
             return;
         }
         // `bulk_params_apply` refuses another version or size and applies
@@ -161,8 +196,8 @@ impl Model {
             } else {
                 firmware_bulk_linear
             };
-            self.played = Played::from(&image, f);
-            self.bulk_applies += 1;
+            self.played = played_from(&image, f);
+            self.bulk_applies = self.bulk_applies.saturating_add(1);
         }
     }
 
@@ -175,21 +210,17 @@ impl Model {
         let (ins, outs) = counts(&image);
         let mut worst = self.worst_excess_db;
         for o in 0..outs {
-            let muted = image.get(out_at(o) + 1).is_some_and(|m| *m != 0);
+            let muted = image
+                .get(out_at(o).saturating_add(1))
+                .is_some_and(|m| *m != 0);
             if !output_enabled(&image, o) || muted {
                 continue;
             }
-            worst = worst.max(ratio_db(self.played.out[o], f32_at(&image, out_at(o) + 4)));
+            worst = worst.max(self.off_db(&image, Gain::Out(o)));
             for i in 0..ins {
                 if image.get(xp_at(i, o)).is_some_and(|e| *e != 0) {
-                    worst = worst.max(ratio_db(
-                        self.played.xp[i][o],
-                        f32_at(&image, xp_at(i, o) + 4),
-                    ));
-                    worst = worst.max(ratio_db(
-                        self.played.preamp[i],
-                        f32_at(&image, preamp_at(i)),
-                    ));
+                    worst = worst.max(self.off_db(&image, Gain::Xp(i, o)));
+                    worst = worst.max(self.off_db(&image, Gain::Preamp(i)));
                 }
             }
         }
@@ -200,14 +231,13 @@ impl Model {
     fn note_set(&mut self, opcode: u8, value: u16, data: &[u8]) {
         let image = self.image();
         let (ins, outs) = counts(&image);
-        let db = || f32_at(data, 0);
+        let db = f32_at(data, 0);
+        let value = usize::from(value);
         match opcode {
-            op::REQ_SET_PREAMP_CH if usize::from(value) < ins => {
-                self.played.preamp[usize::from(value)] = powf_linear(db());
-            }
+            op::REQ_SET_PREAMP_CH if value < ins => self.play(Gain::Preamp(value), db),
             op::REQ_SET_PREAMP => {
                 for i in 0..ins {
-                    self.played.preamp[i] = powf_linear(db());
+                    self.play(Gain::Preamp(i), db);
                 }
             }
             op::REQ_SET_MATRIX_ROUTE => {
@@ -215,12 +245,10 @@ impl Model {
                     && usize::from(i) < ins
                     && usize::from(o) < outs
                 {
-                    self.played.xp[usize::from(i)][usize::from(o)] = powf_linear(f32_at(data, 4));
+                    self.play(Gain::Xp(usize::from(i), usize::from(o)), f32_at(data, 4));
                 }
             }
-            op::REQ_SET_OUTPUT_GAIN if usize::from(value) < outs => {
-                self.played.out[usize::from(value)] = powf_linear(db());
-            }
+            op::REQ_SET_OUTPUT_GAIN if value < outs => self.play(Gain::Out(value), db),
             _ => self.note_reload(opcode),
         }
     }
@@ -267,7 +295,7 @@ impl Model {
     /// converted again with `powf` (`flash_storage.c`).
     fn note_reload(&mut self, opcode: u8) {
         if matches!(opcode, op::REQ_PRESET_LOAD | op::REQ_FACTORY_RESET) {
-            self.played = Played::from(&self.image(), powf_linear);
+            self.played = played_from(&self.image(), powf_linear);
         }
     }
 }
@@ -276,7 +304,7 @@ impl BulkDbDevice {
     /// Wrap `inner`; what it holds now plays right (as after a boot).
     pub fn new(inner: FakeDevice, options: BulkDbOptions) -> Self {
         let remote = inner.remote();
-        let played = Played::from(&remote.image(), powf_linear);
+        let played = played_from(&remote.image(), powf_linear);
         let model = Model {
             options,
             remote,
@@ -378,24 +406,17 @@ impl GainProbe {
         let m = self.model();
         let image = m.image();
         let (ins, outs) = counts(&image);
-        let mut worst = 0f32;
-        for i in 0..ins {
-            worst = worst.max(ratio_db(m.played.preamp[i], f32_at(&image, preamp_at(i))).abs());
-            for o in 0..outs {
-                worst =
-                    worst.max(ratio_db(m.played.xp[i][o], f32_at(&image, xp_at(i, o) + 4)).abs());
-            }
-        }
-        for o in 0..outs {
-            worst = worst.max(ratio_db(m.played.out[o], f32_at(&image, out_at(o) + 4)).abs());
-        }
-        worst
+        Gain::all(ins, outs)
+            .into_iter()
+            .map(|g| m.off_db(&image, g).abs())
+            .fold(0.0, f32::max)
     }
 
     /// What crosspoint `input` → `output` plays, in dB.
     pub fn crosspoint_db(&self, input: usize, output: usize) -> f32 {
         let m = self.model();
-        20.0 * m.played.xp[input.min(INS - 1)][output.min(OUTS - 1)].log10()
+        let played = m.played.get(Gain::Xp(input, output).slot()).copied();
+        20.0 * played.unwrap_or(0.0).log10()
     }
 }
 
@@ -433,6 +454,7 @@ impl Transport for BulkDbDevice {
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_bulkfix {
     use super::*;
 
@@ -504,7 +526,7 @@ mod tests_wp_bulkfix {
                 .any(|c| c == EXT_FIRMWARE_FIXES.to_le_bytes())
         );
         let mut img = d.remote().image();
-        put(&mut img, preamp_at(0), -20.0);
+        put(&mut img, Gain::Preamp(0).offset(), -20.0);
         d.control_out(op::REQ_SET_ALL_PARAMS, 0, &img).unwrap();
         let fixes = d
             .control_in(op::REQ_EXTENSION, EXT_FIRMWARE_FIXES, 4)

@@ -1406,13 +1406,17 @@ mod tests_wp_c2 {
         core.apply_all_params().unwrap();
         let entries = log.lock().unwrap().clone();
         let write = format!("out {:02X} 0", op::REQ_SET_ALL_PARAMS);
-        assert_eq!(
-            entries,
-            vec![
-                "lock Applying configuration 60".to_string(),
-                write,
-                "unlock".to_string()
-            ]
+        // -- WP BULKFIX -- The demo lacks the bulk dB fix: the read-back and
+        // the unmutes that follow the write are inside the lock too.
+        assert_eq!(entries.first().unwrap(), "lock Applying configuration 60");
+        assert_eq!(entries[1], write);
+        assert_eq!(entries.last().unwrap(), "unlock");
+        assert_eq!(entries[2], format!("in {:02X} 0", op::REQ_GET_ALL_PARAMS));
+        let unmute = format!("out {:02X} ", op::REQ_SET_OUTPUT_MUTE);
+        assert!(
+            entries[3..entries.len() - 1]
+                .iter()
+                .all(|e| e.starts_with(&unmute))
         );
     }
 
