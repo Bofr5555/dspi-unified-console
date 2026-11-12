@@ -123,11 +123,18 @@ void checkMenus(SmokeDriver &d) {
         d.check(QStringLiteral("qp0: menu row %1 exists").arg(id), d.object(QStringLiteral("Menu.") + id) != nullptr);
 
     // A row's action, as a click on it runs it
+    // -- WP QP7 -- the shell's triggered signal: the row has a window now (QP7)
+    QString reached;
+    const auto seen = QObject::connect(shell, &Shell::triggered, shell, [&](const QString &id) { reached = id; });
     QObject *row = d.object(QStringLiteral("Menu.tools.loudness"));
     QObject *action = row ? row->property("action").value<QObject *>() : nullptr;
     if (action) QMetaObject::invokeMethod(action, "trigger");
     d.check(QStringLiteral("qp0: a menu row reaches the shell"),
-            d.waitFor(2000, [&]() { return shell->lastUnhandled() == QLatin1String("tools.loudness"); }));
+            d.waitFor(2000, [&]() { return reached == QLatin1String("tools.loudness"); }));
+    QObject::disconnect(seen);
+    if (QWindow *opened = shell->openWindow(QStringLiteral("tools.loudness"))) opened->close();
+    d.mainWindow()->requestActivate();
+    d.spin(100);
 
     // A shortcut, as a key press
     QQuickWindow *w = d.mainWindow();
