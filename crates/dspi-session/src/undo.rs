@@ -653,4 +653,21 @@ mod tests {
         let d = dspi_proto::registry::by_path("vol.user").unwrap();
         assert_eq!(d.dir, Dir::Out, "vol.user is an OUT write");
     }
+
+    // -- WP P0W -- review p0w finding 2, on the Terminal's path
+    #[test]
+    fn wp_p0w_undo_of_the_legacy_preamp_puts_back_every_input() {
+        let t = MockTransport::new()
+            .data(op::REQ_GET_PREAMP, (-3.0f32).to_le_bytes().to_vec())
+            .data(op::REQ_GET_PREAMP_CH, (-3.0f32).to_le_bytes().to_vec());
+        let log = t.log_handle();
+        let mut s = Session::new(Box::new(t), caps()).unwrap();
+        let _ = s.write("pre.all", &[], Value::Float(0.0));
+        assert_eq!(s.journal.last().unwrap().companions.len(), 8);
+        s.undo().unwrap().unwrap();
+        let per_input = writes(&log, op::REQ_SET_PREAMP_CH);
+        assert_eq!(per_input.len(), 8, "each input's own value goes back");
+        let inputs: Vec<u16> = per_input.iter().map(|e| e.value).collect();
+        assert_eq!(inputs, (0..8).collect::<Vec<u16>>());
+    }
 }

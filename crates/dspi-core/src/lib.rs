@@ -350,6 +350,10 @@ pub(crate) struct Connection {
     /// have to run ([`DspiCore::ensure_probed`]; the Link supervisor runs
     /// them in the background).
     pub(crate) pending_probe: Option<Box<dspi_session::probe::Quick>>,
+    // -- WP P0W --
+    /// The last change another writer made, for undo's foreign-change rule
+    /// (`journal::ForeignChange`). On the connection, as its journal is.
+    pub(crate) last_foreign: Option<journal::ForeignWrite>,
 }
 
 /// A remote device reached without the [`Inner`] lock (WP C15).
@@ -459,6 +463,8 @@ impl Connection {
             held_lock: None,
             // -- WP LK4 --
             pending_probe: None,
+            // -- WP P0W --
+            last_foreign: None,
         }
     }
 

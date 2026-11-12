@@ -887,6 +887,138 @@ fn wp_p0w_a_band_survives_the_journal_encoding() {
     assert_eq!(band_from_bytes(&[1, 2, 3]), None);
 }
 
+// ── Fixup p0w ───────────────────────────────────────────────────────
+
+/// Review p0w finding 2 (its probe): the legacy preamp sets every input to
+/// one value; undo puts back each input's own.
+#[test]
+fn wp_p0w_fixup_pre_all_undo_restores_each_input() {
+    let core = demo();
+    core.set_input_preamp(0, -3.0).unwrap();
+    core.set_input_preamp(1, -6.0).unwrap();
+    let before = core.get_state().input_preamp_db.clone();
+    core.set_preamp(0.0).unwrap();
+    assert!(core.get_state().input_preamp_db.iter().all(|v| *v == 0.0));
+    core.undo().unwrap();
+    assert_eq!(core.get_state().input_preamp_db, before);
+    core.fetch_all().unwrap();
+    assert_eq!(core.get_state().input_preamp_db, before, "the device too");
+    core.redo().unwrap();
+    assert!(core.get_state().input_preamp_db.iter().all(|v| *v == 0.0));
+}
+
+/// Review p0w finding 3: only a live value drags; two pin moves or two
+/// rate changes are two entries.
+#[test]
+fn wp_p0w_fixup_a_non_undoable_write_never_coalesces() {
+    let core = demo();
+    core.set_input_rate(0).unwrap();
+    core.set_input_rate(2).unwrap();
+    let h = core.history(10);
+    assert_eq!(h.len(), 2, "{h:?}");
+    assert!(h.iter().all(|e| e.path == "in.rate" && !e.undoable));
+}
+
+/// Review p0w finding 4: a panic inside a replayed setter leaves no mark.
+#[test]
+fn wp_p0w_fixup_the_replay_mark_is_cleared_by_a_panic() {
+    let r = std::panic::catch_unwind(|| {
+        let _mark = ReplayMark::set(Replay {
+            source: ChangeSource::Undo,
+            generation: 1,
+        });
+        assert_eq!(replay_source(), Some(ChangeSource::Undo));
+        panic!("a setter bug");
+    });
+    assert!(r.is_err());
+    assert_eq!(replay_source(), None);
+}
+
+/// The demo device with its remote, for a change made elsewhere.
+fn remote_demo() -> (Arc<DspiCore>, dspi_transport::FakeRemote) {
+    let dev = dspi_transport::FakeDevice::demo();
+    let remote = dev.remote();
+    let core = DspiCore::new();
+    core.attach_probed(Box::new(dev), "DEMO".into(), 0).unwrap();
+    (core, remote)
+}
+
+/// Our master volume, then the computer's volume control moves it.
+fn overwritten_by_uac1() -> (Arc<DspiCore>, f32) {
+    let (core, remote) = remote_demo();
+    let start = core.get_state().master_volume_db;
+    core.set_master_volume(-10.0).unwrap();
+    let src = dspi_proto::generated::notify::PARAM_SRC_UAC1 as u8;
+    let off = dspi_proto::generated::OFF_MASTER_VOLUME;
+    assert!(remote.poke(off, &(-12.0f32).to_le_bytes(), src));
+    let t = dspi_transport::clock::Instant::now();
+    while core.get_state().master_volume_db != -12.0 {
+        assert!(
+            t.elapsed() < std::time::Duration::from_secs(5),
+            "no notification"
+        );
+        core.process_notifications();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    (core, start)
+}
+
+/// Owner decision pending (review p0w): both rules for a value someone else
+/// overwrote, behind `ON_FOREIGN_CHANGE`.
+#[test]
+fn wp_p0w_fixup_a_foreign_change_restore_mine() {
+    let (core, start) = overwritten_by_uac1();
+    let m = core.undo_with(ForeignChange::RestoreMine).unwrap();
+    assert_eq!(m.entry.map(|e| e.path).as_deref(), Some("vol.master"));
+    assert_eq!(m.note, None);
+    assert_eq!(
+        core.get_state().master_volume_db,
+        start,
+        "mine, over theirs"
+    );
+}
+
+#[test]
+fn wp_p0w_fixup_a_foreign_change_skip_and_name() {
+    let (core, _) = overwritten_by_uac1();
+    let m = core.undo_with(ForeignChange::SkipAndName).unwrap();
+    assert!(m.entry.is_none(), "{m:?}");
+    assert_eq!(m.skipped.len(), 1);
+    assert_eq!(m.skipped[0].path, "vol.master");
+    let note = m.note.unwrap();
+    assert!(note.contains("the computer's volume control"), "{note}");
+    assert_eq!(core.get_state().master_volume_db, -12.0, "theirs stays");
+    assert!(!core.can_undo() && !core.can_redo(), "the entry is gone");
+}
+
+#[test]
+fn wp_p0w_fixup_a_foreign_change_after_undo_skips_redo() {
+    let (core, remote) = remote_demo();
+    core.set_master_volume(-10.0).unwrap();
+    core.undo().unwrap();
+    let start = core.get_state().master_volume_db;
+    let src = dspi_proto::generated::notify::PARAM_SRC_UART as u8;
+    let off = dspi_proto::generated::OFF_MASTER_VOLUME;
+    let other = if start == -20.0 { -21.0f32 } else { -20.0 };
+    assert!(remote.poke(off, &other.to_le_bytes(), src));
+    let t = dspi_transport::clock::Instant::now();
+    while core.get_state().master_volume_db != other {
+        assert!(t.elapsed() < std::time::Duration::from_secs(5));
+        core.process_notifications();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let m = core.redo_with(ForeignChange::SkipAndName).unwrap();
+    assert!(m.entry.is_none());
+    assert!(m.note.unwrap().contains("the UART"));
+    assert_eq!(core.get_state().master_volume_db, other);
+    assert!(!core.can_redo());
+}
+
+#[test]
+fn wp_p0w_fixup_the_switch_is_restore_mine_until_the_owner_decides() {
+    assert_eq!(ON_FOREIGN_CHANGE, ForeignChange::RestoreMine);
+}
+
 // ── DSPi Link ───────────────────────────────────────────────────────
 
 #[cfg(feature = "link")]

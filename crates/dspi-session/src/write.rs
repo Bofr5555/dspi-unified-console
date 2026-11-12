@@ -228,7 +228,18 @@ const LIMITER_SHARED: [&str; 3] = ["limit.on", "limit.threshold", "limit.release
 ///   has no single value to read before it, so each output's own value is
 ///   kept; a link write to every output also re-gangs the groups
 ///   (limiter.c:177-179, 159-170), so the shared settings are kept too.
-pub fn side_effects(path: &str, indices: &[u8], num_outputs: u8) -> Vec<(&'static str, Vec<u8>)> {
+/// - The legacy preamp (`pre.all`) sets every input to one value, so each
+///   input's own preamp is kept (WP P0W).
+pub fn side_effects(
+    path: &str,
+    indices: &[u8],
+    num_inputs: u8,
+    num_outputs: u8,
+) -> Vec<(&'static str, Vec<u8>)> {
+    // -- WP P0W --
+    if path == "pre.all" {
+        return (0..num_inputs).map(|i| ("pre", vec![i])).collect();
+    }
     if TUBE_VOICING.contains(&path) {
         return TUBE_VOICING
             .iter()
@@ -907,7 +918,7 @@ impl Session {
     /// [`side_effects`]). One that cannot be read is left out: undo then
     /// restores what it can.
     fn read_companions(&mut self, path: &str, indices: &[u8]) -> Vec<Companion> {
-        side_effects(path, indices, self.caps.num_outputs)
+        side_effects(path, indices, self.caps.num_inputs, self.caps.num_outputs)
             .into_iter()
             .filter_map(|(path, indices)| {
                 let before = self.read(path, &indices).ok()?;
@@ -1801,7 +1812,7 @@ mod tests {
         fn tm18_undo_cannot_reach_the_generator_as_a_companion() {
             for d in REGISTRY {
                 for at in [vec![0], vec![ALL_OUTPUTS], Vec::new()] {
-                    for (path, _) in side_effects(d.path, &at, 9) {
+                    for (path, _) in side_effects(d.path, &at, 8, 9) {
                         let hazard = by_path(path).map(|c| c.hazard);
                         assert!(
                             hazard == Some(Hazard::None) || path == "limit.on",

@@ -115,6 +115,95 @@ thread_local! {
     static REPLAY: Cell<Option<Replay>> = const { Cell::new(None) };
 }
 
+/// The replay mark for the life of a replay step: cleared on drop, so a
+/// panic inside the setter cannot leave the thread marked.
+struct ReplayMark;
+
+impl ReplayMark {
+    fn set(r: Replay) -> Self {
+        REPLAY.set(Some(r));
+        Self
+    }
+}
+
+impl Drop for ReplayMark {
+    fn drop(&mut self) {
+        REPLAY.set(None);
+    }
+}
+
+/// What undo and redo do with a change someone else has overwritten since
+/// (another Link client, a knob, the UART): the mirror no longer holds the
+/// value this client left.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ForeignChange {
+    /// (a) Write this client's value back regardless: last writer wins, as
+    /// in a DAW.
+    RestoreMine,
+    /// (b) Leave the other writer's value, drop the entry and say who wrote
+    /// it ([`HistoryMove::note`]).
+    SkipAndName,
+}
+
+/// The switch for [`ForeignChange`], pending the owner's decision (review
+/// p0w): (a) until then, which is the behaviour the Terminal always had.
+pub(crate) const ON_FOREIGN_CHANGE: ForeignChange = ForeignChange::RestoreMine;
+
+/// Who last changed the device besides this client, for
+/// [`ForeignChange::SkipAndName`]: milliseconds since the Unix epoch and the
+/// writer in words.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ForeignWrite {
+    pub(crate) at_ms: u64,
+    pub(crate) writer: String,
+}
+
+/// Note a change another writer made (a notification that was not this
+/// client's echo), on the connection.
+pub(crate) fn note_foreign(
+    conn: &mut crate::Connection,
+    source: dspi_session::Source,
+    origin: Option<u16>,
+) {
+    use dspi_session::Source as S;
+    let writer = match (origin, source) {
+        (Some(sid), _) if sid != 0 => format!("DSPi Link session {sid}"),
+        (_, S::Gpio) => "a control surface".into(),
+        (_, S::Uac1) => "the computer's volume control".into(),
+        (_, S::Uart) => "the UART".into(),
+        (_, S::I2c) => "the I2C bus".into(),
+        (_, S::Midi) => "MIDI".into(),
+        (_, S::Preset) => "a preset load".into(),
+        (_, S::Factory) => "a factory reset".into(),
+        (_, S::HostSet | S::BulkSet) => "another program on the computer".into(),
+        _ => "another writer".into(),
+    };
+    let at_ms = dspi_transport::clock::system_time()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
+    conn.last_foreign = Some(ForeignWrite { at_ms, writer });
+}
+
+/// Whether someone else changed `entry`'s value since this client left it
+/// at `expected`, and who, in words; `None` when the mirror still holds it
+/// (or holds no single value for it).
+fn overwritten(inner: &Inner, entry: &JournalEntry, expected: &Value) -> Option<String> {
+    let now = mirror_value(inner, entry.path, &entry.indices)?;
+    if &now == expected {
+        return None;
+    }
+    let who = inner
+        .conn
+        .as_ref()
+        .and_then(|c| c.last_foreign.as_ref())
+        .filter(|f| f.at_ms >= entry.at_ms)
+        .map_or("another writer", |f| f.writer.as_str());
+    Some(format!(
+        "`{}` was changed by {who} since; it was left as they set it",
+        entry.path
+    ))
+}
+
 /// Refuse a replay on a connection other than the one its entry came from.
 /// `Ok` outside a replay.
 pub(crate) fn check_replay(inner: &Inner) -> Result<()> {
@@ -147,8 +236,11 @@ impl Inner {
     /// [`DspiError::Disconnected`] for a replay whose connection has gone.
     pub(crate) fn journal_begin(&self, path: &'static str, indices: &[u8]) -> Result<Pending> {
         check_replay(self)?;
-        let outputs = self.state.num_output_channels;
-        let companions = side_effects(path, indices, outputs)
+        let (inputs, outputs) = (
+            self.state.num_input_channels,
+            self.state.num_output_channels,
+        );
+        let companions = side_effects(path, indices, inputs, outputs)
             .into_iter()
             .filter_map(|(path, indices)| {
                 let before = mirror_value(self, path, &indices)?;
@@ -198,8 +290,10 @@ impl Pending {
         if !moved {
             return;
         }
-        let coalesce = matches!(after, Value::Float(_) | Value::Int(_))
-            || matches!(self.path, EQ_BAND | "mix");
+        // A drag is of a live value; a pin moved twice is two changes.
+        let coalesce = hazard(self.path) == Hazard::None
+            && (matches!(after, Value::Float(_) | Value::Int(_))
+                || matches!(self.path, EQ_BAND | "mix"));
         record(
             inner,
             Change {
@@ -515,10 +609,15 @@ pub struct HistoryMove {
     /// The change reversed (undo) or applied again (redo); `None` when
     /// nothing moved.
     pub entry: Option<HistoryEntry>,
-    /// Undo only: the changes stepped over on the way, newest first, which
-    /// cannot be undone (see [`HistoryEntry::undoable`]). An entry here that
-    /// is undoable had no value before to restore; the walk stopped there.
+    /// The changes stepped over on the way, newest first, which cannot be
+    /// undone (see [`HistoryEntry::undoable`]). An entry here that is
+    /// undoable had no value before to restore, or someone else has changed
+    /// it since (`note` says who); the walk stopped there.
     pub skipped: Vec<HistoryEntry>,
+    /// Why nothing moved, in words, when another writer changed the value
+    /// since (only where the core leaves such a change alone); `None`
+    /// otherwise.
+    pub note: Option<String>,
 }
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
@@ -534,76 +633,15 @@ impl DspiCore {
     /// device); the setter's errors, after which the change stays to be
     /// undone.
     pub fn undo(&self) -> Result<HistoryMove> {
-        let (step, generation) = {
-            let mut inner = self.lock();
-            let conn = inner.conn()?;
-            let generation = conn.generation;
-            (conn.session()?.take_undo(), generation)
-        };
-        let skipped = step.skipped.iter().map(HistoryEntry::from).collect();
-        let Some(entry) = step.entry else {
-            return Ok(HistoryMove {
-                entry: None,
-                skipped,
-            });
-        };
-        let steps = entry
-            .before
-            .iter()
-            .map(|v| (entry.path, entry.indices.clone(), v.clone()))
-            .chain(
-                entry
-                    .companions
-                    .iter()
-                    .map(|c| (c.path, c.indices.clone(), c.before.clone())),
-            );
-        let replay = Replay {
-            source: ChangeSource::Undo,
-            generation,
-        };
-        for (path, ix, value) in steps {
-            if let Err(e) = self.replay(replay, path, &ix, value) {
-                self.with_session(generation, |s| s.restore_undo(entry));
-                return Err(e);
-            }
-        }
-        let moved = HistoryEntry::from(&entry);
-        self.with_session(generation, |s| s.finish_undo(entry));
-        Ok(HistoryMove {
-            entry: Some(moved),
-            skipped,
-        })
+        self.undo_with(ON_FOREIGN_CHANGE)
     }
-
     /// Step forward: write again the change [`DspiCore::undo`] most recently
     /// reversed. A new change since then ends what can be redone.
     ///
     /// Errors: as [`DspiCore::undo`]; after a setter's error the change
     /// stays to be redone.
     pub fn redo(&self) -> Result<HistoryMove> {
-        let (entry, generation) = {
-            let mut inner = self.lock();
-            let conn = inner.conn()?;
-            let generation = conn.generation;
-            (conn.session()?.take_redo(), generation)
-        };
-        let Some(entry) = entry else {
-            return Ok(HistoryMove::default());
-        };
-        let replay = Replay {
-            source: ChangeSource::Redo,
-            generation,
-        };
-        if let Err(e) = self.replay(replay, entry.path, &entry.indices, entry.after.clone()) {
-            self.with_session(generation, |s| s.restore_redo(entry));
-            return Err(e);
-        }
-        let moved = HistoryEntry::from(&entry);
-        self.with_session(generation, |s| s.finish_redo(entry));
-        Ok(HistoryMove {
-            entry: Some(moved),
-            skipped: Vec::new(),
-        })
+        self.redo_with(ON_FOREIGN_CHANGE)
     }
 
     /// Whether [`DspiCore::undo`] has a change to reverse. False with no
@@ -642,13 +680,112 @@ impl DspiCore {
 }
 
 impl DspiCore {
+    /// [`DspiCore::undo`] with `on_foreign` for a change someone else has
+    /// overwritten since.
+    pub(crate) fn undo_with(&self, on_foreign: ForeignChange) -> Result<HistoryMove> {
+        let (step, generation, note) = {
+            let mut inner = self.lock();
+            let conn = inner.conn()?;
+            let generation = conn.generation;
+            let mut step = conn.session()?.take_undo();
+            let note = match &step.entry {
+                Some(e) if on_foreign == ForeignChange::SkipAndName => {
+                    overwritten(&inner, e, &e.after)
+                }
+                _ => None,
+            };
+            if note.is_some() {
+                // Theirs now: the entry describes a value that is gone.
+                step.skipped.extend(step.entry.take());
+            }
+            (step, generation, note)
+        };
+        let skipped = step.skipped.iter().map(HistoryEntry::from).collect();
+        let Some(entry) = step.entry else {
+            return Ok(HistoryMove {
+                entry: None,
+                skipped,
+                note,
+            });
+        };
+        let steps = entry
+            .before
+            .iter()
+            .map(|v| (entry.path, entry.indices.clone(), v.clone()))
+            .chain(
+                entry
+                    .companions
+                    .iter()
+                    .map(|c| (c.path, c.indices.clone(), c.before.clone())),
+            );
+        let replay = Replay {
+            source: ChangeSource::Undo,
+            generation,
+        };
+        for (path, ix, value) in steps {
+            if let Err(e) = self.replay(replay, path, &ix, value) {
+                self.with_session(generation, |s| s.restore_undo(entry));
+                return Err(e);
+            }
+        }
+        let moved = HistoryEntry::from(&entry);
+        self.with_session(generation, |s| s.finish_undo(entry));
+        Ok(HistoryMove {
+            entry: Some(moved),
+            skipped,
+            note: None,
+        })
+    }
+
+    /// [`DspiCore::redo`] with `on_foreign` for a change someone else has
+    /// overwritten since undo put it back.
+    pub(crate) fn redo_with(&self, on_foreign: ForeignChange) -> Result<HistoryMove> {
+        let (entry, generation) = {
+            let mut inner = self.lock();
+            let conn = inner.conn()?;
+            let generation = conn.generation;
+            let entry = conn.session()?.take_redo();
+            let note = match (&entry, on_foreign) {
+                (Some(e), ForeignChange::SkipAndName) => {
+                    e.before.as_ref().and_then(|b| overwritten(&inner, e, b))
+                }
+                _ => None,
+            };
+            if let Some(note) = note {
+                let skipped = entry.iter().map(HistoryEntry::from).collect();
+                return Ok(HistoryMove {
+                    entry: None,
+                    skipped,
+                    note: Some(note),
+                });
+            }
+            (entry, generation)
+        };
+        let Some(entry) = entry else {
+            return Ok(HistoryMove::default());
+        };
+        let replay = Replay {
+            source: ChangeSource::Redo,
+            generation,
+        };
+        if let Err(e) = self.replay(replay, entry.path, &entry.indices, entry.after.clone()) {
+            self.with_session(generation, |s| s.restore_redo(entry));
+            return Err(e);
+        }
+        let moved = HistoryEntry::from(&entry);
+        self.with_session(generation, |s| s.finish_redo(entry));
+        Ok(HistoryMove {
+            entry: Some(moved),
+            skipped: Vec::new(),
+            note: None,
+        })
+    }
+
     /// Write one step of a replay through the typed setter for `path`, the
     /// thread marked as replaying so the record knows it for one.
     fn replay(&self, replay: Replay, path: &str, ix: &[u8], value: Value) -> Result<()> {
-        REPLAY.set(Some(replay));
-        let r = self.write_journal_value(path, ix, value);
-        REPLAY.set(None);
-        r
+        let _mark = ReplayMark::set(replay);
+        self.write_journal_value(path, ix, value)
     }
 
     /// A journal path's value through its writer: a whole band through
