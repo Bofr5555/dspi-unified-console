@@ -1201,6 +1201,18 @@ pub extern "C" fn dspi_wire_features(core: *mut FfiCore) -> u32 {
     with_core(core, 0, |h| h.core.wire_features())
 }
 
+// -- WP QP11 --
+/// Whether the connect probe found feature `name` on the open device (the
+/// probe's names: `spdif_multi_input`, `adat_input`, `i2s_slave_clock`, ...).
+/// False with no device, for a null name and for a name the probe lacks.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_feature_present(core: *mut FfiCore, name: *const c_char) -> bool {
+    let Some(name) = c_str(name) else {
+        return false;
+    };
+    with_core(core, false, |h| h.core.feature_present(name))
+}
+
 // ── Diagnostics ──────────────────────────────────────────────────────
 
 /// The output latency the device reports, in JSON: `{ok, raw, fields}`.

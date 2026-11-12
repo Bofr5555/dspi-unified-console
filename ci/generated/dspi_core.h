@@ -4662,6 +4662,13 @@ uint32_t dspi_read_only_refusals(struct FfiCore *core);
 uint32_t dspi_wire_features(struct FfiCore *core);
 
 /**
+ * Whether the connect probe found feature `name` on the open device (the
+ * probe's names: `spdif_multi_input`, `adat_input`, `i2s_slave_clock`, ...).
+ * False with no device, for a null name and for a name the probe lacks.
+ */
+bool dspi_feature_present(struct FfiCore *core, const char *name);
+
+/**
  * The output latency the device reports, in JSON: `{ok, raw, fields}`.
  */
 uint32_t dspi_fetch_output_latency(struct FfiCore *core, char *buf, uint32_t len);
