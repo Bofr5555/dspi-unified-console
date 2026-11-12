@@ -1988,6 +1988,43 @@ data class EventBatch(
 )
 
 /**
+ * A file a client adds to a diagnostics bundle (`client/<name>` in the
+ * zip): its own log, `uconsole doctor`'s report.
+ */
+data class DiagFile(
+    /**
+     * The file's name; anything but letters, digits, `.`, `_` and `-`
+     * becomes `_`.
+     */
+    val name: String,
+    /**
+     * Its text, kept up to 4 MiB.
+     */
+    val text: String,
+)
+
+/**
+ * What a client adds to a diagnostics bundle
+ * (`DspiCore::diagnostics_save`).
+ */
+data class DiagOptions(
+    /**
+     * The client and its version, as it names itself ("DSPi Console 1.2.0
+     * (Android)"); "" when it does not say.
+     */
+    val app: String,
+    /**
+     * The folder of a hub store (`hub-store.json`) to include with its
+     * tokens and secrets removed; "" for none.
+     */
+    val hubStoreDir: String,
+    /**
+     * The client's own files.
+     */
+    val files: List<DiagFile>,
+)
+
+/**
  * One GET the host is asked to make.
  */
 data class AutoEqFetchRequest(

@@ -124,6 +124,10 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun openDemo() = call { core.openDemo() }
 
+    override fun diagnosticsSave(path: String, options: DiagOptions): List<String> = call { core.diagnosticsSave(path, options.toFfi()) }
+
+    override fun diagnosticsFileName(): String = core.diagnosticsFileName()
+
     override fun meterBallistics(): MeterBallistics = core.meterBallistics().toDomain()
 
     override fun setMeterBallistics(config: MeterBallistics) = core.setMeterBallistics(config.toFfi())
@@ -1867,6 +1871,32 @@ internal fun EventBatch.toFfi() =
         lastId = lastId.toULong(),
         skipped = skipped.toUInt(),
         entries = entries.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.DiagFile.toDomain() =
+    DiagFile(
+        name = name,
+        text = text,
+    )
+
+internal fun DiagFile.toFfi() =
+    se.bofr.dspi.ffi.uniffi.DiagFile(
+        name = name,
+        text = text,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.DiagOptions.toDomain() =
+    DiagOptions(
+        app = app,
+        hubStoreDir = hubStoreDir,
+        files = files.map { it.toDomain() },
+    )
+
+internal fun DiagOptions.toFfi() =
+    se.bofr.dspi.ffi.uniffi.DiagOptions(
+        app = app,
+        hubStoreDir = hubStoreDir,
+        files = files.map { it.toFfi() },
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.AutoEqFetchRequest.toDomain() =

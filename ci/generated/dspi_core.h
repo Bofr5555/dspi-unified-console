@@ -5238,6 +5238,32 @@ uint32_t dspi_event_log_export(struct FfiCore *core, const char *serial, char *b
 uint32_t dspi_event_log_devices(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
+ * Write a diagnostics bundle (one zip: versions, the open device's dump,
+ * stats and monitor lines, every event log, a hub store without its tokens
+ * and secrets, OS and USB facts, the client's files) to `path`. Nothing is
+ * sent anywhere. `options` is null or JSON: `{"app": "DSPi Console 1.2.0",
+ * "hubStoreDir": "<folder of hub-store.json>", "files": [{"name":
+ * "app.log", "text": "..."}]}`, every key optional.
+ *
+ * Reply (module docs): `{"ok": true, "files": <count>}`, or a failure
+ * (`io` when the file cannot be written, `invalid` for a null `path` or bad
+ * `options`). Writes on every call, whatever the buffer, so pass one of 1024
+ * bytes rather than asking for the length first. Reads the device and
+ * files: not on the UI thread.
+ */
+uint32_t dspi_diagnostics_save(struct FfiCore *core,
+                               const char *path,
+                               const char *options,
+                               char *buf,
+                               uint32_t len);
+
+/**
+ * A file name for a bundle saved now (`dspi-diagnostics-<UTC date and
+ * time>Z.zip`), for a Save dialog. Returns the bytes needed, NUL included.
+ */
+uint32_t dspi_diagnostics_file_name(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * Start looking for hubs on the local network, replacing any browse running.
  * Returns at once; false only with a null handle, in a build without the
  * feature, or when a thread cannot start. A network failure shows in

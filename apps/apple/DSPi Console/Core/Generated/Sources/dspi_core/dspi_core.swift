@@ -1746,6 +1746,30 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func deviceLockRelease() 
     
     /**
+     * A file name for a bundle saved now: `dspi-diagnostics-` and the UTC
+     * date and time, `.zip`. For a Save dialog's suggestion. Never fails.
+     */
+    func diagnosticsFileName()  -> String
+    
+    /**
+     * Write a diagnostics bundle to `path`: one zip with versions, the open
+     * device's dump, stats and monitor lines, every event log, the hub
+     * store at `options.hub_store_dir` with its tokens and secrets removed,
+     * the OS and USB facts, and `options.files`. Nothing is sent anywhere.
+     * Returns the names of the files in the zip.
+     *
+     * Reads the device (a Stats window's reads) and files: not on the UI
+     * thread. The zip is written beside `path` first and renamed over it,
+     * so a failure leaves no half file.
+     *
+     * Errors: [`DspiError::Io`] when the file cannot be written;
+     * [`DspiError::Unsupported`] where there is no file system (the web,
+     * which saves [`DspiCore::diagnostics_zip`]'s bytes itself). What the
+     * bundle could not read is in its `notes.txt`, never an error.
+     */
+    func diagnosticsSave(path: String, options: DiagOptions) throws  -> [String]
+    
+    /**
      * Close the open device, whatever its transport, and reset the mirror
      * to its defaults. The selected serial is kept, so a replugged device
      * reconnects (WP C1b). Blocks until the notification reader has stopped
@@ -4608,6 +4632,42 @@ open func deviceLockRelease()  {try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_device_lock_release(self.uniffiClonePointer(),$0
     )
 }
+}
+    
+    /**
+     * A file name for a bundle saved now: `dspi-diagnostics-` and the UTC
+     * date and time, `.zip`. For a Save dialog's suggestion. Never fails.
+     */
+open func diagnosticsFileName() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_diagnostics_file_name(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Write a diagnostics bundle to `path`: one zip with versions, the open
+     * device's dump, stats and monitor lines, every event log, the hub
+     * store at `options.hub_store_dir` with its tokens and secrets removed,
+     * the OS and USB facts, and `options.files`. Nothing is sent anywhere.
+     * Returns the names of the files in the zip.
+     *
+     * Reads the device (a Stats window's reads) and files: not on the UI
+     * thread. The zip is written beside `path` first and renamed over it,
+     * so a failure leaves no half file.
+     *
+     * Errors: [`DspiError::Io`] when the file cannot be written;
+     * [`DspiError::Unsupported`] where there is no file system (the web,
+     * which saves [`DspiCore::diagnostics_zip`]'s bytes itself). What the
+     * bundle could not read is in its `notes.txt`, never an error.
+     */
+open func diagnosticsSave(path: String, options: DiagOptions)throws  -> [String]  {
+    return try  FfiConverterSequenceString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_diagnostics_save(self.uniffiClonePointer(),
+        FfiConverterString.lower(path),
+        FfiConverterTypeDiagOptions_lower(options),$0
+    )
+})
 }
     
     /**
@@ -10843,6 +10903,198 @@ public func FfiConverterTypeDeviceInfo_lift(_ buf: RustBuffer) throws -> DeviceI
 #endif
 public func FfiConverterTypeDeviceInfo_lower(_ value: DeviceInfo) -> RustBuffer {
     return FfiConverterTypeDeviceInfo.lower(value)
+}
+
+
+/**
+ * A file a client adds to a diagnostics bundle (`client/<name>` in the
+ * zip): its own log, `uconsole doctor`'s report.
+ */
+public struct DiagFile {
+    /**
+     * The file's name; anything but letters, digits, `.`, `_` and `-`
+     * becomes `_`.
+     */
+    public var name: String
+    /**
+     * Its text, kept up to 4 MiB.
+     */
+    public var text: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The file's name; anything but letters, digits, `.`, `_` and `-`
+         * becomes `_`.
+         */name: String, 
+        /**
+         * Its text, kept up to 4 MiB.
+         */text: String) {
+        self.name = name
+        self.text = text
+    }
+}
+
+#if compiler(>=6)
+extension DiagFile: Sendable {}
+#endif
+
+
+extension DiagFile: Equatable, Hashable {
+    public static func ==(lhs: DiagFile, rhs: DiagFile) -> Bool {
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.text != rhs.text {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(name)
+        hasher.combine(text)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDiagFile: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DiagFile {
+        return
+            try DiagFile(
+                name: FfiConverterString.read(from: &buf), 
+                text: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DiagFile, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDiagFile_lift(_ buf: RustBuffer) throws -> DiagFile {
+    return try FfiConverterTypeDiagFile.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDiagFile_lower(_ value: DiagFile) -> RustBuffer {
+    return FfiConverterTypeDiagFile.lower(value)
+}
+
+
+/**
+ * What a client adds to a diagnostics bundle
+ * (`DspiCore::diagnostics_save`).
+ */
+public struct DiagOptions {
+    /**
+     * The client and its version, as it names itself ("DSPi Console 1.2.0
+     * (Android)"); "" when it does not say.
+     */
+    public var app: String
+    /**
+     * The folder of a hub store (`hub-store.json`) to include with its
+     * tokens and secrets removed; "" for none.
+     */
+    public var hubStoreDir: String
+    /**
+     * The client's own files.
+     */
+    public var files: [DiagFile]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The client and its version, as it names itself ("DSPi Console 1.2.0
+         * (Android)"); "" when it does not say.
+         */app: String, 
+        /**
+         * The folder of a hub store (`hub-store.json`) to include with its
+         * tokens and secrets removed; "" for none.
+         */hubStoreDir: String, 
+        /**
+         * The client's own files.
+         */files: [DiagFile]) {
+        self.app = app
+        self.hubStoreDir = hubStoreDir
+        self.files = files
+    }
+}
+
+#if compiler(>=6)
+extension DiagOptions: Sendable {}
+#endif
+
+
+extension DiagOptions: Equatable, Hashable {
+    public static func ==(lhs: DiagOptions, rhs: DiagOptions) -> Bool {
+        if lhs.app != rhs.app {
+            return false
+        }
+        if lhs.hubStoreDir != rhs.hubStoreDir {
+            return false
+        }
+        if lhs.files != rhs.files {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(app)
+        hasher.combine(hubStoreDir)
+        hasher.combine(files)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDiagOptions: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DiagOptions {
+        return
+            try DiagOptions(
+                app: FfiConverterString.read(from: &buf), 
+                hubStoreDir: FfiConverterString.read(from: &buf), 
+                files: FfiConverterSequenceTypeDiagFile.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DiagOptions, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.app, into: &buf)
+        FfiConverterString.write(value.hubStoreDir, into: &buf)
+        FfiConverterSequenceTypeDiagFile.write(value.files, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDiagOptions_lift(_ buf: RustBuffer) throws -> DiagOptions {
+    return try FfiConverterTypeDiagOptions.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDiagOptions_lower(_ value: DiagOptions) -> RustBuffer {
+    return FfiConverterTypeDiagOptions.lower(value)
 }
 
 
@@ -22480,6 +22732,31 @@ fileprivate struct FfiConverterSequenceTypeDeviceInfo: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeDiagFile: FfiConverterRustBuffer {
+    typealias SwiftType = [DiagFile]
+
+    public static func write(_ value: [DiagFile], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeDiagFile.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [DiagFile] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [DiagFile]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeDiagFile.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeEventEntry: FfiConverterRustBuffer {
     typealias SwiftType = [EventEntry]
 
@@ -23753,6 +24030,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_device_lock_release() != 10916) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_diagnostics_file_name() != 50086) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_diagnostics_save() != 17479) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_disconnect() != 29066) {

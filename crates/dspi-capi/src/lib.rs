@@ -148,6 +148,8 @@ mod tests {
             "src/fns_misc/link_text.rs",
             // -- WP P0M --
             "src/fns_misc/events.rs",
+            // -- WP P0E --
+            "src/fns_misc/diag.rs",
             "src/fns_browse.rs",
             "src/fns_link.rs",
             "src/fns_hub.rs",

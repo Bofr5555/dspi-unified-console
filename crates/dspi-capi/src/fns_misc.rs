@@ -44,6 +44,8 @@ mod autoeq;
 mod link_text;
 // -- WP P0M --
 mod events;
+// -- WP P0E --
+mod diag;
 
 // ── Replies ──────────────────────────────────────────────────────────
 

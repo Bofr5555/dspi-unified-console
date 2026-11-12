@@ -392,6 +392,31 @@ interface DspiCoreApi : AutoCloseable {
     fun openDemo()
 
     /**
+     * Write a diagnostics bundle to `path`: one zip with versions, the open
+     * device's dump, stats and monitor lines, every event log, the hub
+     * store at `options.hub_store_dir` with its tokens and secrets removed,
+     * the OS and USB facts, and `options.files`. Nothing is sent anywhere.
+     * Returns the names of the files in the zip.
+     *
+     * Reads the device (a Stats window's reads) and files: not on the UI
+     * thread. The zip is written beside `path` first and renamed over it,
+     * so a failure leaves no half file.
+     *
+     * Errors: [`DspiError::Io`] when the file cannot be written;
+     * [`DspiError::Unsupported`] where there is no file system (the web,
+     * which saves [`DspiCore::diagnostics_zip`]'s bytes itself). What the
+     * bundle could not read is in its `notes.txt`, never an error.
+     */
+    @Throws(DspiException::class)
+    fun diagnosticsSave(path: String, options: DiagOptions): List<String>
+
+    /**
+     * A file name for a bundle saved now: `dspi-diagnostics-` and the UTC
+     * date and time, `.zip`. For a Save dialog's suggestion. Never fails.
+     */
+    fun diagnosticsFileName(): String
+
+    /**
      * The meter ballistics' timing (`SystemStatus.peak_hold`, `clip_hold`).
      * Defaults: hold 1000 ms, then a fall of 0.5 full scale per second; clip
      * hold 10 000 ms after the last new clip. Never fails.
