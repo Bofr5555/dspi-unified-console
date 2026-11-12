@@ -173,6 +173,14 @@ pub struct JournalEntry {
     /// in order; redo needs only `after`, since writing it again makes the
     /// device do the same thing again.
     pub companions: Vec<Companion>,
+    // -- WP P0W --
+    /// Who made the change.
+    pub source: crate::history::ChangeSource,
+    /// When, in milliseconds since the Unix epoch (the last write of a
+    /// coalesced drag).
+    pub at_ms: u64,
+    /// A later repeat may join this entry (`history::Change::coalesce`).
+    pub(crate) coalesce: bool,
 }
 
 /// One value a write moved besides its own, as it was before the write.
@@ -281,6 +289,12 @@ pub struct Session {
     /// then quietly keep the old value, so the caller that wants to say *why*
     /// a step was refused needs the code, not just the readback.
     pub(crate) last_status: Option<u8>,
+    // -- WP P0W --
+    /// Who a replay is for while `replaying` is set: undo or redo.
+    pub(crate) replay_source: crate::history::ChangeSource,
+    /// Moves on every change to the journal or the stacks
+    /// ([`Session::history_version`]).
+    pub(crate) history_version: u64,
 }
 
 impl Session {
@@ -299,6 +313,9 @@ impl Session {
             core1_checked: false,
             last_status: None,
             provisional: false,
+            // -- WP P0W --
+            replay_source: crate::history::ChangeSource::Undo,
+            history_version: 0,
         })
     }
 
@@ -867,24 +884,23 @@ impl Session {
         after: Value,
         outcome: Outcome,
     ) {
-        let entry = JournalEntry {
+        // -- WP P0W -- one door into the journal, the embedder API's too
+        // (`history.rs`).
+        let change = crate::history::Change {
             path: d.path,
             indices: indices.to_vec(),
             before,
             after,
-            outcome,
-            undoable: is_reversible(d),
             companions,
+            hazard: d.hazard,
+            source: if self.replaying {
+                self.replay_source
+            } else {
+                crate::history::ChangeSource::Local
+            },
+            coalesce: false,
         };
-        self.journal.push(entry.clone());
-
-        // A replay is already accounted for by the stack it came from. A fresh
-        // write is a new branch of history, so anything that had been undone is
-        // no longer reachable.
-        if !self.replaying {
-            self.redo_stack.clear();
-            self.undo_stack.push(entry);
-        }
+        self.record_with_outcome(change, outcome);
     }
 
     /// Read the values a write is about to move besides its own (see

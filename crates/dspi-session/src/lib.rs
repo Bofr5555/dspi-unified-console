@@ -15,6 +15,8 @@ pub mod ext;
 pub mod ext_state;
 mod fast;
 pub mod filterfile;
+// -- WP P0W --
+pub mod history;
 // -- WP TM8 --
 pub mod link_words;
 pub mod notify;
@@ -41,6 +43,8 @@ pub mod vreg_calibrate;
 pub mod overvolt;
 pub mod write;
 
+// -- WP P0W --
+pub use history::{Change, ChangeSource};
 pub use notify::{Event, Notification, Notifications, Source};
 pub use pins::{PinClaim, PinConstraint, PinMap, PinRole};
 pub use probe::{Capabilities, Meters, probe, probe_any, read_bulk, read_meters};

@@ -26,6 +26,7 @@ use dspi_cmd::{Command, Context};
 
 use dspi_proto::value::Value;
 
+use crate::history::ChangeSource;
 use crate::write::{Outcome, Session, WriteError};
 
 /// The result of one step backwards or forwards.
@@ -48,115 +49,98 @@ impl Undone {
 }
 
 impl Session {
-    /// Is there a change left to step back through?
-    pub fn can_undo(&self) -> bool {
-        self.undo_stack
-            .iter()
-            .any(|e| e.undoable && (e.before.is_some() || !e.companions.is_empty()))
-    }
-
-    /// Is there a change left to re-apply?
-    pub fn can_redo(&self) -> bool {
-        !self.redo_stack.is_empty()
-    }
-
     /// Put back the value the most recent undoable change replaced.
     ///
     /// Returns `Ok(None)` when there is no history at all.
     pub fn undo(&mut self) -> Result<Option<Undone>, WriteError> {
-        let mut skipped = Vec::new();
-
-        loop {
-            let Some(entry) = self.undo_stack.pop() else {
-                return Ok(if skipped.is_empty() {
-                    None
+        // -- WP P0W -- the walk is the journal's (`history.rs`), shared with
+        // the embedder API's undo.
+        let step = self.take_undo();
+        let skipped: Vec<String> = step
+            .skipped
+            .iter()
+            .map(|e| {
+                if e.undoable {
+                    format!("`{}` has no previous value to restore", e.path)
                 } else {
-                    Some(Undone {
-                        command: None,
-                        outcome: None,
-                        skipped,
-                    })
-                });
-            };
-
-            if !entry.undoable {
-                skipped.push(format!("`{}` cannot be undone", entry.path));
-                continue;
-            }
-            // Every value to put back: the write's own, then what the device
-            // moved with it. A write to every output has no single value of
-            // its own to restore, only each output's.
-            let mut steps: Vec<(&'static str, Vec<u8>, Value)> = Vec::new();
-            if let Some(before) = &entry.before {
-                steps.push((entry.path, entry.indices.clone(), before.clone()));
-            }
-            steps.extend(
-                entry
-                    .companions
-                    .iter()
-                    .map(|c| (c.path, c.indices.clone(), c.before.clone())),
-            );
-            if steps.is_empty() {
-                // Stepping over this one to an older, unrelated change would
-                // undo something the person did not ask about. Say so, and
-                // let the next undo go further.
-                skipped.push(format!("`{}` has no previous value to restore", entry.path));
-                return Ok(Some(Undone {
-                    command: None,
-                    outcome: None,
-                    skipped,
-                }));
-            }
-
-            let mut outcome = None;
-            for (path, indices, value) in &steps {
-                match self.replay(path, indices, value.clone()) {
-                    // The first step is the change itself; what it did is
-                    // what the caller reports.
-                    Ok(o) => {
-                        outcome.get_or_insert(o);
-                    }
-                    Err(e) => {
-                        // The device refused the reversal, so the change is
-                        // still standing and must stay on the stack to be
-                        // tried again.
-                        self.undo_stack.push(entry);
-                        return Err(e);
-                    }
+                    format!("`{}` cannot be undone", e.path)
                 }
-            }
-
-            let command = steps
-                .iter()
-                .map(|(path, indices, value)| self.render(path, indices, value))
-                .collect::<Vec<_>>()
-                .join("; ");
-            self.redo_stack.push(entry);
-            return Ok(Some(Undone {
-                command: Some(command),
-                outcome,
+            })
+            .collect();
+        let Some(entry) = step.entry else {
+            return Ok((!skipped.is_empty()).then_some(Undone {
+                command: None,
+                outcome: None,
                 skipped,
             }));
+        };
+
+        // Every value to put back: the write's own, then what the device
+        // moved with it. A write to every output has no single value of its
+        // own to restore, only each output's.
+        let mut steps: Vec<(&'static str, Vec<u8>, Value)> = Vec::new();
+        if let Some(before) = &entry.before {
+            steps.push((entry.path, entry.indices.clone(), before.clone()));
         }
+        steps.extend(
+            entry
+                .companions
+                .iter()
+                .map(|c| (c.path, c.indices.clone(), c.before.clone())),
+        );
+
+        let mut outcome = None;
+        for (path, indices, value) in &steps {
+            match self.replay(path, indices, value.clone(), ChangeSource::Undo) {
+                // The first step is the change itself; what it did is what
+                // the caller reports.
+                Ok(o) => {
+                    outcome.get_or_insert(o);
+                }
+                Err(e) => {
+                    // The device refused the reversal, so the change is still
+                    // standing and must stay on the stack to be tried again.
+                    self.restore_undo(entry);
+                    return Err(e);
+                }
+            }
+        }
+
+        let command = steps
+            .iter()
+            .map(|(path, indices, value)| self.render(path, indices, value))
+            .collect::<Vec<_>>()
+            .join("; ");
+        self.finish_undo(entry);
+        Ok(Some(Undone {
+            command: Some(command),
+            outcome,
+            skipped,
+        }))
     }
 
     /// Re-apply the change that undo most recently reversed.
     pub fn redo(&mut self) -> Result<Option<Undone>, WriteError> {
-        let Some(entry) = self.redo_stack.pop() else {
+        let Some(entry) = self.take_redo() else {
             return Ok(None);
         };
 
         let after = entry.after.clone();
-        let outcome = match self.replay(entry.path, &entry.indices, after.clone()) {
+        let outcome = match self.replay(
+            entry.path,
+            &entry.indices,
+            after.clone(),
+            ChangeSource::Redo,
+        ) {
             Ok(o) => o,
             Err(e) => {
-                self.redo_stack.push(entry);
+                self.restore_redo(entry);
                 return Err(e);
             }
         };
 
         let command = self.render(entry.path, &entry.indices, &after);
-        self.undo_stack.push(entry);
+        self.finish_redo(entry);
         Ok(Some(Undone {
             command: Some(command),
             outcome: Some(outcome),
@@ -184,8 +168,10 @@ impl Session {
         path: &'static str,
         indices: &[u8],
         value: dspi_proto::value::Value,
+        source: ChangeSource,
     ) -> Result<Outcome, WriteError> {
         self.replaying = true;
+        self.replay_source = source;
         let out = self.write(path, indices, value);
         self.replaying = false;
         out
