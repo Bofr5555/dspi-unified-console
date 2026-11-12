@@ -2,10 +2,17 @@
 // real backend's, written under this run's XDG_CONFIG_HOME; the Run key's writer runs
 // against an INI file; the inhibit calls go to a fake portal and logind on a private
 // D-Bus server. What a real desktop and Windows do with them is QD35's hand check.
+// -- WP QP14 -- Adapted to the rebuilt app: a section of its own, the controller from
+// Registrar, the rows of the new Networking page, and the hub stood in for by
+// setHubRunning().
 #include "SmokeDriver.h"
 
+#include "AppIdentity.h"
+#include "HubController.h"
+#include "Registrar.h"
+#include "SettingsController.h"
+#include "Shell.h"
 #include "SystemIntegration.h"
-#include "TrayController.h"
 
 #include <QCoreApplication>
 #include <QDBusArgument>
@@ -18,30 +25,16 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QQmlApplicationEngine>
-#include <QQmlContext>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSettings>
 #include <QStandardPaths>
 #include <fcntl.h>
+#include <functional>
 #include <memory>
 #include <unistd.h>
 
 namespace {
-
-class FakeHub : public TrayHub {
-public:
-    using TrayHub::TrayHub;
-    State state;
-    State trayState() const override { return state; }
-    void setSharing(bool on) override {
-        state.sharing = state.running = on;
-        emit trayStateChanged();
-    }
-    void allowNewClient() override {}
-    void cancelPairing() override {}
-};
 
 // org.freedesktop.portal.Inhibit and org.freedesktop.login1.Manager.Inhibit, as far
 // as the inhibitor uses them
@@ -135,17 +128,16 @@ QString fileText(const QString &path) {
     return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()) : QString();
 }
 
-} // namespace
-
-void SmokeDriver::testSystemIntegration() {
-    section("QD13: open at login, keep awake");
-    auto *system = qobject_cast<SystemIntegration *>(
-        m_.engine->rootContext()->contextProperty(QStringLiteral("system")).value<QObject *>());
-    check("QD13: controller registered as system", system != nullptr);
+void systemSection(SmokeDriver &d) {
+    auto *system = Registrar::instance<SystemIntegration>();
+    d.check("qp14: the controller is registered", system != nullptr);
     if (!system) return;
+    const QString m_out = d.outDir();
+    const auto check = [&d](const QString &what, bool ok) { d.check(QStringLiteral("qp14: ") + what, ok); };
+    const auto spin = [&d](int ms) { d.spin(ms); };
+    const auto waitFor = [&d](int ms, const std::function<bool()> &done) { return d.waitFor(ms, done); };
     check("QD13: both supported here (Linux)", system->loginSupported() && system->keepAwakeSupported());
-    check("QD13: it found the hub among the controllers",
-          system->hub() && system->hub() == m_.engine->rootContext()->contextProperty(QStringLiteral("hub")).value<QObject *>());
+    check("it follows the app's hub", system->hub() && system->hub() == Registrar::instance<HubController>());
 
     // ── XDG autostart, the real backend ──
     const QString autostart = QDir(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)).filePath(QStringLiteral("autostart"));
@@ -156,7 +148,7 @@ void SmokeDriver::testSystemIntegration() {
     const QString program = SystemIntegration::programPath();
     const QString text = fileText(entry);
     check("QD13: on writes the entry", system->openAtLogin() && system->loginError().isEmpty());
-    check("QD13: the entry is an application", text.startsWith(QLatin1String("[Desktop Entry]\nType=Application\nName=DSPi uConsole\n"))
+    check("QD13: the entry is an application", text.startsWith(QStringLiteral("[Desktop Entry]\nType=Application\nName=%1\n").arg(AppIdentity::displayName()))
           && text.contains(QLatin1String("\nIcon=dspi-uconsole\n")) && text.contains(QLatin1String("\nX-GNOME-Autostart-enabled=true\n")));
     check("QD13: it starts this program, quoted", text.contains(QStringLiteral("\nExec=\"%1\"\n").arg(program)));
     check("QD13: the program is this executable outside an AppImage", program == QCoreApplication::applicationFilePath());
@@ -254,30 +246,28 @@ void SmokeDriver::testSystemIntegration() {
     check("QD13: off twice is no error", system->loginError().isEmpty());
 
     // The page's two switches
-    QQuickWindow *settings = nullptr;
-    for (QQuickWindow *w : root()->findChildren<QQuickWindow *>())
-        if (w->property("currentPage").isValid() && w->metaObject()->indexOfMethod("navigate(QVariant)") >= 0) settings = w;
+    auto *settings = qobject_cast<QQuickWindow *>(d.app().shell->openWindow(QStringLiteral("edit.settings")));
     check("QD13: settings window", settings != nullptr);
     if (settings) {
         const bool wasVisible = settings->isVisible();
         settings->setVisible(true);
-        QMetaObject::invokeMethod(settings, "navigate", Q_ARG(QVariant, QStringLiteral("networking")));
+        Registrar::instance<SettingsController>()->open(QStringLiteral("networking"));
         spin(400);
-        QQuickItem *page = findNamed(settings->contentItem(), QStringLiteral("networkingPage"));
-        QQuickItem *loginRow = findNamed(page, QStringLiteral("networkingOpenAtLogin"));
-        QQuickItem *awakeRow = findNamed(page, QStringLiteral("networkingKeepAwake"));
+        QQuickItem *page = findNamed(settings->contentItem(), QStringLiteral("NetworkingPage"));
+        QQuickItem *loginRow = findNamed(page, QStringLiteral("Networking.openAtLogin"));
+        QQuickItem *awakeRow = findNamed(page, QStringLiteral("Networking.keepAwake"));
         check("QD13: both rows on the Networking page", loginRow && awakeRow && loginRow->isVisible() && awakeRow->isVisible());
         // -- WP QD13b -- Another copy's entry: said on the switch, and a button to take it
         writeEntry(QLatin1Char('"') + other + QLatin1Char('"'));
         system->setLoginItem(makeXdgLoginItem(autostart));
         spin(100);
-        QQuickItem *hereRow = findNamed(page, QStringLiteral("networkingLoginHere"));
+        QQuickItem *hereRow = findNamed(page, QStringLiteral("Networking.loginHere"));
         check("QD13b: the page names the other copy", hereRow && hereRow->isVisible() && loginRow
-              && loginRow->property("checked").toBool() && loginRow->property("detail").toString().contains(other));
+              && loginRow->property("checked").toBool() && loginRow->property("caption").toString().contains(other));
         if (hereRow) QMetaObject::invokeMethod(hereRow, "clicked");
         spin(100);
         check("QD13b: its button points the entry here", pointsHere() && hereRow && !hereRow->isVisible()
-              && loginRow && loginRow->property("detail").toString().isEmpty());
+              && loginRow && loginRow->property("caption").toString().isEmpty());
         system->setOpenAtLogin(false);
         if (loginRow && awakeRow) {
             QMetaObject::invokeMethod(loginRow, "toggled", Q_ARG(bool, true));
@@ -336,12 +326,15 @@ void SmokeDriver::testSystemIntegration() {
     QDBusConnection peer = QDBusConnection::connectToPeer(server.address(), QStringLiteral("qd13-power"));
     check("QD13: connected to the fake services", waitFor(3000, [&] { return peer.isConnected(); }));
 
-    FakeHub hub;
-    TrayHub *realHub = system->hub();
+    HubController *realHub = system->hub();
     const bool keptAwake = system->keepAwake();
     system->setKeepAwake(false);
     system->setSleepInhibitor(makeDBusSleepInhibitor(peer, QString(), peer, QString()));
-    system->setHub(&hub);
+    system->followHub(nullptr);
+    struct {
+        SystemIntegration *system;
+        void setSharing(bool on) { system->setHubRunning(on); }
+    } hub{ system };
     const char *portal = "org.freedesktop.portal.Inhibit";
     const char *logind = "org.freedesktop.login1.Manager";
     const char *request = "org.freedesktop.portal.Request";
@@ -369,7 +362,7 @@ void SmokeDriver::testSystemIntegration() {
     check("QD13: no portal: logind holds it", waitFor(3000, [&] { return system->holdingAwake(); }));
     const FakePower::Call lock = fake->last(logind, "Inhibit");
     check("QD13: the logind call: idle, block", lock.path == QLatin1String("/org/freedesktop/login1") && lock.args.size() == 4
-          && lock.args.at(0).toString() == QLatin1String("idle") && lock.args.at(1).toString() == QLatin1String("DSPi uConsole")
+          && lock.args.at(0).toString() == QLatin1String("idle") && lock.args.at(1).toString() == AppIdentity::displayName()
           && lock.args.at(3).toString() == QLatin1String("block"));
     check("QD13: the lock is open while held", !fake->lockClosed());
     system->setKeepAwake(false);
@@ -394,9 +387,14 @@ void SmokeDriver::testSystemIntegration() {
           && !system->holdingAwake());
 
     // As it was: the app's hub and backend, the user's choice
-    system->setHub(realHub);
+    hub.setSharing(false);
+    system->followHub(realHub);
     system->setKeepAwake(keptAwake);
     QSettings().remove(QStringLiteral("system/keepAwake"));
     if (fake->lockReadEnd >= 0) ::close(fake->lockReadEnd);
     QDBusConnection::disconnectFromPeer(QStringLiteral("qd13-power"));
 }
+
+} // namespace
+
+static const SmokeDriver::Section systemChecks("qp14-system", 142, &systemSection);
