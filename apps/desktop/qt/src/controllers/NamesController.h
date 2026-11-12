@@ -24,7 +24,7 @@ class NamesController : public QObject, public SaveParticipant {
     QML_SINGLETON
     Q_PROPERTY(bool sourceNamesSupported READ sourceNamesSupported NOTIFY changed)
     Q_PROPERTY(bool deviceNameSupported READ deviceNameSupported NOTIFY changed)
-    // [{source, title, detail, icon, stored, text, edited}] for the sources the
+    // [{source, title, detail, stored, text, edited}] for the sources the
     // device offers now, in the source menu's order
     Q_PROPERTY(QVariantList sources READ sources NOTIFY changed)
     Q_PROPERTY(QString deviceName READ deviceName NOTIFY changed)
