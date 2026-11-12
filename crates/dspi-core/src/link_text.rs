@@ -202,9 +202,6 @@ fn term(name: &str, platform: Platform) -> Option<&'static str> {
         // The settings page that holds outputs and pins.
         ("hardware_page", MacOs | Android | Ios) => "Hardware",
         ("hardware_page", Windows | Linux) => "Outputs",
-        // -- WP QD32 -- The menu that holds the effect windows. Qt's has its own.
-        ("effects_menu", MacOs | Android | Ios) => "Tools",
-        ("effects_menu", Windows | Linux) => "Effects",
         // Only in `desktop` lines: mobile systems have no such choice.
         ("sound_settings", MacOs) => "macOS Sound settings",
         ("sound_settings", Windows) => "Windows Sound settings",
@@ -1004,13 +1001,16 @@ mod tests_wp_qd32 {
             .join("\n")
     }
 
+    // -- WP QP18 -- The rebuilt desktop app keeps the effect windows under
+    // Tools, as the Mac does, with the same shortcuts; its source picker has
+    // the rename menu on right-click too.
     #[test]
-    fn wp_qd32_effects_are_under_effects_only_in_qt() {
+    fn wp_qp18_effects_are_under_tools_everywhere() {
         for (name, keys) in [
             ("Tube Modeller", "Shift+D"),
             ("Subharmonic Synthesizer", "Shift+S"),
         ] {
-            let qt = format!("Effects > {name} (Ctrl+{keys})");
+            let qt = format!("Tools > {name} (Ctrl+{keys})");
             let mac = format!("Tools > {name} (Cmd+{keys})");
             let mobile = format!("Tools > {name}.");
             assert!(release_text(Platform::Linux).contains(&qt));
@@ -1019,8 +1019,26 @@ mod tests_wp_qd32 {
             assert!(release_text(Platform::Android).contains(&mobile));
             assert!(release_text(Platform::Ios).contains(&mobile));
         }
-        // The analyser really is in Tools, in Qt as well.
+        for platform in [
+            Platform::Linux,
+            Platform::Windows,
+            Platform::MacOs,
+            Platform::Android,
+            Platform::Ios,
+        ] {
+            assert!(
+                !release_text(platform).contains("Effects >"),
+                "{platform:?}"
+            );
+        }
         assert!(release_text(Platform::Linux).contains("Tools > Spectrum Analyser (Ctrl+Shift+A)"));
+        let picker = "or right-click the source picker in the sidebar";
+        for platform in [Platform::Linux, Platform::Windows, Platform::MacOs] {
+            assert!(release_text(platform).contains(picker), "{platform:?}");
+        }
+        for platform in [Platform::Android, Platform::Ios] {
+            assert!(!release_text(platform).contains(picker), "{platform:?}");
+        }
     }
 
     /// Qt's own release notes: what the other platforms' text does not say. The
