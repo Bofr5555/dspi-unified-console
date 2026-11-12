@@ -809,6 +809,10 @@ pub use self::mdns::{MdnsAdvertiser, MdnsSource};
 #[cfg(all(feature = "mdns", windows))]
 #[path = "discovery/windows.rs"]
 mod win;
+// -- WP DISC2 (review d2 F1) -- the Windows source's browse logic, tested everywhere
+#[cfg(any(test, all(feature = "mdns", windows)))]
+#[path = "discovery/dnssd_browse.rs"]
+mod dnssd_browse;
 #[cfg(all(feature = "mdns", windows))]
 pub use self::win::{native_contexts, DnsSdAdvertiser, DnsSdSource};
 

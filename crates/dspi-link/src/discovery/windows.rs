@@ -37,11 +37,10 @@
 
 #![allow(unsafe_code)]
 
-use std::collections::HashMap;
 use std::ffi::c_void;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, ToSocketAddrs};
 use std::ptr;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread::{self, JoinHandle};
@@ -61,9 +60,10 @@ use windows_sys::Win32::NetworkManagement::IpHelper::{
 use windows_sys::Win32::Networking::WinSock::AF_UNSPEC;
 use windows_sys::Win32::System::SystemInformation::{ComputerNameDnsHostname, GetComputerNameExW};
 
+use super::dnssd_browse::{dialable, Answer, Browse, Resolver, Timing};
 use super::{
-    address_rank, instance_label, AdvertiseScope, AdvertisedNames, BrowseSession, BrowseSource, DiscoveryError,
-    HubAdvert, ServiceRecord, SourceEvent, SourceSink,
+    instance_label, AdvertiseScope, AdvertisedNames, BrowseSession, BrowseSource, DiscoveryError, HubAdvert,
+    ServiceRecord, SourceSink,
 };
 use crate::clock::Instant;
 
@@ -73,16 +73,6 @@ const QUERY: &str = "_dspi._tcp.local";
 /// that does not now and then never does (measured: a lost answer is not asked again),
 /// and is cancelled and tried again.
 const RESOLVE_TIMEOUT: Duration = Duration::from_secs(2);
-/// Resolves of one announcement that gave nothing to dial.
-const RESOLVE_TRIES: u32 = 4;
-/// The wait before resolving again a hub that gave only its host name: past mdns-sd's
-/// one-second limit on sending its A records again.
-const RESOLVE_AGAIN: Duration = Duration::from_millis(1100);
-/// The least time between two resolves of one hub. Avahi and Windows put the PTR record
-/// in every answer, and each PTR heard asks for a resolve, so without this a hub would
-/// be resolved about once a second for as long as it is browsed. One heard meanwhile is
-/// resolved when the time is up, so a TXT change shows within this (upstream drops it).
-const RERESOLVE_GAP: Duration = Duration::from_secs(5);
 /// How long a registration may wait for Windows' answer before it is tried again.
 const REGISTER_TIMEOUT: Duration = Duration::from_secs(10);
 /// The wait between the goodbye of an update and its new registration. Windows sets the
@@ -107,8 +97,6 @@ const CANCEL_WAIT: Duration = Duration::from_secs(2);
 /// Waits before registering again after a failure: doubles to the last.
 const RETRY_FIRST: Duration = Duration::from_secs(1);
 const RETRY_MAX: Duration = Duration::from_secs(60);
-/// Addresses kept per hub.
-const MAX_KEPT: usize = 8;
 const ERROR_CANCELLED: u32 = 1223;
 const PENDING: u32 = DNS_REQUEST_PENDING.unsigned_abs();
 
@@ -151,6 +139,17 @@ unsafe fn borrow<T>(raw: *const T) -> Arc<T> {
     }
 }
 
+/// Runs a callback's body. Since Rust 1.81 a panic leaving an `extern "system"` function
+/// aborts the process, so it is never undefined behaviour; nothing on these paths is
+/// known to panic (locks tolerate poison, conversions are lossy, counts saturate), and
+/// this keeps a mistake from taking the app down with it: the panic is logged and the
+/// call's share stays with dnsapi, counted by [`native_contexts`] (review d2 F6).
+fn callback_guard(name: &str, body: impl FnOnce()) {
+    if std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)).is_err() {
+        log::error!("Windows DNS-SD: a panic in {name} was caught; its context stays allocated");
+    }
+}
+
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
 }
@@ -183,60 +182,36 @@ fn rooted(name: String) -> String {
     }
 }
 
-fn dialable(addresses: &[IpAddr]) -> Vec<IpAddr> {
-    addresses.iter().filter(|ip| address_rank(ip).is_some()).copied().collect()
-}
-
 // ---- browsing ----
 
 /// Browses through the DNS Client service.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DnsSdSource;
 
-/// What a browse knows of one instance.
-#[derive(Default)]
-struct Instance {
-    /// Goodbyes heard: a resolve started before one must not bring the hub back.
-    epoch: u64,
-    announced: bool,
-    /// A resolve of this epoch is running.
-    resolving: bool,
-    /// Announced again while it ran: the data may have changed since it asked.
-    again: bool,
-    /// The last addresses to dial, for a later resolve that gives none.
-    kept: Vec<IpAddr>,
-}
-
+/// A browse's context: what dnsapi's callbacks reach.
 struct BrowseCtx {
-    sink: SourceSink,
-    closed: AtomicBool,
+    browse: Arc<Browse<DnsApi>>,
     /// Windows may read it until the browse ends.
     query: Vec<u16>,
-    /// By lower-case instance name.
-    instances: Mutex<HashMap<String, Instance>>,
-    /// The resolves running, to stop when the browse closes.
-    aborts: Mutex<HashMap<u64, Sender<Answer>>>,
-    next_resolve: AtomicU64,
     /// The last callback has come.
     ended: (Mutex<bool>, Condvar),
 }
 
-impl BrowseCtx {
-    /// A channel for one resolving thread, which the browse can stop.
-    fn resolver(&self) -> Option<(u64, Sender<Answer>, Receiver<Answer>)> {
-        let id = self.next_resolve.fetch_add(1, Ordering::SeqCst);
-        let (tx, rx) = mpsc::channel();
-        let mut aborts = lock(&self.aborts);
-        // Checked under the lock the closing browse drains, so none is missed.
-        if self.closed.load(Ordering::SeqCst) {
-            return None;
-        }
-        aborts.insert(id, tx.clone());
-        Some((id, tx, rx))
+/// The dnsapi half of [`Resolver`]; the rest of the browse is `dnssd_browse.rs`.
+struct DnsApi;
+
+impl Resolver for DnsApi {
+    fn resolve(
+        &self,
+        instance: &str,
+        tx: &Sender<Answer>,
+        rx: &Receiver<Answer>,
+    ) -> Result<(ServiceRecord, String), String> {
+        resolve(instance, tx, rx)
     }
 
-    fn resolved(&self, id: u64) {
-        lock(&self.aborts).remove(&id);
+    fn look_up(&self, host: &str, port: u16) -> Vec<IpAddr> {
+        look_up(host, port)
     }
 }
 
@@ -252,12 +227,8 @@ unsafe impl Send for WinSession {}
 impl BrowseSource for DnsSdSource {
     fn open(&self, sink: SourceSink) -> Result<Box<dyn BrowseSession>, DiscoveryError> {
         let ctx = Arc::new(BrowseCtx {
-            sink,
-            closed: AtomicBool::new(false),
+            browse: Browse::new(sink, DnsApi, Timing::default()),
             query: wide(QUERY),
-            instances: Mutex::default(),
-            aborts: Mutex::default(),
-            next_resolve: AtomicU64::new(0),
             ended: (Mutex::new(false), Condvar::new()),
         });
         let raw = give(&ctx);
@@ -285,6 +256,13 @@ impl BrowseSource for DnsSdSource {
 /// Called by dnsapi with the context [`DnsSdSource::open`] gave it and a record list it
 /// hands over.
 unsafe extern "system" fn on_browse(status: u32, context: *const c_void, records: *const DNS_RECORDW) {
+    // SAFETY: the caller's contract, passed on.
+    callback_guard("on_browse", || unsafe { on_browse_inner(status, context, records) });
+}
+
+/// # Safety
+/// As [`on_browse`].
+unsafe fn on_browse_inner(status: u32, context: *const c_void, records: *const DNS_RECORDW) {
     let raw = context.cast::<BrowseCtx>();
     let mut events = Vec::new();
     let mut rec = records;
@@ -317,151 +295,13 @@ unsafe extern "system" fn on_browse(status: u32, context: *const c_void, records
     }
     // SAFETY: the share is held until the cancelled callback above.
     let ctx = unsafe { borrow(raw) };
-    if ctx.closed.load(Ordering::SeqCst) {
-        return;
-    }
     if status != 0 {
-        ctx.sink.send(SourceEvent::Failed(format!("Windows DNS-SD browse failed: {status}")));
+        ctx.browse.failed(format!("Windows DNS-SD browse failed: {status}"));
         return;
     }
     for (instance, goodbye) in events {
-        heard(&ctx, instance, goodbye);
+        ctx.browse.heard(instance, goodbye);
     }
-}
-
-/// One PTR record: a goodbye, or a hub to resolve.
-fn heard(ctx: &Arc<BrowseCtx>, instance: String, goodbye: bool) {
-    let key = instance.to_ascii_lowercase();
-    let epoch = {
-        let mut instances = lock(&ctx.instances);
-        let entry = instances.entry(key.clone()).or_default();
-        if goodbye {
-            entry.epoch = entry.epoch.wrapping_add(1);
-            entry.announced = false;
-            entry.resolving = false;
-            entry.again = false;
-            entry.kept.clear();
-            None
-        } else if entry.resolving {
-            entry.again = true;
-            None
-        } else {
-            entry.announced = true;
-            entry.resolving = true;
-            Some(entry.epoch)
-        }
-    };
-    if goodbye {
-        ctx.sink.send(SourceEvent::Removed(instance));
-        return;
-    }
-    let Some(epoch) = epoch else {
-        return;
-    };
-    let Some((id, tx, rx)) = ctx.resolver() else {
-        return;
-    };
-    let owned = Arc::clone(ctx);
-    let thread_key = key.clone();
-    let spawned = thread::Builder::new().name("dspi-dnssd-resolve".into()).spawn(move || {
-        // Stopped early by the browse closing.
-        while resolve_hub(&owned, &thread_key, epoch, &instance, &tx, &rx)
-            && matches!(rx.recv_timeout(RERESOLVE_GAP), Err(RecvTimeoutError::Timeout))
-        {}
-        owned.resolved(id);
-    });
-    if let Err(e) = spawned {
-        log::warn!("Windows DNS-SD: no thread to resolve with: {e}");
-        ctx.resolved(id);
-        if let Some(entry) = lock(&ctx.instances).get_mut(&key) {
-            entry.resolving = false;
-        }
-    }
-}
-
-/// Resolve an announced hub until there is an address to dial, and report it unless a
-/// goodbye came meanwhile. True when it was announced again meanwhile, to be resolved
-/// once more.
-///
-/// A resolve that gives only an IPv6 link-local address (measured against mdns-sd on
-/// Linux: it answers Windows' follow-up A query only after its one-second rate limit, and
-/// Windows does not use the A records it sent with the SRV) is reported at once with the
-/// host name to dial, as upstream's app and the Mac dial a hub, and resolved again a
-/// second later for an address.
-fn resolve_hub(
-    ctx: &BrowseCtx,
-    key: &str,
-    epoch: u64,
-    instance: &str,
-    tx: &Sender<Answer>,
-    rx: &Receiver<Answer>,
-) -> bool {
-    let mut by_name = false;
-    for _ in 0..RESOLVE_TRIES {
-        // Stopped early by the browse closing.
-        if by_name && !matches!(rx.recv_timeout(RESOLVE_AGAIN), Err(RecvTimeoutError::Timeout)) {
-            break;
-        }
-        if !current(ctx, key, epoch) {
-            break;
-        }
-        // No answer in time: at once again.
-        let Ok((mut record, host)) = resolve(instance, tx, rx) else {
-            continue;
-        };
-        let mut addresses = dialable(&record.addresses);
-        if addresses.is_empty() && !host.is_empty() {
-            addresses = look_up(&host, record.port);
-        }
-        if addresses.is_empty() {
-            addresses = lock(&ctx.instances).get(key).map(|e| e.kept.clone()).unwrap_or_default();
-        }
-        let dialled_by_address = !addresses.is_empty();
-        if !dialled_by_address {
-            log::debug!("Windows DNS-SD: {instance} resolved to {:?} only; listed as {host}", record.addresses);
-            if by_name {
-                continue;
-            }
-            by_name = true;
-        }
-        addresses.truncate(MAX_KEPT);
-        record.addresses = addresses;
-        host.trim_end_matches('.').clone_into(&mut record.host_name);
-        if !report(ctx, key, epoch, instance, record) || dialled_by_address {
-            break;
-        }
-    }
-    let mut instances = lock(&ctx.instances);
-    let Some(entry) = instances.get_mut(key).filter(|e| e.epoch == epoch) else {
-        return false;
-    };
-    let again = std::mem::take(&mut entry.again) && !ctx.closed.load(Ordering::SeqCst);
-    entry.resolving = again;
-    again
-}
-
-/// Still announced, as of this epoch, and the browse open.
-fn current(ctx: &BrowseCtx, key: &str, epoch: u64) -> bool {
-    lock(&ctx.instances).get(key).is_some_and(|e| e.epoch == epoch && e.announced) && !ctx.closed.load(Ordering::SeqCst)
-}
-
-/// Hand a resolved record to the browser, unless a goodbye came meanwhile. False then.
-fn report(ctx: &BrowseCtx, key: &str, epoch: u64, instance: &str, mut record: ServiceRecord) -> bool {
-    let mut instances = lock(&ctx.instances);
-    let Some(entry) = instances.get_mut(key).filter(|e| e.epoch == epoch && e.announced) else {
-        return false;
-    };
-    if ctx.closed.load(Ordering::SeqCst) {
-        return false;
-    }
-    if !record.addresses.is_empty() {
-        record.addresses.clone_into(&mut entry.kept);
-    }
-    // The name the browse heard, which a goodbye will name too.
-    instance.clone_into(&mut record.instance);
-    // Under the lock, so a goodbye cannot pass it.
-    ctx.sink.send(SourceEvent::Resolved(record));
-    true
 }
 
 /// The SRV target's addresses as the system resolver has them now, from the DNS
@@ -483,37 +323,14 @@ fn look_up(host: &str, port: u16) -> Vec<IpAddr> {
 }
 
 impl BrowseSession for WinSession {
-    /// Resolve it again; no answer is a removal. Windows may still answer from its cache
-    /// for a while, so a hub that vanished can take until its record's TTL to leave.
     fn verify(&self, instance: &str) {
-        let Some((id, tx, rx)) = self.ctx.resolver() else {
-            return;
-        };
-        let ctx = Arc::clone(&self.ctx);
-        let instance = instance.to_owned();
-        let spawned = thread::Builder::new().name("dspi-dnssd-verify".into()).spawn(move || {
-            let gone = resolve(&instance, &tx, &rx).is_err();
-            if gone && !ctx.closed.load(Ordering::SeqCst) {
-                ctx.sink.send(SourceEvent::Removed(instance));
-            }
-            ctx.resolved(id);
-        });
-        if let Err(e) = spawned {
-            log::debug!("Windows DNS-SD verify: {e}");
-            self.ctx.resolved(id);
-        }
+        self.ctx.browse.verify(instance);
     }
 }
 
 impl Drop for WinSession {
     fn drop(&mut self) {
-        {
-            let mut aborts = lock(&self.ctx.aborts);
-            self.ctx.closed.store(true, Ordering::SeqCst);
-            for (_, abort) in aborts.drain() {
-                let _ = abort.send(Answer::Abort);
-            }
-        }
+        self.ctx.browse.close();
         // SAFETY: the handle DnsServiceBrowse filled in, for a browse that only this
         // cancel ends.
         let status = unsafe { DnsServiceBrowseCancel(&self.cancel) };
@@ -530,13 +347,6 @@ impl Drop for WinSession {
 }
 
 // ---- resolving ----
-
-enum Answer {
-    /// The callback of resolve number `.0`.
-    Done(u64, Option<(ServiceRecord, String)>),
-    /// The browse closed.
-    Abort,
-}
 
 struct ResolveCtx {
     attempt: u64,
@@ -653,6 +463,13 @@ impl Completion {
 /// # Safety
 /// Called by dnsapi with [`resolve`]'s context and an instance it hands over.
 unsafe extern "system" fn on_resolve(status: u32, context: *const c_void, instance: *const DNS_SERVICE_INSTANCE) {
+    // SAFETY: the caller's contract, passed on.
+    callback_guard("on_resolve", || unsafe { on_resolve_inner(status, context, instance) });
+}
+
+/// # Safety
+/// As [`on_resolve`].
+unsafe fn on_resolve_inner(status: u32, context: *const c_void, instance: *const DNS_SERVICE_INSTANCE) {
     let raw = context.cast::<ResolveCtx>();
     // SAFETY: the share is held until the end of this callback.
     log::debug!("Windows DNS-SD: resolve {} answered {status}", unsafe { (*raw).attempt });
@@ -796,9 +613,11 @@ unsafe extern "system" fn on_net_change(
     _: *const MIB_IPINTERFACE_ROW,
     _: MIB_NOTIFICATION_TYPE,
 ) {
-    // SAFETY: alive until the cancel, which waits for this call.
-    let tx = unsafe { &*context.cast::<Mutex<Sender<Cmd>>>() };
-    let _ = lock(tx).send(Cmd::NetworkChanged);
+    callback_guard("on_net_change", || {
+        // SAFETY: alive until the cancel, which waits for this call.
+        let tx = unsafe { &*context.cast::<Mutex<Sender<Cmd>>>() };
+        let _ = lock(tx).send(Cmd::NetworkChanged);
+    });
 }
 
 /// Where a registration's callbacks stand.
@@ -998,6 +817,13 @@ impl Current {
 /// # Safety
 /// Called by dnsapi with a registration's context.
 unsafe extern "system" fn on_register(status: u32, context: *const c_void, instance: *const DNS_SERVICE_INSTANCE) {
+    // SAFETY: the caller's contract, passed on.
+    callback_guard("on_register", || unsafe { on_register_inner(status, context, instance) });
+}
+
+/// # Safety
+/// As [`on_register`].
+unsafe fn on_register_inner(status: u32, context: *const c_void, instance: *const DNS_SERVICE_INSTANCE) {
     let raw = context.cast::<Reg>();
     {
         // SAFETY: the share is held until the end of this callback.
@@ -1015,12 +841,16 @@ unsafe extern "system" fn on_register(status: u32, context: *const c_void, insta
         // SAFETY: our own instance's name.
         let asked = unsafe { from_wide((*reg.instance).pszInstanceName) };
         let renamed = first && status == 0 && !name.is_empty() && !name.eq_ignore_ascii_case(&asked);
+        // The deregistration of a renamed registration passes the kept instance; should
+        // dnsapi hand that pointer back, it is `Reg::drop`'s to free (review d2 F2).
+        let kept =
+            !instance.is_null() && lock(&reg.renamed).as_ref().is_some_and(|r| r.instance.cast_const() == instance);
         if renamed && instance != reg.instance.cast_const() {
             let request =
                 Box::new(DNS_SERVICE_REGISTER_REQUEST { pServiceInstance: instance.cast_mut(), ..reg.request });
             *lock(&reg.renamed) = Some(Renamed { instance: instance.cast_mut(), request });
-        } else if !instance.is_null() && instance != reg.instance.cast_const() {
-            // SAFETY: a copy dnsapi handed over, not ours; freed once.
+        } else if !instance.is_null() && instance != reg.instance.cast_const() && !kept {
+            // SAFETY: a copy dnsapi handed over, neither ours nor kept; freed once.
             unsafe { DnsServiceFreeInstance(instance) };
         }
         if first {
@@ -1040,7 +870,10 @@ unsafe extern "system" fn on_register(status: u32, context: *const c_void, insta
 
 /// Advertises a hub through the DNS Client service, from a thread of its own, so an
 /// update or a retry never blocks the caller. Dropping it withdraws the registration
-/// (a goodbye) and waits up to [`DEREGISTER_WAIT`] for that.
+/// (a goodbye) and joins the thread: normally a few milliseconds. If Windows does not
+/// acknowledge, the thread may first finish what it is doing (a re-registration: up to
+/// two [`DEREGISTER_WAIT`]s and [`REREGISTER_GAP`]; a self-check: one resolve), then the
+/// withdrawal waits up to two [`DEREGISTER_WAIT`]s: about 9 s at worst.
 pub struct DnsSdAdvertiser {
     tx: Sender<Cmd>,
     names: Arc<Mutex<AdvertisedNames>>,

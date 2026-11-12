@@ -39,7 +39,7 @@ upstream web page is served at `/hub/` since WB7 (section 9, "WB7 as built").
 | `hub-conn-rx-<id>`, `hub-conn-tx-<id>` (HB1) | 1 per plain HTTP socket (at most 48, HB9); 2 per WebSocket with a session (at most 16) | the read half; the session's outbox and the write half | the socket; `Outbox::pop` | the outbox closes, or the peer goes |
 | `hub-refuse-<id>` (HB1) | 0–4, short-lived | a socket past the limits | its request, 1 s at most | it has answered 503 |
 | `mdns-sd`'s daemon (HB5) | 1, with `mdns` and while advertised (not on Windows) | the responder's sockets | its poller | `Advertiser` dropped; joined then |
-| `dspi-dnssd-advertise` (DISC2) | 1, with `mdns` and while advertised, on Windows | the registration with Windows' DNS Client, interface notifications | its channel, with retry and self-check timers | `Advertiser` dropped; joined after the goodbye (up to ~2 s) |
+| `dspi-dnssd-advertise` (DISC2) | 1, with `mdns` and while advertised, on Windows | the registration with Windows' DNS Client, interface notifications | its channel, with retry and self-check timers | `Advertiser` dropped; joined after the goodbye: normally milliseconds, about 9 s at worst if Windows acknowledges nothing (review d2 F5) |
 | the app's (not ours) | | core's reader, `poll_hotplug` caller | | |
 
 A count for one device, one app and two clients is 2 + 2 + 1 + 4 = 9 threads, idle
@@ -529,6 +529,8 @@ from HB1's HTTP path, and only with `web` on.
   - Windows drops registrations when an adapter goes down, with no callback (upstream's app loses its too).
     The advertiser registers again 3 s after the last interface change (`NotifyIpInterfaceChange`), and the
     self-check catches anything else: back on the LAN 8–10 s after the adapter returns.
+  - Stopping a browse (`WinSession` dropped, from the Qt UI thread in `dspi_link_browse_stop`) waits up to
+    2 s for dnsapi's cancelled callback; it comes within milliseconds in every run measured.
   - `AdvertiseScope::LoopbackOnly` is refused, so `tests/wp_hb5_advertise.rs` does not build for Windows.
 - **Tests stay on loopback.** mdns-sd joins the mDNS group on every interface when its daemon starts,
   before any can be turned off, so a test sends IGMP and MLD membership reports there, though no mDNS
