@@ -1,0 +1,1 @@
+move-horizontal     dashboard layout popup: Auto
