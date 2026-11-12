@@ -61,7 +61,8 @@ ComboBox {
     popup: Popup {
         y: control.height + 2
         width: Math.max(control.width, 160)
-        implicitHeight: Math.min(contentItem.implicitHeight + 8, 320)
+        // The whole list up to a screenful, then it scrolls
+        implicitHeight: Math.min(contentItem.implicitHeight + topPadding + bottomPadding, Theme.popupMaxHeight)
         padding: 4
         contentItem: ListView {
             clip: true
