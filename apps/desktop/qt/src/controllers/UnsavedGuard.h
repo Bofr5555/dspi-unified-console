@@ -63,6 +63,9 @@ public:
     Q_INVOKABLE void answer(const QString &answer);
     // After a failed save before quitting: "accept" quits anyway, anything else stays
     Q_INVOKABLE void answerSaveFailed(const QString &answer);
+    // -- WP QP16 -- The settings question's answer: "accept" (Discard and
+    // Switch) goes on to the preset's question, anything else stops
+    Q_INVOKABLE void answerSettings(const QString &answer);
 
     // The core's lines as the question lists them: at most 15, then a count
     static QString summary(const QStringList &lines);
@@ -75,6 +78,11 @@ signals:
     // The save before `op` failed: an alert, or for "quit" a question
     // (Quit / Cancel) answered with answerSaveFailed()
     void saveFailed(const QString &op, const QString &title, const QString &text);
+    // -- WP QP16 -- Before a device switch: Settings holds changes for this
+    // device that were not saved (HardwareController.pending), which the
+    // switch discards (the Mac's "Unsaved Settings Changes"); answered with
+    // answerSettings()
+    void settingsQuestion(const QString &title, const QString &text);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;

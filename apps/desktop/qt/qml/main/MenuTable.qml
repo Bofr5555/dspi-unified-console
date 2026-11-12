@@ -105,6 +105,8 @@ QtObject {
                 { id: "help.projectGithub", text: qsTr("%1 on GitHub").arg(AppIdentity.displayName) },
                 { id: "help.firmwareGithub", text: qsTr("DSPi Firmware on GitHub") },
                 { separator: true },
+                // -- WP QP17 -- shown once the core can write the bundle (PRO1 E2)
+                { id: "help.saveDiagnostics", text: qsTr("Save Diagnostics..."), optional: true },
                 { id: "help.checkForUpdates", text: qsTr("Check for Updates..."), optional: true },
                 //: %1 is the app's name
                 { id: "help.about", text: qsTr("About %1").arg(AppIdentity.displayName) }

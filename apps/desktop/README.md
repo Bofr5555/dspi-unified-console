@@ -38,8 +38,11 @@ By hand, in the container:
     qt/src/AppIdentity.h     the display name, the settings names, the project's links
     qt/src/core/             the core wrapper: Core, CoreWorker, DeviceModel, the list models
     qt/src/controllers/      Registrar, Shell; one controller per feature
-    qt/src/platform/         the icon provider, the token store, tray and system integration
-    qt/src/render/           the drawn items: BodePlot (the graph), Meter, PinGrid
+    qt/src/platform/         the icon provider, the token store, tray and system integration,
+                             the update checker (AppUpdater), the bootloader locator,
+                             device access (DeviceAccess: the udev rule)
+    qt/src/render/           the drawn items: BodePlot (the graph), PeqOverlay, Meter, PinGrid,
+                             RtaSurface and RtaBars (the spectrum), TubeIllustration
     qt/qml/Theme/            Theme (every colour, size and font) and ChannelPalette
     qt/qml/components/       the shared controls (below)
     qt/qml/main/             the main window, the menu table, the banner host, the
@@ -172,7 +175,6 @@ adapts each to `Core` and `DeviceModel`, or replaces it:
 | File | Work package |
 |---|---|
 | `src/platform/HostAudioFormatWindows.cpp` | QP18 |
-| `smoke/SmokeDriverRtaFollow.cpp` | QP9 |
 | `smoke/SmokeDriverExt.cpp` | its core-voltage half waits for the core-voltage WP (`SmokeEffects.cpp` replaced the rest, QP7) |
 | `smoke/SmokeDriverLatency.cpp`, `SmokeDriverNames.cpp`, `SmokeDriverSaveBar.cpp` | replaced by `SmokeHardware.cpp` (QP11); to be removed |
 | the other `smoke/SmokeDriver*.cpp` section files | the work package of their screens; QP19 for the rest |

@@ -1,0 +1,7 @@
+# -- WP QP17 -- Onboarding, About and updates (see ../manifest.txt for the format)
+graduation-cap      Getting Started header; Advanced > Onboarding (developer)
+badge-check         Getting Started: firmware confirmed, About: additional terms
+circle-question-mark  Getting Started: Help row
+circle-arrow-up     Getting Started: firmware update offered
+circle-arrow-down   Getting Started: downgrade offered
+file-text           About: licence

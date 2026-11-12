@@ -5,6 +5,7 @@
 #include "DeviceModel.h"
 
 #include <QJSEngine>
+#include <QThread>
 
 namespace {
 Poller *s_instance = nullptr;
@@ -44,6 +45,16 @@ Poller::Poller(Core *core, DeviceModel *device, QObject *parent) : QObject(paren
     });
     connect(device, &DeviceModel::snapshotApplied, this, &Poller::updateRunning);
     updateRunning();
+}
+
+Poller::Poll::~Poll() {
+    if (QThread::currentThread() == timer.thread()) return;
+#ifdef DSPI_SMOKE
+    qFatal("Poller: the poll \"%s\" is destroyed on thread %p, its timer lives on %p", qPrintable(name),
+           static_cast<void *>(QThread::currentThread()), static_cast<void *>(timer.thread()));
+#else
+    qWarning("Poller: the poll \"%s\" is destroyed off its timer's thread", qPrintable(name));
+#endif
 }
 
 Poller::~Poller() {

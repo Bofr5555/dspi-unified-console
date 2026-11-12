@@ -14,18 +14,39 @@ CoreWorker::~CoreWorker() { stop(); }
 void CoreWorker::post(std::function<void(FfiCore *)> job) {
     if (m_stopped.load()) return;
     m_pending.fetch_add(1);
-    QMetaObject::invokeMethod(
-        m_runner,
-        [this, job = std::move(job)]() {
-            if (!m_stopped.load()) job(m_core);
-            m_pending.fetch_sub(1);
-        },
-        Qt::QueuedConnection);
+    {
+        QMutexLocker hold(&m_lock);
+        m_queue.push_back(std::move(job));
+    }
+    // One wake-up per job, so the order stays the order posted
+    QMetaObject::invokeMethod(m_runner, [this]() { runOne(); }, Qt::QueuedConnection);
+}
+
+void CoreWorker::runOne() {
+    Job job;
+    {
+        QMutexLocker hold(&m_lock);
+        // Stopped: what is left goes back with stop(), on the GUI thread
+        if (m_stopped.load() || m_queue.empty()) return;
+        job = std::move(m_queue.front());
+        m_queue.pop_front();
+    }
+    job(m_core);
+    job = nullptr;   // a job that ran has sent its `done` home already
+    m_pending.fetch_sub(1);
 }
 
 void CoreWorker::stop() {
     if (m_stopped.exchange(true)) return;
+    Q_ASSERT(QThread::currentThread() == thread());
     m_thread.quit();
     m_thread.wait();
+    // -- WP QPI3 -- the jobs that never ran die here, on this thread
+    std::deque<Job> unrun;
+    {
+        QMutexLocker hold(&m_lock);
+        unrun.swap(m_queue);
+    }
+    unrun.clear();
     m_pending.store(0);
 }

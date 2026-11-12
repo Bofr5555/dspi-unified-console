@@ -65,8 +65,23 @@ Item {
         rejectText: qsTr("Cancel")
         onAnswered: answer => UnsavedGuard.answerSaveFailed(answer)
     }
+    // -- WP QP16 -- Settings' unsaved changes before a device switch (F8)
+    QuestionDialog {
+        id: settingsQuestion
+        objectName: "FilesHost.settingsQuestion"
+        acceptText: qsTr("Discard and Switch")
+        rejectText: qsTr("Cancel")
+        destructive: true
+        onAnswered: answer => UnsavedGuard.answerSettings(answer)
+    }
     Connections {
         target: UnsavedGuard
+        // -- WP QP16 --
+        function onSettingsQuestion(title, text) {
+            settingsQuestion.title = title
+            settingsQuestion.text = text
+            settingsQuestion.open()
+        }
         function onQuestion(op, summary) {
             unsaved.text = qsTr("The current preset has unsaved changes:\n\n%1\n\nSave before continuing?").arg(summary)
             unsaved.open()

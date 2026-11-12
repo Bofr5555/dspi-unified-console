@@ -244,10 +244,11 @@ void settingsSection(SmokeDriver &d) {
         QTest::keyClick(w, Qt::Key_Escape);
         d.check(QStringLiteral("qp10: Escape closes the viewer"), d.waitFor(2000, [&]() { return !viewer->property("visible").toBool(); }));
     }
+    const Qt::ColorScheme schemeBefore = shell->colorSchemeOverride();
     shell->setColorSchemeOverride(Qt::ColorScheme::Light);
     d.spin(200);
     d.grab(w, QStringLiteral("settings-about-light.png"));
-    shell->setColorSchemeOverride(Qt::ColorScheme::Unknown);
+    shell->setColorSchemeOverride(schemeBefore);   // -- WP QPI3 --
 
     // Help > About opens the window on About
     showOnly(d, s, "graphing");

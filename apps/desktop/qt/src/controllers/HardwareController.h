@@ -217,6 +217,8 @@ public:
     // The output configuration is about to change outside these pages (the
     // output card, the limiter): record what to put back
     Q_INVOKABLE void beginOutputEdit();
+    // -- WP QP12 -- The control surfaces changed: read their pins again
+    void refreshSurfacePins() { readSurfaces(); }
 
     // "0.75 ms", "2 ms" (the Mac's formatLatencyMs)
     static QString latencyMs(int us);

@@ -153,6 +153,8 @@ public:
     void setPageAvailable(const QString &id, bool available);
     void addSearchTerms(const QString &id, const QStringList &terms);
     void setUpdater(QObject *updater);
+    // -- WP QP12 -- The control surfaces changed: read their pins again
+    void refreshSurfacePins() { readPins(); }
 
     // The sidebar for `query`: [{heading}] and [{id, title, icon}] rows in
     // order, only pages that match and are shown now; [] when nothing matches.

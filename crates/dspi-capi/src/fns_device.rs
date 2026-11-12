@@ -75,6 +75,7 @@ pub(crate) fn warn_now(
 /// their wording alone, wherever they come from: a poll of several calls
 /// failing the same way is one line, and the place named is the first.
 fn log_failure(e: &DspiError, at: &Location<'_>) {
+    note_failure(e); // -- WP QP16 --
     let place = format!("{}:{}", at.file(), at.line());
     if *e == DspiError::Disconnected {
         log::debug!("{e} [{place}]");
@@ -89,6 +90,30 @@ fn log_failure(e: &DspiError, at: &Location<'_>) {
         Some(held) => log::warn!("{message} [{place}], {held} more since the last time"),
         None => {}
     }
+}
+
+// -- WP QP16 --
+std::thread_local! {
+    /// The last failure of a call on this thread, until `dspi_take_failure`
+    /// takes it.
+    static LAST_FAILURE: std::cell::RefCell<Option<DspiError>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Keep `e` as this thread's last failure.
+fn note_failure(e: &DspiError) {
+    LAST_FAILURE.with(|last| *last.borrow_mut() = Some(e.clone()));
+}
+
+/// This thread's last failure, left in place unless `take`.
+pub(crate) fn last_failure(take: bool) -> Option<DspiError> {
+    LAST_FAILURE.with(|last| {
+        if take {
+            last.borrow_mut().take()
+        } else {
+            last.borrow().clone()
+        }
+    })
 }
 
 /// The value of `result`, logging a failure.

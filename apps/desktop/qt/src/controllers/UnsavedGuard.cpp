@@ -5,6 +5,7 @@
 #include "Core.h"
 #include "CoreWorker.h"
 #include "DeviceModel.h"
+#include "HardwareController.h"   // -- WP QP16 --
 #include "PresetModel.h"
 #include "Shell.h"
 #include "SidebarController.h"
@@ -108,7 +109,23 @@ void UnsavedGuard::ask(const QString &op, QObject *ctx, std::function<void()> pr
     m_ctxObject = ctx;
     m_proceed = std::move(proceed);
     setAsking(true);
+    // -- WP QP16 -- Settings' unsaved changes first, as the Mac asks (F8)
+    const HardwareController *hardware = Registrar::instance<HardwareController>();
+    if (op == QLatin1String("device") && hardware && hardware->pending()) {
+        bringBack();
+        emit settingsQuestion(tr("Unsaved Settings Changes"),
+                              tr("Settings has pending changes for the current device that have not been saved. "
+                                 "Switching devices will discard them."));
+        return;
+    }
     settleThenRead();
+}
+
+// -- WP QP16 --
+void UnsavedGuard::answerSettings(const QString &answer) {
+    if (!m_asking) return;
+    if (answer == QLatin1String("accept")) settleThenRead();
+    else finish();
 }
 
 // Every write queued before the question runs first (the worker keeps order);

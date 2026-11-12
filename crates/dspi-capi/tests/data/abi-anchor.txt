@@ -1051,6 +1051,7 @@ bool dspi_demo_open_wire(struct FfiCore *core, uint8_t wire);
 uint32_t dspi_read_only_refusals(struct FfiCore *core);
 uint32_t dspi_wire_features(struct FfiCore *core);
 bool dspi_feature_present(struct FfiCore *core, const char *name);
+uint32_t dspi_take_failure(char *buf, uint32_t len);
 uint32_t dspi_fetch_output_latency(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_fetch_output_latency_options(struct FfiCore *core, char *buf, uint32_t len);
 bool dspi_set_output_latency(struct FfiCore *core, uint8_t id);

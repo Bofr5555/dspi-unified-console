@@ -130,9 +130,6 @@ public:
     // Reads the session's state again (no traffic); the core's events do this.
     Q_INVOKABLE void refreshStatus();
 
-    // The analyser ran on this session: start it again after a reconnect. The
-    // spectrum analyser's controller says so; binding a device sets it too.
-    void setAnalyserWanted(bool wanted) { m_analyserWanted = wanted; }
     // For the smoke driver: runs on the controller's thread when a dial ends
     // that was given up meanwhile, with its session up, just before it is closed
     void setStaleDialHook(std::function<void()> hook) { m_staleDialHook = std::move(hook); }
@@ -198,7 +195,7 @@ private:
     QString m_localBefore;       // what was open before the bind: a serial, "demo" or ""
     QString m_errorCode, m_errorText;
     QString m_tokenWarning;
-    bool m_analyserWanted = false;
+    bool m_analyserWanted = false;   // without the app's device model: restart the analyser after a reconnect
     bool m_holdEnd = false;      // closed or refused stays shown until the next dial or leave
     std::function<void()> m_staleDialHook;
     QThreadPool m_worker;   // one thread: dial, pair, bind, tokens

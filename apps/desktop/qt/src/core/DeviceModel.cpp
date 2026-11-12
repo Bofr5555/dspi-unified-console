@@ -5,6 +5,8 @@
 #include "PresetModel.h"
 
 #include <QDebug>
+#include <QJsonDocument>   // -- WP QP16 --
+#include <QJsonObject>
 #include <QJSEngine>
 #include <QVector>
 #include <mutex>
@@ -215,7 +217,18 @@ struct DeviceModel::PendingWrite {
 
 void DeviceModel::write(const QString &what, std::function<bool(FfiCore *)> setter,
                         std::function<void(bool)> done) {
-    if (!connected() || readOnly()) {
+    post(what, std::move(setter), std::move(done), false);   // -- WP QP16 --
+}
+
+// -- WP QP16 --
+void DeviceModel::writeEvenReadOnly(const QString &what, std::function<bool(FfiCore *)> setter,
+                                    std::function<void(bool)> done) {
+    post(what, std::move(setter), std::move(done), true);
+}
+
+void DeviceModel::post(const QString &what, std::function<bool(FfiCore *)> setter, std::function<void(bool)> done,
+                       bool evenReadOnly) {
+    if (!connected() || (readOnly() && !evenReadOnly)) {   // -- WP QP16 -- evenReadOnly
         qInfo("DeviceModel: %s not sent: %s", qPrintable(what), connected() ? "read-only" : "no device");
         emit writeFailed(what);
         if (done) done(false);
@@ -235,26 +248,41 @@ void DeviceModel::write(const QString &what, std::function<bool(FfiCore *)> sett
     m_queuedWrites.insert(what, pending);
     track(1);
     std::atomic<int> *settersRun = &m_settersRun;
+    // -- WP QP16 -- The device this write was asked for: a write the worker
+    // reaches after another device opened is dropped, not sent (QD6), and a
+    // refusal brings the core's reason along
+    const uint64_t generation = m_snap.generation;
+    auto reason = std::make_shared<QJsonObject>();
     m_core->worker()->call(
         this,
-        [pending, settersRun](FfiCore *c) {
+        [pending, settersRun, generation, reason](FfiCore *c) {
             std::function<bool(FfiCore *)> run;
             {
                 std::lock_guard<std::mutex> hold(pending->lock);
                 pending->started = true;
                 run = std::move(pending->setter);
             }
+            // -- WP QP16 --
+            if (generation != 0 && dspi_connection_generation(c) != generation) {
+                reason->insert(QStringLiteral("code"), QStringLiteral("dropped"));
+                return Outcome{ false, 0, readSnapshot(c) };
+            }
+            readSized([](char *b, uint32_t n) { return dspi_take_failure(b, n); }, 256);
             settersRun->fetch_add(1);
             const bool ok = run(c);
+            if (!ok) *reason = QJsonDocument::fromJson(readSized([](char *b, uint32_t n) { return dspi_take_failure(b, n); }, 256)).object();
             return Outcome{ ok, 0, readSnapshot(c) };
         },
-        [this, what, pending](Outcome r) {
+        [this, what, pending, reason](Outcome r) {
             if (m_queuedWrites.value(what) == pending) m_queuedWrites.remove(what);
             apply(r.snap, 0);
             if (!r.ok) {
                 qInfo("DeviceModel: %s refused", qPrintable(what));
                 emit writeFailed(what);
             }
+            // -- WP QP16 --
+            emit writeFinished(what, r.ok, r.ok ? QString() : reason->value(QStringLiteral("code")).toString(),
+                               r.ok ? QString() : reason->value(QStringLiteral("error")).toString());
             for (const std::function<void(bool)> &d : pending->done) d(r.ok);
             track(-1);
         });

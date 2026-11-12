@@ -49,6 +49,7 @@ ApplicationWindow {
         SplitView {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            visible: !OnboardingController.wizardShown   // -- WP QP17 -- the wizard takes its place
             orientation: Qt.Horizontal
             handle: Rectangle {
                 implicitWidth: 1
@@ -70,5 +71,18 @@ ApplicationWindow {
                 selectedChannel: window.selectedChannel
             }
         }
+
+        // -- WP QP17 -- Getting Started replaces the console while it runs
+        Loader {
+            objectName: "MainWindow.wizard"
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            active: OnboardingController.wizardShown
+            visible: active
+            sourceComponent: GettingStarted {}
+        }
     }
+
+    // -- WP QP17 -- the Help menu's messages
+    HelpHost {}
 }

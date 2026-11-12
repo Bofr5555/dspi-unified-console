@@ -178,7 +178,7 @@ Rectangle {
                 Layout.fillWidth: true
                 label: qsTr("Output gain")
                 from: -60
-                to: 10
+                to: 20
                 stepSize: 0.1
                 resetValue: 0
                 Binding on value {
@@ -289,6 +289,21 @@ Rectangle {
                 Accessible.checked: on
             }
             Item { visible: limiterButton.visible; Layout.fillHeight: true }
+        }
+    }
+
+    // -- WP QP8 -- The limiter's settings, a popover over its cell, opened by a right-click
+    LimiterSettings {
+        id: limiterSettings
+        output: card.output
+        parent: limiterButton
+        x: limiterButton.width - width
+        y: limiterButton.height + 4
+    }
+    Connections {
+        target: ChannelController
+        function onLimiterSettingsRequested(output) {
+            if (output === card.output && limiterButton.visible) limiterSettings.open()
         }
     }
 

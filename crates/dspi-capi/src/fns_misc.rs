@@ -1214,6 +1214,32 @@ pub extern "C" fn dspi_feature_present(core: *mut FfiCore, name: *const c_char) 
     with_core(core, false, |h| h.core.feature_present(name))
 }
 
+// -- WP QP16 --
+/// The last call that failed on the calling thread, as its failure reply
+/// (`{ok: false, code, error}`: the core's own sentence), or `{ok: true}`
+/// when none failed since the last take. It is taken (cleared) only when the
+/// reply fits in `len`. For a client that wants the reason after a `bool`
+/// setter returned false: take it once before the call to clear an older one,
+/// then again after. Takes no handle; never fails.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_take_failure(buf: *mut c_char, len: u32) -> u32 {
+    guard(0, || {
+        let reply = |e: Option<DspiError>| match e {
+            Some(e) => json_reply::<()>(Err(e)),
+            None => json!({ "ok": true }).to_string(),
+        };
+        let needed = copy_text(
+            &reply(crate::fns_device::last_failure(false)),
+            ptr::null_mut(),
+            0,
+        );
+        if buf.is_null() || needed > len {
+            return needed;
+        }
+        copy_text(&reply(crate::fns_device::last_failure(true)), buf, len)
+    })
+}
+
 // ── Diagnostics ──────────────────────────────────────────────────────
 
 /// The output latency the device reports, in JSON: `{ok, raw, fields}`.
@@ -1782,6 +1808,10 @@ mod tests_wp_qd5;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_qd6;
+// -- WP QP16 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_qp16;
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
