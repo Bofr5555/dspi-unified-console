@@ -57,6 +57,9 @@ use dspi_hub::{
     HubListener, NetworkConfig, NetworkControl, PairedClient, Role, SavedHub, UsbBus,
 };
 use dspi_transport::FakeDevice;
+// -- WP SW3 --
+use dspi_proto::ext::audio_link::LinkRole;
+use dspi_transport::fake::AudioLinkSetup;
 use dspi_tui::shell::connect::{Target, printable};
 use serde_json::{Value, json};
 
@@ -133,6 +136,10 @@ struct RunOptions {
     local: bool,
     /// `--share-usb` with `--local`: the hub holds this machine's USB devices.
     share_usb: bool,
+    // -- WP SW3 --
+    /// `--demo --audio-link`: an installation of simulated devices on the audio
+    /// link (a sender, a fan-out, four units) with its system model.
+    audio_link: bool,
 }
 
 /// One `uconsole hub` command.
@@ -244,6 +251,9 @@ OPTIONS:
                               (default port {LOCAL_PORT}), a secure page with
                               WebUSB and Link together. The hub holds no USB
                               device, so the browser can; --share-usb: it does
+    --audio-link              with --demo: an installation on the audio link instead
+                              of the one device (a sender, a fan-out and four
+                              units), and its system model when none is kept
     --loopback                listen on this machine only, and do not advertise
     --no-keep-awake           let the machine sleep while sharing
     --store <dir>             where the hub keeps its id, clients and device names
@@ -289,6 +299,8 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
     let (mut loopback, mut pair, mut keep_awake, mut forget) = (false, false, true, false);
     // -- WP WB7 --
     let (mut web, mut console, mut local, mut share_usb) = (false, None, false, false);
+    // -- WP SW3 --
+    let mut audio_link = false;
     let mut port_given = false;
     let mut words = Vec::new();
 
@@ -336,6 +348,8 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
             }
             "--local" => local = true,
             "--share-usb" => share_usb = true,
+            // -- WP SW3 --
+            "--audio-link" => audio_link = true,
             f if f.starts_with('-') => return Err(usage(format!("`{f}` is not a hub option"))),
             word => words.push(word),
         }
@@ -349,6 +363,7 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 | "--web"
                 | "--local"
                 | "--share-usb"
+                | "--audio-link"
         ) {
             run_only.push(flag);
         }
@@ -382,6 +397,12 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                     "--share-usb and --demo: the demo hub holds no USB device".into(),
                 ));
             }
+            // -- WP SW3 --
+            if audio_link && !demo {
+                return Err(usage(format!(
+                    "--audio-link is for `{COMMAND} --demo hub`: it shares simulated devices"
+                )));
+            }
             if local && !port_given {
                 port = LOCAL_PORT;
             }
@@ -400,6 +421,8 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 loopback: loopback || local,
                 local,
                 share_usb,
+                // -- WP SW3 --
+                audio_link,
             }));
         }
         ["help"] => return Ok(HubCommand::Help),
@@ -638,7 +661,10 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
         _awake: opts.keep_awake.then(awake::KeepAwake::begin).flatten(),
         _lock: lock,
     };
-    if opts.demo {
+    // -- WP SW3 --
+    if opts.audio_link {
+        demo_audio_link(&running.handle)?;
+    } else if opts.demo {
         running
             .handle
             .attach(Box::new(FakeDevice::demo()), 0)
@@ -650,6 +676,88 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
     // the truth.
     running.control.start_accepting();
     Ok(running)
+}
+
+// -- WP SW3 --
+/// `--demo --audio-link`'s devices: (serial, place on the link). The fan-out
+/// re-emits 3 frames late; units B and C are behind it.
+fn audio_link_rig() -> Vec<(&'static str, AudioLinkSetup)> {
+    let at = |role, hops, hop_delay_frames| AudioLinkSetup {
+        role,
+        hops,
+        hop_delay_frames,
+        ..AudioLinkSetup::default()
+    };
+    vec![
+        ("DEMO-LINK-TX", at(LinkRole::Sender, 0, 0)),
+        ("DEMO-LINK-FAN", at(LinkRole::FanOut, 0, 3)),
+        ("DEMO-LINK-A", at(LinkRole::Receiver, 0, 0)),
+        ("DEMO-LINK-B", at(LinkRole::Receiver, 1, 0)),
+        ("DEMO-LINK-C", at(LinkRole::Receiver, 1, 0)),
+        ("DEMO-LINK-D", at(LinkRole::Receiver, 0, 0)),
+    ]
+}
+
+// -- WP SW3 --
+/// `--demo --audio-link`'s system model (`docs/integrator/audio-link.md`):
+/// three rooms, a zone, a group, one source, the sender, the fan-out, four
+/// units and four scenes, one of them admin-only (a test click).
+fn audio_link_model() -> Value {
+    let silent = |a: u8, b: u8| json!([a, b, 255, 255, 255, 255, 255, 255]);
+    json!({
+        "rooms": [
+            {"id": "main", "name": "Main room"},
+            {"id": "terrace", "name": "Terrace", "lipSyncUs": 0},
+            {"id": "bar", "name": "Bar"}
+        ],
+        "zones": [{"id": "inside", "name": "Inside", "rooms": ["main", "bar"], "source": "music"}],
+        "groups": [{"id": "fronts", "name": "Front of house", "units": ["A", "B"]}],
+        "sources": [{"id": "music", "name": "Music", "sender": "tx", "channels": [0, 1, 2, 3, 4, 5, 6, 7]}],
+        "senders": [{"id": "tx", "name": "Sender", "serial": "DEMO-LINK-TX", "senderId": 66}],
+        "fanOuts": [{"id": "fan", "name": "Fan-out", "serial": "DEMO-LINK-FAN", "upstream": "tx", "output": 1}],
+        "units": [
+            {"id": "A", "name": "Main left", "serial": "DEMO-LINK-A", "room": "main", "upstream": "tx",
+             "output": 0, "slots": silent(0, 1),
+             "speakers": [{"output": 0, "distanceM": 3.4}, {"output": 1, "distanceM": 2.9}]},
+            {"id": "B", "name": "Main right", "serial": "DEMO-LINK-B", "room": "main", "upstream": "fan",
+             "slots": silent(0, 1)},
+            {"id": "C", "name": "Terrace", "serial": "DEMO-LINK-C", "room": "terrace", "upstream": "fan",
+             "slots": silent(2, 3), "measuredLatencyUs": 120},
+            {"id": "D", "name": "Bar", "serial": "DEMO-LINK-D", "room": "bar", "upstream": "tx",
+             "output": 2, "slots": silent(4, 5), "latencyUs": 40}
+        ],
+        "scenes": [
+            {"id": "evening", "name": "Evening", "actions": [{"target": "all", "op": "master_volume", "value": -1200}]},
+            {"id": "quiet", "name": "Quiet inside", "actions": [
+                {"target": "zone:inside", "op": "master_volume", "value": -3000},
+                {"target": "room:terrace", "op": "mute"}
+            ]},
+            {"id": "closed", "name": "Closed", "systemMute": true, "actions": [{"target": "all", "op": "mute"}]},
+            {"id": "click", "name": "Test click", "actions": [{"target": "unit:A", "op": "click", "arg": 0}]}
+        ]
+    })
+}
+
+// -- WP SW3 --
+/// Attach `--demo --audio-link`'s devices and give the hub their model, unless
+/// its store keeps one already (an installer's edits survive a restart).
+fn demo_audio_link(handle: &HubHandle) -> Result<(), Failure> {
+    for (serial, setup) in audio_link_rig() {
+        handle
+            .attach(
+                Box::new(FakeDevice::demo_audio_link_as(setup).with_serial(serial)),
+                0,
+            )
+            .map_err(|e| Failure::Failed(format!("{serial} did not attach: {e}")))?;
+    }
+    if handle.system_model().0.units.is_empty() {
+        let model = serde_json::from_value(audio_link_model())
+            .map_err(|e| Failure::Failed(format!("the demo's system model: {e}")))?;
+        handle
+            .system_set_model(model)
+            .map_err(|e| Failure::Failed(format!("the demo's system model: {e}")))?;
+    }
+    Ok(())
 }
 
 // -- WP WB7 --
@@ -1274,6 +1382,8 @@ mod tests_wp_tm11 {
             console: None,
             local: false,
             share_usb: false,
+            // -- WP SW3 --
+            audio_link: false,
         }
     }
 
@@ -1805,5 +1915,90 @@ mod tests_wp_wb7 {
         assert!(get(port, "/").0.starts_with("HTTP/1.1 200"));
         assert!(get(port, "/console/").0.starts_with("HTTP/1.1 404"));
         assert_eq!(running.console_url, None);
+    }
+}
+
+// -- WP SW3 --
+#[cfg(test)]
+mod tests_wp_sw3 {
+    use super::*;
+
+    fn scratch(name: &str) -> PathBuf {
+        // Beside the test binary, in the target directory: never on tmpfs.
+        let dir = std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("wp_sw3")
+            .join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn wp_sw3_audio_link_is_a_demo_hub_option() {
+        let store = Some(PathBuf::from("/store"));
+        match parse(&["--audio-link"], true, store.clone()).unwrap() {
+            HubCommand::Run(o) => assert!(o.audio_link && o.demo),
+            other => panic!("{other:?}"),
+        }
+        assert!(matches!(
+            parse(&["--audio-link"], false, store.clone()),
+            Err(Failure::Usage(_))
+        ));
+        assert!(matches!(
+            parse(&["clients", "--audio-link"], false, store),
+            Err(Failure::Usage(_))
+        ));
+    }
+
+    #[test]
+    fn wp_sw3_the_demo_installation_attaches_with_its_model() {
+        let store = scratch("rig");
+        let mut opts = tests_wp_tm11_options(&store);
+        opts.audio_link = true;
+        let running = start(&opts, false).unwrap();
+        let (model, revision) = running.handle.system_model();
+        assert_eq!(revision, 1);
+        assert_eq!(model.units.len(), 4);
+        assert_eq!(model.scenes.len(), 4);
+        let status = running.handle.system_status();
+        for (serial, _) in audio_link_rig() {
+            assert!(
+                status.observed.get(serial).is_some_and(|o| o.online),
+                "{serial}"
+            );
+        }
+        // A receiver reports its link stats and the trim scan.
+        let a = &status.observed["DEMO-LINK-A"];
+        assert_eq!(a.trim_scan.as_ref().map(|t| t.state.as_str()), Some("done"));
+        assert!(a.stats.is_some());
+        drop(running);
+        // A kept model is loaded, not replaced, at the next start.
+        let running = start(&opts, false).unwrap();
+        let (model, revision) = running.handle.system_model();
+        assert_eq!((model.units.len(), revision), (4, 0));
+        drop(running);
+        let _ = std::fs::remove_dir_all(&store);
+    }
+
+    fn tests_wp_tm11_options(store: &Path) -> RunOptions {
+        RunOptions {
+            name: Some("SW3 test hub".into()),
+            port: 0,
+            access: AccessMode::Pin,
+            store: store.to_owned(),
+            loopback: true,
+            pair: false,
+            demo: true,
+            keep_awake: false,
+            forget_clients: false,
+            web: false,
+            console: None,
+            local: false,
+            share_usb: false,
+            audio_link: false,
+        }
     }
 }
