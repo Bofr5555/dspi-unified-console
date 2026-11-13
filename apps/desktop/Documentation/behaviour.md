@@ -62,6 +62,10 @@ Cite it by section, for example "behaviour.md §6.3".
   categories (device pages) appear when a device is open.
 - The demo is never chosen by a scan or a hot-plug event; a rescan keeps an open demo and reads it again (QD7, QD36).
   Leaving the demo for a real device goes through the unsaved-changes question of M42.
+- A re-read of the device (a refresh, a reconnect, a Link session coming back) keeps what the unsaved-changes
+  question compares with: edits stay unsaved until saved to a preset or reverted, and a change someone else made
+  meanwhile counts as unsaved too (owner, 2026-11-13, WP SWAPFIX). Another device or another active preset starts
+  afresh. An output's delay is one line in the question's list.
 
 ### 1.4 Demo device
 
@@ -272,7 +276,7 @@ sharing is off, on Linux, or on macOS.
 - An executable path containing `%` cannot be named in a rule; the row then says to move the app instead of offering
   the button.
 - Re-read every 5 s while the page is open and sharing is on, so a rule deleted from outside shows within one read.
-- The installer adds no firewall rule (§24).
+- The installer adds no firewall rule; the uninstaller removes the app's (§24).
 
 ### 11.2 Public-network row
 
@@ -486,7 +490,7 @@ extension. All warnings, limits and states come from the core (`dspi_core_vreg_*
 
 | What | Linux | Windows |
 |---|---|---|
-| App settings (QSettings, INI) | `$XDG_CONFIG_HOME/uconsole-for-dspi/uconsole-for-dspi.conf` | `%APPDATA%\uconsole-for-dspi\uconsole-for-dspi.ini` (INI format forced) |
+| App settings (QSettings, INI) | `$XDG_CONFIG_HOME/uconsole-for-dspi/uconsole-for-dspi.conf` (Qt's native format, INI) | `%APPDATA%\uconsole-for-dspi\uconsole-for-dspi.ini` (INI format set in `main.cpp` before any QSettings; never the registry) |
 | Link token fallback (§7) | `$XDG_CONFIG_HOME/uconsole-for-dspi/uconsole-for-dspi/link-tokens.json` | Qt's AppConfigLocation + `link-tokens.json` (not observed) |
 | Hub store (paired clients, hub id, name, access) | `$XDG_DATA_HOME/uconsole-for-dspi/uconsole-for-dspi/hub/hub-store.json` | Qt's AppDataLocation + `hub/hub-store.json` (not observed) |
 | QML cache | `$XDG_CACHE_HOME/uconsole-for-dspi/uconsole-for-dspi/qmlcache` | `%LOCALAPPDATA%\uconsole-for-dspi\uconsole-for-dspi` |
@@ -495,6 +499,12 @@ extension. All warnings, limits and states come from the core (`dspi_core_vreg_*
 | Installer record | — | HKCU `Software\uConsole for DSPi` (`InstallDir`), uninstall key `uConsole for DSPi` |
 
 macOS uses the standard preferences plist for the same keys.
+
+Owner decision (2026-11-13, WP SWAPFIX): on Windows the settings are the INI file above, the same format as on Linux;
+nothing is read from or written to `HKCU\Software\uconsole-for-dspi`. The only registry entries the app writes are the
+login entry (§12.2) and, through the installer, the installer record. The file is part of the location contract once
+released. The uninstaller removes the settings file (and its folder when nothing else is in it), and Save Diagnostics
+puts the file in the bundle as `client/<file name>` on every system (the core removes what looks like a secret).
 
 The hub store is the core's file (keys `hub_id`, `name`, `access`, `next_cid`, `clients`, `device_names`); the app
 gives the core the directory only. Keep the directory so paired clients survive.
@@ -638,10 +648,16 @@ The NSIS script and its test (`apps/desktop/packaging/windows/`) are kept. Behav
   quit the app and offers Retry or Cancel. A silent run cancels with exit code 2 and changes nothing.
 - An install first removes the previous version's `qml` directory and the other bundled documentation directory, so no stale files stay.
 - The finish page offers to run the app, started through the shell as the Start menu would.
-- Uninstall removes the program directory, the shortcut and the registry entries, and leaves the settings in
-  `%APPDATA%\uconsole-for-dspi`.
+- Uninstall removes the program directory, the shortcut, the registry entries and the settings file
+  `%APPDATA%\uconsole-for-dspi\uconsole-for-dspi.ini` (the folder only when empty: the hub store and caches stay;
+  WP SWAPFIX). It also removes the app's firewall rules: it reads, without rights, whether a rule named
+  "uConsole for DSPi" exists (the app's own, §11.1, and Windows' own from its prompt, both named after the app), and
+  only then runs `netsh advfirewall firewall delete rule` elevated (one UAC prompt). A declined prompt leaves the rule
+  and the uninstall goes on.
 - No firewall rule is added by the installer (§11).
-- The test runs the installer and uninstaller silently under Wine, including the refusal while the app runs.
+- The test runs the installer and uninstaller silently under Wine, including the refusal while the app runs, the
+  settings file (written under `%APPDATA%`, none in the registry, removed by the uninstall) and the firewall rule's
+  removal (netsh stood in for by a program that logs its calls).
 
 ## 25. Other desktop behaviours not in the Mac app
 

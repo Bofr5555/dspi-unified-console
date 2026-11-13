@@ -24,6 +24,7 @@ extern "C" {
 }
 
 #include <QByteArray>
+#include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
@@ -172,6 +173,15 @@ void preflight(SmokeDriver &d) {
         if (!device->demo()) return;
     } else {
         d.check("qp19-hw: a real DSPi, not the demo (run without --demo)", !device->demo());
+        // -- WP SWAPFIX -- (QP22b F6) the list is filled by a scan, and scans
+        // run only while it is shown: scan now. The worker runs in order, so
+        // once a call queued after the scan has run, the scan's answer is
+        // queued for this thread; deliver it, then count.
+        if (list) {
+            list->rescan();
+            onWorker(d, [](FfiCore *) { return true; });
+            QCoreApplication::processEvents();
+        }
         const int seen = list ? int(list->usbDevices().size()) : -1;
         d.check(QStringLiteral("qp19-hw: exactly one DSPi on USB (%1 seen)").arg(seen), seen == 1);
         if (device->demo() || seen != 1) return;
