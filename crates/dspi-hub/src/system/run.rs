@@ -4,7 +4,7 @@
 //! its turn behind clients' commands, honours a client's lock, and goes through
 //! BULKFIX's guard. Blocking: callers are connection readers, never hub threads.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -20,7 +20,7 @@ use dspi_proto::generated::opcodes as op;
 use serde::Serialize;
 
 use super::alarms::Alarm;
-use super::align::{self, Alignment, Observed};
+use super::align::{self, Alignment, AlinkFirmware, Observed};
 use super::scene::{self, ScenePlan, SceneRefused, SenderSeen};
 use super::{SystemShared, alarm_event};
 use crate::device::DeviceShared;
@@ -54,8 +54,17 @@ pub struct WriteResult {
     pub element: String,
     /// `slots`, `phase`, `out_delay:<n>`, or the op's name.
     pub what: String,
-    /// `ok`, `unchanged`, `skipped`, or a Link status name.
+    /// `ok`, `unchanged`, `skipped`, or a Link status name. A scene's op on
+    /// a unit without the audio link (WP HWLK1F): `applied_now` (written at
+    /// once, not at the frame), `unsupported` (it has no direct command: a
+    /// click, a sync pulse); an op on a unit with the link that no frame could
+    /// be read for: `no_frame`.
     pub result: String,
+    // -- WP HWLK1F --
+    /// Why it was `skipped`: `not connected`, `no audio link (firmware)`,
+    /// `limits unknown`, `out of range`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 /// What `system.align` answers.
@@ -289,15 +298,67 @@ fn set_ext(dev: &DeviceShared, id: u16, payload: Vec<u8>) -> Result<(), u8> {
     exec(dev, Dir::Set, op::REQ_EXTENSION, id, payload, 0).map(|_| ())
 }
 
+// -- WP HWLK1F --
+/// `EXT_LINK_INFO` IN, raw: the decoded block, or the status it failed with.
+fn read_link_info(dev: &DeviceShared) -> Result<Option<LinkInfo>, u8> {
+    let len = u16::try_from(LinkInfo::SIZE).unwrap_or(u16::MAX);
+    exec(
+        dev,
+        Dir::Get,
+        op::REQ_EXTENSION,
+        alink::EXT_LINK_INFO,
+        Vec::new(),
+        len,
+    )
+    .map(|b| LinkInfo::decode(&b))
+}
+
+// -- WP HWLK1F --
+/// What a device's firmware says of the audio link, from `EXT_LINK_INFO`'s
+/// answer (`info`): present when it answers; absent when it stalls, or when
+/// `EXT_LIST` names no `EXT_LINK_INFO` (or stalls itself: stock firmware has no
+/// extension channel); `None` when neither could be read (a timeout, a busy
+/// worker, a Link-bridged unit's own refusal).
+fn alink_of(dev: &DeviceShared, info: &Result<Option<LinkInfo>, u8>) -> Option<AlinkFirmware> {
+    match info {
+        Ok(Some(_)) => return Some(AlinkFirmware::Present),
+        Err(status::ERROR) => return Some(AlinkFirmware::Absent),
+        Ok(None) | Err(_) => {}
+    }
+    match exec(
+        dev,
+        Dir::Get,
+        op::REQ_EXTENSION,
+        g::EXT_LIST,
+        Vec::new(),
+        EXT_LIST_LEN,
+    ) {
+        Ok(b) if dspi_proto::ext::decode_list(&b).contains(&alink::EXT_LINK_INFO) => None,
+        Ok(_) | Err(status::ERROR) => Some(AlinkFirmware::Absent),
+        Err(_) => None,
+    }
+}
+
+// -- WP HWLK1F --
+/// `EXT_LIST`'s longest reply the hub reads: 64 sub-commands.
+const EXT_LIST_LEN: u16 = 128;
+
+// -- WP HWLK1F --
+/// Whether `dev`'s firmware has the audio link (two transfers at most).
+fn probe_alink(dev: &DeviceShared) -> Option<AlinkFirmware> {
+    alink_of(dev, &read_link_info(dev))
+}
+
 /// Read one device's link. Nothing is written.
 fn observe(dev: &DeviceShared) -> Observed {
     let mut o = Observed {
         online: true,
         ..Observed::default()
     };
-    let Some(info) = get_ext(dev, alink::EXT_LINK_INFO, LinkInfo::SIZE, LinkInfo::decode)
-        .filter(LinkInfo::usable)
-    else {
+    // -- WP HWLK1F -- a firmware without the link is told from one that did not answer
+    let raw = read_link_info(dev);
+    o.alink = alink_of(dev, &raw);
+    let Some(info) = raw.ok().flatten().filter(LinkInfo::usable) else {
         return o;
     };
     o.role = Some(info.role.as_str().into());
@@ -381,6 +442,103 @@ fn observe(dev: &DeviceShared) -> Observed {
     o
 }
 
+// -- WP HWLK1F --
+/// The units with the audio link a scene names, one write each for its first
+/// op on it: what the superframe path reaches without a write of its own.
+fn plan_targets(
+    model: &super::model::SystemModel,
+    scene: &super::model::Scene,
+    no_alink: &BTreeSet<String>,
+) -> Vec<WriteResult> {
+    scene
+        .actions
+        .iter()
+        .flat_map(|a| {
+            model
+                .resolve_target(&a.target)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|u| !no_alink.contains(&u.serial))
+                .map(|u| WriteResult {
+                    serial: u.serial.clone(),
+                    element: u.id.clone(),
+                    what: a.op.clone(),
+                    result: String::new(),
+                    reason: None,
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+// -- WP HWLK1F --
+/// A scene op written at once to a unit without the audio link, with the
+/// command it stands for (the firmware's apply does the same,
+/// `link_input.c` `apply_exec`): mute and unmute the user mute, a preset
+/// load, the master volume (dB × 100), an output delay (samples at `rate_hz`,
+/// as the firmware's half-sample rounding). A click and a sync pulse have no
+/// command: `unsupported`. `applied_now`, or the write's failure.
+fn apply_direct(dev: &DeviceShared, o: &scene::PlannedOp, rate_hz: u32) -> String {
+    let Some(kind) = super::model::scene_op(&o.op) else {
+        return "unsupported".into();
+    };
+    let done = match kind {
+        ApplyOp::Mute | ApplyOp::Unmute => exec(
+            dev,
+            Dir::Set,
+            op::REQ_SET_USER_MUTE,
+            0,
+            vec![u8::from(kind == ApplyOp::Mute)],
+            0,
+        )
+        .map(|_| ()),
+        ApplyOp::PresetLoad => exec(
+            dev,
+            Dir::Get,
+            op::REQ_PRESET_LOAD,
+            u16::from(o.arg),
+            Vec::new(),
+            1,
+        )
+        .and_then(|b| match b.first() {
+            // The preset status byte: 0 is loaded.
+            Some(0) | None => Ok(()),
+            Some(_) => Err(status::ERROR),
+        }),
+        ApplyOp::MasterVolume => {
+            let db = f32::from(o.value) * 0.01;
+            exec(
+                dev,
+                Dir::Set,
+                op::REQ_SET_MASTER_VOLUME,
+                0,
+                db.to_le_bytes().to_vec(),
+                0,
+            )
+            .map(|_| ())
+        }
+        ApplyOp::OutDelay => {
+            let fs = if rate_hz == 0 {
+                48_000.0
+            } else {
+                f64::from(rate_hz)
+            };
+            let ms = ((f64::from(o.value) + 0.5) * 1000.0 / fs) as f32;
+            exec(
+                dev,
+                Dir::Set,
+                op::REQ_SET_OUTPUT_DELAY,
+                u16::from(o.arg),
+                ms.to_le_bytes().to_vec(),
+                0,
+            )
+            .map(|_| ())
+        }
+        _ => return "unsupported".into(),
+    };
+    done.map_or_else(status_name, |()| "applied_now".into())
+}
+
 impl HubHandle {
     fn system(&self) -> &Arc<SystemShared> {
         &self.inner.system
@@ -421,6 +579,32 @@ impl HubHandle {
             &serde_json::json!({"t": "system.changed", "revision": revision}).to_string(),
         );
         Ok(revision)
+    }
+
+    // -- WP HWLK1F --
+    /// Warnings for the model kept now: each unit (an audio link role by being
+    /// a unit) whose device has no audio link in its firmware, read now when
+    /// it is attached, else as last seen. `system.set` answers them; the model
+    /// is kept all the same. Blocks for the reads.
+    pub fn system_alink_warnings(&self) -> Vec<String> {
+        let (model, _) = self.system().model();
+        model
+            .units
+            .iter()
+            .filter(|u| match self.device_by_serial(&u.serial) {
+                Some(dev) => probe_alink(&dev) == Some(AlinkFirmware::Absent),
+                None => self.system().last_seen_without_alink(&u.serial),
+            })
+            .map(|u| {
+                let name = if u.name.is_empty() { &u.id } else { &u.name };
+                format!(
+                    "{name} ({}): its firmware has no audio link, so it cannot be a {} on it. \
+                     It is left out of the alignment and takes scenes at once, not at a frame.",
+                    u.serial,
+                    if u.repeater { "repeater" } else { "receiver" }
+                )
+            })
+            .collect()
     }
 
     /// The alarms.
@@ -499,11 +683,27 @@ impl HubHandle {
                     element: plan.unit.clone(),
                     what: what.into(),
                     result,
+                    reason: None,
                 };
-                let (Some(dev), true) = (dev, plan.writable) else {
-                    writes.push(result("phase", "skipped".into()));
+                let (Some(dev), true) = (&dev, plan.writable) else {
+                    // -- WP HWLK1F -- and why, so a client can say what was not written
+                    let seen = status.observed.get(&plan.serial);
+                    let reason = if dev.is_none() || !seen.is_some_and(|o| o.online) {
+                        "not connected"
+                    } else if seen.is_some_and(Observed::without_alink) {
+                        "no audio link (firmware)"
+                    } else if seen.is_some_and(|o| o.d_local_min.is_none()) {
+                        "limits unknown"
+                    } else {
+                        "out of range"
+                    };
+                    writes.push(WriteResult {
+                        reason: Some(reason.into()),
+                        ..result("phase", "skipped".into())
+                    });
                     continue;
                 };
+                let dev = Arc::clone(dev);
                 if let Some(slots) = model
                     .unit(&plan.unit)
                     .and_then(|u| u.slots.as_ref())
@@ -690,6 +890,7 @@ impl HubHandle {
                 }
                 .into(),
                 result,
+                reason: None,
             });
         }
         if writes.is_empty() {
@@ -711,18 +912,32 @@ impl HubHandle {
         self.authorize(role, &scene)?;
         let mut frames = BTreeMap::new();
         let mut rtts: BTreeMap<String, Duration> = BTreeMap::new();
+        // -- WP HWLK1F -- units whose firmware has no audio link: their ops go at once
+        let mut no_alink = BTreeSet::new();
+        let mut offline = Vec::new();
         for a in &scene.actions {
             for u in model.resolve_target(&a.target).unwrap_or_default() {
-                if rtts.contains_key(&u.serial) {
+                if rtts.contains_key(&u.serial) || offline.contains(&u.serial) {
                     continue;
                 }
                 let Some(dev) = self.device_by_serial(&u.serial) else {
+                    // Offline: as it was last seen
+                    if self.system().last_seen_without_alink(&u.serial) {
+                        no_alink.insert(u.serial.clone());
+                    }
+                    offline.push(u.serial.clone());
                     continue;
                 };
                 let (frame, rtt) = timed_frame(&dev);
                 rtts.insert(u.serial.clone(), rtt);
-                if let Some(f) = frame {
-                    frames.insert(u.serial.clone(), f);
+                match frame {
+                    Some(f) => {
+                        frames.insert(u.serial.clone(), f);
+                    }
+                    None if probe_alink(&dev) == Some(AlinkFirmware::Absent) => {
+                        no_alink.insert(u.serial.clone());
+                    }
+                    None => {}
                 }
             }
         }
@@ -732,7 +947,7 @@ impl HubHandle {
         }
         let seen = sender.as_ref().map(|(s, _, _)| s);
         let model_lead = u64::from(model.apply_lead_frames);
-        let first = scene::plan(&model, id, &frames, seen, model_lead)?;
+        let first = scene::plan_mixed(&model, id, &frames, seen, model_lead, &no_alink)?;
         // -- fixup sw2x (F2) -- each op is a write and a read of the queue.
         let estimate = first
             .ops
@@ -748,7 +963,7 @@ impl HubHandle {
             });
         let needed = frames_in(estimate);
         let plan = if needed > model_lead {
-            scene::plan(&model, id, &frames, seen, needed)?
+            scene::plan_mixed(&model, id, &frames, seen, needed, &no_alink)?
         } else {
             first
         };
@@ -771,6 +986,7 @@ impl HubHandle {
                 }
                 .into(),
                 result,
+                reason: None,
             }
         };
         let superframe = plan.path == "superframe";
@@ -788,6 +1004,7 @@ impl HubHandle {
                     element: o.element.clone(),
                     what: o.op.clone(),
                     result: "no_device".into(),
+                    reason: None,
                 });
                 continue;
             };
@@ -825,6 +1042,7 @@ impl HubHandle {
                 element: o.element.clone(),
                 what: o.op.clone(),
                 result,
+                reason: None,
             });
         }
         if !superframe && plan.system_mute == Some(false) {
@@ -846,9 +1064,47 @@ impl HubHandle {
             .first()
             .and_then(|o| self.device_by_serial(&o.serial))
             .and_then(|d| timed_frame(&d).0);
+        // -- WP HWLK1F -- through the sender, a unit of the scene that is not attached
+        // is not known to take it: said, so "on time on every unit" is only said when true
+        if superframe {
+            let mut named = BTreeSet::new();
+            for o in plan_targets(&model, &scene, &no_alink) {
+                if offline.contains(&o.serial) && named.insert(o.serial.clone()) {
+                    writes.push(WriteResult {
+                        result: "no_device".into(),
+                        reason: Some("not connected".into()),
+                        ..o
+                    });
+                }
+            }
+        }
+        for o in &plan.unscheduled {
+            writes.push(WriteResult {
+                serial: o.serial.clone(),
+                element: o.element.clone(),
+                what: o.op.clone(),
+                result: "no_frame".into(),
+                reason: None,
+            });
+        }
+        // -- WP HWLK1F -- units without the audio link: now, with their own commands
+        let rate = model.rate_hz;
+        for o in &plan.direct {
+            let result = match self.device_by_serial(&o.serial) {
+                Some(dev) => apply_direct(&dev, o, rate),
+                None => "no_device".into(),
+            };
+            writes.push(WriteResult {
+                serial: o.serial.clone(),
+                element: o.element.clone(),
+                what: o.op.clone(),
+                result,
+                reason: Some("no audio link (firmware)".into()),
+            });
+        }
         // A queued op was in its unit's queue before its frame: on time. One
         // whose queue could not be read is on time only if the frame was still
-        // ahead after every write.
+        // ahead after every write. An op applied at once is not at the frame.
         let still_ahead = frame_after_writes.is_some_and(|f| f < plan.frame);
         let on_time = writes.iter().all(|w| match w.result.as_str() {
             "queued" | "applied" | "ok" | "ok_unverified" => true,

@@ -20,12 +20,18 @@
 //!   A scene that cannot read the bit does not take the superframe path.
 //! - **The lead** (fixup sw2x F2) is the caller's: the model's, or more when the
 //!   writes measured slower ([`plan`]).
+//! - **Units without the audio link** (WP HWLK1F): a firmware without it
+//!   takes no frame, so its ops are written at once with the unit's own
+//!   commands ([`ScenePlan::direct`]) and the rest goes at the frame. Ops on
+//!   units with the link that no frame could be read for are listed
+//!   ([`ScenePlan::unscheduled`]) instead of refusing the scene: it is refused
+//!   only when no unit can apply any of it.
 //! - **Why not `UNMUTE` through the sender.** BULKFIX's guard
 //!   (`dspi_session::bulk_gain`) sits on each unit's own transport: an unmute
 //!   sent per unit passes it (the suspect outputs' gains are re-sent first, or
 //!   the op is refused), one broadcast through the sender would not.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use dspi_proto::ext::audio_link::{ApplyOp, ApplyRequest, SUPERFRAME_FRAMES, ctrl_msg_min_frame};
 use serde::Serialize;
@@ -95,6 +101,15 @@ pub struct ScenePlan {
     /// The `system_flags` the superframe write carries.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_flags: Option<u8>,
+    // -- WP HWLK1F --
+    /// Ops on units whose firmware has no audio link: written at once with
+    /// the unit's own commands, not at [`Self::frame`].
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub direct: Vec<PlannedOp>,
+    /// Ops on units with the link that cannot be scheduled: no unit of
+    /// theirs reports a frame and no sender is reachable. Not written.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unscheduled: Vec<PlannedOp>,
 }
 
 /// Why a scene cannot be planned.
@@ -116,17 +131,40 @@ pub fn plan(
     sender: Option<&SenderSeen>,
     lead: u64,
 ) -> Result<ScenePlan, SceneRefused> {
+    plan_mixed(model, scene_id, frames, sender, lead, &BTreeSet::new())
+}
+
+// -- WP HWLK1F --
+/// [`plan`] for an installation where the units with these serials
+/// (`no_alink`) have no audio link in their firmware: their ops go in
+/// [`ScenePlan::direct`], the rest is planned as [`plan`] does. Refused with
+/// [`SceneRefused::NoFrame`] only when there is nothing to write at once and
+/// nothing can be scheduled.
+pub fn plan_mixed(
+    model: &SystemModel,
+    scene_id: &str,
+    frames: &BTreeMap<String, u64>,
+    sender: Option<&SenderSeen>,
+    lead: u64,
+    no_alink: &BTreeSet<String>,
+) -> Result<ScenePlan, SceneRefused> {
     let scene = model.scene(scene_id).ok_or(SceneRefused::NoScene)?;
     let mut ops = Vec::new();
+    let mut direct = Vec::new();
     for a in &scene.actions {
         for u in model.resolve_target(&a.target).unwrap_or_default() {
-            ops.push(PlannedOp {
+            let op = PlannedOp {
                 serial: u.serial.clone(),
                 element: u.id.clone(),
                 op: a.op.clone(),
                 arg: a.arg,
                 value: a.value,
-            });
+            };
+            if no_alink.contains(&u.serial) {
+                direct.push(op);
+            } else {
+                ops.push(op);
+            }
         }
     }
     let base = ops
@@ -142,20 +180,27 @@ pub fn plan(
             .units
             .iter()
             .all(|u| model.path_to(&u.id).is_some_and(|(from, _)| from == s.id));
-        let covers = model
-            .resolve_target(&action.target)
-            .is_some_and(|t| t.len() == model.units.len());
+        // -- WP HWLK1F -- every unit with the link: the others take it at once
+        let covers = model.resolve_target(&action.target).is_some_and(|t| {
+            model
+                .units
+                .iter()
+                .filter(|u| !no_alink.contains(&u.serial))
+                .all(|u| t.iter().any(|x| x.id == u.id))
+        });
         every && covers && scene_op(&action.op).is_some_and(|op| op != ApplyOp::Unmute)
     });
     if ops.is_empty() {
         return Ok(ScenePlan {
             scene: scene.id.clone(),
             frame: 0,
-            path: "none".into(),
+            path: if direct.is_empty() { "none" } else { "direct" }.into(),
             ops,
             lead_frames: 0,
             system_mute: scene.system_mute,
             system_flags: None,
+            direct,
+            unscheduled: Vec::new(),
         });
     }
     let round = |f: u64| f.checked_next_multiple_of(SUPERFRAME_FRAMES);
@@ -184,13 +229,28 @@ pub fn plan(
                 })
                 .into_iter()
                 .collect(),
+            direct,
+            unscheduled: Vec::new(),
         });
     }
-    let base = base.ok_or(SceneRefused::NoFrame)?;
-    let frame = base
-        .checked_add(lead)
-        .and_then(round)
-        .ok_or(SceneRefused::NoFrame)?;
+    let frame = base.and_then(|b| b.checked_add(lead)).and_then(round);
+    let Some(frame) = frame else {
+        // -- WP HWLK1F -- what can be written at once still is
+        if direct.is_empty() {
+            return Err(SceneRefused::NoFrame);
+        }
+        return Ok(ScenePlan {
+            scene: scene.id.clone(),
+            frame: 0,
+            path: "direct".into(),
+            ops: Vec::new(),
+            lead_frames: 0,
+            system_mute: scene.system_mute,
+            system_flags: None,
+            direct,
+            unscheduled: ops,
+        });
+    };
     Ok(ScenePlan {
         scene: scene.id.clone(),
         frame,
@@ -199,6 +259,8 @@ pub fn plan(
         lead_frames: lead,
         system_mute: scene.system_mute,
         system_flags: None,
+        direct,
+        unscheduled: Vec::new(),
     })
 }
 
@@ -306,6 +368,54 @@ mod tests_wp_sw2 {
         assert!(m.validate().unwrap_err().0.contains("queue"));
         m.scenes = vec![scene(&[("unit:A", "mute", 0, 0); 4])];
         m.validate().unwrap();
+    }
+
+    // -- WP HWLK1F --
+    /// A unit without the audio link takes its ops at once; the others are
+    /// planned as before, through the sender when every unit with the link is
+    /// covered; with no frame anywhere, what can go at once still does.
+    #[test]
+    fn wp_hwlk1f_units_without_the_link_go_at_once() {
+        let mut m = cinema();
+        m.scenes = vec![scene(&[("all", "master_volume", 0, -2000)])];
+        let k = BTreeSet::from(["S-C".to_owned()]);
+        let p = plan_mixed(&m, "evening", &frames(), Some(&tx(1_000_000)), 2400, &k).unwrap();
+        assert_eq!(p.path, "superframe");
+        assert_eq!(p.direct.len(), 1);
+        assert_eq!(p.direct[0].element, "C");
+        // Every unit with the link, C left out of the target: still the sender.
+        m.groups = vec![Group {
+            id: "linked".into(),
+            name: String::new(),
+            units: vec!["A".into(), "B".into(), "R".into()],
+            note: String::new(),
+        }];
+        m.scenes = vec![scene(&[("group:linked", "mute", 0, 0)])];
+        let p = plan_mixed(&m, "evening", &frames(), Some(&tx(1_000_000)), 2400, &k).unwrap();
+        assert_eq!((p.path.as_str(), p.direct.len()), ("superframe", 0));
+        let p = plan(&m, "evening", &frames(), Some(&tx(1_000_000)), 2400).unwrap();
+        assert_eq!(
+            p.path, "per_unit",
+            "without C known, the group is not everyone"
+        );
+        // Only C: at once. No frame anywhere: C at once, the rest unscheduled.
+        m.scenes = vec![scene(&[("unit:C", "out_delay", 0, 48)])];
+        let p = plan_mixed(&m, "evening", &BTreeMap::new(), None, 2400, &k).unwrap();
+        assert_eq!(
+            (p.path.as_str(), p.ops.len(), p.direct.len()),
+            ("direct", 0, 1)
+        );
+        m.scenes = vec![scene(&[("all", "mute", 0, 0)])];
+        let p = plan_mixed(&m, "evening", &BTreeMap::new(), None, 2400, &k).unwrap();
+        assert_eq!(
+            (p.path.as_str(), p.direct.len(), p.unscheduled.len()),
+            ("direct", 1, 3)
+        );
+        assert_eq!(
+            plan(&m, "evening", &BTreeMap::new(), None, 2400),
+            Err(SceneRefused::NoFrame),
+            "nothing at once and nothing scheduled: refused"
+        );
     }
 
     // -- fixup sw2x (F1) --

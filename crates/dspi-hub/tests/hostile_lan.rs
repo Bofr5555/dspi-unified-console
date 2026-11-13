@@ -347,7 +347,12 @@ fn get(code: u8, value: u16, len: u16) -> CmdRequest {
 
 /// Open a window and pair one client at `role`; returns (token, session reply).
 fn paired(t: &Target, role: &str) -> (String, Value) {
-    let w = t.net.auth().begin_pairing(Instant::now()).unwrap();
+    // -- WP HWLK1F -- a PIN gives at most control unless its window was opened for admin
+    let w = if role == "admin" {
+        t.net.auth().begin_pairing_admin(Instant::now()).unwrap()
+    } else {
+        t.net.auth().begin_pairing(Instant::now()).unwrap()
+    };
     let mut c = Cx::open(t.port, None, None).unwrap();
     c.hello();
     let reply = c.pair(&w.pin, Some(role), "x");

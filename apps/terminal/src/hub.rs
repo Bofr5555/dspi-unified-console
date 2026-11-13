@@ -140,6 +140,16 @@ struct RunOptions {
     /// `--demo --audio-link`: an installation of simulated devices on the audio
     /// link (a sender, a fan-out, four units) with its system model.
     audio_link: bool,
+    // -- WP HWLK1F --
+    /// `--pair-admin`: the pairing window at the start may give admin, to the
+    /// one client that asks for it. Otherwise a PIN gives at most control.
+    pair_admin: bool,
+    /// `--with-usb` (a test option, with `--demo --audio-link`): this machine's
+    /// USB devices too, beside the simulated installation.
+    with_usb: bool,
+    /// `--with-plain-unit` (a test option, with `--demo --audio-link`): one
+    /// more simulated DSPi, without the audio link, in the installation.
+    with_plain_unit: bool,
 }
 
 /// One `uconsole hub` command.
@@ -235,7 +245,11 @@ USAGE:
 OPTIONS:
     --name <name>             the hub's name, kept for the next start
     --port <port>             the port to listen on (default {DEFAULT_PORT}; 0: any)
-    --pair                    open a pairing window at the start and show its PIN
+    --pair                    open a pairing window at the start and show its PIN.
+                              A PIN gives at most the control role
+    --pair-admin              the same, and the one client that pairs in it may
+                              ask for admin (otherwise admin is only given with
+                              `{COMMAND} hub role` on this machine)
     --open                    no PIN: every connection may do anything, including
                               anyone else on this network. PIN pairing is the default
     --forget-clients          agree to a change of --open that forgets every
@@ -254,6 +268,11 @@ OPTIONS:
     --audio-link              with --demo: an installation on the audio link instead
                               of the one device (a sender, a fan-out and four
                               units), and its system model when none is kept
+    --with-usb                test option, with --demo --audio-link: this
+                              machine's USB DSPis too, to test a mixed
+                              installation on hardware (add them to the model)
+    --with-plain-unit         test option, with --demo --audio-link: one more
+                              simulated DSPi without the audio link (unit P)
     --loopback                listen on this machine only, and do not advertise
     --no-keep-awake           let the machine sleep while sharing
     --store <dir>             where the hub keeps its id, clients and device names
@@ -301,6 +320,8 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
     let (mut web, mut console, mut local, mut share_usb) = (false, None, false, false);
     // -- WP SW3 --
     let mut audio_link = false;
+    // -- WP HWLK1F --
+    let (mut pair_admin, mut with_usb, mut with_plain_unit) = (false, false, false);
     let mut port_given = false;
     let mut words = Vec::new();
 
@@ -350,6 +371,10 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
             "--share-usb" => share_usb = true,
             // -- WP SW3 --
             "--audio-link" => audio_link = true,
+            // -- WP HWLK1F --
+            "--pair-admin" => pair_admin = true,
+            "--with-usb" => with_usb = true,
+            "--with-plain-unit" => with_plain_unit = true,
             f if f.starts_with('-') => return Err(usage(format!("`{f}` is not a hub option"))),
             word => words.push(word),
         }
@@ -364,6 +389,9 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 | "--local"
                 | "--share-usb"
                 | "--audio-link"
+                | "--pair-admin"
+                | "--with-usb"
+                | "--with-plain-unit"
         ) {
             run_only.push(flag);
         }
@@ -403,6 +431,22 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                     "--audio-link is for `{COMMAND} --demo hub`: it shares simulated devices"
                 )));
             }
+            // -- WP HWLK1F --
+            for (given, flag) in [
+                (with_usb, "--with-usb"),
+                (with_plain_unit, "--with-plain-unit"),
+            ] {
+                if given && !audio_link {
+                    return Err(usage(format!(
+                        "{flag} is a test option of `{COMMAND} --demo hub --audio-link`"
+                    )));
+                }
+            }
+            if pair_admin && access == AccessMode::Open {
+                return Err(usage(
+                    "--pair-admin and --open: an open hub pairs nobody".into(),
+                ));
+            }
             if local && !port_given {
                 port = LOCAL_PORT;
             }
@@ -411,7 +455,7 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 port,
                 access,
                 store: store()?,
-                pair,
+                pair: pair || pair_admin,
                 demo,
                 keep_awake,
                 forget_clients: forget,
@@ -423,6 +467,10 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 share_usb,
                 // -- WP SW3 --
                 audio_link,
+                // -- WP HWLK1F --
+                pair_admin,
+                with_usb,
+                with_plain_unit,
             }));
         }
         ["help"] => return Ok(HubCommand::Help),
@@ -631,6 +679,10 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
     if !opts.demo && (!opts.local || opts.share_usb) {
         config.bus = Some(Box::new(UsbBus::default()));
     }
+    // -- WP HWLK1F -- a test option: the simulated installation and this machine's USB
+    if opts.demo && opts.audio_link && opts.with_usb {
+        config.bus = Some(Box::new(UsbBus::default()));
+    }
     let hub = Hub::start(config)?;
     let handle = hub.handle();
     // Always there on a hub started with a network side.
@@ -663,7 +715,11 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
     };
     // -- WP SW3 --
     if opts.audio_link {
-        demo_audio_link(&running.handle)?;
+        demo_audio_link(&running.handle, opts.with_plain_unit)?;
+        // -- WP HWLK1F --
+        if opts.with_usb {
+            running.handle.scan_now();
+        }
     } else if opts.demo {
         running
             .handle
@@ -738,10 +794,22 @@ fn audio_link_model() -> Value {
     })
 }
 
+// -- WP HWLK1F --
+/// `--with-plain-unit`'s device: a simulated DSPi without the audio link.
+const PLAIN_SERIAL: &str = "DEMO-PLAIN";
+
+// -- WP HWLK1F --
+/// `--with-plain-unit`'s unit in the demo model: in the bar, behind the sender
+/// as the model has it, with a speaker; its firmware has no link.
+fn plain_unit_model() -> Value {
+    json!({"id": "P", "name": "Plain (no audio link)", "serial": PLAIN_SERIAL, "room": "bar",
+           "upstream": "tx", "speakers": [{"output": 0, "distanceM": 2.0}]})
+}
+
 // -- WP SW3 --
 /// Attach `--demo --audio-link`'s devices and give the hub their model, unless
 /// its store keeps one already (an installer's edits survive a restart).
-fn demo_audio_link(handle: &HubHandle) -> Result<(), Failure> {
+fn demo_audio_link(handle: &HubHandle, plain_unit: bool) -> Result<(), Failure> {
     for (serial, setup) in audio_link_rig() {
         handle
             .attach(
@@ -750,8 +818,18 @@ fn demo_audio_link(handle: &HubHandle) -> Result<(), Failure> {
             )
             .map_err(|e| Failure::Failed(format!("{serial} did not attach: {e}")))?;
     }
+    // -- WP HWLK1F -- a unit whose firmware has no audio link, as a K340 on 470a127
+    if plain_unit {
+        handle
+            .attach(Box::new(FakeDevice::demo().with_serial(PLAIN_SERIAL)), 0)
+            .map_err(|e| Failure::Failed(format!("{PLAIN_SERIAL} did not attach: {e}")))?;
+    }
     if handle.system_model().0.units.is_empty() {
-        let model = serde_json::from_value(audio_link_model())
+        let mut value = audio_link_model();
+        if plain_unit && let Some(units) = value.get_mut("units").and_then(Value::as_array_mut) {
+            units.push(plain_unit_model());
+        }
+        let model = serde_json::from_value(value)
             .map_err(|e| Failure::Failed(format!("the demo's system model: {e}")))?;
         handle
             .system_set_model(model)
@@ -898,7 +976,7 @@ fn serve(opts: &RunOptions, json: bool) -> Result<(), Failure> {
         );
     }
     if opts.pair {
-        begin_pairing(&running, json);
+        let _ = begin_pairing(&running, json, opts.pair_admin);
     }
 
     let typed = std::io::stdin().is_terminal().then(read_lines).flatten();
@@ -1001,7 +1079,9 @@ fn command(running: &Running, line: &str, json: bool) -> bool {
         ["quit" | "stop" | "exit"] => return false,
         ["help"] => usage(),
         ["status"] => status(running, json),
-        ["pair"] => begin_pairing(running, json),
+        ["pair"] => {
+            let _ = begin_pairing(running, json, false);
+        }
         ["unpair"] => {
             running.control.auth().cancel_pairing();
             say("pairing closed");
@@ -1065,7 +1145,13 @@ fn status(running: &Running, json: bool) {
     }
 }
 
-fn begin_pairing(running: &Running, json: bool) {
+/// -- WP HWLK1F -- `admin`: the one pairing may be admin (`--pair-admin`). The
+/// window opened, for the tests.
+fn begin_pairing(
+    running: &Running,
+    json: bool,
+    admin: bool,
+) -> Option<dspi_hub::auth::PairingWindow> {
     if running.access == AccessMode::Open {
         let m = "access is open: clients connect with no PIN";
         if json {
@@ -1073,11 +1159,18 @@ fn begin_pairing(running: &Running, json: bool) {
         } else {
             println!("{m}");
         }
-        return;
+        return None;
     }
     let now = Instant::now();
-    match running.control.auth().begin_pairing(now) {
+    let auth = running.control.auth();
+    let window = if admin {
+        auth.begin_pairing_admin(now)
+    } else {
+        auth.begin_pairing(now)
+    };
+    match window {
         Ok(window) => {
+            let shown = window.clone();
             let secs = window.expires.saturating_duration_since(now).as_secs();
             if json {
                 println!(
@@ -1091,8 +1184,15 @@ fn begin_pairing(running: &Running, json: bool) {
                     window.pin
                 );
             }
+            if admin && !json {
+                println!("The client that pairs with this PIN may ask for the admin role.");
+            }
+            Some(shown)
         }
-        Err(e) => eprintln!("{COMMAND} hub: no pairing: {e}"),
+        Err(e) => {
+            eprintln!("{COMMAND} hub: no pairing: {e}");
+            None
+        }
     }
 }
 
@@ -1384,6 +1484,10 @@ mod tests_wp_tm11 {
             share_usb: false,
             // -- WP SW3 --
             audio_link: false,
+            // -- WP HWLK1F --
+            pair_admin: false,
+            with_usb: false,
+            with_plain_unit: false,
         }
     }
 
@@ -2018,6 +2122,149 @@ mod tests_wp_sw3 {
             local: false,
             share_usb: false,
             audio_link: false,
+            // -- WP HWLK1F --
+            pair_admin: false,
+            with_usb: false,
+            with_plain_unit: false,
         }
+    }
+}
+
+// -- WP HWLK1F --
+#[cfg(test)]
+#[allow(clippy::indexing_slicing)]
+mod tests_wp_hwlk1f {
+    use super::*;
+    use std::net::Ipv4Addr;
+
+    fn scratch(name: &str) -> PathBuf {
+        // Beside the test binary, in the target directory: never on tmpfs.
+        let dir = std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("wp_hwlk1f")
+            .join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn run(args: &[&str], demo: bool) -> Result<RunOptions, Failure> {
+        match parse(args, demo, Some(PathBuf::from("/store")))? {
+            HubCommand::Run(o) => Ok(o),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn wp_hwlk1f_the_new_options_parse() {
+        let o = run(&["--pair-admin"], false).unwrap();
+        assert!(o.pair && o.pair_admin, "--pair-admin opens the window too");
+        let o = run(&["--pair"], false).unwrap();
+        assert!(o.pair && !o.pair_admin);
+        assert!(matches!(
+            run(&["--pair-admin", "--open"], false),
+            Err(Failure::Usage(_))
+        ));
+        let o = run(&["--audio-link", "--with-usb", "--with-plain-unit"], true).unwrap();
+        assert!(o.audio_link && o.with_usb && o.with_plain_unit && o.demo);
+        for f in ["--with-usb", "--with-plain-unit"] {
+            assert!(matches!(run(&[f], true), Err(Failure::Usage(_))), "{f}");
+            assert!(matches!(run(&[f], false), Err(Failure::Usage(_))), "{f}");
+        }
+        assert!(matches!(
+            parse(
+                &["clients", "--pair-admin"],
+                false,
+                Some(PathBuf::from("/s"))
+            ),
+            Err(Failure::Usage(_))
+        ));
+        let o = run(&["--audio-link"], true).unwrap();
+        assert!(
+            !o.with_usb && !o.with_plain_unit && !o.pair_admin,
+            "off unless given"
+        );
+    }
+
+    fn options(store: &Path) -> RunOptions {
+        RunOptions {
+            name: Some("HWLK1F test hub".into()),
+            port: 0,
+            access: AccessMode::Pin,
+            store: store.to_owned(),
+            loopback: true,
+            pair: false,
+            demo: true,
+            keep_awake: false,
+            forget_clients: false,
+            web: false,
+            console: None,
+            local: false,
+            share_usb: false,
+            audio_link: false,
+            pair_admin: false,
+            with_usb: false,
+            with_plain_unit: false,
+        }
+    }
+
+    /// `--pair-admin`'s window gives admin to the one client that asks; the
+    /// typed `pair`'s gives control.
+    #[test]
+    fn wp_hwlk1f_pair_admin_opens_a_window_that_may_give_admin() {
+        let store = scratch("pair");
+        let running = start(&options(&store), false).unwrap();
+        let peer = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        let auth = running.control.auth();
+        let w = begin_pairing(&running, true, true).unwrap();
+        let a = auth
+            .pair(&w.pin, "installer", Some(Role::Admin), peer, Instant::now())
+            .unwrap();
+        assert_eq!(a.role, Role::Admin);
+        let w = begin_pairing(&running, true, false).unwrap();
+        let c = auth
+            .pair(&w.pin, "phone", Some(Role::Admin), peer, Instant::now())
+            .unwrap();
+        assert_eq!(c.role, Role::Control);
+        drop(running);
+        let _ = std::fs::remove_dir_all(&store);
+    }
+
+    /// `--with-plain-unit`: one more simulated DSPi without the audio link, in
+    /// the model as unit P; it is seen as such and takes a scene at once.
+    #[test]
+    fn wp_hwlk1f_the_plain_unit_joins_the_demo_installation() {
+        let store = scratch("plain");
+        let mut opts = options(&store);
+        opts.audio_link = true;
+        opts.with_plain_unit = true;
+        let running = start(&opts, false).unwrap();
+        let (model, _) = running.handle.system_model();
+        assert_eq!(model.units.len(), 5);
+        assert_eq!(model.units[4].serial, PLAIN_SERIAL);
+        let status = running.handle.system_status();
+        let p = &status.observed[PLAIN_SERIAL];
+        assert!(p.online && p.without_alink());
+        assert!(
+            status.observed["DEMO-LINK-A"].alink.is_some()
+                && !status.observed["DEMO-LINK-A"].without_alink()
+        );
+        let r = running
+            .handle
+            .system_apply_scene("evening", Role::Admin)
+            .unwrap();
+        assert_eq!(r.plan.path, "superframe");
+        assert!(
+            r.writes
+                .iter()
+                .any(|w| w.element == "P" && w.result == "applied_now"),
+            "{:?}",
+            r.writes
+        );
+        assert!(!r.on_time);
+        drop(running);
+        let _ = std::fs::remove_dir_all(&store);
     }
 }

@@ -91,6 +91,32 @@ pub struct Observed {
     /// A sender's superframe apply still waiting for its frame: it takes no
     /// other until that frame has passed (2.8.9).
     pub pending_apply_frame: Option<u64>,
+    // -- WP HWLK1F --
+    /// Whether the device's firmware has the audio link at all: `present`
+    /// (`EXT_LINK_INFO` answers), `none` (its `EXT_LIST` names no 0x8000 block,
+    /// or the block stalls: a K340 on bofr-main 470a127, stock firmware), or
+    /// `None` when that could not be told (offline, no answer).
+    pub alink: Option<AlinkFirmware>,
+}
+
+// -- WP HWLK1F --
+/// Whether a device's firmware has the audio link ([`Observed::alink`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AlinkFirmware {
+    /// `EXT_LINK_INFO` answers.
+    Present,
+    /// No audio link in this firmware: never locked, never at a frame.
+    #[serde(rename = "none")]
+    Absent,
+}
+
+impl Observed {
+    // -- WP HWLK1F --
+    /// The firmware is known to have no audio link.
+    pub fn without_alink(&self) -> bool {
+        self.alink == Some(AlinkFirmware::Absent)
+    }
 }
 
 // -- WP SW3 --
@@ -173,7 +199,7 @@ pub struct UnitPlan {
 pub struct Issue {
     /// The element it is about, if one.
     pub subject: Option<String>,
-    /// A stable code: `limits_unknown`, `delay_out_of_range`,
+    /// A stable code: `limits_unknown`, `no_alink` (WP HWLK1F), `delay_out_of_range`,
     /// `hop_delay_assumed`, `hops_mismatch`, `sender_mismatch`, `offline`,
     /// `d_too_small`.
     pub code: String,
@@ -356,6 +382,16 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
                 Some(&u.id),
                 "offline",
                 format!("{}: not attached to the hub", u.id),
+            ));
+        } else if o.is_some_and(Observed::without_alink) {
+            // -- WP HWLK1F -- said as what it is, not as unread limits
+            issues.push(issue(
+                Some(&u.id),
+                "no_alink",
+                format!(
+                    "{}: its firmware has no audio link; it is not aligned and takes scenes at once",
+                    u.id
+                ),
             ));
         } else if limits.is_none() {
             issues.push(issue(
