@@ -255,11 +255,17 @@ fn wp_lkui1_a_recall_through_the_sender_and_its_refusal() {
     assert_eq!(
         r.message,
         "Closed was refused: a scene is already scheduled on the sender for link frame 10000, \
-         90 ms after this recall. The sender takes one scene at a time; recall Closed again after that."
+         90 ms after this recall. The sender takes one scene at a time; recall Closed again after that. \
+         System mute unchanged."
     );
     assert_eq!(
         (r.writes[0].result_word.as_str(), r.writes[0].tone.as_str()),
         ("Refused", "bad")
+    );
+    // -- fixup lk1 -- the sender's write carries the scene, never read as a refused mute
+    assert_eq!(
+        (r.writes[0].unit.as_str(), r.writes[0].what.as_str()),
+        ("Sender", "Scene Closed")
     );
     // Without a frame to name.
     let r = recall_outcome("closed", &refused, &model(), None, 48_000);
@@ -270,7 +276,7 @@ fn wp_lkui1_a_recall_through_the_sender_and_its_refusal() {
     let r = recall_outcome("closed", &per_unit, &model(), Some(10_000), 48_000);
     assert_eq!(
         r.message,
-        "Closed was refused by every unit; nothing changed."
+        "Closed was refused by every unit; nothing changed. System mute unchanged."
     );
     // Taken with the system mute, a late unit.
     let mut late = refused.clone();
@@ -283,8 +289,47 @@ fn wp_lkui1_a_recall_through_the_sender_and_its_refusal() {
     );
     assert_eq!(
         (r.writes[0].unit.as_str(), r.writes[0].what.as_str()),
-        ("Main left", "Mute")
+        ("Main left", "Scene Closed")
     );
+}
+
+// -- fixup lk1 -- review lk1's probe kept: the held-scene words only for the sender's own
+// refusal; a timeout, a lock or another answer has its own sentence and names no frame.
+#[test]
+fn wp_lkui1_fixup_lk1_a_sender_that_did_not_take_the_scene_for_another_reason() {
+    let report = |result: &str| {
+        json!({
+            "plan": {"scene": "closed", "frame": 10_500, "path": "superframe", "ops": [], "leadFrames": 4800},
+            "writes": [{"serial": "TX", "element": "tx", "what": "mute", "result": result}],
+            "frameAfterWrites": 5700, "onTime": false
+        })
+    };
+    let r = recall_outcome("closed", &report("timeout"), &model(), Some(10_000), 48_000);
+    assert!(!r.taken);
+    assert_eq!(r.held_frame, None);
+    assert_eq!(
+        r.message,
+        "Closed was not recalled: the sender did not answer in time. Check the sender and recall Closed again."
+    );
+    let r = recall_outcome("closed", &report("locked"), &model(), Some(10_000), 48_000);
+    assert_eq!(
+        r.message,
+        "Closed was not recalled: another console is applying changes to the sender. Recall Closed again when it is done."
+    );
+    let r = recall_outcome("closed", &report("no_device"), &model(), None, 48_000);
+    assert_eq!(
+        r.message,
+        "Closed was not recalled: the sender's answer was \"Not connected\"."
+    );
+    for result in ["timeout", "locked", "no_device", "denied"] {
+        let r = recall_outcome("closed", &report(result), &model(), Some(10_000), 48_000);
+        assert!(
+            !r.message.contains("already scheduled") && !r.message.contains("holds one"),
+            "{result}: {}",
+            r.message
+        );
+        assert_eq!(r.writes[0].what, "Scene Closed");
+    }
 }
 
 #[test]

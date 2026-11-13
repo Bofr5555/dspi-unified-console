@@ -94,8 +94,8 @@ class SystemScreenWpLkui1Test {
     @Test
     fun wpLkui1UnitsScenesAndARefusedRecall() {
         open("admin")
-        rule.onNodeWithContentDescription("Status: Audio link: 4 of 4 locked, link delay to write on 2").assertIsDisplayed()
-        rule.onNodeWithContentDescription("Main left, Receiver, Locked").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Status: Audio link: 4 of 4 locked, link delay to write on 4").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Main left, Receiver, Locked, link delay pending").assertIsDisplayed()
         rule.onNodeWithContentDescription("Main right, Receiver, Locked, link delay pending").assertIsDisplayed()
         rule.onNodeWithContentDescription("Recall Evening").assertIsEnabled().performClick()
         settle()
@@ -118,7 +118,7 @@ class SystemScreenWpLkui1Test {
         rule.onNodeWithText("Changing the installation needs the hub's Admin role. This part is read only.").assertIsDisplayed()
         rule.onNodeWithContentDescription("System delay automatic").assertIsNotEnabled()
         rule.onNodeWithText("Save").assertIsNotEnabled()
-        rule.onNodeWithText("Write link delays…").assertIsNotEnabled()
+        rule.onNodeWithText("Align link delays…").assertIsNotEnabled()
         shoot("system-viewer", dark = false)
     }
 
@@ -158,7 +158,7 @@ class SystemScreenWpLkui1Test {
         core.audioLinkSystem.onHub = true
         refresh()
         rule.onNodeWithContentDescription(
-            "Audio link: 4 of 4 locked, link delay to write on 2. Open System"
+            "Audio link: 4 of 4 locked, link delay to write on 4. Open System"
         ).assertIsDisplayed().performClick()
         assertEquals(listOf(DspiRoutes.SYSTEM), routes)
     }

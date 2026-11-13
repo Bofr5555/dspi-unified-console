@@ -188,6 +188,17 @@ fn wp_lkui1_view_recall_refusal_align_and_stale_save_on_a_real_hub() {
         second.message
     );
     assert!(second.writes.iter().all(|w| w.result_word == "Refused"));
+    // -- fixup lk1 -- the sender's write is named as the scene; the mute is unchanged
+    assert!(
+        second.writes.iter().all(|w| w.what == "Scene Closed"),
+        "{:?}",
+        second.writes
+    );
+    assert!(
+        second.message.ends_with(" System mute unchanged."),
+        "{}",
+        second.message
+    );
 
     // A save on the view's revision is taken; one on an older revision is a conflict.
     let base = fresh_view(&core).revision;

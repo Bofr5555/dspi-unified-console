@@ -209,7 +209,30 @@ void linkSystemSection(SmokeDriver &d) {
     d.check("lkui1: a unit row shows its name and lock",
             rowA() && rowA()->property("shownName").toString() == QLatin1String("Main left, Locked"));
 
-    // Write the link delays: none pending afterwards
+    // -- fixup lk1 -- the device held read only (G1, as a mismatched firmware): Admin on
+    // the hub, yet no System write is offered, and none is sent if asked
+    sys->setReadOnlyForTest(true);
+    d.spin(200);
+    const auto item = [&](const char *name) { return in(QString::fromLatin1(name)); };
+    const int callsBefore = sys->lastRecall().size();
+    sys->recall(QStringLiteral("evening"));
+    sys->align();
+    d.spin(300);
+    d.check("lkui1: read only: nothing offered that writes",
+            !sys->mayEdit() && !sys->mayRecall() && item("SystemWindow.scene.evening")
+                && !item("SystemWindow.scene.evening")->isEnabled() && item("SystemWindow.align")
+                && !item("SystemWindow.align")->isEnabled() && item("SystemWindow.latency.B")
+                && !item("SystemWindow.latency.B")->isEnabled() && item("SystemWindow.recallNote")
+                && item("SystemWindow.recallNote")->isVisible());
+    d.check("lkui1: read only: said why", sys->recallNote().contains(QLatin1String("read only")));
+    d.check("lkui1: read only: a recall or an alignment asked for is not sent",
+            !sys->busy() && sys->lastRecall().size() == callsBefore && sys->actionMessage().isEmpty());
+    shoot(QStringLiteral("read-only"));
+    sys->setReadOnlyForTest(false);
+    d.spin(200);
+    d.check("lkui1: writable again", sys->mayEdit() && sys->mayRecall());
+
+    // Align the link delays: none pending afterwards
     sys->align();
     d.check("lkui1: the link delays are written", d.waitFor(20000, [&] {
         return !sys->busy() && sys->actionMessage().startsWith(QLatin1String("The link delays were written"));

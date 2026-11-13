@@ -971,11 +971,24 @@ pub(crate) fn recall_outcome(
     let lead = u32_of(plan.get("leadFrames")).unwrap_or(0);
     let path = str_at(plan, &["path"]);
     let on_time = report.get("onTime").and_then(Value::as_bool) == Some(true);
-    let writes = writes_of(report, model);
+    let mut writes = writes_of(report, model);
+    // -- fixup lk1 -- through the sender the one write carries the whole scene, so it
+    // is named as the scene: "Sender · Scene Closed: Refused", never a refused "Mute"
+    if path == "superframe" {
+        for w in &mut writes {
+            w.what = format!("Scene {name}");
+        }
+    }
     let was_taken = list(report, "writes")
         .iter()
         .any(|w| taken(str_at(w, &["result"])));
-    let (message, held_frame) = if was_taken {
+    // The sender's answer, when nothing was taken through it
+    let sender_result = list(report, "writes")
+        .iter()
+        .map(|w| str_at(w, &["result"]))
+        .find(|r| !taken(r))
+        .unwrap_or("refused");
+    let (mut message, held_frame) = if was_taken {
         let path_word = match path {
             "superframe" => "through the sender",
             "per_unit" => "to each unit",
@@ -998,32 +1011,63 @@ pub(crate) fn recall_outcome(
             format!("{name} was refused by every unit; nothing changed."),
             None,
         )
-    } else if let Some(pending) = held {
-        let after = report
-            .get("frameAfterWrites")
-            .and_then(Value::as_u64)
-            .unwrap_or_else(|| frame.saturating_sub(u64::from(lead)));
-        let frames = pending.saturating_sub(after);
-        let ms = u32::try_from(frames)
-            .map_or(f64::MAX, |f| frames_ms(f, rate_hz))
-            .round();
-        (
-            format!(
-                "{name} was refused: a scene is already scheduled on the sender for link frame \
-                 {pending}, {ms:.0} ms after this recall. The sender takes one scene at a time; \
-                 recall {name} again after that."
-            ),
-            Some(pending),
-        )
     } else {
-        (
-            format!(
-                "{name} was refused: the sender takes one scene at a time and still holds one. \
-                 Recall it again in a moment."
+        match sender_result {
+            // -- fixup lk1 -- the held-scene words only for the sender's own refusal (2.8.9)
+            "refused" | "refused_at_apply" => match held {
+                Some(pending) => {
+                    let after = report
+                        .get("frameAfterWrites")
+                        .and_then(Value::as_u64)
+                        .unwrap_or_else(|| frame.saturating_sub(u64::from(lead)));
+                    let frames = pending.saturating_sub(after);
+                    let ms = u32::try_from(frames)
+                        .map_or(f64::MAX, |f| frames_ms(f, rate_hz))
+                        .round();
+                    (
+                        format!(
+                            "{name} was refused: a scene is already scheduled on the sender for link \
+                             frame {pending}, {ms:.0} ms after this recall. The sender takes one scene \
+                             at a time; recall {name} again after that."
+                        ),
+                        Some(pending),
+                    )
+                }
+                None => (
+                    format!(
+                        "{name} was refused: the sender takes one scene at a time and still holds \
+                         one. Recall it again in a moment."
+                    ),
+                    None,
+                ),
+            },
+            "timeout" => (
+                format!(
+                    "{name} was not recalled: the sender did not answer in time. Check the sender \
+                     and recall {name} again."
+                ),
+                None,
             ),
-            None,
-        )
+            "locked" => (
+                format!(
+                    "{name} was not recalled: another console is applying changes to the sender. \
+                     Recall {name} again when it is done."
+                ),
+                None,
+            ),
+            other => (
+                format!(
+                    "{name} was not recalled: the sender's answer was \"{}\".",
+                    result_word(other)
+                ),
+                None,
+            ),
+        }
     };
+    // -- fixup lk1 -- a scene that sets the system mute and was not taken leaves it as it was
+    if !was_taken && plan.get("systemMute").and_then(Value::as_bool).is_some() {
+        message.push_str(" System mute unchanged.");
+    }
     LinkSceneRecall {
         scene: scene.to_owned(),
         name,

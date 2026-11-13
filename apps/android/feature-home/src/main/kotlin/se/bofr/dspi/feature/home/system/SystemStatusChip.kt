@@ -33,12 +33,15 @@ import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.ui.DspiRoutes
 import se.bofr.dspi.ui.DspiTheme
 import se.bofr.dspi.ui.DspiType
+import se.bofr.dspi.ui.rememberWhileVisible
 
 @Composable
 fun SystemStatusChip(bridge: DspiBridge, onNavigate: (String) -> Unit, modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     val model = remember(bridge) { SystemScreenModel(bridge, scope) }
-    LaunchedEffect(model) { model.poll() }
+    // -- fixup lk1 -- only while shown (decision E6): nothing is asked while the app is stopped
+    val visible = rememberWhileVisible()
+    LaunchedEffect(model, visible) { if (visible) model.poll() }
     val s by model.state.collectAsStateWithLifecycle()
     SystemStatusChipView(s, onOpen = { onNavigate(DspiRoutes.SYSTEM) }, modifier)
 }

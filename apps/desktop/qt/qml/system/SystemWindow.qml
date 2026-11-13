@@ -496,10 +496,10 @@ ToolWindow {
                 }
                 AppButton {
                     objectName: "SystemWindow.align"
-                    text: qsTr("Write Link Delays…")
+                    text: qsTr("Align link delays…")
                     enabled: window.editable && !SystemController.dirty
                     toolTip: SystemController.mayEdit
-                             ? qsTr("Write the link delays the system delay asks for to every unit")
+                             ? qsTr("Align every unit: write the link delays the system delay asks for")
                              : SystemController.editNote
                     onClicked: alignQuestion.open()
                 }
@@ -518,9 +518,9 @@ ToolWindow {
     QuestionDialog {
         id: alignQuestion
         objectName: "SystemWindow.alignQuestion"
-        title: qsTr("Write link delays?")
+        title: qsTr("Align link delays?")
         text: qsTr("Every unit restarts its outputs in step with a short silence (2 to 6 ms).")
-        acceptText: qsTr("Write")
+        acceptText: qsTr("Align")
         onAnswered: answer => { if (answer === "accept") SystemController.align() }
     }
 }

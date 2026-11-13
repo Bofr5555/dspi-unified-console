@@ -208,8 +208,8 @@ test.describe("an audio link installation on the hub", () => {
     const align = panel.getByRole("region", { name: "Alignment" });
     await align.getByRole("button", { name: "Compute" }).click();
     await expect(align.getByLabel("Alignment result")).toContainText("Computed, not written");
-    await align.getByRole("button", { name: "Align", exact: true }).click();
-    const confirm = page.getByRole("dialog", { name: "Align the Units" });
+    await align.getByRole("button", { name: "Align link delays…", exact: true }).click();
+    const confirm = page.getByRole("dialog", { name: "Align link delays?" });
     await expect(confirm).toBeVisible();
     await shot(page, "hub-align-confirm", { full: false });
     await confirm.getByRole("button", { name: "Align" }).click();

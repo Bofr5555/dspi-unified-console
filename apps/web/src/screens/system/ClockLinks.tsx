@@ -83,7 +83,7 @@ export function ClockLinks(props: { feed: SystemFeed; ask: Ask }) {
         </div>
       ) : draft ? (
         <div class="sys-save" role="group" aria-label="Unsaved installation">
-          <span>The installation has unsaved changes. Save sends them to the hub; Align writes them to the units.</span>
+          <span>The installation has unsaved changes. Save sends them to the hub; Align link delays writes them to the units.</span>
           <button type="button" onClick={() => void save()}>
             Save
           </button>
@@ -347,7 +347,7 @@ function AlignPanel(props: { feed: SystemFeed; ask: Ask; admin: boolean; mayAlig
   const names = (id: string) => subjectName(st.model, id);
   const apply = async () => {
     const go = await props.ask({
-      title: "Align the Units",
+      title: "Align link delays?",
       body: <p>Each unit whose link delay changes re-anchors: 2 to 6 ms of silence. Speaker delays are written too.</p>,
       buttons: [
         { label: "Align", value: "align" },
@@ -365,7 +365,7 @@ function AlignPanel(props: { feed: SystemFeed; ask: Ask; admin: boolean; mayAlig
           Compute
         </button>
         <button type="button" disabled={!props.admin || al?.running} onClick={() => void apply()} title={props.admin ? undefined : writeNote(st.role, "align")}>
-          Align
+          Align link delays…
         </button>
         {al?.running ? <span class="sys-muted">Working…</span> : null}
       </div>

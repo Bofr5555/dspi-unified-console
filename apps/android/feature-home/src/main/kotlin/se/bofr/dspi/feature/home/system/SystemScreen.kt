@@ -59,6 +59,7 @@ import se.bofr.dspi.ui.DspiTheme
 import se.bofr.dspi.ui.DspiType
 import se.bofr.dspi.ui.HorizontalRule
 import se.bofr.dspi.ui.dspiCard
+import se.bofr.dspi.ui.rememberWhileVisible
 import se.bofr.dspi.ui.writeEnabled
 
 /** Entry point for [se.bofr.dspi.ui.DspiRoutes.SYSTEM]. */
@@ -66,7 +67,9 @@ import se.bofr.dspi.ui.writeEnabled
 fun SystemScreen(bridge: DspiBridge, @Suppress("UNUSED_PARAMETER") onNavigate: (String) -> Unit, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val model = remember(bridge) { SystemScreenModel(bridge, scope) }
-    LaunchedEffect(model) { model.poll() }
+    // -- fixup lk1 -- only while shown (decision E6): nothing is asked while the app is stopped
+    val visible = rememberWhileVisible()
+    LaunchedEffect(model, visible) { if (visible) model.poll() }
     SystemView(model, onBack)
 }
 
@@ -326,18 +329,18 @@ private fun FlowRowButtons(model: SystemScreenModel, s: SystemUiState, editOn: B
             onClick = { askAlign = true },
             enabled = editOn && !s.draft.dirty,
             modifier = Modifier.heightIn(min = 48.dp)
-        ) { Text("Write link delays…") }
+        ) { Text("Align link delays…") }
     }
     if (askAlign) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { askAlign = false },
-            title = { Text("Write link delays?") },
+            title = { Text("Align link delays?") },
             text = { Text("Every unit restarts its outputs in step with a short silence (2 to 6 ms).") },
             confirmButton = {
                 TextButton(onClick = {
                     askAlign = false
                     model.align()
-                }) { Text("Write") }
+                }) { Text("Align") }
             },
             dismissButton = { TextButton(onClick = { askAlign = false }) { Text("Cancel") } }
         )

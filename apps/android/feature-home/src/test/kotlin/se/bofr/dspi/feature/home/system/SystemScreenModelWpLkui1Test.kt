@@ -63,12 +63,21 @@ class SystemScreenModelWpLkui1Test {
         assertTrue(units.all { it.stateWord == "Locked" && it.linkDelayFrames != null && it.linkDelayMin != null })
         assertEquals(listOf("Sender", "Fan-out"), v.units.take(2).map { it.role })
         assertTrue(v.summary, v.summary.startsWith("Audio link: 4 of 4 locked"))
-        assertEquals(2L, v.pending)
+        // -- fixup lk1 -- the demo hub's numbers: range 257..399 (4 ms), D 260, units at 300 until aligned
+        assertEquals(4L, v.pending)
+        assertEquals(260L, v.systemDelayFrames)
+        assertEquals(listOf(260L, 259L, 259L, 260L), units.map { it.linkDelayFrames })
+        assertEquals(listOf(6, 4, -2, 4), units.map { it.hopOffset })
+        assertTrue(units.all { it.linkDelayMin == 257L && it.linkDelayMax == 399L && it.unitLinkDelayFrames == 300L })
         // Writing the link delays leaves none pending
         r.model.align()
         advanceUntilIdle()
         assertEquals("The link delays were written. Each unit re-anchored with a short silence.", r.model.state.value.actionMessage)
         assertEquals(0L, r.model.state.value.view!!.pending)
+        assertEquals(
+            listOf(260L, 259L, 259L, 260L),
+            r.model.state.value.view!!.units.filter { it.kind == "unit" }.map { it.unitLinkDelayFrames }
+        )
     }
 
     @Test
@@ -90,7 +99,9 @@ class SystemScreenModelWpLkui1Test {
             second.lastRecall!!.message.startsWith("Closed was refused: a scene is already scheduled on the sender for link frame $held")
         )
         assertEquals("the scene recalled is still Evening", "Evening", second.recalledScene)
-        assertEquals(listOf("Sender · System mute: Refused"), second.lastRecall!!.writes)
+        // -- fixup lk1 -- the sender's write is the scene's, and the mute is said to be unchanged
+        assertEquals(listOf("Sender · Scene Closed: Refused"), second.lastRecall!!.writes)
+        assertTrue(second.lastRecall!!.message.endsWith(" System mute unchanged."))
     }
 
     @Test

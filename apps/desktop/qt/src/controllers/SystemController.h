@@ -98,10 +98,14 @@ public:
     bool available() const { return m_available; }
     bool installed() const { return bool(m_view.value(QLatin1String("installed")).toBool()); }
     QString role() const { return text("role"); }
-    bool mayEdit() const { return m_view.value(QLatin1String("mayEdit")).toBool(); }
-    bool mayRecall() const { return m_view.value(QLatin1String("mayRecall")).toBool(); }
-    QString editNote() const { return text("editNote"); }
-    QString recallNote() const { return text("recallNote"); }
+    // -- fixup lk1 -- the hub's role, and this console's read-only state (G1, as the
+    // other writing controllers and Android's bridge): a device held read only offers
+    // no System write, and the three calls are refused before anything is sent
+    bool mayEdit() const { return writable() && m_view.value(QLatin1String("mayEdit")).toBool(); }
+    bool mayRecall() const { return writable() && m_view.value(QLatin1String("mayRecall")).toBool(); }
+    QString editNote() const;
+    QString recallNote() const;
+    bool writable() const;
     QString summary() const { return text("summary"); }
     QString health() const { return m_available ? text("health") : QStringLiteral("none"); }
     int revision() const { return m_view.value(QLatin1String("revision")).toInt(); }
@@ -150,6 +154,12 @@ public:
 
     // For the smoke checks: the poll's interval, and the view as the core gave it
     void setPollInterval(int ms) { m_timer.setInterval(ms); }
+    // -- fixup lk1 -- the device taken as read only, as a mismatched firmware makes it
+    // (the demo hub's units are all current, so the smoke stands one in this way)
+    void setReadOnlyForTest(bool readOnly) {
+        m_readOnlyForTest = readOnly;
+        emit viewChanged();
+    }
     QJsonObject view() const { return m_view; }
 
 signals:
@@ -180,6 +190,8 @@ private:
     QTimer m_timer;
     std::atomic<bool> m_reading{ false };
     bool m_shutDown = false;
+    bool m_readOnlyForTest = false;   // -- fixup lk1 --
+    bool m_wasWritable = true;
     int m_busy = 0;
 
     bool m_available = false;

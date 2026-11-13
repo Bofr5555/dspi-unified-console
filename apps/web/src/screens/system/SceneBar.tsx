@@ -38,6 +38,8 @@ export function SceneBar(props: { feed: SystemFeed; session: Session; ask: Ask }
   };
   const names = (id: string) => subjectName(st.model, id);
   const opOf = (element: string, what: string) => {
+    // -- fixup lk1 -- through the sender the one write carries the whole scene: "Scene Closed", never a refused "Mute"
+    if (run?.report?.plan.path === "superframe") return `Scene ${run.name}`;
     const op = run?.report?.plan.ops.find((o) => o.element === element && o.op === what);
     return op ? opWord(op.op, op.arg, op.value) : what;
   };

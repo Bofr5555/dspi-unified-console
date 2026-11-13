@@ -25,6 +25,7 @@ namespace {
 constexpr uint32_t kBuffer = 256 * 1024;
 constexpr int kPollMs = 3000;
 
+// A read: a reply too long for the buffer is asked for once more, with room for it
 QJsonObject call(const std::function<uint32_t(char *, uint32_t)> &fill) {
     QByteArray buf(int(kBuffer), '\0');
     uint32_t need = fill(buf.data(), kBuffer);
@@ -33,6 +34,23 @@ QJsonObject call(const std::function<uint32_t(char *, uint32_t)> &fill) {
         need = fill(buf.data(), need);
     }
     if (need == 0 || need > uint32_t(buf.size())) return QJsonObject();
+    buf.truncate(int(need) - 1);
+    return QJsonDocument::fromJson(buf).object();
+}
+
+// -- fixup lk1 -- A call that acts on the hub (save, align, recall): called once, never
+// again. A reply too long for the buffer means it has happened (fns_link.rs, "Short
+// buffers"), so it is said and the view read again, not repeated
+QJsonObject act(const std::function<uint32_t(char *, uint32_t)> &fill) {
+    QByteArray buf(int(kBuffer), '\0');
+    const uint32_t need = fill(buf.data(), kBuffer);
+    if (need > kBuffer) {
+        return QJsonObject{ { QStringLiteral("ok"), false },
+                            { QStringLiteral("code"), QStringLiteral("reply_too_long") },
+                            { QStringLiteral("error"),
+                              SystemController::tr("The hub did it, but its answer was too long to show. The view is read again.") } };
+    }
+    if (need == 0) return QJsonObject();
     buf.truncate(int(need) - 1);
     return QJsonDocument::fromJson(buf).object();
 }
@@ -82,6 +100,19 @@ SystemController *SystemController::create(QQmlEngine *, QJSEngine *) {
     return self;
 }
 
+// -- fixup lk1 --
+bool SystemController::writable() const { return !m_readOnlyForTest && !m_device->readOnly(); }
+
+QString SystemController::editNote() const {
+    if (!writable()) return tr("This DSPi is read only on this console (its firmware is not this version's).");
+    return text("editNote");
+}
+
+QString SystemController::recallNote() const {
+    if (!writable()) return tr("This DSPi is read only on this console (its firmware is not this version's).");
+    return text("recallNote");
+}
+
 QVariantList SystemController::list(const char *key) const {
     return m_view.value(QLatin1String(key)).toArray().toVariantList();
 }
@@ -95,6 +126,11 @@ QStringList SystemController::issues() const {
 // Polls only while a hub's device is open: a device the console holds itself
 // has no installation to read
 void SystemController::updatePolling() {
+    // -- fixup lk1 -- the read-only state moves with the device's snapshot
+    if (writable() != m_wasWritable) {
+        m_wasWritable = writable();
+        emit viewChanged();
+    }
     const bool onHub = m_device->connected() && m_device->remote();
     if (onHub && !m_timer.isActive()) {
         m_timer.start();
@@ -213,7 +249,7 @@ void SystemController::recall(const QString &id) {
         const QVariantMap m = s.toMap();
         if (m.value(QStringLiteral("id")).toString() == id) name = m.value(QStringLiteral("name")).toString();
     }
-    run([scene](FfiCore *c) { return call([&](char *b, uint32_t n) { return dspi_link_system_recall(c, scene.constData(), b, n); }); },
+    run([scene](FfiCore *c) { return act([&](char *b, uint32_t n) { return dspi_link_system_recall(c, scene.constData(), b, n); }); },
         [this, name](const QJsonObject &o) {
             QVariantMap r;
             if (isOk(o)) {
@@ -236,7 +272,7 @@ void SystemController::recall(const QString &id) {
 
 void SystemController::align() {
     if (!mayEdit() || busy()) return;
-    run([](FfiCore *c) { return call([&](char *b, uint32_t n) { return dspi_link_system_align(c, b, n); }); },
+    run([](FfiCore *c) { return act([&](char *b, uint32_t n) { return dspi_link_system_align(c, b, n); }); },
         [this](const QJsonObject &o) {
             if (isOk(o)) setAction(str(o, "message"), !o.value(QLatin1String("applied")).toBool());
             else setAction(o.isEmpty() ? tr("The hub did not answer.") : str(o, "error"), true);
@@ -333,7 +369,7 @@ void SystemController::save() {
     const QByteArray edits = draftJson();
     const quint64 rev = quint64(m_draftRevision);
     run([edits, rev](FfiCore *c) {
-            return call([&](char *b, uint32_t n) { return dspi_link_system_save(c, rev, edits.constData(), b, n); });
+            return act([&](char *b, uint32_t n) { return dspi_link_system_save(c, rev, edits.constData(), b, n); });
         },
         [this](const QJsonObject &o) {
             if (isOk(o)) {

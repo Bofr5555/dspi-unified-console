@@ -16,6 +16,19 @@ import se.bofr.dspi.core.LinkSystemView
 import se.bofr.dspi.core.LinkSystemWrite
 
 class FakeAudioLinkSystem {
+    private companion object {
+        /** The firmware's link delay range at the default 4 ms output latency option. */
+        const val D_LOCAL_MIN = 257L
+        const val D_LOCAL_MAX = 399L
+
+        /** The system delay the demo hub takes by itself, and a unit's link delay before alignment. */
+        const val D_AUTO = 260L
+        const val UNIT_START = 300L
+
+        /** Each unit's link delay against D, and its hop offset, as the demo hub's alignment gives them. */
+        val PLAN = mapOf("A" to (0L to 6), "B" to (-1L to 4), "C" to (-1L to -2), "D" to (0L to 4))
+    }
+
     /** On a hub with this installation; off, every call is [DspiException.Disconnected]. */
     @Volatile var onHub = false
 
@@ -65,35 +78,34 @@ class FakeAudioLinkSystem {
 
     @Synchronized fun view(): LinkSystemView {
         session()
-        val d = systemDelay ?: 176L
+        // -- fixup lk1 -- the demo hub's numbers (`uconsole --demo hub --audio-link` over the
+        // Rust fake): a link delay range of 257..399 at the 4 ms latency option, D 260, each
+        // unit's link delay and hop offset as the alignment gives them, and every unit at
+        // 300 frames, hop offset 0, until the link delays are written
+        val d = systemDelay ?: D_AUTO
         val rate = 48_000L
         val ms = { f: Long -> f * 1000.0 / rate }
-        val pendingUnits = if (aligned) 0L else 2L
+        val pendingUnits = if (aligned) 0L else units.size.toLong()
         val rows = mutableListOf(
             unit("tx", "Sender", "DEMO-LINK-TX", "sender", "Sender", "", "clock", "Clock"),
             unit("fan", "Fan-out", "DEMO-LINK-FAN", "fan_out", "Fan-out", "", "locked", "Locked").copy(hopDelayFrames = 3)
         )
-        for ((i, u) in units.withIndex()) {
+        for (u in units) {
             val (id, name, room) = u
             val behindFan = id == "B" || id == "C"
-            val planned = if (behindFan) d - 3 else d
-            val pending = !aligned && behindFan
+            val (delta, offset) = PLAN.getValue(id)
+            val planned = d + delta
+            val pending = !aligned
             rows += unit(id, name, "DEMO-LINK-$id", "unit", "Receiver", rooms.first { it.first == room }.second, "locked", "Locked").copy(
                 pending = pending,
                 linkDelayFrames = planned,
                 linkDelayMs = ms(planned),
-                unitLinkDelayFrames = if (pending) 128 else planned,
-                linkDelayMin = 64,
-                linkDelayMax = 400,
-                hopOffset = if (behindFan) 3 else 0,
-                unitHopOffset = if (pending) {
-                    0
-                } else if (behindFan) {
-                    3
-                } else {
-                    0
-                },
-                phaseErrorFrames = 0.05f * i,
+                unitLinkDelayFrames = if (pending) UNIT_START else planned,
+                linkDelayMin = D_LOCAL_MIN,
+                linkDelayMax = D_LOCAL_MAX,
+                hopOffset = offset,
+                unitHopOffset = if (pending) 0 else offset,
+                phaseErrorFrames = 0.04f,
                 hops = if (behindFan) 1 else 0,
                 measuredLatencyUs = latency[id]
             )
@@ -177,8 +189,9 @@ class FakeAudioLinkSystem {
             return LinkSceneRecall(
                 s.id, s.name, false, frame + 4_800, 100.0, false, held,
                 "${s.name} was refused: a scene is already scheduled on the sender for link frame $held, 90 ms after this recall. " +
-                    "The sender takes one scene at a time; recall ${s.name} again after that.",
-                listOf(LinkSystemWrite("Sender", "System mute", "refused", "Refused", "bad"))
+                    "The sender takes one scene at a time; recall ${s.name} again after that." +
+                    (if (s.systemMute != null) " System mute unchanged." else ""),
+                listOf(LinkSystemWrite("Sender", "Scene ${s.name}", "refused", "Refused", "bad"))
             )
         }
         heldFrame = frame + 4_800
@@ -186,7 +199,7 @@ class FakeAudioLinkSystem {
             s.id, s.name, true, frame + 4_800, 100.0, true, null,
             "${s.name} recalled through the sender, at link frame ${frame + 4_800}" +
                 (if (s.systemMute == true) ", system mute on" else "") + ".",
-            listOf(LinkSystemWrite("Sender", "System mute", "queued", "Queued", "ok"))
+            listOf(LinkSystemWrite("Sender", "Scene ${s.name}", "queued", "Queued", "ok"))
         )
     }
 }
