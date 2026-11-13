@@ -56,9 +56,12 @@
 //!
 //! Only a continuous drag gathers a step: the client marks it with
 //! [`DspiCore::set_dragging`], and a typed value or a discrete write is a
-//! step of its own however soon it follows another (WP QTGAP1). One drag of
-//! one band is one step whatever fields it moves: undo puts the whole band
-//! back as it was when the drag began (WP P0W2).
+//! step of its own however soon it follows another (WP QTGAP1). Everything
+//! one drag writes is one step, across bands and controls, and undo puts
+//! every value it moved back as it was when the drag began; a band is held
+//! once, whatever fields the drag moves (WP P0W2). A value someone else has
+//! changed since is judged on its own: it is left alone and its writer
+//! named, the others go back.
 #![warn(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -73,7 +76,7 @@ use dspi_proto::packets::MatrixRoutePacket;
 use dspi_proto::registry::{ALL_OUTPUTS, Hazard, by_path};
 use dspi_proto::value::Value;
 use dspi_session::history::{Change, ChangeSource, hazard_of};
-use dspi_session::write::{Companion, JournalEntry, side_effects};
+use dspi_session::write::{Companion, JournalEntry, StepValue, side_effects};
 
 use crate::records::{DspState, FilterParams};
 use crate::write_param::{ParamValue, band, fx_mirror};
@@ -230,30 +233,41 @@ pub(crate) fn note_reread(conn: &mut crate::Connection, changed: bool) {
     }
 }
 
-/// Whether someone else changed `entry`'s value since this client left it
-/// at `expected`, and who, in words; `None` when the mirror still holds it
-/// (or holds no single value for it).
-fn overwritten(inner: &Inner, entry: &JournalEntry, expected: &Value) -> Option<String> {
-    let now = mirror_value(inner, entry.path, &entry.indices)?;
+/// Whether someone else changed `path` at `indices` since this client left
+/// it at `expected` (in a step last written at `at_ms`), and who, in words;
+/// `None` when the mirror still holds it (or holds no single value for it).
+fn overwritten(
+    inner: &Inner,
+    path: &'static str,
+    indices: &[u8],
+    at_ms: u64,
+    expected: &Value,
+) -> Option<String> {
+    let now = mirror_value(inner, path, indices)?;
     if &now == expected {
         return None;
     }
     // -- WP P0WECHO -- a value this session wrote itself not long ago: a late
     // own echo patched it back into the mirror, not another writer.
-    if inner.conn.as_ref().is_some_and(|c| {
-        c.own_writes
-            .explains(entry.path, &entry.indices, &now, now_ms())
-    }) {
+    if inner
+        .conn
+        .as_ref()
+        .is_some_and(|c| c.own_writes.explains(path, indices, &now, now_ms()))
+    {
         return None;
     }
     let who = inner
         .conn
         .as_ref()
         .and_then(|c| c.last_foreign.as_ref())
-        .filter(|f| f.at_ms >= entry.at_ms)
+        .filter(|f| f.at_ms >= at_ms)
         .map_or("another writer", |f| f.writer.as_str());
-    // -- WP QPI4 -- the registry's label, not the path in backticks
-    let what = by_path(entry.path).map_or(entry.path, |d| d.label);
+    // -- WP QPI4 -- the registry's label, not the path in backticks; -- WP
+    // P0W2 (O1) -- a whole band by the name the clients give it
+    let what = match path {
+        EQ_BAND => "Filter band",
+        _ => by_path(path).map_or(path, |d| d.label),
+    };
     Some(format!(
         "{what} was changed by {who} since; it was left as they set it"
     ))
@@ -414,13 +428,13 @@ impl Pending {
         if !moved && replay_source().is_none() {
             return;
         }
-        // A drag is of a live value; a pin moved twice is two changes. Only
-        // a client's continuous drag joins: a typed value or a key step is a
-        // step of its own however soon it follows (WP QTGAP1).
-        let coalesce = inner.dragging
-            && hazard(self.path) == Hazard::None
-            && (matches!(after, Value::Float(_) | Value::Int(_))
-                || matches!(self.path, EQ_BAND | "mix"));
+        // Only a client's continuous drag joins: a typed value or a key step
+        // is a step of its own however soon it follows (WP QTGAP1). Within
+        // one drag every value undo can put back joins, whatever it is (WP
+        // P0W2, O1); one undo cannot reverse (a hazard, an action) stays
+        // apart.
+        let coalesce =
+            inner.dragging && hazard(self.path) == Hazard::None && after != Value::Trigger;
         record(
             inner,
             Change {
@@ -492,15 +506,14 @@ fn with_field(mut p: FilterParams, path: &str, v: &Value) -> Option<FilterParams
     Some(p)
 }
 
-/// One drag of one band is one step, whatever it moves (WP P0W2). A
-/// whole-band write is journalled under the one field it moved, or as
-/// [`EQ_BAND`] when it moved more (`band_change`), so a graph drag that
-/// alternates one-axis and two-axis moves would alternate paths, and the
-/// session joins only a change of the same path. When `change`, marked to
-/// coalesce, is of a band whose drag step is being gathered under another
-/// of the band's paths, it is journalled as [`EQ_BAND`] (the band before
-/// and after it), and a step still under one field is widened to
-/// [`EQ_BAND`] with the band as it was when the drag began: that field's
+/// A band is held once in a drag's step, whatever fields the drag moves (WP
+/// P0W2). A whole-band write is journalled under the one field it moved, or
+/// as [`EQ_BAND`] when it moved more (`band_change`), so a graph drag that
+/// alternates one-axis and two-axis moves alternates paths. When `change`,
+/// marked to coalesce, is of a band the step being gathered already holds
+/// under another of the band's paths, it is journalled as [`EQ_BAND`] (the
+/// band before and after it), and a value still under one field is widened
+/// to [`EQ_BAND`] with the band as it was when the drag began: that field's
 /// value before, the rest as they were before this change (only that field
 /// moved during the step, or it would not be one field's). Anything else,
 /// and anything it cannot rebuild, is left as it was.
@@ -522,10 +535,14 @@ fn join_band_step(inner: &mut Inner, change: Change) -> Change {
     let Some(session) = inner.conn.as_mut().and_then(|c| c.session().ok()) else {
         return change;
     };
-    let Some(step) = session.gathering(change.source, &change.indices) else {
+    let Some(held) = session.gathering(change.source).and_then(|step| {
+        step.values()
+            .into_iter()
+            .find(|v| v.indices == change.indices && of_band(v.path))
+    }) else {
         return change;
     };
-    if step.path == change.path || !of_band(step.path) {
+    if held.path == change.path {
         return change;
     }
     // The band before this change.
@@ -537,15 +554,20 @@ fn join_band_step(inner: &mut Inner, change: Change) -> Change {
     let Some(was) = was else {
         return change;
     };
-    if step.path != EQ_BAND {
-        let Some(start) = step
+    if held.path != EQ_BAND {
+        let Some(start) = held
             .before
             .as_ref()
-            .and_then(|v| with_field(was, step.path, v))
+            .and_then(|v| with_field(was, held.path, v))
         else {
             return change;
         };
-        session.widen_step(EQ_BAND, Some(Value::Bytes(band_bytes(&start))));
+        session.widen_step(
+            held.path,
+            &change.indices,
+            EQ_BAND,
+            Some(Value::Bytes(band_bytes(&start))),
+        );
     }
     Change {
         path: EQ_BAND,
@@ -838,8 +860,9 @@ pub struct HistoryMove {
     /// undoable had no value before to restore, or someone else has changed
     /// it since (`note` says who); the walk stopped there.
     pub skipped: Vec<HistoryEntry>,
-    /// Why nothing moved, in words, when another writer changed the value
-    /// since (only where the core leaves such a change alone); `None`
+    /// Why a value was left alone, in words, when another writer changed it
+    /// since (only where the core leaves such a change alone): nothing moved,
+    /// or, for a drag's step of several values, the others did. `None`
     /// otherwise.
     pub note: Option<String>,
 }
@@ -870,12 +893,14 @@ impl DspiCore {
 
     // -- WP QTGAP1 --
     /// Mark a continuous drag (a slider or a graph handle held and moved):
-    /// `true` when it starts, `false` when it ends. Between the two, the
-    /// repeated writes of one live value join a single undo step, however
-    /// long the drag lasts; any other write (a typed value, a key step, a
-    /// click) is always a step of its own. Each call ends the step being
-    /// gathered, so two drags of one control are two steps. A client that
-    /// never calls this gets one step per write.
+    /// `true` when it starts, `false` when it ends. Between the two, every
+    /// write undo can reverse joins a single undo step, however long the
+    /// drag lasts and however many values it moves (several bands, a band's
+    /// fields, a slider per tick); undo puts each back as it was when the
+    /// drag began. A write outside a drag (a typed value, a key step, a
+    /// click) is always a step of its own, and one undo cannot reverse ends
+    /// the step. Each call ends the step being gathered, so two drags are two
+    /// steps. A client that never calls this gets one step per write.
     pub fn set_dragging(&self, dragging: bool) {
         let mut inner = self.lock();
         inner.dragging = dragging;
@@ -923,20 +948,25 @@ impl DspiCore {
     /// [`DspiCore::undo`]. A change someone else has overwritten since (the
     /// mirror no longer holds the value this client left) is not reversed:
     /// theirs stays, the entry is dropped and [`HistoryMove::note`] names
-    /// them (owner 2026-11-12).
+    /// them (owner 2026-11-12). In a drag's step of several values (WP
+    /// P0W2, O1) this is judged value by value: the others are put back, and
+    /// the ones left alone leave the step.
     fn undo_step(&self) -> Result<HistoryMove> {
         let (step, generation, note) = {
             let mut inner = self.lock();
             let conn = inner.conn()?;
             let generation = conn.generation;
             let mut step = conn.session()?.take_undo();
-            let note = step
-                .entry
-                .as_ref()
-                .and_then(|e| overwritten(&inner, e, &e.after));
-            if note.is_some() {
-                // Theirs now: the entry describes a value that is gone.
-                step.skipped.extend(step.entry.take());
+            let mut note = None;
+            if let Some(entry) = step.entry.as_mut() {
+                let (keep, notes) = judge(&inner, entry, |v| Some(&v.after));
+                note = notes;
+                if keep.is_empty() {
+                    // Theirs now: the entry describes values that are gone.
+                    step.skipped.extend(step.entry.take());
+                } else {
+                    entry.set_values(keep);
+                }
             }
             (step, generation, note)
         };
@@ -948,16 +978,19 @@ impl DspiCore {
                 note,
             });
         };
-        let steps = entry
-            .before
-            .iter()
-            .map(|v| (entry.path, entry.indices.clone(), v.clone()))
-            .chain(
-                entry
-                    .companions
-                    .iter()
-                    .map(|c| (c.path, c.indices.clone(), c.before.clone())),
-            );
+        // Newest value first, each before what the device moved with it.
+        let steps: Vec<(&'static str, Vec<u8>, Value)> = entry
+            .values()
+            .into_iter()
+            .rev()
+            .flat_map(|v| {
+                v.before.map(|b| (v.path, v.indices, b)).into_iter().chain(
+                    v.companions
+                        .into_iter()
+                        .map(|c| (c.path, c.indices, c.before)),
+                )
+            })
+            .collect();
         let replay = Replay {
             source: ChangeSource::Undo,
             generation,
@@ -973,30 +1006,34 @@ impl DspiCore {
         Ok(HistoryMove {
             entry: Some(moved),
             skipped,
-            note: None,
+            note,
         })
     }
 
     /// [`DspiCore::redo`]: as [`DspiCore::undo`], a change someone else has
-    /// overwritten since undo put it back is left as they set it.
+    /// overwritten since undo put it back is left as they set it, value by
+    /// value in a drag's step.
     fn redo_step(&self) -> Result<HistoryMove> {
-        let (entry, generation) = {
+        let (entry, generation, note) = {
             let mut inner = self.lock();
             let conn = inner.conn()?;
             let generation = conn.generation;
-            let entry = conn.session()?.take_redo();
-            let note = entry
-                .as_ref()
-                .and_then(|e| e.before.as_ref().and_then(|b| overwritten(&inner, e, b)));
-            if let Some(note) = note {
-                let skipped = entry.iter().map(HistoryEntry::from).collect();
-                return Ok(HistoryMove {
-                    entry: None,
-                    skipped,
-                    note: Some(note),
-                });
+            let mut entry = conn.session()?.take_redo();
+            let mut note = None;
+            if let Some(e) = entry.as_mut() {
+                let (keep, notes) = judge(&inner, e, |v| v.before.as_ref());
+                note = notes;
+                if keep.is_empty() {
+                    let skipped = entry.iter().map(HistoryEntry::from).collect();
+                    return Ok(HistoryMove {
+                        entry: None,
+                        skipped,
+                        note,
+                    });
+                }
+                e.set_values(keep);
             }
-            (entry, generation)
+            (entry, generation, note)
         };
         let Some(entry) = entry else {
             return Ok(HistoryMove::default());
@@ -1005,16 +1042,18 @@ impl DspiCore {
             source: ChangeSource::Redo,
             generation,
         };
-        if let Err(e) = self.replay(replay, entry.path, &entry.indices, entry.after.clone()) {
-            self.with_session(generation, |s| s.restore_redo(entry));
-            return Err(e);
+        for v in entry.values() {
+            if let Err(e) = self.replay(replay, v.path, &v.indices, v.after) {
+                self.with_session(generation, |s| s.restore_redo(entry));
+                return Err(e);
+            }
         }
         let moved = HistoryEntry::from(&entry);
         self.with_session(generation, |s| s.finish_redo(entry));
         Ok(HistoryMove {
             entry: Some(moved),
             skipped: Vec::new(),
-            note: None,
+            note,
         })
     }
 
@@ -1079,6 +1118,32 @@ impl DspiCore {
             f(s);
         }
     }
+}
+
+// -- WP P0W2 (O1) --
+/// The values of `entry` nobody else has changed since this client left
+/// them at `expected` (their value after, for undo; before, for redo), and
+/// the others' writers in words, one sentence each. A value with no
+/// expected value (nothing before, for redo) is kept unjudged.
+fn judge(
+    inner: &Inner,
+    entry: &JournalEntry,
+    expected: impl Fn(&StepValue) -> Option<&Value>,
+) -> (Vec<StepValue>, Option<String>) {
+    let mut keep = Vec::new();
+    let mut notes: Vec<String> = Vec::new();
+    for v in entry.values() {
+        match expected(&v).and_then(|x| overwritten(inner, v.path, &v.indices, entry.at_ms, x)) {
+            Some(n) => {
+                if !notes.contains(&n) {
+                    notes.push(n);
+                }
+            }
+            None => keep.push(v),
+        }
+    }
+    let note = (!notes.is_empty()).then(|| notes.join(" "));
+    (keep, note)
 }
 
 /// The history's state for `NOTIFY_HISTORY`: the connection and its

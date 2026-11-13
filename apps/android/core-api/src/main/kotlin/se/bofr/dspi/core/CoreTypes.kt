@@ -2602,8 +2602,9 @@ data class HistoryMove(
      */
     val skipped: List<HistoryEntry>,
     /**
-     * Why nothing moved, in words, when another writer changed the value
-     * since (only where the core leaves such a change alone); `None`
+     * Why a value was left alone, in words, when another writer changed it
+     * since (only where the core leaves such a change alone): nothing moved,
+     * or, for a drag's step of several values, the others did. `None`
      * otherwise.
      */
     val note: String?,

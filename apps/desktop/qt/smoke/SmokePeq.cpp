@@ -355,6 +355,33 @@ void pullAndMarquee(Peqs &p) {
     d.check(QStringLiteral("qp4: dragging a selection moves all its bands by one ratio"),
             nearRatio(p.band(0).freq / f0.freq, p.band(2).freq / f2.freq, 0.01) && p.band(0).freq > f0.freq * 1.05);
 
+    // -- WP P0W2 (O1) -- the whole selection's drag, sideways then up, is
+    // one undo step: one undo puts every band back
+    {
+        const FilterParams m0 = p.band(0), m1 = p.band(1), m2 = p.band(2);
+        const QPoint from = p.dot(1);
+        QTest::mouseMove(p.w, from);
+        QTest::mousePress(p.w, Qt::LeftButton, Qt::NoModifier, from);
+        QPoint at = from;
+        for (const QPoint step : { QPoint(8, 0), QPoint(8, -8), QPoint(0, -8), QPoint(8, 0) }) {
+            at += step;
+            QTest::mouseMove(p.w, at);
+            d.spin(10);
+        }
+        QTest::mouseRelease(p.w, Qt::LeftButton, Qt::NoModifier, at);
+        p.settle();
+        d.check(QStringLiteral("p0w2: a selection's drag moves every band"),
+                p.band(0).freq > m0.freq * 1.02 && p.band(1).freq > m1.freq * 1.02 && p.band(2).freq > m2.freq * 1.02);
+        auto same = [](const FilterParams &a, const FilterParams &b) {
+            return near(a.freq, b.freq, 0.01) && near(a.gain, b.gain, 0.001) && near(a.q, b.q, 0.0001);
+        };
+        d.app().shell->trigger(QStringLiteral("edit.undo"));
+        d.check(QStringLiteral("p0w2: one undo puts every band of the selection back"), d.waitFor(3000, [&]() {
+            return same(p.band(0), m0) && same(p.band(1), m1) && same(p.band(2), m2);
+        }));
+        p.settle();
+    }
+
     // Alt-click: bypass
     if (p.cc->bypassSupported()) {
         QTest::mouseClick(p.w, Qt::LeftButton, Qt::NoModifier, p.dot(1));

@@ -16,17 +16,20 @@
 //!   came before described a state that is gone, so writing it back would set
 //!   values nobody saw. The entry itself stays on the stack, so the next undo
 //!   names it instead of saying nothing.
-//! - **A drag is one step.** A change marked `coalesce` that repeats the last
-//!   one (same path and indices, from the same source, itself marked)
-//!   updates that entry instead of adding one: a slider sends a write per
-//!   tick, and undo should take back the drag. The caller marks only the
-//!   writes of a continuous drag, and ends the step when the drag ends
-//!   ([`Session::end_step`]); there is no time window, so a drag held still
-//!   stays one step and a typed value never joins (WP QTGAP1). A caller
-//!   that journals one group of values under several paths (a band's field,
-//!   or the whole band) widens the step to the group's path
-//!   ([`Session::widen_step`]) when the drag moves another of them, so the
-//!   drag stays one step whatever it moves (WP P0W2).
+//! - **A drag is one step.** A change marked `coalesce` that follows one
+//!   (from the same source, itself marked) joins that entry instead of
+//!   adding one: a value it already holds takes the new value after, any
+//!   other value (another band, another control) is added to the step with
+//!   its value before ([`JournalEntry::more`]). A slider or a graph handle
+//!   sends a write per tick, a multi-band drag one per band per tick, and
+//!   undo should take back the drag, every value it moved. The caller marks
+//!   only the writes of a continuous drag, and ends the step when the drag
+//!   ends ([`Session::end_step`]); there is no time window, so a drag held
+//!   still stays one step and a typed value never joins (WP QTGAP1, WP
+//!   P0W2). A caller that journals one value under several paths (a band's
+//!   field, or the whole band) widens that value to the group's path
+//!   ([`Session::widen_step`]) when the drag moves another of them, so it
+//!   is held once.
 //! - **A re-read or another writer ends a step** ([`Session::end_step`]):
 //!   a change after it starts a new entry, whatever it repeats, so undo never
 //!   goes back past what the re-read or the other writer left (WP SWAPFIX).
@@ -50,7 +53,7 @@
 use dspi_proto::registry::{Hazard, by_path};
 use dspi_proto::value::Value;
 
-use crate::write::{Companion, JournalEntry, Outcome, Session};
+use crate::write::{Companion, JournalEntry, Outcome, Session, StepValue};
 
 /// The most entries the journal keeps; the oldest go first.
 pub const JOURNAL_CAP: usize = 1000;
@@ -154,6 +157,31 @@ fn cap(v: &mut Vec<JournalEntry>, cap: usize) {
     }
 }
 
+// -- WP P0W2 (O1) --
+/// Join `change` to the step `e`: a value it already holds takes the new
+/// value after; another is added with its value before.
+fn join(e: &mut JournalEntry, change: &Change) {
+    if e.path == change.path && e.indices == change.indices {
+        e.after = change.after.clone();
+        return;
+    }
+    if let Some(v) = e
+        .more
+        .iter_mut()
+        .find(|v| v.path == change.path && v.indices == change.indices)
+    {
+        v.after = change.after.clone();
+        return;
+    }
+    e.more.push(StepValue {
+        path: change.path,
+        indices: change.indices.clone(),
+        before: change.before.clone(),
+        after: change.after.clone(),
+        companions: change.companions.clone(),
+    });
+}
+
 impl Session {
     /// Put `change` in the journal, and on the undo stack unless it is a
     /// replay by undo or redo (module docs for the rules). The outcome
@@ -166,19 +194,19 @@ impl Session {
     pub(crate) fn record_with_outcome(&mut self, change: Change, outcome: Outcome) {
         let at_ms = now_ms();
         self.history_version = self.history_version.wrapping_add(1);
-        if change.coalesce && self.coalesces(&change) {
+        // An action has no value to put back, whatever its hazard.
+        let reversible = undoable(change.hazard) && change.after != Value::Trigger;
+        if change.coalesce && reversible && self.gathering(change.source).is_some() {
             for e in [self.journal.last_mut(), self.undo_stack.last_mut()]
                 .into_iter()
                 .flatten()
             {
-                e.after = change.after.clone();
+                join(e, &change);
                 e.outcome = outcome.clone();
                 e.at_ms = at_ms;
             }
             return;
         }
-        // An action has no value to put back, whatever its hazard.
-        let reversible = undoable(change.hazard) && change.after != Value::Trigger;
         let entry = JournalEntry {
             path: change.path,
             indices: change.indices,
@@ -189,7 +217,9 @@ impl Session {
             companions: change.companions,
             source: change.source,
             at_ms,
-            coalesce: change.coalesce,
+            // -- WP P0W2 (O1) -- nothing joins a change undo cannot reverse
+            coalesce: change.coalesce && reversible,
+            more: Vec::new(),
         };
         self.journal.push(entry.clone());
         cap(&mut self.journal, JOURNAL_CAP);
@@ -208,46 +238,42 @@ impl Session {
         cap(&mut self.undo_stack, UNDO_CAP);
     }
 
-    /// Whether `change` repeats the newest entry closely enough to join it:
-    /// the newest of the journal and of the undo stack are that same entry,
-    /// marked to coalesce, of the same path and indices from the same source;
-    /// nothing has been undone since.
-    fn coalesces(&self, change: &Change) -> bool {
-        self.gathering(change.source, &change.indices)
-            .is_some_and(|last| last.path == change.path)
-    }
-
-    // -- WP P0W2 --
-    /// The step a change from `source` at `indices`, marked to coalesce,
-    /// would join if it had the same path: the newest of the journal and of
-    /// the undo stack are that same entry, marked to coalesce, from that
-    /// source and at those indices; nothing has been undone since. A caller
-    /// that journals a parameter group under several paths (one field of a
-    /// band, or the whole band) reads it to decide whether a change of
-    /// another path of the group belongs to the same drag.
-    pub fn gathering(&self, source: ChangeSource, indices: &[u8]) -> Option<&JournalEntry> {
+    // -- WP P0W2 (O1) --
+    /// The step a change from `source` marked to coalesce joins, whatever it
+    /// moves: the newest of the journal and of the undo stack are that same
+    /// entry, marked to coalesce, from that source; nothing has been undone
+    /// since. One drag is one step, across bands and controls. A caller that
+    /// journals one value under several paths (one field of a band, or the
+    /// whole band) reads it to find the value a change belongs with.
+    pub fn gathering(&self, source: ChangeSource) -> Option<&JournalEntry> {
         let (last, top) = (self.journal.last()?, self.undo_stack.last()?);
         (source == ChangeSource::Local
             && self.redo_stack.is_empty()
             && last.coalesce
             && last.source == source
-            && last.indices == indices
             && top.path == last.path
             && top.indices == last.indices
             && top.at_ms == last.at_ms)
             .then_some(last)
     }
 
-    /// Widen the step being gathered ([`Session::gathering`]) to `path`,
-    /// with `before` as the value undo restores: the caller's word that
-    /// `before` is what `path` held when the step began. A change of `path`
-    /// marked to coalesce then joins it. Nothing happens when no step is
-    /// being gathered.
-    pub fn widen_step(&mut self, path: &'static str, before: Option<Value>) {
+    /// Widen the value `from` at `indices` of the step being gathered
+    /// ([`Session::gathering`]) to `path`, with `before` as the value undo
+    /// restores: the caller's word that `before` is what `path` held when
+    /// the step began. A change of `path` at `indices` then joins that
+    /// value. Nothing happens when no step is being gathered or it holds no
+    /// such value.
+    pub fn widen_step(
+        &mut self,
+        from: &str,
+        indices: &[u8],
+        path: &'static str,
+        before: Option<Value>,
+    ) {
         let gathering = self
             .journal
             .last()
-            .is_some_and(|l| self.gathering(l.source, &l.indices).is_some());
+            .is_some_and(|l| self.gathering(l.source).is_some());
         if !gathering {
             return;
         }
@@ -256,8 +282,15 @@ impl Session {
             .into_iter()
             .flatten()
         {
-            e.path = path;
-            e.before = before.clone();
+            let mut values = e.values();
+            for v in values
+                .iter_mut()
+                .filter(|v| v.path == from && v.indices == indices)
+            {
+                v.path = path;
+                v.before = before.clone();
+            }
+            e.set_values(values);
         }
     }
 
@@ -294,9 +327,7 @@ impl Session {
 
     /// Is there a change left to step back through?
     pub fn can_undo(&self) -> bool {
-        self.undo_stack
-            .iter()
-            .any(|e| e.undoable && (e.before.is_some() || !e.companions.is_empty()))
+        self.undo_stack.iter().any(|e| e.undoable && e.restorable())
     }
 
     /// Is there a change left to re-apply?
@@ -316,7 +347,7 @@ impl Session {
                 step.skipped.push(entry);
                 continue;
             }
-            if entry.before.is_none() && entry.companions.is_empty() {
+            if !entry.restorable() {
                 step.skipped.push(entry);
                 return step;
             }
@@ -483,7 +514,7 @@ mod tests_wp_p0w {
         assert_eq!(s.history(10).len(), 2);
         assert!(!s.can_undo() && s.can_redo());
 
-        // Another index is another step.
+        // Another index joins the same drag (WP P0W2, O1).
         let mut a = gain(0.0, -1.0);
         a.coalesce = true;
         s.record_change(a);
@@ -491,7 +522,8 @@ mod tests_wp_p0w {
         b.indices = vec![1];
         b.coalesce = true;
         s.record_change(b);
-        assert_eq!(s.history(10).len(), 4);
+        assert_eq!(s.history(10).len(), 3);
+        assert_eq!(s.history(1)[0].more.len(), 1);
     }
 
     // -- WP SWAPFIX --
@@ -515,54 +547,112 @@ mod tests_wp_p0w {
     }
 
     // -- WP P0W2 --
+    fn dragged(path: &'static str, ix: Vec<u8>, before: Value, after: Value) -> Change {
+        let mut c = Change::of(path, ix, Some(before), after);
+        c.coalesce = true;
+        if path == "eq.band" {
+            // The core's own path, undoable (dspi-core journal.rs).
+            c.hazard = Hazard::None;
+        }
+        c
+    }
+
     #[test]
-    fn wp_p0w2_a_widened_step_takes_the_groups_changes() {
+    fn wp_p0w2_a_widened_value_takes_the_groups_changes() {
         let mut s = session();
-        let mut a = Change::of(
+        s.record_change(dragged(
             "eq.freq",
             vec![0, 1],
-            Some(Value::Float(100.0)),
+            Value::Float(100.0),
             Value::Float(110.0),
-        );
-        a.coalesce = true;
-        s.record_change(a);
-        assert_eq!(
-            s.gathering(ChangeSource::Local, &[0, 1]).unwrap().path,
-            "eq.freq"
-        );
-        assert!(
-            s.gathering(ChangeSource::Local, &[0, 2]).is_none(),
-            "another band"
-        );
-        assert!(
-            s.gathering(ChangeSource::Undo, &[0, 1]).is_none(),
-            "a replay"
-        );
+        ));
+        s.record_change(dragged(
+            "eq.freq",
+            vec![0, 2],
+            Value::Float(200.0),
+            Value::Float(210.0),
+        ));
+        assert_eq!(s.gathering(ChangeSource::Local).unwrap().path, "eq.freq");
+        assert!(s.gathering(ChangeSource::Undo).is_none(), "a replay");
 
-        s.widen_step("eq.band", Some(Value::Bytes(vec![1])));
-        let mut b = Change::of(
+        s.widen_step("eq.freq", &[0, 1], "eq.band", Some(Value::Bytes(vec![1])));
+        s.record_change(dragged(
             "eq.band",
             vec![0, 1],
-            Some(Value::Bytes(vec![2])),
+            Value::Bytes(vec![2]),
             Value::Bytes(vec![3]),
-        );
-        b.coalesce = true;
-        s.record_change(b);
+        ));
         assert_eq!(s.history(10).len(), 1);
         let e = s.take_undo().entry.unwrap();
-        assert_eq!(e.path, "eq.band");
+        let v = e.values();
+        assert_eq!(v.len(), 2, "{v:?}");
         assert_eq!(
-            e.before,
+            (v[0].path, v[0].indices.as_slice()),
+            ("eq.band", &[0, 1][..])
+        );
+        assert_eq!(
+            v[0].before,
             Some(Value::Bytes(vec![1])),
             "the start of the step"
         );
-        assert_eq!(e.after, Value::Bytes(vec![3]));
+        assert_eq!(v[0].after, Value::Bytes(vec![3]));
+        assert_eq!(
+            (v[1].path, v[1].after.clone()),
+            ("eq.freq", Value::Float(210.0))
+        );
 
         // An ended step is not widened.
+        s.finish_undo(e);
+        s.record_change(dragged(
+            "eq.q",
+            vec![0, 1],
+            Value::Float(1.0),
+            Value::Float(2.0),
+        ));
         s.end_step();
-        s.widen_step("eq.band", None);
-        assert_eq!(s.history(1)[0].path, "eq.band");
-        assert!(s.gathering(ChangeSource::Local, &[0, 1]).is_none());
+        s.widen_step("eq.q", &[0, 1], "eq.band", None);
+        assert_eq!(s.history(1)[0].path, "eq.q");
+        assert!(s.gathering(ChangeSource::Local).is_none());
+    }
+
+    // -- WP P0W2 (O1) --
+    /// One drag is one step across values: each keeps its own value before,
+    /// a value moved again takes the newest value after; a typed value and
+    /// the next drag stay apart.
+    #[test]
+    fn wp_p0w2_o1_one_drag_is_one_step_across_values() {
+        let mut s = session();
+        for tick in 1..=4 {
+            let t = tick as f32;
+            for out in [0u8, 1] {
+                s.record_change(dragged(
+                    "out.gain",
+                    vec![out],
+                    Value::Float(-(t - 1.0)),
+                    Value::Float(-t),
+                ));
+            }
+        }
+        assert_eq!(s.history(10).len(), 1);
+        let e = &s.history(1)[0];
+        assert_eq!(e.more.len(), 1);
+        assert_eq!(e.before, Some(Value::Float(0.0)));
+        assert_eq!(e.after, Value::Float(-4.0));
+        assert_eq!(e.more[0].before, Some(Value::Float(0.0)));
+        assert_eq!(e.more[0].after, Value::Float(-4.0));
+
+        s.record_change(gain(-4.0, -5.0)); // typed
+        s.end_step();
+        s.record_change(dragged(
+            "out.gain",
+            vec![1],
+            Value::Float(-4.0),
+            Value::Float(-6.0),
+        ));
+        assert_eq!(s.history(10).len(), 3);
+        // An action never joins, and ends nothing it is not part of.
+        s.record_change(dragged("dev.save", vec![], Value::Trigger, Value::Trigger));
+        assert_eq!(s.history(10).len(), 4);
     }
 
     #[test]
