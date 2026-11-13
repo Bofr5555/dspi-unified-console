@@ -84,6 +84,15 @@ protocol CoreStateSource: AnyObject {
     /// its typed setter, which sends nothing then; nil when the core would
     /// take it or refused for another reason.  `reply` runs on main.
     func outputDelayRefusal(output: UInt8, ms: Float, reply: @escaping (String?) -> Void)
+    // -- WP SWMAC1 -- The core's change journal (CoreUndo.swift).
+    /// `canUndo()` and `canRedo()` on the core's queue (no device I/O).
+    /// Blocking: call off the main thread.
+    func readJournal() -> CoreJournalState
+    /// The core's `undo()` or `redo()`, with the state, the change list and
+    /// the journal after it.  Blocking: call off the main thread.
+    func stepJournal(redo: Bool) -> CoreJournalStep
+    /// The core's `setDragging`, queued behind the writes sent before it.
+    func setDragging(_ dragging: Bool)
 }
 
 extension CoreStateSource {
@@ -92,6 +101,13 @@ extension CoreStateSource {
     func outputDelayRefusal(output: UInt8, ms: Float, reply: @escaping (String?) -> Void) {
         DispatchQueue.main.async { reply(nil) }
     }
+    // -- WP SWMAC1 -- A source without a journal: nothing to undo.
+    func readJournal() -> CoreJournalState { CoreJournalState() }
+    func stepJournal(redo: Bool) -> CoreJournalStep {
+        CoreJournalStep(result: .failure(.Unsupported), state: readState(), presetChanges: readPresetChanges(),
+                        journal: CoreJournalState())
+    }
+    func setDragging(_ dragging: Bool) {}
 }
 
 /// What one `processNotifications` changed, and the core's state after it.
@@ -101,6 +117,9 @@ struct CoreStateChange {
     /// The core's unsaved-changes list after the change (-- WP SWF6 --);
     /// nil when it was not read.
     var presetChanges: [String]? = nil
+    /// Whether the core can undo and redo after the change (-- WP SWMAC1 --);
+    /// nil when it was not read.
+    var journal: CoreJournalState? = nil
 
     /// The `NotifyResult` flags after which the mirror is read again.
     static let stateFlags = DspiConstants.NOTIFY_STATE | DspiConstants.NOTIFY_REFRESHED
@@ -215,6 +234,7 @@ final class CoreMirror {
         latest = nil
         sweep?.cancel(); sweep = nil
         if vm?.corePresetChanges.isEmpty == false { vm?.corePresetChanges = [] }   // -- WP SWF6 --
+        vm?.undo.show(CoreJournalState())   // -- WP SWMAC1 --
     }
 
     /// The core reported a change.
@@ -225,6 +245,30 @@ final class CoreMirror {
         // rebased its baseline when it re-read, keeping what changed after the
         // load unsaved (CG33), and its list comes with the change.
         if let changes = change.presetChanges { showPresetChanges(changes, from: source) }
+        if let journal = change.journal { vm.undo.show(journal) }   // -- WP SWMAC1 --
+    }
+
+    // -- WP SWMAC1 --
+    /// Undo (or redo) through the core's journal of the source followed now,
+    /// then put the state after it on screen.  `done` runs on main with the
+    /// step's result, nil when the view follows another source by then.
+    /// False, and `done` never runs, without a source.
+    @discardableResult
+    func stepJournal(redo: Bool, done: @escaping (Result<HistoryMove, DspiError>?) -> Void) -> Bool {
+        guard let source = source else { return false }
+        let attached = attachment
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let step = source.stepJournal(redo: redo)
+            DispatchQueue.main.async {
+                guard let self = self, self.attachment == attached, let vm = self.vm else { done(nil); return }
+                // The step wrote the value back: it wins over a pending edit.
+                vm.applyCoreState(step.state, force: true)
+                self.showPresetChanges(step.presetChanges, from: source)
+                vm.undo.show(step.journal)
+                done(step.result)
+            }
+        }
+        return true
     }
 
     // -- WP SWF6 --

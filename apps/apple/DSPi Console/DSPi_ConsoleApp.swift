@@ -11966,6 +11966,61 @@ private struct ChannelClipboardCommands: Commands {
     }
 }
 
+// -- WP SWMAC1 --
+/// Edit > Undo (Cmd+Z) and Redo (Shift+Cmd+Z) through the core's change
+/// journal (Core/CoreUndo.swift), as the Qt app's Edit menu.  The system's
+/// Undo group is replaced, so a text field being edited gets the keystroke
+/// first, as the pasteboard items do.
+private struct UndoCommands: Commands {
+    @ObservedObject var undo: CoreUndo
+    @ObservedObject private var editing = TextEditingWatch.shared
+
+    /// The field editor of a text field being edited, if it has typing to undo or redo.
+    private func fieldEditor(redo: Bool) -> NSTextView? {
+        guard let editor = NSApp.keyWindow?.firstResponder as? NSTextView,
+              let manager = editor.undoManager, redo ? manager.canRedo : manager.canUndo else { return nil }
+        return editor
+    }
+
+    var body: some Commands {
+        CommandGroup(replacing: .undoRedo) {
+            Button("Undo") {
+                if let editor = fieldEditor(redo: false) { editor.undoManager?.undo(); return }
+                undo.undo()
+            }
+            .keyboardShortcut("z", modifiers: .command)
+            .disabled(!undo.canUndo && !editing.active)
+
+            Button("Redo") {
+                if let editor = fieldEditor(redo: true) { editor.undoManager?.redo(); return }
+                undo.redo()
+            }
+            .keyboardShortcut("z", modifiers: [.command, .shift])
+            .disabled(!undo.canRedo && !editing.active)
+        }
+    }
+}
+
+/// -- WP SWMAC1 -- Whether a text field is being edited, so Undo and Redo stay
+/// enabled for its typing while the core has nothing to undo.
+private final class TextEditingWatch: ObservableObject {
+    static let shared = TextEditingWatch()
+    @Published private(set) var active = false
+    private var observers: [NSObjectProtocol] = []
+
+    private init() {
+        let center = NotificationCenter.default
+        observers = [
+            center.addObserver(forName: NSControl.textDidBeginEditingNotification, object: nil, queue: .main) { [weak self] _ in
+                self?.active = true
+            },
+            center.addObserver(forName: NSControl.textDidEndEditingNotification, object: nil, queue: .main) { [weak self] _ in
+                self?.active = false
+            },
+        ]
+    }
+}
+
 // MARK: - App
 @main
 struct DSPi_ConsoleApp: App {
@@ -12058,6 +12113,9 @@ struct DSPi_ConsoleApp: App {
             // Edit menu: standard pasteboard items, with Cmd+C / Cmd+V falling
             // through to the selected channel when no text field has focus.
             ChannelClipboardCommands()
+
+            // -- WP SWMAC1 -- Edit > Undo and Redo: the core's change journal.
+            UndoCommands(undo: AppState.shared.viewModel.undo)
 
             // Customize the standard "About DSPi Console" window. The panel
             // renders the bundle's name + version (CFBundleShortVersionString =

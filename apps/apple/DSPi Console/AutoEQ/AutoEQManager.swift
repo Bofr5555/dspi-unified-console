@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftUI
+import dspi_core
 
 // MARK: - Data Models
 
@@ -65,6 +66,15 @@ struct AutoEQDatabase: Codable {
 
 class AutoEQManager: ObservableObject {
     static let shared = AutoEQManager()
+
+    // -- WP SWMAC1 -- The core's User-Agent (`FETCH_USER_AGENT`), not
+    // URLSession's default, on every AutoEQ request.
+    static let userAgent = "uConsole-for-DSPi/\(coreInfo().ffiVersion)"
+    static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.httpAdditionalHeaders = ["User-Agent": userAgent]
+        return URLSession(configuration: config)
+    }()
 
     @Published var entries: [HeadphoneEntry] = []
     @Published var favoriteProfiles: [HeadphoneEntry] = []
@@ -275,7 +285,7 @@ class AutoEQManager: ObservableObject {
         }
 
         // Download the database
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await Self.session.data(from: url)
 
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
@@ -513,7 +523,7 @@ class AutoEQManager: ObservableObject {
         var request = URLRequest(url: url)
         request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await Self.session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
@@ -524,7 +534,7 @@ class AutoEQManager: ObservableObject {
     }
 
     private func downloadProfile(from url: URL) async throws -> String {
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await Self.session.data(from: url)
 
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {

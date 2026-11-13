@@ -119,6 +119,8 @@ final class CoreBackedTransport: DeviceTransport {
     private var lastRawSetAt: TimeInterval?
     private var lastRawSetSentAt: TimeInterval = 0
     private var lastNotifiedAt: TimeInterval = 0
+    /// -- WP SWMAC1 -- The journal the last drain saw (coreQueue only).
+    private var lastJournal = CoreJournalState()
 
     private static let log = Logger(subsystem: AppIdentity.logSubsystem, category: "CoreBackedTransport")
     #if DEBUG
@@ -303,10 +305,16 @@ final class CoreBackedTransport: DeviceTransport {
         }
         // -- WP SW8 -- The mirror after the change, after the tap's packets
         // (both reach main in this order).
-        if result.flags & CoreStateChange.stateFlags != 0, !stateFanout.isEmpty {
+        // -- WP SWMAC1 -- Also when only the journal moved (a typed write's
+        // echo changes no value in the mirror).
+        let journal = journalOnCore()
+        let journalMoved = journal != lastJournal
+        lastJournal = journal
+        if result.flags & CoreStateChange.stateFlags != 0 || journalMoved, !stateFanout.isEmpty {
             // -- WP SWF6 -- With the core's unsaved-changes list after it.
             stateFanout.publish(CoreStateChange(flags: result.flags, state: onCore { $0.getState() },
-                                                presetChanges: onCore { $0.presetChanges() }))
+                                                presetChanges: onCore { $0.presetChanges() },
+                                                journal: journal))   // -- WP SWMAC1 --
         }
         let connected = onCore { $0.isConnected() }
         let coreGeneration = onCore { $0.connectionGeneration() }
@@ -596,6 +604,45 @@ extension CoreBackedTransport: CoreStateSource, CoreStateSourceProviding {
             }
             DispatchQueue.main.async { reply(text) }
         }
+    }
+
+    // -- WP SWMAC1 -- The core's change journal.
+
+    func readJournal() -> CoreJournalState {
+        onCoreSync { self.journalOnCore() }
+    }
+
+    // On coreQueue.
+    private func journalOnCore() -> CoreJournalState {
+        CoreJournalState(canUndo: onCore { $0.canUndo() }, canRedo: onCore { $0.canRedo() })
+    }
+
+    func stepJournal(redo: Bool) -> CoreJournalStep {
+        onCoreSync {
+            // The echoes of the last raw SETs are in the mirror first.
+            self.drain()
+            let result: Result<HistoryMove, DspiError>
+            do {
+                result = .success(try self.onCore { redo ? try $0.redo() : try $0.undo() })
+            } catch {
+                let failure = error as? DspiError ?? .Transfer(msg: String(describing: error))
+                // As a raw write's failure.
+                switch failure {
+                case .Locked: DeviceLock.notice.post()
+                case .ReadOnly: RefusedWrite.handleReadOnly(fanout: self.fanout)
+                default: break
+                }
+                result = .failure(failure)
+            }
+            let journal = self.journalOnCore()
+            self.lastJournal = journal
+            return CoreJournalStep(result: result, state: self.onCore { $0.getState() },
+                                   presetChanges: self.onCore { $0.presetChanges() }, journal: journal)
+        }
+    }
+
+    func setDragging(_ dragging: Bool) {
+        coreQueue.async { [weak self] in self?.onCore { $0.setDragging(dragging: dragging) } }
     }
 
     func loadPreset(slot: UInt8) -> Result<(DspState, [String]), DspiError> {

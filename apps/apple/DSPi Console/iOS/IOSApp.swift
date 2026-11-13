@@ -112,6 +112,25 @@ struct DSPiConsoleIOSApp: App {
     }
 }
 
+// -- WP SWMAC1 --
+/// The Mac's Edit > Undo and Redo: the core's change journal (Core/CoreUndo.swift).
+struct IOSUndoButtons: View {
+    @ObservedObject var undo: CoreUndo
+
+    var body: some View {
+        HStack {
+            Button { undo.undo() } label: {
+                Label("Undo", systemImage: "arrow.uturn.backward")
+            }
+            .disabled(!undo.canUndo)
+            Button { undo.redo() } label: {
+                Label("Redo", systemImage: "arrow.uturn.forward")
+            }
+            .disabled(!undo.canRedo)
+        }
+    }
+}
+
 /// The console with an iOS toolbar standing in for the Mac menu bar.
 struct IOSRootView: View {
     @ObservedObject var vm: DSPViewModel
@@ -175,6 +194,7 @@ struct IOSRootView: View {
             }
         }
         ToolbarItemGroup(placement: .topBarTrailing) {
+            IOSUndoButtons(undo: vm.undo)   // -- WP SWMAC1 --
             Button { showDevices = true } label: {
                 Label("Devices", systemImage: vm.isDeviceConnected ? "cable.connector" : "cable.connector.slash")
             }

@@ -1066,6 +1066,7 @@ struct ChannelSettingsView: View {
             }
 
             Slider(value: $localGain, in: -60...10) { editing in
+                CoreUndo.drag(editing)   // -- WP SWMAC1 --
                 isDraggingGain = editing
                 if !editing { gainDB = localGain }
             }
@@ -1107,6 +1108,7 @@ struct ChannelSettingsView: View {
             // -- WP SWF5 -- the slider moves in whole ms, as upstream's setter
             // rounded it; the setter itself now keeps fractions.
             Slider(value: $localDelay, in: 0...maxDelay) { editing in
+                CoreUndo.drag(editing)   // -- WP SWMAC1 --
                 isDraggingDelay = editing
                 if !editing {
                     localDelay = localDelay.rounded()
@@ -1452,6 +1454,7 @@ struct InputChannelHeader: View {
 
                 HStack(spacing: 6) {
                     Slider(value: $localPreamp, in: -60...10) { editing in
+                        CoreUndo.drag(editing)   // -- WP SWMAC1 --
                         isDragging = editing
                         if !editing { vm.setPreampChannel(channel: channel, db: localPreamp) }
                     }
@@ -1618,6 +1621,7 @@ struct PreampControlView: View {
                 .frame(width: 100, alignment: .leading)
 
                 Slider(value: $localPreamp, in: -60...10) { editing in
+                    CoreUndo.drag(editing)   // -- WP SWMAC1 --
                     isDragging = editing
                     if !editing {
                         vm.setPreampChannel(channel: channel, db: localPreamp)
