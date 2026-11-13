@@ -188,35 +188,13 @@ final class CoreDomainSW10Tests: XCTestCase, CoreDomainTesting {
         fake.getControlRequest(request: request, value: 0, index: HostBridge.vendorInterface, length: 1)?.first
     }
 
-    /// Swift's FakeTransport under the core, with the effects the core
-    /// probes for.  The fake answers a GET only once its SET has run (its
-    /// echo store), and the core probes each effect with a GET when it
-    /// connects: give those probes their answers, then connect again.  (The
-    /// limiter's probe has no SET twin in the fake: its writes are checked
-    /// on the core's demo device.)
-    private func effectsHostVM() -> (FakeTransport, DspiCore, CoreBackedTransport, DSPViewModel) {
-        let (fake, core, t, vm) = hostVM()
-        let probes: [(UInt8, UInt16, Data)] = [
-            (REQ_SET_LOUDNESS_MASK, 0, Data([0xFF, 0xFF])), (REQ_SET_CROSSFEED_OUTPUTS, 0, Data([0x0F])),
-            (REQ_SET_LEVELLER_MASKS, 0, Data([0xFF, 0xFF])), (REQ_SET_PSYBASS, 0, Data([0])),
-            (REQ_SET_SUBHARM, 0, Data([0])), (REQ_SET_TUBE_PARAM, TUBE_PARAM_ENABLED, Data(count: 4)),
-        ]
-        for (request, value, data) in probes {
-            fake.sendControlRequest(request: request, value: value, index: HostBridge.vendorInterface, data: data)
-        }
-        fake.disconnect()   // the generation moves at once
-        fake.selectDevice(FakeTransport.demoDevice)
-        XCTAssertTrue(spinUntil(30) { vm.isDeviceConnected && vm.fullReadGeneration == t.generation },
-                      "connected and read again")
-        settle()
-        return (fake, core, t, vm)
-    }
-
     /// Every setter and live send of the effects goes to a typed core call:
     /// the journal holds no raw entry, each lands under its own path, and
     /// the device (Swift's FakeTransport, through the core) holds the values.
     func testSW10EveryEffectWriteIsTypedAndReachesTheDevice() {
-        let (fake, core, t, vm) = effectsHostVM()
+        // -- fixup sw10 -- the fake answers the core's effect probes from its
+        // image, as firmware with the effects does: no priming, no reconnect.
+        let (fake, core, t, vm) = hostVM()
 
         vm.setLoudness(true)
         vm.setLoudnessRef(75)
@@ -255,13 +233,18 @@ final class CoreDomainSW10Tests: XCTestCase, CoreDomainTesting {
         let lookahead = !vm.leveller.lookahead
         vm.setLevellerLookahead(lookahead)
         vm.setLevellerMasks(detector: 0b11, apply: 0b01)
+        // -- fixup sw10 -- the limiter on the fake too (its probe now answers).
+        vm.sendLimiterParamToDevice(output: 1, LIMITER_PARAM_THRESHOLD_DB, -14)
+        vm.setLimiterThreshold(output: 1, -12)
+        vm.setLimiterRelease(output: 1, 250)
         flush(t)
         settle()
 
         XCTAssertTrue(entries(core, t, "raw").isEmpty, "no effect write went out raw")
         for path in ["loud.on", "loud.ref", "loud.intensity", "loud.mask", "cf.on", "cf.preset", "cf.freq", "cf.feed",
                      "cf.itd", "cf.outputs", "bass.on", "bass.cutoff", "bass.drive", "bass.mask", "sub.on", "sub.high",
-                     "sub.ceiling", "sub.link", "sub.solo", "sub.mask", "tube.on", "tube.mix", "up.on", "up.attack", "lev.on", "lev.gate", "lev.lookahead", "lev.masks"] {
+                     "sub.ceiling", "sub.link", "sub.solo", "sub.mask", "tube.on", "tube.mix", "up.on", "up.attack", "lev.on", "lev.gate", "lev.lookahead", "lev.masks",
+                     "limit.threshold", "limit.release"] {
             XCTAssertFalse(entries(core, t, path).isEmpty, "\(path) went through its typed setter")
         }
 
@@ -285,6 +268,8 @@ final class CoreDomainSW10Tests: XCTestCase, CoreDomainTesting {
         XCTAssertEqual(Self.byte(fake, REQ_GET_LEVELLER), 1)
         XCTAssertEqual(Self.float(fake, REQ_GET_LEVELLER_GATE), -50)
         XCTAssertEqual(Self.byte(fake, REQ_GET_LEVELLER_LOOKAHEAD), lookahead ? 1 : 0)
+        XCTAssertEqual(Self.float(fake, REQ_LIMITER, (1 << 8) | UInt16(LIMITER_PARAM_THRESHOLD_DB)), -12)
+        XCTAssertEqual(Self.float(fake, REQ_LIMITER, (1 << 8) | UInt16(LIMITER_PARAM_RELEASE_MS)), 250)
 
         // And the core's mirror, which the view model shows.
         let s = t.readState()
@@ -349,5 +334,168 @@ final class CoreDomainSW10Tests: XCTestCase, CoreDomainTesting {
         DispatchQueue.global().async { vm.fetchSubharmSolo() }
         XCTAssertTrue(spinUntil(5) { vm.subharm.solo }, "the core's copy")
         vm.setSubharmSolo(false)
+    }
+    // MARK: - fixup sw10
+
+    private static func floatValue(_ v: ParamValue) -> Float? {
+        if case .float(let f) = v { return f }
+        return nil
+    }
+
+    /// F1: a lane value issued after a commit of the same effect setting is
+    /// sent after it (the review's probes P1-P3), for every float setting a
+    /// drag sends live and for the tube, the limiter and the upmixer: the
+    /// commit supersedes the value still queued before it, so the device
+    /// ends on the newest value issued and the superseded one is never sent.
+    func testSW10ALaneValueAfterACommitIsNotOvertaken() {
+        let (core, t, vm) = demoVM()
+        typealias Case = (path: String, values: (Float, Float, Float), lane: (Float) -> Void, commit: (Float) -> Void)
+        func float(_ path: String, _ request: UInt8, _ v: (Float, Float, Float), _ commit: @escaping (Float) -> Void) -> Case {
+            (path, v, { vm.sendFloatParamToDevice(request, $0) }, commit)
+        }
+        let cases: [Case] = [
+            float("loud.ref", REQ_SET_LOUDNESS_REF, (60, 70, 80), vm.setLoudnessRef),
+            float("loud.intensity", REQ_SET_LOUDNESS_INTENSITY, (50, 100, 150), vm.setLoudnessIntensity),
+            float("cf.freq", REQ_SET_CROSSFEED_FREQ, (600, 800, 1000), vm.setCrossfeedFreq),
+            float("cf.feed", REQ_SET_CROSSFEED_FEED, (3, 5, 7), vm.setCrossfeedFeed),
+            float("bass.cutoff", REQ_SET_PSYBASS_CUTOFF, (60, 90, 120), vm.setPsybassCutoff),
+            float("bass.harmonics", REQ_SET_PSYBASS_HARMONICS, (-6, -3, 3), vm.setPsybassHarmonics),
+            float("bass.drive", REQ_SET_PSYBASS_DRIVE, (3, 6, 9), vm.setPsybassDrive),
+            float("bass.character", REQ_SET_PSYBASS_CHARACTER, (20, 40, 60), vm.setPsybassCharacter),
+            float("bass.original", REQ_SET_PSYBASS_ORIGINAL, (-20, -10, -5), vm.setPsybassOriginal),
+            float("sub.low", REQ_SET_SUBHARM_LOW, (-20, -10, 0), vm.setSubharmLow),
+            float("sub.high", REQ_SET_SUBHARM_HIGH, (-20, -10, 0), vm.setSubharmHigh),
+            float("sub.top", REQ_SET_SUBHARM_TOP, (-20, -10, 0), vm.setSubharmTop),
+            float("sub.boost", REQ_SET_SUBHARM_BOOST, (1, 2, 3), vm.setSubharmBoost),
+            float("sub.depth", REQ_SET_SUBHARM_DEPTH, (20, 40, 60), vm.setSubharmSelectDepth),
+            float("sub.hold", REQ_SET_SUBHARM_HOLD, (100, 200, 300), vm.setSubharmSelectHold),
+            float("sub.ceiling", REQ_SET_SUBHARM_CEILING, (-20, -10, -5), vm.setSubharmCeiling),
+            float("lev.amount", REQ_SET_LEVELLER_AMOUNT, (20, 40, 60), vm.setLevellerAmount),
+            float("lev.maxgain", REQ_SET_LEVELLER_MAXGAIN, (5, 10, 15), vm.setLevellerMaxGain),
+            float("lev.gate", REQ_SET_LEVELLER_GATE, (-60, -50, -40), vm.setLevellerGate),
+            ("tube.drive", (3, 6, 9), { vm.sendTubeParamToDevice(TUBE_PARAM_DRIVE_DB, $0, TUBE_DRIVE_MIN, TUBE_DRIVE_MAX) },
+             vm.setTubeDrive),
+            ("limit.threshold", (-20, -15, -10), { vm.sendLimiterParamToDevice(output: 1, LIMITER_PARAM_THRESHOLD_DB, $0) },
+             { vm.setLimiterThreshold(output: 1, $0) }),
+            ("up.attack", (25, 30, 35), { vm.sendUpmixParamToDevice(UPMIX_PARAM_ATTACK, $0) }, vm.setUpmixAttack),
+        ]
+        XCTAssertEqual(cases.count, 22, "the 19 live float settings, the tube, the limiter and the upmixer")
+        for c in cases {
+            c.commit(c.values.0)   // a known start, so the commit below is a change
+            flush(t)
+            let busy = DispatchSemaphore(value: 0)
+            t.coreQueue.async { busy.wait() }
+            c.lane(c.values.0)     // a lane value, queued
+            c.commit(c.values.1)   // the commit: it supersedes the queued value
+            c.lane(c.values.2)     // newer than the commit
+            busy.signal()
+            flush(t)
+            let sent = entries(core, t, c.path).compactMap { Self.floatValue($0.after) }   // newest first
+            XCTAssertEqual(Array(sent.prefix(2)), [c.values.2, c.values.1],
+                           "\(c.path): the commit, then the newer value; the superseded one never sent")
+        }
+        XCTAssertEqual(t.readState().loudnessRefSpl, 80, "the newest value issued is the device's")
+    }
+
+    /// The fake's limiter as the firmware has it: the status block answers
+    /// (the core's probe), an edit reaches the whole link group, a joiner
+    /// adopts the group's settings, and every output takes output 0xFF.
+    func testSW10TheFakesLimiterGangsAsTheFirmware() throws {
+        let fake = FakeTransport(autoSelect: false)
+        fake.selectDevice(FakeTransport.demoDevice)
+        func get(_ o: UInt8, _ p: UInt8) -> Float? {
+            fake.getControlRequest(request: REQ_LIMITER, value: (UInt16(o) << 8) | UInt16(p), index: 0, length: 4)?
+                .withUnsafeBytes { $0.loadUnaligned(as: Float.self) }
+        }
+        func set(_ o: UInt8, _ p: UInt8, _ v: Float) {
+            fake.sendControlRequest(request: REQ_LIMITER, value: (UInt16(o) << 8) | UInt16(p), index: 0,
+                                    data: withUnsafeBytes(of: v) { Data($0) })
+        }
+        let status = try XCTUnwrap(fake.getControlRequest(request: REQ_LIMITER, value: UInt16(LIMITER_GET_STATUS),
+                                                          index: 0, length: 4))
+        XCTAssertEqual(status.count, 4)
+        let outputs = status[3]
+        XCTAssertGreaterThan(outputs, 1)
+        XCTAssertNil(get(outputs, LIMITER_PARAM_THRESHOLD_DB), "no such output: STALL")
+        set(0, LIMITER_PARAM_THRESHOLD_DB, -6)
+        set(1, LIMITER_PARAM_THRESHOLD_DB, -3)
+        set(0, LIMITER_PARAM_LINK_GROUP, 2)
+        set(1, LIMITER_PARAM_LINK_GROUP, 2)
+        XCTAssertEqual(get(1, LIMITER_PARAM_THRESHOLD_DB), -6, "the joiner adopts the group's")
+        set(1, LIMITER_PARAM_THRESHOLD_DB, -40)
+        XCTAssertEqual(get(0, LIMITER_PARAM_THRESHOLD_DB), LIMITER_THRESHOLD_MIN, "clamped, and the group moves")
+        set(LIMITER_ALL_OUTPUTS, LIMITER_PARAM_ENABLED, 1)
+        XCTAssertEqual((0..<outputs).map { get($0, LIMITER_PARAM_ENABLED) }, Array(repeating: 1, count: Int(outputs)))
+        XCTAssertEqual(fake.getControlRequest(request: REQ_LIMITER, value: UInt16(LIMITER_GET_STATUS),
+                                              index: 0, length: 4)?.first, 1, "engaged")
+    }
+
+    /// A view model on Swift's fake under the core, `inner` between them, and
+    /// a monitor on the transport running the view model's own
+    /// BULK_INVALIDATED hook, as the app's shared monitor does.
+    private func refusalVM(_ inner: (FakeTransport) -> any DeviceTransport)
+        -> (FakeTransport, CoreBackedTransport, DSPViewModel, InterruptMonitor) {
+        let fake = FakeTransport(autoSelect: false)
+        let t = CoreBackedTransport(link: .host(inner(fake), .fake), core: DspiCore())
+        let vm = DSPViewModel(transport: t)
+        let monitor = InterruptMonitor(transport: t)
+        monitor.onBulkInvalidated = AppState.shared.interruptMonitor.onBulkInvalidated   // this view model's
+        monitor.start()
+        fake.selectDevice(FakeTransport.demoDevice)
+        XCTAssertTrue(spinUntil(30) { vm.isDeviceConnected && vm.fullReadGeneration == t.generation },
+                      "the connect-time read finishes")
+        settle()
+        XCTAssertTrue(spinUntil(8) { DeviceLock.notice.message == nil })
+        return (fake, t, vm, monitor)
+    }
+
+    /// F2: a device whose psychoacoustic-bass probe failed (the core has no
+    /// such feature) while the view shows the controls: the core refuses the
+    /// edit as Unsupported, and the view puts the core's value back at once
+    /// and says why.
+    func testSW10AnUnsupportedEffectWriteIsPutBackAndSaysWhy() {
+        let (fake, t, vm, monitor) = refusalVM { StallingTransport($0, stalls: [REQ_GET_PSYBASS]) }
+        defer { monitor.stop() }
+        let before = vm.psybass.cutoffHz
+        let to = other(before, Float(120), 150)
+        vm.setPsybassCutoff(to)
+        XCTAssertEqual(vm.psybass.cutoffHz, to, "shown at once, as the slider does")
+        XCTAssertTrue(spinUntil(3) { DeviceLock.notice.message == RefusedWrite.unsupportedMessage },
+                      "the refusal is shown: \(DeviceLock.notice.message ?? "none")")
+        XCTAssertTrue(spinUntil(3) { vm.psybass.cutoffHz == before }, "the core's value is back: \(vm.psybass.cutoffHz)")
+        settle(CoreMirror.defaultPendingWindow + 0.3)
+        XCTAssertEqual(vm.psybass.cutoffHz, before, "and stays")
+        flush(t)
+        XCTAssertNotEqual(fake.getControlRequest(request: REQ_GET_PSYBASS_CUTOFF, value: 0,
+                                                 index: HostBridge.vendorInterface, length: 4)?
+                            .withUnsafeBytes { $0.loadUnaligned(as: Float.self) }, to, "nothing reached the device")
+        XCTAssertTrue(spinUntil(8) { DeviceLock.notice.message == nil })
+    }
+
+    /// F2: a typed write that fails in transfer (the core's `Transfer`) is
+    /// put back to the core's value at once, with its wording.
+    func testSW10ATypedWriteThatFailsInTransferIsPutBackAndSaysWhy() {
+        let (_, t, vm, monitor) = refusalVM { $0 }
+        defer { monitor.stop() }
+        let before = vm.loudness.refSPL
+        let to = other(before, Float(70), 90)
+        vm.loudness.refSPL = to   // what the setter shows at once
+        t.commit(lane: "loud.ref") { _ in throw DspiError.Transfer(msg: "test: the SET timed out") }
+        XCTAssertTrue(spinUntil(3) { DeviceLock.notice.message == RefusedWrite.transferMessage },
+                      "the failure is shown: \(DeviceLock.notice.message ?? "none")")
+        XCTAssertTrue(spinUntil(3) { vm.loudness.refSPL == before }, "the core's value is back: \(vm.loudness.refSPL)")
+        XCTAssertTrue(spinUntil(8) { DeviceLock.notice.message == nil })
+    }
+}
+
+/// -- fixup sw10 -- STALLs the given GETs, as firmware without the feature.
+final class StallingTransport: ForwardingTransport {
+    private let stalls: Set<UInt8>
+    init(_ inner: any DeviceTransport, stalls: Set<UInt8>) {
+        self.stalls = stalls
+        super.init(inner)
+    }
+    override func getControlResult(request: UInt8, value: UInt16, index: UInt16, length: UInt16) -> Result<Data, DSPi_Console.LinkStatus> {
+        stalls.contains(request) ? .failure(.error) : super.getControlResult(request: request, value: value, index: index, length: length)
     }
 }

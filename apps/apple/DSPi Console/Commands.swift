@@ -900,19 +900,42 @@ extension DSPViewModel {
 
     // MARK: - Loudness Compensation
 
-    // -- WP SW10 -- Through a core, the effects' setters are its typed calls
-    // (a commit: no lane key), and their drag-time sends go through SW9's
-    // write lane under the setting's registry path.  The core clamps as the
-    // firmware does, follows the limiter's link groups and the tube's type
-    // rows, and journals each change, so Undo steps it back.  Without a core
-    // (USB without -CoreTransport, MIDI, the Link client) they stay raw SETs.
+    // -- WP SW10 -- Through a core, the effects' setters are its typed calls,
+    // and their drag-time sends go through SW9's write lane under the
+    // setting's registry path.  The committed value of a setting a drag sends
+    // live goes through `commit(lane:)` with that same key (fixup sw10 F1, as
+    // fixup sw9 F2), so a lane value issued after it is sent after it; a
+    // discrete setting (an enable, a mask, a mode) has no lane and is a plain
+    // write.  The core clamps as the firmware does, follows the limiter's link
+    // groups and the tube's type rows, and journals each change, so Undo steps
+    // it back.  Without a core (USB without -CoreTransport, MIDI, the Link
+    // client) they stay raw SETs.
 
     /// -- WP SW10 -- Through a core, `body` as a typed write (in `lane` when
-    /// given) and true; false without one, for the raw SET.
-    private func typedWrite(lane: String? = nil, _ body: @escaping (DspiCore) throws -> Void) -> Bool {
+    /// given, or as the commit of `commit`'s lane) and true; false without
+    /// one, for the raw SET.
+    private func typedWrite(lane: String? = nil, commit: String? = nil,
+                            _ body: @escaping (DspiCore) throws -> Void) -> Bool {
         guard let core = typedCore else { return false }
-        core.write(lane: lane, body)
+        if let key = commit {
+            core.commit(lane: key, body)
+        } else {
+            core.write(lane: lane, body)
+        }
         return true
+    }
+
+    /// -- WP SW10 -- fixup sw10 F1: the committed value of a float setting a
+    /// drag sends live as `request` (`typedFloatSet`), behind its lane.
+    private func typedCommit(_ request: UInt8, _ body: @escaping (DspiCore) throws -> Void) -> Bool {
+        typedWrite(commit: Self.typedFloatSet(request)?.lane, body)
+    }
+
+    /// -- WP SW10 -- fixup sw10 F1: a parameter of an indexed SET (tube,
+    /// limiter, upmixer) under its own key: in the lane for a drag-time send
+    /// (`live`), else as the commit that supersedes it.
+    private func typedKeyed(_ key: String, live: Bool, _ body: @escaping (DspiCore) throws -> Void) -> Bool {
+        live ? typedWrite(lane: key, body) : typedWrite(commit: key, body)
     }
 
     func setLoudness(_ enabled: Bool) {
@@ -925,7 +948,7 @@ extension DSPViewModel {
 
     func setLoudnessRef(_ spl: Float) {
         self.loudness.refSPL = spl
-        if typedWrite({ try $0.setLoudnessRef(spl: spl) }) { return }
+        if typedCommit(REQ_SET_LOUDNESS_REF, { try $0.setLoudnessRef(spl: spl) }) { return }
         var val = spl
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_LOUDNESS_REF, value: 0, index: 0, data: data)
@@ -933,7 +956,7 @@ extension DSPViewModel {
 
     func setLoudnessIntensity(_ pct: Float) {
         self.loudness.intensity = pct
-        if typedWrite({ try $0.setLoudnessIntensity(pct: pct) }) { return }
+        if typedCommit(REQ_SET_LOUDNESS_INTENSITY, { try $0.setLoudnessIntensity(pct: pct) }) { return }
         var val = pct
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_LOUDNESS_INTENSITY, value: 0, index: 0, data: data)
@@ -989,7 +1012,7 @@ extension DSPViewModel {
 
     func setCrossfeedFreq(_ freq: Float) {
         self.crossfeed.freq = freq
-        if typedWrite({ try $0.setCrossfeedFreq(freq: freq) }) { return }
+        if typedCommit(REQ_SET_CROSSFEED_FREQ, { try $0.setCrossfeedFreq(freq: freq) }) { return }
         var val = freq
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_CROSSFEED_FREQ, value: 0, index: 0, data: data)
@@ -997,7 +1020,7 @@ extension DSPViewModel {
 
     func setCrossfeedFeed(_ feed: Float) {
         self.crossfeed.feed = feed
-        if typedWrite({ try $0.setCrossfeedFeed(feed: feed) }) { return }
+        if typedCommit(REQ_SET_CROSSFEED_FEED, { try $0.setCrossfeedFeed(feed: feed) }) { return }
         var val = feed
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_CROSSFEED_FEED, value: 0, index: 0, data: data)
@@ -1089,7 +1112,7 @@ extension DSPViewModel {
 
     func setPsybassCutoff(_ hz: Float) {
         self.psybass.cutoffHz = hz
-        if typedWrite({ try $0.setPsybassParam(param: DspiConstants.PSYBASS_PARAM_CUTOFF, value: hz) }) { return }
+        if typedCommit(REQ_SET_PSYBASS_CUTOFF, { try $0.setPsybassParam(param: DspiConstants.PSYBASS_PARAM_CUTOFF, value: hz) }) { return }
         var val = hz
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_PSYBASS_CUTOFF, value: 0, index: 0, data: data)
@@ -1097,7 +1120,7 @@ extension DSPViewModel {
 
     func setPsybassHarmonics(_ db: Float) {
         self.psybass.harmonicsDB = db
-        if typedWrite({ try $0.setPsybassParam(param: DspiConstants.PSYBASS_PARAM_HARMONICS, value: db) }) { return }
+        if typedCommit(REQ_SET_PSYBASS_HARMONICS, { try $0.setPsybassParam(param: DspiConstants.PSYBASS_PARAM_HARMONICS, value: db) }) { return }
         var val = db
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_PSYBASS_HARMONICS, value: 0, index: 0, data: data)
@@ -1105,7 +1128,7 @@ extension DSPViewModel {
 
     func setPsybassDrive(_ db: Float) {
         self.psybass.driveDB = db
-        if typedWrite({ try $0.setPsybassParam(param: DspiConstants.PSYBASS_PARAM_DRIVE, value: db) }) { return }
+        if typedCommit(REQ_SET_PSYBASS_DRIVE, { try $0.setPsybassParam(param: DspiConstants.PSYBASS_PARAM_DRIVE, value: db) }) { return }
         var val = db
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_PSYBASS_DRIVE, value: 0, index: 0, data: data)
@@ -1113,7 +1136,7 @@ extension DSPViewModel {
 
     func setPsybassCharacter(_ pct: Float) {
         self.psybass.characterPct = pct
-        if typedWrite({ try $0.setPsybassParam(param: DspiConstants.PSYBASS_PARAM_CHARACTER, value: pct) }) { return }
+        if typedCommit(REQ_SET_PSYBASS_CHARACTER, { try $0.setPsybassParam(param: DspiConstants.PSYBASS_PARAM_CHARACTER, value: pct) }) { return }
         var val = pct
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_PSYBASS_CHARACTER, value: 0, index: 0, data: data)
@@ -1121,7 +1144,7 @@ extension DSPViewModel {
 
     func setPsybassOriginal(_ db: Float) {
         self.psybass.originalDB = db
-        if typedWrite({ try $0.setPsybassParam(param: DspiConstants.PSYBASS_PARAM_ORIGINAL, value: db) }) { return }
+        if typedCommit(REQ_SET_PSYBASS_ORIGINAL, { try $0.setPsybassParam(param: DspiConstants.PSYBASS_PARAM_ORIGINAL, value: db) }) { return }
         var val = db
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_PSYBASS_ORIGINAL, value: 0, index: 0, data: data)
@@ -1164,7 +1187,7 @@ extension DSPViewModel {
 
     func setSubharmLow(_ db: Float) {
         self.subharm.lowDB = db
-        if !typedWrite({ try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_LOW, value: db) }) {
+        if !typedCommit(REQ_SET_SUBHARM_LOW, { try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_LOW, value: db) }) {
             var val = db
             let data = Data(bytes: &val, count: 4)
             transport.sendControlRequest(request: REQ_SET_SUBHARM_LOW, value: 0, index: 0, data: data)
@@ -1174,7 +1197,7 @@ extension DSPViewModel {
 
     func setSubharmHigh(_ db: Float) {
         self.subharm.highDB = db
-        if !typedWrite({ try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_HIGH, value: db) }) {
+        if !typedCommit(REQ_SET_SUBHARM_HIGH, { try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_HIGH, value: db) }) {
             var val = db
             let data = Data(bytes: &val, count: 4)
             transport.sendControlRequest(request: REQ_SET_SUBHARM_HIGH, value: 0, index: 0, data: data)
@@ -1184,7 +1207,7 @@ extension DSPViewModel {
 
     func setSubharmTop(_ db: Float) {
         self.subharm.topDB = db
-        if !typedWrite({ try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_TOP, value: db) }) {
+        if !typedCommit(REQ_SET_SUBHARM_TOP, { try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_TOP, value: db) }) {
             var val = db
             let data = Data(bytes: &val, count: 4)
             transport.sendControlRequest(request: REQ_SET_SUBHARM_TOP, value: 0, index: 0, data: data)
@@ -1194,7 +1217,7 @@ extension DSPViewModel {
 
     func setSubharmBoost(_ db: Float) {
         self.subharm.boostDB = db
-        if !typedWrite({ try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_BOOST, value: db) }) {
+        if !typedCommit(REQ_SET_SUBHARM_BOOST, { try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_BOOST, value: db) }) {
             var val = db
             let data = Data(bytes: &val, count: 4)
             transport.sendControlRequest(request: REQ_SET_SUBHARM_BOOST, value: 0, index: 0, data: data)
@@ -1270,7 +1293,7 @@ extension DSPViewModel {
 
     func setSubharmSelectDepth(_ pct: Float) {
         self.subharm.selectDepthPct = pct
-        if !typedWrite({ try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_DEPTH, value: pct) }) {
+        if !typedCommit(REQ_SET_SUBHARM_DEPTH, { try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_DEPTH, value: pct) }) {
             var val = pct
             let data = Data(bytes: &val, count: 4)
             transport.sendControlRequest(request: REQ_SET_SUBHARM_DEPTH, value: 0, index: 0, data: data)
@@ -1280,7 +1303,7 @@ extension DSPViewModel {
 
     func setSubharmSelectHold(_ ms: Float) {
         self.subharm.selectHoldMs = ms
-        if !typedWrite({ try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_HOLD, value: ms) }) {
+        if !typedCommit(REQ_SET_SUBHARM_HOLD, { try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_HOLD, value: ms) }) {
             var val = ms
             let data = Data(bytes: &val, count: 4)
             transport.sendControlRequest(request: REQ_SET_SUBHARM_HOLD, value: 0, index: 0, data: data)
@@ -1293,7 +1316,7 @@ extension DSPViewModel {
     /// ceiling allows - which is why this SET re-reads it like a level does.
     func setSubharmCeiling(_ dbfs: Float) {
         self.subharm.ceilingDB = dbfs
-        if !typedWrite({ try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_CEILING, value: dbfs) }) {
+        if !typedCommit(REQ_SET_SUBHARM_CEILING, { try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_CEILING, value: dbfs) }) {
             var val = dbfs
             let data = Data(bytes: &val, count: 4)
             transport.sendControlRequest(request: REQ_SET_SUBHARM_CEILING, value: 0, index: 0, data: data)
@@ -1388,7 +1411,7 @@ extension DSPViewModel {
     /// -- WP SW10 -- Through a core, `setTubeParam` (it follows the type
     /// rows and the drop to Custom too); `lane` for a drag-time send.
     private func sendTubeParam(_ index: UInt16, _ value: Float, lane: Bool = false) {
-        if typedWrite(lane: lane ? "tube[\(index)]" : nil, { try $0.setTubeParam(idx: UInt8(clamping: index), value: value) }) {
+        if typedKeyed("tube[\(index)]", live: lane, { try $0.setTubeParam(idx: UInt8(clamping: index), value: value) }) {
             return
         }
         var val = value
@@ -1530,7 +1553,7 @@ extension DSPViewModel {
     /// drag-time send.  The core gangs a linked group in its mirror as the
     /// firmware does; `LimiterGang` stays for the paths without a core.
     private func sendLimiterParam(output: UInt8, _ index: UInt8, _ value: Float, lane: Bool = false) {
-        if typedWrite(lane: lane ? "limit[\(output)][\(index)]" : nil,
+        if typedKeyed("limit[\(output)][\(index)]", live: lane,
                       { try $0.setLimiterParam(output: output, param: index, value: value) }) {
             return
         }
@@ -1710,7 +1733,7 @@ extension DSPViewModel {
     /// -- WP SW10 -- Through a core, `setUpmixParam`; `lane` for a drag-time
     /// send.
     private func sendUpmixParam(_ paramId: UInt16, _ value: Float, lane: Bool = false) {
-        if typedWrite(lane: lane ? "up[\(paramId)]" : nil,
+        if typedKeyed("up[\(paramId)]", live: lane,
                       { try $0.setUpmixParam(id: UInt8(clamping: paramId), value: value) }) {
             return
         }
@@ -1881,7 +1904,7 @@ extension DSPViewModel {
 
     func setLevellerAmount(_ amount: Float) {
         self.leveller.amount = amount
-        if typedWrite({ try $0.setLevellerAmount(pct: amount) }) { return }
+        if typedCommit(REQ_SET_LEVELLER_AMOUNT, { try $0.setLevellerAmount(pct: amount) }) { return }
         var val = amount
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_LEVELLER_AMOUNT, value: 0, index: 0, data: data)
@@ -1897,7 +1920,7 @@ extension DSPViewModel {
 
     func setLevellerMaxGain(_ db: Float) {
         self.leveller.maxGainDB = db
-        if typedWrite({ try $0.setLevellerMaxGain(db: db) }) { return }
+        if typedCommit(REQ_SET_LEVELLER_MAXGAIN, { try $0.setLevellerMaxGain(db: db) }) { return }
         var val = db
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_LEVELLER_MAXGAIN, value: 0, index: 0, data: data)
@@ -1913,7 +1936,7 @@ extension DSPViewModel {
 
     func setLevellerGate(_ db: Float) {
         self.leveller.gateDB = db
-        if typedWrite({ try $0.setLevellerGate(db: db) }) { return }
+        if typedCommit(REQ_SET_LEVELLER_GATE, { try $0.setLevellerGate(db: db) }) { return }
         var val = db
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_LEVELLER_GATE, value: 0, index: 0, data: data)
