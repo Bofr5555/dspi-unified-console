@@ -246,7 +246,9 @@ ToolWindow {
                         objectName: "StatsWindow.starvation"
                         readonly property real total: StatsController.starvation.total
                         readonly property real delta: StatsController.starvation.delta
-                        property string shownName: String(total)
+                        // -- WP FIXS1 -- a dash until the first read, never a zero
+                        readonly property string totalText: StatsController.starvation.known ? String(total) : "-"
+                        property string shownName: totalText
                         Layout.fillWidth: true
                         Text {
                             text: qsTr("Total")
@@ -269,7 +271,7 @@ ToolWindow {
                             }
                         }
                         Text {
-                            text: String(parent.total)
+                            text: parent.totalText
                             font: Qt.font({ family: Theme.fontMono.family, pixelSize: 14, weight: Font.Bold })
                             color: parent.total > 0 ? Theme.dangerText : Theme.text
                         }

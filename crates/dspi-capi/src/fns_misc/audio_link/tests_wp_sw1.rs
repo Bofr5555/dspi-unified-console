@@ -39,7 +39,9 @@ fn wp_sw1_the_link_through_c() {
     let info = reply(h, dspi_audio_link_info);
     assert_eq!(info["ok"], true);
     assert_eq!(info["role"], "receiver");
-    assert_eq!(info["dLocalMin"], 112);
+    // -- fixup lk1 (M1) -- FIXS1's firmware range at the 4 ms latency option: 257..399
+    assert_eq!(info["dLocalMin"], 257);
+    assert_eq!(info["dLocalMax"], 399);
     assert_eq!(info["linkInput"], true);
     assert_eq!(reply(h, dspi_fetch_audio_link_info)["maxChannels"], 64);
 
@@ -56,11 +58,11 @@ fn wp_sw1_the_link_through_c() {
     assert_eq!(dspi_set_audio_link_slots(h, slots.as_ptr(), 7), 0xFF);
     assert_eq!(dspi_set_audio_link_slots(h, std::ptr::null(), 8), 0xFF);
 
-    assert_eq!(dspi_set_audio_link_phase(h, 1, 200, -1), 0);
+    assert_eq!(dspi_set_audio_link_phase(h, 1, 300, -1), 0);
     let p = reply(h, dspi_fetch_audio_link_phase);
     assert_eq!(
         (p["dLocal"].as_u64(), p["hopsOffset"].as_i64()),
-        (Some(200), Some(-1))
+        (Some(300), Some(-1))
     );
 
     let f = reply(h, dspi_fetch_audio_link_frame_counter)["frame"]

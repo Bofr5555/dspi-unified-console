@@ -322,7 +322,12 @@ test("SW3 fixup sw3x: a recall none of whose writes was taken is refused, and sa
   assert.match(r, /^Closed was refused: a scene is already scheduled on the sender for link frame 2000010, 100 ms after this recall \(about [^)]*:30[^)]*\)\./);
   assert.match(r, /takes one scene at a time; recall Closed again after that/);
   assert.match(sceneRefusal("Closed", report("superframe", ["refused"]), null, 48000, now), /still holds one/);
-  assert.equal(sceneRefusal("Quiet", report("per_unit", ["refused", "no_device"]), null, 48000, now), "Quiet was refused by every unit; nothing changed.");
+  // -- fixup lk1 -- the report's scene carries the system mute: it is said to be unchanged
+  assert.match(r, /recall Closed again after that\. System mute unchanged\.$/);
+  assert.equal(sceneRefusal("Quiet", report("per_unit", ["refused", "no_device"]), null, 48000, now), "Quiet was refused by every unit; nothing changed. System mute unchanged.");
+  const noMute = report("per_unit", ["refused"]);
+  delete noMute.plan.systemMute;
+  assert.equal(sceneRefusal("Quiet", noMute, null, 48000, now), "Quiet was refused by every unit; nothing changed.");
   assert.equal(writeWhat("phase"), "Link delay");
   assert.equal(writeWhat("slots"), "Link slots");
   assert.equal(writeWhat("out_delay:1"), "Delay OUT2");

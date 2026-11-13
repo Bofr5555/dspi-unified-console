@@ -86,6 +86,10 @@ public:
     void remove(Id id);
     void setEnabled(Id id, bool enabled);
     void setInterval(Id id, int intervalMs);
+    // -- fixup fs1 -- one read now, if the poll is enabled and a device is
+    // open (its timer keeps its own cadence): for a window that would
+    // otherwise show nothing until the first interval has passed
+    void readNow(Id id);
     Counts counts(Id id) const;
     Id meterPoll() const { return m_meterPoll; }
     Id statusPoll() const { return m_statusPoll; }

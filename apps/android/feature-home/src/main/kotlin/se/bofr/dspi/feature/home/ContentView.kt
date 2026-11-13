@@ -79,6 +79,7 @@ import se.bofr.dspi.feature.home.components.VolumeModeSelector
 import se.bofr.dspi.feature.home.components.homeMeterColor
 import se.bofr.dspi.feature.home.components.setSidebarVolumeMode
 import se.bofr.dspi.feature.home.components.sidebarVolumeMode
+import se.bofr.dspi.feature.home.system.SystemStatusChip
 import se.bofr.dspi.ui.ChannelPalette
 import se.bofr.dspi.ui.CpuMeter
 import se.bofr.dspi.ui.CpuSection
@@ -159,6 +160,8 @@ fun ContentView(bridge: DspiBridge, onNavigate: (String) -> Unit, modifier: Modi
                     VerticalRule()
                     Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState())) {
                         GraphHeader(bridge, onNavigate, onTools = { onNavigate(DspiRoutes.TOOLS) })
+                        // -- WP LKUI1 -- on a hub with an audio link: its status, a tap to the System screen
+                        SystemStatusChip(bridge, onNavigate, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp))
                         val selectedChannel = graphChannels(bridge, selection).firstOrNull()
                         val graphSelection = remember(selectedChannel) { PeqGraphSelection() }
                         val tabState = rememberSaveable(selectedChannel) { mutableStateOf(OutputChannelTab.PEQ) }
@@ -217,6 +220,8 @@ fun ContentView(bridge: DspiBridge, onNavigate: (String) -> Unit, modifier: Modi
                         HomeControls(bridge, homeVm, prefs, volumeFirst = true)
                         OutputMeters(bridge, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 4.dp))
                         HealthLineRow(bridge, Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 12.dp))
+                        // -- WP LKUI1 -- on a hub with an audio link: its status, a tap to the System screen
+                        SystemStatusChip(bridge, onNavigate, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
                         HorizontalRule(Modifier.fillMaxWidth())
                     }
                     GraphHeader(bridge, onNavigate, showConnection = false)

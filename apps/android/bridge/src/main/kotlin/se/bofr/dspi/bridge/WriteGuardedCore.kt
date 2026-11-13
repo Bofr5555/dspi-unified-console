@@ -6,6 +6,9 @@ import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.FilterParams
 import se.bofr.dspi.core.HistoryMove
 import se.bofr.dspi.core.I2cConfig
+import se.bofr.dspi.core.LinkSceneRecall
+import se.bofr.dspi.core.LinkSystemAlign
+import se.bofr.dspi.core.LinkSystemEdits
 import se.bofr.dspi.core.SiggenConfig
 import se.bofr.dspi.core.UartConfig
 import se.bofr.dspi.core.VregDemoEvent
@@ -83,6 +86,23 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
     override fun resetAudioLinkStats() {
         guard("resetAudioLinkStats")
         return inner.resetAudioLinkStats()
+    }
+
+    // -- WP LKUI1 -- the hub's audio link installation: saving the model, writing the
+    // link delays and recalling a scene change devices (the hub judges the role too)
+    override fun linkSystemSave(revision: Long, edits: LinkSystemEdits): Long {
+        guard("linkSystemSave")
+        return inner.linkSystemSave(revision, edits)
+    }
+
+    override fun linkSystemAlign(): LinkSystemAlign {
+        guard("linkSystemAlign")
+        return inner.linkSystemAlign()
+    }
+
+    override fun linkSystemRecall(scene: String): LinkSceneRecall {
+        guard("linkSystemRecall")
+        return inner.linkSystemRecall(scene)
     }
 
     // Review w1d (integration with CG11, CG14): the calibration flow's writes.
@@ -725,7 +745,11 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "setAudioLinkSlots",
             "setAudioLinkPhase",
             "applyAtFrame",
-            "resetAudioLinkStats"
+            "resetAudioLinkStats",
+            // -- WP LKUI1 --
+            "linkSystemSave",
+            "linkSystemAlign",
+            "linkSystemRecall"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -873,6 +897,8 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "fetchClockDiag",
             "linkRetryNow",
             "linkSetUrl",
+            // -- WP LKUI1 -- the hub's audio link installation, a read
+            "linkSystemView",
             "rawGet",
             "rtaGetOwnership",
             "rtaTakeControl",

@@ -97,7 +97,8 @@ fn wp_sw1_the_calls_against_the_fake_link() {
     let info = c.audio_link_info().unwrap().unwrap();
     assert_eq!((info.role.as_str(), info.role_code), ("receiver", 1));
     assert!(info.link_input && info.state_events && info.apply_events);
-    assert_eq!((info.d_local_min, info.d_local_max), (112, 1024));
+    // The firmware's range at the default 4 ms option (WP FIXS1).
+    assert_eq!((info.d_local_min, info.d_local_max), (257, 399));
     assert_eq!(c.fetch_audio_link_info().unwrap(), info);
 
     let s = c.fetch_audio_link_status().unwrap();
@@ -115,11 +116,11 @@ fn wp_sw1_the_calls_against_the_fake_link() {
         .unwrap();
     assert_eq!(c.fetch_audio_link_slots().unwrap()[..3], [4, 5, 255]);
 
-    c.set_audio_link_phase(1, 256, -2).unwrap();
+    c.set_audio_link_phase(1, 320, -2).unwrap();
     let ph = c.fetch_audio_link_phase().unwrap();
     assert_eq!(
         (ph.mode, ph.d_local, ph.hops_offset, ph.state),
-        (1, 256, -2, 2)
+        (1, 320, -2, 2)
     );
     // Out of the unit's range: the device refuses.
     assert!(matches!(
@@ -326,19 +327,19 @@ mod tests_fixup_sw1 {
         let p = link(true);
         let c = &p.core;
         c.set_audio_link_slots(vec![3; 8]).unwrap();
-        c.set_audio_link_phase(1, 176, -2).unwrap();
+        c.set_audio_link_phase(1, 320, -2).unwrap();
         let e = c.history(1).pop().unwrap();
         assert_eq!(e.path, "ext.audio_link.phase");
         assert!(!e.undoable);
-        // [mode, d_local LE, hops LE]: 128 (the fake's default) to 176/-2.
-        assert_eq!(e.before, Some(ParamValue::Bytes(vec![1, 128, 0, 0, 0])));
-        assert_eq!(e.after, ParamValue::Bytes(vec![1, 176, 0, 0xFE, 0xFF]));
+        // [mode, d_local LE, hops LE]: 300 (the fake's start, WP FIXS1) to 320/-2.
+        assert_eq!(e.before, Some(ParamValue::Bytes(vec![1, 44, 1, 0, 0])));
+        assert_eq!(e.after, ParamValue::Bytes(vec![1, 64, 1, 0xFE, 0xFF]));
         // Undo steps over the phase (the delay stays) and undoes the slots.
         let m = c.undo().unwrap();
         assert_eq!(m.skipped.len(), 1);
         assert_eq!(m.skipped[0].path, "ext.audio_link.phase");
         assert_eq!(m.entry.unwrap().path, "ext.audio_link.slots");
-        assert_eq!(c.fetch_audio_link_phase().unwrap().d_local, 176);
+        assert_eq!(c.fetch_audio_link_phase().unwrap().d_local, 320);
         assert_eq!(
             c.fetch_audio_link_slots().unwrap(),
             (0..8).collect::<Vec<u8>>()

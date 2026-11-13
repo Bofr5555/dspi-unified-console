@@ -1027,6 +1027,27 @@ interface DspiBridge {
      * The app turns it off when no UI is visible (PLAN §5.3).
      */
     fun setUiVisible(visible: Boolean)
+
+    // ═══ The hub's audio link installation (-- WP LKUI1 --) ═══════════════
+    // The System screen's calls (dspi-core link/system.rs): they ask the hub
+    // over the network, off the FFI thread. Off a hub they throw
+    // [se.bofr.dspi.core.DspiException.Disconnected]; the hub's refusals are
+    // [se.bofr.dspi.core.DspiException.Link] with its code (`denied`,
+    // `conflict`, ...) and words. Saving, writing the link delays and
+    // recalling a scene are writes (G1: refused while writes are not allowed).
+
+    /** The installation as the System screen shows it. */
+    suspend fun linkSystemView(): se.bofr.dspi.core.LinkSystemView = throw se.bofr.dspi.core.DspiException.Disconnected()
+
+    /** Save Clock-and-links edits made on the view of [revision]; the new revision. */
+    suspend fun linkSystemSave(revision: Long, edits: se.bofr.dspi.core.LinkSystemEdits): Long =
+        throw se.bofr.dspi.core.DspiException.Disconnected()
+
+    /** Write the link delays the system delay asks for to every unit. */
+    suspend fun linkSystemAlign(): se.bofr.dspi.core.LinkSystemAlign = throw se.bofr.dspi.core.DspiException.Disconnected()
+
+    /** Recall scene [scene] (an id from the view). */
+    suspend fun linkSystemRecall(scene: String): se.bofr.dspi.core.LinkSceneRecall = throw se.bofr.dspi.core.DspiException.Disconnected()
 }
 
 /** Default [DspiBridge.deviceGeneration] for implementations without a device (test doubles). */

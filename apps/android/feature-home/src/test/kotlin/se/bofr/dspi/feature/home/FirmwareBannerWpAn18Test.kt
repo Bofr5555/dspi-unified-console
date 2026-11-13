@@ -41,13 +41,13 @@ class FirmwareBannerWpAn18Test {
         val k340 = fixture("k340_v32")
         val beta = bridgeFor(k340.copy(fwBeta = 5))
         assertEquals(DspiConstants.COMPAT_OK, beta.compat)
-        assertEquals("This device runs firmware 1.1.6-beta5; DSPi Console expects 1.1.6.", HomeModel.firmwareBannerMessage(beta))
+        assertEquals("This device runs firmware 1.1.6-beta5; uConsole for DSPi expects 1.1.6.", HomeModel.firmwareBannerMessage(beta))
         assertEquals("Update...", HomeModel.firmwareBannerButton(beta.compat, beta.firmwareVersion))
 
         val newer = bridgeFor(k340.copy(fwPatch = 7))
         assertEquals(DspiConstants.COMPAT_OK, newer.compat)
         assertEquals(
-            "This device runs firmware 1.1.7, which is newer than DSPi Console 1.1.6. Some of its features may not be shown.",
+            "This device runs firmware 1.1.7, which is newer than uConsole for DSPi 1.1.6. Some of its features may not be shown.",
             HomeModel.firmwareBannerMessage(newer)
         )
         assertEquals("Details...", HomeModel.firmwareBannerButton(newer.compat, newer.firmwareVersion))

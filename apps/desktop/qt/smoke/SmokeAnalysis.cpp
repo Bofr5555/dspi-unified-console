@@ -25,8 +25,10 @@
 
 #include <QClipboard>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QGuiApplication>
 #include <QQuickItem>
+#include <QtQml/QQmlApplicationEngine>
 #include <QQuickWindow>
 #include <QRegularExpression>
 #include <QTest>
@@ -329,6 +331,57 @@ void statsSection(SmokeDriver &d) {
     d.spin(400);
     d.check("qp9: closed, it reads nothing", poller->counts(stats->fastPoll()).posted == fastAfter
                                                  && poller->counts(stats->slowPoll()).posted == slowAfter);
+
+    // -- WP FIXS1 -- SHOTS1: after a reconnect, a window grabbed before the
+    // next 2 s read showed 0.0 MHz / 0.00 V and lost its ring health and LG
+    // Sound Sync. The same device back keeps what it last said.
+    {
+        const QVariantMap system = stats->system();
+        const int ringRows = int(stats->ringHealth().size());
+        const int lgRows = int(stats->lgSoundSync().size());
+        const int slotRows = int(stats->starvation().value(QStringLiteral("slots")).toList().size());
+        DeviceModel *device = d.app().device;
+        d.app().core->worker()->post([](FfiCore *c) { dspi_disconnect(c); });
+        device->refresh();
+        d.waitFor(3000, [&] { return !device->connected(); });
+        device->openDemo();
+        d.check("FIXS1: the demo is back", d.waitFor(10000, [&] { return device->connected(); }) && d.waitIdle());
+        // Closed, nothing reads: what shows is what was kept
+        std::printf("smoke: FIXS1 stats after a reconnect, before a read: %s, %s; ring %d/%d, LG %d/%d, slots %d/%d\n",
+                    qPrintable(stats->system().value(QStringLiteral("clock")).toString()),
+                    qPrintable(stats->system().value(QStringLiteral("coreVoltage")).toString()), int(stats->ringHealth().size()), ringRows,
+                    int(stats->lgSoundSync().size()), lgRows, int(stats->starvation().value(QStringLiteral("slots")).toList().size()), slotRows);
+        d.check("FIXS1: the same device back keeps its numbers and sections",
+                stats->system() == system && int(stats->ringHealth().size()) == ringRows && int(stats->lgSoundSync().size()) == lgRows
+                    && int(stats->starvation().value(QStringLiteral("slots")).toList().size()) == slotRows);
+        // -- fixup fs1 (F2) -- opened, it reads at once, not after its 2 s interval
+        const int read = poller->counts(stats->slowPoll()).completed;
+        QElapsedTimer opened;
+        opened.start();
+        Qp9Window again(d, "tools.stats");
+        const bool soon = d.waitFor(1500, [&] { return poller->counts(stats->slowPoll()).completed > read; });
+        std::printf("smoke: fixup fs1: first read %lld ms after the window opened\n", qint64(opened.elapsed()));
+        d.check("fixup fs1: the window reads at once when shown", soon && opened.elapsed() < 1500);
+        d.check("FIXS1: no zero shown as a reading", stats->system().value(QStringLiteral("clock")).toString().endsWith(QLatin1String(" MHz"))
+                                                        && !stats->system().value(QStringLiteral("clock")).toString().startsWith(QLatin1String("0.0 ")));
+        if (again.w) again.w->close();
+        d.spin(100);
+        // Nothing read yet (a controller without polls): dashes, not zeros
+        const AppContext bare{ d.app().core, d.app().device, d.app().shell, d.app().engine, nullptr };
+        StatsController fresh(bare);
+        const QVariantMap none = fresh.system();
+        d.check("FIXS1: before a read, a dash for each value",
+                none.value(QStringLiteral("clock")).toString() == QLatin1String("-")
+                    && none.value(QStringLiteral("coreVoltage")).toString() == QLatin1String("-")
+                    && none.value(QStringLiteral("sampleRate")).toString() == QLatin1String("-")
+                    && none.value(QStringLiteral("temperature")).toString() == QLatin1String("-")
+                    && fresh.counters().value(QStringLiteral("spdif")).toMap().value(QStringLiteral("over")).toLongLong() == -1
+                    && !fresh.starvation().value(QStringLiteral("known")).toBool());
+        // -- fixup fs1 (F3) -- a counter back at 0 (a reboot behind a reconnect): 0, never a wrapped delta
+        d.check("fixup fs1: the starvation delta of a reset counter is 0",
+                StatsController::starvationDelta(true, 5, 0) == 0 && StatsController::starvationDelta(true, 5, 7) == 2
+                    && StatsController::starvationDelta(false, 0, 9) == 0 && StatsController::starvationDelta(true, 5, 5) == 0);
+    }
 }
 
 // ---------------------------------------------------------------- analyser

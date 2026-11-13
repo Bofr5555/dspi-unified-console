@@ -14,6 +14,7 @@ import se.bofr.dspi.core.DspiConstants
 import se.bofr.dspi.core.DspiCoreApi
 import se.bofr.dspi.core.FilterParams
 import se.bofr.dspi.core.FlashStatus
+import se.bofr.dspi.core.LinkSystemEdits
 import se.bofr.dspi.core.PinConfigStatus
 import se.bofr.dspi.core.PresetStatus
 import se.bofr.dspi.fake.FakeDspiCore
@@ -37,6 +38,10 @@ class ReadOnlyTest {
         fun hw() = ops.confirm(DangerousOp.HARDWARE_APPLY)
         val out = 2 // app id of output 1
         return listOf<Pair<String, suspend () -> Unit>>(
+            // -- WP LKUI1 -- the hub's audio link installation (they throw once refused)
+            "linkSystemSave" to { runCatching { b.linkSystemSave(1, LinkSystemEdits(false, null, emptyList(), emptyList())) } },
+            "linkSystemAlign" to { runCatching { b.linkSystemAlign() } },
+            "linkSystemRecall" to { runCatching { b.linkSystemRecall("evening") } },
             "setPreamp" to { b.setPreamp(-1f) },
             "sendPreampToDevice" to { b.sendPreampToDevice(-1f) },
             "setInputPreamp" to { b.setInputPreamp(0, 1f) },
@@ -352,6 +357,8 @@ class ReadOnlyTest {
         /** Members that read, are local to the app, manage the connection, or are exempt (enterBootloader). */
         val READ_MEMBERS =
             setOf(
+                // -- WP LKUI1 --
+                "linkSystemView",
                 "attachDevice", "detachDevice", "attachRemote", "setRemoteReadOnly", "setRemoteInterrupted",
                 "scanDevices", "selectDevice", "disconnectDevice", "reconnect", "rescan",
                 "setUiVisible", "beginOutputEdit", "canPaste", "canSetAllBypass", "copyChannel", "channelBands", "channelColor",

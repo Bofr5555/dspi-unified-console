@@ -73,12 +73,13 @@ fn wp_sw1_a_receiver_lists_and_answers_the_link() {
     let f = u32::from_le_bytes(f.try_into().unwrap());
     assert_eq!(f & 0b1100, 0b1100);
 
-    // 2.8.1's example bytes.
+    // 2.8.1's example bytes, but the firmware's D_local range for the
+    // default 4 ms option, 257..399 (WP FIXS1).
     let info = get(&mut d, 0x8000, 32).unwrap();
     assert_eq!(
         info[..20],
         [
-            1, 1, 7, 1, 0x40, 8, 0, 0, 0, 0xff, 0, 0, 0x23, 0, 0, 0, 0x70, 0, 0, 4
+            1, 1, 7, 1, 0x40, 8, 0, 0, 0, 0xff, 0, 0, 0x23, 0, 0, 0, 0x01, 1, 0x8f, 1
         ]
     );
     let s = LinkStatus::decode(&get(&mut d, 0x8001, 52).unwrap()).unwrap();
@@ -113,7 +114,7 @@ fn wp_sw1_a_receiver_lists_and_answers_the_link() {
         [1, 0, 1, 0xFF, 21, 0xFF, 1, 0]
     );
 
-    // Phase: within 112..1024 and +-64; OUT flags must be 0.
+    // Phase: within 257..399 and +-64; OUT flags must be 0.
     let ph = |mode, d_local, hops_offset, flags| {
         LinkPhase {
             mode,
@@ -124,14 +125,15 @@ fn wp_sw1_a_receiver_lists_and_answers_the_link() {
         }
         .encode()
     };
-    set(&mut d, 0x8004, &ph(0, 112, 0, 0)).unwrap();
+    set(&mut d, 0x8004, &ph(0, 257, 0, 0)).unwrap();
     let p = LinkPhase::decode(&get(&mut d, 0x8004, 8).unwrap()).unwrap();
-    assert_eq!((p.mode, p.d_local, p.state), (0, 112, 0));
-    assert!(set(&mut d, 0x8004, &ph(2, 128, 0, 0)).is_err());
-    assert!(set(&mut d, 0x8004, &ph(1, 111, 0, 0)).is_err());
-    assert!(set(&mut d, 0x8004, &ph(1, 128, 65, 0)).is_err());
-    assert!(set(&mut d, 0x8004, &ph(1, 128, 0, 1)).is_err());
-    set(&mut d, 0x8004, &ph(1, 128, 0, 0)).unwrap();
+    assert_eq!((p.mode, p.d_local, p.state), (0, 257, 0));
+    assert!(set(&mut d, 0x8004, &ph(2, 300, 0, 0)).is_err());
+    assert!(set(&mut d, 0x8004, &ph(1, 256, 0, 0)).is_err());
+    assert!(set(&mut d, 0x8004, &ph(1, 400, 0, 0)).is_err());
+    assert!(set(&mut d, 0x8004, &ph(1, 300, 65, 0)).is_err());
+    assert!(set(&mut d, 0x8004, &ph(1, 300, 0, 1)).is_err());
+    set(&mut d, 0x8004, &ph(1, 300, 0, 0)).unwrap();
     assert_eq!(get(&mut d, 0x8004, 8).unwrap()[7], 2);
 
     // Stats reset takes exactly [1].
@@ -208,7 +210,7 @@ fn wp_sw1_loss_lock_and_reanchor_send_events() {
     // A new delay while phase-locked re-anchors; the same one does nothing.
     let p = LinkPhase {
         mode: 1,
-        d_local: 256,
+        d_local: 320,
         hops_offset: 0,
         flags: 0,
         state: 0,
@@ -365,4 +367,60 @@ fn wp_sw1_fixup_rx_pin_follows_the_config_and_disable_from_holdover() {
             (LinkState::Off, LinkEventReason::Disabled)
         ]
     );
+}
+
+// -- WP FIXS1 --
+#[test]
+fn wp_fixs1_the_delay_range_follows_the_latency_option_as_the_firmware() {
+    let mut d = device(true);
+    let range = |d: &mut FakeDevice| {
+        let i = LinkInfo::decode(&get(d, 0x8000, 32).unwrap()).unwrap();
+        (i.d_local_min, i.d_local_max)
+    };
+    // Spec 2.8.1 at 48 kHz: the default 4 ms option, then the 1 ms one.
+    assert_eq!(range(&mut d), (257, 399));
+    let p = LinkPhase::decode(&get(&mut d, 0x8004, 8).unwrap()).unwrap();
+    assert_eq!((p.d_local, p.flags, p.state), (300, 0, 2), "starts inside");
+    d.control_out(op::REQ_OUTPUT_LATENCY, 0, &[2]).unwrap();
+    assert_eq!(range(&mut d), (81, 431));
+    set(&mut d, 0x8004, &[1, 0, 81, 0, 0, 0, 0, 0]).unwrap();
+    // Back to 4 ms: 81 is now below the minimum, said and free (2.8.5).
+    d.control_out(op::REQ_OUTPUT_LATENCY, 0, &[5]).unwrap();
+    let p = LinkPhase::decode(&get(&mut d, 0x8004, 8).unwrap()).unwrap();
+    assert_eq!(
+        (p.d_local, p.flags, p.state),
+        (81, alink::PHASE_FLAG_D_BELOW_MIN, 0)
+    );
+    assert_eq!(d_local_limits((2000, 1000)), (161, 399));
+}
+
+#[test]
+fn wp_fixs1_phase_error_small_when_locked_growing_in_holdover() {
+    let mut d = device(true);
+    let err = |d: &mut FakeDevice| {
+        LinkStatus::decode(&get(d, 0x8001, 52).unwrap())
+            .unwrap()
+            .phase_error_frames
+    };
+    for _ in 0..3 {
+        let e = err(&mut d);
+        assert!((0.01..=0.05).contains(&e), "locked: {e}");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    // Its curve: slow (a 30 s period) and never zero.
+    let curve: Vec<f32> = (0..300)
+        .map(|t| locked_phase_error(t as f32 * 0.1))
+        .collect();
+    assert!(curve.iter().all(|e| (0.0099..=0.0501).contains(e)));
+    assert!(curve.windows(2).all(|w| (w[1] - w[0]).abs() < 0.001));
+    let remote = d.remote();
+    assert!(remote.link_sim(LINK_SIM_LOSE));
+    let e0 = err(&mut d);
+    std::thread::sleep(Duration::from_millis(50));
+    let e1 = err(&mut d);
+    std::thread::sleep(Duration::from_millis(50));
+    let e2 = err(&mut d);
+    assert!(e0 < e1 && e1 < e2, "holdover grows: {e0} {e1} {e2}");
+    assert!(remote.link_sim(LINK_SIM_LOCK));
+    assert!((0.01..=0.05).contains(&err(&mut d)));
 }

@@ -5187,6 +5187,10 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>System…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Getting Started…</source>
         <translation type="unfinished"></translation>
     </message>
@@ -9406,6 +9410,33 @@ This wiring is a board-level setting: it is stored on the device, survives prese
     </message>
 </context>
 <context>
+    <name>SystemController</name>
+    <message>
+        <source>The hub did it, but its answer was too long to show. The view is read again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This DSPi is read only on this console (its firmware is not this version&apos;s).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The hub did not answer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: the hub did not answer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 was refused: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Saved on the hub.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>SystemIntegration</name>
     <message>
         <source>Could not remove %1.</source>
@@ -9437,6 +9468,247 @@ This wiring is a board-level setting: it is stored on the device, survives prese
     </message>
     <message>
         <source>no lock</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SystemStatusStrip</name>
+    <message>
+        <source>Scene: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>System mute on</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <source>%n alarm(s)</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>System…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open the System window</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SystemWindow</name>
+    <message>
+        <source>System</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 ms</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Admin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Control</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Viewer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open a DSPi on a hub with an audio link to see its installation here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Role on the hub: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>(acknowledged)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scenes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recall %1; it sets the system mute</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recall %1; it clears the system mute</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recall %1 on every unit it names</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 · %2: %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Units</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Role</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Audio link</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Link delay</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Frames, with ms beside them (d_local)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Link delay range</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Frames (d_local_min to d_local_max)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hop offset</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Frames (hops_offset)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Phase error</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1, pending</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The link delay the system delay asks for is not written to this unit yet (unit: %1 frames, hop offset %2)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>+%1 frames</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clock and links</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 This part is read only.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>System delay</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>D: every unit&apos;s link delay is worked out from it</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Automatic</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>System delay in frames</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>frames</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>In use: %1 frames (%2)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lip sync, %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Model&apos;s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lip sync of %1 in µs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>µs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measured latency, %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measured latency of %1 in µs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>µs; empty: the output latency counts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The installation changed on the hub while you edited it. Save is withdrawn: reload it and make your changes again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save the changes on the hub</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reload</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Revert</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Align link delays…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Align every unit: write the link delays the system delay asks for</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Align link delays?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Every unit restarts its outputs in step with a short silence (2 to 6 ms).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Align</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

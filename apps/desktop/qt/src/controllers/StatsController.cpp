@@ -75,7 +75,8 @@ StatsController::Slow StatsController::readSlow(FfiCore *c) {
         for (int i = 0; i < 4; ++i) dspi_fetch_stat(c, uint16_t(STAT_STARVATION_FIRST + i), &s.starvation[i]);
     }
     const QJsonObject ring = json(readSized([c](char *b, uint32_t n) { return dspi_fetch_ring_health(c, b, n); }));
-    if (ring.value(QLatin1String("ok")).toBool() && ring.contains(QLatin1String("targetFrames"))) {
+    s.ringRead = ring.value(QLatin1String("ok")).toBool();
+    if (s.ringRead && ring.contains(QLatin1String("targetFrames"))) {
         s.ringPresent = true;
         s.ring = ring.toVariantMap();
     }
@@ -152,10 +153,21 @@ void StatsController::applySlow(const Slow &s) {
     Slow next = s;
     if (m_haveSlow) {
         for (int i = 0; i < kStatCount; ++i)
-            if (!s.statOk[i]) next.stat[i] = m_slow.stat[i];
+            if (!s.statOk[i]) {
+                next.stat[i] = m_slow.stat[i];
+                next.statOk[i] = m_slow.statOk[i];
+            }
+        if (next.stat[STAT_STARVATION_TOTAL] > 0 && !s.statOk[STAT_STARVATION_TOTAL])
+            std::copy(std::begin(m_slow.starvation), std::end(m_slow.starvation), std::begin(next.starvation));
+        // -- WP FIXS1 -- a ring-health read that failed keeps its section
+        if (!s.ringRead) {
+            next.ringRead = m_slow.ringRead;
+            next.ringPresent = m_slow.ringPresent;
+            next.ring = m_slow.ring;
+        }
     }
     const uint32_t total = next.stat[STAT_STARVATION_TOTAL];
-    m_delta = m_haveTotal ? total - m_lastTotal : 0;   // wraps as the counter does
+    m_delta = starvationDelta(m_haveTotal, m_lastTotal, total);
     if (m_delta > 0) {
         m_eventBefore = m_eventAt;
         m_eventAt = QDateTime::currentMSecsSinceEpoch();
@@ -163,12 +175,19 @@ void StatsController::applySlow(const Slow &s) {
     m_lastTotal = total;
     m_haveTotal = true;
     m_lgSeen = m_lgSeen || s.lgOk;
-    m_targetFrames = s.ringPresent ? s.ring.value(QStringLiteral("targetFrames")).toInt() : 0;
-    m_batchFrames = s.ringPresent ? s.ring.value(QStringLiteral("batchFrames")).toInt() : 0;
+    m_targetFrames = next.ringPresent ? next.ring.value(QStringLiteral("targetFrames")).toInt() : 0;
+    m_batchFrames = next.ringPresent ? next.ring.value(QStringLiteral("batchFrames")).toInt() : 0;
     m_clockDiag = s.clockDiag;
     m_slow = next;
     m_haveSlow = true;
     emit slowChanged();
+}
+
+// -- fixup fs1 (F3) -- a counter lower than before was reset (a reboot or a
+// firmware update behind a reconnect of the same device): a new base, and 0
+// for this read rather than a wrapped difference
+uint32_t StatsController::starvationDelta(bool have, uint32_t last, uint32_t total) {
+    return have && total >= last ? total - last : 0;
 }
 
 void StatsController::applyFast(const Fast &f) {
@@ -201,6 +220,17 @@ void StatsController::onSnapshot() {
         if (m_seenConnect) ++m_connects;
         m_seenConnect = true;
         m_generation = snap.generation;
+        // -- WP FIXS1 -- the same device back: what it last said stays until
+        // its next read (SHOTS1: a reset here showed zeros until then)
+        const QString serial = m_ctx.device->serial().trimmed();
+        const bool same = !serial.isEmpty() && serial == m_serial;
+        m_serial = serial;
+        if (same) {
+            emit slowChanged();
+            return;
+        }
+        // -- fixup fs1 (F2) -- another device while the window shows: read it now
+        if (m_shown && m_ctx.poller) m_ctx.poller->readNow(m_slowPoll);
         // Another device: its sections and counters start over
         m_haveSlow = false;
         m_haveTotal = false;
@@ -225,6 +255,8 @@ void StatsController::updatePolls() {
     if (!m_ctx.poller) return;
     m_ctx.poller->setEnabled(m_slowPoll, m_shown);
     m_ctx.poller->setEnabled(m_fastPoll, m_shown);
+    // -- fixup fs1 (F2) -- values at once when the window opens, not after 2 s
+    if (m_shown) m_ctx.poller->readNow(m_slowPoll);
 }
 
 void StatsController::resetBufferWatermarks() {
@@ -256,22 +288,28 @@ QVariantMap StatsController::device() const {
 
 QVariantMap StatsController::system() const {
     const auto &v = m_slow.stat;
-    return { { QStringLiteral("clock"), QStringLiteral("%1 MHz").arg(v[STAT_CLOCK_HZ] / 1e6, 0, 'f', 1) },
-             { QStringLiteral("coreVoltage"), QStringLiteral("%1 V").arg(v[STAT_CORE_MV] / 1000.0, 0, 'f', 2) },
-             { QStringLiteral("sampleRate"), khz(v[STAT_SAMPLE_RATE]) },
+    // -- WP FIXS1 -- a value not read yet is a dash, never a zero
+    const auto known = [this](int which, const QString &text) { return m_slow.statOk[which] ? text : dash(); };
+    return { { QStringLiteral("clock"), known(STAT_CLOCK_HZ, QStringLiteral("%1 MHz").arg(v[STAT_CLOCK_HZ] / 1e6, 0, 'f', 1)) },
+             { QStringLiteral("coreVoltage"),
+               known(STAT_CORE_MV, QStringLiteral("%1 V").arg(v[STAT_CORE_MV] / 1000.0, 0, 'f', 2)) },
+             { QStringLiteral("sampleRate"), known(STAT_SAMPLE_RATE, khz(v[STAT_SAMPLE_RATE])) },
              { QStringLiteral("temperature"),
-               QStringLiteral("%1 °C").arg(int32_t(v[STAT_TEMPERATURE]) / 100.0, 0, 'f', 1) } };
+               known(STAT_TEMPERATURE, QStringLiteral("%1 °C").arg(int32_t(v[STAT_TEMPERATURE]) / 100.0, 0, 'f', 1)) } };
 }
 
 QVariantMap StatsController::counters() const {
     const auto &v = m_slow.stat;
+    const auto &ok = m_slow.statOk;
+    // -1: not read yet, so not shown (WP FIXS1)
+    const auto count = [&](int which) { return ok[which] ? qint64(v[which]) : qint64(-1); };
     const auto pair = [](qint64 over, qint64 under) {
         return QVariantMap{ { QStringLiteral("over"), over }, { QStringLiteral("under"), under } };
     };
-    return { { QStringLiteral("usbRing"), pair(v[STAT_USB_RING_OVERRUNS], -1) },
-             { QStringLiteral("spdif"), pair(v[STAT_SPDIF_OVERRUNS], v[STAT_SPDIF_UNDERRUNS]) },
-             { QStringLiteral("pdmRing"), pair(v[STAT_PDM_RING_OVERRUNS], v[STAT_PDM_RING_UNDERRUNS]) },
-             { QStringLiteral("pdmDma"), pair(v[STAT_PDM_DMA_OVERRUNS], v[STAT_PDM_DMA_UNDERRUNS]) } };
+    return { { QStringLiteral("usbRing"), pair(count(STAT_USB_RING_OVERRUNS), -1) },
+             { QStringLiteral("spdif"), pair(count(STAT_SPDIF_OVERRUNS), count(STAT_SPDIF_UNDERRUNS)) },
+             { QStringLiteral("pdmRing"), pair(count(STAT_PDM_RING_OVERRUNS), count(STAT_PDM_RING_UNDERRUNS)) },
+             { QStringLiteral("pdmDma"), pair(count(STAT_PDM_DMA_OVERRUNS), count(STAT_PDM_DMA_UNDERRUNS)) } };
 }
 
 QVariantMap StatsController::starvation() const {
@@ -282,7 +320,8 @@ QVariantMap StatsController::starvation() const {
                                                                    .arg(2 * i + 1)
                                                                    .arg(2 * i + 2) },
                                   { QStringLiteral("count"), qint64(m_slow.starvation[i]) } });
-    return { { QStringLiteral("total"), qint64(m_slow.stat[STAT_STARVATION_TOTAL]) },
+    return { { QStringLiteral("known"), m_slow.statOk[STAT_STARVATION_TOTAL] },
+             { QStringLiteral("total"), qint64(m_slow.stat[STAT_STARVATION_TOTAL]) },
              { QStringLiteral("delta"), qint64(m_delta) },
              { QStringLiteral("slots"), perSlot },
              { QStringLiteral("lastEventMs"), m_eventAt },

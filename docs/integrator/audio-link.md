@@ -149,9 +149,9 @@ nothing is written and the answer is `denied`, naming the op.
 
 | Code | Severity | Raised | Cleared |
 |---|---|---|---|
-| `link_lost` | critical | a unit not locked at a read, or an `0xE1` with a loss reason | locked again |
+| `link_lost` | critical | a unit not locked at a read, or an `0xE1` with a loss reason. One loss is one alarm: its count is the unit's losses since it was raised. Another loss before it clears raises it again, acknowledged or not, with the new count | locked again |
 | `unit_offline` | critical | a unit of the model not attached | attached |
-| `link_errors` | warning | 16 or more bank errors, or a new loss, since the last read | a read without |
+| `link_errors` | warning | 16 or more CRC-16 errors within any 60 s of the hub's time. The growth between two reads is spread evenly over the time between them, so the rate decides, not how often clients read: 16 errors over four hours never alarm. A loss is `link_lost`'s | 60 s with no new error |
 | `reanchor` | warning | an `0xE1` `REANCHOR` the hub did not cause | acknowledged |
 | `delay_below_min` | critical | the unit's `D_BELOW_MIN` flag | the flag gone |
 | `system_muted` | warning | a sender's system mute seen set, at a read or a write | seen clear |
@@ -254,7 +254,10 @@ ignored with a log line and left in the file until a new one is set.
 - A periodic poll: alarms follow events and `system.status` reads. A client that
   shows the system calls `system.status` every few seconds.
 - The native clients' System view and "Clock and links" panel: the web console has
-  them (WP SW3, `apps/web/README.md`); Qt, Android and Swift follow per
-  `docs/UI-MODES.md`.
+  them (WP SW3, `apps/web/README.md`); Qt and Android have them over the core's
+  typed calls (WP LKUI1: `link_system_view`, `link_system_save` with the revision,
+  `link_system_align`, `link_system_recall`; C `dspi_link_system_*`), without the
+  slot matrix, link stats, trim scan, system mute toggle or alarm acknowledge
+  (`docs/PARITY.md` section 2.I). Swift is pending.
 - Resetting a unit's link stats through the hub: `EXT_LINK_STATS_RESET` is not a
   `system.*` request yet.

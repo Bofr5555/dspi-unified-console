@@ -661,14 +661,16 @@ export function sceneTaken(report: SceneReport): boolean {
  */
 export function sceneRefusal(name: string, report: SceneReport, pending: number | null, rateHz: number, now: Date): string {
   if (sceneTaken(report)) return "";
-  if (report.plan.path !== "superframe") return `${name} was refused by every unit; nothing changed.`;
+  // -- fixup lk1 -- a scene carrying the system mute that was not taken leaves it as it was
+  const mute = report.plan.systemMute != null ? " System mute unchanged." : "";
+  if (report.plan.path !== "superframe") return `${name} was refused by every unit; nothing changed.${mute}`;
   if (pending == null) {
-    return `${name} was refused: the sender takes one scene at a time and still holds one. Recall it again in a moment.`;
+    return `${name} was refused: the sender takes one scene at a time and still holds one. Recall it again in a moment.${mute}`;
   }
   const at = report.frameAfterWrites ?? report.plan.frame - report.plan.leadFrames;
   const ms = Math.max(0, Math.round(((pending - at) * 1000) / (rateHz || 48000)));
   const when = new Date(now.getTime() + ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  return `${name} was refused: a scene is already scheduled on the sender for link frame ${pending}, ${ms} ms after this recall (about ${when}). The sender takes one scene at a time; recall ${name} again after that.`;
+  return `${name} was refused: a scene is already scheduled on the sender for link frame ${pending}, ${ms} ms after this recall (about ${when}). The sender takes one scene at a time; recall ${name} again after that.${mute}`;
 }
 
 /** -- fixup sw3x -- an alignment write in the glossary's words: `phase` is the link delay, `slots` the link slots. */

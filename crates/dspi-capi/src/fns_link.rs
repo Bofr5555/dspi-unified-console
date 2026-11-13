@@ -535,6 +535,96 @@ pub(crate) mod link {
             copy_whole(&reply(info), buf, len)
         })
     }
+
+    // -- WP LKUI1 --
+    // ── The audio link's installation on the hub (`dspi_core::link::system`) ──
+
+    /// A record as the JSON object a reply carries.
+    fn record<T: serde::Serialize>(r: Result<T>) -> Result<Value> {
+        r.and_then(|v| {
+            serde_json::to_value(v).map_err(|e| DspiError::Io {
+                msg: format!("the reply could not be encoded: {e}"),
+            })
+        })
+    }
+
+    /// The audio link installation on the hub this session is on, for a System
+    /// screen: JSON {ok, revision, installed, role, mayEdit, mayRecall,
+    /// editNote, recallNote, systemDelayFrames, systemDelayMs, systemDelayAuto,
+    /// rateHz, lipSyncUs, units: [{id, name, serial, kind, role, room,
+    /// connected, state, stateWord, pending, linkDelayFrames, linkDelayMs,
+    /// unitLinkDelayFrames, linkDelayMin, linkDelayMax, hopOffset,
+    /// unitHopOffset, phaseErrorFrames, hops, hopDelayFrames, latencyUs,
+    /// measuredLatencyUs, alarms}], rooms: [{id, name, lipSyncUs}], scenes:
+    /// [{id, name, systemMute}], alarms: [{id, severity, subject, message,
+    /// state}], systemMute, pendingApplyFrame, locked, holdover, pending,
+    /// unitCount, summary, health, issues, stale}. Asks the hub (at most once
+    /// a second; sooner gives the last view with `stale`): keep it off a UI
+    /// thread, and give a buffer of 64 KiB, as a short one means asking again.
+    /// Returns the length needed; 0 for a panic.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn dspi_link_system_view(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
+        read(core, buf, len, |c| reply(record(c.link_system_view())))
+    }
+
+    /// Save the Clock-and-links edits made on the view of `revision`:
+    /// `edits_json` is {setSystemDelay, systemDelayFrames (null: automatic),
+    /// rooms: [{roomId, lipSyncUs}], units: [{unitId, measuredLatencyUs}]}.
+    /// Replies JSON {ok, revision} (the new one), or code `conflict` when the
+    /// installation changed on the hub meanwhile (nothing saved: reload),
+    /// `denied` for a role other than admin. Blocks. Returns the length
+    /// needed; see the module's rule on short buffers.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn dspi_link_system_save(
+        core: *mut FfiCore,
+        revision: u64,
+        edits_json: *const c_char,
+        buf: *mut c_char,
+        len: u32,
+    ) -> u32 {
+        act(core, buf, len, |c| {
+            let edits = serde_json::from_str(arg(edits_json, "edits_json")?).map_err(|e| {
+                DspiError::InvalidArgument {
+                    msg: format!("edits_json: {e}"),
+                }
+            })?;
+            c.link_system_save(revision, edits)
+                .map(|r| json!({ "revision": r }))
+        })
+    }
+
+    /// Write the link delays the system delay asks for to every unit (each
+    /// re-anchors with a short silence). Replies JSON {ok, applied, message,
+    /// writes: [{unit, what, result, resultWord, tone}]}. Admin only. Blocks.
+    /// Returns the length needed; see the module's rule on short buffers.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn dspi_link_system_align(
+        core: *mut FfiCore,
+        buf: *mut c_char,
+        len: u32,
+    ) -> u32 {
+        act(core, buf, len, |c| record(c.link_system_align()))
+    }
+
+    /// Recall scene `scene` (an id from the view). Replies JSON {ok, scene,
+    /// name, taken, frame, leadMs, onTime, heldFrame, message, writes: [{unit,
+    /// what, result, resultWord, tone}]}; `taken` false is a refusal the hub
+    /// took (the sender holds another scene), `message` says why. A role that
+    /// may not make one of its operations gets code `denied` with the hub's
+    /// words. Blocks. Returns the length needed; see the module's rule on
+    /// short buffers.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn dspi_link_system_recall(
+        core: *mut FfiCore,
+        scene: *const c_char,
+        buf: *mut c_char,
+        len: u32,
+    ) -> u32 {
+        act(core, buf, len, |c| {
+            let scene = arg(scene, "scene")?.to_owned();
+            record(c.link_system_recall(scene))
+        })
+    }
 }
 
 #[cfg(feature = "midir")]
@@ -610,3 +700,9 @@ pub(crate) mod midi {
 #[path = "fns_link/tests_wp_cg1.rs"]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_cg1;
+
+// -- WP LKUI1 --
+#[cfg(test)]
+#[path = "fns_link/tests_wp_lkui1.rs"]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_lkui1;

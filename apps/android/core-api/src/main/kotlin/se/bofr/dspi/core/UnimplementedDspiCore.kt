@@ -278,6 +278,14 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun linkSetUrl(url: String): Unit = throw NotImplementedError("link_set_url")
 
+    override fun linkSystemView(): LinkSystemView = throw NotImplementedError("link_system_view")
+
+    override fun linkSystemSave(revision: Long, edits: LinkSystemEdits): Long = throw NotImplementedError("link_system_save")
+
+    override fun linkSystemAlign(): LinkSystemAlign = throw NotImplementedError("link_system_align")
+
+    override fun linkSystemRecall(scene: String): LinkSceneRecall = throw NotImplementedError("link_system_recall")
+
     override fun monitorRead(afterId: Long): MonitorBatch = throw NotImplementedError("monitor_read")
 
     override fun monitorClear(): Unit = throw NotImplementedError("monitor_clear")

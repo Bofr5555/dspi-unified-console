@@ -2615,6 +2615,54 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func linkStatus()  -> LinkStatus
     
     /**
+     * Write the link delays and hop offsets the system delay asks for to
+     * every unit (`system.align` with `apply`). Each unit re-anchors: a
+     * short silence (2 to 6 ms). Admin only. Blocks while the hub writes
+     * every unit.
+     *
+     * Errors: as [`Self::link_system_save`], without `conflict`.
+     */
+    func linkSystemAlign() throws  -> LinkSystemAlign
+    
+    /**
+     * Recall scene `scene` (an id from the view) on every unit it names
+     * (`system.scene.apply`). A recall the hub took but every device
+     * refused (a sender holds one scene at a time) is answered with
+     * `taken` false and the words to show, naming the frame it holds.
+     * Control or admin.
+     *
+     * Errors: [`DspiError::Link`] `denied` when the role may not make one of
+     * the scene's operations (the hub's words name it), `bad_request` for a
+     * scene the model does not have; [`DspiError::Disconnected`].
+     */
+    func linkSystemRecall(scene: String) throws  -> LinkSceneRecall
+    
+    /**
+     * Save the "Clock and links" edits made on the view of `revision`, as
+     * one `system.set` the hub takes only while its model is still at that
+     * revision. Returns the new revision. Admin only.
+     *
+     * Errors: [`DspiError::Link`] `conflict` when the installation changed on
+     * the hub meanwhile (nothing is saved; read the view again and edit
+     * again), `denied` for another role, `bad_request` for values the hub
+     * refuses, with its words; [`DspiError::Disconnected`] with no session.
+     */
+    func linkSystemSave(revision: UInt64, edits: LinkSystemEdits) throws  -> UInt64
+    
+    /**
+     * The audio link's installation on the hub this session is on: its
+     * elements with their link state, the rooms, the scenes, alarms and a
+     * one-line summary. Reads `system.status` (and `system.get` when the
+     * model changed). The hub answers the status at most once a second per
+     * session; asked sooner, this gives the last view again with `stale`.
+     * Blocks on the network: keep it off a UI thread.
+     *
+     * Errors: [`DspiError::Disconnected`] with no hub session,
+     * [`DspiError::Link`] with the hub's code or the client's.
+     */
+    func linkSystemView() throws  -> LinkSystemView
+    
+    /**
      * Revert to saved: load the active slot again ([`DspiCore::load_preset`],
      * the device's deferred load, safe on every input).
      *
@@ -6091,6 +6139,77 @@ open func linkSetUrl(url: String)  {try! rustCall() {
 open func linkStatus() -> LinkStatus  {
     return try!  FfiConverterTypeLinkStatus_lift(try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_link_status(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Write the link delays and hop offsets the system delay asks for to
+     * every unit (`system.align` with `apply`). Each unit re-anchors: a
+     * short silence (2 to 6 ms). Admin only. Blocks while the hub writes
+     * every unit.
+     *
+     * Errors: as [`Self::link_system_save`], without `conflict`.
+     */
+open func linkSystemAlign()throws  -> LinkSystemAlign  {
+    return try  FfiConverterTypeLinkSystemAlign_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_link_system_align(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Recall scene `scene` (an id from the view) on every unit it names
+     * (`system.scene.apply`). A recall the hub took but every device
+     * refused (a sender holds one scene at a time) is answered with
+     * `taken` false and the words to show, naming the frame it holds.
+     * Control or admin.
+     *
+     * Errors: [`DspiError::Link`] `denied` when the role may not make one of
+     * the scene's operations (the hub's words name it), `bad_request` for a
+     * scene the model does not have; [`DspiError::Disconnected`].
+     */
+open func linkSystemRecall(scene: String)throws  -> LinkSceneRecall  {
+    return try  FfiConverterTypeLinkSceneRecall_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_link_system_recall(self.uniffiClonePointer(),
+        FfiConverterString.lower(scene),$0
+    )
+})
+}
+    
+    /**
+     * Save the "Clock and links" edits made on the view of `revision`, as
+     * one `system.set` the hub takes only while its model is still at that
+     * revision. Returns the new revision. Admin only.
+     *
+     * Errors: [`DspiError::Link`] `conflict` when the installation changed on
+     * the hub meanwhile (nothing is saved; read the view again and edit
+     * again), `denied` for another role, `bad_request` for values the hub
+     * refuses, with its words; [`DspiError::Disconnected`] with no session.
+     */
+open func linkSystemSave(revision: UInt64, edits: LinkSystemEdits)throws  -> UInt64  {
+    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_link_system_save(self.uniffiClonePointer(),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterTypeLinkSystemEdits_lower(edits),$0
+    )
+})
+}
+    
+    /**
+     * The audio link's installation on the hub this session is on: its
+     * elements with their link state, the rooms, the scenes, alarms and a
+     * one-line summary. Reads `system.status` (and `system.get` when the
+     * model changed). The hub answers the status at most once a second per
+     * session; asked sooner, this gives the last view again with `stale`.
+     * Blocks on the network: keep it off a UI thread.
+     *
+     * Errors: [`DspiError::Disconnected`] with no hub session,
+     * [`DspiError::Link`] with the hub's code or the client's.
+     */
+open func linkSystemView()throws  -> LinkSystemView  {
+    return try  FfiConverterTypeLinkSystemView_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_link_system_view(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -16963,6 +17082,278 @@ public func FfiConverterTypeLinkPhaseText_lower(_ value: LinkPhaseText) -> RustB
 
 
 /**
+ * One room's lip-sync offset to set.
+ */
+public struct LinkRoomLipSync {
+    /**
+     * The room's id.
+     */
+    public var roomId: String
+    /**
+     * µs; none: the model's own.
+     */
+    public var lipSyncUs: Int64?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The room's id.
+         */roomId: String, 
+        /**
+         * µs; none: the model's own.
+         */lipSyncUs: Int64?) {
+        self.roomId = roomId
+        self.lipSyncUs = lipSyncUs
+    }
+}
+
+#if compiler(>=6)
+extension LinkRoomLipSync: Sendable {}
+#endif
+
+
+extension LinkRoomLipSync: Equatable, Hashable {
+    public static func ==(lhs: LinkRoomLipSync, rhs: LinkRoomLipSync) -> Bool {
+        if lhs.roomId != rhs.roomId {
+            return false
+        }
+        if lhs.lipSyncUs != rhs.lipSyncUs {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(roomId)
+        hasher.combine(lipSyncUs)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLinkRoomLipSync: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LinkRoomLipSync {
+        return
+            try LinkRoomLipSync(
+                roomId: FfiConverterString.read(from: &buf), 
+                lipSyncUs: FfiConverterOptionInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LinkRoomLipSync, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.roomId, into: &buf)
+        FfiConverterOptionInt64.write(value.lipSyncUs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkRoomLipSync_lift(_ buf: RustBuffer) throws -> LinkRoomLipSync {
+    return try FfiConverterTypeLinkRoomLipSync.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkRoomLipSync_lower(_ value: LinkRoomLipSync) -> RustBuffer {
+    return FfiConverterTypeLinkRoomLipSync.lower(value)
+}
+
+
+/**
+ * What a recall did.
+ */
+public struct LinkSceneRecall {
+    /**
+     * The scene's id.
+     */
+    public var scene: String
+    /**
+     * Its name.
+     */
+    public var name: String
+    /**
+     * At least one device took it. False: refused, nothing changed, and
+     * [`Self::message`] says why.
+     */
+    public var taken: Bool
+    /**
+     * The link frame it applies at.
+     */
+    public var frame: UInt64
+    /**
+     * How far ahead it was scheduled, ms.
+     */
+    public var leadMs: Double
+    /**
+     * Every device applied it on time.
+     */
+    public var onTime: Bool
+    /**
+     * The frame the sender holds another scene for, when that is why it
+     * was refused.
+     */
+    public var heldFrame: UInt64?
+    /**
+     * One sentence to show: the outcome, or the refusal and what to do.
+     */
+    public var message: String
+    /**
+     * Each device's result.
+     */
+    public var writes: [LinkSystemWrite]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The scene's id.
+         */scene: String, 
+        /**
+         * Its name.
+         */name: String, 
+        /**
+         * At least one device took it. False: refused, nothing changed, and
+         * [`Self::message`] says why.
+         */taken: Bool, 
+        /**
+         * The link frame it applies at.
+         */frame: UInt64, 
+        /**
+         * How far ahead it was scheduled, ms.
+         */leadMs: Double, 
+        /**
+         * Every device applied it on time.
+         */onTime: Bool, 
+        /**
+         * The frame the sender holds another scene for, when that is why it
+         * was refused.
+         */heldFrame: UInt64?, 
+        /**
+         * One sentence to show: the outcome, or the refusal and what to do.
+         */message: String, 
+        /**
+         * Each device's result.
+         */writes: [LinkSystemWrite]) {
+        self.scene = scene
+        self.name = name
+        self.taken = taken
+        self.frame = frame
+        self.leadMs = leadMs
+        self.onTime = onTime
+        self.heldFrame = heldFrame
+        self.message = message
+        self.writes = writes
+    }
+}
+
+#if compiler(>=6)
+extension LinkSceneRecall: Sendable {}
+#endif
+
+
+extension LinkSceneRecall: Equatable, Hashable {
+    public static func ==(lhs: LinkSceneRecall, rhs: LinkSceneRecall) -> Bool {
+        if lhs.scene != rhs.scene {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.taken != rhs.taken {
+            return false
+        }
+        if lhs.frame != rhs.frame {
+            return false
+        }
+        if lhs.leadMs != rhs.leadMs {
+            return false
+        }
+        if lhs.onTime != rhs.onTime {
+            return false
+        }
+        if lhs.heldFrame != rhs.heldFrame {
+            return false
+        }
+        if lhs.message != rhs.message {
+            return false
+        }
+        if lhs.writes != rhs.writes {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(scene)
+        hasher.combine(name)
+        hasher.combine(taken)
+        hasher.combine(frame)
+        hasher.combine(leadMs)
+        hasher.combine(onTime)
+        hasher.combine(heldFrame)
+        hasher.combine(message)
+        hasher.combine(writes)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLinkSceneRecall: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LinkSceneRecall {
+        return
+            try LinkSceneRecall(
+                scene: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                taken: FfiConverterBool.read(from: &buf), 
+                frame: FfiConverterUInt64.read(from: &buf), 
+                leadMs: FfiConverterDouble.read(from: &buf), 
+                onTime: FfiConverterBool.read(from: &buf), 
+                heldFrame: FfiConverterOptionUInt64.read(from: &buf), 
+                message: FfiConverterString.read(from: &buf), 
+                writes: FfiConverterSequenceTypeLinkSystemWrite.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LinkSceneRecall, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.scene, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterBool.write(value.taken, into: &buf)
+        FfiConverterUInt64.write(value.frame, into: &buf)
+        FfiConverterDouble.write(value.leadMs, into: &buf)
+        FfiConverterBool.write(value.onTime, into: &buf)
+        FfiConverterOptionUInt64.write(value.heldFrame, into: &buf)
+        FfiConverterString.write(value.message, into: &buf)
+        FfiConverterSequenceTypeLinkSystemWrite.write(value.writes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkSceneRecall_lift(_ buf: RustBuffer) throws -> LinkSceneRecall {
+    return try FfiConverterTypeLinkSceneRecall.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkSceneRecall_lower(_ value: LinkSceneRecall) -> RustBuffer {
+    return FfiConverterTypeLinkSceneRecall.lower(value)
+}
+
+
+/**
  * State of the Link session.
  */
 public struct LinkStatus {
@@ -17198,6 +17589,1573 @@ public func FfiConverterTypeLinkStatus_lift(_ buf: RustBuffer) throws -> LinkSta
 #endif
 public func FfiConverterTypeLinkStatus_lower(_ value: LinkStatus) -> RustBuffer {
     return FfiConverterTypeLinkStatus.lower(value)
+}
+
+
+/**
+ * An alarm still on (raised or acknowledged).
+ */
+public struct LinkSystemAlarm {
+    /**
+     * The hub's id for it.
+     */
+    public var id: UInt64
+    /**
+     * `warning` or `critical`.
+     */
+    public var severity: String
+    /**
+     * The element's name it is about.
+     */
+    public var subject: String
+    /**
+     * The hub's sentence.
+     */
+    public var message: String
+    /**
+     * `raised` or `acknowledged`.
+     */
+    public var state: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The hub's id for it.
+         */id: UInt64, 
+        /**
+         * `warning` or `critical`.
+         */severity: String, 
+        /**
+         * The element's name it is about.
+         */subject: String, 
+        /**
+         * The hub's sentence.
+         */message: String, 
+        /**
+         * `raised` or `acknowledged`.
+         */state: String) {
+        self.id = id
+        self.severity = severity
+        self.subject = subject
+        self.message = message
+        self.state = state
+    }
+}
+
+#if compiler(>=6)
+extension LinkSystemAlarm: Sendable {}
+#endif
+
+
+extension LinkSystemAlarm: Equatable, Hashable {
+    public static func ==(lhs: LinkSystemAlarm, rhs: LinkSystemAlarm) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.severity != rhs.severity {
+            return false
+        }
+        if lhs.subject != rhs.subject {
+            return false
+        }
+        if lhs.message != rhs.message {
+            return false
+        }
+        if lhs.state != rhs.state {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(severity)
+        hasher.combine(subject)
+        hasher.combine(message)
+        hasher.combine(state)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLinkSystemAlarm: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LinkSystemAlarm {
+        return
+            try LinkSystemAlarm(
+                id: FfiConverterUInt64.read(from: &buf), 
+                severity: FfiConverterString.read(from: &buf), 
+                subject: FfiConverterString.read(from: &buf), 
+                message: FfiConverterString.read(from: &buf), 
+                state: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LinkSystemAlarm, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.id, into: &buf)
+        FfiConverterString.write(value.severity, into: &buf)
+        FfiConverterString.write(value.subject, into: &buf)
+        FfiConverterString.write(value.message, into: &buf)
+        FfiConverterString.write(value.state, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkSystemAlarm_lift(_ buf: RustBuffer) throws -> LinkSystemAlarm {
+    return try FfiConverterTypeLinkSystemAlarm.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkSystemAlarm_lower(_ value: LinkSystemAlarm) -> RustBuffer {
+    return FfiConverterTypeLinkSystemAlarm.lower(value)
+}
+
+
+/**
+ * What writing the link delays did.
+ */
+public struct LinkSystemAlign {
+    /**
+     * The hub wrote them (false: an issue stopped it).
+     */
+    public var applied: Bool
+    /**
+     * One sentence to show.
+     */
+    public var message: String
+    /**
+     * Each write's result.
+     */
+    public var writes: [LinkSystemWrite]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The hub wrote them (false: an issue stopped it).
+         */applied: Bool, 
+        /**
+         * One sentence to show.
+         */message: String, 
+        /**
+         * Each write's result.
+         */writes: [LinkSystemWrite]) {
+        self.applied = applied
+        self.message = message
+        self.writes = writes
+    }
+}
+
+#if compiler(>=6)
+extension LinkSystemAlign: Sendable {}
+#endif
+
+
+extension LinkSystemAlign: Equatable, Hashable {
+    public static func ==(lhs: LinkSystemAlign, rhs: LinkSystemAlign) -> Bool {
+        if lhs.applied != rhs.applied {
+            return false
+        }
+        if lhs.message != rhs.message {
+            return false
+        }
+        if lhs.writes != rhs.writes {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(applied)
+        hasher.combine(message)
+        hasher.combine(writes)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLinkSystemAlign: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LinkSystemAlign {
+        return
+            try LinkSystemAlign(
+                applied: FfiConverterBool.read(from: &buf), 
+                message: FfiConverterString.read(from: &buf), 
+                writes: FfiConverterSequenceTypeLinkSystemWrite.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LinkSystemAlign, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.applied, into: &buf)
+        FfiConverterString.write(value.message, into: &buf)
+        FfiConverterSequenceTypeLinkSystemWrite.write(value.writes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkSystemAlign_lift(_ buf: RustBuffer) throws -> LinkSystemAlign {
+    return try FfiConverterTypeLinkSystemAlign.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkSystemAlign_lower(_ value: LinkSystemAlign) -> RustBuffer {
+    return FfiConverterTypeLinkSystemAlign.lower(value)
+}
+
+
+/**
+ * The "Clock and links" edits, sent as one change of the model.
+ */
+public struct LinkSystemEdits {
+    /**
+     * Change the system delay.
+     */
+    public var setSystemDelay: Bool
+    /**
+     * The new system delay, frames; none: the smallest every unit takes.
+     */
+    public var systemDelayFrames: UInt32?
+    /**
+     * Rooms' lip-sync offsets.
+     */
+    public var rooms: [LinkRoomLipSync]
+    /**
+     * Units' measured latencies.
+     */
+    public var units: [LinkUnitLatency]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Change the system delay.
+         */setSystemDelay: Bool, 
+        /**
+         * The new system delay, frames; none: the smallest every unit takes.
+         */systemDelayFrames: UInt32?, 
+        /**
+         * Rooms' lip-sync offsets.
+         */rooms: [LinkRoomLipSync], 
+        /**
+         * Units' measured latencies.
+         */units: [LinkUnitLatency]) {
+        self.setSystemDelay = setSystemDelay
+        self.systemDelayFrames = systemDelayFrames
+        self.rooms = rooms
+        self.units = units
+    }
+}
+
+#if compiler(>=6)
+extension LinkSystemEdits: Sendable {}
+#endif
+
+
+extension LinkSystemEdits: Equatable, Hashable {
+    public static func ==(lhs: LinkSystemEdits, rhs: LinkSystemEdits) -> Bool {
+        if lhs.setSystemDelay != rhs.setSystemDelay {
+            return false
+        }
+        if lhs.systemDelayFrames != rhs.systemDelayFrames {
+            return false
+        }
+        if lhs.rooms != rhs.rooms {
+            return false
+        }
+        if lhs.units != rhs.units {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(setSystemDelay)
+        hasher.combine(systemDelayFrames)
+        hasher.combine(rooms)
+        hasher.combine(units)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLinkSystemEdits: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LinkSystemEdits {
+        return
+            try LinkSystemEdits(
+                setSystemDelay: FfiConverterBool.read(from: &buf), 
+                systemDelayFrames: FfiConverterOptionUInt32.read(from: &buf), 
+                rooms: FfiConverterSequenceTypeLinkRoomLipSync.read(from: &buf), 
+                units: FfiConverterSequenceTypeLinkUnitLatency.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LinkSystemEdits, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.setSystemDelay, into: &buf)
+        FfiConverterOptionUInt32.write(value.systemDelayFrames, into: &buf)
+        FfiConverterSequenceTypeLinkRoomLipSync.write(value.rooms, into: &buf)
+        FfiConverterSequenceTypeLinkUnitLatency.write(value.units, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkSystemEdits_lift(_ buf: RustBuffer) throws -> LinkSystemEdits {
+    return try FfiConverterTypeLinkSystemEdits.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkSystemEdits_lower(_ value: LinkSystemEdits) -> RustBuffer {
+    return FfiConverterTypeLinkSystemEdits.lower(value)
+}
+
+
+/**
+ * A room, with its lip-sync offset.
+ */
+public struct LinkSystemRoom {
+    /**
+     * The model's id.
+     */
+    public var id: String
+    /**
+     * Its name.
+     */
+    public var name: String
+    /**
+     * Its own lip-sync offset, µs; none: the model's.
+     */
+    public var lipSyncUs: Int64?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The model's id.
+         */id: String, 
+        /**
+         * Its name.
+         */name: String, 
+        /**
+         * Its own lip-sync offset, µs; none: the model's.
+         */lipSyncUs: Int64?) {
+        self.id = id
+        self.name = name
+        self.lipSyncUs = lipSyncUs
+    }
+}
+
+#if compiler(>=6)
+extension LinkSystemRoom: Sendable {}
+#endif
+
+
+extension LinkSystemRoom: Equatable, Hashable {
+    public static func ==(lhs: LinkSystemRoom, rhs: LinkSystemRoom) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.lipSyncUs != rhs.lipSyncUs {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(name)
+        hasher.combine(lipSyncUs)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLinkSystemRoom: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LinkSystemRoom {
+        return
+            try LinkSystemRoom(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                lipSyncUs: FfiConverterOptionInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LinkSystemRoom, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterOptionInt64.write(value.lipSyncUs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkSystemRoom_lift(_ buf: RustBuffer) throws -> LinkSystemRoom {
+    return try FfiConverterTypeLinkSystemRoom.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkSystemRoom_lower(_ value: LinkSystemRoom) -> RustBuffer {
+    return FfiConverterTypeLinkSystemRoom.lower(value)
+}
+
+
+/**
+ * A scene a recall can apply.
+ */
+public struct LinkSystemScene {
+    /**
+     * The model's id: what [`DspiCore::link_system_recall`] takes.
+     */
+    public var id: String
+    /**
+     * Its name.
+     */
+    public var name: String
+    /**
+     * The scene sets the system mute (true) or clears it (false); none:
+     * leaves it.
+     */
+    public var systemMute: Bool?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The model's id: what [`DspiCore::link_system_recall`] takes.
+         */id: String, 
+        /**
+         * Its name.
+         */name: String, 
+        /**
+         * The scene sets the system mute (true) or clears it (false); none:
+         * leaves it.
+         */systemMute: Bool?) {
+        self.id = id
+        self.name = name
+        self.systemMute = systemMute
+    }
+}
+
+#if compiler(>=6)
+extension LinkSystemScene: Sendable {}
+#endif
+
+
+extension LinkSystemScene: Equatable, Hashable {
+    public static func ==(lhs: LinkSystemScene, rhs: LinkSystemScene) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.systemMute != rhs.systemMute {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(name)
+        hasher.combine(systemMute)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLinkSystemScene: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LinkSystemScene {
+        return
+            try LinkSystemScene(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                systemMute: FfiConverterOptionBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LinkSystemScene, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterOptionBool.write(value.systemMute, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkSystemScene_lift(_ buf: RustBuffer) throws -> LinkSystemScene {
+    return try FfiConverterTypeLinkSystemScene.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkSystemScene_lower(_ value: LinkSystemScene) -> RustBuffer {
+    return FfiConverterTypeLinkSystemScene.lower(value)
+}
+
+
+/**
+ * One element of the installation: the sender, a fan-out or a unit.
+ */
+public struct LinkSystemUnit {
+    /**
+     * The model's id.
+     */
+    public var id: String
+    /**
+     * Its name, or the id when it has none.
+     */
+    public var name: String
+    /**
+     * The device's serial; "" when the model has none.
+     */
+    public var serial: String
+    /**
+     * `sender`, `fan_out` or `unit`.
+     */
+    public var kind: String
+    /**
+     * The role on the audio link in the glossary's words: "Sender",
+     * "Fan-out", "Repeater", "Receiver" (what the device says, else the model).
+     */
+    public var role: String
+    /**
+     * The room's name; "" for none.
+     */
+    public var room: String
+    /**
+     * Attached to the hub now.
+     */
+    public var connected: Bool
+    /**
+     * `locked`, `searching`, `holdover`, `off`, `clock` (a sender),
+     * `offline` (not attached) or `unknown`.
+     */
+    public var state: String
+    /**
+     * [`Self::state`] in words: "Locked", "Holdover", ... "Not connected".
+     */
+    public var stateWord: String
+    /**
+     * The unit's link delay or hop offset is not the one the system delay
+     * asks for: writing the link delays ([`DspiCore::link_system_align`])
+     * is pending.
+     */
+    public var pending: Bool
+    /**
+     * The link delay the alignment asks for, frames; else the unit's own.
+     */
+    public var linkDelayFrames: UInt32?
+    /**
+     * [`Self::link_delay_frames`] in ms at the system's rate.
+     */
+    public var linkDelayMs: Double?
+    /**
+     * The link delay the unit has now, frames, when it reported one.
+     */
+    public var unitLinkDelayFrames: UInt32?
+    /**
+     * The shortest link delay the unit takes, frames.
+     */
+    public var linkDelayMin: UInt32?
+    /**
+     * The longest.
+     */
+    public var linkDelayMax: UInt32?
+    /**
+     * The hop offset the alignment asks for, frames; else the unit's own.
+     */
+    public var hopOffset: Int32?
+    /**
+     * The hop offset the unit has now.
+     */
+    public var unitHopOffset: Int32?
+    /**
+     * The phase error, frames (phase lock).
+     */
+    public var phaseErrorFrames: Float?
+    /**
+     * Fan-outs and repeaters between the sender and this unit.
+     */
+    public var hops: UInt32?
+    /**
+     * Frames a fan-out or repeater adds passing the stream on.
+     */
+    public var hopDelayFrames: UInt32?
+    /**
+     * The output latency the model counts, µs.
+     */
+    public var latencyUs: Int64
+    /**
+     * The measured latency an installer entered, µs; it replaces
+     * [`Self::latency_us`] when set.
+     */
+    public var measuredLatencyUs: Int64?
+    /**
+     * Its alarms still on.
+     */
+    public var alarms: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The model's id.
+         */id: String, 
+        /**
+         * Its name, or the id when it has none.
+         */name: String, 
+        /**
+         * The device's serial; "" when the model has none.
+         */serial: String, 
+        /**
+         * `sender`, `fan_out` or `unit`.
+         */kind: String, 
+        /**
+         * The role on the audio link in the glossary's words: "Sender",
+         * "Fan-out", "Repeater", "Receiver" (what the device says, else the model).
+         */role: String, 
+        /**
+         * The room's name; "" for none.
+         */room: String, 
+        /**
+         * Attached to the hub now.
+         */connected: Bool, 
+        /**
+         * `locked`, `searching`, `holdover`, `off`, `clock` (a sender),
+         * `offline` (not attached) or `unknown`.
+         */state: String, 
+        /**
+         * [`Self::state`] in words: "Locked", "Holdover", ... "Not connected".
+         */stateWord: String, 
+        /**
+         * The unit's link delay or hop offset is not the one the system delay
+         * asks for: writing the link delays ([`DspiCore::link_system_align`])
+         * is pending.
+         */pending: Bool, 
+        /**
+         * The link delay the alignment asks for, frames; else the unit's own.
+         */linkDelayFrames: UInt32?, 
+        /**
+         * [`Self::link_delay_frames`] in ms at the system's rate.
+         */linkDelayMs: Double?, 
+        /**
+         * The link delay the unit has now, frames, when it reported one.
+         */unitLinkDelayFrames: UInt32?, 
+        /**
+         * The shortest link delay the unit takes, frames.
+         */linkDelayMin: UInt32?, 
+        /**
+         * The longest.
+         */linkDelayMax: UInt32?, 
+        /**
+         * The hop offset the alignment asks for, frames; else the unit's own.
+         */hopOffset: Int32?, 
+        /**
+         * The hop offset the unit has now.
+         */unitHopOffset: Int32?, 
+        /**
+         * The phase error, frames (phase lock).
+         */phaseErrorFrames: Float?, 
+        /**
+         * Fan-outs and repeaters between the sender and this unit.
+         */hops: UInt32?, 
+        /**
+         * Frames a fan-out or repeater adds passing the stream on.
+         */hopDelayFrames: UInt32?, 
+        /**
+         * The output latency the model counts, µs.
+         */latencyUs: Int64, 
+        /**
+         * The measured latency an installer entered, µs; it replaces
+         * [`Self::latency_us`] when set.
+         */measuredLatencyUs: Int64?, 
+        /**
+         * Its alarms still on.
+         */alarms: UInt32) {
+        self.id = id
+        self.name = name
+        self.serial = serial
+        self.kind = kind
+        self.role = role
+        self.room = room
+        self.connected = connected
+        self.state = state
+        self.stateWord = stateWord
+        self.pending = pending
+        self.linkDelayFrames = linkDelayFrames
+        self.linkDelayMs = linkDelayMs
+        self.unitLinkDelayFrames = unitLinkDelayFrames
+        self.linkDelayMin = linkDelayMin
+        self.linkDelayMax = linkDelayMax
+        self.hopOffset = hopOffset
+        self.unitHopOffset = unitHopOffset
+        self.phaseErrorFrames = phaseErrorFrames
+        self.hops = hops
+        self.hopDelayFrames = hopDelayFrames
+        self.latencyUs = latencyUs
+        self.measuredLatencyUs = measuredLatencyUs
+        self.alarms = alarms
+    }
+}
+
+#if compiler(>=6)
+extension LinkSystemUnit: Sendable {}
+#endif
+
+
+extension LinkSystemUnit: Equatable, Hashable {
+    public static func ==(lhs: LinkSystemUnit, rhs: LinkSystemUnit) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.kind != rhs.kind {
+            return false
+        }
+        if lhs.role != rhs.role {
+            return false
+        }
+        if lhs.room != rhs.room {
+            return false
+        }
+        if lhs.connected != rhs.connected {
+            return false
+        }
+        if lhs.state != rhs.state {
+            return false
+        }
+        if lhs.stateWord != rhs.stateWord {
+            return false
+        }
+        if lhs.pending != rhs.pending {
+            return false
+        }
+        if lhs.linkDelayFrames != rhs.linkDelayFrames {
+            return false
+        }
+        if lhs.linkDelayMs != rhs.linkDelayMs {
+            return false
+        }
+        if lhs.unitLinkDelayFrames != rhs.unitLinkDelayFrames {
+            return false
+        }
+        if lhs.linkDelayMin != rhs.linkDelayMin {
+            return false
+        }
+        if lhs.linkDelayMax != rhs.linkDelayMax {
+            return false
+        }
+        if lhs.hopOffset != rhs.hopOffset {
+            return false
+        }
+        if lhs.unitHopOffset != rhs.unitHopOffset {
+            return false
+        }
+        if lhs.phaseErrorFrames != rhs.phaseErrorFrames {
+            return false
+        }
+        if lhs.hops != rhs.hops {
+            return false
+        }
+        if lhs.hopDelayFrames != rhs.hopDelayFrames {
+            return false
+        }
+        if lhs.latencyUs != rhs.latencyUs {
+            return false
+        }
+        if lhs.measuredLatencyUs != rhs.measuredLatencyUs {
+            return false
+        }
+        if lhs.alarms != rhs.alarms {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(name)
+        hasher.combine(serial)
+        hasher.combine(kind)
+        hasher.combine(role)
+        hasher.combine(room)
+        hasher.combine(connected)
+        hasher.combine(state)
+        hasher.combine(stateWord)
+        hasher.combine(pending)
+        hasher.combine(linkDelayFrames)
+        hasher.combine(linkDelayMs)
+        hasher.combine(unitLinkDelayFrames)
+        hasher.combine(linkDelayMin)
+        hasher.combine(linkDelayMax)
+        hasher.combine(hopOffset)
+        hasher.combine(unitHopOffset)
+        hasher.combine(phaseErrorFrames)
+        hasher.combine(hops)
+        hasher.combine(hopDelayFrames)
+        hasher.combine(latencyUs)
+        hasher.combine(measuredLatencyUs)
+        hasher.combine(alarms)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLinkSystemUnit: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LinkSystemUnit {
+        return
+            try LinkSystemUnit(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                serial: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterString.read(from: &buf), 
+                role: FfiConverterString.read(from: &buf), 
+                room: FfiConverterString.read(from: &buf), 
+                connected: FfiConverterBool.read(from: &buf), 
+                state: FfiConverterString.read(from: &buf), 
+                stateWord: FfiConverterString.read(from: &buf), 
+                pending: FfiConverterBool.read(from: &buf), 
+                linkDelayFrames: FfiConverterOptionUInt32.read(from: &buf), 
+                linkDelayMs: FfiConverterOptionDouble.read(from: &buf), 
+                unitLinkDelayFrames: FfiConverterOptionUInt32.read(from: &buf), 
+                linkDelayMin: FfiConverterOptionUInt32.read(from: &buf), 
+                linkDelayMax: FfiConverterOptionUInt32.read(from: &buf), 
+                hopOffset: FfiConverterOptionInt32.read(from: &buf), 
+                unitHopOffset: FfiConverterOptionInt32.read(from: &buf), 
+                phaseErrorFrames: FfiConverterOptionFloat.read(from: &buf), 
+                hops: FfiConverterOptionUInt32.read(from: &buf), 
+                hopDelayFrames: FfiConverterOptionUInt32.read(from: &buf), 
+                latencyUs: FfiConverterInt64.read(from: &buf), 
+                measuredLatencyUs: FfiConverterOptionInt64.read(from: &buf), 
+                alarms: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LinkSystemUnit, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterString.write(value.kind, into: &buf)
+        FfiConverterString.write(value.role, into: &buf)
+        FfiConverterString.write(value.room, into: &buf)
+        FfiConverterBool.write(value.connected, into: &buf)
+        FfiConverterString.write(value.state, into: &buf)
+        FfiConverterString.write(value.stateWord, into: &buf)
+        FfiConverterBool.write(value.pending, into: &buf)
+        FfiConverterOptionUInt32.write(value.linkDelayFrames, into: &buf)
+        FfiConverterOptionDouble.write(value.linkDelayMs, into: &buf)
+        FfiConverterOptionUInt32.write(value.unitLinkDelayFrames, into: &buf)
+        FfiConverterOptionUInt32.write(value.linkDelayMin, into: &buf)
+        FfiConverterOptionUInt32.write(value.linkDelayMax, into: &buf)
+        FfiConverterOptionInt32.write(value.hopOffset, into: &buf)
+        FfiConverterOptionInt32.write(value.unitHopOffset, into: &buf)
+        FfiConverterOptionFloat.write(value.phaseErrorFrames, into: &buf)
+        FfiConverterOptionUInt32.write(value.hops, into: &buf)
+        FfiConverterOptionUInt32.write(value.hopDelayFrames, into: &buf)
+        FfiConverterInt64.write(value.latencyUs, into: &buf)
+        FfiConverterOptionInt64.write(value.measuredLatencyUs, into: &buf)
+        FfiConverterUInt32.write(value.alarms, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkSystemUnit_lift(_ buf: RustBuffer) throws -> LinkSystemUnit {
+    return try FfiConverterTypeLinkSystemUnit.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkSystemUnit_lower(_ value: LinkSystemUnit) -> RustBuffer {
+    return FfiConverterTypeLinkSystemUnit.lower(value)
+}
+
+
+/**
+ * The installation on the hub, as the System screen shows it.
+ */
+public struct LinkSystemView {
+    /**
+     * The model's revision: what [`DspiCore::link_system_save`] is given back.
+     */
+    public var revision: UInt64
+    /**
+     * The hub has an installation (a model with at least one element).
+     */
+    public var installed: Bool
+    /**
+     * This session's role on the hub now: `admin`, `control` or `viewer`.
+     */
+    public var role: String
+    /**
+     * The role may change the installation and write the link delays (admin).
+     */
+    public var mayEdit: Bool
+    /**
+     * The role may recall scenes (control or admin).
+     */
+    public var mayRecall: Bool
+    /**
+     * Why editing is not offered, or "".
+     */
+    public var editNote: String
+    /**
+     * Why recalling is not offered, or "".
+     */
+    public var recallNote: String
+    /**
+     * The system delay the alignment uses now, frames.
+     */
+    public var systemDelayFrames: UInt32
+    /**
+     * [`Self::system_delay_frames`] in ms.
+     */
+    public var systemDelayMs: Double
+    /**
+     * The model fixes no system delay: the hub takes the smallest every
+     * unit takes.
+     */
+    public var systemDelayAuto: Bool
+    /**
+     * The link's rate, Hz.
+     */
+    public var rateHz: UInt32
+    /**
+     * The model's lip-sync offset, µs.
+     */
+    public var lipSyncUs: Int64
+    /**
+     * Every element: senders, fan-outs, then units in the model's order.
+     */
+    public var units: [LinkSystemUnit]
+    /**
+     * The rooms.
+     */
+    public var rooms: [LinkSystemRoom]
+    /**
+     * The scenes.
+     */
+    public var scenes: [LinkSystemScene]
+    /**
+     * Alarms still on, critical first.
+     */
+    public var alarms: [LinkSystemAlarm]
+    /**
+     * A sender reports its system mute set (none: no sender reported).
+     */
+    public var systemMute: Bool?
+    /**
+     * The frame a sender holds a scene for, when it holds one.
+     */
+    public var pendingApplyFrame: UInt64?
+    /**
+     * Units (not senders or fan-outs) locked.
+     */
+    public var locked: UInt32
+    /**
+     * Units in holdover.
+     */
+    public var holdover: UInt32
+    /**
+     * Units whose link delay is still to be written.
+     */
+    public var pending: UInt32
+    /**
+     * Units the model has.
+     */
+    public var unitCount: UInt32
+    /**
+     * One line for a status indicator: "Audio link: 4 of 4 locked".
+     */
+    public var summary: String
+    /**
+     * The summary's meaning for its colour: `ok`, `warning`, `problem`, or
+     * `none` without an installation.
+     */
+    public var health: String
+    /**
+     * The alignment's issues, in the hub's words.
+     */
+    public var issues: [String]
+    /**
+     * The hub limits how often the status is read; this is the last view
+     * again, not a fresh one.
+     */
+    public var stale: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The model's revision: what [`DspiCore::link_system_save`] is given back.
+         */revision: UInt64, 
+        /**
+         * The hub has an installation (a model with at least one element).
+         */installed: Bool, 
+        /**
+         * This session's role on the hub now: `admin`, `control` or `viewer`.
+         */role: String, 
+        /**
+         * The role may change the installation and write the link delays (admin).
+         */mayEdit: Bool, 
+        /**
+         * The role may recall scenes (control or admin).
+         */mayRecall: Bool, 
+        /**
+         * Why editing is not offered, or "".
+         */editNote: String, 
+        /**
+         * Why recalling is not offered, or "".
+         */recallNote: String, 
+        /**
+         * The system delay the alignment uses now, frames.
+         */systemDelayFrames: UInt32, 
+        /**
+         * [`Self::system_delay_frames`] in ms.
+         */systemDelayMs: Double, 
+        /**
+         * The model fixes no system delay: the hub takes the smallest every
+         * unit takes.
+         */systemDelayAuto: Bool, 
+        /**
+         * The link's rate, Hz.
+         */rateHz: UInt32, 
+        /**
+         * The model's lip-sync offset, µs.
+         */lipSyncUs: Int64, 
+        /**
+         * Every element: senders, fan-outs, then units in the model's order.
+         */units: [LinkSystemUnit], 
+        /**
+         * The rooms.
+         */rooms: [LinkSystemRoom], 
+        /**
+         * The scenes.
+         */scenes: [LinkSystemScene], 
+        /**
+         * Alarms still on, critical first.
+         */alarms: [LinkSystemAlarm], 
+        /**
+         * A sender reports its system mute set (none: no sender reported).
+         */systemMute: Bool?, 
+        /**
+         * The frame a sender holds a scene for, when it holds one.
+         */pendingApplyFrame: UInt64?, 
+        /**
+         * Units (not senders or fan-outs) locked.
+         */locked: UInt32, 
+        /**
+         * Units in holdover.
+         */holdover: UInt32, 
+        /**
+         * Units whose link delay is still to be written.
+         */pending: UInt32, 
+        /**
+         * Units the model has.
+         */unitCount: UInt32, 
+        /**
+         * One line for a status indicator: "Audio link: 4 of 4 locked".
+         */summary: String, 
+        /**
+         * The summary's meaning for its colour: `ok`, `warning`, `problem`, or
+         * `none` without an installation.
+         */health: String, 
+        /**
+         * The alignment's issues, in the hub's words.
+         */issues: [String], 
+        /**
+         * The hub limits how often the status is read; this is the last view
+         * again, not a fresh one.
+         */stale: Bool) {
+        self.revision = revision
+        self.installed = installed
+        self.role = role
+        self.mayEdit = mayEdit
+        self.mayRecall = mayRecall
+        self.editNote = editNote
+        self.recallNote = recallNote
+        self.systemDelayFrames = systemDelayFrames
+        self.systemDelayMs = systemDelayMs
+        self.systemDelayAuto = systemDelayAuto
+        self.rateHz = rateHz
+        self.lipSyncUs = lipSyncUs
+        self.units = units
+        self.rooms = rooms
+        self.scenes = scenes
+        self.alarms = alarms
+        self.systemMute = systemMute
+        self.pendingApplyFrame = pendingApplyFrame
+        self.locked = locked
+        self.holdover = holdover
+        self.pending = pending
+        self.unitCount = unitCount
+        self.summary = summary
+        self.health = health
+        self.issues = issues
+        self.stale = stale
+    }
+}
+
+#if compiler(>=6)
+extension LinkSystemView: Sendable {}
+#endif
+
+
+extension LinkSystemView: Equatable, Hashable {
+    public static func ==(lhs: LinkSystemView, rhs: LinkSystemView) -> Bool {
+        if lhs.revision != rhs.revision {
+            return false
+        }
+        if lhs.installed != rhs.installed {
+            return false
+        }
+        if lhs.role != rhs.role {
+            return false
+        }
+        if lhs.mayEdit != rhs.mayEdit {
+            return false
+        }
+        if lhs.mayRecall != rhs.mayRecall {
+            return false
+        }
+        if lhs.editNote != rhs.editNote {
+            return false
+        }
+        if lhs.recallNote != rhs.recallNote {
+            return false
+        }
+        if lhs.systemDelayFrames != rhs.systemDelayFrames {
+            return false
+        }
+        if lhs.systemDelayMs != rhs.systemDelayMs {
+            return false
+        }
+        if lhs.systemDelayAuto != rhs.systemDelayAuto {
+            return false
+        }
+        if lhs.rateHz != rhs.rateHz {
+            return false
+        }
+        if lhs.lipSyncUs != rhs.lipSyncUs {
+            return false
+        }
+        if lhs.units != rhs.units {
+            return false
+        }
+        if lhs.rooms != rhs.rooms {
+            return false
+        }
+        if lhs.scenes != rhs.scenes {
+            return false
+        }
+        if lhs.alarms != rhs.alarms {
+            return false
+        }
+        if lhs.systemMute != rhs.systemMute {
+            return false
+        }
+        if lhs.pendingApplyFrame != rhs.pendingApplyFrame {
+            return false
+        }
+        if lhs.locked != rhs.locked {
+            return false
+        }
+        if lhs.holdover != rhs.holdover {
+            return false
+        }
+        if lhs.pending != rhs.pending {
+            return false
+        }
+        if lhs.unitCount != rhs.unitCount {
+            return false
+        }
+        if lhs.summary != rhs.summary {
+            return false
+        }
+        if lhs.health != rhs.health {
+            return false
+        }
+        if lhs.issues != rhs.issues {
+            return false
+        }
+        if lhs.stale != rhs.stale {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(revision)
+        hasher.combine(installed)
+        hasher.combine(role)
+        hasher.combine(mayEdit)
+        hasher.combine(mayRecall)
+        hasher.combine(editNote)
+        hasher.combine(recallNote)
+        hasher.combine(systemDelayFrames)
+        hasher.combine(systemDelayMs)
+        hasher.combine(systemDelayAuto)
+        hasher.combine(rateHz)
+        hasher.combine(lipSyncUs)
+        hasher.combine(units)
+        hasher.combine(rooms)
+        hasher.combine(scenes)
+        hasher.combine(alarms)
+        hasher.combine(systemMute)
+        hasher.combine(pendingApplyFrame)
+        hasher.combine(locked)
+        hasher.combine(holdover)
+        hasher.combine(pending)
+        hasher.combine(unitCount)
+        hasher.combine(summary)
+        hasher.combine(health)
+        hasher.combine(issues)
+        hasher.combine(stale)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLinkSystemView: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LinkSystemView {
+        return
+            try LinkSystemView(
+                revision: FfiConverterUInt64.read(from: &buf), 
+                installed: FfiConverterBool.read(from: &buf), 
+                role: FfiConverterString.read(from: &buf), 
+                mayEdit: FfiConverterBool.read(from: &buf), 
+                mayRecall: FfiConverterBool.read(from: &buf), 
+                editNote: FfiConverterString.read(from: &buf), 
+                recallNote: FfiConverterString.read(from: &buf), 
+                systemDelayFrames: FfiConverterUInt32.read(from: &buf), 
+                systemDelayMs: FfiConverterDouble.read(from: &buf), 
+                systemDelayAuto: FfiConverterBool.read(from: &buf), 
+                rateHz: FfiConverterUInt32.read(from: &buf), 
+                lipSyncUs: FfiConverterInt64.read(from: &buf), 
+                units: FfiConverterSequenceTypeLinkSystemUnit.read(from: &buf), 
+                rooms: FfiConverterSequenceTypeLinkSystemRoom.read(from: &buf), 
+                scenes: FfiConverterSequenceTypeLinkSystemScene.read(from: &buf), 
+                alarms: FfiConverterSequenceTypeLinkSystemAlarm.read(from: &buf), 
+                systemMute: FfiConverterOptionBool.read(from: &buf), 
+                pendingApplyFrame: FfiConverterOptionUInt64.read(from: &buf), 
+                locked: FfiConverterUInt32.read(from: &buf), 
+                holdover: FfiConverterUInt32.read(from: &buf), 
+                pending: FfiConverterUInt32.read(from: &buf), 
+                unitCount: FfiConverterUInt32.read(from: &buf), 
+                summary: FfiConverterString.read(from: &buf), 
+                health: FfiConverterString.read(from: &buf), 
+                issues: FfiConverterSequenceString.read(from: &buf), 
+                stale: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LinkSystemView, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.revision, into: &buf)
+        FfiConverterBool.write(value.installed, into: &buf)
+        FfiConverterString.write(value.role, into: &buf)
+        FfiConverterBool.write(value.mayEdit, into: &buf)
+        FfiConverterBool.write(value.mayRecall, into: &buf)
+        FfiConverterString.write(value.editNote, into: &buf)
+        FfiConverterString.write(value.recallNote, into: &buf)
+        FfiConverterUInt32.write(value.systemDelayFrames, into: &buf)
+        FfiConverterDouble.write(value.systemDelayMs, into: &buf)
+        FfiConverterBool.write(value.systemDelayAuto, into: &buf)
+        FfiConverterUInt32.write(value.rateHz, into: &buf)
+        FfiConverterInt64.write(value.lipSyncUs, into: &buf)
+        FfiConverterSequenceTypeLinkSystemUnit.write(value.units, into: &buf)
+        FfiConverterSequenceTypeLinkSystemRoom.write(value.rooms, into: &buf)
+        FfiConverterSequenceTypeLinkSystemScene.write(value.scenes, into: &buf)
+        FfiConverterSequenceTypeLinkSystemAlarm.write(value.alarms, into: &buf)
+        FfiConverterOptionBool.write(value.systemMute, into: &buf)
+        FfiConverterOptionUInt64.write(value.pendingApplyFrame, into: &buf)
+        FfiConverterUInt32.write(value.locked, into: &buf)
+        FfiConverterUInt32.write(value.holdover, into: &buf)
+        FfiConverterUInt32.write(value.pending, into: &buf)
+        FfiConverterUInt32.write(value.unitCount, into: &buf)
+        FfiConverterString.write(value.summary, into: &buf)
+        FfiConverterString.write(value.health, into: &buf)
+        FfiConverterSequenceString.write(value.issues, into: &buf)
+        FfiConverterBool.write(value.stale, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkSystemView_lift(_ buf: RustBuffer) throws -> LinkSystemView {
+    return try FfiConverterTypeLinkSystemView.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkSystemView_lower(_ value: LinkSystemView) -> RustBuffer {
+    return FfiConverterTypeLinkSystemView.lower(value)
+}
+
+
+/**
+ * One write's outcome on one device.
+ */
+public struct LinkSystemWrite {
+    /**
+     * The element's name.
+     */
+    public var unit: String
+    /**
+     * What was written, in words ("Mute", "Link delay").
+     */
+    public var what: String
+    /**
+     * The hub's result code (`applied`, `queued`, `refused`, ...).
+     */
+    public var result: String
+    /**
+     * [`Self::result`] in words.
+     */
+    public var resultWord: String
+    /**
+     * `ok`, `warn` or `bad`.
+     */
+    public var tone: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The element's name.
+         */unit: String, 
+        /**
+         * What was written, in words ("Mute", "Link delay").
+         */what: String, 
+        /**
+         * The hub's result code (`applied`, `queued`, `refused`, ...).
+         */result: String, 
+        /**
+         * [`Self::result`] in words.
+         */resultWord: String, 
+        /**
+         * `ok`, `warn` or `bad`.
+         */tone: String) {
+        self.unit = unit
+        self.what = what
+        self.result = result
+        self.resultWord = resultWord
+        self.tone = tone
+    }
+}
+
+#if compiler(>=6)
+extension LinkSystemWrite: Sendable {}
+#endif
+
+
+extension LinkSystemWrite: Equatable, Hashable {
+    public static func ==(lhs: LinkSystemWrite, rhs: LinkSystemWrite) -> Bool {
+        if lhs.unit != rhs.unit {
+            return false
+        }
+        if lhs.what != rhs.what {
+            return false
+        }
+        if lhs.result != rhs.result {
+            return false
+        }
+        if lhs.resultWord != rhs.resultWord {
+            return false
+        }
+        if lhs.tone != rhs.tone {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(unit)
+        hasher.combine(what)
+        hasher.combine(result)
+        hasher.combine(resultWord)
+        hasher.combine(tone)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLinkSystemWrite: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LinkSystemWrite {
+        return
+            try LinkSystemWrite(
+                unit: FfiConverterString.read(from: &buf), 
+                what: FfiConverterString.read(from: &buf), 
+                result: FfiConverterString.read(from: &buf), 
+                resultWord: FfiConverterString.read(from: &buf), 
+                tone: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LinkSystemWrite, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.unit, into: &buf)
+        FfiConverterString.write(value.what, into: &buf)
+        FfiConverterString.write(value.result, into: &buf)
+        FfiConverterString.write(value.resultWord, into: &buf)
+        FfiConverterString.write(value.tone, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkSystemWrite_lift(_ buf: RustBuffer) throws -> LinkSystemWrite {
+    return try FfiConverterTypeLinkSystemWrite.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkSystemWrite_lower(_ value: LinkSystemWrite) -> RustBuffer {
+    return FfiConverterTypeLinkSystemWrite.lower(value)
+}
+
+
+/**
+ * One unit's measured latency to set.
+ */
+public struct LinkUnitLatency {
+    /**
+     * The unit's id.
+     */
+    public var unitId: String
+    /**
+     * µs; none: the output latency counts.
+     */
+    public var measuredLatencyUs: Int64?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The unit's id.
+         */unitId: String, 
+        /**
+         * µs; none: the output latency counts.
+         */measuredLatencyUs: Int64?) {
+        self.unitId = unitId
+        self.measuredLatencyUs = measuredLatencyUs
+    }
+}
+
+#if compiler(>=6)
+extension LinkUnitLatency: Sendable {}
+#endif
+
+
+extension LinkUnitLatency: Equatable, Hashable {
+    public static func ==(lhs: LinkUnitLatency, rhs: LinkUnitLatency) -> Bool {
+        if lhs.unitId != rhs.unitId {
+            return false
+        }
+        if lhs.measuredLatencyUs != rhs.measuredLatencyUs {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(unitId)
+        hasher.combine(measuredLatencyUs)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLinkUnitLatency: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LinkUnitLatency {
+        return
+            try LinkUnitLatency(
+                unitId: FfiConverterString.read(from: &buf), 
+                measuredLatencyUs: FfiConverterOptionInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LinkUnitLatency, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.unitId, into: &buf)
+        FfiConverterOptionInt64.write(value.measuredLatencyUs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkUnitLatency_lift(_ buf: RustBuffer) throws -> LinkUnitLatency {
+    return try FfiConverterTypeLinkUnitLatency.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkUnitLatency_lower(_ value: LinkUnitLatency) -> RustBuffer {
+    return FfiConverterTypeLinkUnitLatency.lower(value)
 }
 
 
@@ -24250,6 +26208,30 @@ fileprivate struct FfiConverterOptionUInt32: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionInt32: FfiConverterRustBuffer {
+    typealias SwiftType = Int32?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterInt32.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterInt32.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionUInt64: FfiConverterRustBuffer {
     typealias SwiftType = UInt64?
 
@@ -24274,6 +26256,54 @@ fileprivate struct FfiConverterOptionUInt64: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionInt64: FfiConverterRustBuffer {
+    typealias SwiftType = Int64?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterInt64.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterInt64.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionFloat: FfiConverterRustBuffer {
+    typealias SwiftType = Float?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterFloat.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterFloat.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionDouble: FfiConverterRustBuffer {
     typealias SwiftType = Double?
 
@@ -24290,6 +26320,30 @@ fileprivate struct FfiConverterOptionDouble: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterDouble.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionBool: FfiConverterRustBuffer {
+    typealias SwiftType = Bool?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterBool.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterBool.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -24953,6 +27007,181 @@ fileprivate struct FfiConverterSequenceTypeLinkPhaseText: FfiConverterRustBuffer
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeLinkPhaseText.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeLinkRoomLipSync: FfiConverterRustBuffer {
+    typealias SwiftType = [LinkRoomLipSync]
+
+    public static func write(_ value: [LinkRoomLipSync], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLinkRoomLipSync.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LinkRoomLipSync] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LinkRoomLipSync]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeLinkRoomLipSync.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeLinkSystemAlarm: FfiConverterRustBuffer {
+    typealias SwiftType = [LinkSystemAlarm]
+
+    public static func write(_ value: [LinkSystemAlarm], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLinkSystemAlarm.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LinkSystemAlarm] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LinkSystemAlarm]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeLinkSystemAlarm.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeLinkSystemRoom: FfiConverterRustBuffer {
+    typealias SwiftType = [LinkSystemRoom]
+
+    public static func write(_ value: [LinkSystemRoom], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLinkSystemRoom.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LinkSystemRoom] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LinkSystemRoom]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeLinkSystemRoom.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeLinkSystemScene: FfiConverterRustBuffer {
+    typealias SwiftType = [LinkSystemScene]
+
+    public static func write(_ value: [LinkSystemScene], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLinkSystemScene.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LinkSystemScene] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LinkSystemScene]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeLinkSystemScene.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeLinkSystemUnit: FfiConverterRustBuffer {
+    typealias SwiftType = [LinkSystemUnit]
+
+    public static func write(_ value: [LinkSystemUnit], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLinkSystemUnit.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LinkSystemUnit] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LinkSystemUnit]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeLinkSystemUnit.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeLinkSystemWrite: FfiConverterRustBuffer {
+    typealias SwiftType = [LinkSystemWrite]
+
+    public static func write(_ value: [LinkSystemWrite], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLinkSystemWrite.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LinkSystemWrite] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LinkSystemWrite]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeLinkSystemWrite.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeLinkUnitLatency: FfiConverterRustBuffer {
+    typealias SwiftType = [LinkUnitLatency]
+
+    public static func write(_ value: [LinkUnitLatency], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLinkUnitLatency.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LinkUnitLatency] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LinkUnitLatency]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeLinkUnitLatency.read(from: &buf))
         }
         return seq
     }
@@ -26281,6 +28510,18 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_link_status() != 7876) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_link_system_align() != 11582) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_link_system_recall() != 3901) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_link_system_save() != 59672) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_link_system_view() != 44177) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_load_params() != 46764) {
