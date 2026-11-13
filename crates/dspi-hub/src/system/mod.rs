@@ -43,6 +43,14 @@ pub enum ModelRefused {
     /// The store could not keep it.
     #[error("not saved: {0}")]
     NotSaved(HubError),
+    // -- fixup sw3x --
+    /// `system.set` named the revision it was edited from, and the hub has a
+    /// newer one: someone else changed the installation meanwhile.
+    #[error("the installation changed on the hub (revision {current}); read it again")]
+    Stale {
+        /// The hub's revision now.
+        current: u64,
+    },
 }
 
 /// Where the model persists: the hub's store (`hub-store.json`, `system`).
@@ -147,9 +155,28 @@ impl SystemShared {
 
     /// Take a new model: checked, saved, then kept. The revision it got. A
     /// model that is refused or cannot be saved changes nothing.
+    #[cfg(test)]
     pub(crate) fn set_model(&self, model: SystemModel) -> Result<u64, ModelRefused> {
+        self.set_model_at(model, None)
+    }
+
+    // -- fixup sw3x --
+    /// [`Self::set_model`], refused as [`ModelRefused::Stale`] when `expected`
+    /// is given and is not the revision now. Checked under the saving lock,
+    /// which every change of the revision holds.
+    pub(crate) fn set_model_at(
+        &self,
+        model: SystemModel,
+        expected: Option<u64>,
+    ) -> Result<u64, ModelRefused> {
         model.validate().map_err(ModelRefused::Invalid)?;
         let _in_order = guard(&self.saving);
+        if let Some(expected) = expected {
+            let current = self.lock().revision;
+            if current != expected {
+                return Err(ModelRefused::Stale { current });
+            }
+        }
         if let Some(store) = &self.store {
             store.save(&model).map_err(ModelRefused::NotSaved)?;
         }

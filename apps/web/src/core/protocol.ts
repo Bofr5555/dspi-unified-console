@@ -457,6 +457,17 @@ export interface CoreMethods extends AudioLinkMethods {
   crosspoint: { params: Crosspoint; result: Crosspoint };
   /** The longest delay this device takes (21 ms on RP2040, 42 on RP2350). */
   outputLimits: { params: undefined; result: { maxDelayMs: number } };
+  // -- WP SW3 -- the hub's audio-link system model (crates/dspi-wasm/src/system.rs)
+  /**
+   * One of the hub's `system.*` requests on this session's connection
+   * (docs/integrator/audio-link.md), judged by the hub against this session's
+   * role: the hub's answer without `t` and `id`. Refusals: `denied` (the
+   * message names what), `rate_limited`, `invalid`, `not_open` (no hub), `link`;
+   * -- fixup sw3x -- `conflict`: `system.set` with a `revision` the hub has moved past.
+   */
+  hubSystem: { params: { t: string; [field: string]: unknown }; result: Record<string, unknown> };
+  /** The role the hub gave this session: `viewer`, `control`, `admin`; "" with no hub. */
+  hubRole: { params: undefined; result: { role: string } };
   /** Tests only: make the stub core lose its link. The real core answers `unknown_method`. */
   simulate: { params: { what: "link-lost" | "link-closed" }; result: null };
 }

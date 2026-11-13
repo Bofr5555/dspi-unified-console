@@ -2110,6 +2110,52 @@ fn redial(
 
 /// A client failure as a typed error, its text ready to show. Spec 7.1 codes
 /// pass through.
+// -- WP SW3 --
+/// How long a hub's own JSON request may take: the audio link's `system.status`
+/// and `system.align` read and write every unit of the model, a few transfers each.
+const HUB_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
+
+// -- WP SW3 --
+/// The hub's own JSON requests on this session's connection, for the web
+/// console's System view (the audio link's `system.*`,
+/// `docs/integrator/audio-link.md`). Not exported over UniFFI or the C ABI;
+/// the web binding calls these.
+impl DspiCore {
+    /// Send `t` with `fields` to the hub this session is on, and wait for its
+    /// answer (the `ok` message whole). The hub judges it by this session's
+    /// role. Errors: [`DspiError::Disconnected`] with no hub session,
+    /// [`DspiError::Link`] with the hub's code (`denied`, `rate_limited`,
+    /// `bad_request`, ...) or the client's (`timeout`, `closed`).
+    pub fn link_hub_request(
+        &self,
+        t: &str,
+        fields: serde_json::Map<String, serde_json::Value>,
+    ) -> Result<serde_json::Value> {
+        let client = self
+            .lock()
+            .link
+            .as_ref()
+            .and_then(|s| s.client.clone())
+            .filter(|c| !c.is_closed())
+            .ok_or(DspiError::Disconnected)?;
+        client
+            .request_json(t, fields, HUB_REQUEST_TIMEOUT)
+            .map_err(map_error)
+    }
+
+    /// The role the hub gave this session (`viewer`, `control`, `admin`); ""
+    /// with no hub session.
+    pub fn link_hub_role(&self) -> String {
+        self.lock()
+            .link
+            .as_ref()
+            .and_then(|s| s.client.clone())
+            .filter(|c| !c.is_closed())
+            .map(|c| c.role())
+            .unwrap_or_default()
+    }
+}
+
 fn map_error(e: LinkError) -> DspiError {
     let msg = e.to_string();
     let code: &str = match &e {

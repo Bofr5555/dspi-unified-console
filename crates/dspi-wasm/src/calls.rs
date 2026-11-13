@@ -210,6 +210,10 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
     if let Some(r) = audio_link::dispatch(&core, &req.method, req.params.clone()) {
         return r;
     }
+    // -- WP SW3 -- the hub's audio-link system model (src/system.rs)
+    if let Some(r) = crate::system::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
     match req.method.as_str() {
         "open" => open(h, &core, params(req.params)?),
         "state" => {

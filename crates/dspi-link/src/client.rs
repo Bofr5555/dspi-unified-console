@@ -1109,6 +1109,27 @@ impl LinkClient {
         }
     }
 
+    // -- WP SW3 --
+    /// A JSON request of the hub's own, such as the audio link's `system.*`
+    /// (`docs/integrator/audio-link.md`): `fields` go beside `t` and `id`
+    /// (which replace any of that name). The answer is the hub's `ok` message
+    /// whole; an `err` is [`LinkError::Rejected`] with the hub's code.
+    pub fn request_json(
+        &self,
+        t: &str,
+        mut fields: serde_json::Map<String, Value>,
+        timeout: Duration,
+    ) -> Result<Value, LinkError> {
+        self.request(
+            |id| {
+                fields.insert("t".into(), Value::from(t));
+                fields.insert("id".into(), Value::from(id));
+                Value::Object(fields).to_string()
+            },
+            timeout,
+        )
+    }
+
     fn request(&self, make: impl FnOnce(u64) -> String, timeout: Duration) -> Result<Value, LinkError> {
         let id = self.inner.next_id.fetch_add(1, Ordering::SeqCst);
         self.request_id(id, make(id), timeout)

@@ -1122,6 +1122,81 @@ pub fn link_event(notify_features: Option<u32>, id: u8, payload: &[u8]) -> Optio
     }
 }
 
+// -- WP SW3 --
+/// The trim scan at link-up from `EXT_LINK_DIAG` (2.8.11, offsets 32-39): the
+/// sampling trims that decoded clean and the one in use. A healthy link has a
+/// clean range centred on 0 within one step. The DIAG layout is versioned by
+/// byte 0, so only version 1 (a receiver's) is read; a sender build (`0x81`)
+/// or a later layout gives `None`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TrimScan {
+    /// Lowest clean trim, -9..+9 (one step moves the window 3.26 ns).
+    pub trim_lo: i8,
+    /// Highest clean trim.
+    pub trim_hi: i8,
+    /// The trim in use.
+    pub trim_used: i8,
+    /// 0 no scan, 1 running, 2 done, 3 done but no trim was clean.
+    pub scan_state: u8,
+    /// Bit i set = trim i - 9 was clean.
+    pub clean_mask: u32,
+}
+
+impl TrimScan {
+    /// The DIAG layout this decodes.
+    pub const DIAG_VERSION: u8 = 1;
+
+    /// From a whole `EXT_LINK_DIAG` reply; `None` when short or not version 1.
+    pub fn decode_diag(b: &[u8]) -> Option<Self> {
+        let b = b.get(..LINK_DIAG_SIZE)?;
+        if byte(b, 0)? != Self::DIAG_VERSION {
+            return None;
+        }
+        Some(Self {
+            trim_lo: i8::from_le_bytes([byte(b, 32)?]),
+            trim_hi: i8::from_le_bytes([byte(b, 33)?]),
+            trim_used: i8::from_le_bytes([byte(b, 34)?]),
+            scan_state: byte(b, 35)?,
+            clean_mask: u32_at(b, 36)?,
+        })
+    }
+
+    /// The scan state's name: `none`, `running`, `done`, `no_clean_trim`.
+    pub fn state_name(&self) -> &'static str {
+        match self.scan_state {
+            0 => "none",
+            1 => "running",
+            2 => "done",
+            3 => "no_clean_trim",
+            _ => "unknown",
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests_wp_sw3 {
+    use super::*;
+
+    #[test]
+    fn wp_sw3_trim_scan_from_diag_version_1_only() {
+        let mut d = vec![0u8; LINK_DIAG_SIZE];
+        d[0] = 1;
+        d[32] = (-3i8) as u8;
+        d[33] = 4;
+        d[34] = 0;
+        d[35] = 2;
+        d[36..40].copy_from_slice(&0x0000_FF00u32.to_le_bytes());
+        let t = TrimScan::decode_diag(&d).unwrap();
+        assert_eq!((t.trim_lo, t.trim_hi, t.trim_used), (-3, 4, 0));
+        assert_eq!(t.state_name(), "done");
+        assert_eq!(t.clean_mask, 0xFF00);
+        d[0] = 0x81;
+        assert_eq!(TrimScan::decode_diag(&d), None);
+        d[0] = 1;
+        assert_eq!(TrimScan::decode_diag(&d[..40]), None);
+    }
+}
+
 /// WP SW1: the codecs against `extension_channel_spec.md` 2.8 (LK7), its
 /// example bytes included.
 #[cfg(test)]

@@ -329,6 +329,33 @@ fn observe(dev: &DeviceShared) -> Observed {
         o.loss_count = Some(s.loss_count);
         o.phase_error_frames = Some(s.phase_error_frames);
         o.frame = Some(s.frame).filter(|f| *f != 0);
+        // -- WP SW3 --
+        o.stats = Some(align::LinkStats {
+            line_class: s.class,
+            channels: s.channels,
+            lock_count: s.lock_count,
+            crc8_errors: s.crc8_errors,
+            bit_slips: s.bit_slips,
+            superframe_errors: s.superframe_errors,
+            vcxo_ppm: s.vcxo_ppm,
+            fill_frames: s.fill_frames,
+        });
+    }
+    // -- WP SW3 -- a receiver's trim scan; a layout other than version 1 is not read.
+    if info.role.receives() {
+        o.trim_scan = get_ext(
+            dev,
+            alink::EXT_LINK_DIAG,
+            alink::LINK_DIAG_SIZE,
+            alink::TrimScan::decode_diag,
+        )
+        .map(|t| align::TrimScan {
+            state: t.state_name().into(),
+            trim_lo: t.trim_lo,
+            trim_hi: t.trim_hi,
+            trim_used: t.trim_used,
+            clean_mask: t.clean_mask,
+        });
     }
     if let Some(c) = get_ext(
         dev,
@@ -340,7 +367,12 @@ fn observe(dev: &DeviceShared) -> Observed {
     }
     // -- fixup sw2x (F1) --
     if info.role == LinkRole::Sender {
-        o.system_mute = read_ctrl(dev).map(|snap| snap.flags & 1 != 0);
+        // -- fixup sw3x -- and the apply it holds (flags bit 2), from the same read
+        let snap = read_ctrl(dev);
+        o.system_mute = snap.as_ref().map(|snap| snap.flags & 1 != 0);
+        o.pending_apply_frame = snap
+            .filter(|snap| snap.flags & 0b100 != 0)
+            .map(|snap| snap.apply.frame);
     }
     o.state_events = get_ext(dev, g::EXT_NOTIFY_FEATURES, 4, |b| {
         b.get(..4)?.try_into().ok().map(u32::from_le_bytes)
@@ -365,7 +397,19 @@ impl HubHandle {
         &self,
         model: super::model::SystemModel,
     ) -> Result<u64, super::ModelRefused> {
-        let revision = self.system().set_model(model)?;
+        self.system_set_model_at(model, None)
+    }
+
+    // -- fixup sw3x --
+    /// [`Self::system_set_model`] only if the hub's revision is still
+    /// `expected` (when given): an editor that read revision N cannot
+    /// overwrite a newer model by accident.
+    pub fn system_set_model_at(
+        &self,
+        model: super::model::SystemModel,
+        expected: Option<u64>,
+    ) -> Result<u64, super::ModelRefused> {
+        let revision = self.system().set_model_at(model, expected)?;
         // -- fixup sw2x (F5) -- the model's devices online now.
         let (model, _) = self.system().model();
         for (_, dev) in self.system_devices(&model) {

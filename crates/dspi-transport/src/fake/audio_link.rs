@@ -417,6 +417,14 @@ impl State {
                 if let Some(v) = d.first_mut() {
                     *v = DIAG_VERSION;
                 }
+                // -- WP SW3 -- a receiver's trim scan at link-up (offsets 32-39):
+                // done, clean from -3 to +4, running at 0, as a healthy link.
+                if l.setup.role.receives()
+                    && l.state != LinkState::Off
+                    && let Some(scan) = d.get_mut(32..40)
+                {
+                    scan.copy_from_slice(&[0xFD, 4, 0, 2, 0xC0, 0x3F, 0, 0]);
+                }
                 Some(d)
             }
             // EXT_LINK_TX: a sender's.
