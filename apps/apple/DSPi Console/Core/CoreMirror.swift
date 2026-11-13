@@ -131,6 +131,11 @@ struct CoreStateChange {
     /// Whether the core can undo and redo after the change (-- WP SWMAC1 --);
     /// nil when it was not read.
     var journal: CoreJournalState? = nil
+    /// -- WP SW9 -- False for the state published after this app's own typed
+    /// writes: the core patched its mirror with the value sent, which the
+    /// device has not confirmed, so it never ends a pending edit (a late
+    /// echo of an earlier value may still follow).
+    var confirms = true
 
     /// The `NotifyResult` flags after which the mirror is read again.
     static let stateFlags = DspiConstants.NOTIFY_STATE | DspiConstants.NOTIFY_REFRESHED
@@ -251,7 +256,7 @@ final class CoreMirror {
     /// The core reported a change.
     private func changed(_ change: CoreStateChange) {
         guard let vm = vm else { return }
-        vm.applyCoreState(change.state, force: change.refreshed)
+        vm.applyCoreState(change.state, force: change.refreshed, confirms: change.confirms)   // -- WP SW9 --
         // -- WP SWF6 -- No Swift snapshot at a preset's refresh: the core
         // rebased its baseline when it re-read, keeping what changed after the
         // load unsaved (CG33), and its list comes with the change.
@@ -309,14 +314,15 @@ final class CoreMirror {
     /// pending or not (a whole re-read: connect, preset load, refusal).
     /// Returns the keys written.
     @discardableResult
-    func apply(_ state: DspState, force: Bool) -> [String] {
+    func apply(_ state: DspState, force: Bool, confirms: Bool = true) -> [String] {
         guard let vm = vm else { return [] }
         latest = state
         applying = true
         defer { applying = false }
         let t = now()
         var written: [String] = []
-        for field in fields where field.apply(state, vm: vm, now: t, window: pendingWindow, force: force) {
+        for field in fields where field.apply(state, vm: vm, now: t, window: pendingWindow, force: force,
+                                              confirms: confirms) {
             written.append(field.key)
         }
         scheduleSweep(t)
@@ -347,7 +353,8 @@ final class CoreMirror {
 private protocol MirrorField: AnyObject {
     var key: String { get }
     var isDeferred: Bool { get }
-    func apply(_ state: DspState, vm: DSPViewModel, now: TimeInterval, window: TimeInterval, force: Bool) -> Bool
+    func apply(_ state: DspState, vm: DSPViewModel, now: TimeInterval, window: TimeInterval, force: Bool,
+               confirms: Bool) -> Bool
     func watch(_ vm: DSPViewModel, isEdit: @escaping () -> Bool,
                clock: @escaping () -> TimeInterval) -> [AnyCancellable]
     func deferredUntil(window: TimeInterval) -> TimeInterval?
@@ -381,11 +388,14 @@ private final class Field<V: Equatable>: MirrorField {
         self.edits = edits
     }
 
-    func apply(_ state: DspState, vm: DSPViewModel, now: TimeInterval, window: TimeInterval, force: Bool) -> Bool {
+    func apply(_ state: DspState, vm: DSPViewModel, now: TimeInterval, window: TimeInterval, force: Bool,
+               confirms: Bool) -> Bool {
         let core = value(state, vm)
         if !force, !isDeferred, let last = last, last == core { return false }
         last = core
         if !force, let p = pending {
+            // -- WP SW9 -- Our own write's value, unconfirmed: still pending.
+            if !confirms, p.value == core { isDeferred = false; return false }
             if p.value == core {
                 pending = nil
             } else if now - p.at < window {
@@ -849,9 +859,9 @@ extension DSPViewModel {
 
     /// Apply the core's state through the mirror, and the feature gates the
     /// image implies.  Main thread.
-    func applyCoreState(_ s: DspState, force: Bool) {
+    func applyCoreState(_ s: DspState, force: Bool, confirms: Bool = true) {
         guard CoreMirror.decoded(s) else { return }
-        let written = Set(coreMirror.apply(s, force: force))
+        let written = Set(coreMirror.apply(s, force: force, confirms: confirms))
         if force {
             // Gates: what a whole image says the firmware has (as the old
             // bulk apply did; the per-item reads after it may refine them).

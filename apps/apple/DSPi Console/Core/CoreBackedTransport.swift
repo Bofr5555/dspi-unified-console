@@ -124,6 +124,9 @@ final class CoreBackedTransport: DeviceTransport {
     /// -- WP SW9 -- The write lane (SWIFT-SEAMS 5.2): the newest value
     /// queued per key, with the generation it was issued for (stateLock).
     private var laneWrites: [String: LaneWrite] = [:]
+    /// -- WP SW9 -- A publish of the state after typed writes is queued
+    /// (coreQueue only).
+    private var writePublishQueued = false
 
     private static let log = Logger(subsystem: AppIdentity.logSubsystem, category: "CoreBackedTransport")
     #if DEBUG
@@ -691,19 +694,25 @@ extension CoreBackedTransport: CoreStateSource, CoreStateSourceProviding {
             Self.log.info("typed write \(key ?? "", privacy: .public) failed: \(String(describing: error), privacy: .public)")
             return
         }
-        publishJournalIfMoved()
+        guard !writePublishQueued else { return }
+        writePublishQueued = true
+        coreQueue.async { [weak self] in self?.publishAfterWrites() }
     }
 
-    // On coreQueue.  A typed write patched the core's mirror and its journal
-    // at once; its echo may change nothing, so say so now: Undo is enabled
-    // and the unsaved-changes list follows without waiting for a drain.
-    private func publishJournalIfMoved() {
+    // On coreQueue, behind the writes queued with it.  A typed write patched
+    // the core's mirror and its journal at once, and its echo may change
+    // nothing there, so no drain would say so: publish the state after the
+    // writes, with the unsaved-changes list and the journal (Undo enabled).
+    // Once per run of queued writes, so the last state the view model holds
+    // is the one after the last write (a pending field's sweep applies it).
+    private func publishAfterWrites() {
+        writePublishQueued = false
         let journal = journalOnCore()
-        guard journal != lastJournal else { return }
         lastJournal = journal
         guard !stateFanout.isEmpty else { return }
         stateFanout.publish(CoreStateChange(flags: 0, state: onCore { $0.getState() },
-                                            presetChanges: onCore { $0.presetChanges() }, journal: journal))
+                                            presetChanges: onCore { $0.presetChanges() }, journal: journal,
+                                            confirms: false))
     }
 
     func call<T>(_ body: (DspiCore) throws -> T) -> Result<T, DspiError> {
