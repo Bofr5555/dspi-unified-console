@@ -768,7 +768,7 @@ extension CoreBackedTransport: CoreStateSource, CoreStateSourceProviding {
 
     // -- WP SW11 -- A typed write whose reply the caller needs (a pin
     // setter's status), then the state publish a queued write gets.
-    func commit<T>(_ body: (DspiCore) throws -> T) -> Result<T, DspiError> {
+    func writeAndWait<T>(_ body: (DspiCore) throws -> T) -> Result<T, DspiError> {
         stateLock.lock(); lastRawSetAt = ProcessInfo.processInfo.systemUptime; stateLock.unlock()
         return onCoreSync {
             self.lastRawSetSentAt = ProcessInfo.processInfo.systemUptime

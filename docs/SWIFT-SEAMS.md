@@ -299,6 +299,26 @@ state is the core's ganged mirror.
 | `Commands.swift:4541` `setChannelName` | SET_CHANNEL_NAME/UInt16(channel) | setChannelName(ch,name) | `params.rs:666` | `2765` |
 | `Commands.swift:4551` `fetchChannelName` | GET_CHANNEL_NAME/UInt16(channel) | S.channel_names (getChannelName(ch) re-reads) | `connect.rs:233`, `params.rs:685`, `records.rs:326` | `2170`, `2126` |
 
+*As built (SW11).* The fire-and-forget setters (LG Sound Sync, DAC mute, input source, input rate as the core's index,
+I2S clock mode, source, device and channel names) go through SW9's `write(lane:_:)` with no lane key; this domain has no
+slider. The setters that return a PIN_CONFIG_* status (output pin and bus, BCK, MCK, ADAT out and in, S/PDIF and I2S
+input pins, enables and channels, the clock-pin mode, the DAC mute test) wait for the core's answer through a new
+`CoreStateSource.writeAndWait(_:)`, which publishes the state after it as a queued write does; the core's `Refused`
+carries the device's status byte, and any other failure is 0xFF, as before. UART and I2C: the core's setter, the
+same 250 ms wait, then `fetchCtrlIfaces()`. The settings are read from the core's mirror (CoreMirror shows them);
+the `fetch*` above that only re-read a stored setting do nothing through a core, those that re-read the device
+(`fetchOutputPin`, `fetchSpdifRxPin`, `fetchChannelName`, `fetchDacHwMuteConfig`) use the core's re-reads, and the
+support gates come from the core's `featurePresent` (the names Qt uses). The statuses are typed reads:
+`fetchAdatOutStatus()`, `fetchInputLock(0)` and `fetchInputLock(1)`. Names come from the core's copies
+(`cachedInputSourceName`, `cachedDeviceName`). The interrupt monitor's ADAT, I2S-slave, ADAT-in and name hooks stand
+down through a core; CoreMirror hands the notification flags to `followCoreEvents`, which reads the statuses again
+on CG25's `NOTIFY_STREAMS` and the names on `NOTIFY_NAMES`. The input-format hook stays on the raw tap: the core
+keeps the active input count in the status record, which is SW14's. `probeExtensions` uses `extStatus()` and the
+core-voltage status `fetchCoreVreg()`; the app writes no voltage (only the hub's network rule, `CoreVoltageRule`,
+sees VREG writes, unchanged). The STM32 bus re-read after a slot change is `refreshOutputSlotTypes()`, the core's
+`refreshParams()` (it has no per-slot read). No function was deleted: every one still has a caller on the paths
+without a core.
+
 #### SW12 (30 functions)
 
 | Swift function | Wire use today | Core replacement | Core (Rust) | Binding line |

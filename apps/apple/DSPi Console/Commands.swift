@@ -2213,7 +2213,7 @@ extension DSPViewModel {
     // buses, inputs and the flash-written names are recorded and stepped
     // over, as in Qt), and the settings are read from its mirror, which
     // CoreMirror shows.  The setters that return a PIN_CONFIG_* status
-    // block for the core's answer (`commit`).  Without a core (USB without
+    // block for the core's answer (`writeAndWait`).  Without a core (USB without
     // -CoreTransport, MIDI, the Link client) they stay raw SETs and GETs.
 
     /// -- WP SW11 -- A typed setter's outcome as the PIN_CONFIG_* status the
@@ -2232,7 +2232,7 @@ extension DSPViewModel {
     /// request.
     private func typedPinStatus(_ body: (DspiCore) throws -> Void) -> UInt8? {
         guard let core = typedCore else { return nil }
-        return Self.pinStatus(core.commit(body))
+        return Self.pinStatus(core.writeAndWait(body))
     }
 
     /// -- WP SW11 -- Whether the core finds `feature` on the device (no I/O).
@@ -2242,7 +2242,7 @@ extension DSPViewModel {
 
     func fetchOutputPin(output: Int) {
         if let core = typedCore {   // -- WP SW11 -- its re-read, into the mirror shown
-            _ = core.commit { _ = try $0.fetchOutputPin(slot: UInt8(output)) }
+            _ = core.writeAndWait { _ = try $0.fetchOutputPin(slot: UInt8(output)) }
             return
         }
         if let d = transport.getControlRequest(request: REQ_GET_OUTPUT_PIN, value: UInt16(output), index: 2, length: 1) {
@@ -2324,7 +2324,7 @@ extension DSPViewModel {
     /// its full re-read: it has no per-slot read, its mirror is published.
     func refreshOutputSlotTypes() {
         if let core = typedCore {
-            _ = core.commit { try $0.refreshParams() }
+            _ = core.writeAndWait { try $0.refreshParams() }
             return
         }
         for slot in 0..<numOutputSlots { fetchOutputSlotType(slot: slot) }
@@ -2963,7 +2963,7 @@ extension DSPViewModel {
     /// Reads a single S/PDIF input's GPIO pin (default index 0 = input 1).
     func fetchSpdifRxPin(index: Int = 0) {
         if let core = typedCore {   // -- WP SW11 -- its re-read, into the mirror shown
-            _ = core.commit { _ = try $0.fetchSpdifRxPin(index: UInt8(index)) }
+            _ = core.writeAndWait { _ = try $0.fetchSpdifRxPin(index: UInt8(index)) }
             return
         }
         if let data = transport.getControlRequest(request: REQ_GET_SPDIF_RX_PIN, value: UInt16(index), index: 2, length: 1),
@@ -3438,7 +3438,7 @@ extension DSPViewModel {
     /// device changed meanwhile.  Blocking, as the raw path.
     private func applyControlInterface(_ core: CoreStateSource, generation: UInt64,
                                        _ body: (DspiCore) throws -> Void) -> CtrlIfaceStatus? {
-        guard case .success = core.commit(body) else { return nil }
+        guard case .success = core.writeAndWait(body) else { return nil }
         Thread.sleep(forTimeInterval: 0.25)
         guard transport.generation == generation else { return nil }
         guard case .success = core.call({ try $0.fetchCtrlIfaces() }) else { return nil }
@@ -5023,7 +5023,7 @@ extension DSPViewModel {
 
     func fetchChannelName(channel: Int) {
         if let core = typedCore {   // -- WP SW11 -- its re-read, into the mirror shown
-            _ = core.commit { _ = try $0.getChannelName(ch: Self.wire(channel)) }
+            _ = core.writeAndWait { _ = try $0.getChannelName(ch: Self.wire(channel)) }
             return
         }
         guard let data = transport.getControlRequest(request: REQ_GET_CHANNEL_NAME, value: UInt16(channel), index: 2, length: 32) else { return }

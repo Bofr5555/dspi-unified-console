@@ -181,7 +181,7 @@ final class CoreDomainSW11Tests: XCTestCase, CoreDomainTesting {
         // A fresh read of the demo device, through the core.
         guard case .success(let s) = t.readAll() else { return XCTFail("the device reads") }
         XCTAssertEqual(s.lgSoundSyncEnabled, lg)
-        XCTAssertEqual(s.channelNames[safe: 1], "SW11 right")
+        XCTAssertEqual(s.channelNames.count > 1 ? s.channelNames[1] : nil, "SW11 right")
         XCTAssertEqual(Int(s.inputSource), source)
         XCTAssertEqual(i2sRateEnumToHz(s.i2sInputRate), rate)
         XCTAssertEqual(s.i2sClockMode, clockMode)
@@ -271,17 +271,17 @@ final class CoreDomainSW11Tests: XCTestCase, CoreDomainTesting {
         _ = t.takeRawOpcodesForTest()
         t.coreQueue.sync { try? core.demoRenameElsewhere(target: 1, name: "Elsewhere") }
         XCTAssertTrue(spinUntil(5) { vm.inputSourceNames[1] == "Elsewhere" },
-                      "shown: \(vm.inputSourceNames[safe: 1] ?? "none")")
+                      "shown: \(vm.inputSourceNames[1])")
         XCTAssertEqual(domainRaw(t), [])
     }
 
     /// The extension probe and the core voltage come from the core (no
     /// request), and this app writes no voltage.
     func testSW11ExtensionsAndCoreVoltageThroughTheCore() {
-        let (_, t, vm) = hostVM()   // the fake answers like the bofr fork
+        let (_, _, t, vm) = hostVM()   // the fake answers like the bofr fork
         _ = t.takeRawOpcodesForTest()
         offMain { vm.probeExtensions(force: true) }
-        XCTAssertTrue(spinUntil(5) { vm.extensionProbe != .unknown })
+        XCTAssertTrue(spinUntil(5) { vm.extensionProbe != ExtensionProbeState.unknown })
         if vm.coreVregSupported {
             XCTAssertTrue(spinUntil(5) { vm.coreVregStatus != nil }, "the core's read")
         }
