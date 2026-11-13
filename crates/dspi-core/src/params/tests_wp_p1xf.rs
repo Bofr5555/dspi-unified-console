@@ -223,3 +223,33 @@ fn wp_p1xf_an_exported_custom_pair_under_a_named_preset_round_trips() {
     other.set_crossfeed_preset(3).unwrap();
     assert_eq!(shown(&other), (3, 800.0, 5.0));
 }
+
+// -- WP P1AFIX -- (review p1a N1)
+/// `crossfeed_custom_pair` gives the custom pair whatever the preset, before
+/// and after the echo; with no device it is `Disconnected`.
+#[test]
+fn wp_p1afix_the_custom_pair_reads_typed_under_every_preset() {
+    use crate::records::CrossfeedPair;
+    assert!(matches!(
+        DspiCore::new().crossfeed_custom_pair(),
+        Err(crate::DspiError::Disconnected)
+    ));
+    let (core, _remote) = demo();
+    custom_800_5(&core);
+    let pair = CrossfeedPair {
+        freq_hz: 800.0,
+        feed_db: 5.0,
+    };
+    for preset in [0u8, 1, 2, 3] {
+        core.set_crossfeed_preset(preset).unwrap();
+        assert_eq!(core.crossfeed_custom_pair().unwrap(), pair, "{preset}");
+        settle(&core);
+        assert_eq!(core.crossfeed_custom_pair().unwrap(), pair, "{preset}");
+    }
+    // A custom value written under a named preset: the getter has it, the
+    // shown state keeps the preset's.
+    core.set_crossfeed_preset(2).unwrap();
+    core.set_crossfeed_freq(820.0).unwrap();
+    assert_eq!(core.crossfeed_custom_pair().unwrap().freq_hz, 820.0);
+    assert_eq!(shown(&core), (2, 650.0, 9.5));
+}

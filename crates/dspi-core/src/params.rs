@@ -422,6 +422,26 @@ impl DspiCore {
         self.set_scalar("cf.feed", Value::Float(val), |s| s.crossfeed_feed = val)
     }
 
+    // -- WP P1AFIX -- (review p1a N1)
+    /// The crossfeed's custom pair (frequency and feed) as the device keeps
+    /// it: what Custom runs. Under a named preset `get_state` gives that
+    /// preset's values instead; this gives the custom pair whatever the
+    /// preset, from the mirror (no transfer). It is what
+    /// `set_crossfeed_freq`/`set_crossfeed_feed` write, an export saves, and
+    /// `config_diff`/`config_preview` compare.
+    ///
+    /// Errors: [`DspiError::Disconnected`] with no device.
+    pub fn crossfeed_custom_pair(&self) -> Result<CrossfeedPair> {
+        let inner = self.lock();
+        if inner.conn.is_none() {
+            return Err(DspiError::Disconnected);
+        }
+        Ok(CrossfeedPair {
+            freq_hz: inner.state.crossfeed_freq,
+            feed_db: inner.state.crossfeed_feed,
+        })
+    }
+
     /// Crossfeed interaural time delay on (`true`) or off.
     ///
     /// Errors: the connection and transfer errors of every setter.

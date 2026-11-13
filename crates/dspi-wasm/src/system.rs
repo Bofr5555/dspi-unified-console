@@ -46,6 +46,9 @@ fn page_code(code: &str) -> &'static str {
 
 /// The page's error for a hub's refusal.
 fn hub_error(e: DspiError) -> CallError {
+    // -- WP P1AFIX -- (review p1a F3) the core error's notice key, like every
+    // other core failure (`From<DspiError>`)
+    let notice_key = Some(e.notice_key());
     match e {
         DspiError::Link { code, msg } => {
             // `msg` is the client's "hub refused: <code> <words>": the words alone.
@@ -56,7 +59,10 @@ fn hub_error(e: DspiError) -> CallError {
                 .map(str::trim_start)
                 .filter(|w| !w.is_empty())
                 .unwrap_or(&msg);
-            CallError::new(page, words)
+            CallError {
+                notice_key,
+                ..CallError::new(page, words)
+            }
         }
         other => other.into(),
     }
@@ -255,6 +261,8 @@ mod tests_wp_sw3 {
             r["error"].as_str().unwrap().contains("system.status"),
             "{r}"
         );
+        // -- WP P1AFIX -- (F3) the hub's refusal carries the notice key too
+        assert_eq!(r["noticeKey"], "dlink", "{r}");
         assert_eq!(super::page_code("bad_request"), "invalid");
         assert_eq!(super::page_code("denied"), "denied");
         assert_eq!(super::page_code("conflict"), "conflict");

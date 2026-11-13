@@ -246,7 +246,9 @@ fn p1df_no_block_changes_nothing() {
     let core = demo();
     let before = export(&core);
     let r = json_of(&core.config_import_selected(tuned(), IMPORT_BY_BLOCK, u32::MAX));
-    assert_eq!(r["ok"], json!(true));
+    // -- WP P1AFIX -- (review p1a F4) refused, nothing written: see
+    // `wp_p1afix_a_by_block_import_with_no_block_is_refused_and_writes_nothing`
+    assert_eq!(r["ok"], json!(false));
     let d = json_of(&config_diff(before, export(&core)));
     assert_eq!(rows(&d), vec![]);
 }
@@ -438,4 +440,151 @@ fn p1df_mac_and_qt_documents_still_import() {
         let left = json_of(&core.config_preview(doc.into(), every, u32::MAX));
         assert_eq!(rows(&left), vec![], "{what}");
     }
+}
+
+// -- WP P1AFIX -- (review p1a F4, N3)
+
+/// The demo device behind a counter of the OUT transfers it is sent.
+struct Counting {
+    dev: dspi_transport::FakeDevice,
+    outs: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl dspi_transport::Transport for Counting {
+    fn control_in(&mut self, op: u8, value: u16, len: u16) -> dspi_transport::Result<Vec<u8>> {
+        self.dev.control_in(op, value, len)
+    }
+    fn control_in_upto(&mut self, op: u8, value: u16, len: u16) -> dspi_transport::Result<Vec<u8>> {
+        self.dev.control_in_upto(op, value, len)
+    }
+    fn control_out(&mut self, op: u8, value: u16, data: &[u8]) -> dspi_transport::Result<()> {
+        self.outs.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.dev.control_out(op, value, data)
+    }
+    fn descriptor(&self) -> &dspi_transport::DeviceDescriptor {
+        self.dev.descriptor()
+    }
+    fn max_transfer(&self) -> usize {
+        self.dev.max_transfer()
+    }
+    fn caps(&self) -> dspi_transport::TransportCaps {
+        self.dev.caps()
+    }
+}
+
+/// The demo device behind [`Counting`], fetched; the counter.
+fn counted_demo() -> (Arc<DspiCore>, Arc<std::sync::atomic::AtomicUsize>) {
+    let outs = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let spy = Counting {
+        dev: dspi_transport::FakeDevice::demo(),
+        outs: Arc::clone(&outs),
+    };
+    let core = DspiCore::new();
+    core.attach_probed(Box::new(spy), "DEMO".into(), 0).unwrap();
+    core.fetch_all().unwrap();
+    (core, outs)
+}
+
+/// A by-block import with no block chosen writes nothing to the device,
+/// journals nothing (the undo history is intact), logs nothing, and says
+/// "nothing selected" with its notice key. With a block it writes.
+#[test]
+fn wp_p1afix_a_by_block_import_with_no_block_is_refused_and_writes_nothing() {
+    let (core, outs) = counted_demo();
+    core.set_input_preamp(0, -4.5).unwrap();
+    let history = core.history(50).len();
+    assert!(history > 0 && core.can_undo());
+    let events = core.event_log_read(String::new(), 0, 1000).entries.len();
+    let before = export(&core);
+    let sent = outs.load(std::sync::atomic::Ordering::SeqCst);
+
+    for eq_channels in [u32::MAX, 0] {
+        let r = json_of(&core.config_import_selected(tuned(), IMPORT_BY_BLOCK, eq_channels));
+        assert_eq!(r["ok"], json!(false), "{r}");
+        assert_eq!(r["noticeKey"], json!(NOTICE_CONFIG_NOTHING_SELECTED), "{r}");
+        assert!(
+            r["error"]
+                .as_str()
+                .unwrap()
+                .contains("Nothing was selected")
+        );
+    }
+    assert_eq!(outs.load(std::sync::atomic::Ordering::SeqCst), sent);
+    assert_eq!(core.history(50).len(), history);
+    assert!(core.can_undo());
+    assert_eq!(
+        core.event_log_read(String::new(), 0, 1000).entries.len(),
+        events
+    );
+    let d = json_of(&config_diff(before, export(&core)));
+    assert_eq!(rows(&d), vec![]);
+    // The trim written before is still the step undo takes back.
+    core.undo().unwrap();
+    assert_ne!(core.get_state().input_preamp_db[0], -4.5);
+
+    // A chosen block does write.
+    let sent = outs.load(std::sync::atomic::Ordering::SeqCst);
+    let r =
+        json_of(&core.config_import_selected(tuned(), IMPORT_BY_BLOCK | IMPORT_NAMES, u32::MAX));
+    assert_eq!(r["ok"], json!(true), "{r}");
+    assert!(outs.load(std::sync::atomic::Ordering::SeqCst) > sent);
+}
+
+/// The configuration calls' refusals carry a notice key the table has.
+#[test]
+fn wp_p1afix_config_refusals_carry_a_notice_key() {
+    let key = |text: String| json_of(&text)["noticeKey"].as_str().unwrap().to_owned();
+    let none = DspiCore::new();
+    let cases = [
+        (config_diff("{".into(), QT.into()), NOTICE_CONFIG_UNREADABLE),
+        (
+            config_diff(QT.into(), "[]".into()),
+            NOTICE_CONFIG_UNREADABLE,
+        ),
+        (config_inspect("".into()), NOTICE_CONFIG_UNREADABLE),
+        (none.config_import("{".into(), 0), NOTICE_CONFIG_UNREADABLE),
+        (
+            none.config_import_selected("{".into(), 0, 0),
+            NOTICE_CONFIG_UNREADABLE,
+        ),
+        (
+            none.config_preview("{".into(), 0, 0),
+            NOTICE_CONFIG_UNREADABLE,
+        ),
+        (none.config_import(QT.into(), 0), "disconnected"),
+        (
+            none.config_import_selected(QT.into(), 0, u32::MAX),
+            "disconnected",
+        ),
+        (none.config_preview(QT.into(), 0, u32::MAX), "disconnected"),
+    ];
+    for (reply, want) in cases {
+        assert_eq!(json_of(&reply)["ok"], json!(false), "{reply}");
+        assert_eq!(key(reply.clone()), want, "{reply}");
+        assert_eq!(
+            crate::notice_text::notice_for_key(want.into(), String::new()).key,
+            want
+        );
+    }
+    // Opened but not read yet.
+    let core = DspiCore::new();
+    core.attach_probed(
+        Box::new(dspi_transport::FakeDevice::demo()),
+        "DEMO".into(),
+        0,
+    )
+    .unwrap();
+    let r = core.config_preview(QT.into(), 0, u32::MAX);
+    if json_of(&r)["ok"] == json!(false) {
+        assert_eq!(key(r), NOTICE_CONFIG_NOT_READ);
+    }
+    assert_eq!(
+        crate::notice_text::notice_for_key(NOTICE_CONFIG_NOT_READ.into(), String::new()).key,
+        NOTICE_CONFIG_NOT_READ
+    );
+    assert_eq!(
+        crate::notice_text::notice_for_key(NOTICE_CONFIG_NOTHING_SELECTED.into(), String::new())
+            .key,
+        NOTICE_CONFIG_NOTHING_SELECTED
+    );
 }

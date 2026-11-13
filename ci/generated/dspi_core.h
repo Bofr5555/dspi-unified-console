@@ -2977,6 +2977,21 @@ typedef struct DspState {
 } DspState;
 
 /**
+ * The crossfeed's custom pair as the device keeps it
+ * (`dspi_get_crossfeed_custom_pair`).
+ */
+typedef struct CrossfeedPair {
+  /**
+   * Frequency, in Hz.
+   */
+  float freq_hz;
+  /**
+   * Feed level, in dB.
+   */
+  float feed_db;
+} CrossfeedPair;
+
+/**
  * The upmixer's live telemetry.
  */
 typedef struct UpmixStatus {
@@ -3945,6 +3960,13 @@ bool dspi_set_crossfeed_freq(struct FfiCore *core, float freq);
  * Set the custom crossfeed level, in dB.
  */
 bool dspi_set_crossfeed_feed(struct FfiCore *core, float feed);
+
+/**
+ * The crossfeed's custom pair as the device keeps it, whatever the preset
+ * (`dspi_get_state` shows a named preset's values instead), into `out`.
+ * False with no device. No transfer.
+ */
+bool dspi_get_crossfeed_custom_pair(struct FfiCore *core, struct CrossfeedPair *out);
 
 /**
  * Turn the crossfeed's interaural time delay on or off.

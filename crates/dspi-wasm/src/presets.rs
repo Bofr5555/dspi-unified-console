@@ -98,7 +98,8 @@ pub fn preview(core: &DspiCore, p: PreviewParams) -> Result<Value, CallError> {
 }
 
 /// A core JSON reply as the call's value; its `{ok: false, error}` as a
-/// `bad_document` failure.
+/// `bad_document` failure, with the core's `noticeKey` (WP P1AFIX, review
+/// p1a N3).
 fn reply(text: &str) -> Result<Value, CallError> {
     let v: Value = serde_json::from_str(text)
         .map_err(|e| CallError::new("internal", format!("unreadable reply: {e}")))?;
@@ -109,8 +110,24 @@ fn reply(text: &str) -> Result<Value, CallError> {
             .get("error")
             .and_then(Value::as_str)
             .unwrap_or("not a DSPi configuration");
-        Err(CallError::new("bad_document", why))
+        // -- WP P1AFIX --
+        let notice_key = v
+            .get("noticeKey")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        Err(CallError {
+            notice_key,
+            ..CallError::new("bad_document", why)
+        })
     }
+}
+
+// -- WP P1AFIX -- (review p1a N1)
+/// `crossfeedCustomPair`: the crossfeed's custom pair as the device keeps it,
+/// whatever the preset (`DspiCore::crossfeed_custom_pair`): `{freqHz,
+/// feedDb}`. No transfer.
+pub fn crossfeed_custom_pair(core: &DspiCore) -> Result<Value, CallError> {
+    Ok(crate::calls::tidy(&core.crossfeed_custom_pair()?))
 }
 
 fn need_device(core: &DspiCore) -> Result<(), CallError> {
@@ -179,6 +196,42 @@ mod tests {
             json!({ "text": MAC, "options": (1 << 16) | 4, "eqChannels": 2 }),
         );
         assert_eq!(p["count"], 2, "{p}");
+    }
+
+    // -- WP P1AFIX --
+    #[test]
+    fn wp_p1afix_config_refusals_carry_a_notice_key_and_the_custom_pair_reads() {
+        const QT: &str = include_str!("../../../tests/fixtures/preset/qt-core-v32.dspipreset");
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        let r = run(h, "configDiff", json!({ "before": "{", "after": QT }));
+        assert_eq!(r["code"], "bad_document", "{r}");
+        assert_eq!(r["noticeKey"], "config.unreadable", "{r}");
+        assert_eq!(
+            run(h, "crossfeedCustomPair", Value::Null)["code"],
+            "not_open"
+        );
+        ok(h, "open", json!({ "kind": "demo" }));
+        let r = run(h, "configPreview", json!({ "text": "{" }));
+        assert_eq!(r["noticeKey"], "config.unreadable", "{r}");
+        ok(
+            h,
+            "write",
+            json!({ "path": "cf.preset", "value": { "choice": 3 } }),
+        );
+        ok(
+            h,
+            "write",
+            json!({ "path": "cf.freq", "value": { "float": 820.0 } }),
+        );
+        ok(
+            h,
+            "write",
+            json!({ "path": "cf.preset", "value": { "choice": 2 } }),
+        );
+        let p = ok(h, "crossfeedCustomPair", Value::Null);
+        assert_eq!(p["freqHz"], 820.0, "{p}");
+        assert!(p["feedDb"].is_number(), "{p}");
     }
 
     #[test]

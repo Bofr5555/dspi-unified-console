@@ -2057,6 +2057,22 @@ data class UsbErrorStats(
 )
 
 /**
+ * The crossfeed's custom pair as the device keeps it
+ * ([`crate::DspiCore::crossfeed_custom_pair`]): what Custom runs, whatever
+ * preset is chosen now.
+ */
+data class CrossfeedPair(
+    /**
+     * Frequency, in Hz.
+     */
+    val freqHz: Float,
+    /**
+     * Feed level, in dB.
+     */
+    val feedDb: Float,
+)
+
+/**
  * What `EXT_LINK_INFO` reports, read once at connect.
  */
 data class AudioLinkInfo(

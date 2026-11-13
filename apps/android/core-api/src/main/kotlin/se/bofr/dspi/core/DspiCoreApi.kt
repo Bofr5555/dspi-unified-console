@@ -796,16 +796,6 @@ interface DspiCoreApi : AutoCloseable {
      */
     fun configImport(text: String, options: Long): String
 
-    /**
-     * [`DspiCore::config_import`] with the EQ narrowed to the wire channels
-     * in `eq_channels` (bit k: channel k; `u32::MAX` every one). `options`
-     * as there: with [`IMPORT_BY_BLOCK`] each `IMPORT_*` block bit says
-     * whether its block is applied (EQ, crossover, routing and matrix,
-     * outputs, limiters, effects, volume levels, hardware I/O, names), and
-     * a block left out keeps the device's values; without it the old two
-     * bits keep their meaning. The reply is `config_import`'s, plus
-     * `blocks`: the block bits applied.
-     */
     fun configImportSelected(text: String, options: Long, eqChannels: Long): String
 
     /**
@@ -1565,30 +1555,8 @@ interface DspiCoreApi : AutoCloseable {
      */
     fun setDragging(dragging: Boolean)
 
-    /**
-     * Begin an undo group: everything written until the matching
-     * [`DspiCore::end_group`] that undo can reverse is one undo step,
-     * carrying `label` ([`HistoryEntry::label`]), as a drag is. Use it for
-     * one action that writes several values (a linked pair, a Clear All, a
-     * routing preset). Groups nest: only the outermost begin starts the
-     * step and takes its label, and only the matching end ends it. The
-     * group belongs to the connection: a disconnect, another device
-     * opened, a re-attach, a re-read ([`DspiCore::fetch_all`]) and a change
-     * that ends the history (a preset load, a bulk image, a factory reset)
-     * end it at any depth, and an `end_group` after that does nothing.
-     * With no device the call is ignored. An empty group records nothing.
-     * A write undo cannot reverse stands apart, as in a drag. The group is
-     * the connection's, not the thread's: call it on the thread that sends
-     * the group's writes, in order with them.
-     */
     fun beginGroup(label: String)
 
-    /**
-     * End the undo group [`DspiCore::begin_group`] opened: the outermost
-     * end ends the step, so the next write is a step of its own. Nothing
-     * when no group is open (one a disconnect or a re-read ended, or none
-     * at all).
-     */
     fun endGroup()
 
     /**
@@ -2067,6 +2035,19 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun setCrossfeedFeed(feed: Float)
+
+    /**
+     * The crossfeed's custom pair (frequency and feed) as the device keeps
+     * it: what Custom runs. Under a named preset `get_state` gives that
+     * preset's values instead; this gives the custom pair whatever the
+     * preset, from the mirror (no transfer). It is what
+     * `set_crossfeed_freq`/`set_crossfeed_feed` write, an export saves, and
+     * `config_diff`/`config_preview` compare.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device.
+     */
+    @Throws(DspiException::class)
+    fun crossfeedCustomPair(): CrossfeedPair
 
     /**
      * Crossfeed interaural time delay on (`true`) or off.

@@ -1860,9 +1860,29 @@ fn config_report(b: &Built) -> (Vec<String>, bool) {
     (lines, clean)
 }
 
-/// `{"ok": false, "error": ...}`.
-fn refusal(error: &str) -> String {
-    json!({ "ok": false, "error": error }).to_string()
+// -- WP P1AFIX -- (review p1a N3) the configuration calls' refusals name
+// their notice (`crate::notice_text`), as the C and web failures do.
+/// The notice key of a document this build does not read.
+pub const NOTICE_CONFIG_UNREADABLE: &str = "config.unreadable";
+/// The notice key of a by-block import with no block chosen.
+pub const NOTICE_CONFIG_NOTHING_SELECTED: &str = "config.nothing_selected";
+/// The notice key of a preview before the device's settings were read.
+pub const NOTICE_CONFIG_NOT_READ: &str = "config.not_read";
+
+/// `{"ok": false, "error": ..., "noticeKey": ...}`.
+fn keyed_refusal(error: &str, notice_key: &str) -> String {
+    json!({ "ok": false, "error": error, "noticeKey": notice_key }).to_string()
+}
+
+/// The refusal for a text that is not a document this build reads.
+fn document_refusal(error: &str) -> String {
+    keyed_refusal(error, NOTICE_CONFIG_UNREADABLE)
+}
+
+/// The refusal for a device that could not be written or read: the core
+/// error's own notice key.
+fn device_refusal(e: &DspiError) -> String {
+    keyed_refusal(&write_error(e), &e.notice_key())
 }
 
 /// Why nothing (more) could be written, for the user.
@@ -1920,7 +1940,7 @@ fn exportable(inner: &mut Inner) -> Result<(DspState, Option<[u8; 4]>)> {
 pub fn config_inspect(text: String) -> String {
     let doc = match parse_config(&text) {
         Ok(d) => d,
-        Err(e) => return refusal(&e),
+        Err(e) => return document_refusal(&e),
     };
     let meta = doc.get("meta");
     let field = |k: &str| {
@@ -2042,11 +2062,11 @@ fn diff_reply(before: &DspState, after: &Built, sources: &[String], kind: MetaKi
 pub fn config_diff(before: String, after: String) -> String {
     let a = match parse_config(&before) {
         Ok(d) => d,
-        Err(e) => return refusal(&format!("First document: {e}")),
+        Err(e) => return document_refusal(&format!("First document: {e}")),
     };
     let b = match parse_config(&after) {
         Ok(d) => d,
-        Err(e) => return refusal(&format!("Second document: {e}")),
+        Err(e) => return document_refusal(&format!("Second document: {e}")),
     };
     let base = base_for(&a);
     let first = build_selected(&base, &a, Selection::all());
@@ -2116,15 +2136,27 @@ impl DspiCore {
     /// a block left out keeps the device's values; without it the old two
     /// bits keep their meaning. The reply is `config_import`'s, plus
     /// `blocks`: the block bits applied.
+    ///
+    /// With [`IMPORT_BY_BLOCK`] and no block bit nothing is chosen: the
+    /// reply is a refusal (`noticeKey` `config.nothing_selected`) and nothing
+    /// is written, journalled or logged; the undo history stays as it was.
+    // -- WP P1AFIX -- (review p1a F4) the refusal of an empty selection
     pub fn config_import_selected(&self, text: String, options: u32, eq_channels: u32) -> String {
         let doc = match parse_config(&text) {
             Ok(d) => d,
-            Err(e) => return refusal(&e),
+            Err(e) => return document_refusal(&e),
         };
+        let sel = Selection::new(options, eq_channels);
+        if sel.blocks() == 0 {
+            return keyed_refusal(
+                "Nothing was selected to import; nothing was changed.",
+                NOTICE_CONFIG_NOTHING_SELECTED,
+            );
+        }
         self.ensure_probed();
-        match self.import_document(&doc, Selection::new(options, eq_channels)) {
+        match self.import_document(&doc, sel) {
             Ok(reply) => reply.to_string(),
-            Err(e) => refusal(&write_error(&e)),
+            Err(e) => device_refusal(&e),
         }
     }
 
@@ -2139,14 +2171,17 @@ impl DspiCore {
     pub fn config_preview(&self, text: String, options: u32, eq_channels: u32) -> String {
         let doc = match parse_config(&text) {
             Ok(d) => d,
-            Err(e) => return refusal(&e),
+            Err(e) => return document_refusal(&e),
         };
         let inner = self.lock();
         let Some(conn) = inner.conn.as_ref() else {
-            return refusal(&write_error(&DspiError::Disconnected));
+            return device_refusal(&DspiError::Disconnected);
         };
         if conn.wire.is_none() {
-            return refusal("No settings have been read from the device yet.");
+            return keyed_refusal(
+                "No settings have been read from the device yet.",
+                NOTICE_CONFIG_NOT_READ,
+            );
         }
         let has_map = conn.ext.pair_map.is_some();
         let sources = conn.source_names.to_vec();

@@ -633,6 +633,10 @@ uint8_t preset_default_slot;
 bool bulk_valid;
 uint8_t bulk_raw[BULK_PARAMS_SIZE];
 } DspState;
+typedef struct CrossfeedPair {
+float freq_hz;
+float feed_db;
+} CrossfeedPair;
 typedef struct UpmixStatus {
 bool active;
 uint8_t parked_reason;
@@ -878,6 +882,7 @@ bool dspi_set_crossfeed(struct FfiCore *core, bool enabled);
 bool dspi_set_crossfeed_preset(struct FfiCore *core, uint8_t preset);
 bool dspi_set_crossfeed_freq(struct FfiCore *core, float freq);
 bool dspi_set_crossfeed_feed(struct FfiCore *core, float feed);
+bool dspi_get_crossfeed_custom_pair(struct FfiCore *core, struct CrossfeedPair *out);
 bool dspi_set_crossfeed_itd(struct FfiCore *core, bool enabled);
 bool dspi_set_crossfeed_outputs(struct FfiCore *core, uint8_t pair_mask);
 bool dspi_set_leveller_enabled(struct FfiCore *core, bool enabled);

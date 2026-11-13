@@ -1318,6 +1318,11 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * A write undo cannot reverse stands apart, as in a drag. The group is
      * the connection's, not the thread's: call it on the thread that sends
      * the group's writes, in order with them.
+     *
+     * A group begun while a drag is marked ([`DspiCore::set_dragging`])
+     * joins the drag's step instead of ending it (the step takes the
+     * group's label if it had none), and its `end_group` leaves that step
+     * open until the drag ends: one drag is one step.
      */
     func beginGroup(label: String) 
     
@@ -1457,6 +1462,10 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * a block left out keeps the device's values; without it the old two
      * bits keep their meaning. The reply is `config_import`'s, plus
      * `blocks`: the block bits applied.
+     *
+     * With [`IMPORT_BY_BLOCK`] and no block bit nothing is chosen: the
+     * reply is a refusal (`noticeKey` `config.nothing_selected`) and nothing
+     * is written, journalled or logged; the undo history stays as it was.
      */
     func configImportSelected(text: String, options: UInt32, eqChannels: UInt32)  -> String
     
@@ -1633,6 +1642,18 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * in `Ended`, or in `VerifyFailed`, from which it can be asked for again.
      */
     func coreVregTrialEnd() throws 
+    
+    /**
+     * The crossfeed's custom pair (frequency and feed) as the device keeps
+     * it: what Custom runs. Under a named preset `get_state` gives that
+     * preset's values instead; this gives the custom pair whatever the
+     * preset, from the mirror (no transfer). It is what
+     * `set_crossfeed_freq`/`set_crossfeed_feed` write, an export saves, and
+     * `config_diff`/`config_preview` compare.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device.
+     */
+    func crossfeedCustomPair() throws  -> CrossfeedPair
     
     /**
      * One control-surface operation, JSON `{op, index, ...}` (the old
@@ -1867,7 +1888,7 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * End the undo group [`DspiCore::begin_group`] opened: the outermost
      * end ends the step, so the next write is a step of its own. Nothing
      * when no group is open (one a disconnect or a re-read ended, or none
-     * at all).
+     * at all). Inside a drag the step goes on until `set_dragging(false)`.
      */
     func endGroup() 
     
@@ -4276,6 +4297,11 @@ open func audioLinkInfo()throws  -> AudioLinkInfo?  {
      * A write undo cannot reverse stands apart, as in a drag. The group is
      * the connection's, not the thread's: call it on the thread that sends
      * the group's writes, in order with them.
+     *
+     * A group begun while a drag is marked ([`DspiCore::set_dragging`])
+     * joins the drag's step instead of ending it (the step takes the
+     * group's label if it had none), and its `end_group` leaves that step
+     * open until the drag ends: one drag is one step.
      */
 open func beginGroup(label: String)  {try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_begin_group(self.uniffiClonePointer(),
@@ -4474,6 +4500,10 @@ open func configImport(text: String, options: UInt32) -> String  {
      * a block left out keeps the device's values; without it the old two
      * bits keep their meaning. The reply is `config_import`'s, plus
      * `blocks`: the block bits applied.
+     *
+     * With [`IMPORT_BY_BLOCK`] and no block bit nothing is chosen: the
+     * reply is a refusal (`noticeKey` `config.nothing_selected`) and nothing
+     * is written, journalled or logged; the undo history stays as it was.
      */
 open func configImportSelected(text: String, options: UInt32, eqChannels: UInt32) -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
@@ -4755,6 +4785,23 @@ open func coreVregTrialEnd()throws   {try rustCallWithError(FfiConverterTypeDspi
     uniffi_dspi_core_fn_method_dspicore_core_vreg_trial_end(self.uniffiClonePointer(),$0
     )
 }
+}
+    
+    /**
+     * The crossfeed's custom pair (frequency and feed) as the device keeps
+     * it: what Custom runs. Under a named preset `get_state` gives that
+     * preset's values instead; this gives the custom pair whatever the
+     * preset, from the mirror (no transfer). It is what
+     * `set_crossfeed_freq`/`set_crossfeed_feed` write, an export saves, and
+     * `config_diff`/`config_preview` compare.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device.
+     */
+open func crossfeedCustomPair()throws  -> CrossfeedPair  {
+    return try  FfiConverterTypeCrossfeedPair_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_crossfeed_custom_pair(self.uniffiClonePointer(),$0
+    )
+})
 }
     
     /**
@@ -5112,7 +5159,7 @@ open func disconnect()  {try! rustCall() {
      * End the undo group [`DspiCore::begin_group`] opened: the outermost
      * end ends the step, so the next write is a step of its own. Nothing
      * when no group is open (one a disconnect or a re-read ended, or none
-     * at all).
+     * at all). Inside a drag the step goes on until `set_dragging(false)`.
      */
 open func endGroup()  {try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_end_group(self.uniffiClonePointer(),$0
@@ -12439,6 +12486,93 @@ public func FfiConverterTypeCoreVregInfo_lift(_ buf: RustBuffer) throws -> CoreV
 #endif
 public func FfiConverterTypeCoreVregInfo_lower(_ value: CoreVregInfo) -> RustBuffer {
     return FfiConverterTypeCoreVregInfo.lower(value)
+}
+
+
+/**
+ * The crossfeed's custom pair as the device keeps it
+ * ([`crate::DspiCore::crossfeed_custom_pair`]): what Custom runs, whatever
+ * preset is chosen now.
+ */
+public struct CrossfeedPair {
+    /**
+     * Frequency, in Hz.
+     */
+    public var freqHz: Float
+    /**
+     * Feed level, in dB.
+     */
+    public var feedDb: Float
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Frequency, in Hz.
+         */freqHz: Float, 
+        /**
+         * Feed level, in dB.
+         */feedDb: Float) {
+        self.freqHz = freqHz
+        self.feedDb = feedDb
+    }
+}
+
+#if compiler(>=6)
+extension CrossfeedPair: Sendable {}
+#endif
+
+
+extension CrossfeedPair: Equatable, Hashable {
+    public static func ==(lhs: CrossfeedPair, rhs: CrossfeedPair) -> Bool {
+        if lhs.freqHz != rhs.freqHz {
+            return false
+        }
+        if lhs.feedDb != rhs.feedDb {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(freqHz)
+        hasher.combine(feedDb)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCrossfeedPair: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CrossfeedPair {
+        return
+            try CrossfeedPair(
+                freqHz: FfiConverterFloat.read(from: &buf), 
+                feedDb: FfiConverterFloat.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CrossfeedPair, into buf: inout [UInt8]) {
+        FfiConverterFloat.write(value.freqHz, into: &buf)
+        FfiConverterFloat.write(value.feedDb, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCrossfeedPair_lift(_ buf: RustBuffer) throws -> CrossfeedPair {
+    return try FfiConverterTypeCrossfeedPair.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCrossfeedPair_lower(_ value: CrossfeedPair) -> RustBuffer {
+    return FfiConverterTypeCrossfeedPair.lower(value)
 }
 
 
@@ -28655,7 +28789,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_audio_link_info() != 38734) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_begin_group() != 61137) {
+    if (uniffi_dspi_core_checksum_method_dspicore_begin_group() != 15128) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_cached_device_name() != 27756) {
@@ -28688,7 +28822,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_config_import() != 20391) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_config_import_selected() != 53546) {
+    if (uniffi_dspi_core_checksum_method_dspicore_config_import_selected() != 35048) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_config_preview() != 60996) {
@@ -28743,6 +28877,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_trial_end() != 31305) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_crossfeed_custom_pair() != 61764) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_cs_apply() != 37925) {
@@ -28808,7 +28945,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_disconnect() != 29066) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_end_group() != 16605) {
+    if (uniffi_dspi_core_checksum_method_dspicore_end_group() != 28189) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_enter_bootloader() != 19680) {

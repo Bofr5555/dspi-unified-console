@@ -37,6 +37,12 @@ and `endGroup`; UniFFI: `beginGroup` and `endGroup`).
   image and a factory reset end it at any depth.
 - A write undo cannot reverse (a hazard, an action) stands apart, as in a
   drag; the group's later writes form a further step.
+- Groups and drags (WP P1AFIX): a drag marked inside a group is part of the
+  group's step, which ends at the group's end. A group begun while a drag
+  is marked joins the drag's step (taking the group's label if the step had
+  none); its `end_group` leaves the step open, and the drag's
+  `set_dragging(false)` ends it. Either way one drag, or one group, is one
+  step.
 - Another writer's change during a group does not split it; undo judges
   each value on its own (theirs is left alone and named, the rest go back).
   A value the group writes again after their change starts a new step, so

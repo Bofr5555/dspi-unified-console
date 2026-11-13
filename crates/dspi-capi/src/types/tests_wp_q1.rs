@@ -158,6 +158,8 @@ fn rust_layouts() -> Vec<Layout> {
         SpdifRxStatus { state, input_source, lock_count, loss_count, sample_rate, parity_errors, fifo_fill_pct, lib_state, stable_callbacks, lost_callbacks }
         PlatformInfo { platform_id, num_output_channels, fw_major, fw_minor, fw_patch, fw_beta }
         RtaOwnership { following, origin, tap, mask, fft_order }
+        // -- WP P1AFIX --
+        CrossfeedPair { freq_hz, feed_db }
     }
 }
 

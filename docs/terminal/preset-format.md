@@ -116,6 +116,20 @@ a block left out keeps the device's values. Without it, `IMPORT_VOLUMES` and
 bringing the limiters). `config_preview` and `config_diff` say what would change,
 one row per value: `{block, section, item, before, after}`.
 
+<!-- WP P1AFIX -->
+With `IMPORT_BY_BLOCK` and no block bit nothing is chosen: `config_import_selected`
+refuses (`noticeKey` `config.nothing_selected`) and writes, journals and logs
+nothing, so the undo history stays. Every refusal of `config_import`,
+`config_import_selected`, `config_preview`, `config_diff` and `config_inspect` is
+`{ok: false, error, noticeKey}`: `config.unreadable` for a text that is not a
+document this build reads, `config.not_read` for a preview before the device's
+settings were read, otherwise the core error's own key (`disconnected`,
+`read_only`, `locked`, ...); C and the web binding pass it on. The crossfeed rows
+of a diff or preview compare the stored custom pair (`crossfeed.freqHz`,
+`feedDb`), which the document holds, not a named preset's values that
+`get_state` shows; `crossfeed_custom_pair()` (C `dspi_get_crossfeed_custom_pair`,
+web `crossfeedCustomPair`) reads that pair typed.
+
 ## Keys a document does not hold
 
 A value in a Terminal export is one the device reported. A read that fails (the

@@ -107,6 +107,21 @@ fn wp_p1nt_codes_refine_the_key_where_the_table_has_a_row() {
     // Every refined row is reachable from its code, and its family exists.
     for n in notice_texts() {
         if let Some((family, code)) = n.key.split_once('.') {
+            // -- WP P1AFIX -- the configuration calls' own refusals: no
+            // error variant makes these keys, `files` does
+            if family == "config" {
+                assert!(
+                    [
+                        crate::files::NOTICE_CONFIG_UNREADABLE,
+                        crate::files::NOTICE_CONFIG_NOTHING_SELECTED,
+                        crate::files::NOTICE_CONFIG_NOT_READ,
+                    ]
+                    .contains(&n.key.as_str()),
+                    "{}: not a key files.rs answers",
+                    n.key
+                );
+                continue;
+            }
             let e = match family {
                 "dlink" => dlink(code),
                 "autoeq" => DspiError::AutoEq {

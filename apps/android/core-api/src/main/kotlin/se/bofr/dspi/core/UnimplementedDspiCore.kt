@@ -346,6 +346,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun setCrossfeedFeed(feed: Float): Unit = throw NotImplementedError("set_crossfeed_feed")
 
+    override fun crossfeedCustomPair(): CrossfeedPair = throw NotImplementedError("crossfeed_custom_pair")
+
     override fun setCrossfeedItd(enabled: Boolean): Unit = throw NotImplementedError("set_crossfeed_itd")
 
     override fun setCrossfeedOutputs(pairMask: Int): Unit = throw NotImplementedError("set_crossfeed_outputs")

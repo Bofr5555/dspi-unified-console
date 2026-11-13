@@ -1300,3 +1300,17 @@ pub struct UsbErrorStats {
     /// Data sequence errors.
     pub data_seq: u32,
 }
+
+// -- WP P1AFIX --
+/// The crossfeed's custom pair as the device keeps it
+/// ([`crate::DspiCore::crossfeed_custom_pair`]): what Custom runs, whatever
+/// preset is chosen now.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CrossfeedPair {
+    /// Frequency, in Hz.
+    pub freq_hz: f32,
+    /// Feed level, in dB.
+    pub feed_db: f32,
+}

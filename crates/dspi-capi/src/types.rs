@@ -200,6 +200,18 @@ pub struct CtrlIfaceStatus {
     pub protocol_version: u8,
 }
 
+// -- WP P1AFIX --
+/// The crossfeed's custom pair as the device keeps it
+/// (`dspi_get_crossfeed_custom_pair`).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct CrossfeedPair {
+    /// Frequency, in Hz.
+    pub freq_hz: f32,
+    /// Feed level, in dB.
+    pub feed_db: f32,
+}
+
 /// The upmixer's live telemetry.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -972,6 +984,16 @@ impl From<&r::CtrlIfaceStatus> for CtrlIfaceStatus {
             i2c_last_status: s.i2c_last_status,
             i2c_live: s.i2c_live,
             protocol_version: s.protocol_version,
+        }
+    }
+}
+
+// -- WP P1AFIX --
+impl From<r::CrossfeedPair> for CrossfeedPair {
+    fn from(p: r::CrossfeedPair) -> Self {
+        Self {
+            freq_hz: p.freq_hz,
+            feed_db: p.feed_db,
         }
     }
 }

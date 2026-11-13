@@ -1552,6 +1552,8 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1718,6 +1720,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_trial(
 fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_op(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_trial_end(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_crossfeed_custom_pair(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_cs_apply(
 ): Short
@@ -2353,6 +2357,8 @@ fun uniffi_dspi_core_fn_method_dspicore_core_vreg_op(`ptr`: Pointer,`op`: Byte,`
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_core_vreg_trial_end(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_crossfeed_custom_pair(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_cs_apply(`ptr`: Pointer,`op`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_cs_demo_busy(`ptr`: Pointer,`on`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -3205,7 +3211,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_audio_link_info() != 38734.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_begin_group() != 61137.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_begin_group() != 15128.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_cached_device_name() != 27756.toShort()) {
@@ -3238,7 +3244,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_config_import() != 20391.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_config_import_selected() != 53546.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_config_import_selected() != 35048.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_config_preview() != 60996.toShort()) {
@@ -3293,6 +3299,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_trial_end() != 31305.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_crossfeed_custom_pair() != 61764.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_cs_apply() != 37925.toShort()) {
@@ -3358,7 +3367,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_disconnect() != 29066.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_end_group() != 16605.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_end_group() != 28189.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_enter_bootloader() != 19680.toShort()) {
@@ -5597,6 +5606,11 @@ public interface DspiCoreInterface {
      * A write undo cannot reverse stands apart, as in a drag. The group is
      * the connection's, not the thread's: call it on the thread that sends
      * the group's writes, in order with them.
+     *
+     * A group begun while a drag is marked ([`DspiCore::set_dragging`])
+     * joins the drag's step instead of ending it (the step takes the
+     * group's label if it had none), and its `end_group` leaves that step
+     * open until the drag ends: one drag is one step.
      */
     fun `beginGroup`(`label`: kotlin.String)
     
@@ -5736,6 +5750,10 @@ public interface DspiCoreInterface {
      * a block left out keeps the device's values; without it the old two
      * bits keep their meaning. The reply is `config_import`'s, plus
      * `blocks`: the block bits applied.
+     *
+     * With [`IMPORT_BY_BLOCK`] and no block bit nothing is chosen: the
+     * reply is a refusal (`noticeKey` `config.nothing_selected`) and nothing
+     * is written, journalled or logged; the undo history stays as it was.
      */
     fun `configImportSelected`(`text`: kotlin.String, `options`: kotlin.UInt, `eqChannels`: kotlin.UInt): kotlin.String
     
@@ -5912,6 +5930,18 @@ public interface DspiCoreInterface {
      * in `Ended`, or in `VerifyFailed`, from which it can be asked for again.
      */
     fun `coreVregTrialEnd`()
+    
+    /**
+     * The crossfeed's custom pair (frequency and feed) as the device keeps
+     * it: what Custom runs. Under a named preset `get_state` gives that
+     * preset's values instead; this gives the custom pair whatever the
+     * preset, from the mirror (no transfer). It is what
+     * `set_crossfeed_freq`/`set_crossfeed_feed` write, an export saves, and
+     * `config_diff`/`config_preview` compare.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device.
+     */
+    fun `crossfeedCustomPair`(): CrossfeedPair
     
     /**
      * One control-surface operation, JSON `{op, index, ...}` (the old
@@ -6146,7 +6176,7 @@ public interface DspiCoreInterface {
      * End the undo group [`DspiCore::begin_group`] opened: the outermost
      * end ends the step, so the next write is a step of its own. Nothing
      * when no group is open (one a disconnect or a re-read ended, or none
-     * at all).
+     * at all). Inside a drag the step goes on until `set_dragging(false)`.
      */
     fun `endGroup`()
     
@@ -8602,6 +8632,11 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * A write undo cannot reverse stands apart, as in a drag. The group is
      * the connection's, not the thread's: call it on the thread that sends
      * the group's writes, in order with them.
+     *
+     * A group begun while a drag is marked ([`DspiCore::set_dragging`])
+     * joins the drag's step instead of ending it (the step takes the
+     * group's label if it had none), and its `end_group` leaves that step
+     * open until the drag ends: one drag is one step.
      */override fun `beginGroup`(`label`: kotlin.String)
         = 
     callWithPointer {
@@ -8852,6 +8887,10 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * a block left out keeps the device's values; without it the old two
      * bits keep their meaning. The reply is `config_import`'s, plus
      * `blocks`: the block bits applied.
+     *
+     * With [`IMPORT_BY_BLOCK`] and no block bit nothing is chosen: the
+     * reply is a refusal (`noticeKey` `config.nothing_selected`) and nothing
+     * is written, journalled or logged; the undo history stays as it was.
      */override fun `configImportSelected`(`text`: kotlin.String, `options`: kotlin.UInt, `eqChannels`: kotlin.UInt): kotlin.String {
             return FfiConverterString.lift(
     callWithPointer {
@@ -9217,6 +9256,29 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * The crossfeed's custom pair (frequency and feed) as the device keeps
+     * it: what Custom runs. Under a named preset `get_state` gives that
+     * preset's values instead; this gives the custom pair whatever the
+     * preset, from the mirror (no transfer). It is what
+     * `set_crossfeed_freq`/`set_crossfeed_feed` write, an export saves, and
+     * `config_diff`/`config_preview` compare.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device.
+     */
+    @Throws(DspiException::class)override fun `crossfeedCustomPair`(): CrossfeedPair {
+            return FfiConverterTypeCrossfeedPair.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_crossfeed_custom_pair(
+        it, _status)
+}
+    }
+    )
+    }
     
 
     
@@ -9664,7 +9726,7 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * End the undo group [`DspiCore::begin_group`] opened: the outermost
      * end ends the step, so the next write is a step of its own. Nothing
      * when no group is open (one a disconnect or a re-read ended, or none
-     * at all).
+     * at all). Inside a drag the step goes on until `set_dragging(false)`.
      */override fun `endGroup`()
         = 
     callWithPointer {
@@ -17290,6 +17352,49 @@ public object FfiConverterTypeCoreVregInfo: FfiConverterRustBuffer<CoreVregInfo>
             FfiConverterUByte.write(value.`failedTrialVreg`, buf)
             FfiConverterUInt.write(value.`failedTrialUptimeS`, buf)
             FfiConverterUInt.write(value.`uptimeS`, buf)
+    }
+}
+
+
+
+/**
+ * The crossfeed's custom pair as the device keeps it
+ * ([`crate::DspiCore::crossfeed_custom_pair`]): what Custom runs, whatever
+ * preset is chosen now.
+ */
+data class CrossfeedPair (
+    /**
+     * Frequency, in Hz.
+     */
+    var `freqHz`: kotlin.Float, 
+    /**
+     * Feed level, in dB.
+     */
+    var `feedDb`: kotlin.Float
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCrossfeedPair: FfiConverterRustBuffer<CrossfeedPair> {
+    override fun read(buf: ByteBuffer): CrossfeedPair {
+        return CrossfeedPair(
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: CrossfeedPair) = (
+            FfiConverterFloat.allocationSize(value.`freqHz`) +
+            FfiConverterFloat.allocationSize(value.`feedDb`)
+    )
+
+    override fun write(value: CrossfeedPair, buf: ByteBuffer) {
+            FfiConverterFloat.write(value.`freqHz`, buf)
+            FfiConverterFloat.write(value.`feedDb`, buf)
     }
 }
 

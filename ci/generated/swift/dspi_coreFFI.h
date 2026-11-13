@@ -666,6 +666,11 @@ void uniffi_dspi_core_fn_method_dspicore_core_vreg_op(void*_Nonnull ptr, uint8_t
 void uniffi_dspi_core_fn_method_dspicore_core_vreg_trial_end(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CROSSFEED_CUSTOM_PAIR
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CROSSFEED_CUSTOM_PAIR
+RustBuffer uniffi_dspi_core_fn_method_dspicore_crossfeed_custom_pair(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CS_APPLY
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CS_APPLY
 RustBuffer uniffi_dspi_core_fn_method_dspicore_cs_apply(void*_Nonnull ptr, RustBuffer op, RustCallStatus *_Nonnull out_status
@@ -2879,6 +2884,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_core_vreg_op(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_TRIAL_END
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_TRIAL_END
 uint16_t uniffi_dspi_core_checksum_method_dspicore_core_vreg_trial_end(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CROSSFEED_CUSTOM_PAIR
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CROSSFEED_CUSTOM_PAIR
+uint16_t uniffi_dspi_core_checksum_method_dspicore_crossfeed_custom_pair(void
     
 );
 #endif

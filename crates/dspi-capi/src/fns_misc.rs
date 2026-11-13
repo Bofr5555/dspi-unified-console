@@ -1996,6 +1996,10 @@ mod tests_wp_qp16;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p1df;
+// -- WP P1AFIX --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_p1afix;
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]

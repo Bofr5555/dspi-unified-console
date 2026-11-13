@@ -330,6 +330,8 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         // -- WP P1DF -- the document diff and the import preview
         "configDiff" => presets::diff(params(req.params)?),
         "configPreview" => presets::preview(&core, params(req.params)?),
+        // -- WP P1AFIX -- the crossfeed's custom pair, typed
+        "crossfeedCustomPair" => presets::crossfeed_custom_pair(&core),
         // -- WP WB6b -- the EQ graph's curves, the core's maths (src/curves.rs)
         "curveGrid" => Ok(curves::grid()),
         "curves" => curves::curves(params(req.params)?),

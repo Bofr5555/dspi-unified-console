@@ -344,3 +344,85 @@ fn wp_p1ug_a_rewrite_after_another_writer_never_undoes_past_them() {
     core.undo().unwrap();
     assert_eq!(band0(&core, 1).freq, 4321.0, "back to theirs");
 }
+
+// -- WP P1AFIX -- (review p1a F5 and the unproved hazard claim)
+
+/// A group begun inside a drag joins the drag's step, and its end leaves
+/// the step open until the drag ends: one drag is one step.
+#[test]
+fn wp_p1afix_a_group_inside_a_drag_joins_the_drags_step() {
+    let core = demo();
+    let start = core.get_state().output_gain_db.clone();
+    core.set_dragging(true);
+    core.set_output_gain(0, -1.0).unwrap();
+    core.begin_group("Linked pair".into());
+    core.set_output_gain(1, -2.0).unwrap();
+    core.set_output_gain(2, -2.0).unwrap();
+    core.end_group();
+    core.set_output_gain(0, -3.0).unwrap();
+    core.set_output_gain(3, -4.0).unwrap();
+    core.set_dragging(false);
+    let h = core.history(10);
+    assert_eq!(h.len(), 1, "one drag, one step: {h:?}");
+    // The drag's step had no label: it takes the group's.
+    assert_eq!(h[0].label.as_deref(), Some("Linked pair"));
+    // After the drag, a write is a step of its own.
+    core.set_output_gain(0, -9.0).unwrap();
+    assert_eq!(core.history(10).len(), 2);
+    core.undo().unwrap();
+    core.undo().unwrap();
+    assert_eq!(core.get_state().output_gain_db, start);
+    assert!(!core.can_undo());
+
+    // A drag that ends while the group is still open: the group's step goes
+    // on until its end.
+    let core = demo();
+    core.set_dragging(true);
+    core.set_output_gain(0, -1.0).unwrap();
+    core.begin_group("Pair".into());
+    core.set_output_gain(1, -2.0).unwrap();
+    core.set_dragging(false);
+    core.set_output_gain(2, -2.0).unwrap();
+    core.end_group();
+    core.set_output_gain(3, -5.0).unwrap();
+    let h = core.history(10);
+    assert_eq!(h.len(), 2, "{h:?}");
+    assert_eq!(h[1].label.as_deref(), Some("Pair"));
+    assert_eq!(h[0].label, None);
+}
+
+/// A write undo cannot reverse, inside a group, stands apart: it is an
+/// entry of its own, never undone, and the group's undoable values around
+/// it each go back.
+#[test]
+fn wp_p1afix_a_hazard_write_inside_a_group_stands_apart() {
+    let core = demo();
+    let start = core.get_state().input_preamp_db.clone();
+    core.begin_group("With a hazard".into());
+    core.set_input_preamp(0, -3.0).unwrap();
+    core.set_output_latency(1).unwrap();
+    core.set_input_preamp(1, -3.0).unwrap();
+    core.end_group();
+    let h = core.history(10);
+    let hazard: Vec<_> = h.iter().filter(|e| e.path == "out.latency").collect();
+    assert_eq!(hazard.len(), 1, "{h:?}");
+    assert!(!hazard[0].undoable, "{h:?}");
+    assert!(
+        h.iter()
+            .filter(|e| e.path != "out.latency")
+            .all(|e| e.undoable),
+        "{h:?}"
+    );
+    // The hazard is not joined to a value step: the values sit in steps
+    // of their own around it.
+    assert_eq!(h.len(), 3, "{h:?}");
+    assert_eq!(h[1].path, "out.latency", "{h:?}");
+    // Undo puts the values back and never sends the hazard again.
+    for _ in 0..5 {
+        if !core.can_undo() {
+            break;
+        }
+        core.undo().unwrap();
+    }
+    assert_eq!(core.get_state().input_preamp_db, start);
+}

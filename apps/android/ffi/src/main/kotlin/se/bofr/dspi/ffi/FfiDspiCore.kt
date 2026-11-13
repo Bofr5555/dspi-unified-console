@@ -402,6 +402,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun setCrossfeedFeed(feed: Float) = call { core.setCrossfeedFeed(feed) }
 
+    override fun crossfeedCustomPair(): CrossfeedPair = call { core.crossfeedCustomPair().toDomain() }
+
     override fun setCrossfeedItd(enabled: Boolean) = call { core.setCrossfeedItd(enabled) }
 
     override fun setCrossfeedOutputs(pairMask: Int) = call { core.setCrossfeedOutputs(pairMask.toUByte()) }
@@ -1981,6 +1983,18 @@ internal fun UsbErrorStats.toFfi() =
         rxOverflow = rxOverflow.toUInt(),
         rxTimeout = rxTimeout.toUInt(),
         dataSeq = dataSeq.toUInt(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.CrossfeedPair.toDomain() =
+    CrossfeedPair(
+        freqHz = freqHz,
+        feedDb = feedDb,
+    )
+
+internal fun CrossfeedPair.toFfi() =
+    se.bofr.dspi.ffi.uniffi.CrossfeedPair(
+        freqHz = freqHz,
+        feedDb = feedDb,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.AudioLinkInfo.toDomain() =

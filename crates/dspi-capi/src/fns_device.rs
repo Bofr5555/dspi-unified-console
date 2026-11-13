@@ -663,6 +663,20 @@ pub extern "C" fn dspi_set_crossfeed_feed(core: *mut FfiCore, feed: f32) -> bool
     flag(core, |c| c.set_crossfeed_feed(feed))
 }
 
+// -- WP P1AFIX --
+/// The crossfeed's custom pair as the device keeps it, whatever the preset
+/// (`dspi_get_state` shows a named preset's values instead), into `out`.
+/// False with no device. No transfer.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_get_crossfeed_custom_pair(
+    core: *mut FfiCore,
+    out: *mut CrossfeedPair,
+) -> bool {
+    fetch_value(core, out, |c| {
+        c.crossfeed_custom_pair().map(CrossfeedPair::from)
+    })
+}
+
 /// Turn the crossfeed's interaural time delay on or off.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_crossfeed_itd(core: *mut FfiCore, enabled: bool) -> bool {

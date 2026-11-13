@@ -12,10 +12,7 @@
 #include "ExtController.h"
 #include "Shell.h"
 #include "SidebarController.h"
-#include "Snapshot.h"
 
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QTest>
@@ -99,22 +96,24 @@ QByteArray deviceMap(SmokeDriver &d) {
 }
 
 // -- WP P1XF -- the device's custom crossfeed pair, which the state shows only
-// under Custom: the export carries it whatever the preset
-std::pair<double, double> exportedCustomPair(SmokeDriver &d) {
-    QByteArray doc;
+// under Custom. -- WP P1AFIX -- read typed (dspi_get_crossfeed_custom_pair),
+// not parsed from the export; {-1, -1} when the call fails
+std::pair<double, double> customPair(SmokeDriver &d) {
+    std::pair<double, double> pair{ -1, -1 };
     bool done = false;
     d.app().core->worker()->call(
         d.app().device,
         [](FfiCore *c) {
-            return readSized([&](char *b, uint32_t n) { return dspi_config_export(c, "smoke", "0", 0, b, n); });
+            CrossfeedPair p{};
+            const bool ok = dspi_get_crossfeed_custom_pair(c, &p);
+            return ok ? std::pair<double, double>{ p.freq_hz, p.feed_db } : std::pair<double, double>{ -1, -1 };
         },
-        [&](const QByteArray &text) {
-            doc = text;
+        [&](std::pair<double, double> got) {
+            pair = got;
             done = true;
         });
     d.waitFor(3000, [&]() { return done; });
-    const QJsonObject cf = QJsonDocument::fromJson(doc).object().value(QStringLiteral("crossfeed")).toObject();
-    return { cf.value(QStringLiteral("freqHz")).toDouble(-1), cf.value(QStringLiteral("feedDb")).toDouble(-1) };
+    return pair;
 }
 
 Win open(SmokeDriver &d, const char *action, const char *type) {
@@ -193,7 +192,7 @@ void crossfeed(SmokeDriver &d) {
     const bool wasOn = s0->crossfeed_enabled;
     const int wasPreset = s0->crossfeed_preset;
     const int wasMask = s0->crossfeed_output_pair_mask;
-    const double wasCustomFreq = exportedCustomPair(d).first; // -- WP P1XF --
+    const double wasCustomFreq = customPair(d).first; // -- WP P1XF --
 
     // The switch, and the quick strip following it
     win.click(QStringLiteral("CrossfeedWindow.header.switch"));
@@ -221,7 +220,7 @@ void crossfeed(SmokeDriver &d) {
     // -- WP P1XF -- the state gives Meier's values; the device keeps its custom pair
     d.check(QStringLiteral("p1xf: the state gives the preset's own values"),
             near(fx->crossfeedFreq(), 650) && near(fx->crossfeedFeed(), 9.5));
-    d.check(QStringLiteral("qp7: the device keeps its custom values meanwhile"), near(exportedCustomPair(d).first, wasCustomFreq));
+    d.check(QStringLiteral("qp7: the device keeps its custom values meanwhile"), near(customPair(d).first, wasCustomFreq));
     d.check(QStringLiteral("qp7: screenshot of crossfeed with a preset"), d.grab(win.w, QStringLiteral("window-crossfeed-preset.png")));
 
     // A drag's value sends the number only; a release makes the preset Custom
@@ -229,7 +228,7 @@ void crossfeed(SmokeDriver &d) {
     if (freqRow) QMetaObject::invokeMethod(freqRow, "live", Q_ARG(double, 820.0));
     // -- WP P1XF -- under Meier the state keeps showing 650; the 820 is the device's custom value
     d.check(QStringLiteral("qp7: a live value reaches the device"),
-            d.waitFor(3000, [&]() { return near(exportedCustomPair(d).first, 820); }));
+            d.waitFor(3000, [&]() { return near(customPair(d).first, 820); }));
     d.check(QStringLiteral("p1xf: a live value under a preset leaves the preset's values shown"),
             near(state(d)->crossfeed_freq, 650) && near(fx->crossfeedShownFreq(), 650));
     d.check(QStringLiteral("qp7: a live value leaves the preset"), state(d)->crossfeed_preset == 2);

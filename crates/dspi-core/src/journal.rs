@@ -1062,8 +1062,15 @@ impl DspiCore {
     /// A write undo cannot reverse stands apart, as in a drag. The group is
     /// the connection's, not the thread's: call it on the thread that sends
     /// the group's writes, in order with them.
+    ///
+    /// A group begun while a drag is marked ([`DspiCore::set_dragging`])
+    /// joins the drag's step instead of ending it (the step takes the
+    /// group's label if it had none), and its `end_group` leaves that step
+    /// open until the drag ends: one drag is one step.
+    // -- WP P1AFIX -- (review p1a F5) a group inside a drag joins its step
     pub fn begin_group(&self, label: String) {
         let mut inner = self.lock();
+        let dragging = inner.dragging();
         let Some(conn) = inner.conn.as_mut() else {
             return;
         };
@@ -1076,6 +1083,9 @@ impl DspiCore {
             label,
             foreign_since: false,
         };
+        if dragging {
+            return;
+        }
         if let Ok(session) = conn.session() {
             session.end_step();
         }
@@ -1085,14 +1095,17 @@ impl DspiCore {
     /// End the undo group [`DspiCore::begin_group`] opened: the outermost
     /// end ends the step, so the next write is a step of its own. Nothing
     /// when no group is open (one a disconnect or a re-read ended, or none
-    /// at all).
+    /// at all). Inside a drag the step goes on until `set_dragging(false)`.
+    // -- WP P1AFIX -- (review p1a F5)
     pub fn end_group(&self) {
         let mut inner = self.lock();
+        let dragging = inner.dragging();
         let Some(conn) = inner.conn.as_mut() else {
             return;
         };
         match conn.undo_group.depth {
             0 => {}
+            1 if dragging => conn.undo_group = UndoGroup::default(),
             1 => end_undo_group(conn),
             d => conn.undo_group.depth = d.saturating_sub(1),
         }
