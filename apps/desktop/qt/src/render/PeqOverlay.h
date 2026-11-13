@@ -294,6 +294,10 @@ private:
     void setLive(const QHash<int, FilterParams> &changes);
     void sendToDevice();
     void commitLive();
+    // -- WP QTGAP1 -- take or let go of DeviceModel's drag mark: a pointer
+    // drag of a dot or a chip field is one undo step; wheel and key edits are not
+    void holdDrag(bool on);
+    bool m_holdsDrag = false;
     void setLiveThenCommit(const QHash<int, FilterParams> &changes);
     void commitNow(const QHash<int, FilterParams> &changes);
     void setSelection(const QSet<int> &bands);

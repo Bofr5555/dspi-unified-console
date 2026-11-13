@@ -1834,6 +1834,17 @@ pub extern "C" fn dspi_history(core: *mut FfiCore, n: u32, buf: *mut c_char, len
     text(core, buf, len, |c| json_reply(Ok(c.history(n))))
 }
 
+// -- WP QTGAP1 --
+/// Mark a continuous drag (`DspiCore::set_dragging`): `true` when a slider
+/// or a graph handle is taken, `false` when it is let go. Between the two,
+/// the repeated writes of one value join a single undo step; every other
+/// write is a step of its own. Call it on the thread that sends the drag's
+/// writes, in order with them. Nothing for a null handle.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_set_dragging(core: *const FfiCore, dragging: bool) {
+    with_core(core, (), |h| h.core.set_dragging(dragging));
+}
+
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_bug1;

@@ -213,6 +213,7 @@ struct DeviceModel::PendingWrite {
     std::function<bool(FfiCore *)> setter;
     bool started = false;
     std::vector<std::function<void(bool)>> done; // GUI thread only
+    quint64 drag = 0;                           // -- WP QTGAP1 -- the drag it was asked in (0: none)
 };
 
 void DeviceModel::write(const QString &what, std::function<bool(FfiCore *)> setter,
@@ -236,7 +237,9 @@ void DeviceModel::post(const QString &what, std::function<bool(FfiCore *)> sette
     }
     if (const std::shared_ptr<PendingWrite> queued = m_queuedWrites.value(what)) {
         std::lock_guard<std::mutex> hold(queued->lock);
-        if (!queued->started) {
+        // -- WP QTGAP1 -- only within one drag, or outside any: a typed value
+        // must not take the place of a drag's write queued before the drag's end
+        if (!queued->started && queued->drag == m_drag) {
             queued->setter = std::move(setter);
             if (done) queued->done.push_back(std::move(done));
             return;
@@ -244,6 +247,7 @@ void DeviceModel::post(const QString &what, std::function<bool(FfiCore *)> sette
     }
     auto pending = std::make_shared<PendingWrite>();
     pending->setter = std::move(setter);
+    pending->drag = m_drag;   // -- WP QTGAP1 --
     if (done) pending->done.push_back(std::move(done));
     m_queuedWrites.insert(what, pending);
     track(1);
@@ -286,6 +290,18 @@ void DeviceModel::post(const QString &what, std::function<bool(FfiCore *)> sette
             for (const std::function<void(bool)> &d : pending->done) d(r.ok);
             track(-1);
         });
+}
+
+// -- WP QTGAP1 --
+void DeviceModel::beginDrag() {
+    m_drag = ++m_drags;
+    m_core->worker()->post([](FfiCore *c) { dspi_set_dragging(c, true); });
+}
+
+void DeviceModel::endDrag() {
+    if (m_drag == 0) return;
+    m_drag = 0;
+    m_core->worker()->post([](FfiCore *c) { dspi_set_dragging(c, false); });
 }
 
 bool DeviceModel::setChannelName(int channel, const QString &name) {

@@ -232,6 +232,8 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         "redo" => history::redo(&core),
         "canUndo" | "canRedo" => Ok(history::can(&core)),
         "history" => Ok(history::history(&core, &params(req.params)?)),
+        // -- WP QTGAP1 --
+        "setDragging" => Ok(history::set_dragging(&core, &params(req.params)?)),
         "describe" => {
             #[derive(Deserialize)]
             struct P {
@@ -739,6 +741,31 @@ mod tests {
         assert_eq!(ok(h, "history", json!({ "n": 1 }))[0]["source"], "redo");
         ok(h, "close", Value::Null);
         assert_eq!(code(&run(h, "undo", Value::Null)), "not_open");
+        session_free(h).unwrap();
+    }
+
+    // -- WP QTGAP1 --
+    #[test]
+    fn wp_qtgap1_only_a_marked_drag_joins_one_step() {
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        ok(h, "open", json!({ "kind": "demo" }));
+        let gain =
+            |db: f64| json!({ "path": "out.gain", "indices": [0], "value": { "float": db } });
+        ok(h, "write", gain(-1.0));
+        ok(h, "write", gain(-2.0));
+        ok(h, "setDragging", json!({ "dragging": true }));
+        ok(h, "write", gain(-3.0));
+        ok(h, "write", gain(-4.0));
+        ok(h, "setDragging", json!({ "dragging": false }));
+        assert_eq!(
+            ok(h, "history", json!({ "n": 10 }))
+                .as_array()
+                .unwrap()
+                .len(),
+            3
+        );
+        assert_eq!(code(&run(h, "setDragging", Value::Null)), "invalid");
         session_free(h).unwrap();
     }
 

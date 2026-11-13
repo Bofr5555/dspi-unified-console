@@ -5085,6 +5085,15 @@ bool dspi_can_redo(const struct FfiCore *core);
 uint32_t dspi_history(struct FfiCore *core, uint32_t n, char *buf, uint32_t len);
 
 /**
+ * Mark a continuous drag (`DspiCore::set_dragging`): `true` when a slider
+ * or a graph handle is taken, `false` when it is let go. Between the two,
+ * the repeated writes of one value join a single undo step; every other
+ * write is a step of its own. Call it on the thread that sends the drag's
+ * writes, in order with them. Nothing for a null handle.
+ */
+void dspi_set_dragging(const struct FfiCore *core, bool dragging);
+
+/**
  * Answer a fetch: the HTTP status and body, as received, for any status.
  * `retry_after_s`, `rate_limit_remaining` and `rate_limit_reset` (Unix seconds) are
  * the `Retry-After`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` headers, -1 if

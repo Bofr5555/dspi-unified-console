@@ -700,9 +700,11 @@ fn wp_p0w_writing_the_value_already_there_is_not_a_change() {
 fn wp_p0w_a_drag_is_one_step() {
     let core = demo();
     let start = core.get_state().output_gain_db[0];
+    core.set_dragging(true); // -- WP QTGAP1 -- only a drag gathers
     for db in [-1.0, -2.0, -3.0, -4.0] {
         core.set_output_gain(0, db).unwrap();
     }
+    core.set_dragging(false);
     assert_eq!(core.history(10).len(), 1);
     core.undo().unwrap();
     assert_eq!(core.get_state().output_gain_db[0], start);
@@ -912,6 +914,7 @@ fn wp_p0w_fixup_pre_all_undo_restores_each_input() {
 #[test]
 fn wp_p0w_fixup_a_non_undoable_write_never_coalesces() {
     let core = demo();
+    core.set_dragging(true); // -- WP QTGAP1 -- even within a drag
     core.set_input_rate(0).unwrap();
     core.set_input_rate(2).unwrap();
     let h = core.history(10);
@@ -1118,8 +1121,10 @@ fn wp_p0wecho_a_late_echo_of_a_drag_tick_does_not_cost_the_undo() {
     let (core, remote) = remote_demo();
     drain(&core);
     let start = core.get_state().master_volume_db;
+    core.set_dragging(true); // -- WP QTGAP1 --
     core.set_master_volume(-10.0).unwrap();
     core.set_master_volume(-12.0).unwrap();
+    core.set_dragging(false);
     drain(&core);
     master_echo(&remote, -10.0, HOST_SET);
     let t = dspi_transport::clock::Instant::now();

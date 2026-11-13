@@ -92,6 +92,15 @@ public:
     void write(const QString &what, std::function<bool(FfiCore *)> setter,
                std::function<void(bool ok)> done = {});
 
+    // -- WP QTGAP1 -- A continuous drag (a slider or a graph handle held and
+    // moved): the writes between beginDrag() and endDrag() join one undo step
+    // per value (dspi_set_dragging, posted in order with them); every other
+    // write is a step of its own. A write never replaces a queued one from
+    // outside its own drag. endDrag() with no drag does nothing.
+    Q_INVOKABLE void beginDrag();
+    Q_INVOKABLE void endDrag();
+    bool dragging() const { return m_drag != 0; }
+
     // Re-reads the device on the worker (dspi_fetch_all), then a snapshot.
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void openDemo();
@@ -152,6 +161,9 @@ private:
     QHash<QString, std::shared_ptr<PendingWrite>> m_queuedWrites;
     std::atomic<int> m_settersRun{ 0 };
     bool m_remote = false;   // -- WP QP13 --
+    // -- WP QTGAP1 -- the drag under way (0: none), and the last one's number
+    quint64 m_drag = 0;
+    quint64 m_drags = 0;
     // -- WP QP16 --
     void post(const QString &what, std::function<bool(FfiCore *)> setter, std::function<void(bool)> done,
               bool evenReadOnly);

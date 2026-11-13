@@ -8,12 +8,21 @@
 //! `n` changes, newest first, each `{path, indices, before, after, source,
 //! atMs, undoable}` with values as `write` takes them. `poll`'s `flags`
 //! carry `NOTIFY_HISTORY` (`1 << 12`) when the history moved.
+//!
+//! `setDragging` (`{dragging}`, WP QTGAP1) marks a continuous drag
+//! (`DspiCore::set_dragging`): only the writes inside one join an undo step.
 
 use dspi_core::DspiCore;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::calls::{CallError, tidy};
+
+/// `setDragging`'s parameters.
+#[derive(Debug, Deserialize)]
+pub struct DraggingParams {
+    pub dragging: bool,
+}
 
 /// `history`'s parameters.
 #[derive(Debug, Deserialize)]
@@ -39,4 +48,10 @@ pub fn can(core: &DspiCore) -> Value {
 /// `history`.
 pub fn history(core: &DspiCore, p: &HistoryParams) -> Value {
     tidy(&core.history(p.n))
+}
+
+/// `setDragging`: answers `null`.
+pub fn set_dragging(core: &DspiCore, p: &DraggingParams) -> Value {
+    core.set_dragging(p.dragging);
+    Value::Null
 }
