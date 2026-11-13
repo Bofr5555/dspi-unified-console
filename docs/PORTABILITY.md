@@ -5,13 +5,18 @@ DSPi-Terminal, ported so that one code base builds natively on Linux,
 Windows and macOS. It also covers how the two came
 together in this repository.
 
-**Two periods.** The port was done on the old desktop core (`dspi-core-linux`:
+**Three periods.** The port was done on the old desktop core (`dspi-core-linux`:
 rusb, libusb, `dspi_core.dll`). Then the core merge
 ([`core-merge/PLAN.md`](core-merge/PLAN.md)) replaced that core and deleted it.
-Summary and sections 1, 6, 7 and 11 describe the state after the merge.
-Sections 2, 4 (the results table), 5, 8, 9 and 10 are the record of that earlier
-work: **their results were not repeated on the merged core unless section 4 says
-so.** The root [`README.md`](../README.md) has the current layout and builds.
+Then, on 2026-11-13, a Qt app rebuilt from the macOS console's layout replaced the
+ported app itself (the swap, `382d7fe4`): Qt 6.8 or newer only, no Qt 5, no
+KWindowSystem, no client-side titlebar and no macOS build (the Swift app is the
+Mac release). **The Summary and sections 1 and 7 describe the state after the swap.**
+Sections 2 to 5 and 8 to 11 are the record of the earlier work, on the old app:
+the file names, Qt 5 builds, `DSPi Console` names and the `.dmg` there no longer
+exist. Section 6 still describes the repository. The root [`README.md`](../README.md)
+has the current layout and builds; `apps/desktop/README.md` and
+`apps/desktop/packaging/README.md` have the desktop app's.
 
 Ground rules for the work:
 - the Linux and Windows builds and tests ran in podman containers;
@@ -20,24 +25,29 @@ Ground rules for the work:
 - the only device touched was the DSPi passed through to the macOS VM,
   and that was read-only (section 9), on the old core and the Terminal stack.
 
-The USB path on real Windows (WinUSB) is **not verified on hardware**, on either
-core. On the merged core no real device has been used on any platform.
+The rebuilt app had its hardware pass on the K340 on Linux and on Windows 11 (a VM
+with the DSPi passed through, WinUSB): QP22, recorded in
+[`core-merge/HW-QT.md`](core-merge/HW-QT.md).
 
 ## Summary
 
-- **Desktop app.** Qt and QML, built with CMake, against **Qt 6 (preferred) or
-  Qt 5.15**. It links the C ABI crate `dspi-capi` (library `dspi_capi`, header
-  `dspi_core.h`) over `dspi-core`. There is no libusb any more: USB is nusb.
+- **Desktop app.** "uConsole for DSPi" (`uconsole-for-dspi`): Qt Quick with the Basic
+  style and the app's own components, built with CMake, against **Qt 6.8 or newer**.
+  It links the C ABI crate `dspi-capi` (library `dspi_capi`, header `dspi_core.h`)
+  over `dspi-core`. USB is the core's nusb; there is no USB code in the app.
+- **Linux x86_64.** An AppImage (Ubuntu 24.04 with Qt 6.8.3 from download.qt.io),
+  the same in a tar.gz with an installer, a `.deb` for Debian 13 and an `.rpm` per
+  Fedora (43, 44) against the distribution's Qt, and an AUR `PKGBUILD`.
+  `apps/desktop/packaging/linux/test-packages.sh` installs each in a clean container.
 - **Windows x86_64.** Cross-compiled from Linux with Fedora's MinGW Qt 6. The core
-  ships as `dspi_capi.dll`. The deliverables are a runnable folder, a zip and a
-  per-user NSIS installer. All are built on the merged tree; none has been started
-  on it (the Wine and Windows 11 runs in section 10 were on the old core).
+  ships as `dspi_capi.dll`. The deliverables are a zip and a per-user NSIS
+  installer; `ci/check.sh --step qt-windows` builds both and runs the installer
+  under Wine. QP22 ran the installed app on Windows 11 with a real DSPi.
 - **MSVC.** `dspi_capi.dll` and `uconsole.exe` build for `x86_64-pc-windows-msvc` from
-  Linux with cargo-xwin. **The Qt app has not been linked with MSVC** (see "MSVC Qt
-  builds" below).
-- **macOS.** A universal app and `.dmg` were built and run on the old core
-  (section 9). `build-macos.sh` is updated for `dspi_capi` but **has not been run on
-  the merged tree**.
+  Linux with cargo-xwin. **The Qt app is not linked with MSVC**: its CMake file
+  imports MinGW's import library, and the MSVC job in `ci/github-actions-build.yml`
+  is off.
+- **macOS.** No Qt build. The Swift app (`apps/apple`) is the Mac release.
 - **Terminal.** Builds for Linux, Windows GNU and Windows MSVC. On the merged tree
   it reaches USB, the demo device, USB MIDI and DSPi Link hubs, and reconnects by
   itself.
@@ -49,14 +59,29 @@ core. On the merged core no real device has been used on any platform.
 
 | | |
 |---|---|
-| GUI | Qt Quick / QML (about 150 QML files) plus 17 C++ files: a bridge, custom QQuickItems for plots, and controllers. `QApplication` with Fusion as the fallback style, plus a custom `qml/style` (ToolTip). |
-| Qt | was 5.15 only; now 6.x (tested 6.11.2) or 5.15 (tested 5.15.18) |
-| Build | CMake (AUTOMOC/AUTORCC); resources in `qt/resources.qrc` |
-| Core | Rust crate `dspi-capi` (`crates/dspi-capi/`, over `crates/dspi-core/`): `staticlib` and `cdylib`, 167 `extern "C"` functions, header `include/dspi_core.h` from cbindgen in its `build.rs`. Linked statically on Linux and macOS; a DLL on Windows. |
-| USB | nusb 0.2, pure Rust over usbfs, WinUSB and IOKit. No C library and no driver step. |
-| Optional | KDE KWindowSystem (blur and shadow): KF5 with Qt 5, KF6 with Qt 6 |
+| GUI | Qt Quick / QML (about 180 QML files under `qt/qml/`) and 66 C++ files under `qt/src/`: one controller per feature (`src/controllers/`), the core's wrapper and models (`src/core/`), QQuickItems for plots and meters (`src/render/`) and the platform parts (`src/platform/`). The Basic style with the app's own components (`qml/components/`). |
+| Qt | 6.8 or newer (`find_package(Qt6 6.8)`); the AppImage bundles 6.8.3, Windows Fedora's MinGW Qt 6, the `.deb` and `.rpm` the distribution's |
+| Build | CMake 3.21+, `qt_standard_project_setup`; each work package's files in `qt/cmake/wp/<wp>.cmake` |
+| Core | Rust crate `dspi-capi` (`crates/dspi-capi/`, over `crates/dspi-core/`): `staticlib` and `cdylib`, header `dspi_core.h` from cbindgen in its `build.rs` (checked in as `ci/generated/dspi_core.h`). Linked statically on Linux; a DLL on Windows. |
+| USB | the core's nusb, over usbfs and WinUSB. No C library and no driver step. |
+| Window chrome | the OS frame on every system, with the in-window menu bar under it |
 
-### 1.1 Linux-specific parts (inventory)
+### 1.1 Platform-specific parts (inventory)
+
+Of the rebuilt app (`apps/desktop/qt/src/platform/` unless named):
+
+| What | Where | Linux | Windows |
+|---|---|---|---|
+| A DSPi seen but not openable | `DeviceAccess`, `qml/platform/UdevDialog.qml` | the udev rule (`70-dspi.rules`), installed through `pkexec` | "close the other program" advice |
+| Bootloader drives | `BootloaderLocator` (the core's `dspi_bootloader_drives`); writes by the core (`dspi_flash_to_drive_guarded`) | mountinfo and `/run/media` | removable drives by label |
+| Host channel count | `HostAudioFormatLinux.cpp`, `HostAudioFormatWindows.cpp` | the board's ALSA card | WASAPI, the board found by its USB serial |
+| Link tokens | `TokenStore` | the Secret Service (D-Bus) | Credential Manager |
+| Open at login, keep awake | `SystemIntegration` | XDG autostart; the desktop portal's or logind's sleep inhibitor | the HKCU Run value; a power request |
+| Firewall and Public-network rows | `FirewallController` | n.a. | Windows Firewall |
+| Settings | `QSettings`, INI (`src/main.cpp`) | `~/.config/uconsole-for-dspi/uconsole-for-dspi.conf` | `%APPDATA%\uconsole-for-dspi\uconsole-for-dspi.ini` (SWAPFIX) |
+| Packaging | `apps/desktop/packaging/` | AppImage, tar.gz, `.deb`, `.rpm`, AUR | zip, NSIS installer |
+
+### 1.2 The old app's Linux-specific parts (record, before the swap)
 
 | What | Where | Status |
 |---|---|---|
@@ -75,6 +100,8 @@ core. On the merged core no real device has been used on any platform.
 | macOS code already upstream: NSVisualEffectView, CoreText text, AppKit system colours (`MacSystemColors.mm`), `getfsstat` | `main.cpp`, `*.mm` | built in phase 2 |
 
 ## 2. What changed (`portable` commits, now in this repository's history)
+
+*Record of the old app.*
 
 *On the old core. Items 1, 4, 7 and 8 name things the merge has since replaced: the
 library is `dspi_capi`, rusb and libusb are gone, and wIndex is handled in
@@ -126,6 +153,9 @@ Monorepo commits on top:
 
 ## 3. Platform conventions
 
+*Record of the old app (names, paths and the custom titlebar are gone). The rebuilt
+app's Windows names are in `apps/desktop/packaging/README.md`.*
+
 ### Applied for Windows
 
 | Convention | How |
@@ -164,6 +194,8 @@ Monorepo commits on top:
 | Settings | the standard plist (`~/Library/Preferences`) |
 
 ## 4. Build results (2026-11-06)
+
+*Record of the old app. The rebuilt app's checks are `ci/check.sh --step qt`, `qt-offscreen`, `qt-windows` and `ci/release-desktop.sh --test`.*
 
 ### On the merged tree (WP Q3, `wp/Q3` at `3c88309`)
 
@@ -372,24 +404,22 @@ none has run against a K340 yet.
    - DSPi-Terminal states GPL-3.0-or-later but has no LICENSE file.
    - `dspi-link`'s manifest has no licence field (its old workspace said
      `UNLICENSED`).
-2. **Hardware.** No run of the merged core on any real device, hub or MIDI port.
-   See the checklist in 4.
+2. **Hardware.** The rebuilt Qt app passed on the K340 on Linux and Windows (QP22,
+   `core-merge/HW-QT.md`); a flash and a physical replug on Linux are owed.
 3. **MSVC Qt build:** only on a Windows runner (or a fragile cross setup). Never
    linked.
-4. **macOS:** `build-macos.sh` not run on the merged tree.
-5. **The demo device** has no spectrum analyser, control surfaces, signal generator
-   or buffer statistics, so Qt's paths for them have not run on the new core. These
-   need a device.
-6. **Linux release packaging** still targets Qt 5 (Ubuntu 22.04
-   AppImage/.deb, Fedora 42 .rpm). Moving it to Qt 6 means a newer base
-   (Ubuntu 24.04), which raises the glibc floor.
-7. **AUR `PKGBUILD`** builds from the upstream DSPi-Console-Linux
-   repository's layout. It needs a new source URL and paths if the
-   monorepo becomes the source.
+4. **macOS:** no Qt build (the Swift app is the Mac release).
+5. **The demo device** models the spectrum analyser and the signal generator since
+   CG22; the hardware smoke (QP22) ran the analyser with a real signal.
+6. **Linux release packaging:** done on Qt 6 (QP20): the AppImage on Ubuntu 24.04
+   (glibc 2.39 or newer), Debian 13's `.deb`, Fedora 43 and 44's `.rpm`.
+7. **AUR `PKGBUILD`:** done; it builds from the release's
+   `uConsole-for-DSPi-<version>-desktop-source.tar.gz`
+   (`apps/desktop/packaging/arch/`).
 8. **Build images:** done. `ci/container/build-images.sh` builds every image
    `ci/run.sh` uses from its committed Containerfile.
-9. Windows: shadow, Snap Layouts, signing (see 3).
-10. `Qt.labs.settings` deprecation on Qt 6.11 (runtime note only).
+9. Windows: signing (Authenticode), the owner's decision. Shadow and Snap Layouts
+   are moot: the rebuilt app uses the OS frame.
 
 ## 8. macOS effort (estimate made before phase 2; on the old core)
 
@@ -542,6 +572,8 @@ artifacts were rebuilt from `main` in the containers.
 - Signing.
 
 ## 11. Parity after the merge
+
+*Record. The "Qt UI" column below is the old app's; the rebuilt app's is `PARITY.md`'s Qt column (re-read by WP POSTSWAP).*
 
 The full survey is [`docs/PARITY.md`](PARITY.md), moved here from
 `dspi-mobile/docs/FEATURE-PARITY.md` by client plan WP XC0

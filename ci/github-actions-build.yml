@@ -102,7 +102,7 @@ jobs:
           version: '6.8.3'
           arch: win64_msvc2022_64
       - run: cargo build --release -p dspi-capi --features link,midir,mdns,hub --locked
-      - run: cmake -S apps/desktop/qt -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6
+      - run: cmake -S apps/desktop/qt -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
       - run: cmake --build build
       - name: Deploy
         shell: bash
@@ -113,5 +113,5 @@ jobs:
       # Signing would go here (signtool, with a certificate from the repository's secrets)
       - uses: actions/upload-artifact@v4
         with:
-          name: dspi-console-windows-msvc
+          name: uconsole-for-dspi-windows-msvc
           path: dist/uconsole-for-dspi

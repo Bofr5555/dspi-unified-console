@@ -87,7 +87,7 @@ every DSPi firmware since 1.1.5 has, stock and bofr-main alike.
 rule the open fails ("Access denied") and the session says the udev rule must be
 installed. It is the same rule as for the other consoles:
 `xtask/70-dspi.rules` (installed by `sudo uconsole --install-udev`) or
-`apps/desktop/packaging/linux/70-dspi.rules`, then `sudo udevadm control
+`apps/desktop/packaging/linux/70-uconsole-for-dspi.rules`, then `sudo udevadm control
 --reload` and replug. A Flatpak or Snap Chromium may also need its own USB
 permission. ChromeOS and Android Chrome: WB8 checks them.
 
