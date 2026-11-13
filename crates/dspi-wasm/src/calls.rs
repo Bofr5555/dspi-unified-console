@@ -23,6 +23,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::guard::{self, Refusal};
+// -- WP SW1 --
+use crate::audio_link;
 // -- WP WB6b --
 use crate::curves;
 // -- WP P0W --
@@ -204,6 +206,10 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
                 .map(|s| (Arc::clone(&s.core), s.demo))
         })
         .ok_or_else(|| CallError::new("not_open", format!("no session {h}")))?;
+    // -- WP SW1 -- the audio link (src/audio_link.rs)
+    if let Some(r) = audio_link::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
     match req.method.as_str() {
         "open" => open(h, &core, params(req.params)?),
         "state" => {
@@ -370,6 +376,9 @@ enum Target {
     Demo {
         #[serde(default, rename = "readOnly")]
         read_only: bool,
+        // -- WP SW1 -- a unit receiving the audio link
+        #[serde(default, rename = "audioLink")]
+        audio_link: bool,
     },
     // -- WP WB4a --
     Usb(usb::UsbTarget),
@@ -382,9 +391,15 @@ const READ_ONLY_DEMO_WIRE: u8 = 31;
 
 fn open(h: u32, core: &DspiCore, target: Target) -> CallResult {
     match target {
-        Target::Demo { read_only } => {
+        Target::Demo {
+            read_only,
+            audio_link,
+        } => {
             if read_only {
                 core.open_demo_wire(READ_ONLY_DEMO_WIRE)?;
+            } else if audio_link {
+                // -- WP SW1 --
+                core.open_demo_audio_link()?;
             } else {
                 core.open_demo()?;
             }

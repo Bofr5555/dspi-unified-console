@@ -48,6 +48,8 @@ mod events;
 mod diag;
 // -- WP FWX --
 mod ext_diag;
+// -- WP SW1 --
+mod audio_link;
 
 // ── Replies ──────────────────────────────────────────────────────────
 

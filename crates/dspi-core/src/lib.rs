@@ -74,6 +74,8 @@ mod device;
 mod ext;
 // -- WP FWX --
 mod ext_diag;
+// -- WP SW1 -- the audio link (SYS2), not DSPi Link
+mod audio_link;
 pub mod files;
 mod firmware;
 // -- WP CG8 --
@@ -158,6 +160,11 @@ pub use hotplug::{BrokeredDevice, DeviceBroker};
 pub use dspi_proto::ext::PairMap;
 // -- WP FWX --
 pub use ext_diag::{DeviceResetInfo, IDENTIFY_TONE_DBFS, IdentifyInfo};
+// -- WP SW1 --
+pub use audio_link::{
+    APPLY_OP_MAX, AUDIO_LINK_SLOT_SILENT, ApplyAtFrameStatus, AudioLinkFrameCounter, AudioLinkInfo,
+    AudioLinkPhase, AudioLinkStatus, INPUT_SOURCE_AUDIO_LINK,
+};
 // -- WP CG23 --
 pub use raw::RawNotification;
 // -- WP CG26 --

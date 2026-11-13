@@ -883,7 +883,7 @@ impl Live {
                 .iter()
                 .any(|f| f.name == "i2s_input_channels" && f.present);
         m.source = if source_supported {
-            let choices: Vec<String> = vec![
+            let mut choices: Vec<String> = vec![
                 "USB".into(),
                 "S/PDIF".into(),
                 "I2S".into(),
@@ -892,11 +892,17 @@ impl Live {
                 "S/PDIF 3".into(),
                 "S/PDIF 4".into(),
             ];
-            let idx = s
+            let raw = s
                 .input_config()
                 .map(|c| c.input_source as usize)
-                .unwrap_or(0)
-                .min(choices.len() - 1);
+                .unwrap_or(0);
+            // -- WP SW1 (fixup sw1, F4) -- a unit on the audio link (7) shows
+            // it; it is offered only there, as the Terminal does not probe
+            // the link yet.
+            if raw == usize::from(dspi_proto::ext::audio_link::INPUT_SOURCE_LINK) {
+                choices.push("Audio link".into());
+            }
+            let idx = raw.min(choices.len() - 1);
             Some((choices, idx))
         } else {
             None

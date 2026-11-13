@@ -60,9 +60,9 @@ const NAME_LEN_U16: u16 = {
 };
 
 /// Highest `InputSource` the firmware selects (`INPUT_SOURCE_MAX`,
-/// audio_input.h:26: S/PDIF input 4). The registry's choice list stops at
-/// ADAT (3), so the input source goes out as a raw opcode.
-const INPUT_SOURCE_MAX: u8 = 6;
+/// audio_input.h:26: S/PDIF input 4; WP SW1: 7, the audio link, on a unit
+/// that has it, SYS2 5.1).
+const INPUT_SOURCE_MAX: u8 = crate::audio_link::INPUT_SOURCE_AUDIO_LINK;
 
 /// The master volume value that mutes (`REQ_SET_MASTER_VOLUME`).
 const MASTER_VOL_MUTE_DB: f32 = -128.0;
@@ -508,19 +508,27 @@ impl DspiCore {
         })
     }
 
-    /// Input source: 0 USB, 1 S/PDIF, 2 I2S, 3 ADAT, 4..6 S/PDIF inputs 2..4.
-    /// The firmware switches on its main loop and ignores a source that is
-    /// not selectable (a disabled S/PDIF input); its notification at the
-    /// switch, or a re-read, corrects the mirror.
+    /// Input source: 0 USB, 1 S/PDIF, 2 I2S, 3 ADAT, 4..6 S/PDIF inputs 2..4,
+    /// 7 the audio link (WP SW1). The firmware switches on its main loop and
+    /// ignores a source that is not selectable (a disabled S/PDIF input); its
+    /// notification at the switch, or a re-read, corrects the mirror.
     ///
-    /// Errors: [`DspiError::InvalidArgument`] above 6; the connection and
+    /// Errors: [`DspiError::InvalidArgument`] above 7;
+    /// [`DspiError::Unsupported`], with no traffic, for 7 on a unit without
+    /// the link input (`audio_link_info`'s `link_input`); the connection and
     /// transfer errors of every setter.
     pub fn set_input_source(&self, source: u8) -> Result<()> {
+        // -- WP SW1 --
+        self.ensure_probed();
         let mut inner = self.writing()?;
         if source > INPUT_SOURCE_MAX {
             return Err(invalid(format!(
                 "input source {source} (0..={INPUT_SOURCE_MAX})"
             )));
+        }
+        // -- WP SW1 --
+        if !crate::audio_link::source_selectable(inner.conn()?, source) {
+            return Err(DspiError::Unsupported);
         }
         let change = inner.journal_begin("in.source", &[])?;
         send(&mut inner, "in.source", &[], Value::Choice(source))?;
@@ -1435,7 +1443,12 @@ mod tests_wp_c3 {
         invalid_arg(core.set_crossfeed_preset(4));
         invalid_arg(core.set_leveller_speed(3));
         invalid_arg(core.set_master_volume_mode(2));
-        invalid_arg(core.set_input_source(7));
+        // -- WP SW1 -- 7 is the audio link: unsupported on a unit without it
+        invalid_arg(core.set_input_source(8));
+        assert!(matches!(
+            core.set_input_source(7),
+            Err(DspiError::Unsupported)
+        ));
 
         assert_eq!(remote.image(), before_img, "nothing reached the device");
         assert_eq!(core.get_state(), before, "nor the mirror");
