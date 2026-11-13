@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import SwiftUI
+import dspi_core
 
 extension DSPViewModel {
 
@@ -262,9 +263,24 @@ extension DSPViewModel {
 
     // MARK: - USB-only sends (no @Published update, for slider drag)
 
+    // -- WP SW9 -- Through a core, these sends are its typed setters behind
+    // the write lane (SWIFT-SEAMS 5.2): while a value for the same setting is
+    // still queued, a newer one replaces it, so a drag sends at most one
+    // write per transfer time; a write issued for an earlier connection, or
+    // queued behind a failed one, is dropped, never replayed.  The release
+    // commits the last value with the ordinary setter below.  Without a core
+    // (USB without -CoreTransport, MIDI, the Link client) they stay raw SETs.
+
+    /// The core this view model's device is driven through, if any.
+    var typedCore: CoreStateSource? { transport.coreStateSource }
+
     func sendPreampToDevice(_ db: Float) {
         var val = (db * 10).rounded() / 10
         if val == -0.0 { val = 0.0 }
+        if let core = typedCore {
+            core.write(lane: "pre.all") { [val] in try $0.setPreamp(db: val) }
+            return
+        }
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_PREAMP, value: 0, index: 0, data: data)
     }
@@ -272,10 +288,16 @@ extension DSPViewModel {
     func sendPreampChannelToDevice(channel: Int, db: Float) {
         var val = (db * 10).rounded() / 10
         if val == -0.0 { val = 0.0 }
-        let data = Data(bytes: &val, count: 4)
         // A linked pair gets one per-channel write each; never the legacy
         // all-channel REQ_SET_PREAMP, which would clobber the trims of the
         // inputs outside this pair.
+        if let core = typedCore {
+            for input in [channel] + (linkedPartner(of: channel).map { [$0] } ?? []) {
+                core.write(lane: "pre[\(input)]") { [val] in try $0.setInputPreamp(input: Self.wire(input), db: val) }
+            }
+            return
+        }
+        let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_PREAMP_CH, value: UInt16(channel), index: 0, data: data)
         if let partner = linkedPartner(of: channel) {
             transport.sendControlRequest(request: REQ_SET_PREAMP_CH, value: UInt16(partner), index: 0, data: data)
@@ -283,9 +305,26 @@ extension DSPViewModel {
     }
 
     func sendMasterVolumeToDevice(_ db: Float) {
-        var val = Self.roundMasterVolume(db)
+        var val = keptMasterVolume(db)
+        if let core = typedCore {
+            core.write(lane: "vol.master") { [val] in try $0.setMasterVolume(db: val) }
+            return
+        }
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_MASTER_VOLUME, value: 0, index: 0, data: data)
+    }
+
+    /// -- WP SW9 -- An index as the core's byte (it refuses one out of range).
+    static func wire(_ index: Int) -> UInt8 { UInt8(clamping: index) }
+
+    /// The master volume as it will be kept: through a core, the core's own
+    /// rule (0.5 dB steps, -128 mutes), so the slider shows the value the
+    /// device gets; else this app's finer steps near 0 dB.
+    func keptMasterVolume(_ db: Float) -> Float {
+        guard typedCore != nil else { return Self.roundMasterVolume(db) }
+        if db <= -128 { return -128 }
+        let val = min(max((db * 2).rounded() / 2, -127), 0)
+        return val == -0.0 ? 0.0 : val
     }
 
     private static func roundMasterVolume(_ db: Float) -> Float {
@@ -312,14 +351,39 @@ extension DSPViewModel {
         if val == -0.0 { val = 0.0 }
         guard outputGainPreview.gains[output] != val else { return }
         outputGainPreview.gains[output] = val
+        if let core = typedCore {
+            core.write(lane: "out.gain[\(output)]") { [val] in try $0.setOutputGain(output: Self.wire(output), db: val) }
+            return
+        }
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_OUTPUT_GAIN, value: UInt16(output), index: 2, data: data)
     }
 
     func sendOutputDelayToDevice(output: Int, ms: Float) {
         var val = Self.quantizeDelayMS(min(ms, maxOutputDelayMS))   // -- WP SWF5 -- the slider rounds its drag
+        if let core = typedCore {
+            core.write(lane: "out.delay[\(output)]") { [val] in try $0.setOutputDelay(output: Self.wire(output), ms: val) }
+            return
+        }
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_OUTPUT_DELAY, value: UInt16(output), index: 2, data: data)
+    }
+
+    /// -- WP SW9 -- A band's gain on the grid it is kept on: through a core,
+    /// the core's 0.1 dB (`quantize_gain`; a Linkwitz Transform's fp in Hz
+    /// is sent as given), so the value shown is the one the device gets;
+    /// else 0.001 dB.
+    func bandGain(_ p: FilterParams) -> Float {
+        let step: Float = typedCore != nil && p.type != .linkwitzTransform ? 10 : 1000
+        let g = (p.gain * step).rounded() / step
+        return g == -0.0 ? 0.0 : g
+    }
+
+    /// -- WP SW9 -- A band as the core's record.  qp is the Linkwitz
+    /// Transform's; the core ignores it for every other type.
+    static func coreBand(_ p: FilterParams) -> dspi_core.FilterParams {
+        dspi_core.FilterParams(filterType: UInt8(clamping: p.type.rawValue), bypass: p.bypass,
+                               freq: p.freq, q: p.q, gain: p.gain, qp: p.qp)
     }
 
     func setFilter(ch: Int, band: Int, p: FilterParams) {
@@ -328,11 +392,17 @@ extension DSPViewModel {
         // grid (rather than the raw float) keeps the value the device echoes
         // back identical to the one we sent, so preset dirty-tracking compares
         // cleanly.  For a Linkwitz Transform this field is fp in Hz, so the
-        // same grid applies there.
-        p.gain = (p.gain * 1000).rounded() / 1000
-        if p.gain == -0.0 { p.gain = 0.0 }
+        // same grid applies there.  -- WP SW9 -- Through a core, its grid.
+        p.gain = bandGain(p)
         channelData[ch]?[band] = p
-        transport.sendControlRequest(request: REQ_SET_EQ_PARAM, value: 0, index: 0, data: eqParamPacket(ch: ch, band: band, p: p))
+        if let core = typedCore {
+            let wire = Self.coreBand(p)
+            core.commit(lane: "eq[\(ch)][\(band)]") {   // -- fixup sw9 F2 -- behind the drag's lane
+                try $0.setFilter(ch: Self.wire(ch), band: Self.wire(band), params: wire)
+            }
+        } else {
+            transport.sendControlRequest(request: REQ_SET_EQ_PARAM, value: 0, index: 0, data: eqParamPacket(ch: ch, band: band, p: p))
+        }
         recomputeMagnitudes(for: ch)
     }
 
@@ -341,8 +411,14 @@ extension DSPViewModel {
     /// `setFilter` on release, the same split as `sendOutputGainToDevice`.
     func sendFilterToDevice(ch: Int, band: Int, p: FilterParams) {
         var p = p
-        p.gain = (p.gain * 1000).rounded() / 1000
-        if p.gain == -0.0 { p.gain = 0.0 }
+        p.gain = bandGain(p)
+        if let core = typedCore {   // -- WP SW9 --
+            let wire = Self.coreBand(p)
+            core.write(lane: "eq[\(ch)][\(band)]") {
+                try $0.setFilter(ch: Self.wire(ch), band: Self.wire(band), params: wire)
+            }
+            return
+        }
         transport.sendControlRequest(request: REQ_SET_EQ_PARAM, value: 0, index: 0, data: eqParamPacket(ch: ch, band: band, p: p))
     }
 
@@ -367,55 +443,6 @@ extension DSPViewModel {
         return data as Data
     }
     
-    func fetchFilter(ch: Int, band: Int) {
-        // REQ_GET_EQ_PARAM wValue: bits[15:8]=channel, bits[7:3]=band (5 bits,
-        // 0..31), bits[2:0]=param (0=type, 1=freq, 2=Q, 3=gain, 4=bypass,
-        // 5=qp).  The band field is 5 bits (not the original 4) so crossover
-        // bands at 20..23 stay addressable after the reserved PEQ gap widened
-        // to 10..19.
-        func getVal<T>(_ param: Int, defaultVal: T) -> T {
-            let wVal = UInt16((ch << 8) | (band << 3) | param)
-            if let d = transport.getControlRequest(request: REQ_GET_EQ_PARAM, value: wVal, index: 0, length: 4) {
-                return d.withUnsafeBytes { $0.load(as: T.self) }
-            }
-            return defaultVal
-        }
-        
-        let typeRaw: UInt32 = getVal(0, defaultVal: 0)
-        let freq: Float = getVal(1, defaultVal: 1000.0)
-        let q: Float = getVal(2, defaultVal: 0.707)
-        let gain: Float = getVal(3, defaultVal: 0.0)
-        // param=4 returns bypass (firmware 1.1.4+); pre-1.1.4 STALLs and we
-        // fall back to 0/active.  Spec §5: only the low byte is meaningful.
-        let bypassRaw: UInt32 = getVal(4, defaultVal: 0)
-        let bypass = (bypassRaw & 0xFF) == 1
-
-        let type = FilterType(rawValue: Int(typeRaw)) ?? .flat
-        // param=5 returns qp_x512 in the low 16 bits (0 for non-LT bands and on
-        // firmware that predates it, decoding to the 0.707 default).  Only read
-        // it for LT bands to avoid an extra transfer on every other type.
-        var qp = FilterParams.defaultQp
-        if type == .linkwitzTransform {
-            let qpRaw: UInt32 = getVal(5, defaultVal: 0)
-            qp = FilterParams.decodeQp(UInt16(qpRaw & 0xFFFF))
-        }
-
-        var newParams = FilterParams(
-            type: type,
-            freq: freq,
-            q: q,
-            gain: gain,
-            bypass: bypass
-        )
-        newParams.qp = qp
-
-        DispatchQueue.main.async {
-            if self.channelData[ch]?[band] != newParams {
-                self.channelData[ch]?[band] = newParams
-            }
-        }
-    }
-
     /// Toggle a single band's bypass flag without touching freq/Q/gain.
     /// Cheaper than REQ_SET_EQ_PARAM when the user just clicks the bypass
     /// checkbox, and avoids racing with an in-flight parameter edit.
@@ -428,20 +455,19 @@ extension DSPViewModel {
             recomputeMagnitudes(for: ch)
         }
 
+        sendBandBypass(ch: ch, wireBand: band, bypass: bypass)
+    }
+
+    /// -- WP SW9 -- REQ_SET_BAND_BYPASS for a PEQ band (0..9) or a crossover
+    /// band (20..23).
+    private func sendBandBypass(ch: Int, wireBand band: Int, bypass: Bool) {
+        if let core = typedCore {
+            core.write(lane: nil) { try $0.setBandBypass(ch: Self.wire(ch), band: Self.wire(band), bypass: bypass) }
+            return
+        }
         let wValue = UInt16((ch << 8) | band)
         let payload = Data([bypass ? 1 : 0])
         transport.sendControlRequest(request: REQ_SET_BAND_BYPASS, value: wValue, index: 0, data: payload)
-    }
-
-    /// Returns the current bypass state for a single band, or nil if the
-    /// firmware STALLs (pre-1.1.4).  Always normalized to true/false.
-    func fetchBandBypass(ch: Int, band: Int) -> Bool? {
-        let wValue = UInt16((ch << 8) | band)
-        guard let data = transport.getControlRequest(request: REQ_GET_BAND_BYPASS, value: wValue, index: 0, length: 1),
-              data.count >= 1 else {
-            return nil
-        }
-        return data[0] == 1
     }
 
     // MARK: - Crossover Bands
@@ -471,6 +497,14 @@ extension DSPViewModel {
             recomputeMagnitudes(for: ch)
         }
 
+        if let core = typedCore {   // -- WP SW9 --
+            let wire = Self.coreBand(p)
+            core.write(lane: nil) {
+                try $0.setCrossover(ch: Self.wire(ch), xband: Self.wire(localBand), params: wire)
+            }
+            return
+        }
+
         // EqParamPacket: [ch, band, type, bypass, freq(4), q(4), gain(4)] = 16
         let data = NSMutableData()
         var ch8 = UInt8(ch); data.append(&ch8, length: 1)
@@ -496,9 +530,7 @@ extension DSPViewModel {
             xoverData[ch] = bands
             recomputeMagnitudes(for: ch)
         }
-        let wValue = UInt16((ch << 8) | wireBand)
-        let payload = Data([bypass ? 1 : 0])
-        transport.sendControlRequest(request: REQ_SET_BAND_BYPASS, value: wValue, index: 0, data: payload)
+        sendBandBypass(ch: ch, wireBand: wireBand, bypass: bypass)
     }
 
     /// Clear all crossover bands on an output channel by writing the default
@@ -535,19 +567,12 @@ extension DSPViewModel {
     func setDelay(ch: Int, ms: Float) {
         var val = Self.quantizeDelayMS(ms)
         self.channelDelays[ch] = val
+        if let core = typedCore {   // -- WP SW9 --
+            core.write(lane: nil) { [val] in try $0.setDelay(ch: Self.wire(ch), ms: val) }
+            return
+        }
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_DELAY, value: UInt16(ch), index: 0, data: data)
-    }
-
-    func fetchDelay(ch: Int) {
-        if let d = transport.getControlRequest(request: REQ_GET_DELAY, value: UInt16(ch), index: 0, length: 4) {
-            let val = d.withUnsafeBytes { $0.load(as: Float.self) }
-            DispatchQueue.main.async {
-                if abs((self.channelDelays[ch] ?? 0) - val) > 0.01 {
-                    self.channelDelays[ch] = val
-                }
-            }
-        }
     }
 
     /// Legacy global preamp SET — sets both channels to the same value via 0x44.
@@ -557,25 +582,12 @@ extension DSPViewModel {
         // The device sets every input, so every entry follows.  Replacing the
         // array with two entries would leave inputs 2+ out of range.
         self.preampDB = Array(repeating: val, count: preampDB.count)
+        if let core = typedCore {   // -- WP SW9 --
+            core.commit(lane: "pre.all") { [val] in try $0.setPreamp(db: val) }   // -- fixup sw9 F2 --
+            return
+        }
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_PREAMP, value: 0, index: 0, data: data)
-    }
-
-    /// Legacy global preamp GET — returns channel 0 only.
-    @discardableResult
-    func fetchPreamp() -> Bool {
-        if let d = transport.getControlRequest(request: REQ_GET_PREAMP, value: 0, index: 0, length: 4) {
-            let val = d.withUnsafeBytes { $0.load(as: Float.self) }
-            DispatchQueue.main.async {
-                if abs(self.preampDB[0] - val) > 0.1 {
-                    self.preampDB[0] = val
-                }
-            }
-            return true
-        } else {
-            self.transport.markDisconnected()
-            return false
-        }
     }
 
     // MARK: - Per-Channel Preamp
@@ -584,46 +596,37 @@ extension DSPViewModel {
         var val = (db * 10).rounded() / 10
         if val == -0.0 { val = 0.0 }
         self.preampDB[channel] = val
-        let data = Data(bytes: &val, count: 4)
+        let partner = linkedPartner(of: channel)
+        if let partner = partner { self.preampDB[partner] = val }
         // A linked pair gets one per-channel write each; never the legacy
         // all-channel REQ_SET_PREAMP, which would clobber the trims of the
         // inputs outside this pair.
-        transport.sendControlRequest(request: REQ_SET_PREAMP_CH, value: UInt16(channel), index: 0, data: data)
-        if let partner = linkedPartner(of: channel) {
-            self.preampDB[partner] = val
-            transport.sendControlRequest(request: REQ_SET_PREAMP_CH, value: UInt16(partner), index: 0, data: data)
-        }
-    }
-
-    func fetchPreampChannel(channel: Int) {
-        if let d = transport.getControlRequest(request: REQ_GET_PREAMP_CH, value: UInt16(channel), index: 0, length: 4) {
-            let val = d.withUnsafeBytes { $0.load(as: Float.self) }
-            DispatchQueue.main.async {
-                if abs(self.preampDB[channel] - val) > 0.1 {
-                    self.preampDB[channel] = val
+        if let core = typedCore {   // -- WP SW9 --
+            for input in [channel] + (partner.map { [$0] } ?? []) {
+                core.commit(lane: "pre[\(input)]") { [val] in   // -- fixup sw9 F2 --
+                    try $0.setInputPreamp(input: Self.wire(input), db: val)
                 }
             }
+            return
+        }
+        let data = Data(bytes: &val, count: 4)
+        transport.sendControlRequest(request: REQ_SET_PREAMP_CH, value: UInt16(channel), index: 0, data: data)
+        if let partner = partner {
+            transport.sendControlRequest(request: REQ_SET_PREAMP_CH, value: UInt16(partner), index: 0, data: data)
         }
     }
 
     // MARK: - Master Volume
 
     func setMasterVolume(_ db: Float) {
-        var val = Self.roundMasterVolume(db)
+        var val = keptMasterVolume(db)
         self.masterVolumeDB = val
+        if let core = typedCore {   // -- WP SW9 --
+            core.commit(lane: "vol.master") { [val] in try $0.setMasterVolume(db: val) }   // -- fixup sw9 F2 --
+            return
+        }
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_MASTER_VOLUME, value: 0, index: 0, data: data)
-    }
-
-    func fetchMasterVolume() {
-        if let d = transport.getControlRequest(request: REQ_GET_MASTER_VOLUME, value: 0, index: 0, length: 4) {
-            let val = d.withUnsafeBytes { $0.load(as: Float.self) }
-            DispatchQueue.main.async {
-                if abs(self.masterVolumeDB - val) > 0.01 {
-                    self.masterVolumeDB = val
-                }
-            }
-        }
     }
 
     // MARK: - User Volume (vendor channel for audio_state.volume)
@@ -633,6 +636,10 @@ extension DSPViewModel {
     /// Used during slider drag for live updates without re-publishing.
     func sendUserVolumeToDevice(_ db: Float) {
         var val = Self.clampUserVolume(db)
+        if let core = typedCore {   // -- WP SW9 --
+            core.write(lane: "vol.user") { [val] in try $0.setUserVolume(db: val) }
+            return
+        }
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_USER_VOLUME, value: 0, index: 0, data: data)
     }
@@ -642,6 +649,10 @@ extension DSPViewModel {
     func setUserVolume(_ db: Float) {
         var val = Self.clampUserVolume(db)
         self.userVolumeDB = val
+        if let core = typedCore {   // -- WP SW9 --
+            core.commit(lane: "vol.user") { [val] in try $0.setUserVolume(db: val) }   // -- fixup sw9 F2 --
+            return
+        }
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_USER_VOLUME, value: 0, index: 0, data: data)
     }
@@ -742,6 +753,7 @@ extension DSPViewModel {
     /// and 1).  A STALL on the status read means the firmware predates the
     /// setting, which hides the Settings section.
     func fetchOutputLatency() {
+        if let core = typedCore { fetchOutputLatency(core); return }   // -- WP SW9 --
         guard let d = transport.getControlRequest(request: REQ_OUTPUT_LATENCY, value: OUTPUT_LATENCY_GET_STATUS,
                                                   index: 2, length: UInt16(OUTPUT_LATENCY_STATUS_SIZE)),
               let status = OutputLatencyStatus.fromData(d) else {
@@ -765,6 +777,7 @@ extension DSPViewModel {
     /// re-read the table, whose effective values follow the new option.  Blocks:
     /// call off the main thread.
     func setOutputLatency(_ id: UInt8) {
+        if let core = typedCore { setOutputLatency(id, core); return }   // -- WP SW9 --
         let generation = transport.generation
         transport.sendControlRequest(request: REQ_OUTPUT_LATENCY, value: 0, index: 2, data: Data([id]))
         for _ in 0..<40 {
@@ -775,6 +788,34 @@ extension DSPViewModel {
                let st = OutputLatencyStatus.fromData(d), !st.pending { break }
         }
         fetchOutputLatency()
+    }
+
+    // -- WP SW9 -- The same two through the core's typed calls.
+
+    private func fetchOutputLatency(_ core: CoreStateSource) {
+        guard case .success(let reply) = core.call({ try $0.fetchOutputLatency() }),
+              let status = OutputLatencyStatus.fromData(reply.raw) else {
+            DispatchQueue.main.async { self.outputLatencySupported = false }
+            return
+        }
+        let options = try? core.call { try $0.fetchOutputLatencyOptions() }.get().map(OutputLatencyOption.init(core:))
+        DispatchQueue.main.async {
+            self.outputLatencyStatus = status
+            if let options { self.outputLatencyOptions = options }
+            self.outputLatencySupported = true
+        }
+    }
+
+    private func setOutputLatency(_ id: UInt8, _ core: CoreStateSource) {
+        let generation = transport.generation
+        guard case .success = core.call({ try $0.setOutputLatency(id: id) }) else { return }
+        for _ in 0..<40 {
+            Thread.sleep(forTimeInterval: 0.1)
+            guard transport.generation == generation else { return }
+            if case .success(let reply) = core.call({ try $0.fetchOutputLatency() }),
+               let st = OutputLatencyStatus.fromData(reply.raw), !st.pending { break }
+        }
+        fetchOutputLatency(core)
     }
 
     // MARK: - Master Volume Mode (preset directory flag)
@@ -824,27 +865,15 @@ extension DSPViewModel {
 
     func setBypass(_ enabled: Bool) {
         self.bypass = enabled
-        var val: UInt8 = enabled ? 1 : 0
-        let data = Data(bytes: &val, count: 1)
-        transport.sendControlRequest(request: REQ_SET_BYPASS, value: 0, index: 0, data: data)
+        if let core = typedCore {   // -- WP SW9 --
+            core.write(lane: nil) { try $0.setBypass(enabled: enabled) }
+        } else {
+            var val: UInt8 = enabled ? 1 : 0
+            let data = Data(bytes: &val, count: 1)
+            transport.sendControlRequest(request: REQ_SET_BYPASS, value: 0, index: 0, data: data)
+        }
         recomputeMagnitudes(for: 0)
         recomputeMagnitudes(for: 1)
-    }
-    
-    @discardableResult
-    func fetchBypass() -> Bool {
-        if let d = transport.getControlRequest(request: REQ_GET_BYPASS, value: 0, index: 0, length: 1) {
-            let val = d[0] != 0
-            DispatchQueue.main.async {
-                self.bypass = val
-                self.recomputeMagnitudes(for: 0)
-                self.recomputeMagnitudes(for: 1)
-            }
-            return true
-        } else {
-            self.transport.markDisconnected()
-            return false
-        }
     }
     
     /// Copy every PEQ band and the input trim from one input onto the other.
@@ -2016,10 +2045,28 @@ extension DSPViewModel {
 
     // MARK: - Matrix Mixer
 
+    /// -- WP SW9 -- fixup sw9 F3: a crosspoint gain as it will be kept:
+    /// through a core, its 0.1 dB grid (`quantize_gain`), so the value shown
+    /// is the one the device gets; else as given.
+    func keptMatrixGain(_ gain: Float) -> Float {
+        guard typedCore != nil else { return gain }
+        let g = (gain * 10).rounded() / 10
+        return g == -0.0 ? 0.0 : g
+    }
+
     func setMatrixRoute(input: Int, output: Int, enabled: Bool, gain: Float, invert: Bool) {
+        let gain = keptMatrixGain(gain)   // -- fixup sw9 F3 --
         matrixRouting[input][output] = enabled
         matrixGain[input][output] = gain
         matrixInvert[input][output] = invert
+
+        if let core = typedCore {   // -- WP SW9 --
+            core.write(lane: nil) {
+                try $0.setMatrixRoute(input: Self.wire(input), output: Self.wire(output), enabled: enabled,
+                                      gain: gain, invert: invert)
+            }
+            return
+        }
 
         var packet = Data(count: 9)
         packet[0] = UInt8(input)
@@ -2030,21 +2077,6 @@ extension DSPViewModel {
         withUnsafeBytes(of: &g) { packet.replaceSubrange(4..<8, with: $0) }
 
         transport.sendControlRequest(request: REQ_SET_MATRIX_ROUTE, value: 0, index: 2, data: packet)
-    }
-
-    func fetchMatrixRoute(input: Int, output: Int) {
-        let wValue = UInt16((input << 8) | output)
-        guard let data = transport.getControlRequest(request: REQ_GET_MATRIX_ROUTE, value: wValue, index: 2, length: 9) else { return }
-
-        let enabled = data[2] != 0
-        let invert = data[3] != 0
-        let gain = data.withUnsafeBytes { $0.load(fromByteOffset: 4, as: Float.self) }
-
-        DispatchQueue.main.async {
-            self.matrixRouting[input][output] = enabled
-            self.matrixGain[input][output] = gain
-            self.matrixInvert[input][output] = invert
-        }
     }
 
     /// Apply a direct 1:1 routing (recipe 11.1 of the 8-channel-usb-input spec):
@@ -2093,12 +2125,32 @@ extension DSPViewModel {
         if isOverviewMode {
             channelVisibility[eqChannel(forOutput: output)] = enabled
         }
+        if let core = typedCore {   // -- WP SW9 --
+            // The core checks Core 1 first and reads the output back: a
+            // refused enable is shown as the device has it.
+            core.write(lane: nil) { [weak self] in
+                let actual = try $0.setOutputEnable(output: Self.wire(output), enabled: enabled)
+                guard actual != enabled else { return }
+                DispatchQueue.main.async { self?.outputEnabled[output] = actual }
+            }
+            return
+        }
         var val: UInt8 = enabled ? 1 : 0
         let data = Data(bytes: &val, count: 1)
         transport.sendControlRequest(request: REQ_SET_OUTPUT_ENABLE, value: UInt16(output), index: 2, data: data)
     }
 
     func fetchOutputEnable(output: Int) {
+        // -- WP SW9 -- Through a core, its mirror: its setter read it back.
+        if let core = typedCore {
+            let read = core.call { core -> Bool? in
+                let enabled = core.getState().outputEnabled
+                return enabled.indices.contains(output) ? enabled[output] : nil
+            }
+            guard case .success(let val?) = read else { return }
+            DispatchQueue.main.async { if self.outputEnabled[output] != val { self.outputEnabled[output] = val } }
+            return
+        }
         if let d = transport.getControlRequest(request: REQ_GET_OUTPUT_ENABLE, value: UInt16(output), index: 2, length: 1) {
             let val = d[0] != 0
             DispatchQueue.main.async { self.outputEnabled[output] = val }
@@ -2114,37 +2166,27 @@ extension DSPViewModel {
         // A drag's preview hands over to the committed value in the same pass,
         // so the curve does not flick back to the pre-drag gain.
         if outputGainPreview.gains[output] != nil { outputGainPreview.gains[output] = nil }
+        if let core = typedCore {   // -- WP SW9 --
+            core.commit(lane: "out.gain[\(output)]") { [val] in   // -- fixup sw9 F2 --
+                try $0.setOutputGain(output: Self.wire(output), db: val)
+            }
+            return
+        }
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_OUTPUT_GAIN, value: UInt16(output), index: 2, data: data)
-    }
-
-    func fetchOutputGainDB(output: Int) {
-        if let d = transport.getControlRequest(request: REQ_GET_OUTPUT_GAIN, value: UInt16(output), index: 2, length: 4) {
-            let val = d.withUnsafeBytes { $0.load(as: Float.self) }
-            DispatchQueue.main.async {
-                if abs(self.outputGainDB[output] - val) > 0.01 {
-                    self.outputGainDB[output] = val
-                }
-            }
-        }
     }
 
     // MARK: - Per-Output Mute
 
     func setOutputMute(output: Int, muted: Bool) {
         outputMuted[output] = muted
+        if let core = typedCore {   // -- WP SW9 --
+            core.write(lane: nil) { try $0.setOutputMute(output: Self.wire(output), muted: muted) }
+            return
+        }
         var val: UInt8 = muted ? 1 : 0
         let data = Data(bytes: &val, count: 1)
         transport.sendControlRequest(request: REQ_SET_OUTPUT_MUTE, value: UInt16(output), index: 2, data: data)
-    }
-
-    func fetchOutputMute(output: Int) {
-        if let d = transport.getControlRequest(request: REQ_GET_OUTPUT_MUTE, value: UInt16(output), index: 2, length: 1) {
-            let val = d[0] != 0
-            DispatchQueue.main.async {
-                self.outputMuted[output] = val
-            }
-        }
     }
 
     // MARK: - Per-Output Delay
@@ -2156,6 +2198,12 @@ extension DSPViewModel {
         // row says why.
         guard val <= maxOutputDelayMS else { refuseOutputDelay(output: output, ms: val); return }
         outputDelayMS[output] = val
+        if let core = typedCore {   // -- WP SW9 --
+            core.commit(lane: "out.delay[\(output)]") { [val] in   // -- fixup sw9 F2 --
+                try $0.setOutputDelay(output: Self.wire(output), ms: val)
+            }
+            return
+        }
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_OUTPUT_DELAY, value: UInt16(output), index: 2, data: data)
     }
@@ -2187,31 +2235,18 @@ extension DSPViewModel {
         source.outputDelayRefusal(output: wire, ms: ms) { DeviceLock.notice.post($0 ?? text) }
     }
 
-    func fetchOutputDelay(output: Int) {
-        if let d = transport.getControlRequest(request: REQ_GET_OUTPUT_DELAY, value: UInt16(output), index: 2, length: 4) {
-            let val = d.withUnsafeBytes { $0.load(as: Float.self) }
-            DispatchQueue.main.async {
-                if abs(self.outputDelayMS[output] - val) > 0.01 {
-                    self.outputDelayMS[output] = val
-                }
-            }
-        }
-    }
-
     // MARK: - Core 1 Mode
 
     func fetchCore1Mode() {
+        if let core = typedCore {   // -- WP SW9 --
+            guard case .success(let mode) = core.call({ try $0.fetchCore1Mode() }) else { return }
+            DispatchQueue.main.async { self.core1Mode = Int(mode) }
+            return
+        }
         if let d = transport.getControlRequest(request: REQ_GET_CORE1_MODE, value: 0, index: 0, length: 1) {
             let val = Int(d[0])
             DispatchQueue.main.async { self.core1Mode = val }
         }
-    }
-
-    func checkCore1Conflict(output: Int) -> Bool {
-        if let d = transport.getControlRequest(request: REQ_GET_CORE1_CONFLICT, value: UInt16(output), index: 0, length: 1) {
-            return d[0] != 0
-        }
-        return false
     }
 
     /// Disable all EQ worker outputs, then enable PDM, confirm via read-back.
@@ -4994,5 +5029,15 @@ extension DSPViewModel {
             return result
         }
         return FLASH_ERR_WRITE
+    }
+}
+
+// -- WP SW9 --
+extension OutputLatencyOption {
+    /// An option as the core decoded it, in this app's form.
+    init(core o: dspi_core.OutputLatencyOption) {
+        self.init(id: o.id,
+                  flags: (o.streamOnly ? OUTPUT_LATENCY_FLAG_STREAM_ONLY : 0) | (o.available ? OUTPUT_LATENCY_WIRE_AVAILABLE : 0),
+                  latencyUs: o.latencyUs, batchUs: o.batchUs, effectiveUs: o.effectiveUs)
     }
 }

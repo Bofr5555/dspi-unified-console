@@ -1419,6 +1419,7 @@ struct UserVolumeSection: View {
     // (minDB) since user_volume is unmuted-only.
     @State private var localScalar: Double = 1.0
     @State private var isDragging = false
+    @State private var dragMark = CoreDragMark()   // -- WP SW9 --
 
     private static let minDB: Float = USER_VOLUME_MIN_DB   // -60
 
@@ -1451,10 +1452,11 @@ struct UserVolumeSection: View {
                     .foregroundColor(.primary)
             }
             Slider(value: $localScalar, in: 0...1) { editing in
-                CoreUndo.drag(editing)   // -- WP SWMAC1 --
+                dragMark.set(editing)   // -- WP SWMAC1 --, SW9
                 isDragging = editing
                 if !editing { vm.setUserVolume(Self.scalarToDB(localScalar)) }
             }
+            .endsCoreDrag(dragMark)   // -- WP SW9 -- ended if the view goes mid-drag
             .controlSize(.small)
             .onChange(of: localScalar) { val in
                 if isDragging { vm.sendUserVolumeToDevice(Self.scalarToDB(val)) }
@@ -1487,6 +1489,7 @@ struct MasterModeSection: View {
 
     @State private var localDB: Float = 0
     @State private var isDragging = false
+    @State private var dragMark = CoreDragMark()   // -- WP SW9 --
 
     private var sliderPos: Double {
         Double(MasterVolumeTaper.dbToSlider(localDB))
@@ -1511,10 +1514,11 @@ struct MasterModeSection: View {
                 get: { sliderPos },
                 set: { localDB = MasterVolumeTaper.sliderToDB(Float($0)) }
             ), in: 0...1) { editing in
-                CoreUndo.drag(editing)   // -- WP SWMAC1 --
+                dragMark.set(editing)   // -- WP SWMAC1 --, SW9
                 isDragging = editing
                 if !editing { vm.setMasterVolume(localDB) }
             }
+            .endsCoreDrag(dragMark)   // -- WP SW9 -- ended if the view goes mid-drag
             .controlSize(.small)
             .tint(.red)
             .onChange(of: localDB) { val in
