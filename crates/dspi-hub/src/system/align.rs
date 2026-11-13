@@ -82,6 +82,52 @@ pub struct Observed {
     // -- fixup sw2x (F1) --
     /// A sender's system mute (`EXT_LINK_CTRL_MSG` IN flags bit 0).
     pub system_mute: Option<bool>,
+    // -- WP SW3 -- for the clients' "Clock and links" panel
+    /// The rest of `EXT_LINK_STATUS`'s counters and loop terms.
+    pub stats: Option<LinkStats>,
+    /// A receiver's trim scan at link-up (`EXT_LINK_DIAG` version 1).
+    pub trim_scan: Option<TrimScan>,
+}
+
+// -- WP SW3 --
+/// `EXT_LINK_STATUS`'s counters (from boot or the last stats reset, wrapping
+/// at 2^32) and loop terms, as the "Clock and links" panel shows them.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkStats {
+    /// The line class, 1-3 (L1-L3); 0 unknown.
+    pub line_class: u8,
+    /// Link channels in the stream; 0 unknown.
+    pub channels: u8,
+    /// Entries into locked.
+    pub lock_count: u32,
+    /// Bad frame heads.
+    pub crc8_errors: u32,
+    /// Commas found 1-2 bits away.
+    pub bit_slips: u32,
+    /// Rejected superframes.
+    pub superframe_errors: u32,
+    /// The soft VCXO's correction, ppm.
+    pub vcxo_ppm: f32,
+    /// The output ring's fill, frames.
+    pub fill_frames: u16,
+}
+
+// -- WP SW3 --
+/// The trim scan at link-up (`dspi_proto::ext::audio_link::TrimScan`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrimScan {
+    /// `none`, `running`, `done` or `no_clean_trim`.
+    pub state: String,
+    /// Lowest clean trim, -9..+9 (3.26 ns per step).
+    pub trim_lo: i8,
+    /// Highest clean trim.
+    pub trim_hi: i8,
+    /// The trim in use.
+    pub trim_used: i8,
+    /// Bit i set = trim i - 9 was clean.
+    pub clean_mask: u32,
 }
 
 /// One unit's computed settings.
