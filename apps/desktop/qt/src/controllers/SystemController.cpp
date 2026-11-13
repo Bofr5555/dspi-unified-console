@@ -62,10 +62,11 @@ SystemController::SystemController(const AppContext &ctx, QObject *parent)
     m_timer.setInterval(kPollMs);
     connect(&m_timer, &QTimer::timeout, this, &SystemController::refresh);
     connect(m_device, &DeviceModel::snapshotApplied, this, &SystemController::updatePolling);
+    // No wait here: a hub request may take its 15 s, and LinkController's quit
+    // closes the session, which ends it; the destructor waits afterwards
     connect(qApp, &QCoreApplication::aboutToQuit, this, [this] {
         m_shutDown = true;
         m_timer.stop();
-        m_pool.waitForDone();
     });
     updatePolling();
 }

@@ -111,7 +111,7 @@ QtObject {
                 { id: "window.popOutGraph", text: qsTr("Pop Out Graph") },
                 // -- WP LKUI1 -- the hub's audio link installation (SystemController)
                 { separator: true },
-                { id: "window.system", text: qsTr("System…"), shortcut: "Ctrl+Shift+Y", optional: true }
+                { id: "window.system", text: qsTr("System…"), optional: true }
                 // -- WP QP18 -- docs/UI-MODES.md §5 (ModeController)
                 // -- WP QPI5 -- hidden until the modes come (owner, 2026-11-13);
                 // ModeController and ModeWindow stay, and the rows come back as
