@@ -1524,6 +1524,17 @@ interface DspiCoreApi : AutoCloseable {
     fun redo(): HistoryMove
 
     /**
+     * Mark a continuous drag (a slider or a graph handle held and moved):
+     * `true` when it starts, `false` when it ends. Between the two, the
+     * repeated writes of one live value join a single undo step, however
+     * long the drag lasts; any other write (a typed value, a key step, a
+     * click) is always a step of its own. Each call ends the step being
+     * gathered, so two drags of one control are two steps. A client that
+     * never calls this gets one step per write.
+     */
+    fun setDragging(dragging: Boolean)
+
+    /**
      * Whether [`DspiCore::undo`] has a change to reverse. False with no
      * device.
      */

@@ -306,6 +306,10 @@ pub(crate) struct Inner {
     /// The history as `process_notifications` last reported it
     /// (`journal::history_mark`), for `NOTIFY_HISTORY`.
     pub(crate) history_seen: Option<(u64, u64)>,
+    // -- WP QTGAP1 --
+    /// A client's continuous drag is under way ([`DspiCore::set_dragging`]):
+    /// only then do repeats of a live value join one undo step.
+    pub(crate) dragging: bool,
 }
 
 /// An open device.
@@ -637,6 +641,7 @@ impl Inner {
             events: Arc::default(),
             // -- WP P0W --
             history_seen: None,
+            dragging: false, // -- WP QTGAP1 --
         }
     }
 

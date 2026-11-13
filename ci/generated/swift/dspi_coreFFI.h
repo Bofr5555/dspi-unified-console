@@ -1411,6 +1411,11 @@ void uniffi_dspi_core_fn_method_dspicore_set_delay(void*_Nonnull ptr, uint8_t ch
 void uniffi_dspi_core_fn_method_dspicore_set_device_name(void*_Nonnull ptr, RustBuffer name, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_DRAGGING
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_DRAGGING
+void uniffi_dspi_core_fn_method_dspicore_set_dragging(void*_Nonnull ptr, int8_t dragging, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_FILTER
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_FILTER
 void uniffi_dspi_core_fn_method_dspicore_set_filter(void*_Nonnull ptr, uint8_t ch, uint8_t band, RustBuffer params, RustCallStatus *_Nonnull out_status
@@ -3683,6 +3688,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_set_delay(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_DEVICE_NAME
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_DEVICE_NAME
 uint16_t uniffi_dspi_core_checksum_method_dspicore_set_device_name(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_DRAGGING
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_DRAGGING
+uint16_t uniffi_dspi_core_checksum_method_dspicore_set_dragging(void
     
 );
 #endif

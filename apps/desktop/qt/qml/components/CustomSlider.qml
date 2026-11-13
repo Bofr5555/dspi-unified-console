@@ -6,7 +6,8 @@ import UConsole
 // thumb follows every event; `valueMoved` sends values live during a drag, at most
 // 30 a second with only the latest kept; `committed` fires once on release, on
 // each key step and on a reset. A right-click resets to `resetValue` when one
-// is set (the desktop gesture for the Mac's reset, PARITY M51).
+// is set (the desktop gesture for the Mac's reset, PARITY M51). A drag is one
+// undo step (DeviceModel.beginDrag/endDrag); a key step or a reset is its own.
 Slider {
     id: slider
     property string label
@@ -45,13 +46,23 @@ Slider {
             committed(value)
         }
     }
+    // -- WP QTGAP1 -- whether this slider holds DeviceModel's drag mark
+    property bool _dragging: false
     onPressedChanged: {
-        if (!pressed) {
+        if (pressed) {
+            _dragging = true
+            DeviceModel.beginDrag()
+        } else {
             coalesce.stop()
             _pending = NaN
             committed(value)
+            if (_dragging) {
+                _dragging = false
+                DeviceModel.endDrag()
+            }
         }
     }
+    Component.onDestruction: if (_dragging) DeviceModel.endDrag()
 
     // Above the handle and the track: the Slider takes any press it sees and
     // moves to it, so the right button is caught before it gets there. The

@@ -1526,6 +1526,8 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1982,6 +1984,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_set_dac_mute(
 fun uniffi_dspi_core_checksum_method_dspicore_set_delay(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_set_device_name(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_set_dragging(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_set_filter(
 ): Short
@@ -2598,6 +2602,8 @@ fun uniffi_dspi_core_fn_method_dspicore_set_dac_mute(`ptr`: Pointer,`enabled`: B
 fun uniffi_dspi_core_fn_method_dspicore_set_delay(`ptr`: Pointer,`ch`: Byte,`ms`: Float,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_set_device_name(`ptr`: Pointer,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_set_dragging(`ptr`: Pointer,`dragging`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_set_filter(`ptr`: Pointer,`ch`: Byte,`band`: Byte,`params`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -3650,6 +3656,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_device_name() != 13429.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_dragging() != 26164.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_filter() != 29347.toShort()) {
@@ -7460,6 +7469,17 @@ public interface DspiCoreInterface {
      * as a source name. Errors as for [`DspiCore::set_input_source_name`].
      */
     fun `setDeviceName`(`name`: kotlin.String)
+    
+    /**
+     * Mark a continuous drag (a slider or a graph handle held and moved):
+     * `true` when it starts, `false` when it ends. Between the two, the
+     * repeated writes of one live value join a single undo step, however
+     * long the drag lasts; any other write (a typed value, a key step, a
+     * click) is always a step of its own. Each call ends the step being
+     * gathered, so two drags of one control are two steps. A client that
+     * never calls this gets one step per write.
+     */
+    fun `setDragging`(`dragging`: kotlin.Boolean)
     
     /**
      * PEQ band 0..9 of wire channel `ch`, sent as one whole band
@@ -12169,6 +12189,26 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_set_device_name(
         it, FfiConverterString.lower(`name`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Mark a continuous drag (a slider or a graph handle held and moved):
+     * `true` when it starts, `false` when it ends. Between the two, the
+     * repeated writes of one live value join a single undo step, however
+     * long the drag lasts; any other write (a typed value, a key step, a
+     * click) is always a step of its own. Each call ends the step being
+     * gathered, so two drags of one control are two steps. A client that
+     * never calls this gets one step per write.
+     */override fun `setDragging`(`dragging`: kotlin.Boolean)
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_set_dragging(
+        it, FfiConverterBoolean.lower(`dragging`),_status)
 }
     }
     

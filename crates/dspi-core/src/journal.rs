@@ -53,6 +53,10 @@
 //! only the re-read saw it). The re-read also ends the step a drag gathers,
 //! so a change after it is undone to the value the re-read found, never to
 //! one from before it (WP SWAPFIX).
+//!
+//! Only a continuous drag gathers a step: the client marks it with
+//! [`DspiCore::set_dragging`], and a typed value or a discrete write is a
+//! step of its own however soon it follows another (WP QTGAP1).
 #![warn(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -408,8 +412,11 @@ impl Pending {
         if !moved && replay_source().is_none() {
             return;
         }
-        // A drag is of a live value; a pin moved twice is two changes.
-        let coalesce = hazard(self.path) == Hazard::None
+        // A drag is of a live value; a pin moved twice is two changes. Only
+        // a client's continuous drag joins: a typed value or a key step is a
+        // step of its own however soon it follows (WP QTGAP1).
+        let coalesce = inner.dragging
+            && hazard(self.path) == Hazard::None
             && (matches!(after, Value::Float(_) | Value::Int(_))
                 || matches!(self.path, EQ_BAND | "mix"));
         record(
@@ -772,6 +779,22 @@ impl DspiCore {
         self.redo_step()
     }
 
+    // -- WP QTGAP1 --
+    /// Mark a continuous drag (a slider or a graph handle held and moved):
+    /// `true` when it starts, `false` when it ends. Between the two, the
+    /// repeated writes of one live value join a single undo step, however
+    /// long the drag lasts; any other write (a typed value, a key step, a
+    /// click) is always a step of its own. Each call ends the step being
+    /// gathered, so two drags of one control are two steps. A client that
+    /// never calls this gets one step per write.
+    pub fn set_dragging(&self, dragging: bool) {
+        let mut inner = self.lock();
+        inner.dragging = dragging;
+        if let Some(session) = inner.conn.as_mut().and_then(|c| c.session().ok()) {
+            session.end_step();
+        }
+    }
+
     /// Whether [`DspiCore::undo`] has a change to reverse. False with no
     /// device.
     pub fn can_undo(&self) -> bool {
@@ -988,3 +1011,9 @@ mod tests_wp_p0w;
 #[allow(clippy::arithmetic_side_effects)]
 #[path = "journal/tests_wp_swapfix.rs"]
 mod tests_wp_swapfix;
+
+// -- WP QTGAP1 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+#[path = "journal/tests_wp_qtgap1.rs"]
+mod tests_wp_qtgap1;

@@ -17,9 +17,12 @@
 //!   values nobody saw. The entry itself stays on the stack, so the next undo
 //!   names it instead of saying nothing.
 //! - **A drag is one step.** A change marked `coalesce` that repeats the last
-//!   one (same path and indices, from the same source, within
-//!   [`COALESCE_MS`]) updates that entry instead of adding one: a slider sends
-//!   a write per tick, and undo should take back the drag.
+//!   one (same path and indices, from the same source, itself marked)
+//!   updates that entry instead of adding one: a slider sends a write per
+//!   tick, and undo should take back the drag. The caller marks only the
+//!   writes of a continuous drag, and ends the step when the drag ends
+//!   ([`Session::end_step`]); there is no time window, so a drag held still
+//!   stays one step and a typed value never joins (WP QTGAP1).
 //! - **A re-read or another writer ends a step** ([`Session::end_step`]):
 //!   a change after it starts a new entry, whatever it repeats, so undo never
 //!   goes back past what the re-read or the other writer left (WP SWAPFIX).
@@ -49,8 +52,6 @@ use crate::write::{Companion, JournalEntry, Outcome, Session};
 pub const JOURNAL_CAP: usize = 1000;
 /// The most steps undo can go back.
 pub const UNDO_CAP: usize = 500;
-/// How close in time a repeated change must follow the last one to join it.
-pub const COALESCE_MS: u64 = 1000;
 
 /// The changes that replace the whole live state: the history before one
 /// describes a state that is gone (module docs).
@@ -161,7 +162,7 @@ impl Session {
     pub(crate) fn record_with_outcome(&mut self, change: Change, outcome: Outcome) {
         let at_ms = now_ms();
         self.history_version = self.history_version.wrapping_add(1);
-        if change.coalesce && self.coalesces(&change, at_ms) {
+        if change.coalesce && self.coalesces(&change) {
             for e in [self.journal.last_mut(), self.undo_stack.last_mut()]
                 .into_iter()
                 .flatten()
@@ -205,9 +206,9 @@ impl Session {
 
     /// Whether `change` repeats the newest entry closely enough to join it:
     /// the newest of the journal and of the undo stack are that same entry,
-    /// marked to coalesce, of the same path and indices from the same source,
-    /// and recent; nothing has been undone since.
-    fn coalesces(&self, change: &Change, at_ms: u64) -> bool {
+    /// marked to coalesce, of the same path and indices from the same source;
+    /// nothing has been undone since.
+    fn coalesces(&self, change: &Change) -> bool {
         let (Some(last), Some(top)) = (self.journal.last(), self.undo_stack.last()) else {
             return false;
         };
@@ -220,7 +221,6 @@ impl Session {
             && top.path == last.path
             && top.indices == last.indices
             && top.at_ms == last.at_ms
-            && at_ms.saturating_sub(last.at_ms) <= COALESCE_MS
     }
 
     // -- WP SWAPFIX --

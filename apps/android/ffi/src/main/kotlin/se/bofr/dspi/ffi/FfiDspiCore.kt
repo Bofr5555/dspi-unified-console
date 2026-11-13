@@ -308,6 +308,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun redo(): HistoryMove = call { core.redo().toDomain() }
 
+    override fun setDragging(dragging: Boolean) = core.setDragging(dragging)
+
     override fun canUndo(): Boolean = core.canUndo()
 
     override fun canRedo(): Boolean = core.canRedo()
