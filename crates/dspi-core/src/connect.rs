@@ -246,9 +246,12 @@ impl DspiCore {
     }
 
     /// Copy of the cached state (the C ABI returns a borrowed pointer).
-    /// Defaults while disconnected. Never fails.
+    /// Defaults while disconnected. Never fails. Under a named crossfeed
+    /// preset, `crossfeed_freq` and `crossfeed_feed` are that preset's values
+    /// (see `set_crossfeed_preset`).
     pub fn get_state(&self) -> DspState {
-        self.lock().state.clone()
+        // -- WP P1XF --
+        crate::params::crossfeed_shown(self.lock().state.clone())
     }
 
     /// Longest delay the firmware's delay line holds, ms: 42 on RP2350
