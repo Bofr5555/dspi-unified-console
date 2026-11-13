@@ -40,7 +40,11 @@ import se.bofr.dspi.core.LinkHello
 import se.bofr.dspi.core.LinkInfo
 import se.bofr.dspi.core.LinkListener
 import se.bofr.dspi.core.LinkPhase
+import se.bofr.dspi.core.LinkSceneRecall
 import se.bofr.dspi.core.LinkStatus
+import se.bofr.dspi.core.LinkSystemAlign
+import se.bofr.dspi.core.LinkSystemEdits
+import se.bofr.dspi.core.LinkSystemView
 import se.bofr.dspi.core.MonitorBatch
 import se.bofr.dspi.core.MonitorEntry
 import se.bofr.dspi.core.NamedValue
@@ -392,6 +396,19 @@ open class FakeDspiCore(
         pinSource = linkHello.pinSource,
         tokenRefused = false
     )
+
+    // -- WP LKUI1 -- the hub's audio link installation ([FakeAudioLinkSystem]; off a hub by default)
+    val audioLinkSystem = FakeAudioLinkSystem()
+
+    override fun linkSystemView(): LinkSystemView = op("linkSystemView", device = false) { audioLinkSystem.view() }
+
+    override fun linkSystemSave(revision: Long, edits: LinkSystemEdits): Long =
+        op("linkSystemSave", "$revision", device = false) { audioLinkSystem.save(revision, edits) }
+
+    override fun linkSystemAlign(): LinkSystemAlign = op("linkSystemAlign", device = false) { audioLinkSystem.align() }
+
+    override fun linkSystemRecall(scene: String): LinkSceneRecall =
+        op("linkSystemRecall", scene, device = false) { audioLinkSystem.recall(scene) }
 
     override fun linkSelectDevice(handle: Long, serial: String) = op("linkSelectDevice", "$handle, $serial", device = false) {
         if (!linkReady) throw DspiException.Disconnected()

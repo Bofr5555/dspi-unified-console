@@ -201,6 +201,25 @@ It is frozen at wire **V26**. It has nothing from V27–V32 (limiter, subharmoni
 | Searchable settings; Updates page; read-only mode; delay-refusal banner; licences screen; diagnostics bundle (Help > Save Diagnostics); the demo entry; Linux packaging (AppImage, tar.gz, deb, rpm, AUR) and Windows zip and installer | Qt desktop |
 | Bulk-endpoint debug window; 12-band PEQ | Windows C# |
 
+### I. The audio link installation on a hub (Pro layer)
+
+*WP LKUI1, 2026-11-13. Beyond the macOS floor: the hub's system model (SW2, `system.*`, `docs/integrator/audio-link.md`).
+The web reads it through its own generic hub call (SW3); Qt and Android through the core's typed calls
+`link_system_view`, `link_system_save`, `link_system_align` and `link_system_recall` (dspi-core `link/system.rs`; C ABI
+`dspi_link_system_*`; UniFFI), which turn the hub's answers into the rows the screens show.*
+
+| # | Feature | Web | Qt desktop | Android | Swift (macOS, iOS) | Terminal |
+|---|---|---|---|---|---|---|
+| I1 | System view: every element with its role (Sender, Fan-out, Repeater, Receiver) and link state (Locked, Holdover, Searching, Off, pending link delay), Link delay in frames and ms, Link delay range, Hop offset, phase error | ✓ SW3 (rooms, zones, topology tree, link slots) | ◐ Window > System… (`SystemController`, `qml/system/SystemWindow.qml`): a units table; no rooms-and-zones grouping, topology tree or link slots | ◐ System screen (`feature-home/system/SystemScreen.kt`), touch rows; no rooms-and-zones grouping, topology tree or link slots | **pending** (Mac VM): the binding has the calls (`apps/apple/.../Generated`); no screen yet | ✗ |
+| I2 | Clock and links: System delay (automatic or frames), each room's lip sync, each unit's measured latency; Save guarded by the revision it was edited on (stale: Save withdrawn, Reload offered; a stale Save is the hub's `conflict`); write the link delays (asks first) | ✓ SW3 (also the slot matrix, link stats and the trim scan; Installer mode) | ◐ Advanced (the Mode menu stays hidden); no slot matrix, link stats or trim scan | ◐ folded under "Clock and links"; no slot matrix, link stats or trim scan | **pending** | ✗ |
+| I3 | Scene bar: recall; a refused recall in words, naming the frame the sender holds; a refusal by role with the hub's words | ✓ SW3 | ✓ | ✓ | **pending** | ✗ |
+| I4 | Compact status: "Audio link: 4 of 4 locked", the last scene, the system mute, alarms | ✓ status rail (with the system mute toggle and alarm acknowledge) | ◐ a line under the menu bar (`SystemStatusStrip.qml`); no mute toggle or acknowledge | ◐ Home's chip under the health line (phone) or the graph header (tablet); no mute toggle or acknowledge | **pending** | ✗ |
+| I5 | Roles and modes: Viewer gets nothing that writes, Control recalls but does not edit, Admin edits; Simple shows the status only; no PIN, so nothing is locked | ✓ | ✓ (the hub's role from every view; Simple hides the scene bar and editor) | ✓ roles, and G1's read-only state turns the writes off too; Android has no mode switch yet: Home's chip is the front page's view, the System screen is the Advanced layer | **pending** | ✗ |
+
+Tests: dspi-hub `tests/wp_lkui1_system_view.rs` (the core's calls against a real hub with the audio link fakes, Admin,
+Control and Viewer); Qt smoke section `lkui1-system` against `uconsole --demo hub --audio-link`; Android
+`SystemScreenModelWpLkui1Test`, `SystemScreenWpLkui1Test` (Robolectric) on the fake core's `FakeAudioLinkSystem`.
+
 ---
 
 ## 3. Gap list per app

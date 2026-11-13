@@ -41,6 +41,10 @@ object DspiRoutes {
     /** :feature-settings — SettingsView and its tabs. */
     const val SETTINGS = "settings"
 
+    // -- WP LKUI1 --
+    /** :feature-home — the hub's audio link installation (System screen). */
+    const val SYSTEM = "system"
+
     /** :feature-analysis — signal generator, spectrum analyser, stats, monitor. */
     const val ANALYSIS = "analysis"
 
