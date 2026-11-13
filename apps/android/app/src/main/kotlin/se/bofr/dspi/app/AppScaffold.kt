@@ -69,6 +69,7 @@ import se.bofr.dspi.feature.graph.GraphScreen
 import se.bofr.dspi.feature.home.ChannelScreen
 import se.bofr.dspi.feature.home.HomeScreen
 import se.bofr.dspi.feature.home.HostChannelsFeed
+import se.bofr.dspi.feature.home.system.SystemScreen
 import se.bofr.dspi.feature.matrix.MatrixMixerView
 import se.bofr.dspi.feature.onboarding.OnboardingSource
 import se.bofr.dspi.feature.presets.PresetsScreen
@@ -213,6 +214,8 @@ private fun DspiRoutesHost(bridge: DspiBridge, bootloaderLocator: BootloaderLoca
         }
         screen(nav, DspiRoutes.PRESETS) { _, go, back -> PresetsScreen(bridge, go, back) }
         screen(nav, DspiRoutes.SETTINGS) { _, go, back -> SettingsScreen(bridge, go, back) }
+        // -- WP LKUI1 -- the hub's audio link installation, from Home's status chip
+        screen(nav, DspiRoutes.SYSTEM) { _, go, back -> SystemScreen(bridge, go, back) }
         screen(nav, DspiRoutes.ANALYSIS) { _, go, back -> AnalysisScreen(bridge, go, back) }
         // -- WP AN32 -- each Tools-menu entry opens its own analysis page
         screen(nav, DspiRoutes.ANALYSIS_PAGE, listOf(navArgument("page") { type = NavType.StringType })) { entry, go, back ->

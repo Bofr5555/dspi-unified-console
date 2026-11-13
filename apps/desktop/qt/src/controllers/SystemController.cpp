@@ -1,0 +1,367 @@
+#include "SystemController.h"
+
+#include "Core.h"
+#include "DeviceModel.h"
+#include "Registrar.h"
+
+#include <QCoreApplication>
+#include <QJSEngine>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QRegularExpression>
+
+extern "C" {
+#include "dspi_core.h"
+}
+
+static const Registrar::Controller<SystemController> systemController;
+static const Registrar::Banner systemStrip("SystemStatusStrip", 30);
+static const Registrar::Window systemWindow("window.system", "SystemWindow");
+
+namespace {
+
+// The view of a big installation fits; a reply that does not is read again
+// (the core then gives its last view, as the hub limits the status reads)
+constexpr uint32_t kBuffer = 256 * 1024;
+constexpr int kPollMs = 3000;
+
+QJsonObject call(const std::function<uint32_t(char *, uint32_t)> &fill) {
+    QByteArray buf(int(kBuffer), '\0');
+    uint32_t need = fill(buf.data(), kBuffer);
+    if (need > kBuffer) {
+        buf.resize(int(need));
+        need = fill(buf.data(), need);
+    }
+    if (need == 0 || need > uint32_t(buf.size())) return QJsonObject();
+    buf.truncate(int(need) - 1);
+    return QJsonDocument::fromJson(buf).object();
+}
+
+bool isOk(const QJsonObject &o) { return o.value(QLatin1String("ok")).toBool(); }
+QString str(const QJsonObject &o, const char *key) { return o.value(QLatin1String(key)).toString(); }
+
+// A whole number of µs as typed, "" for none; nullopt-like: ok false
+QVariant parseUs(const QString &text, bool *ok) {
+    const QString t = text.trimmed();
+    *ok = true;
+    if (t.isEmpty()) return QVariant();
+    static const QRegularExpression whole(QStringLiteral("^-?\\d{1,7}$"));
+    if (!whole.match(t).hasMatch()) {
+        *ok = false;
+        return QVariant();
+    }
+    return QVariant(t.toLongLong());
+}
+
+} // namespace
+
+SystemController::SystemController(const AppContext &ctx, QObject *parent)
+    : QObject(parent), m_core(ctx.core->handle()), m_device(ctx.device) {
+    m_pool.setMaxThreadCount(1);
+    m_pool.setExpiryTimeout(-1);
+    m_timer.setInterval(kPollMs);
+    connect(&m_timer, &QTimer::timeout, this, &SystemController::refresh);
+    connect(m_device, &DeviceModel::snapshotApplied, this, &SystemController::updatePolling);
+    connect(qApp, &QCoreApplication::aboutToQuit, this, [this] {
+        m_shutDown = true;
+        m_timer.stop();
+        m_pool.waitForDone();
+    });
+    updatePolling();
+}
+
+SystemController::~SystemController() {
+    m_shutDown = true;
+    m_pool.waitForDone();
+}
+
+SystemController *SystemController::create(QQmlEngine *, QJSEngine *) {
+    SystemController *self = Registrar::instance<SystemController>();
+    QJSEngine::setObjectOwnership(self, QJSEngine::CppOwnership);
+    return self;
+}
+
+QVariantList SystemController::list(const char *key) const {
+    return m_view.value(QLatin1String(key)).toArray().toVariantList();
+}
+
+QStringList SystemController::issues() const {
+    QStringList out;
+    for (const QJsonValue &v : m_view.value(QLatin1String("issues")).toArray()) out << v.toString();
+    return out;
+}
+
+// Polls only while a hub's device is open: a device the console holds itself
+// has no installation to read
+void SystemController::updatePolling() {
+    const bool onHub = m_device->connected() && m_device->remote();
+    if (onHub && !m_timer.isActive()) {
+        m_timer.start();
+        refresh();
+    } else if (!onHub && m_timer.isActive()) {
+        m_timer.stop();
+        if (m_available) {
+            m_available = false;
+            m_view = QJsonObject();
+            m_error.clear();
+            setLists(QJsonObject());
+            emit viewChanged();
+        }
+        // What this session did is not the next one's
+        m_lastRecall.clear();
+        m_recalledScene.clear();
+        emit recallChanged();
+        setAction(QString(), false);
+        clearDraft();
+    }
+}
+
+void SystemController::run(std::function<QJsonObject(FfiCore *)> job, std::function<void(const QJsonObject &)> done) {
+    if (m_shutDown) return;
+    ++m_busy;
+    emit busyChanged();
+    FfiCore *core = m_core;
+    m_pool.start([this, core, job = std::move(job), done = std::move(done)] {
+        const QJsonObject o = job(core);
+        QMetaObject::invokeMethod(
+            this,
+            [this, o, done] {
+                --m_busy;
+                emit busyChanged();
+                done(o);
+            },
+            Qt::QueuedConnection);
+    });
+}
+
+void SystemController::refresh() {
+    if (m_shutDown || m_reading.exchange(true)) return;
+    FfiCore *core = m_core;
+    m_pool.start([this, core] {
+        const QJsonObject o = call([core](char *b, uint32_t n) { return dspi_link_system_view(core, b, n); });
+        QMetaObject::invokeMethod(
+            this,
+            [this, o] {
+                m_reading = false;
+                applyView(o);
+            },
+            Qt::QueuedConnection);
+    });
+}
+
+void SystemController::applyView(const QJsonObject &o) {
+    if (!isOk(o)) {
+        // Not on a hub now (disconnected), or the hub did not answer: the last
+        // view stays on show while a hub's device is open
+        const QString code = str(o, "code");
+        m_error = o.isEmpty() ? tr("The hub did not answer.") : str(o, "error");
+        if (code == QLatin1String("disconnected")) {
+            m_available = false;
+            m_view = QJsonObject();
+            setLists(QJsonObject());
+        }
+        emit viewChanged();
+        return;
+    }
+    m_available = true;
+    m_error.clear();
+    m_view = o;
+    m_view.remove(QStringLiteral("ok"));
+    setLists(m_view);
+    if (m_dirty && revision() != m_draftRevision && !m_stale) {
+        m_stale = true;
+        emit draftChanged();
+    }
+    if (!m_dirty) {
+        m_draftAuto = systemDelayAuto();
+        m_draftFrames = systemDelayFrames();
+        emit draftChanged();
+    }
+    emit viewChanged();
+}
+
+void SystemController::setLists(const QJsonObject &o) {
+    const auto update = [&o](const char *key, QVariantList &into, void (SystemController::*signal)(), SystemController *self) {
+        const QVariantList now = o.value(QLatin1String(key)).toArray().toVariantList();
+        if (now == into) return;
+        into = now;
+        emit(self->*signal)();
+    };
+    update("units", m_units, &SystemController::unitsChanged, this);
+    update("rooms", m_rooms, &SystemController::roomsChanged, this);
+    update("scenes", m_scenes, &SystemController::scenesChanged, this);
+    QVariantList edit;
+    for (const QVariant &v : m_units) {
+        const QVariantMap u = v.toMap();
+        if (u.value(QStringLiteral("kind")).toString() != QLatin1String("unit")) continue;
+        edit.append(QVariantMap{ { QStringLiteral("id"), u.value(QStringLiteral("id")) },
+                                 { QStringLiteral("name"), u.value(QStringLiteral("name")) },
+                                 { QStringLiteral("latencyUs"), u.value(QStringLiteral("latencyUs")) } });
+    }
+    if (edit != m_editUnits) {
+        m_editUnits = edit;
+        emit editUnitsChanged();
+    }
+}
+
+void SystemController::recall(const QString &id) {
+    if (!mayRecall() || busy()) return;
+    const QByteArray scene = id.toUtf8();
+    QString name = id;
+    for (const QVariant &s : scenes()) {
+        const QVariantMap m = s.toMap();
+        if (m.value(QStringLiteral("id")).toString() == id) name = m.value(QStringLiteral("name")).toString();
+    }
+    run([scene](FfiCore *c) { return call([&](char *b, uint32_t n) { return dspi_link_system_recall(c, scene.constData(), b, n); }); },
+        [this, name](const QJsonObject &o) {
+            QVariantMap r;
+            if (isOk(o)) {
+                r = o.toVariantMap();
+                r.remove(QStringLiteral("ok"));
+                if (o.value(QLatin1String("taken")).toBool()) m_recalledScene = str(o, "name");
+            } else {
+                // Refused by role, with the hub's words naming the op
+                r.insert(QStringLiteral("name"), name);
+                r.insert(QStringLiteral("taken"), false);
+                r.insert(QStringLiteral("message"),
+                         o.isEmpty() ? tr("%1: the hub did not answer.").arg(name)
+                                     : tr("%1 was refused: %2").arg(name, str(o, "error")));
+            }
+            m_lastRecall = r;
+            emit recallChanged();
+            refresh();
+        });
+}
+
+void SystemController::align() {
+    if (!mayEdit() || busy()) return;
+    run([](FfiCore *c) { return call([&](char *b, uint32_t n) { return dspi_link_system_align(c, b, n); }); },
+        [this](const QJsonObject &o) {
+            if (isOk(o)) setAction(str(o, "message"), !o.value(QLatin1String("applied")).toBool());
+            else setAction(o.isEmpty() ? tr("The hub did not answer.") : str(o, "error"), true);
+            refresh();
+        });
+}
+
+void SystemController::setAction(const QString &message, bool failed) {
+    m_actionMessage = message;
+    m_actionFailed = failed;
+    emit actionChanged();
+}
+
+// ---- The draft ----------------------------------------------------------------
+
+void SystemController::setSystemDelay(bool automatic, int frames) {
+    if (!mayEdit()) return;
+    if (!m_dirty) m_draftRevision = revision();
+    m_draftDelaySet = true;
+    m_draftAuto = automatic;
+    m_draftFrames = qBound(0, frames, 65535);
+    m_dirty = true;
+    emit draftChanged();
+}
+
+bool SystemController::setRoomLipSync(const QString &roomId, const QString &us) {
+    bool ok = false;
+    const QVariant v = parseUs(us, &ok);
+    if (!ok || !mayEdit()) return false;
+    if (!m_dirty) m_draftRevision = revision();
+    m_draftRooms.insert(roomId, v);
+    m_dirty = true;
+    emit draftChanged();
+    return true;
+}
+
+bool SystemController::setUnitLatency(const QString &unitId, const QString &us) {
+    bool ok = false;
+    const QVariant v = parseUs(us, &ok);
+    if (!ok || !mayEdit()) return false;
+    if (!m_dirty) m_draftRevision = revision();
+    m_draftUnits.insert(unitId, v);
+    m_dirty = true;
+    emit draftChanged();
+    return true;
+}
+
+QString SystemController::roomLipSyncText(const QString &roomId) const {
+    if (m_draftRooms.contains(roomId)) {
+        const QVariant v = m_draftRooms.value(roomId);
+        return v.isValid() ? QString::number(v.toLongLong()) : QString();
+    }
+    for (const QVariant &r : rooms()) {
+        const QVariantMap m = r.toMap();
+        if (m.value(QStringLiteral("id")).toString() != roomId) continue;
+        const QVariant us = m.value(QStringLiteral("lipSyncUs"));
+        return us.isNull() ? QString() : QString::number(us.toLongLong());
+    }
+    return QString();
+}
+
+QString SystemController::unitLatencyText(const QString &unitId) const {
+    if (m_draftUnits.contains(unitId)) {
+        const QVariant v = m_draftUnits.value(unitId);
+        return v.isValid() ? QString::number(v.toLongLong()) : QString();
+    }
+    for (const QVariant &u : units()) {
+        const QVariantMap m = u.toMap();
+        if (m.value(QStringLiteral("id")).toString() != unitId) continue;
+        const QVariant us = m.value(QStringLiteral("measuredLatencyUs"));
+        return us.isNull() ? QString() : QString::number(us.toLongLong());
+    }
+    return QString();
+}
+
+QByteArray SystemController::draftJson() const {
+    QJsonObject edits;
+    edits.insert(QStringLiteral("setSystemDelay"), m_draftDelaySet);
+    edits.insert(QStringLiteral("systemDelayFrames"), m_draftAuto ? QJsonValue() : QJsonValue(m_draftFrames));
+    QJsonArray rooms, units;
+    for (auto it = m_draftRooms.cbegin(); it != m_draftRooms.cend(); ++it)
+        rooms.append(QJsonObject{ { QStringLiteral("roomId"), it.key() },
+                                  { QStringLiteral("lipSyncUs"), it.value().isValid() ? QJsonValue(it.value().toLongLong()) : QJsonValue() } });
+    for (auto it = m_draftUnits.cbegin(); it != m_draftUnits.cend(); ++it)
+        units.append(QJsonObject{ { QStringLiteral("unitId"), it.key() },
+                                  { QStringLiteral("measuredLatencyUs"), it.value().isValid() ? QJsonValue(it.value().toLongLong()) : QJsonValue() } });
+    edits.insert(QStringLiteral("rooms"), rooms);
+    edits.insert(QStringLiteral("units"), units);
+    return QJsonDocument(edits).toJson(QJsonDocument::Compact);
+}
+
+void SystemController::save() {
+    if (!m_dirty || m_stale || !mayEdit() || busy()) return;
+    const QByteArray edits = draftJson();
+    const quint64 rev = quint64(m_draftRevision);
+    run([edits, rev](FfiCore *c) {
+            return call([&](char *b, uint32_t n) { return dspi_link_system_save(c, rev, edits.constData(), b, n); });
+        },
+        [this](const QJsonObject &o) {
+            if (isOk(o)) {
+                clearDraft();
+                setAction(tr("Saved on the hub."), false);
+            } else if (str(o, "code") == QLatin1String("conflict")) {
+                m_stale = true;
+                emit draftChanged();
+                setAction(str(o, "error"), true);
+            } else {
+                setAction(o.isEmpty() ? tr("The hub did not answer.") : str(o, "error"), true);
+            }
+            refresh();
+        });
+}
+
+void SystemController::clearDraft() {
+    m_dirty = false;
+    m_stale = false;
+    m_draftDelaySet = false;
+    m_draftRooms.clear();
+    m_draftUnits.clear();
+    m_draftAuto = systemDelayAuto();
+    m_draftFrames = systemDelayFrames();
+    emit draftChanged();
+}
+
+void SystemController::reload() {
+    clearDraft();
+    setAction(QString(), false);
+    refresh();
+}
