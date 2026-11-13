@@ -119,6 +119,8 @@ mod events;
 mod journal;
 // -- WP P0E --
 mod diag;
+// -- WP P1NT --
+pub mod notice_text;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -183,6 +185,10 @@ pub use output_labels::{
 pub use journal::{HistoryEntry, HistoryMove, HistorySource};
 // -- WP P0E --
 pub use diag::REMOVED as DIAG_REMOVED;
+// -- WP P1NT --
+pub use notice_text::{
+    NOTICE_KEY_UNKNOWN, Notice, NoticeKind, notice_for, notice_for_key, notice_texts,
+};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///

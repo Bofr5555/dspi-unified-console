@@ -460,6 +460,9 @@ def kt(t: str, name: str = "") -> str:
         return f"{kt(m.group(1), name)}?"
     if m := re.match(r"Arc<(?:dyn )?(\w+)>$", t):
         return m.group(1)
+    # -- WP P1NT -- the error as an argument (`notice_for`): its domain class.
+    if t == "DspiError":
+        return "DspiException"
     return t
 
 

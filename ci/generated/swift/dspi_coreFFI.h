@@ -2093,6 +2093,22 @@ RustBuffer uniffi_dspi_core_fn_func_link_phase_texts(RustCallStatus *_Nonnull ou
 RustBuffer uniffi_dspi_core_fn_func_link_ws_url(RustBuffer host, uint16_t port, RustBuffer path, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_NOTICE_FOR
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_NOTICE_FOR
+RustBuffer uniffi_dspi_core_fn_func_notice_for(RustBuffer error, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_NOTICE_FOR_KEY
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_NOTICE_FOR_KEY
+RustBuffer uniffi_dspi_core_fn_func_notice_for_key(RustBuffer key, RustBuffer detail, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_NOTICE_TEXTS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_NOTICE_TEXTS
+RustBuffer uniffi_dspi_core_fn_func_notice_texts(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_ONBOARDING_GETTING_STARTED_JSON
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_ONBOARDING_GETTING_STARTED_JSON
 RustBuffer uniffi_dspi_core_fn_func_onboarding_getting_started_json(RustCallStatus *_Nonnull out_status
@@ -2575,6 +2591,24 @@ uint16_t uniffi_dspi_core_checksum_func_link_phase_texts(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_WS_URL
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_WS_URL
 uint16_t uniffi_dspi_core_checksum_func_link_ws_url(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_NOTICE_FOR
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_NOTICE_FOR
+uint16_t uniffi_dspi_core_checksum_func_notice_for(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_NOTICE_FOR_KEY
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_NOTICE_FOR_KEY
+uint16_t uniffi_dspi_core_checksum_func_notice_for_key(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_NOTICE_TEXTS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_NOTICE_TEXTS
+uint16_t uniffi_dspi_core_checksum_func_notice_texts(void
     
 );
 #endif

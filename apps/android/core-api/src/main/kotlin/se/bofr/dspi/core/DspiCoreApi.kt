@@ -3366,6 +3366,30 @@ interface DspiCoreApi : AutoCloseable {
     fun filterTypeName(code: Int): String
 
     /**
+     * What to tell the user about `error`.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun noticeFor(error: DspiException): Notice
+
+    /**
+     * The notice with this key (a failure reply's `noticeKey` in the C ABI and the
+     * web binding), with `detail` as its detail. A key the table does not have
+     * gives the `unknown` row.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun noticeForKey(key: String, detail: String): Notice
+
+    /**
+     * The whole table, every key once and with no detail, for a client's
+     * translation files.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun noticeTexts(): List<Notice>
+
+    /**
      * Every output's label for the state `input`, in output order.
      *
      * Stateless (a free function in dspi-core); needs no device.

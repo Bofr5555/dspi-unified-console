@@ -20,6 +20,8 @@
 //! `read_only`, `locked`, `denied`, `link`, `io`, `autoeq`, `firmware_guard`,
 //! `overvolt_word`. A document export replies the document itself, or that
 //! failure.
+//! -- WP P1NT -- A failure also carries `noticeKey`, its notice's stable key:
+//! `dspi_notice_for` gives the words to show.
 
 #[cfg(test)]
 use std::ffi::CStr;
@@ -50,6 +52,8 @@ mod diag;
 mod ext_diag;
 // -- WP SW1 --
 mod audio_link;
+// -- WP P1NT --
+mod notice_text;
 
 // ── Replies ──────────────────────────────────────────────────────────
 
@@ -88,7 +92,13 @@ fn json_reply<T: serde::Serialize>(result: Result<T>) -> String {
             Value::Object(all)
         }
         Ok(value) => json!({ "ok": true, "value": value }),
-        Err(e) => json!({ "ok": false, "code": error_code(&e), "error": e.to_string() }),
+        // -- WP P1NT -- `noticeKey`: the words to show, through `dspi_notice_for`.
+        Err(e) => json!({
+            "ok": false,
+            "code": error_code(&e),
+            "error": e.to_string(),
+            "noticeKey": e.notice_key(),
+        }),
     };
     reply.to_string()
 }

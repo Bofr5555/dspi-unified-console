@@ -1253,6 +1253,8 @@ int16_t value);
 uint32_t dspi_fetch_apply_at_frame_status(struct FfiCore *core, char *buf, uint32_t len);
 uint8_t dspi_reset_audio_link_stats(struct FfiCore *core);
 bool dspi_open_demo_audio_link(struct FfiCore *core);
+uint32_t dspi_notice_for(const char *key, const char *detail, char *buf, uint32_t len);
+uint32_t dspi_notice_texts(char *buf, uint32_t len);
 bool dspi_link_browse_start(struct FfiCore *core,
 void (*callback)(void *user_data),
 void *user_data,

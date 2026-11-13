@@ -45,6 +45,10 @@ use crate::write;
 pub struct CallError {
     pub code: &'static str,
     pub message: String,
+    // -- WP P1NT --
+    /// The core error's notice key, for `noticeFor`; `None` for the binding's
+    /// own refusals.
+    pub notice_key: Option<String>,
 }
 
 impl CallError {
@@ -52,6 +56,8 @@ impl CallError {
         Self {
             code,
             message: message.into(),
+            // -- WP P1NT --
+            notice_key: None,
         }
     }
 }
@@ -73,7 +79,12 @@ impl From<DspiError> for CallError {
             DspiError::Link { .. } => "link",
             _ => "internal",
         };
-        Self::new(code, e.to_string())
+        // -- WP P1NT --
+        let notice_key = Some(e.notice_key());
+        Self {
+            notice_key,
+            ..Self::new(code, e.to_string())
+        }
     }
 }
 
@@ -119,7 +130,14 @@ pub fn refusal_reply(r: Refusal) -> Vec<u8> {
 fn reply(r: CallResult) -> Vec<u8> {
     let v = match r {
         Ok(value) => json!({ "ok": true, "value": value }),
-        Err(e) => json!({ "ok": false, "code": e.code, "error": e.message }),
+        Err(e) => {
+            let mut v = json!({ "ok": false, "code": e.code, "error": e.message });
+            // -- WP P1NT -- the core error's notice key, for `noticeFor`
+            if let (Some(key), Some(fields)) = (e.notice_key, v.as_object_mut()) {
+                fields.insert("noticeKey".to_owned(), Value::String(key));
+            }
+            v
+        }
     };
     v.to_string().into_bytes()
 }
@@ -347,6 +365,18 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
             Ok(usb::gone(h, &core))
         }
         "usbIds" => Ok(usb::ids()),
+        // -- WP P1NT -- the notice table (dspi_core::notice_text)
+        "noticeFor" => {
+            #[derive(Deserialize)]
+            struct P {
+                key: String,
+                #[serde(default)]
+                detail: String,
+            }
+            let p: P = params(req.params)?;
+            Ok(tidy(&dspi_core::notice_for_key(p.key, p.detail)))
+        }
+        "noticeTexts" => Ok(tidy(&dspi_core::notice_texts())),
         #[cfg(any(test, feature = "test-hooks"))]
         "test.sleep" => {
             #[derive(Deserialize)]
@@ -707,6 +737,10 @@ fn demo_action(core: &DspiCore, demo: bool, a: DemoAction) -> CallResult {
     }
     Ok(Value::Null)
 }
+
+// -- WP P1NT --
+#[cfg(test)]
+mod tests_wp_p1nt;
 
 #[cfg(test)]
 mod tests {

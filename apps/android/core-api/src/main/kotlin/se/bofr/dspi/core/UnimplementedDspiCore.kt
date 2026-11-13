@@ -584,6 +584,12 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun filterTypeName(code: Int): String = throw NotImplementedError("filter_type_name")
 
+    override fun noticeFor(error: DspiException): Notice = throw NotImplementedError("notice_for")
+
+    override fun noticeForKey(key: String, detail: String): Notice = throw NotImplementedError("notice_for_key")
+
+    override fun noticeTexts(): List<Notice> = throw NotImplementedError("notice_texts")
+
     override fun outputLabelsFor(input: OutputLabelInput): List<OutputLabel> = throw NotImplementedError("output_labels_for")
 
     override fun outputCardsFor(input: OutputLabelInput): List<OutputCard> = throw NotImplementedError("output_cards_for")

@@ -7,6 +7,9 @@ Integration. The crate docs (`src/lib.rs`) have the details.
 - **One export for calls**, `dspi_call(session, json)`: `{"method", "params"}` in,
   `{"ok", "value"}` or `{"ok": false, "code", "error"}` out. Methods and shapes:
   `src/calls.rs`, and `apps/web/src/core/protocol.ts` for the page.
+- **Notices** (WP P1NT): a failure from the core also carries `noticeKey`;
+  `noticeFor {key, detail}` gives the notice to show (`dspi_core::notice_text`),
+  `noticeTexts` the whole table.
 - **Sessions:** any number per module, each its own `DspiCore`.
 - **One call at a time, in the module** (`src/guard.rs`): a call that enters
   while another is suspended is refused (`busy`) before it touches anything.
