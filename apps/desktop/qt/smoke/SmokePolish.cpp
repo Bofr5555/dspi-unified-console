@@ -328,7 +328,9 @@ void checkMode(SmokeDriver &d) {
     const int setters = device->settersRun();
     QWindow *window = d.app().shell->openWindow(QStringLiteral("window.mode"));
     auto *w = qobject_cast<QQuickWindow *>(window);
-    d.check(QStringLiteral("qp18: Window > Mode... opens the choice"), w && w->isVisible());
+    // -- WP QPI5 -- the menu row is hidden until the modes come; the window stays
+    d.check(QStringLiteral("qpi5: the Window menu offers no Mode row"), d.object(QStringLiteral("Menu.window.mode")) == nullptr);
+    d.check(QStringLiteral("qp18: the Mode window still opens"), w && w->isVisible());
     mode->choose(QStringLiteral("simple"), false);
     d.check(QStringLiteral("qp18: Simple, remembered for this device"),
             mode->mode() == QLatin1String("simple") && mode->rememberedForDevice()

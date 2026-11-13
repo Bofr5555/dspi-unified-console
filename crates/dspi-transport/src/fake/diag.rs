@@ -53,6 +53,11 @@ impl State {
         if self.options.diag_ext {
             f |= dspi_proto::ext::NOTIFY_FEAT_CLIP_EVENT;
         }
+        // -- WP SW1 --
+        if self.options.audio_link {
+            f |= dspi_proto::ext::audio_link::NOTIFY_FEAT_LINK_STATE
+                | dspi_proto::ext::audio_link::NOTIFY_FEAT_APPLY_RESULT;
+        }
         f
     }
 

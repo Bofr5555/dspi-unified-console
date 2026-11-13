@@ -73,6 +73,10 @@ const CONNECT_BUDGET: Duration = Duration::from_secs(15);
 const HANDOVER_GRACE: Duration = Duration::from_millis(50);
 /// How often the keepalive thread looks at its clock.
 const KEEPALIVE_TICK: Duration = Duration::from_millis(250);
+// -- WP LKCLOSE --
+/// How long the reader may go on reading after a write failed, for the hub's close
+/// frame, if the socket keeps bringing it something else.
+const WRITE_FAILED_GRACE: Duration = Duration::from_secs(1);
 
 // -- WP WB4b --
 /// Longest single wait on the socket in a caller-driven session, so the
@@ -387,6 +391,10 @@ struct Inner {
     events: Mutex<Option<Arc<dyn LinkEvents>>>,
     /// The `closed` event has gone out.
     closed_delivered: AtomicBool,
+    // -- WP LKCLOSE --
+    /// When a write first failed. The reader ends the session: with the hub's close
+    /// code if its close frame is still to be read, else as a lost link.
+    write_failed_at: Mutex<Option<Instant>>,
     last_inbound: Mutex<Instant>,
     stopping: AtomicBool,
     timing: Timing,
@@ -498,6 +506,7 @@ impl LinkClient {
             // caller only the Err, never a `closed` that outlives it
             events: Mutex::new(None),
             closed_delivered: AtomicBool::new(false),
+            write_failed_at: Mutex::new(None),
             last_inbound: Mutex::new(cfg.clock.now()),
             stopping: AtomicBool::new(false),
             timing: cfg.timing,
@@ -771,8 +780,10 @@ impl LinkClient {
         self.inner.epoch
     }
 
+    /// The session can no longer be used: it ended, or a write failed, after which the
+    /// framing is unknown. Its close code is in [`Self::closed_reason`] once known.
     pub fn is_closed(&self) -> bool {
-        lock(&self.inner.closed).is_some()
+        lock(&self.inner.closed).is_some() || lock(&self.inner.write_failed_at).is_some()
     }
 
     /// The close code and reason once the session ended.
@@ -959,7 +970,7 @@ impl LinkClient {
         });
         if self.inner.sender.send(WsMessage::Binary(frame.encode())).is_err() {
             lock(&self.inner.pending_cmd).remove(&tag);
-            self.socket_failed(None, "send failed");
+            self.write_failed();
             return Err(CmdResponse { tag, status: status::NO_DEVICE, payload: Vec::new() });
         }
         Ok((tag, rx))
@@ -1094,7 +1105,7 @@ impl LinkClient {
     fn fire(&self, make: impl FnOnce(u64) -> String) {
         let id = self.inner.next_id.fetch_add(1, Ordering::SeqCst);
         if self.inner.sender.send(WsMessage::Text(make(id))).is_err() {
-            self.socket_failed(None, &close_reason(None));
+            self.write_failed();
         }
     }
 
@@ -1121,7 +1132,7 @@ impl LinkClient {
         }
         if let Err(e) = self.inner.sender.send(WsMessage::Text(text)) {
             lock(&self.inner.pending_json).remove(&id);
-            self.socket_failed(None, &close_reason(None));
+            self.write_failed();
             return Err(LinkError::Io(e.to_string()));
         }
         Ok(PendingRequest { id, rx, deadline: Instant::now() + timeout })
@@ -1213,7 +1224,8 @@ impl LinkClient {
     /// Read the socket for up to `wait` (the first message ends the wait),
     /// handle what arrived, then the keepalive's turn.
     fn pump(&self, wait: Duration) {
-        if self.is_closed() {
+        // -- WP LKCLOSE -- after a failed write too: the reading decides the code
+        if self.closed_reason().is_some() {
             return;
         }
         // Taken out, so nothing holds the lock while the hub's messages are handled
@@ -1230,13 +1242,20 @@ impl LinkClient {
                     }
                 }
                 WsRecv::Alive => self.heard_from_hub(),
-                WsRecv::Idle => break,
+                WsRecv::Idle => {
+                    ended = self.end_after_failed_write(true);
+                    break;
+                }
                 WsRecv::Closed { code, reason } => {
                     log::debug!("dspi-link: socket closed: {reason}");
                     self.socket_failed(code, &close_reason(code));
                     ended = true;
                     break;
                 }
+            }
+            if self.end_after_failed_write(false) {
+                ended = true;
+                break;
             }
             wait = Duration::ZERO;
         }
@@ -1267,7 +1286,7 @@ impl LinkClient {
             *last = now;
         }
         if self.inner.sender.ping().is_err() {
-            self.socket_failed(None, &close_reason(None));
+            self.write_failed();
         }
     }
 
@@ -1294,7 +1313,7 @@ impl LinkClient {
                     }
                     WsRecv::Alive => me.heard_from_hub(),
                     WsRecv::Idle => {
-                        if me.is_closed() {
+                        if me.end_after_failed_write(true) || me.is_closed() {
                             break;
                         }
                         if me.link_is_dead() {
@@ -1308,6 +1327,9 @@ impl LinkClient {
                         me.socket_failed(code, &close_reason(code));
                         break;
                     }
+                }
+                if me.end_after_failed_write(false) {
+                    break;
                 }
             })
             .map_err(spawn_error)?;
@@ -1330,7 +1352,8 @@ impl LinkClient {
                 }
                 last_ping = now;
                 if inner.sender.ping().is_err() {
-                    LinkClient { inner }.socket_failed(None, &close_reason(None));
+                    // -- WP LKCLOSE -- the reader ends the session
+                    LinkClient { inner }.write_failed();
                     return;
                 }
             })
@@ -1448,6 +1471,30 @@ impl LinkClient {
         if let Some(ev) = ev {
             ev.session_devices_changed(self.inner.epoch);
         }
+    }
+
+    // -- WP LKCLOSE --
+    /// A write failed. The session is over, but the hub may have closed it first, with
+    /// a code that says whether to come back (4000 and 4002: not), and that close frame
+    /// can be waiting unread: so the reader ends it, with the hub's code if it reads
+    /// one, else as a lost link ([`Self::end_after_failed_write`]).
+    fn write_failed(&self) {
+        let now = self.inner.clock.now();
+        lock(&self.inner.write_failed_at).get_or_insert(now);
+    }
+
+    /// The reader's part of [`Self::write_failed`], after each thing it read. `idle`:
+    /// nothing more has arrived, so no close frame is coming. Without that, the socket
+    /// gets [`WRITE_FAILED_GRACE`] to bring it. True when the session has ended.
+    fn end_after_failed_write(&self, idle: bool) -> bool {
+        let Some(at) = *lock(&self.inner.write_failed_at) else {
+            return false;
+        };
+        if !idle && self.inner.clock.now().saturating_duration_since(at) < WRITE_FAILED_GRACE {
+            return false;
+        }
+        self.socket_failed(None, &close_reason(None));
+        true
     }
 
     /// The session is over: fail everything outstanding, end the streams,

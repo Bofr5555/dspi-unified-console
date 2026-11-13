@@ -277,7 +277,7 @@ Choose an update method:</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Connecting to GitHub...</source>
+        <source>Connecting to GitHub…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -326,7 +326,7 @@ Choose an update method:</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Import File...</source>
+        <source>Import File…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -345,10 +345,6 @@ Choose an update method:</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Search headphones...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Search headphones</source>
         <translation type="unfinished"></translation>
     </message>
@@ -361,7 +357,11 @@ Choose an update method:</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Loading headphone database...</source>
+        <source>Search headphones…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Loading headphone database…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1372,7 +1372,7 @@ Switching an output is instant and never writes to flash. The pin, name and powe
 <context>
     <name>CsPageState</name>
     <message>
-        <source>Reading control-surface capabilities from the device...</source>
+        <source>Reading control-surface capabilities from the device…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1661,11 +1661,11 @@ Switching an output is instant and never writes to flash. The pin, name and powe
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Looking for hubs...</source>
+        <source>No hubs added.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>No hubs added.</source>
+        <source>Looking for hubs…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2153,11 +2153,11 @@ Do you wish to proceed?</source>
 <context>
     <name>FirmwareBanner</name>
     <message>
-        <source>Details...</source>
+        <source>Details…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Update...</source>
+        <source>Update…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2367,7 +2367,7 @@ Do you wish to proceed?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Choose .uf2...</source>
+        <source>Choose .uf2…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2427,7 +2427,7 @@ Do you wish to proceed?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Export Configuration...</source>
+        <source>Export Configuration…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3932,7 +3932,7 @@ Groups are stored on the device alongside the controls and share their Save and 
 <context>
     <name>ImportProgress</name>
     <message>
-        <source>Writing settings to the device...</source>
+        <source>Writing settings to the device…</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -4623,7 +4623,7 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Choose devices in Device &gt; Devices...</source>
+        <source>Choose devices in Device &gt; Devices…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5067,19 +5067,19 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Import Filters...</source>
+        <source>Import Filters…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Export Filters...</source>
+        <source>Export Filters…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Import Device Configuration...</source>
+        <source>Import Device Configuration…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Export Device Configuration...</source>
+        <source>Export Device Configuration…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5107,7 +5107,95 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>History...</source>
+        <source>History…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Settings…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Commit Parameters…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Revert to Saved…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Factory Reset…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Firmware Update…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Devices…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Browse Profiles…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Update Database…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Matrix Mixer…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Loudness Compensation…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Headphone Crossfeed…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Psychoacoustic Bass…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Subharmonic Synthesizer…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tube Modeller…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stereo Upmixer…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Volume Leveller…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Signal Generator…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Spectrum Analyser…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Interrupt Monitor…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Getting Started…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save Diagnostics…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Check for Updates…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5131,23 +5219,7 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Settings...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>&amp;Device</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Commit Parameters...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Revert to Saved...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Factory Reset...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5168,23 +5240,11 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Firmware Update...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Reconnect</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Devices...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>&amp;AutoEQ</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Browse Profiles...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5196,59 +5256,11 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Update Database...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>&amp;Tools</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Matrix Mixer...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Loudness Compensation...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Headphone Crossfeed...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Psychoacoustic Bass...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Subharmonic Synthesizer...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Tube Modeller...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Stereo Upmixer...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Volume Leveller...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Signal Generator...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Spectrum Analyser...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Stats for nerbs</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Interrupt Monitor...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5264,15 +5276,7 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Mode...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>&amp;Help</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Getting Started...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5287,14 +5291,6 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>DSPi Firmware on GitHub</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Save Diagnostics...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Check for Updates...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5529,6 +5525,10 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Lets other consoles and browsers on this network control the DSPi devices plugged in here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Share devices on this network</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5566,10 +5566,6 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>This Hub</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Lets phones, browsers and other consoles control the DSPi devices plugged in here.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6740,11 +6736,11 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Details...</source>
+        <source>Details…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Update...</source>
+        <source>Update…</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -6959,10 +6955,6 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Check for Updates Automatically</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Check Now</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7016,6 +7008,10 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Trial</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Check for updates automatically</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7666,11 +7662,11 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>...and 1 more change</source>
+        <source>…and 1 more change</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>...and %1 more changes</source>
+        <source>…and %1 more changes</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9665,11 +9661,11 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Allow a New Client...</source>
+        <source>Cancel Pairing</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Cancel Pairing</source>
+        <source>Allow a New Client…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10082,7 +10078,7 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Install Rule...</source>
+        <source>Install Rule…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10101,11 +10097,11 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>...and 1 more change</source>
+        <source>…and 1 more change</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>...and %1 more changes</source>
+        <source>…and %1 more changes</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -10156,10 +10152,6 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Checking for updates...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>%1 %2 is available</source>
         <translation type="unfinished"></translation>
     </message>
@@ -10192,7 +10184,11 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Check for Updates Automatically</source>
+        <source>Checking for updates…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Check for updates automatically</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

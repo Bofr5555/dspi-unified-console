@@ -112,7 +112,7 @@ SettingsPage {
                     Layout.fillWidth: true
                     text: HubController.busy
                           ? (HubController.sharing ? qsTr("Starting…") : qsTr("Stopping…"))
-                          : qsTr("Lets phones, browsers and other consoles control the DSPi devices plugged in here.")
+                          : qsTr("Lets other consoles and browsers on this network control the DSPi devices plugged in here.")
                     font: Theme.fontBody
                     color: Theme.textMuted
                     wrapMode: Text.Wrap
@@ -282,6 +282,7 @@ SettingsPage {
         SettingsPickerRow {
             id: accessPicker
             objectName: "Networking.access"
+            inline: true
             label: qsTr("Access")
             values: ["none", "pin"]
             texts: [qsTr("Open"), qsTr("Require Pairing")]

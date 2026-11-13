@@ -95,7 +95,7 @@ Dialog {
             AppButton {
                 objectName: "AutoEqUpdateDialog.import"
                 width: parent.width
-                text: qsTr("Import File...")
+                text: qsTr("Import File…")
                 onClicked: {
                     dialog.close()
                     AutoEqController.chooseDatabaseFile()

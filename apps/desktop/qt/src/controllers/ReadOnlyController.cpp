@@ -60,7 +60,7 @@ QString ReadOnlyController::text() const {
         .arg(version, AppIdentity::displayName(), expected);
 }
 
-QString ReadOnlyController::actionText() const { return newer() ? tr("Details...") : tr("Update..."); }
+QString ReadOnlyController::actionText() const { return newer() ? tr("Details…") : tr("Update…"); }
 
 // No firmware window on STM32H723
 bool ReadOnlyController::actionShown() const {

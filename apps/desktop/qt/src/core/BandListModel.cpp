@@ -2,7 +2,12 @@
 
 #include "DeviceModel.h"
 
-BandListModel::BandListModel(QObject *parent) : QAbstractListModel(parent), m_device(DeviceModel::instance()) {
+namespace {
+// The rows' roles, by the names roleNames() gives them.
+enum : int { BandRole = Qt::UserRole + 1, TypeRole, FreqRole, QRole, GainRole, BypassRole };
+} // namespace
+
+BandListModel::BandListModel(QObject *parent) : QAbstractListModel{ parent }, m_device{ DeviceModel::instance() } {
     if (m_device) connect(m_device, &DeviceModel::snapshotApplied, this, &BandListModel::reload);
 }
 
@@ -27,11 +32,12 @@ QHash<int, QByteArray> BandListModel::roleNames() const {
              { QRole, "q" },       { GainRole, "gain" },  { BypassRole, "bypass" } };
 }
 
-void BandListModel::setChannel(int channel) {
-    if (channel == m_channel) return;
-    m_channel = channel;
-    emit channelChanged();
-    reload();
+void BandListModel::setChannelIndex(int index) {
+    if (index != m_channel) {
+        m_channel = index;
+        emit channelChanged();
+        reload();
+    }
 }
 
 void BandListModel::reload() {
@@ -40,7 +46,7 @@ void BandListModel::reload() {
     if (s && m_channel >= 0 && m_channel < MAX_CHANNELS) {
         for (int i = 0; i < BANDS_PER_CHANNEL; ++i) {
             const FilterParams &f = s->filters[m_channel][i];
-            bands.append({ int(f.filter_type), f.freq, f.q, f.gain, f.bypass });
+            bands.append({ f.freq, f.q, f.gain, int(f.filter_type), f.bypass });
         }
     }
     if (bands.size() != m_bands.size()) {
@@ -50,8 +56,9 @@ void BandListModel::reload() {
         emit countChanged();
         return;
     }
-    for (int i = 0; i < bands.size(); ++i) {
-        if (bands.at(i) == m_bands.at(i)) continue;
+    for (int i = 0, n = int(bands.size()); i < n; ++i) {
+        const Band &a = bands.at(i), &b = m_bands.at(i);
+        if (a.freq == b.freq && a.q == b.q && a.gain == b.gain && a.type == b.type && a.bypass == b.bypass) continue;
         m_bands[i] = bands.at(i);
         emit dataChanged(index(i), index(i));
     }

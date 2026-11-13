@@ -205,7 +205,7 @@ void fixture(Qp16Ro &r, int wire) {
             text.contains(QLatin1String("read-only")) && fw && text.contains(fw->runningVersion()) && !fw->runningVersion().isEmpty());
     d.check(tag + (wire > 32 ? QStringLiteral("newer: it offers Details...") : QStringLiteral("older: it offers Update...")),
             action && action->property("visible").toBool() &&
-                action->property("text").toString() == (wire > 32 ? QLatin1String("Details...") : QLatin1String("Update...")));
+                action->property("text").toString() == (wire > 32 ? QStringLiteral("Details…") : QStringLiteral("Update…")));
     d.check(tag + QStringLiteral("screenshot"), d.grab(main, QStringLiteral("readonly-v%1.png").arg(wire)));
 
     // ---- What the firmware lacks is hidden ----

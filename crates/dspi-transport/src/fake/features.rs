@@ -775,6 +775,8 @@ impl State {
                     & 1
                     != 0
             }
+            // -- WP SW1 -- the audio link input
+            dspi_proto::ext::audio_link::INPUT_SOURCE_LINK => self.link_input(),
             _ => false,
         }
     }

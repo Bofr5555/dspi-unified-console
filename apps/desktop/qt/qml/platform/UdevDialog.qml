@@ -117,7 +117,7 @@ Dialog {
             visible: !DeviceAccess.installed
             primary: true
             enabled: !DeviceAccess.installing
-            text: dialog.linux ? qsTr("Install Rule...") : qsTr("Try Again")
+            text: dialog.linux ? qsTr("Install Rule…") : qsTr("Try Again")
             onClicked: dialog.linux ? DeviceAccess.installRule() : DeviceAccess.rescan()
         }
     }

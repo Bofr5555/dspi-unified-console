@@ -1351,9 +1351,16 @@ pub fn inactive_reason(code: u8) -> String {
 // ---------------------------------------------------------------------------
 
 /// The Console's input-source list, shared with the sidebar so a firmware that
-/// grows the enum still reads correctly.
-pub const INPUT_SOURCES: [&str; 7] = [
-    "USB", "S/PDIF", "I2S", "ADAT", "S/PDIF 2", "S/PDIF 3", "S/PDIF 4",
+/// grows the enum still reads correctly. WP SW1: 7 is the audio link.
+pub const INPUT_SOURCES: [&str; 8] = [
+    "USB",
+    "S/PDIF",
+    "I2S",
+    "ADAT",
+    "S/PDIF 2",
+    "S/PDIF 3",
+    "S/PDIF 4",
+    "Audio link",
 ];
 
 /// The Console's `targetName`: a channel address in the noun's own space.

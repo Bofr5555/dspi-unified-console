@@ -24,6 +24,10 @@ struct Scheme {
 };
 constexpr Scheme kSchemes[] = { { Qt::ColorScheme::Dark, "dark" }, { Qt::ColorScheme::Light, "light" } };
 
+// -- WP QPI5 -- Windows the app keeps but offers nowhere yet (the Mode
+// window waits for the modes)
+const QStringList kHidden = { QStringLiteral("window.mode") };
+
 // "SettingsWindow" -> "settings", "AutoEqWindow" -> "autoeq"
 QString shortName(const char *type) {
     QString name = QString::fromLatin1(type);
@@ -62,7 +66,14 @@ void gallerySection(SmokeDriver &d) {
 
     const Qt::ColorScheme before = shell->colorSchemeOverride();
     int shots = 0;
-    const auto shoot = [&](QQuickWindow *w, const QString &name, const char *scheme) {
+    const auto shoot = [&](QQuickWindow *w, const QString &name, const char *scheme, bool clearFocus = true) {
+        // -- WP QPI5 -- no focus frame left over from an earlier section's Tab
+        // walk (not under an open popup, which keeps its own)
+        QQuickItem *focused = clearFocus ? w->activeFocusItem() : nullptr;
+        if (focused && focused != w->contentItem()) {
+            focused->setFocus(false, Qt::OtherFocusReason);
+            d.spin(50);
+        }
         const bool ok = d.grab(w, QStringLiteral("gallery/%1-%2.png").arg(name, QLatin1String(scheme)));
         d.check(QStringLiteral("qp19-gallery: %1, %2").arg(name, QLatin1String(scheme)), ok);
         shots += ok;
@@ -79,7 +90,7 @@ void gallerySection(SmokeDriver &d) {
         shell->trigger(QStringLiteral("device.devices"));
         if (popup && d.waitFor(2000, [&] { return popup->property("opened").toBool(); })) {
             d.spin(300);
-            shoot(main, QStringLiteral("devices"), s.name);
+            shoot(main, QStringLiteral("devices"), s.name, false);
             QMetaObject::invokeMethod(popup, "close");
             d.waitFor(2000, [&] { return !popup->property("opened").toBool(); });
         } else {
@@ -90,6 +101,7 @@ void gallerySection(SmokeDriver &d) {
             const QString type = QString::fromLatin1(entry.type);
             if (type.startsWith(QLatin1String("Smoke"))) continue;   // the base's probe window
             const QString action = QString::fromLatin1(entry.action);
+            if (kHidden.contains(action)) continue;
             shell->trigger(action);
             QWindow *window = nullptr;
             const bool open = d.waitFor(3000, [&] {

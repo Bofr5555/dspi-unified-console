@@ -237,6 +237,10 @@ void accessSection(SmokeDriver &d) {
     visit(d, stopsOf(d), [&](const QString &name, QQuickWindow *w) {
         checkNames(d, name, w->contentItem(), t);
         checkTabWalk(d, name, w, t);
+        // -- WP QPI5 -- the light picture without the walk's last focus frame
+        // (the root item is a focus scope: focusing it keeps its focused child)
+        QQuickItem *focused = w->activeFocusItem();
+        if (focused && focused != w->contentItem()) focused->setFocus(false, Qt::OtherFocusReason);
         shell->setColorSchemeOverride(Qt::ColorScheme::Light);
         d.spin(80);
         d.grab(w, QStringLiteral("light/%1.png").arg(name));

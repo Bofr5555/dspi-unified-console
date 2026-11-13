@@ -26,7 +26,7 @@ SettingsPage {
 
     readonly property string statusTitle: {
         if (!hasFeed) return qsTr("Version %1").arg(version)
-        if (checking) return qsTr("Checking for updates...")
+        if (checking) return qsTr("Checking for updates…")
         if (available) return qsTr("%1 %2 is available").arg(AppIdentity.displayName).arg(updater.releaseVersion || "")
         return checked ? qsTr("%1 is up to date").arg(AppIdentity.displayName) : qsTr("Not checked yet")
     }
@@ -85,7 +85,7 @@ SettingsPage {
         iconName: "clock"
         SettingsToggle {
             objectName: "Updates.automatic"
-            title: qsTr("Check for Updates Automatically")
+            title: qsTr("Check for updates automatically")
             enabled: page.hasFeed
             checked: page.hasFeed && page.updater.automatic === true
             onToggled: on => page.updater.automatic = on

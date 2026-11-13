@@ -1,51 +1,53 @@
 #include "Snapshot.h"
 
+#include <QByteArrayView>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <cstring>
+#include <array>
 
-QByteArray readSized(const std::function<uint32_t(char *, uint32_t)> &fill, uint32_t first) {
-    QByteArray buf(int(first), '\0');
-    // A reply that grows between two calls asks again; three tries is plenty.
-    for (int attempt = 0; attempt < 3; ++attempt) {
-        const uint32_t need = fill(buf.data(), uint32_t(buf.size()));
-        if (need == 0) return QByteArray();
-        if (need <= uint32_t(buf.size())) {
-            buf.truncate(int(need) - 1);
-            return buf;
+QByteArray readSized(const SizedFill &fill, uint32_t first) {
+    // The call answers with the length it needs, NUL included. A reply that
+    // grew in between is asked for again, three times at most, and nothing
+    // beyond 64 MiB is believed.
+    constexpr uint32_t ceiling = 64u << 20;
+    QByteArray out;
+    uint32_t room = first;
+    for (int tries = 3; tries > 0 && room <= ceiling; --tries) {
+        out.resize(qsizetype(room));
+        const uint32_t wanted = fill(out.data(), room);
+        if (wanted == 0) break;
+        if (wanted <= room) {
+            out.resize(qsizetype(wanted) - 1);
+            return out;
         }
-        if (need > (64u << 20)) return QByteArray();
-        buf = QByteArray(int(need), '\0');
+        room = wanted;
     }
-    return QByteArray();
+    return {};
 }
 
 QJsonValue jsonValue(const QByteArray &reply) {
-    const QJsonObject o = QJsonDocument::fromJson(reply).object();
-    if (!o.value(QLatin1String("ok")).toBool()) return QJsonValue();
-    return o.value(QLatin1String("value"));
+    const QJsonObject envelope = QJsonDocument::fromJson(reply).object();
+    return envelope.value(QStringLiteral("ok")).toBool() ? envelope.value(QStringLiteral("value")) : QJsonValue();
 }
 
 QString fieldText(const uint8_t *bytes, int size) {
-    int n = 0;
-    while (n < size && bytes[n] != 0) ++n;
-    return QString::fromUtf8(reinterpret_cast<const char *>(bytes), n);
+    const QByteArrayView field(bytes, size);
+    const qsizetype end = field.indexOf('\0');
+    return QString::fromUtf8(end < 0 ? field : field.first(end));
 }
 
 DeviceSnapshot readSnapshot(FfiCore *core) {
-    DeviceSnapshot s;
-    s.connected = dspi_is_connected(core);
-    s.generation = dspi_connection_generation(core);
-    if (!s.connected) return s;
-    if (const DspState *record = dspi_get_state(core)) {
-        auto copy = std::make_shared<DspState>();
-        std::memcpy(copy.get(), record, sizeof(DspState));
-        s.state = std::move(copy);
+    DeviceSnapshot snap;
+    snap.connected = dspi_is_connected(core);
+    snap.generation = dspi_connection_generation(core);
+    if (snap.connected) {
+        // A copy: the record is the core's and changes under the next call.
+        if (const DspState *live = dspi_get_state(core)) snap.state = std::make_shared<const DspState>(*live);
+        std::array<char, 64> name{};
+        if (dspi_cached_device_name(core, name.data(), uint32_t(name.size()))) snap.deviceName = QString::fromUtf8(name.data());
+        snap.outputLabels =
+            jsonValue(readSized([core](char *b, uint32_t n) { return dspi_output_labels(core, b, n); })).toArray();
+        snap.wireFeatures = dspi_wire_features(core);
     }
-    char name[64] = {};
-    if (dspi_cached_device_name(core, name, sizeof name)) s.deviceName = QString::fromUtf8(name);
-    s.outputLabels = jsonValue(readSized([core](char *b, uint32_t n) { return dspi_output_labels(core, b, n); }))
-                         .toArray();
-    s.wireFeatures = dspi_wire_features(core);
-    return s;
+    return snap;
 }

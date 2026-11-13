@@ -1,10 +1,10 @@
 #ifndef BANDLISTMODEL_H
 #define BANDLISTMODEL_H
 
-#include <QAbstractListModel>
-#include <QPointer>
-#include <QVector>
 #include <QtQml/qqmlregistration.h>
+#include <QAbstractListModel>
+#include <QList>
+#include <QPointer>
 
 class DeviceModel;
 
@@ -12,50 +12,42 @@ class DeviceModel;
 //
 //     BandListModel { channel: 3 }
 //
-// Read-only; edits go through the filter controller's write path.
+// Each row offers band (from 0), type (the firmware's filter type code),
+// freq (Hz), q, gain (dB) and bypass. Read-only; edits go through the filter
+// controller's write path.
 class BandListModel : public QAbstractListModel {
     Q_OBJECT
     QML_ELEMENT
-    Q_PROPERTY(int channel READ channel WRITE setChannel NOTIFY channelChanged)
-    Q_PROPERTY(int count READ rowCount NOTIFY countChanged)
-public:
-    enum Role {
-        BandRole = Qt::UserRole + 1, // band number, from 0
-        TypeRole,                    // the firmware's filter type code
-        FreqRole,                    // Hz
-        QRole,
-        GainRole,                    // dB
-        BypassRole,
-    };
-    Q_ENUM(Role)
+    Q_PROPERTY(int channel READ channelIndex WRITE setChannelIndex NOTIFY channelChanged FINAL)
+    Q_PROPERTY(int count READ bandCount NOTIFY countChanged FINAL)
 
+public:
     explicit BandListModel(QObject *parent = nullptr);
 
-    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
-    QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
+    QVariant data(const QModelIndex &index, int role) const override;
+    int rowCount(const QModelIndex &parent = {}) const override;
 
-    int channel() const { return m_channel; }
-    void setChannel(int channel);
+    int bandCount() const { return int(m_bands.size()); }
+    int channelIndex() const { return m_channel; }
+    void setChannelIndex(int index);
 
-signals:
-    void channelChanged();
+Q_SIGNALS:
     void countChanged();
+    void channelChanged();
 
 private:
+    // A band as the list shows it; compared whole to find the rows that moved.
     struct Band {
-        int type = 0;
-        float freq = 0, q = 0, gain = 0;
-        bool bypass = false;
-        bool operator==(const Band &o) const {
-            return type == o.type && freq == o.freq && q == o.q && gain == o.gain && bypass == o.bypass;
-        }
+        float freq, q, gain;
+        int type;
+        bool bypass;
     };
     void reload();
 
-    QPointer<DeviceModel> m_device;
     int m_channel = -1;
-    QVector<Band> m_bands;
+    QList<Band> m_bands;
+    QPointer<DeviceModel> m_device;
 };
 
 #endif // BANDLISTMODEL_H

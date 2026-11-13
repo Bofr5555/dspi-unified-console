@@ -18,6 +18,12 @@ Flickable {
     boundsBehavior: Flickable.StopAtBounds
     ScrollBar.vertical: AppScrollBar {}
 
+    // A window opened again starts at the top, as the Mac's does
+    Connections {
+        target: body.Window.window
+        function onVisibleChanged() { if (body.Window.window.visible) body.contentY = 0 }
+    }
+
     RowLayout {
         id: row
         y: Theme.spacingLarge

@@ -75,6 +75,18 @@ pub(crate) const EQ_BAND: &str = "eq.band";
 /// (`set_crossfeed_pair_map`): four bytes, as the binding takes them.
 pub(crate) const EXT_PAIRMAP: &str = "ext.pairmap";
 
+// -- WP SW1 (fixup sw1, F1) -- the audio link's writes (`audio_link.rs`)
+/// The link slots, 8 bytes (`set_audio_link_slots`): undoable.
+pub(crate) const AUDIO_LINK_SLOTS: &str = "ext.audio_link.slots";
+/// The phase-lock mode and delay, `[mode, d_local LE, hops_offset LE]`
+/// (`set_audio_link_phase`): recorded, never undone (it re-anchors).
+pub(crate) const AUDIO_LINK_PHASE: &str = "ext.audio_link.phase";
+/// An apply-at-frame op (`apply_at_frame`): op and arg as indices, the
+/// request's 16 bytes as the value. An action.
+pub(crate) const AUDIO_LINK_APPLY: &str = "ext.audio_link.apply";
+/// The counters cleared (`reset_audio_link_stats`). An action.
+pub(crate) const AUDIO_LINK_STATS_RESET: &str = "ext.audio_link.stats_reset";
+
 /// The first crossover band on the wire (`XOVER_BAND_BASE`, 20).
 const XOVER_BASE: u8 = {
     assert!(dspi_proto::generated::filter::XOVER_BAND_BASE <= u8::MAX as u16);
@@ -92,6 +104,13 @@ const OWN_PATHS: &[(&str, Hazard)] = &[
     ("ext.vreg", Hazard::Irreversible),
     // A raw vendor request: nobody knows what it moved.
     ("raw", Hazard::Irreversible),
+    // -- WP SW1 (fixup sw1, F1) -- the audio link: slots are live routing;
+    // a phase change re-anchors (a short silence); apply and the counter
+    // reset are actions.
+    (AUDIO_LINK_SLOTS, Hazard::None),
+    (AUDIO_LINK_PHASE, Hazard::Audible),
+    (AUDIO_LINK_APPLY, Hazard::Irreversible),
+    (AUDIO_LINK_STATS_RESET, Hazard::Irreversible),
 ];
 
 /// The hazard of a journal path: the registry's, or one of [`OWN_PATHS`].
@@ -171,9 +190,7 @@ pub(crate) fn note_foreign(
         (_, S::HostSet | S::BulkSet) => "another app".into(),
         _ => "another writer".into(),
     };
-    let at_ms = dspi_transport::clock::system_time()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
+    let at_ms = now_ms();
     conn.last_foreign = Some(ForeignWrite { at_ms, writer });
 }
 
@@ -183,6 +200,14 @@ pub(crate) fn note_foreign(
 fn overwritten(inner: &Inner, entry: &JournalEntry, expected: &Value) -> Option<String> {
     let now = mirror_value(inner, entry.path, &entry.indices)?;
     if &now == expected {
+        return None;
+    }
+    // -- WP P0WECHO -- a value this session wrote itself not long ago: a late
+    // own echo patched it back into the mirror, not another writer.
+    if inner.conn.as_ref().is_some_and(|c| {
+        c.own_writes
+            .explains(entry.path, &entry.indices, &now, now_ms())
+    }) {
         return None;
     }
     let who = inner
@@ -196,6 +221,65 @@ fn overwritten(inner: &Inner, entry: &JournalEntry, expected: &Value) -> Option<
     Some(format!(
         "{what} was changed by {who} since; it was left as they set it"
     ))
+}
+
+// -- WP P0WECHO --
+/// How long a value this session wrote can still come back as its own echo.
+/// Echoes come within milliseconds; a loaded host or a slow Link can hold
+/// them for seconds, so this is generous.
+const OWN_ECHO_MS: u64 = 30_000;
+
+/// The most own writes remembered; the oldest go first.
+const OWN_WRITES_CAP: usize = 64;
+
+/// Milliseconds since the Unix epoch, from the clock seam.
+fn now_ms() -> u64 {
+    dspi_transport::clock::system_time()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
+}
+
+/// The values this session wrote recently, per journal path and indices:
+/// what its own echoes, which the mirror takes in on purpose (they correct a
+/// value the firmware adjusted), can still bring back. A difference between
+/// the mirror and the journal that one of these explains is not another
+/// writer's (undo's foreign-change rule). Bounded by count and age; the
+/// firmware merges echoes, so they are not counted off one by one.
+#[derive(Debug, Default)]
+pub(crate) struct OwnWrites(std::collections::VecDeque<OwnWrite>);
+
+#[derive(Debug)]
+struct OwnWrite {
+    path: &'static str,
+    indices: Vec<u8>,
+    value: Value,
+    at_ms: u64,
+}
+
+impl OwnWrites {
+    /// Note that this session wrote `value` to `path` at `indices`.
+    fn note(&mut self, path: &'static str, indices: &[u8], value: &Value, at_ms: u64) {
+        if self.0.len() >= OWN_WRITES_CAP {
+            self.0.pop_front();
+        }
+        self.0.push_back(OwnWrite {
+            path,
+            indices: indices.to_vec(),
+            value: value.clone(),
+            at_ms,
+        });
+    }
+
+    /// Whether `value` at `path`/`indices` is one this session wrote within
+    /// [`OWN_ECHO_MS`] of `now_ms`.
+    fn explains(&self, path: &str, indices: &[u8], value: &Value, now_ms: u64) -> bool {
+        self.0.iter().any(|w| {
+            w.path == path
+                && w.indices == indices
+                && &w.value == value
+                && now_ms.saturating_sub(w.at_ms) <= OWN_ECHO_MS
+        })
+    }
 }
 
 /// Refuse a replay on a connection other than the one its entry came from.
@@ -274,14 +358,18 @@ impl Pending {
     }
 
     /// Record the change with `after` as its new value. Nothing is recorded
-    /// when nothing moved: neither the value nor what moves with it.
+    /// when nothing moved (neither the value nor what moves with it), except
+    /// for an undo's or a redo's replay.
     pub(crate) fn done_with(self, inner: &mut Inner, after: Value) {
         let moved = self.before.as_ref() != Some(&after)
             || self
                 .companions
                 .iter()
                 .any(|c| mirror_value(inner, c.path, &c.indices).as_ref() != Some(&c.before));
-        if !moved {
+        // -- WP P0WECHO -- a replay is recorded even when the mirror already
+        // showed its value (a late own echo can put it there first): it was
+        // sent, and the history says so.
+        if !moved && replay_source().is_none() {
             return;
         }
         // A drag is of a live value; a pin moved twice is two changes.
@@ -324,7 +412,13 @@ pub(crate) fn journal(inner: &mut Inner, path: &'static str, indices: &[u8], aft
 
 /// Put `change` in the open session's journal; nowhere without one.
 fn record(inner: &mut Inner, change: Change) {
-    if let Some(session) = inner.conn.as_mut().and_then(|c| c.session().ok()) {
+    let Some(conn) = inner.conn.as_mut() else {
+        return;
+    };
+    // -- WP P0WECHO -- its echo may still be on the way
+    conn.own_writes
+        .note(change.path, &change.indices, &change.after, now_ms());
+    if let Ok(session) = conn.session() {
         session.record_change(change);
     }
 }
@@ -562,7 +656,11 @@ pub struct HistoryEntry {
     /// gain and the Linkwitz target Q as little-endian `f32`s), `ext.pairmap`
     /// (the crossfeed pair map's four bytes), `ext.vreg` (a core-voltage
     /// request: op and value), `raw` (a raw request: opcode and `wValue` as
-    /// indices, the payload as the value). A control-surface operation is
+    /// indices, the payload as the value), `ext.audio_link.slots` (the 8
+    /// slot bytes), `ext.audio_link.phase` (mode, then the delay and the
+    /// hops offset as little-endian 16-bit values), `ext.audio_link.apply`
+    /// (op and arg as indices, the 16-byte request as the value) and
+    /// `ext.audio_link.stats_reset`. A control-surface operation is
     /// under its `cs.*` path with the operation's JSON as text.
     pub path: String,
     /// The path's indices (an output, a channel and a band, ...).
@@ -783,6 +881,15 @@ impl DspiCore {
     /// `set_filter` or `set_crossover`, anything else through
     /// [`DspiCore::write_param`].
     fn write_journal_value(&self, path: &str, ix: &[u8], value: Value) -> Result<()> {
+        // -- WP SW1 (fixup sw1, F1) --
+        if path == AUDIO_LINK_SLOTS {
+            return match value {
+                Value::Bytes(slots) => self.set_audio_link_slots(slots),
+                _ => Err(DspiError::InvalidArgument {
+                    msg: format!("{AUDIO_LINK_SLOTS}: not 8 slots"),
+                }),
+            };
+        }
         if path == EXT_PAIRMAP {
             return match value {
                 Value::Bytes(map) => self.set_crossfeed_pair_map(map),

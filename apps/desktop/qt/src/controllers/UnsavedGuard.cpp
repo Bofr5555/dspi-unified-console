@@ -93,8 +93,8 @@ QString UnsavedGuard::summary(const QStringList &lines) {
     for (int i = 0; i < lines.size() && i < kSummaryLines; ++i) shown.append(QStringLiteral("• ") + lines.at(i));
     const int more = int(lines.size()) - kSummaryLines;
     // -- WP QPI2 -- spelt out: without a .qm "%n ... (s)" shows the "(s)"
-    if (more == 1) shown.append(tr("...and 1 more change"));
-    else if (more > 1) shown.append(tr("...and %1 more changes").arg(more));
+    if (more == 1) shown.append(tr("…and 1 more change"));
+    else if (more > 1) shown.append(tr("…and %1 more changes").arg(more));
     return shown.join(QLatin1Char('\n'));
 }
 

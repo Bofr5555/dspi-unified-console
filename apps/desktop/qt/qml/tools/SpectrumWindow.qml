@@ -13,7 +13,7 @@ ToolWindow {
     id: window
     objectName: "SpectrumWindow"
     windowId: "spectrum"
-    defaultWidth: 760
+    defaultWidth: 860
     defaultHeight: 560
     minimumWidth: 620
     minimumHeight: 420

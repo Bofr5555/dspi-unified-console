@@ -29,7 +29,8 @@ DeviceSnapshot readSnapshot(FfiCore *core);
 // For the dspi_* calls that fill a buffer and return the length they need
 // (NUL included): calls `fill` until the buffer is large enough. "" on failure.
 // Worker thread only, like the calls it wraps.
-QByteArray readSized(const std::function<uint32_t(char *, uint32_t)> &fill, uint32_t first = 1024);
+using SizedFill = std::function<uint32_t(char *buf, uint32_t capacity)>;
+QByteArray readSized(const SizedFill &fill, uint32_t first = 1024);
 
 // A {ok, value} reply's value; an empty value when ok is false or the text is
 // not JSON.
