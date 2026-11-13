@@ -7,6 +7,7 @@ import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.snapshots.Snapshot
@@ -37,8 +38,12 @@ import org.robolectric.annotation.GraphicsMode
 import se.bofr.dspi.bridge.DspiBridgeImpl
 import se.bofr.dspi.core.DspiConstants
 import se.bofr.dspi.fake.FakeDspiCore
+import se.bofr.dspi.feature.home.HomeScreen
 import se.bofr.dspi.ui.DspiRoutes
 import se.bofr.dspi.ui.DspiTheme
+import se.bofr.dspi.ui.settings.AppSettings
+import se.bofr.dspi.ui.settings.InMemoryAppSettingsStore
+import se.bofr.dspi.ui.settings.LocalAppSettings
 
 /**
  * WP LKUI1: the System screen and Home's chip in Compose, over the fake core's
@@ -163,6 +168,25 @@ class SystemScreenWpLkui1Test {
         assumeTrue("no -Pdspi.shotsDir", !dir.isNullOrEmpty())
         open("admin", dark = false)
         shoot("system", dark = false)
+    }
+
+    /** Home on a hub with the installation: the chip under the health line. */
+    @Test
+    @Config(qualifiers = "w400dp-h860dp-port-xhdpi")
+    fun wpLkui1HomeChipShot() {
+        assumeTrue("no -Pdspi.shotsDir", !dir.isNullOrEmpty())
+        rule.mainClock.autoAdvance = false
+        scope.launch { bridge.attachDevice(42, core.serial, DspiConstants.VENDOR_ID) }
+        settle()
+        core.audioLinkSystem.onHub = true
+        rule.setContent {
+            CompositionLocalProvider(LocalAppSettings provides InMemoryAppSettingsStore(AppSettings())) {
+                DspiTheme(darkTheme = true) { Surface(Modifier.fillMaxSize()) { HomeScreen(bridge, {}, {}) } }
+            }
+        }
+        settle(40)
+        rule.onNodeWithText("System ›").assertIsDisplayed()
+        shoot("home-chip", dark = true)
     }
 
     private fun shoot(name: String, dark: Boolean) {
