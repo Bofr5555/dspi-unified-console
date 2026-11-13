@@ -300,17 +300,17 @@ fn wp_sw2_the_alignment_is_computed_from_the_units_and_applied() {
     assert_eq!(status.observed["SW2-FAN"].hop_delay_frames, Some(3));
     let a = &status.alignment;
     assert!(a.issues.is_empty(), "{:?}", a.issues);
-    // C is behind 3 + 1 frames and needs 112: D = 116, picked by the engine.
-    assert_eq!((a.d_frames, a.d_auto, a.rate_hz), (116, true, 48_000));
+    // C is behind 3 + 1 frames and needs 257 (the fake's 4 ms option, WP FIXS1): D = 261, picked by the engine.
+    assert_eq!((a.d_frames, a.d_auto, a.rate_hz), (261, true, 48_000));
     let by: std::collections::BTreeMap<&str, _> =
         a.units.iter().map(|p| (p.unit.as_str(), p)).collect();
-    assert_eq!((by["A"].d_local, by["A"].hops_offset), (116, 0));
-    assert_eq!((by["B"].d_local, by["B"].hops_offset), (115, -2));
-    assert_eq!((by["R"].d_local, by["R"].hops_offset), (115, -2));
-    assert_eq!((by["C"].d_local, by["C"].hops_offset), (114, -2));
+    assert_eq!((by["A"].d_local, by["A"].hops_offset), (261, 0));
+    assert_eq!((by["B"].d_local, by["B"].hops_offset), (260, -2));
+    assert_eq!((by["R"].d_local, by["R"].hops_offset), (260, -2));
+    assert_eq!((by["C"].d_local, by["C"].hops_offset), (259, -2));
     for p in &a.units {
         // Frame F is heard everywhere at t_F + D.
-        assert_eq!(i64::from(p.path_delay_frames) + p.effective, 116);
+        assert_eq!(i64::from(p.path_delay_frames) + p.effective, 261);
     }
 
     let report = hub.system_align(true);
@@ -324,10 +324,10 @@ fn wp_sw2_the_alignment_is_computed_from_the_units_and_applied() {
     assert!(failed.is_empty(), "{failed:?}");
     // What each unit was sent: phase lock and its delays (2.8.5's layout).
     let phase = |f: &Fake| writes_of(f, alink::EXT_LINK_PHASE);
-    assert_eq!(phase(&rig.a), vec![vec![1, 0, 116, 0, 0, 0, 0, 0]]);
-    assert_eq!(phase(&rig.b), vec![vec![1, 0, 115, 0, 0xFE, 0xFF, 0, 0]]);
-    assert_eq!(phase(&rig.r), vec![vec![1, 0, 115, 0, 0xFE, 0xFF, 0, 0]]);
-    assert_eq!(phase(&rig.c), vec![vec![1, 0, 114, 0, 0xFE, 0xFF, 0, 0]]);
+    assert_eq!(phase(&rig.a), vec![vec![1, 0, 5, 1, 0, 0, 0, 0]]);
+    assert_eq!(phase(&rig.b), vec![vec![1, 0, 4, 1, 0xFE, 0xFF, 0, 0]]);
+    assert_eq!(phase(&rig.r), vec![vec![1, 0, 4, 1, 0xFE, 0xFF, 0, 0]]);
+    assert_eq!(phase(&rig.c), vec![vec![1, 0, 3, 1, 0xFE, 0xFF, 0, 0]]);
     assert_eq!(
         writes_of(&rig.b, alink::EXT_LINK_SLOTS),
         vec![vec![4, 5, 255, 255, 255, 255, 255, 255]]
@@ -350,7 +350,7 @@ fn wp_sw2_the_alignment_is_computed_from_the_units_and_applied() {
     assert!(changed.is_empty(), "{changed:?}");
     assert_eq!(phase(&rig.a).len(), 1);
     let seen = hub.system_status().observed;
-    assert_eq!(seen["SW2-C"].phase, Some((1, 114, -2, 0)));
+    assert_eq!(seen["SW2-C"].phase, Some((1, 259, -2, 0)));
     hub.stop();
 }
 
@@ -433,7 +433,7 @@ fn wp_sw2_without_the_sender_a_scene_goes_per_unit() {
     assert_eq!(r.writes[0].result, "queued");
     assert_eq!(writes_of(&a, alink::EXT_APPLY_AT_FRAME).len(), 1);
     // Alignment of a lone unit: D is its own minimum.
-    assert_eq!(hub.system_status().alignment.d_frames, 112);
+    assert_eq!(hub.system_status().alignment.d_frames, 257);
     hub.stop();
 }
 
@@ -609,7 +609,7 @@ fn wp_sw2_the_model_over_link_and_across_a_restart() {
     assert_eq!(seen, ["ok", "system.changed"]);
 
     let s = request(&mut c, json!({"t": "system.status", "id": 5}));
-    assert_eq!(s["alignment"]["dFrames"], 116, "{s}");
+    assert_eq!(s["alignment"]["dFrames"], 261, "{s}");
     assert_eq!(s["observed"]["SW2-FAN"]["hopDelayFrames"], 3);
 
     let dry = request(&mut c, json!({"t": "system.align", "id": 6}));
