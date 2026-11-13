@@ -129,6 +129,63 @@ pub struct Meta {
     /// The source device's `OUTPUT_CONFIG_MODE_*` (config.h:497-498).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_config_mode: Option<i32>,
+    // -- WP P1DF --
+    /// What the document is ([`MetaKind`]): `preset`, `snapshot`, `template`
+    /// or `limits`. Additive to schema 1: absent, or a kind this build does
+    /// not know, reads as a preset ([`Meta::doc_kind`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+}
+
+// -- WP P1DF --
+/// The kinds of whole-device document (`meta.kind`), one family in one
+/// format (PRO1 section 6): a preset, a snapshot (P1SN), a template (P1OF)
+/// and a limits profile (P1LM).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MetaKind {
+    #[default]
+    Preset,
+    Snapshot,
+    Template,
+    Limits,
+}
+
+impl MetaKind {
+    /// Every kind, in this order.
+    pub const ALL: [MetaKind; 4] = [
+        MetaKind::Preset,
+        MetaKind::Snapshot,
+        MetaKind::Template,
+        MetaKind::Limits,
+    ];
+
+    /// The word `meta.kind` holds.
+    pub fn word(self) -> &'static str {
+        match self {
+            MetaKind::Preset => "preset",
+            MetaKind::Snapshot => "snapshot",
+            MetaKind::Template => "template",
+            MetaKind::Limits => "limits",
+        }
+    }
+
+    /// A `meta.kind` word read leniently: absent, empty or unknown is a
+    /// preset, so a document from a newer build still imports.
+    pub fn from_word(word: Option<&str>) -> Self {
+        let word = word.map(str::trim).unwrap_or_default();
+        Self::ALL
+            .into_iter()
+            .find(|k| k.word().eq_ignore_ascii_case(word))
+            .unwrap_or_default()
+    }
+}
+
+impl Meta {
+    // -- WP P1DF --
+    /// The document's kind; see [`MetaKind::from_word`].
+    pub fn doc_kind(&self) -> MetaKind {
+        MetaKind::from_word(self.kind.as_deref())
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -3011,6 +3068,8 @@ pub fn capture(
         saved_utc: Some(utc_now()),
         master_volume_mode: r.i32("vol.master.mode")?,
         output_config_mode: r.i32("preset.iomode")?,
+        // -- WP P1DF -- absent: a preset
+        kind: None,
     };
     let global = GlobalBlock {
         input_preamps_db: preamps,
@@ -7284,5 +7343,48 @@ mod tests_wp_clean1 {
         };
         assert_eq!(block.placement(Some(8)), None);
         assert_eq!(block.placement(None), None);
+    }
+}
+
+// -- WP P1DF --
+#[cfg(test)]
+mod wp_p1df_tests {
+    use super::*;
+
+    const MAC: &str = include_str!("../../../tests/fixtures/preset/mac-swift-v32.dspipreset");
+
+    fn with_kind(kind: serde_json::Value) -> String {
+        let mut v: serde_json::Value = serde_json::from_str(MAC).unwrap();
+        v["meta"]["kind"] = kind;
+        v.to_string()
+    }
+
+    #[test]
+    fn p1df_meta_kind_reads_leniently() {
+        assert_eq!(parse(MAC).unwrap().meta.doc_kind(), MetaKind::Preset);
+        for kind in MetaKind::ALL {
+            let doc = parse(&with_kind(serde_json::json!(kind.word()))).unwrap();
+            assert_eq!(doc.meta.doc_kind(), kind);
+        }
+        for odd in ["", "scene", "SNAPSHOT2"] {
+            let doc = parse(&with_kind(serde_json::json!(odd))).unwrap();
+            assert_eq!(doc.meta.doc_kind(), MetaKind::Preset, "{odd}");
+        }
+        assert_eq!(MetaKind::from_word(Some(" Limits ")), MetaKind::Limits);
+    }
+
+    #[test]
+    fn p1df_meta_kind_round_trips_and_a_preset_writes_none() {
+        let doc = parse(&with_kind(serde_json::json!("template"))).unwrap();
+        let again = parse(&write(&doc)).unwrap();
+        assert_eq!(again.meta.kind.as_deref(), Some("template"));
+        let plain = parse(MAC).unwrap();
+        assert!(!write(&plain).contains("\"kind\""));
+        // Unknown kinds are kept as written, so a newer build's word survives.
+        let doc = parse(&with_kind(serde_json::json!("scene-v9"))).unwrap();
+        assert_eq!(
+            parse(&write(&doc)).unwrap().meta.kind.as_deref(),
+            Some("scene-v9")
+        );
     }
 }

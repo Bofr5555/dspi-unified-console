@@ -413,6 +413,24 @@ public enum DspiConstants {
     public static let IMPORT_VOLUMES: UInt32 = 1
     /// `dspi_core::consts::IMPORT_HARDWARE`.
     public static let IMPORT_HARDWARE: UInt32 = 2
+    /// `dspi_core::consts::IMPORT_EQ`.
+    public static let IMPORT_EQ: UInt32 = 4
+    /// `dspi_core::consts::IMPORT_CROSSOVER`.
+    public static let IMPORT_CROSSOVER: UInt32 = 8
+    /// `dspi_core::consts::IMPORT_ROUTING`.
+    public static let IMPORT_ROUTING: UInt32 = 16
+    /// `dspi_core::consts::IMPORT_OUTPUTS`.
+    public static let IMPORT_OUTPUTS: UInt32 = 32
+    /// `dspi_core::consts::IMPORT_LIMITERS`.
+    public static let IMPORT_LIMITERS: UInt32 = 64
+    /// `dspi_core::consts::IMPORT_EFFECTS`.
+    public static let IMPORT_EFFECTS: UInt32 = 128
+    /// `dspi_core::consts::IMPORT_NAMES`.
+    public static let IMPORT_NAMES: UInt32 = 256
+    /// `dspi_core::consts::IMPORT_ALL_BLOCKS`.
+    public static let IMPORT_ALL_BLOCKS: UInt32 = 511
+    /// `dspi_core::consts::IMPORT_BY_BLOCK`.
+    public static let IMPORT_BY_BLOCK: UInt32 = 65536
 
     // ── cs ──
     /// `dspi_proto::generated::cs::CS_MAX_BINDINGS`.

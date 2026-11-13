@@ -2204,6 +2204,51 @@
 #define IMPORT_HARDWARE 2
 
 /**
+ * `dspi_core::consts::IMPORT_EQ`.
+ */
+#define IMPORT_EQ 4
+
+/**
+ * `dspi_core::consts::IMPORT_CROSSOVER`.
+ */
+#define IMPORT_CROSSOVER 8
+
+/**
+ * `dspi_core::consts::IMPORT_ROUTING`.
+ */
+#define IMPORT_ROUTING 16
+
+/**
+ * `dspi_core::consts::IMPORT_OUTPUTS`.
+ */
+#define IMPORT_OUTPUTS 32
+
+/**
+ * `dspi_core::consts::IMPORT_LIMITERS`.
+ */
+#define IMPORT_LIMITERS 64
+
+/**
+ * `dspi_core::consts::IMPORT_EFFECTS`.
+ */
+#define IMPORT_EFFECTS 128
+
+/**
+ * `dspi_core::consts::IMPORT_NAMES`.
+ */
+#define IMPORT_NAMES 256
+
+/**
+ * `dspi_core::consts::IMPORT_ALL_BLOCKS`.
+ */
+#define IMPORT_ALL_BLOCKS 511
+
+/**
+ * `dspi_core::consts::IMPORT_BY_BLOCK`.
+ */
+#define IMPORT_BY_BLOCK 65536
+
+/**
  * `dspi_proto::generated::cs::CS_MAX_BINDINGS`.
  */
 #define CS_MAX_BINDINGS 16
@@ -4550,6 +4595,39 @@ uint32_t dspi_config_import(struct FfiCore *core,
                             uint32_t options,
                             char *buf,
                             uint32_t len);
+
+/**
+ * Apply a configuration document by block: `options` as
+ * `dspi_config_import`'s, or with `DSPI_IMPORT_BY_BLOCK` the
+ * `DSPI_IMPORT_*` block bits; `eq_channels` the wire channels whose EQ is
+ * applied (bit k: channel k; all bits: every one). JSON reply; the device
+ * has changed whatever the buffer.
+ */
+uint32_t dspi_config_import_selected(struct FfiCore *core,
+                                     const char *text,
+                                     uint32_t options,
+                                     uint32_t eq_channels,
+                                     char *buf,
+                                     uint32_t len);
+
+/**
+ * What `dspi_config_import_selected` with the same arguments would change
+ * on the device, without writing: JSON rows `{block, section, item,
+ * before, after}`, counts per block and a summary. No I/O.
+ */
+uint32_t dspi_config_preview(struct FfiCore *core,
+                             const char *text,
+                             uint32_t options,
+                             uint32_t eq_channels,
+                             char *buf,
+                             uint32_t len);
+
+/**
+ * What differs between two configuration documents, `before` and `after`,
+ * without a device: the JSON of `dspi_config_preview`. Returns the bytes
+ * needed, 0 only for a panic.
+ */
+uint32_t dspi_config_diff(const char *before, const char *after, char *buf, uint32_t len);
 
 /**
  * The filters of the device's `inputs` inputs and every output as a filter

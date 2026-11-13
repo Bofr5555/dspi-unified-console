@@ -77,6 +77,8 @@ mod ext_diag;
 // -- WP SW1 -- the audio link (SYS2), not DSPi Link
 mod audio_link;
 pub mod files;
+// -- WP P1DF --
+mod doc_diff;
 mod firmware;
 // -- WP CG8 --
 mod firmware_guard;

@@ -797,6 +797,30 @@ interface DspiCoreApi : AutoCloseable {
     fun configImport(text: String, options: Long): String
 
     /**
+     * [`DspiCore::config_import`] with the EQ narrowed to the wire channels
+     * in `eq_channels` (bit k: channel k; `u32::MAX` every one). `options`
+     * as there: with [`IMPORT_BY_BLOCK`] each `IMPORT_*` block bit says
+     * whether its block is applied (EQ, crossover, routing and matrix,
+     * outputs, limiters, effects, volume levels, hardware I/O, names), and
+     * a block left out keeps the device's values; without it the old two
+     * bits keep their meaning. The reply is `config_import`'s, plus
+     * `blocks`: the block bits applied.
+     */
+    fun configImportSelected(text: String, options: Long, eqChannels: Long): String
+
+    /**
+     * What importing `text` with `options` and `eq_channels` (as
+     * [`DspiCore::config_import_selected`] takes them) would change on the
+     * device, without writing anything: the preview shown before an import
+     * (PRO1 W5). No I/O.
+     *
+     * Returns [`config_diff`]'s JSON, the device's values as `before`.
+     * `{ok: false, error}` for a text that is not a document this build
+     * reads, or with no device whose settings have been read.
+     */
+    fun configPreview(text: String, options: Long, eqChannels: Long): String
+
+    /**
      * Every channel's bands as a filter file (format 2), from the mirror:
      * the first `inputs` inputs with their preamp and EQ bands, then every
      * output with its EQ and crossover bands and its enable state.
@@ -3141,6 +3165,27 @@ interface DspiCoreApi : AutoCloseable {
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun configInspect(text: String): String
+
+    /**
+     * What differs between two `.dspipreset` documents, `before` and `after`,
+     * with no device (PRO1 W5). `after` is read on top of `before`, as an
+     * import of it after the other would be, so a value `after` holds none for
+     * is no change; both are read onto a device shaped as `before`'s `meta`
+     * says.
+     *
+     * Returns JSON `{ok, error, rows, count, blocks, summary, notes, kind}`:
+     * `rows` one per changed value, `{block, section, item, before, after}`,
+     * `block` the import block that carries it (`eq`, `crossover`, `routing`,
+     * `outputs`, `limiters`, `effects`, `volumes`, `hardware`, `names`);
+     * `blocks` the number of rows per block; `summary` the unsaved-changes
+     * list's sentences for the same change; `notes` what reading `after`
+     * reported (channels missing, values left alone or clamped); `kind`
+     * `after`'s `meta.kind`. `{ok: false, error}` when either text is not a
+     * document this build reads (the error names which).
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun configDiff(before: String, after: String): String
 
     /**
      * Check a UF2 image: block structure, magic numbers, family id, the flash

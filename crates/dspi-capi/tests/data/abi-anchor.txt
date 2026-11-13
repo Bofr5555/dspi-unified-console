@@ -449,6 +449,15 @@
 #define FORMAT_VERSION 2
 #define IMPORT_VOLUMES 1
 #define IMPORT_HARDWARE 2
+#define IMPORT_EQ 4
+#define IMPORT_CROSSOVER 8
+#define IMPORT_ROUTING 16
+#define IMPORT_OUTPUTS 32
+#define IMPORT_LIMITERS 64
+#define IMPORT_EFFECTS 128
+#define IMPORT_NAMES 256
+#define IMPORT_ALL_BLOCKS 511
+#define IMPORT_BY_BLOCK 65536
 #define CS_MAX_BINDINGS 16
 #define CS_MAX_IR 16
 #define CS_MAX_GROUPS 8
@@ -1017,6 +1026,19 @@ const char *text,
 uint32_t options,
 char *buf,
 uint32_t len);
+uint32_t dspi_config_import_selected(struct FfiCore *core,
+const char *text,
+uint32_t options,
+uint32_t eq_channels,
+char *buf,
+uint32_t len);
+uint32_t dspi_config_preview(struct FfiCore *core,
+const char *text,
+uint32_t options,
+uint32_t eq_channels,
+char *buf,
+uint32_t len);
+uint32_t dspi_config_diff(const char *before, const char *after, char *buf, uint32_t len);
 uint32_t dspi_filters_export(struct FfiCore *core, uint8_t inputs, char *buf, uint32_t len);
 uint32_t dspi_filters_inspect(struct FfiCore *core,
 const char *text,

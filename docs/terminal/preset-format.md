@@ -25,6 +25,12 @@ zero; the Terminal and Qt leave that setting as it is (see the table at the end)
 `inputChannelCount`, `outputChannelCount`, and the Console's additive
 `masterVolumeMode` and `outputConfigMode`. Nothing in `meta` gates an import.
 
+<!-- WP P1DF -->
+`meta.kind` (additive to schema 1) says which document of the family it is:
+`preset`, `snapshot`, `template` or `limits`. Absent, or a word a build does not
+know, reads as `preset`, so such a document still imports; a preset export
+leaves the key out. One format serves all four (PRO1 section 6).
+
 ## Channel numbering
 
 This is the part that decides where every EQ band, gain and delay lands.
@@ -97,6 +103,18 @@ master-volume mode is with-preset. Hardware I/O (pins, clocks, inputs, the
 limiters inside each output entry) is opt-in. The input source goes last.
 `global.inputPairLinked` is app state; the Terminal applies it to its own pair
 links.
+
+<!-- WP P1DF -->
+The core's import (`config_import_selected`, `config_preview`) also applies by
+block: with `IMPORT_BY_BLOCK` each of `IMPORT_EQ` (per channel, and the master
+EQ bypass), `IMPORT_CROSSOVER`, `IMPORT_ROUTING` (matrix, input source, preamps,
+input delays, input pair links, LG Sound Sync), `IMPORT_OUTPUTS` (gain, mute,
+enable, delays), `IMPORT_LIMITERS`, `IMPORT_EFFECTS`, `IMPORT_VOLUMES`,
+`IMPORT_HARDWARE` (the `io` block) and `IMPORT_NAMES` is chosen on its own, and
+a block left out keeps the device's values. Without it, `IMPORT_VOLUMES` and
+`IMPORT_HARDWARE` keep their meaning (the audio blocks always, the hardware bit
+bringing the limiters). `config_preview` and `config_diff` say what would change,
+one row per value: `{block, section, item, before, after}`.
 
 ## Keys a document does not hold
 

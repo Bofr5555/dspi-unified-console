@@ -801,6 +801,42 @@ object DspiConstants {
      * `dspi_core::consts::IMPORT_HARDWARE`.
      */
     const val IMPORT_HARDWARE: Int = 2
+    /**
+     * `dspi_core::consts::IMPORT_EQ`.
+     */
+    const val IMPORT_EQ: Int = 4
+    /**
+     * `dspi_core::consts::IMPORT_CROSSOVER`.
+     */
+    const val IMPORT_CROSSOVER: Int = 8
+    /**
+     * `dspi_core::consts::IMPORT_ROUTING`.
+     */
+    const val IMPORT_ROUTING: Int = 16
+    /**
+     * `dspi_core::consts::IMPORT_OUTPUTS`.
+     */
+    const val IMPORT_OUTPUTS: Int = 32
+    /**
+     * `dspi_core::consts::IMPORT_LIMITERS`.
+     */
+    const val IMPORT_LIMITERS: Int = 64
+    /**
+     * `dspi_core::consts::IMPORT_EFFECTS`.
+     */
+    const val IMPORT_EFFECTS: Int = 128
+    /**
+     * `dspi_core::consts::IMPORT_NAMES`.
+     */
+    const val IMPORT_NAMES: Int = 256
+    /**
+     * `dspi_core::consts::IMPORT_ALL_BLOCKS`.
+     */
+    const val IMPORT_ALL_BLOCKS: Int = 511
+    /**
+     * `dspi_core::consts::IMPORT_BY_BLOCK`.
+     */
+    const val IMPORT_BY_BLOCK: Int = 65536
 
     // ── cs ──
     /**

@@ -1347,6 +1347,33 @@ pub const IMPORT_VOLUMES: u32 = 1;
 /// `dspi_core::consts::IMPORT_HARDWARE`.
 pub const IMPORT_HARDWARE: u32 = 2;
 
+/// `dspi_core::consts::IMPORT_EQ`.
+pub const IMPORT_EQ: u32 = 4;
+
+/// `dspi_core::consts::IMPORT_CROSSOVER`.
+pub const IMPORT_CROSSOVER: u32 = 8;
+
+/// `dspi_core::consts::IMPORT_ROUTING`.
+pub const IMPORT_ROUTING: u32 = 16;
+
+/// `dspi_core::consts::IMPORT_OUTPUTS`.
+pub const IMPORT_OUTPUTS: u32 = 32;
+
+/// `dspi_core::consts::IMPORT_LIMITERS`.
+pub const IMPORT_LIMITERS: u32 = 64;
+
+/// `dspi_core::consts::IMPORT_EFFECTS`.
+pub const IMPORT_EFFECTS: u32 = 128;
+
+/// `dspi_core::consts::IMPORT_NAMES`.
+pub const IMPORT_NAMES: u32 = 256;
+
+/// `dspi_core::consts::IMPORT_ALL_BLOCKS`.
+pub const IMPORT_ALL_BLOCKS: u32 = 511;
+
+/// `dspi_core::consts::IMPORT_BY_BLOCK`.
+pub const IMPORT_BY_BLOCK: u32 = 65536;
+
 // ── cs ── Control surface table sizes
 
 /// `dspi_proto::generated::cs::CS_MAX_BINDINGS`.

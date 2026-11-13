@@ -571,6 +571,16 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_config_export(void*_Nonnull ptr, 
 RustBuffer uniffi_dspi_core_fn_method_dspicore_config_import(void*_Nonnull ptr, RustBuffer text, uint32_t options, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONFIG_IMPORT_SELECTED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONFIG_IMPORT_SELECTED
+RustBuffer uniffi_dspi_core_fn_method_dspicore_config_import_selected(void*_Nonnull ptr, RustBuffer text, uint32_t options, uint32_t eq_channels, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONFIG_PREVIEW
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONFIG_PREVIEW
+RustBuffer uniffi_dspi_core_fn_method_dspicore_config_preview(void*_Nonnull ptr, RustBuffer text, uint32_t options, uint32_t eq_channels, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONNECTION_GENERATION
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONNECTION_GENERATION
 uint64_t uniffi_dspi_core_fn_method_dspicore_connection_generation(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -1999,6 +2009,11 @@ RustBuffer uniffi_dspi_core_fn_func_compute_phase_curve(RustBuffer filters, int8
 float uniffi_dspi_core_fn_func_compute_response(RustBuffer filters, float freq, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_CONFIG_DIFF
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_CONFIG_DIFF
+RustBuffer uniffi_dspi_core_fn_func_config_diff(RustBuffer before, RustBuffer after, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_CONFIG_INSPECT
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_CONFIG_INSPECT
 RustBuffer uniffi_dspi_core_fn_func_config_inspect(RustBuffer text, RustCallStatus *_Nonnull out_status
@@ -2467,6 +2482,12 @@ uint16_t uniffi_dspi_core_checksum_func_compute_response(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_CONFIG_DIFF
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_CONFIG_DIFF
+uint16_t uniffi_dspi_core_checksum_func_config_diff(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_CONFIG_INSPECT
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_CONFIG_INSPECT
 uint16_t uniffi_dspi_core_checksum_func_config_inspect(void
@@ -2710,6 +2731,18 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_config_export(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONFIG_IMPORT
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONFIG_IMPORT
 uint16_t uniffi_dspi_core_checksum_method_dspicore_config_import(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONFIG_IMPORT_SELECTED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONFIG_IMPORT_SELECTED
+uint16_t uniffi_dspi_core_checksum_method_dspicore_config_import_selected(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONFIG_PREVIEW
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONFIG_PREVIEW
+uint16_t uniffi_dspi_core_checksum_method_dspicore_config_preview(void
     
 );
 #endif

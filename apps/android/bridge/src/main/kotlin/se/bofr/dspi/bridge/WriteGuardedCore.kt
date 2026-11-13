@@ -615,6 +615,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.configImport(text, options)
     }
 
+    // -- WP P1DF --
+    override fun configImportSelected(text: String, options: Long, eqChannels: Long): String {
+        guard("configImportSelected")
+        return inner.configImportSelected(text, options, eqChannels)
+    }
+
     override fun filtersImport(text: String, wires: List<Int>): String {
         guard("filtersImport")
         return inner.filtersImport(text, wires)
@@ -749,7 +755,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // -- WP LKUI1 --
             "linkSystemSave",
             "linkSystemAlign",
-            "linkSystemRecall"
+            "linkSystemRecall",
+            // -- WP P1DF --
+            "configImportSelected"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -784,6 +792,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "computeResponse",
             "configExport",
             "configInspect",
+            // -- WP P1DF -- the diff and the preview write nothing
+            "configDiff",
+            "configPreview",
             "crossfeedPairMapValid",
             "coreInfo",
             // -- WP CG20 -- The editing rules: from the last read, no device I/O.
