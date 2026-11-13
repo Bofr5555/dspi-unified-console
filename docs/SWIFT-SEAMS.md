@@ -230,6 +230,22 @@ Assignment choices that the plan's domain list left open:
 | `ExtensionCommands.swift:80` `readCrossfeedPairMap` | EXTENSION/EXT_CROSSFEED_PAIR_MAP | fetchCrossfeedPairMap() / S.crossfeed_pair_map | `connect.rs:233`, `ext.rs:56`, `records.rs:283` | `2170`, `1832` |
 | `ExtensionCommands.swift:103` `setCrossfeedPairMap` | EXTENSION/EXT_CROSSFEED_PAIR_MAP | setCrossfeedPairMap(map) | `ext.rs:43` | `2826` |
 
+*As built (SW10, fixup sw10).* Every setter above calls its typed method through SW9's write lane. A setting that a
+drag sends live commits its value through `commit(lane:)` under the drag's own key (`typedCommit`, `typedKeyed`), so
+a lane value issued after the commit is sent after it; a discrete setting (an enable, a mask, a mode, the pair map)
+is a plain `write(lane: nil)`. The
+drag-time sends (`sendFloatParamToDevice`, `sendTubeParamToDevice`, `sendLimiterParamToDevice`,
+`sendUpmixParamToDevice`) use the lane keyed by the registry path (`loud.ref`, `bass.cutoff`, `sub.ceiling`,
+`tube[i]`, `limit[o][p]`, `up[i]`, ...). `sendFloatParamToDevice` maps its request code to the typed setter
+(`DSPViewModel.typedFloatSet`). The headroom, the two meters and the upmixer's status are `call(_:)`s behind the
+writes queued before them; `fetchUpmixConfig` reads nothing through a core (the mirror holds the settings);
+`fetchSubharmSolo` reads the core's copy. The 30 single-setting `fetch*` functions had no callers and were deleted.
+`LimiterGang` stays, for the paths without a core and as the optimistic local edit; through a core the shown limiter
+state is the core's ganged mirror. A typed write the core refuses as `Unsupported` or that fails in transfer puts
+the core's value back at once and says why (`RefusedWrite.unsupportedMessage`, `transferMessage`), as the other
+refusals do. Swift's `FakeTransport` answers the core's effect feature probes from its image and models the limiter
+(`REQ_LIMITER` parameters, status, meter, link groups), so the effects can be written over it through a core.
+
 #### SW11 (54 functions)
 
 | Swift function | Wire use today | Core replacement | Core (Rust) | Binding line |

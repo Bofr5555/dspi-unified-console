@@ -71,7 +71,7 @@ last-wave WPs while workers would otherwise sit idle (WB2 and WB5 now).
 
 | State | WPs |
 |---|---|
-| **In progress** (7) | **SW9** Swift volume, EQ, crossover, outputs and matrix on the typed setters (the VM job), **AN15** R8, **QD21a** Qt packaging for Linux and Windows, **QD22** Qt accessibility, **AN20** Android accessibility, **WB2** core runtime without threads (wasm), **WB5** web client skeleton |
+| **In progress** (8) | **SW9** Swift volume, EQ, crossover, outputs and matrix on the typed setters (the VM job), **SW10** Swift effects on the typed setters (the VM job), **AN15** R8, **QD21a** Qt packaging for Linux and Windows, **QD22** Qt accessibility, **AN20** Android accessibility, **WB2** core runtime without threads (wasm), **WB5** web client skeleton |
 | **Next** | Plan: QD23 after QD22; AN21 after AN20; QD21b (`.dmg`, VM) after QD21a; SW-M1, SW17, SW18, SW20, SW19, SW23, SW24 on the VM in that order; HO1's rest after R-Qt and SW8. Web: WB3 after WB2; WB4a and WB4b after WB3; WB6 slices after WB5 and WB4a, in the order of section 5.5's slice table (WB6d System view, WB6e scene bar, WB6f status rail before the remaining tool screens; UIM1); WB7; WB8 last. Then OPT0-OPT9, then PL-* |
 | **Blocked** | **On the owner:** AN13's Link half and the phone checks of AN15, AN16, AN20; AN16 waits for AN15's release to be uploaded; QD35 hand checks; XC4 and XC5 (an ESP32 bridge); XC6 (go for a VREG write); SW16 (iPhone or iPad); SW-M5 (Apple silicon Mac); WB4c's public use (OD9). **On deps:** SW5, SW6, SW7, SW-M2 behind the VM queue; SW-V1 behind SW8 and QD21b |
 | **Done since the last status (2026-11-07)** | CG3, CG7, AN18 (closed: their moved parts are done); CG23-CG31 with CG29b; HB7, HB8; QD9, QD10, QD13, QD13b, QD14, QD16, QD17, QD19, QD36, QD37, QD38; TM25, TM26; AN14, AN32-AN39; SW4, SW25, SW-U1, SWF1-SWF3; DOC1, HO1a |
@@ -288,7 +288,7 @@ last-wave WPs while workers would otherwise sit idle (WB2 and WB5 now).
 | SW7 | Banner and errors | TODO |  | After SW6 |
 | SW8 | Reads and the mirror | DONE | wp/SW8 | Merged in review c6b |
 | SW9 | Volume, EQ, crossover, outputs, matrix | DONE | d1b1918a (review sw9 + fixup) | Typed setters and the write lane; Undo works on this domain through the core (PARITY section 4). Cut from wp/SWMAC1 |
-| SW10 | Effects | IN REVIEW | wp/SW10 | OD3 decided (Swift) |
+| SW10 | Effects | DONE | merged 2026-11-13 (review sw10 + fixup) | Loudness to upmixer on the typed setters and SW9's lane; Undo works on each effect through the core (PARITY section 4). Cut from wp/SW9 |
 | SW11 | Pins, I2S, ADAT, inputs, names | TODO |  | OD3 decided (Swift); after SW9 |
 | SW12 | Control surfaces | TODO |  | OD3 decided (Swift); after SW9 |
 | SW13 | Presets | TODO |  | OD3 decided (Swift); after SW9 |
@@ -1204,7 +1204,7 @@ Then one WP per domain. Each **owns** its `Commands.swift` sections and wire use
 | WP | Domain | Size |
 |---|---|---|
 | SW9 [IN REVIEW wp/SW9] | Volume, EQ, crossover, outputs, matrix, slider fast path | 2–2.5 |
-| SW10 [TODO] | Effects (loudness to upmixer) | 1.5–2 |
+| SW10 [IN REVIEW wp/SW10] | Effects (loudness to upmixer) | 1.5–2 |
 | SW11 [TODO] | Pins, I2S, ADAT, inputs, UART/I2C, names. Also needs CG25 | 2 |
 | SW12 [TODO] | Control surfaces. Also needs CG24 | 2–2.5 |
 | SW13 [TODO] | Presets, `PresetDocument`, `PresetSnapshot` | 2–2.5 |

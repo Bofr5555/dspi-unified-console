@@ -25,6 +25,11 @@
 //    window reads back.  A GET with no answer STALLs, exactly as firmware
 //    without the feature would, and is logged once - that list is the gap
 //    list for the next pass (see `unansweredRequests`).
+//  * The effects' feature probes the core sends on connect (the loudness,
+//    crossfeed and leveller masks, psychoacoustic bass, subharm, tube index
+//    0) answer from the image until a SET writes them, and the output
+//    limiter (REQ_LIMITER) lives in the image: parameters, status block,
+//    meter, link groups and output 0xFF as the firmware has them.
 //  * Meters move: REQ_GET_STATUS synthesises plausible programme levels on
 //    the active inputs and the enabled, unmuted outputs.
 //  * The extension channel (REQ_EXTENSION 0x00) of the bofr firmware fork,
@@ -311,6 +316,10 @@ final class FakeTransport: DeviceTransport {
         case REQ_PRESET_SET_STARTUP where payload.count >= 2:
             startupMode = payload[0]
             defaultSlot = payload[1]
+        // -- WP SW10 -- fixup sw10: the output limiter, in the image.
+        case REQ_LIMITER where payload.count >= 4:
+            let v = payload.withUnsafeBytes { $0.loadUnaligned(as: Float.self) }
+            changes.append(contentsOf: limiterSet(output: UInt8(value >> 8), param: UInt8(value & 0xFF), v))
         case REQ_EXTENSION where extensionsEnabled && value == EXT_CROSSFEED_PAIR_MAP
                                  && payload.count == CrossfeedPairMap.byteCount:
             // The firmware ignores an invalid map and stores a valid one
@@ -378,6 +387,17 @@ final class FakeTransport: DeviceTransport {
             reply = Data([0, 0])
         case REQ_EXTENSION where extensionsEnabled:
             reply = extensionReply(value)
+        // -- WP SW10 -- fixup sw10: the effects' feature probes (the core's
+        // `feature_probes`), answered from the image as firmware that has
+        // the effects answers them; once a SET has written one, its echo.
+        case REQ_GET_LOUDNESS_MASK, REQ_GET_CROSSFEED_OUTPUTS, REQ_GET_LEVELLER_MASKS,
+             REQ_GET_PSYBASS, REQ_GET_SUBHARM:
+            reply = echo[RequestKey(request: request, value: value, index: index)] ?? effectProbeReply(request)
+        case REQ_GET_TUBE_PARAM where value == TUBE_PARAM_ENABLED:
+            reply = echo[RequestKey(request: request, value: value, index: index)]
+                ?? FakeTransport.float(image[BULK_TUBE_OFFSET] != 0 ? 1 : 0)
+        case REQ_LIMITER:
+            reply = limiterReply(value)
 
         // Presets and flash.
         case REQ_PRESET_GET_DIR:
@@ -456,6 +476,92 @@ final class FakeTransport: DeviceTransport {
         default:
             return nil
         }
+    }
+
+    // MARK: - Effects (WP SW10, fixup sw10)
+
+    private static func float(_ v: Float) -> Data { withUnsafeBytes(of: v) { Data($0) } }
+
+    /// Outputs of the image's platform (header byte 3).
+    private var fakeOutputCount: Int { min(Int(image[3]), WIRE_MAX_OUTPUT_CHANNELS) }
+
+    /// A feature probe's reply from the image (caller holds `lock`).
+    private func effectProbeReply(_ request: UInt8) -> Data? {
+        switch request {
+        case REQ_GET_LOUDNESS_MASK: return image.subdata(in: (BULK_GLOBAL_OFFSET + 6)..<(BULK_GLOBAL_OFFSET + 8))
+        case REQ_GET_CROSSFEED_OUTPUTS: return image.subdata(in: (BULK_CROSSFEED_OFFSET + 3)..<(BULK_CROSSFEED_OFFSET + 4))
+        case REQ_GET_LEVELLER_MASKS: return image.subdata(in: (BULK_LEVELLER_OFFSET + 16)..<(BULK_LEVELLER_OFFSET + 18))
+        case REQ_GET_PSYBASS: return image.subdata(in: BULK_PSYBASS_OFFSET..<(BULK_PSYBASS_OFFSET + 1))
+        case REQ_GET_SUBHARM: return image.subdata(in: BULK_SUBHARM_OFFSET..<(BULK_SUBHARM_OFFSET + 1))
+        default: return nil
+        }
+    }
+
+    /// REQ_LIMITER IN (caller holds `lock`): a parameter of one output, the
+    /// status block (the core's feature probe) or the meter, as
+    /// output_limiter_spec.md has them; a bad output or index STALLs.
+    private func limiterReply(_ value: UInt16) -> Data? {
+        let output = Int(value >> 8), param = UInt8(value & 0xFF)
+        let count = fakeOutputCount
+        switch param {
+        case LIMITER_GET_STATUS:
+            let engaged = (0..<count).contains { image[BULK_LIMITER_OFFSET + $0 * WIRE_LIMITER_OUTPUT_SIZE] != 0 }
+            return Data([engaged ? 1 : 0, UInt8(LIMITER_LOOKAHEAD_SAMPLES), UInt8(LIMITER_BLOCK_SAMPLES), UInt8(count)])
+        case LIMITER_GET_METER:
+            return Data(count: 2 * count)   // no gain reduction on the demo's programme
+        default:
+            guard output < count, param < LIMITER_NUM_PARAMS else { return nil }
+            let base = BULK_LIMITER_OFFSET + output * WIRE_LIMITER_OUTPUT_SIZE
+            switch param {
+            case LIMITER_PARAM_ENABLED: return FakeTransport.float(Float(image[base]))
+            case LIMITER_PARAM_LINK_GROUP: return FakeTransport.float(Float(image[base + 1]))
+            case LIMITER_PARAM_THRESHOLD_DB: return image.subdata(in: (base + 4)..<(base + 8))
+            default: return image.subdata(in: (base + 8)..<(base + 12))
+            }
+        }
+    }
+
+    /// REQ_LIMITER OUT (caller holds `lock`): what the firmware does, as the
+    /// changed output records.  Values are clamped; an enable, threshold or
+    /// release reaches the whole link group; joining a group adopts the
+    /// settings of its lowest other member; output 0xFF sets every output; a
+    /// bad output or index is a silent no-op.
+    private func limiterSet(output: UInt8, param: UInt8, _ raw: Float) -> [(offset: Int, bytes: Data)] {
+        let count = fakeOutputCount
+        guard param < LIMITER_NUM_PARAMS, raw.isFinite, output == LIMITER_ALL_OUTPUTS || Int(output) < count else { return [] }
+        func base(_ o: Int) -> Int { BULK_LIMITER_OFFSET + o * WIRE_LIMITER_OUTPUT_SIZE }
+        func group(_ o: Int) -> UInt8 { image[base(o) + 1] }
+        var touched: [Int]
+        if output == LIMITER_ALL_OUTPUTS {
+            touched = Array(0..<count)
+        } else if param == LIMITER_PARAM_LINK_GROUP {
+            touched = [Int(output)]
+        } else {
+            let o = Int(output), g = group(o)
+            touched = (0..<count).filter { $0 == o || (g != 0 && group($0) == g) }
+        }
+        var records: [(offset: Int, bytes: Data)] = []
+        for o in touched {
+            var rec = image.subdata(in: base(o)..<(base(o) + WIRE_LIMITER_OUTPUT_SIZE))
+            switch param {
+            case LIMITER_PARAM_ENABLED:
+                rec[0] = raw != 0 ? 1 : 0
+            case LIMITER_PARAM_THRESHOLD_DB:
+                rec.replaceSubrange(4..<8, with: FakeTransport.float(min(max(raw, LIMITER_THRESHOLD_MIN), LIMITER_THRESHOLD_MAX)))
+            case LIMITER_PARAM_RELEASE_MS:
+                rec.replaceSubrange(8..<12, with: FakeTransport.float(min(max(raw, LIMITER_RELEASE_MIN), LIMITER_RELEASE_MAX)))
+            default:
+                let g = UInt8(min(max(raw.rounded(), 0), Float(LIMITER_LINK_GROUP_MAX)))
+                rec[1] = g
+                if g != 0, let peer = (0..<count).first(where: { $0 != o && group($0) == g }) {
+                    let p = image.subdata(in: base(peer)..<(base(peer) + WIRE_LIMITER_OUTPUT_SIZE))
+                    rec[0] = p[p.startIndex]
+                    rec.replaceSubrange(4..<12, with: p[(p.startIndex + 4)..<(p.startIndex + 12)])
+                }
+            }
+            records.append((base(o), rec))
+        }
+        return records
     }
 
     // MARK: - Meters

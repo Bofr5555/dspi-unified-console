@@ -365,8 +365,10 @@ final class CoreBackedTransport: DeviceTransport {
         }
     }
 
-    // On coreQueue.  A write the core or the hub refused.
-    private func writeRefused(_ error: Error) {
+    // On coreQueue.  A write the core or the hub refused.  `typed`: one of
+    // the domains' typed setters (the write lane), which also puts back an
+    // edit the core refused as Unsupported or that failed in transfer.
+    private func writeRefused(_ error: Error, typed: Bool = false) {
         // -- WP SWF2 -- A write the hub refused is put back on screen
         // (hw-mac F3).  Read-only firmware also maps to .denied, but
         // that is not the hub's refusal: only the core's own two count.
@@ -378,6 +380,12 @@ final class CoreBackedTransport: DeviceTransport {
         // -- WP SW9 -- A typed setter refused the value before sending it:
         // say why and show the device's value again.
         case .InvalidArgument(let msg)?: RefusedWrite.handleInvalid(msg, fanout: fanout)
+        // -- WP SW10 -- fixup sw10 F2: a feature this device's probe did not
+        // find, or a transfer that failed: nothing reached the device (or
+        // nothing is known to have), so the edit is put back to the core's
+        // value at once and the status row says why.
+        case .Unsupported? where typed: RefusedWrite.handleInvalid(RefusedWrite.unsupportedMessage, fanout: fanout)
+        case .Transfer? where typed: RefusedWrite.handleInvalid(RefusedWrite.transferMessage, fanout: fanout)
         default: break
         }
     }
@@ -722,7 +730,7 @@ extension CoreBackedTransport: CoreStateSource, CoreStateSourceProviding {
             try onCore { try entry.body($0) }
         } catch {
             stateLock.lock(); laneWrites.removeAll(); laneJobs.removeAll(); stateLock.unlock()
-            writeRefused(error)
+            writeRefused(error, typed: true)
             Self.log.info("typed write \(key ?? "", privacy: .public) failed: \(String(describing: error), privacy: .public)")
             return
         }

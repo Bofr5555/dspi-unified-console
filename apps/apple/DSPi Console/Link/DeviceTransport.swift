@@ -256,6 +256,12 @@ enum RefusedWrite {
         DeviceLock.notice.post(message)
         fanout.publish(LinkNotification(packet: resyncPacket, origin: 0, receivedAt: Date()))
     }
+
+    // -- WP SW10 -- fixup sw10 F2: the wording for a typed write the core
+    // refused as Unsupported (its probe did not find the feature) or that
+    // failed in transfer; both are put back as `handleInvalid` does.
+    static let unsupportedMessage = "The connected firmware does not support that"
+    static let transferMessage = "The change did not reach the device"
 }
 
 extension DeviceTransport {
