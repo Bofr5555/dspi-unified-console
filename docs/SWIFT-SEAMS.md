@@ -230,6 +230,16 @@ Assignment choices that the plan's domain list left open:
 | `ExtensionCommands.swift:80` `readCrossfeedPairMap` | EXTENSION/EXT_CROSSFEED_PAIR_MAP | fetchCrossfeedPairMap() / S.crossfeed_pair_map | `connect.rs:233`, `ext.rs:56`, `records.rs:283` | `2170`, `1832` |
 | `ExtensionCommands.swift:103` `setCrossfeedPairMap` | EXTENSION/EXT_CROSSFEED_PAIR_MAP | setCrossfeedPairMap(map) | `ext.rs:43` | `2826` |
 
+*As built (SW10).* Every setter above calls its typed method through SW9's `write(lane:_:)`, with no lane key; the
+drag-time sends (`sendFloatParamToDevice`, `sendTubeParamToDevice`, `sendLimiterParamToDevice`,
+`sendUpmixParamToDevice`) use the lane keyed by the registry path (`loud.ref`, `bass.cutoff`, `sub.ceiling`,
+`tube[i]`, `limit[o][p]`, `up[i]`, ...). `sendFloatParamToDevice` maps its request code to the typed setter
+(`DSPViewModel.typedFloatSet`). The headroom, the two meters and the upmixer's status are `call(_:)`s behind the
+writes queued before them; `fetchUpmixConfig` reads nothing through a core (the mirror holds the settings);
+`fetchSubharmSolo` reads the core's copy. The 30 single-setting `fetch*` functions had no callers and were deleted.
+`LimiterGang` stays, for the paths without a core and as the optimistic local edit; through a core the shown limiter
+state is the core's ganged mirror.
+
 #### SW11 (54 functions)
 
 | Swift function | Wire use today | Core replacement | Core (Rust) | Binding line |
