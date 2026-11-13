@@ -162,8 +162,8 @@ pub use dspi_proto::ext::PairMap;
 pub use ext_diag::{DeviceResetInfo, IDENTIFY_TONE_DBFS, IdentifyInfo};
 // -- WP SW1 --
 pub use audio_link::{
-    APPLY_OP_MAX, AUDIO_LINK_SLOT_SILENT, ApplyAtFrameStatus, AudioLinkInfo, AudioLinkPhase,
-    AudioLinkStatus, INPUT_SOURCE_AUDIO_LINK, LinkFrameCounter,
+    APPLY_OP_MAX, AUDIO_LINK_SLOT_SILENT, ApplyAtFrameStatus, AudioLinkFrameCounter, AudioLinkInfo,
+    AudioLinkPhase, AudioLinkStatus, INPUT_SOURCE_AUDIO_LINK,
 };
 // -- WP CG23 --
 pub use raw::RawNotification;

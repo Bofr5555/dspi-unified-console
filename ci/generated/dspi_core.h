@@ -5396,7 +5396,7 @@ uint8_t dspi_set_audio_link_phase(struct FfiCore *core,
  * The link frame counter in JSON (`frame`, `timeUs`, `outputFrames`), or a
  * failure.
  */
-uint32_t dspi_fetch_link_frame_counter(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_fetch_audio_link_frame_counter(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
  * Queue `op` (0 cancel all, 1 mute, 2 unmute, 3 preset load, 4 master

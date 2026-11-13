@@ -321,3 +321,48 @@ fn wp_sw1_the_demo_with_the_link() {
     let mut plain = FakeDevice::demo();
     assert!(!list(&mut plain).contains(&0x8000));
 }
+
+/// Fixup sw1 (F5): the info's rx_pin follows the config; disabling from
+/// holdover reads state 0.
+#[test]
+fn wp_sw1_fixup_rx_pin_follows_the_config_and_disable_from_holdover() {
+    let mut d = device(true);
+    assert_eq!(
+        LinkInfo::decode(&get(&mut d, 0x8000, 32).unwrap())
+            .unwrap()
+            .rx_pin,
+        0
+    );
+    set(&mut d, 0x8002, &[1, 5, 0, 0xFF, 0xFF, 0xFF, 3, 0]).unwrap();
+    assert_eq!(
+        LinkInfo::decode(&get(&mut d, 0x8000, 32).unwrap())
+            .unwrap()
+            .rx_pin,
+        5
+    );
+    set(&mut d, 0x8002, &[1, 0xFF, 0, 0xFF, 0xFF, 0xFF, 3, 0]).unwrap();
+    assert_eq!(
+        LinkInfo::decode(&get(&mut d, 0x8000, 32).unwrap())
+            .unwrap()
+            .rx_pin,
+        0
+    );
+
+    let mut src = d.notifications().unwrap();
+    drain(&mut src);
+    set(&mut d, EXT_FAKE_LINK_SIM, &[LINK_SIM_LOSE]).unwrap();
+    assert_eq!(get(&mut d, 0x8001, 52).unwrap()[0], 3);
+    set(&mut d, 0x8002, &[0, 0xFF, 0, 0xFF, 0xFF, 0xFF, 3, 0]).unwrap();
+    assert_eq!(get(&mut d, 0x8001, 52).unwrap()[0], 0);
+    let reasons: Vec<_> = state_events(&mut src)
+        .iter()
+        .map(|e| (e.state, e.reason))
+        .collect();
+    assert_eq!(
+        reasons,
+        [
+            (LinkState::Holdover, LinkEventReason::Los),
+            (LinkState::Off, LinkEventReason::Disabled)
+        ]
+    );
+}

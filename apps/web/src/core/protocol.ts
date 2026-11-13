@@ -308,7 +308,7 @@ export interface EventRecord {
   id: number;
   /** ms since the epoch. */
   t: number;
-  kind: "notification" | "connected" | "disconnected" | "clip" | "temperature" | "counter" | "reset" | "firmware" | "import" | "recall" | "link" | "unknown";
+  kind: "notification" | "connected" | "disconnected" | "clip" | "temperature" | "counter" | "reset" | "firmware" | "import" | "recall" | "audio_link" | "unknown";
   serial?: string;
   text: string;
   source?: string;
@@ -536,7 +536,7 @@ export interface AudioLinkMethods {
   audioLinkPhase: { params: undefined; result: AudioLinkPhase };
   /** `mode` 0 fill servo, 1 phase lock; `dLocal` in link frames; `hopsOffset` -64..64. */
   setAudioLinkPhase: { params: { mode: number; dLocal: number; hopsOffset?: number }; result: null };
-  linkFrameCounter: { params: undefined; result: { frame: number; timeUs: number; outputFrames: number } };
+  audioLinkFrameCounter: { params: undefined; result: { frame: number; timeUs: number; outputFrames: number } };
   /** `op` 0 cancel all, 1 mute, 2 unmute, 3 preset load, 4 master volume, 5 output delay, 6 rate, 7 click, 8 sync pulse. */
   applyAtFrame: { params: { frame: number; op: number; arg?: number; value?: number }; result: null };
   applyAtFrameStatus: { params: undefined; result: ApplyAtFrameStatus };

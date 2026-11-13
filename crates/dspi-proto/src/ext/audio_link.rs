@@ -75,20 +75,22 @@ pub const RECEIVER_IDS: [u16; 10] = [
     EXT_LINK_DIAG,
 ];
 
-/// What a link sub-command is called, for listings; `None` outside the range.
+/// What a link sub-command is called, for listings (the Terminal's extension
+/// list); `None` outside the range. Always "audio link": "link" alone is DSPi
+/// Link.
 pub fn link_name(id: u16) -> Option<&'static str> {
     Some(match id {
-        EXT_LINK_INFO => "link info",
-        EXT_LINK_STATUS => "link status",
-        EXT_LINK_CONFIG => "link config",
-        EXT_LINK_SLOTS => "link slots",
-        EXT_LINK_PHASE => "link phase",
-        EXT_FRAME_COUNTER => "frame counter",
-        EXT_APPLY_AT_FRAME => "apply at frame",
-        EXT_LINK_TX => "link transmit",
-        EXT_LINK_CTRL_MSG => "link control message",
-        EXT_LINK_STATS_RESET => "link stats reset",
-        EXT_LINK_DIAG => "link diagnostics",
+        EXT_LINK_INFO => "audio link info",
+        EXT_LINK_STATUS => "audio link status",
+        EXT_LINK_CONFIG => "audio link config",
+        EXT_LINK_SLOTS => "audio link slots",
+        EXT_LINK_PHASE => "audio link phase",
+        EXT_FRAME_COUNTER => "audio link frame counter",
+        EXT_APPLY_AT_FRAME => "audio link apply at frame",
+        EXT_LINK_TX => "audio link transmit",
+        EXT_LINK_CTRL_MSG => "audio link control message",
+        EXT_LINK_STATS_RESET => "audio link stats reset",
+        EXT_LINK_DIAG => "audio link diagnostics",
         _ => return None,
     })
 }
@@ -531,7 +533,9 @@ pub struct LinkStatus {
     /// The LOS pin: 0 clear, 1 asserted, 0xFF none configured.
     pub los_pin: u8,
     pub sender_id: u8,
-    /// Superframe flags b2-b5.
+    /// The superframe's flags byte as last received (2.8.2): bit 0 system
+    /// mute, 1 rate change pending, 2 apply pending, 3 the sender has a live
+    /// USB stream, 4 test pattern, 5 the sender is slaved.
     pub flags: u8,
     /// The link frame counter F.
     pub frame: u64,
@@ -1086,6 +1090,8 @@ mod tests_wp_sw1 {
         for id in LINK_IDS {
             assert!(link_name(id).is_some());
             assert_eq!(super::super::name(id), link_name(id).unwrap());
+            // -- fixup sw1 (F2) -- never a bare "link" (that is DSPi Link)
+            assert!(link_name(id).unwrap().starts_with("audio link "));
         }
         // A receiver lists all but the sender's EXT_LINK_TX.
         assert!(!RECEIVER_IDS.contains(&EXT_LINK_TX));

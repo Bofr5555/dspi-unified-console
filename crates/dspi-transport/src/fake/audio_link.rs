@@ -118,8 +118,12 @@ impl Default for AudioLink {
     }
 }
 
-/// The receiver's `EXT_LINK_INFO`: 2.8.1's example.
-fn info() -> LinkInfo {
+/// The link input's build default, GP0 (2.8.3).
+const RX_PIN_DEFAULT: u8 = 0;
+
+/// The receiver's `EXT_LINK_INFO`: 2.8.1's example, `rx_pin` following
+/// `config` (its `0xFF` resolved to the build default, 2.8.1).
+fn info(config: &LinkConfig) -> LinkInfo {
     LinkInfo {
         role: LinkRole::Receiver,
         protocol_version: alink::LINK_PROTOCOL_VERSION,
@@ -128,7 +132,11 @@ fn info() -> LinkInfo {
         max_channels: alink::LINK_MAX_CHANNELS,
         slots_per_unit: 8,
         flags: 0,
-        rx_pin: 0,
+        rx_pin: if config.rx_pin == 0xFF {
+            RX_PIN_DEFAULT
+        } else {
+            config.rx_pin
+        },
         tx_pin: 0xFF,
         feature_bits: feature::PHASE_LOCK | feature::APPLY_AT_FRAME | feature::LOS_PIN,
         d_local_min: 112,
@@ -243,7 +251,7 @@ impl State {
         self.run_due_ops();
         let l = &self.audio_link;
         Some(match value {
-            alink::EXT_LINK_INFO => Some(info().encode().to_vec()),
+            alink::EXT_LINK_INFO => Some(info(&l.config).encode().to_vec()),
             alink::EXT_LINK_STATUS => Some(self.link_status().encode().to_vec()),
             alink::EXT_LINK_CONFIG => Some(l.config.encode().to_vec()),
             alink::EXT_LINK_SLOTS => Some(l.slots.0.to_vec()),
@@ -319,7 +327,9 @@ impl State {
                 Some(c) if config_ok(&c, data) => {
                     let was = self.audio_link.config.enable;
                     self.audio_link.config = c;
-                    if was && !c.enable && self.audio_link.state == LinkState::Locked {
+                    // -- fixup sw1 (F5) -- with `enable` 0 the state reads 0,
+                    // from holdover too (2.8.3); the change sends 0xE1.
+                    if was && !c.enable && self.audio_link.state != LinkState::Off {
                         self.audio_link.state = LinkState::Off;
                         self.link_event(LinkEventReason::Disabled);
                     } else if !was && c.enable && self.audio_link.state == LinkState::Off {
@@ -365,7 +375,10 @@ impl State {
         let Some(p) = LinkPhase::decode(data) else {
             return false;
         };
-        if data.len() != LinkPhase::SIZE || data.get(1) != Some(&0) || !p.is_valid_for(&info()) {
+        if data.len() != LinkPhase::SIZE
+            || data.get(1) != Some(&0)
+            || !p.is_valid_for(&info(&self.audio_link.config))
+        {
             return false;
         }
         let old = self.audio_link.phase;

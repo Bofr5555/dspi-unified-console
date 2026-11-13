@@ -1216,7 +1216,7 @@ uint8_t dspi_set_audio_link_phase(struct FfiCore *core,
 uint8_t mode,
 uint16_t d_local,
 int16_t hops_offset);
-uint32_t dspi_fetch_link_frame_counter(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_fetch_audio_link_frame_counter(struct FfiCore *core, char *buf, uint32_t len);
 uint8_t dspi_apply_at_frame(struct FfiCore *core,
 uint64_t frame,
 uint8_t op,

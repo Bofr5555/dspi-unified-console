@@ -853,7 +853,7 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "fetchAudioLinkStatus",
             "fetchAudioLinkSlots",
             "fetchAudioLinkPhase",
-            "fetchLinkFrameCounter",
+            "fetchAudioLinkFrameCounter",
             "fetchApplyAtFrameStatus",
             "openDemoAudioLink",
             // -- WP CS1 -- the USB error counters (0xB2), a read

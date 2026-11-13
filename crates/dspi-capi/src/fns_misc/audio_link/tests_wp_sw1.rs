@@ -63,7 +63,7 @@ fn wp_sw1_the_link_through_c() {
         (Some(200), Some(-1))
     );
 
-    let f = reply(h, dspi_fetch_link_frame_counter)["frame"]
+    let f = reply(h, dspi_fetch_audio_link_frame_counter)["frame"]
         .as_u64()
         .unwrap();
     assert_eq!(dspi_apply_at_frame(h, f + 48_000_000, 7, 1, 0), 0);
@@ -92,7 +92,7 @@ fn wp_sw1_without_the_link_c_says_unsupported() {
         dspi_fetch_audio_link_status as extern "C" fn(*mut FfiCore, *mut c_char, u32) -> u32,
         dspi_fetch_audio_link_info,
         dspi_fetch_audio_link_phase,
-        dspi_fetch_link_frame_counter,
+        dspi_fetch_audio_link_frame_counter,
         dspi_fetch_apply_at_frame_status,
     ] {
         let v = reply(h, f);

@@ -2237,7 +2237,7 @@ data class AudioLinkPhase(
 /**
  * What `EXT_FRAME_COUNTER` reports.
  */
-data class LinkFrameCounter(
+data class AudioLinkFrameCounter(
     /**
      * The link frame at the read.
      */
@@ -2549,7 +2549,11 @@ data class HistoryEntry(
      * gain and the Linkwitz target Q as little-endian `f32`s), `ext.pairmap`
      * (the crossfeed pair map's four bytes), `ext.vreg` (a core-voltage
      * request: op and value), `raw` (a raw request: opcode and `wValue` as
-     * indices, the payload as the value). A control-surface operation is
+     * indices, the payload as the value), `ext.audio_link.slots` (the 8
+     * slot bytes), `ext.audio_link.phase` (mode, then the delay and the
+     * hops offset as little-endian 16-bit values), `ext.audio_link.apply`
+     * (op and arg as indices, the 16-byte request as the value) and
+     * `ext.audio_link.stats_reset`. A control-surface operation is
      * under its `cs.*` path with the operation's JSON as text.
      */
     val path: String,

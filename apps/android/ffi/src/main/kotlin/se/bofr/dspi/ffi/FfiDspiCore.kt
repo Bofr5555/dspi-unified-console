@@ -82,7 +82,7 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun setAudioLinkPhase(mode: Int, dLocal: Int, hopsOffset: Int) = call { core.setAudioLinkPhase(mode.toUByte(), dLocal.toUShort(), hopsOffset.toShort()) }
 
-    override fun fetchLinkFrameCounter(): LinkFrameCounter = call { core.fetchLinkFrameCounter().toDomain() }
+    override fun fetchAudioLinkFrameCounter(): AudioLinkFrameCounter = call { core.fetchAudioLinkFrameCounter().toDomain() }
 
     override fun applyAtFrame(frame: Long, op: Int, arg: Int, value: Int) = call { core.applyAtFrame(frame.toULong(), op.toUByte(), arg.toUByte(), value.toShort()) }
 
@@ -2059,15 +2059,15 @@ internal fun AudioLinkPhase.toFfi() =
         state = state.toUByte(),
     )
 
-internal fun se.bofr.dspi.ffi.uniffi.LinkFrameCounter.toDomain() =
-    LinkFrameCounter(
+internal fun se.bofr.dspi.ffi.uniffi.AudioLinkFrameCounter.toDomain() =
+    AudioLinkFrameCounter(
         frame = frame.toLong(),
         timeUs = timeUs.toLong(),
         outputFrames = outputFrames.toLong(),
     )
 
-internal fun LinkFrameCounter.toFfi() =
-    se.bofr.dspi.ffi.uniffi.LinkFrameCounter(
+internal fun AudioLinkFrameCounter.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AudioLinkFrameCounter(
         frame = frame.toULong(),
         timeUs = timeUs.toUInt(),
         outputFrames = outputFrames.toUInt(),

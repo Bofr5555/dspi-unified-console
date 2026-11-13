@@ -26,7 +26,7 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun setAudioLinkPhase(mode: Int, dLocal: Int, hopsOffset: Int): Unit = throw NotImplementedError("set_audio_link_phase")
 
-    override fun fetchLinkFrameCounter(): LinkFrameCounter = throw NotImplementedError("fetch_link_frame_counter")
+    override fun fetchAudioLinkFrameCounter(): AudioLinkFrameCounter = throw NotImplementedError("fetch_audio_link_frame_counter")
 
     override fun applyAtFrame(frame: Long, op: Int, arg: Int, value: Int): Unit = throw NotImplementedError("apply_at_frame")
 

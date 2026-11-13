@@ -1,6 +1,6 @@
 //! C functions: the audio link (WP SW1, the fork's `extension_channel_spec.md`
 //! 2.8), over `DspiCore`'s `audio_link_*`, `*_audio_link_*`,
-//! `fetch_link_frame_counter` and `apply_at_frame`. Only a unit whose
+//! `fetch_audio_link_frame_counter` and `apply_at_frame`. Only a unit whose
 //! `EXT_LIST` names `EXT_LINK_INFO` answers; others reply `unsupported`
 //! with nothing sent. Not DSPi Link (`fns_link.rs`).
 
@@ -118,12 +118,14 @@ pub extern "C" fn dspi_set_audio_link_phase(
 /// The link frame counter in JSON (`frame`, `timeUs`, `outputFrames`), or a
 /// failure.
 #[unsafe(no_mangle)]
-pub extern "C" fn dspi_fetch_link_frame_counter(
+pub extern "C" fn dspi_fetch_audio_link_frame_counter(
     core: *mut FfiCore,
     buf: *mut c_char,
     len: u32,
 ) -> u32 {
-    text(core, buf, len, |c| json_reply(c.fetch_link_frame_counter()))
+    text(core, buf, len, |c| {
+        json_reply(c.fetch_audio_link_frame_counter())
+    })
 }
 
 /// Queue `op` (0 cancel all, 1 mute, 2 unmute, 3 preset load, 4 master

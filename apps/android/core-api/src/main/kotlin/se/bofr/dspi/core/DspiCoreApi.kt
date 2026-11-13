@@ -96,7 +96,7 @@ interface DspiCoreApi : AutoCloseable {
      * [`DspiCore::fetch_audio_link_status`].
      */
     @Throws(DspiException::class)
-    fun fetchLinkFrameCounter(): LinkFrameCounter
+    fun fetchAudioLinkFrameCounter(): AudioLinkFrameCounter
 
     /**
      * `EXT_APPLY_AT_FRAME`: run `op` ([`APPLY_OP_MAX`] lists them) on the

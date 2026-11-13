@@ -1979,6 +1979,13 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func fetchApplyAtFrameStatus() throws  -> ApplyAtFrameStatus
     
     /**
+     * Read `EXT_FRAME_COUNTER`: the link frame, the unit's clock and its
+     * output frames at one instant. Errors as
+     * [`DspiCore::fetch_audio_link_status`].
+     */
+    func fetchAudioLinkFrameCounter() throws  -> AudioLinkFrameCounter
+    
+    /**
      * Read `EXT_LINK_INFO` again and keep it: its delay limits follow the
      * output latency option, so re-read after changing that. Errors as
      * [`DspiCore::fetch_audio_link_status`].
@@ -2134,13 +2141,6 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * (including a short reply).
      */
     func fetchLimiterMeter() throws  -> [Float]
-    
-    /**
-     * Read `EXT_FRAME_COUNTER`: the link frame, the unit's clock and its
-     * output frames at one instant. Errors as
-     * [`DspiCore::fetch_audio_link_status`].
-     */
-    func fetchLinkFrameCounter() throws  -> LinkFrameCounter
     
     /**
      * The live outputs' fill for the Stats rows: to frame resolution, on the
@@ -5135,6 +5135,18 @@ open func fetchApplyAtFrameStatus()throws  -> ApplyAtFrameStatus  {
 }
     
     /**
+     * Read `EXT_FRAME_COUNTER`: the link frame, the unit's clock and its
+     * output frames at one instant. Errors as
+     * [`DspiCore::fetch_audio_link_status`].
+     */
+open func fetchAudioLinkFrameCounter()throws  -> AudioLinkFrameCounter  {
+    return try  FfiConverterTypeAudioLinkFrameCounter_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_fetch_audio_link_frame_counter(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
      * Read `EXT_LINK_INFO` again and keep it: its delay limits follow the
      * output latency option, so re-read after changing that. Errors as
      * [`DspiCore::fetch_audio_link_status`].
@@ -5366,18 +5378,6 @@ open func fetchLgStatus()throws  -> LgStatus  {
 open func fetchLimiterMeter()throws  -> [Float]  {
     return try  FfiConverterSequenceFloat.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_fetch_limiter_meter(self.uniffiClonePointer(),$0
-    )
-})
-}
-    
-    /**
-     * Read `EXT_FRAME_COUNTER`: the link frame, the unit's clock and its
-     * output frames at one instant. Errors as
-     * [`DspiCore::fetch_audio_link_status`].
-     */
-open func fetchLinkFrameCounter()throws  -> LinkFrameCounter  {
-    return try  FfiConverterTypeLinkFrameCounter_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
-    uniffi_dspi_core_fn_method_dspicore_fetch_link_frame_counter(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -9972,6 +9972,105 @@ public func FfiConverterTypeApplyAtFrameStatus_lift(_ buf: RustBuffer) throws ->
 #endif
 public func FfiConverterTypeApplyAtFrameStatus_lower(_ value: ApplyAtFrameStatus) -> RustBuffer {
     return FfiConverterTypeApplyAtFrameStatus.lower(value)
+}
+
+
+/**
+ * What `EXT_FRAME_COUNTER` reports.
+ */
+public struct AudioLinkFrameCounter {
+    /**
+     * The link frame at the read.
+     */
+    public var frame: UInt64
+    /**
+     * The unit's clock at the read, µs (wraps).
+     */
+    public var timeUs: UInt32
+    /**
+     * Output frames played, low 32 bits.
+     */
+    public var outputFrames: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The link frame at the read.
+         */frame: UInt64, 
+        /**
+         * The unit's clock at the read, µs (wraps).
+         */timeUs: UInt32, 
+        /**
+         * Output frames played, low 32 bits.
+         */outputFrames: UInt32) {
+        self.frame = frame
+        self.timeUs = timeUs
+        self.outputFrames = outputFrames
+    }
+}
+
+#if compiler(>=6)
+extension AudioLinkFrameCounter: Sendable {}
+#endif
+
+
+extension AudioLinkFrameCounter: Equatable, Hashable {
+    public static func ==(lhs: AudioLinkFrameCounter, rhs: AudioLinkFrameCounter) -> Bool {
+        if lhs.frame != rhs.frame {
+            return false
+        }
+        if lhs.timeUs != rhs.timeUs {
+            return false
+        }
+        if lhs.outputFrames != rhs.outputFrames {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(frame)
+        hasher.combine(timeUs)
+        hasher.combine(outputFrames)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAudioLinkFrameCounter: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AudioLinkFrameCounter {
+        return
+            try AudioLinkFrameCounter(
+                frame: FfiConverterUInt64.read(from: &buf), 
+                timeUs: FfiConverterUInt32.read(from: &buf), 
+                outputFrames: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AudioLinkFrameCounter, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.frame, into: &buf)
+        FfiConverterUInt32.write(value.timeUs, into: &buf)
+        FfiConverterUInt32.write(value.outputFrames, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAudioLinkFrameCounter_lift(_ buf: RustBuffer) throws -> AudioLinkFrameCounter {
+    return try FfiConverterTypeAudioLinkFrameCounter.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAudioLinkFrameCounter_lower(_ value: AudioLinkFrameCounter) -> RustBuffer {
+    return FfiConverterTypeAudioLinkFrameCounter.lower(value)
 }
 
 
@@ -15142,7 +15241,11 @@ public struct HistoryEntry {
      * gain and the Linkwitz target Q as little-endian `f32`s), `ext.pairmap`
      * (the crossfeed pair map's four bytes), `ext.vreg` (a core-voltage
      * request: op and value), `raw` (a raw request: opcode and `wValue` as
-     * indices, the payload as the value). A control-surface operation is
+     * indices, the payload as the value), `ext.audio_link.slots` (the 8
+     * slot bytes), `ext.audio_link.phase` (mode, then the delay and the
+     * hops offset as little-endian 16-bit values), `ext.audio_link.apply`
+     * (op and arg as indices, the 16-byte request as the value) and
+     * `ext.audio_link.stats_reset`. A control-surface operation is
      * under its `cs.*` path with the operation's JSON as text.
      */
     public var path: String
@@ -15182,7 +15285,11 @@ public struct HistoryEntry {
          * gain and the Linkwitz target Q as little-endian `f32`s), `ext.pairmap`
          * (the crossfeed pair map's four bytes), `ext.vreg` (a core-voltage
          * request: op and value), `raw` (a raw request: opcode and `wValue` as
-         * indices, the payload as the value). A control-surface operation is
+         * indices, the payload as the value), `ext.audio_link.slots` (the 8
+         * slot bytes), `ext.audio_link.phase` (mode, then the delay and the
+         * hops offset as little-endian 16-bit values), `ext.audio_link.apply`
+         * (op and arg as indices, the 16-byte request as the value) and
+         * `ext.audio_link.stats_reset`. A control-surface operation is
          * under its `cs.*` path with the operation's JSON as text.
          */path: String, 
         /**
@@ -16302,105 +16409,6 @@ public func FfiConverterTypeLinkDevice_lift(_ buf: RustBuffer) throws -> LinkDev
 #endif
 public func FfiConverterTypeLinkDevice_lower(_ value: LinkDevice) -> RustBuffer {
     return FfiConverterTypeLinkDevice.lower(value)
-}
-
-
-/**
- * What `EXT_FRAME_COUNTER` reports.
- */
-public struct LinkFrameCounter {
-    /**
-     * The link frame at the read.
-     */
-    public var frame: UInt64
-    /**
-     * The unit's clock at the read, µs (wraps).
-     */
-    public var timeUs: UInt32
-    /**
-     * Output frames played, low 32 bits.
-     */
-    public var outputFrames: UInt32
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(
-        /**
-         * The link frame at the read.
-         */frame: UInt64, 
-        /**
-         * The unit's clock at the read, µs (wraps).
-         */timeUs: UInt32, 
-        /**
-         * Output frames played, low 32 bits.
-         */outputFrames: UInt32) {
-        self.frame = frame
-        self.timeUs = timeUs
-        self.outputFrames = outputFrames
-    }
-}
-
-#if compiler(>=6)
-extension LinkFrameCounter: Sendable {}
-#endif
-
-
-extension LinkFrameCounter: Equatable, Hashable {
-    public static func ==(lhs: LinkFrameCounter, rhs: LinkFrameCounter) -> Bool {
-        if lhs.frame != rhs.frame {
-            return false
-        }
-        if lhs.timeUs != rhs.timeUs {
-            return false
-        }
-        if lhs.outputFrames != rhs.outputFrames {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(frame)
-        hasher.combine(timeUs)
-        hasher.combine(outputFrames)
-    }
-}
-
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeLinkFrameCounter: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LinkFrameCounter {
-        return
-            try LinkFrameCounter(
-                frame: FfiConverterUInt64.read(from: &buf), 
-                timeUs: FfiConverterUInt32.read(from: &buf), 
-                outputFrames: FfiConverterUInt32.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: LinkFrameCounter, into buf: inout [UInt8]) {
-        FfiConverterUInt64.write(value.frame, into: &buf)
-        FfiConverterUInt32.write(value.timeUs, into: &buf)
-        FfiConverterUInt32.write(value.outputFrames, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeLinkFrameCounter_lift(_ buf: RustBuffer) throws -> LinkFrameCounter {
-    return try FfiConverterTypeLinkFrameCounter.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeLinkFrameCounter_lower(_ value: LinkFrameCounter) -> RustBuffer {
-    return FfiConverterTypeLinkFrameCounter.lower(value)
 }
 
 
@@ -26064,6 +26072,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_apply_at_frame_status() != 42011) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_audio_link_frame_counter() != 23366) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_audio_link_info() != 56667) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -26110,9 +26121,6 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_limiter_meter() != 57932) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_dspi_core_checksum_method_dspicore_fetch_link_frame_counter() != 25885) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_output_fills() != 8756) {

@@ -96,10 +96,10 @@ pub enum EventKind {
     /// A preset was recalled (`channel` the slot, `lines` the changes).
     Recall,
     // -- WP SW1 --
-    /// The audio link: lost, locked, re-anchored (`source` which, `value`
-    /// the link frame's low 32 bits), or an apply-at-frame result (`source`
-    /// `apply`).
-    Link,
+    /// The audio link (not DSPi Link): lost, locked, re-anchored (`source`
+    /// which, `value` the link frame's low 32 bits), or an apply-at-frame
+    /// result (`source` `apply`). Written `audio_link`.
+    AudioLink,
     /// A kind from a newer build.
     #[default]
     #[serde(other)]
@@ -120,7 +120,7 @@ impl EventKind {
             Self::Firmware => "firmware",
             Self::Import => "import",
             Self::Recall => "recall",
-            Self::Link => "link",
+            Self::AudioLink => "audio_link",
             Self::Unknown => "unknown",
         }
     }
@@ -1248,7 +1248,7 @@ pub fn decode_ext_event(notify_features: Option<u32>, id: u8, bytes: &[u8]) -> O
 
 // -- WP SW1 --
 /// The event-log record for an audio-link event at `t`: a loss, a lock, a
-/// re-anchor (resync) or an apply-at-frame result, kind [`EventKind::Link`].
+/// re-anchor (resync) or an apply-at-frame result, kind [`EventKind::AudioLink`].
 /// `None` for the other extension events.
 pub fn link_record(e: &ExtEvent, t: i64) -> Option<EventRecord> {
     use dspi_proto::ext::audio_link::{ApplyResult, LinkEventReason, LinkState};
@@ -1289,7 +1289,7 @@ pub fn link_record(e: &ExtEvent, t: i64) -> Option<EventRecord> {
         }
         ExtEvent::Clip { .. } | ExtEvent::Reset { .. } => return None,
     };
-    let mut r = EventRecord::new(EventKind::Link, t, text);
+    let mut r = EventRecord::new(EventKind::AudioLink, t, text);
     r.source = Some(source.to_string());
     r.value = Some(f64::from(frame));
     Some(r)

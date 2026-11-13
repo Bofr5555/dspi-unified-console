@@ -32,7 +32,7 @@ fn every_call(core: &DspiCore) -> Vec<(&'static str, Result<()>)> {
         ("set slots", core.set_audio_link_slots(vec![0; 8])),
         ("phase", core.fetch_audio_link_phase().map(drop)),
         ("set phase", core.set_audio_link_phase(1, 128, 0)),
-        ("counter", core.fetch_link_frame_counter().map(drop)),
+        ("counter", core.fetch_audio_link_frame_counter().map(drop)),
         ("apply", core.apply_at_frame(1, 1, 0, 0)),
         ("apply status", core.fetch_apply_at_frame_status().map(drop)),
         ("stats reset", core.reset_audio_link_stats()),
@@ -127,9 +127,9 @@ fn wp_sw1_the_calls_against_the_fake_link() {
         Err(DspiError::Refused { .. })
     ));
 
-    let f1 = c.fetch_link_frame_counter().unwrap();
+    let f1 = c.fetch_audio_link_frame_counter().unwrap();
     std::thread::sleep(Duration::from_millis(5));
-    let f2 = c.fetch_link_frame_counter().unwrap();
+    let f2 = c.fetch_audio_link_frame_counter().unwrap();
     assert!(f2.frame > f1.frame, "the counter runs");
 
     c.apply_at_frame(f2.frame + 48_000_000, 1, 0, 0).unwrap();
@@ -237,10 +237,10 @@ fn wp_sw1_loss_resync_and_apply_results_reach_the_event_log() {
     settle(c, remote);
     assert!(remote.link_sim(LINK_SIM_LOSE));
     assert!(remote.link_sim(LINK_SIM_REANCHOR));
-    let now = c.fetch_link_frame_counter().unwrap().frame;
+    let now = c.fetch_audio_link_frame_counter().unwrap().frame;
     c.apply_at_frame(now.saturating_sub(10), 1, 0, 0).unwrap();
     settle(c, remote);
-    let log = entries(c, "link");
+    let log = entries(c, "audio_link");
     let seen: Vec<_> = log
         .iter()
         .map(|e| (e.source.as_str(), e.text.as_str()))
@@ -280,5 +280,107 @@ fn wp_sw1_link_events_without_the_feature_bits_are_not_logged() {
     remote.push(vec![2, 0xE1, 0, 0, 3, 1, 2, 0, 0, 0, 0, 0]);
     remote.push(vec![2, 0xE2, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]);
     settle(c, remote);
-    assert!(entries(c, "link").is_empty());
+    assert!(entries(c, "audio_link").is_empty());
+}
+
+// ---------------------------------------------------------------- history
+
+/// Fixup sw1 (F1): the four writes are journalled; slots undo, a phase change
+/// is stepped over (it re-anchors), apply and the counter reset are actions.
+mod tests_fixup_sw1 {
+    use super::*;
+    use crate::{HistorySource, ParamValue};
+
+    #[test]
+    fn wp_sw1_fixup_slots_are_journalled_and_undone() {
+        let p = link(true);
+        let c = &p.core;
+        let identity: Vec<u8> = (0..8).collect();
+        let mine = vec![4, 5, 255, 255, 255, 255, 255, 255];
+        c.set_audio_link_slots(mine.clone()).unwrap();
+        let h = c.history(10);
+        assert_eq!(h.len(), 1, "{h:?}");
+        let e = &h[0];
+        assert_eq!(e.path, "ext.audio_link.slots");
+        assert!(e.undoable);
+        assert_eq!(e.before, Some(ParamValue::Bytes(identity.clone())));
+        assert_eq!(e.after, ParamValue::Bytes(mine.clone()));
+        // The same slots again: nothing moved, nothing recorded.
+        c.set_audio_link_slots(mine.clone()).unwrap();
+        assert_eq!(c.history(10).len(), 1);
+
+        let undone = c.undo().unwrap();
+        assert_eq!(
+            undone.entry.map(|e| e.path).as_deref(),
+            Some("ext.audio_link.slots")
+        );
+        assert_eq!(c.fetch_audio_link_slots().unwrap(), identity);
+        assert_eq!(c.history(1)[0].source, HistorySource::Undo);
+        let redone = c.redo().unwrap();
+        assert!(redone.entry.is_some());
+        assert_eq!(c.fetch_audio_link_slots().unwrap(), mine);
+    }
+
+    #[test]
+    fn wp_sw1_fixup_a_phase_change_is_recorded_and_stepped_over() {
+        let p = link(true);
+        let c = &p.core;
+        c.set_audio_link_slots(vec![3; 8]).unwrap();
+        c.set_audio_link_phase(1, 176, -2).unwrap();
+        let e = c.history(1).pop().unwrap();
+        assert_eq!(e.path, "ext.audio_link.phase");
+        assert!(!e.undoable);
+        // [mode, d_local LE, hops LE]: 128 (the fake's default) to 176/-2.
+        assert_eq!(e.before, Some(ParamValue::Bytes(vec![1, 128, 0, 0, 0])));
+        assert_eq!(e.after, ParamValue::Bytes(vec![1, 176, 0, 0xFE, 0xFF]));
+        // Undo steps over the phase (the delay stays) and undoes the slots.
+        let m = c.undo().unwrap();
+        assert_eq!(m.skipped.len(), 1);
+        assert_eq!(m.skipped[0].path, "ext.audio_link.phase");
+        assert_eq!(m.entry.unwrap().path, "ext.audio_link.slots");
+        assert_eq!(c.fetch_audio_link_phase().unwrap().d_local, 176);
+        assert_eq!(
+            c.fetch_audio_link_slots().unwrap(),
+            (0..8).collect::<Vec<u8>>()
+        );
+    }
+
+    #[test]
+    fn wp_sw1_fixup_apply_and_stats_reset_are_actions() {
+        let p = link(true);
+        let c = &p.core;
+        let f = c.fetch_audio_link_frame_counter().unwrap().frame + 48_000_000;
+        c.apply_at_frame(f, 7, 2, 0).unwrap();
+        c.reset_audio_link_stats().unwrap();
+        let h = c.history(10);
+        assert_eq!(h.len(), 2, "{h:?}");
+        // Newest first.
+        let (reset, apply) = (&h[0], &h[1]);
+        assert_eq!(
+            (apply.path.as_str(), apply.indices.as_slice()),
+            ("ext.audio_link.apply", &[7u8, 2][..])
+        );
+        assert!(!apply.undoable && apply.before.is_none());
+        let ParamValue::Bytes(req) = &apply.after else {
+            panic!("{apply:?}");
+        };
+        assert_eq!(req[..8], f.to_le_bytes());
+        assert_eq!(reset.path, "ext.audio_link.stats_reset");
+        assert_eq!(reset.after, ParamValue::Trigger);
+        assert!(!reset.undoable);
+        // Nothing to undo: both are stepped over.
+        let m = c.undo().unwrap();
+        assert!(m.entry.is_none());
+        assert_eq!(m.skipped.len(), 2);
+        assert_eq!(c.fetch_apply_at_frame_status().unwrap().pending, 1);
+    }
+
+    #[test]
+    fn wp_sw1_fixup_a_refused_write_records_nothing() {
+        let p = link(true);
+        let c = &p.core;
+        // Out of the unit's delay range: the device refuses, no entry.
+        assert!(c.set_audio_link_phase(1, 100, 0).is_err());
+        assert!(c.history(10).is_empty());
+    }
 }

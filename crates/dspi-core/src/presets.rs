@@ -1970,6 +1970,8 @@ fn source_title(source: u8, names: &[String], other_spdif_on: bool) -> String {
         2 => "I2S".to_owned(),
         3 => "ADAT".to_owned(),
         4..=6 => format!("S/PDIF {}", source.saturating_sub(2)),
+        // -- WP SW1 (fixup sw1, F4) --
+        crate::audio_link::INPUT_SOURCE_AUDIO_LINK => "Audio link".to_owned(),
         n => format!("Source {n}"),
     }
 }
@@ -3132,6 +3134,8 @@ mod tests {
         assert_eq!(rows(&s, &l), ["Input source: S/PDIF 1 → USB"]);
         assert_eq!(source_title(5, &[], false), "S/PDIF 3");
         assert_eq!(source_title(3, &[], false), "ADAT");
+        // -- WP SW1 (fixup sw1, F4) --
+        assert_eq!(source_title(7, &[], false), "Audio link");
         assert_eq!(source_title(9, &[], false), "Source 9");
     }
 

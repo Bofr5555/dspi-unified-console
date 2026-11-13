@@ -106,7 +106,7 @@ The DSP blocks have proper names, used as section and window titles and as the l
 ### 3.1 The audio link
 
 *WP SW1, 2026-11-12. The multi-unit link of the SYS2 design (the fork's `extension_channel_spec.md` 2.8). The core's calls
-are `audio_link_*`, `fetch_link_frame_counter` and `apply_at_frame`.*
+are `audio_link_*`, `fetch_audio_link_frame_counter` and `apply_at_frame`.*
 
 | Term | Meaning | Unit and range | Registry |
 |---|---|---|---|

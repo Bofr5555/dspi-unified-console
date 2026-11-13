@@ -1743,6 +1743,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_fetch_all(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_apply_at_frame_status(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_fetch_audio_link_frame_counter(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_audio_link_info(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_audio_link_phase(
@@ -1774,8 +1776,6 @@ fun uniffi_dspi_core_checksum_method_dspicore_fetch_input_rate(
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_lg_status(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_limiter_meter(
-): Short
-fun uniffi_dspi_core_checksum_method_dspicore_fetch_link_frame_counter(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_output_fills(
 ): Short
@@ -2359,6 +2359,8 @@ fun uniffi_dspi_core_fn_method_dspicore_fetch_all(`ptr`: Pointer,uniffi_out_err:
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_fetch_apply_at_frame_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_fetch_audio_link_frame_counter(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_audio_link_info(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_audio_link_phase(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -2390,8 +2392,6 @@ fun uniffi_dspi_core_fn_method_dspicore_fetch_input_rate(`ptr`: Pointer,uniffi_o
 fun uniffi_dspi_core_fn_method_dspicore_fetch_lg_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_limiter_meter(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-fun uniffi_dspi_core_fn_method_dspicore_fetch_link_frame_counter(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_output_fills(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -3292,6 +3292,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_apply_at_frame_status() != 42011.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_audio_link_frame_counter() != 23366.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_audio_link_info() != 56667.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3338,9 +3341,6 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_limiter_meter() != 57932.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_link_frame_counter() != 25885.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_output_fills() != 8756.toShort()) {
@@ -6141,6 +6141,13 @@ public interface DspiCoreInterface {
     fun `fetchApplyAtFrameStatus`(): ApplyAtFrameStatus
     
     /**
+     * Read `EXT_FRAME_COUNTER`: the link frame, the unit's clock and its
+     * output frames at one instant. Errors as
+     * [`DspiCore::fetch_audio_link_status`].
+     */
+    fun `fetchAudioLinkFrameCounter`(): AudioLinkFrameCounter
+    
+    /**
      * Read `EXT_LINK_INFO` again and keep it: its delay limits follow the
      * output latency option, so re-read after changing that. Errors as
      * [`DspiCore::fetch_audio_link_status`].
@@ -6296,13 +6303,6 @@ public interface DspiCoreInterface {
      * (including a short reply).
      */
     fun `fetchLimiterMeter`(): List<kotlin.Float>
-    
-    /**
-     * Read `EXT_FRAME_COUNTER`: the link frame, the unit's clock and its
-     * output frames at one instant. Errors as
-     * [`DspiCore::fetch_audio_link_status`].
-     */
-    fun `fetchLinkFrameCounter`(): LinkFrameCounter
     
     /**
      * The live outputs' fill for the Stats rows: to frame resolution, on the
@@ -9618,6 +9618,24 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Read `EXT_FRAME_COUNTER`: the link frame, the unit's clock and its
+     * output frames at one instant. Errors as
+     * [`DspiCore::fetch_audio_link_status`].
+     */
+    @Throws(DspiException::class)override fun `fetchAudioLinkFrameCounter`(): AudioLinkFrameCounter {
+            return FfiConverterTypeAudioLinkFrameCounter.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_audio_link_frame_counter(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Read `EXT_LINK_INFO` again and keep it: its delay limits follow the
      * output latency option, so re-read after changing that. Errors as
      * [`DspiCore::fetch_audio_link_status`].
@@ -9940,24 +9958,6 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     callWithPointer {
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_limiter_meter(
-        it, _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Read `EXT_FRAME_COUNTER`: the link frame, the unit's clock and its
-     * output frames at one instant. Errors as
-     * [`DspiCore::fetch_audio_link_status`].
-     */
-    @Throws(DspiException::class)override fun `fetchLinkFrameCounter`(): LinkFrameCounter {
-            return FfiConverterTypeLinkFrameCounter.lift(
-    callWithPointer {
-    uniffiRustCallWithError(DspiException) { _status ->
-    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_link_frame_counter(
         it, _status)
 }
     }
@@ -15777,6 +15777,54 @@ public object FfiConverterTypeApplyAtFrameStatus: FfiConverterRustBuffer<ApplyAt
 
 
 /**
+ * What `EXT_FRAME_COUNTER` reports.
+ */
+data class AudioLinkFrameCounter (
+    /**
+     * The link frame at the read.
+     */
+    var `frame`: kotlin.ULong, 
+    /**
+     * The unit's clock at the read, µs (wraps).
+     */
+    var `timeUs`: kotlin.UInt, 
+    /**
+     * Output frames played, low 32 bits.
+     */
+    var `outputFrames`: kotlin.UInt
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAudioLinkFrameCounter: FfiConverterRustBuffer<AudioLinkFrameCounter> {
+    override fun read(buf: ByteBuffer): AudioLinkFrameCounter {
+        return AudioLinkFrameCounter(
+            FfiConverterULong.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AudioLinkFrameCounter) = (
+            FfiConverterULong.allocationSize(value.`frame`) +
+            FfiConverterUInt.allocationSize(value.`timeUs`) +
+            FfiConverterUInt.allocationSize(value.`outputFrames`)
+    )
+
+    override fun write(value: AudioLinkFrameCounter, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`frame`, buf)
+            FfiConverterUInt.write(value.`timeUs`, buf)
+            FfiConverterUInt.write(value.`outputFrames`, buf)
+    }
+}
+
+
+
+/**
  * What `EXT_LINK_INFO` reports, read once at connect.
  */
 data class AudioLinkInfo (
@@ -18331,7 +18379,11 @@ data class HistoryEntry (
      * gain and the Linkwitz target Q as little-endian `f32`s), `ext.pairmap`
      * (the crossfeed pair map's four bytes), `ext.vreg` (a core-voltage
      * request: op and value), `raw` (a raw request: opcode and `wValue` as
-     * indices, the payload as the value). A control-surface operation is
+     * indices, the payload as the value), `ext.audio_link.slots` (the 8
+     * slot bytes), `ext.audio_link.phase` (mode, then the delay and the
+     * hops offset as little-endian 16-bit values), `ext.audio_link.apply`
+     * (op and arg as indices, the 16-byte request as the value) and
+     * `ext.audio_link.stats_reset`. A control-surface operation is
      * under its `cs.*` path with the operation's JSON as text.
      */
     var `path`: kotlin.String, 
@@ -18889,54 +18941,6 @@ public object FfiConverterTypeLinkDevice: FfiConverterRustBuffer<LinkDevice> {
             FfiConverterString.write(value.`state`, buf)
             FfiConverterString.write(value.`link`, buf)
             FfiConverterUInt.write(value.`lockedBy`, buf)
-    }
-}
-
-
-
-/**
- * What `EXT_FRAME_COUNTER` reports.
- */
-data class LinkFrameCounter (
-    /**
-     * The link frame at the read.
-     */
-    var `frame`: kotlin.ULong, 
-    /**
-     * The unit's clock at the read, µs (wraps).
-     */
-    var `timeUs`: kotlin.UInt, 
-    /**
-     * Output frames played, low 32 bits.
-     */
-    var `outputFrames`: kotlin.UInt
-) {
-    
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeLinkFrameCounter: FfiConverterRustBuffer<LinkFrameCounter> {
-    override fun read(buf: ByteBuffer): LinkFrameCounter {
-        return LinkFrameCounter(
-            FfiConverterULong.read(buf),
-            FfiConverterUInt.read(buf),
-            FfiConverterUInt.read(buf),
-        )
-    }
-
-    override fun allocationSize(value: LinkFrameCounter) = (
-            FfiConverterULong.allocationSize(value.`frame`) +
-            FfiConverterUInt.allocationSize(value.`timeUs`) +
-            FfiConverterUInt.allocationSize(value.`outputFrames`)
-    )
-
-    override fun write(value: LinkFrameCounter, buf: ByteBuffer) {
-            FfiConverterULong.write(value.`frame`, buf)
-            FfiConverterUInt.write(value.`timeUs`, buf)
-            FfiConverterUInt.write(value.`outputFrames`, buf)
     }
 }
 

@@ -14,6 +14,21 @@
 //! does a sub-command the list did not name. The link's events (0xE1 lock,
 //! loss and re-anchor, 0xE2 apply results) go into the event log
 //! (`events.rs`), only from a device that announces them.
+//!
+//! History (P0W): slot changes are undoable; a phase or delay change is
+//! recorded with an audible hazard (it re-anchors with a short silence), so
+//! undo steps over it; apply-at-frame and the counter reset are actions.
+//!
+//! Notes for SW2 (the hub), from review sw1, not fixed here:
+//! - The link's writes send no `PARAM_CHANGED` (2.8). The hub's router
+//!   (`dspi-hub` `router.rs` `is_silent`) knows only `EXT_CORE_VREG` as a
+//!   silent extension write, so a link write leaves a `Writer` entry waiting,
+//!   and the next unrelated scalar notification can take its attribution:
+//!   add 0x8000-0x800A to the silent list.
+//! - Apply-at-frame `UNMUTE` (op 2) arrives as `REQ_EXTENSION 0x8006`, past
+//!   BULKFIX's `GainGuard`, which intercepts `REQ_SET_OUTPUT_MUTE` only. No
+//!   effect today (every link build carries `FIX_BULK_DB_POWF`, so the guard
+//!   gates nothing there); keep it in mind if that changes.
 
 use dspi_session::ext::alink::{self, LINK_SLOT_SILENT, LINK_SLOTS};
 use dspi_session::ext::{
@@ -23,7 +38,10 @@ use dspi_session::ext::{
 
 use dspi_transport::Transport;
 
+use dspi_proto::value::Value;
+
 use crate::ext::{read_error, write_error};
+use crate::journal;
 use crate::{Connection, DspiCore, DspiError, Inner, Result};
 
 /// A slot value that feeds silence to its matrix input
@@ -140,7 +158,7 @@ pub struct AudioLinkPhase {
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LinkFrameCounter {
+pub struct AudioLinkFrameCounter {
     /// The link frame at the read.
     pub frame: u64,
     /// The unit's clock at the read, µs (wraps).
@@ -252,8 +270,18 @@ impl DspiCore {
                 ),
             });
         }
+        // -- fixup sw1 (F1) -- journalled, undoable: live routing, as the
+        // crossfeed pair map. The value before is read from the device.
+        journal::check_replay(&inner)?;
         let mut w = inner.writable_conn()?;
-        sx::write_link_slots(w.conn().transport(), slots).map_err(write_error)
+        let t = w.conn().transport();
+        let before = sx::read_link_slots(t)
+            .ok()
+            .map(|s| Value::Bytes(s.0.to_vec()));
+        sx::write_link_slots(t, slots).map_err(write_error)?;
+        journal::Pending::of(journal::AUDIO_LINK_SLOTS, &[], before)
+            .done_with(&mut inner, Value::Bytes(slots.0.to_vec()));
+        Ok(())
     }
 
     /// Read `EXT_LINK_PHASE`: the phase-lock mode, the fixed delay and the
@@ -299,14 +327,21 @@ impl DspiCore {
             flags: 0,
             state: 0,
         };
+        // -- fixup sw1 (F1) -- journalled, never undone: a change re-anchors
+        // with a short silence (an audible hazard, so undo steps over it).
         let mut w = inner.writable_conn()?;
-        sx::write_link_phase(w.conn().transport(), p).map_err(write_error)
+        let t = w.conn().transport();
+        let before = sx::read_link_phase(t).ok().map(|b| phase_value(&b));
+        sx::write_link_phase(t, p).map_err(write_error)?;
+        journal::Pending::of(journal::AUDIO_LINK_PHASE, &[], before)
+            .done_with(&mut inner, phase_value(&p));
+        Ok(())
     }
 
     /// Read `EXT_FRAME_COUNTER`: the link frame, the unit's clock and its
     /// output frames at one instant. Errors as
     /// [`DspiCore::fetch_audio_link_status`].
-    pub fn fetch_link_frame_counter(&self) -> Result<LinkFrameCounter> {
+    pub fn fetch_audio_link_frame_counter(&self) -> Result<AudioLinkFrameCounter> {
         self.ensure_probed();
         let mut inner = self.lock();
         let conn = link_conn(&mut inner, alink::EXT_FRAME_COUNTER)?;
@@ -344,7 +379,15 @@ impl DspiCore {
         let mut inner = self.lock();
         link_conn(&mut inner, alink::EXT_APPLY_AT_FRAME)?;
         let mut w = inner.writable_conn()?;
-        sx::apply_at_frame(w.conn().transport(), req).map_err(write_error)
+        sx::apply_at_frame(w.conn().transport(), req).map_err(write_error)?;
+        // -- fixup sw1 (F1) -- an action: history, never undone
+        journal::journal(
+            &mut inner,
+            journal::AUDIO_LINK_APPLY,
+            &[op, arg],
+            Value::Bytes(req.encode().to_vec()),
+        );
+        Ok(())
     }
 
     /// Read `EXT_APPLY_AT_FRAME`: ops pending and how the last one ended.
@@ -364,7 +407,15 @@ impl DspiCore {
         let mut inner = self.lock();
         link_conn(&mut inner, alink::EXT_LINK_STATS_RESET)?;
         let mut w = inner.writable_conn()?;
-        sx::reset_link_stats(w.conn().transport()).map_err(write_error)
+        sx::reset_link_stats(w.conn().transport()).map_err(write_error)?;
+        // -- fixup sw1 (F1) -- an action: history, never undone
+        journal::journal(
+            &mut inner,
+            journal::AUDIO_LINK_STATS_RESET,
+            &[],
+            Value::Trigger,
+        );
+        Ok(())
     }
 
     /// Open the demo device as a unit receiving the audio link (the fake
@@ -460,8 +511,17 @@ fn phase(p: &LinkPhase) -> AudioLinkPhase {
     }
 }
 
-fn frame_counter(c: &FrameCounter) -> LinkFrameCounter {
-    LinkFrameCounter {
+/// The journal's value of a phase setting: `[mode, d_local LE, hops_offset
+/// LE]`, without the device's flags and state.
+fn phase_value(p: &LinkPhase) -> Value {
+    let mut b = vec![p.mode];
+    b.extend(p.d_local.to_le_bytes());
+    b.extend(p.hops_offset.to_le_bytes());
+    Value::Bytes(b)
+}
+
+fn frame_counter(c: &FrameCounter) -> AudioLinkFrameCounter {
+    AudioLinkFrameCounter {
         frame: c.frame,
         time_us: c.time_us,
         output_frames: c.output_frames,

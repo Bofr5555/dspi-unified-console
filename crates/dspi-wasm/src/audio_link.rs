@@ -77,7 +77,7 @@ pub fn dispatch(core: &DspiCore, method: &str, params: Value) -> Option<CallResu
         "audioLinkPhase" => record(core.fetch_audio_link_phase()),
         "setAudioLinkPhase" => parse::<PhaseParams>(params, method)
             .and_then(|x| done(core.set_audio_link_phase(x.mode, x.d_local, x.hops_offset))),
-        "linkFrameCounter" => record(core.fetch_link_frame_counter()),
+        "audioLinkFrameCounter" => record(core.fetch_audio_link_frame_counter()),
         "applyAtFrame" => parse::<ApplyParams>(params, method)
             .and_then(|a| done(core.apply_at_frame(a.frame, a.op, a.arg, a.value))),
         "applyAtFrameStatus" => record(core.fetch_apply_at_frame_status()),
@@ -125,7 +125,7 @@ mod tests_wp_sw1 {
         assert_eq!(ok(h, "audioLinkSlots", Value::Null)[0], 6);
         ok(h, "setAudioLinkPhase", json!({ "mode": 1, "dLocal": 176 }));
         assert_eq!(ok(h, "audioLinkPhase", Value::Null)["dLocal"], 176);
-        let f = ok(h, "linkFrameCounter", Value::Null)["frame"]
+        let f = ok(h, "audioLinkFrameCounter", Value::Null)["frame"]
             .as_u64()
             .unwrap();
         ok(
