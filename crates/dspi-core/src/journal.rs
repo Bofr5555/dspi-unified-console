@@ -56,7 +56,9 @@
 //!
 //! Only a continuous drag gathers a step: the client marks it with
 //! [`DspiCore::set_dragging`], and a typed value or a discrete write is a
-//! step of its own however soon it follows another (WP QTGAP1).
+//! step of its own however soon it follows another (WP QTGAP1). One drag of
+//! one band is one step whatever fields it moves: undo puts the whole band
+//! back as it was when the drag began (WP P0W2).
 #![warn(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -455,6 +457,7 @@ pub(crate) fn journal(inner: &mut Inner, path: &'static str, indices: &[u8], aft
 
 /// Put `change` in the open session's journal; nowhere without one.
 fn record(inner: &mut Inner, change: Change) {
+    let change = join_band_step(inner, change);
     let Some(conn) = inner.conn.as_mut() else {
         return;
     };
@@ -463,6 +466,92 @@ fn record(inner: &mut Inner, change: Change) {
         .note(change.path, &change.indices, &change.after, now_ms());
     if let Ok(session) = conn.session() {
         session.record_change(change);
+    }
+}
+
+// -- WP P0W2 --
+/// A band's live fields as the journal names them: what a graph handle or a
+/// slider drags. A change of one is journalled under its own path; while a
+/// drag is marked, one that joins a step of another field (or of the whole
+/// band) turns the step into a whole-band one ([`join_band_step`]).
+const BAND_FIELDS: &[&str] = &["eq.freq", "eq.q", "eq.gain", "eq.fp", "eq.qp"];
+
+/// `p` with field `path` set to `v`; `None` for anything but a band field's
+/// number.
+fn with_field(mut p: FilterParams, path: &str, v: &Value) -> Option<FilterParams> {
+    let Value::Float(x) = *v else {
+        return None;
+    };
+    match path {
+        "eq.freq" => p.freq = x,
+        "eq.q" => p.q = x,
+        "eq.gain" | "eq.fp" => p.gain = x,
+        "eq.qp" => p.qp = x,
+        _ => return None,
+    }
+    Some(p)
+}
+
+/// One drag of one band is one step, whatever it moves (WP P0W2). A
+/// whole-band write is journalled under the one field it moved, or as
+/// [`EQ_BAND`] when it moved more (`band_change`), so a graph drag that
+/// alternates one-axis and two-axis moves would alternate paths, and the
+/// session joins only a change of the same path. When `change`, marked to
+/// coalesce, is of a band whose drag step is being gathered under another
+/// of the band's paths, it is journalled as [`EQ_BAND`] (the band before
+/// and after it), and a step still under one field is widened to
+/// [`EQ_BAND`] with the band as it was when the drag began: that field's
+/// value before, the rest as they were before this change (only that field
+/// moved during the step, or it would not be one field's). Anything else,
+/// and anything it cannot rebuild, is left as it was.
+fn join_band_step(inner: &mut Inner, change: Change) -> Change {
+    let of_band = |p: &str| p == EQ_BAND || BAND_FIELDS.contains(&p);
+    if !change.coalesce || !of_band(change.path) {
+        return change;
+    }
+    let (Some(&ch), Some(&b), 2) = (
+        change.indices.first(),
+        change.indices.get(1),
+        change.indices.len(),
+    ) else {
+        return change;
+    };
+    let Some(now) = band(&inner.state, ch, b) else {
+        return change;
+    };
+    let Some(session) = inner.conn.as_mut().and_then(|c| c.session().ok()) else {
+        return change;
+    };
+    let Some(step) = session.gathering(change.source, &change.indices) else {
+        return change;
+    };
+    if step.path == change.path || !of_band(step.path) {
+        return change;
+    }
+    // The band before this change.
+    let was = match (change.path, &change.before) {
+        (EQ_BAND, Some(Value::Bytes(bytes))) => band_from_bytes(bytes),
+        (field, Some(v)) => with_field(now, field, v),
+        _ => None,
+    };
+    let Some(was) = was else {
+        return change;
+    };
+    if step.path != EQ_BAND {
+        let Some(start) = step
+            .before
+            .as_ref()
+            .and_then(|v| with_field(was, step.path, v))
+        else {
+            return change;
+        };
+        session.widen_step(EQ_BAND, Some(Value::Bytes(band_bytes(&start))));
+    }
+    Change {
+        path: EQ_BAND,
+        before: Some(Value::Bytes(band_bytes(&was))),
+        after: Value::Bytes(band_bytes(&now)),
+        ..change
     }
 }
 
@@ -1017,3 +1106,9 @@ mod tests_wp_swapfix;
 #[allow(clippy::arithmetic_side_effects)]
 #[path = "journal/tests_wp_qtgap1.rs"]
 mod tests_wp_qtgap1;
+
+// -- WP P0W2 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+#[path = "journal/tests_wp_p0w2.rs"]
+mod tests_wp_p0w2;
