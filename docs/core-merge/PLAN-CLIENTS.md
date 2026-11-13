@@ -1673,6 +1673,8 @@ File…, Save as Template…); `MenuTable.qml`/`Menus.qml` entries (this wave's 
 between A and B; the import dialog shows P1DF's diff and block choices before applying, with "Apply with rollback" and a countdown
 bar (Keep, Revert); Open File… opens a document offline with a "File:" badge in the status bar. **Done when:** smoke sections for
 each on the demo device, both schemes; no new modal for a success. **Deps:** P1SN, P1AB, P1DF, P1SA, P1OF. **Clients:** Qt.
+-- fixup hwlk1f (owner) -- Also: the System window shows `system.set`'s `warnings` after Save (a unit without the audio link;
+`link_system_save` returns only the revision today, so this needs the save's answer through the core).
 
 **P1QT2: Qt: Installer page, lock, tokens, AutoEQ preview, notices, groups.** [TODO] Size 2. Wave P1-E. **Owns:** new
 `qml/settings/pages/InstallerPage.qml` (Settings, beside Advanced; the Mode menu stays hidden), `LimitsController`, edits in
@@ -1706,6 +1708,8 @@ P1PR, P1AQ, P1NT, P1TK, P1UG, P1WB1; WB6i (settings) for the power-on fields, or
 no visible layout growth. **Done when:** view-model and Robolectric tests, shots into `work/wp-P1AN1/shots/`; Gradle through the
 slot. **Deps:** P1SN, P1AB, P1DF, P1SA, P1OF; **AN42** (undo, in progress) merged first, since both touch the app bar. **Clients:**
 Android.
+-- fixup hwlk1f (owner) -- Also: the System screen shows `system.set`'s `warnings` after Save (a unit without the audio link;
+`link_system_save` returns only the revision today, so this needs the save's answer through the core).
 
 **P1AN2: Android: Installer, lock, mode switch, power-on, notices, tokens, AutoEQ preview, groups.** [TODO] Size 3.5. Wave P1-E.
 **Owns:** `feature-settings` Installer and power-on pages, the mode switch from the manifest in the top-bar menu, `DangerousOps*`

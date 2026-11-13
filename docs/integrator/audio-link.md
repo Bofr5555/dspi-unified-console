@@ -114,6 +114,29 @@ boundary. Then:
   sender, and the op is not `unmute`: one write, no control-path latency;
 - **to each unit** (`EXT_APPLY_AT_FRAME`) otherwise.
 
+-- WP HWLK1F -- **Units without the audio link.** A unit whose firmware has no
+audio link (its `EXT_LIST` names no 0x8000 block, or `EXT_LINK_INFO` stalls: a
+K340 on bofr-main 470a127, stock firmware) takes no frame. Its ops are written at
+once with its own commands (`mute`/`unmute` the user mute, `preset_load`,
+`master_volume`, `out_delay` as samples at the model's rate), listed in the
+plan's `direct`, with the result `applied_now`; `click` and `sync_pulse` have no
+such command (`unsupported`). The rest of the scene is planned as above; the
+superframe path needs only every unit *with* the link in the target. Ops on
+units with the link that no frame could be read for are listed in `unscheduled`
+and answered `no_frame`, the path is then `direct`. A scene is refused
+(`no_device`, "no unit of the scene reports a link frame") only when nothing can
+be written at once and nothing can be scheduled. On the superframe path, a unit
+of the scene that is not attached is answered `no_device` (reason
+`not connected`), and one attached whose own frame could not be read `no_frame`
+(reason `no link frame read`: not known to have taken it). -- fixup hwlk1f --
+A unit goes the direct way only when two reads agree that its firmware has no
+link (its answer now and the last status poll's, or a second read when no poll
+has told); an unknown unit never does: its ops stay frame-timed or are not
+written. `onTime` is true only when every op acted at the frame: never
+with an op applied at once or a unit not reached. The clients say it in one
+sentence: "Evening recalled: applied now on K (no audio link); at link frame N
+through the sender on the others."
+
 `unmute` always goes to each unit: the BULKFIX guard sits on each unit's own
 connection and re-sends the gains of outputs a failed bulk write left suspect
 before it lets an unmute through (or refuses it). A broadcast through the
@@ -174,7 +197,7 @@ named like I1's, judged by the hub's roles, with no REST mirror yet.
 | `t` | Role | Request | Answer |
 |---|---|---|---|
 | `system.get` | any | | `model`, `revision`, `role` (this session's, now) |
-| `system.set` | admin | `model`, optional `revision` (the one it was edited from) | `revision`; `bad_request` with the reason; `conflict` when `revision` is given and the hub has a newer one |
+| `system.set` | admin | `model`, optional `revision` (the one it was edited from) | `revision`, `warnings` (WP HWLK1F: units without the audio link; the model is kept); `bad_request` with the reason; `conflict` when `revision` is given and the hub has a newer one |
 | `system.status` | any | | `revision`, `observed` (by serial), `alignment`, `alarms`, `role` |
 | `system.align` | admin | `apply` (false: compute only) | `alignment`, `applied`, `writes` |
 | `system.scene.apply` | control, op by op | `scene` | `plan` (`frame`, `path`, `ops`, `leadFrames`, `systemMute`, `systemFlags`), `writes`, `frameAfterWrites`, `onTime` |
@@ -206,7 +229,26 @@ at its next read, without reconnecting.
 Each write result is `{serial, element, what, result}` with `result` one of
 `ok`, `unchanged`, `skipped` (not reachable or out of range), `refused` (the
 device stalled it), `locked` (a client holds the device's lock), `denied`,
-`timeout`, `no_device`.
+`timeout`, `no_device`; for a scene also `applied_now`, `unsupported` and
+`no_frame` (above). -- WP HWLK1F -- A `skipped` alignment write carries `reason`:
+`not connected`, `no audio link (firmware)`, `limits unknown` or `out of range`;
+a scene's op applied at once carries `no audio link (firmware)`. The clients say
+what an alignment did: "Nothing was written: skipped on K (no audio link
+(firmware))." when nothing was (also when every write failed: "Nothing was
+written: 2 writes failed; …"), else the units written and those skipped.
+
+-- WP HWLK1F -- `observed` carries `alink`: `present` (`EXT_LINK_INFO`
+answers), `none` (the firmware has no audio link, as above) or null (not told).
+-- fixup hwlk1f -- `none` comes only from the firmware's own answer: the device
+stalls `EXT_LINK_INFO` (a stall, not a bus fault, a short or malformed reply or
+a timeout, which share the Link status `ERROR`), or `EXT_LIST` answers without
+it. A read that tells nothing keeps the last value seen. A unit not attached
+keeps everything it last reported (with `online: false`), so it is as last
+seen; it is never written by an alignment. Such a unit gets the issue `no_alink` instead of
+`limits_unknown`, no link alarm, and every client shows it as "No audio link
+(firmware)", never "Unknown" and never with a role from the model; it is not
+counted in "N of M locked". `system.set` keeps a model that names one and
+answers `warnings`, one sentence per such unit (empty otherwise).
 
 `system.status`, `system.align` and `system.scene.apply` read and write the
 devices: they take a few transfers per unit and block that connection, not the

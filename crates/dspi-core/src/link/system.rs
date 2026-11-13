@@ -57,14 +57,16 @@ pub struct LinkSystemUnit {
     /// `sender`, `fan_out` or `unit`.
     pub kind: String,
     /// The role on the audio link in the glossary's words: "Sender",
-    /// "Fan-out", "Repeater", "Receiver" (what the device says, else the model).
+    /// "Fan-out", "Repeater", "Receiver" (what the device says, else the model),
+    /// or "No audio link" for a device whose firmware has none (WP HWLK1F).
     pub role: String,
     /// The room's name; "" for none.
     pub room: String,
     /// Attached to the hub now.
     pub connected: bool,
     /// `locked`, `searching`, `holdover`, `off`, `clock` (a sender),
-    /// `offline` (not attached) or `unknown`.
+    /// `offline` (not attached), `no_alink` (attached, its firmware has no
+    /// audio link: WP HWLK1F) or `unknown`.
     pub state: String,
     /// [`Self::state`] in words: "Locked", "Holdover", ... "Not connected".
     pub state_word: String,
@@ -193,7 +195,8 @@ pub struct LinkSystemView {
     pub holdover: u32,
     /// Units whose link delay is still to be written.
     pub pending: u32,
-    /// Units the model has.
+    /// Units the model has, but those whose firmware has no audio link
+    /// (WP HWLK1F): "N of M locked" counts the units that can lock.
     pub unit_count: u32,
     /// One line for a status indicator: "Audio link: 4 of 4 locked".
     pub summary: String,
@@ -540,6 +543,8 @@ fn state_word(state: &str) -> &'static str {
         "off" => "Off",
         "clock" => "Clock",
         "offline" => "Not connected",
+        // -- WP HWLK1F --
+        "no_alink" => "No audio link (firmware)",
         _ => "Unknown",
     }
 }
@@ -571,6 +576,10 @@ fn result_word(result: &str) -> String {
         "denied" => "Denied",
         "timeout" => "No answer",
         "no_device" => "Not connected",
+        // -- WP HWLK1F --
+        "applied_now" => "Applied now",
+        "unsupported" => "Needs the audio link",
+        "no_frame" => "No link frame",
         r if r.starts_with("clamped") => "Clamped",
         r => r,
     };
@@ -579,7 +588,7 @@ fn result_word(result: &str) -> String {
 
 fn result_tone(result: &str) -> &'static str {
     match result {
-        "ok" | "unchanged" | "queued" | "applied" => "ok",
+        "ok" | "unchanged" | "queued" | "applied" | "applied_now" => "ok",
         "late" | "queued_unverified" | "skipped" | "cancelled" => "warn",
         r if r.starts_with("clamped") => "warn",
         _ => "bad",
@@ -590,7 +599,7 @@ fn result_tone(result: &str) -> &'static str {
 fn taken(result: &str) -> bool {
     matches!(
         result,
-        "ok" | "unchanged" | "queued" | "queued_unverified" | "applied" | "late"
+        "ok" | "unchanged" | "queued" | "queued_unverified" | "applied" | "late" | "applied_now"
     ) || result.starts_with("clamped")
 }
 
@@ -704,8 +713,12 @@ pub(crate) fn build_view(
             "unit" if e.get("repeater").and_then(Value::as_bool) == Some(true) => "repeater",
             k => k,
         };
+        // -- WP HWLK1F -- a firmware without the link is said as such, never "Unknown"
+        let no_alink = connected && o.map(|o| str_at(o, &["alink"])) == Some("none");
         let state = if !connected {
             "offline"
+        } else if no_alink {
+            "no_alink"
         } else if kind == "sender" {
             "clock"
         } else {
@@ -720,7 +733,13 @@ pub(crate) fn build_view(
             name: if name.is_empty() { id } else { name }.to_owned(),
             serial: serial.to_owned(),
             kind: kind.to_owned(),
-            role: role_word(seen_role.unwrap_or(model_role)).to_owned(),
+            // -- WP HWLK1F -- never a role from the model alone for a unit without the link
+            role: if no_alink {
+                "No audio link"
+            } else {
+                role_word(seen_role.unwrap_or(model_role))
+            }
+            .to_owned(),
             room: room_name(str_at(e, &["room"])),
             connected,
             state: state.to_owned(),
@@ -750,8 +769,15 @@ pub(crate) fn build_view(
         units.push(base(f, "fan_out"));
     }
     let (mut locked, mut holdover, mut pending, mut count) = (0u32, 0u32, 0u32, 0u32);
+    let mut without = 0u32;
     for u in list(model, "units") {
         let mut row = base(u, "unit");
+        // -- WP HWLK1F -- no link delay, nothing pending, not counted among those that lock
+        if row.state == "no_alink" {
+            without = without.saturating_add(1);
+            units.push(row);
+            continue;
+        }
         let plan = plan_of(&row.id);
         let planned_delay = plan.and_then(|p| u32_of(p.get("dLocal")));
         let planned_offset = plan.and_then(|p| i32_of(p.get("hopsOffset")));
@@ -805,7 +831,17 @@ pub(crate) fn build_view(
         .find_map(|o| o.get("pendingApplyFrame").and_then(Value::as_u64));
 
     let installed = !units.is_empty();
-    let (summary, health) = summary(installed, count, locked, holdover, pending, &units);
+    let (summary, health) = summary(
+        installed,
+        Counts {
+            count,
+            locked,
+            holdover,
+            pending,
+            without,
+        },
+        &units,
+    );
     let may_edit = role == "admin";
     let may_recall = role == "admin" || role == "control";
     let delay = u32_of(at(status, &["alignment", "dFrames"])).unwrap_or(0);
@@ -865,15 +901,27 @@ pub(crate) fn build_view(
     }
 }
 
-/// The status line and its meaning.
-fn summary(
-    installed: bool,
+/// The units counted for the summary.
+struct Counts {
+    /// Units that can lock (not those without the link).
     count: u32,
     locked: u32,
     holdover: u32,
     pending: u32,
-    units: &[LinkSystemUnit],
-) -> (String, &'static str) {
+    // -- WP HWLK1F --
+    /// Units whose firmware has no audio link.
+    without: u32,
+}
+
+/// The status line and its meaning.
+fn summary(installed: bool, c: Counts, units: &[LinkSystemUnit]) -> (String, &'static str) {
+    let Counts {
+        count,
+        locked,
+        holdover,
+        pending,
+        without,
+    } = c;
     if !installed {
         return ("No audio link installation on this hub".into(), "none");
     }
@@ -882,6 +930,10 @@ fn summary(
         .filter(|u| u.kind == "unit" && !u.connected)
         .count();
     let mut line = format!("Audio link: {locked} of {count} locked");
+    // -- WP HWLK1F --
+    if without > 0 {
+        line.push_str(&format!(", {without} without the audio link (firmware)"));
+    }
     if holdover > 0 {
         line.push_str(&format!(", {holdover} in holdover"));
     }
@@ -893,7 +945,7 @@ fn summary(
     }
     let health = if holdover > 0 || offline > 0 {
         "problem"
-    } else if locked < count || pending > 0 {
+    } else if locked < count || pending > 0 || without > 0 {
         "warning"
     } else {
         "ok"
@@ -974,9 +1026,13 @@ pub(crate) fn recall_outcome(
     let mut writes = writes_of(report, model);
     // -- fixup lk1 -- through the sender the one write carries the whole scene, so it
     // is named as the scene: "Sender · Scene Closed: Refused", never a refused "Mute"
+    // -- WP HWLK1F -- not a unit's own result, which the hub gives a reason (applied
+    // now without the audio link, not connected): it keeps its op
     if path == "superframe" {
-        for w in &mut writes {
-            w.what = format!("Scene {name}");
+        for (w, raw) in writes.iter_mut().zip(list(report, "writes")) {
+            if str_at(raw, &["reason"]).is_empty() {
+                w.what = format!("Scene {name}");
+            }
         }
     }
     let was_taken = list(report, "writes")
@@ -988,7 +1044,11 @@ pub(crate) fn recall_outcome(
         .map(|w| str_at(w, &["result"]))
         .find(|r| !taken(r))
         .unwrap_or("refused");
-    let (mut message, held_frame) = if was_taken {
+    // -- WP HWLK1F -- units without the audio link took it at once, not at the frame
+    let mixed = recall_parts(report, model);
+    let (mut message, held_frame) = if was_taken && !mixed.is_plain() {
+        (mixed.sentence(&name, path, frame, plan), None)
+    } else if was_taken {
         let path_word = match path {
             "superframe" => "through the sender",
             "per_unit" => "to each unit",
@@ -1081,6 +1141,133 @@ pub(crate) fn recall_outcome(
     }
 }
 
+// -- WP HWLK1F --
+/// A recall's writes sorted by what happened to each unit, for its sentence
+/// when it was not simply "at the frame on every unit".
+#[derive(Debug, Default)]
+struct RecallParts {
+    /// Units without the audio link that took it at once.
+    now: Vec<String>,
+    /// Units without the audio link that did not, with the result in words.
+    now_failed: Vec<String>,
+    /// Units with the link that no frame could be read for.
+    no_frame: Vec<String>,
+    /// Units of the scene that are not attached.
+    absent: Vec<String>,
+    // -- fixup hwlk1f (F1) --
+    /// Units with the link (or not told) that the sender's write reaches, but
+    /// whose own frame could not be read: not known to have taken it.
+    unverified: Vec<String>,
+    /// Every write at the frame was taken in time.
+    frame_ok: bool,
+    /// Any write went at the frame.
+    at_frame: bool,
+}
+
+impl RecallParts {
+    /// Nothing to say beyond the frame and "on time".
+    fn is_plain(&self) -> bool {
+        self.now.is_empty()
+            && self.now_failed.is_empty()
+            && self.no_frame.is_empty()
+            && self.absent.is_empty()
+            && self.unverified.is_empty()
+    }
+
+    fn sentence(&self, name: &str, path: &str, frame: u64, plan: &Value) -> String {
+        let mut parts = Vec::new();
+        if !self.now.is_empty() {
+            parts.push(format!(
+                "applied now on {} (no audio link)",
+                self.now.join(", ")
+            ));
+        }
+        if self.at_frame {
+            let path_word = if path == "superframe" {
+                "through the sender"
+            } else {
+                "to each unit"
+            };
+            let whom = if self.now.is_empty() && self.now_failed.is_empty() {
+                ""
+            } else {
+                " on the others"
+            };
+            parts.push(format!("at link frame {frame} {path_word}{whom}"));
+        }
+        if !self.now_failed.is_empty() {
+            parts.push(format!("not applied on {}", self.now_failed.join(", ")));
+        }
+        if !self.no_frame.is_empty() {
+            parts.push(format!(
+                "not applied on {} (no link frame)",
+                self.no_frame.join(", ")
+            ));
+        }
+        if !self.absent.is_empty() {
+            parts.push(format!("{} not connected", self.absent.join(", ")));
+        }
+        if !self.unverified.is_empty() {
+            parts.push(format!(
+                "not known to have taken it on {} (no link frame read)",
+                self.unverified.join(", ")
+            ));
+        }
+        let mut m = format!("{name} recalled: {}", parts.join("; "));
+        match plan.get("systemMute").and_then(Value::as_bool) {
+            Some(true) => m.push_str("; system mute on"),
+            Some(false) => m.push_str("; system mute off"),
+            None => {}
+        }
+        m.push('.');
+        if self.at_frame && !self.frame_ok {
+            m.push_str(" Not every unit at the frame on time.");
+        }
+        m
+    }
+}
+
+/// [`RecallParts`] of a hub's `system.scene.apply` report.
+fn recall_parts(report: &Value, model: &Value) -> RecallParts {
+    let mut p = RecallParts {
+        frame_ok: true,
+        ..RecallParts::default()
+    };
+    let push = |v: &mut Vec<String>, n: String| {
+        if !v.contains(&n) {
+            v.push(n);
+        }
+    };
+    for w in list(report, "writes") {
+        let result = str_at(w, &["result"]);
+        let element = str_at(w, &["element"]);
+        let unit = element_name(model, element);
+        let direct = str_at(w, &["reason"]) == "no audio link (firmware)";
+        match result {
+            "applied_now" => push(&mut p.now, unit),
+            _ if direct => push(
+                &mut p.now_failed,
+                format!("{unit} ({})", result_word(result)),
+            ),
+            "no_frame" if str_at(w, &["reason"]) == "no link frame read" => {
+                push(&mut p.unverified, unit);
+            }
+            "no_frame" => push(&mut p.no_frame, unit),
+            "no_device" => push(&mut p.absent, unit),
+            r => {
+                if matches!(str_at(w, &["what"]), "system_mute" | "system_unmute") {
+                    continue;
+                }
+                p.at_frame = true;
+                if !matches!(r, "queued" | "applied" | "ok" | "ok_unverified") {
+                    p.frame_ok = false;
+                }
+            }
+        }
+    }
+    p
+}
+
 // -- WP WB8 --
 /// What a recall did, for a client that sent `system.scene.apply` itself (the
 /// web's `hubSystem`): [`DspiCore::link_system_recall`]'s outcome and words from
@@ -1100,11 +1287,47 @@ pub fn scene_recall_outcome(
     recall_outcome(scene, report, model, held, rate)
 }
 
-/// What writing the link delays did, from the hub's report.
+// -- WP HWLK1F --
+/// What writing the link delays did, for a client that sent `system.align`
+/// itself (the web's `hubSystem`): [`DspiCore::link_system_align`]'s outcome
+/// and words from the hub's `report` and the `model` of `system.get`.
+pub fn system_align_outcome(report: &Value, model: &Value) -> LinkSystemAlign {
+    align_outcome(report, model)
+}
+
+/// What writing the link delays did, from the hub's report. -- WP HWLK1F --
+/// Said as it was: nothing written (and why) when every write was skipped or
+/// already in place, and the units written and skipped when only some were.
 pub(crate) fn align_outcome(report: &Value, model: &Value) -> LinkSystemAlign {
     let applied = report.get("applied").and_then(Value::as_bool) == Some(true);
     let writes = writes_of(report, model);
     let failed = writes.iter().filter(|w| w.tone == "bad").count();
+    // By unit, in the report's order: written, already set, skipped (and why).
+    let (mut written, mut kept, mut skipped) = (Vec::new(), Vec::new(), Vec::new());
+    for (w, raw) in writes.iter().zip(list(report, "writes")) {
+        let unit = &w.unit;
+        if w.result == "ok" || w.result.starts_with("clamped") {
+            kept.retain(|k| k != unit);
+            if !written.contains(unit) {
+                written.push(unit.clone());
+            }
+        } else if w.result == "unchanged" {
+            if !written.contains(unit) && !kept.contains(unit) {
+                kept.push(unit.clone());
+            }
+        } else if w.result == "skipped" {
+            let reason = str_at(raw, &["reason"]);
+            skipped.push(if reason.is_empty() {
+                unit.clone()
+            } else {
+                format!("{unit} ({reason})")
+            });
+        }
+    }
+    let mut parts = Vec::new();
+    if !skipped.is_empty() {
+        parts.push(format!("skipped on {}", skipped.join(", ")));
+    }
     let message = if !applied {
         let issue = list(at(report, &["alignment"]).unwrap_or(&Value::Null), "issues")
             .iter()
@@ -1112,10 +1335,38 @@ pub(crate) fn align_outcome(report: &Value, model: &Value) -> LinkSystemAlign {
             .find(|m| !m.is_empty())
             .unwrap_or("the alignment has an issue");
         format!("The link delays were not written: {issue}.")
+    } else if written.is_empty() && failed == 0 {
+        if !kept.is_empty() {
+            parts.insert(0, format!("already set on {}", kept.join(", ")));
+        }
+        if skipped.is_empty() {
+            "Nothing was written: every unit already has its link delays.".to_owned()
+        } else {
+            format!("Nothing was written: {}.", parts.join("; "))
+        }
+    } else if failed > 0 && written.is_empty() {
+        // -- fixup hwlk1f (F3) -- every write failed: nothing was written, said so
+        let mut m = format!("Nothing was written: {failed} writes failed");
+        if !parts.is_empty() {
+            m.push_str(&format!("; {}", parts.join("; ")));
+        }
+        m.push('.');
+        m
     } else if failed > 0 {
-        format!("The link delays were written; {failed} writes failed.")
-    } else {
+        let mut m = format!("The link delays were written; {failed} writes failed");
+        if !parts.is_empty() {
+            m.push_str(&format!("; {}", parts.join("; ")));
+        }
+        m.push('.');
+        m
+    } else if parts.is_empty() {
         "The link delays were written. Each unit re-anchored with a short silence.".to_owned()
+    } else {
+        format!(
+            "The link delays were written on {} (each re-anchored with a short silence); {}.",
+            written.join(", "),
+            parts.join("; ")
+        )
     };
     LinkSystemAlign {
         applied,

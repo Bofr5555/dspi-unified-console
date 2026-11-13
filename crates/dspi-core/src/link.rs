@@ -3233,3 +3233,9 @@ pub mod system;
 #[allow(clippy::arithmetic_side_effects)]
 #[path = "link/tests_wp_lkui1.rs"]
 mod tests_wp_lkui1;
+
+// -- WP HWLK1F --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+#[path = "link/tests_wp_hwlk1f.rs"]
+mod tests_wp_hwlk1f;

@@ -525,6 +525,12 @@ export interface CoreMethods extends AudioLinkMethods {
     params: { scene: string; report: unknown; model: unknown; heldFrame?: number | null; rateHz?: number };
     result: SceneOutcome;
   };
+  // -- WP HWLK1F --
+  /**
+   * What a `system.align` sent with `hubSystem` did, in the core's words (the
+   * outcome every client shows): what was written, what was skipped and why.
+   */
+  alignOutcome: { params: { report: unknown; model: unknown }; result: { applied: boolean; message: string } };
   /** The role the hub gave this session: `viewer`, `control`, `admin`; "" with no hub. */
   hubRole: { params: undefined; result: { role: string } };
   /** Tests only: make the stub core lose its link. The real core answers `unknown_method`. */

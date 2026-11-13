@@ -2655,7 +2655,8 @@ data class LinkSystemUnit(
     val kind: String,
     /**
      * The role on the audio link in the glossary's words: "Sender",
-     * "Fan-out", "Repeater", "Receiver" (what the device says, else the model).
+     * "Fan-out", "Repeater", "Receiver" (what the device says, else the model),
+     * or "No audio link" for a device whose firmware has none (WP HWLK1F).
      */
     val role: String,
     /**
@@ -2668,7 +2669,8 @@ data class LinkSystemUnit(
     val connected: Boolean,
     /**
      * `locked`, `searching`, `holdover`, `off`, `clock` (a sender),
-     * `offline` (not attached) or `unknown`.
+     * `offline` (not attached), `no_alink` (attached, its firmware has no
+     * audio link: WP HWLK1F) or `unknown`.
      */
     val state: String,
     /**
@@ -2889,7 +2891,8 @@ data class LinkSystemView(
      */
     val pending: Long,
     /**
-     * Units the model has.
+     * Units the model has, but those whose firmware has no audio link
+     * (WP HWLK1F): "N of M locked" counts the units that can lock.
      */
     val unitCount: Long,
     /**

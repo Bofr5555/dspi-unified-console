@@ -448,6 +448,8 @@ fn run_command(
                     generation: shared.generation,
                 });
             }
+            // -- fixup hwlk1f (F1) -- a stall is told apart from a fault
+            done.note_failure(&e);
             done.answer(status_of(&e), Vec::new());
         }
     }

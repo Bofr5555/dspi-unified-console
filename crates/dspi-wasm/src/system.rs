@@ -128,6 +128,29 @@ fn scene_outcome(params: Value) -> CallResult {
     Ok(crate::calls::tidy(&outcome))
 }
 
+// -- WP HWLK1F --
+/// `alignOutcome {report, model}`: what a `system.align` the page sent did, in
+/// the core's words (`dspi_core::link::system::system_align_outcome`, what
+/// every client shows): `LinkSystemAlign`. No traffic.
+fn align_outcome(params: Value) -> CallResult {
+    #[derive(serde::Deserialize)]
+    struct P {
+        report: Value,
+        #[serde(default)]
+        model: Value,
+    }
+    let p: P = serde_json::from_value(params)
+        .map_err(|e| CallError::new("invalid", format!("bad parameters: {e}")))?;
+    if !p.report.is_object() {
+        return Err(CallError::new(
+            "invalid",
+            "alignOutcome needs the hub's report",
+        ));
+    }
+    let outcome = dspi_core::link::system::system_align_outcome(&p.report, &p.model);
+    Ok(crate::calls::tidy(&outcome))
+}
+
 /// Dispatch one of this module's methods; `None` for another method.
 pub fn dispatch(core: &DspiCore, method: &str, params: Value) -> Option<CallResult> {
     Some(match method {
@@ -135,6 +158,8 @@ pub fn dispatch(core: &DspiCore, method: &str, params: Value) -> Option<CallResu
         "hubRole" => Ok(json!({ "role": core.link_hub_role() })),
         // -- WP WB8 --
         "sceneOutcome" => scene_outcome(params),
+        // -- WP HWLK1F --
+        "alignOutcome" => align_outcome(params),
         _ => return None,
     })
 }

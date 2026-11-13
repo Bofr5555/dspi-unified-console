@@ -139,7 +139,7 @@ test.describe("SW3: an audio link installation on the hub", () => {
     const result = session.getByLabel("Scene result");
     await expect(result).toContainText("through the sender");
     await expect(result).toContainText("on time on every unit");
-    const eveningLead = Number(/\((\d+) frames ahead\)/.exec((await result.textContent()) ?? "")?.[1]);
+    const eveningLead = Number(/\((\d+) frames ahead/.exec((await result.textContent()) ?? "")?.[1]);
     expect(eveningLead).toBeGreaterThan(0);
     await expect(session.getByRole("complementary", { name: "Status" }).getByLabel("Scene")).toHaveText("Scene: Evening");
     // A zone and a room: to each unit, each unit's own answer.
@@ -210,7 +210,8 @@ test.describe("SW3: an audio link installation on the hub", () => {
     await expect(align.getByLabel("Plan for Terrace")).toContainText("Writable");
     await align.getByRole("button", { name: "Align link delays…", exact: true }).click();
     await page.getByRole("dialog", { name: "Align link delays?" }).getByRole("button", { name: "Align" }).click();
-    await expect(align.getByLabel("Alignment result")).toContainText("Written");
+    // -- WP HWLK1F -- the core's sentence for what was written
+    await expect(align.getByLabel("Alignment result")).toContainText("The link delays were written.");
     const writes = align.getByRole("list", { name: "Alignment writes" });
     await expect(writes.getByLabel("Result for Main right")).toContainText("Link delay: Done");
     await expect(writes.getByLabel("Result for Main left")).toContainText("Delay OUT1");
@@ -280,6 +281,44 @@ test.describe("SW3: an audio link installation on the hub", () => {
     await expect(rail.getByLabel("Scene")).toHaveText("Scene: Evening · Closed refused");
     await expect(rail.getByRole("button", { name: "System mute" })).toContainText(": off");
     await shot(page, "scene-refused");
+  });
+
+  // -- WP HWLK1F -- hw-lk1's K340: a unit whose firmware has no audio link (`--with-plain-unit`)
+  test("HWLK1F: a unit without the audio link is said so, takes a scene at once, is skipped by the alignment and warned about", async ({ page }) => {
+    test.setTimeout(60_000);
+    hub = await linkHub(["--open", "--forget-clients", "--with-plain-unit"]);
+    const session = await openUnit(page, hub, "DEMO-LINK-A");
+    const system = session.getByRole("region", { name: "System" });
+    const plain = system.getByRole("region", { name: "Room Bar" }).getByLabel("Unit Plain unit");
+    await expect(plain).toContainText("Connected");
+    await expect(plain).toContainText("No audio link (firmware)");
+    await expect(plain).not.toContainText("Unknown");
+    await expect(system.getByRole("list", { name: "Topology" }).getByLabel("Unit Plain unit")).toContainText("No audio link (firmware)");
+    // A scene for every unit: at once on P, through the sender on the others; never "on time on every unit".
+    await session.getByLabel("Scenes", { exact: true }).getByRole("button", { name: "Recall Evening" }).click();
+    const result = session.getByLabel("Scene result");
+    await expect(result).toContainText(/Evening recalled: applied now on Plain unit \(no audio link\); at link frame \d+ through the sender on the others\./);
+    await expect(result).not.toContainText("on time on every unit");
+    await expect(result.getByRole("list", { name: "Per unit" }).getByLabel("Result for Plain unit")).toContainText("Master volume -12.0 dB: Applied now");
+    await shot(page, "hwlk1f-scene");
+    // Aligning: written on the others, skipped on P, and why.
+    await setMode(session, page, "Installer");
+    const panel = system.getByRole("region", { name: "Clock and links" });
+    const align = panel.getByRole("region", { name: "Alignment" });
+    await align.getByRole("button", { name: "Align link delays…", exact: true }).click();
+    await page.getByRole("dialog", { name: "Align link delays?" }).getByRole("button", { name: "Align" }).click();
+    await expect(align.getByLabel("Alignment result")).toContainText("skipped on Plain unit (no audio link (firmware))");
+    await expect(align.getByLabel("Alignment result")).toContainText("The link delays were written on Main left");
+    // Saving the installation keeps P, with the hub's warning.
+    const measured = panel.getByRole("table", { name: "Units on the audio link" }).getByLabel("Measured latency of Main right");
+    await measured.fill("250");
+    await measured.press("Enter");
+    await panel.getByRole("button", { name: "Save" }).click();
+    await expect(panel.getByRole("group", { name: "Unsaved installation" })).toHaveCount(0);
+    await expect(panel.getByRole("status", { name: "Installation warnings" })).toContainText(
+      "Plain unit (DEMO-PLAIN): its firmware has no audio link, so it cannot be a receiver on it.",
+    );
+    await shot(page, "hwlk1f-align-and-warning");
   });
 
   test("SW3: Save never overwrites a newer installation; the page says so and offers Reload", async ({ page, browser }) => {

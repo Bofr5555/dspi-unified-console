@@ -199,9 +199,20 @@ uconsole hub                          # share this machine's devices on the netw
 uconsole hub --help                   # pairing, clients and roles
 ```
 
-The hub pairs clients by PIN. Example service files for systemd, launchd and the
+The hub pairs clients by PIN; a PIN gives at most the control role. Admin is given on
+the hub's machine: `uconsole hub role <cid> admin`, or `uconsole hub --pair-admin` for
+the one client that pairs in that window. Example service files for systemd, launchd and the
 Windows task scheduler are in [`packaging/service/`](packaging/service/), with
 install notes.
+
+An audio link installation of simulated devices, for testing (WP SW3, HWLK1F):
+
+```sh
+uconsole --demo hub --audio-link      # a sender, a fan-out, four units and their model
+  --with-plain-unit                   # test option: one more without the audio link (unit P)
+  --with-usb                          # test option: this machine's USB DSPis too, to test a
+                                      # mixed installation on hardware (add them to the model)
+```
 
 The web console (WP WB7, `apps/web`'s built dist; [`apps/web/DEPLOY.md`](../web/DEPLOY.md)):
 

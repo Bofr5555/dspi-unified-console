@@ -259,6 +259,21 @@ impl SystemShared {
         changes
     }
 
+    // -- fixup hwlk1f (F4) --
+    /// What `serial` reported at the last read, if it was read.
+    pub(crate) fn last_observed(&self, serial: &str) -> Option<Observed> {
+        self.lock().observed.get(serial).cloned()
+    }
+
+    // -- WP HWLK1F --
+    /// Whether `serial` was last read with a firmware without the audio link.
+    pub(crate) fn last_seen_without_alink(&self, serial: &str) -> bool {
+        self.lock()
+            .observed
+            .get(serial)
+            .is_some_and(Observed::without_alink)
+    }
+
     /// The hub is about to write unit `serial`'s phase: its re-anchor follows.
     pub(crate) fn expect_reanchor(&self, serial: &str) {
         if let Some(until) = Instant::now().checked_add(REANCHOR_EXPECTED) {

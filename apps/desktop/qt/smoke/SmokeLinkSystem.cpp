@@ -7,7 +7,10 @@
 // and offers Reload, and a Save sent stale is a conflict; Simple shows the
 // status only. Then a PIN hub: paired as Control the editor() is read only, and
 // made a Viewer (`uconsole hub role`, the hub restarted on its store) nothing
-// that writes is offered. Screenshots in <out>/lkui1/, dark and light.
+// that writes is offered. -- WP HWLK1F -- Then a hub with a unit whose firmware has
+// no audio link (`--with-plain-unit`): said so, left out of the locked count, a
+// scene applied at once on it, skipped by the alignment with the reason.
+// Screenshots in <out>/lkui1/, dark and light.
 #include "SmokeDriver.h"
 
 #include "Core.h"
@@ -363,6 +366,49 @@ void linkSystemSection(SmokeDriver &d) {
     window->close();
     leave();
     again.stop();
+
+    // ---- -- WP HWLK1F -- a unit without the audio link (hw-lk1's K340) -----------
+    // `--with-plain-unit`: unit P, a simulated DSPi whose firmware has no audio link
+    UconsoleHub mixed;
+    d.check("hwlk1f: a hub with a unit without the audio link runs",
+            mixed.start(out + QStringLiteral("/hub-mixed"),
+                        { QStringLiteral("--open"), QStringLiteral("--forget-clients"), QStringLiteral("--with-plain-unit") }));
+    link->connectToHub(mixed.url);
+    d.check("hwlk1f: on the hub, DEMO-LINK-A bound", settled() && bind(QStringLiteral("DEMO-LINK-A")));
+    d.check("hwlk1f: the installation is read", d.waitFor(15000, [&] { return sys->available() && sys->installed() && sys->role() == QLatin1String("admin"); }));
+    QVariantMap plain;
+    for (const QVariant &v : sys->units())
+        if (v.toMap().value(QStringLiteral("id")).toString() == QLatin1String("P")) plain = v.toMap();
+    d.check("hwlk1f: P is said to have no audio link, not Unknown nor a Receiver",
+            plain.value(QStringLiteral("stateWord")).toString() == QLatin1String("No audio link (firmware)")
+                && plain.value(QStringLiteral("role")).toString() == QLatin1String("No audio link")
+                && plain.value(QStringLiteral("connected")).toBool());
+    std::printf("smoke: hwlk1f: %s\n", qPrintable(sys->summary()));
+    d.check("hwlk1f: and left out of N of M locked",
+            sys->summary().startsWith(QLatin1String("Audio link: 4 of 4 locked, 1 without the audio link (firmware)")));
+    shell->trigger(QStringLiteral("window.system"));
+    d.waitFor(3000, [&] { return window->isVisible(); });
+    d.spin(400);
+    const auto rowP = [&] { return in(QStringLiteral("SystemWindow.unit.P")); };
+    d.check("hwlk1f: P's row", rowP() && rowP()->property("shownName").toString() == QLatin1String("Plain unit, No audio link (firmware)"));
+    d.check("hwlk1f: recall Evening", click(evening()) && d.waitFor(15000, [&] {
+        return !sys->busy() && sys->lastRecall().value(QStringLiteral("name")).toString() == QLatin1String("Evening");
+    }));
+    const QString mixedRecall = result() ? result()->property("text").toString() : QString();
+    std::printf("smoke: hwlk1f: %s\n", qPrintable(mixedRecall));
+    d.check("hwlk1f: Evening applied now on P, at the frame on the others, not 'on time on every unit'",
+            sys->lastRecall().value(QStringLiteral("taken")).toBool() && !sys->lastRecall().value(QStringLiteral("onTime")).toBool()
+                && mixedRecall.startsWith(QLatin1String("Evening recalled: applied now on Plain unit (no audio link); at link frame "))
+                && mixedRecall.endsWith(QLatin1String(" through the sender on the others.")));
+    sys->align();
+    d.check("hwlk1f: align says P was skipped and why", d.waitFor(20000, [&] {
+        return !sys->busy() && sys->actionMessage().contains(QLatin1String("skipped on Plain unit (no audio link (firmware))"));
+    }));
+    std::printf("smoke: hwlk1f: %s\n", qPrintable(sys->actionMessage()));
+    shoot(QStringLiteral("hwlk1f-plain-unit"));
+    window->close();
+    leave();
+    mixed.stop();
     modes->choose(modeBefore, false);
     if (demoBefore && !device->connected()) device->openDemo();
     d.waitFor(10000, [&] { return !demoBefore || device->connected(); });

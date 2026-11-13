@@ -1074,7 +1074,8 @@ fn wp_sw3x_a_stale_model_is_refused_and_the_role_is_current() {
     let hub = networked(store_dir(), AccessMode::Pin);
     let net = hub.network().unwrap();
     let mut c = ws(&hub);
-    let pin = net.auth().begin_pairing(Instant::now()).unwrap().pin;
+    // -- WP HWLK1F -- a window opened for admin (`--pair-admin`)
+    let pin = net.auth().begin_pairing_admin(Instant::now()).unwrap().pin;
     let r = request(
         &mut c,
         json!({"t": "auth.pair", "id": 1, "pin": pin, "name": "sw3x", "role": "admin"}),
