@@ -121,6 +121,12 @@ final class CoreBackedTransport: DeviceTransport {
     private var lastNotifiedAt: TimeInterval = 0
     /// -- WP SWMAC1 -- The journal the last drain saw (coreQueue only).
     private var lastJournal = CoreJournalState()
+    /// -- WP SW9 -- The write lane (SWIFT-SEAMS 5.2): the newest value
+    /// queued per key, with the generation it was issued for (stateLock).
+    private var laneWrites: [String: LaneWrite] = [:]
+    /// -- WP SW9 -- A publish of the state after typed writes is queued
+    /// (coreQueue only).
+    private var writePublishQueued = false
 
     private static let log = Logger(subsystem: AppIdentity.logSubsystem, category: "CoreBackedTransport")
     #if DEBUG
@@ -349,18 +355,26 @@ final class CoreBackedTransport: DeviceTransport {
             do {
                 try self.onCore { try $0.rawSet(opcode: request, value: value, data: data) }
             } catch {
-                // -- WP SWF2 -- A write the hub refused is put back on screen
-                // (hw-mac F3).  Read-only firmware also maps to .denied, but
-                // that is not the hub's refusal: only the core's own two count.
-                switch error as? DspiError {
-                case .Denied?: RefusedWrite.handle(.denied, fanout: self.fanout)
-                case .Locked?: RefusedWrite.handle(.locked, fanout: self.fanout)
-                // -- WP SWF4 -- Read-only firmware: put the edit back too.
-                case .ReadOnly?: RefusedWrite.handleReadOnly(fanout: self.fanout)
-                default: break
-                }
+                self.writeRefused(error)
                 Self.log.info("SET 0x\(String(format: "%02X", request), privacy: .public) wValue=\(value) failed: \(String(describing: error), privacy: .public)")
             }
+        }
+    }
+
+    // On coreQueue.  A write the core or the hub refused.
+    private func writeRefused(_ error: Error) {
+        // -- WP SWF2 -- A write the hub refused is put back on screen
+        // (hw-mac F3).  Read-only firmware also maps to .denied, but
+        // that is not the hub's refusal: only the core's own two count.
+        switch error as? DspiError {
+        case .Denied?: RefusedWrite.handle(.denied, fanout: fanout)
+        case .Locked?: RefusedWrite.handle(.locked, fanout: fanout)
+        // -- WP SWF4 -- Read-only firmware: put the edit back too.
+        case .ReadOnly?: RefusedWrite.handleReadOnly(fanout: fanout)
+        // -- WP SW9 -- A typed setter refused the value before sending it:
+        // say why and show the device's value again.
+        case .InvalidArgument(let msg)?: RefusedWrite.handleInvalid(msg, fanout: fanout)
+        default: break
         }
     }
 
@@ -645,6 +659,75 @@ extension CoreBackedTransport: CoreStateSource, CoreStateSourceProviding {
         coreQueue.async { [weak self] in self?.onCore { $0.setDragging(dragging: dragging) } }
     }
 
+    // -- WP SW9 -- The domains' typed calls and the write lane (SWIFT-SEAMS 5.2).
+
+    func write(lane key: String?, _ body: @escaping (DspiCore) throws -> Void) {
+        stateLock.lock()
+        lastRawSetAt = ProcessInfo.processInfo.systemUptime   // the unsaved-changes settle waits behind it
+        let entry = LaneWrite(generation: localGeneration, body: body)
+        var queued = false
+        if let key = key {
+            queued = laneWrites[key] != nil
+            laneWrites[key] = entry
+        }
+        stateLock.unlock()
+        // The job already queued for this key will send the newest value.
+        guard !queued else { return }
+        coreQueue.async { [weak self] in self?.runWrite(key, entry) }
+    }
+
+    // On coreQueue.  A write issued for another connection is dropped, and a
+    // failed one drops every queued lane value: nothing is replayed.
+    private func runWrite(_ key: String?, _ issued: LaneWrite) {
+        stateLock.lock()
+        let entry: LaneWrite?
+        if let key = key { entry = laneWrites.removeValue(forKey: key) } else { entry = issued }
+        let current = localGeneration
+        stateLock.unlock()
+        guard let entry = entry, entry.generation == current else { return }
+        lastRawSetSentAt = ProcessInfo.processInfo.systemUptime
+        do {
+            try onCore { try entry.body($0) }
+        } catch {
+            stateLock.lock(); laneWrites.removeAll(); stateLock.unlock()
+            writeRefused(error)
+            Self.log.info("typed write \(key ?? "", privacy: .public) failed: \(String(describing: error), privacy: .public)")
+            return
+        }
+        guard !writePublishQueued else { return }
+        writePublishQueued = true
+        coreQueue.async { [weak self] in self?.publishAfterWrites() }
+    }
+
+    // On coreQueue, behind the writes queued with it.  A typed write patched
+    // the core's mirror and its journal at once, and its echo may change
+    // nothing there, so no drain would say so: publish the state after the
+    // writes, with the unsaved-changes list and the journal (Undo enabled).
+    // Once per run of queued writes, so the last state the view model holds
+    // is the one after the last write (a pending field's sweep applies it).
+    private func publishAfterWrites() {
+        writePublishQueued = false
+        let journal = journalOnCore()
+        lastJournal = journal
+        guard !stateFanout.isEmpty else { return }
+        stateFanout.publish(CoreStateChange(flags: 0, state: onCore { $0.getState() },
+                                            presetChanges: onCore { $0.presetChanges() }, journal: journal,
+                                            confirms: false))
+    }
+
+    func call<T>(_ body: (DspiCore) throws -> T) -> Result<T, DspiError> {
+        onCoreSync {
+            do {
+                return .success(try self.onCore(body))
+            } catch {
+                let failure = error as? DspiError ?? .Transfer(msg: String(describing: error))
+                if case .Locked = failure { DeviceLock.notice.post() }
+                if case .ReadOnly = failure { RefusedWrite.handleReadOnly(fanout: self.fanout) }
+                return .failure(failure)
+            }
+        }
+    }
+
     func loadPreset(slot: UInt8) -> Result<(DspState, [String]), DspiError> {
         onCoreSync {
             do {
@@ -662,6 +745,13 @@ extension CoreBackedTransport: CoreStateSource, CoreStateSourceProviding {
             }
         }
     }
+}
+
+// -- WP SW9 --
+/// One typed write as issued: the connection it was meant for.
+private struct LaneWrite {
+    let generation: UInt64
+    let body: (DspiCore) throws -> Void
 }
 
 // MARK: - The core's notification listener

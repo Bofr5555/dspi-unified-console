@@ -247,6 +247,15 @@ enum RefusedWrite {
         DeviceLock.notice.post(DeviceLock.readOnlyMessage)
         fanout.publish(LinkNotification(packet: resyncPacket, origin: 0, receivedAt: Date()))
     }
+
+    // -- WP SW9 --
+    /// A value the core's typed setter refused before sending it (out of
+    /// range for this device): nothing reached the device, so the edit is
+    /// put back and the status row gives the core's reason.
+    static func handleInvalid(_ message: String, fanout: NotificationFanout) {
+        DeviceLock.notice.post(message)
+        fanout.publish(LinkNotification(packet: resyncPacket, origin: 0, receivedAt: Date()))
+    }
 }
 
 extension DeviceTransport {

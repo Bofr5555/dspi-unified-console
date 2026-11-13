@@ -432,6 +432,45 @@ final class PeqGraphEditorTests: XCTestCase {
         XCTAssertEqual(moved.params.q, 1.5, "a plain drag leaves Q alone")
     }
 
+    /// -- WP SW9 -- review lk1 S1: a drag cut off by the view leaving its
+    /// window (a closed tool window) gets no mouse-up; the drag mark is
+    /// ended anyway, once, and the drag's last position is committed.
+    @MainActor
+    func testSW9ADragCutOffByTheViewLeavingEndsTheDragMark() throws {
+        var bands = Array(repeating: FilterParams(), count: 10)
+        bands[2] = FilterParams(type: .peaking, freq: 1000, q: 1.5, gain: 3)
+        let rig = try makeRig(bands: bands)
+        defer { rig.window.orderOut(nil) }
+        var marks: [Bool] = []
+        rig.view.dragMark = CoreDragMark { marks.append($0) }
+        let g = rig.geometry
+        let start = CGPoint(x: g.x(1000), y: g.y(3))
+        rig.view.mouseDown(with: mouse(.leftMouseDown, rig, start))
+        rig.view.mouseDragged(with: mouse(.leftMouseDragged, rig, CGPoint(x: start.x + 40, y: start.y - 20)))
+        XCTAssertEqual(marks, [true], "the drag is marked")
+
+        rig.window.contentView = nil   // the view leaves mid-drag: no mouse-up
+        XCTAssertEqual(marks, [true, false], "ended once")
+        XCTAssertEqual(rig.host.commits.count, 1, "the drag's last position is committed")
+        rig.view.teardown()
+        XCTAssertEqual(marks, [true, false], "the teardown after it ends nothing twice")
+    }
+
+    /// The control: a drag that ends with a mouse-up ends its mark once.
+    @MainActor
+    func testSW9ADragEndedByMouseUpEndsTheDragMarkOnce() throws {
+        var bands = Array(repeating: FilterParams(), count: 10)
+        bands[2] = FilterParams(type: .peaking, freq: 1000, q: 1.5, gain: 3)
+        let rig = try makeRig(bands: bands)
+        defer { rig.window.orderOut(nil) }
+        var marks: [Bool] = []
+        rig.view.dragMark = CoreDragMark { marks.append($0) }
+        let g = rig.geometry
+        drag(rig, from: CGPoint(x: g.x(1000), y: g.y(3)), to: CGPoint(x: g.x(1500), y: g.y(6)))
+        rig.window.contentView = nil
+        XCTAssertEqual(marks, [true, false])
+    }
+
     /// Scrolling Q in the middle of a drag must survive further movement:
     /// the drag rebuilds the band from its starting snapshot each event.
     @MainActor

@@ -957,6 +957,8 @@ struct ChannelSettingsView: View {
     @State private var localDelay: Float = 0
     @State private var isDraggingGain = false
     @State private var isDraggingDelay = false
+    @State private var gainDragMark = CoreDragMark()   // -- WP SW9 --
+    @State private var delayDragMark = CoreDragMark()   // -- WP SW9 --
     @State private var showLimiterSettings = false
 
     /// Height of each icon's slot when mute shares the column with the
@@ -1066,10 +1068,11 @@ struct ChannelSettingsView: View {
             }
 
             Slider(value: $localGain, in: -60...10) { editing in
-                CoreUndo.drag(editing)   // -- WP SWMAC1 --
+                gainDragMark.set(editing)   // -- WP SWMAC1 --, SW9
                 isDraggingGain = editing
                 if !editing { gainDB = localGain }
             }
+            .endsCoreDrag(gainDragMark)   // -- WP SW9 -- ended if the view goes mid-drag
             .controlSize(.small)
             .frame(height: 24)
             .onChange(of: localGain) { val in
@@ -1108,13 +1111,14 @@ struct ChannelSettingsView: View {
             // -- WP SWF5 -- the slider moves in whole ms, as upstream's setter
             // rounded it; the setter itself now keeps fractions.
             Slider(value: $localDelay, in: 0...maxDelay) { editing in
-                CoreUndo.drag(editing)   // -- WP SWMAC1 --
+                delayDragMark.set(editing)   // -- WP SWMAC1 --, SW9
                 isDraggingDelay = editing
                 if !editing {
                     localDelay = localDelay.rounded()
                     delayMS = localDelay
                 }
             }
+            .endsCoreDrag(delayDragMark)   // -- WP SW9 -- ended if the view goes mid-drag
             .controlSize(.small)
             .frame(height: 24)
             .onChange(of: localDelay) { val in
@@ -1381,6 +1385,7 @@ struct InputChannelHeader: View {
 
     @State private var localPreamp: Float = 0
     @State private var isDragging = false
+    @State private var dragMark = CoreDragMark()   // -- WP SW9 --
 
     /// Adjacent pair this input belongs to, and the channel it pairs with.
     private var pair: Int { channel / 2 }
@@ -1454,10 +1459,11 @@ struct InputChannelHeader: View {
 
                 HStack(spacing: 6) {
                     Slider(value: $localPreamp, in: -60...10) { editing in
-                        CoreUndo.drag(editing)   // -- WP SWMAC1 --
+                        dragMark.set(editing)   // -- WP SWMAC1 --, SW9
                         isDragging = editing
                         if !editing { vm.setPreampChannel(channel: channel, db: localPreamp) }
                     }
+                    .endsCoreDrag(dragMark)   // -- WP SW9 -- ended if the view goes mid-drag
                     .controlSize(.small)
                     .frame(height: 24)
                     .onChange(of: localPreamp) { val in
@@ -1587,6 +1593,7 @@ struct PreampControlView: View {
 
     @State private var localPreamp: Float = 0
     @State private var isDragging = false
+    @State private var dragMark = CoreDragMark()   // -- WP SW9 --
 
     private var linked: Bool { vm.linkedPartner(of: channel) != nil }
 
@@ -1621,12 +1628,13 @@ struct PreampControlView: View {
                 .frame(width: 100, alignment: .leading)
 
                 Slider(value: $localPreamp, in: -60...10) { editing in
-                    CoreUndo.drag(editing)   // -- WP SWMAC1 --
+                    dragMark.set(editing)   // -- WP SWMAC1 --, SW9
                     isDragging = editing
                     if !editing {
                         vm.setPreampChannel(channel: channel, db: localPreamp)
                     }
                 }
+                .endsCoreDrag(dragMark)   // -- WP SW9 -- ended if the view goes mid-drag
                 .onChange(of: localPreamp) { val in
                     if isDragging {
                         vm.sendPreampChannelToDevice(channel: channel, db: val)
