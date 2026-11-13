@@ -111,6 +111,39 @@ final class CoreUndo: ObservableObject {
     }
 }
 
+// -- WP SW9 -- review lk1 S1
+/// One control's drag mark.  On while that control drags and ended once,
+/// also when the control leaves the screen or its gesture is cancelled
+/// mid-drag: SwiftUI then sends no `onEditingChanged(false)` or `onEnded`,
+/// and the core would keep gathering every later write into one step.
+/// Main thread only; a view holds one in `@State`.
+final class CoreDragMark {
+    private(set) var isOn = false
+    private let mark: (Bool) -> Void
+
+    /// `mark`: the core's drag mark (tests pass their own).
+    init(mark: @escaping (Bool) -> Void = CoreUndo.drag) {
+        self.mark = mark
+    }
+
+    /// The control's drag began (true) or ended (false); a repeat is ignored.
+    func set(_ on: Bool) {
+        guard on != isOn else { return }
+        isOn = on
+        mark(on)
+    }
+
+    /// End the drag if it is still on.
+    func end() { set(false) }
+}
+
+extension View {
+    /// End `mark` when this view leaves the screen mid-drag.
+    func endsCoreDrag(_ mark: CoreDragMark) -> some View {
+        onDisappear { mark.end() }
+    }
+}
+
 /// What the last undo or redo had to say (`CoreUndo.notice`), over the
 /// bottom of the main window while it lasts.
 struct UndoNotice: View {

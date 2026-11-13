@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 import dspi_core
 import dspi_constants
 @testable import DSPi_Console
@@ -183,6 +184,70 @@ final class CoreDomainSW9Tests: XCTestCase {
         vm.undo.undo()
         XCTAssertTrue(spinUntil(5) { vm.masterVolumeDB == before }, "one step: \(vm.masterVolumeDB)")
         XCTAssertTrue(spinUntil(5) { !vm.undo.canUndo })
+    }
+
+    // MARK: - Drag marks ended when a view goes (review lk1 S1)
+
+    /// A control's mark: set once, ended once, a repeat ignored.
+    func testSW9ADragMarkIsSetAndEndedOnce() {
+        var marks: [Bool] = []
+        let mark = CoreDragMark { marks.append($0) }
+        mark.set(true); mark.set(true)
+        XCTAssertTrue(mark.isOn)
+        mark.end(); mark.end(); mark.set(false)
+        XCTAssertEqual(marks, [true, false])
+        XCTAssertFalse(mark.isOn)
+    }
+
+    /// A SwiftUI control that leaves the screen mid-drag (a sheet
+    /// dismissed, a navigation pop, a tool window closed) gets no
+    /// `onEditingChanged(false)`; `endsCoreDrag` ends its mark.
+    func testSW9AViewGoneMidDragEndsItsMark() throws {
+        var marks: [Bool] = []
+        var appeared = false
+        let mark = CoreDragMark { marks.append($0) }
+        let view = Text("slider").onAppear { appeared = true }.endsCoreDrag(mark)
+        #if os(macOS)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = NSHostingView(rootView: view)
+        window.orderFront(nil)
+        defer { window.orderOut(nil) }
+        XCTAssertTrue(spinUntil(5) { appeared }, "on screen")
+        mark.set(true)                 // a drag begins
+        window.contentView = nil       // and the view goes with it
+        #else
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 200, height: 100)
+        window.rootViewController = UIHostingController(rootView: view)
+        window.isHidden = false
+        defer { window.isHidden = true }
+        XCTAssertTrue(spinUntil(5) { appeared }, "on screen")
+        mark.set(true)
+        window.rootViewController = nil
+        #endif
+        XCTAssertTrue(spinUntil(5) { marks == [true, false] }, "the mark is ended: \(marks)")
+    }
+
+    /// What a mark left on did: every later edit joined the drag's step.
+    /// Ended, the edits after it are steps of their own.
+    func testSW9EditsAfterAnEndedMarkAreStepsOfTheirOwn() {
+        let (_, t, vm) = demoVM()
+        let before = vm.masterVolumeDB
+        let mark = CoreDragMark { t.setDragging($0) }
+        mark.set(true)
+        vm.sendMasterVolumeToDevice(before + 2)
+        vm.setMasterVolume(before + 2)
+        mark.end()                         // the view went mid-drag
+        vm.setMasterVolume(before + 6)     // a later edit elsewhere
+        XCTAssertTrue(spinUntil(5) { vm.undo.canUndo && vm.masterVolumeDB == before + 6 })
+        vm.undo.undo()
+        XCTAssertTrue(spinUntil(5) { vm.masterVolumeDB == before + 2 },
+                      "the later edit is its own step: \(vm.masterVolumeDB)")
+        XCTAssertTrue(spinUntil(5) { vm.undo.canUndo })
+        vm.undo.undo()
+        XCTAssertTrue(spinUntil(5) { vm.masterVolumeDB == before }, "then the drag: \(vm.masterVolumeDB)")
     }
 
     // MARK: - No raw writes in this domain
