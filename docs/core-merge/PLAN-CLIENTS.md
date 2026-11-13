@@ -182,7 +182,7 @@ last-wave WPs while workers would otherwise sit idle (WB2 and WB5 now).
 | QD20 |  | MOVED |  | Folded into `docs/PARITY.md` rows (XC0, HO1) |
 | QD21 |  | MOVED |  | Split into QD21a and QD21b |
 | QD21a | Packaging, Linux and Windows | IN PROGRESS | wp/QD21a |  |
-| QD21b | Qt `.dmg` and its matrix row | TODO |  | VM; after QD21a. SW-V1 needs it |
+| QD21b | Qt `.dmg` and its matrix row | DROPPED |  | The swap (2026-11-13): the rebuilt Qt app has no macOS build; the Swift app is the Mac release (the qtport plan's Q8) |
 | QD22 | Accessibility | IN PROGRESS | wp/QD22 | Alone in `qml/` |
 | QD23 | Localisation plumbing | TODO |  | After QD22 |
 | QD24 | Hardware pass, Linux | PARTIAL |  | Record `docs/core-merge/HW-QT.md` (hw-1): connect, read, write, reselect pass. Owed: replug [OWNER], Link from Qt, notifications from another client, the firmware path (coordinator and owner's go), RTA with a signal |
@@ -416,7 +416,7 @@ review.
 | Windows Qt, Terminal | `xwin` in a container; run in `winvm` when scheduled |
 | Android AAB | Gradle container |
 | wasm check | container |
-| macOS Swift app, iOS Simulator, Qt `.dmg` (build only) | `macvm` through `launchctl asuser`: GUI login, host unlocked, one heavy job at a time. **"Not run" until SW2 adds these rows**, and later whenever the VM is down |
+| macOS Swift app, iOS Simulator | `macvm` through `launchctl asuser`: GUI login, host unlocked, one heavy job at a time. **"Not run" until SW2 adds these rows**, and later whenever the VM is down |
 
 - **Reproducible images:** `ci/run.sh`'s base images `localhost/dspi-qtport:4` and `localhost/dspi-termport-xwin:1` have no Containerfile in the repo (`ci/container/Containerfile` only builds on top of the first), so a clean machine cannot recreate them. **Commit a Containerfile for every image**, with pinned bases and verified downloads.
 - **CG3's iOS check:** Linux containers have no Apple SDK, so the container step is
@@ -447,7 +447,7 @@ One commit, one command. Every client builds and runs the demo device on the sam
 a Swift user sees no change; that is the point of the demonstration.
 
 **Reached (2026-11-08):** gate-3 ran `ci/check.sh --all` on `bc1f9ff4` and passed all 26 steps (test 3673 passed, 0 failed),
-with SW1-SW4 done. M0 is ready for the owner's review. The Qt `.dmg` row is not part of M0's list; it comes with QD21b.
+with SW1-SW4 done. M0 is ready for the owner's review. The Qt `.dmg` row is not part of M0's list (QD21b was dropped at the swap).
 
 **Gate:** the owner reviews M0. It is the natural point for OD-WL. It does not block CG, HB or QD work
 in flight. SW8's evidence (a Swift view model fed from the core) is the stronger second proof if the
@@ -894,7 +894,7 @@ In scope on Qt regardless (owner), and used by Terminal and, later, the Mac. No 
 
 ### 5.1 Qt: Linux and Windows
 
-Q3 makes it run on the core. macOS leaves this track, with Swift as the working assumption: **the Qt `.dmg` is to be a buildable, unpublished CI artefact until the owner's final call at OD3.** It is not one yet: `ci/matrix.sh` has no macOS Qt build until QD21b. Paths are under `apps/desktop/qt/`.
+Q3 makes it run on the core. macOS leaves this track, with Swift as the working assumption: **the Qt `.dmg` is to be a buildable, unpublished CI artefact until the owner's final call at OD3.** *(The swap, 2026-11-13: the rebuilt Qt app replaced the one this track built and has no macOS build; QD21b is dropped. The QD entries below are the old app's record; the rebuilt app was built by the QP work packages on the `qtport` branch; its design is `apps/desktop/README.md` and `apps/desktop/Documentation/behaviour.md`.)* Paths are under `apps/desktop/qt/`.
 
 **QD0: Seam and C ABI pitfalls.** [DONE a6f2f15] Size 0.25. Do the pitfalls inside Q3 if it is still open. **Owns:** `src/ConfigFiles.cpp`, `src/DSPiBridge.cpp:1409-1433`, new `src/Registrar.h`, new `qml/BannerHost.qml`, `main.qml`.
 - **Implements:** `ConfigFiles.cpp:17-21` retries after a short buffer, so an import applies twice: a reply too long is now a failure. `DSPiBridge.cpp:1409-1433` holds `state()` across writes: re-read it. The registrar and banner host let later WPs add without editing the bridge.
@@ -964,7 +964,7 @@ Q3 makes it run on the core. macOS leaves this track, with Swift as the working 
 
 **QD21a: Packaging, Linux and Windows.** [IN PROGRESS wp/QD21a] Size 1. **Owns:** `apps/desktop/packaging/{arch,linux,windows}/**`, the QML-precompile lines in `apps/desktop/qt/CMakeLists.txt`. **Implements:** Linux on Qt 6 (raises the glibc floor), AUR source URL (`PKGBUILD`), QML precompile, installer check that the app is not running, keep Qt dynamic or add the LGPL relinking provision. **Done when:** the artefacts build. **Deps:** Q3.
 
-**QD21b: Qt `.dmg`.** [TODO] Size 0.5. VM. **Owns:** `apps/desktop/packaging/macos/**`, the `qt-dmg` row in `ci/matrix.sh`, `ci/macvm.sh`. **Implements:** the `.dmg` as a buildable, unpublished CI artefact. **Done when:** the `qt-dmg` row runs and passes. **SW-V1 needs it. Deps:** QD21a.
+**QD21b: Qt `.dmg`.** [DROPPED at the swap: no Qt macOS build] Size 0.5. VM. **Owns:** `apps/desktop/packaging/macos/**`, the `qt-dmg` row in `ci/matrix.sh`, `ci/macvm.sh`. **Implements:** the `.dmg` as a buildable, unpublished CI artefact. **Done when:** the `qt-dmg` row runs and passes. **SW-V1 needs it. Deps:** QD21a.
 
 **QD22: Accessibility.** [IN PROGRESS wp/QD22] Size 2. **Alone in the last wave**: touches most of 131 QML files. **Owns:** all of `qml/`. **Done when:** `Accessible.*` on custom controls in `components/` and the windows; keyboard-only and screen-reader pass on Linux. **Deps:** other QD UI WPs.
 
@@ -1207,8 +1207,8 @@ Then one WP per domain. Each **owns** its `Commands.swift` sections and wire use
 **SW-M5: Real Mac hardware pass.** [TODO] Size 0.5. **[HW][OWNER]**: an Apple silicon run has never happened, and the VM and known spare Macs are Intel. **Owns:** `docs/SWIFT-HW.md`. **Done when:** the checklist passes under section 6's rules. Developer ID only if we distribute a binary (OD-DevID). **Deps:** SW-M1, SW-M2.
 
 **SW-V1: Visual and feel evidence for OD3.** [TODO] Size 0.75. **Owns:** `docs/SWIFT-VS-QT-MAC.md`, screenshots under it. Owner: "come back with visual checks and feel to make a final decision, i assume swift will be needed for now".
-- **Implements:** side-by-side screenshots of the main window, graph editing, settings, dialogs and menus, Qt `.dmg` against the Swift app on the Mac VM, on the demo device. Notes on frame rate and responsiveness, with the VM's limits stated. Also a current iOS screenshot set. A short **section for the owner to try on real hardware [OWNER]**: a checklist of feel items (drag, scroll, native menus, text, sliders).
-- **Done when:** the report goes to the owner at OD3's point, with no recommendation hiding the evidence. **Deps:** SW8, QD21b (MR2's `.dmg` row does not run until QD21b adds it).
+- **Implements:** side-by-side screenshots of the main window, graph editing, settings, dialogs and menus, Qt `.dmg` against the Swift app on the Mac VM, on the demo device (the Qt half lapsed with the swap: no Qt macOS build). Notes on frame rate and responsiveness, with the VM's limits stated. Also a current iOS screenshot set. A short **section for the owner to try on real hardware [OWNER]**: a checklist of feel items (drag, scroll, native menus, text, sliders).
+- **Done when:** the report goes to the owner at OD3's point, with no recommendation hiding the evidence. **Deps:** SW8 (QD21b dropped at the swap).
 
 **SW-U1: Upstream tracking rule.** [DONE fc0f2678] Size 0.25. **Owns:** `docs/UPSTREAM-TRACKING.md` (section 0.1). **Done when:** a dry-run merge of a later upstream commit is recorded. **Deps:** MR1.
 
@@ -1338,7 +1338,7 @@ later one states a baseline and a target and proves the gain with it. Results go
 | **OPT0** Harness | 1 | A counting, latency-modelled transport over `FakeDevice` (per-transfer cost for USB, Link RTT 5/20/50 ms, MIDI at a few KB/s) that records transfers, bytes, wall time and allocations (a counting `GlobalAlloc` in the bench binary); criterion or a plain runner; opt-in `DSPI_BENCH_HW=1` on the K340, read-mostly, with hw-1's backup and diff. A CI step that runs the fake benches and fails on a regression beyond a set margin |
 | **OPT1** Connect cost | 0.5-1 | Transfers and time of a full connect (the spike counted 39-45): `crates/dspi-core/src/connect.rs` (`fetch_all`), `crates/dspi-session/src/probe.rs`: reads the bulk image already covers, per-channel name reads, extension probes repeated per connect |
 | **OPT2** Bulk transfer size | 0.5 | `BULK_WRITE_CHUNK` 2048 (`connect.rs`), `BULK_CHUNK` 2048 (`dspi-hub/src/device.rs`), `BULK_CHUNK_SIZE` (`consts.rs`) against the 6136-byte image: 3 chunks each way. **First check the firmware's limit**; if 2048 is the protocol's, record that and close. Measured on the K340 |
-| **OPT3** Polling cadence | 1 | Transfers per second when idle and when hidden, per client: Qt `StatsController`, `DSPiBridge::pollStatus`; Android's bridge pollers; the core's RTA `STATUS_INTERVAL` 500 ms and `MIN_BIN_INTERVAL` 50 ms (`dspi-session/src/rta.rs`); `poll_hotplug`. Target: no device polling while every window is hidden (Qt tray, Android background), the Mac's 60 ms stats tick kept while shown |
+| **OPT3** Polling cadence | 1 | Transfers per second when idle and when hidden, per client: Qt `StatsController`, `Poller`; Android's bridge pollers; the core's RTA `STATUS_INTERVAL` 500 ms and `MIN_BIN_INTERVAL` 50 ms (`dspi-session/src/rta.rs`); `poll_hotplug`. Target: no device polling while every window is hidden (Qt tray, Android background), the Mac's 60 ms stats tick kept while shown |
 | **OPT4** Notification batching | 0.5-1 | Listener calls and UI refreshes per notification burst (a preset load, a remote client's slider drag): `crates/dspi-core/src/notify.rs`, the C ABI listener, the Kotlin bridge, Qt's handler. One `NotifyResult` per drain, one UI refresh per frame |
 | **OPT5** Allocation in hot paths | 1 | Allocations per meter tick and per RTA frame: `get_state` copying the whole `DspState` across UniFFI and the C ABI each tick, RTA frame vectors, decode in `dspi-proto/src/packets.rs`. Targets: no allocation per tick on the Rust side; a smaller record for the per-tick read |
 | **OPT6** Slider write coalescing | 0.5-1 | Writes per second and time to the final value during a 1 s drag, over USB and over Link at 20/50 ms RTT: `dspi-session/src/fast.rs`, `write.rs`. Latest wins while a write is in flight; never replays after a Link drop (the owner's rule) |
@@ -1358,7 +1358,7 @@ redone.
 
 | WP | Size | Method |
 |---|---|---|
-| **PL-QT0** Qt audit | 1 | Every window and settings page against the Mac reference on the demo device (Swift screenshots from `macvm`; Qt offscreen screenshots at 3 window sizes, light and dark, Qt 5 and 6): clipping and layout at small sizes, keyboard focus order, wording against CG10 and the no-host-noun rule, empty, error and loading states, units and number formats, tooltips, redraws ("never redraw anything unnecessarily"). Output `docs/polish/QT.md`, ranked, each item with a size and files |
+| **PL-QT0** Qt audit | 1 | Every window and settings page against the Mac reference on the demo device (Swift screenshots from `macvm`; Qt offscreen screenshots at 3 window sizes, light and dark): clipping and layout at small sizes, keyboard focus order, wording against CG10 and the no-host-noun rule, empty, error and loading states, units and number formats, tooltips, redraws ("never redraw anything unnecessarily"). Output `docs/polish/QT.md`, ranked, each item with a size and files |
 | **PL-AN0** Android audit | 1 | The same on the emulator in a container, phone and tablet widths, portrait and landscape, font scale 1.3; phone-test-2's screenshots as a start |
 | **PL-TM0** Terminal audit | 0.5 | Every screen at 80x24, 40 columns and wide; ASCII and braille; colour and no colour; every `--json` output's shape |
 | **PL-SW0** Swift audit | 1 | iOS against the Mac on the simulator, and the Mac app against upstream after the SW domain moves (regressions); a VM job |

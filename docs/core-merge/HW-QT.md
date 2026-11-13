@@ -1,8 +1,59 @@
-# The Qt console on the K340: hardware record (QD24, QD25)
+# The Qt console on the K340: hardware record (QP22; QD24, QD25)
 
-QD24 (Linux) and QD25 (Windows) in `PLAN-CLIENTS.md`. Done when: connect, read, write, notifications, replug, firmware
-path and Link pass on the K340 under section 6's rules. QD35's hand checks will get their own section here.
+Two apps, two passes. **QP22** (2026-11-13) ran the rebuilt app, which replaced the old one on `main` that day (the swap,
+`382d7fe4`): its section comes first. **QD24** (Linux) and **QD25** (Windows), in `PLAN-CLIENTS.md`, ran the old app
+(`DSPiConsole`, Qt 6 and Qt 5 builds) on 2026-11-07/08; their sections below are kept as the record of that app, and
+their "Still owed" list was answered by QP22 where it says so.
 Facts are from the run reports named below; nothing here was re-run for this record.
+
+## QP22: the rebuilt app on Linux and Windows
+
+- **Date:** 2026-11-13. **Tree:** `qtport` @ 81295f7c, the app as merged by the swap (SWAPFIX then fixed F1–F7 below).
+  **Reports:** `~/.cache/dspi-build/work/wp-QP22a/REPORT.md` (stage 1: backup, flash, firmware checks),
+  `~/.cache/dspi-build/work/wp-QP22b/REPORT.md` (stage 2: the app).
+- **Device:** PCB unit BB66A44F2AC1E7B6, RP2350, flashed in stage 1 with bofr-main 470a127 (`v1.1.6-38-g470a127`,
+  `DSPI_VREG_MV=1200`, not a release build), 1.20 V. Backup before any write; at the end the settings were
+  byte-identical to it (`bulk_params.bin` and the export), no reset, `hang_count` 0.
+- **Linux:** the smoke driver's hardware pass (`DSPI_SMOKE_HW=1`) in a container that sees only this unit, plus
+  throwaway sections through the app's own controllers. **Windows:** the installed `…-windows-x86_64-setup.exe` in the
+  VM `winvm` with the DSPi passed through, driven by clicks and screenshots, and the smoke driver cross-built with MinGW.
+- **Safety:** audio only through the guarded player at 40 % (quiet brown noise for the analyser; a clip test into a
+  muted unit); no flash from the app, no bootloader, no core-voltage writes, no preset save, load or delete; the signal
+  generator never started.
+
+| Check | Linux | Windows |
+|---|---|---|
+| Hardware smoke | pass: 23 checks, 0 failures, 3 not run by design | pass: 53 checks, 0 failures, 3 not run |
+| Connect and read (serial, firmware, image, status, ext channel) | pass | pass (installed app) |
+| Spectrum analyser with a real signal | pass, input and output taps | — |
+| Writes read back and restored (OUT1 delay and gain) | pass | pass |
+| Undo and redo on the device | pass, with F1 | — |
+| Notifications from another console (`uconsole --midi`) | pass | pass: QD25's F1 is fixed |
+| Link: the app as client of `uconsole hub`; as hub for `uconsole` | pass, both | — |
+| Event log (clips, connects); Save Diagnostics | pass (no event-log view in the app, O6) | — |
+| Unsaved-changes question on device switch | pass (F3 seen) | — |
+| Firmware window, never flashing; Core Voltage page, read only | pass | — |
+| Installer, Start menu, uninstall entry; open at login; keep awake while sharing; firewall rows | — | pass |
+| Per-board channel count (one board) | — | pass: 2 USB inputs |
+| Replug | **not done** (needs hands: `apps/desktop/qt/smoke/run-replug.sh`) | pass, virtual detach and re-attach |
+| Read-only banner | **not done**: needs mismatched firmware; covered on the demo | — |
+
+**Findings, all fixed by SWAPFIX before the swap:** F1 undo after a re-read wrote a stale value (a re-read now ends the
+undo step); F2 a re-read made unsaved changes look saved (the baseline is kept); F3 an output delay listed twice;
+F4 Windows settings were in the registry (now an INI file, in the diagnostics, removed on uninstall); F5 the uninstaller
+left the firewall rule (now removed); F6 the hardware preflight counted devices before a scan; F7 the smoke driver did
+not build for Windows (now cross-builds; not run on Windows after the fix). Observations open: the first Settings window
+stalled 10–20 s under WARP (O1, time it on real hardware), no event-log view (O6), no single-instance guard (O11).
+
+**Owed (QP22's list for the owner):** a physical replug on Linux; the identify LED by eye; the desktop hand checks
+(tray on KDE and GNOME, open at login, keep awake on Linux, a real Secret Service, PipeWire at 8 and 2 channels, real
+file dialogs); discovery on the LAN; an AutoEQ rebuild; the update check; the packages on real systems; IR learn; the
+udev dialog with `pkexec`; the firmware path with a flash (owner's go, backups first); two boards at different channel
+counts on Windows; the read-only banner on mismatched firmware.
+
+---
+
+*The sections below are the old app's record.*
 
 Device in both runs: PCB unit BB66A44F2AC1E7B6, RP2350, firmware `v1.1.6-20-g04122d3` (bofr-main @ 04122d3, 2026-11-06),
 wire V32, 17 channels, core 1.20 V, USB 2e8b:feaa. Both runs were done by an agent; no owner hands.
@@ -99,7 +150,7 @@ the host.
 - Windows' sound events were silenced for the run (the DSPi became the default output) and restored.
 - The app ran with the tester profile's existing `DSPi Console.ini`; UI settings it changed were left.
 
-## Still owed
+## Still owed (the old app; superseded by QP22 above)
 
 - **QD24:** replug (`run-replug.sh`, owner's hands); Link from the Qt client on the K340; notifications from another client
   (no smoke check exists on hardware; CG31 added one on the fake hub); the firmware path (flash: coordinator and owner's go,

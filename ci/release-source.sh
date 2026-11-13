@@ -5,14 +5,17 @@
 #
 #   ci/release-source.sh [--with-desktop] VERSION [OUTDIR] [COMMIT]
 #
-# By default the Qt desktop app is left out while it is not released: everything
-# under apps/desktop except apps/desktop/packaging/licences/, which the Swift
-# app's packaging (apps/apple/package-macos.sh runs stage.sh from there) and the
-# swift CI step (gen_rust_notices.py --swift) use, so the Swift artifact's
-# archive holds the scripts that build its notices. --with-desktop keeps all of
-# apps/desktop, for a release that ships the Qt app; it writes
-# uConsole-for-DSPi-VERSION-desktop-source.tar.gz, which the Qt packages' notices
-# would then name (fix-up cl1, item 6).
+# By default the Qt desktop app is left out: everything under apps/desktop
+# except apps/desktop/packaging/licences/, which the Swift app's packaging
+# (apps/apple/package-macos.sh runs stage.sh from there) and the swift CI step
+# (gen_rust_notices.py --swift) use, so the Swift artifact's archive holds the
+# scripts that build its notices. That is the archive the other clients'
+# notices name (NOTICE.md, "Source code"). --with-desktop keeps
+# all of apps/desktop and writes uConsole-for-DSPi-VERSION-desktop-source.tar.gz,
+# which the Qt packages' notices name and the AUR package builds from (fix-up
+# cl1, item 6). -- WP POSTSWAP -- A release with the Qt app publishes both;
+# ci/release-desktop.sh (apps/desktop/packaging/build-release.sh) makes the
+# second.
 #
 # Writes OUTDIR/<name>.tar.gz (OUTDIR default: dist) and prints its path. COMMIT
 # defaults to HEAD; a dirty work tree is refused when it is HEAD, since the

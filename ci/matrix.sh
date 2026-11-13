@@ -32,6 +32,9 @@ rows=(
   "linux-terminal|Linux Terminal|container|terminal"
   # -- WP QP20 -- The Windows packaging of the new Qt tree, back on
   "windows-qt|Windows Qt (MinGW), zip and installer|container|qt-windows"
+  # -- WP POSTSWAP -- every Qt release file, each built in its own image from a
+  # clean commit; the Linux ones installed and started in clean containers
+  "qt-packages|Qt release packages; Linux ones installed in clean containers|podman|=ci/release-desktop.sh --test"
   "windows-gnu|Windows workspace (GNU)|container|windows-gnu"
   "windows-terminal|Windows core and Terminal (MSVC)|xwin, container|windows-msvc"
   "android-libs|Android core libraries, three ABIs|cross container|android"

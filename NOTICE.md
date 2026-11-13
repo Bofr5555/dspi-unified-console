@@ -52,11 +52,12 @@ of `uconsole`). The desktop packages carry it in `NOTICE.txt` and `LICENSES/TERM
 
 The complete source code of each release is published with the release, as its -source.tar.gz archive. Whoever passes
 this program on, a hub that serves the web console included, passes on your right to that source. `ci/release-source.sh`
-makes it: a `git archive` of the exact commit the release was built from (the Qt desktop app's `apps/desktop` left out
-while that app is not released, apart from `apps/desktop/packaging/licences/`, which builds the Swift app's notices;
-`--with-desktop` writes a Qt release's archive with all of it), named `uConsole-for-DSPi-<version>-source.tar.gz`. Every
-non-Qt artifact of a release (the Terminal archives, the web console, the Android packages, the Swift app) is published
-with it, and their notices point at it rather than at this repository.
+makes it: a `git archive` of the exact commit the release was built from (the Qt desktop app's `apps/desktop` left out,
+apart from `apps/desktop/packaging/licences/`, which builds the Swift app's notices), named
+`uConsole-for-DSPi-<version>-source.tar.gz`. Every non-Qt artifact of a release (the Terminal archives, the web console,
+the Android packages, the Swift app) is published with it, and their notices point at it rather than at this repository.
+The Qt packages are published with `uConsole-for-DSPi-<version>-desktop-source.tar.gz` (`--with-desktop`: all of
+`apps/desktop` included), which their notices name.
 
 ## Who made what
 
@@ -106,7 +107,7 @@ offered under the same terms.
 | `crates/dspi-proto/firmware/` | Vendored DSPi firmware headers, GPL-3.0 | `PROVENANCE.toml` there |
 | `apps/desktop/qt/firmware/*.uf2`, `apps/android/feature-firmware/src/main/assets/firmware/*.uf2`, `apps/apple/DSPi Console/Firmware/*.uf2` | Weeb Labs' DSPi firmware release v1.1.6, unmodified; GPL-3.0, with third-party parts (Raspberry Pi's pico-sdk and pico-extras, BSD-3-Clause; TinyUSB, MIT; LUFA, Dean Camera; Elehobica's S/PDIF receiver, BSD-2-Clause; Alex Stanoev's original code, BSD-3-Clause): their notices are in `assets/licences/firmware-THIRD-PARTY-NOTICES.txt`, which every package that bundles the images carries | https://github.com/WeebLabs/DSPi/tree/v1.1.6 (commit 9ffce34), mirrored as tag `v1.1.6` in https://github.com/Bofr5555/DSPi |
 | Icon glyphs (`make_graphics.py`'s app icon) | Outlines of Noto Sans Mono glyphs; the font is under the SIL Open Font License 1.1, Copyright 2022 The Noto Project Authors | https://github.com/notofonts/latin-greek-cyrillic |
-| `crates/dspi-session/autoeq/`, `apps/desktop/qt/autoeq/` | AutoEq data. AutoEq's `LICENSE` is MIT, Copyright (c) 2018-2022 Jaakko Pasanen; the measurement sources it credits are not covered by anything read so far | https://github.com/jaakkopasanen/AutoEq |
+| `crates/dspi-session/autoeq/` | AutoEq data. AutoEq's `LICENSE` is MIT, Copyright (c) 2018-2022 Jaakko Pasanen; the measurement sources it credits are not covered by anything read so far | https://github.com/jaakkopasanen/AutoEq |
 
 ## Third-party Rust crates
 

@@ -584,7 +584,7 @@ reference to the hub (section 3). Set `initial_scan: false` when an app is to at
 
 <!-- WP WB7 -->
 **WB7 as built: three paths** (owner, 2026-11-08). `/` is a landing page (`assets/web/index.html`,
-`landing.css`; no scripts) with two links, "DSPi Console" (`/console/`) and "Hub" (`/hub/`), and a line saying
+`landing.css`; no scripts) with two links, "uConsole for DSPi" (`/console/`; "DSPi Console" before the rename) and "Hub" (`/hub/`), and a line saying
 which is which; HB5's placeholder text is gone; `web=1` stays. **`/hub/` is upstream's DSPi Link web page**
 (`js/apps/web`, `@dspi/web` 1.2.0, MIT) at the commit the conformance run pins (`86f10e38`, `js` tree
 `128dca29`), built by `tools/build-link-web.sh` from `git archive` (tree checked) with `npm ci --ignore-scripts`
