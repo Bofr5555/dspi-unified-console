@@ -308,7 +308,7 @@ carries the device's status byte, and any other failure is 0xFF, as before. UART
 same 250 ms wait, then `fetchCtrlIfaces()`. The settings are read from the core's mirror (CoreMirror shows them);
 the `fetch*` above that only re-read a stored setting do nothing through a core, those that re-read the device
 (`fetchOutputPin`, `fetchSpdifRxPin`, `fetchChannelName`, `fetchDacHwMuteConfig`) use the core's re-reads, and the
-support gates come from the core's `featurePresent` (the names Qt uses). The statuses are typed reads:
+support gates come from the core's `featurePresent` (the names Qt uses; ADAT out as Qt gates it, the feature on an RP2350, whether or not the status read answers). The statuses are typed reads:
 `fetchAdatOutStatus()`, `fetchInputLock(0)` and `fetchInputLock(1)`. Names come from the core's copies
 (`cachedInputSourceName`, `cachedDeviceName`). The interrupt monitor's ADAT, I2S-slave, ADAT-in and name hooks stand
 down through a core; CoreMirror hands the notification flags to `followCoreEvents`, which reads the statuses again
@@ -317,7 +317,10 @@ keeps the active input count in the status record, which is SW14's. `probeExtens
 core-voltage status `fetchCoreVreg()`; the app writes no voltage (only the hub's network rule, `CoreVoltageRule`,
 sees VREG writes, unchanged). The STM32 bus re-read after a slot change is `refreshOutputSlotTypes()`, the core's
 `refreshParams()` (it has no per-slot read). No function was deleted: every one still has a caller on the paths
-without a core.
+without a core. Tests: `CoreDomainSW11Tests` (both bundles) checks, through the raw-opcode record that
+`CoreBackedTransport` keeps in DEBUG (`takeRawOpcodesForTest`), that no request of the domain goes out raw. The
+console's own EXT_LIST probe-policy tests (`ExtensionChannelViewModelTests`) run on the paths without a core only;
+through a core the probe is the core's.
 
 #### SW12 (30 functions)
 
