@@ -219,6 +219,42 @@ EQ follow-ups: the shape card asks a shape's slope as the Console's chooser; a
 host's `data-theme` change redraws the graph; the curves hook shows every
 answer as it comes, so a drag over a slow queue never freezes the curve.
 
+## The System view, scene bar and status rail (WP SW3)
+
+`src/screens/system/`: the web is the first client of the Advanced layer
+(`docs/UI-MODES.md`). One feed per session (`feed.ts`) asks the hub's audio-link
+system model over the session's own Link connection (`hubSystem` and `hubRole`,
+`crates/dspi-wasm/src/system.rs`, the hub's `system.*` of
+[`docs/integrator/audio-link.md`](../../docs/integrator/audio-link.md)) and polls
+`system.status` every 3 s while the page is visible. The hub judges every request by
+the session's role; the page only leaves out what it would refuse.
+
+- **System view** (WB6d, `SystemScreen.tsx`): rooms and zones with their units, each
+  unit connected or not, its audio link's lock and its alarms; the topology (sender,
+  fan-outs, units, the output each hangs on, hop delays, each unit's link slots). On
+  a hub with an installation it is the first screen; a device the console holds
+  itself (USB, the demo), or a hub without an installation, is a single unit, read
+  only while the view is shown.
+- **Clock and links** (Installer mode, `ClockLinks.tsx`): per unit `d_local` against
+  its limits, `hops_offset` (with what the unit has, when it differs), the path and
+  latencies, a measured latency and each room's lip sync; the link delay D; the slot
+  matrix (link channels to each unit's 8 inputs); Compute and Align
+  (`system.align`, asked first: a re-anchor is 2 to 6 ms of silence) with each
+  unit's result; link stats and the trim scan. Edits are staged and saved as one
+  `system.set`. Model and alignment are Admin only: other roles see it read only.
+- **Scene bar** (WB6e, `SceneBar.tsx`): the installation's scenes, numbered;
+  a recall is `system.scene.apply` (asked first when the device has unsaved
+  changes), then the frame, the path and each unit's result (queued, applied, late,
+  refused). A scene the role may not run is refused whole and the op named.
+- **Status rail** (WB6f, `StatusRail.tsx`), below the screen: connection, the last
+  scene, the mode (Simple, Advanced, Installer; remembered per device or for every
+  device; no PIN on the web, so nothing is locked), the system mute (`system.mute`)
+  and the alarms with Acknowledge.
+
+The e2e (`test/e2e/system.spec.ts`) runs against `uconsole --demo hub --web
+--audio-link`: the fake device's audio-link roles (a sender, a fan-out, four units)
+with a system model, open (Admin) and with a PIN (Control).
+
 ## Embedding in a fleet server
 
 ```js
@@ -319,6 +355,7 @@ The web step also runs the hosting routes on the real `uconsole` (`test/e2e/host
 | `src/screens/eq/` | the EQ (WB6b): graph, chip, band list; `model.ts` its logic, `draw.ts` the canvas; `Linkwitz.tsx` the Transform's panel (WB6c) |
 | `src/screens/outputs/` | WB6c: an output's settings card (`OutputCard.tsx`), the level and delay control (`Level.tsx`, SL1), the limiter (`Limiter.tsx`), the crossover (`Crossover.tsx`); `model.ts` their logic |
 | `src/screens/matrix/` | WB6c: the matrix mixer |
+| `src/screens/system/` | SW3: the System view, Clock and links, the scene bar, the status rail; `model.ts` their logic, `feed.ts` the hub's `system.*` |
 | `src/index.tsx` | `mount()` and the public types |
 | `src/standalone.ts`, `index.html` | the standalone page (`?readonly` for a display page) |
 | `test/unit/` | `node --test` |

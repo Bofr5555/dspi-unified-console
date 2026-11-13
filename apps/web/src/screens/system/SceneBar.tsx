@@ -1,0 +1,90 @@
+// WP SW3, WB6e: the scene bar. The installation's scenes as numbered recall
+// buttons; a recall is `system.scene.apply`, which acts at one link frame on
+// every unit, and the bar then shows what each unit said: queued, applied,
+// late or refused. A scene the role may not run is refused whole, and the
+// hub's answer names the op. Recall asks first when this session's device has
+// unsaved changes, as WB6e's slice says.
+
+import type { Ask } from "../../ui/screens";
+import type { Session } from "../../ui/session";
+import { WritesByElement } from "./ClockLinks";
+import type { SystemFeed } from "./feed";
+import { useFeed } from "./SystemScreen";
+import { mayWrite, opWord, pathWord, subjectName, writeNote } from "./model";
+
+export function SceneBar(props: { feed: SystemFeed; session: Session; ask: Ask }) {
+  const st = useFeed(props.feed);
+  if (st.kind !== "hub" || !st.model) return null;
+  const scenes = st.model.scenes;
+  const allowed = mayWrite(st.role, "scene") && !props.feed.readOnly;
+  const run = st.scene;
+  const recall = async (id: string, name: string) => {
+    if (props.session.dirty) {
+      const a = await props.ask({
+        title: "Recall Scene",
+        body: (
+          <p>
+            This DSPi has unsaved changes. Recalling “{name}” may change it; the changes stay unsaved.
+          </p>
+        ),
+        buttons: [
+          { label: "Recall", value: "recall" },
+          { label: "Cancel", value: "cancel" },
+        ],
+      });
+      if (a !== "recall") return;
+    }
+    await props.feed.recall(id);
+  };
+  const names = (id: string) => subjectName(st.model, id);
+  const opOf = (element: string, what: string) => {
+    const op = run?.report?.plan.ops.find((o) => o.element === element && o.op === what);
+    return op ? opWord(op.op, op.arg, op.value) : what;
+  };
+  return (
+    <div class="sys-scenes" aria-label="Scenes">
+      <div class="sys-scene-row">
+        <span class="sys-label">Scenes</span>
+        {scenes.length ? null : <span class="sys-muted">The installation has no scenes</span>}
+        {scenes.map((s, i) => (
+          <button
+            type="button"
+            key={s.id}
+            class={`sys-scene${run?.scene === s.id ? " active" : ""}`}
+            aria-label={`Recall ${s.name || s.id}`}
+            disabled={!allowed || run?.running}
+            title={allowed ? undefined : writeNote(st.role, "scene")}
+            onClick={() => void recall(s.id, s.name || s.id)}
+          >
+            <span class="sys-scene-n">{i + 1}</span> {s.name || s.id}
+          </button>
+        ))}
+      </div>
+      {run ? (
+        <div class="sys-scene-result" aria-label="Scene result" aria-live="polite">
+          {run.running ? <span class="sys-muted">Recalling {run.name}…</span> : null}
+          {run.error ? (
+            <p class="error" role="alert">
+              {run.name}: refused. {run.error}
+            </p>
+          ) : null}
+          {run.report ? (
+            <>
+              <p class="sys-note">
+                {run.name} at link frame {run.report.plan.frame} ({run.report.plan.leadFrames} frames ahead), {pathWord(run.report.plan.path)}
+                {run.report.plan.systemMute != null ? `, system mute ${run.report.plan.systemMute ? "on" : "off"}` : ""}:{" "}
+                <strong>{run.report.onTime ? "on time on every unit" : "not every unit on time"}</strong>
+              </p>
+              <WritesByElement
+                writes={run.report.writes}
+                names={names}
+                label="Per unit"
+                what={(w) => opOf(w.element, w.what)}
+              />
+            </>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}

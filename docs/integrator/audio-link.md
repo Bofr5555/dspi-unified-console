@@ -190,6 +190,12 @@ Events to every session: `system.changed` (`revision`) after a `system.set`,
 request within that time gets `rate_limited`, because each read costs every
 unit's worker five or more transfers.
 
+-- WP SW3 -- `observed` also carries each unit's `stats` (the rest of
+`EXT_LINK_STATUS`: `lineClass`, `channels`, `lockCount`, `crc8Errors`,
+`bitSlips`, `superframeErrors`, `vcxoPpm`, `fillFrames`) and a receiver's
+`trimScan` from `EXT_LINK_DIAG` (`state`, `trimLo`, `trimHi`, `trimUsed`,
+`cleanMask`), read only when the DIAG layout is version 1.
+
 Each write result is `{serial, element, what, result}` with `result` one of
 `ok`, `unchanged`, `skipped` (not reachable or out of range), `refused` (the
 device stalled it), `locked` (a client holds the device's lock), `denied`,
@@ -240,4 +246,8 @@ ignored with a log line and left in the file until a new one is set.
   waits for the slowest unit anywhere (more latency, never misalignment).
 - A periodic poll: alarms follow events and `system.status` reads. A client that
   shows the system calls `system.status` every few seconds.
-- The clients' "Clock and links" panel and slot matrix (WP SW3).
+- The native clients' System view and "Clock and links" panel: the web console has
+  them (WP SW3, `apps/web/README.md`); Qt, Android and Swift follow per
+  `docs/UI-MODES.md`.
+- Resetting a unit's link stats through the hub: `EXT_LINK_STATS_RESET` is not a
+  `system.*` request yet.
