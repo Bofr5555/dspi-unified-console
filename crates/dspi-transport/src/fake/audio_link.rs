@@ -23,8 +23,18 @@
 //! Not modelled either: the 250 ms rate limit on 0xE1, the phase servo (the
 //! phase error is 0 when locked; an anchor completes at once), the pin table
 //! check against the live configuration, `D_local` limits that follow the
-//! output latency option, the sender build; the link input runs whatever the
-//! input source (the firmware runs it only under source 7).
+//! output latency option; the link input runs whatever the input source (the
+//! firmware runs it only under source 7).
+//!
+//! WP SW2: [`AudioLinkSetup`] makes the fake another place in a system: a
+//! receiver behind re-emitters (`hops`), a repeater or fan-out with its
+//! `hop_delay_frames` (STATUS offset 50), a unit that hears another sender,
+//! or the sender build itself (role 2: [`alink::SENDER_IDS`], the counter
+//! running from its own start, `EXT_LINK_CTRL_MSG` OUT with 2.8.9's lead and
+//! one-at-a-time rules, its IN showing the pending apply until the counter
+//! passes it, `EXT_LINK_TX` kept as written). An id the role does not list
+//! stalls. The superframe does not reach other fakes: a test checks what the
+//! sender was asked.
 #![warn(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -35,7 +45,7 @@
 use dspi_proto::ext::audio_link::{
     self as alink, ApplyOp, ApplyRequest, ApplyResult, ApplyResultEvent, ApplyStatus, FrameCounter,
     LinkConfig, LinkEventReason, LinkInfo, LinkPhase, LinkRole, LinkSlots, LinkState,
-    LinkStateEvent, LinkStatus, SuperframeSnapshot, feature,
+    LinkStateEvent, LinkStatus, LinkTx, SuperframeSnapshot, feature,
 };
 use dspi_proto::generated::notify as nfy;
 
@@ -69,6 +79,40 @@ const APPLY_QUEUE: usize = 4;
 /// `EXT_LINK_DIAG` layout version.
 const DIAG_VERSION: u8 = 1;
 
+// -- WP SW2 --
+/// Where the fake sits on the link ([`super::FakeDevice::demo_audio_link_as`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AudioLinkSetup {
+    /// `Receiver` (the default), `Repeater`, `Sender` or `FanOut`.
+    pub role: LinkRole,
+    /// Re-emitters between the sender and this unit (STATUS offset 4).
+    pub hops: u8,
+    /// A re-emitter's hop delay (STATUS offset 50), reported while locked.
+    pub hop_delay_frames: u8,
+    /// The sender the unit hears, or a sender's own id.
+    pub sender_id: u8,
+    /// `EXT_LINK_INFO.d_local_min`.
+    pub d_local_min: u16,
+}
+
+impl Default for AudioLinkSetup {
+    fn default() -> Self {
+        Self {
+            role: LinkRole::Receiver,
+            hops: 0,
+            hop_delay_frames: 0,
+            sender_id: SENDER_ID,
+            d_local_min: 112,
+        }
+    }
+}
+
+impl AudioLinkSetup {
+    fn is_sender_build(&self) -> bool {
+        matches!(self.role, LinkRole::Sender | LinkRole::FanOut)
+    }
+}
+
 /// The link's state on the fake.
 #[derive(Debug)]
 pub(super) struct AudioLink {
@@ -81,6 +125,13 @@ pub(super) struct AudioLink {
     crc16_errors: u32,
     queue: Vec<ApplyRequest>,
     last: ApplyStatus,
+    // -- WP SW2 --
+    pub(super) setup: AudioLinkSetup,
+    /// A sender's pending superframe apply.
+    ctrl: Option<ApplyRequest>,
+    /// A sender's superframe system flags.
+    system_flags: u8,
+    tx: LinkTx,
 }
 
 impl Default for AudioLink {
@@ -114,6 +165,23 @@ impl Default for AudioLink {
                 last_result: ApplyResult::Applied,
                 last_frame: 0,
             },
+            // -- WP SW2 --
+            setup: AudioLinkSetup::default(),
+            ctrl: None,
+            system_flags: 0,
+            tx: LinkTx {
+                link_mask: 0,
+                class: 1,
+                channels: 8,
+                rate_code: 1,
+                test_pattern: 0,
+                slot_map_id: 0,
+                sync_pin: 0xFF,
+                txdis_mask: 0x00FF,
+                los_mask: 0,
+                usb_alt: 1,
+                flags: 0,
+            },
         }
     }
 }
@@ -123,9 +191,29 @@ const RX_PIN_DEFAULT: u8 = 0;
 
 /// The receiver's `EXT_LINK_INFO`: 2.8.1's example, `rx_pin` following
 /// `config` (its `0xFF` resolved to the build default, 2.8.1).
-fn info(config: &LinkConfig) -> LinkInfo {
+///
+/// WP SW2: for the fake's place on the link; a sender build reports its links
+/// and no slots or delay range (2.8.1).
+fn info_as(config: &LinkConfig, setup: &AudioLinkSetup) -> LinkInfo {
+    if setup.is_sender_build() {
+        return LinkInfo {
+            role: setup.role,
+            protocol_version: alink::LINK_PROTOCOL_VERSION,
+            class_mask: 0b111,
+            max_links: 8,
+            max_channels: alink::LINK_MAX_CHANNELS,
+            slots_per_unit: 0,
+            flags: 0,
+            rx_pin: 20,
+            tx_pin: 0xFF,
+            feature_bits: feature::APPLY_AT_FRAME | feature::FAN_OUT | feature::TEST_PATTERNS,
+            d_local_min: 0,
+            d_local_max: 0,
+        };
+    }
+    let repeater = setup.role == LinkRole::Repeater;
     LinkInfo {
-        role: LinkRole::Receiver,
+        role: setup.role,
         protocol_version: alink::LINK_PROTOCOL_VERSION,
         class_mask: 0b111,
         max_links: 1,
@@ -137,9 +225,12 @@ fn info(config: &LinkConfig) -> LinkInfo {
         } else {
             config.rx_pin
         },
-        tx_pin: 0xFF,
-        feature_bits: feature::PHASE_LOCK | feature::APPLY_AT_FRAME | feature::LOS_PIN,
-        d_local_min: 112,
+        tx_pin: if repeater { 22 } else { 0xFF },
+        feature_bits: feature::PHASE_LOCK
+            | feature::APPLY_AT_FRAME
+            | feature::LOS_PIN
+            | if repeater { feature::REPEATER } else { 0 },
+        d_local_min: setup.d_local_min,
         d_local_max: 1024,
     }
 }
@@ -183,10 +274,14 @@ impl State {
     /// The link frame now: from the fake's start, while locked or in
     /// holdover (extrapolated); 0 otherwise.
     fn link_frame(&self) -> u64 {
-        if !matches!(
-            self.audio_link.state,
-            LinkState::Locked | LinkState::Holdover
-        ) {
+        // -- WP SW2 -- the master sender's counter always runs.
+        let master = self.audio_link.setup.role == LinkRole::Sender;
+        if !master
+            && !matches!(
+                self.audio_link.state,
+                LinkState::Locked | LinkState::Holdover
+            )
+        {
             return 0;
         }
         let ms = Instant::now()
@@ -201,18 +296,21 @@ impl State {
     fn link_status(&self) -> LinkStatus {
         let l = &self.audio_link;
         let locked = l.state == LinkState::Locked;
+        // -- WP SW2 -- a master sender has no input: state 0 (2.8.2).
+        let master = l.setup.role == LinkRole::Sender;
+        let reemits = matches!(l.setup.role, LinkRole::Repeater | LinkRole::FanOut);
         LinkStatus {
-            state: l.state,
+            state: if master { LinkState::Off } else { l.state },
             class: u8::from(locked),
             rate_code: if locked { 1 } else { 0xFF },
             channels: if locked { 8 } else { 0 },
-            hops: 0,
+            hops: l.setup.hops,
             los_pin: if l.config.los_pin == 0xFF {
                 0xFF
             } else {
                 u8::from(!locked)
             },
-            sender_id: SENDER_ID,
+            sender_id: l.setup.sender_id,
             flags: 0b1000, // bit 3: the sender has a live USB stream
             frame: self.link_frame(),
             lock_count: l.lock_count,
@@ -224,6 +322,12 @@ impl State {
             vcxo_ppm: 1.5,
             phase_error_frames: 0.0,
             fill_frames: l.phase.d_local,
+            // -- WP SW2 --
+            hop_delay_frames: if reemits && locked {
+                l.setup.hop_delay_frames
+            } else {
+                0
+            },
         }
     }
 
@@ -232,12 +336,16 @@ impl State {
         if !self.options.audio_link {
             return Vec::new();
         }
+        // -- WP SW2 --
+        if self.audio_link.setup.is_sender_build() {
+            return alink::SENDER_IDS.to_vec();
+        }
         alink::RECEIVER_IDS.to_vec()
     }
 
     /// Whether input source 7 is selectable.
     pub(super) fn link_input(&self) -> bool {
-        self.options.audio_link
+        self.options.audio_link && !self.audio_link.setup.is_sender_build()
     }
 
     /// IN: `Some(reply)` for a link sub-command (`Some(None)` stalls), `None`
@@ -249,9 +357,18 @@ impl State {
             return None;
         }
         self.run_due_ops();
+        // -- WP SW2 -- an id this build does not list stalls (2.8).
+        if !self.link_ids().contains(&value) {
+            return Some(None);
+        }
+        if self.audio_link.setup.is_sender_build() {
+            if let Some(reply) = self.get_sender(value) {
+                return Some(Some(reply));
+            }
+        }
         let l = &self.audio_link;
         Some(match value {
-            alink::EXT_LINK_INFO => Some(info(&l.config).encode().to_vec()),
+            alink::EXT_LINK_INFO => Some(info_as(&l.config, &l.setup).encode().to_vec()),
             alink::EXT_LINK_STATUS => Some(self.link_status().encode().to_vec()),
             alink::EXT_LINK_CONFIG => Some(l.config.encode().to_vec()),
             alink::EXT_LINK_SLOTS => Some(l.slots.0.to_vec()),
@@ -282,8 +399,8 @@ impl State {
                     rate_code: 1,
                     channels: 8,
                     class: 1,
-                    hops: 0,
-                    sender_id: SENDER_ID,
+                    hops: l.setup.hops,
+                    sender_id: l.setup.sender_id,
                     apply: ApplyRequest {
                         frame: 0,
                         op: ApplyOp::CancelAll,
@@ -322,6 +439,34 @@ impl State {
             return None;
         }
         self.run_due_ops();
+        // -- WP SW2 --
+        if !self.link_ids().contains(&value) {
+            return Some(false);
+        }
+        if self.audio_link.setup.is_sender_build() {
+            match value {
+                alink::EXT_LINK_CTRL_MSG => return Some(self.ctrl_msg(data)),
+                alink::EXT_LINK_TX => {
+                    return Some(match LinkTx::decode(data) {
+                        Some(t)
+                            if data.len() == LinkTx::SIZE
+                                && t.slot_map_id == 0
+                                && t.flags & !1 == 0
+                                && data.get(14..) == Some(&[0, 0]) =>
+                        {
+                            self.audio_link.tx = LinkTx {
+                                los_mask: 0,
+                                usb_alt: self.audio_link.tx.usb_alt,
+                                ..t
+                            };
+                            true
+                        }
+                        _ => false,
+                    });
+                }
+                _ => {}
+            }
+        }
         Some(match value {
             alink::EXT_LINK_CONFIG => match LinkConfig::decode(data) {
                 Some(c) if config_ok(&c, data) => {
@@ -377,7 +522,7 @@ impl State {
         };
         if data.len() != LinkPhase::SIZE
             || data.get(1) != Some(&0)
-            || !p.is_valid_for(&info(&self.audio_link.config))
+            || !p.is_valid_for(&info_as(&self.audio_link.config, &self.audio_link.setup))
         {
             return false;
         }
@@ -479,6 +624,69 @@ impl State {
         self.link_event(reason);
     }
 
+    // -- WP SW2 --
+    /// A sender build's own replies: `EXT_LINK_CTRL_MSG` IN (the superframe it
+    /// sends, with the pending apply until the counter reaches it) and
+    /// `EXT_LINK_TX`. `None`: answered as on a receiver.
+    fn get_sender(&mut self, value: u16) -> Option<Vec<u8>> {
+        let now = self.link_frame();
+        let l = &mut self.audio_link;
+        if l.ctrl.is_some_and(|c| c.frame <= now) {
+            l.ctrl = None;
+        }
+        match value {
+            alink::EXT_LINK_CTRL_MSG => Some(
+                SuperframeSnapshot {
+                    flags: 0b1000 | (l.system_flags & 1) | if l.ctrl.is_some() { 0b100 } else { 0 },
+                    rate_code: l.tx.rate_code,
+                    channels: l.tx.channels,
+                    class: l.tx.class,
+                    hops: l.setup.hops,
+                    sender_id: l.setup.sender_id,
+                    apply: l.ctrl.unwrap_or(ApplyRequest {
+                        frame: 0,
+                        op: ApplyOp::CancelAll,
+                        arg: 0,
+                        value: 0,
+                    }),
+                    frame_low: low32(now & !31),
+                }
+                .encode()
+                .to_vec(),
+            ),
+            alink::EXT_LINK_TX => Some(l.tx.encode().to_vec()),
+            _ => None,
+        }
+    }
+
+    /// 2.8.9 OUT on a sender: one apply at a time, at least the next
+    /// superframe start plus 32 ahead; op 0 sets only the flags; RATE on a
+    /// multiple of 32 with value 0.
+    fn ctrl_msg(&mut self, data: &[u8]) -> bool {
+        let (Some(r), Some(&flags)) = (ApplyRequest::decode(data), data.get(12)) else {
+            return false;
+        };
+        if data.len() != ApplyRequest::SIZE || data.get(13..) != Some(&[0; 3]) || flags & !1 != 0 {
+            return false;
+        }
+        let now = self.link_frame();
+        if self.audio_link.ctrl.is_some_and(|c| c.frame <= now) {
+            self.audio_link.ctrl = None;
+        }
+        if r.op == ApplyOp::CancelAll {
+            self.audio_link.system_flags = flags;
+            return true;
+        }
+        let lead_ok = alink::ctrl_msg_min_frame(now).is_some_and(|min| r.frame >= min);
+        let rate_ok = r.op != ApplyOp::Rate || r.frame % alink::SUPERFRAME_FRAMES == 0;
+        if !r.args_valid() || !lead_ok || !rate_ok || self.audio_link.ctrl.is_some() {
+            return false;
+        }
+        self.audio_link.ctrl = Some(r);
+        self.audio_link.system_flags = flags;
+        true
+    }
+
     fn link_sim(&mut self, op: u8) -> bool {
         match op {
             LINK_SIM_LOSE => {
@@ -509,3 +717,7 @@ impl State {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests_wp_sw1;
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests_wp_sw2;

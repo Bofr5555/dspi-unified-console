@@ -135,6 +135,7 @@ fn wp_sw1_link_io_uses_the_specs_ids_and_sizes() {
         vcxo_ppm: 3.0,
         phase_error_frames: 0.0,
         fill_frames: 64,
+        hop_delay_frames: 0,
     };
     let mut t = MockTransport::new().reply(
         op::REQ_EXTENSION,
