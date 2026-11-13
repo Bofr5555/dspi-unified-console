@@ -21,6 +21,7 @@ Licensing of the software described here: see [`NOTICE.md`](../../NOTICE.md).
 | [event-log.md](event-log.md) | The per-device event log: file names, record fields, kinds, rotation, several writers | exists |
 | [diagnostics.md](diagnostics.md) | The diagnostics bundle: what is in it, what is left out | exists |
 | [firmware-control.md](firmware-control.md) | Controlling the device over its UART and I2C, without a computer | exists in the firmware; page is an outline |
+| [audio-link.md](audio-link.md) | The audio link's system model on the hub: topology, alignment, scenes at a frame, alarms, `system.*` messages | exists (host side; firmware partial) |
 | [parameter-api.md](parameter-api.md) | A stable parameter API for other programs (PRO1 I1) | placeholder |
 | [control-protocols.md](control-protocols.md) | OSC, MIDI and MQTT control (PRO1 I-series) | placeholder |
 | [limits-profiles.md](limits-profiles.md) | Limits profiles: ranges an installation locks down (PRO1 S1) | placeholder |
