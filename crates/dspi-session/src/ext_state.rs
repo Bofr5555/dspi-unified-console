@@ -62,11 +62,11 @@ const LIST_LEN: u16 = {
 
 impl ExtState {
     /// Probe: `EXT_LIST`, then each supported sub-command this build knows.
-    /// A stall, a short reply or a link refusing this client (DSPi Link
+    /// A stall, a short reply or a DSPi Link hub refusing this client (DSPi Link
     /// `DENIED`: the hub classes `REQ_EXTENSION` as `config`, which viewer
     /// and control roles may not use) mean "absent": on `EXT_LIST` they give
     /// the empty state, never an error. Only a transport failure (disconnect,
-    /// timeout, a lock, a link fault) is returned.
+    /// timeout, a lock, a transport fault) is returned.
     ///
     /// One transfer per read and no retries: a stall is the answer. A listed
     /// sub-command whose read is absent is left `None` (it stays in
@@ -162,14 +162,14 @@ impl ExtState {
         self.alink_info.is_some_and(|i| i.usable())
     }
 
-    /// Whether the unit takes audio from an alink, so input source 7 (LINK)
+    /// Whether the unit takes audio from an alink, so input source 7 (`INPUT_SOURCE_ALINK`)
     /// means the alink input.
     pub fn alink_input(&self) -> bool {
         self.alink_info
             .is_some_and(|i| i.usable() && i.role.receives())
     }
 
-    /// Whether the device sends link-state events (0xE1, bit 2).
+    /// Whether the device sends alink state events (0xE1, bit 2).
     pub fn alink_state_events(&self) -> bool {
         self.notify_features
             .is_some_and(|f| f & alink::NOTIFY_FEAT_ALINK_STATE != 0)
@@ -183,11 +183,11 @@ impl ExtState {
 }
 
 /// Sorts a failed read into "absent" (`Ok`) or a transport failure (`Err`).
-/// A stall, a short reply or a link refusing this client mean "absent": a
+/// A stall, a short reply or a DSPi Link hub refusing this client mean "absent": a
 /// stall is the device saying "not supported", a short reply is an answer
 /// that is not usable, and a DSPi Link `DENIED` is the hub's policy for this
-/// client's role (not a fault of the link). Everything else (disconnect,
-/// timeout, a lock, a link fault) goes back to the caller.
+/// client's role (not a fault of the transport). Everything else (disconnect,
+/// timeout, a lock, a transport fault) goes back to the caller.
 fn absent(e: TransportError) -> Result<(), TransportError> {
     match e {
         TransportError::Stalled { .. }

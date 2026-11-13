@@ -85,7 +85,7 @@ pub struct Observed {
     // -- WP SW3 -- for the clients' "Clock and audio links" panel
     /// The rest of `EXT_ALINK_STATUS`'s counters and loop terms.
     pub stats: Option<AlinkStats>,
-    /// A receiver's trim scan at link-up (`EXT_ALINK_DIAG` version 1).
+    /// A receiver's trim scan at alink lock (`EXT_ALINK_DIAG` version 1).
     pub trim_scan: Option<TrimScan>,
     // -- fixup sw3x --
     /// A sender's superframe apply still waiting for its frame: it takes no
@@ -144,7 +144,7 @@ pub struct AlinkStats {
 }
 
 // -- WP SW3 --
-/// The trim scan at link-up (`dspi_proto::ext::alink::TrimScan`).
+/// The trim scan at alink lock (`dspi_proto::ext::alink::TrimScan`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TrimScan {

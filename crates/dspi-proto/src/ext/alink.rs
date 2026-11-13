@@ -134,7 +134,7 @@ pub const NOTIFY_FEAT_APPLY_RESULT: u32 = 1 << 3;
 pub const NOTIFY_EVT_ALINK_STATE: u8 = 0xE1;
 /// `NOTIFY_EVT_APPLY_RESULT`: an apply-at-frame op completed.
 pub const NOTIFY_EVT_APPLY_RESULT: u8 = 0xE2;
-/// The firmware's rate limit on the link-state event, as for the clip event
+/// The firmware's rate limit on the alink state event, as for the clip event
 /// (the apply result is not limited).
 pub const ALINK_STATE_MIN_INTERVAL_MS: u16 = 250;
 
@@ -287,7 +287,7 @@ impl AlinkState {
     }
 }
 
-/// Why a link-state event was sent (event 0xE1 byte 6, 2.8.12).
+/// Why an alink state event was sent (event 0xE1 byte 6, 2.8.12).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AlinkEventReason {
     None,
@@ -1123,7 +1123,7 @@ pub fn alink_event(notify_features: Option<u32>, id: u8, payload: &[u8]) -> Opti
 }
 
 // -- WP SW3 --
-/// The trim scan at link-up from `EXT_ALINK_DIAG` (2.8.11, offsets 32-39): the
+/// The trim scan at alink lock from `EXT_ALINK_DIAG` (2.8.11, offsets 32-39): the
 /// sampling trims that decoded clean and the one in use. A healthy alink has a
 /// clean range centred on 0 within one step. The DIAG layout is versioned by
 /// byte 0, so only version 1 (a receiver's) is read; a sender build (`0x81`)

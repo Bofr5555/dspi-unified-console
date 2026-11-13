@@ -502,7 +502,7 @@ impl State {
                 if let Some(v) = d.first_mut() {
                     *v = DIAG_VERSION;
                 }
-                // -- WP SW3 -- a receiver's trim scan at link-up (offsets 32-39):
+                // -- WP SW3 -- a receiver's trim scan at alink lock (offsets 32-39):
                 // done, clean from -3 to +4, running at 0, as a healthy alink.
                 if l.setup.role.receives()
                     && l.state != AlinkState::Off

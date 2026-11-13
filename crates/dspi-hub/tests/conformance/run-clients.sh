@@ -101,6 +101,9 @@ else
   mkdir -p "$stage"
   for f in "${sources[@]}"; do cp "$apple/$f" "$stage/"; done
   cp "$here/swift/main.swift" "$here/swift/Shims.swift" "$stage/"
+  # -- WP ALINK1N -- AuthStore.swift names AppIdentity (its support folder) since
+  # c65fde5c; the app's own file, Foundation only, goes beside it.
+  cp "$root/apps/apple/DSPi Console/AppIdentity.swift" "$stage/"
   # Copy first; then one session takes the matrix's lock with its own pid, builds,
   # runs and lets go, so a lock left by a lost session is seen as stale.
   tar -C "$stage" -cf - . | vm 'rm -rf ~/work/matrix/hb7 && mkdir -p ~/work/matrix/hb7 && tar -xf - -C ~/work/matrix/hb7'

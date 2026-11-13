@@ -138,7 +138,7 @@ struct RunOptions {
     share_usb: bool,
     // -- WP SW3 --
     /// `--demo --alink`: an installation of simulated devices on the audio
-    /// alink (a sender, a fan-out, four units) with its system model.
+    /// link (a sender, a fan-out, four units) with its system model.
     alink: bool,
     // -- WP HWLK1F --
     /// `--pair-admin`: the pairing window at the start may give admin, to the
