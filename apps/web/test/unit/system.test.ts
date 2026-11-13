@@ -26,7 +26,6 @@ import {
   resultWord,
   roomsView,
   saveMode,
-  sceneRefusal,
   sceneTaken,
   writeWhat,
   type SceneReport,
@@ -154,8 +153,8 @@ test("SW3: the mode is remembered per device, or for every device, Advanced by d
   assert.equal(loadMode(store, "S1"), "advanced");
   assert.equal(loadMode(null, "S1"), "advanced");
   assert.deepEqual(screensFor("simple", true).map((s) => s.id), ["main", "eq", "matrix"]);
-  assert.deepEqual(screensFor("advanced", true).map((s) => s.id), ["system", "main", "eq", "matrix"]);
-  assert.deepEqual(screensFor("installer", false).map((s) => s.id), ["main", "eq", "matrix", "system"]);
+  assert.deepEqual(screensFor("advanced", true).map((s) => s.id), ["system", "main", "eq", "matrix", "events"]);
+  assert.deepEqual(screensFor("installer", false).map((s) => s.id), ["main", "eq", "matrix", "system", "events"]);
 });
 
 test("SW3: words: results, ops, frames; the rail puts alarms on first, critical first", () => {
@@ -182,11 +181,16 @@ test("SW3: words: results, ops, frames; the rail puts alarms on first, critical 
 
 // -- The feed against a hub's answers --
 
-function hubSession(answer: (t: string, p: Record<string, unknown>) => unknown) {
+function hubSession(answer: (t: string, p: Record<string, unknown>) => unknown, outcomes: Record<string, unknown>[] = []) {
   const calls: string[] = [];
   const core = {
     call: async (method: string, params: Record<string, unknown>) => {
       if (method === "hubRole") return { role: "control" };
+      // -- WP WB8 -- the core's words for a refused recall: what the feed asked, answered in kind
+      if (method === "sceneOutcome") {
+        outcomes.push(params);
+        return { message: `core words for ${String(params.scene)} held ${String(params.heldFrame)}`, taken: false };
+      }
       if (method === "hubSystem") {
         calls.push(String(params.t));
         return answer(String(params.t), params);
@@ -311,23 +315,11 @@ function report(path: string, results: string[], frame = 2_000_000): SceneReport
   };
 }
 
-test("SW3 fixup sw3x: a recall none of whose writes was taken is refused, and says why", () => {
-  const now = new Date(2026, 10, 13, 14, 2, 30);
+test("SW3 fixup sw3x: a recall none of whose writes was taken is refused", () => {
   assert.equal(sceneTaken(report("superframe", ["queued"])), true);
   assert.equal(sceneTaken(report("per_unit", ["refused_at_apply", "late"])), true, "one late unit: recalled, late");
   assert.equal(sceneTaken(report("superframe", ["refused"])), false);
-  assert.equal(sceneRefusal("Closed", report("superframe", ["queued"]), null, 48000, now), "");
-  // The sender holds another scene's frame, 4800 frames on: 100 ms at 48 kHz.
-  const r = sceneRefusal("Closed", report("superframe", ["refused"]), 2_000_000 - 4790 + 4800, 48000, now);
-  assert.match(r, /^Closed was refused: a scene is already scheduled on the sender for link frame 2000010, 100 ms after this recall \(about [^)]*:30[^)]*\)\./);
-  assert.match(r, /takes one scene at a time; recall Closed again after that/);
-  assert.match(sceneRefusal("Closed", report("superframe", ["refused"]), null, 48000, now), /still holds one/);
-  // -- fixup lk1 -- the report's scene carries the system mute: it is said to be unchanged
-  assert.match(r, /recall Closed again after that\. System mute unchanged\.$/);
-  assert.equal(sceneRefusal("Quiet", report("per_unit", ["refused", "no_device"]), null, 48000, now), "Quiet was refused by every unit; nothing changed. System mute unchanged.");
-  const noMute = report("per_unit", ["refused"]);
-  delete noMute.plan.systemMute;
-  assert.equal(sceneRefusal("Quiet", noMute, null, 48000, now), "Quiet was refused by every unit; nothing changed.");
+  // -- WP WB8 -- why is the core's sentence (`sceneOutcome`): wasm.test.ts and the e2e check its words
   assert.equal(writeWhat("phase"), "Link delay");
   assert.equal(writeWhat("slots"), "Link slots");
   assert.equal(writeWhat("out_delay:1"), "Delay OUT2");
@@ -335,6 +327,7 @@ test("SW3 fixup sw3x: a recall none of whose writes was taken is refused, and sa
 
 test("SW3 fixup sw3x: a refused superframe scene is not the recalled one; the sender's held frame is named", async () => {
   let held: number | null = null;
+  const outcomes: Record<string, unknown>[] = [];
   const { session } = hubSession((t, p) => {
     if (t === "system.get") return { model: model(), revision: 1 };
     if (t === "system.status") {
@@ -348,7 +341,7 @@ test("SW3 fixup sw3x: a refused superframe scene is not the recalled one; the se
     }
     if (t === "system.scene.apply") return report("superframe", ["refused"], 1_004_000);
     throw new Error(t);
-  });
+  }, outcomes);
   const feed = new SystemFeed(session, 60_000);
   await feed.refresh();
   await feed.recall("evening");
@@ -356,7 +349,13 @@ test("SW3 fixup sw3x: a refused superframe scene is not the recalled one; the se
   await feed.recall("closed");
   assert.deepEqual(feed.state.recalled, { scene: "evening", name: "Evening" }, "the refused one is not recalled");
   assert.equal(feed.state.scene?.scene, "closed");
-  assert.match(feed.state.scene!.refusal, /scheduled on the sender for link frame 1000000/);
+  // -- WP WB8 -- the core's sentence, asked with the frame the sender holds, the report and the model
+  assert.equal(outcomes.length, 1, "only the refused recall asks");
+  assert.equal(outcomes[0]!.heldFrame, 1_000_000);
+  assert.equal(outcomes[0]!.scene, "closed");
+  assert.equal((outcomes[0]!.report as { plan: { frame: number } }).plan.frame, 1_004_000);
+  assert.ok((outcomes[0]!.model as { scenes: unknown[] }).scenes.length > 0);
+  assert.equal(feed.state.scene!.refusal, "core words for closed held 1000000");
   feed.stop();
 });
 

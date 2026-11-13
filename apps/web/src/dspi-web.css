@@ -678,3 +678,38 @@
 .dspi-web .sys-rail-refused { color: var(--bad); }
 .dspi-web .sys-stale { border-color: var(--bad); }
 .dspi-web .sys abbr[title] { text-decoration: underline dotted; cursor: help; }
+
+/* -- WP WB8 -- Undo and Redo beside the screen tabs; what a step left alone */
+.dspi-web .session-screens { display: contents; }
+.dspi-web .screen-bar { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.dspi-web .screen-bar .screen-tabs { flex: 1; min-width: 0; }
+.dspi-web .undo-redo { display: flex; gap: 0.25rem; flex: none; margin-left: auto; }
+.dspi-web .step-notice { display: flex; align-items: center; gap: 0.5rem; margin: 0; padding: 0.35rem 0.6rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.dspi-web .step-notice.warn { border-color: var(--warn); }
+.dspi-web .step-notice span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .step-notice .dismiss { flex: none; padding: 0 0.5rem; }
+/* -- WP WB8 -- the event log */
+.dspi-web .events-head { flex-wrap: wrap; justify-content: flex-start; }
+.dspi-web .events-head h2 { margin: 0 auto 0 0; }
+.dspi-web .events-unit { display: flex; align-items: center; gap: 0.35rem; color: var(--muted); font-size: 0.85rem; min-width: 0; }
+.dspi-web .events-unit select { min-width: 0; max-width: 12rem; }
+.dspi-web .diagnostics-said { flex-basis: 100%; margin: 0; }
+.dspi-web .event-list { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 0.9rem; margin-top: 0.5rem; }
+.dspi-web .event-list th { text-align: left; font-weight: 600; color: var(--muted); font-size: 0.8rem; padding: 0.25rem 0.4rem; }
+.dspi-web .event-list td { padding: 0.25rem 0.4rem; border-top: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+.dspi-web .event-list th:first-child { width: 6.5rem; }
+.dspi-web .event-list th:nth-child(2) { width: 8rem; }
+.dspi-web .event-time { font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dspi-web .event-kind { color: var(--muted); font-size: 0.8rem; }
+.dspi-web .tone-bad .event-kind { color: var(--bad); }
+.dspi-web .tone-warn .event-kind { color: var(--warn); }
+@media (max-width: 520px) {
+  .dspi-web .event-list { font-size: 0.85rem; }
+  .dspi-web .event-list th:first-child { width: 4.6rem; }
+  .dspi-web .event-list th:nth-child(2) { width: 5.5rem; }
+}
+/* -- WP WB8 -- on a phone the tabs keep the row; Undo and Redo go below them, at the right */
+@media (max-width: 520px) {
+  .dspi-web .screen-bar { flex-wrap: wrap; }
+  .dspi-web .screen-bar .screen-tabs { flex-basis: 100%; }
+}

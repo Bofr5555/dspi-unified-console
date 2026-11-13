@@ -8,7 +8,7 @@
 // Console's unsaved-changes prompt (M42) and the guard Disconnect asks.
 
 import type { ComponentChildren, FunctionComponent } from "preact";
-import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { EqScreen } from "../screens/eq/EqScreen";
 import { Dialog } from "../screens/main/Dialog";
 import { MainScreen } from "../screens/main/MainScreen";
@@ -23,6 +23,10 @@ import { loadMode, saveMode, type Mode } from "../screens/system/model";
 import { SceneBar } from "../screens/system/SceneBar";
 import { StatusRail } from "../screens/system/StatusRail";
 import { SystemScreen, useFeed } from "../screens/system/SystemScreen";
+// -- WP WB8 -- the event log (with Save Diagnostics…), undo and redo
+import { EventsScreen } from "../screens/events/EventsScreen";
+import { useSessionState } from "./components";
+import { StepNotice, UndoButtons, useUndoKeys } from "./undo";
 
 /** A question in a modal dialog; the answer is the chosen button's value, or "cancel". */
 export interface Question {
@@ -62,6 +66,8 @@ export const SCREENS: ScreenDef[] = [
   { id: "matrix", label: "Matrix", View: MatrixScreen },
   // -- WP SW3 -- (UI-MODES: the Pro layer, not in Simple)
   { id: "system", label: "System", View: SystemScreen },
+  // -- WP WB8 -- (UI-MODES: monitoring of the Advanced and Installer modes)
+  { id: "events", label: "Events", View: EventsScreen },
 ];
 
 // -- WP SW3 --
@@ -72,10 +78,12 @@ export const SCREENS: ScreenDef[] = [
  * has today's screens (UI-MODES section 2: it hides nothing permanently).
  */
 export function screensFor(mode: Mode, installation: boolean): ScreenDef[] {
-  const today = SCREENS.filter((x) => x.id !== "system");
+  // -- WP WB8 -- the event log last, in Advanced and Installer
+  const today = SCREENS.filter((x) => x.id !== "system" && x.id !== "events");
   if (mode === "simple") return today;
   const system = SCREENS.find((x) => x.id === "system")!;
-  return installation ? [system, ...today] : [...today, system];
+  const events = SCREENS.find((x) => x.id === "events")!;
+  return installation ? [system, ...today, events] : [...today, system, events];
 }
 
 export function Screens(props: { session: Session }) {
@@ -95,6 +103,10 @@ export function Screens(props: { session: Session }) {
   const screen = shown.find((x) => x.id === current) ?? shown[0]!;
   const setCurrent = setChosen;
   const [question, setQuestion] = useState<(Question & { answer: (v: string) => void }) | null>(null);
+  // -- WP WB8 -- undo and redo: the buttons follow the session's state; the keys act on this view
+  const st = useSessionState(session);
+  const root = useRef<HTMLDivElement>(null);
+  useUndoKeys(session, root);
 
   const ask = useCallback<Ask>(
     (q) =>
@@ -151,18 +163,23 @@ export function Screens(props: { session: Session }) {
   }, [session, unsaved]);
 
   return (
-    <>
+    <div class="session-screens" ref={root}>
       {/* -- WP SW3 -- on an installation, the scene bar */}
       {mode !== "simple" ? <SceneBar feed={system} session={session} ask={ask} /> : null}
-      {shown.length > 1 ? (
-        <div class="screen-tabs" role="tablist" aria-label="Screens">
-          {shown.map((x) => (
-            <button type="button" role="tab" key={x.id} aria-selected={x === screen} onClick={() => setCurrent(x.id)}>
-              {x.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
+      {/* -- WP WB8 -- the tabs and, beside them, Undo and Redo */}
+      <div class="screen-bar">
+        {shown.length > 1 ? (
+          <div class="screen-tabs" role="tablist" aria-label="Screens">
+            {shown.map((x) => (
+              <button type="button" role="tab" key={x.id} aria-selected={x === screen} onClick={() => setCurrent(x.id)}>
+                {x.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <UndoButtons session={session} state={st} />
+      </div>
+      <StepNotice session={session} notice={st.notice} />
       <screen.View session={session} ask={ask} unsaved={unsaved} system={system} mode={mode} />
       {/* -- WP SW3 -- the status rail, below the screen as a status bar */}
       <StatusRail
@@ -183,6 +200,6 @@ export function Screens(props: { session: Session }) {
           {question.body}
         </Dialog>
       ) : null}
-    </>
+    </div>
   );
 }

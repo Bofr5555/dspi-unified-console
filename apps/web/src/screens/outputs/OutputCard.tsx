@@ -53,6 +53,7 @@ export const OutputCard = memo(function OutputCard(props: {
         ))}
       </div>
       <LevelControl
+        session={session}
         label="GAIN"
         name="Gain"
         unit="dB"
@@ -68,6 +69,7 @@ export const OutputCard = memo(function OutputCard(props: {
         class="output-gain"
       />
       <LevelControl
+        session={session}
         label="DELAY"
         name="Delay"
         unit="ms"

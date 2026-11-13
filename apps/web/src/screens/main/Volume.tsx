@@ -8,7 +8,7 @@ import { memo } from "preact/compat";
 import { useState } from "preact/hooks";
 import { safeLocalStorage } from "../../fleet/local";
 import type { Session } from "../../ui/session";
-import { useLiveWrite } from "./live";
+import { dragProps, useLiveWrite } from "./live";
 import {
   MASTER_STEPS,
   USER_STEPS,
@@ -50,7 +50,7 @@ export const VolumeCard = memo(function VolumeCard(props: {
   const [mode, setMode] = useState<Mode>(savedMode);
   const master = mode === "master";
   const path = master ? "vol.master" : "vol.user";
-  const live = useLiveWrite((db) => session.write(path, { float: db }));
+  const live = useLiveWrite((db) => session.write(path, { float: db }), session);
   const db = live.draft ?? (master ? props.masterDb : props.userDb);
   const toDb = master ? posToMaster : posToUser;
   const name = master ? "Master volume" : "Volume";
@@ -89,6 +89,7 @@ export const VolumeCard = memo(function VolumeCard(props: {
         step={1}
         value={master ? masterToPos(db) : userToPos(db)}
         disabled={disabled}
+        {...dragProps(live)}
         onInput={(e) => live.move(toDb(Number((e.target as HTMLInputElement).value)))}
         onChange={(e) => live.release(toDb(Number((e.target as HTMLInputElement).value)))}
         onDblClick={reset}

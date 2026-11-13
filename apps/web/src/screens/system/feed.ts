@@ -8,7 +8,6 @@
 import { CoreCallError } from "../../core/protocol";
 import type { Session } from "../../ui/session";
 import {
-  sceneRefusal,
   sceneTaken,
   singleUnit,
   type AlignReport,
@@ -245,8 +244,15 @@ export class SystemFeed {
         const seen = sender ? this.state.status?.observed[sender]?.pendingApplyFrame : null;
         const after = report.frameAfterWrites ?? report.plan.frame - report.plan.leadFrames;
         const pending = seen ?? (this.heldFrame !== null && this.heldFrame > after ? this.heldFrame : null);
-        const refusal = sceneRefusal(name, report, pending, this.state.status?.alignment.rateHz ?? 48000, new Date());
-        this.set({ scene: { scene: sceneId, name, report, error: "", running: false, refusal } });
+        // -- WP WB8 -- the core's words for it, the same every client shows (by the sender's answer)
+        const outcome = await this.session.core.call("sceneOutcome", {
+          scene: sceneId,
+          report,
+          model: this.state.model,
+          heldFrame: pending,
+          rateHz: this.state.status?.alignment.rateHz || undefined,
+        });
+        this.set({ scene: { scene: sceneId, name, report, error: "", running: false, refusal: outcome.message } });
       }
     } catch (e) {
       this.set({ scene: { scene: sceneId, name, report: null, error: message(e), running: false, refusal: "" } });

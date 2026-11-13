@@ -198,3 +198,105 @@ test("BUG1: the core's snapshot carries each output's label and the dashboard's 
   assert.equal(after.outputLabels?.[0]?.userNamed, true);
 });
 
+
+// -- WP WB8 -- undo and redo, the drag mark, a demo clip in the event log, the
+// diagnostics zip and a refused recall's words, on the page's module
+
+test("WB8: undo and redo through the core's journal; a drag is one step", { skip }, async () => {
+  const core = session(await load(pageModule));
+  await core.call("open", { kind: "demo" });
+  assert.deepEqual(await core.call("canUndo", undefined), { canUndo: false, canRedo: false });
+  const start = (await core.call("state", undefined)).state.userVolumeDb;
+  await core.call("write", { path: "vol.user", value: { float: -20 } });
+  // A drag: three writes inside one mark are one step.
+  await core.call("setDragging", { dragging: true });
+  for (const v of [-21, -22, -23]) await core.call("write", { path: "vol.user", value: { float: v } });
+  await core.call("setDragging", { dragging: false });
+  assert.deepEqual(await core.call("canUndo", undefined), { canUndo: true, canRedo: false });
+  const back = await core.call("undo", undefined);
+  assert.equal(back.entry?.path, "vol.user");
+  assert.deepEqual(back.entry?.before, { float: -20 });
+  assert.equal(back.note, null);
+  assert.equal((await core.call("state", undefined)).state.userVolumeDb, -20, "the whole drag in one step");
+  await core.call("undo", undefined);
+  assert.equal((await core.call("state", undefined)).state.userVolumeDb, start);
+  assert.deepEqual(await core.call("canUndo", undefined), { canUndo: false, canRedo: true });
+  await core.call("redo", undefined);
+  assert.equal((await core.call("state", undefined)).state.userVolumeDb, -20);
+  const h = await core.call("history", { n: 3 });
+  assert.equal(h[0]!.source, "redo");
+  core.dispose();
+});
+
+test("WB8: undo on a read-only demo moves nothing", { skip }, async () => {
+  const core = session(await load(pageModule));
+  await core.call("open", { kind: "demo", readOnly: true });
+  assert.deepEqual(await core.call("canUndo", undefined), { canUndo: false, canRedo: false });
+  const m = await core.call("undo", undefined);
+  assert.equal(m.entry, null);
+  core.dispose();
+});
+
+test("WB8: a demo clip reaches the event log with its time, unit and text", { skip }, async () => {
+  const core = session(await load(pageModule));
+  const snap = await core.call("open", { kind: "demo" });
+  const t0 = Date.now() - 1000;
+  await core.call("demo", { action: "clip", mask: 1 });
+  await core.call("meters", undefined);
+  const serials = await core.call("eventLogDevices", undefined);
+  assert.ok(serials.includes(snap.device.serial), String(serials));
+  const log = await core.call("eventLogRead", { serial: snap.device.serial });
+  const clip = log.records.find((r) => r.kind === "clip");
+  assert.ok(clip, JSON.stringify(log.records));
+  assert.ok(clip.t >= t0);
+  assert.ok(clip.text.length > 0);
+  assert.ok(log.records.some((r) => r.kind === "connected"));
+  // Only what is new after `lastId`.
+  assert.deepEqual((await core.call("eventLogRead", { serial: snap.device.serial, afterId: log.lastId })).records, []);
+  await assert.rejects(core.call("demo", { action: "clip", mask: 0 }), code("invalid"));
+  core.dispose();
+});
+
+test("WB8: the diagnostics bundle is the core's zip, named and dated", { skip }, async () => {
+  const core = session(await load(pageModule));
+  await core.call("open", { kind: "demo" });
+  const d = await core.call("diagnostics", { app: "web test", files: [{ name: "browser.txt", text: "User agent: test" }] });
+  assert.match(d.name, /^dspi-diagnostics-\d{8}-\d{6}Z\.zip$/);
+  const bytes = Buffer.from(d.base64, "base64");
+  assert.equal(bytes.length, d.size);
+  assert.equal(bytes.subarray(0, 4).toString("latin1"), "PK\x03\x04");
+  const names = bytes.toString("latin1");
+  for (const f of ["README.txt", "versions.json", "device/dump.json", "device/stats.json", "client/browser.txt", "notes.txt"]) assert.ok(names.includes(f), f);
+  core.dispose();
+});
+
+test("WB8: a refused recall in the core's words, one sentence per sender's answer", { skip }, async () => {
+  const core = session(await load(pageModule));
+  const model = { rateHz: 48000, scenes: [{ id: "closed", name: "Closed" }], units: [], senders: [], fanOuts: [] };
+  const report = (result: string) => ({
+    plan: { scene: "closed", frame: 2_000_000, path: "superframe", ops: [], leadFrames: 4800, systemMute: true },
+    writes: [{ serial: "TX", element: "tx", what: "mute", result }],
+    frameAfterWrites: 2_000_000 - 4790,
+    onTime: false,
+  });
+  const held = 2_000_000 - 4790 + 4800;
+  const refused = await core.call("sceneOutcome", { scene: "closed", report: report("refused"), model, heldFrame: held });
+  assert.equal(refused.taken, false);
+  assert.equal(refused.heldFrame, held);
+  assert.equal(
+    refused.message,
+    "Closed was refused: a scene is already scheduled on the sender for link frame 2000010, 100 ms after this recall. The sender takes one scene at a time; recall Closed again after that. System mute unchanged.",
+  );
+  assert.match((await core.call("sceneOutcome", { scene: "closed", report: report("refused"), model, heldFrame: null })).message, /still holds one/);
+  const timeout = await core.call("sceneOutcome", { scene: "closed", report: report("timeout"), model, heldFrame: held });
+  assert.equal(timeout.message, "Closed was not recalled: the sender did not answer in time. Check the sender and recall Closed again. System mute unchanged.");
+  assert.equal(timeout.heldFrame, null);
+  const locked = await core.call("sceneOutcome", { scene: "closed", report: report("locked"), model, heldFrame: held });
+  assert.match(locked.message, /^Closed was not recalled: another console is applying changes to the sender\./);
+  const other = await core.call("sceneOutcome", { scene: "closed", report: report("bad_frame"), model, heldFrame: held });
+  assert.match(other.message, /^Closed was not recalled: the sender's answer was "/);
+  for (const m of [timeout.message, locked.message, other.message]) assert.ok(!m.includes("already scheduled"), m);
+  const perUnit = { ...report("refused"), plan: { ...report("refused").plan, path: "per_unit" } };
+  assert.equal((await core.call("sceneOutcome", { scene: "closed", report: perUnit, model })).message, "Closed was refused by every unit; nothing changed. System mute unchanged.");
+  core.dispose();
+});

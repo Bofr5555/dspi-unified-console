@@ -18,6 +18,7 @@
 import { useRef } from "preact/hooks";
 import { ValueField } from "../eq/Field";
 import { useLiveWrite } from "../main/live";
+import type { Session } from "../../ui/session";
 import { clamp, onGrid, parseLevel, stepGrid } from "./model";
 
 export function LevelControl(props: {
@@ -42,9 +43,11 @@ export function LevelControl(props: {
   /** A double or secondary click on the slider puts it back here (`onReset`). */
   reset?: number;
   class?: string;
+  /** -- WP WB8 -- the session whose journal a drag is marked in (one undo step). */
+  session?: Session;
 }) {
   const { step, disabled } = props;
-  const live = useLiveWrite(props.write);
+  const live = useLiveWrite(props.write, props.session);
   const shown = live.draft ?? props.value;
   const dragging = useRef(false);
   const range = props.range;
@@ -120,6 +123,8 @@ export function LevelControl(props: {
         disabled={disabled}
         onPointerDown={() => {
           dragging.current = true;
+          // -- WP WB8 -- one undo step for the drag, ended once its last write has gone
+          live.grab();
           // Wherever the pointer is let go.
           const end = () => {
             dragging.current = false;
@@ -139,6 +144,8 @@ export function LevelControl(props: {
           dragging.current = false;
           commit(onGrid(raw(e), step));
         }}
+        onPointerCancel={() => live.letGo()}
+        onLostPointerCapture={() => live.letGo()}
         onKeyDown={key}
         onDblClick={reset}
         onContextMenu={reset}
