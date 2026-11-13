@@ -14,6 +14,8 @@
 //  the domains still send raw SETs until SW9-SW14 move them to the typed API,
 //  and a raw SET is history only (`raw_set`: nobody knows what it moved), so
 //  until then most edits cannot be undone and Undo stays disabled.
+//  -- WP SW9 -- Volume, EQ, crossover, outputs and the matrix are on the
+//  typed setters now (Commands.swift), so those edits are undone.
 //
 
 import Foundation

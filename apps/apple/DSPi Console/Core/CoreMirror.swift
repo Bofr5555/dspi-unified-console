@@ -93,6 +93,14 @@ protocol CoreStateSource: AnyObject {
     func stepJournal(redo: Bool) -> CoreJournalStep
     /// The core's `setDragging`, queued behind the writes sent before it.
     func setDragging(_ dragging: Bool)
+    // -- WP SW9 -- The domains' typed calls (SWIFT-SEAMS 5.2).
+    /// A typed setter on the core's queue, behind every write sent before
+    /// it; never replayed.  `lane`: the slider fast path, where a newer
+    /// value for the same key replaces one still queued.
+    func write(lane: String?, _ body: @escaping (DspiCore) throws -> Void)
+    /// A typed read (or a write with a reply) on the core's queue.  Blocking:
+    /// call off the main thread.
+    func call<T>(_ body: (DspiCore) throws -> T) -> Result<T, DspiError>
 }
 
 extension CoreStateSource {
@@ -108,6 +116,9 @@ extension CoreStateSource {
                         journal: CoreJournalState())
     }
     func setDragging(_ dragging: Bool) {}
+    // -- WP SW9 -- A source without a core takes no typed call.
+    func write(lane: String?, _ body: @escaping (DspiCore) throws -> Void) {}
+    func call<T>(_ body: (DspiCore) throws -> T) -> Result<T, DspiError> { .failure(.Unsupported) }
 }
 
 /// What one `processNotifications` changed, and the core's state after it.

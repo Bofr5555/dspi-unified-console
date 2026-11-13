@@ -564,6 +564,13 @@ four cases:
 **Writes are never replayed** (owner's Link rule, PLAN-CLIENTS section 1). Release commits the last value with the
 ordinary setter. SW9 owns it.
 
+*As built (SW9, `Core/CoreBackedTransport.swift` `write(lane:_:)`).* The lane's key is the setting (`vol.master`,
+`out.gain[o]`, `eq[ch][band]`, ...). A write carries the local `generation` it was issued for and is dropped when that
+moved; any failed write empties the lane. A lost link fails the next write, which covers "`isConnected` goes false" and
+"leaves `Bound`". Writes without a key (the release's commit, every discrete edit) go through the same queue in
+order. After a write the journal and the unsaved-changes list are published at once (a typed write's echo changes
+nothing in the mirror). The single-setting `fetch*` functions of this domain had no callers and were deleted.
+
 **Resync.** `scheduleDeviceResync` (`DSPViewModel.swift:2592`) and its coalescing are replaced by the core's own
 re-read, which `NOTIFY_REFRESHED` reports. A preset load's re-baseline is `loadPreset` doing `captureBaseline`
 (`presets.rs:111-128`).
