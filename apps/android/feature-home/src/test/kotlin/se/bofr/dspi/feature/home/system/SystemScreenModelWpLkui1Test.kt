@@ -96,7 +96,7 @@ class SystemScreenModelWpLkui1Test {
         assertFalse(second.lastRecall!!.taken)
         assertTrue(
             second.lastRecall!!.message,
-            second.lastRecall!!.message.startsWith("Closed was refused: a scene is already scheduled on the sender for link frame $held")
+            second.lastRecall!!.message.startsWith("Closed was refused: a scene is already scheduled on the sender for audio link frame $held")
         )
         assertEquals("the scene recalled is still Evening", "Evening", second.recalledScene)
         // -- fixup lk1 -- the sender's write is the scene's, and the mute is said to be unchanged

@@ -2,7 +2,7 @@
 
 For installers and programs that set up a system of DSPi units fed by the audio
 link: one sender (the master clock) sends a frame stream over optical or SFP
-links, and every unit plays link frame F a configured number of frames after it
+links, and every unit plays audio link frame F a configured number of frames after it
 arrives. The hub keeps the installation, computes each unit's delay so a room
 plays sample-aligned, applies scenes at one frame on every unit, and raises
 alarms when a link drops.
@@ -16,7 +16,7 @@ the stream.
 | `crates/dspi-hub/tests/wp_sw2_system.rs` | the behaviour below, against fake units |
 | `crates/dspi-core/src/alink.rs` | one unit's link from a client (SW1) |
 | DSPi-bofr `Documentation/Features/extension_channel_spec.md` 2.8 | the firmware's link commands (normative) |
-| DSPi-bofr `Documentation/Features/link_protocol_spec.md` 7.2 | hops and hop delays (normative) |
+| DSPi-bofr `Documentation/Features/alink_protocol_spec.md` 7.2 | hops and hop delays (normative) |
 | SYS2 spec sections 1, 3 and 7 | the design |
 
 **State:** host side complete against the fake device's link model. Receiver
@@ -124,17 +124,17 @@ such command (`unsupported`). The rest of the scene is planned as above; the
 superframe path needs only every unit *with* the link in the target. Ops on
 units with the link that no frame could be read for are listed in `unscheduled`
 and answered `no_frame`, the path is then `direct`. A scene is refused
-(`no_device`, "no unit of the scene reports a link frame") only when nothing can
+(`no_device`, "no unit of the scene reports an audio link frame") only when nothing can
 be written at once and nothing can be scheduled. On the superframe path, a unit
 of the scene that is not attached is answered `no_device` (reason
 `not connected`), and one attached whose own frame could not be read `no_frame`
-(reason `no link frame read`: not known to have taken it). -- fixup hwlk1f --
+(reason `no audio link frame read`: not known to have taken it). -- fixup hwlk1f --
 A unit goes the direct way only when two reads agree that its firmware has no
 link (its answer now and the last status poll's, or a second read when no poll
 has told); an unknown unit never does: its ops stay frame-timed or are not
 written. `onTime` is true only when every op acted at the frame: never
 with an op applied at once or a unit not reached. The clients say it in one
-sentence: "Evening recalled: applied now on K (no audio link); at link frame N
+sentence: "Evening recalled: applied now on K (no audio link); at audio link frame N
 through the sender on the others."
 
 `unmute` always goes to each unit: the BULKFIX guard sits on each unit's own

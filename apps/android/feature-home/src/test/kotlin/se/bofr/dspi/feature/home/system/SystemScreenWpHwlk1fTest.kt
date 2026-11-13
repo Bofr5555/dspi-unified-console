@@ -85,7 +85,7 @@ class SystemScreenWpHwlk1fTest {
         rule.onNodeWithContentDescription("Recall Evening").performClick()
         settle()
         rule.onNodeWithText(
-            "Evening recalled: applied now on Plain unit (no audio link); at link frame",
+            "Evening recalled: applied now on Plain unit (no audio link); at audio link frame",
             substring = true
         ).assertIsDisplayed()
         val recall = model.state.value.lastRecall!!

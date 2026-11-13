@@ -1,4 +1,4 @@
-//! The alignment engine (WP SW2, SYS2 3.1-3.2 and 3.5, `link_protocol_spec.md`
+//! The alignment engine (WP SW2, SYS2 3.1-3.2 and 3.5, `alink_protocol_spec.md`
 //! 7.2): from the model and what the devices report, each unit's
 //! `EXT_ALINK_PHASE` (`d_local`, `hops_offset`) and its outputs' `out.delay`, so
 //! that every unit plays alink frame F at the same instant and every speaker in

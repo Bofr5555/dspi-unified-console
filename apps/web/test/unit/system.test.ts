@@ -408,7 +408,7 @@ test("HWLK1F: a unit whose firmware has no audio link reads as such, never Unkno
   assert.equal(resultWord("applied_now"), "Applied now");
   assert.equal(resultTone("applied_now"), "ok");
   assert.equal(resultWord("unsupported"), "Needs the audio link");
-  assert.equal(resultWord("no_frame"), "No link frame");
+  assert.equal(resultWord("no_frame"), "No audio link frame");
   assert.ok(sceneTaken({ plan: { scene: "s", frame: 0, path: "direct", ops: [], leadFrames: 0 }, writes: [{ serial: "K", element: "K", what: "mute", result: "applied_now" }], onTime: false }));
 });
 

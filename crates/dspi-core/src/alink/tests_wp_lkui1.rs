@@ -236,7 +236,7 @@ fn wp_lkui1_a_recall_through_the_sender_and_its_refusal() {
     assert!(r.taken && r.on_time);
     assert_eq!(
         r.message,
-        "Evening recalled through the sender, at link frame 10000."
+        "Evening recalled through the sender, at audio link frame 10000."
     );
     assert_eq!((r.lead_ms, r.frame), (100.0, 10_000));
     assert_eq!(r.writes[0].unit, "Sender");
@@ -257,7 +257,7 @@ fn wp_lkui1_a_recall_through_the_sender_and_its_refusal() {
     assert_eq!(r.held_frame, Some(10_000));
     assert_eq!(
         r.message,
-        "Closed was refused: a scene is already scheduled on the sender for link frame 10000, \
+        "Closed was refused: a scene is already scheduled on the sender for audio link frame 10000, \
          90 ms after this recall. The sender takes one scene at a time; recall Closed again after that. \
          System mute unchanged."
     );
@@ -288,7 +288,7 @@ fn wp_lkui1_a_recall_through_the_sender_and_its_refusal() {
     assert!(r.taken);
     assert_eq!(
         r.message,
-        "Closed recalled through the sender, at link frame 10500, system mute on: not every unit on time."
+        "Closed recalled through the sender, at audio link frame 10500, system mute on: not every unit on time."
     );
     assert_eq!(
         (r.writes[0].unit.as_str(), r.writes[0].what.as_str()),

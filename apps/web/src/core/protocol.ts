@@ -610,7 +610,7 @@ export interface AlinkMethods {
   alinkSlots: { params: undefined; result: number[] };
   setAlinkSlots: { params: { slots: number[] }; result: null };
   alinkPhase: { params: undefined; result: AlinkPhase };
-  /** `mode` 0 fill servo, 1 phase lock; `dLocal` in link frames; `hopsOffset` -64..64. */
+  /** `mode` 0 fill servo, 1 phase lock; `dLocal` in audio link frames; `hopsOffset` -64..64. */
   setAlinkPhase: { params: { mode: number; dLocal: number; hopsOffset?: number }; result: null };
   alinkFrameCounter: { params: undefined; result: { frame: number; timeUs: number; outputFrames: number } };
   /** `op` 0 cancel all, 1 mute, 2 unmute, 3 preset load, 4 master volume, 5 output delay, 6 rate, 7 click, 8 sync pulse. */

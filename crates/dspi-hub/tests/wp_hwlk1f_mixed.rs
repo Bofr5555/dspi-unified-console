@@ -290,9 +290,9 @@ fn wp_hwlk1f_scenes_apply_at_once_on_a_unit_without_the_link() {
     let rc = core.alink_system_recall("evening".into()).unwrap();
     assert!(rc.taken && !rc.on_time);
     assert!(
-        rc.message
-            .starts_with("Evening recalled: applied now on K340 (no audio link); at link frame ")
-            && rc.message.ends_with(" through the sender on the others."),
+        rc.message.starts_with(
+            "Evening recalled: applied now on K340 (no audio link); at audio link frame "
+        ) && rc.message.ends_with(" through the sender on the others."),
         "{}",
         rc.message
     );

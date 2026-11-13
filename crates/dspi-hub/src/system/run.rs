@@ -503,7 +503,7 @@ fn plan_targets(
 // -- WP HWLK1F --
 /// A scene op written at once to a unit without the audio link, with the
 /// command it stands for (the firmware's apply does the same,
-/// `link_input.c` `apply_exec`): mute and unmute the user mute, a preset
+/// `alink_input.c` `apply_exec`): mute and unmute the user mute, a preset
 /// load, the master volume (dB × 100), an output delay (samples at `rate_hz`,
 /// as the firmware's half-sample rounding). A click and a sync pulse have no
 /// command: `unsupported`. `applied_now`, or the write's failure.
@@ -1145,7 +1145,7 @@ impl HubHandle {
                     // -- fixup hwlk1f (F1) -- not known to take it: no frame of its own was read
                     writes.push(WriteResult {
                         result: "no_frame".into(),
-                        reason: Some("no link frame read".into()),
+                        reason: Some("no audio link frame read".into()),
                         ..o
                     });
                 }

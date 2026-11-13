@@ -291,7 +291,7 @@ WB8, the real-hardware WebUSB checks named above.)
   sender refused; a timeout, a lock and any other answer each have their own.
 - -- WP HWLK1F -- **A taken scene and a written alignment** are the core's sentences too
   (`sceneOutcome`, `alignOutcome`): a unit whose firmware has no audio link takes a
-  scene at once ("applied now on K (no audio link); at link frame N … on the others"),
+  scene at once ("applied now on K (no audio link); at audio link frame N … on the others"),
   "on time on every unit" only when it is true, and an alignment says what it wrote,
   what it skipped and why, or that it wrote nothing. Such a unit shows "No audio link
   (firmware)", never "Unknown"; a save that names one shows the hub's warning.

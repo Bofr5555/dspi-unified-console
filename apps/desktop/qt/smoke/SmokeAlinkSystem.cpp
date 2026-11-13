@@ -258,7 +258,7 @@ void alinkSystemSection(SmokeDriver &d) {
     std::printf("smoke: lkui1: %s\n", qPrintable(refused));
     d.check("lkui1: Closed refused, naming the frame the sender holds",
             !sys->lastRecall().value(QStringLiteral("taken")).toBool()
-                && refused.startsWith(QLatin1String("Closed was refused: a scene is already scheduled on the sender for link frame "))
+                && refused.startsWith(QLatin1String("Closed was refused: a scene is already scheduled on the sender for audio link frame "))
                 && sys->recalledScene() == QLatin1String("Evening"));
     shoot(QStringLiteral("scene-refused"));
 
@@ -398,7 +398,7 @@ void alinkSystemSection(SmokeDriver &d) {
     std::printf("smoke: hwlk1f: %s\n", qPrintable(mixedRecall));
     d.check("hwlk1f: Evening applied now on P, at the frame on the others, not 'on time on every unit'",
             sys->lastRecall().value(QStringLiteral("taken")).toBool() && !sys->lastRecall().value(QStringLiteral("onTime")).toBool()
-                && mixedRecall.startsWith(QLatin1String("Evening recalled: applied now on Plain unit (no audio link); at link frame "))
+                && mixedRecall.startsWith(QLatin1String("Evening recalled: applied now on Plain unit (no audio link); at audio link frame "))
                 && mixedRecall.endsWith(QLatin1String(" through the sender on the others.")));
     sys->align();
     d.check("hwlk1f: align says P was skipped and why", d.waitFor(20000, [&] {

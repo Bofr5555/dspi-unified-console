@@ -117,14 +117,15 @@ are `alink_*`, `fetch_alink_frame_counter` and `apply_at_frame`.*
 | **Audio link slots** | Which audio link channel feeds each of a receiver's 8 matrix inputs; "Silent" for none. Not "Mapping" or "Routing" (the Matrix routes) | | |
 | **Locked**, **Searching**, **Holdover**, **Off** | The link's state. Holdover: the link was lost, the outputs are muted and the clock is held until it returns | | |
 | **Line class** | The link's speed: L1 (TOSLINK parts), L2 (50 MBd parts), L3 (SFP) | L1, L2, L3 | |
-| **Phase lock** | Every receiver plays a link frame the same fixed delay after it arrives, so all devices play in step. The other mode, **Fill servo**, is how S/PDIF and ADAT inputs follow their source | on or off | |
-| **Audio link delay** | The fixed delay of phase lock, in link frames, with ms beside it (one frame is one sample period). The plans' `D_local` | frames (ms) | |
-| **System delay** | The delay D every unit's audio link delay is worked out from, so all units of one sender play a link frame at the same moment. The hub picks the smallest every unit takes unless an installer fixes it. The plans' `D` | frames (ms) | |
+| **Phase lock** | Every receiver plays an audio link frame the same fixed delay after it arrives, so all devices play in step. The other mode, **Fill servo**, is how S/PDIF and ADAT inputs follow their source | on or off | |
+| **Audio link frame** | One sample period of the audio link's stream, counted by the sender (the frame counter); the audio link delay, scenes and apply at frame are given in them. Not "link frame" in text a user reads (ALINK1) | frames | |
+| **Audio link delay** | The fixed delay of phase lock, in audio link frames, with ms beside it (one frame is one sample period). The plans' `D_local` | frames (ms) | |
+| **System delay** | The delay D every unit's audio link delay is worked out from, so all units of one sender play an audio link frame at the same moment. The hub picks the smallest every unit takes unless an installer fixes it. The plans' `D` | frames (ms) | |
 | **Audio link delay range** | The shortest and longest audio link delay a unit takes; it follows its output latency (`d_local_min`..`d_local_max`) | frames | |
 | **Hop offset** | Frames added to a unit's audio link delay for the fan-outs and repeaters between it and the sender, which each pass the stream on a few frames late (`hops_offset`) | frames, -64 to 64 | |
 | **Re-anchor** | Restarting the outputs in step after a loss or a new audio link delay: a short silence (2 to 6 ms). Not "Resync" in text a user reads | | |
 | **Frame counter** | The link's running count of frames, the same on every device of one sender | frames | |
-| **Apply at frame** | A change (mute, unmute, preset, master volume, output delay, rate, test click) that every device makes at the same link frame | | |
+| **Apply at frame** | A change (mute, unmute, preset, master volume, output delay, rate, test click) that every device makes at the same audio link frame | | |
 
 ## 4. Units
 

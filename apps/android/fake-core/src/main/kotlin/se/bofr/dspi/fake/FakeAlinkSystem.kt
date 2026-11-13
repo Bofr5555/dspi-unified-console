@@ -208,7 +208,7 @@ class FakeAlinkSystem {
         if (held != null) {
             return AlinkSceneRecall(
                 s.id, s.name, false, frame + 4_800, 100.0, false, held,
-                "${s.name} was refused: a scene is already scheduled on the sender for link frame $held, 90 ms after this recall. " +
+                "${s.name} was refused: a scene is already scheduled on the sender for audio link frame $held, 90 ms after this recall. " +
                     "The sender takes one scene at a time; recall ${s.name} again after that." +
                     (if (s.systemMute != null) " System mute unchanged." else ""),
                 listOf(AlinkSystemWrite("Sender", "Scene ${s.name}", "refused", "Refused", "bad"))
@@ -219,7 +219,7 @@ class FakeAlinkSystem {
         if (plainUnit && s.id != "click") {
             return AlinkSceneRecall(
                 s.id, s.name, true, frame + 4_800, 100.0, false, null,
-                "${s.name} recalled: applied now on Plain unit (no audio link); at link frame ${frame + 4_800} " +
+                "${s.name} recalled: applied now on Plain unit (no audio link); at audio link frame ${frame + 4_800} " +
                     "through the sender on the others" + (if (s.systemMute == true) "; system mute on" else "") + ".",
                 listOf(
                     AlinkSystemWrite("Sender", "Scene ${s.name}", "queued", "Queued", "ok"),
@@ -229,7 +229,7 @@ class FakeAlinkSystem {
         }
         return AlinkSceneRecall(
             s.id, s.name, true, frame + 4_800, 100.0, true, null,
-            "${s.name} recalled through the sender, at link frame ${frame + 4_800}" +
+            "${s.name} recalled through the sender, at audio link frame ${frame + 4_800}" +
                 (if (s.systemMute == true) ", system mute on" else "") + ".",
             listOf(AlinkSystemWrite("Sender", "Scene ${s.name}", "queued", "Queued", "ok"))
         )

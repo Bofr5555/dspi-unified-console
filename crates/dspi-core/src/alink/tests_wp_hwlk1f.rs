@@ -107,7 +107,7 @@ fn wp_hwlk1f_a_mixed_recall_says_what_went_at_once() {
     assert!(r.taken && !r.on_time);
     assert_eq!(
         r.message,
-        "Evening recalled: applied now on K340 (no audio link); at link frame 9600 through the sender on the others."
+        "Evening recalled: applied now on K340 (no audio link); at audio link frame 9600 through the sender on the others."
     );
     // The sender's write is the scene; K's keeps its op.
     assert_eq!(r.writes[0].what, "Scene Evening");
@@ -126,7 +126,7 @@ fn wp_hwlk1f_a_mixed_recall_says_what_went_at_once() {
     );
     assert_eq!(
         r.message,
-        "Evening recalled: at link frame 9600 through the sender; Bar not connected."
+        "Evening recalled: at audio link frame 9600 through the sender; Bar not connected."
     );
     assert_eq!(r.writes[1].what, "Master volume");
 
@@ -152,9 +152,9 @@ fn wp_hwlk1f_a_mixed_recall_says_what_went_at_once() {
     );
     assert_eq!(
         r.message,
-        "Evening recalled: applied now on K340 (no audio link); not applied on Main left (no link frame)."
+        "Evening recalled: applied now on K340 (no audio link); not applied on Main left (no audio link frame)."
     );
-    assert_eq!(r.writes[1].result_word, "No link frame");
+    assert_eq!(r.writes[1].result_word, "No audio link frame");
     // K could not do it (a click): nothing taken, refused.
     let un = json!({"serial": "K", "element": "K", "what": "click", "result": "unsupported",
                     "reason": "no audio link (firmware)"});
@@ -185,7 +185,7 @@ fn wp_hwlk1f_a_mixed_recall_says_what_went_at_once() {
     );
     assert_eq!(
         r.message,
-        "Evening recalled: applied now on K340 (no audio link); at link frame 9600 to each unit on the others. \
+        "Evening recalled: applied now on K340 (no audio link); at audio link frame 9600 to each unit on the others. \
          Not every unit at the frame on time."
     );
 }
@@ -249,17 +249,24 @@ fn fixup_hwlk1f_unverified_units_and_all_failed_writes_are_said() {
                  "ops": [{"serial": "TX", "element": "tx", "op": "mute"}]},
         "writes": [
             {"serial": "TX", "element": "tx", "what": "mute", "result": "queued"},
-            {"serial": "A", "element": "A", "what": "mute", "result": "no_frame", "reason": "no link frame read"}
+            {"serial": "A", "element": "A", "what": "mute", "result": "no_frame", "reason": "no audio link frame read"}
         ],
         "onTime": false
     });
     let r = recall_outcome("evening", &report, &model(), None, 48_000);
     assert_eq!(
         r.message,
-        "Evening recalled: at link frame 9600 through the sender; \
-         not known to have taken it on Main left (no link frame read)."
+        "Evening recalled: at audio link frame 9600 through the sender; \
+         not known to have taken it on Main left (no audio link frame read)."
     );
     assert_eq!(r.writes[1].what, "Mute", "a unit's own result keeps its op");
+    // -- WP ALINK1 -- an older hub's reason reads the same
+    let older = serde_json::to_string(&report)
+        .unwrap()
+        .replace("no audio link frame read", "no link frame read");
+    let older: serde_json::Value = serde_json::from_str(&older).unwrap();
+    let r2 = recall_outcome("evening", &older, &model(), None, 48_000);
+    assert_eq!(r2.message, r.message);
     let failed = json!({"applied": true, "alignment": {"issues": []}, "writes": [
         {"serial": "A", "element": "A", "what": "phase", "result": "timeout"}
     ]});

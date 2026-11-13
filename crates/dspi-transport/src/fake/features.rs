@@ -1328,7 +1328,7 @@ impl State {
 
     // -- WP FIXS1 --
     /// The requested output latency option's `(latency_us, batch_us)` as the
-    /// link input resolves it (`refresh_limits` in link_input.c: source 7,
+    /// link input resolves it (`refresh_limits` in alink_input.c: source 7,
     /// so a stream-only option stands).
     pub(super) fn latency_for_alink(&self) -> (u16, u16) {
         let find = |id: u8| LATENCY_OPTIONS.iter().copied().find(|o| o.0 == id);

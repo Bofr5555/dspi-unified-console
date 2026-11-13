@@ -171,7 +171,7 @@ function UnitsTable(props: { feed: SystemFeed; model: SystemModel; admin: boolea
               <th>Hops</th>
               <th>Path delay</th>
               <th>
-                <abbr title="d_local (EXT_ALINK_PHASE): frames from a link frame's arrival to its playing, ms beside">Audio link delay</abbr>
+                <abbr title="d_local (EXT_ALINK_PHASE): frames from an audio link frame's arrival to its playing, ms beside">Audio link delay</abbr>
               </th>
               <th>
                 <abbr title="d_local_min..d_local_max (EXT_ALINK_INFO), in frames">Audio link delay range</abbr>

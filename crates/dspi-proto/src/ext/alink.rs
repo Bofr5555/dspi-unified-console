@@ -90,7 +90,7 @@ pub const SENDER_IDS: [u16; 8] = [
     EXT_ALINK_DIAG,
 ];
 
-/// A superframe is 32 frames (`link_protocol_spec.md` 6).
+/// A superframe is 32 frames (`alink_protocol_spec.md` 6).
 pub const SUPERFRAME_FRAMES: u64 = 32;
 
 /// 2.8.9's lead rule for `EXT_ALINK_CTRL_MSG` OUT: the earliest frame a sender
@@ -580,7 +580,7 @@ pub struct AlinkStatus {
     /// 3) the frames between receiving alink frame F and sending it again, 0
     /// while it is not re-emitting; 0 on every other unit. The hub
     /// compensates it through `EXT_ALINK_PHASE.hops_offset` of the units
-    /// behind it (`link_protocol_spec.md` 7.2).
+    /// behind it (`alink_protocol_spec.md` 7.2).
     pub hop_delay_frames: u8,
 }
 
@@ -816,7 +816,7 @@ impl FrameCounter {
 
 // -- fixup sw2x (F4) --
 /// Outputs an apply op may name (`OUT_DELAY`, `CLICK`): the 8 output slots and
-/// the PDM sub of an RP2350 (`sender_link.h` `SND_OP_OUTPUTS`).
+/// the PDM sub of an RP2350 (`sender_alink.h` `SND_OP_OUTPUTS`).
 pub const APPLY_OUTPUTS: u8 = 9;
 /// The longest `OUT_DELAY`, samples: `MAX_DELAY_SAMPLES - 1` on an RP2350
 /// (2.8.7, `SND_OP_DELAY_MAX`).
@@ -856,7 +856,7 @@ impl ApplyRequest {
 
     /// Whether `arg` and `value` are in the op's range (2.8.7; unused ones
     /// 0). -- fixup sw2x (F4) -- as the sender checks them (DSPi-bofr
-    /// `sender_link.c` `snd_op_args_ok`): an output below [`APPLY_OUTPUTS`] for
+    /// `sender_alink.c` `snd_op_args_ok`): an output below [`APPLY_OUTPUTS`] for
     /// `OUT_DELAY` and `CLICK`, a delay of 0..=[`APPLY_DELAY_MAX`] samples (an
     /// RP2040 unit refuses above 1023 itself).
     pub fn args_valid(&self) -> bool {

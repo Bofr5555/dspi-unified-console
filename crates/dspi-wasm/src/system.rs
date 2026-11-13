@@ -211,7 +211,7 @@ mod tests_wp_sw3 {
         assert_eq!(v["heldFrame"], 10_100);
         assert_eq!(
             v["message"],
-            "Closed was refused: a scene is already scheduled on the sender for link frame 10100, \
+            "Closed was refused: a scene is already scheduled on the sender for audio link frame 10100, \
              100 ms after this recall. The sender takes one scene at a time; recall Closed again \
              after that. System mute unchanged."
         );

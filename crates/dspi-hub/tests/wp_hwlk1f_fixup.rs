@@ -186,7 +186,7 @@ fn fixup_hwlk1f_p1_a_transient_fault_is_never_taken_for_no_audio_link() {
     assert_eq!(f.len(), 1, "{:?}", r2.writes);
     assert_eq!(
         (f[0].result.as_str(), f[0].reason.as_deref()),
-        ("no_frame", Some("no link frame read"))
+        ("no_frame", Some("no audio link frame read"))
     );
     assert!(!r2.on_time);
     let at_once: Vec<_> = outs

@@ -405,7 +405,7 @@ export function resultWord(result: string): string {
     case "unsupported":
       return "Needs the audio link";
     case "no_frame":
-      return "No link frame";
+      return "No audio link frame";
     default:
       return result.startsWith("clamped") ? "Clamped" : result;
   }

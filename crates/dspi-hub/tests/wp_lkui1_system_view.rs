@@ -181,7 +181,7 @@ fn wp_lkui1_view_recall_refusal_align_and_stale_save_on_a_real_hub() {
     assert_eq!(second.held_frame, Some(first.frame));
     assert!(
         second.message.starts_with(&format!(
-            "Closed was refused: a scene is already scheduled on the sender for link frame {}",
+            "Closed was refused: a scene is already scheduled on the sender for audio link frame {}",
             first.frame
         )),
         "{}",

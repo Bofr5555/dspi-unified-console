@@ -123,7 +123,7 @@ impl AlinkSetup {
 // -- WP FIXS1 --
 /// The output rings' writable span (`output_latency_ring_span`: 512 - 64).
 const RING_SPAN: u32 = 448;
-/// The firmware's `LINK_PHASE_DECODE_MARGIN` (link_phase.h).
+/// The firmware's `ALINK_PHASE_DECODE_MARGIN` (alink/alink_phase.h).
 const DECODE_MARGIN: u32 = 16;
 /// The fake's start audio link delay: inside the default 4 ms option's 257..399, as
 /// a unit an installer has aligned.

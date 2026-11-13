@@ -30,6 +30,8 @@ fn write_atomic(dir: &Path, name: &str, text: &str) {
 fn handle(b: &Bench, verb: &str, arg: &str) -> Option<Value> {
     Some(match verb {
         "pin" => json!({ "pin": b.pin() }),
+        // -- WP ALINK1 -- a window that may give admin (`uconsole hub --pair-admin`, HWLK1F)
+        "pin-admin" => json!({ "pin": b.admin_pin() }),
         "change" => {
             b.knob();
             json!({})

@@ -579,7 +579,7 @@ fn result_word(result: &str) -> String {
         // -- WP HWLK1F --
         "applied_now" => "Applied now",
         "unsupported" => "Needs the audio link",
-        "no_frame" => "No link frame",
+        "no_frame" => "No audio link frame",
         r if r.starts_with("clamped") => "Clamped",
         r => r,
     };
@@ -1054,7 +1054,7 @@ pub(crate) fn recall_outcome(
             "per_unit" => "to each unit",
             _ => "system mute only",
         };
-        let mut m = format!("{name} recalled {path_word}, at link frame {frame}");
+        let mut m = format!("{name} recalled {path_word}, at audio link frame {frame}");
         match plan.get("systemMute").and_then(Value::as_bool) {
             Some(true) => m.push_str(", system mute on"),
             Some(false) => m.push_str(", system mute off"),
@@ -1086,8 +1086,8 @@ pub(crate) fn recall_outcome(
                         .round();
                     (
                         format!(
-                            "{name} was refused: a scene is already scheduled on the sender for link \
-                             frame {pending}, {ms:.0} ms after this recall. The sender takes one scene \
+                            "{name} was refused: a scene is already scheduled on the sender for audio \
+                             link frame {pending}, {ms:.0} ms after this recall. The sender takes one scene \
                              at a time; recall {name} again after that."
                         ),
                         Some(pending),
@@ -1193,14 +1193,14 @@ impl RecallParts {
             } else {
                 " on the others"
             };
-            parts.push(format!("at link frame {frame} {path_word}{whom}"));
+            parts.push(format!("at audio link frame {frame} {path_word}{whom}"));
         }
         if !self.now_failed.is_empty() {
             parts.push(format!("not applied on {}", self.now_failed.join(", ")));
         }
         if !self.no_frame.is_empty() {
             parts.push(format!(
-                "not applied on {} (no link frame)",
+                "not applied on {} (no audio link frame)",
                 self.no_frame.join(", ")
             ));
         }
@@ -1209,7 +1209,7 @@ impl RecallParts {
         }
         if !self.unverified.is_empty() {
             parts.push(format!(
-                "not known to have taken it on {} (no link frame read)",
+                "not known to have taken it on {} (no audio link frame read)",
                 self.unverified.join(", ")
             ));
         }
@@ -1249,7 +1249,13 @@ fn recall_parts(report: &Value, model: &Value) -> RecallParts {
                 &mut p.now_failed,
                 format!("{unit} ({})", result_word(result)),
             ),
-            "no_frame" if str_at(w, &["reason"]) == "no link frame read" => {
+            // -- WP ALINK1 -- an older hub's reason too ("no link frame read")
+            "no_frame"
+                if matches!(
+                    str_at(w, &["reason"]),
+                    "no audio link frame read" | "no link frame read"
+                ) =>
+            {
                 push(&mut p.unverified, unit);
             }
             "no_frame" => push(&mut p.no_frame, unit),

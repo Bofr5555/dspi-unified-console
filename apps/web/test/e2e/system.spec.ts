@@ -270,7 +270,7 @@ test.describe("SW3: an audio link installation on the hub", () => {
     await bar.getByRole("button", { name: "Recall Closed" }).click();
     const alert = result.getByRole("alert");
     // -- WP WB8 -- the core's sentence (`sceneOutcome`), the one every client shows
-    await expect(alert).toHaveText(/^Closed was refused: a scene is already scheduled on the sender for link frame \d+, \d+ ms after this recall\. The sender takes one scene at a time; recall Closed again after that\. System mute unchanged\.$/);
+    await expect(alert).toHaveText(/^Closed was refused: a scene is already scheduled on the sender for audio link frame \d+, \d+ ms after this recall\. The sender takes one scene at a time; recall Closed again after that\. System mute unchanged\.$/);
     await expect(result).not.toContainText("system mute on");
     // -- fixup lk1 -- the sender's write is the scene's, never read as a refused mute
     await expect(result.getByRole("list", { name: "Per unit" })).toContainText("Scene Closed: Refused");
@@ -297,7 +297,7 @@ test.describe("SW3: an audio link installation on the hub", () => {
     // A scene for every unit: at once on P, through the sender on the others; never "on time on every unit".
     await session.getByLabel("Scenes", { exact: true }).getByRole("button", { name: "Recall Evening" }).click();
     const result = session.getByLabel("Scene result");
-    await expect(result).toContainText(/Evening recalled: applied now on Plain unit \(no audio link\); at link frame \d+ through the sender on the others\./);
+    await expect(result).toContainText(/Evening recalled: applied now on Plain unit \(no audio link\); at audio link frame \d+ through the sender on the others\./);
     await expect(result).not.toContainText("on time on every unit");
     await expect(result.getByRole("list", { name: "Per unit" }).getByLabel("Result for Plain unit")).toContainText("Master volume -12.0 dB: Applied now");
     await shot(page, "hwlk1f-scene");
