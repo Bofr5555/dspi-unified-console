@@ -708,8 +708,15 @@
   .dspi-web .event-list th:first-child { width: 4.6rem; }
   .dspi-web .event-list th:nth-child(2) { width: 5.5rem; }
 }
-/* -- WP WB8 -- on a phone the tabs keep the row; Undo and Redo go below them, at the right */
+/* -- WP WB8 (fixup wb8) -- Undo and Redo stay in the tab row, so nothing below moves: at
+   520 px and narrower they show as arrows (the words stay for assistive technology and the tooltip) */
+.dspi-web .undo-redo button { position: relative; }
+.dspi-web .undo-redo .ur-icon { display: none; line-height: 1; }
 @media (max-width: 520px) {
-  .dspi-web .screen-bar { flex-wrap: wrap; }
-  .dspi-web .screen-bar .screen-tabs { flex-basis: 100%; }
+  .dspi-web .undo-redo button { padding: 0.3rem 0.55rem; }
+  .dspi-web .undo-redo .ur-icon { display: inline; }
+  .dspi-web .undo-redo .ur-text {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+  }
 }
+.dspi-web .events-manual { width: 100%; min-height: 6rem; font: 0.8rem/1.4 ui-monospace, monospace; margin-top: 0.5rem; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px; }

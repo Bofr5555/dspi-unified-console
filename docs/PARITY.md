@@ -195,10 +195,11 @@ It is frozen at wire **V26**. It has nothing from V27–V32 (limiter, subharmoni
 | Extra | Where |
 |---|---|
 | Scripting / JSON / dry-run / raw opcodes / `uconsole screenshot` | Terminal |
-| Undo/redo journal | Terminal (full); Qt desktop (Edit menu, History window); Swift macOS (Edit menu) and iOS (toolbar), on the core's device only (SWMAC1); Windows (IO only) |
+| Undo/redo journal | Terminal (full); Qt desktop (Edit menu, History window); Swift macOS (Edit menu) and iOS (toolbar), on the core's device only (SWMAC1); web (Undo and Redo beside the screen tabs, Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y; drags marked; WB8u); Windows (IO only) |
+| Event log (P0M: clips, audio link, resets, connections; a hub's alarms) | Web (Events screen, Advanced and Installer: filter by unit, Copy as Text; WB8u) |
 | Full core-voltage control (set/trial/auto) | Terminal CLI; Qt desktop (Core Voltage page, with calibration) |
 | Strict read-only double write guard; confirmation tokens on flash writes; PICOBOOT flashing without a drive; config share sheet; light theme; auto-launch on plug | Android |
-| Searchable settings; Updates page; read-only mode; delay-refusal banner; licences screen; diagnostics bundle (Help > Save Diagnostics); the demo entry; Linux packaging (AppImage, tar.gz, deb, rpm, AUR) and Windows zip and installer | Qt desktop |
+| Searchable settings; Updates page; read-only mode; delay-refusal banner; licences screen; diagnostics bundle (Help > Save Diagnostics; also the web's Events screen, Save Diagnostics… as a download, Advanced and up, WB8u); the demo entry; Linux packaging (AppImage, tar.gz, deb, rpm, AUR) and Windows zip and installer | Qt desktop |
 | Bulk-endpoint debug window; 12-band PEQ | Windows C# |
 
 ### I. The audio link installation on a hub (Pro layer)

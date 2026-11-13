@@ -26,10 +26,12 @@ status rail and the rest of section 2) are called the *Pro layer* in plans and c
 | **First screen** | A front page: device and connection, volume, mute and bypass, presets, source, output meters, one health line | The classic main window today; the System view once the Pro layer exists (desktop, web). Phones: the front page | As Advanced | The front page, with a lock badge, one line saying what is locked, and the installer's contact |
 | **Navigation** | Home, EQ, Tools, Settings: today's screens, under the front page | Today's screens, plus the Pro layer: System view, Channels and EQ, Routing, Dynamics and effects, Hardware, History; a scene bar; a status rail | Advanced plus Limits and power-on; firmware, factory reset, core voltage | Home only; Settings shows About and the installer's note |
 | **Changes** | Everything today's screens offer | Everything the limits allow | Everything, the limits included | Volume, mute and preset, within the installer's ranges |
-| **Monitoring** | Output meters and the health line | Meters with hold, limiter gain reduction, CPU, temperature, alarms, history (as the core gains them) | The same, plus diagnostics | Meters and the health line |
+| **Monitoring** | Output meters and the health line | Meters with hold, limiter gain reduction, CPU, temperature, alarms, history (as the core gains them), the event log and the diagnostics bundle | The same | Meters and the health line |
 | **Operations that write flash or can harm hardware** | Behind their usual confirmations, in their usual places | With confirmation | Plus firmware, factory reset, core voltage, limits | None |
 
 Notes:
+- **Diagnostics are Advanced and up** (coordinator, 2026-11-13, after the web's Events screen): the diagnostics bundle
+  (Save Diagnostics…) is offered in Advanced and Installer, as the desktop's Settings > Advanced has it; Simple does not show it.
 - **Simple hides nothing permanently.** It changes the first screen and the order of things; today's screens stay one tap away.
   It is not a restricted mode.
 - **Advanced without the Pro layer is today's app.** Until the Pro screens exist, a client that offers modes ships Advanced as

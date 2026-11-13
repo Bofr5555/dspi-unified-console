@@ -78,7 +78,10 @@ export function UndoButtons(props: { session: Session; state: SessionState }) {
         aria-keyshortcuts={apple ? "Meta+Z" : "Control+Z"}
         onClick={() => void session.undo()}
       >
-        Undo
+        <span class="ur-icon" aria-hidden="true">
+          ↶
+        </span>
+        <span class="ur-text">Undo</span>
       </button>
       <button
         type="button"
@@ -87,7 +90,10 @@ export function UndoButtons(props: { session: Session; state: SessionState }) {
         aria-keyshortcuts={apple ? "Meta+Shift+Z" : "Control+Shift+Z Control+Y"}
         onClick={() => void session.redo()}
       >
-        Redo
+        <span class="ur-icon" aria-hidden="true">
+          ↷
+        </span>
+        <span class="ur-text">Redo</span>
       </button>
     </div>
   );

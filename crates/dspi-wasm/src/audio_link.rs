@@ -115,7 +115,9 @@ mod tests_wp_sw1 {
         ok(h, "open", json!({ "kind": "demo", "audioLink": true }));
         let info = ok(h, "audioLinkInfo", Value::Null);
         assert_eq!(info["role"], "receiver", "{info}");
-        assert_eq!(info["dLocalMax"], 1024);
+        // -- fixup wb8 -- FIXS1: the default 4 ms option's range, 257..399
+        assert_eq!(info["dLocalMin"], 257);
+        assert_eq!(info["dLocalMax"], 399);
         assert_eq!(ok(h, "audioLinkStatus", Value::Null)["state"], "locked");
         ok(
             h,
@@ -123,8 +125,8 @@ mod tests_wp_sw1 {
             json!({ "slots": [6, 7, 255, 255, 255, 255, 255, 255] }),
         );
         assert_eq!(ok(h, "audioLinkSlots", Value::Null)[0], 6);
-        ok(h, "setAudioLinkPhase", json!({ "mode": 1, "dLocal": 176 }));
-        assert_eq!(ok(h, "audioLinkPhase", Value::Null)["dLocal"], 176);
+        ok(h, "setAudioLinkPhase", json!({ "mode": 1, "dLocal": 320 }));
+        assert_eq!(ok(h, "audioLinkPhase", Value::Null)["dLocal"], 320);
         let f = ok(h, "audioLinkFrameCounter", Value::Null)["frame"]
             .as_u64()
             .unwrap();
