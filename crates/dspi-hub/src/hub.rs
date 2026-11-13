@@ -200,6 +200,12 @@ pub(crate) struct HubInner {
     /// update has the latest devices, and it is never taken under L1. Not held across
     /// the goodbye in [`Hub::stop`].
     advertiser: Mutex<Option<Advertiser>>,
+    // -- WP HUBFLAKE4 --
+    /// Held across a whole [`HubInner::sync_locks`], so lock changes reach the registry
+    /// and network sessions in order, and a sync returns only once every change it found
+    /// in the registry has been sent. Above L1, as `names_saving` is: L1, L2 and L3 are
+    /// taken under it, and it is never taken under any of them.
+    locks_syncing: Mutex<()>,
 }
 
 /// A cheap, clonable way to the hub, for the server and the app's broker. It keeps
@@ -297,6 +303,8 @@ impl Hub {
             system,
             // -- WP HB5 --
             advertiser: Mutex::new(None),
+            // -- WP HUBFLAKE4 --
+            locks_syncing: Mutex::new(()),
         });
         let io = |e: std::io::Error| HubError::Io(format!("cannot start a hub thread: {e}"));
         let events = {
@@ -1134,7 +1142,13 @@ impl HubInner {
     /// sessions what changed. Called where a lock changes, and on the supervisor's tick,
     /// which is how a lock that timed out and the app's own locks are noticed. L1 and L2
     /// in turn, never nested. Not an embedder event: the device has not come or gone.
+    ///
+    /// One at a time (WP HUBFLAKE4). Unserialised, the tick could write the registry,
+    /// and a `lock_request` find nothing new and answer before the tick had sent the
+    /// `device.changed`; or a sync could write a holder it read before another sync's
+    /// newer one, and send it last.
     fn sync_locks(&self) {
+        let _in_order = guard(&self.locks_syncing);
         let devices: Vec<Arc<DeviceShared>> = guard(&self.state)
             .attached
             .values()
@@ -1238,5 +1252,90 @@ fn event_loop(inner: &HubInner, rx: &Receiver<EventMsg>) {
                 log::error!("a hub listener panicked");
             }
         }
+    }
+}
+
+// -- WP HUBFLAKE4 --
+#[cfg(test)]
+mod tests_wp_hubflake4 {
+    use super::*;
+    use crate::session::{Outbound, Pop};
+    use dspi_transport::FakeDevice;
+
+    const WAIT: Duration = Duration::from_secs(10);
+
+    fn wait_until(what: &str, mut cond: impl FnMut() -> bool) {
+        let start = Instant::now();
+        while !cond() {
+            assert!(start.elapsed() < WAIT, "timed out waiting for {what}");
+            thread::sleep(Duration::from_millis(2));
+        }
+    }
+
+    fn device_changes(s: &Session) -> Vec<String> {
+        let mut all = Vec::new();
+        while let Pop::Item(item) = s.outbox().pop(Duration::ZERO) {
+            if let Outbound::Event(json) = item {
+                all.push(json);
+            }
+        }
+        all
+    }
+
+    /// The order that made `wp_hb2_device_changed_follows_the_lock_even_when_it_times_out`
+    /// flaky, held still: one sync (the tick's) has written the registry and not yet sent
+    /// `device.changed`. A second sync (a `lock_request`'s) finds nothing new to write,
+    /// and must still not return before that message is out.
+    #[test]
+    fn wp_hubflake4_a_lock_sync_returns_only_after_the_change_is_sent() {
+        let hub = Hub::start(HubConfig {
+            // No tick in the way: the test runs both syncs itself.
+            scan_interval: Duration::from_secs(3600),
+            ..HubConfig::in_process("hubflake4")
+        })
+        .unwrap();
+        let handle = hub.attach(Box::new(FakeDevice::demo()), 0).unwrap();
+        let h = hub.handle();
+        let watcher = h.open_session(Role::Viewer, None).unwrap();
+        let holder = h.open_session(Role::Admin, None).unwrap();
+        let device = Arc::clone(&guard(&h.inner.state).attached[&handle].shared);
+        let locked_by = || guard(&h.inner.state).registry.devices()[usize::from(handle)].locked_by;
+        // The lock changes in the router; nobody has told the registry yet.
+        device
+            .router
+            .lock_grant(holder.id(), Duration::from_secs(60), Instant::now())
+            .unwrap();
+        assert_eq!(locked_by(), None);
+
+        let held = h.inner.relay.hold();
+        let first = {
+            let inner = Arc::clone(&h.inner);
+            thread::spawn(move || inner.sync_locks())
+        };
+        wait_until("the first sync to write the registry", || {
+            locked_by() == Some(holder.id())
+        });
+        let (done, second) = mpsc::channel();
+        let second_sync = {
+            let inner = Arc::clone(&h.inner);
+            thread::spawn(move || {
+                inner.sync_locks();
+                let _ = done.send(());
+            })
+        };
+        assert!(
+            second.recv_timeout(Duration::from_millis(200)).is_err(),
+            "a sync returned before the device.changed it found was sent"
+        );
+        drop(held);
+        second.recv_timeout(WAIT).unwrap();
+        first.join().unwrap();
+        second_sync.join().unwrap();
+
+        let sent = device_changes(&watcher);
+        assert_eq!(sent.len(), 1, "{sent:?}");
+        let event: serde_json::Value = serde_json::from_str(&sent[0]).unwrap();
+        assert_eq!(event["t"], "device.changed");
+        assert_eq!(event["device"]["locked_by"], holder.id());
     }
 }
