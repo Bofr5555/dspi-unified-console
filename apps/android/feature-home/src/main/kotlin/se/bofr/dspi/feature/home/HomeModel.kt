@@ -124,21 +124,25 @@ object HomeModel {
      * the firmware this Console bundles; the last argument is [settingsRead]
      * of the state: false when the banner must not say that settings are shown.
      */
+    // -- WP FIXS1 -- the product as the core and the other clients name it
+    // (`APP_NAME` in dspi-core's link.rs), not the Mac console's name.
+    const val PRODUCT = "uConsole for DSPi"
+
     fun firmwareBannerMessage(compat: Int, device: String, expected: String, settingsRead: Boolean = true): String? {
         val version = device.ifEmpty { "unknown" }
         return when (compat) {
             DspiConstants.COMPAT_FIRMWARE_TOO_NEW ->
-                "This device runs firmware $version, which is newer than DSPi Console $expected. " +
+                "This device runs firmware $version, which is newer than $PRODUCT $expected. " +
                     if (settingsRead) "Some of its features may not be shown. $READ_ONLY_NOTE" else SETTINGS_UNREAD_NOTE
             DspiConstants.COMPAT_FIRMWARE_TOO_OLD ->
-                "This device runs firmware $version; DSPi Console expects $expected. " +
+                "This device runs firmware $version; $PRODUCT expects $expected. " +
                     if (settingsRead) "$MISSING_FEATURES_NOTE $READ_ONLY_NOTE" else SETTINGS_UNREAD_NOTE
             // -- WP AN18 --
             DspiConstants.COMPAT_OK -> when (firmwareMatch(device, expected)) {
                 FirmwareOrder.NEWER ->
-                    "This device runs firmware $version, which is newer than DSPi Console $expected. " +
+                    "This device runs firmware $version, which is newer than $PRODUCT $expected. " +
                         "Some of its features may not be shown."
-                FirmwareOrder.OLDER -> "This device runs firmware $version; DSPi Console expects $expected."
+                FirmwareOrder.OLDER -> "This device runs firmware $version; $PRODUCT expects $expected."
                 FirmwareOrder.MATCH, null -> null
             }
             else -> null
