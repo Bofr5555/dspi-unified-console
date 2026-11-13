@@ -808,6 +808,61 @@ mod tests {
         session_free(h).unwrap();
     }
 
+    // -- WP P0W2 (fixup p0w2b, F3) --
+    /// A drag mark left set when the page closes the device joins nothing
+    /// after it opens one again.
+    #[test]
+    fn wp_p0w2b_f3_a_drag_mark_ends_with_the_session_device() {
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        ok(h, "open", json!({ "kind": "demo" }));
+        let gain =
+            |db: f64| json!({ "path": "out.gain", "indices": [0], "value": { "float": db } });
+        ok(h, "setDragging", json!({ "dragging": true }));
+        ok(h, "write", gain(-1.0));
+        ok(h, "close", Value::Null);
+        ok(h, "open", json!({ "kind": "demo" }));
+        ok(h, "write", gain(-2.0));
+        ok(h, "write", gain(-3.0));
+        let hist = ok(h, "history", json!({ "n": 10 }));
+        assert_eq!(hist.as_array().unwrap().len(), 2, "{hist}");
+        session_free(h).unwrap();
+    }
+
+    // -- WP P0W2 (O1) --
+    /// The web's multi-selection graph drag: two bands sent whole with
+    /// `filter` every tick, four ticks, mixed axes, is one step; one undo
+    /// puts both bands back.
+    #[test]
+    fn wp_p0w2_o1_a_multi_band_web_drag_is_one_step() {
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        ok(h, "open", json!({ "kind": "demo" }));
+        let band = |b: usize| core_of(h).unwrap().get_state().filters[0][b];
+        let (s1, s2) = (band(1), band(2));
+        ok(h, "setDragging", json!({ "dragging": true }));
+        for (df, dg) in [(10.0f32, 0.0f32), (20.0, 1.0), (0.0, 1.5), (5.0, 0.0)] {
+            for b in [1u8, 2] {
+                let p = band(usize::from(b));
+                ok(
+                    h,
+                    "filter",
+                    json!({ "channel": 0, "band": b, "filterType": p.filter_type,
+                            "freq": p.freq + df, "q": p.q, "gain": p.gain + dg,
+                            "qp": p.qp, "bypass": p.bypass }),
+                );
+            }
+        }
+        ok(h, "setDragging", json!({ "dragging": false }));
+        let hist = ok(h, "history", json!({ "n": 10 }));
+        assert_eq!(hist.as_array().unwrap().len(), 1, "{hist}");
+        assert_ne!((band(1), band(2)), (s1, s2));
+        ok(h, "undo", Value::Null);
+        assert_eq!((band(1), band(2)), (s1, s2));
+        assert_eq!(ok(h, "canUndo", Value::Null)["canUndo"], false);
+        session_free(h).unwrap();
+    }
+
     #[test]
     fn wb3_two_demo_sessions_connect_write_with_read_back_and_stay_apart() {
         guard::reset_for_test();

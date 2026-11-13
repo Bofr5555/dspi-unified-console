@@ -181,6 +181,69 @@ pub struct JournalEntry {
     pub at_ms: u64,
     /// A later repeat may join this entry (`history::Change::coalesce`).
     pub(crate) coalesce: bool,
+    // -- WP P0W2 (O1) --
+    /// The other values the same drag moved (another band, another
+    /// control), in the order it first moved them: one drag is one step.
+    /// Undo puts them back newest first, then this entry's own value; redo
+    /// writes this entry's own value, then them in order.
+    pub more: Vec<StepValue>,
+}
+
+// -- WP P0W2 (O1) --
+/// One value a step moved: its path and indices, the value before and
+/// after, and what the device moved with it ([`JournalEntry::companions`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct StepValue {
+    pub path: &'static str,
+    pub indices: Vec<u8>,
+    pub before: Option<Value>,
+    pub after: Value,
+    pub companions: Vec<Companion>,
+}
+
+impl StepValue {
+    /// Whether undo has anything to put back for it.
+    pub fn restorable(&self) -> bool {
+        self.before.is_some() || !self.companions.is_empty()
+    }
+}
+
+impl JournalEntry {
+    // -- WP P0W2 (O1) --
+    /// Every value the step moved: its own first, then [`JournalEntry::more`].
+    pub fn values(&self) -> Vec<StepValue> {
+        std::iter::once(StepValue {
+            path: self.path,
+            indices: self.indices.clone(),
+            before: self.before.clone(),
+            after: self.after.clone(),
+            companions: self.companions.clone(),
+        })
+        .chain(self.more.iter().cloned())
+        .collect()
+    }
+
+    /// Make `values` the step's values, the first its own (the order of
+    /// [`JournalEntry::values`]). Nothing changes when `values` is empty.
+    pub fn set_values(&mut self, values: Vec<StepValue>) {
+        let mut it = values.into_iter();
+        let Some(first) = it.next() else {
+            return;
+        };
+        self.path = first.path;
+        self.indices = first.indices;
+        self.before = first.before;
+        self.after = first.after;
+        self.companions = first.companions;
+        self.more = it.collect();
+    }
+
+    /// Whether undo has anything to put back for any of its values.
+    pub fn restorable(&self) -> bool {
+        self.before.is_some()
+            || !self.companions.is_empty()
+            || self.more.iter().any(StepValue::restorable)
+    }
 }
 
 /// One value a write moved besides its own, as it was before the write.

@@ -308,8 +308,11 @@ pub(crate) struct Inner {
     pub(crate) history_seen: Option<(u64, u64)>,
     // -- WP QTGAP1 --
     /// A client's continuous drag is under way ([`DspiCore::set_dragging`]):
-    /// only then do repeats of a live value join one undo step.
-    pub(crate) dragging: bool,
+    /// only then do writes join one undo step. -- WP P0W2 (fixup p0w2b) --
+    /// The generation of the connection it was marked on: a drag ends with
+    /// its connection (a disconnect, another device opened, a re-attach), so
+    /// a stale mark never joins a later write ([`Inner::dragging`]).
+    pub(crate) dragging: Option<u64>,
 }
 
 /// An open device.
@@ -641,7 +644,7 @@ impl Inner {
             events: Arc::default(),
             // -- WP P0W --
             history_seen: None,
-            dragging: false, // -- WP QTGAP1 --
+            dragging: None, // -- WP QTGAP1 --
         }
     }
 
