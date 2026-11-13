@@ -403,8 +403,9 @@ fn kind_name(t: dspi_proto::FilterType) -> Option<&'static str> {
 pub const GITHUB_ACCEPT: &str = "application/vnd.github.v3+json";
 
 /// The `User-Agent` a fetch sends: GitHub refuses a request without one, and
-/// not every HTTP stack adds its own.
-pub const FETCH_USER_AGENT: &str = "DSPi-Console";
+/// not every HTTP stack adds its own. The update check's, `uConsole-for-DSPi/<version>`
+/// (one version for the workspace and every app).
+pub const FETCH_USER_AGENT: &str = concat!("uConsole-for-DSPi/", env!("CARGO_PKG_VERSION"));
 
 /// Most bytes accepted as a database, on import or download. The bundled one is
 /// about 5 MB.
@@ -2148,6 +2149,10 @@ Filter 3: ON None
         let asked = fetch.asked.lock().unwrap();
         for request in asked.iter() {
             assert_eq!(request.user_agent, FETCH_USER_AGENT, "{request:?}");
+            assert!(
+                request.user_agent.starts_with("uConsole-for-DSPi/"),
+                "{request:?}"
+            );
             let accept = request.accept.as_deref();
             if request.url.starts_with(RAW) {
                 assert_eq!(accept, None, "{request:?}");
