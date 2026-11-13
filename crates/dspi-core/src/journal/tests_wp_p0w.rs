@@ -1001,6 +1001,151 @@ fn wp_p0w_fixup_a_foreign_change_after_undo_skips_redo() {
     assert!(!core.can_redo());
 }
 
+// ── P0WECHO: a late own echo is not another writer ─────────────────
+
+/// Drain the notifications until 50 ms pass without one changing the state.
+fn drain(core: &DspiCore) {
+    let mut quiet = 0;
+    while quiet < 10 {
+        let f = core.process_notifications().flags;
+        quiet = if f & (NOTIFY_STATE | NOTIFY_REFRESHED) == 0 {
+            quiet + 1
+        } else {
+            0
+        };
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+/// A `PARAM_CHANGED` for the master volume from `source`, queued on the
+/// endpoint without touching the device's image: a late echo replays a value
+/// the device no longer holds.
+fn master_echo(remote: &dspi_transport::FakeRemote, db: f32, source: u16) {
+    let mut p = vec![
+        2,
+        dspi_proto::generated::notify::NOTIFY_EVT_PARAM_CHANGED as u8,
+        0,
+        0,
+    ];
+    p.extend((dspi_proto::generated::OFF_MASTER_VOLUME as u16).to_le_bytes());
+    p.extend(4u16.to_le_bytes());
+    p.extend([source as u8, 0, 0, 0]);
+    p.extend(db.to_le_bytes());
+    remote.push(p);
+}
+
+const HOST_SET: u16 = dspi_proto::generated::notify::PARAM_SRC_HOST_SET;
+const UAC1: u16 = dspi_proto::generated::notify::PARAM_SRC_UAC1;
+
+/// Our write, undone and read back; then the write's own echo arrives late
+/// and puts our old value back in the mirror (HUBFLAKE3 section 4).
+fn undone_then_late_own_echo() -> (Arc<DspiCore>, dspi_transport::FakeRemote, f32) {
+    let (core, remote) = remote_demo();
+    drain(&core);
+    let start = core.get_state().master_volume_db;
+    core.set_master_volume(-10.0).unwrap();
+    drain(&core);
+    core.undo().unwrap();
+    drain(&core);
+    core.fetch_all().unwrap();
+    assert_eq!(core.get_state().master_volume_db, start, "read back");
+    master_echo(&remote, -10.0, HOST_SET);
+    let t = dspi_transport::clock::Instant::now();
+    while core.get_state().master_volume_db != -10.0 {
+        assert!(
+            t.elapsed() < std::time::Duration::from_secs(5),
+            "the echo never came"
+        );
+        core.process_notifications();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    (core, remote, start)
+}
+
+#[test]
+fn wp_p0wecho_a_late_own_echo_does_not_cost_the_redo() {
+    let (core, _remote, _) = undone_then_late_own_echo();
+    let m = core.redo().unwrap();
+    assert_eq!(m.note, None, "{m:?}");
+    assert_eq!(m.entry.map(|e| e.path).as_deref(), Some("vol.master"));
+    drain(&core);
+    core.fetch_all().unwrap();
+    assert_eq!(core.get_state().master_volume_db, -10.0);
+}
+
+#[test]
+fn wp_p0wecho_a_foreign_write_after_the_late_echo_is_still_named() {
+    let (core, remote, _) = undone_then_late_own_echo();
+    master_echo(&remote, -14.0, UAC1);
+    let t = dspi_transport::clock::Instant::now();
+    while core.get_state().master_volume_db != -14.0 {
+        assert!(t.elapsed() < std::time::Duration::from_secs(5));
+        core.process_notifications();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let m = core.redo().unwrap();
+    assert!(m.entry.is_none(), "{m:?}");
+    let note = m.note.unwrap();
+    assert!(note.contains("the computer's volume control"), "{note}");
+}
+
+#[test]
+fn wp_p0wecho_a_foreign_write_elsewhere_in_the_window_changes_nothing() {
+    let (core, remote, _) = undone_then_late_own_echo();
+    let off = dspi_proto::generated::OFF_USER_VOLUME;
+    assert!(remote.poke(off, &(-33.0f32).to_le_bytes(), UAC1 as u8));
+    let t = dspi_transport::clock::Instant::now();
+    while core.get_state().user_volume_db != -33.0 {
+        assert!(t.elapsed() < std::time::Duration::from_secs(5));
+        core.process_notifications();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let m = core.redo().unwrap();
+    assert_eq!(m.note, None, "{m:?}");
+    assert!(m.entry.is_some());
+}
+
+/// The same for undo: a drag's earlier tick echoed late is ours too.
+#[test]
+fn wp_p0wecho_a_late_echo_of_a_drag_tick_does_not_cost_the_undo() {
+    let (core, remote) = remote_demo();
+    drain(&core);
+    let start = core.get_state().master_volume_db;
+    core.set_master_volume(-10.0).unwrap();
+    core.set_master_volume(-12.0).unwrap();
+    drain(&core);
+    master_echo(&remote, -10.0, HOST_SET);
+    let t = dspi_transport::clock::Instant::now();
+    while core.get_state().master_volume_db != -10.0 {
+        assert!(t.elapsed() < std::time::Duration::from_secs(5));
+        core.process_notifications();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let m = core.undo().unwrap();
+    assert_eq!(m.note, None, "{m:?}");
+    assert_eq!(core.get_state().master_volume_db, start);
+}
+
+/// Our own value is remembered for a while only: long after, a matching
+/// value is judged like any other.
+#[test]
+fn wp_p0wecho_own_writes_are_bounded_by_age_and_count() {
+    let mut w = OwnWrites::default();
+    w.note("vol.master", &[], &Value::Float(-10.0), 1_000);
+    assert!(w.explains("vol.master", &[], &Value::Float(-10.0), 1_000 + OWN_ECHO_MS));
+    assert!(!w.explains("vol.master", &[], &Value::Float(-10.0), 1_001 + OWN_ECHO_MS));
+    assert!(!w.explains("vol.master", &[], &Value::Float(-11.0), 1_000));
+    assert!(!w.explains("out.gain", &[0], &Value::Float(-10.0), 1_000));
+    for i in 0..OWN_WRITES_CAP {
+        w.note("out.gain", &[0], &Value::Float(i as f32), 2_000);
+    }
+    assert!(
+        !w.explains("vol.master", &[], &Value::Float(-10.0), 2_000),
+        "the oldest went"
+    );
+    assert_eq!(w.0.len(), OWN_WRITES_CAP);
+}
+
 // ── DSPi Link ───────────────────────────────────────────────────────
 
 #[cfg(feature = "link")]

@@ -170,9 +170,7 @@ pub(crate) fn note_foreign(
         (_, S::HostSet | S::BulkSet) => "another program on the computer".into(),
         _ => "another writer".into(),
     };
-    let at_ms = dspi_transport::clock::system_time()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
+    let at_ms = now_ms();
     conn.last_foreign = Some(ForeignWrite { at_ms, writer });
 }
 
@@ -182,6 +180,14 @@ pub(crate) fn note_foreign(
 fn overwritten(inner: &Inner, entry: &JournalEntry, expected: &Value) -> Option<String> {
     let now = mirror_value(inner, entry.path, &entry.indices)?;
     if &now == expected {
+        return None;
+    }
+    // -- WP P0WECHO -- a value this session wrote itself not long ago: a late
+    // own echo patched it back into the mirror, not another writer.
+    if inner.conn.as_ref().is_some_and(|c| {
+        c.own_writes
+            .explains(entry.path, &entry.indices, &now, now_ms())
+    }) {
         return None;
     }
     let who = inner
@@ -194,6 +200,65 @@ fn overwritten(inner: &Inner, entry: &JournalEntry, expected: &Value) -> Option<
         "`{}` was changed by {who} since; it was left as they set it",
         entry.path
     ))
+}
+
+// -- WP P0WECHO --
+/// How long a value this session wrote can still come back as its own echo.
+/// Echoes come within milliseconds; a loaded host or a slow Link can hold
+/// them for seconds, so this is generous.
+const OWN_ECHO_MS: u64 = 30_000;
+
+/// The most own writes remembered; the oldest go first.
+const OWN_WRITES_CAP: usize = 64;
+
+/// Milliseconds since the Unix epoch, from the clock seam.
+fn now_ms() -> u64 {
+    dspi_transport::clock::system_time()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
+}
+
+/// The values this session wrote recently, per journal path and indices:
+/// what its own echoes, which the mirror takes in on purpose (they correct a
+/// value the firmware adjusted), can still bring back. A difference between
+/// the mirror and the journal that one of these explains is not another
+/// writer's (undo's foreign-change rule). Bounded by count and age; the
+/// firmware merges echoes, so they are not counted off one by one.
+#[derive(Debug, Default)]
+pub(crate) struct OwnWrites(std::collections::VecDeque<OwnWrite>);
+
+#[derive(Debug)]
+struct OwnWrite {
+    path: &'static str,
+    indices: Vec<u8>,
+    value: Value,
+    at_ms: u64,
+}
+
+impl OwnWrites {
+    /// Note that this session wrote `value` to `path` at `indices`.
+    fn note(&mut self, path: &'static str, indices: &[u8], value: &Value, at_ms: u64) {
+        if self.0.len() >= OWN_WRITES_CAP {
+            self.0.pop_front();
+        }
+        self.0.push_back(OwnWrite {
+            path,
+            indices: indices.to_vec(),
+            value: value.clone(),
+            at_ms,
+        });
+    }
+
+    /// Whether `value` at `path`/`indices` is one this session wrote within
+    /// [`OWN_ECHO_MS`] of `now_ms`.
+    fn explains(&self, path: &str, indices: &[u8], value: &Value, now_ms: u64) -> bool {
+        self.0.iter().any(|w| {
+            w.path == path
+                && w.indices == indices
+                && &w.value == value
+                && now_ms.saturating_sub(w.at_ms) <= OWN_ECHO_MS
+        })
+    }
 }
 
 /// Refuse a replay on a connection other than the one its entry came from.
@@ -322,7 +387,13 @@ pub(crate) fn journal(inner: &mut Inner, path: &'static str, indices: &[u8], aft
 
 /// Put `change` in the open session's journal; nowhere without one.
 fn record(inner: &mut Inner, change: Change) {
-    if let Some(session) = inner.conn.as_mut().and_then(|c| c.session().ok()) {
+    let Some(conn) = inner.conn.as_mut() else {
+        return;
+    };
+    // -- WP P0WECHO -- its echo may still be on the way
+    conn.own_writes
+        .note(change.path, &change.indices, &change.after, now_ms());
+    if let Ok(session) = conn.session() {
         session.record_change(change);
     }
 }

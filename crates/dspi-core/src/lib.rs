@@ -375,6 +375,10 @@ pub(crate) struct Connection {
     /// The last change another writer made, for undo's foreign-change rule
     /// (`journal::ForeignChange`). On the connection, as its journal is.
     pub(crate) last_foreign: Option<journal::ForeignWrite>,
+    // -- WP P0WECHO --
+    /// The values this session wrote recently, which its own late echoes can
+    /// bring back into the mirror (`journal::OwnWrites`).
+    pub(crate) own_writes: journal::OwnWrites,
     // -- WP BULKFIX -- (fixup bf F1, F2, F4)
     /// The bulk dB bug's state on this connection: whether the firmware has
     /// the fix, and which outputs may hold the series' gains behind their
@@ -499,6 +503,8 @@ impl Connection {
             pending_probe: None,
             // -- WP P0W --
             last_foreign: None,
+            // -- WP P0WECHO --
+            own_writes: journal::OwnWrites::default(),
             // -- WP BULKFIX --
             gain_guard,
             bulk_left_muted: false,
