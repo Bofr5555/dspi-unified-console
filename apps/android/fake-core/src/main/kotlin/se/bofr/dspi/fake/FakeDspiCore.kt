@@ -308,10 +308,9 @@ open class FakeDspiCore(
         HistoryMove(step.entry, emptyList(), null)
     }
 
-    // -- WP P1UG -- the drag and undo-group marks: the fake keeps one step
-    // per call and does not coalesce, so they do nothing here.
-    override fun setDragging(dragging: Boolean) {}
-
+    // -- WP P1UG -- the undo-group marks: the fake keeps one step per call
+    // and does not coalesce groups, so they do nothing here. (review p1a: the
+    // P1UG no-op `setDragging` was dropped in favour of AN42's model above.)
     override fun beginGroup(label: String) {}
 
     override fun endGroup() {}
