@@ -2119,12 +2119,27 @@ class DspiBridgeImpl(
 
     override suspend fun linkSystemView(): LinkSystemView = withContext(network) { core.linkSystemView() }
 
-    override suspend fun linkSystemSave(revision: Long, edits: LinkSystemEdits): Long =
-        withContext(network) { core.linkSystemSave(revision, edits) }
+    override suspend fun linkSystemSave(revision: Long, edits: LinkSystemEdits): Long {
+        refuseSystemWrite("linkSystemSave")
+        return withContext(network) { core.linkSystemSave(revision, edits) }
+    }
 
-    override suspend fun linkSystemAlign(): LinkSystemAlign = withContext(network) { core.linkSystemAlign() }
+    override suspend fun linkSystemAlign(): LinkSystemAlign {
+        refuseSystemWrite("linkSystemAlign")
+        return withContext(network) { core.linkSystemAlign() }
+    }
 
-    override suspend fun linkSystemRecall(scene: String): LinkSceneRecall = withContext(network) { core.linkSystemRecall(scene) }
+    override suspend fun linkSystemRecall(scene: String): LinkSceneRecall {
+        refuseSystemWrite("linkSystemRecall")
+        return withContext(network) { core.linkSystemRecall(scene) }
+    }
+
+    /** G1, as every write path: refused up front (with its CommandFailed) while writes are not allowed. */
+    private suspend fun refuseSystemWrite(name: String) {
+        if (withContext(main) { writeRefused(name) }) {
+            throw DspiException.Link("read_only", "This console may not change anything now.")
+        }
+    }
 
     override suspend fun fetchSubharmHeadroom(): Float? = if (!usable) {
         null

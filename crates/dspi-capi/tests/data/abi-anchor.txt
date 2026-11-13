@@ -1271,6 +1271,14 @@ const char *path,
 char *buf,
 uint32_t len);
 uint32_t dspi_link_fetch_info(const char *host, uint16_t port, char *buf, uint32_t len);
+uint32_t dspi_link_system_view(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_link_system_save(struct FfiCore *core,
+uint64_t revision,
+const char *edits_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_link_system_align(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_link_system_recall(struct FfiCore *core, const char *scene, char *buf, uint32_t len);
 uint32_t dspi_midi_ports(char *buf, uint32_t len);
 bool dspi_open_midi(struct FfiCore *core, const char *name);
 struct FfiHub *dspi_hub_new(void);

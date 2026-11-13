@@ -254,7 +254,10 @@ ignored with a log line and left in the file until a new one is set.
 - A periodic poll: alarms follow events and `system.status` reads. A client that
   shows the system calls `system.status` every few seconds.
 - The native clients' System view and "Clock and links" panel: the web console has
-  them (WP SW3, `apps/web/README.md`); Qt, Android and Swift follow per
-  `docs/UI-MODES.md`.
+  them (WP SW3, `apps/web/README.md`); Qt and Android have them over the core's
+  typed calls (WP LKUI1: `link_system_view`, `link_system_save` with the revision,
+  `link_system_align`, `link_system_recall`; C `dspi_link_system_*`), without the
+  slot matrix, link stats, trim scan, system mute toggle or alarm acknowledge
+  (`docs/PARITY.md` section 2.I). Swift is pending.
 - Resetting a unit's link stats through the hub: `EXT_LINK_STATS_RESET` is not a
   `system.*` request yet.

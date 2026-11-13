@@ -8,12 +8,12 @@
 //! The web console reads the same requests through its own generic call
 //! ([`DspiCore::link_hub_request`], not exported); these are the typed calls
 //! for exactly what the native screens need:
-//! - [`DspiCore::link_system_view`]: `system.status`, plus `system.get` when
-//!   the model's revision moved;
-//! - [`DspiCore::link_system_save`]: the "Clock and links" edits as one
+//! - [`DspiCore::link_system_view`] reads `system.status`, plus `system.get`
+//!   when the model's revision moved;
+//! - [`DspiCore::link_system_save`] sends the "Clock and links" edits as one
 //!   `system.set`, guarded by the revision they were made on;
-//! - [`DspiCore::link_system_align`]: `system.align` with `apply`;
-//! - [`DspiCore::link_system_recall`]: `system.scene.apply`.
+//! - [`DspiCore::link_system_align`] sends `system.align` with `apply`;
+//! - [`DspiCore::link_system_recall`] sends `system.scene.apply`.
 //!
 //! The hub judges every request by this session's role; the view's `may_*`
 //! flags only keep a client from offering what it would refuse. No clock is
