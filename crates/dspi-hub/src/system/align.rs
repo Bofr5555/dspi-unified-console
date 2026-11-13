@@ -34,6 +34,14 @@ pub const SPEED_OF_SOUND: f64 = 343.0;
 /// D when nothing reports a limit (SYS2 3.2's default for the 1 ms option).
 pub const DEFAULT_D: u16 = 128;
 
+// -- fixup sw2x (F3) --
+/// The longest output delay a unit plays, samples: the firmware caps
+/// `MAX_DELAY_SAMPLES - 1` (2047 on an RP2350, `dsp_pipeline.c`), and the PDM
+/// sub's alignment takes from it, so the hub keeps one sample under. The unit
+/// stores the host's milliseconds and caps only the samples, so a read-back
+/// cannot reveal the cap: the hub must.
+pub const MAX_OUT_DELAY_SAMPLES: u32 = 2046;
+
 /// What the hub read from one device, by serial. Every field is optional: a
 /// device offline, without the link, or not reporting it.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -71,6 +79,9 @@ pub struct Observed {
     pub superframe_path: bool,
     /// The device announces 0xE1 (`EXT_NOTIFY_FEATURES` bit 2).
     pub state_events: bool,
+    // -- fixup sw2x (F1) --
+    /// A sender's system mute (`EXT_LINK_CTRL_MSG` IN flags bit 0).
+    pub system_mute: Option<bool>,
 }
 
 /// One unit's computed settings.
@@ -97,6 +108,11 @@ pub struct UnitPlan {
     pub hops_offset: i16,
     /// Distance delays: (output, ms).
     pub out_delays: Vec<(u8, f32)>,
+    // -- fixup sw2x (F3) --
+    /// Outputs whose distance delay was longer than the unit holds
+    /// ([`MAX_OUT_DELAY_SAMPLES`]) and was cut to it: that speaker is not
+    /// aligned (issue `delay_over_max`).
+    pub clamped_outputs: Vec<u8>,
     /// Whether the plan may be written (in range, reachable).
     pub writable: bool,
 }
@@ -213,7 +229,11 @@ fn hop_delay(
 }
 
 /// Speakers' distance delays, by unit id.
-fn out_delays(model: &SystemModel) -> BTreeMap<&str, Vec<(u8, f32)>> {
+/// Distance delays by unit id, each cut to what a unit holds at `rate`; the
+/// cut ones are listed with their unit.
+#[allow(clippy::type_complexity)]
+fn out_delays(model: &SystemModel, rate: u32) -> BTreeMap<&str, (Vec<(u8, f32)>, Vec<u8>)> {
+    let max_ms = f64::from(MAX_OUT_DELAY_SAMPLES) * 1000.0 / f64::from(rate.max(1));
     let mut furthest: BTreeMap<String, f32> = BTreeMap::new();
     let key = |u: &Unit| match &u.room {
         Some(r) => format!("room:{r}"),
@@ -230,16 +250,22 @@ fn out_delays(model: &SystemModel) -> BTreeMap<&str, Vec<(u8, f32)>> {
         .iter()
         .map(|u| {
             let far = furthest.get(&key(u)).copied().unwrap_or(0.0);
+            let mut clamped = Vec::new();
             let delays = u
                 .speakers
                 .iter()
                 .map(|s| {
-                    let ms = f64::from(far - s.distance_m) / SPEED_OF_SOUND * 1000.0;
+                    let mut ms = f64::from(far - s.distance_m) / SPEED_OF_SOUND * 1000.0;
+                    if ms > max_ms {
+                        clamped.push(s.output);
+                        // Rounded down, so the unit's cap is never reached.
+                        ms = (max_ms * 1000.0).floor() / 1000.0;
+                    }
                     // Rounded to 1 µs, so a recomputation writes the same value.
                     (s.output, ((ms * 1000.0).round() / 1000.0) as f32)
                 })
                 .collect();
-            (u.id.as_str(), delays)
+            (u.id.as_str(), (delays, clamped))
         })
         .collect()
 }
@@ -360,7 +386,20 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
             format!("D = {d} frames is below what the units need ({n})"),
         ));
     }
-    let delays = out_delays(model);
+    let delays = out_delays(model, rate);
+    for u in &model.units {
+        if let Some((_, clamped)) = delays.get(u.id.as_str()).filter(|(_, c)| !c.is_empty()) {
+            issues.push(issue(
+                Some(&u.id),
+                "delay_over_max",
+                format!(
+                    "{}: outputs {clamped:?} need a longer distance delay than the {} samples a unit \
+                     holds at {rate} Hz; cut to it, so those speakers are not aligned",
+                    u.id, MAX_OUT_DELAY_SAMPLES
+                ),
+            ));
+        }
+    }
     let units = rows
         .iter()
         .map(|r| {
@@ -399,7 +438,14 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
                 effective,
                 d_local: d_local_ok.unwrap_or(0),
                 hops_offset: i16::try_from(offset).unwrap_or(0),
-                out_delays: delays.get(r.unit.id.as_str()).cloned().unwrap_or_default(),
+                out_delays: delays
+                    .get(r.unit.id.as_str())
+                    .map(|(d, _)| d.clone())
+                    .unwrap_or_default(),
+                clamped_outputs: delays
+                    .get(r.unit.id.as_str())
+                    .map(|(_, c)| c.clone())
+                    .unwrap_or_default(),
                 writable: in_range && d_local_ok.is_some(),
             }
         })
@@ -606,6 +652,31 @@ pub(crate) mod tests_wp_sw2 {
         assert_eq!(a.units[0].out_delays[0], (0, 0.0));
         assert!((a.units[0].out_delays[1].1 - 4.169).abs() < 0.001);
         assert!((a.units[1].out_delays[0].1 - 5.0).abs() < 0.001);
+        assert!(a.units.iter().all(|p| p.clamped_outputs.is_empty()));
+    }
+
+    // -- fixup sw2x (F3) --
+    /// 15 m between the nearest and furthest speaker is 43.7 ms, over the 2046
+    /// samples (42.6 ms) a unit holds at 48 kHz: cut, and reported.
+    #[test]
+    fn wp_sw2x_a_distance_delay_over_the_maximum_is_cut_and_reported() {
+        let mut m = cinema();
+        m.units[0].speakers = vec![
+            Speaker {
+                output: 0,
+                distance_m: 16.0,
+            },
+            Speaker {
+                output: 1,
+                distance_m: 1.0,
+            },
+        ];
+        let a = align(&m, &obs());
+        let p = &a.units[0];
+        assert_eq!(p.clamped_outputs, vec![1]);
+        let max_ms = 2046.0 / 48.0;
+        assert!(p.out_delays[1].1 <= max_ms && p.out_delays[1].1 > max_ms - 0.01);
+        assert!(a.issues.iter().any(|i| i.code == "delay_over_max"));
     }
 
     #[test]
@@ -621,5 +692,35 @@ pub(crate) mod tests_wp_sw2 {
             us_to_frames(i64::MAX, 96_000),
             us_to_frames(i64::MAX, 96_000)
         );
+    }
+
+    // -- fixup sw2x --
+    /// LK6's limits (2026-11-13): 257..399 frames under the default 4 ms latency
+    /// option, 81..431 under 1 ms, at 48 kHz. The engine takes D from what each
+    /// unit reports, never the 128 default: here 257 + C's 4 frames of path.
+    #[test]
+    fn wp_sw2x_d_follows_the_units_reported_limits() {
+        let m = cinema();
+        let mut o = obs();
+        for (serial, min, max) in [
+            ("S-A", 257, 399),
+            ("S-B", 81, 431),
+            ("S-R", 81, 431),
+            ("S-C", 257, 399),
+        ] {
+            let x = o.get_mut(serial).unwrap();
+            x.d_local_min = Some(min);
+            x.d_local_max = Some(max);
+        }
+        let a = align(&m, &o);
+        assert!(a.issues.is_empty(), "{:?}", a.issues);
+        assert_eq!(a.d_frames, 261);
+        assert!(a.units.iter().all(|p| p.writable && p.effective >= 257 - 4));
+        // Under the 4 ms option a configured D of 128 is refused, not written.
+        let mut m = cinema();
+        m.d_frames = Some(128);
+        let a = align(&m, &o);
+        assert!(a.issues.iter().any(|i| i.code == "d_too_small"));
+        assert!(!a.units[0].writable);
     }
 }

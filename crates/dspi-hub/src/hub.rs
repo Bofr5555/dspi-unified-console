@@ -170,7 +170,8 @@ struct State {
 pub(crate) struct HubInner {
     name: String,
     hub_id: String,
-    policy: Arc<Policy>,
+    // -- fixup sw2x -- read by the system model's per-op role check.
+    pub(crate) policy: Arc<Policy>,
     state: Mutex<State>,
     pub(crate) relay: Arc<Relay>,
     /// Set under `state`, so an attach or an open either finished before it or fails.
@@ -1024,6 +1025,11 @@ impl HubInner {
         }
         if self.warm_snapshots {
             shared.warm_snapshot();
+        }
+        // -- fixup sw2x (F5) -- a unit of the system model, new or back on another
+        // handle: learn whether it sends 0xE1, without waiting.
+        if self.system.watches(&serial) {
+            crate::system::learn_events(&self.system, &shared);
         }
         if let Some(name) = adopt {
             self.adopt_name(&shared, serial.clone(), &name);

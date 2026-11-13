@@ -129,8 +129,9 @@ pub(super) struct AudioLink {
     pub(super) setup: AudioLinkSetup,
     /// A sender's pending superframe apply.
     ctrl: Option<ApplyRequest>,
-    /// A sender's superframe system flags.
-    system_flags: u8,
+    /// A sender's `EXT_LINK_TX`. Its flags bit 0 is the system mute, the one
+    /// byte `EXT_LINK_CTRL_MSG`'s `system_flags` writes too (fixup sw2x: the
+    /// firmware's `snd.cfg.flags`).
     tx: LinkTx,
 }
 
@@ -168,7 +169,6 @@ impl Default for AudioLink {
             // -- WP SW2 --
             setup: AudioLinkSetup::default(),
             ctrl: None,
-            system_flags: 0,
             tx: LinkTx {
                 link_mask: 0,
                 class: 1,
@@ -637,7 +637,7 @@ impl State {
         match value {
             alink::EXT_LINK_CTRL_MSG => Some(
                 SuperframeSnapshot {
-                    flags: 0b1000 | (l.system_flags & 1) | if l.ctrl.is_some() { 0b100 } else { 0 },
+                    flags: 0b1000 | (l.tx.flags & 1) | if l.ctrl.is_some() { 0b100 } else { 0 },
                     rate_code: l.tx.rate_code,
                     channels: l.tx.channels,
                     class: l.tx.class,
@@ -674,7 +674,7 @@ impl State {
             self.audio_link.ctrl = None;
         }
         if r.op == ApplyOp::CancelAll {
-            self.audio_link.system_flags = flags;
+            self.set_system_mute(flags);
             return true;
         }
         let lead_ok = alink::ctrl_msg_min_frame(now).is_some_and(|min| r.frame >= min);
@@ -683,8 +683,15 @@ impl State {
             return false;
         }
         self.audio_link.ctrl = Some(r);
-        self.audio_link.system_flags = flags;
+        // As the firmware's `set_ctrl`: every accepted write sets the bit.
+        self.set_system_mute(flags);
         true
+    }
+
+    /// `system_flags` bit 0 into the one flags byte.
+    fn set_system_mute(&mut self, flags: u8) {
+        let tx = &mut self.audio_link.tx;
+        tx.flags = (tx.flags & !1) | (flags & 1);
     }
 
     fn link_sim(&mut self, op: u8) -> bool {

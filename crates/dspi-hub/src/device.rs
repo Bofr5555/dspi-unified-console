@@ -637,6 +637,8 @@ fn ingest(packet: &[u8], kind: TransportKind, shared: &DeviceShared, relay: &Rel
     if shared.snapshot.note_packet(packet) {
         shared.queue_snapshot_read();
     }
+    // -- fixup sw2x (F5) -- the system model follows units by serial.
+    relay.tap_packet(packet, || shared.serial());
     relay.publish_notify(shared.handle, origin, packet);
 }
 

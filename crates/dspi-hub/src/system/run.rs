@@ -12,7 +12,8 @@ use std::time::{Duration, Instant};
 use dspi_link::frames::CmdRequest;
 use dspi_link::{Dir, status};
 use dspi_proto::ext::audio_link::{
-    self as alink, FrameCounter, LinkInfo, LinkPhase, LinkRole, LinkSlots, LinkStatus,
+    self as alink, ApplyOp, ApplyRequest, ApplyStatus, FrameCounter, LinkInfo, LinkPhase, LinkRole,
+    LinkSlots, LinkStatus, SuperframeSnapshot,
 };
 use dspi_proto::generated::ext as g;
 use dspi_proto::generated::opcodes as op;
@@ -75,8 +76,140 @@ pub struct AlignReport {
 pub struct SceneReport {
     /// The plan: the frame, the path, the ops.
     pub plan: ScenePlan,
-    /// Each op's write.
+    /// Each op's write, with what the unit said of it right after (fixup sw2x
+    /// F2): `queued` (waiting for its frame), `applied`, `late` (its frame had
+    /// passed: applied at once, not with the others), `cancelled`,
+    /// `refused_at_apply`, `queued_unverified` (written, the unit's queue not
+    /// readable), or the write's own failure.
     pub writes: Vec<WriteResult>,
+    // -- fixup sw2x (F2) --
+    /// A link frame read after the last write; `None` if none could be read.
+    pub frame_after_writes: Option<u64>,
+    /// Whether every op is known to act at the plan's frame (all `queued` or
+    /// `applied`, and the frame was still ahead after the writes).
+    pub on_time: bool,
+}
+
+// -- fixup sw2x --
+/// Why a scene or a system mute was not run.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum SystemRefused {
+    /// The scene or mute could not be planned.
+    #[error("{0:?}")]
+    Scene(SceneRefused),
+    /// The caller's role may not do one of its ops directly; names the op.
+    #[error("{0}")]
+    Denied(String),
+    /// No sender of the model is reachable (a system mute).
+    #[error("no sender of the model is reachable")]
+    NoSender,
+}
+
+impl From<SceneRefused> for SystemRefused {
+    fn from(e: SceneRefused) -> Self {
+        Self::Scene(e)
+    }
+}
+
+// -- fixup sw2x (F2) --
+/// A unit whose round trip could not be measured is given this per write: a
+/// Link-bridged unit or a busy worker.
+const DEFAULT_WRITE_RTT: Duration = Duration::from_millis(100);
+/// The least a write is counted at, however fast its unit's read was: a write
+/// can wait behind a client's command, and a read says little about it.
+const MIN_WRITE_RTT: Duration = Duration::from_millis(10);
+/// Added to the writes' estimate before it becomes a lead.
+const LEAD_MARGIN: Duration = Duration::from_millis(50);
+/// Time becomes frames at the fastest stream rate, so the lead is never short.
+const FASTEST_RATE: u128 = 96_000;
+
+/// Frames at [`FASTEST_RATE`] in `d`.
+fn frames_in(d: Duration) -> u64 {
+    u64::try_from(d.as_micros().saturating_mul(FASTEST_RATE) / 1_000_000).unwrap_or(u64::MAX)
+}
+
+/// What a unit's queue said of `req` right after it was written.
+fn apply_result(seen: Option<ApplyStatus>, req: &ApplyRequest) -> String {
+    match seen {
+        Some(s) if s.last_frame == req.frame && s.last_op == req.op => {
+            match s.last_result.as_str() {
+                "refused" => "refused_at_apply".into(),
+                r => r.into(),
+            }
+        }
+        Some(_) => "queued".into(),
+        None => "queued_unverified".into(),
+    }
+}
+
+/// `EXT_LINK_CTRL_MSG` IN.
+fn read_ctrl(dev: &DeviceShared) -> Option<SuperframeSnapshot> {
+    get_ext(
+        dev,
+        alink::EXT_LINK_CTRL_MSG,
+        SuperframeSnapshot::SIZE,
+        SuperframeSnapshot::decode,
+    )
+}
+
+/// `EXT_FRAME_COUNTER` IN, and how long it took.
+fn timed_frame(dev: &DeviceShared) -> (Option<u64>, Duration) {
+    let start = Instant::now();
+    let c = get_ext(
+        dev,
+        alink::EXT_FRAME_COUNTER,
+        FrameCounter::SIZE,
+        FrameCounter::decode,
+    );
+    (c.map(|c| c.frame).filter(|f| *f != 0), start.elapsed())
+}
+
+/// Write the system mute on a sender: op 0 ("none", which leaves a pending
+/// apply alone) with `system_flags` bit 0, then read it back.
+fn write_system_mute(dev: &DeviceShared, muted: bool) -> String {
+    let none = ApplyRequest {
+        frame: 0,
+        op: ApplyOp::CancelAll,
+        arg: 0,
+        value: 0,
+    };
+    match set_ext(
+        dev,
+        alink::EXT_LINK_CTRL_MSG,
+        none.encode_ctrl_msg(u8::from(muted)).to_vec(),
+    ) {
+        Err(s) => status_name(s),
+        Ok(()) => match read_ctrl(dev) {
+            Some(snap) if (snap.flags & 1 != 0) == muted => "ok".into(),
+            Some(_) => "not_applied".into(),
+            None => "ok_unverified".into(),
+        },
+    }
+}
+
+/// Ask `dev` whether it sends 0xE1, without waiting: the answer lands in
+/// `system` from the device's worker (fixup sw2x F5).
+pub(crate) fn learn_events(system: &Arc<SystemShared>, dev: &DeviceShared) {
+    let serial = dev.serial();
+    let system = Arc::clone(system);
+    let req = CmdRequest {
+        tag: 0,
+        handle: dev.handle,
+        dir: Dir::Get,
+        b_request: op::REQ_EXTENSION,
+        w_value: g::EXT_NOTIFY_FEATURES,
+        w_index: dspi_proto::VENDOR_INTERFACE,
+        w_length: 4,
+        payload: Vec::new(),
+    };
+    let done = Completion::new(0, move |r| {
+        let bits = (r.status == status::OK)
+            .then(|| r.payload.get(..4)?.try_into().ok().map(u32::from_le_bytes))
+            .flatten()
+            .unwrap_or(0);
+        system.learned_events(&serial, bits & alink::NOTIFY_FEAT_LINK_STATE != 0);
+    });
+    dev.submit(internal(), req, done, None);
 }
 
 fn internal() -> SessionCtx {
@@ -205,6 +338,10 @@ fn observe(dev: &DeviceShared) -> Observed {
     ) {
         o.frame = Some(c.frame).filter(|f| *f != 0).or(o.frame);
     }
+    // -- fixup sw2x (F1) --
+    if info.role == LinkRole::Sender {
+        o.system_mute = read_ctrl(dev).map(|snap| snap.flags & 1 != 0);
+    }
     o.state_events = get_ext(dev, g::EXT_NOTIFY_FEATURES, 4, |b| {
         b.get(..4)?.try_into().ok().map(u32::from_le_bytes)
     })
@@ -229,6 +366,13 @@ impl HubHandle {
         model: super::model::SystemModel,
     ) -> Result<u64, super::ModelRefused> {
         let revision = self.system().set_model(model)?;
+        // -- fixup sw2x (F5) -- the model's devices online now.
+        let (model, _) = self.system().model();
+        for (_, dev) in self.system_devices(&model) {
+            if let Some(d) = dev {
+                learn_events(self.system(), &d);
+            }
+        }
         self.inner.relay.broadcast_event(
             &serde_json::json!({"t": "system.changed", "revision": revision}).to_string(),
         );
@@ -273,21 +417,15 @@ impl HubHandle {
     pub fn system_status(&self) -> SystemStatus {
         let (model, revision) = self.system().model();
         let mut observed = BTreeMap::new();
-        let mut handles = BTreeMap::new();
         for (serial, dev) in self.system_devices(&model) {
             let o = match &dev {
                 Some(d) => observe(d),
                 None => Observed::default(),
             };
-            if let Some(d) = dev {
-                handles.insert(d.handle, (serial.clone(), o.state_events));
-            }
             observed.insert(serial, o);
         }
         let alignment = align::align(&model, &observed);
-        let changes = self
-            .system()
-            .observed(observed.clone(), handles, alignment.clone());
+        let changes = self.system().observed(observed.clone(), alignment.clone());
         for a in &changes {
             self.inner.relay.broadcast_event(&alarm_event(a));
         }
@@ -384,6 +522,12 @@ impl HubHandle {
                         )
                         .map_or_else(status_name, |_| "ok".into())
                     };
+                    // -- fixup sw2x (F3) -- a cut delay is never just "ok".
+                    let r = if plan.clamped_outputs.contains(output) && !r.starts_with("refused") {
+                        format!("clamped ({r})")
+                    } else {
+                        r
+                    };
                     writes.push(result(&what, r));
                 }
             }
@@ -395,84 +539,283 @@ impl HubHandle {
         }
     }
 
-    /// Apply scene `id` at one link frame (`system.scene.apply`): the frame is
-    /// read from the units (and the sender), the ops go through the sender's
-    /// superframe or to each unit ([`scene`]). Blocks for the transfers.
-    pub fn system_apply_scene(&self, id: &str) -> Result<SceneReport, SceneRefused> {
-        let (model, _) = self.system().model();
-        let scene = model.scene(id).ok_or(SceneRefused::NoScene)?;
-        let mut frames = BTreeMap::new();
+    // -- fixup sw2x (roles) --
+    /// Refuse what `role` may not do directly: each op of `scene` against the
+    /// hub's policy for its direct command ([`super::model::op_authority`]), and
+    /// a system mute as muting outputs.
+    fn authorize(&self, role: Role, scene: &super::model::Scene) -> Result<(), SystemRefused> {
+        let policy = &self.inner.policy;
         for a in &scene.actions {
-            for u in model.resolve_target(&a.target).unwrap_or_default() {
-                if frames.contains_key(&u.serial) {
-                    continue;
-                }
-                let frame = self.device_by_serial(&u.serial).and_then(|d| {
-                    get_ext(
-                        &d,
-                        alink::EXT_FRAME_COUNTER,
-                        FrameCounter::SIZE,
-                        FrameCounter::decode,
-                    )
-                });
-                if let Some(c) = frame.filter(|c| c.frame != 0) {
-                    frames.insert(u.serial.clone(), c.frame);
-                }
+            let Some(op) = super::model::scene_op(&a.op) else {
+                return Err(SystemRefused::Denied(format!("op {} is unknown", a.op)));
+            };
+            let (code, dir) = super::model::op_authority(op);
+            if !policy.allows(role, code, dir) {
+                return Err(SystemRefused::Denied(format!(
+                    "op {} on {} needs a role that may send it directly; this one may not",
+                    a.op, a.target
+                )));
             }
         }
-        // The sender, if one is reachable and is a sender build.
-        let sender = model.senders.iter().find_map(|s| {
+        if scene.system_mute.is_some() {
+            let (code, dir) = super::model::system_mute_authority();
+            if !policy.allows(role, code, dir) {
+                return Err(SystemRefused::Denied(
+                    "the system mute needs a role that may mute outputs".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// The first reachable sender of the model that is a sender build, with its
+    /// counter and its system mute, and how long its frame read took.
+    fn reachable_sender(
+        &self,
+        model: &super::model::SystemModel,
+    ) -> Option<(SenderSeen, Arc<DeviceShared>, Duration)> {
+        model.senders.iter().find_map(|s| {
             let serial = s.serial.clone()?;
             let dev = self.device_by_serial(&serial)?;
             let info = get_ext(&dev, alink::EXT_LINK_INFO, LinkInfo::SIZE, LinkInfo::decode)?;
             if info.role != LinkRole::Sender {
                 return None;
             }
-            let c = get_ext(
-                &dev,
-                alink::EXT_FRAME_COUNTER,
-                FrameCounter::SIZE,
-                FrameCounter::decode,
-            )?;
-            Some(SenderSeen {
-                id: s.id.clone(),
+            // Without the bit there is no superframe write that keeps it.
+            let snap = read_ctrl(&dev)?;
+            let (frame, rtt) = timed_frame(&dev);
+            Some((
+                SenderSeen {
+                    id: s.id.clone(),
+                    serial,
+                    frame: frame?,
+                    system_mute: snap.flags & 1 != 0,
+                },
+                dev,
+                rtt,
+            ))
+        })
+    }
+
+    /// Note a system mute the hub wrote or saw, and tell every session.
+    fn system_mute_changed(&self, sender: &str, muted: bool) {
+        for a in self.system().system_mute_seen(sender, muted) {
+            self.inner.relay.broadcast_event(&alarm_event(&a));
+        }
+        self.inner.relay.broadcast_event(
+            &serde_json::json!({"t": "system.mute", "sender": sender, "muted": muted}).to_string(),
+        );
+    }
+
+    // -- fixup sw2x (F1) --
+    /// `system.mute`: set or clear the system mute on every reachable sender of
+    /// the model (`EXT_LINK_CTRL_MSG` op 0, which leaves a pending apply alone).
+    /// Every unit on the link plays silence while it is set. A role that may
+    /// mute outputs may do it. `system.mute` and `system.alarm` follow.
+    pub fn system_set_mute(
+        &self,
+        muted: bool,
+        role: Role,
+    ) -> Result<Vec<WriteResult>, SystemRefused> {
+        let (code, dir) = super::model::system_mute_authority();
+        if !self.inner.policy.allows(role, code, dir) {
+            return Err(SystemRefused::Denied(
+                "the system mute needs a role that may mute outputs".into(),
+            ));
+        }
+        let (model, _) = self.system().model();
+        let mut writes = Vec::new();
+        for s in &model.senders {
+            let Some(serial) = s.serial.clone() else {
+                continue;
+            };
+            let Some(dev) = self.device_by_serial(&serial) else {
+                continue;
+            };
+            let result = write_system_mute(&dev, muted);
+            if result.starts_with("ok") {
+                self.system_mute_changed(&s.id, muted);
+            }
+            writes.push(WriteResult {
                 serial,
-                frame: c.frame,
-            })
-        });
-        let plan = scene::plan(&model, id, &frames, sender.as_ref())?;
-        let superframe = plan.path == "superframe";
-        let writes = plan
+                element: s.id.clone(),
+                what: if muted {
+                    "system_mute"
+                } else {
+                    "system_unmute"
+                }
+                .into(),
+                result,
+            });
+        }
+        if writes.is_empty() {
+            return Err(SystemRefused::NoSender);
+        }
+        Ok(writes)
+    }
+
+    /// Apply scene `id` at one link frame (`system.scene.apply`) for a caller of
+    /// `role`. Each op must be one the role may send directly, or nothing runs.
+    /// The frame is read from the units (and the sender); the lead is the
+    /// model's, or more when the units' measured round trips say the writes
+    /// take longer. The ops go through the sender's superframe, carrying its
+    /// system mute as it is, or to each unit, whose queue is read back after
+    /// each write. Blocks for the transfers.
+    pub fn system_apply_scene(&self, id: &str, role: Role) -> Result<SceneReport, SystemRefused> {
+        let (model, _) = self.system().model();
+        let scene = model.scene(id).ok_or(SceneRefused::NoScene)?.clone();
+        self.authorize(role, &scene)?;
+        let mut frames = BTreeMap::new();
+        let mut rtts: BTreeMap<String, Duration> = BTreeMap::new();
+        for a in &scene.actions {
+            for u in model.resolve_target(&a.target).unwrap_or_default() {
+                if rtts.contains_key(&u.serial) {
+                    continue;
+                }
+                let Some(dev) = self.device_by_serial(&u.serial) else {
+                    continue;
+                };
+                let (frame, rtt) = timed_frame(&dev);
+                rtts.insert(u.serial.clone(), rtt);
+                if let Some(f) = frame {
+                    frames.insert(u.serial.clone(), f);
+                }
+            }
+        }
+        let sender = self.reachable_sender(&model);
+        if let Some((seen, _, rtt)) = &sender {
+            rtts.insert(seen.serial.clone(), *rtt);
+        }
+        let seen = sender.as_ref().map(|(s, _, _)| s);
+        let model_lead = u64::from(model.apply_lead_frames);
+        let first = scene::plan(&model, id, &frames, seen, model_lead)?;
+        // -- fixup sw2x (F2) -- each op is a write and a read of the queue.
+        let estimate = first
             .ops
             .iter()
             .map(|o| {
-                let payload = o.request(plan.frame).map(|r| {
-                    if superframe {
-                        r.encode_ctrl_msg(0).to_vec()
-                    } else {
-                        r.encode().to_vec()
-                    }
-                });
-                let id = if superframe {
-                    alink::EXT_LINK_CTRL_MSG
+                rtts.get(&o.serial)
+                    .copied()
+                    .unwrap_or(DEFAULT_WRITE_RTT)
+                    .max(MIN_WRITE_RTT)
+            })
+            .fold(LEAD_MARGIN, |acc, rtt| {
+                acc.saturating_add(rtt.saturating_mul(2))
+            });
+        let needed = frames_in(estimate);
+        let plan = if needed > model_lead {
+            scene::plan(&model, id, &frames, seen, needed)?
+        } else {
+            first
+        };
+        let mut writes = Vec::new();
+        let sender_dev = sender.as_ref().map(|(_, d, _)| d);
+        let mute_write = |muted: bool| {
+            let (serial, element, result) = match (&sender, sender_dev) {
+                (Some((s, _, _)), Some(d)) => {
+                    (s.serial.clone(), s.id.clone(), write_system_mute(d, muted))
+                }
+                _ => (String::new(), String::new(), "no_device".into()),
+            };
+            WriteResult {
+                serial,
+                element,
+                what: if muted {
+                    "system_mute"
                 } else {
-                    alink::EXT_APPLY_AT_FRAME
-                };
-                let result = match (self.device_by_serial(&o.serial), payload) {
-                    (Some(d), Some(p)) => {
-                        set_ext(&d, id, p).map_or_else(status_name, |()| "ok".into())
-                    }
-                    (None, _) => "no_device".into(),
-                    (_, None) => "skipped".into(),
-                };
-                WriteResult {
+                    "system_unmute"
+                }
+                .into(),
+                result,
+            }
+        };
+        let superframe = plan.path == "superframe";
+        // Mute first, unmute last, so nothing plays half-changed.
+        if !superframe && plan.system_mute == Some(true) {
+            writes.push(mute_write(true));
+        }
+        for o in &plan.ops {
+            let Some(req) = o.request(plan.frame) else {
+                continue;
+            };
+            let Some(dev) = self.device_by_serial(&o.serial) else {
+                writes.push(WriteResult {
                     serial: o.serial.clone(),
                     element: o.element.clone(),
                     what: o.op.clone(),
-                    result,
+                    result: "no_device".into(),
+                });
+                continue;
+            };
+            let result = if superframe {
+                // Never 0 by default: the bit as the sender has it, or the scene's.
+                let flags = plan.system_flags.unwrap_or(1);
+                match set_ext(
+                    &dev,
+                    alink::EXT_LINK_CTRL_MSG,
+                    req.encode_ctrl_msg(flags).to_vec(),
+                ) {
+                    Err(s) => status_name(s),
+                    Ok(()) => match read_ctrl(&dev) {
+                        Some(snap) if snap.apply.frame == plan.frame => "queued".into(),
+                        Some(_) => "late".into(),
+                        None => "queued_unverified".into(),
+                    },
                 }
-            })
-            .collect();
-        Ok(SceneReport { plan, writes })
+            } else {
+                match set_ext(&dev, alink::EXT_APPLY_AT_FRAME, req.encode().to_vec()) {
+                    Err(s) => status_name(s),
+                    Ok(()) => apply_result(
+                        get_ext(
+                            &dev,
+                            alink::EXT_APPLY_AT_FRAME,
+                            ApplyStatus::SIZE,
+                            ApplyStatus::decode,
+                        ),
+                        &req,
+                    ),
+                }
+            };
+            writes.push(WriteResult {
+                serial: o.serial.clone(),
+                element: o.element.clone(),
+                what: o.op.clone(),
+                result,
+            });
+        }
+        if !superframe && plan.system_mute == Some(false) {
+            writes.push(mute_write(false));
+        }
+        if let (Some(muted), Some((s, _, _))) = (plan.system_mute, &sender) {
+            // Carried by the superframe write, or by its own write.
+            let written = writes.iter().any(|w| {
+                w.serial == s.serial
+                    && (w.result.starts_with("ok") || w.result.starts_with("queued"))
+            });
+            if written {
+                self.system_mute_changed(&s.id, muted);
+            }
+        }
+        // The frame again, now the writes are in.
+        let frame_after_writes = plan
+            .ops
+            .first()
+            .and_then(|o| self.device_by_serial(&o.serial))
+            .and_then(|d| timed_frame(&d).0);
+        // A queued op was in its unit's queue before its frame: on time. One
+        // whose queue could not be read is on time only if the frame was still
+        // ahead after every write.
+        let still_ahead = frame_after_writes.is_some_and(|f| f < plan.frame);
+        let on_time = writes.iter().all(|w| match w.result.as_str() {
+            "queued" | "applied" | "ok" | "ok_unverified" => true,
+            "queued_unverified" => still_ahead,
+            _ => false,
+        });
+        Ok(SceneReport {
+            plan,
+            writes,
+            frame_after_writes,
+            on_time,
+        })
     }
 }

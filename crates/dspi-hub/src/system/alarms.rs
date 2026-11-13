@@ -9,6 +9,7 @@
 //! | `unit_offline` | a unit of the model not attached | attached |
 //! | `link_errors` | a unit's bank errors (`crc16_errors`) grew by [`ERROR_STEP`] or more since the last read, or its `loss_count` grew | a read with no growth |
 //! | `reanchor` | an 0xE1 `REANCHOR` (a short silence) | acknowledged |
+//! | `system_muted` | the sender's system mute set (by `system.mute`, a scene or another host), seen at a read or a write | cleared |
 //! | `delay_below_min` | `EXT_LINK_PHASE` flag `D_BELOW_MIN` | the flag gone |
 
 use std::collections::BTreeMap;
@@ -213,6 +214,21 @@ impl AlarmBook {
                 &mut out,
             );
         }
+        out
+    }
+
+    // -- fixup sw2x (F1) --
+    /// The system mute of sender `subject` as last read or written.
+    pub fn system_mute(&mut self, subject: &str, muted: bool, now: u64) -> Changes {
+        let mut out = Vec::new();
+        self.set(
+            muted,
+            "system_muted",
+            subject,
+            format!("{subject}: the system is muted; every unit on its link plays silence"),
+            now,
+            &mut out,
+        );
         out
     }
 

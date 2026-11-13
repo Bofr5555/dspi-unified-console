@@ -131,15 +131,6 @@ impl Relay {
 
     /// Queue a notification for everyone who follows `handle`. Never blocks.
     pub fn publish_notify(&self, handle: u8, origin: SessionId, packet: &[u8]) {
-        // -- WP SW2 -- the tap broadcasts through `self`: taken without the lock.
-        let tap = self
-            .tap
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone();
-        if let Some(tap) = tap {
-            tap.on_packet(self, handle, packet);
-        }
         let packet: Arc<[u8]> = Arc::from(packet);
         for s in self.lock().iter().filter(|s| follows(s, handle)) {
             s.outbox.push_notify(handle, origin, Arc::clone(&packet));
@@ -150,6 +141,24 @@ impl Relay {
     /// Watch every device packet with the system model.
     pub(crate) fn set_tap(&self, tap: Arc<crate::system::SystemShared>) {
         *self.tap.lock().unwrap_or_else(PoisonError::into_inner) = Some(tap);
+    }
+
+    // -- fixup sw2x (F5) --
+    /// Show a device's packet to the system model, by the device's serial, which
+    /// `serial` gives only for a packet the model looks at. The tap broadcasts
+    /// through `self`, so it is taken without the lock.
+    pub(crate) fn tap_packet(&self, packet: &[u8], serial: impl FnOnce() -> String) {
+        if !crate::system::SystemShared::wants(packet) {
+            return;
+        }
+        let tap = self
+            .tap
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        if let Some(tap) = tap {
+            tap.on_packet(self, &serial(), packet);
+        }
     }
 
     /// Tell everyone who follows `handle` to re-read (spec 8.6).

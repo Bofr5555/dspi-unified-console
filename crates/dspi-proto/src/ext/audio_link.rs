@@ -814,6 +814,14 @@ impl FrameCounter {
     }
 }
 
+// -- fixup sw2x (F4) --
+/// Outputs an apply op may name (`OUT_DELAY`, `CLICK`): the 8 output slots and
+/// the PDM sub of an RP2350 (`sender_link.h` `SND_OP_OUTPUTS`).
+pub const APPLY_OUTPUTS: u8 = 9;
+/// The longest `OUT_DELAY`, samples: `MAX_DELAY_SAMPLES - 1` on an RP2350
+/// (2.8.7, `SND_OP_DELAY_MAX`).
+pub const APPLY_DELAY_MAX: i16 = 2047;
+
 /// `EXT_APPLY_AT_FRAME` OUT (and the sender's `EXT_LINK_CTRL_MSG` apply):
 /// run `op` when the link frame reaches `frame`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -847,8 +855,10 @@ impl ApplyRequest {
     }
 
     /// Whether `arg` and `value` are in the op's range (2.8.7; unused ones
-    /// 0). `OUT_DELAY`'s sample limit is the device's (2047 on an RP2350,
-    /// 1023 on an RP2040) and is checked only for sign here.
+    /// 0). -- fixup sw2x (F4) -- as the sender checks them (DSPi-bofr
+    /// `sender_link.c` `snd_op_args_ok`): an output below [`APPLY_OUTPUTS`] for
+    /// `OUT_DELAY` and `CLICK`, a delay of 0..=[`APPLY_DELAY_MAX`] samples (an
+    /// RP2040 unit refuses above 1023 itself).
     pub fn args_valid(&self) -> bool {
         let (a, v) = (self.arg, self.value);
         match self.op {
@@ -857,9 +867,9 @@ impl ApplyRequest {
             }
             ApplyOp::PresetLoad => a <= 9 && v == 0,
             ApplyOp::MasterVolume => a == 0 && (-12800..=0).contains(&v),
-            ApplyOp::OutDelay => v >= 0,
+            ApplyOp::OutDelay => a < APPLY_OUTPUTS && (0..=APPLY_DELAY_MAX).contains(&v),
             ApplyOp::Rate => a <= 2 && v == 0,
-            ApplyOp::Click => v == 0,
+            ApplyOp::Click => a < APPLY_OUTPUTS && v == 0,
             ApplyOp::Other(_) => false,
         }
     }
@@ -1225,6 +1235,29 @@ mod tests_wp_sw1 {
         assert_eq!(&b[48..52], &[96, 0, 0, 0]);
         assert_eq!(LinkStatus::decode(&b), Some(s));
         assert_eq!(LinkStatus::decode(&b[..51]), None);
+    }
+
+    // -- fixup sw2x --
+    /// Review sw2x probe C: `OUT_DELAY` and `CLICK` are bounded as the sender
+    /// bounds them.
+    #[test]
+    fn wp_sw2x_out_delay_and_click_are_bounded() {
+        let r = |op, arg, value| {
+            ApplyRequest {
+                frame: 0,
+                op,
+                arg,
+                value,
+            }
+            .args_valid()
+        };
+        assert!(r(ApplyOp::OutDelay, 8, 2047));
+        assert!(!r(ApplyOp::OutDelay, 200, 30000));
+        assert!(!r(ApplyOp::OutDelay, 0, 2048));
+        assert!(!r(ApplyOp::OutDelay, 9, 0));
+        assert!(r(ApplyOp::Click, 8, 0));
+        assert!(!r(ApplyOp::Click, 250, 0));
+        assert!(!r(ApplyOp::Click, 9, 0));
     }
 
     // -- WP SW2 --

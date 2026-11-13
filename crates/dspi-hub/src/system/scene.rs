@@ -13,6 +13,13 @@
 //!   not `UNMUTE`.
 //! - **The per-unit path** otherwise: one `EXT_APPLY_AT_FRAME` per unit and op,
 //!   at most four per unit (the model refuses more).
+//! - **The system mute** (fixup sw2x F1). Every `EXT_LINK_CTRL_MSG` write sets
+//!   the sender's system-mute bit from its `system_flags`, op or not, so the
+//!   superframe write carries the bit as it is ([`SenderSeen::system_mute`]),
+//!   unless the scene itself says otherwise ([`super::model::Scene::system_mute`]).
+//!   A scene that cannot read the bit does not take the superframe path.
+//! - **The lead** (fixup sw2x F2) is the caller's: the model's, or more when the
+//!   writes measured slower ([`plan`]).
 //! - **Why not `UNMUTE` through the sender.** BULKFIX's guard
 //!   (`dspi_session::bulk_gain`) sits on each unit's own transport: an unmute
 //!   sent per unit passes it (the suspect outputs' gains are re-sent first, or
@@ -34,6 +41,9 @@ pub struct SenderSeen {
     pub serial: String,
     /// The frame it is sending.
     pub frame: u64,
+    // -- fixup sw2x (F1) --
+    /// Its system mute now (`EXT_LINK_CTRL_MSG` IN flags bit 0).
+    pub system_mute: bool,
 }
 
 /// One write of a plan.
@@ -72,10 +82,19 @@ pub struct ScenePlan {
     pub scene: String,
     /// The link frame every op acts on.
     pub frame: u64,
-    /// `superframe` or `per_unit`.
+    /// `superframe`, `per_unit`, or `none` (a scene that only sets the system
+    /// mute).
     pub path: String,
     /// The writes, in order.
     pub ops: Vec<PlannedOp>,
+    // -- fixup sw2x --
+    /// The lead the frame was chosen with, frames.
+    pub lead_frames: u64,
+    /// What the scene does to the system mute; `None`: leaves it alone.
+    pub system_mute: Option<bool>,
+    /// The `system_flags` the superframe write carries.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_flags: Option<u8>,
 }
 
 /// Why a scene cannot be planned.
@@ -88,12 +107,14 @@ pub enum SceneRefused {
 }
 
 /// Plan `scene_id`. `frames` holds each reachable unit's link frame by serial;
-/// `sender` the sender if it can take the superframe path.
+/// `sender` the sender if it can take the superframe path; `lead` the frames
+/// between the newest frame read and the frame the ops act on.
 pub fn plan(
     model: &SystemModel,
     scene_id: &str,
     frames: &BTreeMap<String, u64>,
     sender: Option<&SenderSeen>,
+    lead: u64,
 ) -> Result<ScenePlan, SceneRefused> {
     let scene = model.scene(scene_id).ok_or(SceneRefused::NoScene)?;
     let mut ops = Vec::new();
@@ -126,7 +147,17 @@ pub fn plan(
             .is_some_and(|t| t.len() == model.units.len());
         every && covers && scene_op(&action.op).is_some_and(|op| op != ApplyOp::Unmute)
     });
-    let lead = u64::from(model.apply_lead_frames);
+    if ops.is_empty() {
+        return Ok(ScenePlan {
+            scene: scene.id.clone(),
+            frame: 0,
+            path: "none".into(),
+            ops,
+            lead_frames: 0,
+            system_mute: scene.system_mute,
+            system_flags: None,
+        });
+    }
     let round = |f: u64| f.checked_next_multiple_of(SUPERFRAME_FRAMES);
     if let Some(s) = superframe {
         let base = base.unwrap_or(s.frame).max(s.frame);
@@ -137,9 +168,13 @@ pub fn plan(
             .unwrap_or(u64::MAX)
             .max(min);
         let first = ops.first().cloned();
+        let muted = scene.system_mute.unwrap_or(s.system_mute);
         return Ok(ScenePlan {
             scene: scene.id.clone(),
             frame,
+            lead_frames: lead,
+            system_mute: scene.system_mute,
+            system_flags: Some(u8::from(muted)),
             path: "superframe".into(),
             ops: first
                 .map(|o| PlannedOp {
@@ -161,6 +196,9 @@ pub fn plan(
         frame,
         path: "per_unit".into(),
         ops,
+        lead_frames: lead,
+        system_mute: scene.system_mute,
+        system_flags: None,
     })
 }
 
@@ -175,6 +213,7 @@ mod tests_wp_sw2 {
         Scene {
             id: "evening".into(),
             name: "Evening".into(),
+            system_mute: None,
             actions: actions
                 .iter()
                 .map(|(t, op, arg, value)| SceneAction {
@@ -200,6 +239,7 @@ mod tests_wp_sw2 {
             id: "tx".into(),
             serial: "S-tx".into(),
             frame,
+            system_mute: false,
         }
     }
 
@@ -208,7 +248,7 @@ mod tests_wp_sw2 {
         let mut m = cinema();
         m.scenes = vec![scene(&[("all", "master_volume", 0, -2000)])];
         m.validate().unwrap();
-        let p = plan(&m, "evening", &frames(), Some(&tx(1_000_010))).unwrap();
+        let p = plan(&m, "evening", &frames(), Some(&tx(1_000_010)), 2400).unwrap();
         assert_eq!(p.path, "superframe");
         assert_eq!(p.ops.len(), 1);
         assert_eq!(p.ops[0].serial, "S-tx");
@@ -221,7 +261,7 @@ mod tests_wp_sw2 {
     fn wp_sw2_unmute_several_ops_or_a_subset_go_per_unit() {
         let mut m = cinema();
         m.scenes = vec![scene(&[("all", "unmute", 0, 0)])];
-        let p = plan(&m, "evening", &frames(), Some(&tx(1_000_000))).unwrap();
+        let p = plan(&m, "evening", &frames(), Some(&tx(1_000_000)), 2400).unwrap();
         assert_eq!(p.path, "per_unit");
         assert_eq!(p.ops.len(), 4);
         // The newest unit frame plus the lead, on a superframe boundary.
@@ -231,7 +271,7 @@ mod tests_wp_sw2 {
             ("unit:A", "mute", 0, 0),
             ("room:cinema", "preset_load", 3, 0),
         ])];
-        let p = plan(&m, "evening", &frames(), Some(&tx(1_000_000))).unwrap();
+        let p = plan(&m, "evening", &frames(), Some(&tx(1_000_000)), 2400).unwrap();
         assert_eq!(p.path, "per_unit");
         assert_eq!(p.ops.len(), 5);
         assert_eq!(p.ops[0].element, "A");
@@ -240,15 +280,15 @@ mod tests_wp_sw2 {
         // No sender reachable: per unit too; nothing reports a frame: refused.
         m.scenes = vec![scene(&[("all", "mute", 0, 0)])];
         assert_eq!(
-            plan(&m, "evening", &frames(), None).unwrap().path,
+            plan(&m, "evening", &frames(), None, 2400).unwrap().path,
             "per_unit"
         );
         assert_eq!(
-            plan(&m, "evening", &BTreeMap::new(), None),
+            plan(&m, "evening", &BTreeMap::new(), None, 2400),
             Err(SceneRefused::NoFrame)
         );
         assert_eq!(
-            plan(&m, "nope", &frames(), None),
+            plan(&m, "nope", &frames(), None, 2400),
             Err(SceneRefused::NoScene)
         );
     }
@@ -266,5 +306,33 @@ mod tests_wp_sw2 {
         assert!(m.validate().unwrap_err().0.contains("queue"));
         m.scenes = vec![scene(&[("unit:A", "mute", 0, 0); 4])];
         m.validate().unwrap();
+    }
+
+    // -- fixup sw2x (F1) --
+    /// The superframe write carries the sender's mute as it is, unless the
+    /// scene sets it; a scene of only a mute has no frame.
+    #[test]
+    fn wp_sw2x_the_superframe_write_keeps_the_mute() {
+        let mut m = cinema();
+        m.scenes = vec![scene(&[("all", "master_volume", 0, -2000)])];
+        let muted = SenderSeen {
+            system_mute: true,
+            ..tx(1_000_000)
+        };
+        let p = plan(&m, "evening", &frames(), Some(&muted), 2400).unwrap();
+        assert_eq!((p.system_flags, p.system_mute), (Some(1), None));
+        let p = plan(&m, "evening", &frames(), Some(&tx(1_000_000)), 2400).unwrap();
+        assert_eq!(p.system_flags, Some(0));
+        m.scenes[0].system_mute = Some(false);
+        let p = plan(&m, "evening", &frames(), Some(&muted), 2400).unwrap();
+        assert_eq!((p.system_flags, p.system_mute), (Some(0), Some(false)));
+        m.scenes[0].actions.clear();
+        let p = plan(&m, "evening", &BTreeMap::new(), Some(&muted), 2400).unwrap();
+        assert_eq!((p.path.as_str(), p.ops.len()), ("none", 0));
+        // A lead given is a lead used.
+        m.scenes = vec![scene(&[("unit:A", "mute", 0, 0)])];
+        let p = plan(&m, "evening", &frames(), None, 9600).unwrap();
+        assert_eq!(p.frame, (1_000_000u64 + 9600).next_multiple_of(32));
+        assert_eq!(p.lead_frames, 9600);
     }
 }

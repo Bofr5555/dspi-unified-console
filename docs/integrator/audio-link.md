@@ -65,7 +65,11 @@ d1..dh, latency L_u after the link and its room's lip-sync offset S_u:
   written;
 - each speaker's `out.delay` is (r_max − r) / 343 m/s, r_max being the furthest
   speaker of its room, so every speaker is heard at once at the listening
-  position.
+  position. A unit holds at most 2046 samples (42.6 ms at 48 kHz, 21.3 ms at
+  96 kHz) and stores the host's milliseconds while capping only the samples, so
+  a read-back cannot show the cap. The hub cuts a longer delay to the maximum,
+  reports the issue `delay_over_max`, and answers that write `clamped (ok)` or
+  `clamped (unchanged)`, never plain `ok`.
 
 Lip sync: `lipSyncUs` on the model, or on a room. It delays that room's audio;
 it cannot advance it.
@@ -74,7 +78,12 @@ A write that changes a unit's phase re-anchors it: 2 to 6 ms of silence. The
 hub reads each value first and writes only what differs, so running the
 alignment again changes nothing. The hub's own re-anchors raise no alarm.
 
-Issues the engine reports (`alignment.issues`): `offline`, `limits_unknown`,
+The limits come from each unit's `EXT_LINK_INFO` and follow its output latency
+option (LK6 at 48 kHz: 81..431 frames under the 1 ms option, 257..399 under the
+default 4 ms). D = 128 is used only when no unit reports limits, and then
+nothing is written.
+
+Issues the engine reports (`alignment.issues`): `offline`, `limits_unknown`, `delay_over_max`,
 `delay_out_of_range`, `d_too_small`, `hop_delay_assumed`, `hops_mismatch` (the
 stream's `hops` disagrees with the model), `sender_mismatch` (a locked unit
 hears another sender id than the model's).
@@ -86,10 +95,19 @@ A scene is a list of actions, each an op on a target: `all`, `room:<id>`,
 `unmute`, `preset_load` (arg = slot 0-9), `master_volume` (value = dB × 100,
 −12800..0), `out_delay` (arg = output, value = samples), `click` (arg =
 output), `sync_pulse`. `rate` is not a scene op: only the sender schedules it.
-A scene may give one unit at most 4 ops (its queue).
+`out_delay` takes 0..2047 samples and `out_delay` and `click` an output below 9,
+as the sender checks them. A scene may give one unit at most 4 ops (its queue).
+A scene may also set or clear the system mute (`"systemMute": true` or
+`false`); without it the scene leaves the system mute as it is.
 
-The hub reads the frame counters, adds `applyLeadFrames` (default 2400, 50 ms
-at 48 kHz) and rounds up to a superframe boundary. Then:
+The hub reads the frame counters, timing each read, and adds a lead: the
+model's `applyLeadFrames` (default 2400, 50 ms at 48 kHz), or more when the
+writes will take longer. It estimates each op as two transfers (the write and a
+read of the unit's queue) at that unit's measured round trip (at least 10 ms; a
+unit whose round trip could not be measured, such as one behind a Link bridge
+that did not answer, is counted at 100 ms), plus 50 ms. It converts the time at
+96 kHz so the lead is never short at any rate, then rounds up to a superframe
+boundary. Then:
 
 - **through the sender's superframe** (`EXT_LINK_CTRL_MSG`) when the scene is
   one op for every unit, every unit is behind that sender, the hub reaches the
@@ -102,8 +120,30 @@ before it lets an unmute through (or refuses it). A broadcast through the
 sender would pass no guard. The guard treats an apply-at-frame `unmute` as an
 unmute of every suspect output, from any client.
 
-Each unit reports the outcome as event `0xE2` (applied, late, cancelled,
-refused); the hub's answer lists each write's own result.
+After each per-unit write the hub reads the unit's queue (`EXT_APPLY_AT_FRAME`
+IN) and reports what the unit says: `queued` (waiting for its frame),
+`applied`, `late` (its frame had passed, so it was applied at once and not
+with the others), `cancelled`, `refused_at_apply`, or `queued_unverified` when
+the queue could not be read. After the last write it reads a frame counter
+again (`frameAfterWrites`), and `onTime` is true only when every op is known to
+act at the plan's frame. The units also send `0xE2` per op. Writes are made in
+order with no rollback, and nothing is re-sent to a unit that was offline; each
+write's result is in the answer.
+
+**The system mute.** The sender's superframe carries a system-mute bit; while
+it is set every unit on the link plays silence. The sender takes the bit from
+`system_flags` on every `EXT_LINK_CTRL_MSG` write, whatever the op. So the
+hub reads the bit before a superframe write and writes it back unchanged
+(`plan.systemFlags`). A sender whose bit cannot be read is not used for the
+superframe path. Only `system.mute` or a scene with `systemMute` changes it.
+A scene that mutes does so before its unit ops; one that unmutes does so after.
+
+**Roles.** A scene runs only if the caller's role may send each of its ops
+directly, under the hub's policy: `mute` and `unmute` as `SET_OUTPUT_MUTE`,
+`preset_load` as `PRESET_LOAD`, `master_volume` and `out_delay` as their
+setters (all control), and `click` and `sync_pulse` as the link's extension
+write (admin). The system mute counts as muting outputs (control). Otherwise
+nothing is written and the answer is `denied`, naming the op.
 
 ## Alarms
 
@@ -114,10 +154,16 @@ refused); the hub's answer lists each write's own result.
 | `link_errors` | warning | 16 or more bank errors, or a new loss, since the last read | a read without |
 | `reanchor` | warning | an `0xE1` `REANCHOR` the hub did not cause | acknowledged |
 | `delay_below_min` | critical | the unit's `D_BELOW_MIN` flag | the flag gone |
+| `system_muted` | warning | a sender's system mute seen set, at a read or a write | seen clear |
 
-Events are decoded only from units that announce them (`EXT_NOTIFY_FEATURES`
-bit 2) and that a `system.status` has read; without them alarms follow the
-reads. Alarms live for the hub's run; the last 64 cleared ones are kept.
+Events are decoded only from devices that announce them (`EXT_NOTIFY_FEATURES`
+bit 2). The hub asks each device of the model when it attaches or the model
+changes, and again at every `system.status`. Events are matched to the model
+by the device's serial, so a unit that comes back on another handle is
+followed at once, and a device that took a freed handle is never mistaken for
+it. A fan-out's `0xE1` alarms under the fan-out's own id. Units behind it play
+silence while it is lost; after it locks again, run `system.align`, since its
+hop delay may have changed. Alarms live for the hub's run; the last 64 cleared ones are kept.
 
 ## On Link
 
@@ -131,12 +177,18 @@ named like I1's, judged by the hub's roles, with no REST mirror yet.
 | `system.set` | admin | `model` | `revision`; `bad_request` with the reason |
 | `system.status` | any | | `revision`, `observed` (by serial), `alignment`, `alarms` |
 | `system.align` | admin | `apply` (false: compute only) | `alignment`, `applied`, `writes` |
-| `system.scene.apply` | control | `scene` | `plan` (`frame`, `path`, `ops`), `writes` |
+| `system.scene.apply` | control, op by op | `scene` | `plan` (`frame`, `path`, `ops`, `leadFrames`, `systemMute`, `systemFlags`), `writes`, `frameAfterWrites`, `onTime` |
+| `system.mute` | control | `muted` (bool) | `writes`, one per reachable sender |
 | `system.alarms` | any | | `alarms` |
 | `system.alarm.ack` | control | `alarm` (id) | `alarm` |
 
 Events to every session: `system.changed` (`revision`) after a `system.set`,
-`system.alarm` (`alarm`) when one is raised, acknowledged or cleared.
+`system.alarm` (`alarm`) when one is raised, acknowledged or cleared,
+`system.mute` (`sender`, `muted`) when the hub sets or clears the system mute.
+
+`system.status` is answered at most once a second per session. A second
+request within that time gets `rate_limited`, because each read costs every
+unit's worker five or more transfers.
 
 Each write result is `{serial, element, what, result}` with `result` one of
 `ok`, `unchanged`, `skipped` (not reachable or out of range), `refused` (the
@@ -181,7 +233,11 @@ ignored with a log line and left in the file until a new one is set.
 - Measuring latencies (SYS2 3.5's click and scope or cross-correlation): enter
   `measuredLatencyUs` by hand for now.
 - Several senders in one model work for alignment and per-unit scenes; the
-  superframe path is taken only when every unit is behind the one sender.
+  superframe path is taken only when every unit is behind the one sender. The
+  engine converts microseconds at the rate most units report, so a minority
+  unit on a sender at another rate is converted at the wrong rate.
+- `L_max` is taken over the whole model, not per room: a room of fast units
+  waits for the slowest unit anywhere (more latency, never misalignment).
 - A periodic poll: alarms follow events and `system.status` reads. A client that
   shows the system calls `system.status` every few seconds.
 - The clients' "Clock and links" panel and slot matrix (WP SW3).

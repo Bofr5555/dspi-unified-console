@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use dspi_hub::system::model::*;
-use dspi_hub::{AccessMode, Hub, HubConfig, NetworkConfig};
+use dspi_hub::{AccessMode, Hub, HubConfig, NetworkConfig, Role, SystemRefused};
 use dspi_proto::ext::audio_link::{self as alink, ApplyOp, ApplyRequest, LinkRole};
 use dspi_proto::generated::opcodes as op;
 use dspi_transport::fake::{AudioLinkSetup, LINK_SIM_LOCK, LINK_SIM_LOSE, LINK_SIM_REANCHOR};
@@ -34,6 +34,9 @@ type Writes = Arc<Mutex<Vec<(u16, Vec<u8>)>>>;
 struct Logged {
     inner: FakeDevice,
     writes: Writes,
+    /// -- fixup sw2x -- each link write takes this long (a busy worker, a
+    /// Link-bridged unit); reads stay quick, so the hub's estimate misses it.
+    slow_writes: Duration,
 }
 
 impl Transport for Logged {
@@ -44,6 +47,9 @@ impl Transport for Logged {
         self.inner.control_in_upto(o, v, l)
     }
     fn control_out(&mut self, o: u8, v: u16, d: &[u8]) -> dspi_transport::Result<()> {
+        if o == op::REQ_EXTENSION && v & 0xFF00 == 0x8000 {
+            std::thread::sleep(self.slow_writes);
+        }
         let r = self.inner.control_out(o, v, d);
         if o == op::REQ_EXTENSION && v & 0xFF00 == 0x8000 && r.is_ok() {
             self.writes.lock().unwrap().push((v, d.to_vec()));
@@ -74,6 +80,10 @@ struct Fake {
 }
 
 fn attach(hub: &Hub, serial: &str, setup: AudioLinkSetup) -> Fake {
+    attach_slow(hub, serial, setup, Duration::ZERO)
+}
+
+fn attach_slow(hub: &Hub, serial: &str, setup: AudioLinkSetup, slow_writes: Duration) -> Fake {
     let dev = FakeDevice::demo_audio_link_as(setup).with_serial(serial);
     let remote = dev.remote();
     let writes = Writes::default();
@@ -81,6 +91,7 @@ fn attach(hub: &Hub, serial: &str, setup: AudioLinkSetup) -> Fake {
         Box::new(Logged {
             inner: dev,
             writes: Arc::clone(&writes),
+            slow_writes,
         }),
         0,
     )
@@ -217,6 +228,7 @@ fn model() -> SystemModel {
             Scene {
                 id: "quiet".into(),
                 name: "Quiet".into(),
+                system_mute: None,
                 actions: vec![SceneAction {
                     target: "all".into(),
                     op: "master_volume".into(),
@@ -227,6 +239,7 @@ fn model() -> SystemModel {
             Scene {
                 id: "on".into(),
                 name: "On".into(),
+                system_mute: None,
                 actions: vec![SceneAction {
                     target: "all".into(),
                     op: "unmute".into(),
@@ -237,6 +250,7 @@ fn model() -> SystemModel {
             Scene {
                 id: "fronts-preset".into(),
                 name: "Fronts' preset".into(),
+                system_mute: None,
                 actions: vec![
                     SceneAction {
                         target: "group:fronts".into(),
@@ -347,10 +361,11 @@ fn wp_sw2_a_scene_reaches_every_unit_at_one_frame() {
     hub.system_set_model(model()).unwrap();
 
     // One op for everyone: through the sender's superframe.
-    let quiet = hub.system_apply_scene("quiet").unwrap();
+    let quiet = hub.system_apply_scene("quiet", Role::Admin).unwrap();
     assert_eq!(quiet.plan.path, "superframe");
     assert_eq!(quiet.writes.len(), 1);
-    assert_eq!(quiet.writes[0].result, "ok", "{:?}", quiet.writes);
+    assert_eq!(quiet.writes[0].result, "queued", "{:?}", quiet.writes);
+    assert!(quiet.on_time);
     let sent = writes_of(&rig.tx, alink::EXT_LINK_CTRL_MSG);
     assert_eq!(sent.len(), 1);
     let req = ApplyRequest::decode(&sent[0]).unwrap();
@@ -362,10 +377,10 @@ fn wp_sw2_a_scene_reaches_every_unit_at_one_frame() {
     assert!(writes_of(&rig.a, alink::EXT_APPLY_AT_FRAME).is_empty());
 
     // UNMUTE goes to each unit, past each unit's BULKFIX guard.
-    let on = hub.system_apply_scene("on").unwrap();
+    let on = hub.system_apply_scene("on", Role::Admin).unwrap();
     assert_eq!(on.plan.path, "per_unit");
     assert!(
-        on.writes.iter().all(|w| w.result == "ok"),
+        on.writes.iter().all(|w| w.result == "queued"),
         "{:?}",
         on.writes
     );
@@ -377,11 +392,13 @@ fn wp_sw2_a_scene_reaches_every_unit_at_one_frame() {
     }
 
     // Several ops, a group and a zone: per unit, every op at the same frame.
-    let fronts = hub.system_apply_scene("fronts-preset").unwrap();
+    let fronts = hub
+        .system_apply_scene("fronts-preset", Role::Admin)
+        .unwrap();
     assert_eq!(fronts.plan.path, "per_unit");
     assert_eq!(fronts.writes.len(), 2 + 4);
     assert!(
-        fronts.writes.iter().all(|w| w.result == "ok"),
+        fronts.writes.iter().all(|w| w.result == "queued"),
         "{:?}",
         fronts.writes
     );
@@ -397,7 +414,7 @@ fn wp_sw2_a_scene_reaches_every_unit_at_one_frame() {
             (fronts.plan.frame, ApplyOp::Mute)
         ]
     );
-    assert!(hub.system_apply_scene("nope").is_err());
+    assert!(hub.system_apply_scene("nope", Role::Admin).is_err());
     hub.stop();
 }
 
@@ -411,9 +428,9 @@ fn wp_sw2_without_the_sender_a_scene_goes_per_unit() {
     m.groups.clear();
     m.scenes.retain(|s| s.id == "quiet");
     hub.system_set_model(m).unwrap();
-    let r = hub.system_apply_scene("quiet").unwrap();
+    let r = hub.system_apply_scene("quiet", Role::Admin).unwrap();
     assert_eq!(r.plan.path, "per_unit");
-    assert_eq!(r.writes[0].result, "ok");
+    assert_eq!(r.writes[0].result, "queued");
     assert_eq!(writes_of(&a, alink::EXT_APPLY_AT_FRAME).len(), 1);
     // Alignment of a lone unit: D is its own minimum.
     assert_eq!(hub.system_status().alignment.d_frames, 112);
@@ -688,5 +705,361 @@ fn wp_sw2_roles_reading_for_all_changing_for_admin() {
     );
     assert_eq!(r["code"], "bad_request");
     drop((viewer, control));
+    hub.stop();
+}
+
+// ---- Fixup sw2x ----
+
+/// Review sw2x probe A (F1): the installer muted the system; a scene through the
+/// superframe keeps it muted, since the write carries the bit as the sender has it.
+/// Only a scene that says so, or `system.mute`, changes it.
+#[test]
+fn wp_sw2x_a_scene_never_clears_the_system_mute() {
+    let hub = hub();
+    let rig = rig(&hub);
+    hub.system_set_model(model()).unwrap();
+    let w = hub.system_set_mute(true, Role::Control).unwrap();
+    assert_eq!(w.len(), 1);
+    assert_eq!((w[0].element.as_str(), w[0].result.as_str()), ("tx", "ok"));
+    let muted = |hub: &Hub| hub.system_status().observed["SW2-TX"].system_mute;
+    assert_eq!(muted(&hub), Some(true));
+    assert!(
+        hub.system_alarms()
+            .iter()
+            .any(|a| a.code == "system_muted" && a.cleared_at.is_none())
+    );
+
+    let quiet = hub.system_apply_scene("quiet", Role::Control).unwrap();
+    assert_eq!(quiet.plan.path, "superframe");
+    let sent = writes_of(&rig.tx, alink::EXT_LINK_CTRL_MSG);
+    let last = sent.last().unwrap();
+    assert_eq!(last[8], ApplyOp::MasterVolume.raw());
+    assert_eq!(last[12], 1, "the scene's write carries the mute as it was");
+    assert_eq!(muted(&hub), Some(true), "still muted after the scene");
+
+    // A scene that says so clears it, with its op.
+    let mut m = model();
+    m.scenes[0].system_mute = Some(false);
+    hub.system_set_model(m).unwrap();
+    let r = hub.system_apply_scene("quiet", Role::Control).unwrap();
+    assert_eq!(r.plan.system_flags, Some(0));
+    wait_for("the sender's pending apply to pass", || {
+        hub.system_apply_scene("quiet", Role::Control)
+            .is_ok_and(|r| r.on_time)
+    });
+    assert_eq!(muted(&hub), Some(false));
+    assert!(
+        hub.system_alarms()
+            .iter()
+            .all(|a| a.code != "system_muted" || a.cleared_at.is_some())
+    );
+
+    // And system.mute sets it again; a viewer may not.
+    assert!(matches!(
+        hub.system_set_mute(true, Role::Viewer),
+        Err(SystemRefused::Denied(_))
+    ));
+    hub.system_set_mute(true, Role::Admin).unwrap();
+    assert_eq!(muted(&hub), Some(true));
+    hub.stop();
+}
+
+/// Review sw2x probe B (F2): four units whose link writes take 5 ms, a model lead
+/// of 10 ms. The hub measures the units and takes a longer lead, so every op is
+/// queued ahead of its frame; the device agrees.
+#[test]
+fn wp_sw2x_the_lead_covers_the_writes() {
+    let hub = hub();
+    let fakes: Vec<Fake> = ["A", "B", "C", "D"]
+        .iter()
+        .map(|id| {
+            attach_slow(
+                &hub,
+                &format!("SW2-{id}"),
+                receiver(0),
+                Duration::from_millis(5),
+            )
+        })
+        .collect();
+    let mut m = model();
+    m.units = ["A", "B", "C", "D"].iter().map(|u| unit(u, "tx")).collect();
+    m.groups.clear();
+    m.zones.clear();
+    m.apply_lead_frames = 480;
+    m.scenes = vec![Scene {
+        id: "two".into(),
+        name: String::new(),
+        system_mute: None,
+        actions: vec![
+            SceneAction {
+                target: "all".into(),
+                op: "mute".into(),
+                arg: 0,
+                value: 0,
+            },
+            SceneAction {
+                target: "all".into(),
+                op: "master_volume".into(),
+                arg: 0,
+                value: -1000,
+            },
+        ],
+    }];
+    hub.system_set_model(m).unwrap();
+    let r = hub.system_apply_scene("two", Role::Control).unwrap();
+    assert_eq!(r.plan.path, "per_unit");
+    assert!(r.plan.lead_frames > 480, "{}", r.plan.lead_frames);
+    assert!(
+        r.writes.iter().all(|w| w.result == "queued"),
+        "{:?}",
+        r.writes
+    );
+    assert!(r.on_time);
+    assert!(r.frame_after_writes.unwrap() < r.plan.frame);
+    assert_eq!(
+        fakes
+            .iter()
+            .map(|f| writes_of(f, alink::EXT_APPLY_AT_FRAME).len())
+            .sum::<usize>(),
+        8
+    );
+    hub.stop();
+}
+
+/// F2: writes far slower than the hub could measure (the reads stay fast) land
+/// after the frame. The hub says so per op, as the units do, and the scene is
+/// not on time.
+#[test]
+fn wp_sw2x_late_applies_are_reported_late() {
+    let hub = hub();
+    let _fakes: Vec<Fake> = ["A", "B", "C", "D"]
+        .iter()
+        .map(|id| {
+            attach_slow(
+                &hub,
+                &format!("SW2-{id}"),
+                receiver(0),
+                Duration::from_millis(100),
+            )
+        })
+        .collect();
+    let mut m = model();
+    m.units = ["A", "B", "C", "D"].iter().map(|u| unit(u, "tx")).collect();
+    m.groups.clear();
+    m.zones.clear();
+    m.apply_lead_frames = 64;
+    m.scenes = vec![Scene {
+        id: "two".into(),
+        name: String::new(),
+        system_mute: None,
+        actions: vec![
+            SceneAction {
+                target: "all".into(),
+                op: "mute".into(),
+                arg: 0,
+                value: 0,
+            },
+            SceneAction {
+                target: "all".into(),
+                op: "master_volume".into(),
+                arg: 0,
+                value: -1000,
+            },
+        ],
+    }];
+    hub.system_set_model(m).unwrap();
+    let r = hub.system_apply_scene("two", Role::Admin).unwrap();
+    // 8 writes of 100 ms are 800 ms; the estimate (10 ms a write at least, 50 ms
+    // of margin, at 96 kHz) covers about 420 ms of a 48 kHz counter.
+    let late = r.writes.iter().filter(|w| w.result == "late").count();
+    assert!(late > 0, "{:?}", r.writes);
+    assert!(
+        r.writes
+            .iter()
+            .all(|w| matches!(w.result.as_str(), "queued" | "late")),
+        "{:?}",
+        r.writes
+    );
+    assert!(!r.on_time);
+    assert!(r.frame_after_writes.unwrap() >= r.plan.frame);
+    hub.stop();
+}
+
+/// Coordinator's role rule: a scene runs only if the caller's role may send each
+/// of its ops directly; the refusal names the op.
+#[test]
+fn wp_sw2x_a_scene_is_judged_op_by_op_against_the_role() {
+    let hub = hub();
+    let _rig = rig(&hub);
+    let mut m = model();
+    m.scenes.push(Scene {
+        id: "scope".into(),
+        name: String::new(),
+        system_mute: None,
+        actions: vec![
+            SceneAction {
+                target: "unit:A".into(),
+                op: "mute".into(),
+                arg: 0,
+                value: 0,
+            },
+            SceneAction {
+                target: "unit:A".into(),
+                op: "click".into(),
+                arg: 0,
+                value: 0,
+            },
+        ],
+    });
+    hub.system_set_model(m).unwrap();
+    for id in ["quiet", "on", "fronts-preset"] {
+        assert!(hub.system_apply_scene(id, Role::Control).is_ok(), "{id}");
+    }
+    let before = writes_of(&_rig.a, alink::EXT_APPLY_AT_FRAME).len();
+    match hub.system_apply_scene("scope", Role::Control) {
+        Err(SystemRefused::Denied(why)) => assert!(why.contains("click"), "{why}"),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(
+        writes_of(&_rig.a, alink::EXT_APPLY_AT_FRAME).len(),
+        before,
+        "nothing written"
+    );
+    assert!(hub.system_apply_scene("scope", Role::Admin).is_ok());
+    assert!(matches!(
+        hub.system_apply_scene("quiet", Role::Viewer),
+        Err(SystemRefused::Denied(_))
+    ));
+    hub.stop();
+}
+
+/// F5: a unit that comes back on another handle is followed at once, before any
+/// `system.status`.
+#[test]
+fn wp_sw2x_events_follow_a_unit_across_a_reattach() {
+    // No grace: a unit that leaves loses its handle.
+    let hub = Hub::start(HubConfig {
+        initial_scan: false,
+        offline_grace: Duration::ZERO,
+        scan_interval: Duration::from_millis(20),
+        ..HubConfig::in_process("SW2 hub")
+    })
+    .unwrap();
+    let _rig = rig(&hub);
+    hub.system_set_model(model()).unwrap();
+    let handle = |serial: &str| {
+        hub.devices()
+            .into_iter()
+            .find(|d| d.identity.serial == serial)
+            .unwrap()
+            .handle
+    };
+    let old = handle("SW2-B");
+    hub.detach(old).unwrap();
+    hub.scan_now();
+    wait_for("B's handle to be freed", || {
+        hub.devices().iter().all(|d| d.identity.serial != "SW2-B")
+    });
+    // A stranger takes the freed handle, then B returns on a new one.
+    let stranger = attach(&hub, "SW2-ELSEWHERE", receiver(0));
+    let b = attach(&hub, "SW2-B", receiver(1));
+    assert_ne!(handle("SW2-B"), old);
+    let lost = |hub: &Hub, subject: &str| {
+        hub.system_alarms()
+            .iter()
+            .any(|a| a.code == "link_lost" && a.subject == subject && a.cleared_at.is_none())
+    };
+    // The hub learns B's events asynchronously; once it has, B's loss alarms.
+    wait_for("B's loss to alarm without a status read", || {
+        b.remote.link_sim(LINK_SIM_LOSE);
+        b.remote.link_sim(LINK_SIM_LOCK);
+        b.remote.link_sim(LINK_SIM_LOSE);
+        std::thread::sleep(Duration::from_millis(50));
+        lost(&hub, "B")
+    });
+    // The stranger's loss is nobody's: every alarm is B's.
+    stranger.remote.link_sim(LINK_SIM_LOSE);
+    std::thread::sleep(Duration::from_millis(100));
+    let alarms = hub.system_alarms();
+    assert!(alarms.iter().all(|a| a.subject == "B"), "{alarms:?}");
+    hub.stop();
+}
+
+/// F3: a distance delay past what a unit holds is cut and said so on every run.
+#[test]
+fn wp_sw2x_a_cut_distance_delay_is_never_ok() {
+    let hub = hub();
+    let _rig = rig(&hub);
+    let mut m = model();
+    m.units[0].speakers = vec![
+        Speaker {
+            output: 0,
+            distance_m: 16.0,
+        },
+        Speaker {
+            output: 1,
+            distance_m: 1.0,
+        },
+    ];
+    hub.system_set_model(m).unwrap();
+    let r = hub.system_align(true);
+    assert!(
+        r.alignment
+            .issues
+            .iter()
+            .any(|i| i.code == "delay_over_max")
+    );
+    let one = |r: &dspi_hub::AlignReport| {
+        r.writes
+            .iter()
+            .find(|w| w.element == "A" && w.what == "out_delay:1")
+            .unwrap()
+            .result
+            .clone()
+    };
+    assert_eq!(one(&r), "clamped (ok)");
+    assert_eq!(one(&hub.system_align(true)), "clamped (unchanged)");
+    hub.stop();
+}
+
+#[test]
+fn wp_sw2x_system_status_is_rate_limited_and_mute_is_on_link() {
+    let hub = networked(store_dir(), AccessMode::Open);
+    let _rig = rig(&hub);
+    hub.system_set_model(model()).unwrap();
+    let mut c = ws(&hub);
+    assert_eq!(
+        request(&mut c, json!({"t": "system.status", "id": 1}))["t"],
+        "ok"
+    );
+    let again = request(&mut c, json!({"t": "system.status", "id": 2}));
+    assert_eq!(again["code"], "rate_limited", "{again}");
+    // Another session has its own allowance.
+    let mut d = ws(&hub);
+    assert_eq!(
+        request(&mut d, json!({"t": "system.status", "id": 1}))["t"],
+        "ok"
+    );
+    std::thread::sleep(dspi_hub::server::SYSTEM_STATUS_INTERVAL);
+    assert_eq!(
+        request(&mut c, json!({"t": "system.status", "id": 3}))["t"],
+        "ok"
+    );
+
+    // system.mute: the answer, and the event every session gets.
+    c.send(Message::text(
+        json!({"t": "system.mute", "id": 4, "muted": true}).to_string(),
+    ))
+    .unwrap();
+    let ev = next(&mut d, &["system.mute"]);
+    assert_eq!(
+        (ev["sender"].as_str(), ev["muted"].as_bool()),
+        (Some("tx"), Some(true))
+    );
+    let ok = next(&mut c, &["ok", "err"]);
+    assert_eq!(ok["writes"][0]["result"], "ok", "{ok}");
+    let bad = request(&mut c, json!({"t": "system.mute", "id": 5}));
+    assert_eq!(bad["code"], "bad_request");
+    drop((c, d));
     hub.stop();
 }

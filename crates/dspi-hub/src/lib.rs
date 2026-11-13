@@ -69,4 +69,6 @@ pub use server::NetworkControl;
 #[cfg(all(feature = "usb", not(target_os = "android")))]
 pub use usb::UsbBus;
 // -- WP SW2 --
-pub use system::{AlignReport, ModelRefused, SceneReport, SystemStatus, SystemStore, WriteResult};
+pub use system::{
+    AlignReport, ModelRefused, SceneReport, SystemRefused, SystemStatus, SystemStore, WriteResult,
+};

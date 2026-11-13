@@ -128,3 +128,34 @@ fn wp_sw2_the_sender_takes_one_superframe_apply_with_lead() {
     assert!(stalled(get(&mut unit, alink::EXT_LINK_TX, 16)));
     assert!(get(&mut s, alink::EXT_LINK_TX, 16).is_ok());
 }
+
+// -- fixup sw2x --
+/// One flags byte: a system mute set through `EXT_LINK_TX` shows in the
+/// superframe, and every accepted `EXT_LINK_CTRL_MSG` write sets the bit from
+/// its `system_flags`, as the firmware's `set_ctrl` does.
+#[test]
+fn wp_sw2x_the_system_mute_is_one_bit() {
+    let mut s = FakeDevice::demo_audio_link_as(AudioLinkSetup {
+        role: LinkRole::Sender,
+        ..AudioLinkSetup::default()
+    });
+    let mut tx = LinkTx::decode(&get(&mut s, alink::EXT_LINK_TX, 16).unwrap()).unwrap();
+    tx.flags = 1;
+    set(&mut s, alink::EXT_LINK_TX, &tx.encode()).unwrap();
+    let flags = |s: &mut FakeDevice| {
+        SuperframeSnapshot::decode(&get(s, alink::EXT_LINK_CTRL_MSG, 24).unwrap())
+            .unwrap()
+            .flags
+            & 1
+    };
+    assert_eq!(flags(&mut s), 1);
+    let c = FrameCounter::decode(&get(&mut s, alink::EXT_FRAME_COUNTER, 16).unwrap()).unwrap();
+    let mute = ApplyRequest {
+        frame: c.frame + 4800,
+        op: ApplyOp::Mute,
+        arg: 0,
+        value: 0,
+    };
+    set(&mut s, alink::EXT_LINK_CTRL_MSG, &mute.encode_ctrl_msg(0)).unwrap();
+    assert_eq!(flags(&mut s), 0, "a write with system_flags 0 clears it");
+}

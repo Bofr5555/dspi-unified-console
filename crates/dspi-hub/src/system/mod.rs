@@ -18,7 +18,8 @@ pub mod model;
 mod run;
 pub mod scene;
 
-pub use run::{AlignReport, SceneReport, SystemStatus, WriteResult};
+pub(crate) use run::learn_events;
+pub use run::{AlignReport, SceneReport, SystemRefused, SystemStatus, WriteResult};
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -60,9 +61,11 @@ struct State {
     alarms: AlarmBook,
     /// The last reads, by serial.
     observed: BTreeMap<String, Observed>,
-    /// Which handle is which serial, at the last read, for the event tap; with
-    /// the device's `EXT_NOTIFY_FEATURES` bit 2.
-    handles: BTreeMap<u8, (String, bool)>,
+    // -- fixup sw2x (F5) --
+    /// Whether each device announces 0xE1 (`EXT_NOTIFY_FEATURES` bit 2), by
+    /// serial: learned when it attaches and at each read, so its events count
+    /// whatever handle it has now.
+    events: BTreeMap<String, bool>,
     alignment: Option<Alignment>,
     /// Units the hub has just re-anchored itself (a new `EXT_LINK_PHASE`), by
     /// serial: their `REANCHOR` event before this is no alarm.
@@ -99,6 +102,23 @@ fn guard<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 /// The `system.alarm` event.
 pub(crate) fn alarm_event(alarm: &Alarm) -> String {
     json!({"t": "system.alarm", "alarm": alarm}).to_string()
+}
+
+/// The unit or fan-out of the model with this serial, by id. A fan-out's own
+/// loss silences every unit behind it, so it alarms under its own id.
+fn element_of(model: &SystemModel, serial: &str) -> Option<String> {
+    model
+        .units
+        .iter()
+        .find(|u| u.serial == serial)
+        .map(|u| u.id.clone())
+        .or_else(|| {
+            model
+                .fan_outs
+                .iter()
+                .find(|f| f.serial.as_deref() == Some(serial))
+                .map(|f| f.id.clone())
+        })
 }
 
 impl SystemShared {
@@ -149,11 +169,27 @@ impl SystemShared {
         self.lock().alarms.acknowledge(id, now())
     }
 
+    // -- fixup sw2x (F5) --
+    /// Whether `serial` is an element of the model (its events matter).
+    pub(crate) fn watches(&self, serial: &str) -> bool {
+        element_of(&self.lock().model, serial).is_some()
+    }
+
+    /// What `serial`'s `EXT_NOTIFY_FEATURES` says about 0xE1.
+    pub(crate) fn learned_events(&self, serial: &str, announces: bool) {
+        self.lock().events.insert(serial.to_owned(), announces);
+    }
+
+    // -- fixup sw2x (F1) --
+    /// The system mute of sender `id` as read or written; the alarm changes.
+    pub(crate) fn system_mute_seen(&self, id: &str, muted: bool) -> Vec<Alarm> {
+        self.lock().alarms.system_mute(id, muted, now())
+    }
+
     /// Keep what a read found; the alarm changes to broadcast.
     pub(crate) fn observed(
         &self,
         observed: BTreeMap<String, Observed>,
-        handles: BTreeMap<u8, (String, bool)>,
         alignment: Alignment,
     ) -> Vec<Alarm> {
         let mut s = self.lock();
@@ -168,8 +204,30 @@ impl SystemShared {
         for (id, serial) in units {
             changes.extend(s.alarms.observe(&id, observed.get(&serial), t));
         }
+        let senders: Vec<(String, Option<bool>)> = s
+            .model
+            .senders
+            .iter()
+            .map(|x| {
+                let muted = x
+                    .serial
+                    .as_ref()
+                    .and_then(|serial| observed.get(serial))
+                    .and_then(|o| o.system_mute);
+                (x.id.clone(), muted)
+            })
+            .collect();
+        for (id, muted) in senders {
+            if let Some(m) = muted {
+                changes.extend(s.alarms.system_mute(&id, m, t));
+            }
+        }
+        for (serial, o) in &observed {
+            if o.online {
+                s.events.insert(serial.clone(), o.state_events);
+            }
+        }
         s.observed = observed;
-        s.handles = handles;
         s.alignment = Some(alignment);
         changes
     }
@@ -181,29 +239,35 @@ impl SystemShared {
         }
     }
 
-    /// A packet from the device at `handle` (the relay's tap): an 0xE1 from a
-    /// unit of the model that announces it raises or clears its alarm, which is
-    /// broadcast on `relay`. Cheap for every other packet.
-    pub(crate) fn on_packet(&self, relay: &Relay, handle: u8, packet: &[u8]) {
+    /// Whether a packet is one [`Self::on_packet`] looks at (0xE1), so the
+    /// caller fetches the device's serial only for those.
+    pub(crate) fn wants(packet: &[u8]) -> bool {
+        packet.get(1) == Some(&dspi_proto::ext::audio_link::NOTIFY_EVT_LINK_STATE)
+    }
+
+    /// A packet from the device with this serial (the relay's tap, fixup sw2x
+    /// F5: by serial, so a unit that came back on another handle is still
+    /// followed and a reused handle is never mistaken for it). An 0xE1 from a
+    /// unit or a fan-out of the model that announces it raises or clears its
+    /// alarm, which is broadcast on `relay`.
+    pub(crate) fn on_packet(&self, relay: &Relay, serial: &str, packet: &[u8]) {
         let (Some(&id), Some(payload)) = (packet.get(1), packet.get(4..)) else {
             return;
         };
-        if id != dspi_proto::ext::audio_link::NOTIFY_EVT_LINK_STATE {
+        if !Self::wants(packet) {
             return;
         }
         let changes = {
             let mut s = self.lock();
-            let Some((serial, events)) = s.handles.get(&handle).cloned() else {
-                return;
-            };
+            let events = s.events.get(serial).copied().unwrap_or(false);
             let features = events.then_some(dspi_proto::ext::audio_link::NOTIFY_FEAT_LINK_STATE);
             let Some(LinkEvent::State(e)) = link_event(features, id, payload) else {
                 return;
             };
-            let Some(unit) = s.model.units.iter().find(|u| u.serial == serial) else {
+            let Some(unit) = element_of(&s.model, serial) else {
                 return;
             };
-            let unit = unit.id.clone();
+            let serial = serial.to_owned();
             let expected = s
                 .reanchoring
                 .get(&serial)
@@ -259,23 +323,28 @@ mod tests_wp_sw2 {
     fn wp_sw2_a_loss_event_raises_an_alarm_on_the_relay() {
         let s = SystemShared::new(None);
         s.set_model(align::tests_wp_sw2::cinema()).unwrap();
-        s.lock().handles.insert(3, ("S-B".into(), true));
-        s.lock().handles.insert(4, ("S-C".into(), false));
+        s.learned_events("S-B", true);
+        s.learned_events("S-C", false);
+        s.learned_events("S-fan", true);
         let relay = Relay::default();
         // 0xE1: holdover, class 1, LOS.
         let lost = [2, 0xE1, 0, 0, 3, 1, 2, 0, 1, 0, 0, 0];
-        s.on_packet(&relay, 3, &lost);
+        s.on_packet(&relay, "S-B", &lost);
         let a = s.alarms();
         assert_eq!(
             (a.len(), a[0].code.as_str(), a[0].subject.as_str()),
             (1, "link_lost", "B")
         );
-        // A device that does not announce the event, or an unknown handle: nothing.
-        s.on_packet(&relay, 4, &lost);
-        s.on_packet(&relay, 9, &lost);
+        // A device that does not announce the event, or not in the model: nothing.
+        s.on_packet(&relay, "S-C", &lost);
+        s.on_packet(&relay, "S-elsewhere", &lost);
         assert_eq!(s.alarms().len(), 1);
         let back = [2, 0xE1, 0, 1, 2, 1, 1, 0, 2, 0, 0, 0];
-        s.on_packet(&relay, 3, &back);
+        s.on_packet(&relay, "S-B", &back);
         assert_eq!(s.lock().alarms.active(), 0);
+        // -- fixup sw2x (F5) -- a fan-out's loss alarms under its own id.
+        s.on_packet(&relay, "S-fan", &lost);
+        assert_eq!(s.alarms()[0].subject, "fan");
+        assert!(s.watches("S-fan") && s.watches("S-B") && !s.watches("S-tx"));
     }
 }
