@@ -20,6 +20,7 @@
 //
 
 import Foundation
+import dspi_core
 
 extension DSPViewModel {
 
@@ -76,8 +77,13 @@ extension DSPViewModel {
     var crossfeedPairCount: Int { min(numOutputSlots, CrossfeedPairMap.byteCount) }
 
     /// The live map (EXT_CROSSFEED_PAIR_MAP IN), or nil when the read fails.
-    /// Blocking.
+    /// Blocking.  -- WP SW10 -- Through a core, its `fetchCrossfeedPairMap`.
     func readCrossfeedPairMap() -> CrossfeedPairMap? {
+        if let core = typedCore {
+            guard case .success(let data) = core.call({ try $0.fetchCrossfeedPairMap() }),
+                  data.count >= CrossfeedPairMap.byteCount else { return nil }
+            return CrossfeedPairMap(data)
+        }
         guard case .success(let data) = transport.getControlResult(
             request: REQ_EXTENSION, value: EXT_CROSSFEED_PAIR_MAP, index: EXT_WINDEX,
             length: UInt16(CrossfeedPairMap.byteCount)),
@@ -102,6 +108,13 @@ extension DSPViewModel {
     @discardableResult
     func setCrossfeedPairMap(_ map: CrossfeedPairMap) -> Bool {
         guard crossfeedPairMapSupported, map.isValid(pairCount: crossfeedPairCount) else { return false }
+        // -- WP SW10 -- Through a core, its setter checks, sends and reads
+        // the map back into its mirror, which is published after the write.
+        if let core = typedCore {
+            let bytes = map.normalized.data
+            core.write(lane: nil) { try $0.setCrossfeedPairMap(map: bytes) }
+            return true
+        }
         transport.sendControlRequest(request: REQ_EXTENSION, value: EXT_CROSSFEED_PAIR_MAP,
                                      index: EXT_WINDEX, data: map.normalized.data)
         DispatchQueue.global(qos: .userInitiated).async { self.fetchCrossfeedPairMap() }
