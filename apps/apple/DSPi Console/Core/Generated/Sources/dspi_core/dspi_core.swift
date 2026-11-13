@@ -18169,7 +18169,8 @@ public struct LinkSystemUnit {
     public var kind: String
     /**
      * The role on the audio link in the glossary's words: "Sender",
-     * "Fan-out", "Repeater", "Receiver" (what the device says, else the model).
+     * "Fan-out", "Repeater", "Receiver" (what the device says, else the model),
+     * or "No audio link" for a device whose firmware has none (WP HWLK1F).
      */
     public var role: String
     /**
@@ -18182,7 +18183,8 @@ public struct LinkSystemUnit {
     public var connected: Bool
     /**
      * `locked`, `searching`, `holdover`, `off`, `clock` (a sender),
-     * `offline` (not attached) or `unknown`.
+     * `offline` (not attached), `no_alink` (attached, its firmware has no
+     * audio link: WP HWLK1F) or `unknown`.
      */
     public var state: String
     /**
@@ -18266,7 +18268,8 @@ public struct LinkSystemUnit {
          */kind: String, 
         /**
          * The role on the audio link in the glossary's words: "Sender",
-         * "Fan-out", "Repeater", "Receiver" (what the device says, else the model).
+         * "Fan-out", "Repeater", "Receiver" (what the device says, else the model),
+         * or "No audio link" for a device whose firmware has none (WP HWLK1F).
          */role: String, 
         /**
          * The room's name; "" for none.
@@ -18276,7 +18279,8 @@ public struct LinkSystemUnit {
          */connected: Bool, 
         /**
          * `locked`, `searching`, `holdover`, `off`, `clock` (a sender),
-         * `offline` (not attached) or `unknown`.
+         * `offline` (not attached), `no_alink` (attached, its firmware has no
+         * audio link: WP HWLK1F) or `unknown`.
          */state: String, 
         /**
          * [`Self::state`] in words: "Locked", "Holdover", ... "Not connected".
@@ -18626,7 +18630,8 @@ public struct LinkSystemView {
      */
     public var pending: UInt32
     /**
-     * Units the model has.
+     * Units the model has, but those whose firmware has no audio link
+     * (WP HWLK1F): "N of M locked" counts the units that can lock.
      */
     public var unitCount: UInt32
     /**
@@ -18716,7 +18721,8 @@ public struct LinkSystemView {
          * Units whose link delay is still to be written.
          */pending: UInt32, 
         /**
-         * Units the model has.
+         * Units the model has, but those whose firmware has no audio link
+         * (WP HWLK1F): "N of M locked" counts the units that can lock.
          */unitCount: UInt32, 
         /**
          * One line for a status indicator: "Audio link: 4 of 4 locked".

@@ -398,6 +398,10 @@ impl Outbox {
 pub struct Completion {
     tag: u16,
     reply: Option<Box<dyn FnOnce(CmdResponse) + Send>>,
+    // -- fixup hwlk1f (F1) --
+    /// Set when the transfer failed because the device stalled it: the Link
+    /// status `ERROR` also stands for a bus fault, a short or malformed reply.
+    stalled: Option<Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl Completion {
@@ -408,6 +412,22 @@ impl Completion {
         Self {
             tag,
             reply: Some(Box::new(reply)),
+            stalled: None,
+        }
+    }
+
+    // -- fixup hwlk1f (F1) --
+    /// Also tell `flag` whether the device stalled the transfer (a firmware's
+    /// answer), as opposed to any other failure the status `ERROR` covers.
+    pub(crate) fn noting_stall(mut self, flag: Arc<std::sync::atomic::AtomicBool>) -> Self {
+        self.stalled = Some(flag);
+        self
+    }
+
+    /// The transfer failed with `e`: noted for [`Self::noting_stall`].
+    pub(crate) fn note_failure(&self, e: &dspi_transport::TransportError) {
+        if let (Some(flag), dspi_transport::TransportError::Stalled { .. }) = (&self.stalled, e) {
+            flag.store(true, Ordering::SeqCst);
         }
     }
 

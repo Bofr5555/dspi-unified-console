@@ -252,6 +252,28 @@ fn exec(
     payload: Vec<u8>,
     len: u16,
 ) -> Result<Vec<u8>, u8> {
+    exec_told(dev, dir, opcode, value, payload, len).map_err(|f| f.status)
+}
+
+// -- fixup hwlk1f (F1) --
+/// Why a transfer failed: its Link status, and whether the device stalled it
+/// (a firmware's answer) rather than anything else the status `ERROR` covers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Failed {
+    status: u8,
+    stalled: bool,
+}
+
+/// [`exec`], telling a stall from any other failure.
+fn exec_told(
+    dev: &DeviceShared,
+    dir: Dir,
+    opcode: u8,
+    value: u16,
+    payload: Vec<u8>,
+    len: u16,
+) -> Result<Vec<u8>, Failed> {
+    let stalled = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let (tx, rx) = mpsc::sync_channel(1);
     let req = CmdRequest {
         tag: 0,
@@ -268,17 +290,22 @@ fn exec(
     };
     let done = Completion::new(0, move |r| {
         let _ = tx.send(r);
-    });
+    })
+    .noting_stall(Arc::clone(&stalled));
     dev.submit(
         internal(),
         req,
         done,
         Instant::now().checked_add(TRANSFER_WAIT),
     );
+    let failed = |status| Failed {
+        status,
+        stalled: status == status::ERROR && stalled.load(std::sync::atomic::Ordering::SeqCst),
+    };
     match rx.recv_timeout(TRANSFER_WAIT.saturating_add(Duration::from_secs(1))) {
         Ok(r) if r.status == status::OK => Ok(r.payload),
-        Ok(r) => Err(r.status),
-        Err(_) => Err(status::TIMEOUT),
+        Ok(r) => Err(failed(r.status)),
+        Err(_) => Err(failed(status::TIMEOUT)),
     }
 }
 
@@ -299,10 +326,10 @@ fn set_ext(dev: &DeviceShared, id: u16, payload: Vec<u8>) -> Result<(), u8> {
 }
 
 // -- WP HWLK1F --
-/// `EXT_LINK_INFO` IN, raw: the decoded block, or the status it failed with.
-fn read_link_info(dev: &DeviceShared) -> Result<Option<LinkInfo>, u8> {
+/// `EXT_LINK_INFO` IN, raw: the decoded block, or why it failed.
+fn read_link_info(dev: &DeviceShared) -> Result<Option<LinkInfo>, Failed> {
     let len = u16::try_from(LinkInfo::SIZE).unwrap_or(u16::MAX);
-    exec(
+    exec_told(
         dev,
         Dir::Get,
         op::REQ_EXTENSION,
@@ -315,14 +342,15 @@ fn read_link_info(dev: &DeviceShared) -> Result<Option<LinkInfo>, u8> {
 
 // -- WP HWLK1F --
 /// What a device's firmware says of the audio link, from `EXT_LINK_INFO`'s
-/// answer (`info`): present when it answers; absent when it stalls, or when
-/// `EXT_LIST` names no `EXT_LINK_INFO` (or stalls itself: stock firmware has no
-/// extension channel); `None` when neither could be read (a timeout, a busy
-/// worker, a Link-bridged unit's own refusal).
-fn alink_of(dev: &DeviceShared, info: &Result<Option<LinkInfo>, u8>) -> Option<AlinkFirmware> {
+/// answer (`info`): present when it answers. -- fixup hwlk1f (F1) -- Absent
+/// only from a firmware's own answer: the device stalled `EXT_LINK_INFO`, or
+/// `EXT_LIST` answered without it (a K340 on 470a127; stock firmware stalls the
+/// block). Anything else, a bus fault, a short or malformed reply, a timeout, a
+/// busy worker, a Link-bridged unit's refusal, is `None`: not told.
+fn alink_of(dev: &DeviceShared, info: &Result<Option<LinkInfo>, Failed>) -> Option<AlinkFirmware> {
     match info {
         Ok(Some(_)) => return Some(AlinkFirmware::Present),
-        Err(status::ERROR) => return Some(AlinkFirmware::Absent),
+        Err(Failed { stalled: true, .. }) => return Some(AlinkFirmware::Absent),
         Ok(None) | Err(_) => {}
     }
     match exec(
@@ -333,9 +361,10 @@ fn alink_of(dev: &DeviceShared, info: &Result<Option<LinkInfo>, u8>) -> Option<A
         Vec::new(),
         EXT_LIST_LEN,
     ) {
-        Ok(b) if dspi_proto::ext::decode_list(&b).contains(&alink::EXT_LINK_INFO) => None,
-        Ok(_) | Err(status::ERROR) => Some(AlinkFirmware::Absent),
-        Err(_) => None,
+        Ok(b) if !dspi_proto::ext::decode_list(&b).contains(&alink::EXT_LINK_INFO) => {
+            Some(AlinkFirmware::Absent)
+        }
+        Ok(_) | Err(_) => None,
     }
 }
 
@@ -581,6 +610,20 @@ impl HubHandle {
         Ok(revision)
     }
 
+    // -- fixup hwlk1f (F1) --
+    /// Whether `dev`'s firmware has no audio link by two reads that agree: its
+    /// answer now, and the last status poll's, or a second read when no poll
+    /// has told yet. Only a firmware's own answer counts (see [`alink_of`]).
+    fn firmware_without_alink(&self, dev: &DeviceShared, serial: &str) -> bool {
+        if probe_alink(dev) != Some(AlinkFirmware::Absent) {
+            return false;
+        }
+        match self.system().last_observed(serial).and_then(|o| o.alink) {
+            Some(seen) => seen == AlinkFirmware::Absent,
+            None => probe_alink(dev) == Some(AlinkFirmware::Absent),
+        }
+    }
+
     // -- WP HWLK1F --
     /// Warnings for the model kept now: each unit (an audio link role by being
     /// a unit) whose device has no audio link in its firmware, read now when
@@ -646,9 +689,21 @@ impl HubHandle {
         let (model, revision) = self.system().model();
         let mut observed = BTreeMap::new();
         for (serial, dev) in self.system_devices(&model) {
+            let last = self.system().last_observed(&serial);
             let o = match &dev {
-                Some(d) => observe(d),
-                None => Observed::default(),
+                // -- fixup hwlk1f (F1) -- not told now: as last seen
+                Some(d) => {
+                    let mut o = observe(d);
+                    if o.alink.is_none() {
+                        o.alink = last.and_then(|l| l.alink);
+                    }
+                    o
+                }
+                // -- fixup hwlk1f (F4) -- offline: what it reported last, as last seen
+                None => Observed {
+                    online: false,
+                    ..last.unwrap_or_default()
+                },
             };
             observed.insert(serial, o);
         }
@@ -915,13 +970,15 @@ impl HubHandle {
         // -- WP HWLK1F -- units whose firmware has no audio link: their ops go at once
         let mut no_alink = BTreeSet::new();
         let mut offline = Vec::new();
+        // -- fixup hwlk1f (F1) -- attached, with the link (or not told), no frame read
+        let mut no_frame: Vec<String> = Vec::new();
         for a in &scene.actions {
             for u in model.resolve_target(&a.target).unwrap_or_default() {
                 if rtts.contains_key(&u.serial) || offline.contains(&u.serial) {
                     continue;
                 }
                 let Some(dev) = self.device_by_serial(&u.serial) else {
-                    // Offline: as it was last seen
+                    // Offline: as it was last seen (kept across polls, fixup hwlk1f F4)
                     if self.system().last_seen_without_alink(&u.serial) {
                         no_alink.insert(u.serial.clone());
                     }
@@ -934,10 +991,14 @@ impl HubHandle {
                     Some(f) => {
                         frames.insert(u.serial.clone(), f);
                     }
-                    None if probe_alink(&dev) == Some(AlinkFirmware::Absent) => {
+                    // -- fixup hwlk1f (F1) -- one read never decides a write path: the
+                    // firmware's answer now, and again (as last seen, else a second read)
+                    None if self.firmware_without_alink(&dev, &u.serial) => {
                         no_alink.insert(u.serial.clone());
                     }
-                    None => {}
+                    None => {
+                        no_frame.push(u.serial.clone());
+                    }
                 }
             }
         }
@@ -1073,6 +1134,13 @@ impl HubHandle {
                     writes.push(WriteResult {
                         result: "no_device".into(),
                         reason: Some("not connected".into()),
+                        ..o
+                    });
+                } else if no_frame.contains(&o.serial) && named.insert(o.serial.clone()) {
+                    // -- fixup hwlk1f (F1) -- not known to take it: no frame of its own was read
+                    writes.push(WriteResult {
+                        result: "no_frame".into(),
+                        reason: Some("no link frame read".into()),
                         ..o
                     });
                 }

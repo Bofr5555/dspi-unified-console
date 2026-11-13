@@ -127,7 +127,12 @@ and answered `no_frame`, the path is then `direct`. A scene is refused
 (`no_device`, "no unit of the scene reports a link frame") only when nothing can
 be written at once and nothing can be scheduled. On the superframe path, a unit
 of the scene that is not attached is answered `no_device` (reason
-`not connected`). `onTime` is true only when every op acted at the frame: never
+`not connected`), and one attached whose own frame could not be read `no_frame`
+(reason `no link frame read`: not known to have taken it). -- fixup hwlk1f --
+A unit goes the direct way only when two reads agree that its firmware has no
+link (its answer now and the last status poll's, or a second read when no poll
+has told); an unknown unit never does: its ops stay frame-timed or are not
+written. `onTime` is true only when every op acted at the frame: never
 with an op applied at once or a unit not reached. The clients say it in one
 sentence: "Evening recalled: applied now on K (no audio link); at link frame N
 through the sender on the others."
@@ -229,11 +234,17 @@ device stalled it), `locked` (a client holds the device's lock), `denied`,
 `not connected`, `no audio link (firmware)`, `limits unknown` or `out of range`;
 a scene's op applied at once carries `no audio link (firmware)`. The clients say
 what an alignment did: "Nothing was written: skipped on K (no audio link
-(firmware))." when nothing was, else the units written and those skipped.
+(firmware))." when nothing was (also when every write failed: "Nothing was
+written: 2 writes failed; …"), else the units written and those skipped.
 
 -- WP HWLK1F -- `observed` carries `alink`: `present` (`EXT_LINK_INFO`
-answers), `none` (the firmware has no audio link, as above) or null (not told:
-offline, no answer). Such a unit gets the issue `no_alink` instead of
+answers), `none` (the firmware has no audio link, as above) or null (not told).
+-- fixup hwlk1f -- `none` comes only from the firmware's own answer: the device
+stalls `EXT_LINK_INFO` (a stall, not a bus fault, a short or malformed reply or
+a timeout, which share the Link status `ERROR`), or `EXT_LIST` answers without
+it. A read that tells nothing keeps the last value seen. A unit not attached
+keeps everything it last reported (with `online: false`), so it is as last
+seen; it is never written by an alignment. Such a unit gets the issue `no_alink` instead of
 `limits_unknown`, no link alarm, and every client shows it as "No audio link
 (firmware)", never "Unknown" and never with a role from the model; it is not
 counted in "N of M locked". `system.set` keeps a model that names one and

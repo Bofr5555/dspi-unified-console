@@ -1154,6 +1154,10 @@ struct RecallParts {
     no_frame: Vec<String>,
     /// Units of the scene that are not attached.
     absent: Vec<String>,
+    // -- fixup hwlk1f (F1) --
+    /// Units with the link (or not told) that the sender's write reaches, but
+    /// whose own frame could not be read: not known to have taken it.
+    unverified: Vec<String>,
     /// Every write at the frame was taken in time.
     frame_ok: bool,
     /// Any write went at the frame.
@@ -1167,6 +1171,7 @@ impl RecallParts {
             && self.now_failed.is_empty()
             && self.no_frame.is_empty()
             && self.absent.is_empty()
+            && self.unverified.is_empty()
     }
 
     fn sentence(&self, name: &str, path: &str, frame: u64, plan: &Value) -> String {
@@ -1201,6 +1206,12 @@ impl RecallParts {
         }
         if !self.absent.is_empty() {
             parts.push(format!("{} not connected", self.absent.join(", ")));
+        }
+        if !self.unverified.is_empty() {
+            parts.push(format!(
+                "not known to have taken it on {} (no link frame read)",
+                self.unverified.join(", ")
+            ));
         }
         let mut m = format!("{name} recalled: {}", parts.join("; "));
         match plan.get("systemMute").and_then(Value::as_bool) {
@@ -1238,6 +1249,9 @@ fn recall_parts(report: &Value, model: &Value) -> RecallParts {
                 &mut p.now_failed,
                 format!("{unit} ({})", result_word(result)),
             ),
+            "no_frame" if str_at(w, &["reason"]) == "no link frame read" => {
+                push(&mut p.unverified, unit);
+            }
             "no_frame" => push(&mut p.no_frame, unit),
             "no_device" => push(&mut p.absent, unit),
             r => {
@@ -1330,6 +1344,14 @@ pub(crate) fn align_outcome(report: &Value, model: &Value) -> LinkSystemAlign {
         } else {
             format!("Nothing was written: {}.", parts.join("; "))
         }
+    } else if failed > 0 && written.is_empty() {
+        // -- fixup hwlk1f (F3) -- every write failed: nothing was written, said so
+        let mut m = format!("Nothing was written: {failed} writes failed");
+        if !parts.is_empty() {
+            m.push_str(&format!("; {}", parts.join("; ")));
+        }
+        m.push('.');
+        m
     } else if failed > 0 {
         let mut m = format!("The link delays were written; {failed} writes failed");
         if !parts.is_empty() {

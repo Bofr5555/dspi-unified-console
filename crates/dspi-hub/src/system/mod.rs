@@ -259,6 +259,12 @@ impl SystemShared {
         changes
     }
 
+    // -- fixup hwlk1f (F4) --
+    /// What `serial` reported at the last read, if it was read.
+    pub(crate) fn last_observed(&self, serial: &str) -> Option<Observed> {
+        self.lock().observed.get(serial).cloned()
+    }
+
     // -- WP HWLK1F --
     /// Whether `serial` was last read with a firmware without the audio link.
     pub(crate) fn last_seen_without_alink(&self, serial: &str) -> bool {

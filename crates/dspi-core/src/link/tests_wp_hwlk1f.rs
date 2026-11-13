@@ -238,3 +238,33 @@ fn wp_hwlk1f_align_says_nothing_was_written_and_why() {
         "Nothing was written: skipped on K340."
     );
 }
+
+// -- fixup hwlk1f --
+/// F1: a unit the sender's write reaches but whose frame was not read is not
+/// known to have taken it; F3: every write failed is "Nothing was written".
+#[test]
+fn fixup_hwlk1f_unverified_units_and_all_failed_writes_are_said() {
+    let report = json!({
+        "plan": {"scene": "evening", "frame": 9600, "path": "superframe", "leadFrames": 4800,
+                 "ops": [{"serial": "TX", "element": "tx", "op": "mute"}]},
+        "writes": [
+            {"serial": "TX", "element": "tx", "what": "mute", "result": "queued"},
+            {"serial": "A", "element": "A", "what": "mute", "result": "no_frame", "reason": "no link frame read"}
+        ],
+        "onTime": false
+    });
+    let r = recall_outcome("evening", &report, &model(), None, 48_000);
+    assert_eq!(
+        r.message,
+        "Evening recalled: at link frame 9600 through the sender; \
+         not known to have taken it on Main left (no link frame read)."
+    );
+    assert_eq!(r.writes[1].what, "Mute", "a unit's own result keeps its op");
+    let failed = json!({"applied": true, "alignment": {"issues": []}, "writes": [
+        {"serial": "A", "element": "A", "what": "phase", "result": "timeout"}
+    ]});
+    assert_eq!(
+        align_outcome(&failed, &model()).message,
+        "Nothing was written: 1 writes failed."
+    );
+}

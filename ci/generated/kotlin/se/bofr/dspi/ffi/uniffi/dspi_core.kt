@@ -19972,7 +19972,8 @@ data class LinkSystemUnit (
     var `kind`: kotlin.String, 
     /**
      * The role on the audio link in the glossary's words: "Sender",
-     * "Fan-out", "Repeater", "Receiver" (what the device says, else the model).
+     * "Fan-out", "Repeater", "Receiver" (what the device says, else the model),
+     * or "No audio link" for a device whose firmware has none (WP HWLK1F).
      */
     var `role`: kotlin.String, 
     /**
@@ -19985,7 +19986,8 @@ data class LinkSystemUnit (
     var `connected`: kotlin.Boolean, 
     /**
      * `locked`, `searching`, `holdover`, `off`, `clock` (a sender),
-     * `offline` (not attached) or `unknown`.
+     * `offline` (not attached), `no_alink` (attached, its firmware has no
+     * audio link: WP HWLK1F) or `unknown`.
      */
     var `state`: kotlin.String, 
     /**
@@ -20233,7 +20235,8 @@ data class LinkSystemView (
      */
     var `pending`: kotlin.UInt, 
     /**
-     * Units the model has.
+     * Units the model has, but those whose firmware has no audio link
+     * (WP HWLK1F): "N of M locked" counts the units that can lock.
      */
     var `unitCount`: kotlin.UInt, 
     /**

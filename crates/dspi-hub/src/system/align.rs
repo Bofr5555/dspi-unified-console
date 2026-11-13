@@ -365,6 +365,8 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
         latency: i64,
         lip: i64,
         limits: Option<(u16, u16)>,
+        // -- fixup hwlk1f (F4) -- an offline unit's facts are as last seen: not written
+        online: bool,
     }
     let mut rows = Vec::new();
     for u in &model.units {
@@ -437,6 +439,7 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
             latency: us_to_frames(i64::from(u.latency()), rate),
             lip: us_to_frames(i64::from(lip_us(u)), rate),
             limits,
+            online: o.is_some_and(|o| o.online),
         });
     }
     let l_max = rows.iter().map(|r| r.latency).max().unwrap_or(0);
@@ -532,7 +535,7 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
                     .get(r.unit.id.as_str())
                     .map(|(_, c)| c.clone())
                     .unwrap_or_default(),
-                writable: in_range && d_local_ok.is_some(),
+                writable: in_range && d_local_ok.is_some() && r.online,
             }
         })
         .collect();
