@@ -5077,12 +5077,15 @@ bool dspi_can_redo(const struct FfiCore *core);
 /**
  * The newest `n` changes of the open connection, newest first, in JSON
  * (`value`: a list of `{path, indices, before, after, source, atMs,
- * undoable}`; `before` and `after` are parameter values as
+ * undoable, label}`; `label` the undo group's, or null (WP P1UG); `before` and `after` are parameter values as
  * `dspi_write_param` takes them, `before` null when unknown; `source` is
  * `local`, `undo` or `redo`; `atMs` milliseconds since the Unix epoch). A
  * reconnect starts a new history. `NOTIFY_HISTORY` says when it moved.
  */
-uint32_t dspi_history(struct FfiCore *core, uint32_t n, char *buf, uint32_t len);
+uint32_t dspi_history(struct FfiCore *core,
+                      uint32_t n,
+                      char *buf,
+                      uint32_t len);
 
 /**
  * Mark a continuous drag (`DspiCore::set_dragging`): `true` when a slider
@@ -5092,6 +5095,24 @@ uint32_t dspi_history(struct FfiCore *core, uint32_t n, char *buf, uint32_t len)
  * writes, in order with them. Nothing for a null handle.
  */
 void dspi_set_dragging(const struct FfiCore *core, bool dragging);
+
+/**
+ * Begin an undo group (`DspiCore::begin_group`): everything written until
+ * the matching `dspi_undo_group_end` that undo can reverse is one undo
+ * step, carrying `label` (the `label` field of `dspi_history`'s entries;
+ * null or not UTF-8 counts as no label). Groups nest; a disconnect, another
+ * device opened, a re-read or a preset load, bulk image or factory reset
+ * ends one. Call it on the thread that sends the group's writes, in order
+ * with them. Nothing for a null handle or with no device.
+ */
+void dspi_undo_group_begin(const struct FfiCore *core, const char *label);
+
+/**
+ * End the undo group `dspi_undo_group_begin` opened
+ * (`DspiCore::end_group`); the outermost end ends the step. Nothing for a
+ * null handle or when no group is open.
+ */
+void dspi_undo_group_end(const struct FfiCore *core);
 
 /**
  * Answer a fetch: the HTTP status and body, as received, for any status.

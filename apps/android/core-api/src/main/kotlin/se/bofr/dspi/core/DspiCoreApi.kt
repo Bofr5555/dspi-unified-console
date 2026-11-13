@@ -1540,6 +1540,32 @@ interface DspiCoreApi : AutoCloseable {
     fun setDragging(dragging: Boolean)
 
     /**
+     * Begin an undo group: everything written until the matching
+     * [`DspiCore::end_group`] that undo can reverse is one undo step,
+     * carrying `label` ([`HistoryEntry::label`]), as a drag is. Use it for
+     * one action that writes several values (a linked pair, a Clear All, a
+     * routing preset). Groups nest: only the outermost begin starts the
+     * step and takes its label, and only the matching end ends it. The
+     * group belongs to the connection: a disconnect, another device
+     * opened, a re-attach, a re-read ([`DspiCore::fetch_all`]) and a change
+     * that ends the history (a preset load, a bulk image, a factory reset)
+     * end it at any depth, and an `end_group` after that does nothing.
+     * With no device the call is ignored. An empty group records nothing.
+     * A write undo cannot reverse stands apart, as in a drag. The group is
+     * the connection's, not the thread's: call it on the thread that sends
+     * the group's writes, in order with them.
+     */
+    fun beginGroup(label: String)
+
+    /**
+     * End the undo group [`DspiCore::begin_group`] opened: the outermost
+     * end ends the step, so the next write is a step of its own. Nothing
+     * when no group is open (one a disconnect or a re-read ended, or none
+     * at all).
+     */
+    fun endGroup()
+
+    /**
      * Whether [`DspiCore::undo`] has a change to reverse. False with no
      * device.
      */

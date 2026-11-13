@@ -1147,8 +1147,13 @@ uint32_t dspi_undo(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_redo(struct FfiCore *core, char *buf, uint32_t len);
 bool dspi_can_undo(const struct FfiCore *core);
 bool dspi_can_redo(const struct FfiCore *core);
-uint32_t dspi_history(struct FfiCore *core, uint32_t n, char *buf, uint32_t len);
+uint32_t dspi_history(struct FfiCore *core,
+uint32_t n,
+char *buf,
+uint32_t len);
 void dspi_set_dragging(const struct FfiCore *core, bool dragging);
+void dspi_undo_group_begin(const struct FfiCore *core, const char *label);
+void dspi_undo_group_end(const struct FfiCore *core);
 void dspi_autoeq_fetch_respond(struct AutoEqFetchSink *sink,
 uint16_t status,
 const uint8_t *body,

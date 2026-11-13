@@ -259,7 +259,8 @@ open class FakeDspiCore(
             after = ParamValue.Text(args),
             source = source,
             atMs = System.currentTimeMillis(),
-            undoable = true
+            undoable = true,
+            label = null // -- WP P1UG --
         )
         journalEntries += e
         if (source == HistorySource.LOCAL) {
