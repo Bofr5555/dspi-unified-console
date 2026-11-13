@@ -264,18 +264,34 @@ open class FakeDspiCore(
         )
         journalEntries += e
         if (source == HistorySource.LOCAL) {
-            undoSteps += Step(e, before, state)
+            // -- WP AN42 -- a drag's later writes join its step (the state before the drag stays)
+            val open = if (dragStepOpen) undoSteps.removeLastOrNull() else null
+            undoSteps += Step(e, open?.before ?: before, state)
+            dragStepOpen = dragging
             redoSteps.clear()
         }
     }
 
+    // -- WP AN42 -- the drag mark, as the core's in spirit: between true and
+    // false every write joins one step; each call ends the step being gathered.
+    private var dragging = false
+    private var dragStepOpen = false
+
+    override fun setDragging(dragging: Boolean) = op("setDragging", "$dragging", device = false) {
+        this.dragging = connected && dragging
+        dragStepOpen = false
+    }
+
     private fun forgetHistory() {
+        dragging = false // -- WP AN42 -- a drag ends with its connection
+        dragStepOpen = false
         journalEntries.clear()
         undoSteps.clear()
         redoSteps.clear()
     }
 
     override fun undo(): HistoryMove = op("undo") {
+        dragStepOpen = false // -- WP AN42 --
         val step = undoSteps.removeLastOrNull() ?: return@op HistoryMove(null, emptyList(), null)
         state = step.before
         redoSteps += step
@@ -284,6 +300,7 @@ open class FakeDspiCore(
     }
 
     override fun redo(): HistoryMove = op("redo") {
+        dragStepOpen = false // -- WP AN42 --
         val step = redoSteps.removeLastOrNull() ?: return@op HistoryMove(null, emptyList(), null)
         state = step.after
         undoSteps += step

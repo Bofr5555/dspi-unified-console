@@ -73,7 +73,7 @@ class DeviceListAn7UiTest {
         val inStrip = hasAnyAncestor(hasTestTag(CONNECTION_STRIP_TAG))
         rule.onNode(hasText("DSPi on USB") and inStrip).assertIsDisplayed()
 
-        rule.onNodeWithTag(DEVICE_LIST_TAG).performClick()
+        rule.onNodeWithTag(STRIP_MENU_TAG).performClick() // -- WP AN42 -- the phone strip's overflow
         settle()
         rule.onNodeWithText("✓ DSPi on USB").assertIsDisplayed()
         rule.onNodeWithText("Studio Mac (network)").assertIsDisplayed()
@@ -83,11 +83,11 @@ class DeviceListAn7UiTest {
         assertEquals(listOf<DeviceChoice>(DeviceChoice.Demo), chosen)
 
         // the current one is no switch; DSPi Link… opens the dialog
-        rule.onNodeWithTag(DEVICE_LIST_TAG).performClick()
+        rule.onNodeWithTag(STRIP_MENU_TAG).performClick() // -- WP AN42 -- the phone strip's overflow
         settle()
         rule.onNodeWithText("✓ DSPi on USB").performClick()
         settle()
-        rule.onNodeWithTag(DEVICE_LIST_TAG).performClick()
+        rule.onNodeWithTag(STRIP_MENU_TAG).performClick() // -- WP AN42 -- the phone strip's overflow
         settle()
         rule.onNodeWithText("DSPi Link…").performClick()
         settle()
@@ -109,7 +109,7 @@ class DeviceListAn7UiTest {
             )
         }
         settle()
-        rule.onNodeWithTag(DEVICE_LIST_TAG).performClick()
+        rule.onNodeWithTag(STRIP_MENU_TAG).performClick() // -- WP AN42 -- the phone strip's overflow
         settle()
         rule.onNodeWithText("✓ USB: no DSPi connected").assertIsNotEnabled()
         rule.onNodeWithText("Demo (no device)").assertIsDisplayed()

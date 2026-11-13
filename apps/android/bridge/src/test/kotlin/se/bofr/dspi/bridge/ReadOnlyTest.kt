@@ -185,7 +185,10 @@ class ReadOnlyTest {
             "configFiles.importConfiguration" to {
                 b.configFiles.importConfiguration(ops.confirm(DangerousOp.CONFIG_IMPORT), "{}", true, true)
             },
-            "configFiles.importFilters" to { b.configFiles.importFilters("{}", listOf(0)) }
+            "configFiles.importFilters" to { b.configFiles.importFilters("{}", listOf(0)) },
+            // -- WP AN42 -- an undo or redo writes the device like the setter it replays
+            "undo" to { assertEquals(HistoryStep.Refused, b.undo()) },
+            "redo" to { assertEquals(HistoryStep.Refused, b.redo()) }
         )
     }
 
@@ -214,6 +217,32 @@ class ReadOnlyTest {
         val written = core.calls.drop(mark).map { it.substringBefore('(') }.filter { it in WriteGuardedCore.WRITES }
         assertEquals("no core write while read-only", emptyList<String>(), written)
         assertEquals("the bridge refused every path itself", 0, b.guardedCore.trips)
+    }
+
+    // -- WP AN42 --
+    @Test
+    fun wpAn42UndoAndRedoAreRefusedForAViewerAndTheMarkStillLands() = runTest {
+        val core = FakeDspiCore()
+        val b = newBridge(core)
+        attach(b, core)
+        b.setUserMute(true)
+        runCurrent()
+        assertTrue(b.undoState.value.canUndo)
+        val events = collectEvents(b)
+        b.setRemoteReadOnly(true)
+        assertFalse(b.writesAllowed.value)
+        assertEquals(HistoryStep.Refused, b.undo())
+        assertEquals(HistoryStep.Refused, b.redo())
+        runCurrent()
+        assertEquals(0, core.callCount("undo") + core.callCount("redo"))
+        val refusals = events.filterIsInstance<BridgeEvent.CommandFailed>()
+        assertEquals(listOf("undo", "redo"), refusals.map { it.command })
+        assertTrue(refusals.all { it.error.message == WritesNotAllowedException.VIEWER })
+        // The mark is not a write: its end reaches the core read-only too
+        b.setDragging(false)
+        runCurrent()
+        assertEquals(1, core.callCount("setDragging"))
+        assertEquals(0, b.guardedCore.trips)
     }
 
     @Test
@@ -377,7 +406,10 @@ class ReadOnlyTest {
                 // -- WP AN35 -- the host's USB format, app-local
                 "setHostInputChannels",
                 // -- WP AN41 -- a GET (PASS_THROUGH in WriteGuardedCore)
-                "core1ConflictReason"
+                "core1ConflictReason",
+                // -- WP AN42 -- the drag mark sends nothing to the device (PASS_THROUGH in
+                // WriteGuardedCore) and is never refused: a drag's end must always land
+                "setDragging"
             )
 
         /** Controller members that read or only edit app-side drafts/subscriptions. */

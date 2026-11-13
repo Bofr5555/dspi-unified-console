@@ -1048,7 +1048,42 @@ interface DspiBridge {
 
     /** Recall scene [scene] (an id from the view). */
     suspend fun linkSystemRecall(scene: String): se.bofr.dspi.core.LinkSceneRecall = throw se.bofr.dspi.core.DspiException.Disconnected()
+
+    // ═══ Undo and redo (-- WP AN42 --) ═══════════════════════════════════
+    // The core's journal (P0W, docs/integrator/undo.md): the core decides what
+    // may be undone, steps over the rest and leaves another writer's change alone.
+
+    /**
+     * What undo and redo can do now, re-read with every published state, every
+     * notification batch and every drag end (no device I/O). It does not
+     * include [writesAllowed]; the UI combines the two. Test doubles: nothing.
+     */
+    val undoState: StateFlow<UndoAvailability> get() = NO_UNDO
+
+    /**
+     * Step back through the core's journal (`DspiCore::undo`), then publish the
+     * state. A write: refused while [writesAllowed] is false ([HistoryStep.Refused],
+     * with [BridgeEvent.CommandFailed]). A core error comes back as
+     * [HistoryStep.Failed] and is not also emitted.
+     */
+    suspend fun undo(): HistoryStep = HistoryStep.Refused
+
+    /** Step forward again ([undo]'s rules). */
+    suspend fun redo(): HistoryStep = HistoryStep.Refused
+
+    /**
+     * Mark a continuous drag (`DspiCore::setDragging`): true when a slider or a
+     * graph handle is grabbed, false when it is let go, cancelled or leaves the
+     * screen. The writes between join one undo step. It runs on the FFI
+     * dispatcher in call order with the setters, so a release's commit sent
+     * before the false is still in the drag's step. It sends nothing to the
+     * device and is never refused (an end must always land).
+     */
+    fun setDragging(dragging: Boolean) {}
 }
+
+// -- WP AN42 -- the default for bridges without a journal (test doubles)
+private val NO_UNDO: StateFlow<UndoAvailability> = MutableStateFlow(UndoAvailability()).asStateFlow()
 
 /** Default [DspiBridge.deviceGeneration] for implementations without a device (test doubles). */
 private val NO_DEVICE_GENERATION: StateFlow<Long> = MutableStateFlow(0L).asStateFlow()

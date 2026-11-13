@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -15,6 +16,9 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
@@ -37,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isAltPressed
@@ -47,6 +52,9 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NamedNavArgument
@@ -76,9 +84,14 @@ import se.bofr.dspi.feature.presets.PresetsScreen
 import se.bofr.dspi.feature.settings.SettingsScreen
 import se.bofr.dspi.feature.tools.OutputLimiterView
 import se.bofr.dspi.feature.tools.ToolsScreen
+import se.bofr.dspi.ui.DragMarker
+import se.bofr.dspi.ui.DspiIcons
 import se.bofr.dspi.ui.DspiRoutes
+import se.bofr.dspi.ui.HelpTip
 import se.bofr.dspi.ui.LocalDemoMode
+import se.bofr.dspi.ui.LocalDragMarker
 import se.bofr.dspi.ui.LocalWritesAllowed
+import se.bofr.dspi.ui.WhileVisible
 import se.bofr.dspi.ui.WritesExempt
 import se.bofr.dspi.ui.alert.AlertHost
 import se.bofr.dspi.ui.alert.ConsoleAlertHost
@@ -93,6 +106,9 @@ internal const val CONNECTION_STRIP_TAG = "connection-strip"
 
 /** Test tag of the strip's "Devices" button (WP AN7). */
 internal const val DEVICE_LIST_TAG = "device-list"
+
+/** Test tag of the compact strip's overflow button (WP AN42): the strip's actions and the device list. */
+internal const val STRIP_MENU_TAG = "strip-menu"
 
 /**
  * macOS window/menu structure -> one NavHost (PLAN §3.3 `ui/nav/AppScaffold.kt`).
@@ -143,6 +159,13 @@ fun AppScaffold(
     // -- WP AN41 -- a write the core refused, in its words, over the screen
     val notices = remember { SnackbarHostState() }
     RefusalNotices(bridge, notices)
+    // -- WP AN42 -- Undo and Redo: the strip's buttons, the keys, their snackbar;
+    // the drag mark every slider and graph drag holds, ended whenever the app stops
+    val historyScope = rememberCoroutineScope()
+    val history = remember(bridge) { UndoRedoModel(bridge, historyScope) }
+    UndoRedoNotices(history, notices)
+    val dragMarker = remember(bridge) { DragMarker(bridge::setDragging) }
+    WhileVisible(key = dragMarker, onShow = {}, onHide = { dragMarker.endAll() })
     // The IME stays out, as with the Scaffold's default insets
     Scaffold(
         snackbarHost = { RefusalNoticeHost(notices) },
@@ -159,17 +182,18 @@ fun AppScaffold(
         ) {
             // In here: the Scaffold composes its content after the scaffold itself, the requester's node with it
             LaunchedEffect(focusLost) { focus.requestFocus() }
-            ConnectionStripBar(strip, onExitDemo, onRequestPermission, onRemoteAction) {
-                DeviceListButton(devices) { c -> if (c == DeviceChoice.Network) onConnectNetwork() else onChooseDevice(c) }
+            ConnectionStripBar(strip, onExitDemo, onRequestPermission, onRemoteAction, history, devices) { c ->
+                if (c == DeviceChoice.Network) onConnectNetwork() else onChooseDevice(c)
             }
             key(bridge) {
                 // -- WP AN35 -- the host's USB format, for every route; the DSPi is on this phone's USB only outside demo and Link
                 HostChannelsFeed(bridge, enabled = strip !is ConnectionStrip.Demo && strip !is ConnectionStrip.Remote)
                 CompositionLocalProvider(
                     LocalDemoMode provides (strip is ConnectionStrip.Demo),
-                    LocalOnboarding provides onboarding // -- WP AN19 --
+                    LocalOnboarding provides onboarding, // -- WP AN19 --
+                    LocalDragMarker provides dragMarker // -- WP AN42 --
                 ) {
-                    DspiNavHost(bridge, bootloaderLocator, remote = strip is ConnectionStrip.Remote, keys)
+                    DspiNavHost(bridge, bootloaderLocator, remote = strip is ConnectionStrip.Remote, keys, history)
                 }
             }
         }
@@ -179,21 +203,35 @@ fun AppScaffold(
 }
 
 @Composable
-private fun DspiNavHost(bridge: DspiBridge, bootloaderLocator: BootloaderLocator?, remote: Boolean, keys: ShortcutKeys) {
+private fun DspiNavHost(
+    bridge: DspiBridge,
+    bootloaderLocator: BootloaderLocator?,
+    remote: Boolean,
+    keys: ShortcutKeys,
+    // -- WP AN42 --
+    history: UndoRedoModel
+) {
     // G1: every device-writing control is disabled while the bridge refuses writes
     val writes by bridge.writesAllowed.collectAsStateWithLifecycle()
-    CompositionLocalProvider(LocalWritesAllowed provides writes) { DspiRoutesHost(bridge, bootloaderLocator, remote, keys) }
+    CompositionLocalProvider(LocalWritesAllowed provides writes) { DspiRoutesHost(bridge, bootloaderLocator, remote, keys, history) }
 }
 
 @Composable
-private fun DspiRoutesHost(bridge: DspiBridge, bootloaderLocator: BootloaderLocator?, remote: Boolean, keys: ShortcutKeys) {
+private fun DspiRoutesHost(
+    bridge: DspiBridge,
+    bootloaderLocator: BootloaderLocator?,
+    remote: Boolean,
+    keys: ShortcutKeys,
+    // -- WP AN42 --
+    history: UndoRedoModel
+) {
     val nav = rememberNavController()
     // -- WP AN35 -- the shortcuts drive this NavHost while it is on screen
     val writes = rememberUpdatedState(LocalWritesAllowed.current)
     val appState = LocalAppState.current
     val scope = rememberCoroutineScope()
-    DisposableEffect(nav, bridge, appState) {
-        keys.host = NavShortcutHost(nav, bridge, appState, scope) { writes.value }
+    DisposableEffect(nav, bridge, appState, history) {
+        keys.host = NavShortcutHost(nav, bridge, appState, scope, history) { writes.value }
         onDispose { keys.host = null }
     }
     NavHost(navController = nav, startDestination = DspiRoutes.HOME) {
@@ -266,13 +304,20 @@ private fun NavGraphBuilder.screen(
     }
 }
 
+/** Below this width the strip keeps to one line: its actions and the device list go into an overflow menu (WP AN42). */
+internal val STRIP_COMPACT_BELOW = 600.dp
+
 @Composable
 private fun ConnectionStripBar(
     strip: ConnectionStrip,
     onExitDemo: () -> Unit,
     onRequestPermission: () -> Unit,
     onRemoteAction: (RemoteAction) -> Unit,
-    devices: @Composable () -> Unit
+    // -- WP AN42 --
+    history: UndoRedoModel?,
+    // -- WP AN7 --
+    devices: List<DeviceRow>,
+    onChooseDevice: (DeviceChoice) -> Unit
 ) {
     // -- WP AN5 -- the owner's lost-connection banner; this bar is above every route, so it is on every screen
     if (strip is ConnectionStrip.Remote && strip.lost) {
@@ -282,30 +327,48 @@ private fun ConnectionStripBar(
     // Demo and REMOTE stand out, so neither is taken for the USB unit
     val demo = strip is ConnectionStrip.Demo || strip is ConnectionStrip.Remote
     val colors = MaterialTheme.colorScheme
-    Row(
+    val ink = if (demo) colors.onTertiaryContainer else colors.onSurfaceVariant
+    val actions: List<Pair<String, () -> Unit>> =
+        when (strip) {
+            ConnectionStrip.Demo -> listOf("Exit demo" to onExitDemo)
+            is ConnectionStrip.Remote -> strip.actions.map { a -> a.label to { onRemoteAction(a) } }
+            is ConnectionStrip.NeedsPermission -> listOf("Allow USB access" to onRequestPermission)
+            ConnectionStrip.NoDevice, ConnectionStrip.Usb, is ConnectionStrip.Info -> emptyList()
+        }
+    BoxWithConstraints(
         Modifier
             .testTag(CONNECTION_STRIP_TAG)
             .fillMaxWidth()
             .background(if (demo) colors.tertiaryContainer else colors.surfaceVariant)
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(
-            strip.text,
-            Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (demo) colors.onTertiaryContainer else colors.onSurfaceVariant
-        )
-        when (strip) {
-            ConnectionStrip.Demo -> TextButton(onClick = onExitDemo) { Text("Exit demo") }
-            is ConnectionStrip.Remote -> Row {
-                strip.actions.forEach { a -> TextButton(onClick = { onRemoteAction(a) }) { Text(a.label) } }
+        // -- WP AN42 -- a phone: one line (the short text, the whole of it on a long-press and to
+        // TalkBack), Undo and Redo, and the strip's actions and devices behind the overflow
+        val compact = maxWidth < STRIP_COMPACT_BELOW
+        Row(
+            Modifier.fillMaxWidth().padding(start = 16.dp, end = if (compact) 4.dp else 16.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            if (compact) {
+                HelpTip(if (strip.short != strip.text) strip.text else "", Modifier.weight(1f)) {
+                    Text(
+                        strip.short,
+                        Modifier.semantics { if (strip.short != strip.text) contentDescription = strip.text },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = ink,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                history?.let { UndoRedoButtons(it, ink) }
+                StripMenu(actions, devices, onChooseDevice, ink)
+            } else {
+                Text(strip.text, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = ink)
+                actions.forEach { (label, act) -> TextButton(onClick = act) { Text(label) } }
+                history?.let { UndoRedoButtons(it, ink) } // -- WP AN42 --
+                DeviceListButton(devices, onChooseDevice) // -- WP AN7 --
             }
-            is ConnectionStrip.NeedsPermission -> TextButton(onClick = onRequestPermission) { Text("Allow USB access") }
-            ConnectionStrip.NoDevice, ConnectionStrip.Usb, is ConnectionStrip.Info -> Unit
         }
-        devices() // -- WP AN7 --
     }
 }
 
@@ -318,16 +381,52 @@ private fun DeviceListButton(rows: List<DeviceRow>, onChoose: (DeviceChoice) -> 
     Box {
         TextButton(onClick = { open = true }, Modifier.testTag(DEVICE_LIST_TAG)) { Text("Devices") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            rows.forEach { r ->
-                DropdownMenuItem(
-                    text = { Text(if (r.current) "✓ ${r.label}" else r.label) },
-                    enabled = r.enabled,
-                    onClick = {
-                        open = false
-                        if (!r.current) onChoose(r.choice)
-                    }
+            DeviceRows(rows, onChoose) { open = false }
+        }
+    }
+}
+
+@Composable
+private fun DeviceRows(rows: List<DeviceRow>, onChoose: (DeviceChoice) -> Unit, close: () -> Unit) {
+    rows.forEach { r ->
+        DropdownMenuItem(
+            text = { Text(if (r.current) "✓ ${r.label}" else r.label) },
+            enabled = r.enabled,
+            onClick = {
+                close()
+                if (!r.current) onChoose(r.choice)
+            }
+        )
+    }
+}
+
+// -- WP AN42 --
+/** The compact strip's overflow (⋮): its actions first, then the device list. Nothing when both are empty. */
+@Composable
+private fun StripMenu(actions: List<Pair<String, () -> Unit>>, rows: List<DeviceRow>, onChoose: (DeviceChoice) -> Unit, tint: Color) {
+    if (actions.isEmpty() && rows.isEmpty()) return
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }, Modifier.testTag(STRIP_MENU_TAG)) {
+            Icon(DspiIcons.more, contentDescription = "More", tint = tint)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            actions.forEach { (label, act) ->
+                DropdownMenuItem(text = { Text(label) }, onClick = {
+                    open = false
+                    act()
+                })
+            }
+            if (actions.isNotEmpty() && rows.isNotEmpty()) HorizontalDivider()
+            if (rows.isNotEmpty()) {
+                Text(
+                    "Devices",
+                    Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            DeviceRows(rows, onChoose) { open = false }
         }
     }
 }
@@ -360,6 +459,8 @@ private class NavShortcutHost(
     private val bridge: DspiBridge,
     private val appState: AppState,
     private val scope: CoroutineScope,
+    // -- WP AN42 --
+    private val history: UndoRedoModel,
     private val writes: () -> Boolean
 ) : ShortcutHost {
     override val currentRoute: String?
@@ -399,4 +500,9 @@ private class NavShortcutHost(
     }
 
     override fun stopGenerator() = bridge.siggen.stop()
+
+    // -- WP AN42 --
+    override fun undo() = history.undo()
+
+    override fun redo() = history.redo()
 }

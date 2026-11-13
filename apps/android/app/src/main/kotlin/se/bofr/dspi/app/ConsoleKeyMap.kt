@@ -26,6 +26,13 @@ internal sealed interface ConsoleShortcut {
 
     /** Space: the Signal Generator's Start / Stop. */
     data object StartStopGenerator : ConsoleShortcut
+
+    // -- WP AN42 -- Edit > Undo / Redo (the core's journal)
+    /** Command+Z. */
+    data object Undo : ConsoleShortcut
+
+    /** Command+Shift+Z, and Command+Y as on the web and Windows. */
+    data object Redo : ConsoleShortcut
 }
 
 internal object ConsoleKeyMap {
@@ -54,6 +61,9 @@ internal object ConsoleKeyMap {
     fun shortcutOf(key: Key, command: Boolean, shift: Boolean, alt: Boolean): ConsoleShortcut? {
         if (alt) return null
         if (!command) return if (key == Key.Spacebar && !shift) ConsoleShortcut.StartStopGenerator else null
+        // -- WP AN42 --
+        if (key == Key.Z) return if (shift) ConsoleShortcut.Redo else ConsoleShortcut.Undo
+        if (key == Key.Y && !shift) return ConsoleShortcut.Redo
         if (shift) return commandShift[key]?.let { ConsoleShortcut.Open(it) }
         return when (key) {
             Key.Comma -> ConsoleShortcut.Open(DspiRoutes.SETTINGS)
@@ -93,6 +103,12 @@ internal interface ShortcutHost {
     fun startGenerator()
 
     fun stopGenerator()
+
+    // -- WP AN42 -- a step of the core's journal; false when nothing was sent
+    // (nothing to step, read-only, a viewer), so the key goes on unhandled
+    fun undo(): Boolean = false
+
+    fun redo(): Boolean = false
 }
 
 internal object ConsoleShortcuts {
@@ -116,6 +132,8 @@ internal object ConsoleShortcuts {
                 false
             }
         }
+        ConsoleShortcut.Undo -> host.undo() // -- WP AN42 --
+        ConsoleShortcut.Redo -> host.redo()
         ConsoleShortcut.StartStopGenerator -> when {
             host.currentRoute != DspiRoutes.ANALYSIS -> false
             host.generatorRunning -> {

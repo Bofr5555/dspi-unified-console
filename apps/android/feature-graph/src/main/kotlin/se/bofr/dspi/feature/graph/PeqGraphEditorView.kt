@@ -90,6 +90,8 @@ import kotlinx.coroutines.launch
 import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.bridge.Throttle
 import se.bofr.dspi.core.FilterParams
+import se.bofr.dspi.ui.DragMarker
+import se.bofr.dspi.ui.LocalDragMarker
 
 /** The editor's clock on the main thread (Windows: DispatcherQueue timers). */
 class CoroutinePeqScheduler(private val scope: CoroutineScope) : PeqScheduler {
@@ -114,8 +116,13 @@ class CoroutinePeqScheduler(private val scope: CoroutineScope) : PeqScheduler {
  * [Throttle] (first at once, then the latest every 30 ms); the release
  * cancels it and commits once ([DspiBridge.commitBands]).
  */
-class BridgePeqEditorHost(private val bridge: DspiBridge, override val selection: PeqGraphSelection, scope: CoroutineScope) :
-    PeqGraphEditorHost {
+class BridgePeqEditorHost(
+    private val bridge: DspiBridge,
+    override val selection: PeqGraphSelection,
+    scope: CoroutineScope,
+    // -- WP AN42 -- the app's drag mark; null: drags are not marked (previews, tests)
+    private val marker: DragMarker? = null
+) : PeqGraphEditorHost {
     private val pending = LinkedHashMap<Pair<Int, Int>, FilterParams>()
     private val throttle =
         Throttle<Unit>(scope, 30) {
@@ -143,6 +150,11 @@ class BridgePeqEditorHost(private val bridge: DspiBridge, override val selection
     override fun showLive(channel: Int, band: Int, p: FilterParams) = selection.showLive(band, p)
 
     override fun endLive(channel: Int) = selection.endLive()
+
+    // -- WP AN42 --
+    override fun markDrag(dragging: Boolean) {
+        if (dragging) marker?.begin(this) else marker?.end(this)
+    }
 }
 
 private fun modsOf(k: PointerKeyboardModifiers): Int {
@@ -215,9 +227,10 @@ fun PeqGraphEditorView(
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
+    val marker = LocalDragMarker.current // -- WP AN42 --
     val editor =
-        remember(bridge, selection) {
-            PeqGraphEditor(BridgePeqEditorHost(bridge, selection, scope), CoroutinePeqScheduler(scope))
+        remember(bridge, selection, marker) {
+            PeqGraphEditor(BridgePeqEditorHost(bridge, selection, scope, marker), CoroutinePeqScheduler(scope))
         }
     DisposableEffect(editor) { onDispose { editor.dispose() } }
     val renderer = remember { PeqGraphRenderer() }

@@ -145,6 +145,10 @@ class DspiBridgeImpl(
     private val _writesAllowed = MutableStateFlow(false)
     override val writesAllowed: StateFlow<Boolean> = _writesAllowed.asStateFlow()
 
+    // -- WP AN42 -- the journal's can-undo / can-redo as of the last read
+    private val _undoState = MutableStateFlow(UndoAvailability())
+    override val undoState: StateFlow<UndoAvailability> = _undoState.asStateFlow()
+
     /** FFI thread: whether the firmware answers EXT_CROSSFEED_PAIR_MAP (extension channel, bofr-main). */
     private fun probeCrossfeedPairMap(): Boolean {
         repeat(2) {
@@ -379,7 +383,9 @@ class DspiBridgeImpl(
         val maxDelay: Float,
         // -- BUG1 --
         val labels: List<OutputLabel> = emptyList(),
-        val cards: List<OutputCard> = emptyList()
+        val cards: List<OutputCard> = emptyList(),
+        // -- WP AN42 --
+        val undo: UndoAvailability = UndoAvailability()
     )
 
     /** FFI: the state after a change, the preset-dirty flag and the curves that changed. */
@@ -396,8 +402,15 @@ class DspiBridgeImpl(
         // -- BUG1 -- once per state change, never per frame; an old core has none
         val labels = runCatching { core.outputLabels() }.getOrDefault(emptyList())
         val cards = runCatching { core.outputCards() }.getOrDefault(emptyList())
-        return Snapshot(st, dirty, ids.associateWith { rawCurve(st, m, it) }, all, pre, dl, labels, cards)
+        return Snapshot(st, dirty, ids.associateWith { rawCurve(st, m, it) }, all, pre, dl, labels, cards, undoAvailability())
     }
+
+    // -- WP AN42 --
+    /** FFI: the journal's can-undo / can-redo (local reads; nothing with no device or an old core). */
+    private fun undoAvailability() = UndoAvailability(
+        canUndo = runCatching { core.canUndo() }.getOrDefault(false),
+        canRedo = runCatching { core.canRedo() }.getOrDefault(false)
+    )
 
     // -- BUG1 -- the outputs' labels and the dashboard's cards as of the last published snapshot
     private var labels: List<OutputLabel> = emptyList()
@@ -431,6 +444,7 @@ class DspiBridgeImpl(
         if (_presetDirty.value != snap.dirty) _presetDirty.value = snap.dirty
         refreshOutputConfigDirty()
         refreshWritesAllowed()
+        _undoState.value = snap.undo // -- WP AN42 --
     }
 
     /** macOS `outputDirty`: raw flag && independent mode (0). */
@@ -635,6 +649,55 @@ class DspiBridgeImpl(
         return of(code) to snap
     }
 
+    // ═══ Undo and redo (-- WP AN42 --) ═══
+
+    override suspend fun undo(): HistoryStep = historyStep("undo") { core.undo() }
+
+    override suspend fun redo(): HistoryStep = historyStep("redo") { core.redo() }
+
+    /**
+     * An undo or redo: refused like any write, then on the FFI dispatcher (after
+     * every setter called before it) and the whole state re-read, since a step
+     * may move any value of any channel (a drag over several bands).
+     */
+    private suspend fun historyStep(name: String, step: () -> se.bofr.dspi.core.HistoryMove): HistoryStep {
+        if (writeRefused(name)) return HistoryStep.Refused
+        val (result, snap) =
+            onFfi {
+                val r =
+                    try {
+                        HistoryStep.Moved(step())
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        HistoryStep.Failed(e)
+                    } catch (e: NotImplementedError) {
+                        HistoryStep.Failed(e)
+                    }
+                r to snapshot(all = true)
+            }
+        publish(snap, magnitudes = true)
+        return result
+    }
+
+    override fun setDragging(dragging: Boolean) {
+        // Never refused: a mark's end must land whatever the connection does
+        // (the core ignores it with no device). In call order with the setters.
+        scope.launch(ffi) {
+            runCatching { core.setDragging(dragging) }
+            val u = undoAvailability()
+            post { _undoState.value = u }
+        }
+    }
+
+    /** Re-read [undoState] (the journal moved without a state change). */
+    private fun refreshUndo() {
+        scope.launch(ffi) {
+            val u = undoAvailability()
+            post { _undoState.value = u }
+        }
+    }
+
     // ═══ Device notifications (DSPiBridge::scheduleNotifications / processNotifications) ═══
 
     /**
@@ -694,6 +757,8 @@ class DspiBridgeImpl(
                 }
                 r to snapshot(all = refreshed)
             }
+        // -- WP AN42 -- the journal moved without a state change (another writer's entry, a drag mark ended by the core)
+        if (snap == null && r.flags and DspiConstants.NOTIFY_HISTORY.toLong() != 0L) refreshUndo()
         deviceSettings.refreshNames() // -- WP AN6 -- no traffic; name events raise no state flag
         emit(BridgeEvent.NotificationsArrived)
         notificationHooks.forEach { it() }
@@ -1947,6 +2012,7 @@ class DspiBridgeImpl(
         _stateRevision.value += 1
         _magnitudesRevision.value += 1
         if (_presetDirty.value) _presetDirty.value = false
+        _undoState.value = UndoAvailability() // -- WP AN42 -- the history is the connection's
         updateTimers()
     }
 
