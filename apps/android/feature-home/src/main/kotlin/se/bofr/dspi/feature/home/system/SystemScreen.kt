@@ -83,6 +83,8 @@ internal fun healthColor(c: DspiColors, health: String): Color = when (health) {
 
 private fun stateColor(c: DspiColors, u: LinkSystemUnit): Color = when {
     !u.connected -> c.gray
+    // -- WP HWLK1F -- a firmware without the audio link: a fact, not a fault
+    u.state == "no_alink" -> c.gray
     u.state == "holdover" -> c.red
     u.state == "searching" || u.state == "off" || u.state == "unknown" -> c.orange
     else -> c.green

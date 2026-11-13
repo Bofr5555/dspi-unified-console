@@ -107,11 +107,21 @@ impl Bench {
         self.net.auth().begin_pairing(Instant::now()).unwrap().pin
     }
 
+    /// -- WP HWLK1F -- a PIN whose pairing may be admin (`--pair-admin`): a plain
+    /// one gives at most control.
+    fn admin_pin(&self) -> String {
+        self.net
+            .auth()
+            .begin_pairing_admin(Instant::now())
+            .unwrap()
+            .pin
+    }
+
     /// A raw, authenticated `admin` socket, and its token.
     fn admin(&self) -> (Ws, String) {
         let mut ws = ws(self.port);
         hello(&mut ws);
-        let pin = self.pin();
+        let pin = self.admin_pin();
         let reply = request(
             &mut ws,
             json!({"t": "auth.pair", "id": 1, "pin": pin, "name": "raw", "role": "admin"}),
@@ -406,7 +416,7 @@ fn wp_hb1_the_client_and_fixtures_pass_against_the_server() {
     assert_eq!(hello.limits.max_payload, 8192);
     assert_eq!(hello.limits.max_inflight, 8);
 
-    let token = first.pair(&b.pin(), "admin").unwrap();
+    let token = first.pair(&b.admin_pin(), "admin").unwrap();
     assert_eq!(first.role(), "admin");
     let session = first.session_id().unwrap();
     assert!(session >= 2, "0 and 1 are not for the network");
@@ -479,7 +489,7 @@ fn wp_hb1_replies_match_the_upstream_fixtures() {
 
     // And after.
     let mut pair = fixture("auth_pair.json");
-    pair["pin"] = b.pin().into();
+    pair["pin"] = b.admin_pin().into();
     pair["role"] = "admin".into();
     let ok = request(&mut raw, pair);
     assert_has_shape(&fixture("auth_ok.json"), &ok, &[], "auth ok");
@@ -938,7 +948,7 @@ fn wp_hb1_before_auth_commands_are_discarded_unanswered() {
     );
 
     let (c, _) = client(&b, None).unwrap();
-    c.pair(&b.pin(), "admin").unwrap();
+    c.pair(&b.admin_pin(), "admin").unwrap();
     let rx = c.notifications(0);
     let volume = -33.0f32;
     let r = c.command(
@@ -1708,7 +1718,7 @@ fn wp_hb1_a_revoked_sessions_later_frames_do_not_run() {
     let (watcher, _) = b.admin();
     let (c, _) = client(&b, None).unwrap();
     drop(watcher);
-    c.pair(&b.pin(), "admin").unwrap();
+    c.pair(&b.admin_pin(), "admin").unwrap();
     let heard = c.notifications(0);
     assert!(b.net.revoke(cid));
     let volume = (-41.0f32).to_le_bytes();

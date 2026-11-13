@@ -131,6 +131,16 @@ impl Bench {
         self.net.auth().begin_pairing(Instant::now()).unwrap().pin
     }
 
+    /// -- WP HWLK1F -- a PIN whose pairing may be admin (`uconsole hub --pair-admin`);
+    /// a plain one gives at most control.
+    pub fn admin_pin(&self) -> String {
+        self.net
+            .auth()
+            .begin_pairing_admin(Instant::now())
+            .unwrap()
+            .pin
+    }
+
     /// Stop, and start again on the same port with the same store: a hub restart.
     pub fn restart(self) -> Self {
         let setup = self.setup.clone();

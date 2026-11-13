@@ -62,6 +62,16 @@ export function ClockLinks(props: { feed: SystemFeed; ask: Ask }) {
     <section class="sys-clock" aria-label="Clock and links">
       <h3>Clock and links</h3>
       {admin ? null : <p class="sys-note">{writeNote(st.role, "model")}: this panel is read only.</p>}
+      {/* -- WP HWLK1F -- the model was kept; the hub warns about units without the audio link */}
+      {st.warnings.length ? (
+        <ul class="sys-warnings" role="status" aria-label="Installation warnings">
+          {st.warnings.map((w) => (
+            <li key={w} class="sys-result sys-warn">
+              {w}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <UnitsTable feed={props.feed} model={shown} admin={admin} onEdit={edit} />
       <SlotMatrix model={shown} admin={admin} onEdit={edit} />
       {draft && stale ? (
@@ -376,8 +386,10 @@ function AlignPanel(props: { feed: SystemFeed; ask: Ask; admin: boolean; mayAlig
       ) : null}
       {al?.report ? (
         <>
+          {/* -- WP HWLK1F -- a write said as it was (the core's sentence): nothing written, or what was skipped and why */}
           <p class="sys-note" aria-label="Alignment result">
-            {al.report.applied ? "Written" : "Computed, not written"}: system delay {framesMs(al.report.alignment.dFrames, al.report.alignment.rateHz || 48000)}
+            {al.report.applied && al.message ? `${al.message} System delay` : al.report.applied ? "Written: system delay" : "Computed, not written: system delay"}{" "}
+            {framesMs(al.report.alignment.dFrames, al.report.alignment.rateHz || 48000)}
             {al.report.alignment.issues.length ? `, ${al.report.alignment.issues.length} issue(s)` : ""}
           </p>
           <ul class="sys-results" aria-label="Computed per unit">

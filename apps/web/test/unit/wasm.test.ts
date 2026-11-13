@@ -300,3 +300,30 @@ test("WB8: a refused recall in the core's words, one sentence per sender's answe
   assert.equal((await core.call("sceneOutcome", { scene: "closed", report: perUnit, model })).message, "Closed was refused by every unit; nothing changed. System mute unchanged.");
   core.dispose();
 });
+
+// -- WP HWLK1F -- a unit without the audio link: at once in a recall, skipped (and why) by an alignment
+test("HWLK1F: the core's words for a mixed recall and an alignment that wrote nothing", { skip }, async () => {
+  const core = session(await load(pageModule));
+  const model = { rateHz: 48000, scenes: [{ id: "evening", name: "Evening" }], units: [{ id: "K", name: "K340", serial: "K" }], senders: [], fanOuts: [] };
+  const recall = await core.call("sceneOutcome", {
+    scene: "evening",
+    model,
+    report: {
+      plan: { scene: "evening", frame: 9600, path: "superframe", ops: [{ serial: "TX", element: "tx", op: "master_volume" }], leadFrames: 4800 },
+      writes: [
+        { serial: "TX", element: "tx", what: "master_volume", result: "queued" },
+        { serial: "K", element: "K", what: "master_volume", result: "applied_now", reason: "no audio link (firmware)" },
+      ],
+      onTime: false,
+    },
+  });
+  assert.equal(recall.taken, true);
+  assert.equal(recall.message, "Evening recalled: applied now on K340 (no audio link); at link frame 9600 through the sender on the others.");
+  const align = await core.call("alignOutcome", {
+    model,
+    report: { applied: true, alignment: { issues: [] }, writes: [{ serial: "K", element: "K", what: "phase", result: "skipped", reason: "no audio link (firmware)" }] },
+  });
+  assert.equal(align.message, "Nothing was written: skipped on K340 (no audio link (firmware)).");
+  await assert.rejects(core.call("alignOutcome", { report: 3, model }));
+  core.dispose();
+});

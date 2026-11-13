@@ -1930,7 +1930,11 @@ impl Connection {
                 // -- fixup sw3x -- `revision`: the one the model was edited from.
                 let expected = message.get("revision").and_then(Value::as_u64);
                 match hub.system_set_model_at(model, expected) {
-                    Ok(revision) => ok(id, json!({"revision": revision})),
+                    // -- WP HWLK1F -- a unit without the audio link: kept, with a warning
+                    Ok(revision) => ok(
+                        id,
+                        json!({"revision": revision, "warnings": hub.system_alink_warnings()}),
+                    ),
                     Err(crate::system::ModelRefused::Invalid(e)) => {
                         err(id, "bad_request", Some(&e.to_string()))
                     }

@@ -28,6 +28,12 @@ export interface SceneRun {
   running: boolean;
   /** -- fixup sw3x -- why the hub took none of its writes ("" when taken). */
   refusal: string;
+  /**
+   * -- WP HWLK1F -- what a taken recall did, in the core's sentence (`sceneOutcome`),
+   * the same every client shows: at once on units without the audio link, at the
+   * frame on the others. "" while running or when not taken.
+   */
+  outcome: string;
 }
 
 /** `system.get`'s answer. -- fixup sw3x -- with the session's role now. */
@@ -50,7 +56,10 @@ export interface FeedState {
   recalled: { scene: string; name: string } | null;
   /** -- fixup sw3x -- the model's revision as last read (`system.get`). */
   revision: number;
-  align: { report: AlignReport | null; error: string; running: boolean } | null;
+  /** -- WP HWLK1F -- `message`: a written alignment in the core's sentence (`alignOutcome`). */
+  align: { report: AlignReport | null; error: string; running: boolean; message: string } | null;
+  /** -- WP HWLK1F -- the hub's warnings for the model last saved from this page (units without the audio link). */
+  warnings: string[];
   /** The system mute's last writes. */
   mute: { writes: WriteResult[]; error: string } | null;
 }
@@ -61,7 +70,7 @@ export const POLL_MS = 3000;
 const STATUS_GAP_MS = 1100;
 
 export class SystemFeed {
-  state: FeedState = { kind: "loading", model: null, status: null, role: "", error: "", scene: null, recalled: null, revision: 0, align: null, mute: null };
+  state: FeedState = { kind: "loading", model: null, status: null, role: "", error: "", scene: null, recalled: null, revision: 0, align: null, mute: null, warnings: [] };
   private readonly listeners = new Set<() => void>();
   private timer: ReturnType<typeof setTimeout> | undefined;
   private alive = true;
@@ -189,13 +198,15 @@ export class SystemFeed {
 
   /** `system.align`: compute (`apply` false) or write the alignment. Admin. */
   async align(apply: boolean): Promise<void> {
-    this.set({ align: { report: this.state.align?.report ?? null, error: "", running: true } });
+    this.set({ align: { report: this.state.align?.report ?? null, error: "", running: true, message: "" } });
     try {
       const report = (await this.session.core.call("hubSystem", { t: "system.align", apply })) as unknown as AlignReport;
-      this.set({ align: { report, error: "", running: false } });
+      // -- WP HWLK1F -- what was written and what was skipped, in the core's words
+      const said = apply ? ((await this.session.core.call("alignOutcome", { report, model: this.state.model })) as { message: string }) : null;
+      this.set({ align: { report, error: "", running: false, message: said?.message ?? "" } });
       void this.refresh();
     } catch (e) {
-      this.set({ align: { report: null, error: message(e), running: false } });
+      this.set({ align: { report: null, error: message(e), running: false, message: "" } });
     }
   }
 
@@ -206,9 +217,11 @@ export class SystemFeed {
    */
   async setModel(model: SystemModel, base: number): Promise<"ok" | "conflict" | "failed"> {
     try {
-      await this.session.core.call("hubSystem", { t: "system.set", model, revision: base });
+      const r = (await this.session.core.call("hubSystem", { t: "system.set", model, revision: base })) as { warnings?: unknown };
       await this.reloadModel();
-      this.set({ error: "" });
+      // -- WP HWLK1F -- kept, with the hub's warnings (a unit without the audio link)
+      const warnings = Array.isArray(r?.warnings) ? r.warnings.filter((w): w is string => typeof w === "string") : [];
+      this.set({ error: "", warnings });
       void this.refresh();
       return "ok";
     } catch (e) {
@@ -230,12 +243,19 @@ export class SystemFeed {
   /** `system.scene.apply`: recall a scene at one link frame on every unit. */
   async recall(sceneId: string): Promise<void> {
     const name = this.state.model?.scenes.find((s) => s.id === sceneId)?.name || sceneId;
-    this.set({ scene: { scene: sceneId, name, report: null, error: "", running: true, refusal: "" } });
+    this.set({ scene: { scene: sceneId, name, report: null, error: "", running: true, refusal: "", outcome: "" } });
     try {
       const report = (await this.session.core.call("hubSystem", { t: "system.scene.apply", scene: sceneId })) as unknown as SceneReport;
       if (sceneTaken(report)) {
         if (report.plan.path === "superframe") this.heldFrame = report.plan.frame;
-        this.set({ scene: { scene: sceneId, name, report, error: "", running: false, refusal: "" }, recalled: { scene: sceneId, name } });
+        // -- WP HWLK1F -- the core's sentence: "on time on every unit" only when it is true
+        const said = await this.session.core.call("sceneOutcome", {
+          scene: sceneId,
+          report,
+          model: this.state.model,
+          rateHz: this.state.status?.alignment.rateHz || undefined,
+        });
+        this.set({ scene: { scene: sceneId, name, report, error: "", running: false, refusal: "", outcome: said.message }, recalled: { scene: sceneId, name } });
       } else {
         // -- fixup sw3x -- nothing was taken: not recalled. Through the sender, say
         // which scene's frame it still holds (the status's, else the one this page set).
@@ -252,10 +272,10 @@ export class SystemFeed {
           heldFrame: pending,
           rateHz: this.state.status?.alignment.rateHz || undefined,
         });
-        this.set({ scene: { scene: sceneId, name, report, error: "", running: false, refusal: outcome.message } });
+        this.set({ scene: { scene: sceneId, name, report, error: "", running: false, refusal: outcome.message, outcome: "" } });
       }
     } catch (e) {
-      this.set({ scene: { scene: sceneId, name, report: null, error: message(e), running: false, refusal: "" } });
+      this.set({ scene: { scene: sceneId, name, report: null, error: message(e), running: false, refusal: "", outcome: "" } });
     }
     void this.refresh();
   }

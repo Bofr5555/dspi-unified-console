@@ -262,7 +262,7 @@ test.describe("an audio link installation on the hub", () => {
     await expect(confirm).toBeVisible();
     await shot(page, "hub-align-confirm", { full: false });
     await confirm.getByRole("button", { name: "Align" }).click();
-    await expect(align.getByLabel("Alignment result")).toContainText("Written");
+    await expect(align.getByLabel("Alignment result")).toContainText("The link delays were written");
     await shot(page, "hub-alignment-written", { of: align });
     // An unsaved change to the slots.
     await panel.getByRole("table", { name: "Link slots" }).getByRole("button", { name: "Main right IN3 from Ch 6" }).click();

@@ -155,7 +155,7 @@ fn admin(b: &Bench) -> WsPair {
     let hello = next(&mut ws, &["hello"]);
     assert_shape(&fixture("hello_hub.json"), &hello, &[], "hello");
     let mut pair = fixture("auth_pair.json");
-    pair["pin"] = b.pin().into();
+    pair["pin"] = b.admin_pin().into();
     pair["role"] = "admin".into();
     let ok = request(&mut ws, &pair);
     assert_eq!(ok["t"], "ok", "{ok}");

@@ -53,6 +53,11 @@ for a closed bench only.
   them (with the hub stopped, or live at its prompt).
 - A service has no terminal: stop it, pair from `uconsole hub` in a terminal,
   start it again (`service/README.md`). `--pair` prints the PIN to the log.
+- A PIN gives at most `control`: a client that asks for `admin` with a PIN gets
+  `control` (WP HWLK1F). Admin is given on the hub's own machine only:
+  `uconsole hub role <cid> admin` (or `role <cid> admin` at its prompt), or
+  `uconsole hub --pair-admin`, whose pairing window may give admin to the one
+  client that pairs in it and asks for it.
 - Changing between PIN and open access forgets every paired client, and needs
   `--forget-clients`.
 
@@ -64,7 +69,8 @@ for a closed bench only.
 | control | also change settings | `read`, `control` |
 | admin | everything, including the device configuration | `read`, `control`, `config` |
 
-A new client is `control` unless it asks for less. The core-voltage extension
+A new client is `control` unless it asks for less; asking for more with a PIN
+still gives `control` (see Pairing). The core-voltage extension
 has its own rule: no client on the network raises it above 1.20 V, whatever its
 role; do that on the hub machine. Reference: `crates/dspi-hub/src/policy.rs`.
 
