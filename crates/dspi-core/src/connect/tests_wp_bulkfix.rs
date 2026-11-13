@@ -389,7 +389,11 @@ fn wp_sw2_an_apply_at_frame_unmute_is_gated_as_an_unmute() {
     let (core, probe, _) = link_core(false);
     core.apply_at_frame(frame(&core), 2, 0, 0).unwrap();
     assert_eq!(suspects(&core), 0);
-    assert!(probe.mismatch_db() <= TOLERANCE_DB, "{}", probe.mismatch_db());
+    assert!(
+        probe.mismatch_db() <= TOLERANCE_DB,
+        "{}",
+        probe.mismatch_db()
+    );
 
     let (core, probe, _) = link_core(true);
     let e = core.apply_at_frame(frame(&core), 2, 0, 0).unwrap_err();
