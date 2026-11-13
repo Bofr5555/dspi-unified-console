@@ -139,6 +139,21 @@ test.describe("one device: the core's demo", () => {
     await tab(session, "System").click();
     await expect(session.getByRole("region", { name: "System" }).getByText("One device, shown as a single unit.")).toBeVisible();
     await shot(page, "demo-single-unit");
+    // -- WP WB8 -- Undo and Redo beside the tabs, after a change; the event log and Save Diagnostics…
+    await tab(session, "Main").click();
+    const volume = session.getByRole("slider", { name: "Volume" });
+    await volume.fill("150");
+    await volume.dispatchEvent("change");
+    const undo = session.getByRole("group", { name: "Undo and Redo" });
+    await expect(undo.getByRole("button", { name: "Undo" })).toBeEnabled();
+    await shot(page, "demo-undo", { full: false });
+    await tab(session, "Events").click();
+    const events = session.getByRole("region", { name: "Event log" });
+    await expect(events.getByRole("row").filter({ hasText: "Connected" })).toHaveCount(1);
+    await shot(page, "demo-events");
+    await Promise.all([page.waitForEvent("download"), events.getByRole("button", { name: "Save Diagnostics…" }).click()]);
+    await expect(events.getByRole("status").filter({ hasText: "Nothing was sent anywhere" })).toBeVisible();
+    await shot(page, "demo-diagnostics-saved", { of: events });
     await setMode(session, page, "Installer", "mode-dialog");
     await shot(page, "demo-installer");
     await setMode(session, page, "Simple");
@@ -189,6 +204,40 @@ test.describe("an audio link installation on the hub", () => {
     await expect(rail.getByRole("button", { name: "System mute" })).toContainText(": on", { timeout: 10_000 });
     await expect(rail.getByLabel("Alarms")).toHaveText("1 alarm", { timeout: 10_000 });
     await shot(page, "hub-rail-mute-alarm");
+    // -- WP WB8 -- the event log: the alarm beside the unit's own records
+    await tab(session, "Events").click();
+    const events = session.getByRole("region", { name: "Event log" });
+    await expect(events.getByRole("row").filter({ hasText: "Alarm" }).first()).toBeVisible();
+    await shot(page, "hub-events");
+  });
+
+  // -- WP WB8 -- an undo another console stepped in on: left as they set it, and named
+  test("undo: a value another console changed since", async ({ page, browser }) => {
+    test.setTimeout(60_000);
+    hub = await linkHub(["--open", "--forget-clients"]);
+    const mine = await openUnit(page, hub, "DEMO-LINK-A");
+    await tab(mine, "Main").click();
+    const set = async (s: Locator, pos: string) => {
+      const v = s.getByRole("slider", { name: "Volume" });
+      await v.fill(pos);
+      await v.dispatchEvent("change");
+    };
+    const before = (await mine.locator(".volume-value").textContent())!;
+    await set(mine, "128");
+    await expect(mine.locator(".volume-value")).not.toHaveText(before);
+    const mineShown = (await mine.locator(".volume-value").textContent())!;
+    const other = await browser.newPage();
+    try {
+      const theirs = await openUnit(other, hub, "DEMO-LINK-A");
+      await tab(theirs, "Main").click();
+      await set(theirs, "100");
+      await expect(mine.locator(".volume-value")).not.toHaveText(mineShown, { timeout: 10_000 });
+    } finally {
+      await other.close();
+    }
+    await mine.getByRole("group", { name: "Undo and Redo" }).getByRole("button", { name: "Undo" }).click();
+    await expect(mine.locator(".step-notice")).toContainText("since; it was left as they set it");
+    await shot(page, "hub-undo-other-writer", { full: false });
   });
 
   test("Installer: Clock and links, link delay and hop offset, link stats, the alignment", async ({ page }) => {

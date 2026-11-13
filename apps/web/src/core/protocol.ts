@@ -322,6 +322,41 @@ export interface EventRecord {
   count?: number;
 }
 
+// -- WP WB8 --
+/** One change in the core's journal (`dspi_core::HistoryEntry`). */
+export interface HistoryEntry {
+  path: string;
+  indices: number[];
+  before: ParamValue | null;
+  after: ParamValue;
+  /** `user`, `undo`, `redo`, ... */
+  source: string;
+  atMs: number;
+  undoable: boolean;
+}
+
+/** What `undo` or `redo` did (`dspi_core::HistoryMove`). */
+export interface HistoryMove {
+  entry: HistoryEntry | null;
+  /** Stepped over, newest first: changes that cannot be undone. */
+  skipped: HistoryEntry[];
+  /** Why nothing moved: another writer changed the value since, named. */
+  note: string | null;
+}
+
+/** `dspi_core::LinkSceneRecall`. */
+export interface SceneOutcome {
+  scene: string;
+  name: string;
+  taken: boolean;
+  frame: number;
+  leadMs: number;
+  onTime: boolean;
+  heldFrame: number | null;
+  /** One sentence to show: the outcome, or the refusal and what to do. */
+  message: string;
+}
+
 /** `dspi_core::RtaRequest`, the fields the page sets. */
 export interface RtaRequest {
   /** 0 input tap, 1 output tap. */
@@ -411,8 +446,22 @@ export interface CoreMethods extends AudioLinkMethods {
   rtaStart: { params: RtaRequest; result: null };
   rtaStop: { params: undefined; result: null };
   rta: { params: undefined; result: RtaView };
-  /** The core's demo simulations; refused for a real device. */
-  demo: { params: { action: "renameElsewhere"; name: string }; result: null };
+  /** The core's demo simulations; refused for a real device. -- WP WB8 -- `clip`: the channels in `mask` clip. */
+  demo: { params: { action: "renameElsewhere"; name: string } | { action: "clip"; mask: number }; result: null };
+  // -- WP WB8 -- the change history (crates/dspi-wasm/src/history.rs, WP P0W)
+  /** Step back; `entry` null when nothing moved, `note` names another writer whose change was left alone. */
+  undo: { params: undefined; result: HistoryMove };
+  redo: { params: undefined; result: HistoryMove };
+  /** Both at once, whichever name is called. */
+  canUndo: { params: undefined; result: { canUndo: boolean; canRedo: boolean } };
+  /** The newest `n` changes, newest first. */
+  history: { params: { n: number }; result: HistoryEntry[] };
+  /** A continuous drag starts (`true`) or ends (`false`): its writes join one undo step. */
+  setDragging: { params: { dragging: boolean }; result: null };
+  /** A whole PEQ band (0..9) in one write (`set_filter`): a graph drag's ticks, one journal change each. The band kept. */
+  filter: { params: { channel: number; band: number } & FilterParams; result: FilterParams };
+  /** The diagnostics bundle (`uconsole diag`'s zip), for the viewer to save: crates/dspi-wasm/src/diag.rs. */
+  diagnostics: { params: { app?: string; files?: { name: string; text: string }[] }; result: { name: string; size: number; base64: string } };
   close: { params: undefined; result: null };
   // -- WP WB4b -- Link: the choose_device flow, then `open` of `{kind: "hub"}`
   /**
@@ -466,6 +515,16 @@ export interface CoreMethods extends AudioLinkMethods {
    * -- fixup sw3x -- `conflict`: `system.set` with a `revision` the hub has moved past.
    */
   hubSystem: { params: { t: string; [field: string]: unknown }; result: Record<string, unknown> };
+  // -- WP WB8 --
+  /**
+   * What a recall sent with `hubSystem` (`system.scene.apply`) did, in the core's
+   * words (the outcome every client shows): `report` the hub's answer, `model`
+   * the installation, `heldFrame` the frame the sender was seen holding.
+   */
+  sceneOutcome: {
+    params: { scene: string; report: unknown; model: unknown; heldFrame?: number | null; rateHz?: number };
+    result: SceneOutcome;
+  };
   /** The role the hub gave this session: `viewer`, `control`, `admin`; "" with no hub. */
   hubRole: { params: undefined; result: { role: string } };
   /** Tests only: make the stub core lose its link. The real core answers `unknown_method`. */

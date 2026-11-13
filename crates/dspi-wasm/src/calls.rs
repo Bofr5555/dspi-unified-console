@@ -289,6 +289,10 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
             Ok(json!(core.event_log_export(p.serial)))
         }
         "eventLogDevices" => Ok(json!(core.event_log_devices())),
+        // -- WP WB8 -- the diagnostics bundle (src/diag.rs)
+        "diagnostics" => crate::diag::diagnostics(&core, params(req.params)?),
+        // -- WP WB8 -- a whole PEQ band in one write (src/band.rs)
+        "filter" => crate::band::filter(&core, params(req.params)?),
         "rtaStart" => rta_start(&core, params(req.params)?),
         "rtaStop" => {
             core.rta_set_request(RtaRequest::default());
@@ -675,6 +679,10 @@ fn rta(core: &DspiCore) -> Value {
 enum DemoAction {
     /// Another host renames the device: it arrives as a notification.
     RenameElsewhere { name: String },
+    // -- WP WB8 --
+    /// The device clips on the channels in `mask`: the next meter read
+    /// shows it and the event log records it.
+    Clip { mask: u32 },
 }
 
 /// `demo_rename_elsewhere`'s target for the device name (input sources are
@@ -689,6 +697,7 @@ fn demo_action(core: &DspiCore, demo: bool, a: DemoAction) -> CallResult {
         DemoAction::RenameElsewhere { name } => {
             core.demo_rename_elsewhere(DEVICE_NAME_TARGET, name)?;
         }
+        DemoAction::Clip { mask } => core.demo_clip(mask)?,
     }
     Ok(Value::Null)
 }

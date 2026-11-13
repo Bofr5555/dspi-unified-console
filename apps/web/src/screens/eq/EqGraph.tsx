@@ -356,6 +356,8 @@ export const EqGraph = memo(function EqGraph(props: GraphProps) {
       const bs = selection.size ? [...selection] : held;
       if (cur.kind === "drag") edits.release();
       gesture.current = { kind: "pinch", d0: Math.hypot(a!.x - b!.x, a!.y - b!.y), start: new Map(bs.map((x) => [x, edits.current(x)])) };
+      // -- WP WB8 -- one undo step for the pinch
+      edits.drag();
       return;
     }
     if (pointers.current.size > 2) return;
@@ -380,6 +382,8 @@ export const EqGraph = memo(function EqGraph(props: GraphProps) {
     const s = start ?? new Map(bs.map((b) => [b, edits.current(b)]));
     if (!s.has(grabbed)) s.set(grabbed, edits.current(grabbed));
     gesture.current = { kind: "drag", d: { grabbed, start: s, qMode }, last: { x: 0, y: 0 }, offset: { x: 0, y: 0 }, axis: null, pending: null };
+    // -- WP WB8 -- one undo step for the drag
+    edits.drag();
   };
 
   const continueDrag = (p: { x: number; y: number }, e: PointerEvent) => {
@@ -562,6 +566,12 @@ export const EqGraph = memo(function EqGraph(props: GraphProps) {
     if (cur.kind === "drag" || cur.kind === "pinch") edits.release();
     if (cur.kind === "marquee") setMarquee(null);
     gesture.current = { kind: "idle" };
+  };
+
+  // -- WP WB8 -- the capture gone (the element removed, the browser took it): as a cancel,
+  // once no pointer is left down
+  const onLostPointerCapture = (e: PointerEvent) => {
+    if (pointers.current.has(e.pointerId)) onPointerCancel(e);
   };
 
   const onPointerLeave = (e: PointerEvent) => {
@@ -785,6 +795,7 @@ export const EqGraph = memo(function EqGraph(props: GraphProps) {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
+      onLostPointerCapture={onLostPointerCapture}
       onPointerLeave={onPointerLeave}
       onContextMenu={onContextMenu}
       onKeyDown={onKeyDown}

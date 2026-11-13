@@ -13,6 +13,8 @@ import {
   type CoreMethods,
   type DeviceSnapshot,
   type DeviceTarget,
+  // -- WP WB8 --
+  type HistoryMove,
   type LinkDeviceRecord,
   type LinkPhase,
   type ParamValue,
@@ -42,6 +44,11 @@ export interface SessionState {
    * when nothing is, and always while read only.
    */
   unsaved: string[];
+  // -- WP WB8 --
+  /** What undo and redo can do now (the core's journal); both false while read only. */
+  history: { canUndo: boolean; canRedo: boolean };
+  /** What the last undo or redo has to say: another writer's change left alone (`warn`), changes stepped over (`info`). */
+  notice: { text: string; tone: "warn" | "info" } | null;
 }
 
 // -- WP WB6a --
@@ -49,7 +56,9 @@ export interface SessionState {
 export type ChangeMethod = "presetCopy" | "presetRevert" | "factoryReset"
   // -- WP WB6c --
   | "crossoverType"
-  | "crosspoint";
+  | "crosspoint"
+  // -- WP WB8 -- a whole band during a graph drag
+  | "filter";
 
 // -- WP WB6b --
 /** One write of `Session.writeAll`. */
@@ -69,6 +78,8 @@ export class Session {
     hubName: "",
     pinError: "",
     unsaved: [],
+    history: { canUndo: false, canRedo: false },
+    notice: null,
   };
   private readonly listeners = new Set<() => void>();
   private unsubscribe: () => void;
@@ -311,6 +322,102 @@ export class Session {
     }
   }
 
+  // -- WP WB8 -- undo and redo through the core's journal (P0W)
+
+  /** Step back (`forward` false) or forward through the core's journal, then the read-back. */
+  async step(forward: boolean): Promise<void> {
+    if (this.readOnlyReason || this.state.status !== "open") return;
+    try {
+      const m = await this.core.call(forward ? "redo" : "undo", undefined);
+      const snapshot = await this.core.call("state", undefined);
+      this.set({ snapshot, error: "", notice: await this.stepNotice(m) });
+    } catch (e) {
+      this.set({ error: message(e) });
+      void this.refreshHistory();
+    }
+  }
+
+  undo(): Promise<void> {
+    return this.step(false);
+  }
+
+  redo(): Promise<void> {
+    return this.step(true);
+  }
+
+  /** The words for what a step left alone: the core's note naming the other writer, else what it stepped over. */
+  private async stepNotice(m: HistoryMove): Promise<SessionState["notice"]> {
+    if (m.note) return { text: capitalise(m.note), tone: "warn" };
+    if (!m.skipped.length) return null;
+    const names = await Promise.all(m.skipped.map((e) => this.changeLabel(e.path)));
+    return {
+      text: names.length === 1 ? `Stepped over a change that cannot be undone: ${names[0]}` : `Stepped over changes that cannot be undone: ${names.join("; ")}`,
+      tone: "info",
+    };
+  }
+
+  /** A journal path in the registry's words (its label), as the core's notes name it. */
+  private async changeLabel(path: string): Promise<string> {
+    if (path === "eq.band") return "Filter band";
+    try {
+      return (await this.core.call("describe", { path })).label || path;
+    } catch {
+      return path;
+    }
+  }
+
+  dismissNotice(): void {
+    if (this.state.notice) this.set({ notice: null });
+  }
+
+  private drags = 0;
+  private dragSent = false;
+
+  /**
+   * A continuous drag (a slider, a graph handle) starts or ends: the core joins
+   * its writes into one undo step. Counted, so two pointers at once end the
+   * mark only when both have let go. Nothing is sent while read only.
+   */
+  setDragging(on: boolean): void {
+    if (on) {
+      if (this.drags++ === 0 && !this.readOnlyReason) {
+        this.dragSent = true;
+        void this.core.call("setDragging", { dragging: true }).catch(() => undefined);
+      }
+    } else if (this.drags > 0 && --this.drags === 0 && this.dragSent) {
+      this.dragSent = false;
+      void this.core.call("setDragging", { dragging: false }).catch(() => undefined);
+    }
+  }
+
+  private historyAsked: DeviceSnapshot | null = null;
+  private historyRunning = false;
+
+  /** After a new snapshot: what undo and redo can do now (no device I/O). One call at a time, as `refreshUnsaved`. */
+  private async refreshHistory(): Promise<void> {
+    if (this.historyRunning) return;
+    this.historyRunning = true;
+    try {
+      do {
+        const snap = this.state.snapshot;
+        this.historyAsked = snap;
+        const none = { canUndo: false, canRedo: false };
+        let next = none;
+        if (snap && !this.readOnlyReason && this.state.status === "open") {
+          try {
+            next = (await this.core.call("canUndo", undefined)) ?? this.state.history;
+          } catch {
+            next = this.state.history;
+          }
+        }
+        const h = this.state.history;
+        if (next.canUndo !== h.canUndo || next.canRedo !== h.canRedo) this.set({ history: { canUndo: next.canUndo, canRedo: next.canRedo } });
+      } while (this.historyAsked !== this.state.snapshot);
+    } finally {
+      this.historyRunning = false;
+    }
+  }
+
   async close(): Promise<void> {
     this.unsubscribe();
     await this.core.dispose();
@@ -337,6 +444,8 @@ export class Session {
     for (const l of this.listeners) l();
     // -- WP WB6b --
     if (this.state.snapshot !== this.unsavedAsked) void this.refreshUnsaved();
+    // -- WP WB8 --
+    if (this.state.snapshot !== this.historyAsked) void this.refreshHistory();
   }
 }
 

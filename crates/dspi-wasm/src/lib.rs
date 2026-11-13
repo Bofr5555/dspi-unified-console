@@ -45,9 +45,13 @@
 
 // -- WP SW1 --
 pub mod audio_link;
+// -- WP WB8 --
+pub mod band;
 pub mod calls;
 // -- WP WB6b --
 pub mod curves;
+// -- WP WB8 --
+pub mod diag;
 pub mod guard;
 // -- WP P0W --
 pub mod history;
