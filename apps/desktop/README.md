@@ -14,6 +14,22 @@ behaviour, with the Windows and Linux additions listed in `docs/PARITY.md`.
 - Settings are kept under the organisation and application
   `uconsole-for-dspi` (`AppIdentity.h`).
 
+## Notes for Linux users
+
+**The system volume doesn't reach the DSPi.** With PipeWire this needs the
+DSPi card profile from the firmware repository
+([`tools/linux-pipewire-card-profile`](https://github.com/WeebLabs/DSPi/tree/main/tools/linux-pipewire-card-profile)):
+run its `install-dspi-profile.sh`, then unplug and reconnect the DSPi.
+Without it PipeWire may show the DSPi as two outputs, or pick the IEC958
+profile with software volume, and the DSPi never sees a change. The profile is
+for PipeWire only; the classic PulseAudio daemon does not read it.
+
+**No blurred sidebar, on KDE or elsewhere.** The old Qt app drew a translucent,
+blurred sidebar on KDE Plasma (KWin's blur effect, and on Wayland also
+`kwayland-integration`). This app draws its sidebar solid on every desktop and
+uses no KDE libraries, so nothing needs installing for it, and it looks the
+same on X11 and Wayland.
+
 ## Building
 
 Toolchains run in the project's containers (`ci/run.sh`), never on the host:
