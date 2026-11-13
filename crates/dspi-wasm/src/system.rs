@@ -37,6 +37,8 @@ fn page_code(code: &str) -> &'static str {
         "denied" => "denied",
         "rate_limited" => "rate_limited",
         "bad_request" => "invalid",
+        // -- fixup sw3x -- `system.set` with a stale revision
+        "conflict" => "conflict",
         "timeout" => "transfer",
         _ => "link",
     }
@@ -159,6 +161,7 @@ mod tests_wp_sw3 {
         );
         assert_eq!(super::page_code("bad_request"), "invalid");
         assert_eq!(super::page_code("denied"), "denied");
+        assert_eq!(super::page_code("conflict"), "conflict");
         assert_eq!(run(h, "close", Value::Null)["ok"], true);
         set_caller_driven_on_this_thread(false);
     }

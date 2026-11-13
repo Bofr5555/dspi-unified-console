@@ -1912,7 +1912,12 @@ impl Connection {
         match t {
             "system.get" => {
                 let (model, revision) = hub.system_model();
-                json(serde_json::to_value(model).map(|m| json!({"model": m, "revision": revision})))
+                // -- fixup sw3x -- the role too: a role changed live reaches no client otherwise.
+                json(
+                    serde_json::to_value(model).map(
+                        |m| json!({"model": m, "revision": revision, "role": role_name(role)}),
+                    ),
+                )
             }
             "system.set" => {
                 let Some(model) = message.get("model").cloned() else {
@@ -1922,10 +1927,15 @@ impl Connection {
                     Ok(m) => m,
                     Err(e) => return err(id, "bad_request", Some(&e.to_string())),
                 };
-                match hub.system_set_model(model) {
+                // -- fixup sw3x -- `revision`: the one the model was edited from.
+                let expected = message.get("revision").and_then(Value::as_u64);
+                match hub.system_set_model_at(model, expected) {
                     Ok(revision) => ok(id, json!({"revision": revision})),
                     Err(crate::system::ModelRefused::Invalid(e)) => {
                         err(id, "bad_request", Some(&e.to_string()))
+                    }
+                    Err(e @ crate::system::ModelRefused::Stale { .. }) => {
+                        err(id, "conflict", Some(&e.to_string()))
                     }
                     Err(e @ crate::system::ModelRefused::NotSaved(_)) => {
                         err(id, "internal", Some(&e.to_string()))
@@ -1945,7 +1955,13 @@ impl Connection {
                     );
                 }
                 self.last_system_status = Some(now);
-                json(serde_json::to_value(hub.system_status()))
+                // -- fixup sw3x -- with this session's role now (see system.get)
+                json(serde_json::to_value(hub.system_status()).map(|mut v| {
+                    if let Value::Object(m) = &mut v {
+                        m.insert("role".into(), role_name(role).into());
+                    }
+                    v
+                }))
             }
             "system.mute" => {
                 let Some(muted) = message.get("muted").and_then(Value::as_bool) else {

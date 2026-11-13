@@ -1974,6 +1974,25 @@ mod tests_wp_sw3 {
         let a = &status.observed["DEMO-LINK-A"];
         assert_eq!(a.trim_scan.as_ref().map(|t| t.state.as_str()), Some("done"));
         assert!(a.stats.is_some());
+        // -- fixup sw3x -- a sender holds one superframe apply at a time: the
+        // status names the frame it holds, and a second is refused until then.
+        let first = running
+            .handle
+            .system_apply_scene("evening", Role::Admin)
+            .unwrap();
+        assert_eq!(first.plan.path, "superframe");
+        let held = running.handle.system_status().observed["DEMO-LINK-TX"].pending_apply_frame;
+        assert_eq!(held, Some(first.plan.frame));
+        let second = running
+            .handle
+            .system_apply_scene("closed", Role::Admin)
+            .unwrap();
+        assert_eq!(second.plan.path, "superframe");
+        assert!(
+            second.writes.iter().all(|w| w.result == "refused"),
+            "{:?}",
+            second.writes
+        );
         drop(running);
         // A kept model is loaded, not replaced, at the next start.
         let running = start(&opts, false).unwrap();

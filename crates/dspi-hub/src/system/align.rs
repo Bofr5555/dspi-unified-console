@@ -87,6 +87,10 @@ pub struct Observed {
     pub stats: Option<LinkStats>,
     /// A receiver's trim scan at link-up (`EXT_LINK_DIAG` version 1).
     pub trim_scan: Option<TrimScan>,
+    // -- fixup sw3x --
+    /// A sender's superframe apply still waiting for its frame: it takes no
+    /// other until that frame has passed (2.8.9).
+    pub pending_apply_frame: Option<u64>,
 }
 
 // -- WP SW3 --

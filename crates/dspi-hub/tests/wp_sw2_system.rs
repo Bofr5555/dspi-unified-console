@@ -1063,3 +1063,55 @@ fn wp_sw2x_system_status_is_rate_limited_and_mute_is_on_link() {
     drop((c, d));
     hub.stop();
 }
+
+// -- fixup sw3x --
+/// `system.set` with the `revision` its model was edited from is refused
+/// (`conflict`) once the hub has a newer one; without it, as before. And
+/// `system.get` / `system.status` carry the session's role now, so a client
+/// sees a role changed live (`set_role`) without reconnecting.
+#[test]
+fn wp_sw3x_a_stale_model_is_refused_and_the_role_is_current() {
+    let hub = networked(store_dir(), AccessMode::Pin);
+    let net = hub.network().unwrap();
+    let mut c = ws(&hub);
+    let pin = net.auth().begin_pairing(Instant::now()).unwrap().pin;
+    let r = request(
+        &mut c,
+        json!({"t": "auth.pair", "id": 1, "pin": pin, "name": "sw3x", "role": "admin"}),
+    );
+    assert_eq!(r["role"], "admin", "{r}");
+    let got = request(&mut c, json!({"t": "system.get", "id": 2}));
+    assert_eq!(got["role"], "admin", "{got}");
+    let base = got["revision"].as_u64().unwrap();
+    let m = serde_json::to_value(model()).unwrap();
+    let r = request(
+        &mut c,
+        json!({"t": "system.set", "id": 3, "model": m, "revision": base}),
+    );
+    assert_eq!(r["revision"], base + 1, "{r}");
+    // Another editor still holding `base`: refused, nothing changed.
+    let r = request(
+        &mut c,
+        json!({"t": "system.set", "id": 4, "model": m, "revision": base}),
+    );
+    assert_eq!(r["code"], "conflict", "{r}");
+    assert!(
+        r["msg"].as_str().unwrap().contains("changed on the hub"),
+        "{r}"
+    );
+    assert_eq!(hub.handle().system_model().1, base + 1);
+    // No revision: taken as before.
+    let r = request(&mut c, json!({"t": "system.set", "id": 5, "model": m}));
+    assert_eq!(r["revision"], base + 2, "{r}");
+    let s = request(&mut c, json!({"t": "system.status", "id": 6}));
+    assert_eq!(s["role"], "admin", "{s}");
+    // Made a viewer live: the next answer says so.
+    let cid = net.auth().clients()[0].cid;
+    assert!(net.set_role(cid, Role::Viewer));
+    assert_eq!(
+        request(&mut c, json!({"t": "system.get", "id": 7}))["role"],
+        "viewer"
+    );
+    let r = request(&mut c, json!({"t": "system.set", "id": 8, "model": m}));
+    assert_eq!(r["code"], "denied", "{r}");
+}

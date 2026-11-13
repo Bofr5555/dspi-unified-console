@@ -173,9 +173,9 @@ named like I1's, judged by the hub's roles, with no REST mirror yet.
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
-| `system.get` | any | | `model`, `revision` |
-| `system.set` | admin | `model` | `revision`; `bad_request` with the reason |
-| `system.status` | any | | `revision`, `observed` (by serial), `alignment`, `alarms` |
+| `system.get` | any | | `model`, `revision`, `role` (this session's, now) |
+| `system.set` | admin | `model`, optional `revision` (the one it was edited from) | `revision`; `bad_request` with the reason; `conflict` when `revision` is given and the hub has a newer one |
+| `system.status` | any | | `revision`, `observed` (by serial), `alignment`, `alarms`, `role` |
 | `system.align` | admin | `apply` (false: compute only) | `alignment`, `applied`, `writes` |
 | `system.scene.apply` | control, op by op | `scene` | `plan` (`frame`, `path`, `ops`, `leadFrames`, `systemMute`, `systemFlags`), `writes`, `frameAfterWrites`, `onTime` |
 | `system.mute` | control | `muted` (bool) | `writes`, one per reachable sender |
@@ -194,7 +194,14 @@ unit's worker five or more transfers.
 `EXT_LINK_STATUS`: `lineClass`, `channels`, `lockCount`, `crc8Errors`,
 `bitSlips`, `superframeErrors`, `vcxoPpm`, `fillFrames`) and a receiver's
 `trimScan` from `EXT_LINK_DIAG` (`state`, `trimLo`, `trimHi`, `trimUsed`,
-`cleanMask`), read only when the DIAG layout is version 1.
+`cleanMask`), read only when the DIAG layout is version 1. A sender's carries
+`pendingApplyFrame`, the frame of a superframe apply it still holds: it takes
+no other until that frame has passed, and refuses one meanwhile (the write's
+result is `refused`).
+
+-- fixup sw3x -- `role` in `system.get` and `system.status` is the session's role
+as the hub judges it now: a client sees a role changed live (`uconsole hub role`)
+at its next read, without reconnecting.
 
 Each write result is `{serial, element, what, result}` with `result` one of
 `ok`, `unchanged`, `skipped` (not reachable or out of range), `refused` (the
