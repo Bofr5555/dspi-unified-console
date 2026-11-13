@@ -43,6 +43,8 @@
     clippy::arithmetic_side_effects
 )]
 
+// -- WP SW1 --
+pub mod audio_link;
 pub mod calls;
 // -- WP WB6b --
 pub mod curves;

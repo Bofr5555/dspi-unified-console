@@ -288,10 +288,9 @@ fn wp_c15_connect_select_fetch_close() {
 
 #[test]
 fn wp_c15_a_connect_failure_names_the_cause() {
-    let hub = open_hub();
-    let url = hub.url();
-    drop(hub);
-    std::thread::sleep(Duration::from_millis(100));
+    // -- WP HUBFLAKE3 -- Port 0, where nothing can listen. A dropped hub's port could
+    // go to another test's hub before this dialled it.
+    let url = "ws://127.0.0.1:0/dspi/v1".to_owned();
     let core = DspiCore::new();
     // WP LK4: the first dial retries (within FIRST_DIAL_BUDGET / FAST here)
     let started = Instant::now();
@@ -313,7 +312,10 @@ fn wp_c15_a_connect_failure_names_the_cause() {
         "{:?}",
         started.elapsed()
     );
-    assert!(matches!(e, DspiError::Link { .. }), "{e:?}");
+    assert!(
+        matches!(&e, DspiError::Link { code, .. } if code == "io"),
+        "{e:?}"
+    );
     assert_eq!(core.link_status().phase, LinkPhase::Idle);
 }
 
@@ -655,6 +657,93 @@ fn wp_c15_revocation_asks_for_a_person() {
     assert_eq!(faults.sent("\"hello\""), 1, "not retried");
     core.link_pair("123456".into()).unwrap();
     wait_phase(&core, LinkPhase::ChooseDevice);
+}
+
+// -- WP HUBFLAKE3 --
+/// The revocation comes while the supervisor reads the device list again after the
+/// pairing: that read fails because the session ended, which is no failed list. The
+/// hub's 4002 decides, and asks for a person (it was `Closed`, about 1 run in 40).
+#[test]
+fn wp_c15_a_revocation_during_the_list_read_asks_for_a_person() {
+    let hub = pin_hub();
+    let core = DspiCore::new();
+    let faults = Arc::new(Faults::default());
+    core.link_connect_with(
+        hub.url(),
+        "wp-c15".into(),
+        "test".into(),
+        String::new(),
+        String::new(),
+        Tuning {
+            connector: Arc::new(FaultConnector {
+                faults: Arc::clone(&faults),
+            }),
+            timing: Timing {
+                request_timeout: Duration::from_secs(30),
+                ..Timing::default()
+            },
+            backoff_divisor: FAST,
+            ..Tuning::default()
+        },
+    )
+    .unwrap();
+    // Unanswered, and both waiting when the hub revokes: the pairing's own read of
+    // the list, and the supervisor's, which starts with it
+    hub.fail_device_list(DeviceListFault::Silent, 2);
+    let pairing = {
+        let core = Arc::clone(&core);
+        std::thread::spawn(move || core.link_pair("123456".into()))
+    };
+    wait_until("both list reads", || faults.sent("device.list") >= 2);
+    hub.revoke_all();
+    assert!(
+        pairing.join().unwrap().is_ok(),
+        "paired; the list failed after"
+    );
+    wait_phase(&core, LinkPhase::NeedsPairing);
+    let st = core.link_status();
+    assert_eq!(st.close_code, 4002);
+    assert!(st.token_refused);
+    // Not a passing state: still so once both reads have failed
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(core.link_status().phase, LinkPhase::NeedsPairing);
+    assert_eq!(faults.sent("\"hello\""), 1, "not retried");
+}
+
+// -- WP HUBFLAKE3 --
+/// The other order of the same moment: the supervisor has judged the revocation
+/// before `link_pair` takes the token the hub gave just before it. That must not
+/// undo it (the core dialled again with the revoked token, and the 4002 was lost).
+#[test]
+fn wp_c15_a_revocation_judged_before_the_pairing_returns_stands() {
+    let hub = pin_hub();
+    let core = DspiCore::new();
+    let (faults, _) = connect_faulty(&core, &hub, "");
+    core.link_pair("123456".into()).unwrap();
+    hub.revoke_all();
+    wait_until("the revocation judged", || {
+        core.lock()
+            .link
+            .as_ref()
+            .is_some_and(|s| s.loss_seen && s.needs_pin)
+    });
+    // What `link_pair` does with the hub's answer, coming now
+    core.lock()
+        .link
+        .as_mut()
+        .unwrap()
+        .paired("tok-from-the-pairing");
+    {
+        let inner = core.lock();
+        let s = inner.link.as_ref().unwrap();
+        assert!(s.needs_pin && s.token_refused, "still asks for a person");
+        assert!(s.target.token.is_empty(), "the revoked token is not kept");
+        assert_eq!(s.last_close.as_ref().map(|c| c.0), Some(Some(4002)));
+    }
+    wait_phase(&core, LinkPhase::NeedsPairing);
+    assert_eq!(core.link_status().close_code, 4002);
+    std::thread::sleep(Duration::from_millis(150));
+    assert_eq!(faults.sent("\"hello\""), 1, "not dialled again");
 }
 
 #[test]
@@ -1215,6 +1304,20 @@ fn meters_live(core: &DspiCore) {
     });
 }
 
+// -- WP HUBFLAKE3 --
+/// The meter rate granted, once the supervisor has read the grant: frames can flow
+/// before it has (the same race as LK4's).
+fn granted_hz(core: &DspiCore) -> u32 {
+    let side = bound_side(core);
+    let mut hz = None;
+    wait_until("the grant read", || {
+        let feed = guard(&side.feed);
+        hz = feed.meter_hz.filter(|_| feed.meter_pending.is_none());
+        hz.is_some()
+    });
+    hz.unwrap()
+}
+
 fn tunnelled_status(hub: &FakeHub) -> usize {
     hub.log().iter().filter(|e| e.2 == req::GET_STATUS).count()
 }
@@ -1303,7 +1406,7 @@ fn wp_c15_a_reduced_grant_is_taken() {
     connect_faulty(&core, &hub, "");
     bind(&core);
     meters_live(&core);
-    let hz = guard(&bound_side(&core).feed).meter_hz.unwrap();
+    let hz = granted_hz(&core);
     assert!((1..15).contains(&hz), "{hz}");
     assert_eq!(tunnelled_status(&hub), 0);
     assert!(!core.fetch_status().unwrap().stale);
@@ -1597,7 +1700,7 @@ fn wp_c15_a_meter_poll_never_delays_a_user_command() {
     let (faults, _) = connect_faulty(&core, &hub, "");
     bind(&core);
     meters_live(&core);
-    assert!(guard(&bound_side(&core).feed).meter_hz.unwrap() < 15);
+    assert!(granted_hz(&core) < 15);
     faults.out_delay_ms.store(40, Ordering::SeqCst);
 
     let stop = Arc::new(AtomicBool::new(false));

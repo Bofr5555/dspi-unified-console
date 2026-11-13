@@ -21,6 +21,125 @@ package se.bofr.dspi.core
  */
 interface DspiCoreApi : AutoCloseable {
     /**
+     * The unit's audio link as the connect probe found it, without
+     * traffic: `None` when the device has no link (stock firmware, the fork
+     * without it, role 0, a protocol version this build does not speak, or
+     * a hub that refused the read). `Disconnected` without a device.
+     */
+    @Throws(DspiException::class)
+    fun audioLinkInfo(): AudioLinkInfo?
+
+    /**
+     * Read `EXT_LINK_INFO` again and keep it: its delay limits follow the
+     * output latency option, so re-read after changing that. Errors as
+     * [`DspiCore::fetch_audio_link_status`].
+     */
+    @Throws(DspiException::class)
+    fun fetchAudioLinkInfo(): AudioLinkInfo
+
+    /**
+     * Read `EXT_LINK_STATUS`: lock state, frame counter, error counters,
+     * clock trim and phase error.
+     *
+     * `Unsupported`, with no traffic, without the link; also when the read
+     * stalls or a DSPi Link hub refuses it. `Disconnected` without a device;
+     * `Transfer` for a short or failed read.
+     */
+    @Throws(DspiException::class)
+    fun fetchAudioLinkStatus(): AudioLinkStatus
+
+    /**
+     * Read `EXT_LINK_SLOTS`: for each of the 8 matrix inputs, the link slot
+     * it takes, or [`AUDIO_LINK_SLOT_SILENT`]. Errors as
+     * [`DspiCore::fetch_audio_link_status`].
+     */
+    @Throws(DspiException::class)
+    fun fetchAudioLinkSlots(): List<Int>
+
+    /**
+     * Write `EXT_LINK_SLOTS`: which link channel (0-63) feeds each of the 8
+     * matrix inputs, [`AUDIO_LINK_SLOT_SILENT`] for none. A channel the
+     * stream does not carry yet plays silence until it does.
+     *
+     * Errors, with no traffic: `Disconnected`; `Unsupported` without the
+     * link; `InvalidArgument` for a length other than 8 or a value from 64
+     * to 254; `ReadOnly`. From the device: `Refused` when it stalls;
+     * `Denied`, `Locked` or `Transfer` from the link.
+     */
+    @Throws(DspiException::class)
+    fun setAudioLinkSlots(slots: List<Int>)
+
+    /**
+     * Read `EXT_LINK_PHASE`: the phase-lock mode, the fixed delay and the
+     * lock's state. Errors as [`DspiCore::fetch_audio_link_status`].
+     */
+    @Throws(DspiException::class)
+    fun fetchAudioLinkPhase(): AudioLinkPhase
+
+    /**
+     * Write `EXT_LINK_PHASE`: `mode` 0 (fill servo) or 1 (phase lock), the
+     * fixed delay `d_local` in link frames, and `hops_offset` (normally 0, a
+     * trim of -64..64). A change of mode or delay while phase-locked
+     * re-anchors: 2-6 ms of silence.
+     *
+     * Errors as [`DspiCore::set_audio_link_slots`]; `InvalidArgument` for a
+     * mode above 1 or an offset past 64. `Refused` when the effective delay
+     * is outside the unit's limits ([`DspiCore::fetch_audio_link_info`] has
+     * them as they are now).
+     */
+    @Throws(DspiException::class)
+    fun setAudioLinkPhase(mode: Int, dLocal: Int, hopsOffset: Int)
+
+    /**
+     * Read `EXT_FRAME_COUNTER`: the link frame, the unit's clock and its
+     * output frames at one instant. Errors as
+     * [`DspiCore::fetch_audio_link_status`].
+     */
+    @Throws(DspiException::class)
+    fun fetchAudioLinkFrameCounter(): AudioLinkFrameCounter
+
+    /**
+     * `EXT_APPLY_AT_FRAME`: run `op` ([`APPLY_OP_MAX`] lists them) on the
+     * samples of link frame `frame`, heard `d_local` frames later on every
+     * phase-locked unit at once; a frame already passed runs at once and
+     * reports "late". Op 0 cancels every pending op (`frame` ignored). The
+     * unit queues up to four.
+     *
+     * Errors as [`DspiCore::set_audio_link_slots`]; `InvalidArgument` for an
+     * op above [`APPLY_OP_MAX`] or an `arg` or `value` outside its range
+     * (unused ones 0; a preset slot 0-9, a master volume of -12800..0
+     * hundredths of a dB, a rate code 0-2, a delay of 0 samples or more).
+     * `Refused` when the queue is full, the link is not locked, or an
+     * output or delay is past the device's.
+     */
+    @Throws(DspiException::class)
+    fun applyAtFrame(frame: Long, op: Int, arg: Int, value: Int)
+
+    /**
+     * Read `EXT_APPLY_AT_FRAME`: ops pending and how the last one ended.
+     * Errors as [`DspiCore::fetch_audio_link_status`].
+     */
+    @Throws(DspiException::class)
+    fun fetchApplyAtFrameStatus(): ApplyAtFrameStatus
+
+    /**
+     * `EXT_LINK_STATS_RESET`: clear the link's error and lock counters.
+     * Errors as [`DspiCore::set_audio_link_slots`].
+     */
+    @Throws(DspiException::class)
+    fun resetAudioLinkStats()
+
+    /**
+     * Open the demo device as a unit receiving the audio link (the fake
+     * device's link model, `extension_channel_spec.md` 2.8's example
+     * receiver: locked on L1, 8 channels at 48 kHz, its frame counter
+     * running), for clients and the hub without hardware. Replaces any open
+     * device.
+     */
+    @Throws(DspiException::class)
+    fun openDemoAudioLink()
+
+    /**
      * Identify the firmware and read every parameter into the mirror.
      *
      * Reads `REQ_GET_PLATFORM`, then the bulk image in whatever wire format
@@ -1900,12 +2019,14 @@ interface DspiCoreApi : AutoCloseable {
     fun setLevellerMasks(detector: Int, apply: Int)
 
     /**
-     * Input source: 0 USB, 1 S/PDIF, 2 I2S, 3 ADAT, 4..6 S/PDIF inputs 2..4.
-     * The firmware switches on its main loop and ignores a source that is
-     * not selectable (a disabled S/PDIF input); its notification at the
-     * switch, or a re-read, corrects the mirror.
+     * Input source: 0 USB, 1 S/PDIF, 2 I2S, 3 ADAT, 4..6 S/PDIF inputs 2..4,
+     * 7 the audio link (WP SW1). The firmware switches on its main loop and
+     * ignores a source that is not selectable (a disabled S/PDIF input); its
+     * notification at the switch, or a re-read, corrects the mirror.
      *
-     * Errors: [`DspiError::InvalidArgument`] above 6; the connection and
+     * Errors: [`DspiError::InvalidArgument`] above 7;
+     * [`DspiError::Unsupported`], with no traffic, for 7 on a unit without
+     * the link input (`audio_link_info`'s `link_input`); the connection and
      * transfer errors of every setter.
      */
     @Throws(DspiException::class)

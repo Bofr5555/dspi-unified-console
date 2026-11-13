@@ -186,6 +186,8 @@ fn source_name(s: dspi_proto::enums::InputSource) -> &'static str {
         4 => "S/PDIF 2",
         5 => "S/PDIF 3",
         6 => "S/PDIF 4",
+        // -- WP SW1 (fixup sw1, F4) --
+        7 => "Audio link",
         _ => "USB",
     }
 }
@@ -1106,6 +1108,14 @@ impl Screen for StatsPanel {
 mod tests {
     use super::*;
     use crate::screens::panel::testing;
+
+    // -- WP SW1 (fixup sw1, F4) --
+    #[test]
+    fn wp_sw1_source_7_is_the_audio_link() {
+        use dspi_proto::enums::InputSource;
+        assert_eq!(source_name(InputSource::from_raw(7)), "Audio link");
+        assert_eq!(source_name(InputSource::from_raw(6)), "S/PDIF 4");
+    }
     use crate::screens::shared;
     use crate::shell::Tool;
     use crate::widgets::testing::key;

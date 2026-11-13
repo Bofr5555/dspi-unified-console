@@ -401,10 +401,10 @@ struct TcpReceiver {
 impl WsReceiver for TcpReceiver {
     fn recv(&mut self) -> WsRecv {
         loop {
-            // Read errors include our own failed pong: see Pipe::broken
-            if self.broken.load(Ordering::SeqCst) {
-                return WsRecv::Closed { code: self.close_code, reason: "write failed".into() };
-            }
+            // Read errors include our own failed pong: see Pipe::broken. -- WP LKCLOSE --
+            // A failed write does not stop the reading: the peer's close frame may be
+            // waiting, and its code says whether to reconnect. Once nothing more comes,
+            // a broken socket is closed (below), not idle.
             match self.ws.read() {
                 Ok(Message::Text(t)) => return WsRecv::Message(WsMessage::Text(t.as_str().to_owned())),
                 Ok(Message::Binary(b)) => return WsRecv::Message(WsMessage::Binary(b.to_vec())),

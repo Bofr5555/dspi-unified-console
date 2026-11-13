@@ -14,6 +14,7 @@
     clippy::arithmetic_side_effects
 )]
 
+use dspi_proto::ext::audio_link::{self as alink, LinkInfo};
 use dspi_proto::ext::{CoreVregStatus, LIST_READ_LEN, PairMap, ResetInfo, decode_list};
 use dspi_proto::generated::ext as g;
 use dspi_proto::generated::opcodes as op;
@@ -38,6 +39,11 @@ pub struct ExtState {
     /// reset and how long the run before lasted, as it was at connect (its
     /// uptime keeps counting; re-read with `ext::read_reset_info`).
     pub reset_info: Option<ResetInfo>,
+    // -- WP SW1 --
+    /// `EXT_LINK_INFO` (0x8000), when listed and readable: the unit's role on
+    /// the audio link. Read only when `EXT_LIST` names it, so firmware
+    /// without the link sends nothing more.
+    pub link_info: Option<LinkInfo>,
 }
 
 /// `wLength` of the `EXT_LIST` read: 64 bytes, room for 32 ids. The
@@ -146,6 +152,34 @@ impl ExtState {
         self.notify_features
             .is_some_and(|f| f & dspi_proto::ext::NOTIFY_FEAT_CLIP_EVENT != 0)
     }
+
+    // -- WP SW1 --
+    /// Whether the unit has the audio link: `EXT_LINK_INFO` was listed and
+    /// read, with a role and the protocol version this build speaks
+    /// (`extension_channel_spec.md` 2.8.13). The other link sub-commands are
+    /// used only when this is true and `EXT_LIST` names them.
+    pub fn audio_link(&self) -> bool {
+        self.link_info.is_some_and(|i| i.usable())
+    }
+
+    /// Whether the unit takes audio from a link, so input source 7 (LINK)
+    /// means the link input.
+    pub fn link_input(&self) -> bool {
+        self.link_info
+            .is_some_and(|i| i.usable() && i.role.receives())
+    }
+
+    /// Whether the device sends link-state events (0xE1, bit 2).
+    pub fn link_state_events(&self) -> bool {
+        self.notify_features
+            .is_some_and(|f| f & alink::NOTIFY_FEAT_LINK_STATE != 0)
+    }
+
+    /// Whether the device sends apply-result events (0xE2, bit 3).
+    pub fn apply_result_events(&self) -> bool {
+        self.notify_features
+            .is_some_and(|f| f & alink::NOTIFY_FEAT_APPLY_RESULT != 0)
+    }
 }
 
 /// Sorts a failed read into "absent" (`Ok`) or a transport failure (`Err`).
@@ -195,11 +229,18 @@ fn reads_for(supported: &[u16]) -> Vec<(u16, u16)> {
         assert!(ResetInfo::SIZE <= u16::MAX as usize);
         ResetInfo::SIZE as u16
     };
-    const KNOWN: [(u16, u16); 4] = [
+    // -- WP SW1 --
+    const LINK_INFO_LEN: u16 = {
+        assert!(LinkInfo::SIZE <= u16::MAX as usize);
+        LinkInfo::SIZE as u16
+    };
+    const KNOWN: [(u16, u16); 5] = [
         (g::EXT_CROSSFEED_PAIR_MAP, PAIR_MAP_LEN),
         (g::EXT_CORE_VREG, CORE_VREG_LEN),
         (g::EXT_NOTIFY_FEATURES, NOTIFY_FEATURES_LEN),
         (g::EXT_RESET_INFO, RESET_INFO_LEN),
+        // -- WP SW1 --
+        (alink::EXT_LINK_INFO, LINK_INFO_LEN),
     ];
     KNOWN
         .into_iter()
@@ -227,12 +268,15 @@ fn from_replies(supported: Vec<u16>, replies: &[(u16, Vec<u8>)]) -> ExtState {
         .map(|b| u32::from_le_bytes(*b));
     // -- WP FWX --
     let reset_info = reply(g::EXT_RESET_INFO).and_then(ResetInfo::decode);
+    // -- WP SW1 --
+    let link_info = reply(alink::EXT_LINK_INFO).and_then(LinkInfo::decode);
     ExtState {
         supported,
         pair_map,
         core_vreg,
         notify_features,
         reset_info,
+        link_info,
     }
 }
 
@@ -511,3 +555,8 @@ mod tests_wp_s3 {
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_fwx;
+
+// -- WP SW1 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_sw1;

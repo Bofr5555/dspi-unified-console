@@ -123,6 +123,11 @@ mod features;
 // -- WP FWX --
 mod diag;
 pub use diag::{EXT_FAKE_CLIP, FAKE_HW_REV};
+// -- WP SW1 --
+mod audio_link;
+pub use audio_link::{
+    EXT_FAKE_LINK_SIM, LINK_SIM_BANK_ERROR, LINK_SIM_LOCK, LINK_SIM_LOSE, LINK_SIM_REANCHOR,
+};
 // -- WP CG22 --
 mod analysis;
 // -- WP CG16 --
@@ -235,6 +240,14 @@ pub struct FakeOptions {
     /// bofr-main 04122d3, which has none of them. Only discoverable with
     /// [`FakeOptions::extensions`] on.
     pub diag_ext: bool,
+    // -- WP SW1 --
+    /// Answer the audio link's sub-commands as a receiving unit, report
+    /// `NOTIFY_FEAT_LINK_STATE` and `_APPLY_RESULT`, send their events and
+    /// take input source 7 (`fake/audio_link.rs`), as LK5/LK6 firmware is
+    /// specified to. Off: no link, as every firmware today. Only
+    /// discoverable with [`FakeOptions::extensions`] on.
+    /// [`FakeDevice::demo_audio_link`] has it on.
+    pub audio_link: bool,
 }
 
 /// `wLength` is 16 bits.
@@ -324,6 +337,16 @@ impl FakeDevice {
             ..FakeOptions::default()
         };
         Some(Self::new(Capture::demo_as_wire(wire)?, options))
+    }
+
+    // -- WP SW1 --
+    /// [`FakeDevice::demo`] as a unit receiving the audio link
+    /// ([`FakeOptions::audio_link`]): for clients and the hub without
+    /// hardware.
+    pub fn demo_audio_link() -> Self {
+        let dev = Self::demo_with(true);
+        dev.shared.lock().options.audio_link = true;
+        dev
     }
 
     fn demo_with(surfaces: bool) -> Self {
@@ -436,6 +459,17 @@ impl FakeRemote {
     pub fn disconnect(&self) {
         self.shared.lock().gone = true;
         self.shared.wake.notify_all();
+    }
+
+    // -- WP SW1 --
+    /// Play the audio link's side, as [`EXT_FAKE_LINK_SIM`] does: one of
+    /// [`LINK_SIM_LOSE`], [`LINK_SIM_LOCK`], [`LINK_SIM_REANCHOR`],
+    /// [`LINK_SIM_BANK_ERROR`]. False without [`FakeOptions::audio_link`] or
+    /// for another value.
+    pub fn link_sim(&self, op: u8) -> bool {
+        let ok = self.shared.lock().set_link(EXT_FAKE_LINK_SIM, &[op]) == Some(true);
+        self.shared.wake.notify_all();
+        ok
     }
 
     // -- WP CG11 --
@@ -566,6 +600,8 @@ pub const FAKE_ONLY_EXTENSIONS: &[u16] = &[
     EXT_FAKE_CS_LEARN,
     // -- WP FWX --
     EXT_FAKE_CLIP,
+    // -- WP SW1 --
+    EXT_FAKE_LINK_SIM,
 ];
 
 /// What can happen to a simulated device's core-voltage state (WP CG11).
@@ -1118,6 +1154,9 @@ struct State {
     // -- WP FWX --
     /// Identify's blink and last tone (`fake/diag.rs`).
     diag: diag::Diag,
+    // -- WP SW1 --
+    /// The audio link's state (`fake/audio_link.rs`).
+    audio_link: audio_link::AudioLink,
     /// Opcodes [`FakeRemote::stall`] made fail.
     stalled: Vec<u8>,
     /// SETs [`FakeRemote::ignore`] made ACK and drop.
@@ -1184,6 +1223,8 @@ impl State {
             subharm_solo: false,
             // -- WP FWX --
             diag: diag::Diag::default(),
+            // -- WP SW1 --
+            audio_link: audio_link::AudioLink::default(),
             stalled: Vec::new(),
             ignored: Vec::new(),
             notify_failures: 0,
@@ -1557,7 +1598,11 @@ impl State {
             // `case REQ_GET_USB_ERROR_STATS`).
             op::REQ_GET_USB_ERROR_STATS => Some(vec![0; 24]),
             op::REQ_RESET_USB_ERROR_STATS => Some(vec![1]),
-            op::REQ_EXTENSION if self.options.extensions => self.get_ext(value),
+            op::REQ_EXTENSION if self.options.extensions => match self.get_link(value) {
+                // -- WP SW1 --
+                Some(link) => link,
+                None => self.get_ext(value),
+            },
             _ => None,
         }
     }
@@ -1810,16 +1855,20 @@ impl State {
             gext::EXT_LIST => {
                 let mut ids = vec![gext::EXT_CROSSFEED_PAIR_MAP, gext::EXT_CORE_VREG];
                 // -- WP FWX --
-                if self.options.bulk_source || self.options.diag_ext {
+                if self.options.bulk_source || self.options.diag_ext || self.options.audio_link {
                     ids.push(gext::EXT_NOTIFY_FEATURES);
                 }
                 if self.options.diag_ext {
                     ids.extend([gext::EXT_IDENTIFY, gext::EXT_RESET_INFO]);
                 }
+                // -- WP SW1 --
+                ids.extend(self.link_ids());
                 Some(ids.iter().flat_map(|id| id.to_le_bytes()).collect())
             }
             // `NOTIFY_FEAT_BULK_SOURCE` (bit 0), `NOTIFY_FEAT_CLIP_EVENT` (bit 1).
-            gext::EXT_NOTIFY_FEATURES if self.options.bulk_source || self.options.diag_ext => {
+            gext::EXT_NOTIFY_FEATURES
+                if self.options.bulk_source || self.options.diag_ext || self.options.audio_link =>
+            {
                 Some(self.notify_features().to_le_bytes().to_vec())
             }
             // -- WP FWX --
@@ -2070,6 +2119,10 @@ impl State {
     fn set_ext(&mut self, value: u16, data: &[u8]) -> bool {
         // -- WP FWX --
         if let Some(ok) = self.set_diag(value, data) {
+            return ok;
+        }
+        // -- WP SW1 --
+        if let Some(ok) = self.set_link(value, data) {
             return ok;
         }
         match value {
