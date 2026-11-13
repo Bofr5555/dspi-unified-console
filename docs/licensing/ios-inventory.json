@@ -1,5 +1,5 @@
 {
- "repo_commit": "21855a7c",
+ "repo_commit": "776b8468",
  "rust": {
   "authors": [
    "Weeb Labs",
@@ -292,7 +292,8 @@
    "assets/notices/notices.json",
    "assets/onboarding/getting_started.json",
    "assets/onboarding/whatsnew.json",
-   "crates/dspi-core/src/audio_link.rs",
+   "crates/dspi-core/src/alink.rs",
+   "crates/dspi-core/src/alink/system.rs",
    "crates/dspi-core/src/autoeq.rs",
    "crates/dspi-core/src/callbacks.rs",
    "crates/dspi-core/src/connect.rs",
@@ -318,7 +319,6 @@
    "crates/dspi-core/src/journal.rs",
    "crates/dspi-core/src/lib.rs",
    "crates/dspi-core/src/link.rs",
-   "crates/dspi-core/src/link/system.rs",
    "crates/dspi-core/src/link_text.rs",
    "crates/dspi-core/src/monitor.rs",
    "crates/dspi-core/src/names.rs",
@@ -349,7 +349,7 @@
    "crates/dspi-proto/src/dsp.rs",
    "crates/dspi-proto/src/enums.rs",
    "crates/dspi-proto/src/ext.rs",
-   "crates/dspi-proto/src/ext/audio_link.rs",
+   "crates/dspi-proto/src/ext/alink.rs",
    "crates/dspi-proto/src/ext/diag.rs",
    "crates/dspi-proto/src/frame.rs",
    "crates/dspi-proto/src/lib.rs",
@@ -393,8 +393,8 @@
    "crates/dspi-session/src/write.rs",
    "crates/dspi-transport/src/clock.rs",
    "crates/dspi-transport/src/fake.rs",
+   "crates/dspi-transport/src/fake/alink.rs",
    "crates/dspi-transport/src/fake/analysis.rs",
-   "crates/dspi-transport/src/fake/audio_link.rs",
    "crates/dspi-transport/src/fake/bulk_db.rs",
    "crates/dspi-transport/src/fake/diag.rs",
    "crates/dspi-transport/src/fake/features.rs",
@@ -430,7 +430,7 @@
    "Weeb Labs",
    "owner (bofr)"
   ],
-  "commit": "21855a7c5319139c06d5663728073fdbb4736a23",
+  "commit": "776b8468d3108ea51609715ce6986e4c95d13fdd",
   "files": [
    "DSPi Console iOS/Info.plist",
    "DSPi Console/AboutLicence.swift",

@@ -1,16 +1,16 @@
-//! Link alarms (WP SW2, SYS2 7, PRO1 M3's shape): raised from what the hub
+//! Audio link alarms (WP SW2, SYS2 7, PRO1 M3's shape): raised from what the hub
 //! reads (`system.status`) and from the units' 0xE1 events as they arrive,
 //! acknowledged by a person, cleared when the condition goes. Pure state; the
 //! caller says what it saw and when.
 //!
 //! | Code | Raised | Cleared |
 //! |---|---|---|
-//! | `link_lost` | a unit not locked (searching, holdover, off), or an 0xE1 with a loss reason; its count is the unit's losses since it was raised, and a new loss raises it again (acknowledged or not) | locked again |
+//! | `alink_lost` | a unit not locked (searching, holdover, off), or an 0xE1 with a loss reason; its count is the unit's losses since it was raised, and a new loss raises it again (acknowledged or not) | locked again |
 //! | `unit_offline` | a unit of the model not attached | attached |
-//! | `link_errors` | [`ERROR_STEP`] or more CRC-16 errors (`crc16_errors`) within any [`ERROR_WINDOW_S`] of the hub's time; the growth between two reads is spread evenly over the time between them, so the rate, not the pollers, decides (a loss is `link_lost`'s) | [`ERROR_WINDOW_S`] with no new error |
+//! | `alink_errors` | [`ERROR_STEP`] or more CRC-16 errors (`crc16_errors`) within any [`ERROR_WINDOW_S`] of the hub's time; the growth between two reads is spread evenly over the time between them, so the rate, not the pollers, decides (a loss is `alink_lost`'s) | [`ERROR_WINDOW_S`] with no new error |
 //! | `reanchor` | an 0xE1 `REANCHOR` (a short silence) | acknowledged |
 //! | `system_muted` | the sender's system mute set (by `system.mute`, a scene or another host), seen at a read or a write | cleared |
-//! | `delay_below_min` | `EXT_LINK_PHASE` flag `D_BELOW_MIN` | the flag gone |
+//! | `delay_below_min` | `EXT_ALINK_PHASE` flag `D_BELOW_MIN` | the flag gone |
 
 use std::collections::BTreeMap;
 
@@ -18,10 +18,10 @@ use serde::Serialize;
 
 use super::align::Observed;
 
-/// CRC-16 errors within [`ERROR_WINDOW_S`] that raise `link_errors`.
+/// CRC-16 errors within [`ERROR_WINDOW_S`] that raise `alink_errors`.
 pub const ERROR_STEP: u32 = 16;
 // -- fixup fs1 (F5) --
-/// The window of `link_errors`, seconds of the hub's time; also how long
+/// The window of `alink_errors`, seconds of the hub's time; also how long
 /// without a new error clears it.
 pub const ERROR_WINDOW_S: u64 = 60;
 /// Cleared alarms kept for the record.
@@ -76,7 +76,7 @@ pub struct AlarmBook {
     /// The loss counter at the last read, by subject.
     losses: BTreeMap<String, u32>,
     // -- WP FIXS1 --
-    /// The losses before a subject's `link_lost` was raised, so its count
+    /// The losses before a subject's `alink_lost` was raised, so its count
     /// follows the unit's loss counter however often it is seen. `None`:
     /// raised by an 0xE1, the next read seeds it (fixup fs1 F1).
     loss_base: BTreeMap<String, Option<u32>>,
@@ -175,7 +175,7 @@ impl CrcRate {
 
 fn severity(code: &str) -> &'static str {
     match code {
-        "link_lost" | "unit_offline" | "delay_below_min" => "critical",
+        "alink_lost" | "unit_offline" | "delay_below_min" => "critical",
         _ => "warning",
     }
 }
@@ -223,7 +223,7 @@ impl AlarmBook {
 
     /// Clear an alarm if on. Returns it if it was.
     pub fn clear(&mut self, code: &str, subject: &str, now: u64) -> Option<Alarm> {
-        if code == "link_lost" {
+        if code == "alink_lost" {
             self.loss_base.remove(subject);
         }
         let mut a = self.active.remove(&(code.to_owned(), subject.to_owned()))?;
@@ -306,7 +306,7 @@ impl AlarmBook {
             let locked = state == "locked";
             self.set(
                 !locked,
-                "link_lost",
+                "alink_lost",
                 subject,
                 format!("{subject}: the audio link {}", state_words(state)),
                 now,
@@ -327,7 +327,7 @@ impl AlarmBook {
                 let count = losses.saturating_sub(*base).max(1);
                 if let Some(a) = self
                     .active
-                    .get_mut(&("link_lost".to_owned(), subject.to_owned()))
+                    .get_mut(&("alink_lost".to_owned(), subject.to_owned()))
                     && a.count != count
                 {
                     // -- fixup fs1 (F4) -- a new loss is raised again,
@@ -350,14 +350,14 @@ impl AlarmBook {
                 let n = peak.round();
                 self.set(
                     true,
-                    "link_errors",
+                    "alink_errors",
                     subject,
                     format!("{subject}: {n} CRC-16 errors on the audio link within a minute"),
                     now,
                     &mut out,
                 );
             } else if quiet {
-                out.extend(self.clear("link_errors", subject, now));
+                out.extend(self.clear("alink_errors", subject, now));
             }
         }
         if let Some((_, _, _, flags)) = o.phase {
@@ -381,7 +381,7 @@ impl AlarmBook {
             muted,
             "system_muted",
             subject,
-            format!("{subject}: the system is muted; every unit on its link plays silence"),
+            format!("{subject}: the system is muted; every unit on its audio link plays silence"),
             now,
             &mut out,
         );
@@ -401,7 +401,7 @@ impl AlarmBook {
         if is_loss || matches!(state, "searching" | "holdover") {
             // The read that follows counts the loss (WP FIXS1).
             let raised = self.raise_counted(
-                "link_lost",
+                "alink_lost",
                 subject,
                 format!(
                     "{subject}: the audio link was lost ({})",
@@ -416,7 +416,7 @@ impl AlarmBook {
             }
             out.extend(raised);
         } else if state == "locked" {
-            out.extend(self.clear("link_lost", subject, now));
+            out.extend(self.clear("alink_lost", subject, now));
         }
         if reason == "reanchor" {
             out.extend(self.raise(
@@ -442,7 +442,7 @@ fn state_words(state: &str) -> String {
     }
 }
 
-/// Why a link was lost, for people (an 0xE1 reason's name).
+/// Why an alink was lost, for people (an 0xE1 reason's name).
 fn reason_words(reason: &str) -> &str {
     match reason {
         "los" => "no signal at the input",
@@ -478,14 +478,14 @@ mod tests_wp_sw2 {
         lost.state = Some("holdover".into());
         let c = b.observe("A", Some(&lost), 2);
         let codes: Vec<&str> = c.iter().map(|a| a.code.as_str()).collect();
-        // -- WP FIXS1 -- a loss is link_lost's alone, not a counters alarm.
-        assert_eq!(codes, ["link_lost"]);
+        // -- WP FIXS1 -- a loss is alink_lost's alone, not a counters alarm.
+        assert_eq!(codes, ["alink_lost"]);
         assert_eq!(c[0].severity, "critical");
         // Again: not new.
         assert!(
             b.observe("A", Some(&lost), 3)
                 .iter()
-                .all(|a| a.code != "link_lost")
+                .all(|a| a.code != "alink_lost")
         );
         assert_eq!(b.active(), 1);
         let c = b.observe("A", Some(&locked(0, 1)), 4);
@@ -531,7 +531,7 @@ mod tests_wp_fixs1 {
         let on: Vec<Alarm> = b
             .list()
             .into_iter()
-            .filter(|a| a.code == "link_lost" && a.state != AlarmState::Cleared)
+            .filter(|a| a.code == "alink_lost" && a.state != AlarmState::Cleared)
             .collect();
         assert_eq!(on.len(), 1, "{on:?}");
         on[0].clone()
@@ -586,12 +586,12 @@ mod tests_wp_fixs1 {
         assert!(
             b.observe("A", Some(&locked(100, 3)), 2)
                 .iter()
-                .all(|a| a.code != "link_errors")
+                .all(|a| a.code != "alink_errors")
         );
         assert!(b.observe("A", Some(&locked(110, 3)), 3).is_empty());
         let c = b.observe("A", Some(&locked(110 + ERROR_STEP, 3)), 4);
         assert_eq!(c.len(), 1);
-        assert_eq!(c[0].code, "link_errors");
+        assert_eq!(c[0].code, "alink_errors");
         assert_eq!(
             c[0].message,
             "A: 26 CRC-16 errors on the audio link within a minute"
@@ -643,7 +643,7 @@ mod tests_fixup_fs1 {
         let mut hold = locked(0, 2);
         hold.state = Some("holdover".into());
         assert!(b.observe("B", Some(&hold), 5).is_empty());
-        let a = on(&b, "link_lost");
+        let a = on(&b, "alink_lost");
         assert_eq!(a.len(), 1);
         assert_eq!(
             a[0].count, 1,
@@ -664,7 +664,7 @@ mod tests_fixup_fs1 {
         b.acknowledge(id, 3).unwrap();
         // The same loss seen again: still acknowledged, nothing said.
         assert!(b.observe("B", Some(&held(0, 1)), 4).is_empty());
-        assert_eq!(on(&b, "link_lost")[0].state, AlarmState::Acknowledged);
+        assert_eq!(on(&b, "alink_lost")[0].state, AlarmState::Acknowledged);
         // Relock missed by the reads, a second loss: raised again, said, counted.
         let c = b.observe("B", Some(&held(0, 2)), 5);
         assert_eq!(c.len(), 1, "{c:?}");
@@ -672,7 +672,7 @@ mod tests_fixup_fs1 {
             (c[0].id, c[0].count, c[0].state),
             (id, 2, AlarmState::Raised)
         );
-        assert_eq!(on(&b, "link_lost")[0].state, AlarmState::Raised);
+        assert_eq!(on(&b, "alink_lost")[0].state, AlarmState::Raised);
     }
 
     /// The review's flapping case: 20 errors on every other read, read each
@@ -711,7 +711,7 @@ mod tests_fixup_fs1 {
                 }
             }
             assert!(raised.is_some(), "polled every {step} s: no alarm");
-            assert_eq!(on(&b, "link_errors").len(), 1);
+            assert_eq!(on(&b, "alink_errors").len(), 1);
         }
         // Below the rate: 15 errors spread over each minute never alarm.
         for step in [1u64, 30, 60] {
@@ -737,7 +737,7 @@ mod tests_fixup_fs1 {
         );
         // 16 errors over 30 s: an alarm.
         let c = b.observe("A", Some(&locked(1532, 0)), 4 * 3600 + 230);
-        assert_eq!((c.len(), c[0].code.as_str()), (1, "link_errors"));
+        assert_eq!((c.len(), c[0].code.as_str()), (1, "alink_errors"));
         // 32 errors over 2 minutes: 16 in the minute, a window between the
         // reads: also an alarm (another unit).
         b.observe("C", Some(&locked(0, 0)), 0);

@@ -1,7 +1,7 @@
 // -- WP LKUI1 -- the System screen (route DspiRoutes.SYSTEM): the hub's audio link
 // installation as the web console's System view shows it (SW3), touch-sized. Every
-// element with its role and link state, the link delay with ms beside it, the link
-// delay range, the hop offset and the phase error; the scenes; and Clock and links,
+// element with its role and alink state, the audio link delay with ms beside it, the alink
+// delay range, the hop offset and the phase error; the scenes; and Clock and audio links,
 // folded until opened. The hub's role decides what may be changed: a Viewer gets
 // nothing that writes, and G1's read-only state turns writing controls off too.
 // Words: docs/GLOSSARY.md 3.1; firmware names only in the help line under a field.
@@ -53,7 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import se.bofr.dspi.bridge.DspiBridge
-import se.bofr.dspi.core.LinkSystemUnit
+import se.bofr.dspi.core.AlinkSystemUnit
 import se.bofr.dspi.ui.DspiColors
 import se.bofr.dspi.ui.DspiTheme
 import se.bofr.dspi.ui.DspiType
@@ -81,7 +81,7 @@ internal fun healthColor(c: DspiColors, health: String): Color = when (health) {
     else -> c.gray
 }
 
-private fun stateColor(c: DspiColors, u: LinkSystemUnit): Color = when {
+private fun stateColor(c: DspiColors, u: AlinkSystemUnit): Color = when {
     !u.connected -> c.gray
     // -- WP HWLK1F -- a firmware without the audio link: a fact, not a fault
     u.state == "no_alink" -> c.gray
@@ -188,8 +188,8 @@ internal fun SystemView(model: SystemScreenModel, onBack: () -> Unit) {
             }
             for (issue in view.issues) Text(issue, style = DspiType.caption, color = c.orange)
 
-            // Clock and links
-            ClockAndLinks(model, s)
+            // Clock and audio links
+            AlinkClock(model, s)
             Spacer(Modifier.heightIn(min = 24.dp))
         }
     }
@@ -208,8 +208,8 @@ private fun SectionTitle(text: String) {
 }
 
 @Composable
-private fun UnitRow(u: LinkSystemUnit, c: DspiColors) {
-    val state = if (u.pending) "${u.stateWord}, link delay pending" else u.stateWord
+private fun UnitRow(u: AlinkSystemUnit, c: DspiColors) {
+    val state = if (u.pending) "${u.stateWord}, audio link delay pending" else u.stateWord
     Column(
         Modifier.fillMaxWidth().padding(12.dp).semantics(mergeDescendants = true) {
             contentDescription = listOf(u.name, u.role, state).joinToString(", ")
@@ -234,8 +234,8 @@ private fun UnitRow(u: LinkSystemUnit, c: DspiColors) {
             color = if (u.pending) c.orange else c.secondaryLabel
         )
         if (u.kind == "unit") {
-            val delay = u.linkDelayFrames?.let { "Link delay $it frames (${ms(u.linkDelayMs)})" } ?: "Link delay –"
-            val range = if (u.linkDelayMin != null && u.linkDelayMax != null) "range ${u.linkDelayMin}–${u.linkDelayMax}" else null
+            val delay = u.alinkDelayFrames?.let { "Audio link delay $it frames (${ms(u.alinkDelayMs)})" } ?: "Audio link delay –"
+            val range = if (u.alinkDelayMin != null && u.alinkDelayMax != null) "range ${u.alinkDelayMin}–${u.alinkDelayMax}" else null
             Text(listOfNotNull(delay, range).joinToString(", "), style = DspiType.caption, color = c.label)
             val extra = listOfNotNull(
                 u.hopOffset?.let { "Hop offset $it" },
@@ -249,16 +249,16 @@ private fun UnitRow(u: LinkSystemUnit, c: DspiColors) {
 }
 
 @Composable
-private fun ClockAndLinks(model: SystemScreenModel, s: SystemUiState) {
+private fun AlinkClock(model: SystemScreenModel, s: SystemUiState) {
     val c = DspiTheme.colors
     val view = s.view ?: return
     var open by rememberSaveable { mutableStateOf(false) }
     Row(
         Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { open = !open }
-            .semantics { contentDescription = if (open) "Clock and links, open" else "Clock and links, folded" },
+            .semantics { contentDescription = if (open) "Clock and audio links, open" else "Clock and audio links, folded" },
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text("CLOCK AND LINKS", style = DspiType.sectionLabel, color = c.secondaryLabel, modifier = Modifier.weight(1f))
+        Text("CLOCK AND AUDIO LINKS", style = DspiType.sectionLabel, color = c.secondaryLabel, modifier = Modifier.weight(1f))
         Text(if (open) "Hide" else "Show", style = DspiType.caption, color = c.accent)
     }
     if (!open) return
@@ -331,12 +331,12 @@ private fun FlowRowButtons(model: SystemScreenModel, s: SystemUiState, editOn: B
             onClick = { askAlign = true },
             enabled = editOn && !s.draft.dirty,
             modifier = Modifier.heightIn(min = 48.dp)
-        ) { Text("Align link delays…") }
+        ) { Text("Align audio link delays…") }
     }
     if (askAlign) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { askAlign = false },
-            title = { Text("Align link delays?") },
+            title = { Text("Align audio link delays?") },
             text = { Text("Every unit restarts its outputs in step with a short silence (2 to 6 ms).") },
             confirmButton = {
                 TextButton(onClick = {

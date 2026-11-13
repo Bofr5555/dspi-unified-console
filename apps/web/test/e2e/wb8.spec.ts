@@ -2,7 +2,7 @@
 // session without them, an undo another writer stepped in on), the event log
 // (a clip, the hub's alarms, filter by unit, copy) and Save Diagnostics…, in
 // Chromium, Firefox and Chromium at 375 px. On the core's demo device through
-// the embedding page, and on `uconsole --demo hub --web --audio-link` for what
+// the embedding page, and on `uconsole --demo hub --web --alink` for what
 // needs a hub (two consoles on one DSPi, alarms).
 
 import { spawn, type ChildProcess } from "node:child_process";
@@ -305,7 +305,7 @@ async function linkHub(): Promise<OwnHub> {
   const store = `${process.env.TMPDIR ?? "test-results"}/wb8-${process.pid}-${Math.random().toString(36).slice(2)}`;
   const child = spawn(
     process.env.DSPI_TERM!,
-    ["--demo", "hub", "--web", "--loopback", "--audio-link", "--console", "dist", "--open", "--forget-clients", "--port", "0", "--json", "--no-keep-awake", "--store", store],
+    ["--demo", "hub", "--web", "--loopback", "--alink", "--console", "dist", "--open", "--forget-clients", "--port", "0", "--json", "--no-keep-awake", "--store", store],
     { stdio: ["ignore", "pipe", "inherit"] },
   );
   const lines = createInterface({ input: child.stdout! });
@@ -341,7 +341,7 @@ test.describe("WB8 on a hub", () => {
   test("WB8 undo: a value another console changed since is left as they set it, and they are named", async ({ page, browser }) => {
     test.setTimeout(60_000);
     hub = await linkHub();
-    const mine = await openUnit(page, hub, "DEMO-LINK-A");
+    const mine = await openUnit(page, hub, "DEMO-ALINK-A");
     await mine.getByRole("tab", { name: "Main" }).click();
     const before = await mine.locator(".volume-value").textContent();
     await setVolume(mine, "128");
@@ -350,7 +350,7 @@ test.describe("WB8 on a hub", () => {
     await expect(undoButton(mine)).toBeEnabled();
     const other = await browser.newPage();
     try {
-      const theirs = await openUnit(other, hub, "DEMO-LINK-A");
+      const theirs = await openUnit(other, hub, "DEMO-ALINK-A");
       await theirs.getByRole("tab", { name: "Main" }).click();
       await setVolume(theirs, "100");
       await expect(theirs.locator(".volume-value")).not.toHaveText(mineShown);
@@ -372,7 +372,7 @@ test.describe("WB8 on a hub", () => {
 
   test("WB8 events: the installation's alarms by unit, beside the device's own records", async ({ page }) => {
     hub = await linkHub();
-    const session = await openUnit(page, hub, "DEMO-LINK-B");
+    const session = await openUnit(page, hub, "DEMO-ALINK-B");
     const rail = session.getByRole("complementary", { name: "Status" });
     const mute = rail.getByRole("button", { name: "System mute" });
     await mute.click();

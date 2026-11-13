@@ -1,10 +1,10 @@
 //! The hub's audio-link system model (WP SW3, `docs/integrator/audio-link.md`):
 //! the `system.*` requests of the hub this session is on, for the web console's
-//! System view, scene bar, status rail and "Clock and links" panel. They go on
+//! System view, scene bar, status rail and "Clock and audio links" panel. They go on
 //! the session's own Link connection (`DspiCore::link_hub_request`), so the hub
 //! judges each by this session's role: reads for every role, scenes, the system
 //! mute and acknowledging an alarm for control, the model and the alignment for
-//! admin. Not the unit's own audio link calls ([`crate::audio_link`]).
+//! admin. Not the unit's own audio link calls ([`crate::alink`]).
 //!
 //! `hubSystem {t, ...}` sends one of [`ALLOWED`] with the other fields beside
 //! it and answers the hub's `ok` without `t` and `id`. A refusal keeps the
@@ -95,8 +95,8 @@ pub fn request(core: &DspiCore, params: Value) -> CallResult {
 // -- WP WB8 --
 /// `sceneOutcome {scene, report, model, heldFrame?, rateHz?}`: what a recall
 /// the page sent (`hubSystem` `system.scene.apply`) did, in the core's words
-/// (`dspi_core::link::system::scene_recall_outcome`, the outcome every client
-/// shows): `LinkSceneRecall`. No traffic.
+/// (`dspi_core::link::alink_system::scene_recall_outcome`, the outcome every client
+/// shows): `AlinkSceneRecall`. No traffic.
 fn scene_outcome(params: Value) -> CallResult {
     #[derive(serde::Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -118,7 +118,7 @@ fn scene_outcome(params: Value) -> CallResult {
             "sceneOutcome needs the hub's report",
         ));
     }
-    let outcome = dspi_core::link::system::scene_recall_outcome(
+    let outcome = dspi_core::link::alink_system::scene_recall_outcome(
         &p.scene,
         &p.report,
         &p.model,
@@ -130,8 +130,8 @@ fn scene_outcome(params: Value) -> CallResult {
 
 // -- WP HWLK1F --
 /// `alignOutcome {report, model}`: what a `system.align` the page sent did, in
-/// the core's words (`dspi_core::link::system::system_align_outcome`, what
-/// every client shows): `LinkSystemAlign`. No traffic.
+/// the core's words (`dspi_core::link::alink_system::system_align_outcome`, what
+/// every client shows): `AlinkSystemAlign`. No traffic.
 fn align_outcome(params: Value) -> CallResult {
     #[derive(serde::Deserialize)]
     struct P {
@@ -147,7 +147,7 @@ fn align_outcome(params: Value) -> CallResult {
             "alignOutcome needs the hub's report",
         ));
     }
-    let outcome = dspi_core::link::system::system_align_outcome(&p.report, &p.model);
+    let outcome = dspi_core::link::alink_system::system_align_outcome(&p.report, &p.model);
     Ok(crate::calls::tidy(&outcome))
 }
 
@@ -211,7 +211,7 @@ mod tests_wp_sw3 {
         assert_eq!(v["heldFrame"], 10_100);
         assert_eq!(
             v["message"],
-            "Closed was refused: a scene is already scheduled on the sender for link frame 10100, \
+            "Closed was refused: a scene is already scheduled on the sender for audio link frame 10100, \
              100 ms after this recall. The sender takes one scene at a time; recall Closed again \
              after that. System mute unchanged."
         );

@@ -215,7 +215,7 @@ for s in "${steps[@]}"; do
       # runs its other launches (demo entry, tray, pseudo locale, the hardware
       # dry run, QP19). DSPI_SMOKE_SECTION=<name> runs one section.
       # -- WP QP13 -- The fake hub is back, for the Link sections (DSPI_SMOKE_FAKEHUB).
-      # -- WP LKUI1 -- And the Terminal, whose `--demo hub --audio-link` is the
+      # -- WP LKUI1 -- And the Terminal, whose `--demo hub --alink` is the
       # System window's hub (DSPI_SMOKE_UCONSOLE).
       $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && $FAKEHUB && $TERMINAL && cmake -S apps/desktop/qt -B /work/build-desktop-qt-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt-smoke --target uconsole-for-dspi-smoke && DSPI_SMOKE_FAKEHUB=/target/release/dspi-link-fakehub DSPI_SMOKE_UCONSOLE=/target/release/$CMD DSPI_SMOKE_SECTION=${DSPI_SMOKE_SECTION:-} apps/desktop/qt/smoke/run.sh /work/build-desktop-qt-smoke/uconsole-for-dspi-smoke /work/smoke-out" ;;
     qt-windows)

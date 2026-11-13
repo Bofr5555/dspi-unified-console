@@ -67,7 +67,7 @@ class DemoCoreAn28Test {
     }
 
     /** A new way out to hardware fails here until it is classified, instead of passing to the core by delegation.
-     *  `openDemoAudioLink` (SW1) opens only the core's fake device with an audio-link model, like `openDemo`, so it is
+     *  `openDemoAlink` (SW1) opens only the core's fake device with an audio-link model, like `openDemo`, so it is
      *  classified as safe to delegate. */
     @Test
     fun an28EveryCallThatLooksLikeAWayOutIsListed() {
@@ -76,7 +76,7 @@ class DemoCoreAn28Test {
             "^(open|flash|scan|select|poll|enter|bootloader|linkConnect|linkPair|linkSelect|linkDevices|linkRetry|linkSetUrl|linkFetch)|InBootloader"
         )
         val guarded = setOf(
-            "openFd", "openDemo", "openDemoAudioLink", "scanDevices", "selectDevice", "pollHotplug", "enterBootloader", "bootloaderCounts",
+            "openFd", "openDemo", "openDemoAlink", "scanDevices", "selectDevice", "pollHotplug", "enterBootloader", "bootloaderCounts",
             "bootloaderDrives",
             "flashToDrive", "flashToDriveGuarded", "firmwareGuardBoardInBootloader", "linkConnect", "linkPair", "linkDevices",
             "linkSelectDevice", "linkRetryNow", "linkSetUrl", "linkFetchInfo"

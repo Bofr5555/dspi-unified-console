@@ -1,8 +1,8 @@
 //! WP SW2: the hub's system model against the fake device's audio link model
-//! (`FakeOptions::audio_link`, `AudioLinkSetup`): a sender, a fan-out that
+//! (`FakeOptions::alink`, `AlinkSetup`): a sender, a fan-out that
 //! re-emits 3 frames late, a repeater and four units behind them, all attached to
 //! one hub. The alignment is computed from what they report and written to them;
-//! scenes go through the sender or to each unit; a lost link raises an alarm; and
+//! scenes go through the sender or to each unit; a lost alink raises an alarm; and
 //! the model persists and is served as `system.*` over Link.
 #![allow(clippy::arithmetic_side_effects)]
 
@@ -15,9 +15,9 @@ use std::time::{Duration, Instant};
 
 use dspi_hub::system::model::*;
 use dspi_hub::{AccessMode, Hub, HubConfig, NetworkConfig, Role, SystemRefused};
-use dspi_proto::ext::audio_link::{self as alink, ApplyOp, ApplyRequest, LinkRole};
+use dspi_proto::ext::alink::{self, AlinkRole, ApplyOp, ApplyRequest};
 use dspi_proto::generated::opcodes as op;
-use dspi_transport::fake::{AudioLinkSetup, LINK_SIM_LOCK, LINK_SIM_LOSE, LINK_SIM_REANCHOR};
+use dspi_transport::fake::{ALINK_SIM_LOCK, ALINK_SIM_LOSE, ALINK_SIM_REANCHOR, AlinkSetup};
 use dspi_transport::{
     DeviceDescriptor, FakeDevice, FakeRemote, InRead, NotificationSource, Transport, TransportCaps,
     TransportError,
@@ -27,14 +27,14 @@ use tungstenite::{Message, WebSocket};
 
 const WAIT: Duration = Duration::from_secs(10);
 
-/// Every link write a device was sent: (sub-command, payload).
+/// Every alink write a device was sent: (sub-command, payload).
 type Writes = Arc<Mutex<Vec<(u16, Vec<u8>)>>>;
 
-/// A fake that records its link writes.
+/// A fake that records its alink writes.
 struct Logged {
     inner: FakeDevice,
     writes: Writes,
-    /// -- fixup sw2x -- each link write takes this long (a busy worker, a
+    /// -- fixup sw2x -- each alink write takes this long (a busy worker, a
     /// Link-bridged unit); reads stay quick, so the hub's estimate misses it.
     slow_writes: Duration,
 }
@@ -73,18 +73,18 @@ impl Transport for Logged {
     }
 }
 
-/// One fake on the link, attached to `hub`.
+/// One fake on the alink, attached to `hub`.
 struct Fake {
     writes: Writes,
     remote: FakeRemote,
 }
 
-fn attach(hub: &Hub, serial: &str, setup: AudioLinkSetup) -> Fake {
+fn attach(hub: &Hub, serial: &str, setup: AlinkSetup) -> Fake {
     attach_slow(hub, serial, setup, Duration::ZERO)
 }
 
-fn attach_slow(hub: &Hub, serial: &str, setup: AudioLinkSetup, slow_writes: Duration) -> Fake {
-    let dev = FakeDevice::demo_audio_link_as(setup).with_serial(serial);
+fn attach_slow(hub: &Hub, serial: &str, setup: AlinkSetup, slow_writes: Duration) -> Fake {
+    let dev = FakeDevice::demo_alink_as(setup).with_serial(serial);
     let remote = dev.remote();
     let writes = Writes::default();
     hub.attach(
@@ -99,10 +99,10 @@ fn attach_slow(hub: &Hub, serial: &str, setup: AudioLinkSetup, slow_writes: Dura
     Fake { writes, remote }
 }
 
-fn receiver(hops: u8) -> AudioLinkSetup {
-    AudioLinkSetup {
+fn receiver(hops: u8) -> AlinkSetup {
+    AlinkSetup {
         hops,
-        ..AudioLinkSetup::default()
+        ..AlinkSetup::default()
     }
 }
 
@@ -121,19 +121,19 @@ fn rig(hub: &Hub) -> Rig {
     attach(
         hub,
         "SW2-FAN",
-        AudioLinkSetup {
-            role: LinkRole::FanOut,
+        AlinkSetup {
+            role: AlinkRole::FanOut,
             hop_delay_frames: 3,
-            ..AudioLinkSetup::default()
+            ..AlinkSetup::default()
         },
     );
     Rig {
         tx: attach(
             hub,
             "SW2-TX",
-            AudioLinkSetup {
-                role: LinkRole::Sender,
-                ..AudioLinkSetup::default()
+            AlinkSetup {
+                role: AlinkRole::Sender,
+                ..AlinkSetup::default()
             },
         ),
         a: attach(hub, "SW2-A", receiver(0)),
@@ -141,11 +141,11 @@ fn rig(hub: &Hub) -> Rig {
         r: attach(
             hub,
             "SW2-R",
-            AudioLinkSetup {
-                role: LinkRole::Repeater,
+            AlinkSetup {
+                role: AlinkRole::Repeater,
                 hops: 1,
                 hop_delay_frames: 1,
-                ..AudioLinkSetup::default()
+                ..AlinkSetup::default()
             },
         ),
         c: attach(hub, "SW2-C", receiver(2)),
@@ -323,13 +323,13 @@ fn wp_sw2_the_alignment_is_computed_from_the_units_and_applied() {
         .collect();
     assert!(failed.is_empty(), "{failed:?}");
     // What each unit was sent: phase lock and its delays (2.8.5's layout).
-    let phase = |f: &Fake| writes_of(f, alink::EXT_LINK_PHASE);
+    let phase = |f: &Fake| writes_of(f, alink::EXT_ALINK_PHASE);
     assert_eq!(phase(&rig.a), vec![vec![1, 0, 5, 1, 0, 0, 0, 0]]);
     assert_eq!(phase(&rig.b), vec![vec![1, 0, 4, 1, 0xFE, 0xFF, 0, 0]]);
     assert_eq!(phase(&rig.r), vec![vec![1, 0, 4, 1, 0xFE, 0xFF, 0, 0]]);
     assert_eq!(phase(&rig.c), vec![vec![1, 0, 3, 1, 0xFE, 0xFF, 0, 0]]);
     assert_eq!(
-        writes_of(&rig.b, alink::EXT_LINK_SLOTS),
+        writes_of(&rig.b, alink::EXT_ALINK_SLOTS),
         vec![vec![4, 5, 255, 255, 255, 255, 255, 255]]
     );
     assert!(
@@ -366,7 +366,7 @@ fn wp_sw2_a_scene_reaches_every_unit_at_one_frame() {
     assert_eq!(quiet.writes.len(), 1);
     assert_eq!(quiet.writes[0].result, "queued", "{:?}", quiet.writes);
     assert!(quiet.on_time);
-    let sent = writes_of(&rig.tx, alink::EXT_LINK_CTRL_MSG);
+    let sent = writes_of(&rig.tx, alink::EXT_ALINK_CTRL_MSG);
     assert_eq!(sent.len(), 1);
     let req = ApplyRequest::decode(&sent[0]).unwrap();
     assert_eq!(
@@ -453,20 +453,20 @@ fn wp_sw2_a_lost_link_raises_an_alarm_and_a_lock_clears_it() {
     // The first read learns which handle is which unit and that it sends 0xE1.
     assert!(hub.system_status().alarms.is_empty());
 
-    assert!(rig.b.remote.link_sim(LINK_SIM_LOSE));
+    assert!(rig.b.remote.alink_sim(ALINK_SIM_LOSE));
     let lost = || {
         hub.system_alarms()
             .iter()
-            .any(|a| a.code == "link_lost" && a.subject == "B" && a.cleared_at.is_none())
+            .any(|a| a.code == "alink_lost" && a.subject == "B" && a.cleared_at.is_none())
     };
-    wait_for("link_lost alarm from the event", lost);
+    wait_for("alink_lost alarm from the event", lost);
     // A read agrees: B is in holdover.
     let s = hub.system_status();
     assert_eq!(s.observed["SW2-B"].state.as_deref(), Some("holdover"));
     let alarm = s
         .alarms
         .iter()
-        .find(|a| a.code == "link_lost")
+        .find(|a| a.code == "alink_lost")
         .unwrap()
         .clone();
     let acked = hub.system_acknowledge(alarm.id).unwrap();
@@ -475,12 +475,12 @@ fn wp_sw2_a_lost_link_raises_an_alarm_and_a_lock_clears_it() {
         dspi_hub::system::alarms::AlarmState::Acknowledged
     );
 
-    assert!(rig.b.remote.link_sim(LINK_SIM_LOCK));
+    assert!(rig.b.remote.alink_sim(ALINK_SIM_LOCK));
     wait_for("the alarm to clear", || !lost());
 
     // A re-anchor nobody asked for is an alarm; the hub's own (the alignment's
     // phase writes) is not: the over-Link test sees none after its writes.
-    assert!(rig.a.remote.link_sim(LINK_SIM_REANCHOR));
+    assert!(rig.a.remote.alink_sim(ALINK_SIM_REANCHOR));
     wait_for("a reanchor alarm", || {
         hub.system_alarms()
             .iter()
@@ -731,7 +731,7 @@ fn wp_sw2x_a_scene_never_clears_the_system_mute() {
 
     let quiet = hub.system_apply_scene("quiet", Role::Control).unwrap();
     assert_eq!(quiet.plan.path, "superframe");
-    let sent = writes_of(&rig.tx, alink::EXT_LINK_CTRL_MSG);
+    let sent = writes_of(&rig.tx, alink::EXT_ALINK_CTRL_MSG);
     let last = sent.last().unwrap();
     assert_eq!(last[8], ApplyOp::MasterVolume.raw());
     assert_eq!(last[12], 1, "the scene's write carries the mute as it was");
@@ -764,7 +764,7 @@ fn wp_sw2x_a_scene_never_clears_the_system_mute() {
     hub.stop();
 }
 
-/// Review sw2x probe B (F2): four units whose link writes take 5 ms, a model lead
+/// Review sw2x probe B (F2): four units whose alink writes take 5 ms, a model lead
 /// of 10 ms. The hub measures the units and takes a longer lead, so every op is
 /// queued ahead of its frame; the device agrees.
 #[test]
@@ -967,18 +967,18 @@ fn wp_sw2x_events_follow_a_unit_across_a_reattach() {
     let lost = |hub: &Hub, subject: &str| {
         hub.system_alarms()
             .iter()
-            .any(|a| a.code == "link_lost" && a.subject == subject && a.cleared_at.is_none())
+            .any(|a| a.code == "alink_lost" && a.subject == subject && a.cleared_at.is_none())
     };
     // The hub learns B's events asynchronously; once it has, B's loss alarms.
     wait_for("B's loss to alarm without a status read", || {
-        b.remote.link_sim(LINK_SIM_LOSE);
-        b.remote.link_sim(LINK_SIM_LOCK);
-        b.remote.link_sim(LINK_SIM_LOSE);
+        b.remote.alink_sim(ALINK_SIM_LOSE);
+        b.remote.alink_sim(ALINK_SIM_LOCK);
+        b.remote.alink_sim(ALINK_SIM_LOSE);
         std::thread::sleep(Duration::from_millis(50));
         lost(&hub, "B")
     });
     // The stranger's loss is nobody's: every alarm is B's.
-    stranger.remote.link_sim(LINK_SIM_LOSE);
+    stranger.remote.alink_sim(ALINK_SIM_LOSE);
     std::thread::sleep(Duration::from_millis(100));
     let alarms = hub.system_alarms();
     assert!(alarms.iter().all(|a| a.subject == "B"), "{alarms:?}");

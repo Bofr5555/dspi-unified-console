@@ -5,9 +5,9 @@ import UConsole
 
 // -- WP LKUI1 -- Window > System...: the audio link's installation on the hub
 // this console is on (the web console's System view, SW3), from
-// SystemController: every element with its role and link state, the link
+// SystemController: every element with its role and alink state, the alink
 // delay and its range, the hop offset and the phase error; the scene bar; and
-// the Clock-and-links editor. Simple shows the status only; the editor and the
+// the Clock-and-audio-links editor. Simple shows the status only; the editor and the
 // scene bar are Advanced's (docs/UI-MODES.md). The hub's role decides what may
 // be changed: a Viewer gets nothing that writes.
 ToolWindow {
@@ -243,13 +243,13 @@ ToolWindow {
                         Cell { text: qsTr("Role"); color: Theme.textMuted; cellWidth: 70 }
                         Cell { text: qsTr("Audio link"); color: Theme.textMuted; cellWidth: 130 }
                         Cell {
-                            text: qsTr("Link delay"); color: Theme.textMuted; cellWidth: 120
+                            text: qsTr("Audio link delay"); color: Theme.textMuted; cellWidth: 120
                             HoverHandler { id: dLocalHover }
                             ToolTip.visible: dLocalHover.hovered
                             ToolTip.text: qsTr("Frames, with ms beside them (d_local)")
                         }
                         Cell {
-                            text: qsTr("Link delay range"); color: Theme.textMuted; cellWidth: 100
+                            text: qsTr("Audio link delay range"); color: Theme.textMuted; cellWidth: 100
                             HoverHandler { id: rangeHover }
                             ToolTip.visible: rangeHover.hovered
                             ToolTip.text: qsTr("Frames (d_local_min to d_local_max)")
@@ -308,8 +308,8 @@ ToolWindow {
                                                                          : unitRow.modelData.stateWord
                                         color: unitRow.modelData.pending ? Theme.warning : Theme.text
                                         ToolTip.visible: pendingHover.hovered && unitRow.modelData.pending
-                                        ToolTip.text: qsTr("The link delay the system delay asks for is not written to this unit yet (unit: %1 frames, hop offset %2)")
-                                                      .arg(window.frames(unitRow.modelData.unitLinkDelayFrames))
+                                        ToolTip.text: qsTr("The audio link delay the system delay asks for is not written to this unit yet (unit: %1 frames, hop offset %2)")
+                                                      .arg(window.frames(unitRow.modelData.unitAlinkDelayFrames))
                                                       .arg(window.frames(unitRow.modelData.unitHopOffset))
                                         HoverHandler { id: pendingHover }
                                     }
@@ -317,14 +317,14 @@ ToolWindow {
                                 Cell {
                                     cellWidth: 120
                                     text: unitRow.modelData.kind === "unit"
-                                          ? window.frames(unitRow.modelData.linkDelayFrames) + "  " + window.ms(unitRow.modelData.linkDelayMs)
+                                          ? window.frames(unitRow.modelData.alinkDelayFrames) + "  " + window.ms(unitRow.modelData.alinkDelayMs)
                                           : unitRow.modelData.hopDelayFrames !== undefined && unitRow.modelData.hopDelayFrames !== null
                                             ? qsTr("+%1 frames").arg(unitRow.modelData.hopDelayFrames) : "–"
                                 }
                                 Cell {
                                     cellWidth: 100
-                                    text: unitRow.modelData.linkDelayMin !== undefined && unitRow.modelData.linkDelayMin !== null
-                                          ? unitRow.modelData.linkDelayMin + "–" + unitRow.modelData.linkDelayMax : "–"
+                                    text: unitRow.modelData.alinkDelayMin !== undefined && unitRow.modelData.alinkDelayMin !== null
+                                          ? unitRow.modelData.alinkDelayMin + "–" + unitRow.modelData.alinkDelayMax : "–"
                                 }
                                 Cell { cellWidth: 70; text: window.frames(unitRow.modelData.hopOffset) }
                                 Cell {
@@ -349,11 +349,11 @@ ToolWindow {
                 }
             }
 
-            // ---- Clock and links (Advanced) --------------------------------
+            // ---- Clock and audio links (Advanced) --------------------------------
             SectionHeading {
                 Layout.fillWidth: true
                 visible: !window.simple
-                text: qsTr("Clock and links")
+                text: qsTr("Clock and audio links")
             }
             Text {
                 objectName: "SystemWindow.editNote"
@@ -378,7 +378,7 @@ ToolWindow {
                     color: Theme.text
                     HoverHandler { id: dHover }
                     ToolTip.visible: dHover.hovered
-                    ToolTip.text: qsTr("D: every unit's link delay is worked out from it")
+                    ToolTip.text: qsTr("D: every unit's audio link delay is worked out from it")
                 }
                 RowLayout {
                     spacing: Theme.spacingSmall
@@ -498,10 +498,10 @@ ToolWindow {
                 }
                 AppButton {
                     objectName: "SystemWindow.align"
-                    text: qsTr("Align link delays…")
+                    text: qsTr("Align audio link delays…")
                     enabled: window.editable && !SystemController.dirty
                     toolTip: SystemController.mayEdit
-                             ? qsTr("Align every unit: write the link delays the system delay asks for")
+                             ? qsTr("Align every unit: write the audio link delays the system delay asks for")
                              : SystemController.editNote
                     onClicked: alignQuestion.open()
                 }
@@ -520,7 +520,7 @@ ToolWindow {
     QuestionDialog {
         id: alignQuestion
         objectName: "SystemWindow.alignQuestion"
-        title: qsTr("Align link delays?")
+        title: qsTr("Align audio link delays?")
         text: qsTr("Every unit restarts its outputs in step with a short silence (2 to 6 ms).")
         acceptText: qsTr("Align")
         onAnswered: answer => { if (answer === "accept") SystemController.align() }

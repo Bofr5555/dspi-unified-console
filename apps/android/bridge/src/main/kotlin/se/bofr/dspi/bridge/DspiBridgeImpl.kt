@@ -46,10 +46,10 @@ import se.bofr.dspi.core.FlashStatus
 import se.bofr.dspi.core.I2cConfig
 import se.bofr.dspi.core.InputLockStatus
 import se.bofr.dspi.core.LgStatus
-import se.bofr.dspi.core.LinkSceneRecall
-import se.bofr.dspi.core.LinkSystemAlign
-import se.bofr.dspi.core.LinkSystemEdits
-import se.bofr.dspi.core.LinkSystemView
+import se.bofr.dspi.core.AlinkSceneRecall
+import se.bofr.dspi.core.AlinkSystemAlign
+import se.bofr.dspi.core.AlinkSystemEdits
+import se.bofr.dspi.core.AlinkSystemView
 import se.bofr.dspi.core.NotifyListener
 import se.bofr.dspi.core.OutputCard
 import se.bofr.dspi.core.OutputLabel
@@ -2183,21 +2183,21 @@ class DspiBridgeImpl(
     // the FFI thread). With a test's dispatcher for [ffi], that one (virtual time).
     private val network: CoroutineDispatcher = if (ffi is ExecutorCoroutineDispatcher) Dispatchers.IO else ffi
 
-    override suspend fun linkSystemView(): LinkSystemView = withContext(network) { core.linkSystemView() }
+    override suspend fun alinkSystemView(): AlinkSystemView = withContext(network) { core.alinkSystemView() }
 
-    override suspend fun linkSystemSave(revision: Long, edits: LinkSystemEdits): Long {
-        refuseSystemWrite("linkSystemSave")
-        return withContext(network) { core.linkSystemSave(revision, edits) }
+    override suspend fun alinkSystemSave(revision: Long, edits: AlinkSystemEdits): Long {
+        refuseSystemWrite("alinkSystemSave")
+        return withContext(network) { core.alinkSystemSave(revision, edits) }
     }
 
-    override suspend fun linkSystemAlign(): LinkSystemAlign {
-        refuseSystemWrite("linkSystemAlign")
-        return withContext(network) { core.linkSystemAlign() }
+    override suspend fun alinkSystemAlign(): AlinkSystemAlign {
+        refuseSystemWrite("alinkSystemAlign")
+        return withContext(network) { core.alinkSystemAlign() }
     }
 
-    override suspend fun linkSystemRecall(scene: String): LinkSceneRecall {
-        refuseSystemWrite("linkSystemRecall")
-        return withContext(network) { core.linkSystemRecall(scene) }
+    override suspend fun alinkSystemRecall(scene: String): AlinkSceneRecall {
+        refuseSystemWrite("alinkSystemRecall")
+        return withContext(network) { core.alinkSystemRecall(scene) }
     }
 
     /** G1, as every write path: refused up front (with its CommandFailed) while writes are not allowed. */

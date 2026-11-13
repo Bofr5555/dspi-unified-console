@@ -11,9 +11,9 @@ use std::time::{Duration, Instant};
 
 use dspi_link::frames::CmdRequest;
 use dspi_link::{Dir, status};
-use dspi_proto::ext::audio_link::{
-    self as alink, ApplyOp, ApplyRequest, ApplyStatus, FrameCounter, LinkInfo, LinkPhase, LinkRole,
-    LinkSlots, LinkStatus, SuperframeSnapshot,
+use dspi_proto::ext::alink::{
+    self, AlinkInfo, AlinkPhase, AlinkRole, AlinkSlots, AlinkStatus, ApplyOp, ApplyRequest,
+    ApplyStatus, FrameCounter, SuperframeSnapshot,
 };
 use dspi_proto::generated::ext as g;
 use dspi_proto::generated::opcodes as op;
@@ -57,7 +57,7 @@ pub struct WriteResult {
     /// `ok`, `unchanged`, `skipped`, or a Link status name. A scene's op on
     /// a unit without the audio link (WP HWLK1F): `applied_now` (written at
     /// once, not at the frame), `unsupported` (it has no direct command: a
-    /// click, a sync pulse); an op on a unit with the link that no frame could
+    /// click, a sync pulse); an op on a unit with the alink that no frame could
     /// be read for: `no_frame`.
     pub result: String,
     // -- WP HWLK1F --
@@ -92,7 +92,7 @@ pub struct SceneReport {
     /// readable), or the write's own failure.
     pub writes: Vec<WriteResult>,
     // -- fixup sw2x (F2) --
-    /// A link frame read after the last write; `None` if none could be read.
+    /// An alink frame read after the last write; `None` if none could be read.
     pub frame_after_writes: Option<u64>,
     /// Whether every op is known to act at the plan's frame (all `queued` or
     /// `applied`, and the frame was still ahead after the writes).
@@ -151,11 +151,11 @@ fn apply_result(seen: Option<ApplyStatus>, req: &ApplyRequest) -> String {
     }
 }
 
-/// `EXT_LINK_CTRL_MSG` IN.
+/// `EXT_ALINK_CTRL_MSG` IN.
 fn read_ctrl(dev: &DeviceShared) -> Option<SuperframeSnapshot> {
     get_ext(
         dev,
-        alink::EXT_LINK_CTRL_MSG,
+        alink::EXT_ALINK_CTRL_MSG,
         SuperframeSnapshot::SIZE,
         SuperframeSnapshot::decode,
     )
@@ -184,7 +184,7 @@ fn write_system_mute(dev: &DeviceShared, muted: bool) -> String {
     };
     match set_ext(
         dev,
-        alink::EXT_LINK_CTRL_MSG,
+        alink::EXT_ALINK_CTRL_MSG,
         none.encode_ctrl_msg(u8::from(muted)).to_vec(),
     ) {
         Err(s) => status_name(s),
@@ -216,7 +216,7 @@ pub(crate) fn learn_events(system: &Arc<SystemShared>, dev: &DeviceShared) {
             .then(|| r.payload.get(..4)?.try_into().ok().map(u32::from_le_bytes))
             .flatten()
             .unwrap_or(0);
-        system.learned_events(&serial, bits & alink::NOTIFY_FEAT_LINK_STATE != 0);
+        system.learned_events(&serial, bits & alink::NOTIFY_FEAT_ALINK_STATE != 0);
     });
     dev.submit(internal(), req, done, None);
 }
@@ -326,28 +326,28 @@ fn set_ext(dev: &DeviceShared, id: u16, payload: Vec<u8>) -> Result<(), u8> {
 }
 
 // -- WP HWLK1F --
-/// `EXT_LINK_INFO` IN, raw: the decoded block, or why it failed.
-fn read_link_info(dev: &DeviceShared) -> Result<Option<LinkInfo>, Failed> {
-    let len = u16::try_from(LinkInfo::SIZE).unwrap_or(u16::MAX);
+/// `EXT_ALINK_INFO` IN, raw: the decoded block, or why it failed.
+fn read_alink_info(dev: &DeviceShared) -> Result<Option<AlinkInfo>, Failed> {
+    let len = u16::try_from(AlinkInfo::SIZE).unwrap_or(u16::MAX);
     exec_told(
         dev,
         Dir::Get,
         op::REQ_EXTENSION,
-        alink::EXT_LINK_INFO,
+        alink::EXT_ALINK_INFO,
         Vec::new(),
         len,
     )
-    .map(|b| LinkInfo::decode(&b))
+    .map(|b| AlinkInfo::decode(&b))
 }
 
 // -- WP HWLK1F --
-/// What a device's firmware says of the audio link, from `EXT_LINK_INFO`'s
+/// What a device's firmware says of the audio link, from `EXT_ALINK_INFO`'s
 /// answer (`info`): present when it answers. -- fixup hwlk1f (F1) -- Absent
-/// only from a firmware's own answer: the device stalled `EXT_LINK_INFO`, or
+/// only from a firmware's own answer: the device stalled `EXT_ALINK_INFO`, or
 /// `EXT_LIST` answered without it (a K340 on 470a127; stock firmware stalls the
 /// block). Anything else, a bus fault, a short or malformed reply, a timeout, a
 /// busy worker, a Link-bridged unit's refusal, is `None`: not told.
-fn alink_of(dev: &DeviceShared, info: &Result<Option<LinkInfo>, Failed>) -> Option<AlinkFirmware> {
+fn alink_of(dev: &DeviceShared, info: &Result<Option<AlinkInfo>, Failed>) -> Option<AlinkFirmware> {
     match info {
         Ok(Some(_)) => return Some(AlinkFirmware::Present),
         Err(Failed { stalled: true, .. }) => return Some(AlinkFirmware::Absent),
@@ -361,7 +361,7 @@ fn alink_of(dev: &DeviceShared, info: &Result<Option<LinkInfo>, Failed>) -> Opti
         Vec::new(),
         EXT_LIST_LEN,
     ) {
-        Ok(b) if !dspi_proto::ext::decode_list(&b).contains(&alink::EXT_LINK_INFO) => {
+        Ok(b) if !dspi_proto::ext::decode_list(&b).contains(&alink::EXT_ALINK_INFO) => {
             Some(AlinkFirmware::Absent)
         }
         Ok(_) | Err(_) => None,
@@ -375,40 +375,40 @@ const EXT_LIST_LEN: u16 = 128;
 // -- WP HWLK1F --
 /// Whether `dev`'s firmware has the audio link (two transfers at most).
 fn probe_alink(dev: &DeviceShared) -> Option<AlinkFirmware> {
-    alink_of(dev, &read_link_info(dev))
+    alink_of(dev, &read_alink_info(dev))
 }
 
-/// Read one device's link. Nothing is written.
+/// Read one device's alink. Nothing is written.
 fn observe(dev: &DeviceShared) -> Observed {
     let mut o = Observed {
         online: true,
         ..Observed::default()
     };
-    // -- WP HWLK1F -- a firmware without the link is told from one that did not answer
-    let raw = read_link_info(dev);
+    // -- WP HWLK1F -- a firmware without the alink is told from one that did not answer
+    let raw = read_alink_info(dev);
     o.alink = alink_of(dev, &raw);
-    let Some(info) = raw.ok().flatten().filter(LinkInfo::usable) else {
+    let Some(info) = raw.ok().flatten().filter(AlinkInfo::usable) else {
         return o;
     };
     o.role = Some(info.role.as_str().into());
-    o.superframe_path = matches!(info.role, LinkRole::Sender | LinkRole::FanOut);
+    o.superframe_path = matches!(info.role, AlinkRole::Sender | AlinkRole::FanOut);
     if info.role.receives() {
         o.d_local_min = Some(info.d_local_min);
         o.d_local_max = Some(info.d_local_max);
         if let Some(p) = get_ext(
             dev,
-            alink::EXT_LINK_PHASE,
-            LinkPhase::SIZE,
-            LinkPhase::decode,
+            alink::EXT_ALINK_PHASE,
+            AlinkPhase::SIZE,
+            AlinkPhase::decode,
         ) {
             o.phase = Some((p.mode, p.d_local, p.hops_offset, p.flags));
         }
     }
     if let Some(s) = get_ext(
         dev,
-        alink::EXT_LINK_STATUS,
-        LinkStatus::SIZE,
-        LinkStatus::decode,
+        alink::EXT_ALINK_STATUS,
+        AlinkStatus::SIZE,
+        AlinkStatus::decode,
     ) {
         o.state = Some(s.state.as_str().into());
         o.hops = Some(s.hops);
@@ -420,7 +420,7 @@ fn observe(dev: &DeviceShared) -> Observed {
         o.phase_error_frames = Some(s.phase_error_frames);
         o.frame = Some(s.frame).filter(|f| *f != 0);
         // -- WP SW3 --
-        o.stats = Some(align::LinkStats {
+        o.stats = Some(align::AlinkStats {
             line_class: s.class,
             channels: s.channels,
             lock_count: s.lock_count,
@@ -435,8 +435,8 @@ fn observe(dev: &DeviceShared) -> Observed {
     if info.role.receives() {
         o.trim_scan = get_ext(
             dev,
-            alink::EXT_LINK_DIAG,
-            alink::LINK_DIAG_SIZE,
+            alink::EXT_ALINK_DIAG,
+            alink::ALINK_DIAG_SIZE,
             alink::TrimScan::decode_diag,
         )
         .map(|t| align::TrimScan {
@@ -456,7 +456,7 @@ fn observe(dev: &DeviceShared) -> Observed {
         o.frame = Some(c.frame).filter(|f| *f != 0).or(o.frame);
     }
     // -- fixup sw2x (F1) --
-    if info.role == LinkRole::Sender {
+    if info.role == AlinkRole::Sender {
         // -- fixup sw3x -- and the apply it holds (flags bit 2), from the same read
         let snap = read_ctrl(dev);
         o.system_mute = snap.as_ref().map(|snap| snap.flags & 1 != 0);
@@ -467,7 +467,7 @@ fn observe(dev: &DeviceShared) -> Observed {
     o.state_events = get_ext(dev, g::EXT_NOTIFY_FEATURES, 4, |b| {
         b.get(..4)?.try_into().ok().map(u32::from_le_bytes)
     })
-    .is_some_and(|f| f & alink::NOTIFY_FEAT_LINK_STATE != 0);
+    .is_some_and(|f| f & alink::NOTIFY_FEAT_ALINK_STATE != 0);
     o
 }
 
@@ -503,7 +503,7 @@ fn plan_targets(
 // -- WP HWLK1F --
 /// A scene op written at once to a unit without the audio link, with the
 /// command it stands for (the firmware's apply does the same,
-/// `link_input.c` `apply_exec`): mute and unmute the user mute, a preset
+/// `alink_input.c` `apply_exec`): mute and unmute the user mute, a preset
 /// load, the master volume (dB × 100), an output delay (samples at `rate_hz`,
 /// as the firmware's half-sample rounding). A click and a sync pulse have no
 /// command: `unsupported`. `applied_now`, or the write's failure.
@@ -681,7 +681,7 @@ impl HubHandle {
             .collect()
     }
 
-    /// Read every element of the model (`system.status`): link state, limits,
+    /// Read every element of the model (`system.status`): alink state, limits,
     /// hops and hop delays, frame counters. Updates the alarms (changes go out
     /// as `system.alarm`) and computes the alignment, writing nothing. Blocks
     /// for the reads.
@@ -722,7 +722,7 @@ impl HubHandle {
 
     /// Compute the alignment from fresh reads (`system.align`) and, with
     /// `apply`, write it: each writable unit's slots (when the model has them),
-    /// `EXT_LINK_PHASE` (phase lock, `d_local`, `hops_offset`) and the
+    /// `EXT_ALINK_PHASE` (phase lock, `d_local`, `hops_offset`) and the
     /// speakers' `out.delay`. A value the unit already has is not written again,
     /// so an unchanged phase does not re-anchor. Blocks for the transfers.
     pub fn system_align(&self, apply: bool) -> AlignReport {
@@ -766,19 +766,19 @@ impl HubHandle {
                 {
                     let now = get_ext(
                         &dev,
-                        alink::EXT_LINK_SLOTS,
-                        LinkSlots::SIZE,
-                        LinkSlots::decode,
+                        alink::EXT_ALINK_SLOTS,
+                        AlinkSlots::SIZE,
+                        AlinkSlots::decode,
                     );
-                    let r = if now == Some(LinkSlots(slots)) {
+                    let r = if now == Some(AlinkSlots(slots)) {
                         "unchanged".into()
                     } else {
-                        set_ext(&dev, alink::EXT_LINK_SLOTS, slots.to_vec())
+                        set_ext(&dev, alink::EXT_ALINK_SLOTS, slots.to_vec())
                             .map_or_else(status_name, |()| "ok".into())
                     };
                     writes.push(result("slots", r));
                 }
-                let want = LinkPhase {
+                let want = AlinkPhase {
                     mode: alink::PHASE_MODE_LOCK,
                     d_local: plan.d_local,
                     hops_offset: plan.hops_offset,
@@ -792,7 +792,7 @@ impl HubHandle {
                     "unchanged".into()
                 } else {
                     self.system().expect_reanchor(&plan.serial);
-                    set_ext(&dev, alink::EXT_LINK_PHASE, want.encode().to_vec())
+                    set_ext(&dev, alink::EXT_ALINK_PHASE, want.encode().to_vec())
                         .map_or_else(status_name, |()| "ok".into())
                 };
                 writes.push(result("phase", r));
@@ -876,8 +876,13 @@ impl HubHandle {
         model.senders.iter().find_map(|s| {
             let serial = s.serial.clone()?;
             let dev = self.device_by_serial(&serial)?;
-            let info = get_ext(&dev, alink::EXT_LINK_INFO, LinkInfo::SIZE, LinkInfo::decode)?;
-            if info.role != LinkRole::Sender {
+            let info = get_ext(
+                &dev,
+                alink::EXT_ALINK_INFO,
+                AlinkInfo::SIZE,
+                AlinkInfo::decode,
+            )?;
+            if info.role != AlinkRole::Sender {
                 return None;
             }
             // Without the bit there is no superframe write that keeps it.
@@ -908,8 +913,8 @@ impl HubHandle {
 
     // -- fixup sw2x (F1) --
     /// `system.mute`: set or clear the system mute on every reachable sender of
-    /// the model (`EXT_LINK_CTRL_MSG` op 0, which leaves a pending apply alone).
-    /// Every unit on the link plays silence while it is set. A role that may
+    /// the model (`EXT_ALINK_CTRL_MSG` op 0, which leaves a pending apply alone).
+    /// Every unit on the alink plays silence while it is set. A role that may
     /// mute outputs may do it. `system.mute` and `system.alarm` follow.
     pub fn system_set_mute(
         &self,
@@ -954,7 +959,7 @@ impl HubHandle {
         Ok(writes)
     }
 
-    /// Apply scene `id` at one link frame (`system.scene.apply`) for a caller of
+    /// Apply scene `id` at one alink frame (`system.scene.apply`) for a caller of
     /// `role`. Each op must be one the role may send directly, or nothing runs.
     /// The frame is read from the units (and the sender); the lead is the
     /// model's, or more when the units' measured round trips say the writes
@@ -970,7 +975,7 @@ impl HubHandle {
         // -- WP HWLK1F -- units whose firmware has no audio link: their ops go at once
         let mut no_alink = BTreeSet::new();
         let mut offline = Vec::new();
-        // -- fixup hwlk1f (F1) -- attached, with the link (or not told), no frame read
+        // -- fixup hwlk1f (F1) -- attached, with the alink (or not told), no frame read
         let mut no_frame: Vec<String> = Vec::new();
         for a in &scene.actions {
             for u in model.resolve_target(&a.target).unwrap_or_default() {
@@ -1074,7 +1079,7 @@ impl HubHandle {
                 let flags = plan.system_flags.unwrap_or(1);
                 match set_ext(
                     &dev,
-                    alink::EXT_LINK_CTRL_MSG,
+                    alink::EXT_ALINK_CTRL_MSG,
                     req.encode_ctrl_msg(flags).to_vec(),
                 ) {
                     Err(s) => status_name(s),
@@ -1140,7 +1145,7 @@ impl HubHandle {
                     // -- fixup hwlk1f (F1) -- not known to take it: no frame of its own was read
                     writes.push(WriteResult {
                         result: "no_frame".into(),
-                        reason: Some("no link frame read".into()),
+                        reason: Some("no audio link frame read".into()),
                         ..o
                     });
                 }

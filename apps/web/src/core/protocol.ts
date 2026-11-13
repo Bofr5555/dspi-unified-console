@@ -17,7 +17,7 @@
 /** Where a session's device is. A fleet server may add its own kinds later. */
 export type DeviceTarget =
   /** The core's own demo device; `readOnly` opens it as older firmware, which the core only reads. */
-  | { kind: "demo"; readOnly?: boolean; /** -- WP SW1 -- the demo as a unit receiving the audio link */ audioLink?: boolean }
+  | { kind: "demo"; readOnly?: boolean; /** -- WP SW1 -- the demo as a unit receiving the audio link */ alink?: boolean }
   /**
    * A DSPi on USB (WebUSB, WB4a): the serial the page's picker or
    * `getDevices()` gave. The Worker claims that device and completes the target
@@ -344,7 +344,7 @@ export interface HistoryMove {
   note: string | null;
 }
 
-/** `dspi_core::LinkSceneRecall`. */
+/** `dspi_core::AlinkSceneRecall`. */
 export interface SceneOutcome {
   scene: string;
   name: string;
@@ -416,7 +416,7 @@ export type CoreEvent =
   | { event: "lost"; reason: string };
 
 /** Every call a core Worker answers. `params` and the result per method. */
-export interface CoreMethods extends AudioLinkMethods {
+export interface CoreMethods extends AlinkMethods {
   open: { params: DeviceTarget; result: DeviceSnapshot };
   state: { params: undefined; result: DeviceSnapshot };
   /**
@@ -537,14 +537,14 @@ export interface CoreMethods extends AudioLinkMethods {
   simulate: { params: { what: "link-lost" | "link-closed" }; result: null };
 }
 
-// -- WP SW1 -- the audio link (crates/dspi-wasm/src/audio_link.rs; not DSPi Link)
-/** `EXT_LINK_INFO` as the core keeps it (extension_channel_spec.md 2.8.1). */
-export interface AudioLinkInfo {
+// -- WP SW1 -- the audio link (crates/dspi-wasm/src/alink.rs; not DSPi Link)
+/** `EXT_ALINK_INFO` as the core keeps it (extension_channel_spec.md 2.8.1). */
+export interface AlinkInfo {
   role: string;
   roleCode: number;
   protocolVersion: number;
   classMask: number;
-  maxLinks: number;
+  maxAlinks: number;
   maxChannels: number;
   slotsPerUnit: number;
   rxPin: number;
@@ -552,16 +552,16 @@ export interface AudioLinkInfo {
   featureBits: number;
   dLocalMin: number;
   dLocalMax: number;
-  linkInput: boolean;
+  alinkInput: boolean;
   stateEvents: boolean;
   applyEvents: boolean;
 }
 
-/** `EXT_LINK_STATUS` (2.8.2). */
-export interface AudioLinkStatus {
+/** `EXT_ALINK_STATUS` (2.8.2). */
+export interface AlinkStatus {
   state: "off" | "searching" | "locked" | "holdover" | "unknown";
   stateCode: number;
-  linkClass: number;
+  alinkClass: number;
   rateCode: number;
   channels: number;
   hops: number;
@@ -580,8 +580,8 @@ export interface AudioLinkStatus {
   fillFrames: number;
 }
 
-/** `EXT_LINK_PHASE` (2.8.5). */
-export interface AudioLinkPhase {
+/** `EXT_ALINK_PHASE` (2.8.5). */
+export interface AlinkPhase {
   mode: number;
   dLocal: number;
   hopsOffset: number;
@@ -600,23 +600,23 @@ export interface ApplyAtFrameStatus {
 }
 
 /** The audio link's methods: `unsupported` on a unit without the link. */
-export interface AudioLinkMethods {
+export interface AlinkMethods {
   /** No traffic; null without the link. */
-  audioLinkInfo: { params: undefined; result: AudioLinkInfo | null };
+  alinkInfo: { params: undefined; result: AlinkInfo | null };
   /** Re-read: the delay limits follow the output latency option. */
-  fetchAudioLinkInfo: { params: undefined; result: AudioLinkInfo };
-  audioLinkStatus: { params: undefined; result: AudioLinkStatus };
-  /** 8 values, one per matrix input: a link channel 0..63, or 255 for silence. */
-  audioLinkSlots: { params: undefined; result: number[] };
-  setAudioLinkSlots: { params: { slots: number[] }; result: null };
-  audioLinkPhase: { params: undefined; result: AudioLinkPhase };
-  /** `mode` 0 fill servo, 1 phase lock; `dLocal` in link frames; `hopsOffset` -64..64. */
-  setAudioLinkPhase: { params: { mode: number; dLocal: number; hopsOffset?: number }; result: null };
-  audioLinkFrameCounter: { params: undefined; result: { frame: number; timeUs: number; outputFrames: number } };
+  fetchAlinkInfo: { params: undefined; result: AlinkInfo };
+  alinkStatus: { params: undefined; result: AlinkStatus };
+  /** 8 values, one per matrix input: an audio link channel 0..63, or 255 for silence. */
+  alinkSlots: { params: undefined; result: number[] };
+  setAlinkSlots: { params: { slots: number[] }; result: null };
+  alinkPhase: { params: undefined; result: AlinkPhase };
+  /** `mode` 0 fill servo, 1 phase lock; `dLocal` in audio link frames; `hopsOffset` -64..64. */
+  setAlinkPhase: { params: { mode: number; dLocal: number; hopsOffset?: number }; result: null };
+  alinkFrameCounter: { params: undefined; result: { frame: number; timeUs: number; outputFrames: number } };
   /** `op` 0 cancel all, 1 mute, 2 unmute, 3 preset load, 4 master volume, 5 output delay, 6 rate, 7 click, 8 sync pulse. */
   applyAtFrame: { params: { frame: number; op: number; arg?: number; value?: number }; result: null };
   applyAtFrameStatus: { params: undefined; result: ApplyAtFrameStatus };
-  resetAudioLinkStats: { params: undefined; result: null };
+  resetAlinkStats: { params: undefined; result: null };
 }
 
 export type Method = keyof CoreMethods;

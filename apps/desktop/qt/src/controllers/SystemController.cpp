@@ -175,7 +175,7 @@ void SystemController::refresh() {
     if (m_shutDown || m_reading.exchange(true)) return;
     FfiCore *core = m_core;
     m_pool.start([this, core] {
-        const QJsonObject o = call([core](char *b, uint32_t n) { return dspi_link_system_view(core, b, n); });
+        const QJsonObject o = call([core](char *b, uint32_t n) { return dspi_alink_system_view(core, b, n); });
         QMetaObject::invokeMethod(
             this,
             [this, o] {
@@ -249,7 +249,7 @@ void SystemController::recall(const QString &id) {
         const QVariantMap m = s.toMap();
         if (m.value(QStringLiteral("id")).toString() == id) name = m.value(QStringLiteral("name")).toString();
     }
-    run([scene](FfiCore *c) { return act([&](char *b, uint32_t n) { return dspi_link_system_recall(c, scene.constData(), b, n); }); },
+    run([scene](FfiCore *c) { return act([&](char *b, uint32_t n) { return dspi_alink_system_recall(c, scene.constData(), b, n); }); },
         [this, name](const QJsonObject &o) {
             QVariantMap r;
             if (isOk(o)) {
@@ -272,7 +272,7 @@ void SystemController::recall(const QString &id) {
 
 void SystemController::align() {
     if (!mayEdit() || busy()) return;
-    run([](FfiCore *c) { return act([&](char *b, uint32_t n) { return dspi_link_system_align(c, b, n); }); },
+    run([](FfiCore *c) { return act([&](char *b, uint32_t n) { return dspi_alink_system_align(c, b, n); }); },
         [this](const QJsonObject &o) {
             if (isOk(o)) setAction(str(o, "message"), !o.value(QLatin1String("applied")).toBool());
             else setAction(o.isEmpty() ? tr("The hub did not answer.") : str(o, "error"), true);
@@ -369,7 +369,7 @@ void SystemController::save() {
     const QByteArray edits = draftJson();
     const quint64 rev = quint64(m_draftRevision);
     run([edits, rev](FfiCore *c) {
-            return act([&](char *b, uint32_t n) { return dspi_link_system_save(c, rev, edits.constData(), b, n); });
+            return act([&](char *b, uint32_t n) { return dspi_alink_system_save(c, rev, edits.constData(), b, n); });
         },
         [this](const QJsonObject &o) {
             if (isOk(o)) {

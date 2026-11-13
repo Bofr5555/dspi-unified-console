@@ -580,7 +580,7 @@
   .dspi-web .m-name { max-width: 2.4rem; }
 }
 
-/* -- WP SW3 -- the System view (WB6d), "Clock and links", the scene bar (WB6e) and the
+/* -- WP SW3 -- the System view (WB6d), "Clock and audio links", the scene bar (WB6e) and the
    status rail (WB6f). Saturated colour only for meaning: link state, alarms, selection. */
 .dspi-web[data-theme="dark"] { --ok: #4cc27f; --warn: #e0a040; --bad: #ff6b5e; }
 .dspi-web .sys h3 { margin-top: 0.75rem; }

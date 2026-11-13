@@ -631,3 +631,19 @@ fn wp_p0m_review_d4_temperature_edges_per_platform() {
         Some("hot")
     );
 }
+
+// -- WP ALINK1 --
+/// The audio link's kind is `EventKind::Alink` in code but keeps the file's
+/// value `audio_link` (owner 2026-11-13), and a line written `alink` reads as
+/// it too.
+#[test]
+fn wp_alink1_the_audio_link_kind_is_written_audio_link_and_reads_alink() {
+    let line = serde_json::to_value(rec(EventKind::Alink, 1, "Audio link locked")).unwrap();
+    assert_eq!(line["kind"], "audio_link");
+    assert_eq!(EventKind::Alink.as_str(), "audio_link");
+    for written in ["audio_link", "alink"] {
+        let r: EventRecord =
+            serde_json::from_str(&format!(r#"{{"kind":"{written}","text":"x"}}"#)).unwrap();
+        assert_eq!(r.kind, EventKind::Alink, "{written}");
+    }
+}

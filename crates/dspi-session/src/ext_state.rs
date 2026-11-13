@@ -14,7 +14,7 @@
     clippy::arithmetic_side_effects
 )]
 
-use dspi_proto::ext::audio_link::{self as alink, LinkInfo};
+use dspi_proto::ext::alink::{self, AlinkInfo};
 use dspi_proto::ext::{CoreVregStatus, LIST_READ_LEN, PairMap, ResetInfo, decode_list};
 use dspi_proto::generated::ext as g;
 use dspi_proto::generated::opcodes as op;
@@ -40,10 +40,10 @@ pub struct ExtState {
     /// uptime keeps counting; re-read with `ext::read_reset_info`).
     pub reset_info: Option<ResetInfo>,
     // -- WP SW1 --
-    /// `EXT_LINK_INFO` (0x8000), when listed and readable: the unit's role on
+    /// `EXT_ALINK_INFO` (0x8000), when listed and readable: the unit's role on
     /// the audio link. Read only when `EXT_LIST` names it, so firmware
-    /// without the link sends nothing more.
-    pub link_info: Option<LinkInfo>,
+    /// without the alink sends nothing more.
+    pub alink_info: Option<AlinkInfo>,
 }
 
 /// `wLength` of the `EXT_LIST` read: 64 bytes, room for 32 ids. The
@@ -154,25 +154,25 @@ impl ExtState {
     }
 
     // -- WP SW1 --
-    /// Whether the unit has the audio link: `EXT_LINK_INFO` was listed and
+    /// Whether the unit has the audio link: `EXT_ALINK_INFO` was listed and
     /// read, with a role and the protocol version this build speaks
-    /// (`extension_channel_spec.md` 2.8.13). The other link sub-commands are
+    /// (`extension_channel_spec.md` 2.8.13). The other alink sub-commands are
     /// used only when this is true and `EXT_LIST` names them.
-    pub fn audio_link(&self) -> bool {
-        self.link_info.is_some_and(|i| i.usable())
+    pub fn alink(&self) -> bool {
+        self.alink_info.is_some_and(|i| i.usable())
     }
 
-    /// Whether the unit takes audio from a link, so input source 7 (LINK)
-    /// means the link input.
-    pub fn link_input(&self) -> bool {
-        self.link_info
+    /// Whether the unit takes audio from an alink, so input source 7 (LINK)
+    /// means the alink input.
+    pub fn alink_input(&self) -> bool {
+        self.alink_info
             .is_some_and(|i| i.usable() && i.role.receives())
     }
 
     /// Whether the device sends link-state events (0xE1, bit 2).
-    pub fn link_state_events(&self) -> bool {
+    pub fn alink_state_events(&self) -> bool {
         self.notify_features
-            .is_some_and(|f| f & alink::NOTIFY_FEAT_LINK_STATE != 0)
+            .is_some_and(|f| f & alink::NOTIFY_FEAT_ALINK_STATE != 0)
     }
 
     /// Whether the device sends apply-result events (0xE2, bit 3).
@@ -230,9 +230,9 @@ fn reads_for(supported: &[u16]) -> Vec<(u16, u16)> {
         ResetInfo::SIZE as u16
     };
     // -- WP SW1 --
-    const LINK_INFO_LEN: u16 = {
-        assert!(LinkInfo::SIZE <= u16::MAX as usize);
-        LinkInfo::SIZE as u16
+    const ALINK_INFO_LEN: u16 = {
+        assert!(AlinkInfo::SIZE <= u16::MAX as usize);
+        AlinkInfo::SIZE as u16
     };
     const KNOWN: [(u16, u16); 5] = [
         (g::EXT_CROSSFEED_PAIR_MAP, PAIR_MAP_LEN),
@@ -240,7 +240,7 @@ fn reads_for(supported: &[u16]) -> Vec<(u16, u16)> {
         (g::EXT_NOTIFY_FEATURES, NOTIFY_FEATURES_LEN),
         (g::EXT_RESET_INFO, RESET_INFO_LEN),
         // -- WP SW1 --
-        (alink::EXT_LINK_INFO, LINK_INFO_LEN),
+        (alink::EXT_ALINK_INFO, ALINK_INFO_LEN),
     ];
     KNOWN
         .into_iter()
@@ -269,14 +269,14 @@ fn from_replies(supported: Vec<u16>, replies: &[(u16, Vec<u8>)]) -> ExtState {
     // -- WP FWX --
     let reset_info = reply(g::EXT_RESET_INFO).and_then(ResetInfo::decode);
     // -- WP SW1 --
-    let link_info = reply(alink::EXT_LINK_INFO).and_then(LinkInfo::decode);
+    let alink_info = reply(alink::EXT_ALINK_INFO).and_then(AlinkInfo::decode);
     ExtState {
         supported,
         pair_map,
         core_vreg,
         notify_features,
         reset_info,
-        link_info,
+        alink_info,
     }
 }
 

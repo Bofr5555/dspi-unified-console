@@ -78,8 +78,8 @@ class SystemScreenWpLkui1Test {
         rule.mainClock.autoAdvance = false
         scope.launch { bridge.attachDevice(42, core.serial, DspiConstants.VENDOR_ID) }
         settle()
-        core.audioLinkSystem.onHub = true
-        core.audioLinkSystem.role = role
+        core.alinkSystem.onHub = true
+        core.alinkSystem.role = role
         scope.launch { model.refresh() }
         settle()
         rule.setContent { DspiTheme(darkTheme = dark) { Surface(Modifier.fillMaxSize()) { SystemView(model) {} } } }
@@ -94,9 +94,9 @@ class SystemScreenWpLkui1Test {
     @Test
     fun wpLkui1UnitsScenesAndARefusedRecall() {
         open("admin")
-        rule.onNodeWithContentDescription("Status: Audio link: 4 of 4 locked, link delay to write on 4").assertIsDisplayed()
-        rule.onNodeWithContentDescription("Main left, Receiver, Locked, link delay pending").assertIsDisplayed()
-        rule.onNodeWithContentDescription("Main right, Receiver, Locked, link delay pending").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Status: Audio link: 4 of 4 locked, audio link delay to write on 4").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Main left, Receiver, Locked, audio link delay pending").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Main right, Receiver, Locked, audio link delay pending").assertIsDisplayed()
         rule.onNodeWithContentDescription("Recall Evening").assertIsEnabled().performClick()
         settle()
         rule.onNodeWithText("Evening recalled through the sender", substring = true).assertIsDisplayed()
@@ -113,24 +113,24 @@ class SystemScreenWpLkui1Test {
         rule.onNodeWithText("Role on the hub: Viewer").assertIsDisplayed()
         rule.onNodeWithContentDescription("Recall Evening").assertIsNotEnabled()
         rule.onNodeWithText("Recalling a scene needs the hub's Control role.").assertIsDisplayed()
-        rule.onNodeWithContentDescription("Clock and links, folded").performClick()
+        rule.onNodeWithContentDescription("Clock and audio links, folded").performClick()
         settle()
         rule.onNodeWithText("Changing the installation needs the hub's Admin role. This part is read only.").assertIsDisplayed()
         rule.onNodeWithContentDescription("System delay automatic").assertIsNotEnabled()
         rule.onNodeWithText("Save").assertIsNotEnabled()
-        rule.onNodeWithText("Align link delays…").assertIsNotEnabled()
+        rule.onNodeWithText("Align audio link delays…").assertIsNotEnabled()
         shoot("system-viewer", dark = false)
     }
 
     @Test
     fun wpLkui1StaleSaveOffersReload() {
         open("admin")
-        rule.onNodeWithContentDescription("Clock and links, folded").performClick()
+        rule.onNodeWithContentDescription("Clock and audio links, folded").performClick()
         settle()
         rule.runOnUiThread { model.setUnitLatency("B", "150") }
         settle()
         rule.onNodeWithText("Save").assertIsEnabled()
-        core.audioLinkSystem.changeElsewhere()
+        core.alinkSystem.changeElsewhere()
         refresh()
         rule.onNodeWithText(
             "The installation changed on the hub while you edited it",
@@ -155,10 +155,10 @@ class SystemScreenWpLkui1Test {
         }
         settle()
         rule.onNodeWithText("System ›").assertDoesNotExist()
-        core.audioLinkSystem.onHub = true
+        core.alinkSystem.onHub = true
         refresh()
         rule.onNodeWithContentDescription(
-            "Audio link: 4 of 4 locked, link delay to write on 4. Open System"
+            "Audio link: 4 of 4 locked, audio link delay to write on 4. Open System"
         ).assertIsDisplayed().performClick()
         assertEquals(listOf(DspiRoutes.SYSTEM), routes)
     }
@@ -178,7 +178,7 @@ class SystemScreenWpLkui1Test {
         rule.mainClock.autoAdvance = false
         scope.launch { bridge.attachDevice(42, core.serial, DspiConstants.VENDOR_ID) }
         settle()
-        core.audioLinkSystem.onHub = true
+        core.alinkSystem.onHub = true
         rule.setContent {
             CompositionLocalProvider(LocalAppSettings provides InMemoryAppSettingsStore(AppSettings())) {
                 DspiTheme(darkTheme = true) { Surface(Modifier.fillMaxSize()) { HomeScreen(bridge, {}, {}) } }

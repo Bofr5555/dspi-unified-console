@@ -12,29 +12,37 @@ package se.bofr.dspi.core
 open class UnimplementedDspiCore : DspiCoreApi {
     override fun close() {}
 
-    override fun audioLinkInfo(): AudioLinkInfo? = throw NotImplementedError("audio_link_info")
+    override fun alinkInfo(): AlinkInfo? = throw NotImplementedError("alink_info")
 
-    override fun fetchAudioLinkInfo(): AudioLinkInfo = throw NotImplementedError("fetch_audio_link_info")
+    override fun fetchAlinkInfo(): AlinkInfo = throw NotImplementedError("fetch_alink_info")
 
-    override fun fetchAudioLinkStatus(): AudioLinkStatus = throw NotImplementedError("fetch_audio_link_status")
+    override fun fetchAlinkStatus(): AlinkStatus = throw NotImplementedError("fetch_alink_status")
 
-    override fun fetchAudioLinkSlots(): List<Int> = throw NotImplementedError("fetch_audio_link_slots")
+    override fun fetchAlinkSlots(): List<Int> = throw NotImplementedError("fetch_alink_slots")
 
-    override fun setAudioLinkSlots(slots: List<Int>): Unit = throw NotImplementedError("set_audio_link_slots")
+    override fun setAlinkSlots(slots: List<Int>): Unit = throw NotImplementedError("set_alink_slots")
 
-    override fun fetchAudioLinkPhase(): AudioLinkPhase = throw NotImplementedError("fetch_audio_link_phase")
+    override fun fetchAlinkPhase(): AlinkPhase = throw NotImplementedError("fetch_alink_phase")
 
-    override fun setAudioLinkPhase(mode: Int, dLocal: Int, hopsOffset: Int): Unit = throw NotImplementedError("set_audio_link_phase")
+    override fun setAlinkPhase(mode: Int, dLocal: Int, hopsOffset: Int): Unit = throw NotImplementedError("set_alink_phase")
 
-    override fun fetchAudioLinkFrameCounter(): AudioLinkFrameCounter = throw NotImplementedError("fetch_audio_link_frame_counter")
+    override fun fetchAlinkFrameCounter(): AlinkFrameCounter = throw NotImplementedError("fetch_alink_frame_counter")
 
     override fun applyAtFrame(frame: Long, op: Int, arg: Int, value: Int): Unit = throw NotImplementedError("apply_at_frame")
 
     override fun fetchApplyAtFrameStatus(): ApplyAtFrameStatus = throw NotImplementedError("fetch_apply_at_frame_status")
 
-    override fun resetAudioLinkStats(): Unit = throw NotImplementedError("reset_audio_link_stats")
+    override fun resetAlinkStats(): Unit = throw NotImplementedError("reset_alink_stats")
 
-    override fun openDemoAudioLink(): Unit = throw NotImplementedError("open_demo_audio_link")
+    override fun openDemoAlink(): Unit = throw NotImplementedError("open_demo_alink")
+
+    override fun alinkSystemView(): AlinkSystemView = throw NotImplementedError("alink_system_view")
+
+    override fun alinkSystemSave(revision: Long, edits: AlinkSystemEdits): Long = throw NotImplementedError("alink_system_save")
+
+    override fun alinkSystemAlign(): AlinkSystemAlign = throw NotImplementedError("alink_system_align")
+
+    override fun alinkSystemRecall(scene: String): AlinkSceneRecall = throw NotImplementedError("alink_system_recall")
 
     override fun fetchAll(): Unit = throw NotImplementedError("fetch_all")
 
@@ -285,14 +293,6 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun linkRetryNow(): Unit = throw NotImplementedError("link_retry_now")
 
     override fun linkSetUrl(url: String): Unit = throw NotImplementedError("link_set_url")
-
-    override fun linkSystemView(): LinkSystemView = throw NotImplementedError("link_system_view")
-
-    override fun linkSystemSave(revision: Long, edits: LinkSystemEdits): Long = throw NotImplementedError("link_system_save")
-
-    override fun linkSystemAlign(): LinkSystemAlign = throw NotImplementedError("link_system_align")
-
-    override fun linkSystemRecall(scene: String): LinkSceneRecall = throw NotImplementedError("link_system_recall")
 
     override fun monitorRead(afterId: Long): MonitorBatch = throw NotImplementedError("monitor_read")
 

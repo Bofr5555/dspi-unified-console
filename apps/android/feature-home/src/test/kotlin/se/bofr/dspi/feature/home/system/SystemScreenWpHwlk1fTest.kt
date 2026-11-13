@@ -7,11 +7,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -66,14 +68,14 @@ class SystemScreenWpHwlk1fTest {
         rule.mainClock.autoAdvance = false
         scope.launch { bridge.attachDevice(42, core.serial, DspiConstants.VENDOR_ID) }
         settle()
-        core.audioLinkSystem.onHub = true
-        core.audioLinkSystem.plainUnit = true
+        core.alinkSystem.onHub = true
+        core.alinkSystem.plainUnit = true
         scope.launch { model.refresh() }
         settle()
         rule.setContent { DspiTheme(darkTheme = true) { Surface(Modifier.fillMaxSize()) { SystemView(model) {} } } }
         settle()
         rule.onNodeWithContentDescription(
-            "Status: Audio link: 4 of 4 locked, 1 without the audio link (firmware), link delay to write on 4"
+            "Status: Audio link: 4 of 4 locked, 1 without the audio link (firmware), audio link delay to write on 4"
         ).assertIsDisplayed()
         rule.onNodeWithContentDescription("Plain unit, No audio link, No audio link (firmware)").assertIsDisplayed()
         val p = model.state.value.view!!.units.first { it.id == "P" }
@@ -83,16 +85,18 @@ class SystemScreenWpHwlk1fTest {
         rule.onNodeWithContentDescription("Recall Evening").performClick()
         settle()
         rule.onNodeWithText(
-            "Evening recalled: applied now on Plain unit (no audio link); at link frame",
+            "Evening recalled: applied now on Plain unit (no audio link); at audio link frame",
             substring = true
         ).assertIsDisplayed()
         val recall = model.state.value.lastRecall!!
         assertTrue(recall.taken)
         assertFalse("never on time on every unit with P", recall.message.contains("on time on every unit"))
 
-        rule.onNodeWithContentDescription("Clock and links, folded").performClick()
+        rule.onNodeWithContentDescription("Clock and audio links, folded").performClick()
         settle()
-        rule.onNodeWithText("Align link delays…").performClick()
+        // -- WP ALINK1 -- the longer label wraps the button onto a line of its own, below
+        // the test window's 2000 dp, where an injected touch lands nowhere: its click action
+        rule.onNodeWithText("Align audio link delays…").performSemanticsAction(SemanticsActions.OnClick)
         settle()
         rule.onNodeWithText("Align").performClick()
         settle()

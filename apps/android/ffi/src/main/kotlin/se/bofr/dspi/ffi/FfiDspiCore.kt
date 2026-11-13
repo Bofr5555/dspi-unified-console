@@ -68,29 +68,37 @@ class FfiDspiCore : DspiCoreApi {
         }
     }
 
-    override fun audioLinkInfo(): AudioLinkInfo? = call { core.audioLinkInfo()?.let { it.toDomain() } }
+    override fun alinkInfo(): AlinkInfo? = call { core.alinkInfo()?.let { it.toDomain() } }
 
-    override fun fetchAudioLinkInfo(): AudioLinkInfo = call { core.fetchAudioLinkInfo().toDomain() }
+    override fun fetchAlinkInfo(): AlinkInfo = call { core.fetchAlinkInfo().toDomain() }
 
-    override fun fetchAudioLinkStatus(): AudioLinkStatus = call { core.fetchAudioLinkStatus().toDomain() }
+    override fun fetchAlinkStatus(): AlinkStatus = call { core.fetchAlinkStatus().toDomain() }
 
-    override fun fetchAudioLinkSlots(): List<Int> = call { core.fetchAudioLinkSlots().map { it.toInt() and 0xFF } }
+    override fun fetchAlinkSlots(): List<Int> = call { core.fetchAlinkSlots().map { it.toInt() and 0xFF } }
 
-    override fun setAudioLinkSlots(slots: List<Int>) = call { core.setAudioLinkSlots(ByteArray(slots.size) { slots[it].toByte() }) }
+    override fun setAlinkSlots(slots: List<Int>) = call { core.setAlinkSlots(ByteArray(slots.size) { slots[it].toByte() }) }
 
-    override fun fetchAudioLinkPhase(): AudioLinkPhase = call { core.fetchAudioLinkPhase().toDomain() }
+    override fun fetchAlinkPhase(): AlinkPhase = call { core.fetchAlinkPhase().toDomain() }
 
-    override fun setAudioLinkPhase(mode: Int, dLocal: Int, hopsOffset: Int) = call { core.setAudioLinkPhase(mode.toUByte(), dLocal.toUShort(), hopsOffset.toShort()) }
+    override fun setAlinkPhase(mode: Int, dLocal: Int, hopsOffset: Int) = call { core.setAlinkPhase(mode.toUByte(), dLocal.toUShort(), hopsOffset.toShort()) }
 
-    override fun fetchAudioLinkFrameCounter(): AudioLinkFrameCounter = call { core.fetchAudioLinkFrameCounter().toDomain() }
+    override fun fetchAlinkFrameCounter(): AlinkFrameCounter = call { core.fetchAlinkFrameCounter().toDomain() }
 
     override fun applyAtFrame(frame: Long, op: Int, arg: Int, value: Int) = call { core.applyAtFrame(frame.toULong(), op.toUByte(), arg.toUByte(), value.toShort()) }
 
     override fun fetchApplyAtFrameStatus(): ApplyAtFrameStatus = call { core.fetchApplyAtFrameStatus().toDomain() }
 
-    override fun resetAudioLinkStats() = call { core.resetAudioLinkStats() }
+    override fun resetAlinkStats() = call { core.resetAlinkStats() }
 
-    override fun openDemoAudioLink() = call { core.openDemoAudioLink() }
+    override fun openDemoAlink() = call { core.openDemoAlink() }
+
+    override fun alinkSystemView(): AlinkSystemView = call { core.alinkSystemView().toDomain() }
+
+    override fun alinkSystemSave(revision: Long, edits: AlinkSystemEdits): Long = call { core.alinkSystemSave(revision.toULong(), edits.toFfi()).toLong() }
+
+    override fun alinkSystemAlign(): AlinkSystemAlign = call { core.alinkSystemAlign().toDomain() }
+
+    override fun alinkSystemRecall(scene: String): AlinkSceneRecall = call { core.alinkSystemRecall(scene).toDomain() }
 
     override fun fetchAll() = call { core.fetchAll() }
 
@@ -341,14 +349,6 @@ class FfiDspiCore : DspiCoreApi {
     override fun linkRetryNow() = core.linkRetryNow()
 
     override fun linkSetUrl(url: String) = core.linkSetUrl(url)
-
-    override fun linkSystemView(): LinkSystemView = call { core.linkSystemView().toDomain() }
-
-    override fun linkSystemSave(revision: Long, edits: LinkSystemEdits): Long = call { core.linkSystemSave(revision.toULong(), edits.toFfi()).toLong() }
-
-    override fun linkSystemAlign(): LinkSystemAlign = call { core.linkSystemAlign().toDomain() }
-
-    override fun linkSystemRecall(scene: String): LinkSceneRecall = call { core.linkSystemRecall(scene).toDomain() }
 
     override fun monitorRead(afterId: Long): MonitorBatch = core.monitorRead(afterId.toULong()).toDomain()
 
@@ -1997,13 +1997,13 @@ internal fun CrossfeedPair.toFfi() =
         feedDb = feedDb,
     )
 
-internal fun se.bofr.dspi.ffi.uniffi.AudioLinkInfo.toDomain() =
-    AudioLinkInfo(
+internal fun se.bofr.dspi.ffi.uniffi.AlinkInfo.toDomain() =
+    AlinkInfo(
         role = role,
         roleCode = roleCode.toInt(),
         protocolVersion = protocolVersion.toInt(),
         classMask = classMask.toInt(),
-        maxLinks = maxLinks.toInt(),
+        maxAlinks = maxAlinks.toInt(),
         maxChannels = maxChannels.toInt(),
         slotsPerUnit = slotsPerUnit.toInt(),
         rxPin = rxPin.toInt(),
@@ -2011,18 +2011,18 @@ internal fun se.bofr.dspi.ffi.uniffi.AudioLinkInfo.toDomain() =
         featureBits = featureBits.toLong(),
         dLocalMin = dLocalMin.toInt(),
         dLocalMax = dLocalMax.toInt(),
-        linkInput = linkInput,
+        alinkInput = alinkInput,
         stateEvents = stateEvents,
         applyEvents = applyEvents,
     )
 
-internal fun AudioLinkInfo.toFfi() =
-    se.bofr.dspi.ffi.uniffi.AudioLinkInfo(
+internal fun AlinkInfo.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AlinkInfo(
         role = role,
         roleCode = roleCode.toUByte(),
         protocolVersion = protocolVersion.toUByte(),
         classMask = classMask.toUByte(),
-        maxLinks = maxLinks.toUByte(),
+        maxAlinks = maxAlinks.toUByte(),
         maxChannels = maxChannels.toUByte(),
         slotsPerUnit = slotsPerUnit.toUByte(),
         rxPin = rxPin.toUByte(),
@@ -2030,16 +2030,16 @@ internal fun AudioLinkInfo.toFfi() =
         featureBits = featureBits.toUInt(),
         dLocalMin = dLocalMin.toUShort(),
         dLocalMax = dLocalMax.toUShort(),
-        linkInput = linkInput,
+        alinkInput = alinkInput,
         stateEvents = stateEvents,
         applyEvents = applyEvents,
     )
 
-internal fun se.bofr.dspi.ffi.uniffi.AudioLinkStatus.toDomain() =
-    AudioLinkStatus(
+internal fun se.bofr.dspi.ffi.uniffi.AlinkStatus.toDomain() =
+    AlinkStatus(
         state = state,
         stateCode = stateCode.toInt(),
-        linkClass = linkClass.toInt(),
+        alinkClass = alinkClass.toInt(),
         rateCode = rateCode.toInt(),
         channels = channels.toInt(),
         hops = hops.toInt(),
@@ -2058,11 +2058,11 @@ internal fun se.bofr.dspi.ffi.uniffi.AudioLinkStatus.toDomain() =
         fillFrames = fillFrames.toInt(),
     )
 
-internal fun AudioLinkStatus.toFfi() =
-    se.bofr.dspi.ffi.uniffi.AudioLinkStatus(
+internal fun AlinkStatus.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AlinkStatus(
         state = state,
         stateCode = stateCode.toUByte(),
-        linkClass = linkClass.toUByte(),
+        alinkClass = alinkClass.toUByte(),
         rateCode = rateCode.toUByte(),
         channels = channels.toUByte(),
         hops = hops.toUByte(),
@@ -2081,8 +2081,8 @@ internal fun AudioLinkStatus.toFfi() =
         fillFrames = fillFrames.toUShort(),
     )
 
-internal fun se.bofr.dspi.ffi.uniffi.AudioLinkPhase.toDomain() =
-    AudioLinkPhase(
+internal fun se.bofr.dspi.ffi.uniffi.AlinkPhase.toDomain() =
+    AlinkPhase(
         mode = mode.toInt(),
         dLocal = dLocal.toInt(),
         hopsOffset = hopsOffset.toInt(),
@@ -2090,8 +2090,8 @@ internal fun se.bofr.dspi.ffi.uniffi.AudioLinkPhase.toDomain() =
         state = state.toInt(),
     )
 
-internal fun AudioLinkPhase.toFfi() =
-    se.bofr.dspi.ffi.uniffi.AudioLinkPhase(
+internal fun AlinkPhase.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AlinkPhase(
         mode = mode.toUByte(),
         dLocal = dLocal.toUShort(),
         hopsOffset = hopsOffset.toShort(),
@@ -2099,15 +2099,15 @@ internal fun AudioLinkPhase.toFfi() =
         state = state.toUByte(),
     )
 
-internal fun se.bofr.dspi.ffi.uniffi.AudioLinkFrameCounter.toDomain() =
-    AudioLinkFrameCounter(
+internal fun se.bofr.dspi.ffi.uniffi.AlinkFrameCounter.toDomain() =
+    AlinkFrameCounter(
         frame = frame.toLong(),
         timeUs = timeUs.toLong(),
         outputFrames = outputFrames.toLong(),
     )
 
-internal fun AudioLinkFrameCounter.toFfi() =
-    se.bofr.dspi.ffi.uniffi.AudioLinkFrameCounter(
+internal fun AlinkFrameCounter.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AlinkFrameCounter(
         frame = frame.toULong(),
         timeUs = timeUs.toUInt(),
         outputFrames = outputFrames.toUInt(),
@@ -2131,6 +2131,264 @@ internal fun ApplyAtFrameStatus.toFfi() =
         lastResult = lastResult,
         lastResultCode = lastResultCode.toUByte(),
         lastFrame = lastFrame.toULong(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AlinkSystemUnit.toDomain() =
+    AlinkSystemUnit(
+        id = id,
+        name = name,
+        serial = serial,
+        kind = kind,
+        role = role,
+        room = room,
+        connected = connected,
+        state = state,
+        stateWord = stateWord,
+        pending = pending,
+        alinkDelayFrames = alinkDelayFrames?.let { it.toLong() },
+        alinkDelayMs = alinkDelayMs,
+        unitAlinkDelayFrames = unitAlinkDelayFrames?.let { it.toLong() },
+        alinkDelayMin = alinkDelayMin?.let { it.toLong() },
+        alinkDelayMax = alinkDelayMax?.let { it.toLong() },
+        hopOffset = hopOffset,
+        unitHopOffset = unitHopOffset,
+        phaseErrorFrames = phaseErrorFrames,
+        hops = hops?.let { it.toLong() },
+        hopDelayFrames = hopDelayFrames?.let { it.toLong() },
+        latencyUs = latencyUs,
+        measuredLatencyUs = measuredLatencyUs,
+        alarms = alarms.toLong(),
+    )
+
+internal fun AlinkSystemUnit.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AlinkSystemUnit(
+        id = id,
+        name = name,
+        serial = serial,
+        kind = kind,
+        role = role,
+        room = room,
+        connected = connected,
+        state = state,
+        stateWord = stateWord,
+        pending = pending,
+        alinkDelayFrames = alinkDelayFrames?.let { it.toUInt() },
+        alinkDelayMs = alinkDelayMs,
+        unitAlinkDelayFrames = unitAlinkDelayFrames?.let { it.toUInt() },
+        alinkDelayMin = alinkDelayMin?.let { it.toUInt() },
+        alinkDelayMax = alinkDelayMax?.let { it.toUInt() },
+        hopOffset = hopOffset,
+        unitHopOffset = unitHopOffset,
+        phaseErrorFrames = phaseErrorFrames,
+        hops = hops?.let { it.toUInt() },
+        hopDelayFrames = hopDelayFrames?.let { it.toUInt() },
+        latencyUs = latencyUs,
+        measuredLatencyUs = measuredLatencyUs,
+        alarms = alarms.toUInt(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AlinkSystemRoom.toDomain() =
+    AlinkSystemRoom(
+        id = id,
+        name = name,
+        lipSyncUs = lipSyncUs,
+    )
+
+internal fun AlinkSystemRoom.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AlinkSystemRoom(
+        id = id,
+        name = name,
+        lipSyncUs = lipSyncUs,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AlinkSystemScene.toDomain() =
+    AlinkSystemScene(
+        id = id,
+        name = name,
+        systemMute = systemMute,
+    )
+
+internal fun AlinkSystemScene.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AlinkSystemScene(
+        id = id,
+        name = name,
+        systemMute = systemMute,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AlinkSystemAlarm.toDomain() =
+    AlinkSystemAlarm(
+        id = id.toLong(),
+        severity = severity,
+        subject = subject,
+        message = message,
+        state = state,
+    )
+
+internal fun AlinkSystemAlarm.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AlinkSystemAlarm(
+        id = id.toULong(),
+        severity = severity,
+        subject = subject,
+        message = message,
+        state = state,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AlinkSystemView.toDomain() =
+    AlinkSystemView(
+        revision = revision.toLong(),
+        installed = installed,
+        role = role,
+        mayEdit = mayEdit,
+        mayRecall = mayRecall,
+        editNote = editNote,
+        recallNote = recallNote,
+        systemDelayFrames = systemDelayFrames.toLong(),
+        systemDelayMs = systemDelayMs,
+        systemDelayAuto = systemDelayAuto,
+        rateHz = rateHz.toLong(),
+        lipSyncUs = lipSyncUs,
+        units = units.map { it.toDomain() },
+        rooms = rooms.map { it.toDomain() },
+        scenes = scenes.map { it.toDomain() },
+        alarms = alarms.map { it.toDomain() },
+        systemMute = systemMute,
+        pendingApplyFrame = pendingApplyFrame?.let { it.toLong() },
+        locked = locked.toLong(),
+        holdover = holdover.toLong(),
+        pending = pending.toLong(),
+        unitCount = unitCount.toLong(),
+        summary = summary,
+        health = health,
+        issues = issues,
+        stale = stale,
+    )
+
+internal fun AlinkSystemView.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AlinkSystemView(
+        revision = revision.toULong(),
+        installed = installed,
+        role = role,
+        mayEdit = mayEdit,
+        mayRecall = mayRecall,
+        editNote = editNote,
+        recallNote = recallNote,
+        systemDelayFrames = systemDelayFrames.toUInt(),
+        systemDelayMs = systemDelayMs,
+        systemDelayAuto = systemDelayAuto,
+        rateHz = rateHz.toUInt(),
+        lipSyncUs = lipSyncUs,
+        units = units.map { it.toFfi() },
+        rooms = rooms.map { it.toFfi() },
+        scenes = scenes.map { it.toFfi() },
+        alarms = alarms.map { it.toFfi() },
+        systemMute = systemMute,
+        pendingApplyFrame = pendingApplyFrame?.let { it.toULong() },
+        locked = locked.toUInt(),
+        holdover = holdover.toUInt(),
+        pending = pending.toUInt(),
+        unitCount = unitCount.toUInt(),
+        summary = summary,
+        health = health,
+        issues = issues,
+        stale = stale,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AlinkRoomLipSync.toDomain() =
+    AlinkRoomLipSync(
+        roomId = roomId,
+        lipSyncUs = lipSyncUs,
+    )
+
+internal fun AlinkRoomLipSync.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AlinkRoomLipSync(
+        roomId = roomId,
+        lipSyncUs = lipSyncUs,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AlinkUnitLatency.toDomain() =
+    AlinkUnitLatency(
+        unitId = unitId,
+        measuredLatencyUs = measuredLatencyUs,
+    )
+
+internal fun AlinkUnitLatency.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AlinkUnitLatency(
+        unitId = unitId,
+        measuredLatencyUs = measuredLatencyUs,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AlinkSystemEdits.toDomain() =
+    AlinkSystemEdits(
+        setSystemDelay = setSystemDelay,
+        systemDelayFrames = systemDelayFrames?.let { it.toLong() },
+        rooms = rooms.map { it.toDomain() },
+        units = units.map { it.toDomain() },
+    )
+
+internal fun AlinkSystemEdits.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AlinkSystemEdits(
+        setSystemDelay = setSystemDelay,
+        systemDelayFrames = systemDelayFrames?.let { it.toUInt() },
+        rooms = rooms.map { it.toFfi() },
+        units = units.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AlinkSystemWrite.toDomain() =
+    AlinkSystemWrite(
+        unit = unit,
+        what = what,
+        result = result,
+        resultWord = resultWord,
+        tone = tone,
+    )
+
+internal fun AlinkSystemWrite.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AlinkSystemWrite(
+        unit = unit,
+        what = what,
+        result = result,
+        resultWord = resultWord,
+        tone = tone,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AlinkSceneRecall.toDomain() =
+    AlinkSceneRecall(
+        scene = scene,
+        name = name,
+        taken = taken,
+        frame = frame.toLong(),
+        leadMs = leadMs,
+        onTime = onTime,
+        heldFrame = heldFrame?.let { it.toLong() },
+        message = message,
+        writes = writes.map { it.toDomain() },
+    )
+
+internal fun AlinkSceneRecall.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AlinkSceneRecall(
+        scene = scene,
+        name = name,
+        taken = taken,
+        frame = frame.toULong(),
+        leadMs = leadMs,
+        onTime = onTime,
+        heldFrame = heldFrame?.let { it.toULong() },
+        message = message,
+        writes = writes.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AlinkSystemAlign.toDomain() =
+    AlinkSystemAlign(
+        applied = applied,
+        message = message,
+        writes = writes.map { it.toDomain() },
+    )
+
+internal fun AlinkSystemAlign.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AlinkSystemAlign(
+        applied = applied,
+        message = message,
+        writes = writes.map { it.toFfi() },
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.AutoEqFetchRequest.toDomain() =
@@ -2329,264 +2587,6 @@ internal fun HistoryMove.toFfi() =
         entry = entry?.let { it.toFfi() },
         skipped = skipped.map { it.toFfi() },
         note = note,
-    )
-
-internal fun se.bofr.dspi.ffi.uniffi.LinkSystemUnit.toDomain() =
-    LinkSystemUnit(
-        id = id,
-        name = name,
-        serial = serial,
-        kind = kind,
-        role = role,
-        room = room,
-        connected = connected,
-        state = state,
-        stateWord = stateWord,
-        pending = pending,
-        linkDelayFrames = linkDelayFrames?.let { it.toLong() },
-        linkDelayMs = linkDelayMs,
-        unitLinkDelayFrames = unitLinkDelayFrames?.let { it.toLong() },
-        linkDelayMin = linkDelayMin?.let { it.toLong() },
-        linkDelayMax = linkDelayMax?.let { it.toLong() },
-        hopOffset = hopOffset,
-        unitHopOffset = unitHopOffset,
-        phaseErrorFrames = phaseErrorFrames,
-        hops = hops?.let { it.toLong() },
-        hopDelayFrames = hopDelayFrames?.let { it.toLong() },
-        latencyUs = latencyUs,
-        measuredLatencyUs = measuredLatencyUs,
-        alarms = alarms.toLong(),
-    )
-
-internal fun LinkSystemUnit.toFfi() =
-    se.bofr.dspi.ffi.uniffi.LinkSystemUnit(
-        id = id,
-        name = name,
-        serial = serial,
-        kind = kind,
-        role = role,
-        room = room,
-        connected = connected,
-        state = state,
-        stateWord = stateWord,
-        pending = pending,
-        linkDelayFrames = linkDelayFrames?.let { it.toUInt() },
-        linkDelayMs = linkDelayMs,
-        unitLinkDelayFrames = unitLinkDelayFrames?.let { it.toUInt() },
-        linkDelayMin = linkDelayMin?.let { it.toUInt() },
-        linkDelayMax = linkDelayMax?.let { it.toUInt() },
-        hopOffset = hopOffset,
-        unitHopOffset = unitHopOffset,
-        phaseErrorFrames = phaseErrorFrames,
-        hops = hops?.let { it.toUInt() },
-        hopDelayFrames = hopDelayFrames?.let { it.toUInt() },
-        latencyUs = latencyUs,
-        measuredLatencyUs = measuredLatencyUs,
-        alarms = alarms.toUInt(),
-    )
-
-internal fun se.bofr.dspi.ffi.uniffi.LinkSystemRoom.toDomain() =
-    LinkSystemRoom(
-        id = id,
-        name = name,
-        lipSyncUs = lipSyncUs,
-    )
-
-internal fun LinkSystemRoom.toFfi() =
-    se.bofr.dspi.ffi.uniffi.LinkSystemRoom(
-        id = id,
-        name = name,
-        lipSyncUs = lipSyncUs,
-    )
-
-internal fun se.bofr.dspi.ffi.uniffi.LinkSystemScene.toDomain() =
-    LinkSystemScene(
-        id = id,
-        name = name,
-        systemMute = systemMute,
-    )
-
-internal fun LinkSystemScene.toFfi() =
-    se.bofr.dspi.ffi.uniffi.LinkSystemScene(
-        id = id,
-        name = name,
-        systemMute = systemMute,
-    )
-
-internal fun se.bofr.dspi.ffi.uniffi.LinkSystemAlarm.toDomain() =
-    LinkSystemAlarm(
-        id = id.toLong(),
-        severity = severity,
-        subject = subject,
-        message = message,
-        state = state,
-    )
-
-internal fun LinkSystemAlarm.toFfi() =
-    se.bofr.dspi.ffi.uniffi.LinkSystemAlarm(
-        id = id.toULong(),
-        severity = severity,
-        subject = subject,
-        message = message,
-        state = state,
-    )
-
-internal fun se.bofr.dspi.ffi.uniffi.LinkSystemView.toDomain() =
-    LinkSystemView(
-        revision = revision.toLong(),
-        installed = installed,
-        role = role,
-        mayEdit = mayEdit,
-        mayRecall = mayRecall,
-        editNote = editNote,
-        recallNote = recallNote,
-        systemDelayFrames = systemDelayFrames.toLong(),
-        systemDelayMs = systemDelayMs,
-        systemDelayAuto = systemDelayAuto,
-        rateHz = rateHz.toLong(),
-        lipSyncUs = lipSyncUs,
-        units = units.map { it.toDomain() },
-        rooms = rooms.map { it.toDomain() },
-        scenes = scenes.map { it.toDomain() },
-        alarms = alarms.map { it.toDomain() },
-        systemMute = systemMute,
-        pendingApplyFrame = pendingApplyFrame?.let { it.toLong() },
-        locked = locked.toLong(),
-        holdover = holdover.toLong(),
-        pending = pending.toLong(),
-        unitCount = unitCount.toLong(),
-        summary = summary,
-        health = health,
-        issues = issues,
-        stale = stale,
-    )
-
-internal fun LinkSystemView.toFfi() =
-    se.bofr.dspi.ffi.uniffi.LinkSystemView(
-        revision = revision.toULong(),
-        installed = installed,
-        role = role,
-        mayEdit = mayEdit,
-        mayRecall = mayRecall,
-        editNote = editNote,
-        recallNote = recallNote,
-        systemDelayFrames = systemDelayFrames.toUInt(),
-        systemDelayMs = systemDelayMs,
-        systemDelayAuto = systemDelayAuto,
-        rateHz = rateHz.toUInt(),
-        lipSyncUs = lipSyncUs,
-        units = units.map { it.toFfi() },
-        rooms = rooms.map { it.toFfi() },
-        scenes = scenes.map { it.toFfi() },
-        alarms = alarms.map { it.toFfi() },
-        systemMute = systemMute,
-        pendingApplyFrame = pendingApplyFrame?.let { it.toULong() },
-        locked = locked.toUInt(),
-        holdover = holdover.toUInt(),
-        pending = pending.toUInt(),
-        unitCount = unitCount.toUInt(),
-        summary = summary,
-        health = health,
-        issues = issues,
-        stale = stale,
-    )
-
-internal fun se.bofr.dspi.ffi.uniffi.LinkRoomLipSync.toDomain() =
-    LinkRoomLipSync(
-        roomId = roomId,
-        lipSyncUs = lipSyncUs,
-    )
-
-internal fun LinkRoomLipSync.toFfi() =
-    se.bofr.dspi.ffi.uniffi.LinkRoomLipSync(
-        roomId = roomId,
-        lipSyncUs = lipSyncUs,
-    )
-
-internal fun se.bofr.dspi.ffi.uniffi.LinkUnitLatency.toDomain() =
-    LinkUnitLatency(
-        unitId = unitId,
-        measuredLatencyUs = measuredLatencyUs,
-    )
-
-internal fun LinkUnitLatency.toFfi() =
-    se.bofr.dspi.ffi.uniffi.LinkUnitLatency(
-        unitId = unitId,
-        measuredLatencyUs = measuredLatencyUs,
-    )
-
-internal fun se.bofr.dspi.ffi.uniffi.LinkSystemEdits.toDomain() =
-    LinkSystemEdits(
-        setSystemDelay = setSystemDelay,
-        systemDelayFrames = systemDelayFrames?.let { it.toLong() },
-        rooms = rooms.map { it.toDomain() },
-        units = units.map { it.toDomain() },
-    )
-
-internal fun LinkSystemEdits.toFfi() =
-    se.bofr.dspi.ffi.uniffi.LinkSystemEdits(
-        setSystemDelay = setSystemDelay,
-        systemDelayFrames = systemDelayFrames?.let { it.toUInt() },
-        rooms = rooms.map { it.toFfi() },
-        units = units.map { it.toFfi() },
-    )
-
-internal fun se.bofr.dspi.ffi.uniffi.LinkSystemWrite.toDomain() =
-    LinkSystemWrite(
-        unit = unit,
-        what = what,
-        result = result,
-        resultWord = resultWord,
-        tone = tone,
-    )
-
-internal fun LinkSystemWrite.toFfi() =
-    se.bofr.dspi.ffi.uniffi.LinkSystemWrite(
-        unit = unit,
-        what = what,
-        result = result,
-        resultWord = resultWord,
-        tone = tone,
-    )
-
-internal fun se.bofr.dspi.ffi.uniffi.LinkSceneRecall.toDomain() =
-    LinkSceneRecall(
-        scene = scene,
-        name = name,
-        taken = taken,
-        frame = frame.toLong(),
-        leadMs = leadMs,
-        onTime = onTime,
-        heldFrame = heldFrame?.let { it.toLong() },
-        message = message,
-        writes = writes.map { it.toDomain() },
-    )
-
-internal fun LinkSceneRecall.toFfi() =
-    se.bofr.dspi.ffi.uniffi.LinkSceneRecall(
-        scene = scene,
-        name = name,
-        taken = taken,
-        frame = frame.toULong(),
-        leadMs = leadMs,
-        onTime = onTime,
-        heldFrame = heldFrame?.let { it.toULong() },
-        message = message,
-        writes = writes.map { it.toFfi() },
-    )
-
-internal fun se.bofr.dspi.ffi.uniffi.LinkSystemAlign.toDomain() =
-    LinkSystemAlign(
-        applied = applied,
-        message = message,
-        writes = writes.map { it.toDomain() },
-    )
-
-internal fun LinkSystemAlign.toFfi() =
-    se.bofr.dspi.ffi.uniffi.LinkSystemAlign(
-        applied = applied,
-        message = message,
-        writes = writes.map { it.toFfi() },
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.LinkPhaseText.toDomain() =

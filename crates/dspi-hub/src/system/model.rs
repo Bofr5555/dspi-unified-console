@@ -1,6 +1,6 @@
 //! The installation as the hub keeps it (WP SW2): rooms, zones, groups, sources,
 //! the audio link's senders, fan-outs and units, and the scenes. What the hub
-//! cannot learn from the stream is here: which link output and which re-emitters
+//! cannot learn from the stream is here: which alink output and which re-emitters
 //! feed each unit (the stream's `hops` counts re-emitters, not frames), the slots
 //! each unit takes, its measured or configured latency, where its speakers stand.
 //!
@@ -13,7 +13,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use dspi_proto::ext::audio_link::{ApplyOp, ApplyRequest, LINK_MAX_CHANNELS, LINK_SLOT_SILENT};
+use dspi_proto::ext::alink::{ALINK_MAX_CHANNELS, ALINK_SLOT_SILENT, ApplyOp, ApplyRequest};
 use serde::{Deserialize, Serialize};
 
 /// The model's format version.
@@ -58,7 +58,7 @@ pub struct SystemModel {
     /// [`MODEL_VERSION`].
     #[serde(default = "default_version")]
     pub version: u32,
-    /// The system delay D in link frames. `None`: the alignment engine picks the
+    /// The system delay D in alink frames. `None`: the alignment engine picks the
     /// smallest that every unit accepts.
     #[serde(default)]
     pub d_frames: Option<u16>,
@@ -82,13 +82,13 @@ pub struct SystemModel {
     /// Groups: named sets of units, for scenes.
     #[serde(default)]
     pub groups: Vec<Group>,
-    /// Sources: programmes on the link.
+    /// Sources: programmes on the alink.
     #[serde(default)]
     pub sources: Vec<Source>,
-    /// The link's senders (the master clock).
+    /// The alink's senders (the master clock).
     #[serde(default)]
     pub senders: Vec<Sender>,
-    /// Fan-outs: senders slaved to a link input, re-emitting the stream.
+    /// Fan-outs: senders slaved to an alink input, re-emitting the stream.
     #[serde(default)]
     pub fan_outs: Vec<FanOut>,
     /// The receiving units.
@@ -167,7 +167,7 @@ pub struct Group {
     pub note: String,
 }
 
-/// A programme carried on link channels.
+/// A programme carried on audio link channels.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Source {
@@ -179,12 +179,12 @@ pub struct Source {
     /// The sender whose stream carries it.
     #[serde(default)]
     pub sender: Option<String>,
-    /// The link channels it occupies.
+    /// The audio link channels it occupies.
     #[serde(default)]
     pub channels: Vec<u8>,
 }
 
-/// A sender: the master clock and its link outputs.
+/// A sender: the master clock and its alink outputs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Sender {
@@ -202,7 +202,7 @@ pub struct Sender {
     pub sender_id: Option<u8>,
 }
 
-/// A fan-out: a sender slaved to a link input, re-emitting the stream.
+/// A fan-out: a sender slaved to an alink input, re-emitting the stream.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FanOut {
@@ -259,7 +259,7 @@ pub struct Unit {
     /// A repeater's hop delay in frames when it cannot be read.
     #[serde(default)]
     pub hop_delay_frames: Option<u8>,
-    /// The link channel for each of its 8 matrix inputs, 255 for silence;
+    /// The audio link channel for each of its 8 matrix inputs, 255 for silence;
     /// `None` leaves the unit's own table alone.
     #[serde(default)]
     pub slots: Option<Vec<u8>>,
@@ -282,7 +282,7 @@ impl Unit {
     }
 }
 
-/// A scene: ops that take effect at the same link frame.
+/// A scene: ops that take effect at the same alink frame.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Scene {
@@ -338,7 +338,7 @@ pub fn scene_op(name: &str) -> Option<ApplyOp> {
 /// recall the op only if the hub's policy lets its role send that command.
 /// Mute and unmute are `SET_OUTPUT_MUTE`, a preset load `PRESET_LOAD`, the
 /// master volume and output delay their setters; a click and a sync pulse
-/// have no direct command but the link's extension write (admin).
+/// have no direct command but the alink's extension write (admin).
 pub fn op_authority(op: ApplyOp) -> (u8, dspi_link::Dir) {
     use dspi_link::Dir;
     use dspi_proto::generated::opcodes as opc;
@@ -584,11 +584,11 @@ impl SystemModel {
             if let Some(x) = s.sender.as_deref().filter(|x| !is(x, Kind::Sender)) {
                 return bad(format!("source {}: no sender {x:?}", s.id));
             }
-            if s.channels.len() > usize::from(LINK_MAX_CHANNELS)
-                || s.channels.iter().any(|c| *c >= LINK_MAX_CHANNELS)
+            if s.channels.len() > usize::from(ALINK_MAX_CHANNELS)
+                || s.channels.iter().any(|c| *c >= ALINK_MAX_CHANNELS)
             {
                 return bad(format!(
-                    "source {}: channels below {LINK_MAX_CHANNELS}",
+                    "source {}: channels below {ALINK_MAX_CHANNELS}",
                     s.id
                 ));
             }
@@ -642,10 +642,10 @@ impl SystemModel {
                 let ok = slots.len() == 8
                     && slots
                         .iter()
-                        .all(|s| *s < LINK_MAX_CHANNELS || *s == LINK_SLOT_SILENT);
+                        .all(|s| *s < ALINK_MAX_CHANNELS || *s == ALINK_SLOT_SILENT);
                 if !ok {
                     return bad(format!(
-                        "unit {}: 8 slots, each a channel below {LINK_MAX_CHANNELS} or 255",
+                        "unit {}: 8 slots, each a channel below {ALINK_MAX_CHANNELS} or 255",
                         u.id
                     ));
                 }
@@ -736,7 +736,7 @@ mod tests_wp_sw2x {
 
     /// The coordinator's role rule, on the hub's own policy table: the ops a
     /// console's control role sends directly are control; a click and a sync
-    /// pulse have only the link's extension write, which is admin.
+    /// pulse have only the alink's extension write, which is admin.
     #[test]
     fn wp_sw2x_ops_are_judged_as_their_direct_commands() {
         let p = Policy::embedded();

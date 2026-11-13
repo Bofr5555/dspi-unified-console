@@ -97,9 +97,11 @@ pub enum EventKind {
     Recall,
     // -- WP SW1 --
     /// The audio link (not DSPi Link): lost, locked, re-anchored (`source`
-    /// which, `value` the link frame's low 32 bits), or an apply-at-frame
-    /// result (`source` `apply`). Written `audio_link`.
-    AudioLink,
+    /// which, `value` the alink frame's low 32 bits), or an apply-at-frame
+    /// result (`source` `apply`). Written `audio_link` (the file format's
+    /// value, kept since ALINK1); `alink` also reads as this kind.
+    #[serde(rename = "audio_link", alias = "alink")]
+    Alink,
     /// A kind from a newer build.
     #[default]
     #[serde(other)]
@@ -120,7 +122,7 @@ impl EventKind {
             Self::Firmware => "firmware",
             Self::Import => "import",
             Self::Recall => "recall",
-            Self::AudioLink => "audio_link",
+            Self::Alink => "audio_link",
             Self::Unknown => "unknown",
         }
     }
@@ -1216,9 +1218,9 @@ pub enum ExtEvent {
     },
     // -- WP SW1 --
     /// The audio link's state changed (0xE1, `EXT_NOTIFY_FEATURES` bit 2).
-    LinkState(dspi_proto::ext::audio_link::LinkStateEvent),
+    AlinkState(dspi_proto::ext::alink::AlinkStateEvent),
     /// An apply-at-frame op ran (0xE2, bit 3).
-    ApplyResult(dspi_proto::ext::audio_link::ApplyResultEvent),
+    ApplyResult(dspi_proto::ext::alink::ApplyResultEvent),
 }
 
 /// Decode a notification the session could not (`Event::Unknown { id,
@@ -1233,43 +1235,47 @@ pub enum ExtEvent {
 /// notification yet.
 ///
 /// WP SW1: the audio link's 0xE1 and 0xE2, each behind its own feature bit
-/// (`dspi_proto::ext::audio_link::link_event`).
+/// (`dspi_proto::ext::alink::alink_event`).
 pub fn decode_ext_event(notify_features: Option<u32>, id: u8, bytes: &[u8]) -> Option<ExtEvent> {
-    use dspi_proto::ext::audio_link::{LinkEvent, link_event};
+    use dspi_proto::ext::alink::{AlinkEvent, alink_event};
     if let Some(c) = dspi_proto::ext::clip_event(notify_features, id, bytes) {
         return Some(ExtEvent::Clip { mask: c.mask });
     }
     // -- WP SW1 --
-    link_event(notify_features, id, bytes).map(|e| match e {
-        LinkEvent::State(s) => ExtEvent::LinkState(s),
-        LinkEvent::Apply(a) => ExtEvent::ApplyResult(a),
+    alink_event(notify_features, id, bytes).map(|e| match e {
+        AlinkEvent::State(s) => ExtEvent::AlinkState(s),
+        AlinkEvent::Apply(a) => ExtEvent::ApplyResult(a),
     })
 }
 
 // -- WP SW1 --
 /// The event-log record for an audio-link event at `t`: a loss, a lock, a
-/// re-anchor (resync) or an apply-at-frame result, kind [`EventKind::AudioLink`].
+/// re-anchor (resync) or an apply-at-frame result, kind [`EventKind::Alink`].
 /// `None` for the other extension events.
-pub fn link_record(e: &ExtEvent, t: i64) -> Option<EventRecord> {
-    use dspi_proto::ext::audio_link::{ApplyResult, LinkEventReason, LinkState};
+pub fn alink_record(e: &ExtEvent, t: i64) -> Option<EventRecord> {
+    use dspi_proto::ext::alink::{AlinkEventReason, AlinkState, ApplyResult};
     let (source, text, frame) = match e {
-        ExtEvent::LinkState(s) => {
+        ExtEvent::AlinkState(s) => {
             let class = match s.class {
                 1..=3 => format!(", L{}", s.class),
                 _ => String::new(),
             };
             let (source, what) = match (s.reason, s.state) {
-                (LinkEventReason::Los, _) => ("lost", "lost (LOS): outputs muted"),
-                (LinkEventReason::HeaderErrors, _) => ("lost", "lost (bad headers): outputs muted"),
-                (LinkEventReason::CommaLost, _) => ("lost", "lost (no frame start): outputs muted"),
-                (LinkEventReason::Reanchor, _) => ("resync", "re-anchored (a short silence)"),
-                (LinkEventReason::VcxoLimit, _) => ("resync", "out of clock range: re-anchored"),
-                (LinkEventReason::Disabled, _) => ("off", "switched off"),
-                (_, LinkState::Locked) => ("locked", "locked"),
-                (_, LinkState::Holdover) => ("lost", "lost: outputs muted"),
-                (_, LinkState::Searching) => ("searching", "searching"),
-                (_, LinkState::Off) => ("off", "off"),
-                (_, LinkState::Other(_)) => ("unknown", "changed state"),
+                (AlinkEventReason::Los, _) => ("lost", "lost (LOS): outputs muted"),
+                (AlinkEventReason::HeaderErrors, _) => {
+                    ("lost", "lost (bad headers): outputs muted")
+                }
+                (AlinkEventReason::CommaLost, _) => {
+                    ("lost", "lost (no frame start): outputs muted")
+                }
+                (AlinkEventReason::Reanchor, _) => ("resync", "re-anchored (a short silence)"),
+                (AlinkEventReason::VcxoLimit, _) => ("resync", "out of clock range: re-anchored"),
+                (AlinkEventReason::Disabled, _) => ("off", "switched off"),
+                (_, AlinkState::Locked) => ("locked", "locked"),
+                (_, AlinkState::Holdover) => ("lost", "lost: outputs muted"),
+                (_, AlinkState::Searching) => ("searching", "searching"),
+                (_, AlinkState::Off) => ("off", "off"),
+                (_, AlinkState::Other(_)) => ("unknown", "changed state"),
             };
             (source, format!("Audio link {what}{class}"), s.frame_low)
         }
@@ -1289,7 +1295,7 @@ pub fn link_record(e: &ExtEvent, t: i64) -> Option<EventRecord> {
         }
         ExtEvent::Clip { .. } | ExtEvent::Reset { .. } => return None,
     };
-    let mut r = EventRecord::new(EventKind::AudioLink, t, text);
+    let mut r = EventRecord::new(EventKind::Alink, t, text);
     r.source = Some(source.to_string());
     r.value = Some(f64::from(frame));
     Some(r)

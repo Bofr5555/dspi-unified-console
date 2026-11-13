@@ -2,18 +2,18 @@
 //! screens show it (Qt, Android; Swift later). The hub's `system.*` requests
 //! (`docs/integrator/audio-link.md`) over this session's own Link connection,
 //! turned into rows a client draws as they are: units with their role and
-//! link state, the link delay and its range, the hop offset, the phase error,
+//! alink state, the audio link delay and its range, the hop offset, the phase error,
 //! the scenes, and what a recall did.
 //!
 //! The web console reads the same requests through its own generic call
 //! ([`DspiCore::link_hub_request`], not exported); these are the typed calls
 //! for exactly what the native screens need:
-//! - [`DspiCore::link_system_view`] reads `system.status`, plus `system.get`
+//! - [`DspiCore::alink_system_view`] reads `system.status`, plus `system.get`
 //!   when the model's revision moved;
-//! - [`DspiCore::link_system_save`] sends the "Clock and links" edits as one
+//! - [`DspiCore::alink_system_save`] sends the "Clock and audio links" edits as one
 //!   `system.set`, guarded by the revision they were made on;
-//! - [`DspiCore::link_system_align`] sends `system.align` with `apply`;
-//! - [`DspiCore::link_system_recall`] sends `system.scene.apply`.
+//! - [`DspiCore::alink_system_align`] sends `system.align` with `apply`;
+//! - [`DspiCore::alink_system_recall`] sends `system.scene.apply`.
 //!
 //! The hub judges every request by this session's role; the view's `may_*`
 //! flags only keep a client from offering what it would refuse. No clock is
@@ -28,7 +28,7 @@ use dspi_link::LinkError;
 use super::{HUB_REQUEST_TIMEOUT, map_error};
 use crate::{DspiCore, DspiError, Result};
 
-/// The rate a model gives none for (48 kHz, the link's usual one).
+/// The rate a model gives none for (48 kHz, the alink's usual one).
 const DEFAULT_RATE_HZ: u32 = 48_000;
 
 /// What the core keeps between calls on one Link session: the model as last
@@ -38,7 +38,7 @@ pub(crate) struct Cache {
     /// The model and its revision, as `system.get` gave them.
     model: Option<(u64, Value)>,
     /// The last view built, given again while `system.status` is rate limited.
-    view: Option<LinkSystemView>,
+    view: Option<AlinkSystemView>,
     /// The frame of this session's own last scene taken through the sender.
     last_superframe: Option<u64>,
 }
@@ -47,7 +47,7 @@ pub(crate) struct Cache {
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LinkSystemUnit {
+pub struct AlinkSystemUnit {
     /// The model's id.
     pub id: String,
     /// Its name, or the id when it has none.
@@ -70,20 +70,20 @@ pub struct LinkSystemUnit {
     pub state: String,
     /// [`Self::state`] in words: "Locked", "Holdover", ... "Not connected".
     pub state_word: String,
-    /// The unit's link delay or hop offset is not the one the system delay
-    /// asks for: writing the link delays ([`DspiCore::link_system_align`])
+    /// The unit's audio link delay or hop offset is not the one the system delay
+    /// asks for: writing the audio link delays ([`DspiCore::alink_system_align`])
     /// is pending.
     pub pending: bool,
-    /// The link delay the alignment asks for, frames; else the unit's own.
-    pub link_delay_frames: Option<u32>,
-    /// [`Self::link_delay_frames`] in ms at the system's rate.
-    pub link_delay_ms: Option<f64>,
-    /// The link delay the unit has now, frames, when it reported one.
-    pub unit_link_delay_frames: Option<u32>,
-    /// The shortest link delay the unit takes, frames.
-    pub link_delay_min: Option<u32>,
+    /// The audio link delay the alignment asks for, frames; else the unit's own.
+    pub alink_delay_frames: Option<u32>,
+    /// [`Self::alink_delay_frames`] in ms at the system's rate.
+    pub alink_delay_ms: Option<f64>,
+    /// The audio link delay the unit has now, frames, when it reported one.
+    pub unit_alink_delay_frames: Option<u32>,
+    /// The shortest audio link delay the unit takes, frames.
+    pub alink_delay_min: Option<u32>,
     /// The longest.
-    pub link_delay_max: Option<u32>,
+    pub alink_delay_max: Option<u32>,
     /// The hop offset the alignment asks for, frames; else the unit's own.
     pub hop_offset: Option<i32>,
     /// The hop offset the unit has now.
@@ -107,7 +107,7 @@ pub struct LinkSystemUnit {
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LinkSystemRoom {
+pub struct AlinkSystemRoom {
     /// The model's id.
     pub id: String,
     /// Its name.
@@ -120,8 +120,8 @@ pub struct LinkSystemRoom {
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LinkSystemScene {
-    /// The model's id: what [`DspiCore::link_system_recall`] takes.
+pub struct AlinkSystemScene {
+    /// The model's id: what [`DspiCore::alink_system_recall`] takes.
     pub id: String,
     /// Its name.
     pub name: String,
@@ -134,7 +134,7 @@ pub struct LinkSystemScene {
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LinkSystemAlarm {
+pub struct AlinkSystemAlarm {
     /// The hub's id for it.
     pub id: u64,
     /// `warning` or `critical`.
@@ -151,14 +151,14 @@ pub struct LinkSystemAlarm {
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LinkSystemView {
-    /// The model's revision: what [`DspiCore::link_system_save`] is given back.
+pub struct AlinkSystemView {
+    /// The model's revision: what [`DspiCore::alink_system_save`] is given back.
     pub revision: u64,
     /// The hub has an installation (a model with at least one element).
     pub installed: bool,
     /// This session's role on the hub now: `admin`, `control` or `viewer`.
     pub role: String,
-    /// The role may change the installation and write the link delays (admin).
+    /// The role may change the installation and write the audio link delays (admin).
     pub may_edit: bool,
     /// The role may recall scenes (control or admin).
     pub may_recall: bool,
@@ -173,18 +173,18 @@ pub struct LinkSystemView {
     /// The model fixes no system delay: the hub takes the smallest every
     /// unit takes.
     pub system_delay_auto: bool,
-    /// The link's rate, Hz.
+    /// The alink's rate, Hz.
     pub rate_hz: u32,
     /// The model's lip-sync offset, µs.
     pub lip_sync_us: i64,
     /// Every element: senders, fan-outs, then units in the model's order.
-    pub units: Vec<LinkSystemUnit>,
+    pub units: Vec<AlinkSystemUnit>,
     /// The rooms.
-    pub rooms: Vec<LinkSystemRoom>,
+    pub rooms: Vec<AlinkSystemRoom>,
     /// The scenes.
-    pub scenes: Vec<LinkSystemScene>,
+    pub scenes: Vec<AlinkSystemScene>,
     /// Alarms still on, critical first.
-    pub alarms: Vec<LinkSystemAlarm>,
+    pub alarms: Vec<AlinkSystemAlarm>,
     /// A sender reports its system mute set (none: no sender reported).
     pub system_mute: Option<bool>,
     /// The frame a sender holds a scene for, when it holds one.
@@ -193,7 +193,7 @@ pub struct LinkSystemView {
     pub locked: u32,
     /// Units in holdover.
     pub holdover: u32,
-    /// Units whose link delay is still to be written.
+    /// Units whose audio link delay is still to be written.
     pub pending: u32,
     /// Units the model has, but those whose firmware has no audio link
     /// (WP HWLK1F): "N of M locked" counts the units that can lock.
@@ -214,7 +214,7 @@ pub struct LinkSystemView {
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct LinkRoomLipSync {
+pub struct AlinkRoomLipSync {
     /// The room's id.
     pub room_id: String,
     /// µs; none: the model's own.
@@ -225,36 +225,36 @@ pub struct LinkRoomLipSync {
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct LinkUnitLatency {
+pub struct AlinkUnitLatency {
     /// The unit's id.
     pub unit_id: String,
     /// µs; none: the output latency counts.
     pub measured_latency_us: Option<i64>,
 }
 
-/// The "Clock and links" edits, sent as one change of the model.
+/// The "Clock and audio links" edits, sent as one change of the model.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct LinkSystemEdits {
+pub struct AlinkSystemEdits {
     /// Change the system delay.
     pub set_system_delay: bool,
     /// The new system delay, frames; none: the smallest every unit takes.
     pub system_delay_frames: Option<u32>,
     /// Rooms' lip-sync offsets.
-    pub rooms: Vec<LinkRoomLipSync>,
+    pub rooms: Vec<AlinkRoomLipSync>,
     /// Units' measured latencies.
-    pub units: Vec<LinkUnitLatency>,
+    pub units: Vec<AlinkUnitLatency>,
 }
 
 /// One write's outcome on one device.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LinkSystemWrite {
+pub struct AlinkSystemWrite {
     /// The element's name.
     pub unit: String,
-    /// What was written, in words ("Mute", "Link delay").
+    /// What was written, in words ("Mute", "Audio link delay").
     pub what: String,
     /// The hub's result code (`applied`, `queued`, `refused`, ...).
     pub result: String,
@@ -268,7 +268,7 @@ pub struct LinkSystemWrite {
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LinkSceneRecall {
+pub struct AlinkSceneRecall {
     /// The scene's id.
     pub scene: String,
     /// Its name.
@@ -276,7 +276,7 @@ pub struct LinkSceneRecall {
     /// At least one device took it. False: refused, nothing changed, and
     /// [`Self::message`] says why.
     pub taken: bool,
-    /// The link frame it applies at.
+    /// The alink frame it applies at.
     pub frame: u64,
     /// How far ahead it was scheduled, ms.
     pub lead_ms: f64,
@@ -288,26 +288,26 @@ pub struct LinkSceneRecall {
     /// One sentence to show: the outcome, or the refusal and what to do.
     pub message: String,
     /// Each device's result.
-    pub writes: Vec<LinkSystemWrite>,
+    pub writes: Vec<AlinkSystemWrite>,
 }
 
-/// What writing the link delays did.
+/// What writing the audio link delays did.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LinkSystemAlign {
+pub struct AlinkSystemAlign {
     /// The hub wrote them (false: an issue stopped it).
     pub applied: bool,
     /// One sentence to show.
     pub message: String,
     /// Each write's result.
-    pub writes: Vec<LinkSystemWrite>,
+    pub writes: Vec<AlinkSystemWrite>,
 }
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
     /// The audio link's installation on the hub this session is on: its
-    /// elements with their link state, the rooms, the scenes, alarms and a
+    /// elements with their alink state, the rooms, the scenes, alarms and a
     /// one-line summary. Reads `system.status` (and `system.get` when the
     /// model changed). The hub answers the status at most once a second per
     /// session; asked sooner, this gives the last view again with `stale`.
@@ -315,7 +315,7 @@ impl DspiCore {
     ///
     /// Errors: [`DspiError::Disconnected`] with no hub session,
     /// [`DspiError::Link`] with the hub's code or the client's.
-    pub fn link_system_view(&self) -> Result<LinkSystemView> {
+    pub fn alink_system_view(&self) -> Result<AlinkSystemView> {
         let client = self.hub_client()?;
         let status = match request(&client, "system.status", Map::new()) {
             Ok(s) => s,
@@ -351,7 +351,7 @@ impl DspiCore {
         Ok(view)
     }
 
-    /// Save the "Clock and links" edits made on the view of `revision`, as
+    /// Save the "Clock and audio links" edits made on the view of `revision`, as
     /// one `system.set` the hub takes only while its model is still at that
     /// revision. Returns the new revision. Admin only.
     ///
@@ -359,7 +359,7 @@ impl DspiCore {
     /// the hub meanwhile (nothing is saved; read the view again and edit
     /// again), `denied` for another role, `bad_request` for values the hub
     /// refuses, with its words; [`DspiError::Disconnected`] with no session.
-    pub fn link_system_save(&self, revision: u64, edits: LinkSystemEdits) -> Result<u64> {
+    pub fn alink_system_save(&self, revision: u64, edits: AlinkSystemEdits) -> Result<u64> {
         let client = self.hub_client()?;
         let cached = self
             .system_cache(|c| c.model.clone())
@@ -392,13 +392,13 @@ impl DspiCore {
         }
     }
 
-    /// Write the link delays and hop offsets the system delay asks for to
+    /// Write the audio link delays and hop offsets the system delay asks for to
     /// every unit (`system.align` with `apply`). Each unit re-anchors: a
     /// short silence (2 to 6 ms). Admin only. Blocks while the hub writes
     /// every unit.
     ///
-    /// Errors: as [`Self::link_system_save`], without `conflict`.
-    pub fn link_system_align(&self) -> Result<LinkSystemAlign> {
+    /// Errors: as [`Self::alink_system_save`], without `conflict`.
+    pub fn alink_system_align(&self) -> Result<AlinkSystemAlign> {
         let client = self.hub_client()?;
         let mut fields = Map::new();
         fields.insert("apply".into(), true.into());
@@ -419,7 +419,7 @@ impl DspiCore {
     /// Errors: [`DspiError::Link`] `denied` when the role may not make one of
     /// the scene's operations (the hub's words name it), `bad_request` for a
     /// scene the model does not have; [`DspiError::Disconnected`].
-    pub fn link_system_recall(&self, scene: String) -> Result<LinkSceneRecall> {
+    pub fn alink_system_recall(&self, scene: String) -> Result<AlinkSceneRecall> {
         let client = self.hub_client()?;
         let mut fields = Map::new();
         fields.insert("scene".into(), Value::from(scene.as_str()));
@@ -534,7 +534,7 @@ fn rate_of(model: &Value, status: Option<&Value>) -> u32 {
 
 // ---------------------------------------------------------------- words
 
-/// The link's state in the glossary's words (3.1).
+/// The alink's state in the glossary's words (3.1).
 fn state_word(state: &str) -> &'static str {
     match state {
         "locked" => "Locked",
@@ -579,7 +579,7 @@ fn result_word(result: &str) -> String {
         // -- WP HWLK1F --
         "applied_now" => "Applied now",
         "unsupported" => "Needs the audio link",
-        "no_frame" => "No link frame",
+        "no_frame" => "No audio link frame",
         r if r.starts_with("clamped") => "Clamped",
         r => r,
     };
@@ -606,8 +606,8 @@ fn taken(result: &str) -> bool {
 /// What a write wrote, in the glossary's words.
 fn what_word(what: &str) -> String {
     match what {
-        "phase" => "Link delay".to_owned(),
-        "slots" => "Link slots".to_owned(),
+        "phase" => "Audio link delay".to_owned(),
+        "slots" => "Audio link slots".to_owned(),
         "mute" => "Mute".to_owned(),
         "unmute" => "Unmute".to_owned(),
         "master_volume" => "Master volume".to_owned(),
@@ -638,7 +638,7 @@ fn element_name(model: &Value, key: &str) -> String {
         .unwrap_or_else(|| key.to_owned())
 }
 
-fn writes_of(report: &Value, model: &Value) -> Vec<LinkSystemWrite> {
+fn writes_of(report: &Value, model: &Value) -> Vec<AlinkSystemWrite> {
     list(report, "writes")
         .iter()
         .map(|w| {
@@ -649,7 +649,7 @@ fn writes_of(report: &Value, model: &Value) -> Vec<LinkSystemWrite> {
             } else {
                 element
             };
-            LinkSystemWrite {
+            AlinkSystemWrite {
                 unit: element_name(model, key),
                 what: what_word(str_at(w, &["what"])),
                 result: result.to_owned(),
@@ -669,7 +669,7 @@ pub(crate) fn build_view(
     revision: u64,
     status: &Value,
     role: &str,
-) -> LinkSystemView {
+) -> AlinkSystemView {
     let rate = rate_of(model, Some(status));
     let observed = |serial: &str| -> Option<&Value> {
         if serial.is_empty() {
@@ -700,7 +700,7 @@ pub(crate) fn build_view(
     let plan_of = |id: &str| plans.iter().find(|p| str_at(p, &["unit"]) == id);
 
     let mut units = Vec::new();
-    let base = |e: &Value, kind: &str| -> LinkSystemUnit {
+    let base = |e: &Value, kind: &str| -> AlinkSystemUnit {
         let id = str_at(e, &["id"]);
         let name = str_at(e, &["name"]);
         let serial = str_at(e, &["serial"]);
@@ -713,7 +713,7 @@ pub(crate) fn build_view(
             "unit" if e.get("repeater").and_then(Value::as_bool) == Some(true) => "repeater",
             k => k,
         };
-        // -- WP HWLK1F -- a firmware without the link is said as such, never "Unknown"
+        // -- WP HWLK1F -- a firmware without the alink is said as such, never "Unknown"
         let no_alink = connected && o.map(|o| str_at(o, &["alink"])) == Some("none");
         let state = if !connected {
             "offline"
@@ -728,12 +728,12 @@ pub(crate) fn build_view(
             }
         };
         let phase = o.and_then(|o| o.get("phase")).and_then(Value::as_array);
-        LinkSystemUnit {
+        AlinkSystemUnit {
             id: id.to_owned(),
             name: if name.is_empty() { id } else { name }.to_owned(),
             serial: serial.to_owned(),
             kind: kind.to_owned(),
-            // -- WP HWLK1F -- never a role from the model alone for a unit without the link
+            // -- WP HWLK1F -- never a role from the model alone for a unit without the alink
             role: if no_alink {
                 "No audio link"
             } else {
@@ -744,10 +744,10 @@ pub(crate) fn build_view(
             connected,
             state: state.to_owned(),
             state_word: state_word(state).to_owned(),
-            unit_link_delay_frames: u32_of(phase.and_then(|p| p.get(1))),
+            unit_alink_delay_frames: u32_of(phase.and_then(|p| p.get(1))),
             unit_hop_offset: i32_of(phase.and_then(|p| p.get(2))),
-            link_delay_min: u32_of(o.and_then(|o| o.get("dLocalMin"))),
-            link_delay_max: u32_of(o.and_then(|o| o.get("dLocalMax"))),
+            alink_delay_min: u32_of(o.and_then(|o| o.get("dLocalMin"))),
+            alink_delay_max: u32_of(o.and_then(|o| o.get("dLocalMax"))),
             phase_error_frames: o
                 .and_then(|o| o.get("phaseErrorFrames"))
                 .and_then(Value::as_f64)
@@ -759,7 +759,7 @@ pub(crate) fn build_view(
             latency_us: e.get("latencyUs").and_then(Value::as_i64).unwrap_or(0),
             measured_latency_us: e.get("measuredLatencyUs").and_then(Value::as_i64),
             alarms: alarms_for(id),
-            ..LinkSystemUnit::default()
+            ..AlinkSystemUnit::default()
         }
     };
     for s in list(model, "senders") {
@@ -772,7 +772,7 @@ pub(crate) fn build_view(
     let mut without = 0u32;
     for u in list(model, "units") {
         let mut row = base(u, "unit");
-        // -- WP HWLK1F -- no link delay, nothing pending, not counted among those that lock
+        // -- WP HWLK1F -- no audio link delay, nothing pending, not counted among those that lock
         if row.state == "no_alink" {
             without = without.saturating_add(1);
             units.push(row);
@@ -785,13 +785,13 @@ pub(crate) fn build_view(
             .and_then(|p| p.get("writable"))
             .and_then(Value::as_bool)
             != Some(false);
-        row.link_delay_frames = planned_delay.or(row.unit_link_delay_frames);
+        row.alink_delay_frames = planned_delay.or(row.unit_alink_delay_frames);
         row.hop_offset = planned_offset.or(row.unit_hop_offset);
-        row.link_delay_ms = row.link_delay_frames.map(|f| frames_ms(f, rate));
+        row.alink_delay_ms = row.alink_delay_frames.map(|f| frames_ms(f, rate));
         row.pending = row.connected
             && writable
             && planned_delay.is_some()
-            && (planned_delay != row.unit_link_delay_frames
+            && (planned_delay != row.unit_alink_delay_frames
                 || planned_offset != row.unit_hop_offset);
         count = count.saturating_add(1);
         match row.state.as_str() {
@@ -805,9 +805,9 @@ pub(crate) fn build_view(
         units.push(row);
     }
 
-    let mut alarms: Vec<LinkSystemAlarm> = alarms_on
+    let mut alarms: Vec<AlinkSystemAlarm> = alarms_on
         .iter()
-        .map(|a| LinkSystemAlarm {
+        .map(|a| AlinkSystemAlarm {
             id: a.get("id").and_then(Value::as_u64).unwrap_or(0),
             severity: str_at(a, &["severity"]).to_owned(),
             subject: element_name(model, str_at(a, &["subject"])),
@@ -845,7 +845,7 @@ pub(crate) fn build_view(
     let may_edit = role == "admin";
     let may_recall = role == "admin" || role == "control";
     let delay = u32_of(at(status, &["alignment", "dFrames"])).unwrap_or(0);
-    LinkSystemView {
+    AlinkSystemView {
         revision,
         installed,
         role: role.to_owned(),
@@ -869,7 +869,7 @@ pub(crate) fn build_view(
         units,
         rooms: list(model, "rooms")
             .iter()
-            .map(|r| LinkSystemRoom {
+            .map(|r| AlinkSystemRoom {
                 id: str_at(r, &["id"]).to_owned(),
                 name: str_at(r, &["name"]).to_owned(),
                 lip_sync_us: r.get("lipSyncUs").and_then(Value::as_i64),
@@ -877,7 +877,7 @@ pub(crate) fn build_view(
             .collect(),
         scenes: list(model, "scenes")
             .iter()
-            .map(|s| LinkSystemScene {
+            .map(|s| AlinkSystemScene {
                 id: str_at(s, &["id"]).to_owned(),
                 name: str_at(s, &["name"]).to_owned(),
                 system_mute: s.get("systemMute").and_then(Value::as_bool),
@@ -903,7 +903,7 @@ pub(crate) fn build_view(
 
 /// The units counted for the summary.
 struct Counts {
-    /// Units that can lock (not those without the link).
+    /// Units that can lock (not those without the alink).
     count: u32,
     locked: u32,
     holdover: u32,
@@ -914,7 +914,7 @@ struct Counts {
 }
 
 /// The status line and its meaning.
-fn summary(installed: bool, c: Counts, units: &[LinkSystemUnit]) -> (String, &'static str) {
+fn summary(installed: bool, c: Counts, units: &[AlinkSystemUnit]) -> (String, &'static str) {
     let Counts {
         count,
         locked,
@@ -941,7 +941,7 @@ fn summary(installed: bool, c: Counts, units: &[LinkSystemUnit]) -> (String, &'s
         line.push_str(&format!(", {offline} not connected"));
     }
     if pending > 0 {
-        line.push_str(&format!(", link delay to write on {pending}"));
+        line.push_str(&format!(", audio link delay to write on {pending}"));
     }
     let health = if holdover > 0 || offline > 0 {
         "problem"
@@ -957,7 +957,7 @@ fn summary(installed: bool, c: Counts, units: &[LinkSystemUnit]) -> (String, &'s
 
 /// `edits` made on `model` (the hub's JSON, camelCase). Ids the model does
 /// not have are refused, so nothing is half applied.
-pub(crate) fn apply_edits(model: &mut Value, edits: &LinkSystemEdits) -> Result<()> {
+pub(crate) fn apply_edits(model: &mut Value, edits: &AlinkSystemEdits) -> Result<()> {
     let Some(m) = model.as_object_mut() else {
         return Err(DspiError::InvalidArgument {
             msg: "the hub has no installation to edit".into(),
@@ -1010,7 +1010,7 @@ pub(crate) fn recall_outcome(
     model: &Value,
     held: Option<u64>,
     rate_hz: u32,
-) -> LinkSceneRecall {
+) -> AlinkSceneRecall {
     let name = list(model, "scenes")
         .iter()
         .find(|s| str_at(s, &["id"]) == scene)
@@ -1054,7 +1054,7 @@ pub(crate) fn recall_outcome(
             "per_unit" => "to each unit",
             _ => "system mute only",
         };
-        let mut m = format!("{name} recalled {path_word}, at link frame {frame}");
+        let mut m = format!("{name} recalled {path_word}, at audio link frame {frame}");
         match plan.get("systemMute").and_then(Value::as_bool) {
             Some(true) => m.push_str(", system mute on"),
             Some(false) => m.push_str(", system mute off"),
@@ -1086,8 +1086,8 @@ pub(crate) fn recall_outcome(
                         .round();
                     (
                         format!(
-                            "{name} was refused: a scene is already scheduled on the sender for link \
-                             frame {pending}, {ms:.0} ms after this recall. The sender takes one scene \
+                            "{name} was refused: a scene is already scheduled on the sender for audio \
+                             link frame {pending}, {ms:.0} ms after this recall. The sender takes one scene \
                              at a time; recall {name} again after that."
                         ),
                         Some(pending),
@@ -1128,7 +1128,7 @@ pub(crate) fn recall_outcome(
     if !was_taken && plan.get("systemMute").and_then(Value::as_bool).is_some() {
         message.push_str(" System mute unchanged.");
     }
-    LinkSceneRecall {
+    AlinkSceneRecall {
         scene: scene.to_owned(),
         name,
         taken: was_taken,
@@ -1150,12 +1150,12 @@ struct RecallParts {
     now: Vec<String>,
     /// Units without the audio link that did not, with the result in words.
     now_failed: Vec<String>,
-    /// Units with the link that no frame could be read for.
+    /// Units with the alink that no frame could be read for.
     no_frame: Vec<String>,
     /// Units of the scene that are not attached.
     absent: Vec<String>,
     // -- fixup hwlk1f (F1) --
-    /// Units with the link (or not told) that the sender's write reaches, but
+    /// Units with the alink (or not told) that the sender's write reaches, but
     /// whose own frame could not be read: not known to have taken it.
     unverified: Vec<String>,
     /// Every write at the frame was taken in time.
@@ -1193,14 +1193,14 @@ impl RecallParts {
             } else {
                 " on the others"
             };
-            parts.push(format!("at link frame {frame} {path_word}{whom}"));
+            parts.push(format!("at audio link frame {frame} {path_word}{whom}"));
         }
         if !self.now_failed.is_empty() {
             parts.push(format!("not applied on {}", self.now_failed.join(", ")));
         }
         if !self.no_frame.is_empty() {
             parts.push(format!(
-                "not applied on {} (no link frame)",
+                "not applied on {} (no audio link frame)",
                 self.no_frame.join(", ")
             ));
         }
@@ -1209,7 +1209,7 @@ impl RecallParts {
         }
         if !self.unverified.is_empty() {
             parts.push(format!(
-                "not known to have taken it on {} (no link frame read)",
+                "not known to have taken it on {} (no audio link frame read)",
                 self.unverified.join(", ")
             ));
         }
@@ -1249,7 +1249,13 @@ fn recall_parts(report: &Value, model: &Value) -> RecallParts {
                 &mut p.now_failed,
                 format!("{unit} ({})", result_word(result)),
             ),
-            "no_frame" if str_at(w, &["reason"]) == "no link frame read" => {
+            // -- WP ALINK1 -- an older hub's reason too ("no link frame read")
+            "no_frame"
+                if matches!(
+                    str_at(w, &["reason"]),
+                    "no audio link frame read" | "no link frame read"
+                ) =>
+            {
                 push(&mut p.unverified, unit);
             }
             "no_frame" => push(&mut p.no_frame, unit),
@@ -1270,7 +1276,7 @@ fn recall_parts(report: &Value, model: &Value) -> RecallParts {
 
 // -- WP WB8 --
 /// What a recall did, for a client that sent `system.scene.apply` itself (the
-/// web's `hubSystem`): [`DspiCore::link_system_recall`]'s outcome and words from
+/// web's `hubSystem`): [`DspiCore::alink_system_recall`]'s outcome and words from
 /// the hub's `report` and the `model` of `system.get`. `held`: the frame the
 /// sender was last seen holding (its `pendingApplyFrame` in `system.status`);
 /// `rate_hz`: the alignment's rate, else the model's.
@@ -1280,7 +1286,7 @@ pub fn scene_recall_outcome(
     model: &Value,
     held: Option<u64>,
     rate_hz: Option<u32>,
-) -> LinkSceneRecall {
+) -> AlinkSceneRecall {
     let rate = rate_hz
         .filter(|r| *r > 0)
         .unwrap_or_else(|| rate_of(model, None));
@@ -1288,17 +1294,17 @@ pub fn scene_recall_outcome(
 }
 
 // -- WP HWLK1F --
-/// What writing the link delays did, for a client that sent `system.align`
-/// itself (the web's `hubSystem`): [`DspiCore::link_system_align`]'s outcome
+/// What writing the audio link delays did, for a client that sent `system.align`
+/// itself (the web's `hubSystem`): [`DspiCore::alink_system_align`]'s outcome
 /// and words from the hub's `report` and the `model` of `system.get`.
-pub fn system_align_outcome(report: &Value, model: &Value) -> LinkSystemAlign {
+pub fn system_align_outcome(report: &Value, model: &Value) -> AlinkSystemAlign {
     align_outcome(report, model)
 }
 
-/// What writing the link delays did, from the hub's report. -- WP HWLK1F --
+/// What writing the audio link delays did, from the hub's report. -- WP HWLK1F --
 /// Said as it was: nothing written (and why) when every write was skipped or
 /// already in place, and the units written and skipped when only some were.
-pub(crate) fn align_outcome(report: &Value, model: &Value) -> LinkSystemAlign {
+pub(crate) fn align_outcome(report: &Value, model: &Value) -> AlinkSystemAlign {
     let applied = report.get("applied").and_then(Value::as_bool) == Some(true);
     let writes = writes_of(report, model);
     let failed = writes.iter().filter(|w| w.tone == "bad").count();
@@ -1334,13 +1340,13 @@ pub(crate) fn align_outcome(report: &Value, model: &Value) -> LinkSystemAlign {
             .map(|i| str_at(i, &["message"]))
             .find(|m| !m.is_empty())
             .unwrap_or("the alignment has an issue");
-        format!("The link delays were not written: {issue}.")
+        format!("The audio link delays were not written: {issue}.")
     } else if written.is_empty() && failed == 0 {
         if !kept.is_empty() {
             parts.insert(0, format!("already set on {}", kept.join(", ")));
         }
         if skipped.is_empty() {
-            "Nothing was written: every unit already has its link delays.".to_owned()
+            "Nothing was written: every unit already has its audio link delays.".to_owned()
         } else {
             format!("Nothing was written: {}.", parts.join("; "))
         }
@@ -1353,22 +1359,22 @@ pub(crate) fn align_outcome(report: &Value, model: &Value) -> LinkSystemAlign {
         m.push('.');
         m
     } else if failed > 0 {
-        let mut m = format!("The link delays were written; {failed} writes failed");
+        let mut m = format!("The audio link delays were written; {failed} writes failed");
         if !parts.is_empty() {
             m.push_str(&format!("; {}", parts.join("; ")));
         }
         m.push('.');
         m
     } else if parts.is_empty() {
-        "The link delays were written. Each unit re-anchored with a short silence.".to_owned()
+        "The audio link delays were written. Each unit re-anchored with a short silence.".to_owned()
     } else {
         format!(
-            "The link delays were written on {} (each re-anchored with a short silence); {}.",
+            "The audio link delays were written on {} (each re-anchored with a short silence); {}.",
             written.join(", "),
             parts.join("; ")
         )
     };
-    LinkSystemAlign {
+    AlinkSystemAlign {
         applied,
         message,
         writes,

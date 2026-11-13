@@ -14,7 +14,7 @@ import se.bofr.dspi.core.DspiConstants
 import se.bofr.dspi.core.DspiCoreApi
 import se.bofr.dspi.core.FilterParams
 import se.bofr.dspi.core.FlashStatus
-import se.bofr.dspi.core.LinkSystemEdits
+import se.bofr.dspi.core.AlinkSystemEdits
 import se.bofr.dspi.core.PinConfigStatus
 import se.bofr.dspi.core.PresetStatus
 import se.bofr.dspi.fake.FakeDspiCore
@@ -39,9 +39,9 @@ class ReadOnlyTest {
         val out = 2 // app id of output 1
         return listOf<Pair<String, suspend () -> Unit>>(
             // -- WP LKUI1 -- the hub's audio link installation (they throw once refused)
-            "linkSystemSave" to { runCatching { b.linkSystemSave(1, LinkSystemEdits(false, null, emptyList(), emptyList())) } },
-            "linkSystemAlign" to { runCatching { b.linkSystemAlign() } },
-            "linkSystemRecall" to { runCatching { b.linkSystemRecall("evening") } },
+            "alinkSystemSave" to { runCatching { b.alinkSystemSave(1, AlinkSystemEdits(false, null, emptyList(), emptyList())) } },
+            "alinkSystemAlign" to { runCatching { b.alinkSystemAlign() } },
+            "alinkSystemRecall" to { runCatching { b.alinkSystemRecall("evening") } },
             "setPreamp" to { b.setPreamp(-1f) },
             "sendPreampToDevice" to { b.sendPreampToDevice(-1f) },
             "setInputPreamp" to { b.setInputPreamp(0, 1f) },
@@ -387,7 +387,7 @@ class ReadOnlyTest {
         val READ_MEMBERS =
             setOf(
                 // -- WP LKUI1 --
-                "linkSystemView",
+                "alinkSystemView",
                 "attachDevice", "detachDevice", "attachRemote", "setRemoteReadOnly", "setRemoteInterrupted",
                 "scanDevices", "selectDevice", "disconnectDevice", "reconnect", "rescan",
                 "setUiVisible", "beginOutputEdit", "canPaste", "canSetAllBypass", "copyChannel", "channelBands", "channelColor",

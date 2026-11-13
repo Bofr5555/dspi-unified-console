@@ -5470,68 +5470,68 @@ uint32_t dspi_fetch_reset_info(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
  * The unit's audio link as the connect probe found it, in JSON, with no
- * traffic: `value` null without a link, else `role`, `roleCode`,
- * `protocolVersion`, `classMask`, `maxLinks`, `maxChannels`,
+ * traffic: `value` null without an alink, else `role`, `roleCode`,
+ * `protocolVersion`, `classMask`, `maxAlinks`, `maxChannels`,
  * `slotsPerUnit`, `rxPin`, `txPin`, `featureBits`, `dLocalMin`,
- * `dLocalMax`, `linkInput`, `stateEvents`, `applyEvents`.
+ * `dLocalMax`, `alinkInput`, `stateEvents`, `applyEvents`.
  */
-uint32_t dspi_audio_link_info(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_alink_info(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * Read `EXT_LINK_INFO` again (its delay limits follow the output latency
- * option), in JSON as [`dspi_audio_link_info`]'s fields, or a failure
- * (`unsupported` without the link).
+ * Read `EXT_ALINK_INFO` again (its delay limits follow the output latency
+ * option), in JSON as [`dspi_alink_info`]'s fields, or a failure
+ * (`unsupported` without the alink).
  */
-uint32_t dspi_fetch_audio_link_info(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_fetch_alink_info(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * The link's status in JSON (`state`, `stateCode`, `linkClass`, `rateCode`,
+ * The alink's status in JSON (`state`, `stateCode`, `alinkClass`, `rateCode`,
  * `channels`, `hops`, `losPin`, `senderId`, `flags`, `frame`, `lockCount`,
  * `lossCount`, `crc8Errors`, `crc16Errors`, `bitSlips`, `superframeErrors`,
  * `vcxoPpm`, `phaseErrorFrames`, `fillFrames`), or a failure.
  */
-uint32_t dspi_fetch_audio_link_status(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_fetch_alink_status(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * The link slot of each of the 8 matrix inputs (0xFF silent) into `out` of
+ * The audio link slot of each of the 8 matrix inputs (0xFF silent) into `out` of
  * `out_len` bytes. False for a buffer under 8 bytes, with nothing written,
  * or a failure.
  */
-bool dspi_fetch_audio_link_slots(struct FfiCore *core, uint8_t *out, uint32_t out_len);
+bool dspi_fetch_alink_slots(struct FfiCore *core, uint8_t *out, uint32_t out_len);
 
 /**
- * Write the 8 slots (`slots_len` must be 8; 0..63 a link channel, 0xFF
+ * Write the 8 slots (`slots_len` must be 8; 0..63 an audio link channel, 0xFF
  * silence). Returns a status byte; 0xFF for a null or short buffer without
  * asking the device, or a failure.
  */
-uint8_t dspi_set_audio_link_slots(struct FfiCore *core, const uint8_t *slots, uint32_t slots_len);
+uint8_t dspi_set_alink_slots(struct FfiCore *core, const uint8_t *slots, uint32_t slots_len);
 
 /**
  * The phase-lock mode and delay in JSON (`mode`, `dLocal`, `hopsOffset`,
  * `flags`, `state`), or a failure.
  */
-uint32_t dspi_fetch_audio_link_phase(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_fetch_alink_phase(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
  * Set the phase-lock `mode` (0 fill servo, 1 phase lock), the fixed delay
- * `d_local` in link frames and `hops_offset` (-64..64, normally 0).
+ * `d_local` in alink frames and `hops_offset` (-64..64, normally 0).
  * Returns a status byte, 0xFF on failure.
  */
-uint8_t dspi_set_audio_link_phase(struct FfiCore *core,
-                                  uint8_t mode,
-                                  uint16_t d_local,
-                                  int16_t hops_offset);
+uint8_t dspi_set_alink_phase(struct FfiCore *core,
+                             uint8_t mode,
+                             uint16_t d_local,
+                             int16_t hops_offset);
 
 /**
- * The link frame counter in JSON (`frame`, `timeUs`, `outputFrames`), or a
+ * The alink frame counter in JSON (`frame`, `timeUs`, `outputFrames`), or a
  * failure.
  */
-uint32_t dspi_fetch_audio_link_frame_counter(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_fetch_alink_frame_counter(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
  * Queue `op` (0 cancel all, 1 mute, 2 unmute, 3 preset load, 4 master
  * volume, 5 output delay, 6 rate, 7 click, 8 sync pulse) with `arg` and
- * `value` for link frame `frame`. Returns a status byte, 0xFF on failure
+ * `value` for alink frame `frame`. Returns a status byte, 0xFF on failure
  * (arguments out of range, a full queue, no lock).
  */
 uint8_t dspi_apply_at_frame(struct FfiCore *core,
@@ -5547,16 +5547,16 @@ uint8_t dspi_apply_at_frame(struct FfiCore *core,
 uint32_t dspi_fetch_apply_at_frame_status(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * Clear the link's error and lock counters. Returns a status byte, 0xFF on
+ * Clear the alink's error and lock counters. Returns a status byte, 0xFF on
  * failure.
  */
-uint8_t dspi_reset_audio_link_stats(struct FfiCore *core);
+uint8_t dspi_reset_alink_stats(struct FfiCore *core);
 
 /**
  * Open the demo device as a unit receiving the audio link, in place of any
  * open device.
  */
-bool dspi_open_demo_audio_link(struct FfiCore *core);
+bool dspi_open_demo_alink(struct FfiCore *core);
 
 /**
  * The notice for a key, in JSON: {ok, key, kind, title, reason, action, detail}.
@@ -5761,8 +5761,8 @@ uint32_t dspi_link_fetch_info(const char *host, uint16_t port, char *buf, uint32
  * screen: JSON {ok, revision, installed, role, mayEdit, mayRecall,
  * editNote, recallNote, systemDelayFrames, systemDelayMs, systemDelayAuto,
  * rateHz, lipSyncUs, units: [{id, name, serial, kind, role, room,
- * connected, state, stateWord, pending, linkDelayFrames, linkDelayMs,
- * unitLinkDelayFrames, linkDelayMin, linkDelayMax, hopOffset,
+ * connected, state, stateWord, pending, alinkDelayFrames, alinkDelayMs,
+ * unitAlinkDelayFrames, alinkDelayMin, alinkDelayMax, hopOffset,
  * unitHopOffset, phaseErrorFrames, hops, hopDelayFrames, latencyUs,
  * measuredLatencyUs, alarms}], rooms: [{id, name, lipSyncUs}], scenes:
  * [{id, name, systemMute}], alarms: [{id, severity, subject, message,
@@ -5772,10 +5772,10 @@ uint32_t dspi_link_fetch_info(const char *host, uint16_t port, char *buf, uint32
  * thread, and give a buffer of 64 KiB, as a short one means asking again.
  * Returns the length needed; 0 for a panic.
  */
-uint32_t dspi_link_system_view(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_alink_system_view(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * Save the Clock-and-links edits made on the view of `revision`:
+ * Save the Clock-and-audio-links edits made on the view of `revision`:
  * `edits_json` is {setSystemDelay, systemDelayFrames (null: automatic),
  * rooms: [{roomId, lipSyncUs}], units: [{unitId, measuredLatencyUs}]}.
  * Replies JSON {ok, revision} (the new one), or code `conflict` when the
@@ -5783,19 +5783,19 @@ uint32_t dspi_link_system_view(struct FfiCore *core, char *buf, uint32_t len);
  * `denied` for a role other than admin. Blocks. Returns the length
  * needed; see the module's rule on short buffers.
  */
-uint32_t dspi_link_system_save(struct FfiCore *core,
-                               uint64_t revision,
-                               const char *edits_json,
-                               char *buf,
-                               uint32_t len);
+uint32_t dspi_alink_system_save(struct FfiCore *core,
+                                uint64_t revision,
+                                const char *edits_json,
+                                char *buf,
+                                uint32_t len);
 
 /**
- * Write the link delays the system delay asks for to every unit (each
+ * Write the audio link delays the system delay asks for to every unit (each
  * re-anchors with a short silence). Replies JSON {ok, applied, message,
  * writes: [{unit, what, result, resultWord, tone}]}. Admin only. Blocks.
  * Returns the length needed; see the module's rule on short buffers.
  */
-uint32_t dspi_link_system_align(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_alink_system_align(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
  * Recall scene `scene` (an id from the view). Replies JSON {ok, scene,
@@ -5806,7 +5806,7 @@ uint32_t dspi_link_system_align(struct FfiCore *core, char *buf, uint32_t len);
  * words. Blocks. Returns the length needed; see the module's rule on
  * short buffers.
  */
-uint32_t dspi_link_system_recall(struct FfiCore *core, const char *scene, char *buf, uint32_t len);
+uint32_t dspi_alink_system_recall(struct FfiCore *core, const char *scene, char *buf, uint32_t len);
 
 /**
  * The DSPi control ports this host can see: JSON {ok, value: [name]}. Lists
