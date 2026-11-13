@@ -47,7 +47,7 @@ const Page aboutPage{ "about", SettingsRegistry::Application, 10, QT_TRANSLATE_N
                         QT_TRANSLATE_NOOP("SettingsPages", "GitHub"), QT_TRANSLATE_NOOP("SettingsPages", "Weeb Labs") } };
 const Page updatesPage{ "updates", SettingsRegistry::Application, 20, QT_TRANSLATE_NOOP("SettingsPages", "Updates"),
                         "download", "UpdatesPage",
-                        { QT_TRANSLATE_NOOP("SettingsPages", "Check for Updates Automatically"),
+                        { QT_TRANSLATE_NOOP("SettingsPages", "Check for updates automatically"),
                           QT_TRANSLATE_NOOP("SettingsPages", "Check Now"), QT_TRANSLATE_NOOP("SettingsPages", "Version"),
                           QT_TRANSLATE_NOOP("SettingsPages", "Release"), QT_TRANSLATE_NOOP("SettingsPages", "Privacy") } };
 const Page advancedPage{ "advanced", SettingsRegistry::Application, 30, QT_TRANSLATE_NOOP("SettingsPages", "Advanced"),

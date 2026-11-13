@@ -3,7 +3,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import UConsole
 
-// -- WP QP6 -- The matrix mixer (the Mac's MatrixMixerView), 960×660: one
+// -- WP QP6 -- The matrix mixer (the Mac's MatrixMixerView), fitted to its table when shown: one
 // table with a column per output and a row per source.
 //
 //   header    the output's label, its OUTn tag; right-click (or the chevron)
@@ -38,6 +38,17 @@ ToolWindow {
     property int menuOutput: -1
 
     function column(o) { return MatrixController.revision < 0 ? undefined : MatrixController.column(o) }
+
+    // -- WP QPI5 -- Fitted to the table on every show, as the Mac's is, within
+    // the screen (beyond it the view scrolls)
+    function fitToTable() {
+        if (cols <= 0) return
+        const edge = 2 * Theme.spacingLarge + 12   // the margins and a scroll bar
+        const w = table.width + edge, h = table.height + edge
+        width = Math.max(minimumWidth, Screen.desktopAvailableWidth > 0 ? Math.min(w, Screen.desktopAvailableWidth) : w)
+        height = Math.max(minimumHeight, Screen.desktopAvailableHeight > 0 ? Math.min(h, Screen.desktopAvailableHeight) : h)
+    }
+    onVisibleChanged: if (visible) fitToTable()
     function source(r) { return MatrixController.revision < 0 ? undefined : MatrixController.row(r) }
     // Stereo keeps one L/R separator; 8 channels are grouped in pairs
     function dividerAfter(r) { return wide ? (r % 2 === 1 && r < rows - 1) : r === 0 && rows > 1 }

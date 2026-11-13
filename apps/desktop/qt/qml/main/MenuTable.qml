@@ -108,10 +108,11 @@ QtObject {
             title: qsTr("&Window"),
             rows: [
                 { id: "window.minimiseToTray", text: qsTr("Minimise to Tray"), shortcut: "Ctrl+Alt+M" },
-                { id: "window.popOutGraph", text: qsTr("Pop Out Graph") },
+                { id: "window.popOutGraph", text: qsTr("Pop Out Graph") }
                 // -- WP QP18 -- docs/UI-MODES.md §5 (ModeController)
-                { separator: true },
-                { id: "window.mode", text: qsTr("Mode…") }
+                // -- WP QPI5 -- hidden until the modes come (owner, 2026-11-13);
+                // ModeController and ModeWindow stay, and the rows come back as
+                // { separator: true }, { id: "window.mode", text: qsTr("Mode…") }
             ]
         },
         {

@@ -282,6 +282,7 @@ SettingsPage {
         SettingsPickerRow {
             id: accessPicker
             objectName: "Networking.access"
+            inline: true
             label: qsTr("Access")
             values: ["none", "pin"]
             texts: [qsTr("Open"), qsTr("Require Pairing")]

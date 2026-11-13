@@ -85,7 +85,7 @@ SettingsPage {
         iconName: "clock"
         SettingsToggle {
             objectName: "Updates.automatic"
-            title: qsTr("Check for Updates Automatically")
+            title: qsTr("Check for updates automatically")
             enabled: page.hasFeed
             checked: page.hasFeed && page.updater.automatic === true
             onToggled: on => page.updater.automatic = on
