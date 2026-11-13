@@ -1068,6 +1068,9 @@ fn wp_p0wecho_a_late_own_echo_does_not_cost_the_redo() {
     let m = core.redo().unwrap();
     assert_eq!(m.note, None, "{m:?}");
     assert_eq!(m.entry.map(|e| e.path).as_deref(), Some("vol.master"));
+    // The mirror already showed -10, and the redo is journalled anyway.
+    assert_eq!(newest(&core).source, HistorySource::Redo);
+    assert!(core.can_undo() && !core.can_redo());
     drain(&core);
     core.fetch_all().unwrap();
     assert_eq!(core.get_state().master_volume_db, -10.0);

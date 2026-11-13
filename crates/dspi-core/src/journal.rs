@@ -337,14 +337,18 @@ impl Pending {
     }
 
     /// Record the change with `after` as its new value. Nothing is recorded
-    /// when nothing moved: neither the value nor what moves with it.
+    /// when nothing moved (neither the value nor what moves with it), except
+    /// for an undo's or a redo's replay.
     pub(crate) fn done_with(self, inner: &mut Inner, after: Value) {
         let moved = self.before.as_ref() != Some(&after)
             || self
                 .companions
                 .iter()
                 .any(|c| mirror_value(inner, c.path, &c.indices).as_ref() != Some(&c.before));
-        if !moved {
+        // -- WP P0WECHO -- a replay is recorded even when the mirror already
+        // showed its value (a late own echo can put it there first): it was
+        // sent, and the history says so.
+        if !moved && replay_source().is_none() {
             return;
         }
         // A drag is of a live value; a pin moved twice is two changes.
