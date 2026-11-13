@@ -259,7 +259,8 @@ open class FakeDspiCore(
             after = ParamValue.Text(args),
             source = source,
             atMs = System.currentTimeMillis(),
-            undoable = true
+            undoable = true,
+            label = null // -- WP P1UG --
         )
         journalEntries += e
         if (source == HistorySource.LOCAL) {
@@ -289,6 +290,14 @@ open class FakeDspiCore(
         journal(step.entry.path, "redo", step.before, HistorySource.REDO)
         HistoryMove(step.entry, emptyList(), null)
     }
+
+    // -- WP P1UG -- the drag and undo-group marks: the fake keeps one step
+    // per call and does not coalesce, so they do nothing here.
+    override fun setDragging(dragging: Boolean) {}
+
+    override fun beginGroup(label: String) {}
+
+    override fun endGroup() {}
 
     override fun canUndo(): Boolean = connected && undoSteps.isNotEmpty()
 

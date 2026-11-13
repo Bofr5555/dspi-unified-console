@@ -1304,6 +1304,24 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func audioLinkInfo() throws  -> AudioLinkInfo?
     
     /**
+     * Begin an undo group: everything written until the matching
+     * [`DspiCore::end_group`] that undo can reverse is one undo step,
+     * carrying `label` ([`HistoryEntry::label`]), as a drag is. Use it for
+     * one action that writes several values (a linked pair, a Clear All, a
+     * routing preset). Groups nest: only the outermost begin starts the
+     * step and takes its label, and only the matching end ends it. The
+     * group belongs to the connection: a disconnect, another device
+     * opened, a re-attach, a re-read ([`DspiCore::fetch_all`]) and a change
+     * that ends the history (a preset load, a bulk image, a factory reset)
+     * end it at any depth, and an `end_group` after that does nothing.
+     * With no device the call is ignored. An empty group records nothing.
+     * A write undo cannot reverse stands apart, as in a drag. The group is
+     * the connection's, not the thread's: call it on the thread that sends
+     * the group's writes, in order with them.
+     */
+    func beginGroup(label: String) 
+    
+    /**
      * The device's name as last known, with no traffic, kept as
      * [`DspiCore::cached_input_source_name`] keeps source names. "" when
      * unnamed. Errors: `Unsupported` on firmware without device names;
@@ -1820,6 +1838,14 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * (at most about a quarter of a second).
      */
     func disconnect() 
+    
+    /**
+     * End the undo group [`DspiCore::begin_group`] opened: the outermost
+     * end ends the step, so the next write is a step of its own. Nothing
+     * when no group is open (one a disconnect or a re-read ended, or none
+     * at all).
+     */
+    func endGroup() 
     
     /**
      * Reboots the device into its USB bootloader (it disappears). Ok
@@ -4206,6 +4232,29 @@ open func audioLinkInfo()throws  -> AudioLinkInfo?  {
 }
     
     /**
+     * Begin an undo group: everything written until the matching
+     * [`DspiCore::end_group`] that undo can reverse is one undo step,
+     * carrying `label` ([`HistoryEntry::label`]), as a drag is. Use it for
+     * one action that writes several values (a linked pair, a Clear All, a
+     * routing preset). Groups nest: only the outermost begin starts the
+     * step and takes its label, and only the matching end ends it. The
+     * group belongs to the connection: a disconnect, another device
+     * opened, a re-attach, a re-read ([`DspiCore::fetch_all`]) and a change
+     * that ends the history (a preset load, a bulk image, a factory reset)
+     * end it at any depth, and an `end_group` after that does nothing.
+     * With no device the call is ignored. An empty group records nothing.
+     * A write undo cannot reverse stands apart, as in a drag. The group is
+     * the connection's, not the thread's: call it on the thread that sends
+     * the group's writes, in order with them.
+     */
+open func beginGroup(label: String)  {try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_begin_group(self.uniffiClonePointer(),
+        FfiConverterString.lower(label),$0
+    )
+}
+}
+    
+    /**
      * The device's name as last known, with no traffic, kept as
      * [`DspiCore::cached_input_source_name`] keeps source names. "" when
      * unnamed. Errors: `Unsupported` on firmware without device names;
@@ -4985,6 +5034,18 @@ open func diagnosticsSave(path: String, options: DiagOptions)throws  -> [String]
      */
 open func disconnect()  {try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_disconnect(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+    /**
+     * End the undo group [`DspiCore::begin_group`] opened: the outermost
+     * end ends the step, so the next write is a step of its own. Nothing
+     * when no group is open (one a disconnect or a re-read ended, or none
+     * at all).
+     */
+open func endGroup()  {try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_end_group(self.uniffiClonePointer(),$0
     )
 }
 }
@@ -15441,6 +15502,11 @@ public struct HistoryEntry {
      * a deferred or an irreversible one).
      */
     public var undoable: Bool
+    /**
+     * The undo group's label ([`DspiCore::begin_group`]) when the change
+     * was written inside one; `None` otherwise.
+     */
+    public var label: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -15477,7 +15543,11 @@ public struct HistoryEntry {
          * Whether undo may reverse it. The registry decides: only a parameter
          * with no hazard (not a flash write, an audible one, a reconfiguration,
          * a deferred or an irreversible one).
-         */undoable: Bool) {
+         */undoable: Bool, 
+        /**
+         * The undo group's label ([`DspiCore::begin_group`]) when the change
+         * was written inside one; `None` otherwise.
+         */label: String?) {
         self.path = path
         self.indices = indices
         self.before = before
@@ -15485,6 +15555,7 @@ public struct HistoryEntry {
         self.source = source
         self.atMs = atMs
         self.undoable = undoable
+        self.label = label
     }
 }
 
@@ -15516,6 +15587,9 @@ extension HistoryEntry: Equatable, Hashable {
         if lhs.undoable != rhs.undoable {
             return false
         }
+        if lhs.label != rhs.label {
+            return false
+        }
         return true
     }
 
@@ -15527,6 +15601,7 @@ extension HistoryEntry: Equatable, Hashable {
         hasher.combine(source)
         hasher.combine(atMs)
         hasher.combine(undoable)
+        hasher.combine(label)
     }
 }
 
@@ -15545,7 +15620,8 @@ public struct FfiConverterTypeHistoryEntry: FfiConverterRustBuffer {
                 after: FfiConverterTypeParamValue.read(from: &buf), 
                 source: FfiConverterTypeHistorySource.read(from: &buf), 
                 atMs: FfiConverterUInt64.read(from: &buf), 
-                undoable: FfiConverterBool.read(from: &buf)
+                undoable: FfiConverterBool.read(from: &buf), 
+                label: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -15557,6 +15633,7 @@ public struct FfiConverterTypeHistoryEntry: FfiConverterRustBuffer {
         FfiConverterTypeHistorySource.write(value.source, into: &buf)
         FfiConverterUInt64.write(value.atMs, into: &buf)
         FfiConverterBool.write(value.undoable, into: &buf)
+        FfiConverterOptionString.write(value.label, into: &buf)
     }
 }
 
@@ -28177,6 +28254,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_audio_link_info() != 38734) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_begin_group() != 61137) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_cached_device_name() != 27756) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -28319,6 +28399,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_disconnect() != 29066) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_end_group() != 16605) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_enter_bootloader() != 19680) {

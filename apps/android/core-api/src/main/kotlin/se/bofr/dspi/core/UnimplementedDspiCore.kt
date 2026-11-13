@@ -254,6 +254,10 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun setDragging(dragging: Boolean): Unit = throw NotImplementedError("set_dragging")
 
+    override fun beginGroup(label: String): Unit = throw NotImplementedError("begin_group")
+
+    override fun endGroup(): Unit = throw NotImplementedError("end_group")
+
     override fun canUndo(): Boolean = throw NotImplementedError("can_undo")
 
     override fun canRedo(): Boolean = throw NotImplementedError("can_redo")

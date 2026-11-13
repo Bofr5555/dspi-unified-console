@@ -187,6 +187,14 @@ pub struct JournalEntry {
     /// Undo puts them back newest first, then this entry's own value; redo
     /// writes this entry's own value, then them in order.
     pub more: Vec<StepValue>,
+    // -- WP P1UG --
+    /// The undo group's label when the step was written inside one
+    /// (`dspi-core`'s `begin_group`); `None` otherwise.
+    pub label: Option<String>,
+    /// When the step began, in milliseconds since the Unix epoch: `at_ms`
+    /// of its first write (a group's step goes on after another writer's
+    /// change, and undo names the writer of a change made since it began).
+    pub begun_ms: u64,
 }
 
 // -- WP P0W2 (O1) --

@@ -238,6 +238,9 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         "history" => Ok(history::history(&core, &params(req.params)?)),
         // -- WP QTGAP1 --
         "setDragging" => Ok(history::set_dragging(&core, &params(req.params)?)),
+        // -- WP P1UG --
+        "beginGroup" => Ok(history::begin_group(&core, params(req.params)?)),
+        "endGroup" => Ok(history::end_group(&core)),
         "describe" => {
             #[derive(Deserialize)]
             struct P {
@@ -779,6 +782,31 @@ mod tests {
             3
         );
         assert_eq!(code(&run(h, "setDragging", Value::Null)), "invalid");
+        session_free(h).unwrap();
+    }
+
+    // -- WP P1UG --
+    /// `beginGroup` and `endGroup`: the writes between them are one step
+    /// with the label; one undo takes both back.
+    #[test]
+    fn wp_p1ug_an_undo_group_through_the_worker_calls() {
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        ok(h, "open", json!({ "kind": "demo" }));
+        let start = core_of(h).unwrap().get_state().output_gain_db;
+        let gain = |o: u8, db: f64| json!({ "path": "out.gain", "indices": [o], "value": { "float": db } });
+        ok(h, "beginGroup", json!({ "label": "Linked pair" }));
+        ok(h, "write", gain(0, -5.0));
+        ok(h, "write", gain(1, -5.0));
+        ok(h, "endGroup", Value::Null);
+        let hist = ok(h, "history", json!({ "n": 10 }));
+        assert_eq!(hist.as_array().unwrap().len(), 1, "{hist}");
+        assert_eq!(hist[0]["label"], "Linked pair");
+        let undone = ok(h, "undo", Value::Null);
+        assert_eq!(undone["entry"]["label"], "Linked pair");
+        assert_eq!(core_of(h).unwrap().get_state().output_gain_db, start);
+        assert_eq!(ok(h, "canUndo", Value::Null)["canUndo"], false);
+        assert_eq!(code(&run(h, "beginGroup", Value::Null)), "invalid");
         session_free(h).unwrap();
     }
 

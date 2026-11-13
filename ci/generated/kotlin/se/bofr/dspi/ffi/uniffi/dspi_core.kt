@@ -1536,6 +1536,10 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1635,6 +1639,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_apply_at_frame(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_audio_link_info(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_begin_group(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_cached_device_name(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_cached_input_source_name(
@@ -1730,6 +1736,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_diagnostics_file_name(
 fun uniffi_dspi_core_checksum_method_dspicore_diagnostics_save(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_disconnect(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_end_group(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_enter_bootloader(
 ): Short
@@ -2261,6 +2269,8 @@ fun uniffi_dspi_core_fn_method_dspicore_apply_at_frame(`ptr`: Pointer,`frame`: L
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_audio_link_info(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_begin_group(`ptr`: Pointer,`label`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_cached_device_name(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_cached_input_source_name(`ptr`: Pointer,`source`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -2356,6 +2366,8 @@ fun uniffi_dspi_core_fn_method_dspicore_diagnostics_file_name(`ptr`: Pointer,uni
 fun uniffi_dspi_core_fn_method_dspicore_diagnostics_save(`ptr`: Pointer,`path`: RustBuffer.ByValue,`options`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_disconnect(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_end_group(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_enter_bootloader(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -3145,6 +3157,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_audio_link_info() != 38734.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_begin_group() != 61137.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_cached_device_name() != 27756.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3287,6 +3302,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_disconnect() != 29066.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_end_group() != 16605.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_enter_bootloader() != 19680.toShort()) {
@@ -5511,6 +5529,24 @@ public interface DspiCoreInterface {
     fun `audioLinkInfo`(): AudioLinkInfo?
     
     /**
+     * Begin an undo group: everything written until the matching
+     * [`DspiCore::end_group`] that undo can reverse is one undo step,
+     * carrying `label` ([`HistoryEntry::label`]), as a drag is. Use it for
+     * one action that writes several values (a linked pair, a Clear All, a
+     * routing preset). Groups nest: only the outermost begin starts the
+     * step and takes its label, and only the matching end ends it. The
+     * group belongs to the connection: a disconnect, another device
+     * opened, a re-attach, a re-read ([`DspiCore::fetch_all`]) and a change
+     * that ends the history (a preset load, a bulk image, a factory reset)
+     * end it at any depth, and an `end_group` after that does nothing.
+     * With no device the call is ignored. An empty group records nothing.
+     * A write undo cannot reverse stands apart, as in a drag. The group is
+     * the connection's, not the thread's: call it on the thread that sends
+     * the group's writes, in order with them.
+     */
+    fun `beginGroup`(`label`: kotlin.String)
+    
+    /**
      * The device's name as last known, with no traffic, kept as
      * [`DspiCore::cached_input_source_name`] keeps source names. "" when
      * unnamed. Errors: `Unsupported` on firmware without device names;
@@ -6027,6 +6063,14 @@ public interface DspiCoreInterface {
      * (at most about a quarter of a second).
      */
     fun `disconnect`()
+    
+    /**
+     * End the undo group [`DspiCore::begin_group`] opened: the outermost
+     * end ends the step, so the next write is a step of its own. Nothing
+     * when no group is open (one a disconnect or a re-read ended, or none
+     * at all).
+     */
+    fun `endGroup`()
     
     /**
      * Reboots the device into its USB bootloader (it disappears). Ok
@@ -8460,6 +8504,33 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Begin an undo group: everything written until the matching
+     * [`DspiCore::end_group`] that undo can reverse is one undo step,
+     * carrying `label` ([`HistoryEntry::label`]), as a drag is. Use it for
+     * one action that writes several values (a linked pair, a Clear All, a
+     * routing preset). Groups nest: only the outermost begin starts the
+     * step and takes its label, and only the matching end ends it. The
+     * group belongs to the connection: a disconnect, another device
+     * opened, a re-attach, a re-read ([`DspiCore::fetch_all`]) and a change
+     * that ends the history (a preset load, a bulk image, a factory reset)
+     * end it at any depth, and an `end_group` after that does nothing.
+     * With no device the call is ignored. An empty group records nothing.
+     * A write undo cannot reverse stands apart, as in a drag. The group is
+     * the connection's, not the thread's: call it on the thread that sends
+     * the group's writes, in order with them.
+     */override fun `beginGroup`(`label`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_begin_group(
+        it, FfiConverterString.lower(`label`),_status)
+}
+    }
+    
+    
+
+    
+    /**
      * The device's name as last known, with no traffic, kept as
      * [`DspiCore::cached_input_source_name`] keeps source names. "" when
      * unnamed. Errors: `Unsupported` on firmware without device names;
@@ -9454,6 +9525,23 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_disconnect(
+        it, _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * End the undo group [`DspiCore::begin_group`] opened: the outermost
+     * end ends the step, so the next write is a step of its own. Nothing
+     * when no group is open (one a disconnect or a re-read ended, or none
+     * at all).
+     */override fun `endGroup`()
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_end_group(
         it, _status)
 }
     }
@@ -18648,7 +18736,12 @@ data class HistoryEntry (
      * with no hazard (not a flash write, an audible one, a reconfiguration,
      * a deferred or an irreversible one).
      */
-    var `undoable`: kotlin.Boolean
+    var `undoable`: kotlin.Boolean, 
+    /**
+     * The undo group's label ([`DspiCore::begin_group`]) when the change
+     * was written inside one; `None` otherwise.
+     */
+    var `label`: kotlin.String?
 ) {
     
     companion object
@@ -18667,6 +18760,7 @@ public object FfiConverterTypeHistoryEntry: FfiConverterRustBuffer<HistoryEntry>
             FfiConverterTypeHistorySource.read(buf),
             FfiConverterULong.read(buf),
             FfiConverterBoolean.read(buf),
+            FfiConverterOptionalString.read(buf),
         )
     }
 
@@ -18677,7 +18771,8 @@ public object FfiConverterTypeHistoryEntry: FfiConverterRustBuffer<HistoryEntry>
             FfiConverterTypeParamValue.allocationSize(value.`after`) +
             FfiConverterTypeHistorySource.allocationSize(value.`source`) +
             FfiConverterULong.allocationSize(value.`atMs`) +
-            FfiConverterBoolean.allocationSize(value.`undoable`)
+            FfiConverterBoolean.allocationSize(value.`undoable`) +
+            FfiConverterOptionalString.allocationSize(value.`label`)
     )
 
     override fun write(value: HistoryEntry, buf: ByteBuffer) {
@@ -18688,6 +18783,7 @@ public object FfiConverterTypeHistoryEntry: FfiConverterRustBuffer<HistoryEntry>
             FfiConverterTypeHistorySource.write(value.`source`, buf)
             FfiConverterULong.write(value.`atMs`, buf)
             FfiConverterBoolean.write(value.`undoable`, buf)
+            FfiConverterOptionalString.write(value.`label`, buf)
     }
 }
 

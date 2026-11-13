@@ -949,6 +949,10 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // -- WP QTGAP1 -- the drag mark: how later writes join undo
             // steps; it sends nothing to the device.
             "setDragging",
+            // -- WP P1UG -- the undo group marks: how later writes join undo
+            // steps; they send nothing to the device.
+            "beginGroup",
+            "endGroup",
             // -- WP P0E -- the diagnostics bundle: device reads (the Stats
             // window's) and a local file; nothing is written to the device.
             "diagnosticsSave",

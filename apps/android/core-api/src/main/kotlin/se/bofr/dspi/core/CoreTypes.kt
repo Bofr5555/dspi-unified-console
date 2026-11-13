@@ -2583,6 +2583,11 @@ data class HistoryEntry(
      * a deferred or an irreversible one).
      */
     val undoable: Boolean,
+    /**
+     * The undo group's label ([`DspiCore::begin_group`]) when the change
+     * was written inside one; `None` otherwise.
+     */
+    val label: String?,
 )
 
 /**

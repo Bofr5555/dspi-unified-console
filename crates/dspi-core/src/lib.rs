@@ -397,6 +397,10 @@ pub(crate) struct Connection {
     /// The values this session wrote recently, which its own late echoes can
     /// bring back into the mirror (`journal::OwnWrites`).
     pub(crate) own_writes: journal::OwnWrites,
+    // -- WP P1UG --
+    /// The undo group open on this connection ([`DspiCore::begin_group`]):
+    /// a group ends with its connection, as a drag does.
+    pub(crate) undo_group: journal::UndoGroup,
     // -- WP BULKFIX -- (fixup bf F1, F2, F4)
     /// The bulk dB bug's state on this connection: whether the firmware has
     /// the fix, and which outputs may hold the series' gains behind their
@@ -523,6 +527,8 @@ impl Connection {
             last_foreign: None,
             // -- WP P0WECHO --
             own_writes: journal::OwnWrites::default(),
+            // -- WP P1UG --
+            undo_group: journal::UndoGroup::default(),
             // -- WP BULKFIX --
             gain_guard,
             bulk_left_muted: false,

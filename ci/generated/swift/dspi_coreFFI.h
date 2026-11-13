@@ -516,6 +516,11 @@ void uniffi_dspi_core_fn_method_dspicore_apply_at_frame(void*_Nonnull ptr, uint6
 RustBuffer uniffi_dspi_core_fn_method_dspicore_audio_link_info(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_BEGIN_GROUP
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_BEGIN_GROUP
+void uniffi_dspi_core_fn_method_dspicore_begin_group(void*_Nonnull ptr, RustBuffer label, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CACHED_DEVICE_NAME
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CACHED_DEVICE_NAME
 RustBuffer uniffi_dspi_core_fn_method_dspicore_cached_device_name(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -754,6 +759,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_diagnostics_save(void*_Nonnull pt
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DISCONNECT
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DISCONNECT
 void uniffi_dspi_core_fn_method_dspicore_disconnect(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_END_GROUP
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_END_GROUP
+void uniffi_dspi_core_fn_method_dspicore_end_group(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_ENTER_BOOTLOADER
@@ -2637,6 +2647,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_audio_link_info(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_BEGIN_GROUP
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_BEGIN_GROUP
+uint16_t uniffi_dspi_core_checksum_method_dspicore_begin_group(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CACHED_DEVICE_NAME
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CACHED_DEVICE_NAME
 uint16_t uniffi_dspi_core_checksum_method_dspicore_cached_device_name(void
@@ -2922,6 +2938,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_diagnostics_save(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DISCONNECT
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DISCONNECT
 uint16_t uniffi_dspi_core_checksum_method_dspicore_disconnect(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_END_GROUP
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_END_GROUP
+uint16_t uniffi_dspi_core_checksum_method_dspicore_end_group(void
     
 );
 #endif

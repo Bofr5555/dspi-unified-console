@@ -11,6 +11,11 @@
 //!
 //! `setDragging` (`{dragging}`, WP QTGAP1) marks a continuous drag
 //! (`DspiCore::set_dragging`): only the writes inside one join an undo step.
+//!
+//! `beginGroup` (`{label}`) and `endGroup` (WP P1UG) open and close an undo
+//! group (`DspiCore::begin_group`, `end_group`): the writes between them are
+//! one undo step carrying the label (each history entry's `label`, `null`
+//! outside a group).
 
 use dspi_core::DspiCore;
 use serde::Deserialize;
@@ -22,6 +27,13 @@ use crate::calls::{CallError, tidy};
 #[derive(Debug, Deserialize)]
 pub struct DraggingParams {
     pub dragging: bool,
+}
+
+// -- WP P1UG --
+/// `beginGroup`'s parameters.
+#[derive(Debug, Deserialize)]
+pub struct GroupParams {
+    pub label: String,
 }
 
 /// `history`'s parameters.
@@ -53,5 +65,19 @@ pub fn history(core: &DspiCore, p: &HistoryParams) -> Value {
 /// `setDragging`: answers `null`.
 pub fn set_dragging(core: &DspiCore, p: &DraggingParams) -> Value {
     core.set_dragging(p.dragging);
+    Value::Null
+}
+
+// -- WP P1UG --
+/// `beginGroup`: answers `null`.
+pub fn begin_group(core: &DspiCore, p: GroupParams) -> Value {
+    core.begin_group(p.label);
+    Value::Null
+}
+
+// -- WP P1UG --
+/// `endGroup`: answers `null`.
+pub fn end_group(core: &DspiCore) -> Value {
+    core.end_group();
     Value::Null
 }

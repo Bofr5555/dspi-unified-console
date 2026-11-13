@@ -310,6 +310,10 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun setDragging(dragging: Boolean) = core.setDragging(dragging)
 
+    override fun beginGroup(label: String) = core.beginGroup(label)
+
+    override fun endGroup() = core.endGroup()
+
     override fun canUndo(): Boolean = core.canUndo()
 
     override fun canRedo(): Boolean = core.canRedo()
@@ -2272,6 +2276,7 @@ internal fun se.bofr.dspi.ffi.uniffi.HistoryEntry.toDomain() =
         source = source.toDomain(),
         atMs = atMs.toLong(),
         undoable = undoable,
+        label = label,
     )
 
 internal fun HistoryEntry.toFfi() =
@@ -2283,6 +2288,7 @@ internal fun HistoryEntry.toFfi() =
         source = source.toFfi(),
         atMs = atMs.toULong(),
         undoable = undoable,
+        label = label,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.HistoryMove.toDomain() =

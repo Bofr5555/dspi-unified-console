@@ -1825,7 +1825,7 @@ pub extern "C" fn dspi_can_redo(core: *const FfiCore) -> bool {
 
 /// The newest `n` changes of the open connection, newest first, in JSON
 /// (`value`: a list of `{path, indices, before, after, source, atMs,
-/// undoable}`; `before` and `after` are parameter values as
+/// undoable, label}`; `label` the undo group's, or null (WP P1UG); `before` and `after` are parameter values as
 /// `dspi_write_param` takes them, `before` null when unknown; `source` is
 /// `local`, `undo` or `redo`; `atMs` milliseconds since the Unix epoch). A
 /// reconnect starts a new history. `NOTIFY_HISTORY` says when it moved.
@@ -1843,6 +1843,29 @@ pub extern "C" fn dspi_history(core: *mut FfiCore, n: u32, buf: *mut c_char, len
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_dragging(core: *const FfiCore, dragging: bool) {
     with_core(core, (), |h| h.core.set_dragging(dragging));
+}
+
+// -- WP P1UG --
+/// Begin an undo group (`DspiCore::begin_group`): everything written until
+/// the matching `dspi_undo_group_end` that undo can reverse is one undo
+/// step, carrying `label` (the `label` field of `dspi_history`'s entries;
+/// null or not UTF-8 counts as no label). Groups nest; a disconnect, another
+/// device opened, a re-read or a preset load, bulk image or factory reset
+/// ends one. Call it on the thread that sends the group's writes, in order
+/// with them. Nothing for a null handle or with no device.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_undo_group_begin(core: *const FfiCore, label: *const c_char) {
+    let label = c_str(label).unwrap_or_default().to_owned();
+    with_core(core, (), |h| h.core.begin_group(label));
+}
+
+// -- WP P1UG --
+/// End the undo group `dspi_undo_group_begin` opened
+/// (`DspiCore::end_group`); the outermost end ends the step. Nothing for a
+/// null handle or when no group is open.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_undo_group_end(core: *const FfiCore) {
+    with_core(core, (), |h| h.core.end_group());
 }
 
 #[cfg(test)]
@@ -1876,6 +1899,10 @@ mod tests_wp_cg36;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p0w;
+// -- WP P1UG --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_p1ug;
 // -- WP CS1 --
 #[cfg(test)]
 mod tests_wp_cs1;
