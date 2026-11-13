@@ -3493,9 +3493,15 @@ extension DSPViewModel {
         let text = CsCoreJSON.text(op)
         let body: (DspiCore) -> (String, String) = { ($0.csApply(op: text), $0.csSnapshot()) }
         let r = write ? core.writeAndWait(body) : core.call(body)
-        guard case .success(let (reply, snapshot)) = r else { return CsCoreReply("{}") }
-        publishCsSnapshot(CsCoreSnapshot(snapshot))
-        return CsCoreReply(reply)
+        guard case .success(let (text, snapshot)) = r else { return CsCoreReply("{}") }
+        var reply = CsCoreReply(text)
+        reply.snapshot = CsCoreSnapshot(snapshot)
+        publishCsSnapshot(reply.snapshot ?? CsCoreSnapshot())
+        // -- WP SW12 -- fixup sw12 F2: a write the core refused before the
+        // device answered (read-only, locked, denied, unsupported, transfer)
+        // says why, as a typed write's refusal does (`writeRefused`).
+        if write, let refusal = reply.refusal { core.postRefusal(refusal.message, resync: refusal.resync) }
+        return reply
     }
 
     /// The core's last read, shown: no device I/O.  Blocking (the core's
@@ -3844,7 +3850,7 @@ extension DSPViewModel {
         self.csAuxState[slot] = on
         guard csAuxSupported else { return }
         if let core = typedCore {   // -- WP SW12 -- queued; a refusal puts the device's value back
-            csAuxWrite(core, lane: "cs.aux.\(slot)", ["op": "auxState", "index": slot, "on": on])
+            csQueuedWrite(core, lane: "cs.aux.\(slot)", ["op": "auxState", "index": slot, "on": on])
             return
         }
         transport.sendControlRequest(request: REQ_SET_CS_AUX_STATE, value: UInt16(slot), index: 2,
@@ -3859,7 +3865,7 @@ extension DSPViewModel {
         self.csAuxLevel[slot] = q8
         guard csAuxSupported else { return }
         if let core = typedCore {   // -- WP SW12 -- a drag's newest level replaces one still queued
-            csAuxWrite(core, lane: "cs.aux.level.\(slot)",
+            csQueuedWrite(core, lane: "cs.aux.level.\(slot)",
                        ["op": "auxLevel", "index": slot, "percent": Double(q8) / 256])
             return
         }
@@ -3867,15 +3873,19 @@ extension DSPViewModel {
                                data: Data([UInt8(q8 & 0xFF), UInt8(q8 >> 8)]))
     }
 
-    /// -- WP SW12 -- An aux output's live value on the core's write lane
-    /// (main thread: it does not wait).  The value shown is the one sent;
-    /// when the core or the device refuses it, the device's values are shown
-    /// again (an applied one changes nothing, so a drag never jumps back).
-    private func csAuxWrite(_ core: CoreStateSource, lane: String, _ op: [String: Any]) {
+    /// -- WP SW12 -- A control-surface write queued on the core's queue
+    /// (main thread: it does not wait); `lane`: a newer value for the same
+    /// key replaces one still queued (an aux level drag).  The value shown is
+    /// the one sent; when the core or the device refuses it, the device's
+    /// values are shown again (an applied one changes nothing, so a drag never
+    /// jumps back), and a refusal before the device says why (fixup sw12 F2).
+    private func csQueuedWrite(_ core: CoreStateSource, lane: String?, _ op: [String: Any]) {
         let text = CsCoreJSON.text(op)
-        core.write(lane: lane) { [weak self] c in
-            guard !CsCoreReply(c.csApply(op: text)).ok else { return }
+        core.write(lane: lane) { [weak self, weak core] c in
+            let reply = CsCoreReply(c.csApply(op: text))
+            guard !reply.ok else { return }
             self?.publishCsSnapshot(CsCoreSnapshot(c.csSnapshot()))
+            if let refusal = reply.refusal { core?.postRefusal(refusal.message, resync: refusal.resync) }
         }
     }
 
@@ -3915,7 +3925,7 @@ extension DSPViewModel {
         if let core = typedCore {   // -- WP SW12 -- the sequencer's live state: the core re-reads the status
             let r = csCoreOp(core, ["op": "refreshStatus"], write: false)
             guard r.ok else { return nil }
-            return csShowSnapshot(core).ext
+            return r.snapshot?.ext   // fixup sw12 N3: one round trip
         }
         guard let d = transport.getControlRequest(request: REQ_GET_CS_EXT_STATUS, value: 0, index: 2, length: CS_EXT_STATUS_LEN),
               let st = CsExtStatusPacket.fromData(d) else { return nil }
@@ -3953,8 +3963,11 @@ extension DSPViewModel {
             let macros = csShowSnapshot(core).macros
             guard macros.indices.contains(macro) else { return CS_STATUS_INVALID_MACRO }
             var m = macros[macro]
+            // fixup sw12 N4: the step count stays the header's.  A slot past
+            // it is not run (dead data) and the core keeps such slots clear,
+            // so there is nothing to write for one.
+            guard step < Int(m.stepCount) else { return PIN_CONFIG_SUCCESS }
             m.steps[step] = value
-            if step >= Int(m.stepCount), value.isConfigured { m.stepCount = UInt8(step + 1) }
             return csCoreOp(core, ["op": "macro", "index": macro, "macro": CsCoreJSON.macro(m)], write: true).statusByte
         }
         let wValue = UInt16(step << 8) | UInt16(macro)
@@ -4055,8 +4068,9 @@ extension DSPViewModel {
     @discardableResult
     func fetchCsDisplayStatus() -> CsDisplayStatus? {
         if let core = typedCore {   // -- WP SW12 -- the panel's live state, read by the core
-            guard csCoreOp(core, ["op": "displayStatus"], write: false).ok else { return nil }
-            return csShowSnapshot(core).displayStatus
+            let r = csCoreOp(core, ["op": "displayStatus"], write: false)
+            guard r.ok else { return nil }
+            return r.snapshot?.displayStatus   // fixup sw12 N3: one round trip
         }
         guard let d = transport.getControlRequest(request: REQ_GET_CS_DISPLAY_STATUS, value: 0, index: 2,
                                             length: CS_DISPLAY_STATUS_LEN),
@@ -4182,6 +4196,18 @@ extension DSPViewModel {
     static let irLearnLockTimeout: TimeInterval = 15
 
     /// Cancel an armed IR learn (REQ_CS_IR_LEARN wValue=0); state returns to idle.
+    /// -- WP SW12 -- fixup sw12 N2: Cancel from the main thread, in order.
+    /// Through a core the cancel is queued on the core's queue at once, so an
+    /// arm issued after it runs after it (it cannot end the new window);
+    /// without a core it runs off main as before.
+    func csIrLearnCancelInOrder() {
+        if let core = typedCore {
+            csQueuedWrite(core, lane: nil, ["op": "learnCancel"])
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async { self.csIrLearnCancel() }
+    }
+
     func csIrLearnCancel() {
         if let core = typedCore { csCoreOp(core, ["op": "learnCancel"], write: true); return }   // -- WP SW12 -- ends the core's window
         defer { csIrLearnEnd() }

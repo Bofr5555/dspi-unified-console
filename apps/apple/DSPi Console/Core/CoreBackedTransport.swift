@@ -814,6 +814,15 @@ extension CoreBackedTransport: CoreStateSource, CoreStateSourceProviding {
         }
     }
 
+    // -- WP SW12 -- fixup sw12 F2: as `writeRefused` shows a refusal.
+    func postRefusal(_ message: String, resync: Bool) {
+        if resync {
+            RefusedWrite.handleInvalid(message, fanout: fanout)
+        } else {
+            DeviceLock.notice.post(message)
+        }
+    }
+
     // -- WP SW12 -- On coreQueue: one state publish behind the work queued now.
     private func queuePublishAfterWrites() {
         guard !writePublishQueued else { return }

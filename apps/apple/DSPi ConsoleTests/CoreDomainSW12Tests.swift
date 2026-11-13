@@ -240,6 +240,70 @@ final class CoreDomainSW12Tests: XCTestCase, CoreDomainTesting {
         XCTAssertTrue(CsCoreReply(#"{"ok": false, "error": "another console is applying changes"}"#).isLocked)
     }
 
+    // MARK: - Fixup sw12
+
+    /// F2: a write the core refuses before the device answers (here: a
+    /// device without control surfaces, Swift's FakeTransport under the core)
+    /// says why with the core's words, through the waiting path and the
+    /// queued one; the hub's and the firmware's refusals also re-read.
+    func testSW12ARefusalBeforeTheDeviceSaysWhy() {
+        let (_, _, _, vm) = hostVM()
+        XCTAssertTrue(spinUntil(8) { DeviceLock.notice.message == nil })
+        XCTAssertFalse(vm.controlSurfacesSupported)
+        XCTAssertEqual(offMain { vm.setCsName(slot: 0, name: "SW12 none") }, 0xFF)
+        XCTAssertTrue(spinUntil(3) { DeviceLock.notice.message == "not supported by the connected firmware" },
+                      "the core's words: \(DeviceLock.notice.message ?? "none")")
+        XCTAssertTrue(spinUntil(8) { DeviceLock.notice.message == nil })
+        vm.csIrLearnCancelInOrder()
+        XCTAssertTrue(spinUntil(3) { DeviceLock.notice.message == "not supported by the connected firmware" },
+                      "the queued path too: \(DeviceLock.notice.message ?? "none")")
+        XCTAssertTrue(spinUntil(8) { DeviceLock.notice.message == nil })
+
+        func refusal(_ json: String) -> (message: String, resync: Bool)? { CsCoreReply(json).refusal }
+        XCTAssertNil(refusal(#"{"ok": true, "status": 0}"#))
+        XCTAssertNil(refusal(#"{"ok": false, "status": 1}"#), "the device's own refusal is its status byte")
+        XCTAssertEqual(refusal(#"{"ok": false, "error": "another console is applying changes"}"#)?.resync, true)
+        XCTAssertEqual(refusal(#"{"ok": false, "error": "the connected firmware is read-only in this version"}"#)?.resync, true)
+        XCTAssertEqual(refusal(#"{"ok": false, "error": "this console's role on the hub does not allow that"}"#)?.resync, true)
+        XCTAssertEqual(refusal(#"{"ok": false, "error": "transfer failed: timeout"}"#)?.message, "transfer failed: timeout")
+        XCTAssertEqual(refusal(#"{"ok": false, "error": "transfer failed: timeout"}"#)?.resync, false)
+    }
+
+    /// N2: a cancel issued before a re-arm reaches the core before it, so it
+    /// cannot end the new learn.
+    func testSW12ACancelThenReArmKeepsTheNewLearn() {
+        let (core, t, vm) = csVM()
+        XCTAssertEqual(offMain { vm.csIrLearnArm() }, .armed)
+        vm.csIrLearnCancelInOrder()   // main thread, as the view's Cancel
+        XCTAssertEqual(offMain { vm.csIrLearnArm() }, .armed, "re-armed at once")
+        flush(t)
+        XCTAssertEqual(offMain { vm.csIrLearnRead() }?.state, CS_IR_LEARN_STATE_ARMED, "the new learn is armed")
+        XCTAssertTrue((try? t.coreQueue.sync { try core.csDemoLearn(protocol: 1, code: 7) }) ?? false, "and takes a key")
+        XCTAssertEqual(offMain { vm.csIrLearnRead() }?.code, 7)
+    }
+
+    /// N4: a step past the macro's count does not lengthen it.
+    func testSW12AStepPastTheCountLeavesTheMacro() throws {
+        let (_, _, vm) = csVM()
+        let m = try XCTUnwrap(vm.csMacros.indices.first {
+            vm.csMacros[$0].isConfigured && Int(vm.csMacros[$0].stepCount) < CS_MAX_MACRO_STEPS
+        })
+        let macro = vm.csMacros[m]
+        let past = Int(macro.stepCount)
+        let step = macro.steps[0]
+        XCTAssertTrue(step.isConfigured)
+        XCTAssertEqual(offMain { vm.setCsMacroStep(macro: m, step: past, value: step) }, PIN_CONFIG_SUCCESS)
+        settle()
+        XCTAssertEqual(vm.csMacros[m].stepCount, macro.stepCount, "the count stays the header's")
+        XCTAssertEqual(vm.csMacros[m].activeSteps, macro.activeSteps)
+        // A step inside the count is written.
+        var edited = step
+        edited.preDelay = step.preDelay == 10 ? 20 : 10
+        XCTAssertEqual(offMain { vm.setCsMacroStep(macro: m, step: 0, value: edited) }, PIN_CONFIG_SUCCESS)
+        XCTAssertTrue(spinUntil(5) { vm.csMacros[m].steps[0] == edited })
+        XCTAssertEqual(vm.csMacros[m].stepCount, macro.stepCount)
+    }
+
     // MARK: - Undo per the registry
 
     /// A control-surface edit is recorded and stepped over: Undo goes back to

@@ -77,6 +77,8 @@ struct CsCoreReply {
     let status: UInt8?
     let error: String?
     let fields: [String: Any]
+    /// -- fixup sw12 N3 -- The snapshot read with it, when there is one.
+    var snapshot: CsCoreSnapshot?
 
     init(_ text: String) {
         let v = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any] ?? [:]
@@ -97,6 +99,23 @@ struct CsCoreReply {
     /// the reply's `error` carries: crates/dspi-core/src/error.rs).
     var isLocked: Bool { !ok && status == nil && error == CsCoreReply.lockedText }
     static let lockedText = "another console is applying changes"
+
+    // -- fixup sw12 F2 --
+    /// `DspiError::ReadOnly` and `Denied` as the reply's `error` (error.rs).
+    static let readOnlyText = "the connected firmware is read-only in this version"
+    static let deniedText = "this console's role on the hub does not allow that"
+
+    /// A failure the core reported without a device status (nothing reached
+    /// the device, or nothing is known to have): the core's words, and
+    /// whether the view model re-reads the device (read-only, locked or
+    /// denied: the hub's and the firmware's refusals, as `writeRefused`).
+    /// nil for success and for the device's own refusal (its status byte).
+    var refusal: (message: String, resync: Bool)? {
+        guard !ok, status == nil else { return nil }
+        let text = error ?? RefusedWrite.transferMessage
+        let resync = [CsCoreReply.lockedText, CsCoreReply.readOnlyText, CsCoreReply.deniedText].contains(text)
+        return (text, resync)
+    }
 }
 
 /// The core's control-surface snapshot (`csSnapshot()`), as the Swift models.
