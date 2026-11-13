@@ -78,16 +78,18 @@ impl Session {
         // Every value to put back: the write's own, then what the device
         // moved with it. A write to every output has no single value of its
         // own to restore, only each output's.
+        // -- WP P0W2 (O1) -- every value of a drag's step, newest first.
         let mut steps: Vec<(&'static str, Vec<u8>, Value)> = Vec::new();
-        if let Some(before) = &entry.before {
-            steps.push((entry.path, entry.indices.clone(), before.clone()));
+        for v in entry.values().into_iter().rev() {
+            if let Some(before) = v.before {
+                steps.push((v.path, v.indices, before));
+            }
+            steps.extend(
+                v.companions
+                    .into_iter()
+                    .map(|c| (c.path, c.indices, c.before)),
+            );
         }
-        steps.extend(
-            entry
-                .companions
-                .iter()
-                .map(|c| (c.path, c.indices.clone(), c.before.clone())),
-        );
 
         let mut outcome = None;
         for (path, indices, value) in &steps {
@@ -125,25 +127,30 @@ impl Session {
             return Ok(None);
         };
 
-        let after = entry.after.clone();
-        let outcome = match self.replay(
-            entry.path,
-            &entry.indices,
-            after.clone(),
-            ChangeSource::Redo,
-        ) {
-            Ok(o) => o,
-            Err(e) => {
-                self.restore_redo(entry);
-                return Err(e);
+        // -- WP P0W2 (O1) -- every value of a drag's step, in order.
+        let values = entry.values();
+        let mut outcome = None;
+        for v in &values {
+            match self.replay(v.path, &v.indices, v.after.clone(), ChangeSource::Redo) {
+                Ok(o) => {
+                    outcome.get_or_insert(o);
+                }
+                Err(e) => {
+                    self.restore_redo(entry);
+                    return Err(e);
+                }
             }
-        };
+        }
 
-        let command = self.render(entry.path, &entry.indices, &after);
+        let command = values
+            .iter()
+            .map(|v| self.render(v.path, &v.indices, &v.after))
+            .collect::<Vec<_>>()
+            .join("; ");
         self.finish_redo(entry);
         Ok(Some(Undone {
             command: Some(command),
-            outcome: Some(outcome),
+            outcome,
             skipped: Vec::new(),
         }))
     }
