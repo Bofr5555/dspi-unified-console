@@ -1,0 +1,41 @@
+{
+  "cols": 132,
+  "rows": 40,
+  "sessions": [
+    {
+      "name": "tui",
+      "argv": ["/hub/uconsole", "--demo"],
+      "steps": [
+        ["wait", 4], ["shot", "main"],
+        ["keys", ":vol.user -18\r"], ["wait", 1.5], ["shot", "changed"],
+        ["keys", "\u001a"], ["wait", 1.5], ["shot", "undo"],
+        ["keys", "\u0019"], ["wait", 1.5], ["shot", "redo"],
+        ["keys", "T"], ["wait", 3], ["shot", "stats-for-nerbs"],
+        ["keys", "\u001b"], ["wait", 1],
+        ["keys", "F"], ["wait", 2], ["shot", "third-octave"],
+        ["keys", "F"], ["wait", 1],
+        ["keys", "M"], ["wait", 2], ["shot", "matrix"],
+        ["keys", "\u001b"], ["wait", 1],
+        ["keys", "?"], ["wait", 1.5], ["shot", "help"],
+        ["keys", "\u001b"], ["wait", 1],
+        ["keys", ","], ["wait", 2], ["shot", "settings"]
+      ]
+    },
+    {
+      "name": "diag",
+      "argv": ["/hub/uconsole", "--demo", "diag", "/wtmp/shots-diag.zip"],
+      "steps": [["wait", 6], ["shot", "diag"]]
+    },
+    {
+      "name": "hub",
+      "argv": ["/hub/uconsole", "--demo", "hub", "--audio-link", "--loopback", "--open", "--forget-clients", "--port", "0", "--no-keep-awake", "--store", "/wtmp/shots-hub-store"],
+      "steps": [
+        ["wait", 4],
+        ["keys", "devices\r"], ["wait", 1.5],
+        ["keys", "status\r"], ["wait", 1.5],
+        ["shot", "audio-link-hub"],
+        ["keys", "quit\r"], ["wait", 1.5]
+      ]
+    }
+  ]
+}
