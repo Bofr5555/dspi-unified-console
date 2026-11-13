@@ -1755,6 +1755,8 @@ can trail the other clients without blocking them.
 
 #### Owner decisions for phase 1
 
+**DECIDED 2026-11-13 (owner): all of OD-P1a to OD-P1m as recommended below**, with one addition: in code and terminology the audio link is **alink** and DSPi Link is **dlink** (dlink may be skipped, but the audio link's shorthand is never bare "link"). User-facing text keeps "Audio link" and "DSPi Link". New code uses alink names now; existing audio-link `link_*` names are renamed in dedicated WPs (ALINK1 console, ALINK2 firmware) once no other WP owns those files.
+
 | # | Decision | Recommendation |
 |---|---|---|
 | **OD-P1a** | **Snapshot or scene.** PRO1 called a numbered snapshot a "scene"; the hub's audio-link system already has scenes (frame-timed ops across units, SW2). | Keep **Snapshot** for host-side whole-device states and **Scene** for the hub's; a hub scene may recall a snapshot in phase 2 |
