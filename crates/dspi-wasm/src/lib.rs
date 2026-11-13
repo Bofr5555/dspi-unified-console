@@ -57,6 +57,8 @@ pub mod link;
 pub mod outputs;
 // -- WP WB6a --
 pub mod presets;
+// -- WP SW3 --
+pub mod system;
 // -- WP WB4a --
 pub mod usb;
 pub mod write;
