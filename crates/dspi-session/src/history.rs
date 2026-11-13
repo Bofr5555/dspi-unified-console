@@ -30,6 +30,12 @@
 //!   field, or the whole band) widens that value to the group's path
 //!   ([`Session::widen_step`]) when the drag moves another of them, so it
 //!   is held once.
+//! - **A group is one step** (WP P1UG). A caller that writes several values
+//!   for one action (a linked pair, a Clear All, a routing preset) marks
+//!   them to coalesce as a drag does and records them with the group's
+//!   label ([`Session::record_in_group`]); the step carries the label
+//!   ([`JournalEntry::label`]). The caller ends the step when the group
+//!   ends.
 //! - **A re-read or another writer ends a step** ([`Session::end_step`]):
 //!   a change after it starts a new entry, whatever it repeats, so undo never
 //!   goes back past what the re-read or the other writer left (WP SWAPFIX).
@@ -190,8 +196,22 @@ impl Session {
         self.record_with_outcome(change, Outcome::Accepted);
     }
 
+    // -- WP P1UG --
+    /// [`Session::record_change`] for a change written inside an undo group
+    /// labelled `label`: a new step carries the label; a change that joins
+    /// the step being gathered gives it the label if it had none.
+    pub fn record_in_group(&mut self, change: Change, label: &str) {
+        self.record_labelled(change, Outcome::Accepted, Some(label));
+    }
+
     /// [`Session::record_change`] with the outcome the write came back with.
     pub(crate) fn record_with_outcome(&mut self, change: Change, outcome: Outcome) {
+        self.record_labelled(change, outcome, None);
+    }
+
+    /// The journal's one door: [`Session::record_with_outcome`], and the
+    /// group's label for a change written inside one.
+    fn record_labelled(&mut self, change: Change, outcome: Outcome, label: Option<&str>) {
         let at_ms = now_ms();
         self.history_version = self.history_version.wrapping_add(1);
         // An action has no value to put back, whatever its hazard.
@@ -204,6 +224,10 @@ impl Session {
                 join(e, &change);
                 e.outcome = outcome.clone();
                 e.at_ms = at_ms;
+                // -- WP P1UG --
+                if e.label.is_none() {
+                    e.label = label.map(str::to_owned);
+                }
             }
             return;
         }
@@ -220,6 +244,8 @@ impl Session {
             // -- WP P0W2 (O1) -- nothing joins a change undo cannot reverse
             coalesce: change.coalesce && reversible,
             more: Vec::new(),
+            label: label.map(str::to_owned), // -- WP P1UG --
+            begun_ms: at_ms,
         };
         self.journal.push(entry.clone());
         cap(&mut self.journal, JOURNAL_CAP);
@@ -653,6 +679,28 @@ mod tests_wp_p0w {
         // An action never joins, and ends nothing it is not part of.
         s.record_change(dragged("dev.save", vec![], Value::Trigger, Value::Trigger));
         assert_eq!(s.history(10).len(), 4);
+    }
+
+    // -- WP P1UG --
+    /// A group's changes carry its label; one that joins a step without a
+    /// label gives it one; a plain change has none.
+    #[test]
+    fn wp_p1ug_a_group_step_carries_its_label() {
+        let mut s = session();
+        s.record_change(gain(0.0, -1.0));
+        assert_eq!(s.history(1)[0].label, None);
+        s.end_step();
+        let mut c = gain(-1.0, -2.0);
+        c.coalesce = true;
+        s.record_in_group(c, "Pair");
+        let mut c = gain(0.0, -2.0);
+        c.indices = vec![1];
+        c.coalesce = true;
+        s.record_in_group(c, "Other");
+        assert_eq!(s.history(10).len(), 2);
+        let e = s.take_undo().entry.unwrap();
+        assert_eq!(e.label.as_deref(), Some("Pair"), "the first label stays");
+        assert_eq!(e.more.len(), 1);
     }
 
     #[test]

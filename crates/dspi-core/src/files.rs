@@ -29,7 +29,7 @@ use dspi_proto::generated::{limiter, tube};
 use dspi_proto::wire::INPUT_CONFIG_FIELDS;
 use dspi_proto::wire_compat::{self, WireRead, feat};
 use dspi_proto::{Platform, xover};
-use dspi_session::preset_file::{self, ChannelRef, OutOfRange};
+use dspi_session::preset_file::{self, ChannelRef, MetaKind, OutOfRange};
 use serde_json::{Map, Value, json};
 
 use crate::connect::{LOCK_REASON, apply_all_params_locked, refresh_params_locked};
@@ -626,6 +626,21 @@ fn export_config(
     links: u8,
     pair_map: Option<[u8; 4]>,
 ) -> String {
+    export_document(s, name, app_version, links, pair_map, MetaKind::Preset)
+}
+
+// -- WP P1DF --
+/// [`export_config`] as a document of `kind`: `meta.kind` is written for
+/// every kind but a preset (absent reads as one), so a preset export stays
+/// byte for byte what the other consoles write. For P1SN, P1OF and P1LM.
+pub(crate) fn export_document(
+    s: &DspState,
+    name: &str,
+    app_version: &str,
+    links: u8,
+    pair_map: Option<[u8; 4]>,
+    kind: MetaKind,
+) -> String {
     let carried = wire_compat::features(s.format_version);
     let has = |bit: u32| bit == 0 || carried & bit != 0;
     let mut m = s.clone();
@@ -651,6 +666,11 @@ fn export_config(
             "outputConfigMode": s.output_config_mode,
         }),
     );
+    if kind != MetaKind::Preset
+        && let Some(meta) = doc.get_mut("meta").and_then(Value::as_object_mut)
+    {
+        meta.insert("kind".into(), json!(kind.word()));
+    }
 
     let mut global = block_value(&mut m, &global_fields(), &has);
     global.extend(block_value(&mut m, &volume_fields(), &has));
@@ -949,20 +969,90 @@ struct Built {
     pair_map: Option<[u8; 4]>,
 }
 
+// -- WP P1DF --
+/// What an import applies, by block (PRO1 W8): the `IMPORT_*` block bits
+/// and, for the EQ, which wire channels (bit k: channel k).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Selection {
+    blocks: u32,
+    eq_channels: u32,
+}
+
+impl Selection {
+    /// `options` as the import calls take them. Without [`IMPORT_BY_BLOCK`]
+    /// the old bits keep their meaning: every audio block, the volumes with
+    /// [`IMPORT_VOLUMES`], the hardware I/O and the limiters with
+    /// [`IMPORT_HARDWARE`]. `eq_channels` narrows the EQ to those channels.
+    pub(crate) fn new(options: u32, eq_channels: u32) -> Self {
+        let blocks = if options & IMPORT_BY_BLOCK != 0 {
+            options & IMPORT_ALL_BLOCKS
+        } else {
+            let mut b = IMPORT_EQ
+                | IMPORT_CROSSOVER
+                | IMPORT_ROUTING
+                | IMPORT_OUTPUTS
+                | IMPORT_EFFECTS
+                | IMPORT_NAMES;
+            if options & IMPORT_VOLUMES != 0 {
+                b |= IMPORT_VOLUMES;
+            }
+            if options & IMPORT_HARDWARE != 0 {
+                b |= IMPORT_HARDWARE | IMPORT_LIMITERS;
+            }
+            b
+        };
+        Self {
+            blocks,
+            eq_channels,
+        }
+    }
+
+    /// Every block, every channel.
+    pub(crate) fn all() -> Self {
+        Self::new(IMPORT_BY_BLOCK | IMPORT_ALL_BLOCKS, u32::MAX)
+    }
+
+    /// The block bits this selection applies.
+    pub(crate) fn blocks(self) -> u32 {
+        self.blocks
+    }
+
+    fn has(self, bit: u32) -> bool {
+        self.blocks & bit != 0
+    }
+
+    /// Whether wire channel `wire`'s EQ is applied.
+    fn eq_of(self, wire: usize) -> bool {
+        self.has(IMPORT_EQ)
+            && u32::try_from(wire)
+                .ok()
+                .and_then(|w| self.eq_channels.checked_shr(w))
+                .is_some_and(|m| m & 1 != 0)
+    }
+}
+
 struct Importer<'d> {
     doc: &'d Map<String, Value>,
-    options: u32,
+    sel: Selection,
     read: Reader,
     out: Built,
 }
 
 /// Read document `doc` onto `base` (the device's state) with the
-/// `IMPORT_*` `options`. Pure: nothing is sent.
+/// `IMPORT_*` `options`. Pure: nothing is sent. -- WP P1DF -- the import
+/// calls go through [`build_selected`]; this stays for the tests.
+#[cfg(test)]
 fn build_config(base: &DspState, doc: &Value, options: u32) -> Built {
+    build_selected(base, doc, Selection::new(options, u32::MAX))
+}
+
+// -- WP P1DF --
+/// [`build_config`] for the blocks of `sel`.
+fn build_selected(base: &DspState, doc: &Value, sel: Selection) -> Built {
     let empty = Map::new();
     let mut im = Importer {
         doc: doc.as_object().unwrap_or(&empty),
-        options,
+        sel,
         read: Reader::default(),
         out: Built {
             state: base.clone(),
@@ -991,9 +1081,14 @@ fn build_config(base: &DspState, doc: &Value, options: u32) -> Built {
         im.channel(place, entry);
     }
     im.out.channels = placed.len();
-    im.matrix();
-    im.feature_blocks();
-    if options & IMPORT_HARDWARE != 0 {
+    // -- WP P1DF -- each block only when selected
+    if sel.has(IMPORT_ROUTING) {
+        im.matrix();
+    }
+    if sel.has(IMPORT_EFFECTS) {
+        im.feature_blocks();
+    }
+    if sel.has(IMPORT_HARDWARE) {
         im.io();
     }
     im.old_format();
@@ -1195,36 +1290,46 @@ impl<'d> Importer<'d> {
     fn global(&mut self, inputs: usize) {
         let g = self.read.object(self.doc.get("global"));
         let n_in = usize::from(self.inputs());
+        // -- WP P1DF -- the input side (preamps, source, LG Sound Sync, pair
+        // links) is the routing's, the master EQ bypass the EQ's.
+        let routing = self.sel.has(IMPORT_ROUTING);
 
-        let mut whole = false;
-        if let Some(list) = self.read.list(g.and_then(|g| g.get("inputPreampsDb"))) {
-            whole = list.len() >= inputs;
-            for (i, v) in list.iter().enumerate().take(n_in) {
-                match self.read.real(Some(v)) {
-                    Some(db) => {
-                        // -- WP CS1 --
-                        let at = u8::try_from(i).unwrap_or(u8::MAX);
-                        let db = self.ranged("pre", &[at], db);
-                        if let Some(p) = self.out.state.input_preamp_db.get_mut(i) {
-                            *p = db;
+        if routing {
+            let mut whole = false;
+            if let Some(list) = self.read.list(g.and_then(|g| g.get("inputPreampsDb"))) {
+                whole = list.len() >= inputs;
+                for (i, v) in list.iter().enumerate().take(n_in) {
+                    match self.read.real(Some(v)) {
+                        Some(db) => {
+                            // -- WP CS1 --
+                            let at = u8::try_from(i).unwrap_or(u8::MAX);
+                            let db = self.ranged("pre", &[at], db);
+                            if let Some(p) = self.out.state.input_preamp_db.get_mut(i) {
+                                *p = db;
+                            }
+                            if i == 0 {
+                                self.out.state.preamp_db = db;
+                            }
                         }
-                        if i == 0 {
-                            self.out.state.preamp_db = db;
-                        }
+                        None => whole = false,
                     }
-                    None => whole = false,
                 }
             }
+            if !whole {
+                self.leave("global.inputPreampsDb");
+            }
         }
-        if !whole {
-            self.leave("global.inputPreampsDb");
-        }
-        self.fields(g, "global", &global_fields());
-        if self.options & IMPORT_VOLUMES != 0 {
+        let eq = self.sel.has(IMPORT_EQ);
+        let keys: Vec<Field> = global_fields()
+            .into_iter()
+            .filter(|f| if f.key == "bypass" { eq } else { routing })
+            .collect();
+        self.fields(g, "global", &keys);
+        if self.sel.has(IMPORT_VOLUMES) {
             self.fields(g, "global", &volume_fields());
         }
 
-        if let Some(list) = self.read.list(g.and_then(|g| g.get("inputPairLinked"))) {
+        if routing && let Some(list) = self.read.list(g.and_then(|g| g.get("inputPairLinked"))) {
             let mut mask = 0u8;
             for (p, v) in list.iter().enumerate().take(4) {
                 if self.read.switch(Some(v)) == Some(true) {
@@ -1243,31 +1348,64 @@ impl<'d> Importer<'d> {
             .clone()
             .or_else(|| self.out.state.channel_names.get(wire).cloned())
             .unwrap_or_else(|| format!("channel {wire}"));
-        if let (Some(n), Some(slot)) = (name, self.out.state.channel_names.get_mut(wire)) {
+        // -- WP P1DF -- each part only when its block is selected: the name
+        // (names), the delay (routing for an input, outputs for an output),
+        // the EQ (per channel), the output strip, the crossover, the limiter.
+        if self.sel.has(IMPORT_NAMES)
+            && let (Some(n), Some(slot)) = (name, self.out.state.channel_names.get_mut(wire))
+        {
             *slot = n;
         }
 
         let line = state::max_delay_ms_for(&self.out.state);
         let wire8 = place.unified(self.inputs());
-        match self.delay(e.get("delayMs"), line, &shown, ("ch.delay", wire8)) {
-            Some(ms) => {
-                if let Some(d) = self.out.state.channel_delays.get_mut(wire) {
-                    *d = ms;
+        let output = matches!(place, ChannelRef::Output(_));
+        let delay_block = if output {
+            IMPORT_OUTPUTS
+        } else {
+            IMPORT_ROUTING
+        };
+        if self.sel.has(delay_block) {
+            match self.delay(e.get("delayMs"), line, &shown, ("ch.delay", wire8)) {
+                Some(ms) => {
+                    if let Some(d) = self.out.state.channel_delays.get_mut(wire) {
+                        *d = ms;
+                    }
                 }
+                None => self.leave("channels.delayMs"),
             }
-            None => self.leave("channels.delayMs"),
         }
 
-        match self.bank(e.get("eq"), BANDS_PER_CHANNEL, false, wire8) {
-            Some(bank) => replace_bank(self.out.state.filters.get_mut(wire), &bank),
-            None => self.leave("channels.eq"),
+        if self.sel.eq_of(wire) {
+            match self.bank(e.get("eq"), BANDS_PER_CHANNEL, false, wire8) {
+                Some(bank) => replace_bank(self.out.state.filters.get_mut(wire), &bank),
+                None => self.leave("channels.eq"),
+            }
         }
 
         let ChannelRef::Output(o) = place else {
             return;
         };
-        let o8 = o;
         let o = usize::from(o);
+        if self.sel.has(IMPORT_OUTPUTS) {
+            self.output_strip(e, o, &shown, line);
+        }
+        if self.sel.has(IMPORT_CROSSOVER) {
+            match self.bank(e.get("crossover"), MAX_XOVER_BANDS, true, wire8) {
+                Some(bank) => replace_bank(self.out.state.xover.get_mut(wire), &bank),
+                None => self.leave("channels.crossover"),
+            }
+        }
+        if self.sel.has(IMPORT_LIMITERS)
+            && let Some(l) = self.read.object(e.get("limiter"))
+        {
+            self.limiter(l, o);
+        }
+    }
+
+    /// An output's gain, mute, enable and output delay.
+    fn output_strip(&mut self, e: &Map<String, Value>, o: usize, shown: &str, line: f32) {
+        let o8 = o8(o);
         if let Some(v) = self.read.real(e.get("gainDb")) {
             // -- WP CS1 --
             let v = self.ranged("out.gain", &[o8], v);
@@ -1295,15 +1433,6 @@ impl<'d> Importer<'d> {
         ) {
             Some(ms) => set(&mut self.out.state.output_delay_ms, o, ms),
             None => self.leave("channels.outputDelayMs"),
-        }
-        match self.bank(e.get("crossover"), MAX_XOVER_BANDS, true, wire8) {
-            Some(bank) => replace_bank(self.out.state.xover.get_mut(wire), &bank),
-            None => self.leave("channels.crossover"),
-        }
-        if self.options & IMPORT_HARDWARE != 0
-            && let Some(l) = self.read.object(e.get("limiter"))
-        {
-            self.limiter(l, o);
         }
     }
 
@@ -1731,9 +1860,29 @@ fn config_report(b: &Built) -> (Vec<String>, bool) {
     (lines, clean)
 }
 
-/// `{"ok": false, "error": ...}`.
-fn refusal(error: &str) -> String {
-    json!({ "ok": false, "error": error }).to_string()
+// -- WP P1AFIX -- (review p1a N3) the configuration calls' refusals name
+// their notice (`crate::notice_text`), as the C and web failures do.
+/// The notice key of a document this build does not read.
+pub const NOTICE_CONFIG_UNREADABLE: &str = "config.unreadable";
+/// The notice key of a by-block import with no block chosen.
+pub const NOTICE_CONFIG_NOTHING_SELECTED: &str = "config.nothing_selected";
+/// The notice key of a preview before the device's settings were read.
+pub const NOTICE_CONFIG_NOT_READ: &str = "config.not_read";
+
+/// `{"ok": false, "error": ..., "noticeKey": ...}`.
+fn keyed_refusal(error: &str, notice_key: &str) -> String {
+    json!({ "ok": false, "error": error, "noticeKey": notice_key }).to_string()
+}
+
+/// The refusal for a text that is not a document this build reads.
+fn document_refusal(error: &str) -> String {
+    keyed_refusal(error, NOTICE_CONFIG_UNREADABLE)
+}
+
+/// The refusal for a device that could not be written or read: the core
+/// error's own notice key.
+fn device_refusal(e: &DspiError) -> String {
+    keyed_refusal(&write_error(e), &e.notice_key())
 }
 
 /// Why nothing (more) could be written, for the user.
@@ -1791,7 +1940,7 @@ fn exportable(inner: &mut Inner) -> Result<(DspState, Option<[u8; 4]>)> {
 pub fn config_inspect(text: String) -> String {
     let doc = match parse_config(&text) {
         Ok(d) => d,
-        Err(e) => return refusal(&e),
+        Err(e) => return document_refusal(&e),
     };
     let meta = doc.get("meta");
     let field = |k: &str| {
@@ -1807,8 +1956,122 @@ pub fn config_inspect(text: String) -> String {
         "platform": field("platform"),
         "firmware": field("firmwareVersion"),
         "savedUtc": field("savedUtc"),
+        // -- WP P1DF --
+        "kind": doc_kind(&doc).word(),
     })
     .to_string()
+}
+
+// -- WP P1DF --
+/// A document's `meta.kind`; absent or unknown is a preset.
+pub(crate) fn doc_kind(doc: &Value) -> MetaKind {
+    MetaKind::from_word(
+        doc.get("meta")
+            .and_then(|m| m.get("kind"))
+            .and_then(Value::as_str),
+    )
+}
+
+/// A state shaped like the device a document was written from, for a diff
+/// with no device: the platform, channel counts and wire format its `meta`
+/// names (else the channels it lists), the rest the defaults.
+fn base_for(doc: &Value) -> DspState {
+    let mut s = state::default_state();
+    let meta = doc.get("meta");
+    let num = |k: &str| meta.and_then(|m| m.get(k)).and_then(Value::as_i64);
+    if let Some(p) = meta.and_then(|m| m.get("platform")).and_then(Value::as_str) {
+        s.platform_id = if p.eq_ignore_ascii_case("RP2350") {
+            1
+        } else {
+            0
+        };
+    }
+    let channels = doc.get("channels").and_then(Value::as_array);
+    let listed = |output: bool| {
+        channels.map_or(0, |c| {
+            c.iter()
+                .filter(|e| e.get("isOutput").and_then(Value::as_bool).unwrap_or(false) == output)
+                .count()
+        })
+    };
+    let count = |key: &str, output: bool, max: usize| {
+        let n = num(key)
+            .and_then(|n| usize::try_from(n).ok())
+            .filter(|&n| n > 0)
+            .unwrap_or_else(|| listed(output));
+        u8::try_from(n.min(max)).unwrap_or(0)
+    };
+    s.num_input_channels = count("inputChannelCount", false, MAX_INPUTS);
+    s.num_output_channels = count("outputChannelCount", true, MAX_OUTPUTS);
+    s.num_channels = s.num_input_channels.saturating_add(s.num_output_channels);
+    if let Some(w) = num("wireFormatVersion").and_then(|w| u8::try_from(w).ok()) {
+        s.format_version = w;
+    }
+    s.num_pin_outputs = s
+        .num_output_channels
+        .div_ceil(2)
+        .min(MAX_PHYSICAL_OUTPUTS as u8);
+    s.dac_mute_supported = doc
+        .get("io")
+        .and_then(|io| io.get("dacHwMute"))
+        .is_some_and(Value::is_object);
+    s
+}
+
+/// The notes of a build for a preview: its report without the count and the
+/// closing line.
+fn notes(b: &Built) -> Vec<String> {
+    let (lines, _) = config_report(b);
+    let n = lines.len();
+    lines
+        .into_iter()
+        .enumerate()
+        .filter(|&(k, _)| k != 0 && k.saturating_add(1) != n)
+        .map(|(_, l)| l)
+        .collect()
+}
+
+/// `{ok: true, error: "", rows, count, blocks, summary, notes, kind}`.
+fn diff_reply(before: &DspState, after: &Built, sources: &[String], kind: MetaKind) -> String {
+    let rows = crate::doc_diff::rows(before, &after.state, sources);
+    let summary = crate::presets::changes(before, &after.state, sources);
+    let mut out = crate::doc_diff::to_json(&rows, summary);
+    out.insert("ok".into(), json!(true));
+    out.insert("error".into(), json!(""));
+    out.insert("notes".into(), json!(notes(after)));
+    out.insert("kind".into(), json!(kind.word()));
+    Value::Object(out).to_string()
+}
+
+/// What differs between two `.dspipreset` documents, `before` and `after`,
+/// with no device (PRO1 W5). `after` is read on top of `before`, as an
+/// import of it after the other would be, so a value `after` holds none for
+/// is no change; both are read onto a device shaped as `before`'s `meta`
+/// says.
+///
+/// Returns JSON `{ok, error, rows, count, blocks, summary, notes, kind}`:
+/// `rows` one per changed value, `{block, section, item, before, after}`,
+/// `block` the import block that carries it (`eq`, `crossover`, `routing`,
+/// `outputs`, `limiters`, `effects`, `volumes`, `hardware`, `names`);
+/// `blocks` the number of rows per block; `summary` the unsaved-changes
+/// list's sentences for the same change; `notes` what reading `after`
+/// reported (channels missing, values left alone or clamped); `kind`
+/// `after`'s `meta.kind`. `{ok: false, error}` when either text is not a
+/// document this build reads (the error names which).
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+pub fn config_diff(before: String, after: String) -> String {
+    let a = match parse_config(&before) {
+        Ok(d) => d,
+        Err(e) => return document_refusal(&format!("First document: {e}")),
+    };
+    let b = match parse_config(&after) {
+        Ok(d) => d,
+        Err(e) => return document_refusal(&format!("Second document: {e}")),
+    };
+    let base = base_for(&a);
+    let first = build_selected(&base, &a, Selection::all());
+    let second = build_selected(&first.state, &b, Selection::all());
+    diff_reply(&first.state, &second, &[], doc_kind(&b))
 }
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
@@ -1861,20 +2124,80 @@ impl DspiCore {
     /// another console's lock, a failed transfer); the mirror then stays as
     /// it was.
     pub fn config_import(&self, text: String, options: u32) -> String {
+        self.config_import_selected(text, options, u32::MAX)
+    }
+
+    // -- WP P1DF --
+    /// [`DspiCore::config_import`] with the EQ narrowed to the wire channels
+    /// in `eq_channels` (bit k: channel k; `u32::MAX` every one). `options`
+    /// as there: with [`IMPORT_BY_BLOCK`] each `IMPORT_*` block bit says
+    /// whether its block is applied (EQ, crossover, routing and matrix,
+    /// outputs, limiters, effects, volume levels, hardware I/O, names), and
+    /// a block left out keeps the device's values; without it the old two
+    /// bits keep their meaning. The reply is `config_import`'s, plus
+    /// `blocks`: the block bits applied.
+    ///
+    /// With [`IMPORT_BY_BLOCK`] and no block bit nothing is chosen: the
+    /// reply is a refusal (`noticeKey` `config.nothing_selected`) and nothing
+    /// is written, journalled or logged; the undo history stays as it was.
+    // -- WP P1AFIX -- (review p1a F4) the refusal of an empty selection
+    pub fn config_import_selected(&self, text: String, options: u32, eq_channels: u32) -> String {
         let doc = match parse_config(&text) {
             Ok(d) => d,
-            Err(e) => return refusal(&e),
+            Err(e) => return document_refusal(&e),
         };
-        self.ensure_probed();
-        match self.import_document(&doc, options) {
-            Ok(reply) => reply.to_string(),
-            Err(e) => refusal(&write_error(&e)),
+        let sel = Selection::new(options, eq_channels);
+        if sel.blocks() == 0 {
+            return keyed_refusal(
+                "Nothing was selected to import; nothing was changed.",
+                NOTICE_CONFIG_NOTHING_SELECTED,
+            );
         }
+        self.ensure_probed();
+        match self.import_document(&doc, sel) {
+            Ok(reply) => reply.to_string(),
+            Err(e) => device_refusal(&e),
+        }
+    }
+
+    /// What importing `text` with `options` and `eq_channels` (as
+    /// [`DspiCore::config_import_selected`] takes them) would change on the
+    /// device, without writing anything: the preview shown before an import
+    /// (PRO1 W5). No I/O.
+    ///
+    /// Returns [`config_diff`]'s JSON, the device's values as `before`.
+    /// `{ok: false, error}` for a text that is not a document this build
+    /// reads, or with no device whose settings have been read.
+    pub fn config_preview(&self, text: String, options: u32, eq_channels: u32) -> String {
+        let doc = match parse_config(&text) {
+            Ok(d) => d,
+            Err(e) => return document_refusal(&e),
+        };
+        let inner = self.lock();
+        let Some(conn) = inner.conn.as_ref() else {
+            return device_refusal(&DspiError::Disconnected);
+        };
+        if conn.wire.is_none() {
+            return keyed_refusal(
+                "No settings have been read from the device yet.",
+                NOTICE_CONFIG_NOT_READ,
+            );
+        }
+        let has_map = conn.ext.pair_map.is_some();
+        let sources = conn.source_names.to_vec();
+        let before = inner.state.clone();
+        drop(inner);
+        let mut built = build_selected(&before, &doc, Selection::new(options, eq_channels));
+        // As the import does: no map goes to a device without one.
+        if !has_map && built.pair_map.is_some() {
+            built.state.crossfeed_pair_map = before.crossfeed_pair_map.clone();
+        }
+        diff_reply(&before, &built, &sources, doc_kind(&doc))
     }
 }
 
 impl DspiCore {
-    fn import_document(&self, doc: &Value, options: u32) -> Result<Value> {
+    fn import_document(&self, doc: &Value, sel: Selection) -> Result<Value> {
         let lock = self.acquire_device_lock(LOCK_REASON)?;
         let result = (|| {
             let (mut built, before, separate) = {
@@ -1884,7 +2207,7 @@ impl DspiCore {
                     return Err(DspiError::Disconnected);
                 }
                 // -- WP BULKFIX --
-                let written = self.write_document(inner, doc, options);
+                let written = self.write_document(inner, doc, sel);
                 let left_muted = written.is_err() && crate::connect::bulk_left_muted(inner);
                 drop(guard);
                 match written {
@@ -1898,7 +2221,8 @@ impl DspiCore {
                     }
                 }
             };
-            let hardware = options & IMPORT_HARDWARE != 0;
+            // -- WP P1DF -- the limiters are output configuration too
+            let hardware = sel.has(IMPORT_HARDWARE) || sel.has(IMPORT_LIMITERS);
             let written = hardware && separate && io_changed(&before, &built.state);
             if written {
                 self.push_output_config(&before, &built.state, &mut built.skipped);
@@ -1921,6 +2245,8 @@ impl DspiCore {
                 "clean": clean,
                 "links": built.links,
                 "hardwareWritten": written,
+                // -- WP P1DF --
+                "blocks": sel.blocks(),
                 "leftAlone": built.left_alone,
                 // -- WP CS1 --
                 "outOfRange": built
@@ -1941,10 +2267,10 @@ impl DspiCore {
         &self,
         inner: &mut Inner,
         doc: &Value,
-        options: u32,
+        sel: Selection,
     ) -> Result<(Built, DspState, bool)> {
         let before = inner.state.clone();
-        let mut built = build_config(&before, doc, options);
+        let mut built = build_selected(&before, doc, sel);
         let has_map = inner.conn()?.ext.pair_map.is_some();
         if !has_map && let Some(map) = built.pair_map {
             built.state.crossfeed_pair_map = before.crossfeed_pair_map.clone();
@@ -2976,3 +3302,7 @@ mod tests_wp_dl3;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_cs1;
+// -- WP P1DF --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_p1df;

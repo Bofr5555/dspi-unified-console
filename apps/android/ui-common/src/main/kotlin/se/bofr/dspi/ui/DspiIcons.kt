@@ -295,4 +295,19 @@ object DspiIcons {
     }
 
     val check: ImageVector by lazy { icon("check") { polyline(5f, 12.5f, 10f, 17.5f, 19f, 7f) } }
+
+    // -- WP AN42 -- Undo and Redo: a hooked arrow back, and its mirror
+    val undo: ImageVector by lazy {
+        icon("undo") {
+            polyline(9f, 14f, 4f, 9f, 9f, 4f)
+            path("M4 9h10.5a5.5 5.5 0 0 1 0 11H11")
+        }
+    }
+
+    val redo: ImageVector by lazy {
+        icon("redo") {
+            polyline(15f, 14f, 20f, 9f, 15f, 4f)
+            path("M20 9H9.5a5.5 5.5 0 0 0 0 11H13")
+        }
+    }
 }

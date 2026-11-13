@@ -615,6 +615,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.configImport(text, options)
     }
 
+    // -- WP P1DF --
+    override fun configImportSelected(text: String, options: Long, eqChannels: Long): String {
+        guard("configImportSelected")
+        return inner.configImportSelected(text, options, eqChannels)
+    }
+
     override fun filtersImport(text: String, wires: List<Int>): String {
         guard("filtersImport")
         return inner.filtersImport(text, wires)
@@ -749,7 +755,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // -- WP LKUI1 --
             "linkSystemSave",
             "linkSystemAlign",
-            "linkSystemRecall"
+            "linkSystemRecall",
+            // -- WP P1DF --
+            "configImportSelected"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -784,6 +792,11 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "computeResponse",
             "configExport",
             "configInspect",
+            // -- WP P1DF -- the diff and the preview write nothing
+            "configDiff",
+            "configPreview",
+            // -- WP P1AFIX -- the stored custom pair, from the mirror: a read
+            "crossfeedCustomPair",
             "crossfeedPairMapValid",
             "coreInfo",
             // -- WP CG20 -- The editing rules: from the last read, no device I/O.
@@ -949,10 +962,18 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // -- WP QTGAP1 -- the drag mark: how later writes join undo
             // steps; it sends nothing to the device.
             "setDragging",
+            // -- WP P1UG -- the undo group marks: how later writes join undo
+            // steps; they send nothing to the device.
+            "beginGroup",
+            "endGroup",
             // -- WP P0E -- the diagnostics bundle: device reads (the Stats
             // window's) and a local file; nothing is written to the device.
             "diagnosticsSave",
-            "diagnosticsFileName"
+            "diagnosticsFileName",
+            // -- WP P1NT -- stateless text: the notice table.
+            "noticeFor",
+            "noticeForKey",
+            "noticeTexts"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

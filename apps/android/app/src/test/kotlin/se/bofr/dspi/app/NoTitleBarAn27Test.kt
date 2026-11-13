@@ -101,8 +101,9 @@ class NoTitleBarAn27Test {
         show(ConnectionStrip.Demo, insets(status = Insets.of(0, 48, 0, 0)))
         assertEquals(48f, stripBounds().top, 0f)
         val inStrip = hasAnyAncestor(hasTestTag(CONNECTION_STRIP_TAG))
-        rule.onNode(hasText(ConnectionStrip.Demo.text) and inStrip).assertIsDisplayed()
-        rule.onNode(hasText("Exit demo") and inStrip).assertIsDisplayed()
+        rule.onNode(hasText(ConnectionStrip.Demo.short) and inStrip).assertIsDisplayed()
+        // -- WP AN42 -- on a phone the way out is in the strip's overflow
+        rule.onNode(hasTestTag(STRIP_MENU_TAG) and inStrip).assertIsDisplayed()
         rule.onNodeWithText("DSPi — Demo (no device)").assertDoesNotExist()
     }
 

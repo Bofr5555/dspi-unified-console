@@ -1304,6 +1304,29 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func audioLinkInfo() throws  -> AudioLinkInfo?
     
     /**
+     * Begin an undo group: everything written until the matching
+     * [`DspiCore::end_group`] that undo can reverse is one undo step,
+     * carrying `label` ([`HistoryEntry::label`]), as a drag is. Use it for
+     * one action that writes several values (a linked pair, a Clear All, a
+     * routing preset). Groups nest: only the outermost begin starts the
+     * step and takes its label, and only the matching end ends it. The
+     * group belongs to the connection: a disconnect, another device
+     * opened, a re-attach, a re-read ([`DspiCore::fetch_all`]) and a change
+     * that ends the history (a preset load, a bulk image, a factory reset)
+     * end it at any depth, and an `end_group` after that does nothing.
+     * With no device the call is ignored. An empty group records nothing.
+     * A write undo cannot reverse stands apart, as in a drag. The group is
+     * the connection's, not the thread's: call it on the thread that sends
+     * the group's writes, in order with them.
+     *
+     * A group begun while a drag is marked ([`DspiCore::set_dragging`])
+     * joins the drag's step instead of ending it (the step takes the
+     * group's label if it had none), and its `end_group` leaves that step
+     * open until the drag ends: one drag is one step.
+     */
+    func beginGroup(label: String) 
+    
+    /**
      * The device's name as last known, with no traffic, kept as
      * [`DspiCore::cached_input_source_name`] keeps source names. "" when
      * unnamed. Errors: `Unsupported` on firmware without device names;
@@ -1429,6 +1452,34 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * it was.
      */
     func configImport(text: String, options: UInt32)  -> String
+    
+    /**
+     * [`DspiCore::config_import`] with the EQ narrowed to the wire channels
+     * in `eq_channels` (bit k: channel k; `u32::MAX` every one). `options`
+     * as there: with [`IMPORT_BY_BLOCK`] each `IMPORT_*` block bit says
+     * whether its block is applied (EQ, crossover, routing and matrix,
+     * outputs, limiters, effects, volume levels, hardware I/O, names), and
+     * a block left out keeps the device's values; without it the old two
+     * bits keep their meaning. The reply is `config_import`'s, plus
+     * `blocks`: the block bits applied.
+     *
+     * With [`IMPORT_BY_BLOCK`] and no block bit nothing is chosen: the
+     * reply is a refusal (`noticeKey` `config.nothing_selected`) and nothing
+     * is written, journalled or logged; the undo history stays as it was.
+     */
+    func configImportSelected(text: String, options: UInt32, eqChannels: UInt32)  -> String
+    
+    /**
+     * What importing `text` with `options` and `eq_channels` (as
+     * [`DspiCore::config_import_selected`] takes them) would change on the
+     * device, without writing anything: the preview shown before an import
+     * (PRO1 W5). No I/O.
+     *
+     * Returns [`config_diff`]'s JSON, the device's values as `before`.
+     * `{ok: false, error}` for a text that is not a document this build
+     * reads, or with no device whose settings have been read.
+     */
+    func configPreview(text: String, options: UInt32, eqChannels: UInt32)  -> String
     
     /**
      * The open connection's generation: unique per connection and never
@@ -1591,6 +1642,18 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * in `Ended`, or in `VerifyFailed`, from which it can be asked for again.
      */
     func coreVregTrialEnd() throws 
+    
+    /**
+     * The crossfeed's custom pair (frequency and feed) as the device keeps
+     * it: what Custom runs. Under a named preset `get_state` gives that
+     * preset's values instead; this gives the custom pair whatever the
+     * preset, from the mirror (no transfer). It is what
+     * `set_crossfeed_freq`/`set_crossfeed_feed` write, an export saves, and
+     * `config_diff`/`config_preview` compare.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device.
+     */
+    func crossfeedCustomPair() throws  -> CrossfeedPair
     
     /**
      * One control-surface operation, JSON `{op, index, ...}` (the old
@@ -1820,6 +1883,14 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * (at most about a quarter of a second).
      */
     func disconnect() 
+    
+    /**
+     * End the undo group [`DspiCore::begin_group`] opened: the outermost
+     * end ends the step, so the next write is a step of its own. Nothing
+     * when no group is open (one a disconnect or a re-read ended, or none
+     * at all). Inside a drag the step goes on until `set_dragging(false)`.
+     */
+    func endGroup() 
     
     /**
      * Reboots the device into its USB bootloader (it disappears). Ok
@@ -2451,7 +2522,9 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     
     /**
      * Copy of the cached state (the C ABI returns a borrowed pointer).
-     * Defaults while disconnected. Never fails.
+     * Defaults while disconnected. Never fails. Under a named crossfeed
+     * preset, `crossfeed_freq` and `crossfeed_feed` are that preset's values
+     * (see `set_crossfeed_preset`).
      */
     func getState()  -> DspState
     
@@ -3294,8 +3367,12 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     
     /**
      * Crossfeed preset: 0 default, 1 Chu Moy, 2 Meier, 3 custom. Only the
-     * preset changes: `crossfeed_freq` and `crossfeed_feed` are the device's
-     * custom values, which it keeps whatever the preset.
+     * preset is sent: the device keeps its custom frequency and feed whatever
+     * the preset. While a named preset (0 to 2) is chosen, `get_state` gives
+     * that preset's frequency and feed (700 Hz / 4.5 dB, 700 Hz / 6 dB,
+     * 650 Hz / 9.5 dB), which the device runs; with Custom (3) it gives the
+     * custom pair again. A preset export, the bulk image and undo keep the
+     * custom pair.
      *
      * Errors: [`DspiError::InvalidArgument`] for another preset; the
      * connection and transfer errors of every setter.
@@ -4206,6 +4283,34 @@ open func audioLinkInfo()throws  -> AudioLinkInfo?  {
 }
     
     /**
+     * Begin an undo group: everything written until the matching
+     * [`DspiCore::end_group`] that undo can reverse is one undo step,
+     * carrying `label` ([`HistoryEntry::label`]), as a drag is. Use it for
+     * one action that writes several values (a linked pair, a Clear All, a
+     * routing preset). Groups nest: only the outermost begin starts the
+     * step and takes its label, and only the matching end ends it. The
+     * group belongs to the connection: a disconnect, another device
+     * opened, a re-attach, a re-read ([`DspiCore::fetch_all`]) and a change
+     * that ends the history (a preset load, a bulk image, a factory reset)
+     * end it at any depth, and an `end_group` after that does nothing.
+     * With no device the call is ignored. An empty group records nothing.
+     * A write undo cannot reverse stands apart, as in a drag. The group is
+     * the connection's, not the thread's: call it on the thread that sends
+     * the group's writes, in order with them.
+     *
+     * A group begun while a drag is marked ([`DspiCore::set_dragging`])
+     * joins the drag's step instead of ending it (the step takes the
+     * group's label if it had none), and its `end_group` leaves that step
+     * open until the drag ends: one drag is one step.
+     */
+open func beginGroup(label: String)  {try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_begin_group(self.uniffiClonePointer(),
+        FfiConverterString.lower(label),$0
+    )
+}
+}
+    
+    /**
      * The device's name as last known, with no traffic, kept as
      * [`DspiCore::cached_input_source_name`] keeps source names. "" when
      * unnamed. Errors: `Unsupported` on firmware without device names;
@@ -4382,6 +4487,50 @@ open func configImport(text: String, options: UInt32) -> String  {
     uniffi_dspi_core_fn_method_dspicore_config_import(self.uniffiClonePointer(),
         FfiConverterString.lower(text),
         FfiConverterUInt32.lower(options),$0
+    )
+})
+}
+    
+    /**
+     * [`DspiCore::config_import`] with the EQ narrowed to the wire channels
+     * in `eq_channels` (bit k: channel k; `u32::MAX` every one). `options`
+     * as there: with [`IMPORT_BY_BLOCK`] each `IMPORT_*` block bit says
+     * whether its block is applied (EQ, crossover, routing and matrix,
+     * outputs, limiters, effects, volume levels, hardware I/O, names), and
+     * a block left out keeps the device's values; without it the old two
+     * bits keep their meaning. The reply is `config_import`'s, plus
+     * `blocks`: the block bits applied.
+     *
+     * With [`IMPORT_BY_BLOCK`] and no block bit nothing is chosen: the
+     * reply is a refusal (`noticeKey` `config.nothing_selected`) and nothing
+     * is written, journalled or logged; the undo history stays as it was.
+     */
+open func configImportSelected(text: String, options: UInt32, eqChannels: UInt32) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_config_import_selected(self.uniffiClonePointer(),
+        FfiConverterString.lower(text),
+        FfiConverterUInt32.lower(options),
+        FfiConverterUInt32.lower(eqChannels),$0
+    )
+})
+}
+    
+    /**
+     * What importing `text` with `options` and `eq_channels` (as
+     * [`DspiCore::config_import_selected`] takes them) would change on the
+     * device, without writing anything: the preview shown before an import
+     * (PRO1 W5). No I/O.
+     *
+     * Returns [`config_diff`]'s JSON, the device's values as `before`.
+     * `{ok: false, error}` for a text that is not a document this build
+     * reads, or with no device whose settings have been read.
+     */
+open func configPreview(text: String, options: UInt32, eqChannels: UInt32) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_config_preview(self.uniffiClonePointer(),
+        FfiConverterString.lower(text),
+        FfiConverterUInt32.lower(options),
+        FfiConverterUInt32.lower(eqChannels),$0
     )
 })
 }
@@ -4636,6 +4785,23 @@ open func coreVregTrialEnd()throws   {try rustCallWithError(FfiConverterTypeDspi
     uniffi_dspi_core_fn_method_dspicore_core_vreg_trial_end(self.uniffiClonePointer(),$0
     )
 }
+}
+    
+    /**
+     * The crossfeed's custom pair (frequency and feed) as the device keeps
+     * it: what Custom runs. Under a named preset `get_state` gives that
+     * preset's values instead; this gives the custom pair whatever the
+     * preset, from the mirror (no transfer). It is what
+     * `set_crossfeed_freq`/`set_crossfeed_feed` write, an export saves, and
+     * `config_diff`/`config_preview` compare.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device.
+     */
+open func crossfeedCustomPair()throws  -> CrossfeedPair  {
+    return try  FfiConverterTypeCrossfeedPair_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_crossfeed_custom_pair(self.uniffiClonePointer(),$0
+    )
+})
 }
     
     /**
@@ -4985,6 +5151,18 @@ open func diagnosticsSave(path: String, options: DiagOptions)throws  -> [String]
      */
 open func disconnect()  {try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_disconnect(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+    /**
+     * End the undo group [`DspiCore::begin_group`] opened: the outermost
+     * end ends the step, so the next write is a step of its own. Nothing
+     * when no group is open (one a disconnect or a re-read ended, or none
+     * at all). Inside a drag the step goes on until `set_dragging(false)`.
+     */
+open func endGroup()  {try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_end_group(self.uniffiClonePointer(),$0
     )
 }
 }
@@ -5902,7 +6080,9 @@ open func getPresetName(slot: UInt8)throws  -> String  {
     
     /**
      * Copy of the cached state (the C ABI returns a borrowed pointer).
-     * Defaults while disconnected. Never fails.
+     * Defaults while disconnected. Never fails. Under a named crossfeed
+     * preset, `crossfeed_freq` and `crossfeed_feed` are that preset's values
+     * (see `set_crossfeed_preset`).
      */
 open func getState() -> DspState  {
     return try!  FfiConverterTypeDspState_lift(try! rustCall() {
@@ -7136,8 +7316,12 @@ open func setCrossfeedPairMap(map: Data)throws   {try rustCallWithError(FfiConve
     
     /**
      * Crossfeed preset: 0 default, 1 Chu Moy, 2 Meier, 3 custom. Only the
-     * preset changes: `crossfeed_freq` and `crossfeed_feed` are the device's
-     * custom values, which it keeps whatever the preset.
+     * preset is sent: the device keeps its custom frequency and feed whatever
+     * the preset. While a named preset (0 to 2) is chosen, `get_state` gives
+     * that preset's frequency and feed (700 Hz / 4.5 dB, 700 Hz / 6 dB,
+     * 650 Hz / 9.5 dB), which the device runs; with Custom (3) it gives the
+     * custom pair again. A preset export, the bulk image and undo keep the
+     * custom pair.
      *
      * Errors: [`DspiError::InvalidArgument`] for another preset; the
      * connection and transfer errors of every setter.
@@ -12306,6 +12490,93 @@ public func FfiConverterTypeCoreVregInfo_lower(_ value: CoreVregInfo) -> RustBuf
 
 
 /**
+ * The crossfeed's custom pair as the device keeps it
+ * ([`crate::DspiCore::crossfeed_custom_pair`]): what Custom runs, whatever
+ * preset is chosen now.
+ */
+public struct CrossfeedPair {
+    /**
+     * Frequency, in Hz.
+     */
+    public var freqHz: Float
+    /**
+     * Feed level, in dB.
+     */
+    public var feedDb: Float
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Frequency, in Hz.
+         */freqHz: Float, 
+        /**
+         * Feed level, in dB.
+         */feedDb: Float) {
+        self.freqHz = freqHz
+        self.feedDb = feedDb
+    }
+}
+
+#if compiler(>=6)
+extension CrossfeedPair: Sendable {}
+#endif
+
+
+extension CrossfeedPair: Equatable, Hashable {
+    public static func ==(lhs: CrossfeedPair, rhs: CrossfeedPair) -> Bool {
+        if lhs.freqHz != rhs.freqHz {
+            return false
+        }
+        if lhs.feedDb != rhs.feedDb {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(freqHz)
+        hasher.combine(feedDb)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCrossfeedPair: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CrossfeedPair {
+        return
+            try CrossfeedPair(
+                freqHz: FfiConverterFloat.read(from: &buf), 
+                feedDb: FfiConverterFloat.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CrossfeedPair, into buf: inout [UInt8]) {
+        FfiConverterFloat.write(value.freqHz, into: &buf)
+        FfiConverterFloat.write(value.feedDb, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCrossfeedPair_lift(_ buf: RustBuffer) throws -> CrossfeedPair {
+    return try FfiConverterTypeCrossfeedPair.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCrossfeedPair_lower(_ value: CrossfeedPair) -> RustBuffer {
+    return FfiConverterTypeCrossfeedPair.lower(value)
+}
+
+
+/**
  * Live state of the UART and I2C control interfaces.
  */
 public struct CtrlIfaceStatus {
@@ -15441,6 +15712,11 @@ public struct HistoryEntry {
      * a deferred or an irreversible one).
      */
     public var undoable: Bool
+    /**
+     * The undo group's label ([`DspiCore::begin_group`]) when the change
+     * was written inside one; `None` otherwise.
+     */
+    public var label: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -15477,7 +15753,11 @@ public struct HistoryEntry {
          * Whether undo may reverse it. The registry decides: only a parameter
          * with no hazard (not a flash write, an audible one, a reconfiguration,
          * a deferred or an irreversible one).
-         */undoable: Bool) {
+         */undoable: Bool, 
+        /**
+         * The undo group's label ([`DspiCore::begin_group`]) when the change
+         * was written inside one; `None` otherwise.
+         */label: String?) {
         self.path = path
         self.indices = indices
         self.before = before
@@ -15485,6 +15765,7 @@ public struct HistoryEntry {
         self.source = source
         self.atMs = atMs
         self.undoable = undoable
+        self.label = label
     }
 }
 
@@ -15516,6 +15797,9 @@ extension HistoryEntry: Equatable, Hashable {
         if lhs.undoable != rhs.undoable {
             return false
         }
+        if lhs.label != rhs.label {
+            return false
+        }
         return true
     }
 
@@ -15527,6 +15811,7 @@ extension HistoryEntry: Equatable, Hashable {
         hasher.combine(source)
         hasher.combine(atMs)
         hasher.combine(undoable)
+        hasher.combine(label)
     }
 }
 
@@ -15545,7 +15830,8 @@ public struct FfiConverterTypeHistoryEntry: FfiConverterRustBuffer {
                 after: FfiConverterTypeParamValue.read(from: &buf), 
                 source: FfiConverterTypeHistorySource.read(from: &buf), 
                 atMs: FfiConverterUInt64.read(from: &buf), 
-                undoable: FfiConverterBool.read(from: &buf)
+                undoable: FfiConverterBool.read(from: &buf), 
+                label: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -15557,6 +15843,7 @@ public struct FfiConverterTypeHistoryEntry: FfiConverterRustBuffer {
         FfiConverterTypeHistorySource.write(value.source, into: &buf)
         FfiConverterUInt64.write(value.atMs, into: &buf)
         FfiConverterBool.write(value.undoable, into: &buf)
+        FfiConverterOptionString.write(value.label, into: &buf)
     }
 }
 
@@ -19544,6 +19831,147 @@ public func FfiConverterTypeNamedValue_lift(_ buf: RustBuffer) throws -> NamedVa
 #endif
 public func FfiConverterTypeNamedValue_lower(_ value: NamedValue) -> RustBuffer {
     return FfiConverterTypeNamedValue.lower(value)
+}
+
+
+/**
+ * What to tell the user about an error.
+ */
+public struct Notice {
+    /**
+     * Stable key, for localising: `disconnected`, `dlink.wrong_pin`.
+     */
+    public var key: String
+    /**
+     * How to show it.
+     */
+    public var kind: NoticeKind
+    /**
+     * A short title.
+     */
+    public var title: String
+    /**
+     * Why it happened.
+     */
+    public var reason: String
+    /**
+     * What to do.
+     */
+    public var action: String
+    /**
+     * The error's own words (may be empty); not localised.
+     */
+    public var detail: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Stable key, for localising: `disconnected`, `dlink.wrong_pin`.
+         */key: String, 
+        /**
+         * How to show it.
+         */kind: NoticeKind, 
+        /**
+         * A short title.
+         */title: String, 
+        /**
+         * Why it happened.
+         */reason: String, 
+        /**
+         * What to do.
+         */action: String, 
+        /**
+         * The error's own words (may be empty); not localised.
+         */detail: String) {
+        self.key = key
+        self.kind = kind
+        self.title = title
+        self.reason = reason
+        self.action = action
+        self.detail = detail
+    }
+}
+
+#if compiler(>=6)
+extension Notice: Sendable {}
+#endif
+
+
+extension Notice: Equatable, Hashable {
+    public static func ==(lhs: Notice, rhs: Notice) -> Bool {
+        if lhs.key != rhs.key {
+            return false
+        }
+        if lhs.kind != rhs.kind {
+            return false
+        }
+        if lhs.title != rhs.title {
+            return false
+        }
+        if lhs.reason != rhs.reason {
+            return false
+        }
+        if lhs.action != rhs.action {
+            return false
+        }
+        if lhs.detail != rhs.detail {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(key)
+        hasher.combine(kind)
+        hasher.combine(title)
+        hasher.combine(reason)
+        hasher.combine(action)
+        hasher.combine(detail)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotice: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Notice {
+        return
+            try Notice(
+                key: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterTypeNoticeKind.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                reason: FfiConverterString.read(from: &buf), 
+                action: FfiConverterString.read(from: &buf), 
+                detail: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: Notice, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.key, into: &buf)
+        FfiConverterTypeNoticeKind.write(value.kind, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.reason, into: &buf)
+        FfiConverterString.write(value.action, into: &buf)
+        FfiConverterString.write(value.detail, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotice_lift(_ buf: RustBuffer) throws -> Notice {
+    return try FfiConverterTypeNotice.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotice_lower(_ value: Notice) -> RustBuffer {
+    return FfiConverterTypeNotice.lower(value)
 }
 
 
@@ -25682,6 +26110,95 @@ extension LinkPhase: Equatable, Hashable {}
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * How a notice is shown.
+ */
+
+public enum NoticeKind {
+    
+    /**
+     * Nothing went wrong; something to know.
+     */
+    case info
+    /**
+     * Not done, for a reason the user can change or wait out.
+     */
+    case warning
+    /**
+     * Not done: something failed.
+     */
+    case error
+}
+
+
+#if compiler(>=6)
+extension NoticeKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNoticeKind: FfiConverterRustBuffer {
+    typealias SwiftType = NoticeKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NoticeKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .info
+        
+        case 2: return .warning
+        
+        case 3: return .error
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NoticeKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .info:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .warning:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .error:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNoticeKind_lift(_ buf: RustBuffer) throws -> NoticeKind {
+    return try FfiConverterTypeNoticeKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNoticeKind_lower(_ value: NoticeKind) -> RustBuffer {
+    return FfiConverterTypeNoticeKind.lower(value)
+}
+
+
+extension NoticeKind: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * A parameter value: `dspi_proto::value::Value` across the bindings. In
  * JSON (the C ABI, the web binding) it is tagged by kind in lower case:
  * `{"float": -12.5}`, `{"bool": true}`, `{"bytes": [1, 2]}`, `"trigger"`.
@@ -27256,6 +27773,31 @@ fileprivate struct FfiConverterSequenceTypeNamedValue: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeNotice: FfiConverterRustBuffer {
+    typealias SwiftType = [Notice]
+
+    public static func write(_ value: [Notice], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeNotice.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Notice] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Notice]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeNotice.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeOutputCard: FfiConverterRustBuffer {
     typealias SwiftType = [OutputCard]
 
@@ -27752,6 +28294,31 @@ public func computeResponse(filters: [FilterParams], freq: Float) -> Float  {
 })
 }
 /**
+ * What differs between two `.dspipreset` documents, `before` and `after`,
+ * with no device (PRO1 W5). `after` is read on top of `before`, as an
+ * import of it after the other would be, so a value `after` holds none for
+ * is no change; both are read onto a device shaped as `before`'s `meta`
+ * says.
+ *
+ * Returns JSON `{ok, error, rows, count, blocks, summary, notes, kind}`:
+ * `rows` one per changed value, `{block, section, item, before, after}`,
+ * `block` the import block that carries it (`eq`, `crossover`, `routing`,
+ * `outputs`, `limiters`, `effects`, `volumes`, `hardware`, `names`);
+ * `blocks` the number of rows per block; `summary` the unsaved-changes
+ * list's sentences for the same change; `notes` what reading `after`
+ * reported (channels missing, values left alone or clamped); `kind`
+ * `after`'s `meta.kind`. `{ok: false, error}` when either text is not a
+ * document this build reads (the error names which).
+ */
+public func configDiff(before: String, after: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_config_diff(
+        FfiConverterString.lower(before),
+        FfiConverterString.lower(after),$0
+    )
+})
+}
+/**
  * Check a `.dspipreset` document and describe it, as JSON
  * `{ok, error, name, platform, firmware, savedUtc}`. `ok` is false, with the
  * reason in `error`, for text that is not a document this build reads: not
@@ -27958,6 +28525,39 @@ public func linkWsUrl(host: String, port: UInt16, path: String) -> String  {
 })
 }
 /**
+ * What to tell the user about `error`.
+ */
+public func noticeFor(error: DspiError) -> Notice  {
+    return try!  FfiConverterTypeNotice_lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_notice_for(
+        FfiConverterTypeDspiError_lower(error),$0
+    )
+})
+}
+/**
+ * The notice with this key (a failure reply's `noticeKey` in the C ABI and the
+ * web binding), with `detail` as its detail. A key the table does not have
+ * gives the `unknown` row.
+ */
+public func noticeForKey(key: String, detail: String) -> Notice  {
+    return try!  FfiConverterTypeNotice_lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_notice_for_key(
+        FfiConverterString.lower(key),
+        FfiConverterString.lower(detail),$0
+    )
+})
+}
+/**
+ * The whole table, every key once and with no detail, for a client's
+ * translation files.
+ */
+public func noticeTexts() -> [Notice]  {
+    return try!  FfiConverterSequenceTypeNotice.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_notice_texts($0
+    )
+})
+}
+/**
  * The Getting Started wizard's data for this build's platform: see the module
  * docs.
  */
@@ -28087,6 +28687,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_func_compute_response() != 46454) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_func_config_diff() != 57472) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_func_config_inspect() != 19604) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -28130,6 +28733,15 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_link_ws_url() != 18495) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_notice_for() != 13472) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_notice_for_key() != 23208) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_notice_texts() != 1574) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_onboarding_getting_started_json() != 59413) {
@@ -28177,6 +28789,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_audio_link_info() != 38734) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_begin_group() != 15128) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_cached_device_name() != 27756) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -28205,6 +28820,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_config_import() != 20391) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_config_import_selected() != 35048) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_config_preview() != 60996) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_connection_generation() != 50111) {
@@ -28256,6 +28877,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_trial_end() != 31305) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_crossfeed_custom_pair() != 61764) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_cs_apply() != 37925) {
@@ -28319,6 +28943,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_disconnect() != 29066) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_end_group() != 28189) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_enter_bootloader() != 19680) {
@@ -28483,7 +29110,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_get_preset_name() != 34340) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_get_state() != 32151) {
+    if (uniffi_dspi_core_checksum_method_dspicore_get_state() != 48604) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_has_clip_events() != 9559) {
@@ -28711,7 +29338,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_set_crossfeed_pair_map() != 32715) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_set_crossfeed_preset() != 45693) {
+    if (uniffi_dspi_core_checksum_method_dspicore_set_crossfeed_preset() != 53246) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_crossover() != 11478) {

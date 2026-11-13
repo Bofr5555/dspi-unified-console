@@ -23,6 +23,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
@@ -282,15 +283,19 @@ class DemoScreensAn28Test {
         rule.setContent { AppScaffold(bridge, ConnectionStrip.Demo, onExitDemo = {}, onRequestPermission = {}) }
         settle()
         val inStrip = hasAnyAncestor(hasTestTag(CONNECTION_STRIP_TAG))
-        rule.onNode(hasText(ConnectionStrip.Demo.text) and inStrip).assertIsDisplayed()
-        rule.onNode(hasText("Exit demo") and inStrip).assertIsDisplayed()
+        rule.onNode(hasText(ConnectionStrip.Demo.short) and inStrip).assertIsDisplayed()
+        // -- WP AN42 -- on a phone the way out is in the strip's overflow
+        rule.onNodeWithTag(STRIP_MENU_TAG).performClick()
+        settle()
+        rule.onNodeWithText("Exit demo").assertIsDisplayed().performClick()
+        settle()
         rule.onNodeWithText("Filter Response").assertIsDisplayed()
         // -- WP UIM1 -- the phone's Home has the tool icons below the graph and the channel list, off
         // screen here: the click action, as TalkBack's (performScrollTo hangs on the paused clock)
         rule.onNode(hasContentDescription("Settings")).performSemanticsAction(SemanticsActions.OnClick)
         settle()
         rule.onNodeWithText("Application").assertIsDisplayed()
-        rule.onNode(hasText(ConnectionStrip.Demo.text) and inStrip).assertIsDisplayed()
+        rule.onNode(hasText(ConnectionStrip.Demo.short) and inStrip).assertIsDisplayed()
         assertEquals(emptyList<String>(), failures)
     }
 

@@ -12,6 +12,12 @@ sealed interface ConnectionStrip {
     val text: String
 
     /**
+     * -- WP AN42 -- the one line a narrow strip shows (phones); [text], the whole of it, is
+     * then its long-press tooltip and what TalkBack reads. Wide strips show [text].
+     */
+    val short: String get() = text
+
+    /**
      * WP AN7: the USB DSPi is open. HOME shows the connection and the compat banner; the
      * strip stays, slim, because it holds the device list (demo and DSPi Link with a DSPi attached).
      */
@@ -22,16 +28,18 @@ sealed interface ConnectionStrip {
     /** No DSPi attached; demo and DSPi Link are in the device list ([deviceList]). */
     data object NoDevice : ConnectionStrip {
         override val text = "No DSPi connected. Plug one in over USB."
+        override val short = "No DSPi connected"
     }
 
     /** A DSPi is attached but may not be opened: offer the permission prompt. */
-    data class NeedsPermission(override val text: String) : ConnectionStrip
+    data class NeedsPermission(override val text: String, override val short: String = text) : ConnectionStrip
 
-    data class Info(override val text: String) : ConnectionStrip
+    data class Info(override val text: String, override val short: String = text) : ConnectionStrip
 
     /** Demo mode is on: always visible, always labelled, with the way out. */
     data object Demo : ConnectionStrip {
-        override val text = "Demo (no device): a simulated DSPi. Nothing is sent over USB."
+        override val text = "Demo: a simulated DSPi. Nothing is sent to a real DSPi."
+        override val short = "Demo: a simulated DSPi"
     }
 
     /**
@@ -97,11 +105,18 @@ fun connectionStrip(
     else -> when (state) {
         UsbSessionState.NoDevice -> ConnectionStrip.NoDevice
         is UsbSessionState.PermissionRequired ->
-            ConnectionStrip.NeedsPermission("A DSPi is connected. Allow USB access to use it. $USB_ALWAYS_OPEN_HINT")
-        is UsbSessionState.PermissionDenied -> ConnectionStrip.NeedsPermission("USB access to the DSPi was denied.")
+            ConnectionStrip.NeedsPermission(
+                "A DSPi is connected. Allow USB access to use it. $USB_ALWAYS_OPEN_HINT",
+                short = "DSPi needs USB access"
+            )
+        is UsbSessionState.PermissionDenied -> ConnectionStrip.NeedsPermission(
+            "USB access to the DSPi was denied.",
+            short = "USB access denied"
+        )
         // queued prompts are shown by the session as soon as a UI is visible: no second request
-        is UsbSessionState.PermissionPending -> ConnectionStrip.Info("Waiting for USB permission… $USB_ALWAYS_OPEN_HINT")
-        is UsbSessionState.Failed -> ConnectionStrip.Info("Could not open the DSPi: ${state.reason}")
+        is UsbSessionState.PermissionPending ->
+            ConnectionStrip.Info("Waiting for USB permission… $USB_ALWAYS_OPEN_HINT", short = "Waiting for USB permission…")
+        is UsbSessionState.Failed -> ConnectionStrip.Info("Could not open the DSPi: ${state.reason}", short = "Could not open the DSPi")
         is UsbSessionState.Open -> ConnectionStrip.Usb
     }
 }

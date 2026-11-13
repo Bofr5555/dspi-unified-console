@@ -18,6 +18,36 @@ specification), `crates/dspi-session/src/history.rs`.
   clamps and device lock, and are recorded in turn (source `undo` or `redo`)
   without becoming a new step.
 
+## Groups
+
+An action that writes several values (a linked pair's two trims, a Clear
+All, a direct routing) is one undo step when the client wraps it in a group
+(WP P1UG): `begin_group(label)`, the writes, `end_group()` (C:
+`dspi_undo_group_begin` and `dspi_undo_group_end`; wasm: `beginGroup`
+and `endGroup`; UniFFI: `beginGroup` and `endGroup`).
+
+- Everything written in between that undo can reverse is one step, as a
+  drag (`set_dragging`) is. The step carries the label: `label` in
+  `history`, and in undo's and redo's `entry` and `skipped`.
+- Groups nest: only the outermost begin and end count, with the outermost
+  label. A stray end does nothing. An empty group records nothing.
+- A group belongs to the connection, not the thread: call it on the thread
+  that sends the group's writes, in order with them. A disconnect, another
+  device opened, a re-attach, a re-read (`fetch_all`), a preset load, a bulk
+  image and a factory reset end it at any depth.
+- A write undo cannot reverse (a hazard, an action) stands apart, as in a
+  drag; the group's later writes form a further step.
+- Groups and drags (WP P1AFIX): a drag marked inside a group is part of the
+  group's step, which ends at the group's end. A group begun while a drag
+  is marked joins the drag's step (taking the group's label if the step had
+  none); its `end_group` leaves the step open, and the drag's
+  `set_dragging(false)` ends it. Either way one drag, or one group, is one
+  step.
+- Another writer's change during a group does not split it; undo judges
+  each value on its own (theirs is left alone and named, the rest go back).
+  A value the group writes again after their change starts a new step, so
+  undo never goes back past their value.
+
 ## What is stepped over
 
 Only a parameter with no hazard is undone. These are recorded and stepped over:

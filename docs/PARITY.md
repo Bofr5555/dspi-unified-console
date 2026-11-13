@@ -150,7 +150,7 @@ It is frozen at wire **V26**. It has nothing from V27–V32 (limiter, subharmoni
 | # | Feature | macOS (ref) | iOS | Qt desktop | Terminal | Android | Windows C# |
 |---|---|---|---|---|---|---|---|
 | D1 | Preset slots (save, rename, clear, copy, default) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| D2 | Commit, revert, factory reset | ✓ (+ Edit > Undo, Redo, Cmd-Z / Shift-Cmd-Z: the core's journal, `Core/CoreUndo.swift`, SWMAC1; see section 4) | ✓ (+ Undo and Redo toolbar buttons, SWMAC1) | ✓ (+ undo, redo and History: the core's journal, `HistoryController`, `qml/tools/HistoryWindow.qml`) | ✓ (+ undo journal) | ✓ (+ confirmation tokens) | ✓ |
+| D2 | Commit, revert, factory reset | ✓ (+ Edit > Undo, Redo, Cmd-Z / Shift-Cmd-Z: the core's journal, `Core/CoreUndo.swift`, SWMAC1; see section 4) | ✓ (+ Undo and Redo toolbar buttons, SWMAC1) | ✓ (+ undo, redo and History: the core's journal, `HistoryController`, `qml/tools/HistoryWindow.qml`) | ✓ (+ undo journal) | ✓ (+ confirmation tokens; + Undo and Redo in the strip at the top, Ctrl+Z / Ctrl+Shift+Z, Ctrl+Y: the core's journal, AN42) | ✓ |
 | D3 | Unsaved-changes marker and diff | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ (+ IO undo) |
 | D4 | Filter files (REW / AutoEQ / Console) | ✓ | ✗ "Not available yet" | ✓ | ✓ (+ Windows dialect) | ✓ SAF | ✓ |
 | D5 | `.dspipreset` config document | ✓ | ✗ "Not available yet" | ✓ | ✓ (`--dry-run`) | ✓ (+ share sheet) | ✗ |
@@ -195,7 +195,7 @@ It is frozen at wire **V26**. It has nothing from V27–V32 (limiter, subharmoni
 | Extra | Where |
 |---|---|
 | Scripting / JSON / dry-run / raw opcodes / `uconsole screenshot` | Terminal |
-| Undo/redo journal | Terminal (full); Qt desktop (Edit menu, History window); Swift macOS (Edit menu) and iOS (toolbar), on the core's device only (SWMAC1), undoing volume, EQ, crossover, output and matrix edits since SW9, the effects since SW10, channel names, LG Sound Sync and the master clock since SW11; web (Undo and Redo beside the screen tabs, Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y; drags marked; WB8u); Windows (IO only) |
+| Undo/redo journal | Terminal (full); Qt desktop (Edit menu, History window); Swift macOS (Edit menu) and iOS (toolbar), on the core's device only (SWMAC1), undoing volume, EQ, crossover, output and matrix edits since SW9, the effects since SW10, channel names, LG Sound Sync and the master clock since SW11; web (Undo and Redo beside the screen tabs, Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y; drags marked; WB8u); Android (Undo and Redo in the strip at the top of every screen, Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y on a keyboard, a snackbar saying what moved and naming another writer whose change was left alone; slider and graph drags marked, the mark ended on release, cancel, leaving the screen and the app stopping; off read-only and for a DSPi Link viewer; no History window yet; AN42); Windows (IO only) |
 | Event log (P0M: clips, audio link, resets, connections; a hub's alarms) | Web (Events screen, Advanced and Installer: filter by unit, Copy as Text; WB8u) |
 | Full core-voltage control (set/trial/auto) | Terminal CLI; Qt desktop (Core Voltage page, with calibration) |
 | Strict read-only double write guard; confirmation tokens on flash writes; PICOBOOT flashing without a drive; config share sheet; light theme; auto-launch on plug | Android |

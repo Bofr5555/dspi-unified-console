@@ -113,6 +113,63 @@ pub enum DspiError {
     },
 }
 
+// -- WP P1NT --
+impl DspiError {
+    /// The variant's stable key, before any refinement by `code`: the C ABI's
+    /// failure kinds, with DSPi Link as `dlink`. Keys are never reused.
+    pub(crate) fn kind_key(&self) -> &'static str {
+        match self {
+            Self::Disconnected => "disconnected",
+            Self::Transfer { .. } => "transfer",
+            Self::Refused { .. } => "refused",
+            Self::InvalidArgument { .. } => "invalid",
+            Self::Unsupported => "unsupported",
+            Self::ReadOnly => "read_only",
+            Self::Locked => "locked",
+            Self::Denied => "denied",
+            Self::Link { .. } => "dlink",
+            Self::Io { .. } => "io",
+            Self::AutoEq { .. } => "autoeq",
+            Self::FirmwareGuardBlocked { .. } => "firmware_guard",
+            Self::OvervoltWordRequired { .. } => "overvolt_word",
+        }
+    }
+
+    /// The stable key of this error's notice (`crate::notice_text`): the
+    /// variant's key, or `dlink.<code>` / `autoeq.<code>` where the table has a
+    /// row for that code.
+    pub fn notice_key(&self) -> String {
+        let kind = self.kind_key();
+        let code = match self {
+            Self::Link { code, .. } | Self::AutoEq { code, .. } => Some(code.as_str()),
+            _ => None,
+        };
+        code.map(|c| format!("{kind}.{c}"))
+            .filter(|k| crate::notice_text::has_row(k))
+            .unwrap_or_else(|| kind.to_owned())
+    }
+
+    /// The error's own words, for a notice's detail line: the message a variant
+    /// carries, the status byte of a refusal, or nothing.
+    pub fn notice_detail(&self) -> String {
+        match self {
+            Self::Transfer { msg }
+            | Self::InvalidArgument { msg }
+            | Self::Link { msg, .. }
+            | Self::Io { msg }
+            | Self::AutoEq { msg, .. }
+            | Self::FirmwareGuardBlocked { msg }
+            | Self::OvervoltWordRequired { msg } => msg.clone(),
+            Self::Refused { status } => format!("status {status}"),
+            Self::Disconnected
+            | Self::Unsupported
+            | Self::ReadOnly
+            | Self::Locked
+            | Self::Denied => String::new(),
+        }
+    }
+}
+
 /// The result of a [`crate::DspiCore`] call.
 pub type Result<T> = std::result::Result<T, DspiError>;
 

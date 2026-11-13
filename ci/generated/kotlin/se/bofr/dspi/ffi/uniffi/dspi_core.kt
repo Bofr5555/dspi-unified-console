@@ -1536,6 +1536,24 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1575,6 +1593,8 @@ fun uniffi_dspi_core_checksum_func_compute_phase_curve(
 ): Short
 fun uniffi_dspi_core_checksum_func_compute_response(
 ): Short
+fun uniffi_dspi_core_checksum_func_config_diff(
+): Short
 fun uniffi_dspi_core_checksum_func_config_inspect(
 ): Short
 fun uniffi_dspi_core_checksum_func_core_info(
@@ -1604,6 +1624,12 @@ fun uniffi_dspi_core_checksum_func_link_phase_text(
 fun uniffi_dspi_core_checksum_func_link_phase_texts(
 ): Short
 fun uniffi_dspi_core_checksum_func_link_ws_url(
+): Short
+fun uniffi_dspi_core_checksum_func_notice_for(
+): Short
+fun uniffi_dspi_core_checksum_func_notice_for_key(
+): Short
+fun uniffi_dspi_core_checksum_func_notice_texts(
 ): Short
 fun uniffi_dspi_core_checksum_func_onboarding_getting_started_json(
 ): Short
@@ -1635,6 +1661,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_apply_at_frame(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_audio_link_info(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_begin_group(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_cached_device_name(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_cached_input_source_name(
@@ -1654,6 +1682,10 @@ fun uniffi_dspi_core_checksum_method_dspicore_close_fd(
 fun uniffi_dspi_core_checksum_method_dspicore_config_export(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_config_import(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_config_import_selected(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_config_preview(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_connection_generation(
 ): Short
@@ -1688,6 +1720,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_trial(
 fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_op(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_trial_end(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_crossfeed_custom_pair(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_cs_apply(
 ): Short
@@ -1730,6 +1764,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_diagnostics_file_name(
 fun uniffi_dspi_core_checksum_method_dspicore_diagnostics_save(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_disconnect(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_end_group(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_enter_bootloader(
 ): Short
@@ -2261,6 +2297,8 @@ fun uniffi_dspi_core_fn_method_dspicore_apply_at_frame(`ptr`: Pointer,`frame`: L
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_audio_link_info(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_begin_group(`ptr`: Pointer,`label`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_cached_device_name(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_cached_input_source_name(`ptr`: Pointer,`source`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -2280,6 +2318,10 @@ fun uniffi_dspi_core_fn_method_dspicore_close_fd(`ptr`: Pointer,uniffi_out_err: 
 fun uniffi_dspi_core_fn_method_dspicore_config_export(`ptr`: Pointer,`name`: RustBuffer.ByValue,`appVersion`: RustBuffer.ByValue,`links`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_config_import(`ptr`: Pointer,`text`: RustBuffer.ByValue,`options`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_config_import_selected(`ptr`: Pointer,`text`: RustBuffer.ByValue,`options`: Int,`eqChannels`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_config_preview(`ptr`: Pointer,`text`: RustBuffer.ByValue,`options`: Int,`eqChannels`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_connection_generation(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
@@ -2315,6 +2357,8 @@ fun uniffi_dspi_core_fn_method_dspicore_core_vreg_op(`ptr`: Pointer,`op`: Byte,`
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_core_vreg_trial_end(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_crossfeed_custom_pair(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_cs_apply(`ptr`: Pointer,`op`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_cs_demo_busy(`ptr`: Pointer,`on`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -2356,6 +2400,8 @@ fun uniffi_dspi_core_fn_method_dspicore_diagnostics_file_name(`ptr`: Pointer,uni
 fun uniffi_dspi_core_fn_method_dspicore_diagnostics_save(`ptr`: Pointer,`path`: RustBuffer.ByValue,`options`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_disconnect(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_end_group(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_enter_bootloader(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -2849,6 +2895,8 @@ fun uniffi_dspi_core_fn_func_compute_phase_curve(`filters`: RustBuffer.ByValue,`
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_compute_response(`filters`: RustBuffer.ByValue,`freq`: Float,uniffi_out_err: UniffiRustCallStatus, 
 ): Float
+fun uniffi_dspi_core_fn_func_config_diff(`before`: RustBuffer.ByValue,`after`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_config_inspect(`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_core_info(uniffi_out_err: UniffiRustCallStatus, 
@@ -2878,6 +2926,12 @@ fun uniffi_dspi_core_fn_func_link_phase_text(`phase`: RustBuffer.ByValue,`pinSou
 fun uniffi_dspi_core_fn_func_link_phase_texts(uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_link_ws_url(`host`: RustBuffer.ByValue,`port`: Short,`path`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_notice_for(`error`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_notice_for_key(`key`: RustBuffer.ByValue,`detail`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_notice_texts(uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_onboarding_getting_started_json(uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -3055,6 +3109,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_func_compute_response() != 46454.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_func_config_diff() != 57472.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_func_config_inspect() != 19604.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3098,6 +3155,15 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_link_ws_url() != 18495.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_notice_for() != 13472.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_notice_for_key() != 23208.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_notice_texts() != 1574.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_onboarding_getting_started_json() != 59413.toShort()) {
@@ -3145,6 +3211,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_audio_link_info() != 38734.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_begin_group() != 15128.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_cached_device_name() != 27756.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3173,6 +3242,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_config_import() != 20391.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_config_import_selected() != 35048.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_config_preview() != 60996.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_connection_generation() != 50111.toShort()) {
@@ -3224,6 +3299,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_trial_end() != 31305.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_crossfeed_custom_pair() != 61764.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_cs_apply() != 37925.toShort()) {
@@ -3287,6 +3365,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_disconnect() != 29066.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_end_group() != 28189.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_enter_bootloader() != 19680.toShort()) {
@@ -3451,7 +3532,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_get_preset_name() != 34340.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_get_state() != 32151.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_get_state() != 48604.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_has_clip_events() != 9559.toShort()) {
@@ -3679,7 +3760,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_crossfeed_pair_map() != 32715.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_crossfeed_preset() != 45693.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_crossfeed_preset() != 53246.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_crossover() != 11478.toShort()) {
@@ -5511,6 +5592,29 @@ public interface DspiCoreInterface {
     fun `audioLinkInfo`(): AudioLinkInfo?
     
     /**
+     * Begin an undo group: everything written until the matching
+     * [`DspiCore::end_group`] that undo can reverse is one undo step,
+     * carrying `label` ([`HistoryEntry::label`]), as a drag is. Use it for
+     * one action that writes several values (a linked pair, a Clear All, a
+     * routing preset). Groups nest: only the outermost begin starts the
+     * step and takes its label, and only the matching end ends it. The
+     * group belongs to the connection: a disconnect, another device
+     * opened, a re-attach, a re-read ([`DspiCore::fetch_all`]) and a change
+     * that ends the history (a preset load, a bulk image, a factory reset)
+     * end it at any depth, and an `end_group` after that does nothing.
+     * With no device the call is ignored. An empty group records nothing.
+     * A write undo cannot reverse stands apart, as in a drag. The group is
+     * the connection's, not the thread's: call it on the thread that sends
+     * the group's writes, in order with them.
+     *
+     * A group begun while a drag is marked ([`DspiCore::set_dragging`])
+     * joins the drag's step instead of ending it (the step takes the
+     * group's label if it had none), and its `end_group` leaves that step
+     * open until the drag ends: one drag is one step.
+     */
+    fun `beginGroup`(`label`: kotlin.String)
+    
+    /**
      * The device's name as last known, with no traffic, kept as
      * [`DspiCore::cached_input_source_name`] keeps source names. "" when
      * unnamed. Errors: `Unsupported` on firmware without device names;
@@ -5636,6 +5740,34 @@ public interface DspiCoreInterface {
      * it was.
      */
     fun `configImport`(`text`: kotlin.String, `options`: kotlin.UInt): kotlin.String
+    
+    /**
+     * [`DspiCore::config_import`] with the EQ narrowed to the wire channels
+     * in `eq_channels` (bit k: channel k; `u32::MAX` every one). `options`
+     * as there: with [`IMPORT_BY_BLOCK`] each `IMPORT_*` block bit says
+     * whether its block is applied (EQ, crossover, routing and matrix,
+     * outputs, limiters, effects, volume levels, hardware I/O, names), and
+     * a block left out keeps the device's values; without it the old two
+     * bits keep their meaning. The reply is `config_import`'s, plus
+     * `blocks`: the block bits applied.
+     *
+     * With [`IMPORT_BY_BLOCK`] and no block bit nothing is chosen: the
+     * reply is a refusal (`noticeKey` `config.nothing_selected`) and nothing
+     * is written, journalled or logged; the undo history stays as it was.
+     */
+    fun `configImportSelected`(`text`: kotlin.String, `options`: kotlin.UInt, `eqChannels`: kotlin.UInt): kotlin.String
+    
+    /**
+     * What importing `text` with `options` and `eq_channels` (as
+     * [`DspiCore::config_import_selected`] takes them) would change on the
+     * device, without writing anything: the preview shown before an import
+     * (PRO1 W5). No I/O.
+     *
+     * Returns [`config_diff`]'s JSON, the device's values as `before`.
+     * `{ok: false, error}` for a text that is not a document this build
+     * reads, or with no device whose settings have been read.
+     */
+    fun `configPreview`(`text`: kotlin.String, `options`: kotlin.UInt, `eqChannels`: kotlin.UInt): kotlin.String
     
     /**
      * The open connection's generation: unique per connection and never
@@ -5798,6 +5930,18 @@ public interface DspiCoreInterface {
      * in `Ended`, or in `VerifyFailed`, from which it can be asked for again.
      */
     fun `coreVregTrialEnd`()
+    
+    /**
+     * The crossfeed's custom pair (frequency and feed) as the device keeps
+     * it: what Custom runs. Under a named preset `get_state` gives that
+     * preset's values instead; this gives the custom pair whatever the
+     * preset, from the mirror (no transfer). It is what
+     * `set_crossfeed_freq`/`set_crossfeed_feed` write, an export saves, and
+     * `config_diff`/`config_preview` compare.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device.
+     */
+    fun `crossfeedCustomPair`(): CrossfeedPair
     
     /**
      * One control-surface operation, JSON `{op, index, ...}` (the old
@@ -6027,6 +6171,14 @@ public interface DspiCoreInterface {
      * (at most about a quarter of a second).
      */
     fun `disconnect`()
+    
+    /**
+     * End the undo group [`DspiCore::begin_group`] opened: the outermost
+     * end ends the step, so the next write is a step of its own. Nothing
+     * when no group is open (one a disconnect or a re-read ended, or none
+     * at all). Inside a drag the step goes on until `set_dragging(false)`.
+     */
+    fun `endGroup`()
     
     /**
      * Reboots the device into its USB bootloader (it disappears). Ok
@@ -6658,7 +6810,9 @@ public interface DspiCoreInterface {
     
     /**
      * Copy of the cached state (the C ABI returns a borrowed pointer).
-     * Defaults while disconnected. Never fails.
+     * Defaults while disconnected. Never fails. Under a named crossfeed
+     * preset, `crossfeed_freq` and `crossfeed_feed` are that preset's values
+     * (see `set_crossfeed_preset`).
      */
     fun `getState`(): DspState
     
@@ -7501,8 +7655,12 @@ public interface DspiCoreInterface {
     
     /**
      * Crossfeed preset: 0 default, 1 Chu Moy, 2 Meier, 3 custom. Only the
-     * preset changes: `crossfeed_freq` and `crossfeed_feed` are the device's
-     * custom values, which it keeps whatever the preset.
+     * preset is sent: the device keeps its custom frequency and feed whatever
+     * the preset. While a named preset (0 to 2) is chosen, `get_state` gives
+     * that preset's frequency and feed (700 Hz / 4.5 dB, 700 Hz / 6 dB,
+     * 650 Hz / 9.5 dB), which the device runs; with Custom (3) it gives the
+     * custom pair again. A preset export, the bulk image and undo keep the
+     * custom pair.
      *
      * Errors: [`DspiError::InvalidArgument`] for another preset; the
      * connection and transfer errors of every setter.
@@ -8460,6 +8618,38 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Begin an undo group: everything written until the matching
+     * [`DspiCore::end_group`] that undo can reverse is one undo step,
+     * carrying `label` ([`HistoryEntry::label`]), as a drag is. Use it for
+     * one action that writes several values (a linked pair, a Clear All, a
+     * routing preset). Groups nest: only the outermost begin starts the
+     * step and takes its label, and only the matching end ends it. The
+     * group belongs to the connection: a disconnect, another device
+     * opened, a re-attach, a re-read ([`DspiCore::fetch_all`]) and a change
+     * that ends the history (a preset load, a bulk image, a factory reset)
+     * end it at any depth, and an `end_group` after that does nothing.
+     * With no device the call is ignored. An empty group records nothing.
+     * A write undo cannot reverse stands apart, as in a drag. The group is
+     * the connection's, not the thread's: call it on the thread that sends
+     * the group's writes, in order with them.
+     *
+     * A group begun while a drag is marked ([`DspiCore::set_dragging`])
+     * joins the drag's step instead of ending it (the step takes the
+     * group's label if it had none), and its `end_group` leaves that step
+     * open until the drag ends: one drag is one step.
+     */override fun `beginGroup`(`label`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_begin_group(
+        it, FfiConverterString.lower(`label`),_status)
+}
+    }
+    
+    
+
+    
+    /**
      * The device's name as last known, with no traffic, kept as
      * [`DspiCore::cached_input_source_name`] keeps source names. "" when
      * unnamed. Errors: `Unsupported` on firmware without device names;
@@ -8681,6 +8871,54 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_config_import(
         it, FfiConverterString.lower(`text`),FfiConverterUInt.lower(`options`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * [`DspiCore::config_import`] with the EQ narrowed to the wire channels
+     * in `eq_channels` (bit k: channel k; `u32::MAX` every one). `options`
+     * as there: with [`IMPORT_BY_BLOCK`] each `IMPORT_*` block bit says
+     * whether its block is applied (EQ, crossover, routing and matrix,
+     * outputs, limiters, effects, volume levels, hardware I/O, names), and
+     * a block left out keeps the device's values; without it the old two
+     * bits keep their meaning. The reply is `config_import`'s, plus
+     * `blocks`: the block bits applied.
+     *
+     * With [`IMPORT_BY_BLOCK`] and no block bit nothing is chosen: the
+     * reply is a refusal (`noticeKey` `config.nothing_selected`) and nothing
+     * is written, journalled or logged; the undo history stays as it was.
+     */override fun `configImportSelected`(`text`: kotlin.String, `options`: kotlin.UInt, `eqChannels`: kotlin.UInt): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_config_import_selected(
+        it, FfiConverterString.lower(`text`),FfiConverterUInt.lower(`options`),FfiConverterUInt.lower(`eqChannels`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * What importing `text` with `options` and `eq_channels` (as
+     * [`DspiCore::config_import_selected`] takes them) would change on the
+     * device, without writing anything: the preview shown before an import
+     * (PRO1 W5). No I/O.
+     *
+     * Returns [`config_diff`]'s JSON, the device's values as `before`.
+     * `{ok: false, error}` for a text that is not a document this build
+     * reads, or with no device whose settings have been read.
+     */override fun `configPreview`(`text`: kotlin.String, `options`: kotlin.UInt, `eqChannels`: kotlin.UInt): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_config_preview(
+        it, FfiConverterString.lower(`text`),FfiConverterUInt.lower(`options`),FfiConverterUInt.lower(`eqChannels`),_status)
 }
     }
     )
@@ -9018,6 +9256,29 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * The crossfeed's custom pair (frequency and feed) as the device keeps
+     * it: what Custom runs. Under a named preset `get_state` gives that
+     * preset's values instead; this gives the custom pair whatever the
+     * preset, from the mirror (no transfer). It is what
+     * `set_crossfeed_freq`/`set_crossfeed_feed` write, an export saves, and
+     * `config_diff`/`config_preview` compare.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device.
+     */
+    @Throws(DspiException::class)override fun `crossfeedCustomPair`(): CrossfeedPair {
+            return FfiConverterTypeCrossfeedPair.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_crossfeed_custom_pair(
+        it, _status)
+}
+    }
+    )
+    }
     
 
     
@@ -9454,6 +9715,23 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_disconnect(
+        it, _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * End the undo group [`DspiCore::begin_group`] opened: the outermost
+     * end ends the step, so the next write is a step of its own. Nothing
+     * when no group is open (one a disconnect or a re-read ended, or none
+     * at all). Inside a drag the step goes on until `set_dragging(false)`.
+     */override fun `endGroup`()
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_end_group(
         it, _status)
 }
     }
@@ -10672,7 +10950,9 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     
     /**
      * Copy of the cached state (the C ABI returns a borrowed pointer).
-     * Defaults while disconnected. Never fails.
+     * Defaults while disconnected. Never fails. Under a named crossfeed
+     * preset, `crossfeed_freq` and `crossfeed_feed` are that preset's values
+     * (see `set_crossfeed_preset`).
      */override fun `getState`(): DspState {
             return FfiConverterTypeDspState.lift(
     callWithPointer {
@@ -12273,8 +12553,12 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     
     /**
      * Crossfeed preset: 0 default, 1 Chu Moy, 2 Meier, 3 custom. Only the
-     * preset changes: `crossfeed_freq` and `crossfeed_feed` are the device's
-     * custom values, which it keeps whatever the preset.
+     * preset is sent: the device keeps its custom frequency and feed whatever
+     * the preset. While a named preset (0 to 2) is chosen, `get_state` gives
+     * that preset's frequency and feed (700 Hz / 4.5 dB, 700 Hz / 6 dB,
+     * 650 Hz / 9.5 dB), which the device runs; with Custom (3) it gives the
+     * custom pair again. A preset export, the bulk image and undo keep the
+     * custom pair.
      *
      * Errors: [`DspiError::InvalidArgument`] for another preset; the
      * connection and transfer errors of every setter.
@@ -17074,6 +17358,49 @@ public object FfiConverterTypeCoreVregInfo: FfiConverterRustBuffer<CoreVregInfo>
 
 
 /**
+ * The crossfeed's custom pair as the device keeps it
+ * ([`crate::DspiCore::crossfeed_custom_pair`]): what Custom runs, whatever
+ * preset is chosen now.
+ */
+data class CrossfeedPair (
+    /**
+     * Frequency, in Hz.
+     */
+    var `freqHz`: kotlin.Float, 
+    /**
+     * Feed level, in dB.
+     */
+    var `feedDb`: kotlin.Float
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCrossfeedPair: FfiConverterRustBuffer<CrossfeedPair> {
+    override fun read(buf: ByteBuffer): CrossfeedPair {
+        return CrossfeedPair(
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: CrossfeedPair) = (
+            FfiConverterFloat.allocationSize(value.`freqHz`) +
+            FfiConverterFloat.allocationSize(value.`feedDb`)
+    )
+
+    override fun write(value: CrossfeedPair, buf: ByteBuffer) {
+            FfiConverterFloat.write(value.`freqHz`, buf)
+            FfiConverterFloat.write(value.`feedDb`, buf)
+    }
+}
+
+
+
+/**
  * Live state of the UART and I2C control interfaces.
  */
 data class CtrlIfaceStatus (
@@ -18648,7 +18975,12 @@ data class HistoryEntry (
      * with no hazard (not a flash write, an audible one, a reconfiguration,
      * a deferred or an irreversible one).
      */
-    var `undoable`: kotlin.Boolean
+    var `undoable`: kotlin.Boolean, 
+    /**
+     * The undo group's label ([`DspiCore::begin_group`]) when the change
+     * was written inside one; `None` otherwise.
+     */
+    var `label`: kotlin.String?
 ) {
     
     companion object
@@ -18667,6 +18999,7 @@ public object FfiConverterTypeHistoryEntry: FfiConverterRustBuffer<HistoryEntry>
             FfiConverterTypeHistorySource.read(buf),
             FfiConverterULong.read(buf),
             FfiConverterBoolean.read(buf),
+            FfiConverterOptionalString.read(buf),
         )
     }
 
@@ -18677,7 +19010,8 @@ public object FfiConverterTypeHistoryEntry: FfiConverterRustBuffer<HistoryEntry>
             FfiConverterTypeParamValue.allocationSize(value.`after`) +
             FfiConverterTypeHistorySource.allocationSize(value.`source`) +
             FfiConverterULong.allocationSize(value.`atMs`) +
-            FfiConverterBoolean.allocationSize(value.`undoable`)
+            FfiConverterBoolean.allocationSize(value.`undoable`) +
+            FfiConverterOptionalString.allocationSize(value.`label`)
     )
 
     override fun write(value: HistoryEntry, buf: ByteBuffer) {
@@ -18688,6 +19022,7 @@ public object FfiConverterTypeHistoryEntry: FfiConverterRustBuffer<HistoryEntry>
             FfiConverterTypeHistorySource.write(value.`source`, buf)
             FfiConverterULong.write(value.`atMs`, buf)
             FfiConverterBoolean.write(value.`undoable`, buf)
+            FfiConverterOptionalString.write(value.`label`, buf)
     }
 }
 
@@ -20633,6 +20968,75 @@ public object FfiConverterTypeNamedValue: FfiConverterRustBuffer<NamedValue> {
     override fun write(value: NamedValue, buf: ByteBuffer) {
             FfiConverterString.write(value.`name`, buf)
             FfiConverterString.write(value.`value`, buf)
+    }
+}
+
+
+
+/**
+ * What to tell the user about an error.
+ */
+data class Notice (
+    /**
+     * Stable key, for localising: `disconnected`, `dlink.wrong_pin`.
+     */
+    var `key`: kotlin.String, 
+    /**
+     * How to show it.
+     */
+    var `kind`: NoticeKind, 
+    /**
+     * A short title.
+     */
+    var `title`: kotlin.String, 
+    /**
+     * Why it happened.
+     */
+    var `reason`: kotlin.String, 
+    /**
+     * What to do.
+     */
+    var `action`: kotlin.String, 
+    /**
+     * The error's own words (may be empty); not localised.
+     */
+    var `detail`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeNotice: FfiConverterRustBuffer<Notice> {
+    override fun read(buf: ByteBuffer): Notice {
+        return Notice(
+            FfiConverterString.read(buf),
+            FfiConverterTypeNoticeKind.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: Notice) = (
+            FfiConverterString.allocationSize(value.`key`) +
+            FfiConverterTypeNoticeKind.allocationSize(value.`kind`) +
+            FfiConverterString.allocationSize(value.`title`) +
+            FfiConverterString.allocationSize(value.`reason`) +
+            FfiConverterString.allocationSize(value.`action`) +
+            FfiConverterString.allocationSize(value.`detail`)
+    )
+
+    override fun write(value: Notice, buf: ByteBuffer) {
+            FfiConverterString.write(value.`key`, buf)
+            FfiConverterTypeNoticeKind.write(value.`kind`, buf)
+            FfiConverterString.write(value.`title`, buf)
+            FfiConverterString.write(value.`reason`, buf)
+            FfiConverterString.write(value.`action`, buf)
+            FfiConverterString.write(value.`detail`, buf)
     }
 }
 
@@ -23947,6 +24351,49 @@ public object FfiConverterTypeLinkPhase: FfiConverterRustBuffer<LinkPhase> {
 
 
 /**
+ * How a notice is shown.
+ */
+
+enum class NoticeKind {
+    
+    /**
+     * Nothing went wrong; something to know.
+     */
+    INFO,
+    /**
+     * Not done, for a reason the user can change or wait out.
+     */
+    WARNING,
+    /**
+     * Not done: something failed.
+     */
+    ERROR;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeNoticeKind: FfiConverterRustBuffer<NoticeKind> {
+    override fun read(buf: ByteBuffer) = try {
+        NoticeKind.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: NoticeKind) = 4UL
+
+    override fun write(value: NoticeKind, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
  * A parameter value: `dspi_proto::value::Value` across the bindings. In
  * JSON (the C ABI, the web binding) it is tagged by kind in lower case:
  * `{"float": -12.5}`, `{"bool": true}`, `{"bytes": [1, 2]}`, `"trigger"`.
@@ -25645,6 +26092,34 @@ public object FfiConverterSequenceTypeNamedValue: FfiConverterRustBuffer<List<Na
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeNotice: FfiConverterRustBuffer<List<Notice>> {
+    override fun read(buf: ByteBuffer): List<Notice> {
+        val len = buf.getInt()
+        return List<Notice>(len) {
+            FfiConverterTypeNotice.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<Notice>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeNotice.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<Notice>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeNotice.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeOutputCard: FfiConverterRustBuffer<List<OutputCard>> {
     override fun read(buf: ByteBuffer): List<OutputCard> {
         val len = buf.getInt()
@@ -26204,6 +26679,32 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     
 
         /**
+         * What differs between two `.dspipreset` documents, `before` and `after`,
+         * with no device (PRO1 W5). `after` is read on top of `before`, as an
+         * import of it after the other would be, so a value `after` holds none for
+         * is no change; both are read onto a device shaped as `before`'s `meta`
+         * says.
+         *
+         * Returns JSON `{ok, error, rows, count, blocks, summary, notes, kind}`:
+         * `rows` one per changed value, `{block, section, item, before, after}`,
+         * `block` the import block that carries it (`eq`, `crossover`, `routing`,
+         * `outputs`, `limiters`, `effects`, `volumes`, `hardware`, `names`);
+         * `blocks` the number of rows per block; `summary` the unsaved-changes
+         * list's sentences for the same change; `notes` what reading `after`
+         * reported (channels missing, values left alone or clamped); `kind`
+         * `after`'s `meta.kind`. `{ok: false, error}` when either text is not a
+         * document this build reads (the error names which).
+         */ fun `configDiff`(`before`: kotlin.String, `after`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_config_diff(
+        FfiConverterString.lower(`before`),FfiConverterString.lower(`after`),_status)
+}
+    )
+    }
+    
+
+        /**
          * Check a `.dspipreset` document and describe it, as JSON
          * `{ok, error, name, platform, firmware, savedUtc}`. `ok` is false, with the
          * reason in `error`, for text that is not a document this build reads: not
@@ -26431,6 +26932,45 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_link_ws_url(
         FfiConverterString.lower(`host`),FfiConverterUShort.lower(`port`),FfiConverterString.lower(`path`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * What to tell the user about `error`.
+         */ fun `noticeFor`(`error`: DspiException): Notice {
+            return FfiConverterTypeNotice.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_notice_for(
+        FfiConverterTypeDspiError.lower(`error`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The notice with this key (a failure reply's `noticeKey` in the C ABI and the
+         * web binding), with `detail` as its detail. A key the table does not have
+         * gives the `unknown` row.
+         */ fun `noticeForKey`(`key`: kotlin.String, `detail`: kotlin.String): Notice {
+            return FfiConverterTypeNotice.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_notice_for_key(
+        FfiConverterString.lower(`key`),FfiConverterString.lower(`detail`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The whole table, every key once and with no detail, for a client's
+         * translation files.
+         */ fun `noticeTexts`(): List<Notice> {
+            return FfiConverterSequenceTypeNotice.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_notice_texts(
+        _status)
 }
     )
     }

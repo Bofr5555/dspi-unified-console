@@ -1064,7 +1064,7 @@ pub(crate) fn image_fields() -> Vec<Range<usize>> {
 // ── The change list ───────────────────────────────────────────────────
 
 /// `OUTPUT_CONFIG_MODE_WITH_PRESET` and `MASTER_VOLUME_MODE_WITH_PRESET`.
-const WITH_PRESET: u8 = 1;
+pub(crate) const WITH_PRESET: u8 = 1;
 /// The console's floor of a subharmonic band level: the band is off.
 const SUBHARM_BAND_OFF_DB: f32 = g::ranges::SUBHARM_LEVEL_MIN;
 /// The console's top of the sub ceiling: no ceiling.
@@ -1072,7 +1072,7 @@ const SUBHARM_NO_CEILING_DB: f32 = g::ranges::SUBHARM_CEILING_MAX;
 /// I2S input rate codes, in Hz.
 const I2S_RATES_HZ: [u32; 3] = [44_100, 48_000, 96_000];
 /// The ADAT input pin's "unset" value in the mirror.
-const PIN_UNSET: u8 = 0xFF;
+pub(crate) const PIN_UNSET: u8 = 0xFF;
 
 /// The rows for going from `saved` to `live`, in the console's order.
 /// `sources`: the user's input source names ("" for none).
@@ -1794,17 +1794,20 @@ impl Rows<'_> {
     }
 }
 
+// -- WP P1DF -- the helpers below are crate-visible: `doc_diff` words its
+// rows with them.
+
 /// Equal as the console compares (`==`), but a NaN equals a NaN, so one
 /// stored in the image never reads as a change.
-fn same(a: f32, b: f32) -> bool {
+pub(crate) fn same(a: f32, b: f32) -> bool {
     a == b || (a.is_nan() && b.is_nan())
 }
 
-fn enabled(on: bool) -> &'static str {
+pub(crate) fn enabled(on: bool) -> &'static str {
     if on { "enabled" } else { "disabled" }
 }
 
-fn on_off(on: bool) -> &'static str {
+pub(crate) fn on_off(on: bool) -> &'static str {
     if on { "on" } else { "off" }
 }
 
@@ -1813,12 +1816,12 @@ fn plural(n: usize) -> &'static str {
 }
 
 /// One decimal and the unit: "-3.0 dB".
-fn db(v: f32) -> String {
+pub(crate) fn db(v: f32) -> String {
     format!("{v:.1} dB")
 }
 
 /// A master volume: at or below -128 dB it is off.
-fn volume(v: f32) -> String {
+pub(crate) fn volume(v: f32) -> String {
     if v <= -128.0 {
         "-∞ dB".to_owned()
     } else {
@@ -1827,7 +1830,7 @@ fn volume(v: f32) -> String {
 }
 
 /// A whole number as such, anything else with one decimal.
-fn plain(v: f32) -> String {
+pub(crate) fn plain(v: f32) -> String {
     if v == v.round() && v.abs() < 100_000.0 {
         format!("{v:.0}")
     } else {
@@ -1836,7 +1839,7 @@ fn plain(v: f32) -> String {
 }
 
 /// A delay in ms: up to four decimals, trailing zeros dropped.
-fn delay(ms: f32) -> String {
+pub(crate) fn delay(ms: f32) -> String {
     let text = format!("{ms:.4}");
     match text.split_once('.') {
         Some((whole, frac)) => {
@@ -1852,7 +1855,7 @@ fn delay(ms: f32) -> String {
 }
 
 /// A subharmonic band level; the floor switches the band off.
-fn band_level(v: f32) -> String {
+pub(crate) fn band_level(v: f32) -> String {
     if v <= SUBHARM_BAND_OFF_DB {
         "off".to_owned()
     } else {
@@ -1861,7 +1864,7 @@ fn band_level(v: f32) -> String {
 }
 
 /// The sub ceiling; at full scale it is off.
-fn ceiling(v: f32) -> String {
+pub(crate) fn ceiling(v: f32) -> String {
     if v >= SUBHARM_NO_CEILING_DB {
         "off".to_owned()
     } else {
@@ -1869,7 +1872,7 @@ fn ceiling(v: f32) -> String {
     }
 }
 
-fn selectivity(mode: i64) -> &'static str {
+pub(crate) fn selectivity(mode: i64) -> &'static str {
     match u16::try_from(mode) {
         Ok(g::subharm::SUBHARM_SELECT_PERCUSSIVE) => "percussive",
         Ok(g::subharm::SUBHARM_SELECT_SUSTAINED) => "sustained",
@@ -1877,27 +1880,27 @@ fn selectivity(mode: i64) -> &'static str {
     }
 }
 
-fn mck_multiplier(code: u8) -> u16 {
+pub(crate) fn mck_multiplier(code: u8) -> u16 {
     if code == 1 { 256 } else { 128 }
 }
 
-fn rate_hz(code: u8) -> u32 {
+pub(crate) fn rate_hz(code: u8) -> u32 {
     I2S_RATES_HZ
         .get(usize::from(code))
         .copied()
         .unwrap_or(48_000)
 }
 
-fn clock_mode(mode: u8) -> &'static str {
+pub(crate) fn clock_mode(mode: u8) -> &'static str {
     if mode == 1 { "Slave" } else { "Master" }
 }
 
 /// Parameter `id` of a `*_PARAM_*`-indexed vector, 0 when missing.
-fn param(v: &[f32], id: u8) -> f32 {
+pub(crate) fn param(v: &[f32], id: u8) -> f32 {
     v.get(usize::from(id)).copied().unwrap_or(0.0)
 }
 
-fn cell<T>(m: &[Vec<T>], i: usize, o: usize) -> Option<&T> {
+pub(crate) fn cell<T>(m: &[Vec<T>], i: usize, o: usize) -> Option<&T> {
     m.get(i).and_then(|row| row.get(o))
 }
 
@@ -1908,7 +1911,7 @@ fn differing(a: &[u8], b: &[u8]) -> usize {
 
 /// The outputs (left, right) of crossfeed pair `p`; a missing or zero byte
 /// is the pair's own outputs.
-fn pair_outputs(map: &[u8], p: usize) -> (usize, usize) {
+pub(crate) fn pair_outputs(map: &[u8], p: usize) -> (usize, usize) {
     match map.get(p).copied().unwrap_or(0) {
         0 => {
             let left = p.saturating_mul(2);
@@ -1938,7 +1941,7 @@ fn bands_changed(
 
 /// The console's band comparison: type, frequency, Q, gain, bypass, and the
 /// Linkwitz target Q only on a Linkwitz band.
-fn same_band(a: &FilterParams, b: &FilterParams) -> bool {
+pub(crate) fn same_band(a: &FilterParams, b: &FilterParams) -> bool {
     let target_q = |p: &FilterParams| {
         if FilterType::from_raw(p.filter_type).is_linkwitz() {
             p.qp
@@ -1956,7 +1959,7 @@ fn same_band(a: &FilterParams, b: &FilterParams) -> bool {
 
 /// What a channel is called in a row: its name, or the firmware's default
 /// name when it has none.
-fn channel_label(s: &DspState, ch: usize) -> Option<String> {
+pub(crate) fn channel_label(s: &DspState, ch: usize) -> Option<String> {
     match s.channel_names.get(ch) {
         Some(n) if !n.is_empty() => Some(n.clone()),
         _ => firmware_name(s, ch),
@@ -1995,7 +1998,7 @@ fn firmware_name(s: &DspState, ch: usize) -> Option<String> {
 
 /// An input source's title: the user's name for it, else the built-in one.
 /// The first S/PDIF input is numbered only while another one is on.
-fn source_title(source: u8, names: &[String], other_spdif_on: bool) -> String {
+pub(crate) fn source_title(source: u8, names: &[String], other_spdif_on: bool) -> String {
     if let Some(n) = names.get(usize::from(source))
         && !n.is_empty()
     {

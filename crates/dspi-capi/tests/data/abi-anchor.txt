@@ -449,6 +449,15 @@
 #define FORMAT_VERSION 2
 #define IMPORT_VOLUMES 1
 #define IMPORT_HARDWARE 2
+#define IMPORT_EQ 4
+#define IMPORT_CROSSOVER 8
+#define IMPORT_ROUTING 16
+#define IMPORT_OUTPUTS 32
+#define IMPORT_LIMITERS 64
+#define IMPORT_EFFECTS 128
+#define IMPORT_NAMES 256
+#define IMPORT_ALL_BLOCKS 511
+#define IMPORT_BY_BLOCK 65536
 #define CS_MAX_BINDINGS 16
 #define CS_MAX_IR 16
 #define CS_MAX_GROUPS 8
@@ -624,6 +633,10 @@ uint8_t preset_default_slot;
 bool bulk_valid;
 uint8_t bulk_raw[BULK_PARAMS_SIZE];
 } DspState;
+typedef struct CrossfeedPair {
+float freq_hz;
+float feed_db;
+} CrossfeedPair;
 typedef struct UpmixStatus {
 bool active;
 uint8_t parked_reason;
@@ -869,6 +882,7 @@ bool dspi_set_crossfeed(struct FfiCore *core, bool enabled);
 bool dspi_set_crossfeed_preset(struct FfiCore *core, uint8_t preset);
 bool dspi_set_crossfeed_freq(struct FfiCore *core, float freq);
 bool dspi_set_crossfeed_feed(struct FfiCore *core, float feed);
+bool dspi_get_crossfeed_custom_pair(struct FfiCore *core, struct CrossfeedPair *out);
 bool dspi_set_crossfeed_itd(struct FfiCore *core, bool enabled);
 bool dspi_set_crossfeed_outputs(struct FfiCore *core, uint8_t pair_mask);
 bool dspi_set_leveller_enabled(struct FfiCore *core, bool enabled);
@@ -1017,6 +1031,19 @@ const char *text,
 uint32_t options,
 char *buf,
 uint32_t len);
+uint32_t dspi_config_import_selected(struct FfiCore *core,
+const char *text,
+uint32_t options,
+uint32_t eq_channels,
+char *buf,
+uint32_t len);
+uint32_t dspi_config_preview(struct FfiCore *core,
+const char *text,
+uint32_t options,
+uint32_t eq_channels,
+char *buf,
+uint32_t len);
+uint32_t dspi_config_diff(const char *before, const char *after, char *buf, uint32_t len);
 uint32_t dspi_filters_export(struct FfiCore *core, uint8_t inputs, char *buf, uint32_t len);
 uint32_t dspi_filters_inspect(struct FfiCore *core,
 const char *text,
@@ -1147,8 +1174,13 @@ uint32_t dspi_undo(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_redo(struct FfiCore *core, char *buf, uint32_t len);
 bool dspi_can_undo(const struct FfiCore *core);
 bool dspi_can_redo(const struct FfiCore *core);
-uint32_t dspi_history(struct FfiCore *core, uint32_t n, char *buf, uint32_t len);
+uint32_t dspi_history(struct FfiCore *core,
+uint32_t n,
+char *buf,
+uint32_t len);
 void dspi_set_dragging(const struct FfiCore *core, bool dragging);
+void dspi_undo_group_begin(const struct FfiCore *core, const char *label);
+void dspi_undo_group_end(const struct FfiCore *core);
 void dspi_autoeq_fetch_respond(struct AutoEqFetchSink *sink,
 uint16_t status,
 const uint8_t *body,
@@ -1226,6 +1258,8 @@ int16_t value);
 uint32_t dspi_fetch_apply_at_frame_status(struct FfiCore *core, char *buf, uint32_t len);
 uint8_t dspi_reset_audio_link_stats(struct FfiCore *core);
 bool dspi_open_demo_audio_link(struct FfiCore *core);
+uint32_t dspi_notice_for(const char *key, const char *detail, char *buf, uint32_t len);
+uint32_t dspi_notice_texts(char *buf, uint32_t len);
 bool dspi_link_browse_start(struct FfiCore *core,
 void (*callback)(void *user_data),
 void *user_data,

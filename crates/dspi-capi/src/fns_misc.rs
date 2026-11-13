@@ -20,6 +20,8 @@
 //! `read_only`, `locked`, `denied`, `link`, `io`, `autoeq`, `firmware_guard`,
 //! `overvolt_word`. A document export replies the document itself, or that
 //! failure.
+//! -- WP P1NT -- A failure also carries `noticeKey`, its notice's stable key:
+//! `dspi_notice_for` gives the words to show.
 
 #[cfg(test)]
 use std::ffi::CStr;
@@ -50,6 +52,8 @@ mod diag;
 mod ext_diag;
 // -- WP SW1 --
 mod audio_link;
+// -- WP P1NT --
+mod notice_text;
 
 // ── Replies ──────────────────────────────────────────────────────────
 
@@ -88,7 +92,13 @@ fn json_reply<T: serde::Serialize>(result: Result<T>) -> String {
             Value::Object(all)
         }
         Ok(value) => json!({ "ok": true, "value": value }),
-        Err(e) => json!({ "ok": false, "code": error_code(&e), "error": e.to_string() }),
+        // -- WP P1NT -- `noticeKey`: the words to show, through `dspi_notice_for`.
+        Err(e) => json!({
+            "ok": false,
+            "code": error_code(&e),
+            "error": e.to_string(),
+            "noticeKey": e.notice_key(),
+        }),
     };
     reply.to_string()
 }
@@ -864,6 +874,63 @@ pub extern "C" fn dspi_config_import(
     self::text(core, buf, len, |c| match arg(text, "text") {
         Ok(doc) => c.config_import(doc.to_owned(), options),
         Err(e) => json_reply::<()>(Err(e)),
+    })
+}
+
+// -- WP P1DF --
+/// Apply a configuration document by block: `options` as
+/// `dspi_config_import`'s, or with `DSPI_IMPORT_BY_BLOCK` the
+/// `DSPI_IMPORT_*` block bits; `eq_channels` the wire channels whose EQ is
+/// applied (bit k: channel k; all bits: every one). JSON reply; the device
+/// has changed whatever the buffer.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_config_import_selected(
+    core: *mut FfiCore,
+    text: *const c_char,
+    options: u32,
+    eq_channels: u32,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    self::text(core, buf, len, |c| match arg(text, "text") {
+        Ok(doc) => c.config_import_selected(doc.to_owned(), options, eq_channels),
+        Err(e) => json_reply::<()>(Err(e)),
+    })
+}
+
+/// What `dspi_config_import_selected` with the same arguments would change
+/// on the device, without writing: JSON rows `{block, section, item,
+/// before, after}`, counts per block and a summary. No I/O.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_config_preview(
+    core: *mut FfiCore,
+    text: *const c_char,
+    options: u32,
+    eq_channels: u32,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    self::text(core, buf, len, |c| match arg(text, "text") {
+        Ok(doc) => c.config_preview(doc.to_owned(), options, eq_channels),
+        Err(e) => json_reply::<()>(Err(e)),
+    })
+}
+
+/// What differs between two configuration documents, `before` and `after`,
+/// without a device: the JSON of `dspi_config_preview`. Returns the bytes
+/// needed, 0 only for a panic.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_config_diff(
+    before: *const c_char,
+    after: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    free_text(buf, len, || {
+        match (arg(before, "before"), arg(after, "after")) {
+            (Ok(a), Ok(b)) => dspi_core::files::config_diff(a.to_owned(), b.to_owned()),
+            (Err(e), _) | (_, Err(e)) => json_reply::<()>(Err(e)),
+        }
     })
 }
 
@@ -1825,7 +1892,7 @@ pub extern "C" fn dspi_can_redo(core: *const FfiCore) -> bool {
 
 /// The newest `n` changes of the open connection, newest first, in JSON
 /// (`value`: a list of `{path, indices, before, after, source, atMs,
-/// undoable}`; `before` and `after` are parameter values as
+/// undoable, label}`; `label` the undo group's, or null (WP P1UG); `before` and `after` are parameter values as
 /// `dspi_write_param` takes them, `before` null when unknown; `source` is
 /// `local`, `undo` or `redo`; `atMs` milliseconds since the Unix epoch). A
 /// reconnect starts a new history. `NOTIFY_HISTORY` says when it moved.
@@ -1843,6 +1910,29 @@ pub extern "C" fn dspi_history(core: *mut FfiCore, n: u32, buf: *mut c_char, len
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_dragging(core: *const FfiCore, dragging: bool) {
     with_core(core, (), |h| h.core.set_dragging(dragging));
+}
+
+// -- WP P1UG --
+/// Begin an undo group (`DspiCore::begin_group`): everything written until
+/// the matching `dspi_undo_group_end` that undo can reverse is one undo
+/// step, carrying `label` (the `label` field of `dspi_history`'s entries;
+/// null or not UTF-8 counts as no label). Groups nest; a disconnect, another
+/// device opened, a re-read or a preset load, bulk image or factory reset
+/// ends one. Call it on the thread that sends the group's writes, in order
+/// with them. Nothing for a null handle or with no device.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_undo_group_begin(core: *const FfiCore, label: *const c_char) {
+    let label = c_str(label).unwrap_or_default().to_owned();
+    with_core(core, (), |h| h.core.begin_group(label));
+}
+
+// -- WP P1UG --
+/// End the undo group `dspi_undo_group_begin` opened
+/// (`DspiCore::end_group`); the outermost end ends the step. Nothing for a
+/// null handle or when no group is open.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_undo_group_end(core: *const FfiCore) {
+    with_core(core, (), |h| h.core.end_group());
 }
 
 #[cfg(test)]
@@ -1876,6 +1966,10 @@ mod tests_wp_cg36;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p0w;
+// -- WP P1UG --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_p1ug;
 // -- WP CS1 --
 #[cfg(test)]
 mod tests_wp_cs1;
@@ -1898,6 +1992,14 @@ mod tests_wp_qd6;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_qp16;
+// -- WP P1DF --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_p1df;
+// -- WP P1AFIX --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_p1afix;
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]

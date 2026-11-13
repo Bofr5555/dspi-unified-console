@@ -149,6 +149,12 @@ class PeqGraphEditor(private val host: PeqGraphEditorHost, private val clock: Pe
     private var pressMods = PeqMods.NONE
     private var backgroundOnCurve = false
     private var drag: DragContext? = null
+        set(v) {
+            // -- WP AN42 -- the host hears each drag's start and end once
+            val was = field != null
+            field = v
+            if (was != (v != null)) host.markDrag(v != null)
+        }
     private var marqueeFrom = PeqPoint(0.0, 0.0)
     private var marqueeTo = PeqPoint(0.0, 0.0)
     private var marqueeBase: Set<Int> = emptySet()
@@ -201,6 +207,7 @@ class PeqGraphEditor(private val host: PeqGraphEditorHost, private val clock: Pe
 
     fun dispose() {
         commitLive()
+        drag = null // -- WP AN42 -- ends a drag's mark
         host.selection.removeSelectionListener(selectionListener)
         host.selection.removeHoverListener(hoverListener)
         listOf(hudHideTimer, revealTimer, deviceTimer, commitTimer).forEach { it?.cancel() }
@@ -1044,8 +1051,9 @@ class PeqGraphEditor(private val host: PeqGraphEditorHost, private val clock: Pe
             }
             GestureKind.DRAG -> {
                 gesture = GestureKind.IDLE
-                drag = null
+                // -- WP AN42 -- the commit first, so it joins the drag's undo step
                 commitLive()
+                drag = null
                 cursorValue = PeqCursor.OPEN_HAND
             }
             else -> {}

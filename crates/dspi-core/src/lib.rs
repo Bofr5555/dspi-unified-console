@@ -77,6 +77,8 @@ mod ext_diag;
 // -- WP SW1 -- the audio link (SYS2), not DSPi Link
 mod audio_link;
 pub mod files;
+// -- WP P1DF --
+mod doc_diff;
 mod firmware;
 // -- WP CG8 --
 mod firmware_guard;
@@ -117,6 +119,8 @@ mod events;
 mod journal;
 // -- WP P0E --
 mod diag;
+// -- WP P1NT --
+pub mod notice_text;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -181,6 +185,10 @@ pub use output_labels::{
 pub use journal::{HistoryEntry, HistoryMove, HistorySource};
 // -- WP P0E --
 pub use diag::REMOVED as DIAG_REMOVED;
+// -- WP P1NT --
+pub use notice_text::{
+    NOTICE_KEY_UNKNOWN, Notice, NoticeKind, notice_for, notice_for_key, notice_texts,
+};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///
@@ -397,6 +405,10 @@ pub(crate) struct Connection {
     /// The values this session wrote recently, which its own late echoes can
     /// bring back into the mirror (`journal::OwnWrites`).
     pub(crate) own_writes: journal::OwnWrites,
+    // -- WP P1UG --
+    /// The undo group open on this connection ([`DspiCore::begin_group`]):
+    /// a group ends with its connection, as a drag does.
+    pub(crate) undo_group: journal::UndoGroup,
     // -- WP BULKFIX -- (fixup bf F1, F2, F4)
     /// The bulk dB bug's state on this connection: whether the firmware has
     /// the fix, and which outputs may hold the series' gains behind their
@@ -523,6 +535,8 @@ impl Connection {
             last_foreign: None,
             // -- WP P0WECHO --
             own_writes: journal::OwnWrites::default(),
+            // -- WP P1UG --
+            undo_group: journal::UndoGroup::default(),
             // -- WP BULKFIX --
             gain_guard,
             bulk_left_muted: false,

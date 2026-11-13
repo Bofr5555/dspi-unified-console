@@ -202,10 +202,23 @@ pub(crate) mod link {
                     DspiError::Link { msg, .. } => msg.clone(),
                     other => other.to_string(),
                 };
-                json!({ "ok": false, "code": error_code(&e), "error": text })
+                // -- WP P1NT -- `noticeKey`, as fns_misc's replies carry it.
+                json!({
+                    "ok": false,
+                    "code": error_code(&e),
+                    "error": text,
+                    "noticeKey": e.notice_key(),
+                })
             }
         };
         value.to_string()
+    }
+
+    // -- WP P1NT --
+    /// [`reply`], for fns_misc's notice tests.
+    #[cfg(test)]
+    pub(crate) fn reply_for_tests(r: Result<Value>) -> String {
+        reply(r)
     }
 
     /// A required string argument.

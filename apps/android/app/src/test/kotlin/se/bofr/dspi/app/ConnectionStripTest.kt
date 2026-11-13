@@ -18,7 +18,7 @@ class ConnectionStripTest {
         for (s in listOf(UsbSessionState.NoDevice, UsbSessionState.Open("x", UsbIds.DSPI_VID))) {
             val strip = connectionStrip(AppMode.DEMO, s)
             assertEquals(ConnectionStrip.Demo, strip)
-            assertTrue(strip.text.startsWith("Demo (no device)"))
+            assertTrue(strip.text.startsWith("Demo: a simulated DSPi") && strip.short == "Demo: a simulated DSPi")
         }
     }
 

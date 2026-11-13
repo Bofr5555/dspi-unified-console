@@ -238,6 +238,34 @@ pub const IMPORT_VOLUMES: u32 = 1;
 /// Import also applies the hardware settings (pins, interfaces).
 pub const IMPORT_HARDWARE: u32 = 2;
 
+// -- WP P1DF -- import options per block (PRO1 W8). Without
+// `IMPORT_BY_BLOCK` the two bits above keep their old meaning: the audio
+// blocks are always applied, `IMPORT_VOLUMES` adds the volumes and
+// `IMPORT_HARDWARE` the hardware I/O and the limiters. With it, each block
+// bit below (and the two above, for the volumes and the hardware I/O alone)
+// decides, and nothing else is applied.
+/// Import applies the EQ of each channel (and the master EQ bypass); the
+/// per-channel choice is `eq_channels` of the calls that take it.
+pub const IMPORT_EQ: u32 = 1 << 2;
+/// Import applies the outputs' crossover banks.
+pub const IMPORT_CROSSOVER: u32 = 1 << 3;
+/// Import applies the routing and matrix: crosspoints, input source, input
+/// preamps, input delays, input pair links, LG Sound Sync.
+pub const IMPORT_ROUTING: u32 = 1 << 4;
+/// Import applies the outputs: gain, mute, enable, delays.
+pub const IMPORT_OUTPUTS: u32 = 1 << 5;
+/// Import applies the outputs' limiters.
+pub const IMPORT_LIMITERS: u32 = 1 << 6;
+/// Import applies the effects: loudness, crossfeed, leveller, psychoacoustic
+/// bass, upmixer, subharmonic synthesizer, tube modeller.
+pub const IMPORT_EFFECTS: u32 = 1 << 7;
+/// Import applies the channel names.
+pub const IMPORT_NAMES: u32 = 1 << 8;
+/// Every block bit.
+pub const IMPORT_ALL_BLOCKS: u32 = 0x1FF;
+/// The block bits decide what an import applies.
+pub const IMPORT_BY_BLOCK: u32 = 1 << 16;
+
 // ── more notification flags ───────────────────────────────────────────
 
 /// The state could not be re-read after retries: it may be out of date.

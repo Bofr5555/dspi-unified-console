@@ -192,6 +192,10 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun configImport(text: String, options: Long): String = core.configImport(text, options.toUInt())
 
+    override fun configImportSelected(text: String, options: Long, eqChannels: Long): String = core.configImportSelected(text, options.toUInt(), eqChannels.toUInt())
+
+    override fun configPreview(text: String, options: Long, eqChannels: Long): String = core.configPreview(text, options.toUInt(), eqChannels.toUInt())
+
     override fun filtersExport(inputs: Int): String = call { core.filtersExport(inputs.toUByte()) }
 
     override fun filtersInspect(text: String, inputs: Int): String = core.filtersInspect(text, inputs.toUByte())
@@ -310,6 +314,10 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun setDragging(dragging: Boolean) = core.setDragging(dragging)
 
+    override fun beginGroup(label: String) = core.beginGroup(label)
+
+    override fun endGroup() = core.endGroup()
+
     override fun canUndo(): Boolean = core.canUndo()
 
     override fun canRedo(): Boolean = core.canRedo()
@@ -393,6 +401,8 @@ class FfiDspiCore : DspiCoreApi {
     override fun setCrossfeedFreq(freq: Float) = call { core.setCrossfeedFreq(freq) }
 
     override fun setCrossfeedFeed(feed: Float) = call { core.setCrossfeedFeed(feed) }
+
+    override fun crossfeedCustomPair(): CrossfeedPair = call { core.crossfeedCustomPair().toDomain() }
 
     override fun setCrossfeedItd(enabled: Boolean) = call { core.setCrossfeedItd(enabled) }
 
@@ -596,6 +606,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun configInspect(text: String): String = se.bofr.dspi.ffi.uniffi.configInspect(text)
 
+    override fun configDiff(before: String, after: String): String = se.bofr.dspi.ffi.uniffi.configDiff(before, after)
+
     override fun uf2Inspect(image: List<Int>): Uf2Info = se.bofr.dspi.ffi.uniffi.uf2Inspect(ByteArray(image.size) { image[it].toByte() }).toDomain()
 
     override fun bootloaderCounts(): BootloaderCounts = se.bofr.dspi.ffi.uniffi.bootloaderCounts().toDomain()
@@ -629,6 +641,12 @@ class FfiDspiCore : DspiCoreApi {
     override fun filterTypeNames(): List<FilterTypeName> = se.bofr.dspi.ffi.uniffi.filterTypeNames().map { it.toDomain() }
 
     override fun filterTypeName(code: Int): String = se.bofr.dspi.ffi.uniffi.filterTypeName(code.toUByte())
+
+    override fun noticeFor(error: DspiException): Notice = se.bofr.dspi.ffi.uniffi.noticeFor(error.toFfi()).toDomain()
+
+    override fun noticeForKey(key: String, detail: String): Notice = se.bofr.dspi.ffi.uniffi.noticeForKey(key, detail).toDomain()
+
+    override fun noticeTexts(): List<Notice> = se.bofr.dspi.ffi.uniffi.noticeTexts().map { it.toDomain() }
 
     override fun outputLabelsFor(input: OutputLabelInput): List<OutputLabel> = se.bofr.dspi.ffi.uniffi.outputLabelsFor(input.toFfi()).map { it.toDomain() }
 
@@ -1967,6 +1985,18 @@ internal fun UsbErrorStats.toFfi() =
         dataSeq = dataSeq.toUInt(),
     )
 
+internal fun se.bofr.dspi.ffi.uniffi.CrossfeedPair.toDomain() =
+    CrossfeedPair(
+        freqHz = freqHz,
+        feedDb = feedDb,
+    )
+
+internal fun CrossfeedPair.toFfi() =
+    se.bofr.dspi.ffi.uniffi.CrossfeedPair(
+        freqHz = freqHz,
+        feedDb = feedDb,
+    )
+
 internal fun se.bofr.dspi.ffi.uniffi.AudioLinkInfo.toDomain() =
     AudioLinkInfo(
         role = role,
@@ -2272,6 +2302,7 @@ internal fun se.bofr.dspi.ffi.uniffi.HistoryEntry.toDomain() =
         source = source.toDomain(),
         atMs = atMs.toLong(),
         undoable = undoable,
+        label = label,
     )
 
 internal fun HistoryEntry.toFfi() =
@@ -2283,6 +2314,7 @@ internal fun HistoryEntry.toFfi() =
         source = source.toFfi(),
         atMs = atMs.toULong(),
         undoable = undoable,
+        label = label,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.HistoryMove.toDomain() =
@@ -2587,6 +2619,26 @@ internal fun FilterTypeName.toFfi() =
         name = name,
     )
 
+internal fun se.bofr.dspi.ffi.uniffi.Notice.toDomain() =
+    Notice(
+        key = key,
+        kind = kind.toDomain(),
+        title = title,
+        reason = reason,
+        action = action,
+        detail = detail,
+    )
+
+internal fun Notice.toFfi() =
+    se.bofr.dspi.ffi.uniffi.Notice(
+        key = key,
+        kind = kind.toFfi(),
+        title = title,
+        reason = reason,
+        action = action,
+        detail = detail,
+    )
+
 internal fun se.bofr.dspi.ffi.uniffi.OutputLabel.toDomain() =
     OutputLabel(
         output = output.toInt(),
@@ -2857,6 +2909,20 @@ internal fun HistorySource.toFfi(): se.bofr.dspi.ffi.uniffi.HistorySource =
         HistorySource.LOCAL -> se.bofr.dspi.ffi.uniffi.HistorySource.LOCAL
         HistorySource.UNDO -> se.bofr.dspi.ffi.uniffi.HistorySource.UNDO
         HistorySource.REDO -> se.bofr.dspi.ffi.uniffi.HistorySource.REDO
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.NoticeKind.toDomain(): NoticeKind =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.NoticeKind.INFO -> NoticeKind.INFO
+        se.bofr.dspi.ffi.uniffi.NoticeKind.WARNING -> NoticeKind.WARNING
+        se.bofr.dspi.ffi.uniffi.NoticeKind.ERROR -> NoticeKind.ERROR
+    }
+
+internal fun NoticeKind.toFfi(): se.bofr.dspi.ffi.uniffi.NoticeKind =
+    when (this) {
+        NoticeKind.INFO -> se.bofr.dspi.ffi.uniffi.NoticeKind.INFO
+        NoticeKind.WARNING -> se.bofr.dspi.ffi.uniffi.NoticeKind.WARNING
+        NoticeKind.ERROR -> se.bofr.dspi.ffi.uniffi.NoticeKind.ERROR
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.VregCalPhase.toDomain(): VregCalPhase =

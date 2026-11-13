@@ -2204,6 +2204,51 @@
 #define IMPORT_HARDWARE 2
 
 /**
+ * `dspi_core::consts::IMPORT_EQ`.
+ */
+#define IMPORT_EQ 4
+
+/**
+ * `dspi_core::consts::IMPORT_CROSSOVER`.
+ */
+#define IMPORT_CROSSOVER 8
+
+/**
+ * `dspi_core::consts::IMPORT_ROUTING`.
+ */
+#define IMPORT_ROUTING 16
+
+/**
+ * `dspi_core::consts::IMPORT_OUTPUTS`.
+ */
+#define IMPORT_OUTPUTS 32
+
+/**
+ * `dspi_core::consts::IMPORT_LIMITERS`.
+ */
+#define IMPORT_LIMITERS 64
+
+/**
+ * `dspi_core::consts::IMPORT_EFFECTS`.
+ */
+#define IMPORT_EFFECTS 128
+
+/**
+ * `dspi_core::consts::IMPORT_NAMES`.
+ */
+#define IMPORT_NAMES 256
+
+/**
+ * `dspi_core::consts::IMPORT_ALL_BLOCKS`.
+ */
+#define IMPORT_ALL_BLOCKS 511
+
+/**
+ * `dspi_core::consts::IMPORT_BY_BLOCK`.
+ */
+#define IMPORT_BY_BLOCK 65536
+
+/**
  * `dspi_proto::generated::cs::CS_MAX_BINDINGS`.
  */
 #define CS_MAX_BINDINGS 16
@@ -2930,6 +2975,21 @@ typedef struct DspState {
    */
   uint8_t bulk_raw[BULK_PARAMS_SIZE];
 } DspState;
+
+/**
+ * The crossfeed's custom pair as the device keeps it
+ * (`dspi_get_crossfeed_custom_pair`).
+ */
+typedef struct CrossfeedPair {
+  /**
+   * Frequency, in Hz.
+   */
+  float freq_hz;
+  /**
+   * Feed level, in dB.
+   */
+  float feed_db;
+} CrossfeedPair;
 
 /**
  * The upmixer's live telemetry.
@@ -3902,6 +3962,13 @@ bool dspi_set_crossfeed_freq(struct FfiCore *core, float freq);
 bool dspi_set_crossfeed_feed(struct FfiCore *core, float feed);
 
 /**
+ * The crossfeed's custom pair as the device keeps it, whatever the preset
+ * (`dspi_get_state` shows a named preset's values instead), into `out`.
+ * False with no device. No transfer.
+ */
+bool dspi_get_crossfeed_custom_pair(struct FfiCore *core, struct CrossfeedPair *out);
+
+/**
  * Turn the crossfeed's interaural time delay on or off.
  */
 bool dspi_set_crossfeed_itd(struct FfiCore *core, bool enabled);
@@ -4552,6 +4619,39 @@ uint32_t dspi_config_import(struct FfiCore *core,
                             uint32_t len);
 
 /**
+ * Apply a configuration document by block: `options` as
+ * `dspi_config_import`'s, or with `DSPI_IMPORT_BY_BLOCK` the
+ * `DSPI_IMPORT_*` block bits; `eq_channels` the wire channels whose EQ is
+ * applied (bit k: channel k; all bits: every one). JSON reply; the device
+ * has changed whatever the buffer.
+ */
+uint32_t dspi_config_import_selected(struct FfiCore *core,
+                                     const char *text,
+                                     uint32_t options,
+                                     uint32_t eq_channels,
+                                     char *buf,
+                                     uint32_t len);
+
+/**
+ * What `dspi_config_import_selected` with the same arguments would change
+ * on the device, without writing: JSON rows `{block, section, item,
+ * before, after}`, counts per block and a summary. No I/O.
+ */
+uint32_t dspi_config_preview(struct FfiCore *core,
+                             const char *text,
+                             uint32_t options,
+                             uint32_t eq_channels,
+                             char *buf,
+                             uint32_t len);
+
+/**
+ * What differs between two configuration documents, `before` and `after`,
+ * without a device: the JSON of `dspi_config_preview`. Returns the bytes
+ * needed, 0 only for a panic.
+ */
+uint32_t dspi_config_diff(const char *before, const char *after, char *buf, uint32_t len);
+
+/**
  * The filters of the device's `inputs` inputs and every output as a filter
  * document, or a JSON failure.
  */
@@ -5077,12 +5177,15 @@ bool dspi_can_redo(const struct FfiCore *core);
 /**
  * The newest `n` changes of the open connection, newest first, in JSON
  * (`value`: a list of `{path, indices, before, after, source, atMs,
- * undoable}`; `before` and `after` are parameter values as
+ * undoable, label}`; `label` the undo group's, or null (WP P1UG); `before` and `after` are parameter values as
  * `dspi_write_param` takes them, `before` null when unknown; `source` is
  * `local`, `undo` or `redo`; `atMs` milliseconds since the Unix epoch). A
  * reconnect starts a new history. `NOTIFY_HISTORY` says when it moved.
  */
-uint32_t dspi_history(struct FfiCore *core, uint32_t n, char *buf, uint32_t len);
+uint32_t dspi_history(struct FfiCore *core,
+                      uint32_t n,
+                      char *buf,
+                      uint32_t len);
 
 /**
  * Mark a continuous drag (`DspiCore::set_dragging`): `true` when a slider
@@ -5092,6 +5195,24 @@ uint32_t dspi_history(struct FfiCore *core, uint32_t n, char *buf, uint32_t len)
  * writes, in order with them. Nothing for a null handle.
  */
 void dspi_set_dragging(const struct FfiCore *core, bool dragging);
+
+/**
+ * Begin an undo group (`DspiCore::begin_group`): everything written until
+ * the matching `dspi_undo_group_end` that undo can reverse is one undo
+ * step, carrying `label` (the `label` field of `dspi_history`'s entries;
+ * null or not UTF-8 counts as no label). Groups nest; a disconnect, another
+ * device opened, a re-read or a preset load, bulk image or factory reset
+ * ends one. Call it on the thread that sends the group's writes, in order
+ * with them. Nothing for a null handle or with no device.
+ */
+void dspi_undo_group_begin(const struct FfiCore *core, const char *label);
+
+/**
+ * End the undo group `dspi_undo_group_begin` opened
+ * (`DspiCore::end_group`); the outermost end ends the step. Nothing for a
+ * null handle or when no group is open.
+ */
+void dspi_undo_group_end(const struct FfiCore *core);
 
 /**
  * Answer a fetch: the HTTP status and body, as received, for any status.
@@ -5436,6 +5557,22 @@ uint8_t dspi_reset_audio_link_stats(struct FfiCore *core);
  * open device.
  */
 bool dspi_open_demo_audio_link(struct FfiCore *core);
+
+/**
+ * The notice for a key, in JSON: {ok, key, kind, title, reason, action, detail}.
+ * `key` is a failure reply's `noticeKey`; `detail` (null reads as empty) is put in
+ * `detail`, normally that reply's `error`. `kind` is `info`, `warning` or `error`.
+ * A key the table does not have gives the `unknown` row. Returns the bytes needed
+ * including the NUL, 0 for a null `key` or a panic.
+ */
+uint32_t dspi_notice_for(const char *key, const char *detail, char *buf, uint32_t len);
+
+/**
+ * The whole notice table in JSON, every key once, `detail` empty: {ok,
+ * value:[{key, kind, title, reason, action, detail}]}. Returns the bytes needed
+ * including the NUL, 0 for a panic.
+ */
+uint32_t dspi_notice_texts(char *buf, uint32_t len);
 
 /**
  * Start looking for hubs on the local network, replacing any browse running.

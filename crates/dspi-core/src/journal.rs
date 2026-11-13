@@ -62,6 +62,23 @@
 //! once, whatever fields the drag moves (WP P0W2). A value someone else has
 //! changed since is judged on its own: it is left alone and its writer
 //! named, the others go back.
+//!
+//! A compound edit that is not a drag (a linked pair's two trims, a Clear
+//! All, a routing preset) is one step through an undo group (WP P1UG):
+//! [`DspiCore::begin_group`] with a label, then the writes, then
+//! [`DspiCore::end_group`]. Everything written between them that undo can
+//! reverse is one step carrying the label, as a drag is; groups nest, and
+//! only the outermost begin and end count. A group ends with its
+//! connection (a disconnect, another device opened, a re-attach), with a
+//! re-read ([`DspiCore::fetch_all`]) and with a change that ends the history
+//! (a preset load, a bulk image, a factory reset), as a drag does. An empty
+//! group records nothing. A write undo cannot reverse stands apart and ends
+//! the step, as in a drag; the group's later writes gather a step of their
+//! own. Another writer's change during a group does not split it; a value
+//! the group writes again after another writer's change starts a new step,
+//! so undo never goes back past their value. Undo judges each value of the
+//! step on its own: one someone else has changed since is left alone and
+//! its writer named, the others go back.
 #![warn(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -209,9 +226,79 @@ pub(crate) fn note_foreign(
     };
     let at_ms = now_ms();
     conn.last_foreign = Some(ForeignWrite { at_ms, writer });
+    // -- WP P1UG -- inside a group the step goes on; a value the group
+    // writes again after this starts a new one (`split_regroup`)
+    if conn.undo_group.is_open() {
+        conn.undo_group.foreign_since = true;
+        return;
+    }
     // -- WP SWAPFIX -- a change of ours after theirs is a step of its own
     if let Ok(session) = conn.session() {
         session.end_step();
+    }
+}
+
+// -- WP P1UG --
+/// The undo group open on a connection ([`DspiCore::begin_group`]): how
+/// deep, the outermost label, and whether another writer changed the device
+/// since the step began.
+#[derive(Debug, Default)]
+pub(crate) struct UndoGroup {
+    depth: u32,
+    label: String,
+    foreign_since: bool,
+}
+
+impl UndoGroup {
+    /// Whether a group is open.
+    pub(crate) fn is_open(&self) -> bool {
+        self.depth > 0
+    }
+}
+
+/// End the group open on `conn`, whatever its depth, and the step it
+/// gathers. Nothing when none is open.
+fn end_undo_group(conn: &mut crate::Connection) {
+    if !conn.undo_group.is_open() {
+        return;
+    }
+    conn.undo_group = UndoGroup::default();
+    if let Ok(session) = conn.session() {
+        session.end_step();
+    }
+}
+
+/// Whether journal paths `a` and `b` name one value: the same path, or two
+/// of a band's ([`BAND_FIELDS`] and [`EQ_BAND`]).
+fn same_value(a: &str, b: &str) -> bool {
+    let of_band = |p: &str| p == EQ_BAND || BAND_FIELDS.contains(&p);
+    a == b || (of_band(a) && of_band(b))
+}
+
+/// Inside a group, after another writer's change: when `change` writes a
+/// value the step being gathered already holds, end the step first, so
+/// undo of the new step goes back to the other writer's value and never
+/// past it (WP SWAPFIX's rule).
+fn split_regroup(conn: &mut crate::Connection, change: &Change) {
+    if !conn.undo_group.foreign_since {
+        return;
+    }
+    let Ok(session) = conn.session() else {
+        return;
+    };
+    // No step gathered: this change starts one after theirs anyway.
+    let held = session.gathering(change.source).map(|step| {
+        step.values()
+            .iter()
+            .any(|v| v.indices == change.indices && same_value(v.path, change.path))
+    });
+    match held {
+        Some(false) => {}
+        Some(true) => {
+            session.end_step();
+            conn.undo_group.foreign_since = false;
+        }
+        None => conn.undo_group.foreign_since = false,
     }
 }
 
@@ -228,13 +315,16 @@ pub(crate) fn note_reread(conn: &mut crate::Connection, changed: bool) {
             writer: "another writer".into(),
         });
     }
+    // -- WP P1UG -- a re-read ends a group as it ends a drag
+    end_undo_group(conn);
     if let Ok(session) = conn.session() {
         session.end_step();
     }
 }
 
 /// Whether someone else changed `path` at `indices` since this client left
-/// it at `expected` (in a step last written at `at_ms`), and who, in words;
+/// it at `expected` (in a step begun at `at_ms`: WP P1UG, a group's step
+/// goes on after another writer's change), and who, in words;
 /// `None` when the mirror still holds it (or holds no single value for it).
 fn overwritten(
     inner: &Inner,
@@ -441,8 +531,10 @@ impl Pending {
         // one drag every value undo can put back joins, whatever it is (WP
         // P0W2, O1); one undo cannot reverse (a hazard, an action) stays
         // apart.
-        let coalesce =
-            inner.dragging() && hazard(self.path) == Hazard::None && after != Value::Trigger;
+        // -- WP P1UG -- an undo group gathers as a drag does
+        let gathering =
+            inner.dragging() || inner.conn.as_ref().is_some_and(|c| c.undo_group.is_open());
+        let coalesce = gathering && hazard(self.path) == Hazard::None && after != Value::Trigger;
         record(
             inner,
             Change {
@@ -479,6 +571,17 @@ pub(crate) fn journal(inner: &mut Inner, path: &'static str, indices: &[u8], aft
 
 /// Put `change` in the open session's journal; nowhere without one.
 fn record(inner: &mut Inner, change: Change) {
+    // -- WP P1UG -- a change that ends the history ends the group too; inside
+    // a group, a value written again after another writer's change starts a
+    // new step (before a band's paths are joined, so the new step holds it)
+    if let Some(conn) = inner.conn.as_mut() {
+        if dspi_session::history::RESETS_HISTORY.contains(&change.path) {
+            end_undo_group(conn);
+        }
+        if conn.undo_group.is_open() && change.source == ChangeSource::Local && change.coalesce {
+            split_regroup(conn, &change);
+        }
+    }
     let change = join_band_step(inner, change);
     let Some(conn) = inner.conn.as_mut() else {
         return;
@@ -486,8 +589,16 @@ fn record(inner: &mut Inner, change: Change) {
     // -- WP P0WECHO -- its echo may still be on the way
     conn.own_writes
         .note(change.path, &change.indices, &change.after, now_ms());
+    // -- WP P1UG -- a fresh change inside a group carries its label
+    let label = (conn.undo_group.is_open() && change.source == ChangeSource::Local)
+        .then(|| conn.undo_group.label.clone());
+    // An empty label names nothing; the writes still form one step.
+    let label = label.filter(|l| !l.is_empty());
     if let Ok(session) = conn.session() {
-        session.record_change(change);
+        match label {
+            Some(l) => session.record_in_group(change, &l),
+            None => session.record_change(change),
+        }
     }
 }
 
@@ -839,11 +950,16 @@ pub struct HistoryEntry {
     /// with no hazard (not a flash write, an audible one, a reconfiguration,
     /// a deferred or an irreversible one).
     pub undoable: bool,
+    // -- WP P1UG --
+    /// The undo group's label ([`DspiCore::begin_group`]) when the change
+    /// was written inside one; `None` otherwise.
+    pub label: Option<String>,
 }
 
 impl From<&JournalEntry> for HistoryEntry {
     fn from(e: &JournalEntry) -> Self {
         Self {
+            label: e.label.clone(),
             path: e.path.into(),
             indices: e.indices.clone(),
             before: e.before.clone().map(Into::into),
@@ -922,8 +1038,76 @@ impl DspiCore {
             .as_ref()
             .map(|c| c.generation)
             .filter(|_| dragging);
+        // -- WP P1UG -- a drag inside an undo group is part of its step
+        if inner.conn.as_ref().is_some_and(|c| c.undo_group.is_open()) {
+            return;
+        }
         if let Some(session) = inner.conn.as_mut().and_then(|c| c.session().ok()) {
             session.end_step();
+        }
+    }
+
+    // -- WP P1UG --
+    /// Begin an undo group: everything written until the matching
+    /// [`DspiCore::end_group`] that undo can reverse is one undo step,
+    /// carrying `label` ([`HistoryEntry::label`]), as a drag is. Use it for
+    /// one action that writes several values (a linked pair, a Clear All, a
+    /// routing preset). Groups nest: only the outermost begin starts the
+    /// step and takes its label, and only the matching end ends it. The
+    /// group belongs to the connection: a disconnect, another device
+    /// opened, a re-attach, a re-read ([`DspiCore::fetch_all`]) and a change
+    /// that ends the history (a preset load, a bulk image, a factory reset)
+    /// end it at any depth, and an `end_group` after that does nothing.
+    /// With no device the call is ignored. An empty group records nothing.
+    /// A write undo cannot reverse stands apart, as in a drag. The group is
+    /// the connection's, not the thread's: call it on the thread that sends
+    /// the group's writes, in order with them.
+    ///
+    /// A group begun while a drag is marked ([`DspiCore::set_dragging`])
+    /// joins the drag's step instead of ending it (the step takes the
+    /// group's label if it had none), and its `end_group` leaves that step
+    /// open until the drag ends: one drag is one step.
+    // -- WP P1AFIX -- (review p1a F5) a group inside a drag joins its step
+    pub fn begin_group(&self, label: String) {
+        let mut inner = self.lock();
+        let dragging = inner.dragging();
+        let Some(conn) = inner.conn.as_mut() else {
+            return;
+        };
+        if conn.undo_group.is_open() {
+            conn.undo_group.depth = conn.undo_group.depth.saturating_add(1);
+            return;
+        }
+        conn.undo_group = UndoGroup {
+            depth: 1,
+            label,
+            foreign_since: false,
+        };
+        if dragging {
+            return;
+        }
+        if let Ok(session) = conn.session() {
+            session.end_step();
+        }
+    }
+
+    // -- WP P1UG --
+    /// End the undo group [`DspiCore::begin_group`] opened: the outermost
+    /// end ends the step, so the next write is a step of its own. Nothing
+    /// when no group is open (one a disconnect or a re-read ended, or none
+    /// at all). Inside a drag the step goes on until `set_dragging(false)`.
+    // -- WP P1AFIX -- (review p1a F5)
+    pub fn end_group(&self) {
+        let mut inner = self.lock();
+        let dragging = inner.dragging();
+        let Some(conn) = inner.conn.as_mut() else {
+            return;
+        };
+        match conn.undo_group.depth {
+            0 => {}
+            1 if dragging => conn.undo_group = UndoGroup::default(),
+            1 => end_undo_group(conn),
+            d => conn.undo_group.depth = d.saturating_sub(1),
         }
     }
 
@@ -1168,7 +1352,7 @@ fn judge(
     let (mut keep, mut left) = (Vec::new(), Vec::new());
     let mut notes: Vec<String> = Vec::new();
     for v in entry.values() {
-        match expected(&v).and_then(|x| overwritten(inner, v.path, &v.indices, entry.at_ms, x)) {
+        match expected(&v).and_then(|x| overwritten(inner, v.path, &v.indices, entry.begun_ms, x)) {
             Some(n) => {
                 if !notes.contains(&n) {
                     notes.push(n);
@@ -1181,6 +1365,7 @@ fn judge(
                     source: entry.source.into(),
                     at_ms: entry.at_ms,
                     undoable: entry.undoable,
+                    label: entry.label.clone(), // -- WP P1UG --
                 });
             }
             None => keep.push(v),
@@ -1224,3 +1409,9 @@ mod tests_wp_qtgap1;
 #[allow(clippy::arithmetic_side_effects)]
 #[path = "journal/tests_wp_p0w2.rs"]
 mod tests_wp_p0w2;
+
+// -- WP P1UG --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+#[path = "journal/tests_wp_p1ug.rs"]
+mod tests_wp_p1ug;

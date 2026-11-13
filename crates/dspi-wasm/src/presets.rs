@@ -60,6 +60,76 @@ pub fn factory_reset(core: &DspiCore) -> Result<Value, CallError> {
     Ok(Value::Null)
 }
 
+// -- WP P1DF --
+/// `configDiff`'s parameters: two `.dspipreset` documents.
+#[derive(Debug, Deserialize)]
+pub struct DiffParams {
+    pub before: String,
+    pub after: String,
+}
+
+/// `configDiff`: what differs between two documents, with no device
+/// (`dspi_core::files::config_diff`'s JSON).
+pub fn diff(p: DiffParams) -> Result<Value, CallError> {
+    reply(&dspi_core::files::config_diff(p.before, p.after))
+}
+
+/// `configPreview`'s parameters: a document and the import options
+/// (`IMPORT_*` bits, with `IMPORT_BY_BLOCK` by block) and the EQ channels
+/// (bit k: wire channel k; every one when absent).
+#[derive(Debug, Deserialize)]
+pub struct PreviewParams {
+    pub text: String,
+    #[serde(default)]
+    pub options: u32,
+    #[serde(default = "every_channel", rename = "eqChannels")]
+    pub eq_channels: u32,
+}
+
+fn every_channel() -> u32 {
+    u32::MAX
+}
+
+/// `configPreview`: what importing the document would change on the open
+/// device, without writing (`DspiCore::config_preview`'s JSON).
+pub fn preview(core: &DspiCore, p: PreviewParams) -> Result<Value, CallError> {
+    need_device(core)?;
+    reply(&core.config_preview(p.text, p.options, p.eq_channels))
+}
+
+/// A core JSON reply as the call's value; its `{ok: false, error}` as a
+/// `bad_document` failure, with the core's `noticeKey` (WP P1AFIX, review
+/// p1a N3).
+fn reply(text: &str) -> Result<Value, CallError> {
+    let v: Value = serde_json::from_str(text)
+        .map_err(|e| CallError::new("internal", format!("unreadable reply: {e}")))?;
+    if v.get("ok") == Some(&Value::Bool(true)) {
+        Ok(v)
+    } else {
+        let why = v
+            .get("error")
+            .and_then(Value::as_str)
+            .unwrap_or("not a DSPi configuration");
+        // -- WP P1AFIX --
+        let notice_key = v
+            .get("noticeKey")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        Err(CallError {
+            notice_key,
+            ..CallError::new("bad_document", why)
+        })
+    }
+}
+
+// -- WP P1AFIX -- (review p1a N1)
+/// `crossfeedCustomPair`: the crossfeed's custom pair as the device keeps it,
+/// whatever the preset (`DspiCore::crossfeed_custom_pair`): `{freqHz,
+/// feedDb}`. No transfer.
+pub fn crossfeed_custom_pair(core: &DspiCore) -> Result<Value, CallError> {
+    Ok(crate::calls::tidy(&core.crossfeed_custom_pair()?))
+}
+
 fn need_device(core: &DspiCore) -> Result<(), CallError> {
     if core.is_connected() {
         Ok(())
@@ -91,6 +161,77 @@ mod tests {
         let r = run(h, method, params);
         assert_eq!(r["ok"], true, "{method}: {r}");
         r["value"].clone()
+    }
+
+    // -- WP P1DF --
+    #[test]
+    fn p1df_config_diff_and_preview() {
+        const MAC: &str = include_str!("../../../tests/fixtures/preset/mac-swift-v32.dspipreset");
+        const QT: &str = include_str!("../../../tests/fixtures/preset/qt-core-v32.dspipreset");
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        let d = ok(h, "configDiff", json!({ "before": QT, "after": MAC }));
+        assert!(d["count"].as_u64().unwrap() > 0, "{d}");
+        assert_eq!(
+            run(h, "configDiff", json!({ "before": "{", "after": MAC }))["code"],
+            "bad_document"
+        );
+        assert_eq!(
+            run(h, "configPreview", json!({ "text": MAC }))["code"],
+            "not_open"
+        );
+        ok(h, "open", json!({ "kind": "demo" }));
+        // Volumes alone (IMPORT_BY_BLOCK | IMPORT_VOLUMES).
+        let p = ok(
+            h,
+            "configPreview",
+            json!({ "text": MAC, "options": (1 << 16) | 1 }),
+        );
+        assert_eq!(p["count"], 2, "{p}");
+        assert_eq!(p["blocks"]["volumes"], 2);
+        // EQ of wire channel 1 only.
+        let p = ok(
+            h,
+            "configPreview",
+            json!({ "text": MAC, "options": (1 << 16) | 4, "eqChannels": 2 }),
+        );
+        assert_eq!(p["count"], 2, "{p}");
+    }
+
+    // -- WP P1AFIX --
+    #[test]
+    fn wp_p1afix_config_refusals_carry_a_notice_key_and_the_custom_pair_reads() {
+        const QT: &str = include_str!("../../../tests/fixtures/preset/qt-core-v32.dspipreset");
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        let r = run(h, "configDiff", json!({ "before": "{", "after": QT }));
+        assert_eq!(r["code"], "bad_document", "{r}");
+        assert_eq!(r["noticeKey"], "config.unreadable", "{r}");
+        assert_eq!(
+            run(h, "crossfeedCustomPair", Value::Null)["code"],
+            "not_open"
+        );
+        ok(h, "open", json!({ "kind": "demo" }));
+        let r = run(h, "configPreview", json!({ "text": "{" }));
+        assert_eq!(r["noticeKey"], "config.unreadable", "{r}");
+        ok(
+            h,
+            "write",
+            json!({ "path": "cf.preset", "value": { "choice": 3 } }),
+        );
+        ok(
+            h,
+            "write",
+            json!({ "path": "cf.freq", "value": { "float": 820.0 } }),
+        );
+        ok(
+            h,
+            "write",
+            json!({ "path": "cf.preset", "value": { "choice": 2 } }),
+        );
+        let p = ok(h, "crossfeedCustomPair", Value::Null);
+        assert_eq!(p["freqHz"], 820.0, "{p}");
+        assert!(p["feedDb"].is_number(), "{p}");
     }
 
     #[test]

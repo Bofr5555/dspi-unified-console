@@ -387,8 +387,12 @@ impl DspiCore {
     }
 
     /// Crossfeed preset: 0 default, 1 Chu Moy, 2 Meier, 3 custom. Only the
-    /// preset changes: `crossfeed_freq` and `crossfeed_feed` are the device's
-    /// custom values, which it keeps whatever the preset.
+    /// preset is sent: the device keeps its custom frequency and feed whatever
+    /// the preset. While a named preset (0 to 2) is chosen, `get_state` gives
+    /// that preset's frequency and feed (700 Hz / 4.5 dB, 700 Hz / 6 dB,
+    /// 650 Hz / 9.5 dB), which the device runs; with Custom (3) it gives the
+    /// custom pair again. A preset export, the bulk image and undo keep the
+    /// custom pair.
     ///
     /// Errors: [`DspiError::InvalidArgument`] for another preset; the
     /// connection and transfer errors of every setter.
@@ -416,6 +420,26 @@ impl DspiCore {
     pub fn set_crossfeed_feed(&self, feed: f32) -> Result<()> {
         let val = clamped("cf.feed", feed)?;
         self.set_scalar("cf.feed", Value::Float(val), |s| s.crossfeed_feed = val)
+    }
+
+    // -- WP P1AFIX -- (review p1a N1)
+    /// The crossfeed's custom pair (frequency and feed) as the device keeps
+    /// it: what Custom runs. Under a named preset `get_state` gives that
+    /// preset's values instead; this gives the custom pair whatever the
+    /// preset, from the mirror (no transfer). It is what
+    /// `set_crossfeed_freq`/`set_crossfeed_feed` write, an export saves, and
+    /// `config_diff`/`config_preview` compare.
+    ///
+    /// Errors: [`DspiError::Disconnected`] with no device.
+    pub fn crossfeed_custom_pair(&self) -> Result<CrossfeedPair> {
+        let inner = self.lock();
+        if inner.conn.is_none() {
+            return Err(DspiError::Disconnected);
+        }
+        Ok(CrossfeedPair {
+            freq_hz: inner.state.crossfeed_freq,
+            feed_db: inner.state.crossfeed_feed,
+        })
     }
 
     /// Crossfeed interaural time delay on (`true`) or off.
@@ -877,6 +901,25 @@ fn commit(inner: &mut Inner) {
     }
 }
 
+// -- WP P1XF --
+/// The named crossfeed presets' (frequency Hz, feed dB) by preset number:
+/// Default, Chu Moy, Meier, as the firmware runs them (`crossfeed.c`
+/// `presets`). Preset 3 is Custom, which runs the custom pair.
+pub(crate) const CROSSFEED_PRESETS: [(f32, f32); 3] = [(700.0, 4.5), (700.0, 6.0), (650.0, 9.5)];
+
+/// The mirror as clients read it: under a named crossfeed preset,
+/// `crossfeed_freq` and `crossfeed_feed` are that preset's values, so every
+/// client's graph draws what the device runs. The core's own record and
+/// `bulk_raw` keep the device's custom pair, which the export, the journal and
+/// Custom use.
+pub(crate) fn crossfeed_shown(mut s: DspState) -> DspState {
+    if let Some(&(freq, feed)) = CROSSFEED_PRESETS.get(usize::from(s.crossfeed_preset)) {
+        s.crossfeed_freq = freq;
+        s.crossfeed_feed = feed;
+    }
+    s
+}
+
 // ── Validation ─────────────────────────────────────────────────────────
 
 fn invalid(msg: String) -> DspiError {
@@ -1033,7 +1076,9 @@ mod tests_wp_c3 {
     /// The device's image decoded onto a copy of the mirror (so the fields
     /// the image does not carry agree), `bulk_raw` taken from the mirror.
     fn device_view(core: &DspiCore, remote: &FakeRemote) -> (DspState, DspState) {
-        let mirror = core.get_state();
+        // -- WP P1XF -- the core's record: `get_state` shows a named
+        // crossfeed preset's values, not the custom pair the image holds
+        let mirror = core.lock().state.clone();
         let mut dev = mirror.clone();
         state::decode_bulk(&remote.image(), &mut dev).unwrap();
         dev.bulk_raw.clone_from(&mirror.bulk_raw);
@@ -1343,10 +1388,11 @@ mod tests_wp_c3 {
         assert_eq!(core.get_state().loudness_ref_spl, 40.0);
         core.set_loudness_intensity(500.0).unwrap();
         assert_eq!(core.get_state().loudness_intensity, 200.0);
+        // -- WP P1XF -- the custom pair (the demo runs a named preset)
         core.set_crossfeed_freq(100.0).unwrap();
-        assert_eq!(core.get_state().crossfeed_freq, 500.0);
+        assert_eq!(core.lock().state.crossfeed_freq, 500.0);
         core.set_crossfeed_feed(20.0).unwrap();
-        assert_eq!(core.get_state().crossfeed_feed, 15.0);
+        assert_eq!(core.lock().state.crossfeed_feed, 15.0);
         core.set_leveller_amount(101.0).unwrap();
         assert_eq!(core.get_state().leveller_amount, 100.0);
         core.set_leveller_max_gain(-1.0).unwrap();
@@ -1605,12 +1651,15 @@ mod tests_wp_c3 {
         core.set_crossfeed_freq(800.0).unwrap();
         core.set_crossfeed_feed(5.0).unwrap();
         core.set_crossfeed_preset(2).unwrap();
+        // -- WP P1XF -- the core's record keeps the custom pair, as the
+        // device does; `get_state` gives Meier's values
         let s = core.get_state();
         assert_eq!(
             (s.crossfeed_preset, s.crossfeed_freq, s.crossfeed_feed),
-            (2, 800.0, 5.0)
+            (2, 650.0, 9.5)
         );
         let (mirror, dev) = device_view(&core, &remote);
+        assert_eq!((mirror.crossfeed_freq, mirror.crossfeed_feed), (800.0, 5.0));
         assert_eq!(dev, mirror, "the mirror reads as the device's image");
     }
 
@@ -1895,3 +1944,9 @@ mod tests_wp_cg37 {
         }
     }
 }
+
+// -- WP P1XF --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+#[path = "params/tests_wp_p1xf.rs"]
+mod tests_wp_p1xf;

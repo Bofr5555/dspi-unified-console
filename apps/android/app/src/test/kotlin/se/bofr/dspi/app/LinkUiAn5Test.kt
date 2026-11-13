@@ -87,6 +87,9 @@ class LinkUiAn5Test {
         show(LinkSessionState.WaitingForDevice(hub, ""))
         rule.onNodeWithText("Connected to hub, no DSPi found · Studio Mac").assertIsDisplayed()
         rule.onNodeWithTag(LINK_BANNER_TAG).assertDoesNotExist()
+        // -- WP AN42 -- a phone-width strip keeps its actions behind the overflow
+        rule.onNodeWithTag(STRIP_MENU_TAG).performClick()
+        rule.mainClock.advanceTimeBy(3_000)
         rule.onNodeWithText("Disconnect").assertIsDisplayed()
     }
 
@@ -119,6 +122,8 @@ class LinkUiAn5Test {
         }
         val actions = show(LinkSessionState.Failed(hub, text(LinkPhase.REFUSED)))
         rule.onNodeWithText(text(LinkPhase.REFUSED)).assertIsDisplayed()
+        rule.onNodeWithTag(STRIP_MENU_TAG).performClick() // -- WP AN42 --
+        rule.mainClock.advanceTimeBy(3_000)
         rule.onNodeWithText("Connect").performClick()
         assertEquals(listOf(RemoteAction.CONNECT), actions)
     }

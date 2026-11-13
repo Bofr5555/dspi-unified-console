@@ -136,6 +136,10 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun configImport(text: String, options: Long): String = throw NotImplementedError("config_import")
 
+    override fun configImportSelected(text: String, options: Long, eqChannels: Long): String = throw NotImplementedError("config_import_selected")
+
+    override fun configPreview(text: String, options: Long, eqChannels: Long): String = throw NotImplementedError("config_preview")
+
     override fun filtersExport(inputs: Int): String = throw NotImplementedError("filters_export")
 
     override fun filtersInspect(text: String, inputs: Int): String = throw NotImplementedError("filters_inspect")
@@ -254,6 +258,10 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun setDragging(dragging: Boolean): Unit = throw NotImplementedError("set_dragging")
 
+    override fun beginGroup(label: String): Unit = throw NotImplementedError("begin_group")
+
+    override fun endGroup(): Unit = throw NotImplementedError("end_group")
+
     override fun canUndo(): Boolean = throw NotImplementedError("can_undo")
 
     override fun canRedo(): Boolean = throw NotImplementedError("can_redo")
@@ -337,6 +345,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun setCrossfeedFreq(freq: Float): Unit = throw NotImplementedError("set_crossfeed_freq")
 
     override fun setCrossfeedFeed(feed: Float): Unit = throw NotImplementedError("set_crossfeed_feed")
+
+    override fun crossfeedCustomPair(): CrossfeedPair = throw NotImplementedError("crossfeed_custom_pair")
 
     override fun setCrossfeedItd(enabled: Boolean): Unit = throw NotImplementedError("set_crossfeed_itd")
 
@@ -540,6 +550,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun configInspect(text: String): String = throw NotImplementedError("config_inspect")
 
+    override fun configDiff(before: String, after: String): String = throw NotImplementedError("config_diff")
+
     override fun uf2Inspect(image: List<Int>): Uf2Info = throw NotImplementedError("uf2_inspect")
 
     override fun bootloaderCounts(): BootloaderCounts = throw NotImplementedError("bootloader_counts")
@@ -573,6 +585,12 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun filterTypeNames(): List<FilterTypeName> = throw NotImplementedError("filter_type_names")
 
     override fun filterTypeName(code: Int): String = throw NotImplementedError("filter_type_name")
+
+    override fun noticeFor(error: DspiException): Notice = throw NotImplementedError("notice_for")
+
+    override fun noticeForKey(key: String, detail: String): Notice = throw NotImplementedError("notice_for_key")
+
+    override fun noticeTexts(): List<Notice> = throw NotImplementedError("notice_texts")
 
     override fun outputLabelsFor(input: OutputLabelInput): List<OutputLabel> = throw NotImplementedError("output_labels_for")
 

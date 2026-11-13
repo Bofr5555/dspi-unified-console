@@ -153,8 +153,9 @@ fn render_about(platform: Platform) -> String {
 }
 
 /// What the wording in the assets depends on.
+// -- WP P1NT -- pub(crate): notice_text.rs renders its asset by the same rules.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Platform {
+pub(crate) enum Platform {
     MacOs,
     Windows,
     Linux,
@@ -165,7 +166,7 @@ enum Platform {
 impl Platform {
     /// The platform this library is compiled for. Any other target reads as
     /// Linux, the plainest desktop wording.
-    const COMPILED: Self = if cfg!(target_os = "macos") {
+    pub(crate) const COMPILED: Self = if cfg!(target_os = "macos") {
         Self::MacOs
     } else if cfg!(target_os = "windows") {
         Self::Windows
@@ -256,7 +257,7 @@ fn render_text(text: &str, platform: Platform) -> String {
 
 /// A document with every text resolved and every `when` applied; `None` for an
 /// object whose `when` does not hold, or that names no condition.
-fn render_value(value: Value, platform: Platform) -> Option<Value> {
+pub(crate) fn render_value(value: Value, platform: Platform) -> Option<Value> {
     match value {
         Value::String(s) => Some(Value::String(render_text(&s, platform))),
         Value::Array(items) => Some(Value::Array(

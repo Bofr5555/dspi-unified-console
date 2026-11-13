@@ -266,7 +266,9 @@ interface DspiCoreApi : AutoCloseable {
 
     /**
      * Copy of the cached state (the C ABI returns a borrowed pointer).
-     * Defaults while disconnected. Never fails.
+     * Defaults while disconnected. Never fails. Under a named crossfeed
+     * preset, `crossfeed_freq` and `crossfeed_feed` are that preset's values
+     * (see `set_crossfeed_preset`).
      */
     fun getState(): DspState
 
@@ -793,6 +795,20 @@ interface DspiCoreApi : AutoCloseable {
      * it was.
      */
     fun configImport(text: String, options: Long): String
+
+    fun configImportSelected(text: String, options: Long, eqChannels: Long): String
+
+    /**
+     * What importing `text` with `options` and `eq_channels` (as
+     * [`DspiCore::config_import_selected`] takes them) would change on the
+     * device, without writing anything: the preview shown before an import
+     * (PRO1 W5). No I/O.
+     *
+     * Returns [`config_diff`]'s JSON, the device's values as `before`.
+     * `{ok: false, error}` for a text that is not a document this build
+     * reads, or with no device whose settings have been read.
+     */
+    fun configPreview(text: String, options: Long, eqChannels: Long): String
 
     /**
      * Every channel's bands as a filter file (format 2), from the mirror:
@@ -1539,6 +1555,10 @@ interface DspiCoreApi : AutoCloseable {
      */
     fun setDragging(dragging: Boolean)
 
+    fun beginGroup(label: String)
+
+    fun endGroup()
+
     /**
      * Whether [`DspiCore::undo`] has a change to reverse. False with no
      * device.
@@ -1983,8 +2003,12 @@ interface DspiCoreApi : AutoCloseable {
 
     /**
      * Crossfeed preset: 0 default, 1 Chu Moy, 2 Meier, 3 custom. Only the
-     * preset changes: `crossfeed_freq` and `crossfeed_feed` are the device's
-     * custom values, which it keeps whatever the preset.
+     * preset is sent: the device keeps its custom frequency and feed whatever
+     * the preset. While a named preset (0 to 2) is chosen, `get_state` gives
+     * that preset's frequency and feed (700 Hz / 4.5 dB, 700 Hz / 6 dB,
+     * 650 Hz / 9.5 dB), which the device runs; with Custom (3) it gives the
+     * custom pair again. A preset export, the bulk image and undo keep the
+     * custom pair.
      *
      * Errors: [`DspiError::InvalidArgument`] for another preset; the
      * connection and transfer errors of every setter.
@@ -2011,6 +2035,19 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun setCrossfeedFeed(feed: Float)
+
+    /**
+     * The crossfeed's custom pair (frequency and feed) as the device keeps
+     * it: what Custom runs. Under a named preset `get_state` gives that
+     * preset's values instead; this gives the custom pair whatever the
+     * preset, from the mirror (no transfer). It is what
+     * `set_crossfeed_freq`/`set_crossfeed_feed` write, an export saves, and
+     * `config_diff`/`config_preview` compare.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device.
+     */
+    @Throws(DspiException::class)
+    fun crossfeedCustomPair(): CrossfeedPair
 
     /**
      * Crossfeed interaural time delay on (`true`) or off.
@@ -3111,6 +3148,27 @@ interface DspiCoreApi : AutoCloseable {
     fun configInspect(text: String): String
 
     /**
+     * What differs between two `.dspipreset` documents, `before` and `after`,
+     * with no device (PRO1 W5). `after` is read on top of `before`, as an
+     * import of it after the other would be, so a value `after` holds none for
+     * is no change; both are read onto a device shaped as `before`'s `meta`
+     * says.
+     *
+     * Returns JSON `{ok, error, rows, count, blocks, summary, notes, kind}`:
+     * `rows` one per changed value, `{block, section, item, before, after}`,
+     * `block` the import block that carries it (`eq`, `crossover`, `routing`,
+     * `outputs`, `limiters`, `effects`, `volumes`, `hardware`, `names`);
+     * `blocks` the number of rows per block; `summary` the unsaved-changes
+     * list's sentences for the same change; `notes` what reading `after`
+     * reported (channels missing, values left alone or clamped); `kind`
+     * `after`'s `meta.kind`. `{ok: false, error}` when either text is not a
+     * document this build reads (the error names which).
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun configDiff(before: String, after: String): String
+
+    /**
      * Check a UF2 image: block structure, magic numbers, family id, the flash
      * range it covers, and the DSPi version string inside it. Never panics; a
      * refused image comes back with `valid == false` and the reason in
@@ -3287,6 +3345,30 @@ interface DspiCoreApi : AutoCloseable {
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun filterTypeName(code: Int): String
+
+    /**
+     * What to tell the user about `error`.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun noticeFor(error: DspiException): Notice
+
+    /**
+     * The notice with this key (a failure reply's `noticeKey` in the C ABI and the
+     * web binding), with `detail` as its detail. A key the table does not have
+     * gives the `unknown` row.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun noticeForKey(key: String, detail: String): Notice
+
+    /**
+     * The whole table, every key once and with no detail, for a client's
+     * translation files.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun noticeTexts(): List<Notice>
 
     /**
      * Every output's label for the state `input`, in output order.
