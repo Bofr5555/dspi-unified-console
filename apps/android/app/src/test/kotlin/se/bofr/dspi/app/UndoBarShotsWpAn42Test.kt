@@ -108,4 +108,9 @@ class UndoBarShotsWpAn42Test {
     @Test
     @Config(qualifiers = "w400dp-h860dp-port-xhdpi")
     fun an42PhoneUndoRedoLight() = shoot("undo-redo-phone-light", dark = false)
+
+    /** A tablet: the wide strip, its actions and Devices beside Undo and Redo. */
+    @Test
+    @Config(qualifiers = "w800dp-h1280dp-port-mdpi")
+    fun an42TabletUndoRedoDark() = shoot("undo-redo-tablet-dark", dark = true)
 }
