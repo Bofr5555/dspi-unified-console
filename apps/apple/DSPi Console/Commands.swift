@@ -2484,15 +2484,18 @@ extension DSPViewModel {
     /// means the firmware predates ADAT; combined with the RP2350 gate this sets
     /// `adatSupported`.  Called from `fetchAll` after the bulk fetch.
     func fetchAdatStatus() {
-        // -- WP SW11 -- Through a core, its status read; the feature is the
-        // core's (and RP2350 only, as below).
+        // -- WP SW11 -- Through a core, the feature is the core's (and RP2350
+        // only, as below), as Qt gates it; a failed status read keeps the
+        // last status.
         if let core = typedCore {
             let generation = transport.generation
             let supported = coreFeature(core, "adat_output")
-            guard supported, case .success(let s) = core.call({ try $0.fetchAdatOutStatus() }) else {
-                DispatchQueue.main.async { if self.transport.generation == generation { self.adatSupported = false } }
-                return
+            DispatchQueue.main.async {
+                guard self.transport.generation == generation else { return }
+                let shown = supported && self.platformName == "RP2350"
+                if self.adatSupported != shown { self.adatSupported = shown }
             }
+            guard supported, case .success(let s) = core.call({ try $0.fetchAdatOutStatus() }) else { return }
             var status = AdatStatus()
             status.enabled = s.enabled
             status.active = s.active
@@ -2502,7 +2505,6 @@ extension DSPViewModel {
             status.slipCount = s.slipCount
             DispatchQueue.main.async {
                 guard self.transport.generation == generation else { return }
-                self.adatSupported = (self.platformName == "RP2350")
                 if self.adatStatus != status { self.adatStatus = status }
             }
             return

@@ -177,7 +177,11 @@ final class SpdifInputWireTests: XCTestCase {
             return (AppState.shared.viewModel, usb)
         }
         let vm = Self.demoVM
-        XCTAssertTrue(spinUntil(10) { Self.demo.isConnected && vm.isDeviceConnected }, "the demo device opens")
+        // -- WP SW11 -- Through the core the pins are its mirror's, shown once
+        // the connect-time read has landed (not at "connected").
+        XCTAssertTrue(spinUntil(10) {
+            Self.demo.isConnected && vm.isDeviceConnected && vm.fullReadGeneration == Self.demo.generation
+        }, "the demo device opens and is read")
         return (vm, Self.demo)
     }
 
