@@ -820,10 +820,18 @@ fn wp_hb2_device_changed_follows_the_lock_even_when_it_times_out() {
         r.hub.devices()[usize::from(r.handle)].locked_by,
         Some(holder.id())
     );
-    wait_until("the registry to hear of the timeout", || {
-        r.hub.devices()[usize::from(r.handle)].locked_by.is_none()
+    // -- WP HUBFLAKE4 --
+    // Wait for the message, not the registry: the registry is written first and the
+    // message sent after, with no lock held between, so a look at the registry can come
+    // before the message is out. Every message seen is kept, so a second one still fails
+    // the check after it, which wants exactly one.
+    let mut timed_out = Vec::new();
+    wait_until("the watcher to hear of the timeout", || {
+        timed_out.extend(device_changes(&watcher));
+        !timed_out.is_empty()
     });
-    assert_eq!(device_changes(&watcher), [Value::Null]);
+    assert_eq!(timed_out, [Value::Null]);
+    assert_eq!(r.hub.devices()[usize::from(r.handle)].locked_by, None);
 
     assert!(r.hub.lock_acquire(&holder.session, r.handle, WAIT));
     r.hub.lock_release(&holder.session, r.handle);
