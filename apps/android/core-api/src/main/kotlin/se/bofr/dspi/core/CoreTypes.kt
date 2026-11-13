@@ -2610,6 +2610,423 @@ data class HistoryMove(
 )
 
 /**
+ * One element of the installation: the sender, a fan-out or a unit.
+ */
+data class LinkSystemUnit(
+    /**
+     * The model's id.
+     */
+    val id: String,
+    /**
+     * Its name, or the id when it has none.
+     */
+    val name: String,
+    /**
+     * The device's serial; "" when the model has none.
+     */
+    val serial: String,
+    /**
+     * `sender`, `fan_out` or `unit`.
+     */
+    val kind: String,
+    /**
+     * The role on the audio link in the glossary's words: "Sender",
+     * "Fan-out", "Repeater", "Receiver" (what the device says, else the model).
+     */
+    val role: String,
+    /**
+     * The room's name; "" for none.
+     */
+    val room: String,
+    /**
+     * Attached to the hub now.
+     */
+    val connected: Boolean,
+    /**
+     * `locked`, `searching`, `holdover`, `off`, `clock` (a sender),
+     * `offline` (not attached) or `unknown`.
+     */
+    val state: String,
+    /**
+     * [`Self::state`] in words: "Locked", "Holdover", ... "Not connected".
+     */
+    val stateWord: String,
+    /**
+     * The unit's link delay or hop offset is not the one the system delay
+     * asks for: writing the link delays ([`DspiCore::link_system_align`])
+     * is pending.
+     */
+    val pending: Boolean,
+    /**
+     * The link delay the alignment asks for, frames; else the unit's own.
+     */
+    val linkDelayFrames: Long?,
+    /**
+     * [`Self::link_delay_frames`] in ms at the system's rate.
+     */
+    val linkDelayMs: Double?,
+    /**
+     * The link delay the unit has now, frames, when it reported one.
+     */
+    val unitLinkDelayFrames: Long?,
+    /**
+     * The shortest link delay the unit takes, frames.
+     */
+    val linkDelayMin: Long?,
+    /**
+     * The longest.
+     */
+    val linkDelayMax: Long?,
+    /**
+     * The hop offset the alignment asks for, frames; else the unit's own.
+     */
+    val hopOffset: Int?,
+    /**
+     * The hop offset the unit has now.
+     */
+    val unitHopOffset: Int?,
+    /**
+     * The phase error, frames (phase lock).
+     */
+    val phaseErrorFrames: Float?,
+    /**
+     * Fan-outs and repeaters between the sender and this unit.
+     */
+    val hops: Long?,
+    /**
+     * Frames a fan-out or repeater adds passing the stream on.
+     */
+    val hopDelayFrames: Long?,
+    /**
+     * The output latency the model counts, µs.
+     */
+    val latencyUs: Long,
+    /**
+     * The measured latency an installer entered, µs; it replaces
+     * [`Self::latency_us`] when set.
+     */
+    val measuredLatencyUs: Long?,
+    /**
+     * Its alarms still on.
+     */
+    val alarms: Long,
+)
+
+/**
+ * A room, with its lip-sync offset.
+ */
+data class LinkSystemRoom(
+    /**
+     * The model's id.
+     */
+    val id: String,
+    /**
+     * Its name.
+     */
+    val name: String,
+    /**
+     * Its own lip-sync offset, µs; none: the model's.
+     */
+    val lipSyncUs: Long?,
+)
+
+/**
+ * A scene a recall can apply.
+ */
+data class LinkSystemScene(
+    /**
+     * The model's id: what [`DspiCore::link_system_recall`] takes.
+     */
+    val id: String,
+    /**
+     * Its name.
+     */
+    val name: String,
+    /**
+     * The scene sets the system mute (true) or clears it (false); none:
+     * leaves it.
+     */
+    val systemMute: Boolean?,
+)
+
+/**
+ * An alarm still on (raised or acknowledged).
+ */
+data class LinkSystemAlarm(
+    /**
+     * The hub's id for it.
+     */
+    val id: Long,
+    /**
+     * `warning` or `critical`.
+     */
+    val severity: String,
+    /**
+     * The element's name it is about.
+     */
+    val subject: String,
+    /**
+     * The hub's sentence.
+     */
+    val message: String,
+    /**
+     * `raised` or `acknowledged`.
+     */
+    val state: String,
+)
+
+/**
+ * The installation on the hub, as the System screen shows it.
+ */
+data class LinkSystemView(
+    /**
+     * The model's revision: what [`DspiCore::link_system_save`] is given back.
+     */
+    val revision: Long,
+    /**
+     * The hub has an installation (a model with at least one element).
+     */
+    val installed: Boolean,
+    /**
+     * This session's role on the hub now: `admin`, `control` or `viewer`.
+     */
+    val role: String,
+    /**
+     * The role may change the installation and write the link delays (admin).
+     */
+    val mayEdit: Boolean,
+    /**
+     * The role may recall scenes (control or admin).
+     */
+    val mayRecall: Boolean,
+    /**
+     * Why editing is not offered, or "".
+     */
+    val editNote: String,
+    /**
+     * Why recalling is not offered, or "".
+     */
+    val recallNote: String,
+    /**
+     * The system delay the alignment uses now, frames.
+     */
+    val systemDelayFrames: Long,
+    /**
+     * [`Self::system_delay_frames`] in ms.
+     */
+    val systemDelayMs: Double,
+    /**
+     * The model fixes no system delay: the hub takes the smallest every
+     * unit takes.
+     */
+    val systemDelayAuto: Boolean,
+    /**
+     * The link's rate, Hz.
+     */
+    val rateHz: Long,
+    /**
+     * The model's lip-sync offset, µs.
+     */
+    val lipSyncUs: Long,
+    /**
+     * Every element: senders, fan-outs, then units in the model's order.
+     */
+    val units: List<LinkSystemUnit>,
+    /**
+     * The rooms.
+     */
+    val rooms: List<LinkSystemRoom>,
+    /**
+     * The scenes.
+     */
+    val scenes: List<LinkSystemScene>,
+    /**
+     * Alarms still on, critical first.
+     */
+    val alarms: List<LinkSystemAlarm>,
+    /**
+     * A sender reports its system mute set (none: no sender reported).
+     */
+    val systemMute: Boolean?,
+    /**
+     * The frame a sender holds a scene for, when it holds one.
+     */
+    val pendingApplyFrame: Long?,
+    /**
+     * Units (not senders or fan-outs) locked.
+     */
+    val locked: Long,
+    /**
+     * Units in holdover.
+     */
+    val holdover: Long,
+    /**
+     * Units whose link delay is still to be written.
+     */
+    val pending: Long,
+    /**
+     * Units the model has.
+     */
+    val unitCount: Long,
+    /**
+     * One line for a status indicator: "Audio link: 4 of 4 locked".
+     */
+    val summary: String,
+    /**
+     * The summary's meaning for its colour: `ok`, `warning`, `problem`, or
+     * `none` without an installation.
+     */
+    val health: String,
+    /**
+     * The alignment's issues, in the hub's words.
+     */
+    val issues: List<String>,
+    /**
+     * The hub limits how often the status is read; this is the last view
+     * again, not a fresh one.
+     */
+    val stale: Boolean,
+)
+
+/**
+ * One room's lip-sync offset to set.
+ */
+data class LinkRoomLipSync(
+    /**
+     * The room's id.
+     */
+    val roomId: String,
+    /**
+     * µs; none: the model's own.
+     */
+    val lipSyncUs: Long?,
+)
+
+/**
+ * One unit's measured latency to set.
+ */
+data class LinkUnitLatency(
+    /**
+     * The unit's id.
+     */
+    val unitId: String,
+    /**
+     * µs; none: the output latency counts.
+     */
+    val measuredLatencyUs: Long?,
+)
+
+/**
+ * The "Clock and links" edits, sent as one change of the model.
+ */
+data class LinkSystemEdits(
+    /**
+     * Change the system delay.
+     */
+    val setSystemDelay: Boolean,
+    /**
+     * The new system delay, frames; none: the smallest every unit takes.
+     */
+    val systemDelayFrames: Long?,
+    /**
+     * Rooms' lip-sync offsets.
+     */
+    val rooms: List<LinkRoomLipSync>,
+    /**
+     * Units' measured latencies.
+     */
+    val units: List<LinkUnitLatency>,
+)
+
+/**
+ * One write's outcome on one device.
+ */
+data class LinkSystemWrite(
+    /**
+     * The element's name.
+     */
+    val unit: String,
+    /**
+     * What was written, in words ("Mute", "Link delay").
+     */
+    val what: String,
+    /**
+     * The hub's result code (`applied`, `queued`, `refused`, ...).
+     */
+    val result: String,
+    /**
+     * [`Self::result`] in words.
+     */
+    val resultWord: String,
+    /**
+     * `ok`, `warn` or `bad`.
+     */
+    val tone: String,
+)
+
+/**
+ * What a recall did.
+ */
+data class LinkSceneRecall(
+    /**
+     * The scene's id.
+     */
+    val scene: String,
+    /**
+     * Its name.
+     */
+    val name: String,
+    /**
+     * At least one device took it. False: refused, nothing changed, and
+     * [`Self::message`] says why.
+     */
+    val taken: Boolean,
+    /**
+     * The link frame it applies at.
+     */
+    val frame: Long,
+    /**
+     * How far ahead it was scheduled, ms.
+     */
+    val leadMs: Double,
+    /**
+     * Every device applied it on time.
+     */
+    val onTime: Boolean,
+    /**
+     * The frame the sender holds another scene for, when that is why it
+     * was refused.
+     */
+    val heldFrame: Long?,
+    /**
+     * One sentence to show: the outcome, or the refusal and what to do.
+     */
+    val message: String,
+    /**
+     * Each device's result.
+     */
+    val writes: List<LinkSystemWrite>,
+)
+
+/**
+ * What writing the link delays did.
+ */
+data class LinkSystemAlign(
+    /**
+     * The hub wrote them (false: an issue stopped it).
+     */
+    val applied: Boolean,
+    /**
+     * One sentence to show.
+     */
+    val message: String,
+    /**
+     * Each write's result.
+     */
+    val writes: List<LinkSystemWrite>,
+)
+
+/**
  * What to tell the user about a [`LinkPhase`].
  */
 data class LinkPhaseText(

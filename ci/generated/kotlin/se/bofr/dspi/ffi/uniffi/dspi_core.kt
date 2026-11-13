@@ -1528,6 +1528,14 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1860,6 +1868,14 @@ fun uniffi_dspi_core_checksum_method_dspicore_link_select_device(
 fun uniffi_dspi_core_checksum_method_dspicore_link_set_url(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_link_status(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_link_system_align(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_link_system_recall(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_link_system_save(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_link_system_view(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_load_params(
 ): Short
@@ -2478,6 +2494,14 @@ fun uniffi_dspi_core_fn_method_dspicore_link_select_device(`ptr`: Pointer,`handl
 fun uniffi_dspi_core_fn_method_dspicore_link_set_url(`ptr`: Pointer,`url`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_link_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_link_system_align(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_link_system_recall(`ptr`: Pointer,`scene`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_link_system_save(`ptr`: Pointer,`revision`: Long,`edits`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+fun uniffi_dspi_core_fn_method_dspicore_link_system_view(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_load_params(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -3470,6 +3494,18 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_link_status() != 7876.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_link_system_align() != 11582.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_link_system_recall() != 3901.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_link_system_save() != 59672.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_link_system_view() != 44177.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_load_params() != 46764.toShort()) {
@@ -6784,6 +6820,54 @@ public interface DspiCoreInterface {
      * user. No blocking beyond the core lock.
      */
     fun `linkStatus`(): LinkStatus
+    
+    /**
+     * Write the link delays and hop offsets the system delay asks for to
+     * every unit (`system.align` with `apply`). Each unit re-anchors: a
+     * short silence (2 to 6 ms). Admin only. Blocks while the hub writes
+     * every unit.
+     *
+     * Errors: as [`Self::link_system_save`], without `conflict`.
+     */
+    fun `linkSystemAlign`(): LinkSystemAlign
+    
+    /**
+     * Recall scene `scene` (an id from the view) on every unit it names
+     * (`system.scene.apply`). A recall the hub took but every device
+     * refused (a sender holds one scene at a time) is answered with
+     * `taken` false and the words to show, naming the frame it holds.
+     * Control or admin.
+     *
+     * Errors: [`DspiError::Link`] `denied` when the role may not make one of
+     * the scene's operations (the hub's words name it), `bad_request` for a
+     * scene the model does not have; [`DspiError::Disconnected`].
+     */
+    fun `linkSystemRecall`(`scene`: kotlin.String): LinkSceneRecall
+    
+    /**
+     * Save the "Clock and links" edits made on the view of `revision`, as
+     * one `system.set` the hub takes only while its model is still at that
+     * revision. Returns the new revision. Admin only.
+     *
+     * Errors: [`DspiError::Link`] `conflict` when the installation changed on
+     * the hub meanwhile (nothing is saved; read the view again and edit
+     * again), `denied` for another role, `bad_request` for values the hub
+     * refuses, with its words; [`DspiError::Disconnected`] with no session.
+     */
+    fun `linkSystemSave`(`revision`: kotlin.ULong, `edits`: LinkSystemEdits): kotlin.ULong
+    
+    /**
+     * The audio link's installation on the hub this session is on: its
+     * elements with their link state, the rooms, the scenes, alarms and a
+     * one-line summary. Reads `system.status` (and `system.get` when the
+     * model changed). The hub answers the status at most once a second per
+     * session; asked sooner, this gives the last view again with `stale`.
+     * Blocks on the network: keep it off a UI thread.
+     *
+     * Errors: [`DspiError::Disconnected`] with no hub session,
+     * [`DspiError::Link`] with the hub's code or the client's.
+     */
+    fun `linkSystemView`(): LinkSystemView
     
     /**
      * Revert to saved: load the active slot again ([`DspiCore::load_preset`],
@@ -10887,6 +10971,98 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_link_status(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Write the link delays and hop offsets the system delay asks for to
+     * every unit (`system.align` with `apply`). Each unit re-anchors: a
+     * short silence (2 to 6 ms). Admin only. Blocks while the hub writes
+     * every unit.
+     *
+     * Errors: as [`Self::link_system_save`], without `conflict`.
+     */
+    @Throws(DspiException::class)override fun `linkSystemAlign`(): LinkSystemAlign {
+            return FfiConverterTypeLinkSystemAlign.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_link_system_align(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Recall scene `scene` (an id from the view) on every unit it names
+     * (`system.scene.apply`). A recall the hub took but every device
+     * refused (a sender holds one scene at a time) is answered with
+     * `taken` false and the words to show, naming the frame it holds.
+     * Control or admin.
+     *
+     * Errors: [`DspiError::Link`] `denied` when the role may not make one of
+     * the scene's operations (the hub's words name it), `bad_request` for a
+     * scene the model does not have; [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)override fun `linkSystemRecall`(`scene`: kotlin.String): LinkSceneRecall {
+            return FfiConverterTypeLinkSceneRecall.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_link_system_recall(
+        it, FfiConverterString.lower(`scene`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Save the "Clock and links" edits made on the view of `revision`, as
+     * one `system.set` the hub takes only while its model is still at that
+     * revision. Returns the new revision. Admin only.
+     *
+     * Errors: [`DspiError::Link`] `conflict` when the installation changed on
+     * the hub meanwhile (nothing is saved; read the view again and edit
+     * again), `denied` for another role, `bad_request` for values the hub
+     * refuses, with its words; [`DspiError::Disconnected`] with no session.
+     */
+    @Throws(DspiException::class)override fun `linkSystemSave`(`revision`: kotlin.ULong, `edits`: LinkSystemEdits): kotlin.ULong {
+            return FfiConverterULong.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_link_system_save(
+        it, FfiConverterULong.lower(`revision`),FfiConverterTypeLinkSystemEdits.lower(`edits`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The audio link's installation on the hub this session is on: its
+     * elements with their link state, the rooms, the scenes, alarms and a
+     * one-line summary. Reads `system.status` (and `system.get` when the
+     * model changed). The hub answers the status at most once a second per
+     * session; asked sooner, this gives the last view again with `stale`.
+     * Blocks on the network: keep it off a UI thread.
+     *
+     * Errors: [`DspiError::Disconnected`] with no hub session,
+     * [`DspiError::Link`] with the hub's code or the client's.
+     */
+    @Throws(DspiException::class)override fun `linkSystemView`(): LinkSystemView {
+            return FfiConverterTypeLinkSystemView.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_link_system_view(
         it, _status)
 }
     }
@@ -19249,6 +19425,139 @@ public object FfiConverterTypeLinkPhaseText: FfiConverterRustBuffer<LinkPhaseTex
 
 
 /**
+ * One room's lip-sync offset to set.
+ */
+data class LinkRoomLipSync (
+    /**
+     * The room's id.
+     */
+    var `roomId`: kotlin.String, 
+    /**
+     * µs; none: the model's own.
+     */
+    var `lipSyncUs`: kotlin.Long?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLinkRoomLipSync: FfiConverterRustBuffer<LinkRoomLipSync> {
+    override fun read(buf: ByteBuffer): LinkRoomLipSync {
+        return LinkRoomLipSync(
+            FfiConverterString.read(buf),
+            FfiConverterOptionalLong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LinkRoomLipSync) = (
+            FfiConverterString.allocationSize(value.`roomId`) +
+            FfiConverterOptionalLong.allocationSize(value.`lipSyncUs`)
+    )
+
+    override fun write(value: LinkRoomLipSync, buf: ByteBuffer) {
+            FfiConverterString.write(value.`roomId`, buf)
+            FfiConverterOptionalLong.write(value.`lipSyncUs`, buf)
+    }
+}
+
+
+
+/**
+ * What a recall did.
+ */
+data class LinkSceneRecall (
+    /**
+     * The scene's id.
+     */
+    var `scene`: kotlin.String, 
+    /**
+     * Its name.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * At least one device took it. False: refused, nothing changed, and
+     * [`Self::message`] says why.
+     */
+    var `taken`: kotlin.Boolean, 
+    /**
+     * The link frame it applies at.
+     */
+    var `frame`: kotlin.ULong, 
+    /**
+     * How far ahead it was scheduled, ms.
+     */
+    var `leadMs`: kotlin.Double, 
+    /**
+     * Every device applied it on time.
+     */
+    var `onTime`: kotlin.Boolean, 
+    /**
+     * The frame the sender holds another scene for, when that is why it
+     * was refused.
+     */
+    var `heldFrame`: kotlin.ULong?, 
+    /**
+     * One sentence to show: the outcome, or the refusal and what to do.
+     */
+    var `message`: kotlin.String, 
+    /**
+     * Each device's result.
+     */
+    var `writes`: List<LinkSystemWrite>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLinkSceneRecall: FfiConverterRustBuffer<LinkSceneRecall> {
+    override fun read(buf: ByteBuffer): LinkSceneRecall {
+        return LinkSceneRecall(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalULong.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeLinkSystemWrite.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LinkSceneRecall) = (
+            FfiConverterString.allocationSize(value.`scene`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterBoolean.allocationSize(value.`taken`) +
+            FfiConverterULong.allocationSize(value.`frame`) +
+            FfiConverterDouble.allocationSize(value.`leadMs`) +
+            FfiConverterBoolean.allocationSize(value.`onTime`) +
+            FfiConverterOptionalULong.allocationSize(value.`heldFrame`) +
+            FfiConverterString.allocationSize(value.`message`) +
+            FfiConverterSequenceTypeLinkSystemWrite.allocationSize(value.`writes`)
+    )
+
+    override fun write(value: LinkSceneRecall, buf: ByteBuffer) {
+            FfiConverterString.write(value.`scene`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterBoolean.write(value.`taken`, buf)
+            FfiConverterULong.write(value.`frame`, buf)
+            FfiConverterDouble.write(value.`leadMs`, buf)
+            FfiConverterBoolean.write(value.`onTime`, buf)
+            FfiConverterOptionalULong.write(value.`heldFrame`, buf)
+            FfiConverterString.write(value.`message`, buf)
+            FfiConverterSequenceTypeLinkSystemWrite.write(value.`writes`, buf)
+    }
+}
+
+
+
+/**
  * State of the Link session.
  */
 data class LinkStatus (
@@ -19361,6 +19670,776 @@ public object FfiConverterTypeLinkStatus: FfiConverterRustBuffer<LinkStatus> {
             FfiConverterUInt.write(value.`reconnectInMs`, buf)
             FfiConverterString.write(value.`pinSource`, buf)
             FfiConverterBoolean.write(value.`tokenRefused`, buf)
+    }
+}
+
+
+
+/**
+ * An alarm still on (raised or acknowledged).
+ */
+data class LinkSystemAlarm (
+    /**
+     * The hub's id for it.
+     */
+    var `id`: kotlin.ULong, 
+    /**
+     * `warning` or `critical`.
+     */
+    var `severity`: kotlin.String, 
+    /**
+     * The element's name it is about.
+     */
+    var `subject`: kotlin.String, 
+    /**
+     * The hub's sentence.
+     */
+    var `message`: kotlin.String, 
+    /**
+     * `raised` or `acknowledged`.
+     */
+    var `state`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLinkSystemAlarm: FfiConverterRustBuffer<LinkSystemAlarm> {
+    override fun read(buf: ByteBuffer): LinkSystemAlarm {
+        return LinkSystemAlarm(
+            FfiConverterULong.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LinkSystemAlarm) = (
+            FfiConverterULong.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`severity`) +
+            FfiConverterString.allocationSize(value.`subject`) +
+            FfiConverterString.allocationSize(value.`message`) +
+            FfiConverterString.allocationSize(value.`state`)
+    )
+
+    override fun write(value: LinkSystemAlarm, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`id`, buf)
+            FfiConverterString.write(value.`severity`, buf)
+            FfiConverterString.write(value.`subject`, buf)
+            FfiConverterString.write(value.`message`, buf)
+            FfiConverterString.write(value.`state`, buf)
+    }
+}
+
+
+
+/**
+ * What writing the link delays did.
+ */
+data class LinkSystemAlign (
+    /**
+     * The hub wrote them (false: an issue stopped it).
+     */
+    var `applied`: kotlin.Boolean, 
+    /**
+     * One sentence to show.
+     */
+    var `message`: kotlin.String, 
+    /**
+     * Each write's result.
+     */
+    var `writes`: List<LinkSystemWrite>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLinkSystemAlign: FfiConverterRustBuffer<LinkSystemAlign> {
+    override fun read(buf: ByteBuffer): LinkSystemAlign {
+        return LinkSystemAlign(
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeLinkSystemWrite.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LinkSystemAlign) = (
+            FfiConverterBoolean.allocationSize(value.`applied`) +
+            FfiConverterString.allocationSize(value.`message`) +
+            FfiConverterSequenceTypeLinkSystemWrite.allocationSize(value.`writes`)
+    )
+
+    override fun write(value: LinkSystemAlign, buf: ByteBuffer) {
+            FfiConverterBoolean.write(value.`applied`, buf)
+            FfiConverterString.write(value.`message`, buf)
+            FfiConverterSequenceTypeLinkSystemWrite.write(value.`writes`, buf)
+    }
+}
+
+
+
+/**
+ * The "Clock and links" edits, sent as one change of the model.
+ */
+data class LinkSystemEdits (
+    /**
+     * Change the system delay.
+     */
+    var `setSystemDelay`: kotlin.Boolean, 
+    /**
+     * The new system delay, frames; none: the smallest every unit takes.
+     */
+    var `systemDelayFrames`: kotlin.UInt?, 
+    /**
+     * Rooms' lip-sync offsets.
+     */
+    var `rooms`: List<LinkRoomLipSync>, 
+    /**
+     * Units' measured latencies.
+     */
+    var `units`: List<LinkUnitLatency>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLinkSystemEdits: FfiConverterRustBuffer<LinkSystemEdits> {
+    override fun read(buf: ByteBuffer): LinkSystemEdits {
+        return LinkSystemEdits(
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterSequenceTypeLinkRoomLipSync.read(buf),
+            FfiConverterSequenceTypeLinkUnitLatency.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LinkSystemEdits) = (
+            FfiConverterBoolean.allocationSize(value.`setSystemDelay`) +
+            FfiConverterOptionalUInt.allocationSize(value.`systemDelayFrames`) +
+            FfiConverterSequenceTypeLinkRoomLipSync.allocationSize(value.`rooms`) +
+            FfiConverterSequenceTypeLinkUnitLatency.allocationSize(value.`units`)
+    )
+
+    override fun write(value: LinkSystemEdits, buf: ByteBuffer) {
+            FfiConverterBoolean.write(value.`setSystemDelay`, buf)
+            FfiConverterOptionalUInt.write(value.`systemDelayFrames`, buf)
+            FfiConverterSequenceTypeLinkRoomLipSync.write(value.`rooms`, buf)
+            FfiConverterSequenceTypeLinkUnitLatency.write(value.`units`, buf)
+    }
+}
+
+
+
+/**
+ * A room, with its lip-sync offset.
+ */
+data class LinkSystemRoom (
+    /**
+     * The model's id.
+     */
+    var `id`: kotlin.String, 
+    /**
+     * Its name.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * Its own lip-sync offset, µs; none: the model's.
+     */
+    var `lipSyncUs`: kotlin.Long?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLinkSystemRoom: FfiConverterRustBuffer<LinkSystemRoom> {
+    override fun read(buf: ByteBuffer): LinkSystemRoom {
+        return LinkSystemRoom(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalLong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LinkSystemRoom) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterOptionalLong.allocationSize(value.`lipSyncUs`)
+    )
+
+    override fun write(value: LinkSystemRoom, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterOptionalLong.write(value.`lipSyncUs`, buf)
+    }
+}
+
+
+
+/**
+ * A scene a recall can apply.
+ */
+data class LinkSystemScene (
+    /**
+     * The model's id: what [`DspiCore::link_system_recall`] takes.
+     */
+    var `id`: kotlin.String, 
+    /**
+     * Its name.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * The scene sets the system mute (true) or clears it (false); none:
+     * leaves it.
+     */
+    var `systemMute`: kotlin.Boolean?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLinkSystemScene: FfiConverterRustBuffer<LinkSystemScene> {
+    override fun read(buf: ByteBuffer): LinkSystemScene {
+        return LinkSystemScene(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LinkSystemScene) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterOptionalBoolean.allocationSize(value.`systemMute`)
+    )
+
+    override fun write(value: LinkSystemScene, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterOptionalBoolean.write(value.`systemMute`, buf)
+    }
+}
+
+
+
+/**
+ * One element of the installation: the sender, a fan-out or a unit.
+ */
+data class LinkSystemUnit (
+    /**
+     * The model's id.
+     */
+    var `id`: kotlin.String, 
+    /**
+     * Its name, or the id when it has none.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * The device's serial; "" when the model has none.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * `sender`, `fan_out` or `unit`.
+     */
+    var `kind`: kotlin.String, 
+    /**
+     * The role on the audio link in the glossary's words: "Sender",
+     * "Fan-out", "Repeater", "Receiver" (what the device says, else the model).
+     */
+    var `role`: kotlin.String, 
+    /**
+     * The room's name; "" for none.
+     */
+    var `room`: kotlin.String, 
+    /**
+     * Attached to the hub now.
+     */
+    var `connected`: kotlin.Boolean, 
+    /**
+     * `locked`, `searching`, `holdover`, `off`, `clock` (a sender),
+     * `offline` (not attached) or `unknown`.
+     */
+    var `state`: kotlin.String, 
+    /**
+     * [`Self::state`] in words: "Locked", "Holdover", ... "Not connected".
+     */
+    var `stateWord`: kotlin.String, 
+    /**
+     * The unit's link delay or hop offset is not the one the system delay
+     * asks for: writing the link delays ([`DspiCore::link_system_align`])
+     * is pending.
+     */
+    var `pending`: kotlin.Boolean, 
+    /**
+     * The link delay the alignment asks for, frames; else the unit's own.
+     */
+    var `linkDelayFrames`: kotlin.UInt?, 
+    /**
+     * [`Self::link_delay_frames`] in ms at the system's rate.
+     */
+    var `linkDelayMs`: kotlin.Double?, 
+    /**
+     * The link delay the unit has now, frames, when it reported one.
+     */
+    var `unitLinkDelayFrames`: kotlin.UInt?, 
+    /**
+     * The shortest link delay the unit takes, frames.
+     */
+    var `linkDelayMin`: kotlin.UInt?, 
+    /**
+     * The longest.
+     */
+    var `linkDelayMax`: kotlin.UInt?, 
+    /**
+     * The hop offset the alignment asks for, frames; else the unit's own.
+     */
+    var `hopOffset`: kotlin.Int?, 
+    /**
+     * The hop offset the unit has now.
+     */
+    var `unitHopOffset`: kotlin.Int?, 
+    /**
+     * The phase error, frames (phase lock).
+     */
+    var `phaseErrorFrames`: kotlin.Float?, 
+    /**
+     * Fan-outs and repeaters between the sender and this unit.
+     */
+    var `hops`: kotlin.UInt?, 
+    /**
+     * Frames a fan-out or repeater adds passing the stream on.
+     */
+    var `hopDelayFrames`: kotlin.UInt?, 
+    /**
+     * The output latency the model counts, µs.
+     */
+    var `latencyUs`: kotlin.Long, 
+    /**
+     * The measured latency an installer entered, µs; it replaces
+     * [`Self::latency_us`] when set.
+     */
+    var `measuredLatencyUs`: kotlin.Long?, 
+    /**
+     * Its alarms still on.
+     */
+    var `alarms`: kotlin.UInt
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLinkSystemUnit: FfiConverterRustBuffer<LinkSystemUnit> {
+    override fun read(buf: ByteBuffer): LinkSystemUnit {
+        return LinkSystemUnit(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalInt.read(buf),
+            FfiConverterOptionalInt.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterOptionalLong.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LinkSystemUnit) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterString.allocationSize(value.`kind`) +
+            FfiConverterString.allocationSize(value.`role`) +
+            FfiConverterString.allocationSize(value.`room`) +
+            FfiConverterBoolean.allocationSize(value.`connected`) +
+            FfiConverterString.allocationSize(value.`state`) +
+            FfiConverterString.allocationSize(value.`stateWord`) +
+            FfiConverterBoolean.allocationSize(value.`pending`) +
+            FfiConverterOptionalUInt.allocationSize(value.`linkDelayFrames`) +
+            FfiConverterOptionalDouble.allocationSize(value.`linkDelayMs`) +
+            FfiConverterOptionalUInt.allocationSize(value.`unitLinkDelayFrames`) +
+            FfiConverterOptionalUInt.allocationSize(value.`linkDelayMin`) +
+            FfiConverterOptionalUInt.allocationSize(value.`linkDelayMax`) +
+            FfiConverterOptionalInt.allocationSize(value.`hopOffset`) +
+            FfiConverterOptionalInt.allocationSize(value.`unitHopOffset`) +
+            FfiConverterOptionalFloat.allocationSize(value.`phaseErrorFrames`) +
+            FfiConverterOptionalUInt.allocationSize(value.`hops`) +
+            FfiConverterOptionalUInt.allocationSize(value.`hopDelayFrames`) +
+            FfiConverterLong.allocationSize(value.`latencyUs`) +
+            FfiConverterOptionalLong.allocationSize(value.`measuredLatencyUs`) +
+            FfiConverterUInt.allocationSize(value.`alarms`)
+    )
+
+    override fun write(value: LinkSystemUnit, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterString.write(value.`kind`, buf)
+            FfiConverterString.write(value.`role`, buf)
+            FfiConverterString.write(value.`room`, buf)
+            FfiConverterBoolean.write(value.`connected`, buf)
+            FfiConverterString.write(value.`state`, buf)
+            FfiConverterString.write(value.`stateWord`, buf)
+            FfiConverterBoolean.write(value.`pending`, buf)
+            FfiConverterOptionalUInt.write(value.`linkDelayFrames`, buf)
+            FfiConverterOptionalDouble.write(value.`linkDelayMs`, buf)
+            FfiConverterOptionalUInt.write(value.`unitLinkDelayFrames`, buf)
+            FfiConverterOptionalUInt.write(value.`linkDelayMin`, buf)
+            FfiConverterOptionalUInt.write(value.`linkDelayMax`, buf)
+            FfiConverterOptionalInt.write(value.`hopOffset`, buf)
+            FfiConverterOptionalInt.write(value.`unitHopOffset`, buf)
+            FfiConverterOptionalFloat.write(value.`phaseErrorFrames`, buf)
+            FfiConverterOptionalUInt.write(value.`hops`, buf)
+            FfiConverterOptionalUInt.write(value.`hopDelayFrames`, buf)
+            FfiConverterLong.write(value.`latencyUs`, buf)
+            FfiConverterOptionalLong.write(value.`measuredLatencyUs`, buf)
+            FfiConverterUInt.write(value.`alarms`, buf)
+    }
+}
+
+
+
+/**
+ * The installation on the hub, as the System screen shows it.
+ */
+data class LinkSystemView (
+    /**
+     * The model's revision: what [`DspiCore::link_system_save`] is given back.
+     */
+    var `revision`: kotlin.ULong, 
+    /**
+     * The hub has an installation (a model with at least one element).
+     */
+    var `installed`: kotlin.Boolean, 
+    /**
+     * This session's role on the hub now: `admin`, `control` or `viewer`.
+     */
+    var `role`: kotlin.String, 
+    /**
+     * The role may change the installation and write the link delays (admin).
+     */
+    var `mayEdit`: kotlin.Boolean, 
+    /**
+     * The role may recall scenes (control or admin).
+     */
+    var `mayRecall`: kotlin.Boolean, 
+    /**
+     * Why editing is not offered, or "".
+     */
+    var `editNote`: kotlin.String, 
+    /**
+     * Why recalling is not offered, or "".
+     */
+    var `recallNote`: kotlin.String, 
+    /**
+     * The system delay the alignment uses now, frames.
+     */
+    var `systemDelayFrames`: kotlin.UInt, 
+    /**
+     * [`Self::system_delay_frames`] in ms.
+     */
+    var `systemDelayMs`: kotlin.Double, 
+    /**
+     * The model fixes no system delay: the hub takes the smallest every
+     * unit takes.
+     */
+    var `systemDelayAuto`: kotlin.Boolean, 
+    /**
+     * The link's rate, Hz.
+     */
+    var `rateHz`: kotlin.UInt, 
+    /**
+     * The model's lip-sync offset, µs.
+     */
+    var `lipSyncUs`: kotlin.Long, 
+    /**
+     * Every element: senders, fan-outs, then units in the model's order.
+     */
+    var `units`: List<LinkSystemUnit>, 
+    /**
+     * The rooms.
+     */
+    var `rooms`: List<LinkSystemRoom>, 
+    /**
+     * The scenes.
+     */
+    var `scenes`: List<LinkSystemScene>, 
+    /**
+     * Alarms still on, critical first.
+     */
+    var `alarms`: List<LinkSystemAlarm>, 
+    /**
+     * A sender reports its system mute set (none: no sender reported).
+     */
+    var `systemMute`: kotlin.Boolean?, 
+    /**
+     * The frame a sender holds a scene for, when it holds one.
+     */
+    var `pendingApplyFrame`: kotlin.ULong?, 
+    /**
+     * Units (not senders or fan-outs) locked.
+     */
+    var `locked`: kotlin.UInt, 
+    /**
+     * Units in holdover.
+     */
+    var `holdover`: kotlin.UInt, 
+    /**
+     * Units whose link delay is still to be written.
+     */
+    var `pending`: kotlin.UInt, 
+    /**
+     * Units the model has.
+     */
+    var `unitCount`: kotlin.UInt, 
+    /**
+     * One line for a status indicator: "Audio link: 4 of 4 locked".
+     */
+    var `summary`: kotlin.String, 
+    /**
+     * The summary's meaning for its colour: `ok`, `warning`, `problem`, or
+     * `none` without an installation.
+     */
+    var `health`: kotlin.String, 
+    /**
+     * The alignment's issues, in the hub's words.
+     */
+    var `issues`: List<kotlin.String>, 
+    /**
+     * The hub limits how often the status is read; this is the last view
+     * again, not a fresh one.
+     */
+    var `stale`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLinkSystemView: FfiConverterRustBuffer<LinkSystemView> {
+    override fun read(buf: ByteBuffer): LinkSystemView {
+        return LinkSystemView(
+            FfiConverterULong.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterSequenceTypeLinkSystemUnit.read(buf),
+            FfiConverterSequenceTypeLinkSystemRoom.read(buf),
+            FfiConverterSequenceTypeLinkSystemScene.read(buf),
+            FfiConverterSequenceTypeLinkSystemAlarm.read(buf),
+            FfiConverterOptionalBoolean.read(buf),
+            FfiConverterOptionalULong.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LinkSystemView) = (
+            FfiConverterULong.allocationSize(value.`revision`) +
+            FfiConverterBoolean.allocationSize(value.`installed`) +
+            FfiConverterString.allocationSize(value.`role`) +
+            FfiConverterBoolean.allocationSize(value.`mayEdit`) +
+            FfiConverterBoolean.allocationSize(value.`mayRecall`) +
+            FfiConverterString.allocationSize(value.`editNote`) +
+            FfiConverterString.allocationSize(value.`recallNote`) +
+            FfiConverterUInt.allocationSize(value.`systemDelayFrames`) +
+            FfiConverterDouble.allocationSize(value.`systemDelayMs`) +
+            FfiConverterBoolean.allocationSize(value.`systemDelayAuto`) +
+            FfiConverterUInt.allocationSize(value.`rateHz`) +
+            FfiConverterLong.allocationSize(value.`lipSyncUs`) +
+            FfiConverterSequenceTypeLinkSystemUnit.allocationSize(value.`units`) +
+            FfiConverterSequenceTypeLinkSystemRoom.allocationSize(value.`rooms`) +
+            FfiConverterSequenceTypeLinkSystemScene.allocationSize(value.`scenes`) +
+            FfiConverterSequenceTypeLinkSystemAlarm.allocationSize(value.`alarms`) +
+            FfiConverterOptionalBoolean.allocationSize(value.`systemMute`) +
+            FfiConverterOptionalULong.allocationSize(value.`pendingApplyFrame`) +
+            FfiConverterUInt.allocationSize(value.`locked`) +
+            FfiConverterUInt.allocationSize(value.`holdover`) +
+            FfiConverterUInt.allocationSize(value.`pending`) +
+            FfiConverterUInt.allocationSize(value.`unitCount`) +
+            FfiConverterString.allocationSize(value.`summary`) +
+            FfiConverterString.allocationSize(value.`health`) +
+            FfiConverterSequenceString.allocationSize(value.`issues`) +
+            FfiConverterBoolean.allocationSize(value.`stale`)
+    )
+
+    override fun write(value: LinkSystemView, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`revision`, buf)
+            FfiConverterBoolean.write(value.`installed`, buf)
+            FfiConverterString.write(value.`role`, buf)
+            FfiConverterBoolean.write(value.`mayEdit`, buf)
+            FfiConverterBoolean.write(value.`mayRecall`, buf)
+            FfiConverterString.write(value.`editNote`, buf)
+            FfiConverterString.write(value.`recallNote`, buf)
+            FfiConverterUInt.write(value.`systemDelayFrames`, buf)
+            FfiConverterDouble.write(value.`systemDelayMs`, buf)
+            FfiConverterBoolean.write(value.`systemDelayAuto`, buf)
+            FfiConverterUInt.write(value.`rateHz`, buf)
+            FfiConverterLong.write(value.`lipSyncUs`, buf)
+            FfiConverterSequenceTypeLinkSystemUnit.write(value.`units`, buf)
+            FfiConverterSequenceTypeLinkSystemRoom.write(value.`rooms`, buf)
+            FfiConverterSequenceTypeLinkSystemScene.write(value.`scenes`, buf)
+            FfiConverterSequenceTypeLinkSystemAlarm.write(value.`alarms`, buf)
+            FfiConverterOptionalBoolean.write(value.`systemMute`, buf)
+            FfiConverterOptionalULong.write(value.`pendingApplyFrame`, buf)
+            FfiConverterUInt.write(value.`locked`, buf)
+            FfiConverterUInt.write(value.`holdover`, buf)
+            FfiConverterUInt.write(value.`pending`, buf)
+            FfiConverterUInt.write(value.`unitCount`, buf)
+            FfiConverterString.write(value.`summary`, buf)
+            FfiConverterString.write(value.`health`, buf)
+            FfiConverterSequenceString.write(value.`issues`, buf)
+            FfiConverterBoolean.write(value.`stale`, buf)
+    }
+}
+
+
+
+/**
+ * One write's outcome on one device.
+ */
+data class LinkSystemWrite (
+    /**
+     * The element's name.
+     */
+    var `unit`: kotlin.String, 
+    /**
+     * What was written, in words ("Mute", "Link delay").
+     */
+    var `what`: kotlin.String, 
+    /**
+     * The hub's result code (`applied`, `queued`, `refused`, ...).
+     */
+    var `result`: kotlin.String, 
+    /**
+     * [`Self::result`] in words.
+     */
+    var `resultWord`: kotlin.String, 
+    /**
+     * `ok`, `warn` or `bad`.
+     */
+    var `tone`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLinkSystemWrite: FfiConverterRustBuffer<LinkSystemWrite> {
+    override fun read(buf: ByteBuffer): LinkSystemWrite {
+        return LinkSystemWrite(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LinkSystemWrite) = (
+            FfiConverterString.allocationSize(value.`unit`) +
+            FfiConverterString.allocationSize(value.`what`) +
+            FfiConverterString.allocationSize(value.`result`) +
+            FfiConverterString.allocationSize(value.`resultWord`) +
+            FfiConverterString.allocationSize(value.`tone`)
+    )
+
+    override fun write(value: LinkSystemWrite, buf: ByteBuffer) {
+            FfiConverterString.write(value.`unit`, buf)
+            FfiConverterString.write(value.`what`, buf)
+            FfiConverterString.write(value.`result`, buf)
+            FfiConverterString.write(value.`resultWord`, buf)
+            FfiConverterString.write(value.`tone`, buf)
+    }
+}
+
+
+
+/**
+ * One unit's measured latency to set.
+ */
+data class LinkUnitLatency (
+    /**
+     * The unit's id.
+     */
+    var `unitId`: kotlin.String, 
+    /**
+     * µs; none: the output latency counts.
+     */
+    var `measuredLatencyUs`: kotlin.Long?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLinkUnitLatency: FfiConverterRustBuffer<LinkUnitLatency> {
+    override fun read(buf: ByteBuffer): LinkUnitLatency {
+        return LinkUnitLatency(
+            FfiConverterString.read(buf),
+            FfiConverterOptionalLong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LinkUnitLatency) = (
+            FfiConverterString.allocationSize(value.`unitId`) +
+            FfiConverterOptionalLong.allocationSize(value.`measuredLatencyUs`)
+    )
+
+    override fun write(value: LinkUnitLatency, buf: ByteBuffer) {
+            FfiConverterString.write(value.`unitId`, buf)
+            FfiConverterOptionalLong.write(value.`measuredLatencyUs`, buf)
     }
 }
 
@@ -23305,6 +24384,38 @@ public object FfiConverterOptionalUInt: FfiConverterRustBuffer<kotlin.UInt?> {
 /**
  * @suppress
  */
+public object FfiConverterOptionalInt: FfiConverterRustBuffer<kotlin.Int?> {
+    override fun read(buf: ByteBuffer): kotlin.Int? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterInt.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.Int?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterInt.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.Int?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterInt.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalULong: FfiConverterRustBuffer<kotlin.ULong?> {
     override fun read(buf: ByteBuffer): kotlin.ULong? {
         if (buf.get().toInt() == 0) {
@@ -23337,6 +24448,70 @@ public object FfiConverterOptionalULong: FfiConverterRustBuffer<kotlin.ULong?> {
 /**
  * @suppress
  */
+public object FfiConverterOptionalLong: FfiConverterRustBuffer<kotlin.Long?> {
+    override fun read(buf: ByteBuffer): kotlin.Long? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterLong.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.Long?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterLong.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.Long?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterLong.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalFloat: FfiConverterRustBuffer<kotlin.Float?> {
+    override fun read(buf: ByteBuffer): kotlin.Float? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterFloat.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.Float?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterFloat.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.Float?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterFloat.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalDouble: FfiConverterRustBuffer<kotlin.Double?> {
     override fun read(buf: ByteBuffer): kotlin.Double? {
         if (buf.get().toInt() == 0) {
@@ -23359,6 +24534,38 @@ public object FfiConverterOptionalDouble: FfiConverterRustBuffer<kotlin.Double?>
         } else {
             buf.put(1)
             FfiConverterDouble.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalBoolean: FfiConverterRustBuffer<kotlin.Boolean?> {
+    override fun read(buf: ByteBuffer): kotlin.Boolean? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterBoolean.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.Boolean?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterBoolean.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.Boolean?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterBoolean.write(value, buf)
         }
     }
 }
@@ -24163,6 +25370,202 @@ public object FfiConverterSequenceTypeLinkPhaseText: FfiConverterRustBuffer<List
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeLinkPhaseText.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeLinkRoomLipSync: FfiConverterRustBuffer<List<LinkRoomLipSync>> {
+    override fun read(buf: ByteBuffer): List<LinkRoomLipSync> {
+        val len = buf.getInt()
+        return List<LinkRoomLipSync>(len) {
+            FfiConverterTypeLinkRoomLipSync.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<LinkRoomLipSync>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeLinkRoomLipSync.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<LinkRoomLipSync>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeLinkRoomLipSync.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeLinkSystemAlarm: FfiConverterRustBuffer<List<LinkSystemAlarm>> {
+    override fun read(buf: ByteBuffer): List<LinkSystemAlarm> {
+        val len = buf.getInt()
+        return List<LinkSystemAlarm>(len) {
+            FfiConverterTypeLinkSystemAlarm.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<LinkSystemAlarm>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeLinkSystemAlarm.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<LinkSystemAlarm>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeLinkSystemAlarm.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeLinkSystemRoom: FfiConverterRustBuffer<List<LinkSystemRoom>> {
+    override fun read(buf: ByteBuffer): List<LinkSystemRoom> {
+        val len = buf.getInt()
+        return List<LinkSystemRoom>(len) {
+            FfiConverterTypeLinkSystemRoom.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<LinkSystemRoom>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeLinkSystemRoom.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<LinkSystemRoom>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeLinkSystemRoom.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeLinkSystemScene: FfiConverterRustBuffer<List<LinkSystemScene>> {
+    override fun read(buf: ByteBuffer): List<LinkSystemScene> {
+        val len = buf.getInt()
+        return List<LinkSystemScene>(len) {
+            FfiConverterTypeLinkSystemScene.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<LinkSystemScene>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeLinkSystemScene.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<LinkSystemScene>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeLinkSystemScene.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeLinkSystemUnit: FfiConverterRustBuffer<List<LinkSystemUnit>> {
+    override fun read(buf: ByteBuffer): List<LinkSystemUnit> {
+        val len = buf.getInt()
+        return List<LinkSystemUnit>(len) {
+            FfiConverterTypeLinkSystemUnit.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<LinkSystemUnit>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeLinkSystemUnit.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<LinkSystemUnit>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeLinkSystemUnit.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeLinkSystemWrite: FfiConverterRustBuffer<List<LinkSystemWrite>> {
+    override fun read(buf: ByteBuffer): List<LinkSystemWrite> {
+        val len = buf.getInt()
+        return List<LinkSystemWrite>(len) {
+            FfiConverterTypeLinkSystemWrite.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<LinkSystemWrite>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeLinkSystemWrite.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<LinkSystemWrite>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeLinkSystemWrite.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeLinkUnitLatency: FfiConverterRustBuffer<List<LinkUnitLatency>> {
+    override fun read(buf: ByteBuffer): List<LinkUnitLatency> {
+        val len = buf.getInt()
+        return List<LinkUnitLatency>(len) {
+            FfiConverterTypeLinkUnitLatency.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<LinkUnitLatency>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeLinkUnitLatency.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<LinkUnitLatency>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeLinkUnitLatency.write(it, buf)
         }
     }
 }

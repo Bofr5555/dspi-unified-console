@@ -1669,6 +1669,58 @@ interface DspiCoreApi : AutoCloseable {
     fun linkSetUrl(url: String)
 
     /**
+     * The audio link's installation on the hub this session is on: its
+     * elements with their link state, the rooms, the scenes, alarms and a
+     * one-line summary. Reads `system.status` (and `system.get` when the
+     * model changed). The hub answers the status at most once a second per
+     * session; asked sooner, this gives the last view again with `stale`.
+     * Blocks on the network: keep it off a UI thread.
+     *
+     * Errors: [`DspiError::Disconnected`] with no hub session,
+     * [`DspiError::Link`] with the hub's code or the client's.
+     */
+    @Throws(DspiException::class)
+    fun linkSystemView(): LinkSystemView
+
+    /**
+     * Save the "Clock and links" edits made on the view of `revision`, as
+     * one `system.set` the hub takes only while its model is still at that
+     * revision. Returns the new revision. Admin only.
+     *
+     * Errors: [`DspiError::Link`] `conflict` when the installation changed on
+     * the hub meanwhile (nothing is saved; read the view again and edit
+     * again), `denied` for another role, `bad_request` for values the hub
+     * refuses, with its words; [`DspiError::Disconnected`] with no session.
+     */
+    @Throws(DspiException::class)
+    fun linkSystemSave(revision: Long, edits: LinkSystemEdits): Long
+
+    /**
+     * Write the link delays and hop offsets the system delay asks for to
+     * every unit (`system.align` with `apply`). Each unit re-anchors: a
+     * short silence (2 to 6 ms). Admin only. Blocks while the hub writes
+     * every unit.
+     *
+     * Errors: as [`Self::link_system_save`], without `conflict`.
+     */
+    @Throws(DspiException::class)
+    fun linkSystemAlign(): LinkSystemAlign
+
+    /**
+     * Recall scene `scene` (an id from the view) on every unit it names
+     * (`system.scene.apply`). A recall the hub took but every device
+     * refused (a sender holds one scene at a time) is answered with
+     * `taken` false and the words to show, naming the frame it holds.
+     * Control or admin.
+     *
+     * Errors: [`DspiError::Link`] `denied` when the role may not make one of
+     * the scene's operations (the hub's words name it), `bad_request` for a
+     * scene the model does not have; [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)
+    fun linkSystemRecall(scene: String): LinkSceneRecall
+
+    /**
      * The monitor lines with an id above `after_id`, oldest first, and the
      * id to pass next time (`after_id` itself when there is nothing new).
      * Pass 0 for everything still kept. Never fails.

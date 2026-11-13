@@ -5620,6 +5620,58 @@ uint32_t dspi_link_ws_url(const char *host,
 uint32_t dspi_link_fetch_info(const char *host, uint16_t port, char *buf, uint32_t len);
 
 /**
+ * The audio link installation on the hub this session is on, for a System
+ * screen: JSON {ok, revision, installed, role, mayEdit, mayRecall,
+ * editNote, recallNote, systemDelayFrames, systemDelayMs, systemDelayAuto,
+ * rateHz, lipSyncUs, units: [{id, name, serial, kind, role, room,
+ * connected, state, stateWord, pending, linkDelayFrames, linkDelayMs,
+ * unitLinkDelayFrames, linkDelayMin, linkDelayMax, hopOffset,
+ * unitHopOffset, phaseErrorFrames, hops, hopDelayFrames, latencyUs,
+ * measuredLatencyUs, alarms}], rooms: [{id, name, lipSyncUs}], scenes:
+ * [{id, name, systemMute}], alarms: [{id, severity, subject, message,
+ * state}], systemMute, pendingApplyFrame, locked, holdover, pending,
+ * unitCount, summary, health, issues, stale}. Asks the hub (at most once
+ * a second; sooner gives the last view with `stale`): keep it off a UI
+ * thread, and give a buffer of 64 KiB, as a short one means asking again.
+ * Returns the length needed; 0 for a panic.
+ */
+uint32_t dspi_link_system_view(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Save the Clock-and-links edits made on the view of `revision`:
+ * `edits_json` is {setSystemDelay, systemDelayFrames (null: automatic),
+ * rooms: [{roomId, lipSyncUs}], units: [{unitId, measuredLatencyUs}]}.
+ * Replies JSON {ok, revision} (the new one), or code `conflict` when the
+ * installation changed on the hub meanwhile (nothing saved: reload),
+ * `denied` for a role other than admin. Blocks. Returns the length
+ * needed; see the module's rule on short buffers.
+ */
+uint32_t dspi_link_system_save(struct FfiCore *core,
+                               uint64_t revision,
+                               const char *edits_json,
+                               char *buf,
+                               uint32_t len);
+
+/**
+ * Write the link delays the system delay asks for to every unit (each
+ * re-anchors with a short silence). Replies JSON {ok, applied, message,
+ * writes: [{unit, what, result, resultWord, tone}]}. Admin only. Blocks.
+ * Returns the length needed; see the module's rule on short buffers.
+ */
+uint32_t dspi_link_system_align(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Recall scene `scene` (an id from the view). Replies JSON {ok, scene,
+ * name, taken, frame, leadMs, onTime, heldFrame, message, writes: [{unit,
+ * what, result, resultWord, tone}]}; `taken` false is a refusal the hub
+ * took (the sender holds another scene), `message` says why. A role that
+ * may not make one of its operations gets code `denied` with the hub's
+ * words. Blocks. Returns the length needed; see the module's rule on
+ * short buffers.
+ */
+uint32_t dspi_link_system_recall(struct FfiCore *core, const char *scene, char *buf, uint32_t len);
+
+/**
  * The DSPi control ports this host can see: JSON {ok, value: [name]}. Lists
  * MIDI ports, so keep it off a UI thread and call it at most once a second.
  * Returns the length needed; 0 for a panic.

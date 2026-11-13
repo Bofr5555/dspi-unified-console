@@ -1101,6 +1101,26 @@ void uniffi_dspi_core_fn_method_dspicore_link_set_url(void*_Nonnull ptr, RustBuf
 RustBuffer uniffi_dspi_core_fn_method_dspicore_link_status(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_SYSTEM_ALIGN
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_SYSTEM_ALIGN
+RustBuffer uniffi_dspi_core_fn_method_dspicore_link_system_align(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_SYSTEM_RECALL
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_SYSTEM_RECALL
+RustBuffer uniffi_dspi_core_fn_method_dspicore_link_system_recall(void*_Nonnull ptr, RustBuffer scene, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_SYSTEM_SAVE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_SYSTEM_SAVE
+uint64_t uniffi_dspi_core_fn_method_dspicore_link_system_save(void*_Nonnull ptr, uint64_t revision, RustBuffer edits, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_SYSTEM_VIEW
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LINK_SYSTEM_VIEW
+RustBuffer uniffi_dspi_core_fn_method_dspicore_link_system_view(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LOAD_PARAMS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_LOAD_PARAMS
 void uniffi_dspi_core_fn_method_dspicore_load_params(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -3316,6 +3336,30 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_link_set_url(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_STATUS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_STATUS
 uint16_t uniffi_dspi_core_checksum_method_dspicore_link_status(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_SYSTEM_ALIGN
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_SYSTEM_ALIGN
+uint16_t uniffi_dspi_core_checksum_method_dspicore_link_system_align(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_SYSTEM_RECALL
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_SYSTEM_RECALL
+uint16_t uniffi_dspi_core_checksum_method_dspicore_link_system_recall(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_SYSTEM_SAVE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_SYSTEM_SAVE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_link_system_save(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_SYSTEM_VIEW
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_LINK_SYSTEM_VIEW
+uint16_t uniffi_dspi_core_checksum_method_dspicore_link_system_view(void
     
 );
 #endif
