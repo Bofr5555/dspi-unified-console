@@ -354,6 +354,7 @@ impl HubHandle {
                 }) {
                     "unchanged".into()
                 } else {
+                    self.system().expect_reanchor(&plan.serial);
                     set_ext(&dev, alink::EXT_LINK_PHASE, want.encode().to_vec())
                         .map_or_else(status_name, |()| "ok".into())
                 };

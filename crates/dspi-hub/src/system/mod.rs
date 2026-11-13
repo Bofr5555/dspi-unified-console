@@ -22,7 +22,7 @@ pub use run::{AlignReport, SceneReport, SystemStatus, WriteResult};
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::SystemTime;
+use std::time::{Duration, Instant, SystemTime};
 
 use dspi_proto::ext::audio_link::{LinkEvent, link_event};
 use serde_json::json;
@@ -64,6 +64,9 @@ struct State {
     /// the device's `EXT_NOTIFY_FEATURES` bit 2.
     handles: BTreeMap<u8, (String, bool)>,
     alignment: Option<Alignment>,
+    /// Units the hub has just re-anchored itself (a new `EXT_LINK_PHASE`), by
+    /// serial: their `REANCHOR` event before this is no alarm.
+    reanchoring: BTreeMap<String, Instant>,
 }
 
 /// The system's state, shared by the hub's handles and the relay's tap.
@@ -79,6 +82,9 @@ impl std::fmt::Debug for SystemShared {
         f.write_str("SystemShared")
     }
 }
+
+/// How long after the hub writes a unit's phase its re-anchor is expected.
+const REANCHOR_EXPECTED: Duration = Duration::from_secs(2);
 
 /// Unix seconds now.
 pub(crate) fn now() -> u64 {
@@ -168,6 +174,13 @@ impl SystemShared {
         changes
     }
 
+    /// The hub is about to write unit `serial`'s phase: its re-anchor follows.
+    pub(crate) fn expect_reanchor(&self, serial: &str) {
+        if let Some(until) = Instant::now().checked_add(REANCHOR_EXPECTED) {
+            self.lock().reanchoring.insert(serial.to_owned(), until);
+        }
+    }
+
     /// A packet from the device at `handle` (the relay's tap): an 0xE1 from a
     /// unit of the model that announces it raises or clears its alarm, which is
     /// broadcast on `relay`. Cheap for every other packet.
@@ -191,13 +204,17 @@ impl SystemShared {
                 return;
             };
             let unit = unit.id.clone();
-            s.alarms.event(
-                &unit,
-                e.state.as_str(),
-                e.reason.as_str(),
-                e.reason.is_loss(),
-                now(),
-            )
+            let expected = s
+                .reanchoring
+                .get(&serial)
+                .is_some_and(|until| Instant::now() <= *until);
+            let reason = match e.reason.as_str() {
+                // The hub's own phase write: no alarm.
+                "reanchor" if expected => "none",
+                r => r,
+            };
+            s.alarms
+                .event(&unit, e.state.as_str(), reason, e.reason.is_loss(), now())
         };
         for a in &changes {
             relay.broadcast_event(&alarm_event(a));

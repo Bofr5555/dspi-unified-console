@@ -543,6 +543,27 @@ pub(crate) mod tests_wp_hb1 {
         assert_eq!(mode & 0o077, 0, "{mode:o}");
     }
 
+    // -- WP SW2 --
+    /// A system model this hub cannot read costs nothing else, and stays in the
+    /// file until a new one is set.
+    #[test]
+    fn wp_sw2_an_unreadable_system_model_is_ignored_and_kept() {
+        let dir = scratch("system");
+        fs::create_dir_all(&dir).unwrap();
+        let text = r#"{"hub_id":"x","device_names":{"E46":"Den"},"system":{"units":7}}"#;
+        fs::write(dir.join(FILE_NAME), text).unwrap();
+        let mut s = HubStore::load(&dir).unwrap();
+        assert_eq!(s.device_names()["E46"], "Den");
+        assert!(s.system().is_none());
+        s.save().unwrap();
+        let kept = fs::read_to_string(dir.join(FILE_NAME)).unwrap();
+        assert!(kept.contains("\"units\": 7"), "{kept}");
+        let model = crate::system::model::SystemModel::default();
+        s.set_system(&model).unwrap();
+        s.save().unwrap();
+        assert_eq!(HubStore::load(&dir).unwrap().system(), Some(model));
+    }
+
     #[test]
     fn wp_hb1_device_names_are_capped() {
         let dir = scratch("caps");
