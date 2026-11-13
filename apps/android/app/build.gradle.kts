@@ -153,6 +153,8 @@ tasks.withType<Test>().configureEach {
     // -- WP AN34 -- the graph overlay's following test runs crates/dspi-link's fake hub (as :feature-analysis' AN17 test)
     dependsOn(":link:cargoBuildFakeHub")
     systemProperty("dspi.fakehub", "$cargoTarget/debug/dspi-link-fakehub")
+    // -- WP AN42 -- UndoBarShotsWpAn42Test writes its screenshots here when given -Pdspi.shotsDir (as UIM1's)
+    providers.gradleProperty("dspi.shotsDir").orNull?.let { systemProperty("dspi.shotsDir", it) }
 }
 
 // Fail early and clearly instead of producing an unsigned / wrongly signed release.

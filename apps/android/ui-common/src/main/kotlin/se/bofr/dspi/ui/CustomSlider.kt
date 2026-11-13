@@ -110,6 +110,12 @@ fun CustomSlider(
     val editingChanged by rememberUpdatedState(onEditingChanged)
     val resetNow by rememberUpdatedState(onReset)
     val default by rememberUpdatedState(defaultValue)
+    // -- WP AN42 -- a drag is one undo step: marked on the grab, ended after the
+    // release's commit (so it joins the step), on a cancel, on leaving the screen
+    // and when the slider is disabled mid-drag (its gesture is dropped unheard then)
+    val marker = LocalDragMarker.current
+    val holder = remember { Any() }
+    DisposableEffect(marker, enabled) { onDispose { marker?.end(holder) } }
 
     fun reset() {
         val d = default ?: return
@@ -152,15 +158,18 @@ fun CustomSlider(
                             detectHorizontalDragGestures(
                                 onDragStart = {
                                     dragValue = current
+                                    marker?.begin(holder) // -- WP AN42 --
                                     editingChanged?.invoke(true)
                                 },
                                 onDragEnd = {
                                     editingChanged?.invoke(false)
                                     finished?.invoke()
+                                    marker?.end(holder) // -- WP AN42 --
                                 },
                                 onDragCancel = {
                                     editingChanged?.invoke(false)
                                     finished?.invoke()
+                                    marker?.end(holder) // -- WP AN42 --
                                 },
                                 onHorizontalDrag = { ch, dx ->
                                     ch.consume()

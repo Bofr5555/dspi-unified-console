@@ -76,9 +76,12 @@ import se.bofr.dspi.feature.presets.PresetsScreen
 import se.bofr.dspi.feature.settings.SettingsScreen
 import se.bofr.dspi.feature.tools.OutputLimiterView
 import se.bofr.dspi.feature.tools.ToolsScreen
+import se.bofr.dspi.ui.DragMarker
 import se.bofr.dspi.ui.DspiRoutes
 import se.bofr.dspi.ui.LocalDemoMode
+import se.bofr.dspi.ui.LocalDragMarker
 import se.bofr.dspi.ui.LocalWritesAllowed
+import se.bofr.dspi.ui.WhileVisible
 import se.bofr.dspi.ui.WritesExempt
 import se.bofr.dspi.ui.alert.AlertHost
 import se.bofr.dspi.ui.alert.ConsoleAlertHost
@@ -143,6 +146,13 @@ fun AppScaffold(
     // -- WP AN41 -- a write the core refused, in its words, over the screen
     val notices = remember { SnackbarHostState() }
     RefusalNotices(bridge, notices)
+    // -- WP AN42 -- Undo and Redo: the strip's buttons, the keys, their snackbar;
+    // the drag mark every slider and graph drag holds, ended whenever the app stops
+    val historyScope = rememberCoroutineScope()
+    val history = remember(bridge) { UndoRedoModel(bridge, historyScope) }
+    UndoRedoNotices(history, notices)
+    val dragMarker = remember(bridge) { DragMarker(bridge::setDragging) }
+    WhileVisible(key = dragMarker, onShow = {}, onHide = { dragMarker.endAll() })
     // The IME stays out, as with the Scaffold's default insets
     Scaffold(
         snackbarHost = { RefusalNoticeHost(notices) },
@@ -159,7 +169,7 @@ fun AppScaffold(
         ) {
             // In here: the Scaffold composes its content after the scaffold itself, the requester's node with it
             LaunchedEffect(focusLost) { focus.requestFocus() }
-            ConnectionStripBar(strip, onExitDemo, onRequestPermission, onRemoteAction) {
+            ConnectionStripBar(strip, onExitDemo, onRequestPermission, onRemoteAction, history) {
                 DeviceListButton(devices) { c -> if (c == DeviceChoice.Network) onConnectNetwork() else onChooseDevice(c) }
             }
             key(bridge) {
@@ -167,9 +177,10 @@ fun AppScaffold(
                 HostChannelsFeed(bridge, enabled = strip !is ConnectionStrip.Demo && strip !is ConnectionStrip.Remote)
                 CompositionLocalProvider(
                     LocalDemoMode provides (strip is ConnectionStrip.Demo),
-                    LocalOnboarding provides onboarding // -- WP AN19 --
+                    LocalOnboarding provides onboarding, // -- WP AN19 --
+                    LocalDragMarker provides dragMarker // -- WP AN42 --
                 ) {
-                    DspiNavHost(bridge, bootloaderLocator, remote = strip is ConnectionStrip.Remote, keys)
+                    DspiNavHost(bridge, bootloaderLocator, remote = strip is ConnectionStrip.Remote, keys, history)
                 }
             }
         }
@@ -179,21 +190,35 @@ fun AppScaffold(
 }
 
 @Composable
-private fun DspiNavHost(bridge: DspiBridge, bootloaderLocator: BootloaderLocator?, remote: Boolean, keys: ShortcutKeys) {
+private fun DspiNavHost(
+    bridge: DspiBridge,
+    bootloaderLocator: BootloaderLocator?,
+    remote: Boolean,
+    keys: ShortcutKeys,
+    // -- WP AN42 --
+    history: UndoRedoModel
+) {
     // G1: every device-writing control is disabled while the bridge refuses writes
     val writes by bridge.writesAllowed.collectAsStateWithLifecycle()
-    CompositionLocalProvider(LocalWritesAllowed provides writes) { DspiRoutesHost(bridge, bootloaderLocator, remote, keys) }
+    CompositionLocalProvider(LocalWritesAllowed provides writes) { DspiRoutesHost(bridge, bootloaderLocator, remote, keys, history) }
 }
 
 @Composable
-private fun DspiRoutesHost(bridge: DspiBridge, bootloaderLocator: BootloaderLocator?, remote: Boolean, keys: ShortcutKeys) {
+private fun DspiRoutesHost(
+    bridge: DspiBridge,
+    bootloaderLocator: BootloaderLocator?,
+    remote: Boolean,
+    keys: ShortcutKeys,
+    // -- WP AN42 --
+    history: UndoRedoModel
+) {
     val nav = rememberNavController()
     // -- WP AN35 -- the shortcuts drive this NavHost while it is on screen
     val writes = rememberUpdatedState(LocalWritesAllowed.current)
     val appState = LocalAppState.current
     val scope = rememberCoroutineScope()
-    DisposableEffect(nav, bridge, appState) {
-        keys.host = NavShortcutHost(nav, bridge, appState, scope) { writes.value }
+    DisposableEffect(nav, bridge, appState, history) {
+        keys.host = NavShortcutHost(nav, bridge, appState, scope, history) { writes.value }
         onDispose { keys.host = null }
     }
     NavHost(navController = nav, startDestination = DspiRoutes.HOME) {
@@ -272,6 +297,8 @@ private fun ConnectionStripBar(
     onExitDemo: () -> Unit,
     onRequestPermission: () -> Unit,
     onRemoteAction: (RemoteAction) -> Unit,
+    // -- WP AN42 --
+    history: UndoRedoModel?,
     devices: @Composable () -> Unit
 ) {
     // -- WP AN5 -- the owner's lost-connection banner; this bar is above every route, so it is on every screen
@@ -305,6 +332,7 @@ private fun ConnectionStripBar(
             is ConnectionStrip.NeedsPermission -> TextButton(onClick = onRequestPermission) { Text("Allow USB access") }
             ConnectionStrip.NoDevice, ConnectionStrip.Usb, is ConnectionStrip.Info -> Unit
         }
+        history?.let { UndoRedoButtons(it, if (demo) colors.onTertiaryContainer else colors.onSurfaceVariant) } // -- WP AN42 --
         devices() // -- WP AN7 --
     }
 }
@@ -360,6 +388,8 @@ private class NavShortcutHost(
     private val bridge: DspiBridge,
     private val appState: AppState,
     private val scope: CoroutineScope,
+    // -- WP AN42 --
+    private val history: UndoRedoModel,
     private val writes: () -> Boolean
 ) : ShortcutHost {
     override val currentRoute: String?
@@ -399,4 +429,9 @@ private class NavShortcutHost(
     }
 
     override fun stopGenerator() = bridge.siggen.stop()
+
+    // -- WP AN42 --
+    override fun undo() = history.undo()
+
+    override fun redo() = history.redo()
 }

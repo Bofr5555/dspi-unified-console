@@ -292,3 +292,20 @@ enum class MaskField {
     SUBHARM_OUTPUTS,
     TUBE_OUTPUTS
 }
+
+// -- WP AN42 -- undo and redo through the core's journal (P0W)
+
+/** What [DspiBridge.undo] and [DspiBridge.redo] can do now (the core's journal, no device I/O). */
+data class UndoAvailability(val canUndo: Boolean = false, val canRedo: Boolean = false)
+
+/** The outcome of [DspiBridge.undo] or [DspiBridge.redo]. */
+sealed interface HistoryStep {
+    /** The core stepped: what it moved, stepped over and left alone ([se.bofr.dspi.core.HistoryMove]). */
+    data class Moved(val move: se.bofr.dspi.core.HistoryMove) : HistoryStep
+
+    /** The core refused or failed (no device, the connection changed, a setter's error); the change stays to be stepped. */
+    data class Failed(val error: Throwable) : HistoryStep
+
+    /** G1: writes are not allowed (read-only, viewer, not connected); [BridgeEvent.CommandFailed] says why. Nothing was sent. */
+    data object Refused : HistoryStep
+}

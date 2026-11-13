@@ -169,4 +169,11 @@ interface PeqGraphEditorHost {
 
     /** The live display is over; rows go back to the model. */
     fun endLive(channel: Int)
+
+    /**
+     * -- WP AN42 -- a dot drag started (true) or ended (false): its writes are
+     * one undo step (`DspiBridge.setDragging`). The end comes after the drag's
+     * commit, also for a cancelled drag and when the editor is reset or disposed.
+     */
+    fun markDrag(dragging: Boolean) {}
 }
