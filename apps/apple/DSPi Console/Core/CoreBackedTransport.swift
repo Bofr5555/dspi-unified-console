@@ -124,6 +124,10 @@ final class CoreBackedTransport: DeviceTransport {
     /// -- WP SW9 -- The write lane (SWIFT-SEAMS 5.2): the newest value
     /// queued per key, with the generation it was issued for (stateLock).
     private var laneWrites: [String: LaneWrite] = [:]
+    /// -- WP SW9 -- fixup sw9 F2: the job that will send a key's queued
+    /// value, by a token; a commit of the key retires it (stateLock).
+    private var laneJobs: [String: UInt64] = [:]
+    private var laneTokens: UInt64 = 0
     /// -- WP SW9 -- A publish of the state after typed writes is queued
     /// (coreQueue only).
     private var writePublishQueued = false
@@ -684,31 +688,59 @@ extension CoreBackedTransport: CoreStateSource, CoreStateSourceProviding {
         stateLock.lock()
         lastRawSetAt = ProcessInfo.processInfo.systemUptime   // the unsaved-changes settle waits behind it
         let entry = LaneWrite(generation: localGeneration, body: body)
-        var queued = false
-        if let key = key {
-            queued = laneWrites[key] != nil
-            laneWrites[key] = entry
+        guard let key = key else {
+            stateLock.unlock()
+            coreQueue.async { [weak self] in self?.runWrite(nil, entry) }
+            return
         }
-        stateLock.unlock()
+        laneWrites[key] = entry
         // The job already queued for this key will send the newest value.
-        guard !queued else { return }
+        if laneJobs[key] != nil { stateLock.unlock(); return }
+        laneTokens &+= 1
+        let token = laneTokens
+        laneJobs[key] = token
+        stateLock.unlock()
+        coreQueue.async { [weak self] in self?.runLane(key, token) }
+    }
+
+    // -- WP SW9 -- fixup sw9 F2
+    func commit(lane key: String, _ body: @escaping (DspiCore) throws -> Void) {
+        stateLock.lock()
+        lastRawSetAt = ProcessInfo.processInfo.systemUptime
+        let entry = LaneWrite(generation: localGeneration, body: body)
+        // The commit supersedes the value still queued for its key, and the
+        // job queued for it sends nothing now: a later value for the key gets
+        // a job of its own behind this commit, so it cannot be overtaken.
+        laneWrites[key] = nil
+        laneJobs[key] = nil
+        stateLock.unlock()
         coreQueue.async { [weak self] in self?.runWrite(key, entry) }
+    }
+
+    // On coreQueue.  The lane job of `key`: sends the newest value queued for
+    // it, unless a commit retired this job.
+    private func runLane(_ key: String, _ token: UInt64) {
+        stateLock.lock()
+        guard laneJobs[key] == token else { stateLock.unlock(); return }
+        laneJobs[key] = nil
+        let entry = laneWrites.removeValue(forKey: key)
+        stateLock.unlock()
+        guard let entry = entry else { return }
+        runWrite(key, entry)
     }
 
     // On coreQueue.  A write issued for another connection is dropped, and a
     // failed one drops every queued lane value: nothing is replayed.
-    private func runWrite(_ key: String?, _ issued: LaneWrite) {
+    private func runWrite(_ key: String?, _ entry: LaneWrite) {
         stateLock.lock()
-        let entry: LaneWrite?
-        if let key = key { entry = laneWrites.removeValue(forKey: key) } else { entry = issued }
         let current = localGeneration
         stateLock.unlock()
-        guard let entry = entry, entry.generation == current else { return }
+        guard entry.generation == current else { return }
         lastRawSetSentAt = ProcessInfo.processInfo.systemUptime
         do {
             try onCore { try entry.body($0) }
         } catch {
-            stateLock.lock(); laneWrites.removeAll(); stateLock.unlock()
+            stateLock.lock(); laneWrites.removeAll(); laneJobs.removeAll(); stateLock.unlock()
             writeRefused(error)
             Self.log.info("typed write \(key ?? "", privacy: .public) failed: \(String(describing: error), privacy: .public)")
             return
@@ -768,8 +800,13 @@ extension CoreBackedTransport: CoreStateSource, CoreStateSourceProviding {
                 return .success(try self.onCore(body))
             } catch {
                 let failure = error as? DspiError ?? .Transfer(msg: String(describing: error))
-                if case .Locked = failure { DeviceLock.notice.post() }
-                if case .ReadOnly = failure { RefusedWrite.handleReadOnly(fanout: self.fanout) }
+                switch failure {
+                case .Locked: DeviceLock.notice.post()
+                case .ReadOnly: RefusedWrite.handleReadOnly(fanout: self.fanout)
+                // -- WP SW9 -- fixup sw9 N1: a hub's refusal, as for a write.
+                case .Denied: RefusedWrite.handle(.denied, fanout: self.fanout)
+                default: break
+                }
                 return .failure(failure)
             }
         }

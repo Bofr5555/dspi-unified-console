@@ -71,9 +71,9 @@ last-wave WPs while workers would otherwise sit idle (WB2 and WB5 now).
 
 | State | WPs |
 |---|---|
-| **In progress** (8) | **SW9** Swift volume, EQ, crossover, outputs and matrix on the typed setters (the VM job), **SW10** Swift effects on the typed setters (the VM job), **AN15** R8, **QD21a** Qt packaging for Linux and Windows, **QD22** Qt accessibility, **AN20** Android accessibility, **WB2** core runtime without threads (wasm), **WB5** web client skeleton |
-| **Next** | Plan: QD23 after QD22; AN21 after AN20; QD21b (`.dmg`, VM) after QD21a, then SW-V1 to the owner (OD3); SW-M1, SW17, SW18, SW20, SW19, SW23, SW24 on the VM in that order; HO1's rest after R-Qt and SW8. Web: WB3 after WB2; WB4a and WB4b after WB3; WB6 slices after WB5 and WB4a, in the order of section 5.5's slice table (WB6d System view, WB6e scene bar, WB6f status rail before the remaining tool screens; UIM1); WB7; WB8 last. Then OPT0-OPT9, then PL-* |
-| **Blocked** | **On the owner:** OD3 (decides SW9-SW14, then SW-M3, SW-M4, SW15, SW22); AN13's Link half and the phone checks of AN15, AN16, AN20; AN16 waits for AN15's release to be uploaded; QD35 hand checks; XC4 and XC5 (an ESP32 bridge); XC6 (go for a VREG write); SW16 (iPhone or iPad); SW-M5 (Apple silicon Mac); WB4c's public use (OD9). **On deps:** SW5, SW6, SW7, SW-M2 behind the VM queue; SW-V1 behind SW8 and QD21b |
+| **In progress** (8) | **SW10** Swift effects on the typed setters (the VM job), **SW11** Swift pins, I2S, ADAT, inputs, UART/I2C and names on the typed API (the VM job), **AN15** R8, **QD21a** Qt packaging for Linux and Windows, **QD22** Qt accessibility, **AN20** Android accessibility, **WB2** core runtime without threads (wasm), **WB5** web client skeleton |
+| **Next** | Plan: QD23 after QD22; AN21 after AN20; QD21b (`.dmg`, VM) after QD21a; SW-M1, SW17, SW18, SW20, SW19, SW23, SW24 on the VM in that order; HO1's rest after R-Qt and SW8. Web: WB3 after WB2; WB4a and WB4b after WB3; WB6 slices after WB5 and WB4a, in the order of section 5.5's slice table (WB6d System view, WB6e scene bar, WB6f status rail before the remaining tool screens; UIM1); WB7; WB8 last. Then OPT0-OPT9, then PL-* |
+| **Blocked** | **On the owner:** AN13's Link half and the phone checks of AN15, AN16, AN20; AN16 waits for AN15's release to be uploaded; QD35 hand checks; XC4 and XC5 (an ESP32 bridge); XC6 (go for a VREG write); SW16 (iPhone or iPad); SW-M5 (Apple silicon Mac); WB4c's public use (OD9). **On deps:** SW5, SW6, SW7, SW-M2 behind the VM queue; SW-V1 behind SW8 and QD21b |
 | **Done since the last status (2026-11-07)** | CG3, CG7, AN18 (closed: their moved parts are done); CG23-CG31 with CG29b; HB7, HB8; QD9, QD10, QD13, QD13b, QD14, QD16, QD17, QD19, QD36, QD37, QD38; TM25, TM26; AN14, AN32-AN39; SW4, SW25, SW-U1, SWF1-SWF3; DOC1, HO1a |
 
 **Open checks found by the dispatch (not WPs yet):**
@@ -286,12 +286,12 @@ last-wave WPs while workers would otherwise sit idle (WB2 and WB5 now).
 | SW6 | Link through the core | TODO |  | VM; [HW] |
 | SW7 | Banner and errors | TODO |  | After SW6 |
 | SW8 | Reads and the mirror | DONE | wp/SW8 | Merged in review c6b |
-| SW9 | Volume, EQ, crossover, outputs, matrix | IN REVIEW | wp/SW9 | Typed setters and the write lane; Undo works on this domain through the core (PARITY section 4). Cut from wp/SWMAC1 |
+| SW9 | Volume, EQ, crossover, outputs, matrix | DONE | wp/SW9 | Merged to main d1b1918a (review sw9, fixup 64a66b97). Typed setters and the write lane; Undo works on this domain through the core (PARITY section 4) |
 | SW10 | Effects | IN REVIEW | wp/SW10 | Loudness to upmixer on the typed setters and SW9's lane; Undo works on each effect through the core (PARITY section 4). Cut from wp/SW9 |
-| SW11 | Pins, I2S, ADAT, inputs, names | TODO |  | After OD3 |
-| SW12 | Control surfaces | TODO |  | After OD3 |
-| SW13 | Presets | TODO |  | After OD3 |
-| SW14 | Analyser, Stats, signal generator | TODO |  | After OD3 |
+| SW11 | Pins, I2S, ADAT, inputs, names | IN PROGRESS | wp/SW11 | Cut from wp/SW10 |
+| SW12 | Control surfaces | TODO |  | OD3 decided (Swift); after SW9 |
+| SW13 | Presets | TODO |  | OD3 decided (Swift); after SW9 |
+| SW14 | Analyser, Stats, signal generator | TODO |  | OD3 decided (Swift); after SW9 |
 | SW15 | Simulator and relay test | TODO |  | [HW] after SW5, SW6, SW14 |
 | SW16 | Real iPhone or iPad | TODO |  | [HW][OWNER]: no device yet |
 | SW17 | File import and export | TODO |  | VM |
@@ -312,7 +312,7 @@ last-wave WPs while workers would otherwise sit idle (WB2 and WB5 now).
 | SW-M4 | What stays Swift | TODO |  | After SW14 |
 | SW-M5 | Real Mac hardware pass | TODO |  | [HW][OWNER]: Apple silicon Mac |
 | SW-U1 | Upstream tracking rule | DONE | fc0f2678 (review c4q) |  |
-| SW-V1 | Visual and feel evidence for OD3 | TODO |  | After SW8 and QD21b |
+| SW-V1 | Visual and feel evidence for OD3 | TODO |  | No longer gates OD3 (decided 2026-11-13) |
 
 **WB: web** (section 5.5, after the plan's WPs): 12 WPs (WB6 in slices): 2 DONE, 2 IN PROGRESS, 8 TODO. The old stubs WB2-WB4
 (UI, hosting, hardware) are replaced by the WPs below.
@@ -1407,7 +1407,7 @@ Every wave needs `core-merge` on `main`. Within a wave no two WPs own the same f
 | 3 | HB5, HB6; SW3, then CG23–CG26, then SW4; CG27, CG28; AN34 then AN35, AN36; QD9, QD10, QD13, QD14, QD16, QD17, QD19, QD28; TM6, TM11; AN4, AN5, AN7, AN14 (on AN13's partial checks), AN17, AN18, AN19, AN23 | wave 2; **M0 at its end** |
 | 4 | HB7; SW5, SW6 then SW7, SW-M1 then SW-M2, SW17–SW20, SW23; QD21a; TM13; AN9–AN12 | wave 3 |
 | 5 | SW8, QD21b, then SW-V1 **(then OD3)**; QD24, QD25, QD35; AN15 then AN22, then AN16; AN13's rest; XC4, XC5, XC6 | wave 4 |
-| 6 | SW9–SW14; SW-M3 after HB7 | the owner's call at OD3 |
+| 6 | SW9–SW14; SW-M3 after HB7 | OD3 decided: Swift (2026-11-13) |
 | 7 | QD22 then QD23; AN20 then AN21; SW15, SW16, SW22, SW-M4, SW-M5; HO1 | everything else in that client |
 | After | the owner's order: web (WB2-WB9, section 5.5), then optimisation (OPT0-OPT9, 5.7), then polish (PL-*, 5.8). Per resource: web WPs start beside wave 7 when workers would otherwise idle | the plan's WPs on that resource |
 
@@ -1469,7 +1469,7 @@ section at the top is the record.
 | **OD-Lic** | **The exact iOS terms. Deferred by the owner.** The direction is decided (above). Yours and Weeb Labs'. | **Not legal advice.** Settle from LC1's list when the time comes: more code in the iOS binary means more to license. Also ask Weeb Labs for a Console-Linux licence and which of their Mac app's `LICENSE` (GPL) and README (MIT) holds. Remove §7 terms on what Weeb Labs would own. R-iOS stays gated. |
 | **OD-WL** | Propose the core-based frontend to Weeb Labs, and when. **Deferred by the owner.** | **At M0**, with its matrix and parity table, and SW-V1's evidence if you want the Swift case stronger. Only ever your act. |
 | **OD-DevID** | Apple Developer ID ($99/yr). **Deferred by the owner.** | **Only if we distribute a Mac binary.** Otherwise Weeb Labs sign theirs. |
-| **OD3** | **Final call on Swift against Qt on the Mac, and how far Swift's move goes.** Owner: "come back with visual checks and feel". Working assumption: Swift. Comes with SW-V1 after SW8. It also decides SW9–SW14 (9–15.5 more). | **Decide on SW-V1 and SW8's evidence.** If it goes to Qt on the Mac: the Qt `.dmg` is buildable (QD21b); add back the macOS halves of QD12, QD13, QD18 and a hardware pass (about 1.5), and iOS stays Swift regardless. If Swift stops short of SW14, R-Mac uses its fallback. |
+| **OD3** [DECIDED 2026-11-13] | **Final call on Swift against Qt on the Mac, and how far Swift's move goes.** **Decided by the owner: the macOS Qt build is dropped, so Swift is the Mac and iOS app, and SW9–SW14 go ahead.** Owner: "come back with visual checks and feel". Working assumption: Swift. Comes with SW-V1 after SW8. It also decides SW9–SW14 (9–15.5 more). | **Decide on SW-V1 and SW8's evidence.** If it goes to Qt on the Mac: the Qt `.dmg` is buildable (QD21b); add back the macOS halves of QD12, QD13, QD18 and a hardware pass (about 1.5), and iOS stays Swift regardless. If Swift stops short of SW14, R-Mac uses its fallback. |
 
 ---
 

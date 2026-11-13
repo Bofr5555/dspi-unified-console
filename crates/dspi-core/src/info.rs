@@ -24,6 +24,8 @@ use dspi_transport::{InRead, TransportError};
 // -- WP QD4 --
 use dspi_transport::TransportKind;
 use dspi_transport::fake::EXT_FAKE_RENAME_ELSEWHERE;
+// -- WP WB8 --
+use dspi_transport::fake::EXT_FAKE_CLIP;
 // -- WP QD5 --
 use dspi_transport::fake::EXT_FAKE_LATENCY_TIMING;
 
@@ -734,3 +736,28 @@ mod tests_wp_qd4;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_qd5;
+
+// -- WP WB8 -- not a binding export: the web's demo only (dspi-wasm `demo`)
+impl DspiCore {
+    /// Have the demo device clip on the channels in `mask` (one bit per wire
+    /// channel), for clients' tests and demo mode: the clip shows on the next
+    /// meter read and goes into the event log as a real one would.
+    /// `Unsupported`, with no traffic, on anything but a simulated device;
+    /// `InvalidArgument` for an empty mask.
+    pub fn demo_clip(&self, mask: u32) -> Result<()> {
+        if mask == 0 {
+            return Err(DspiError::InvalidArgument {
+                msg: "no channel to clip".into(),
+            });
+        }
+        let mut inner = self.lock();
+        let mut w = inner.writable_conn()?;
+        if w.conn().caps.kind != TransportKind::Fake {
+            return Err(DspiError::Unsupported);
+        }
+        w.conn()
+            .transport()
+            .control_out(op::REQ_EXTENSION, EXT_FAKE_CLIP, &mask.to_le_bytes())
+            .map_err(DspiError::from)
+    }
+}

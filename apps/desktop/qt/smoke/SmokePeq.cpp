@@ -283,6 +283,31 @@ void dragging(Peqs &p) {
     const double q2 = p.band(2).q;
     p.drag(p.dot(2), p.dot(2) + QPoint(0, -int(p.yOf(0) - p.yOf(3))));
     d.check(QStringLiteral("qp4: dragging a high-pass up raises its resonance"), p.band(2).q > q2 * 1.2);
+
+    // -- WP P0W2 -- one drag mixing sideways, diagonal and upward moves of
+    // one band (frequency alone, both, gain alone) is one undo step
+    p.put(0, FILTER_PEAKING, 1000, 1.0, 0.0);
+    const FilterParams mixed0 = p.band(0);
+    const QPoint from = p.dot(0);
+    QTest::mouseMove(p.w, from);
+    QTest::mousePress(p.w, Qt::LeftButton, Qt::NoModifier, from);
+    QPoint at = from;
+    for (const QPoint step : { QPoint(8, 0), QPoint(8, 0), QPoint(8, -8), QPoint(8, -8), QPoint(0, -8), QPoint(0, -8), QPoint(8, 0) }) {
+        at += step;
+        QTest::mouseMove(p.w, at);
+        d.spin(10);
+    }
+    QTest::mouseRelease(p.w, Qt::LeftButton, Qt::NoModifier, at);
+    p.settle();
+    const FilterParams mixed1 = p.band(0);
+    d.check(QStringLiteral("p0w2: a mixed-axis drag moves the band's frequency and gain"),
+            mixed1.freq > mixed0.freq * 1.05 && mixed1.gain > mixed0.gain + 0.5);
+    d.app().shell->trigger(QStringLiteral("edit.undo"));
+    d.check(QStringLiteral("p0w2: one undo puts the band back as it was before the drag"), d.waitFor(3000, [&]() {
+        const FilterParams now = p.band(0);
+        return near(now.freq, mixed0.freq, 0.01) && near(now.gain, mixed0.gain, 0.001) && near(now.q, mixed0.q, 0.0001);
+    }));
+    p.settle();
 }
 
 void pullAndMarquee(Peqs &p) {

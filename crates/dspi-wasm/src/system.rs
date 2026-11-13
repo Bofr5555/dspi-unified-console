@@ -86,11 +86,49 @@ pub fn request(core: &DspiCore, params: Value) -> CallResult {
     Ok(answer)
 }
 
+// -- WP WB8 --
+/// `sceneOutcome {scene, report, model, heldFrame?, rateHz?}`: what a recall
+/// the page sent (`hubSystem` `system.scene.apply`) did, in the core's words
+/// (`dspi_core::link::system::scene_recall_outcome`, the outcome every client
+/// shows): `LinkSceneRecall`. No traffic.
+fn scene_outcome(params: Value) -> CallResult {
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct P {
+        scene: String,
+        report: Value,
+        #[serde(default)]
+        model: Value,
+        #[serde(default)]
+        held_frame: Option<u64>,
+        #[serde(default)]
+        rate_hz: Option<u32>,
+    }
+    let p: P = serde_json::from_value(params)
+        .map_err(|e| CallError::new("invalid", format!("bad parameters: {e}")))?;
+    if !p.report.is_object() {
+        return Err(CallError::new(
+            "invalid",
+            "sceneOutcome needs the hub's report",
+        ));
+    }
+    let outcome = dspi_core::link::system::scene_recall_outcome(
+        &p.scene,
+        &p.report,
+        &p.model,
+        p.held_frame,
+        p.rate_hz,
+    );
+    Ok(crate::calls::tidy(&outcome))
+}
+
 /// Dispatch one of this module's methods; `None` for another method.
 pub fn dispatch(core: &DspiCore, method: &str, params: Value) -> Option<CallResult> {
     Some(match method {
         "hubSystem" => request(core, params),
         "hubRole" => Ok(json!({ "role": core.link_hub_role() })),
+        // -- WP WB8 --
+        "sceneOutcome" => scene_outcome(params),
         _ => return None,
     })
 }
@@ -112,6 +150,64 @@ mod tests_wp_sw3 {
                 .as_bytes(),
         );
         serde_json::from_slice(&out).unwrap()
+    }
+
+    // -- WP WB8 -- a refused recall in the core's words, per the sender's answer
+    #[test]
+    fn wp_wb8_scene_outcome_words_by_the_senders_answer() {
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        let model = json!({ "rateHz": 48000, "scenes": [{ "id": "s2", "name": "Closed" }] });
+        let report = |result: &str| {
+            json!({
+                "plan": { "frame": 10_000, "leadFrames": 4800, "path": "superframe", "systemMute": true },
+                "frameAfterWrites": 5300,
+                "onTime": false,
+                "writes": [{ "serial": "S", "op": "superframe", "result": result }],
+            })
+        };
+        let outcome = |result: &str, held: Value| {
+            let r = run(
+                h,
+                "sceneOutcome",
+                json!({ "scene": "s2", "report": report(result), "model": model, "heldFrame": held }),
+            );
+            assert_eq!(r["ok"], true, "{r}");
+            r["value"].clone()
+        };
+        let v = outcome("refused", json!(10_100));
+        assert_eq!(v["taken"], false);
+        assert_eq!(v["heldFrame"], 10_100);
+        assert_eq!(
+            v["message"],
+            "Closed was refused: a scene is already scheduled on the sender for link frame 10100, \
+             100 ms after this recall. The sender takes one scene at a time; recall Closed again \
+             after that. System mute unchanged."
+        );
+        let v = outcome("refused", Value::Null);
+        assert!(
+            v["message"].as_str().unwrap().contains("still holds one"),
+            "{v}"
+        );
+        for (result, words) in [
+            ("timeout", "the sender did not answer in time"),
+            (
+                "locked",
+                "another console is applying changes to the sender",
+            ),
+            ("bad_frame", "the sender's answer was"),
+        ] {
+            let v = outcome(result, json!(10_100));
+            let m = v["message"].as_str().unwrap();
+            assert!(m.starts_with("Closed was not recalled: "), "{m}");
+            assert!(m.contains(words), "{result}: {m}");
+            assert!(!m.contains("already scheduled"), "{m}");
+            assert_eq!(v["heldFrame"], Value::Null);
+        }
+        let v = outcome("applied", Value::Null);
+        assert_eq!(v["taken"], true);
+        let r = run(h, "sceneOutcome", json!({ "scene": "s2", "report": 3 }));
+        assert_eq!(r["code"], "invalid", "{r}");
     }
 
     #[test]

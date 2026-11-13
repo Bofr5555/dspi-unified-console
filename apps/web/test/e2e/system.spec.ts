@@ -268,7 +268,8 @@ test.describe("SW3: an audio link installation on the hub", () => {
     // At once, before Evening's frame: the sender holds Evening and refuses Closed.
     await bar.getByRole("button", { name: "Recall Closed" }).click();
     const alert = result.getByRole("alert");
-    await expect(alert).toContainText(/^Closed was refused: a scene is already scheduled on the sender for link frame \d+, \d+ ms after this recall \(about .+\)\. The sender takes one scene at a time; recall Closed again after that\. System mute unchanged\.$/);
+    // -- WP WB8 -- the core's sentence (`sceneOutcome`), the one every client shows
+    await expect(alert).toHaveText(/^Closed was refused: a scene is already scheduled on the sender for link frame \d+, \d+ ms after this recall\. The sender takes one scene at a time; recall Closed again after that\. System mute unchanged\.$/);
     await expect(result).not.toContainText("system mute on");
     // -- fixup lk1 -- the sender's write is the scene's, never read as a refused mute
     await expect(result.getByRole("list", { name: "Per unit" })).toContainText("Scene Closed: Refused");

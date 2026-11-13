@@ -1081,6 +1081,25 @@ pub(crate) fn recall_outcome(
     }
 }
 
+// -- WP WB8 --
+/// What a recall did, for a client that sent `system.scene.apply` itself (the
+/// web's `hubSystem`): [`DspiCore::link_system_recall`]'s outcome and words from
+/// the hub's `report` and the `model` of `system.get`. `held`: the frame the
+/// sender was last seen holding (its `pendingApplyFrame` in `system.status`);
+/// `rate_hz`: the alignment's rate, else the model's.
+pub fn scene_recall_outcome(
+    scene: &str,
+    report: &Value,
+    model: &Value,
+    held: Option<u64>,
+    rate_hz: Option<u32>,
+) -> LinkSceneRecall {
+    let rate = rate_hz
+        .filter(|r| *r > 0)
+        .unwrap_or_else(|| rate_of(model, None));
+    recall_outcome(scene, report, model, held, rate)
+}
+
 /// What writing the link delays did, from the hub's report.
 pub(crate) fn align_outcome(report: &Value, model: &Value) -> LinkSystemAlign {
     let applied = report.get("applied").and_then(Value::as_bool) == Some(true);

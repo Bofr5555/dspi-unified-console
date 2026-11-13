@@ -1234,8 +1234,10 @@ private struct InputRoutingRow: View {
 
             // Crosspoint gain — clickable / scrollable.  Greyed when disconnected
             // but still editable so the user can pre-set a value before connecting.
-            ValueField(label: "dB", value: localGain, width: 44, scrollStep: 0.5, maxDecimals: 2) { v in
-                localGain = v
+            // -- fixup sw9 F3 -- One decimal through a core: its 0.1 dB grid.
+            ValueField(label: "dB", value: localGain, width: 44, scrollStep: 0.5,
+                       maxDecimals: vm.typedCore != nil ? 1 : 2) { v in
+                localGain = vm.keptMatrixGain(v)
                 vm.setMatrixRoute(input: input, output: output,
                                   enabled: connected, gain: v, invert: inverted)
             }

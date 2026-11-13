@@ -71,6 +71,7 @@ export function LimiterDialog(props: { session: Session; s: DspState; output: nu
         </label>
         <div class={off ? "limiter-params off" : "limiter-params"}>
           <LevelControl
+            session={session}
             label="Threshold"
             name="Threshold"
             unit="dBFS"
@@ -90,6 +91,7 @@ export function LimiterDialog(props: { session: Session; s: DspState; output: nu
             <span>0 dBFS</span>
           </p>
           <LevelControl
+            session={session}
             label="Release"
             name="Release"
             unit="ms"

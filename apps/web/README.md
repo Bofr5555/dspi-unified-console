@@ -255,6 +255,42 @@ The e2e (`test/e2e/system.spec.ts`) runs against `uconsole --demo hub --web
 --audio-link`: the fake device's audio-link roles (a sender, a fan-out, four units)
 with a system model, open (Admin) and with a PIN (Control).
 
+## Undo and Redo, the event log, diagnostics (WB8u)
+
+(WB8u: the undo, event log and diagnostics work package of 2026-11-13; not the plan's
+WB8, the real-hardware WebUSB checks named above.)
+
+- **Undo and Redo** (`src/ui/undo.tsx`) are the core's journal (WP P0W: `undo`,
+  `redo`, `canUndo`), as on the other clients: two buttons beside the screen tabs (arrows at 520 px and narrower, in the same row),
+  and the keys Ctrl+Z (Cmd+Z on a Mac), Ctrl+Shift+Z and Ctrl+Y. A text field with
+  focus keeps the keys for its own undo; on a page with several consoles they act
+  on the one the focus is in (or the first, with the focus nowhere). A slider drag
+  and an EQ graph drag or pinch are marked (`setDragging`), so a drag is one step;
+  the mark always ends (the pointer let go anywhere, cancelled, its capture lost,
+  the control gone), once the drag's last write has gone; and, as a safety net, when the
+  window loses focus or the page is hidden mid-drag. A graph drag sends each
+  PEQ band whole (`filter`, the core's `set_filter`, as the desktop's graph does),
+  so the core journals one change per tick. An undo another writer stepped in on
+  says who, in the core's words (`note`); changes that cannot be undone are named
+  when stepped over. A viewer's session and firmware the core only reads have both
+  off. The buttons are in every mode.
+- **Events** (`src/screens/events/`, Advanced and Installer): the core's event log
+  (WP P0M: clips, the audio link's lock and loss, resets, connections, temperature,
+  counters; `eventLogRead` per device, only what is new, every second while shown and
+  the page is visible) and, on a hub's installation, its alarms; time, unit and text,
+  newest first; a unit filter; Copy as Text (one tab-separated line per event; on a page
+  without the Clipboard API, such as a hub's page over plain http, the older copy command,
+  and failing that the text shown selected to copy by hand).
+- **Save Diagnostics…** (on the Events screen, so Advanced and up, as the desktop's Settings > Advanced): the core's bundle, what `uconsole
+  diag` and the desktop's Help > Save Diagnostics… write (`diagnostics`,
+  `crates/dspi-wasm/src/diag.rs`: `DspiCore::diagnostics_zip` as base64), handed to the
+  viewer as a download, with the browser's user agent as `client/browser.txt`.
+  Nothing is sent anywhere.
+- **A refused scene** says it in the core's sentence (`sceneOutcome`, the core's
+  `scene_recall_outcome`, the one every client shows): the held frame only when the
+  sender refused; a timeout, a lock and any other answer each have their own.
+- The demo's `demo {action: "clip", mask}` makes the demo device clip, for tests.
+
 ## Embedding in a fleet server
 
 ```js
@@ -355,6 +391,8 @@ The web step also runs the hosting routes on the real `uconsole` (`test/e2e/host
 | `src/screens/eq/` | the EQ (WB6b): graph, chip, band list; `model.ts` its logic, `draw.ts` the canvas; `Linkwitz.tsx` the Transform's panel (WB6c) |
 | `src/screens/outputs/` | WB6c: an output's settings card (`OutputCard.tsx`), the level and delay control (`Level.tsx`, SL1), the limiter (`Limiter.tsx`), the crossover (`Crossover.tsx`); `model.ts` their logic |
 | `src/screens/matrix/` | WB6c: the matrix mixer |
+| `src/screens/events/` | WB8u: the event log and Save Diagnostics…; `model.ts` its rows, filter and text |
+| `src/ui/undo.tsx` | WB8u: Undo and Redo, the keys, what a step left alone |
 | `src/screens/system/` | SW3: the System view, Clock and links, the scene bar, the status rail; `model.ts` their logic, `feed.ts` the hub's `system.*` |
 | `src/index.tsx` | `mount()` and the public types |
 | `src/standalone.ts`, `index.html` | the standalone page (`?readonly` for a display page) |

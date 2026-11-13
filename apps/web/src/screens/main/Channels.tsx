@@ -8,7 +8,7 @@ import { useState } from "preact/hooks";
 import type { ParamInfo } from "../../core/protocol";
 import type { Session } from "../../ui/session";
 import { RenameDialog } from "./Dialog";
-import { useLiveWrite } from "./live";
+import { dragProps, useLiveWrite } from "./live";
 import { type ChannelRow, sameItems } from "./model";
 
 export const ChannelList = memo(
@@ -81,7 +81,7 @@ const Row = memo(
 }) {
   const { session, row, info, disabled } = props;
   const path = info?.path ?? "";
-  const live = useLiveWrite((db) => session.write(path, { float: db }, [row.index]));
+  const live = useLiveWrite((db) => session.write(path, { float: db }, [row.index]), session);
   const db = live.draft ?? props.gain;
   const value = (e: Event) => Number((e.target as HTMLInputElement).value);
   const reset = (e: Event) => {
@@ -122,6 +122,7 @@ const Row = memo(
         step={0.1}
         value={db}
         disabled={disabled || !info}
+        {...dragProps(live)}
         onInput={(e) => live.move(value(e))}
         onChange={(e) => live.release(value(e))}
         onDblClick={reset}

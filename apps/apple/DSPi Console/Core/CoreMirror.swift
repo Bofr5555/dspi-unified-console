@@ -98,6 +98,10 @@ protocol CoreStateSource: AnyObject {
     /// it; never replayed.  `lane`: the slider fast path, where a newer
     /// value for the same key replaces one still queued.
     func write(lane: String?, _ body: @escaping (DspiCore) throws -> Void)
+    /// -- WP SW9 -- fixup sw9 F2: the committed value of a lane's setting
+    /// (a release, a typed value): it supersedes the value still queued for
+    /// `lane`, and a value issued after it is sent after it.
+    func commit(lane: String, _ body: @escaping (DspiCore) throws -> Void)
     /// A typed read (or a write with a reply) on the core's queue.  Blocking:
     /// call off the main thread.
     func call<T>(_ body: (DspiCore) throws -> T) -> Result<T, DspiError>
@@ -124,6 +128,7 @@ extension CoreStateSource {
     func setDragging(_ dragging: Bool) {}
     // -- WP SW9 -- A source without a core takes no typed call.
     func write(lane: String?, _ body: @escaping (DspiCore) throws -> Void) {}
+    func commit(lane: String, _ body: @escaping (DspiCore) throws -> Void) {}
     func call<T>(_ body: (DspiCore) throws -> T) -> Result<T, DspiError> { .failure(.Unsupported) }
     func commit<T>(_ body: (DspiCore) throws -> T) -> Result<T, DspiError> { .failure(.Unsupported) }   // -- WP SW11 --
 }
