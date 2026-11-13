@@ -167,7 +167,7 @@ void StatsController::applySlow(const Slow &s) {
         }
     }
     const uint32_t total = next.stat[STAT_STARVATION_TOTAL];
-    m_delta = m_haveTotal ? total - m_lastTotal : 0;   // wraps as the counter does
+    m_delta = starvationDelta(m_haveTotal, m_lastTotal, total);
     if (m_delta > 0) {
         m_eventBefore = m_eventAt;
         m_eventAt = QDateTime::currentMSecsSinceEpoch();
@@ -181,6 +181,13 @@ void StatsController::applySlow(const Slow &s) {
     m_slow = next;
     m_haveSlow = true;
     emit slowChanged();
+}
+
+// -- fixup fs1 (F3) -- a counter lower than before was reset (a reboot or a
+// firmware update behind a reconnect of the same device): a new base, and 0
+// for this read rather than a wrapped difference
+uint32_t StatsController::starvationDelta(bool have, uint32_t last, uint32_t total) {
+    return have && total >= last ? total - last : 0;
 }
 
 void StatsController::applyFast(const Fast &f) {
@@ -222,6 +229,8 @@ void StatsController::onSnapshot() {
             emit slowChanged();
             return;
         }
+        // -- fixup fs1 (F2) -- another device while the window shows: read it now
+        if (m_shown && m_ctx.poller) m_ctx.poller->readNow(m_slowPoll);
         // Another device: its sections and counters start over
         m_haveSlow = false;
         m_haveTotal = false;
@@ -246,6 +255,8 @@ void StatsController::updatePolls() {
     if (!m_ctx.poller) return;
     m_ctx.poller->setEnabled(m_slowPoll, m_shown);
     m_ctx.poller->setEnabled(m_fastPoll, m_shown);
+    // -- fixup fs1 (F2) -- values at once when the window opens, not after 2 s
+    if (m_shown) m_ctx.poller->readNow(m_slowPoll);
 }
 
 void StatsController::resetBufferWatermarks() {

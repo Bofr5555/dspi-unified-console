@@ -149,9 +149,9 @@ nothing is written and the answer is `denied`, naming the op.
 
 | Code | Severity | Raised | Cleared |
 |---|---|---|---|
-| `link_lost` | critical | a unit not locked at a read, or an `0xE1` with a loss reason. One loss is one alarm: its count is the unit's losses since it was raised | locked again |
+| `link_lost` | critical | a unit not locked at a read, or an `0xE1` with a loss reason. One loss is one alarm: its count is the unit's losses since it was raised. Another loss before it clears raises it again, acknowledged or not, with the new count | locked again |
 | `unit_offline` | critical | a unit of the model not attached | attached |
-| `link_errors` | warning | 16 or more CRC-16 errors since the last read (a loss is `link_lost`'s) | a read with fewer |
+| `link_errors` | warning | 16 or more CRC-16 errors within any 60 s of the hub's time. The growth between two reads is spread evenly over the time between them, so the rate decides, not how often clients read: 16 errors over four hours never alarm. A loss is `link_lost`'s | 60 s with no new error |
 | `reanchor` | warning | an `0xE1` `REANCHOR` the hub did not cause | acknowledged |
 | `delay_below_min` | critical | the unit's `D_BELOW_MIN` flag | the flag gone |
 | `system_muted` | warning | a sender's system mute seen set, at a read or a write | seen clear |

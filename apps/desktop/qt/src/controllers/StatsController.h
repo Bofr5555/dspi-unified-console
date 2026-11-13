@@ -108,6 +108,9 @@ public:
     Q_INVOKABLE static QString spdifBand(double pct);
     // The ring's band from its target and batch, for a fill in percent of the ring
     Q_INVOKABLE static QString ringBand(double pct, int targetFrames, int batchFrames);
+    // The starvation total's growth since the last read; 0 for the first
+    // read and when the counter went back (a reset device)
+    static uint32_t starvationDelta(bool have, uint32_t last, uint32_t total);
     static QString gapText(uint32_t us);
     static QString latencyText(uint32_t us);
     // The USB error rows from dspi_fetch_usb_error_stats' reply; none while it

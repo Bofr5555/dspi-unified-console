@@ -25,6 +25,7 @@
 
 #include <QClipboard>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QGuiApplication>
 #include <QQuickItem>
 #include <QtQml/QQmlApplicationEngine>
@@ -345,19 +346,24 @@ void statsSection(SmokeDriver &d) {
         d.waitFor(3000, [&] { return !device->connected(); });
         device->openDemo();
         d.check("FIXS1: the demo is back", d.waitFor(10000, [&] { return device->connected(); }) && d.waitIdle());
-        const int read = poller->counts(stats->slowPoll()).completed;
-        Qp9Window again(d, "tools.stats");
-        d.spin(300);
-        const bool before = poller->counts(stats->slowPoll()).completed == read;
-        std::printf("smoke: FIXS1 stats after a reconnect%s: %s, %s; ring %d/%d, LG %d/%d, slots %d/%d\n",
-                    before ? " (before its next read)" : "", qPrintable(stats->system().value(QStringLiteral("clock")).toString()),
+        // Closed, nothing reads: what shows is what was kept
+        std::printf("smoke: FIXS1 stats after a reconnect, before a read: %s, %s; ring %d/%d, LG %d/%d, slots %d/%d\n",
+                    qPrintable(stats->system().value(QStringLiteral("clock")).toString()),
                     qPrintable(stats->system().value(QStringLiteral("coreVoltage")).toString()), int(stats->ringHealth().size()), ringRows,
                     int(stats->lgSoundSync().size()), lgRows, int(stats->starvation().value(QStringLiteral("slots")).toList().size()), slotRows);
         d.check("FIXS1: the same device back keeps its numbers and sections",
                 stats->system() == system && int(stats->ringHealth().size()) == ringRows && int(stats->lgSoundSync().size()) == lgRows
                     && int(stats->starvation().value(QStringLiteral("slots")).toList().size()) == slotRows);
-        d.check("FIXS1: no zero shown as a reading", !again.item(QStringLiteral("StatsWindow.clock"))
-                                                        || !stats->system().value(QStringLiteral("clock")).toString().startsWith(QLatin1String("0.0 ")));
+        // -- fixup fs1 (F2) -- opened, it reads at once, not after its 2 s interval
+        const int read = poller->counts(stats->slowPoll()).completed;
+        QElapsedTimer opened;
+        opened.start();
+        Qp9Window again(d, "tools.stats");
+        const bool soon = d.waitFor(1500, [&] { return poller->counts(stats->slowPoll()).completed > read; });
+        std::printf("smoke: fixup fs1: first read %lld ms after the window opened\n", qint64(opened.elapsed()));
+        d.check("fixup fs1: the window reads at once when shown", soon && opened.elapsed() < 1500);
+        d.check("FIXS1: no zero shown as a reading", stats->system().value(QStringLiteral("clock")).toString().endsWith(QLatin1String(" MHz"))
+                                                        && !stats->system().value(QStringLiteral("clock")).toString().startsWith(QLatin1String("0.0 ")));
         if (again.w) again.w->close();
         d.spin(100);
         // Nothing read yet (a controller without polls): dashes, not zeros
@@ -371,6 +377,10 @@ void statsSection(SmokeDriver &d) {
                     && none.value(QStringLiteral("temperature")).toString() == QLatin1String("-")
                     && fresh.counters().value(QStringLiteral("spdif")).toMap().value(QStringLiteral("over")).toLongLong() == -1
                     && !fresh.starvation().value(QStringLiteral("known")).toBool());
+        // -- fixup fs1 (F3) -- a counter back at 0 (a reboot behind a reconnect): 0, never a wrapped delta
+        d.check("fixup fs1: the starvation delta of a reset counter is 0",
+                StatsController::starvationDelta(true, 5, 0) == 0 && StatsController::starvationDelta(true, 5, 7) == 2
+                    && StatsController::starvationDelta(false, 0, 9) == 0 && StatsController::starvationDelta(true, 5, 5) == 0);
     }
 }
 

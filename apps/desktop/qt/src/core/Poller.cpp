@@ -112,6 +112,12 @@ void Poller::setInterval(Id id, int intervalMs) {
     }
 }
 
+// -- fixup fs1 --
+void Poller::readNow(Id id) {
+    const std::shared_ptr<Poll> poll = m_polls.value(id);
+    if (poll && poll->enabled) tick(id);
+}
+
 Poller::Counts Poller::counts(Id id) const {
     const std::shared_ptr<Poll> poll = m_polls.value(id);
     return poll ? poll->counts : Counts{};

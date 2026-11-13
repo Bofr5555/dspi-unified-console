@@ -279,6 +279,8 @@ test.describe("SW3: an audio link installation on the hub", () => {
   });
 
   test("SW3: Save never overwrites a newer installation; the page says so and offers Reload", async ({ page, browser }) => {
+    // -- fixup fs1 -- two hub sessions and two Installer dialogs: Firefox on a busy host needs more than 30 s
+    test.setTimeout(60_000);
     hub = await linkHub(["--open", "--forget-clients"]);
     const session = await openUnit(page, hub, "DEMO-LINK-A");
     await setMode(session, page, "Installer");
