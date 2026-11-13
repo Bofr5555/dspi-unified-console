@@ -273,6 +273,7 @@ last-wave WPs while workers would otherwise sit idle (WB2 and WB5 now).
 | AN37 | A channel page's bar strip shares the gear's selection | DONE | 0cf648c5 (review c4k) |  |
 | AN38 | Analyser wake: one bindings copy per test JVM | DONE | 172aa93d (review c5b) |  |
 | AN39 | Android small follow-ups | DONE | 172aa93d (review c5b) | Its overlay item was done in CG30 |
+| AN42 | Undo and redo in the Android app (PRO1 W2) | IN PROGRESS | wp/AN42 | Before P1AN1 (both touch the app bar) |
 
 **SW: Swift (macOS and iOS)**: 35 WPs: 9 DONE, 1 IN PROGRESS, 24 TODO, 1 MOVED.
 
@@ -370,6 +371,39 @@ measures against it.
 | XC4 | ESP32 bridge suite | TODO |  | [HW][OWNER] needs an ESP32 bridge |
 | XC5 | Meters over a bridge | TODO |  | [HW][OWNER] after XC4 |
 | XC6 | Core voltage on the K340 | TODO |  | [HW] K340, backups first; owner's go for the VREG write |
+
+**P1: PRO phase 1** (section 5.9, "a single device you can trust"): 26 WPs, 50.75 units: all TODO. Android's undo is AN42
+(in progress, AN table). Undo in Qt, the web, Swift and the Terminal, Qt's notices, shortcuts, read-only floor, power-on group and
+"Protect all outputs" are already on `main` (section 5.9's table).
+
+| ID | Title | Status | Merged in / branch | Next or blocker |
+|---|---|---|---|---|
+| P1UG | Undo groups for compound edits | TODO |  | Wave P1-A |
+| P1XF | Crossfeed named presets in the mirror | TODO |  | Wave P1-A |
+| P1DF | Document diff and partial apply | TODO |  | Wave P1-A |
+| P1NT | One error-key table for notices | TODO |  | Wave P1-A |
+| P1SN | Snapshots | TODO |  | Wave P1-B; after P1DF |
+| P1OF | Offline editing and templates | TODO |  | Wave P1-B; after P1DF |
+| P1TK | Confirmation tokens for dangerous operations | TODO |  | Wave P1-B; after P1NT |
+| P1PR | Protect all outputs in the core; core compound writes as groups | TODO |  | Wave P1-B; after P1UG |
+| P1HA | Guarded apply on the hub | TODO |  | Wave P1-B |
+| P1AB | A/B compare | TODO |  | Wave P1-C; after P1SN, P1DF |
+| P1SA | Safe apply with rollback | TODO |  | Wave P1-C; after P1SN, P1DF, P1HA |
+| P1LM | Limits profile | TODO |  | Wave P1-C; after P1UG, P1DF, P1SN |
+| P1LK | Lockout, PIN and the mode manifest | TODO |  | Wave P1-D; after P1LM |
+| P1AQ | AutoEQ preview | TODO |  | Wave P1-D; after P1SN, P1LM |
+| P1HL | Limits and lock on the hub | TODO |  | Wave P1-D; after P1LM, P1HA |
+| P1TM | Terminal commands | TODO |  | Wave P1-D; after P1SN, P1AB, P1OF, P1SA, P1LM |
+| P1QT1 | Qt: snapshots, A/B, import preview, safe apply, offline files | TODO |  | Wave P1-D; after P1-C |
+| P1WB1 | Web: snapshots, A/B, import preview, safe apply, offline files | TODO |  | Wave P1-D; after P1-C and WB6k |
+| P1AN1 | Android: snapshots, A/B, import preview, safe apply, offline files | TODO |  | Wave P1-D; after P1-C and AN42 |
+| P1QT2 | Qt: Installer page, lock, tokens, AutoEQ preview, notices, groups | TODO |  | Wave P1-E; after P1QT1, P1-D |
+| P1WB2 | Web: Installer, lock, power-on, stale, notices, tokens, AutoEQ preview, groups | TODO |  | Wave P1-E; after P1WB1, P1-D |
+| P1AN2 | Android: Installer, lock, mode switch, power-on, notices, tokens, AutoEQ preview, groups | TODO |  | Wave P1-E; after P1AN1, P1-D |
+| P1SW1 | Swift: snapshots, A/B, import preview, safe apply, offline files | TODO |  | Wave P1-E; VM; after SW11–SW14 |
+| P1SW2 | Swift: Installer, lock, mode switch, power-on, tokens, AutoEQ preview, groups | TODO |  | Wave P1-F; VM; after P1SW1, SW18 |
+| P1TZ | Tokens required by default | TODO |  | Wave P1-F; after every client's second P1 WP and P1TM |
+| P1SW3 | Swift: notices and the read-only floor | TODO |  | Wave P1-G; VM; after P1SW2 |
 
 ---
 
@@ -1365,6 +1399,343 @@ redone.
 | **PL-WB0** Web audit | 0.5-1 | After WB6 |
 | **PL-*n*** fixes | per audit | From each report |
 
+### 5.9 PRO phase 1: a single device you can trust
+
+*WP PLANP1, 2026-11-13, on `main` at `1c87fcee`. The spec is PRO1's report (`work/pro1/REPORT.md`, rows W, S, U and T6
+of section 2, phase 1 of section 4) with the owner's decisions below. Phase 0 (P0W, P0W2, P0M, P0U, P0E) is on `main`.*
+
+**Goal.** An installer prepares a system at the desk, applies it on site with a way back, locks what must not change, and
+hands it over. Everything is core-first: the logic lands once in `dspi-core`/`dspi-session` (and the hub where a network client
+needs it), and each client adds one dialog or page for it.
+
+**Owner decisions this phase builds on (2026-11-12 and 2026-11-13):**
+- Undo in all apps (OD5's "no for now" is superseded; section 8).
+- Limits are enforced when a profile is set; with no profile the device behaves as today.
+- The system runs fully without an installer PIN when none is set: nothing is locked, every mode is reachable, no PIN prompt
+  (`docs/UI-MODES.md` section 1). Modes, the PIN and the lock hook into the web fleet's future user management on the hub, with
+  the roles **Admin, Control and Viewer** (no fourth role).
+- Modes are **Simple, Advanced and Installer**. Qt's Window > Mode… entry stays hidden for now (QPI5); Qt reaches the
+  Installer pages from Settings until the owner unhides it.
+- Hardware settings apply at once: no Save bar on the power-on and Installer pages; a change is a write, journalled like any
+  other.
+- Output gain reaches +20 dB in every client (`out.gain` -60 to +20 dB, `docs/GLOSSARY.md`); a limit can only narrow that.
+- "Stats for nerbs" is spelled so.
+
+**Already done on `main` (checked in the code, 2026-11-13):**
+
+| PRO1 item | State | Where |
+|---|---|---|
+| W1 one write path, undo, redo, history | DONE (P0W, P0W2, QTGAP1, SWAPFIX) | `crates/dspi-core/src/journal.rs`, `crates/dspi-session/src/history.rs`; `docs/integrator/undo.md`. A drag marked with `set_dragging` is one step. **Missing:** a grouping call for compound edits that are not drags (P1UG) |
+| W2 undo in the clients | Terminal, Qt (QP18: Edit menu, History window), web (WB8), Swift (SWMAC1, SW9's domains; the rest with SW10–SW14) DONE; **Android: AN42, in progress** | `apps/desktop/qt/src/controllers/HistoryController.cpp`, `apps/web/src/ui/undo.tsx`, `Core/CoreUndo.swift` |
+| U3 shortcuts | Qt DONE (QP18: Ctrl+1–9, commit, revert, mute, bypass, undo, redo, History, one table `MenuTable.qml`); web: undo keys only; Android: `ConsoleKeyMap.kt`; Swift: Mac's, no preset keys | The A/B key and the missing preset keys ride with each client's P1 WP below |
+| U5 non-modal notices | Qt DONE (QP18: `NoticeCenter`, banners, no "Success" modals); web and Android have notice hosts; **Swift has about 135 alert sites**. **Missing:** one error-key table in the core (P1NT) | |
+| S2 protect all outputs | Qt DONE as a client action (`ToolsController::protectAllOutputs`); web and Android have the other batch actions, not this one. **Missing:** the core helper so all share it (P1PR) | |
+| S5 power-on page | Qt DONE (QP11: Settings > Global, "At power-on"); others TODO | `apps/desktop/qt/qml/settings/pages/GlobalPage.qml` |
+| S8 read-only floor | Qt DONE (QD6, QP16); Android DONE for read-only (G1 guard) without "stale since"; web read-only DONE (WB5), stale partly; **Swift: banner only, no read-only fallback** | PARITY A10 |
+| UIM1 modes | Design DONE (`docs/UI-MODES.md`); web has a mode switch (SW3, `screens/system/model.ts`); Qt's `ModeController` and Mode window exist, hidden (QPI5); **no mode manifest in the core, no PIN, no lock** | |
+| Scenes on the hub | The hub's **audio-link system scenes** exist (SW2: `crates/dspi-hub/src/system/scene.rs`, frame-timed ops: mute, preset load, master volume, delay across units). They are not host-side whole-device snapshots; W3 is still to do | |
+| P0U clamps | DONE: a preset or document load clamps an out-of-range value and reports it (P0U F1, CS1) | `crates/dspi-session/src/preset_file.rs` |
+| W5 diff | Partial: `preset_changes` diffs the live state against the slot (CG7); no document-to-document or document-to-device diff | `crates/dspi-core/src/presets.rs` |
+| W8 partial apply | Partial: three coarse switches (`ApplyOptions`: audio processing, volume levels, hardware I/O) | `preset_file.rs`, `config_import` options in `files.rs` |
+| W9 tokens | Android only (`bridge/DangerousOpsContract.kt`, 10 s tokens); the core has the `OVERVOLT` word (CG14) | |
+| T6, W3, W4, W6, W7, S1, S4 | Not started | |
+
+**Not in this phase:** the hub's shared snapshot store, the parameter API, alarms and fleet (phase 2 and 3); firmware gain
+clamps (FW2) and a full-wipe factory reset (FW11), which stay proposals.
+
+**Naming.** Host-side whole-device states are **snapshots** in code and UI. **Scene** stays the hub's audio-link system scene
+(SW2). PRO1's "scenes are snapshots with a number" is not taken: one word per concept (`docs/GLOSSARY.md`). P1SN adds the
+glossary rows. (Owner decision OD-P1a, below.)
+
+**Shared rules for every P1 WP.** Section 1 and `wave1-brief.md`. Binding wiring (`lib.rs`, the UniFFI exports, the C header,
+`crates/dspi-wasm/src/lib.rs`) is shared and additive under `// -- WP <ID> --`; after an export change run
+`ci/run.sh 'ci/drift.sh write'`, regenerate the ABI anchor and the Android contract, and classify each new method in
+`WriteGuardedCore`. Every snapshot recall, guarded apply, A/B toggle and template apply is a bulk image: it ends the undo
+history before it, as `docs/integrator/undo.md` says. The lost-Link rule holds: nothing is replayed, a revert is never queued.
+Swift WPs run on the macOS VM, one at a time.
+
+#### Core and hub WPs
+
+**P1UG: Undo groups for compound edits.** [TODO] Size 1. Wave P1-A. **Owns:** `crates/dspi-core/src/journal.rs` and its
+`journal/tests_wp_p1ug.rs`, `crates/dspi-session/src/history.rs`; binding wiring (shared). **Implements:** `begin_group(label)` and
+`end_group()` (C `dspi_undo_group_begin/end`, UniFFI, wasm): everything written between them is one undo step with the label,
+as a drag is; nesting counts; a group is always ended by a disconnect, an open, a re-read (`fetch_all`) or a bulk image, as
+`set_dragging` is; an empty group records nothing; the skip-and-name rule applies per value. This WP adds the API only; the core's own compound writes adopt it in P1PR
+(`params.rs` is P1XF's in this wave). From review sw9 and
+`followups-2026-11-13.md`: linked-pair preamp, Clear All and direct routing are one step each. **Done when:** core tests
+for a linked pair, a 10-band Clear All and a direct 1:1 routing (each one undo, one redo, every value back), nesting, an
+unclosed group ended by a disconnect, and a value changed by another writer inside a group left alone and named; one test each
+through C and wasm. **Deps:** none. **Clients:** each client's second P1 WP wraps its Clear All, direct routing and other
+multi-write actions in a group.
+
+**P1XF: Crossfeed named presets in the mirror.** [TODO] Size 0.5. Wave P1-A. **Owns:** the crossfeed setters in
+`crates/dspi-core/src/params.rs` (`set_crossfeed_preset` and neighbours), the crossfeed fields' handling where a notification or a
+re-read patches the mirror (`crates/dspi-core/src/notify.rs`, `state.rs` crossfeed lines only), tests `tests_wp_p1xf.rs`.
+**Implements:** while a named preset (Default, Chu Moy, Meier) is chosen, the mirror gives that preset's frequency and feed
+to every client, so a graph draws the preset and not the custom pair; the custom pair is kept and comes back when Custom is
+chosen; Qt's behaviour (the preset's values shown) becomes the core's. Checks the preset-file export writes what the Mac
+writes; if the export must change, it is reported, not edited (P1DF owns `files.rs` in this wave). From the SW10 report.
+**Done when:** core tests: choose Chu Moy, the state reads its values before and after the device's echo and after
+`fetch_all`; Custom restores the custom pair; the export matches the Mac fixture. **Deps:** none. **Clients:** Swift's graph
+stops flipping to custom (checked in P1SW2); no client change otherwise.
+
+**P1DF: Document diff and partial apply.** [TODO] Size 2.5 (W5 1.5, W8 1). Wave P1-A. **Owns:**
+`crates/dspi-session/src/preset_file.rs`, `config_import`/`config_inspect` and their options in `crates/dspi-core/src/files.rs`,
+`crates/dspi-core/src/presets.rs` (the diff wording), a new `crates/dspi-core/src/doc_diff.rs`; binding wiring (shared).
+**Implements:** W5: diff two documents, or a document against the device, in the words `preset_changes` already uses (one row per
+changed value: section, item, before, after), with a short summary; shown before an import. W8: apply options per block (EQ per
+channel, crossover, routing and matrix, outputs, limiters, effects, volume levels, hardware I/O, names), replacing the three coarse
+switches with a superset (the old `options` bits keep their meaning). Also `meta.kind` in the document (`preset`, `snapshot`,
+`template`, `limits`; unknown kinds read as `preset`), additive to schema 1, so P1SN, P1OF and P1LM write documents of one family
+(PRO1 section 6: no second format). **Done when:** tests: doc-vs-doc and doc-vs-demo diffs against fixtures, including the Mac's
+exported document; each block applied alone changes only its values (diffed before and after on the demo device); old option bits
+round-trip; a document with an unknown `meta.kind` still imports; a Mac and a Windows-console document still import. **Deps:**
+none. **Clients:** an import preview with the diff and block choices (each client's first P1 WP).
+
+**P1NT: One error-key table for notices.** [TODO] Size 0.5. Wave P1-A. **Owns:** `crates/dspi-core/src/error.rs` (a stable key per
+error), a new `assets/notices/notices.json` and `crates/dspi-core/src/notice_text.rs` (CG10's placeholder rules); binding wiring
+(shared). **Implements:** U5's core half: every typed error carries a key; the table gives, per key, a title, the reason and what
+to do, in shared wording with no host-device nouns; a call `notice_for(error)` in every binding. Kinds: info, warning, error;
+no "success" kind (a success is shown by the change itself). **Done when:** every `DspiError` variant has a key and a row (a test
+fails on a new variant without one); the wording passes the no-host-noun check; C, UniFFI and wasm return the same text for the
+same error. **Deps:** none. **Clients:** each client's notice host reads the table (second P1 WP); Swift's alerts move to it
+(P1SW3).
+
+**P1SN: Snapshots.** [TODO] Size 3. Wave P1-B. **Owns:** new `crates/dspi-core/src/snapshot.rs` (and `snapshot/` tests), new
+`crates/dspi-session/src/snapshot_store.rs`; glossary rows in `docs/GLOSSARY.md`; binding wiring (shared). **Implements:** W3.
+Capture: the bulk image plus the device-global settings outside it (names, output latency, pair map, control-surface
+configuration), stored as a `.dspipreset` document with `meta.kind = "snapshot"` (P1DF) and a host-side index (name, time,
+serial, note) in a folder the client names, one subfolder per serial (as the event log's naming). Recall: one `0xA1` plus the
+writes for the non-bulk part, under the device lock (CG24), recorded in the event log as a recall with its diff summary; a
+snapshot from another platform or channel count is refused with a reason; one from an older wire version is read through
+`wire_compat` and written only when a forward map exists (FW9). Calls: `snapshot_capture(name, note)`, `snapshot_list(serial)`,
+`snapshot_recall(id)`, `snapshot_rename`, `snapshot_delete`, `snapshot_export(id)` and import of a document as a snapshot.
+**Done when:** tests on the demo device: capture, change values, recall, every value back (bulk and non-bulk), the history ended,
+an event-log record; a recall on a dropped connection sends nothing; index corruption (torn file, hand edit) never fails a list;
+names with any Unicode; the store under `~/.cache/dspi-build/work/wp-P1SN/` in tests, never tmpfs. **Deps:** P1DF. **Clients:**
+a Snapshots window or page in each client (first P1 WP).
+
+**P1OF: Offline editing and templates.** [TODO] Size 2.5. Wave P1-B. **Owns:** the demo device's seeding in
+`crates/dspi-transport/src/fake*` (`FakeDevice::from_document`), new `crates/dspi-core/src/offline.rs`, new
+`assets/templates/` (with a K340 template); binding wiring (shared). **Implements:** W7. `open_document(text)` opens a demo device
+seeded from a document (platform and channel count from its `meta`), so every screen edits it; `save_document()` exports it;
+"Save as template" writes `meta.kind = "template"`; templates listed from `assets/templates/` and the user's folder; a session
+on a document says so (`DeviceInfo` marks it, the clients show "File: <name>" in place of a serial). Nothing touches USB. **Done
+when:** tests: open the Mac fixture, edit EQ, save, diff the saved file against the original (P1DF) shows exactly the edit; a
+K340 template opens with 4 outputs and the K340 pair map; a document for another platform opens that platform's demo; undo works
+on an offline session. **Deps:** P1DF. **Clients:** "Open File…" and "Save as Template…" in each client (first P1 WP).
+
+**P1TK: Confirmation tokens for dangerous operations.** [TODO] Size 2. Wave P1-B. **Owns:** new
+`crates/dspi-core/src/confirm.rs`; the gate lines in `presets.rs` (`save_preset`, delete, copy, `factory_reset`),
+`hardware.rs` (`enter_bootloader`, saves of output configuration), `vreg.rs`, `firmware.rs`, `files.rs` (`config_import`);
+a `ConfirmationRequired` error in `error.rs` with its P1NT row; binding wiring (shared). **Implements:** W9: `confirm_token(op)`
+mints a single-use token for one operation, valid 10 s (Android's contract); the gated calls take an optional token and refuse
+without one **when the core instance requires tokens** (`require_confirmation(true)`). The default stays off until every client
+has adopted it (P1TZ), so no client breaks in between. The `OVERVOLT` word (CG14) stays as it is. **Done when:** tests: each gated
+call with no token, an expired one, one for another op, a reused one, and a good one; a token never crosses a reconnect; C and
+wasm refuse the same way. **Deps:** P1NT. **Clients:** each client's confirmation dialogs mint the token and turn the requirement
+on (second P1 WP); Android's `DangerousOps` maps onto the core's tokens instead of minting its own.
+
+**P1PR: Protect all outputs in the core; core compound writes as groups.** [TODO] Size 0.5. Wave P1-B. **Owns:** a
+`protect_all_outputs(ceiling_dbfs)` helper beside the limiter setters in `crates/dspi-core/src/params_fx.rs`, the linked-pair
+preamp lines in `crates/dspi-core/src/params.rs`, tests `tests_wp_p1pr.rs`; binding wiring (shared).
+**Implements:** S2: every output's limiter on at the ceiling (default -1 dBFS), stereo pairs linked, one undo group (P1UG);
+plus `outputs_without_limiter(threshold_db)` for the warning "an output above -10 dB gain has no limiter". Where the core itself
+writes both sides of a linked input pair's preamp, those writes become one P1UG group. **Done when:** tests on the demo device:
+one call, every limiter on and linked, one undo restores all; the warning list; a linked-pair preamp change is one undo step. **Deps:** P1UG. **Clients:** Qt
+moves `ToolsController::protectAllOutputs` onto it; web, Android and Swift add the action to their "All outputs" menus (second P1
+WP).
+
+**P1HA: Guarded apply on the hub.** [TODO] Size 1. Wave P1-B. **Owns:** new `crates/dspi-hub/src/apply_guard.rs`, an additive
+`apply.begin`/`apply.confirm`/`apply.cancel` entry in `router.rs` and `policy.rs` (Admin and Control), conformance tests.
+**Implements:** W6's hub half: on `apply.begin` the hub takes the device's image from its snapshot (`0xA0`), lets the client apply,
+and reverts by `0xA1` if `apply.confirm` does not arrive within the timeout or the client's session ends; one guard per device;
+the revert is the hub's own write, attributed to the hub, and never runs on another board after a replug (`NO_DEVICE`). Additive
+to Link 1.2 and versioned; the upstream page and other hubs are unaffected. **Done when:** hub tests: confirm in time keeps the
+change; a timeout reverts; a dropped client reverts; a replugged different serial is not written; a second begin is refused;
+a Viewer is refused. **Deps:** none. **Clients:** none directly (P1SA uses it).
+
+**P1AB: A/B compare.** [TODO] Size 1. Wave P1-C. **Owns:** new `crates/dspi-core/src/ab.rs`; binding wiring (shared).
+**Implements:** W4: two snapshots as A and B (the current state captured as A when none is given), `ab_toggle()` recalls the other
+by `0xA1`, `ab_diff()` gives P1DF's rows between them, `ab_keep(which)` ends the compare. The toggle is recorded as a recall (event
+log), not as an undo step. **Done when:** tests: toggle twice returns to A exactly; the diff matches P1DF's for the same pair; a
+compare ends cleanly on a disconnect. **Deps:** P1SN, P1DF. **Clients:** an A/B control in the Snapshots window and a key (first
+P1 WP).
+
+**P1SA: Safe apply with rollback.** [TODO] Size 2.5. Wave P1-C. **Owns:** new `crates/dspi-core/src/guarded.rs`; binding wiring
+(shared). **Implements:** W6's core: `apply_guarded(document | snapshot, options, timeout_s)` captures a snapshot, applies (P1DF's
+blocks), and then waits for `apply_confirm()`; a timeout, `apply_revert()` or a lost connection reverts to the snapshot. Over Link
+the hub runs the timer (P1HA), so a vanished client cannot leave a half-applied device; on USB the core runs it on the caller's
+poll (no new thread; the web rule). The countdown and the result are a state the clients poll or are notified of. S7's part:
+one test per multi-step flow (an import's hardware part, output enables, a CS apply) that a cut mid-way leaves the device either
+applied or reverted. **Done when:** tests on the demo device and through the fake hub: confirm keeps; timeout reverts; a cut
+connection over Link reverts on the hub and the client says so on reconnect; nothing is replayed. **Deps:** P1SN, P1DF, P1HA.
+**Clients:** a countdown bar with Keep and Revert (first P1 WP).
+
+**P1LM: Limits profile.** [TODO] Size 3. Wave P1-C. **Owns:** new `crates/dspi-session/src/limits.rs` and
+`crates/dspi-core/src/limits.rs`; the check call in the one write path (`journal_begin` in `journal.rs`, under a marker); the
+clamp-and-report step in `preset_file.rs`'s apply and in `snapshot.rs`'s recall (under markers); `docs/integrator/limits-profiles.md`
+(the placeholder becomes the spec); binding wiring (shared). **Implements:** S1. A profile per device (by serial), stored host-side
+as a document with `meta.kind = "limits"` and carried in an exported document's `meta`: per output max gain (never above the
+registry's +20 dB), max PEQ boost, minimum high-pass frequency and slope, delay range; limiter forced on with a ceiling; master
+volume ceiling; which pages are locked; the installer's note and contact; and the PIN, hashed as the hub stores tokens (P1LK
+uses it). Enforcement when a profile exists: a direct write outside a limit is refused with P1NT's notice; an import, recall,
+A/B or template is shortened to the limit and reported, as delays are today. No profile: today's behaviour, nothing shown. The
+UI says plainly that a limit the firmware does not know can be crossed from a control surface, the UART or another console
+without the profile (FW2 closes it later). **Done when:** tests: each limit refuses a typed write, `write_param`, an undo that
+would cross it, and is clamped-and-reported in an import and a recall; no profile changes nothing (the existing per-setter tests
+pass unchanged); a corrupt profile file is reported and ignored, never a panic. **Deps:** P1UG, P1DF, P1SN. **Clients:** a Limits
+page in Installer mode (second P1 WP).
+
+**P1LK: Lockout, PIN and the mode manifest.** [TODO] Size 1.5. Wave P1-D. **Owns:** new `crates/dspi-core/src/modes.rs`, new
+`assets/modes/modes.json` (the manifest of `docs/UI-MODES.md` section 6), the PIN and lock calls and the lock's check in
+`crates/dspi-core/src/limits.rs` (P1LM's file, done in P1-C);
+`docs/UI-MODES.md` (built parts marked); binding wiring (shared). **Implements:** S4 and U7. The manifest as a typed record on
+every binding (modes, screens, operations, defaults per platform class). `pin_set`, `pin_clear`, `unlock(pin)`, `lock()`,
+`lock_state()` per device; a device is locked only when an installer has set a PIN and chosen what it covers (section 1 of
+UI-MODES: no PIN, no lock, every mode reachable, no prompt); unlocking lasts for the session. The locked-user state allows volume,
+mute and preset within the limits; the core refuses other writes while locked (a UI lock, said in one line in the unlock dialog,
+not a security boundary). A hub-pinned mode (P1HL) overrides the user's choice. **Done when:** tests: no PIN, every mode and
+every write available, no prompt asked for; PIN set and locked, only volume, mute and preset pass and everything else is refused
+with a notice; unlock, then all pass; a wrong PIN is refused with a delay after repeated tries; the manifest round-trips on C,
+UniFFI and wasm. **Deps:** P1LM. **Clients:** the mode switch from the manifest (web, Android, Swift; Qt's stays hidden), the
+Installer PIN dialog and the locked-user view (second P1 WP).
+
+**P1AQ: AutoEQ preview.** [TODO] Size 0.5. Wave P1-D. **Owns:** a preview and apply-to-pair layer in
+`crates/dspi-core/src/autoeq.rs` and `crates/dspi-session/src/autoeq.rs` (`plan` stays); binding wiring (shared).
+**Implements:** T6: `autoeq_preview(profile, channel_pair)` returns the bands and the response curve without writing;
+`autoeq_apply(profile, channel_pair)` captures an A snapshot first (P1SN), applies in one undo group (P1UG), and goes through the
+limits (P1LM); any channel pair, not only inputs 1 and 2. **Done when:** tests: preview writes nothing (transfer count); apply to
+outputs 3–4 changes only them; a profile boost above a limit is clamped and reported; the A snapshot recalls the previous state.
+**Deps:** P1SN, P1LM, P1UG. **Clients:** the AutoEQ window shows the preview curve on the graph and a channel-pair choice before
+Apply (second P1 WP).
+
+**P1HL: Limits and lock on the hub.** [TODO] Size 1.5. Wave P1-D. **Owns:** `crates/dspi-hub/src/policy.rs`, `store.rs` (the
+profile and PIN hash per device), an additive `limits.get`/`limits.set`/`mode.pinned` entry in `router.rs`, conformance tests.
+**Implements:** S1's hub half and S4's: the hub holds a device's profile, checks network clients' writes against it (P1LM's check,
+shared code), and refuses with the same notice; an Admin may set or clear a profile and unlock without the PIN; Control works within
+the limits; Viewer reads; a hub may pin a mode per role (`docs/UI-MODES.md` section 4: the `FleetBackend` method). Local USB users
+of the same machine keep their own profile copy (P1LM). **Done when:** hub tests: a Control client's write above a limit is
+refused, an Admin's profile change is accepted and a Control's refused, a pinned mode is reported to a client, the store keeps no
+plain PIN (diagnostics test from P0E still passes). **Deps:** P1LM, P1HA (router edits sequenced). **Clients:** web's fleet seam
+reads the pinned mode (P1WB2).
+
+**P1TM: Terminal commands.** [TODO] Size 0.75. Wave P1-D. **Owns:** commands in `crates/dspi-cmd` and `apps/terminal/src/main.rs`'s
+table (additive, below TM15's macro block). **Implements:** `uconsole snapshot {save,list,recall,diff,export}`, `uconsole ab`,
+`uconsole open FILE` (offline, P1OF), `uconsole diff A B`, `uconsole import --only BLOCKS --guard SECONDS` (P1DF, P1SA),
+`uconsole limits {show,set,clear}`, with `--json` and exit codes; the TUI shows "File:" for an offline session. **Done when:**
+command tests against the demo device for each, scripts in `docs/integrator/` updated. **Deps:** P1SN, P1AB, P1OF, P1SA, P1LM.
+**Clients:** Terminal.
+
+**P1TZ: Tokens required by default.** [TODO] Size 0.25. Wave P1-F. **Owns:** the default in `confirm.rs`. **Implements:**
+`require_confirmation` defaults on and the switch is removed, once every client's second P1 WP has adopted tokens; the Terminal's
+`--yes` mints one. **Done when:** every client's suite passes with the default on. **Deps:** P1QT2, P1WB2, P1AN2, P1SW2, P1TM.
+
+#### Client WPs (one dialog per feature, in each client)
+
+Each client gets two WPs (Swift three), in this order: **first** the snapshot family (W3, W4, W5, W6, W7, W8) and **second** the
+Installer and safety family (S1, S2, S4, S5, S8, U5, W9, T6, undo groups). The two of one client never run in one wave.
+
+**P1QT1: Qt: snapshots, A/B, import preview, safe apply, offline files.** [TODO] Size 3. Wave P1-D. **Owns:** new
+`SnapshotsController` and `qml/snapshots/*` through the registrar; `FilesController` and `qml/files/*` (import preview, Open
+File…, Save as Template…); `MenuTable.qml`/`Menus.qml` entries (this wave's one menu WP). **Implements:** a Snapshots window
+(capture, list, rename, note, recall, delete, export) with an A/B toggle (key: the shortcut table's next free entry) and the diff
+between A and B; the import dialog shows P1DF's diff and block choices before applying, with "Apply with rollback" and a countdown
+bar (Keep, Revert); Open File… opens a document offline with a "File:" badge in the status bar. **Done when:** smoke sections for
+each on the demo device, both schemes; no new modal for a success. **Deps:** P1SN, P1AB, P1DF, P1SA, P1OF. **Clients:** Qt.
+
+**P1QT2: Qt: Installer page, lock, tokens, AutoEQ preview, notices, groups.** [TODO] Size 2. Wave P1-E. **Owns:** new
+`qml/settings/pages/InstallerPage.qml` (Settings, beside Advanced; the Mode menu stays hidden), `LimitsController`, edits in
+`ToolsController` (protect all onto P1PR), `AutoEqController`/`qml/tools/AutoEq*` (preview, channel pair), `NoticeCenter` (P1NT
+keys), the Clear All and direct-routing callers (P1UG groups), the confirmation dialogs (P1TK tokens). **Implements:** the Limits
+editor, PIN set, clear and unlock, the locked-user view when a device carries a lock; changes apply at once; the S2 warning row.
+**Done when:** smoke: set a limit, a refused write shows its notice; set a PIN, lock, only volume, mute and preset work; no PIN,
+nothing is ever asked; Clear All is one undo; tokens required on in Qt. **Deps:** P1LM, P1LK, P1PR, P1AQ, P1NT, P1TK, P1UG,
+P1QT1. **Clients:** Qt.
+
+**P1WB1: Web: snapshots, A/B, import preview, safe apply, offline files.** [TODO] Size 3.25. Wave P1-D. **Owns:** new
+`apps/web/src/screens/snapshots/`, the scene bar's host-side half (`screens/system/` scene bar: WB6e said it moves to snapshots and
+A/B when the core has them; the hub's system scenes stay), the files screen's import path. **Implements:** as P1QT1, with files
+through browser download and upload; the A/B toggle in the scene bar; Ctrl/Cmd keys not while a field has focus; 375 px without
+sideways scroll. **Done when:** unit and e2e tests (Chromium, Firefox, narrow) on the demo device; wasm exports listed. **Deps:**
+P1SN, P1AB, P1DF, P1SA, P1OF; **WB6k** (files and AutoEQ slice) for the import path, or this WP builds the import part of WB6k's
+scope and WB6k drops it. **Clients:** web.
+
+**P1WB2: Web: Installer, lock, power-on, stale, notices, tokens, AutoEQ preview, groups.** [TODO] Size 3. Wave P1-E. **Owns:**
+new `apps/web/src/screens/installer/`, the mode switch onto P1LK's manifest (`screens/system/model.ts`), the `FleetBackend` pinned
+mode (`apps/web/src/fleet/types.ts`, P1HL), `ui/texts.ts` notices onto P1NT, the limiter "All outputs" menu (P1PR), "stale since"
+on meters (`SystemStatus.stale`, `age_ms`). **Implements:** Limits and power-on (S5: startup slot, master-volume mode, output
+configuration mode, aux power-on states, DAC mute timing, the S/PDIF and ADAT mute-until-lock line, "Test power-on" reloading the
+startup slot; changes apply at once), PIN and lock, the locked-user view as the simple page; tokens on; groups for Clear All and
+Direct 1:1. **Done when:** e2e for each on the demo device and through the fake hub with a pinned mode. **Deps:** P1LM, P1LK, P1HL,
+P1PR, P1AQ, P1NT, P1TK, P1UG, P1WB1; WB6i (settings) for the power-on fields, or this WP carries them. **Clients:** web.
+
+**P1AN1: Android: snapshots, A/B, import preview, safe apply, offline files.** [TODO] Size 3. Wave P1-D. **Owns:** a new
+`feature-snapshots` module (or `feature-presets/snapshots/`), the import flow in `feature-presets`, the app-bar menu entry.
+**Implements:** as P1QT1, phone layout first (Simple shows Snapshots read-mostly: recall and A/B; Advanced edits), SAF for files,
+no visible layout growth. **Done when:** view-model and Robolectric tests, shots into `work/wp-P1AN1/shots/`; Gradle through the
+slot. **Deps:** P1SN, P1AB, P1DF, P1SA, P1OF; **AN42** (undo, in progress) merged first, since both touch the app bar. **Clients:**
+Android.
+
+**P1AN2: Android: Installer, lock, mode switch, power-on, notices, tokens, AutoEQ preview, groups.** [TODO] Size 3.5. Wave P1-E.
+**Owns:** `feature-settings` Installer and power-on pages, the mode switch from the manifest in the top-bar menu, `DangerousOps*`
+in `bridge` (onto P1TK's tokens; the classified list stays), `AlertHost` onto P1NT, the limiter menu (P1PR), AutoEQ preview,
+"stale since" on Home meters. **Implements:** as P1QT2 plus the mode switch (Simple default on the phone, per device) and S5.
+**Done when:** unit and Robolectric tests, `ReadOnlyTest` and `WriteGuardedCore` updated; a no-PIN run asks nothing. **Deps:**
+P1LM, P1LK, P1PR, P1AQ, P1NT, P1TK, P1UG, P1AN1. **Clients:** Android.
+
+**P1SW1: Swift: snapshots, A/B, import preview, safe apply, offline files.** [TODO] Size 3.5. Wave P1-E (VM). **Owns:** new
+`Snapshots*.swift` views and a `CoreSnapshots` wrapper; the file import path (SW17's) gains the preview. **Implements:** as P1QT1, on
+macOS and iOS (iOS: sheets at half height, Simple first). **Done when:** macOS and iOS test bundles on the VM. **Deps:** P1SN,
+P1AB, P1DF, P1SA, P1OF; **the SW chain SW11–SW14** (the domains on the core's setters, so a recall and a revert show everywhere),
+SW17 (done). **Clients:** Swift.
+
+**P1SW2: Swift: Installer, lock, mode switch, power-on, tokens, AutoEQ preview, groups.** [TODO] Size 2.5. Wave P1-F (VM).
+**Owns:** new Installer and power-on views, the mode switch, the confirmation dialogs (tokens), the AutoEQ window (SW18's), the
+Clear All, linked-pair and direct-routing callers (groups; review sw9). **Implements:** as P1AN2 (macOS Advanced by default, iOS
+Simple); checks the crossfeed graph no longer flips (P1XF). **Done when:** test bundles on the VM. **Deps:** P1LM, P1LK, P1PR,
+P1AQ, P1TK, P1UG, P1XF, P1SW1; SW18. **Clients:** Swift.
+
+**P1SW3: Swift: notices and the read-only floor.** [TODO] Size 2.5. Wave P1-G (VM). **Owns:** the alert sites across
+`apps/apple/DSPi Console/` (about 135), a notice host view, the read-only state. **Implements:** U5: success alerts removed, the
+rest non-modal notices from P1NT's table, modals kept only where a decision is asked; S8: Qt's read-only floor (every control off,
+reads continue, banner) on older firmware instead of a blank app, "stale since" on meters. **Done when:** test bundles; an alert
+count before and after in the report; the V17, V26, V31 and V33 fixtures read-only. **Deps:** P1NT, P1SW2 (same files); runs
+before or after SW22 (accessibility), never beside it (same files). **Clients:** Swift.
+
+#### Waves
+
+No two WPs in one wave own the same files; binding wiring is additive and the generated files are regenerated at merge.
+
+| Wave | WPs (parallel) | Size | Needs |
+|---|---|---|---|
+| P1-A | P1UG, P1XF, P1DF, P1NT (AN42 runs now, outside this plan) | 4.5 | `main` |
+| P1-B | P1SN, P1OF, P1TK, P1PR, P1HA | 9 | P1-A |
+| P1-C | P1AB, P1SA, P1LM | 6.5 | P1-B |
+| P1-D | P1LK, P1AQ, P1HL, P1TM; P1QT1, P1WB1, P1AN1 | 13.5 | P1-C; WB6k for P1WB1; AN42 for P1AN1 |
+| P1-E | P1QT2, P1WB2, P1AN2; P1SW1 (VM) | 12 | P1-D; SW11–SW14 for P1SW1 |
+| P1-F | P1SW2 (VM), P1TZ | 2.75 | P1-E; P1TZ after P1SW2 too (sequenced in the wave) |
+| P1-G | P1SW3 (VM) | 2.5 | P1-F |
+| | **Total: 26 WPs** | **50.75** | core 21 + P1TZ 0.25, hub 2.5, Terminal 0.75, Qt 5, web 6.25, Android 6.5, Swift 8.5 |
+
+Sizes are this plan's units (a size-1 WP took 10–35 minutes of agent time, about an hour with review). Each wave ends with one
+Fable batch review; the full gate runs after P1-C (the core complete) and after P1-G. Swift's three WPs follow the VM queue and
+can trail the other clients without blocking them.
+
+#### Owner decisions for phase 1
+
+| # | Decision | Recommendation |
+|---|---|---|
+| **OD-P1a** | **Snapshot or scene.** PRO1 called a numbered snapshot a "scene"; the hub's audio-link system already has scenes (frame-timed ops across units, SW2). | Keep **Snapshot** for host-side whole-device states and **Scene** for the hub's; a hub scene may recall a snapshot in phase 2 |
+| **OD-P1b** | **Where snapshots live** (PRO1 question 2). | Locally per client and serial in this phase; a shared copy on the hub in phase 2, the hub's winning |
+| **OD-P1c** | **A forgotten PIN** (`docs/UI-MODES.md` 9.1). | On a hub: an Admin clears it. Off a hub: "Remove lock" in the unlock dialog after a typed confirmation word on a local USB connection; the PIN is a UI lock, so a recovery that is honest about it costs nothing |
+| **OD-P1d** | **The lock does not travel with the device.** Profiles and PINs are host-side and on the hub; the firmware has no store for them, so the same DSPi on another computer is unlocked. | Accept and say it in the Installer page; a device-side marker is a firmware item for later (with FW2) |
+| **OD-P1e** | **Qt's Installer entry** while Window > Mode… stays hidden. | Settings > Installer, like the Core Voltage page under Settings > Advanced; unhide the Mode menu when the owner says |
+| **OD-P1f** | **Tokens required by default** (P1TZ) changes the C ABI's behaviour for any outside user of it. | Flip after every client has adopted it; no outside users are known |
+| **OD-P1g** | **Safe apply's default.** | On by default over Link (hub timer), opt-in on USB; 30 s timeout, adjustable |
+| **OD-P1h** | **The K340 template's content.** It would be derived from the owner's K340 configuration (its tuning, names and pair map). | Ship the routing, pair map, crossover and names, without the owner's room EQ; the owner approves the file |
+| **OD-P1i** | **Locked-user over Link.** With roles Admin, Control and Viewer only, a venue phone is Control within the limits, or Viewer. | Control within the hub's limits, with the lock's scope (volume, mute, preset) applied by the hub to Control clients of a locked device |
+
 ---
 
 ## 6. Hardware and owner-only tasks
@@ -1409,6 +1780,7 @@ Every wave needs `core-merge` on `main`. Within a wave no two WPs own the same f
 | 5 | SW8, QD21b, then SW-V1 **(then OD3)**; QD24, QD25, QD35; AN15 then AN22, then AN16; AN13's rest; XC4, XC5, XC6 | wave 4 |
 | 6 | SW9–SW14; SW-M3 after HB7 | OD3 decided: Swift (2026-11-13) |
 | 7 | QD22 then QD23; AN20 then AN21; SW15, SW16, SW22, SW-M4, SW-M5; HO1 | everything else in that client |
+| P1-A to P1-G | PRO phase 1: section 5.9's wave table | `main` with phase 0 (P0W, P0W2, P0M, P0U, P0E) |
 | After | the owner's order: web (WB2-WB9, section 5.5), then optimisation (OPT0-OPT9, 5.7), then polish (PL-*, 5.8). Per resource: web WPs start beside wave 7 when workers would otherwise idle | the plan's WPs on that resource |
 
 WPs added after this table, as review and hardware follow-ups, ran where their findings came up: CG29-CG31, HB8, QD13b,
@@ -1450,7 +1822,7 @@ section at the top is the record.
 - **Rust hub on the Mac (OD-Hub):** yes, once it is in the other versions (SW-M3). R-Mac does not wait for it.
 - **Visibility (OD1):** "private until discussion with weeblabs". Source tarballs on closed-test releases.
 - **Bundled firmware (OD4):** stock, built from a tag. K340 owners use a local `.uf2`, under CG8.
-- **Qt undo (OD5):** "no for now". No WP; section 1's rule keeps it possible.
+- **Qt undo (OD5):** "no for now". No WP; section 1's rule keeps it possible. **Superseded (owner, 2026-11-12):** undo in all apps, on the core's journal (P0W); Qt has it since QP18, Android in AN42 (section 5.9).
 - **Localisation (OD6):** "have the plumbing there, but just english for now".
 - **Core voltage in GUIs (OD7):** writes under an Advanced menu, plus a calibration flow, in Qt, Android and Swift, with logic in the core (CG11, QD28, AN23, SW23, XC6). This replaces the earlier "status only" recommendation.
 - **Qt self-update (OD8):** check-and-link, opt-in.
