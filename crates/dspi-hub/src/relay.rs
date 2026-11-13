@@ -86,6 +86,9 @@ struct Subscriber {
 pub struct Relay {
     subscribers: Mutex<Vec<Subscriber>>,
     next_id: AtomicU64,
+    // -- WP SW2 --
+    /// The system model, which watches the link's events.
+    tap: Mutex<Option<Arc<crate::system::SystemShared>>>,
 }
 
 impl Relay {
@@ -120,10 +123,25 @@ impl Relay {
 
     /// Queue a notification for everyone who follows `handle`. Never blocks.
     pub fn publish_notify(&self, handle: u8, origin: SessionId, packet: &[u8]) {
+        // -- WP SW2 -- the tap broadcasts through `self`: taken without the lock.
+        let tap = self
+            .tap
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        if let Some(tap) = tap {
+            tap.on_packet(self, handle, packet);
+        }
         let packet: Arc<[u8]> = Arc::from(packet);
         for s in self.lock().iter().filter(|s| follows(s, handle)) {
             s.outbox.push_notify(handle, origin, Arc::clone(&packet));
         }
+    }
+
+    // -- WP SW2 --
+    /// Watch every device packet with the system model.
+    pub(crate) fn set_tap(&self, tap: Arc<crate::system::SystemShared>) {
+        *self.tap.lock().unwrap_or_else(PoisonError::into_inner) = Some(tap);
     }
 
     /// Tell everyone who follows `handle` to re-read (spec 8.6).

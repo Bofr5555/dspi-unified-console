@@ -60,6 +60,10 @@ struct FileData {
     clients: Vec<ClientRecord>,
     #[serde(default)]
     device_names: BTreeMap<String, String>,
+    // -- WP SW2 -- kept as JSON, so a model this hub cannot read never costs
+    // the clients and names; checked when it is used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    system: Option<serde_json::Value>,
 }
 
 /// The persistent state, as loaded.
@@ -72,6 +76,8 @@ pub struct HubStore {
     next_cid: u32,
     clients: Vec<StoredClient>,
     device_names: BTreeMap<String, String>,
+    // -- WP SW2 --
+    system: Option<serde_json::Value>,
 }
 
 fn io_error(what: &str, path: &Path, e: &io::Error) -> HubError {
@@ -198,6 +204,8 @@ impl HubStore {
                 next_cid: 1,
                 clients: Vec::new(),
                 device_names: BTreeMap::new(),
+                // -- WP SW2 --
+                system: None,
             };
             // Now, so the id is the same at the next start even with nothing paired.
             store.save()?;
@@ -218,6 +226,8 @@ impl HubStore {
             next_cid,
             clients,
             device_names: data.device_names,
+            // -- WP SW2 --
+            system: data.system,
         })
     }
 
@@ -245,6 +255,8 @@ impl HubStore {
             next_cid: data.next_cid,
             clients,
             device_names: data.device_names,
+            // -- WP SW2 --
+            system: data.system,
         }))
     }
 
@@ -268,6 +280,8 @@ impl HubStore {
                 })
                 .collect(),
             device_names: self.device_names.clone(),
+            // -- WP SW2 --
+            system: self.system.clone(),
         };
         let bytes = serde_json::to_vec_pretty(&data)
             .map_err(|e| HubError::Io(format!("cannot encode the hub store: {e}")))?;
@@ -315,6 +329,31 @@ impl HubStore {
                 (serial.clone(), name)
             })
             .collect();
+    }
+
+    // -- WP SW2 --
+    /// The system model kept, if it is one this hub reads and it is valid. One
+    /// that is not stays in the file, untouched, until a new one is set.
+    pub fn system(&self) -> Option<crate::system::model::SystemModel> {
+        let value = self.system.clone()?;
+        match serde_json::from_value::<crate::system::model::SystemModel>(value) {
+            Ok(m) if m.validate().is_ok() => Some(m),
+            Ok(_) | Err(_) => {
+                log::warn!("hub store: the system model is not one this hub reads; ignored");
+                None
+            }
+        }
+    }
+
+    /// Replace the system model, for [`Self::save`].
+    pub fn set_system(
+        &mut self,
+        model: &crate::system::model::SystemModel,
+    ) -> Result<(), HubError> {
+        let value = serde_json::to_value(model)
+            .map_err(|e| HubError::Io(format!("cannot encode the system model: {e}")))?;
+        self.system = Some(value);
+        Ok(())
     }
 
     pub(crate) fn access(&self) -> Option<&str> {

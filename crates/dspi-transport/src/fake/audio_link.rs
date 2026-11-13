@@ -361,10 +361,10 @@ impl State {
         if !self.link_ids().contains(&value) {
             return Some(None);
         }
-        if self.audio_link.setup.is_sender_build() {
-            if let Some(reply) = self.get_sender(value) {
-                return Some(Some(reply));
-            }
+        if self.audio_link.setup.is_sender_build()
+            && let Some(reply) = self.get_sender(value)
+        {
+            return Some(Some(reply));
         }
         let l = &self.audio_link;
         Some(match value {
