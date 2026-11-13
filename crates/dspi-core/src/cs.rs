@@ -700,8 +700,8 @@ impl DspiCore {
     /// `learnArm` holds the device lock for the 15 s learn window (WP CG24),
     /// so another DSPi Link session gets `locked` meanwhile (and a refused
     /// lock is `{ok: false}` with nothing sent). A `learnRead` whose `state`
-    /// is no longer ARMED, a failed `learnRead`, `learnCancel`, the window's
-    /// end or the connection's close releases it;
+    /// is no longer ARMED, `learnCancel`, the window's end or the
+    /// connection's close releases it (a failed `learnRead` does not);
     /// [`DspiCore::device_lock_release`] does not. Inside a lock taken with
     /// [`DspiCore::device_lock_acquire`] a learn takes no lock of its own and
     /// lasts only as long as that one.
@@ -782,10 +782,11 @@ impl DspiCore {
     /// ([`LEARN_WINDOW`]), so another session cannot rewrite the IR setup
     /// mid-learn (Swift's `csIrLearnArm`). A read that is no longer armed, a
     /// cancel, the window's end or the connection's going releases it;
-    /// `device_lock_release` does not. A new arm starts a new window. Unlike
-    /// Swift, a failed read (`{ok: false}`) ends the window too: it has no
-    /// `state` of ARMED. Inside a caller's lock the learn takes nothing of
-    /// its own and ends nothing: the window is the caller's lock's.
+    /// `device_lock_release` does not. A new arm starts a new window. A
+    /// failed read (`{ok: false}`) ends nothing (-- WP SW12 -- fixup sw12
+    /// N1: the doc said it did): the learn may still be armed. Inside a
+    /// caller's lock the learn takes nothing of its own and ends nothing:
+    /// the window is the caller's lock's.
     fn learn_op(&self, kind: &str, op: &Value) -> Result<Value> {
         match kind {
             "learnArm" => {

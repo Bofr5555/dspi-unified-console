@@ -341,8 +341,8 @@ interface DspiCoreApi : AutoCloseable {
      * `learnArm` holds the device lock for the 15 s learn window (WP CG24),
      * so another DSPi Link session gets `locked` meanwhile (and a refused
      * lock is `{ok: false}` with nothing sent). A `learnRead` whose `state`
-     * is no longer ARMED, a failed `learnRead`, `learnCancel`, the window's
-     * end or the connection's close releases it;
+     * is no longer ARMED, `learnCancel`, the window's end or the
+     * connection's close releases it (a failed `learnRead` does not);
      * [`DspiCore::device_lock_release`] does not. Inside a lock taken with
      * [`DspiCore::device_lock_acquire`] a learn takes no lock of its own and
      * lasts only as long as that one.
