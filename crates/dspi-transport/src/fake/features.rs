@@ -1326,6 +1326,17 @@ impl State {
         self.push(p);
     }
 
+    // -- WP FIXS1 --
+    /// The requested output latency option's `(latency_us, batch_us)` as the
+    /// link input resolves it (`refresh_limits` in link_input.c: source 7,
+    /// so a stream-only option stands).
+    pub(super) fn latency_for_link(&self) -> (u16, u16) {
+        let find = |id: u8| LATENCY_OPTIONS.iter().copied().find(|o| o.0 == id);
+        find(self.extras.latency)
+            .or_else(|| find(LATENCY_DEFAULT))
+            .map_or((4000, 1000), |o| (o.2, o.3))
+    }
+
     /// The option in force: a stream-only request on USB falls back to the
     /// first option without the flag (`output_latency_resolve`).
     fn latency_effective(&self) -> (u8, u8, u16, u16) {

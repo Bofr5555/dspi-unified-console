@@ -5,9 +5,9 @@
 //!
 //! | Code | Raised | Cleared |
 //! |---|---|---|
-//! | `link_lost` | a unit not locked (searching, holdover, off), or an 0xE1 with a loss reason | locked again |
+//! | `link_lost` | a unit not locked (searching, holdover, off), or an 0xE1 with a loss reason; its count is the unit's losses since it was raised | locked again |
 //! | `unit_offline` | a unit of the model not attached | attached |
-//! | `link_errors` | a unit's bank errors (`crc16_errors`) grew by [`ERROR_STEP`] or more since the last read, or its `loss_count` grew | a read with no growth |
+//! | `link_errors` | a unit's CRC-16 errors (`crc16_errors`) grew by [`ERROR_STEP`] or more since the last read (a loss is `link_lost`'s) | a read with less growth |
 //! | `reanchor` | an 0xE1 `REANCHOR` (a short silence) | acknowledged |
 //! | `system_muted` | the sender's system mute set (by `system.mute`, a scene or another host), seen at a read or a write | cleared |
 //! | `delay_below_min` | `EXT_LINK_PHASE` flag `D_BELOW_MIN` | the flag gone |
@@ -69,8 +69,12 @@ pub struct AlarmBook {
     /// On, by (code, subject).
     active: BTreeMap<(String, String), Alarm>,
     cleared: Vec<Alarm>,
-    /// The counters at the last read, by subject: bank errors, losses.
+    /// The counters at the last read, by subject: CRC-16 errors, losses.
     counters: BTreeMap<String, (u32, u32)>,
+    // -- WP FIXS1 --
+    /// The losses before a subject's `link_lost` was raised, so its count
+    /// follows the unit's loss counter however often it is seen.
+    loss_base: BTreeMap<String, u32>,
 }
 
 fn severity(code: &str) -> &'static str {
@@ -83,9 +87,25 @@ fn severity(code: &str) -> &'static str {
 impl AlarmBook {
     /// Raise (or count again) an alarm. Returns it if it is new.
     pub fn raise(&mut self, code: &str, subject: &str, message: String, now: u64) -> Option<Alarm> {
+        self.raise_counted(code, subject, message, now, true)
+    }
+
+    // -- WP FIXS1 --
+    /// Raise an alarm; one already on counts again only if `again` (a new
+    /// occurrence, not the same condition seen once more).
+    fn raise_counted(
+        &mut self,
+        code: &str,
+        subject: &str,
+        message: String,
+        now: u64,
+        again: bool,
+    ) -> Option<Alarm> {
         let key = (code.to_owned(), subject.to_owned());
         if let Some(a) = self.active.get_mut(&key) {
-            a.count = a.count.saturating_add(1);
+            if again {
+                a.count = a.count.saturating_add(1);
+            }
             a.message = message;
             return None;
         }
@@ -107,6 +127,9 @@ impl AlarmBook {
 
     /// Clear an alarm if on. Returns it if it was.
     pub fn clear(&mut self, code: &str, subject: &str, now: u64) -> Option<Alarm> {
+        if code == "link_lost" {
+            self.loss_base.remove(subject);
+        }
         let mut a = self.active.remove(&(code.to_owned(), subject.to_owned()))?;
         a.state = AlarmState::Cleared;
         a.cleared_at = Some(now);
@@ -154,8 +177,9 @@ impl AlarmBook {
         now: u64,
         out: &mut Changes,
     ) {
+        // A condition still there is the same alarm, not another (WP FIXS1).
         let change = if on {
-            self.raise(code, subject, msg, now)
+            self.raise_counted(code, subject, msg, now, false)
         } else {
             self.clear(code, subject, now)
         };
@@ -178,28 +202,44 @@ impl AlarmBook {
         let Some(o) = seen.filter(|_| online) else {
             return out;
         };
+        let before = self.counters.get(subject).copied();
         if let Some(state) = &o.state {
             let locked = state == "locked";
             self.set(
                 !locked,
                 "link_lost",
                 subject,
-                format!("{subject}: the audio link is {state}"),
+                format!("{subject}: the audio link {}", state_words(state)),
                 now,
                 &mut out,
             );
+            // -- WP FIXS1 -- one loss is one, however often it is seen (a
+            // read and the 0xE1 alike): the count is the losses since.
+            if let (false, Some(losses)) = (locked, o.loss_count) {
+                let base = *self.loss_base.entry(subject.to_owned()).or_insert_with(|| {
+                    before.map_or(losses.saturating_sub(1), |(_, l0)| {
+                        l0.min(losses.saturating_sub(1))
+                    })
+                });
+                if let Some(a) = self
+                    .active
+                    .get_mut(&("link_lost".to_owned(), subject.to_owned()))
+                {
+                    a.count = losses.saturating_sub(base).max(1);
+                }
+            }
         }
         if let (Some(errors), Some(losses)) = (o.crc16_errors, o.loss_count) {
-            let grew = match self.counters.insert(subject.to_owned(), (errors, losses)) {
+            let grown = match self.counters.insert(subject.to_owned(), (errors, losses)) {
                 // A reset counter (lower now) is no growth.
-                Some((e0, l0)) => errors.saturating_sub(e0) >= ERROR_STEP || losses > l0,
-                None => false,
+                Some((e0, _)) => errors.saturating_sub(e0),
+                None => 0,
             };
             self.set(
-                grew,
+                grown >= ERROR_STEP,
                 "link_errors",
                 subject,
-                format!("{subject}: bank errors {errors}, losses {losses}"),
+                format!("{subject}: {grown} CRC-16 errors on the audio link since the last read"),
                 now,
                 &mut out,
             );
@@ -243,11 +283,16 @@ impl AlarmBook {
     ) -> Changes {
         let mut out = Vec::new();
         if is_loss || matches!(state, "searching" | "holdover") {
-            out.extend(self.raise(
+            // The read that follows counts the loss (WP FIXS1).
+            out.extend(self.raise_counted(
                 "link_lost",
                 subject,
-                format!("{subject}: the audio link was lost ({reason})"),
+                format!(
+                    "{subject}: the audio link was lost ({})",
+                    reason_words(reason)
+                ),
                 now,
+                false,
             ));
         } else if state == "locked" {
             out.extend(self.clear("link_lost", subject, now));
@@ -264,12 +309,36 @@ impl AlarmBook {
     }
 }
 
+// -- WP FIXS1 --
+/// "the audio link …" for a state's name, in the glossary's words.
+fn state_words(state: &str) -> String {
+    match state {
+        "holdover" => "is in holdover".into(),
+        "searching" => "is searching".into(),
+        "off" => "is off".into(),
+        "unknown" => "is in an unknown state".into(),
+        s => format!("is {s}"),
+    }
+}
+
+/// Why a link was lost, for people (an 0xE1 reason's name).
+fn reason_words(reason: &str) -> &str {
+    match reason {
+        "los" => "no signal at the input",
+        "header_errors" => "bad frame heads",
+        "comma_lost" => "framing lost",
+        "vcxo_limit" => "clock beyond its range",
+        "disabled" => "turned off",
+        r => r,
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 mod tests_wp_sw2 {
     use super::*;
 
-    fn locked(errors: u32, losses: u32) -> Observed {
+    pub(super) fn locked(errors: u32, losses: u32) -> Observed {
         Observed {
             online: true,
             state: Some("locked".into()),
@@ -288,19 +357,20 @@ mod tests_wp_sw2 {
         lost.state = Some("holdover".into());
         let c = b.observe("A", Some(&lost), 2);
         let codes: Vec<&str> = c.iter().map(|a| a.code.as_str()).collect();
-        assert_eq!(codes, ["link_lost", "link_errors"]);
+        // -- WP FIXS1 -- a loss is link_lost's alone, not a counters alarm.
+        assert_eq!(codes, ["link_lost"]);
         assert_eq!(c[0].severity, "critical");
-        // Again: counted, not new.
+        // Again: not new.
         assert!(
             b.observe("A", Some(&lost), 3)
                 .iter()
                 .all(|a| a.code != "link_lost")
         );
-        assert_eq!(b.active(), 1, "no growth since: link_errors cleared");
+        assert_eq!(b.active(), 1);
         let c = b.observe("A", Some(&locked(0, 1)), 4);
         assert_eq!(c[0].state, AlarmState::Cleared);
         assert_eq!(b.active(), 0);
-        assert_eq!(b.list().len(), 2);
+        assert_eq!(b.list().len(), 1);
     }
 
     #[test]
@@ -327,5 +397,92 @@ mod tests_wp_sw2 {
                 .any(|a| a.code == "unit_offline" && a.state == AlarmState::Cleared)
         );
         assert!(b.acknowledge(9999, 7).is_none());
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_wp_fixs1 {
+    use super::tests_wp_sw2::locked;
+    use super::*;
+
+    fn lost_one(b: &AlarmBook) -> Alarm {
+        let on: Vec<Alarm> = b
+            .list()
+            .into_iter()
+            .filter(|a| a.code == "link_lost" && a.state != AlarmState::Cleared)
+            .collect();
+        assert_eq!(on.len(), 1, "{on:?}");
+        on[0].clone()
+    }
+
+    #[test]
+    fn wp_fixs1_one_loss_is_one_alarm_counted_once() {
+        // SHOTS1 finding 2: an 0xE1 and the status reads during one loss.
+        let mut b = AlarmBook::default();
+        assert!(b.observe("B", Some(&locked(0, 0)), 1).is_empty());
+        let c = b.event("B", "holdover", "los", true, 2);
+        assert_eq!(c.len(), 1);
+        assert_eq!(
+            c[0].message,
+            "B: the audio link was lost (no signal at the input)"
+        );
+        let mut hold = locked(0, 1);
+        hold.state = Some("holdover".into());
+        for t in 3..8 {
+            let c = b.observe("B", Some(&hold), t);
+            assert!(c.is_empty(), "no new alarm at a read: {c:?}");
+        }
+        let a = lost_one(&b);
+        assert_eq!(a.count, 1, "Losses is 1");
+        assert_eq!(a.message, "B: the audio link is in holdover");
+        assert_eq!(b.active(), 1, "no counters alarm: CRC-16 errors are 0");
+        // Locked again; a second loss is a new alarm, counted once too.
+        let c = b.observe("B", Some(&locked(0, 1)), 8);
+        assert_eq!((c.len(), c[0].state), (1, AlarmState::Cleared));
+        let mut again = locked(0, 2);
+        again.state = Some("searching".into());
+        b.observe("B", Some(&again), 9);
+        b.event("B", "searching", "comma_lost", true, 9);
+        b.observe("B", Some(&again), 10);
+        let a = lost_one(&b);
+        assert_eq!(
+            (a.count, a.message.as_str()),
+            (1, "B: the audio link is searching")
+        );
+        // Two more losses before it locks: the count follows Losses since.
+        let mut more = locked(0, 4);
+        more.state = Some("holdover".into());
+        b.observe("B", Some(&more), 11);
+        assert_eq!(lost_one(&b).count, 3);
+    }
+
+    #[test]
+    fn wp_fixs1_errors_alarm_only_when_crc16_errors_rise() {
+        let mut b = AlarmBook::default();
+        b.observe("A", Some(&locked(100, 0)), 1);
+        // Losses alone, or a few errors: nothing.
+        assert!(
+            b.observe("A", Some(&locked(100, 3)), 2)
+                .iter()
+                .all(|a| a.code != "link_errors")
+        );
+        assert!(b.observe("A", Some(&locked(110, 3)), 3).is_empty());
+        let c = b.observe("A", Some(&locked(110 + ERROR_STEP, 3)), 4);
+        assert_eq!(c.len(), 1);
+        assert_eq!(c[0].code, "link_errors");
+        assert_eq!(
+            c[0].message,
+            "A: 16 CRC-16 errors on the audio link since the last read"
+        );
+        // Still rising: the same alarm, not counted as another.
+        assert!(
+            b.observe("A", Some(&locked(110 + 3 * ERROR_STEP, 3)), 5)
+                .is_empty()
+        );
+        assert_eq!(b.list()[0].count, 1);
+        // A reset counter is no growth.
+        let c = b.observe("A", Some(&locked(0, 0)), 6);
+        assert_eq!((c.len(), c[0].state), (1, AlarmState::Cleared));
     }
 }

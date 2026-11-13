@@ -36,7 +36,7 @@ class FirmwareBannerWpAn2Test {
         return HomeModel.firmwareBannerMessage(b)
     }
 
-    private fun older(version: String) = "This device runs firmware $version; DSPi Console expects 1.1.6. " +
+    private fun older(version: String) = "This device runs firmware $version; uConsole for DSPi expects 1.1.6. " +
         "Features that firmware does not have are hidden. $readOnly"
 
     @Test
@@ -58,16 +58,16 @@ class FirmwareBannerWpAn2Test {
     @Test
     fun wpAn2NewerDecodedFirmware() = runTest {
         assertEquals(
-            "This device runs firmware 1.1.7, which is newer than DSPi Console 1.1.6. Some of its features may not be shown. $readOnly",
+            "This device runs firmware 1.1.7, which is newer than uConsole for DSPi 1.1.6. Some of its features may not be shown. $readOnly",
             banner("v33_mock")
         )
     }
 
     @Test
     fun wpAn2AFormatItCannotMapDoesNotClaimSettingsAreShown() = runTest {
-        assertEquals("This device runs firmware 1.1.4; DSPi Console expects 1.1.6. $unread", banner("v15_unmapped"))
+        assertEquals("This device runs firmware 1.1.4; uConsole for DSPi expects 1.1.6. $unread", banner("v15_unmapped"))
         assertEquals(
-            "This device runs firmware 1.1.8, which is newer than DSPi Console 1.1.6. $unread",
+            "This device runs firmware 1.1.8, which is newer than uConsole for DSPi 1.1.6. $unread",
             banner("v34_unmapped")
         )
     }

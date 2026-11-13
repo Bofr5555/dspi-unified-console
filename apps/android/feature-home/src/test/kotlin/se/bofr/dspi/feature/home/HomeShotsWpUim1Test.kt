@@ -28,6 +28,7 @@ import org.robolectric.annotation.GraphicsMode
 import se.bofr.dspi.bridge.DspiBridgeImpl
 import se.bofr.dspi.fake.FakeDspiCore
 import se.bofr.dspi.ui.DspiTheme
+import se.bofr.dspi.ui.LocalDemoMode
 import se.bofr.dspi.ui.settings.AppSettings
 import se.bofr.dspi.ui.settings.InMemoryAppSettingsStore
 import se.bofr.dspi.ui.settings.LocalAppSettings
@@ -64,7 +65,8 @@ class HomeShotsWpUim1Test {
         bridge.scanDevices()
         settle()
         rule.setContent {
-            CompositionLocalProvider(LocalAppSettings provides store) {
+            // -- WP FIXS1 -- the demo as the app shows it: no version banner (AN18)
+            CompositionLocalProvider(LocalAppSettings provides store, LocalDemoMode provides true) {
                 DspiTheme(darkTheme = dark) { Surface(Modifier.fillMaxSize()) { HomeScreen(bridge, {}, {}) } }
             }
         }

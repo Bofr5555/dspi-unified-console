@@ -27,7 +27,7 @@ fn wp_sw2_a_unit_behind_a_fan_out_and_the_fan_out_itself() {
     let mut unit = FakeDevice::demo_audio_link_as(AudioLinkSetup {
         hops: 1,
         sender_id: 7,
-        d_local_min: 64,
+        d_local_min: Some(64),
         ..AudioLinkSetup::default()
     })
     .with_serial("UNIT-B");

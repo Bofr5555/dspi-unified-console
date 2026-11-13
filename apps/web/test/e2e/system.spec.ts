@@ -197,7 +197,7 @@ test.describe("SW3: an audio link installation on the hub", () => {
     await expect(panel).not.toContainText(/d_local|hops_offset/);
     const units = panel.getByRole("table", { name: "Units on the audio link" });
     const right = units.getByRole("row", { name: "Clock of Main right" });
-    await expect(right).toContainText("112..");
+    await expect(right).toContainText("257..");
     await expect(right).toContainText("3 frames"); // behind the fan-out
     // Link stats and the trim scan of a receiver.
     const stats = panel.getByRole("table", { name: "Link stats" });

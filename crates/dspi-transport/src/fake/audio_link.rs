@@ -5,7 +5,7 @@
 //! firmware.
 //!
 //! The model: the spec's example receiver (GP0, L1-L3, 64 channels,
-//! `PHASE_LOCK | APPLY_AT_FRAME | LOS_PIN`, `D_local` 112..1024), hearing L1
+//! `PHASE_LOCK | APPLY_AT_FRAME | LOS_PIN`), hearing L1
 //! at 48 kHz, 8 channels, from sender 0x42, locked from the start. The frame
 //! counter runs with the fake's clock (48 frames per ms), extrapolated in
 //! holdover as the firmware does. Every receiver sub-command is listed and
@@ -20,11 +20,17 @@
 //! when the counter passes their frame, checked at every link request; one
 //! whose frame has passed runs at once and reports "late". Their effect on
 //! the audio (a mute, a preset load) is not modelled, only their results.
-//! Not modelled either: the 250 ms rate limit on 0xE1, the phase servo (the
-//! phase error is 0 when locked; an anchor completes at once), the pin table
-//! check against the live configuration, `D_local` limits that follow the
-//! output latency option; the link input runs whatever the input source (the
+//! Not modelled either: the 250 ms rate limit on 0xE1, the phase servo (an
+//! anchor completes at once), the pin table check against the live
+//! configuration; the link input runs whatever the input source (the
 //! firmware runs it only under source 7).
+//!
+//! WP FIXS1: `d_local_min..d_local_max` follow the output latency option at
+//! 48 kHz as the firmware works them out (spec 2.8.1: 81..431 for the 1 ms
+//! option, 257..399 for the default 4 ms one), and the unit starts at a link
+//! delay inside them. The phase error is a small one that drifts slowly
+//! while locked (0.01..0.05 frames, a function of the fake's clock) and
+//! grows at the VCXO's offset in holdover.
 //!
 //! WP SW2: [`AudioLinkSetup`] makes the fake another place in a system: a
 //! receiver behind re-emitters (`hops`), a repeater or fan-out with its
@@ -91,8 +97,9 @@ pub struct AudioLinkSetup {
     pub hop_delay_frames: u8,
     /// The sender the unit hears, or a sender's own id.
     pub sender_id: u8,
-    /// `EXT_LINK_INFO.d_local_min`.
-    pub d_local_min: u16,
+    /// `EXT_LINK_INFO.d_local_min` if set; `None` (the default): from the
+    /// output latency option, as the firmware (WP FIXS1).
+    pub d_local_min: Option<u16>,
 }
 
 impl Default for AudioLinkSetup {
@@ -102,7 +109,7 @@ impl Default for AudioLinkSetup {
             hops: 0,
             hop_delay_frames: 0,
             sender_id: SENDER_ID,
-            d_local_min: 112,
+            d_local_min: None,
         }
     }
 }
@@ -111,6 +118,41 @@ impl AudioLinkSetup {
     fn is_sender_build(&self) -> bool {
         matches!(self.role, LinkRole::Sender | LinkRole::FanOut)
     }
+}
+
+// -- WP FIXS1 --
+/// The output rings' writable span (`output_latency_ring_span`: 512 - 64).
+const RING_SPAN: u32 = 448;
+/// `LINK_PHASE_DECODE_MARGIN` (link_phase.h).
+const DECODE_MARGIN: u32 = 16;
+/// The fake's start link delay: inside the default 4 ms option's 257..399, as
+/// a unit an installer has aligned.
+const D_LOCAL_START: u16 = 300;
+/// The fake's VCXO correction, ppm (STATUS `vcxo_ppm`); a holdover's phase
+/// error grows at it.
+const VCXO_PPM: f32 = 1.5;
+/// The rate the fake's link runs at.
+const LINK_RATE_HZ: u32 = 48_000;
+
+/// `d_local_min`, `d_local_max` for an option's `(latency_us, batch_us)` at
+/// 48 kHz: `link_phase_limits` with output_latency.c's rounding.
+fn d_local_limits((latency_us, batch_us): (u16, u16)) -> (u16, u16) {
+    let rate = LINK_RATE_HZ;
+    let frames = |us: u16, round: u32| {
+        (u32::from(us).saturating_mul(rate).saturating_add(round)) / 1_000_000
+    };
+    let cap = frames(batch_us, 999_999).saturating_add(1);
+    let ceiling = RING_SPAN.saturating_sub(cap);
+    let target = frames(latency_us, 500_000).min(ceiling);
+    let lo = target.saturating_add(cap).saturating_add(DECODE_MARGIN);
+    let to16 = |v: u32| u16::try_from(v).unwrap_or(u16::MAX);
+    (to16(lo), to16(ceiling))
+}
+
+/// A locked unit's phase error, frames: 0.03 ± 0.02, one period every 30 s
+/// of the fake's clock.
+fn locked_phase_error(since_start_s: f32) -> f32 {
+    0.03 + 0.02 * (since_start_s * std::f32::consts::TAU / 30.0).sin()
 }
 
 /// The link's state on the fake.
@@ -133,6 +175,9 @@ pub(super) struct AudioLink {
     /// byte `EXT_LINK_CTRL_MSG`'s `system_flags` writes too (fixup sw2x: the
     /// firmware's `snd.cfg.flags`).
     tx: LinkTx,
+    // -- WP FIXS1 --
+    /// When a holdover began, and the phase error then.
+    held: Option<(Instant, f32)>,
 }
 
 impl Default for AudioLink {
@@ -151,7 +196,7 @@ impl Default for AudioLink {
             slots: LinkSlots::IDENTITY,
             phase: LinkPhase {
                 mode: alink::PHASE_MODE_LOCK,
-                d_local: 128,
+                d_local: D_LOCAL_START,
                 hops_offset: 0,
                 flags: 0,
                 state: 2,
@@ -182,6 +227,7 @@ impl Default for AudioLink {
                 usb_alt: 1,
                 flags: 0,
             },
+            held: None,
         }
     }
 }
@@ -194,7 +240,7 @@ const RX_PIN_DEFAULT: u8 = 0;
 ///
 /// WP SW2: for the fake's place on the link; a sender build reports its links
 /// and no slots or delay range (2.8.1).
-fn info_as(config: &LinkConfig, setup: &AudioLinkSetup) -> LinkInfo {
+fn info_as(config: &LinkConfig, setup: &AudioLinkSetup, latency: (u16, u16)) -> LinkInfo {
     if setup.is_sender_build() {
         return LinkInfo {
             role: setup.role,
@@ -212,6 +258,8 @@ fn info_as(config: &LinkConfig, setup: &AudioLinkSetup) -> LinkInfo {
         };
     }
     let repeater = setup.role == LinkRole::Repeater;
+    // -- WP FIXS1 --
+    let limits = d_local_limits(latency);
     LinkInfo {
         role: setup.role,
         protocol_version: alink::LINK_PROTOCOL_VERSION,
@@ -230,8 +278,8 @@ fn info_as(config: &LinkConfig, setup: &AudioLinkSetup) -> LinkInfo {
             | feature::APPLY_AT_FRAME
             | feature::LOS_PIN
             | if repeater { feature::REPEATER } else { 0 },
-        d_local_min: setup.d_local_min,
-        d_local_max: 1024,
+        d_local_min: setup.d_local_min.unwrap_or(limits.0),
+        d_local_max: limits.1,
     }
 }
 
@@ -319,8 +367,8 @@ impl State {
             crc16_errors: l.crc16_errors,
             bit_slips: 0,
             superframe_errors: 0,
-            vcxo_ppm: 1.5,
-            phase_error_frames: 0.0,
+            vcxo_ppm: VCXO_PPM,
+            phase_error_frames: self.link_phase_error(),
             fill_frames: l.phase.d_local,
             // -- WP SW2 --
             hop_delay_frames: if reemits && locked {
@@ -329,6 +377,49 @@ impl State {
                 0
             },
         }
+    }
+
+    // -- WP FIXS1 --
+    /// STATUS `phase_error_frames`: small and slowly varying while locked,
+    /// growing at the VCXO's offset in holdover, 0 otherwise.
+    fn link_phase_error(&self) -> f32 {
+        let l = &self.audio_link;
+        if l.setup.is_sender_build() || l.phase.mode != alink::PHASE_MODE_LOCK {
+            return 0.0;
+        }
+        let now = Instant::now();
+        match (l.state, l.held) {
+            (LinkState::Locked, _) => {
+                locked_phase_error(now.saturating_duration_since(self.started).as_secs_f32())
+            }
+            (LinkState::Holdover, Some((at, e0))) => {
+                let s = now.saturating_duration_since(at).as_secs_f32();
+                e0 + s * VCXO_PPM * 1e-6 * LINK_RATE_HZ as f32
+            }
+            _ => 0.0,
+        }
+    }
+
+    /// The link's `EXT_LINK_INFO` now.
+    fn link_info(&self) -> LinkInfo {
+        let l = &self.audio_link;
+        info_as(&l.config, &l.setup, self.latency_for_link())
+    }
+
+    /// `EXT_LINK_PHASE` as read: `D_BELOW_MIN` and a free state while the
+    /// delay is below the option's minimum (2.8.5).
+    fn link_phase_read(&self) -> LinkPhase {
+        let p = self.audio_link.phase;
+        let info = self.link_info();
+        let below = p.effective() < i32::from(info.d_local_min);
+        if p.mode == alink::PHASE_MODE_LOCK && below {
+            return LinkPhase {
+                flags: alink::PHASE_FLAG_D_BELOW_MIN,
+                state: 0,
+                ..p
+            };
+        }
+        p
     }
 
     /// The link sub-commands the fake lists, with the option on.
@@ -368,11 +459,11 @@ impl State {
         }
         let l = &self.audio_link;
         Some(match value {
-            alink::EXT_LINK_INFO => Some(info_as(&l.config, &l.setup).encode().to_vec()),
+            alink::EXT_LINK_INFO => Some(self.link_info().encode().to_vec()),
             alink::EXT_LINK_STATUS => Some(self.link_status().encode().to_vec()),
             alink::EXT_LINK_CONFIG => Some(l.config.encode().to_vec()),
             alink::EXT_LINK_SLOTS => Some(l.slots.0.to_vec()),
-            alink::EXT_LINK_PHASE => Some(l.phase.encode().to_vec()),
+            alink::EXT_LINK_PHASE => Some(self.link_phase_read().encode().to_vec()),
             alink::EXT_FRAME_COUNTER => {
                 let us = Instant::now()
                     .saturating_duration_since(self.started)
@@ -530,7 +621,7 @@ impl State {
         };
         if data.len() != LinkPhase::SIZE
             || data.get(1) != Some(&0)
-            || !p.is_valid_for(&info_as(&self.audio_link.config, &self.audio_link.setup))
+            || !p.is_valid_for(&self.link_info())
         {
             return false;
         }
@@ -624,6 +715,7 @@ impl State {
             l.lock_count = l.lock_count.saturating_add(1);
         }
         l.state = LinkState::Locked;
+        l.held = None;
         l.phase.state = if l.phase.mode == alink::PHASE_MODE_LOCK {
             2
         } else {
@@ -707,6 +799,10 @@ impl State {
             LINK_SIM_LOSE => {
                 let l = &mut self.audio_link;
                 if l.state == LinkState::Locked {
+                    // -- WP FIXS1 --
+                    let e0 = self.link_phase_error();
+                    let l = &mut self.audio_link;
+                    l.held = Some((Instant::now(), e0));
                     l.state = LinkState::Holdover;
                     l.loss_count = l.loss_count.saturating_add(1);
                     l.phase.state = if l.phase.mode == alink::PHASE_MODE_LOCK {

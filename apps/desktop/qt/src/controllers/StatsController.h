@@ -124,6 +124,7 @@ public:
         uint32_t stat[23] = {};
         bool statOk[23] = {};
         uint32_t starvation[4] = {};
+        bool ringRead = false;   // the ring-health read answered (WP FIXS1)
         bool ringPresent = false;
         QVariantMap ring;
         bool inputSource = false;
@@ -182,6 +183,8 @@ private:
     qint64 m_eventBefore = 0;
     // Connections: the generation seen, how many after the first
     uint64_t m_generation = 0;
+    // -- WP FIXS1 -- the device's serial at the last connect
+    QString m_serial;
     bool m_seenConnect = false;
     int m_connects = 0;
     QVariantList m_clockDiag;
