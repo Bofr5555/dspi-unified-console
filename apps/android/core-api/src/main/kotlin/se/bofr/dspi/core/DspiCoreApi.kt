@@ -1532,7 +1532,10 @@ interface DspiCoreApi : AutoCloseable {
      * drag began. A write outside a drag (a typed value, a key step, a
      * click) is always a step of its own, and one undo cannot reverse ends
      * the step. Each call ends the step being gathered, so two drags are two
-     * steps. A client that never calls this gets one step per write.
+     * steps. A drag ends with its connection: after a disconnect, another
+     * device opened or a re-attach, writes are steps of their own until the
+     * next `true`; with no device the mark is ignored. A client that never
+     * calls this gets one step per write.
      */
     fun setDragging(dragging: Boolean)
 

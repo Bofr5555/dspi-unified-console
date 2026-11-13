@@ -130,8 +130,8 @@ fn wp_qtgap1_an_undo_during_a_drag_is_never_joined() {
     );
 }
 
-/// The mark is harmless with no device, and outlives a reconnect without
-/// joining anything from before it.
+/// The mark is harmless with no device, and joins nothing from before a
+/// reconnect (WP P0W2, fixup p0w2b: it ends with its connection).
 #[test]
 fn wp_qtgap1_the_mark_with_no_device() {
     let core = DspiCore::new();

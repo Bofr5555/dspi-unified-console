@@ -365,6 +365,14 @@ pub(crate) struct Pending {
 }
 
 impl Inner {
+    // -- WP P0W2 (fixup p0w2b) --
+    /// Whether a drag is marked on the connection open now: a mark made on
+    /// another (one that has gone, or before a re-attach) counts for nothing.
+    pub(crate) fn dragging(&self) -> bool {
+        self.dragging
+            .is_some_and(|g| self.conn.as_ref().is_some_and(|c| c.generation == g))
+    }
+
     /// Begin a journalled change of `path` at `indices`: note what the
     /// mirror holds for it and for what the device moves with it.
     /// [`DspiError::Disconnected`] for a replay whose connection has gone.
@@ -434,7 +442,7 @@ impl Pending {
         // P0W2, O1); one undo cannot reverse (a hazard, an action) stays
         // apart.
         let coalesce =
-            inner.dragging && hazard(self.path) == Hazard::None && after != Value::Trigger;
+            inner.dragging() && hazard(self.path) == Hazard::None && after != Value::Trigger;
         record(
             inner,
             Change {
@@ -858,7 +866,9 @@ pub struct HistoryMove {
     /// The changes stepped over on the way, newest first, which cannot be
     /// undone (see [`HistoryEntry::undoable`]). An entry here that is
     /// undoable had no value before to restore, or someone else has changed
-    /// it since (`note` says who); the walk stopped there.
+    /// it since (`note` says who); the walk stopped there. A drag's step of
+    /// several values lists here each value someone else changed since, one
+    /// entry each, also when its other values moved.
     pub skipped: Vec<HistoryEntry>,
     /// Why a value was left alone, in words, when another writer changed it
     /// since (only where the core leaves such a change alone): nothing moved,
@@ -900,10 +910,18 @@ impl DspiCore {
     /// drag began. A write outside a drag (a typed value, a key step, a
     /// click) is always a step of its own, and one undo cannot reverse ends
     /// the step. Each call ends the step being gathered, so two drags are two
-    /// steps. A client that never calls this gets one step per write.
+    /// steps. A drag ends with its connection: after a disconnect, another
+    /// device opened or a re-attach, writes are steps of their own until the
+    /// next `true`; with no device the mark is ignored. A client that never
+    /// calls this gets one step per write.
     pub fn set_dragging(&self, dragging: bool) {
         let mut inner = self.lock();
-        inner.dragging = dragging;
+        // -- WP P0W2 (fixup p0w2b) -- pinned to the open connection
+        inner.dragging = inner
+            .conn
+            .as_ref()
+            .map(|c| c.generation)
+            .filter(|_| dragging);
         if let Some(session) = inner.conn.as_mut().and_then(|c| c.session().ok()) {
             session.end_step();
         }
@@ -952,25 +970,32 @@ impl DspiCore {
     /// P0W2, O1) this is judged value by value: the others are put back, and
     /// the ones left alone leave the step.
     fn undo_step(&self) -> Result<HistoryMove> {
-        let (step, generation, note) = {
+        let (step, generation, note, left) = {
             let mut inner = self.lock();
             let conn = inner.conn()?;
             let generation = conn.generation;
             let mut step = conn.session()?.take_undo();
-            let mut note = None;
+            let (mut note, mut left) = (None, Vec::new());
             if let Some(entry) = step.entry.as_mut() {
-                let (keep, notes) = judge(&inner, entry, |v| Some(&v.after));
-                note = notes;
-                if keep.is_empty() {
+                let judged = judge(&inner, entry, |v| Some(&v.after));
+                (note, left) = (judged.note, judged.left);
+                if judged.keep.is_empty() {
                     // Theirs now: the entry describes values that are gone.
-                    step.skipped.extend(step.entry.take());
+                    step.entry = None;
                 } else {
-                    entry.set_values(keep);
+                    entry.set_values(judged.keep);
                 }
             }
-            (step, generation, note)
+            (step, generation, note, left)
         };
-        let skipped = step.skipped.iter().map(HistoryEntry::from).collect();
+        // -- WP P0W2 (fixup p0w2b, F1) -- each value left as another writer
+        // set it, after the entries stepped over
+        let skipped = step
+            .skipped
+            .iter()
+            .map(HistoryEntry::from)
+            .chain(left)
+            .collect();
         let Some(entry) = step.entry else {
             return Ok(HistoryMove {
                 entry: None,
@@ -1014,26 +1039,26 @@ impl DspiCore {
     /// overwritten since undo put it back is left as they set it, value by
     /// value in a drag's step.
     fn redo_step(&self) -> Result<HistoryMove> {
-        let (entry, generation, note) = {
+        let (entry, generation, note, left) = {
             let mut inner = self.lock();
             let conn = inner.conn()?;
             let generation = conn.generation;
             let mut entry = conn.session()?.take_redo();
             let mut note = None;
+            let mut left = Vec::new();
             if let Some(e) = entry.as_mut() {
-                let (keep, notes) = judge(&inner, e, |v| v.before.as_ref());
-                note = notes;
-                if keep.is_empty() {
-                    let skipped = entry.iter().map(HistoryEntry::from).collect();
+                let judged = judge(&inner, e, |v| v.before.as_ref());
+                (note, left) = (judged.note, judged.left);
+                if judged.keep.is_empty() {
                     return Ok(HistoryMove {
                         entry: None,
-                        skipped,
+                        skipped: left,
                         note,
                     });
                 }
-                e.set_values(keep);
+                e.set_values(judged.keep);
             }
-            (entry, generation, note)
+            (entry, generation, note, left)
         };
         let Some(entry) = entry else {
             return Ok(HistoryMove::default());
@@ -1052,7 +1077,7 @@ impl DspiCore {
         self.with_session(generation, |s| s.finish_redo(entry));
         Ok(HistoryMove {
             entry: Some(moved),
-            skipped: Vec::new(),
+            skipped: left,
             note,
         })
     }
@@ -1121,16 +1146,26 @@ impl DspiCore {
 }
 
 // -- WP P0W2 (O1) --
-/// The values of `entry` nobody else has changed since this client left
-/// them at `expected` (their value after, for undo; before, for redo), and
-/// the others' writers in words, one sentence each. A value with no
-/// expected value (nothing before, for redo) is kept unjudged.
+/// What [`judge`] found in a step.
+struct Judged {
+    /// The values nobody else has changed since: these move.
+    keep: Vec<StepValue>,
+    /// The others, one history entry each (fixup p0w2b, F1): left as their
+    /// writer set them, named in `note`.
+    left: Vec<HistoryEntry>,
+    /// The others' writers in words, one sentence each.
+    note: Option<String>,
+}
+
+/// Judge the values of `entry` against what this client left them at
+/// (`expected`: their value after, for undo; before, for redo). A value with
+/// no expected value (nothing before, for redo) is kept unjudged.
 fn judge(
     inner: &Inner,
     entry: &JournalEntry,
     expected: impl Fn(&StepValue) -> Option<&Value>,
-) -> (Vec<StepValue>, Option<String>) {
-    let mut keep = Vec::new();
+) -> Judged {
+    let (mut keep, mut left) = (Vec::new(), Vec::new());
     let mut notes: Vec<String> = Vec::new();
     for v in entry.values() {
         match expected(&v).and_then(|x| overwritten(inner, v.path, &v.indices, entry.at_ms, x)) {
@@ -1138,12 +1173,24 @@ fn judge(
                 if !notes.contains(&n) {
                     notes.push(n);
                 }
+                left.push(HistoryEntry {
+                    path: v.path.into(),
+                    indices: v.indices,
+                    before: v.before.map(Into::into),
+                    after: v.after.into(),
+                    source: entry.source.into(),
+                    at_ms: entry.at_ms,
+                    undoable: entry.undoable,
+                });
             }
             None => keep.push(v),
         }
     }
-    let note = (!notes.is_empty()).then(|| notes.join(" "));
-    (keep, note)
+    Judged {
+        keep,
+        left,
+        note: (!notes.is_empty()).then(|| notes.join(" ")),
+    }
 }
 
 /// The history's state for `NOTIFY_HISTORY`: the connection and its

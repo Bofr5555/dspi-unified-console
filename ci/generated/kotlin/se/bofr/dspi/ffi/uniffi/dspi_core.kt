@@ -3694,7 +3694,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_device_name() != 13429.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_dragging() != 60784.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_dragging() != 49751.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_filter() != 29347.toShort()) {
@@ -7563,7 +7563,10 @@ public interface DspiCoreInterface {
      * drag began. A write outside a drag (a typed value, a key step, a
      * click) is always a step of its own, and one undo cannot reverse ends
      * the step. Each call ends the step being gathered, so two drags are two
-     * steps. A client that never calls this gets one step per write.
+     * steps. A drag ends with its connection: after a disconnect, another
+     * device opened or a re-attach, writes are steps of their own until the
+     * next `true`; with no device the mark is ignored. A client that never
+     * calls this gets one step per write.
      */
     fun `setDragging`(`dragging`: kotlin.Boolean)
     
@@ -12382,7 +12385,10 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * drag began. A write outside a drag (a typed value, a key step, a
      * click) is always a step of its own, and one undo cannot reverse ends
      * the step. Each call ends the step being gathered, so two drags are two
-     * steps. A client that never calls this gets one step per write.
+     * steps. A drag ends with its connection: after a disconnect, another
+     * device opened or a re-attach, writes are steps of their own until the
+     * next `true`; with no device the mark is ignored. A client that never
+     * calls this gets one step per write.
      */override fun `setDragging`(`dragging`: kotlin.Boolean)
         = 
     callWithPointer {
@@ -18700,7 +18706,9 @@ data class HistoryMove (
      * The changes stepped over on the way, newest first, which cannot be
      * undone (see [`HistoryEntry::undoable`]). An entry here that is
      * undoable had no value before to restore, or someone else has changed
-     * it since (`note` says who); the walk stopped there.
+     * it since (`note` says who); the walk stopped there. A drag's step of
+     * several values lists here each value someone else changed since, one
+     * entry each, also when its other values moved.
      */
     var `skipped`: List<HistoryEntry>, 
     /**

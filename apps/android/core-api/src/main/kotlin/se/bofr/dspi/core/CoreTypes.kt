@@ -2598,7 +2598,9 @@ data class HistoryMove(
      * The changes stepped over on the way, newest first, which cannot be
      * undone (see [`HistoryEntry::undoable`]). An entry here that is
      * undoable had no value before to restore, or someone else has changed
-     * it since (`note` says who); the walk stopped there.
+     * it since (`note` says who); the walk stopped there. A drag's step of
+     * several values lists here each value someone else changed since, one
+     * entry each, also when its other values moved.
      */
     val skipped: List<HistoryEntry>,
     /**

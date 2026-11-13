@@ -808,6 +808,27 @@ mod tests {
         session_free(h).unwrap();
     }
 
+    // -- WP P0W2 (fixup p0w2b, F3) --
+    /// A drag mark left set when the page closes the device joins nothing
+    /// after it opens one again.
+    #[test]
+    fn wp_p0w2b_f3_a_drag_mark_ends_with_the_session_device() {
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        ok(h, "open", json!({ "kind": "demo" }));
+        let gain =
+            |db: f64| json!({ "path": "out.gain", "indices": [0], "value": { "float": db } });
+        ok(h, "setDragging", json!({ "dragging": true }));
+        ok(h, "write", gain(-1.0));
+        ok(h, "close", Value::Null);
+        ok(h, "open", json!({ "kind": "demo" }));
+        ok(h, "write", gain(-2.0));
+        ok(h, "write", gain(-3.0));
+        let hist = ok(h, "history", json!({ "n": 10 }));
+        assert_eq!(hist.as_array().unwrap().len(), 2, "{hist}");
+        session_free(h).unwrap();
+    }
+
     // -- WP P0W2 (O1) --
     /// The web's multi-selection graph drag: two bands sent whole with
     /// `filter` every tick, four ticks, mixed axes, is one step; one undo

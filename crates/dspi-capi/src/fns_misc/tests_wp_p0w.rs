@@ -153,3 +153,21 @@ fn wp_p0w2_o1_a_multi_band_drag_through_c_is_one_step() {
     assert!(!dspi_can_undo(h));
     dspi_core_free(h);
 }
+
+// -- WP P0W2 (fixup p0w2b, F3) --
+/// A drag mark left set across a disconnect joins nothing afterwards.
+#[test]
+fn wp_p0w2b_f3_a_drag_mark_ends_with_its_connection_through_c() {
+    use crate::fns_device::dspi_disconnect;
+    let h = dspi_core_new();
+    assert!(dspi_open_demo(h));
+    dspi_set_dragging(h, true);
+    assert!(dspi_set_output_gain(h, 0, -1.0));
+    dspi_disconnect(h);
+    assert!(dspi_open_demo(h));
+    assert!(dspi_set_output_gain(h, 0, -2.0));
+    assert!(dspi_set_output_gain(h, 0, -3.0));
+    let r = reply(|b, l| dspi_history(h, 10, b, l));
+    assert_eq!(r["value"].as_array().unwrap().len(), 2, "{r}");
+    dspi_core_free(h);
+}
