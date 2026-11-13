@@ -336,6 +336,7 @@ final class PeqGraphEditorView: NSView {
 
     private func resetInteraction() {
         closeCard()
+        if case .drag = gesture { CoreUndo.drag(false) }   // -- WP SWMAC1 --
         gesture = .idle
         selection = []
         anchor = nil
@@ -1024,6 +1025,7 @@ final class PeqGraphEditorView: NSView {
             hideHUD(animated: true)
         case .drag:
             commitLive()
+            CoreUndo.drag(false)   // -- WP SWMAC1 --
             NSCursor.openHand.set()
         case .marquee:
             marqueeLayer.isHidden = true
@@ -1041,6 +1043,7 @@ final class PeqGraphEditorView: NSView {
         for b in bands where isBand(b) || live[b] != nil { start[b] = current(b) }
         start[grabbed] = current(grabbed)
         gesture = .drag(DragContext(grabbed: grabbed, start: start, last: point, qMode: qMode))
+        CoreUndo.drag(true)   // -- WP SWMAC1 --
         ghost = nil
         hideAxisLabels()
         showHUD(for: grabbed)

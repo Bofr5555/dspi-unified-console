@@ -150,7 +150,7 @@ It is frozen at wire **V26**. It has nothing from V27–V32 (limiter, subharmoni
 | # | Feature | macOS (ref) | iOS | Qt desktop | Terminal | Android | Windows C# |
 |---|---|---|---|---|---|---|---|
 | D1 | Preset slots (save, rename, clear, copy, default) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| D2 | Commit, revert, factory reset | ✓ | ✓ | ✓ (+ undo, redo and History: the core's journal, `HistoryController`, `qml/tools/HistoryWindow.qml`) | ✓ (+ undo journal) | ✓ (+ confirmation tokens) | ✓ |
+| D2 | Commit, revert, factory reset | ✓ (+ Edit > Undo, Redo, Cmd-Z / Shift-Cmd-Z: the core's journal, `Core/CoreUndo.swift`, SWMAC1; see section 4) | ✓ (+ Undo and Redo toolbar buttons, SWMAC1) | ✓ (+ undo, redo and History: the core's journal, `HistoryController`, `qml/tools/HistoryWindow.qml`) | ✓ (+ undo journal) | ✓ (+ confirmation tokens) | ✓ |
 | D3 | Unsaved-changes marker and diff | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ (+ IO undo) |
 | D4 | Filter files (REW / AutoEQ / Console) | ✓ | ✗ "Not available yet" | ✓ | ✓ (+ Windows dialect) | ✓ SAF | ✓ |
 | D5 | `.dspipreset` config document | ✓ | ✗ "Not available yet" | ✓ | ✓ (`--dry-run`) | ✓ (+ share sheet) | ✗ |
@@ -195,7 +195,7 @@ It is frozen at wire **V26**. It has nothing from V27–V32 (limiter, subharmoni
 | Extra | Where |
 |---|---|
 | Scripting / JSON / dry-run / raw opcodes / `uconsole screenshot` | Terminal |
-| Undo/redo journal | Terminal (full); Qt desktop (Edit menu, History window); Windows (IO only) |
+| Undo/redo journal | Terminal (full); Qt desktop (Edit menu, History window); Swift macOS (Edit menu) and iOS (toolbar), on the core's device only (SWMAC1); Windows (IO only) |
 | Full core-voltage control (set/trial/auto) | Terminal CLI; Qt desktop (Core Voltage page, with calibration) |
 | Strict read-only double write guard; confirmation tokens on flash writes; PICOBOOT flashing without a drive; config share sheet; light theme; auto-launch on plug | Android |
 | Searchable settings; Updates page; read-only mode; delay-refusal banner; licences screen; diagnostics bundle (Help > Save Diagnostics); the demo entry; Linux packaging (AppImage, tar.gz, deb, rpm, AUR) and Windows zip and installer | Qt desktop |
@@ -313,6 +313,7 @@ No gap list: it is being retired in favour of the Qt desktop. To reach parity it
   - a hub whose resolve gives only an IPv6 link-local address is listed under its `.local` name, which Windows resolves when dialling (upstream's app and the Mac dial by name too);
   - a TXT change is a goodbye and a new registration, which the grace hides;
   - one difference stays: a hub on a dead adapter stays listed (as with Bonjour and NsdManager) until a dial fails and `verify()` removes it, where Linux's embedded browser drops it within seconds.
+- **Swift on the core (WP SWMAC1, 2026-11-13).** The Swift app builds and passes its tests on `main` after RN1 (the kept Swift bundle ids and Xcode names unchanged). Undo and Redo use the core's journal, with slider and graph drags marked by `setDragging`, but only while the device is on the core (behind `-CoreTransport YES`: `CoreBackedTransport`; without it the demo device is Swift's `FakeTransport` and there is no journal), and the Swift domains still send raw SETs, which the core journals as history only (`raw_set`). So Undo stays disabled for the app's own edits until SW9–SW14 move the domains to the typed setters. The AutoEQ requests send the core's User-Agent (`uConsole-for-DSPi/<core version>`). Not in Swift yet: the Pro layer (System view, scene bar, status rail, History window) and the audio-link screens (Clock and links); they follow LKUI1.
 - **Reference version.** The macOS reference is `ext-channel-116`. Our additions there (MIDI, demo, ext channel, pair map, core-voltage status, iOS UI) are not in upstream Weeb Labs v1.1.6.
 
 ---

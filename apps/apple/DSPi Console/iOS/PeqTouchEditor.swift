@@ -176,6 +176,7 @@ struct PeqTouchEditor: View {
             .onChanged { value in
                 guard let ch = channel else { return }
                 if dragStart?.band != i {
+                    if dragStart == nil { CoreUndo.drag(true) }   // -- WP SWMAC1 --
                     dragStart = (i, config.bands[i])
                     selection.selected = [i]
                 }
@@ -186,6 +187,7 @@ struct PeqTouchEditor: View {
                 sendLive(ch: ch, [(band: i, params: p)])
             }
             .onEnded { _ in
+                defer { CoreUndo.drag(false) }   // -- WP SWMAC1 --
                 guard let ch = channel, let p = live[i] else { dragStart = nil; return }
                 vm.commitGraphBands(ch: ch, [(band: i, params: p)])
                 finish()
@@ -236,6 +238,7 @@ struct PeqTouchEditor: View {
                     guard selection.selected.count == 1, let i = selection.selected.first,
                           config.bands[i].type.usesQ else { return }
                     pinchStart = (i, config.bands[i].q)
+                    CoreUndo.drag(true)   // -- WP SWMAC1 --
                 }
                 guard let start = pinchStart else { return }
                 var p = config.bands[start.band]
@@ -248,6 +251,7 @@ struct PeqTouchEditor: View {
                 if let ch = channel, let start = pinchStart, let p = live[start.band] {
                     vm.commitGraphBands(ch: ch, [(band: start.band, params: p)])
                 }
+                if pinchStart != nil { CoreUndo.drag(false) }   // -- WP SWMAC1 --
                 finish()
             }
     }

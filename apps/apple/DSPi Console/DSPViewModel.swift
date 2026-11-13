@@ -2360,6 +2360,8 @@ class DSPViewModel: ObservableObject {
     /// The view model's state from the core's `DspState`, when the device is
     /// driven through the core (Core/CoreMirror.swift).
     private(set) lazy var coreMirror: CoreMirror = CoreMirror(vm: self)
+    /// -- WP SWMAC1 -- Undo and Redo through the core's journal (Core/CoreUndo.swift).
+    private(set) lazy var undo: CoreUndo = CoreUndo(mirror: coreMirror)
     @Published var availableDevices: [DSPiDevice] = []
     @Published var selectedDevice: DSPiDevice? = nil
     /// Last USB connection error, mirrored from USBDevice so the status dot can

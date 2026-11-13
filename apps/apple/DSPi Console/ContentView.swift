@@ -1128,6 +1128,8 @@ struct ContentView: View {
                 ReadOnlyBanner(vm: vm)
             }
         }
+        // -- WP SWMAC1 -- What an undo or redo had to say, for a few seconds.
+        .overlay(alignment: .bottom) { UndoNotice(undo: vm.undo) }
         .navigationTitle("uConsole for DSPi")
         // The tour describes the filter table and the channel header, neither
         // of which exists on the overview the console opens on.  Selecting a
@@ -1449,6 +1451,7 @@ struct UserVolumeSection: View {
                     .foregroundColor(.primary)
             }
             Slider(value: $localScalar, in: 0...1) { editing in
+                CoreUndo.drag(editing)   // -- WP SWMAC1 --
                 isDragging = editing
                 if !editing { vm.setUserVolume(Self.scalarToDB(localScalar)) }
             }
@@ -1508,6 +1511,7 @@ struct MasterModeSection: View {
                 get: { sliderPos },
                 set: { localDB = MasterVolumeTaper.sliderToDB(Float($0)) }
             ), in: 0...1) { editing in
+                CoreUndo.drag(editing)   // -- WP SWMAC1 --
                 isDragging = editing
                 if !editing { vm.setMasterVolume(localDB) }
             }

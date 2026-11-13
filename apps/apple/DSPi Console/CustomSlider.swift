@@ -215,6 +215,7 @@ struct ParameterRow: View {
                     }),
                 range: range,
                 onEditingChanged: { editing in
+                    CoreUndo.drag(editing)   // -- WP SWMAC1 --
                     if editing {
                         // Nothing here touches SwiftUI state: the grab must not
                         // provoke a layout pass before the first movement.
