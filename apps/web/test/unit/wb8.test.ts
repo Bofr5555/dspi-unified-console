@@ -214,3 +214,35 @@ test("WB8: the bundle's browser file and the zip's bytes", () => {
   assert.match(browserFacts(null, false), /unknown[\s\S]*no\n$/);
   assert.deepEqual([...fromBase64("UEsDBA==")], [0x50, 0x4b, 0x03, 0x04]);
 });
+
+// -- fixup wb8 --
+test("fixup wb8: the window left or the page hidden mid-drag ends the drag mark once", async () => {
+  const g = globalThis as unknown as Record<string, unknown>;
+  const had = { window: g.window, document: g.document };
+  const win = new EventTarget();
+  const doc = Object.assign(new EventTarget(), { visibilityState: "visible", focused: true, hasFocus() { return this.focused; } });
+  g.window = win;
+  g.document = doc;
+  try {
+    const { s, calls } = await opened(() => null);
+    const marks = () => calls.filter((c) => c.method === "setDragging").map((c) => (c.params as { dragging: boolean }).dragging);
+    s.setDragging(true);
+    // A blur while the page still has focus (focus moved inside it): nothing.
+    win.dispatchEvent(new Event("blur"));
+    assert.deepEqual(marks(), [true]);
+    doc.focused = false;
+    win.dispatchEvent(new Event("blur"));
+    assert.deepEqual(marks(), [true, false]);
+    // The control's own end later changes nothing; a new drag marks again.
+    s.setDragging(false);
+    doc.focused = true;
+    s.setDragging(true);
+    doc.visibilityState = "hidden";
+    doc.dispatchEvent(new Event("visibilitychange"));
+    s.setDragging(false);
+    assert.deepEqual(marks(), [true, false, true, false]);
+  } finally {
+    g.window = had.window;
+    g.document = had.document;
+  }
+});

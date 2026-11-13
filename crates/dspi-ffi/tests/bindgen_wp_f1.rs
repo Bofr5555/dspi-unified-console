@@ -42,6 +42,13 @@ const NOT_EXPORTED: &[&str] = &[
     "link_connect_over",
     "link_service",
     "link_tick",
+    // -- WP SW3 (fixup wb8) -- The web's System view: the hub's `system.*` on the
+    // session's own connection (dspi-wasm `hubSystem`, `hubRole`); the other clients
+    // use the typed `link_system_*` calls.
+    "link_hub_request",
+    "link_hub_role",
+    // -- WP WB8 -- The web demo's clip (dspi-wasm `demo {action: "clip"}`), for tests.
+    "demo_clip",
     // -- WP P0M -- Rust-only: the history's own records (for the C ABI's and
     // wasm's JSON lines; UniFFI has `event_log_read`) and the hub's sink, a trait
     // object.
@@ -143,11 +150,26 @@ fn camel(snake: &str) -> String {
 fn core_methods() -> BTreeSet<String> {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../dspi-core/src");
     let mut names = BTreeSet::new();
-    for e in std::fs::read_dir(src).unwrap() {
-        let p = e.unwrap().path();
-        if p.extension().is_none_or(|x| x != "rs") {
-            continue;
+    // -- fixup wb8 -- the module folders too (`link/system.rs`, LKUI1's exported
+    // `link_system_*`), not only the top level; test modules are left out
+    let mut files = Vec::new();
+    let mut dirs = vec![src];
+    while let Some(dir) = dirs.pop() {
+        for e in std::fs::read_dir(dir).unwrap() {
+            let p = e.unwrap().path();
+            if p.is_dir() {
+                dirs.push(p);
+            } else if p.extension().is_some_and(|x| x == "rs")
+                && !p
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with("tests"))
+            {
+                files.push(p);
+            }
         }
+    }
+    for p in files {
         let text = std::fs::read_to_string(&p).unwrap();
         let mut in_core = false;
         for line in text.lines() {

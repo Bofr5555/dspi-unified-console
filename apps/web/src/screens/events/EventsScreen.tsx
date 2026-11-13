@@ -83,14 +83,28 @@ export function EventsScreen(props: ScreenProps) {
   const shown = shownRows(rows, unit);
   const now = new Date();
 
+  // -- fixup wb8 -- the Clipboard API exists only on a secure page; a hub's page over plain
+  // http has none: then a selected text and the older copy command, and failing that the
+  // text shown selected, to copy by hand.
+  const [manual, setManual] = useState<string | null>(null);
   const copy = async () => {
     const text = rowsText(shown);
+    const done = shown.length === 1 ? "1 event copied." : `${shown.length} events copied.`;
+    setManual(null);
     try {
+      if (!navigator.clipboard) throw new Error("no clipboard");
       await navigator.clipboard.writeText(text);
-      setCopied(shown.length === 1 ? "1 event copied." : `${shown.length} events copied.`);
+      setCopied(done);
+      return;
     } catch {
-      setCopied("The browser did not allow copying here.");
+      // The older way below.
     }
+    if (copyBySelection(text)) {
+      setCopied(done);
+      return;
+    }
+    setCopied("The browser did not copy here: the text is selected below; copy it with the keyboard or the menu.");
+    setManual(text);
   };
 
   return (
@@ -117,6 +131,20 @@ export function EventsScreen(props: ScreenProps) {
         <p class="note" role="status">
           {copied}
         </p>
+      ) : null}
+      {manual !== null ? (
+        <textarea
+          class="events-manual"
+          aria-label="Events as text"
+          readOnly
+          value={manual}
+          ref={(el) => {
+            if (el && document.activeElement !== el) {
+              el.focus();
+              el.select();
+            }
+          }}
+        />
       ) : null}
       {log.error ? (
         <p class="error" role="alert">
@@ -151,6 +179,33 @@ export function EventsScreen(props: ScreenProps) {
       )}
     </section>
   );
+}
+
+/** -- fixup wb8 -- `text` copied through a selected, unseen text area and `execCommand("copy")`; whether it went. */
+export function copyBySelection(text: string): boolean {
+  if (typeof document === "undefined") return false;
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.top = "0";
+  ta.style.left = "0";
+  ta.style.width = "1px";
+  ta.style.height = "1px";
+  ta.style.opacity = "0";
+  const back = document.activeElement as HTMLElement | null;
+  document.body.appendChild(ta);
+  let ok = false;
+  try {
+    ta.select();
+    ok = document.execCommand("copy");
+  } catch {
+    ok = false;
+  } finally {
+    ta.remove();
+    back?.focus?.();
+  }
+  return ok;
 }
 
 /** The client's own file in the bundle: what a supporter asks of the browser. */

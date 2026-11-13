@@ -380,14 +380,44 @@ export class Session {
    */
   setDragging(on: boolean): void {
     if (on) {
-      if (this.drags++ === 0 && !this.readOnlyReason) {
-        this.dragSent = true;
-        void this.core.call("setDragging", { dragging: true }).catch(() => undefined);
+      if (this.drags++ === 0) {
+        this.watchDragEnd(true);
+        if (!this.readOnlyReason) {
+          this.dragSent = true;
+          void this.core.call("setDragging", { dragging: true }).catch(() => undefined);
+        }
       }
-    } else if (this.drags > 0 && --this.drags === 0 && this.dragSent) {
-      this.dragSent = false;
-      void this.core.call("setDragging", { dragging: false }).catch(() => undefined);
+    } else if (this.drags > 0 && --this.drags === 0) this.endDragMark();
+  }
+
+  // -- fixup wb8 -- a safety net: the page hidden or the window left mid-drag ends the
+  // mark, whatever the controls hear (a browser may deliver no pointer event then), so a
+  // typed value afterwards is never joined into the drag's step. The controls' own later
+  // end is then a no-op.
+  private readonly dragEndNet = () => {
+    if (typeof document !== "undefined" && document.visibilityState === "visible" && document.hasFocus?.()) return;
+    if (this.drags > 0) {
+      this.drags = 0;
+      this.endDragMark();
     }
+  };
+
+  private watchDragEnd(on: boolean): void {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    if (on) {
+      window.addEventListener("blur", this.dragEndNet);
+      document.addEventListener("visibilitychange", this.dragEndNet);
+    } else {
+      window.removeEventListener("blur", this.dragEndNet);
+      document.removeEventListener("visibilitychange", this.dragEndNet);
+    }
+  }
+
+  private endDragMark(): void {
+    this.watchDragEnd(false);
+    if (!this.dragSent) return;
+    this.dragSent = false;
+    void this.core.call("setDragging", { dragging: false }).catch(() => undefined);
   }
 
   private historyAsked: DeviceSnapshot | null = null;

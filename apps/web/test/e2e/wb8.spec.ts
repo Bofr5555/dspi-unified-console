@@ -75,6 +75,10 @@ test("WB8 undo: the buttons and the keys step back and forward through the core'
   await expect(undoButton(session)).toBeDisabled();
   await expect(redoButton(session)).toBeDisabled();
   const start = (await coreState(page)).userVolumeDb;
+  // -- fixup wb8 -- Undo and Redo sit in the tab row at every width: the row is no taller than the tabs
+  const bar = (await session.locator(".screen-bar").boundingBox())!;
+  const tabs = (await session.locator(".screen-tabs").boundingBox())!;
+  expect(Math.abs(bar.height - tabs.height)).toBeLessThan(0.5);
 
   await setVolume(session, "128");
   await expect.poll(async () => (await coreState(page)).userVolumeDb).not.toBe(start);
@@ -233,6 +237,39 @@ test("WB8 events: a clip is listed with its time, unit and text, and copies as t
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
   expect(errors).toEqual([]);
+});
+
+// -- fixup wb8 -- a hub's page over plain http has no Clipboard API
+test("WB8 events: without the Clipboard API Copy as Text copies the older way, and failing that selects the text", async ({ page, browserName, context }) => {
+  if (browserName === "chromium") await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, "clipboard", { get: () => undefined, configurable: true });
+  });
+  const session = await openDemo(page, "Venue A", "?one");
+  await session.getByRole("tab", { name: "Events" }).click();
+  const log = session.getByRole("region", { name: "Event log" });
+  await expect(log.getByRole("row").filter({ hasText: "Connected" })).toHaveCount(1);
+  await log.getByRole("button", { name: "Copy as Text" }).click();
+  // execCommand("copy") from the click: copied, nothing shown to select
+  await expect(log.getByRole("status").filter({ hasText: /events? copied\./ })).toBeVisible();
+  await expect(log.getByRole("textbox", { name: "Events as text" })).toHaveCount(0);
+  // And when the browser refuses that too: the text, selected, to copy by hand.
+  await page.evaluate(() => {
+    document.execCommand = () => false;
+  });
+  await log.getByRole("button", { name: "Copy as Text" }).click();
+  const box = log.getByRole("textbox", { name: "Events as text" });
+  await expect(box).toBeVisible();
+  await expect(box).toBeFocused();
+  await expect(box).toHaveValue(/\tConnected\t/);
+  const selected = await box.evaluate((el) => {
+    const t = el as HTMLTextAreaElement;
+    return t.selectionEnd - t.selectionStart === t.value.length;
+  });
+  expect(selected).toBe(true);
+  await expect(log.getByRole("status").filter({ hasText: "the text is selected below" })).toBeVisible();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
 });
 
 test("WB8 diagnostics: Save Diagnostics… hands over the core's zip; Simple mode has no Events screen", async ({ page }) => {
