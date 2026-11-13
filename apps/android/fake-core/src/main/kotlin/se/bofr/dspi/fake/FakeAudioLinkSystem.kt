@@ -35,6 +35,12 @@ class FakeAudioLinkSystem {
     /** The session's role: `admin`, `control` or `viewer`. */
     @Volatile var role = "admin"
 
+    /**
+     * -- WP HWLK1F -- `uconsole --demo hub --audio-link --with-plain-unit`: one more
+     * unit, P in the bar, whose firmware has no audio link, as the core shows it.
+     */
+    @Volatile var plainUnit = false
+
     /** The sender holds a scene for this frame (the next superframe scene is refused). */
     @Volatile var heldFrame: Long? = null
 
@@ -110,6 +116,11 @@ class FakeAudioLinkSystem {
                 measuredLatencyUs = latency[id]
             )
         }
+        // -- WP HWLK1F -- said as such, no link delay, not counted among the units that lock
+        if (plainUnit) {
+            rows += unit("P", "Plain unit", "DEMO-PLAIN", "unit", "No audio link", "Bar", "no_alink", "No audio link (firmware)")
+        }
+        val plain = if (plainUnit) ", 1 without the audio link (firmware)" else ""
         val admin = role == "admin"
         val control = admin || role == "control"
         return LinkSystemView(
@@ -135,8 +146,8 @@ class FakeAudioLinkSystem {
             holdover = 0,
             pending = pendingUnits,
             unitCount = 4,
-            summary = "Audio link: 4 of 4 locked" + if (pendingUnits > 0) ", link delay to write on $pendingUnits" else "",
-            health = if (pendingUnits > 0) "warning" else "ok",
+            summary = "Audio link: 4 of 4 locked" + plain + if (pendingUnits > 0) ", link delay to write on $pendingUnits" else "",
+            health = if (pendingUnits > 0 || plainUnit) "warning" else "ok",
             issues = emptyList(),
             stale = false
         )
@@ -169,10 +180,19 @@ class FakeAudioLinkSystem {
         session()
         if (role != "admin") throw denied("admin")
         aligned = true
+        val written = units.map { LinkSystemWrite(it.second, "Link delay", "ok", "Done", "ok") }
+        if (plainUnit) {
+            return LinkSystemAlign(
+                true,
+                "The link delays were written on ${units.joinToString(", ") { it.second }} " +
+                    "(each re-anchored with a short silence); skipped on Plain unit (no audio link (firmware)).",
+                written + LinkSystemWrite("Plain unit", "Link delay", "skipped", "Skipped", "warn")
+            )
+        }
         return LinkSystemAlign(
             true,
             "The link delays were written. Each unit re-anchored with a short silence.",
-            units.map { LinkSystemWrite(it.second, "Link delay", "ok", "Done", "ok") }
+            written
         )
     }
 
@@ -195,6 +215,18 @@ class FakeAudioLinkSystem {
             )
         }
         heldFrame = frame + 4_800
+        // -- WP HWLK1F -- a scene for every unit: at once on P, never "on time" then
+        if (plainUnit && s.id != "click") {
+            return LinkSceneRecall(
+                s.id, s.name, true, frame + 4_800, 100.0, false, null,
+                "${s.name} recalled: applied now on Plain unit (no audio link); at link frame ${frame + 4_800} " +
+                    "through the sender on the others" + (if (s.systemMute == true) "; system mute on" else "") + ".",
+                listOf(
+                    LinkSystemWrite("Sender", "Scene ${s.name}", "queued", "Queued", "ok"),
+                    LinkSystemWrite("Plain unit", "Master volume", "applied_now", "Applied now", "ok")
+                )
+            )
+        }
         return LinkSceneRecall(
             s.id, s.name, true, frame + 4_800, 100.0, true, null,
             "${s.name} recalled through the sender, at link frame ${frame + 4_800}" +

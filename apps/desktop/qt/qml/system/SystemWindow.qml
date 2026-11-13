@@ -33,6 +33,8 @@ ToolWindow {
     }
     function stateColor(u) {
         if (!u.connected) return Theme.offline
+        // -- WP HWLK1F -- a firmware without the audio link: a fact, not a fault
+        if (u.state === "no_alink") return Theme.offline
         if (u.state === "holdover") return Theme.dangerText
         if (u.state === "searching" || u.state === "off" || u.state === "unknown") return Theme.warning
         return Theme.success

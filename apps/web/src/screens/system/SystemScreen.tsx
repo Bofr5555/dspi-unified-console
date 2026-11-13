@@ -8,7 +8,7 @@ import { useEffect, useState } from "preact/hooks";
 import type { ScreenProps } from "../../ui/screens";
 import { ClockLinks } from "./ClockLinks";
 import type { FeedState, SystemFeed } from "./feed";
-import { linkRoleWord, lockWord, roomsView, slotWord, topology, type TopoNode, type UnitView } from "./model";
+import { NO_ALINK, linkRoleWord, lockWord, roomsView, slotWord, topology, type TopoNode, type UnitView } from "./model";
 
 export function useFeed(feed: SystemFeed): FeedState {
   const [, bump] = useState(0);
@@ -113,7 +113,7 @@ function UnitRow(props: { u: UnitView; role?: string }) {
       <span class="sys-state">{u.connected ? "Connected" : "Offline"}</span>
       {props.role ? <span class="sys-state">{props.role}</span> : null}
       <span class={`sys-lock sys-lock-${u.lock.toLowerCase().replace(/\s+/g, "-")}`}>
-        {u.lock === "No audio link" ? u.lock : `Audio link: ${u.lock}`}
+        {u.lock === "No audio link" || u.lock === NO_ALINK ? u.lock : `Audio link: ${u.lock}`}
       </span>
       {u.alarms.length ? (
         <span class="sys-alarm-count" title={u.alarms.map((a) => a.message).join("\n")}>

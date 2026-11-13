@@ -34,6 +34,8 @@ import {
   systemMuted,
   topology,
   unitSlots,
+  unitView,
+  NO_ALINK,
   withMeasuredLatency,
   withSlot,
   type Alarm,
@@ -350,12 +352,16 @@ test("SW3 fixup sw3x: a refused superframe scene is not the recalled one; the se
   assert.deepEqual(feed.state.recalled, { scene: "evening", name: "Evening" }, "the refused one is not recalled");
   assert.equal(feed.state.scene?.scene, "closed");
   // -- WP WB8 -- the core's sentence, asked with the frame the sender holds, the report and the model
-  assert.equal(outcomes.length, 1, "only the refused recall asks");
-  assert.equal(outcomes[0]!.heldFrame, 1_000_000);
-  assert.equal(outcomes[0]!.scene, "closed");
-  assert.equal((outcomes[0]!.report as { plan: { frame: number } }).plan.frame, 1_004_000);
-  assert.ok((outcomes[0]!.model as { scenes: unknown[] }).scenes.length > 0);
+  // -- WP HWLK1F -- the taken recall asks too, for its outcome (no held frame); then the refused one
+  assert.equal(outcomes.length, 2, "both recalls ask");
+  assert.equal(outcomes[0]!.scene, "evening");
+  assert.equal(outcomes[0]!.heldFrame, undefined);
+  assert.equal(outcomes[1]!.heldFrame, 1_000_000);
+  assert.equal(outcomes[1]!.scene, "closed");
+  assert.equal((outcomes[1]!.report as { plan: { frame: number } }).plan.frame, 1_004_000);
+  assert.ok((outcomes[1]!.model as { scenes: unknown[] }).scenes.length > 0);
   assert.equal(feed.state.scene!.refusal, "core words for closed held 1000000");
+  assert.equal(feed.state.scene!.outcome, "", "a refused recall has no outcome sentence");
   feed.stop();
 });
 
@@ -385,5 +391,58 @@ test("SW3 fixup sw3x: the role follows the hub's answers; a stale Save is a conf
   assert.equal(await feed.setModel(model(), 2), "ok");
   assert.equal(feed.state.revision, 3);
   assert.ok(calls.includes("system.set"));
+  feed.stop();
+});
+
+// -- WP HWLK1F --
+test("HWLK1F: a unit whose firmware has no audio link reads as such, never Unknown", () => {
+  const m = model();
+  const st = status();
+  const serial = m.units[0]!.serial;
+  st.observed[serial] = { online: true, alink: "none" };
+  assert.equal(unitView(m.units[0]!, st).lock, NO_ALINK);
+  st.observed[serial] = { online: true };
+  assert.equal(unitView(m.units[0]!, st).lock, "Unknown", "not told: as before");
+  st.observed[serial] = { online: false, alink: "none" };
+  assert.equal(unitView(m.units[0]!, st).lock, "Unknown", "offline");
+  assert.equal(resultWord("applied_now"), "Applied now");
+  assert.equal(resultTone("applied_now"), "ok");
+  assert.equal(resultWord("unsupported"), "Needs the audio link");
+  assert.equal(resultWord("no_frame"), "No link frame");
+  assert.ok(sceneTaken({ plan: { scene: "s", frame: 0, path: "direct", ops: [], leadFrames: 0 }, writes: [{ serial: "K", element: "K", what: "mute", result: "applied_now" }], onTime: false }));
+});
+
+test("HWLK1F: a written alignment is the core's sentence; a save keeps the hub's warnings", async () => {
+  const asked: Record<string, unknown>[] = [];
+  const core = {
+    call: async (method: string, params: Record<string, unknown>) => {
+      if (method === "hubRole") return { role: "admin" };
+      if (method === "alignOutcome") {
+        asked.push(params);
+        return { applied: true, message: "Nothing was written: skipped on K340 (no audio link (firmware))." };
+      }
+      if (method === "hubSystem") {
+        const t = String(params.t);
+        if (t === "system.get") return { model: model(), revision: 1 };
+        if (t === "system.status") return status();
+        if (t === "system.align") return { applied: params.apply, alignment: status().alignment, writes: [] };
+        if (t === "system.set") return { revision: 2, warnings: ["K340 (K): its firmware has no audio link"] };
+      }
+      throw new CoreCallError("unknown_method", method);
+    },
+    subscribe: () => () => undefined,
+    dispose: async () => undefined,
+  } as unknown as CoreClient;
+  const session = new Session("s", "i", "Here", { kind: "hub", url: "ws://h" }, "control", core);
+  session.state = { ...session.state, status: "open" };
+  const feed = new SystemFeed(session, 60_000);
+  await feed.refresh();
+  await feed.align(false);
+  assert.equal(asked.length, 0, "a computation is not a write");
+  await feed.align(true);
+  assert.equal(asked.length, 1);
+  assert.equal(feed.state.align?.message, "Nothing was written: skipped on K340 (no audio link (firmware)).");
+  assert.equal(await feed.setModel(model(), 1), "ok");
+  assert.deepEqual(feed.state.warnings, ["K340 (K): its firmware has no audio link"]);
   feed.stop();
 });

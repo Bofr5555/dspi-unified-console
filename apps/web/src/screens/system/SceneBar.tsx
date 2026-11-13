@@ -10,7 +10,7 @@ import type { Session } from "../../ui/session";
 import { WritesByElement } from "./ClockLinks";
 import type { SystemFeed } from "./feed";
 import { useFeed } from "./SystemScreen";
-import { mayWrite, opWord, pathWord, subjectName, writeNote } from "./model";
+import { mayWrite, opWord, subjectName, writeNote } from "./model";
 
 export function SceneBar(props: { feed: SystemFeed; session: Session; ask: Ask }) {
   const st = useFeed(props.feed);
@@ -37,10 +37,12 @@ export function SceneBar(props: { feed: SystemFeed; session: Session; ask: Ask }
     await props.feed.recall(id);
   };
   const names = (id: string) => subjectName(st.model, id);
-  const opOf = (element: string, what: string) => {
+  const opOf = (element: string, what: string, reason?: string) => {
     // -- fixup lk1 -- through the sender the one write carries the whole scene: "Scene Closed", never a refused "Mute"
-    if (run?.report?.plan.path === "superframe") return `Scene ${run.name}`;
-    const op = run?.report?.plan.ops.find((o) => o.element === element && o.op === what);
+    // -- WP HWLK1F -- but a unit's own result (applied now, not connected) keeps its op
+    if (run?.report?.plan.path === "superframe" && !reason) return `Scene ${run.name}`;
+    const plan = run?.report?.plan;
+    const op = [...(plan?.ops ?? []), ...(plan?.direct ?? []), ...(plan?.unscheduled ?? [])].find((o) => o.element === element && o.op === what);
     return op ? opWord(op.op, op.arg, op.value) : what;
   };
   return (
@@ -79,16 +81,16 @@ export function SceneBar(props: { feed: SystemFeed; session: Session; ask: Ask }
           ) : null}
           {run.report ? (
             <>
+              {/* -- WP HWLK1F -- the core's sentence, the same every client shows; the frame and lead beside it */}
               {run.refusal ? null : <p class="sys-note">
-                {run.name} at link frame {run.report.plan.frame} ({run.report.plan.leadFrames} frames ahead), {pathWord(run.report.plan.path)}
-                {run.report.plan.systemMute != null ? `, system mute ${run.report.plan.systemMute ? "on" : "off"}` : ""}:{" "}
-                <strong>{run.report.onTime ? "on time on every unit" : "not every unit on time"}</strong>
+                <strong>{run.outcome}</strong>
+                {run.report.plan.frame ? ` (${run.report.plan.leadFrames} frames ahead${run.report.onTime ? ", on time on every unit" : ""})` : ""}
               </p>}
               <WritesByElement
                 writes={run.report.writes}
                 names={names}
                 label="Per unit"
-                what={(w) => opOf(w.element, w.what)}
+                what={(w) => opOf(w.element, w.what, w.reason)}
               />
             </>
           ) : null}

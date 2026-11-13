@@ -802,7 +802,7 @@ const PLAIN_SERIAL: &str = "DEMO-PLAIN";
 /// `--with-plain-unit`'s unit in the demo model: in the bar, behind the sender
 /// as the model has it, with a speaker; its firmware has no link.
 fn plain_unit_model() -> Value {
-    json!({"id": "P", "name": "Plain (no audio link)", "serial": PLAIN_SERIAL, "room": "bar",
+    json!({"id": "P", "name": "Plain unit", "serial": PLAIN_SERIAL, "room": "bar",
            "upstream": "tx", "speakers": [{"output": 0, "distanceM": 2.0}]})
 }
 

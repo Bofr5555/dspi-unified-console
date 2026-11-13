@@ -1273,6 +1273,14 @@ pub fn scene_recall_outcome(
     recall_outcome(scene, report, model, held, rate)
 }
 
+// -- WP HWLK1F --
+/// What writing the link delays did, for a client that sent `system.align`
+/// itself (the web's `hubSystem`): [`DspiCore::link_system_align`]'s outcome
+/// and words from the hub's `report` and the `model` of `system.get`.
+pub fn system_align_outcome(report: &Value, model: &Value) -> LinkSystemAlign {
+    align_outcome(report, model)
+}
+
 /// What writing the link delays did, from the hub's report. -- WP HWLK1F --
 /// Said as it was: nothing written (and why) when every write was skipped or
 /// already in place, and the units written and skipped when only some were.

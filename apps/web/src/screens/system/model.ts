@@ -116,6 +116,11 @@ export interface Observed {
   trimScan?: TrimScan | null;
   /** -- fixup sw3x -- a sender's superframe apply still waiting for its frame. */
   pendingApplyFrame?: number | null;
+  /**
+   * -- WP HWLK1F -- whether the firmware has the audio link: `none` (no 0x8000
+   * block, or it stalls), `present`, or null when that could not be told.
+   */
+  alink?: "present" | "none" | null;
 }
 export interface LinkStats {
   lineClass: number;
@@ -185,6 +190,8 @@ export interface WriteResult {
   element: string;
   what: string;
   result: string;
+  /** -- WP HWLK1F -- why it was skipped or applied at once: `no audio link (firmware)`, `not connected`, ... */
+  reason?: string;
 }
 export interface AlignReport {
   alignment: Alignment;
@@ -206,6 +213,10 @@ export interface ScenePlan {
   leadFrames: number;
   systemMute?: boolean | null;
   systemFlags?: number;
+  /** -- WP HWLK1F -- ops on units without the audio link, written at once (not at `frame`). */
+  direct?: PlannedOp[];
+  /** -- WP HWLK1F -- ops on units with the link that no frame could be read for: not written. */
+  unscheduled?: PlannedOp[];
 }
 export interface SceneReport {
   plan: ScenePlan;
@@ -304,6 +315,16 @@ export function lockWord(state: string | null | undefined): string {
   }
 }
 
+// -- WP HWLK1F --
+/** A device whose firmware has no audio link, as every client says it. */
+export const NO_ALINK = "No audio link (firmware)";
+
+/** An element's lock word: "No audio link (firmware)" when its firmware has none, never "Unknown". */
+export function elementLock(o: Observed | undefined, connected: (o: Observed) => string): string {
+  if (!o?.online) return "Unknown";
+  return o.alink === "none" ? NO_ALINK : connected(o);
+}
+
 /** The role on the link in the glossary's words. */
 export function linkRoleWord(role: string | null | undefined): string {
   switch (role) {
@@ -378,6 +399,13 @@ export function resultWord(result: string): string {
       return "No answer";
     case "no_device":
       return "Not connected";
+    // -- WP HWLK1F --
+    case "applied_now":
+      return "Applied now";
+    case "unsupported":
+      return "Needs the audio link";
+    case "no_frame":
+      return "No link frame";
     default:
       return result.startsWith("clamped") ? "Clamped" : result;
   }
@@ -385,7 +413,7 @@ export function resultWord(result: string): string {
 
 /** How a result reads: good, a warning or a failure. */
 export function resultTone(result: string): "ok" | "warn" | "bad" {
-  if (["ok", "unchanged", "queued", "applied"].includes(result)) return "ok";
+  if (["ok", "unchanged", "queued", "applied", "applied_now"].includes(result)) return "ok";
   if (["late", "queued_unverified", "skipped", "cancelled"].includes(result) || result.startsWith("clamped")) return "warn";
   return "bad";
 }
@@ -442,7 +470,7 @@ export function unitView(u: Unit, status: SystemStatus | null): UnitView {
     name: u.name || u.id,
     serial: u.serial,
     connected: !!o?.online,
-    lock: o?.online ? lockWord(o.state) : "Unknown",
+    lock: elementLock(o, (x) => lockWord(x.state)),
     alarms: activeAlarms(status?.alarms ?? [], u.id),
     slots: unitSlots(u),
   };
@@ -498,7 +526,7 @@ export function topology(model: SystemModel, status: SystemStatus | null): TopoN
     const o = obs(s.serial);
     nodes.set(s.id, {
       id: s.id, name: s.name || s.id, kind: "sender", serial: s.serial ?? "", output: null,
-      connected: !!o?.online, lock: o?.online ? "Clock" : "Unknown", hopDelayFrames: null, slots: null,
+      connected: !!o?.online, lock: elementLock(o, () => "Clock"), hopDelayFrames: null, slots: null,
       alarms: activeAlarms(alarms, s.id).length, children: [], upstream: null,
     });
   }
@@ -506,7 +534,7 @@ export function topology(model: SystemModel, status: SystemStatus | null): TopoN
     const o = obs(f.serial);
     nodes.set(f.id, {
       id: f.id, name: f.name || f.id, kind: "fan_out", serial: f.serial ?? "", output: f.output ?? null,
-      connected: !!o?.online, lock: o?.online ? lockWord(o.state) : "Unknown",
+      connected: !!o?.online, lock: elementLock(o, (x) => lockWord(x.state)),
       hopDelayFrames: o?.hopDelayFrames ?? f.hopDelayFrames ?? null, slots: null,
       alarms: activeAlarms(alarms, f.id).length, children: [], upstream: f.upstream,
     });
@@ -645,7 +673,7 @@ export function systemMuted(model: SystemModel, status: SystemStatus | null): bo
 // -- fixup sw3x -- a recall's outcome
 
 /** Results that mean a unit (or the sender) took the op. */
-const TAKEN = new Set(["ok", "unchanged", "queued", "queued_unverified", "applied", "late"]);
+const TAKEN = new Set(["ok", "unchanged", "queued", "queued_unverified", "applied", "late", "applied_now"]);
 
 /** Whether any write of a recall was taken: if none was, the scene was not recalled. */
 export function sceneTaken(report: SceneReport): boolean {
