@@ -37,7 +37,9 @@ export function StatusRail(props: {
         </span>
         {hub ? (
           <span class="sys-rail-item" aria-label="Scene">
-            Scene: {st.scene && !st.scene.error && !st.scene.running ? st.scene.name : "none recalled"}
+            Scene: {st.recalled ? st.recalled.name : "none recalled"}
+            {/* -- fixup sw3x -- */}
+            {st.scene?.refusal ? <span class="sys-rail-refused"> · {st.scene.name} refused</span> : null}
           </span>
         ) : null}
         <button type="button" class="sys-rail-item sys-mode" aria-label={`Mode: ${mode.label}`} onClick={() => setChoosing(true)}>

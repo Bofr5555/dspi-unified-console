@@ -114,6 +114,8 @@ export interface Observed {
   systemMute?: boolean | null;
   stats?: LinkStats | null;
   trimScan?: TrimScan | null;
+  /** -- fixup sw3x -- a sender's superframe apply still waiting for its frame. */
+  pendingApplyFrame?: number | null;
 }
 export interface LinkStats {
   lineClass: number;
@@ -172,6 +174,8 @@ export interface Alarm {
 }
 export interface SystemStatus {
   revision: number;
+  /** -- fixup sw3x -- this session's role now, as the hub judges it. */
+  role?: string;
   observed: Record<string, Observed>;
   alignment: Alignment;
   alarms: Alarm[];
@@ -636,4 +640,42 @@ export function subjectName(model: SystemModel | null, subject: string): string 
 export function systemMuted(model: SystemModel, status: SystemStatus | null): boolean | null {
   const seen = model.senders.map((s) => (s.serial ? status?.observed[s.serial]?.systemMute : null)).filter((m) => m != null);
   return seen.length ? seen.some(Boolean) : null;
+}
+
+// -- fixup sw3x -- a recall's outcome
+
+/** Results that mean a unit (or the sender) took the op. */
+const TAKEN = new Set(["ok", "unchanged", "queued", "queued_unverified", "applied", "late"]);
+
+/** Whether any write of a recall was taken: if none was, the scene was not recalled. */
+export function sceneTaken(report: SceneReport): boolean {
+  return report.writes.some((w) => TAKEN.has(w.result) || w.result.startsWith("clamped"));
+}
+
+/**
+ * Why a recall was refused, in plain words, or "" when it was taken. Through
+ * the sender, the usual cause is one scene already scheduled: a sender holds
+ * one superframe apply at a time (`pending`, the frame it holds), so the words
+ * say which frame and when it comes, counted from the frame read right after
+ * the writes, at `rateHz`, from `now`.
+ */
+export function sceneRefusal(name: string, report: SceneReport, pending: number | null, rateHz: number, now: Date): string {
+  if (sceneTaken(report)) return "";
+  if (report.plan.path !== "superframe") return `${name} was refused by every unit; nothing changed.`;
+  if (pending == null) {
+    return `${name} was refused: the sender takes one scene at a time and still holds one. Recall it again in a moment.`;
+  }
+  const at = report.frameAfterWrites ?? report.plan.frame - report.plan.leadFrames;
+  const ms = Math.max(0, Math.round(((pending - at) * 1000) / (rateHz || 48000)));
+  const when = new Date(now.getTime() + ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return `${name} was refused: a scene is already scheduled on the sender for link frame ${pending}, ${ms} ms after this recall (about ${when}). The sender takes one scene at a time; recall ${name} again after that.`;
+}
+
+/** -- fixup sw3x -- an alignment write in the glossary's words: `phase` is the link delay, `slots` the link slots. */
+export function writeWhat(what: string): string {
+  if (what === "phase") return "Link delay";
+  if (what === "slots") return "Link slots";
+  const out = /^out_delay:(\d+)$/.exec(what);
+  if (out) return `Delay OUT${Number(out[1]) + 1}`;
+  return what;
 }

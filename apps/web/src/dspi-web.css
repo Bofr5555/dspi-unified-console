@@ -674,3 +674,7 @@
 /* -- WP SW3 -- with the System tab the row is four: one line, scrolling sideways when narrow */
 .dspi-web .screen-tabs { flex-wrap: nowrap; overflow-x: auto; }
 .dspi-web .screen-tabs > button { flex: none; }
+/* -- fixup sw3x -- */
+.dspi-web .sys-rail-refused { color: var(--bad); }
+.dspi-web .sys-stale { border-color: var(--bad); }
+.dspi-web .sys abbr[title] { text-decoration: underline dotted; cursor: help; }

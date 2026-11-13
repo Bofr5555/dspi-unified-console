@@ -26,6 +26,10 @@ import {
   resultWord,
   roomsView,
   saveMode,
+  sceneRefusal,
+  sceneTaken,
+  writeWhat,
+  type SceneReport,
   senderChannels,
   slotWord,
   systemMuted,
@@ -294,4 +298,88 @@ test("SW3: on the real core, the demo is one unit; with the audio link, a locked
   // The hub's calls are not this session's: there is no hub.
   await assert.rejects(() => linked["session"].core.call("hubSystem", { t: "system.get" }), (e: CoreCallError) => e.code === "not_open");
   linked.stop();
+});
+
+// -- fixup sw3x --
+
+function report(path: string, results: string[], frame = 2_000_000): SceneReport {
+  return {
+    plan: { scene: "closed", frame, path, ops: [], leadFrames: 4800, systemMute: true },
+    writes: results.map((result, i) => ({ serial: i ? `U${i}` : "TX", element: i ? `U${i}` : "tx", what: "mute", result })),
+    frameAfterWrites: frame - 4790,
+    onTime: false,
+  };
+}
+
+test("SW3 fixup sw3x: a recall none of whose writes was taken is refused, and says why", () => {
+  const now = new Date(2026, 10, 13, 14, 2, 30);
+  assert.equal(sceneTaken(report("superframe", ["queued"])), true);
+  assert.equal(sceneTaken(report("per_unit", ["refused_at_apply", "late"])), true, "one late unit: recalled, late");
+  assert.equal(sceneTaken(report("superframe", ["refused"])), false);
+  assert.equal(sceneRefusal("Closed", report("superframe", ["queued"]), null, 48000, now), "");
+  // The sender holds another scene's frame, 4800 frames on: 100 ms at 48 kHz.
+  const r = sceneRefusal("Closed", report("superframe", ["refused"]), 2_000_000 - 4790 + 4800, 48000, now);
+  assert.match(r, /^Closed was refused: a scene is already scheduled on the sender for link frame 2000010, 100 ms after this recall \(about [^)]*:30[^)]*\)\./);
+  assert.match(r, /takes one scene at a time; recall Closed again after that/);
+  assert.match(sceneRefusal("Closed", report("superframe", ["refused"]), null, 48000, now), /still holds one/);
+  assert.equal(sceneRefusal("Quiet", report("per_unit", ["refused", "no_device"]), null, 48000, now), "Quiet was refused by every unit; nothing changed.");
+  assert.equal(writeWhat("phase"), "Link delay");
+  assert.equal(writeWhat("slots"), "Link slots");
+  assert.equal(writeWhat("out_delay:1"), "Delay OUT2");
+});
+
+test("SW3 fixup sw3x: a refused superframe scene is not the recalled one; the sender's held frame is named", async () => {
+  let held: number | null = null;
+  const { session } = hubSession((t, p) => {
+    if (t === "system.get") return { model: model(), revision: 1 };
+    if (t === "system.status") {
+      const s = status();
+      s.observed.TX = { ...s.observed.TX!, pendingApplyFrame: held };
+      return s;
+    }
+    if (t === "system.scene.apply" && p.scene === "evening") {
+      held = 1_000_000;
+      return { ...report("superframe", ["queued"], 1_000_000), plan: { ...report("superframe", ["queued"], 1_000_000).plan, scene: "evening" } };
+    }
+    if (t === "system.scene.apply") return report("superframe", ["refused"], 1_004_000);
+    throw new Error(t);
+  });
+  const feed = new SystemFeed(session, 60_000);
+  await feed.refresh();
+  await feed.recall("evening");
+  assert.deepEqual(feed.state.recalled, { scene: "evening", name: "Evening" });
+  await feed.recall("closed");
+  assert.deepEqual(feed.state.recalled, { scene: "evening", name: "Evening" }, "the refused one is not recalled");
+  assert.equal(feed.state.scene?.scene, "closed");
+  assert.match(feed.state.scene!.refusal, /scheduled on the sender for link frame 1000000/);
+  feed.stop();
+});
+
+test("SW3 fixup sw3x: the role follows the hub's answers; a stale Save is a conflict and the model is read again", async () => {
+  let role = "admin";
+  let revision = 1;
+  const { session, calls } = hubSession((t, p) => {
+    if (t === "system.get") return { model: model(), revision, role };
+    if (t === "system.status") return { ...status({ revision }), role };
+    if (t === "system.set") {
+      if (p.revision !== revision) throw new CoreCallError("conflict", "the installation changed on the hub (revision 2); read it again");
+      revision++;
+      return { revision };
+    }
+    throw new Error(t);
+  });
+  const feed = new SystemFeed(session, 60_000);
+  await feed.refresh();
+  assert.equal(feed.state.role, "admin", "system.get's role over hubRole's");
+  role = "viewer";
+  await feed.refresh();
+  assert.equal(feed.state.role, "viewer", "a live change, at the next status");
+  role = "admin";
+  revision = 2; // someone else saved
+  assert.equal(await feed.setModel(model(), 1), "conflict");
+  assert.equal(feed.state.revision, 2, "read again");
+  assert.equal(await feed.setModel(model(), 2), "ok");
+  assert.equal(feed.state.revision, 3);
+  assert.ok(calls.includes("system.set"));
+  feed.stop();
 });

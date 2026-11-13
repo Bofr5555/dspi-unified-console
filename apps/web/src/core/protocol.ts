@@ -462,7 +462,8 @@ export interface CoreMethods extends AudioLinkMethods {
    * One of the hub's `system.*` requests on this session's connection
    * (docs/integrator/audio-link.md), judged by the hub against this session's
    * role: the hub's answer without `t` and `id`. Refusals: `denied` (the
-   * message names what), `rate_limited`, `invalid`, `not_open` (no hub), `link`.
+   * message names what), `rate_limited`, `invalid`, `not_open` (no hub), `link`;
+   * -- fixup sw3x -- `conflict`: `system.set` with a `revision` the hub has moved past.
    */
   hubSystem: { params: { t: string; [field: string]: unknown }; result: Record<string, unknown> };
   /** The role the hub gave this session: `viewer`, `control`, `admin`; "" with no hub. */

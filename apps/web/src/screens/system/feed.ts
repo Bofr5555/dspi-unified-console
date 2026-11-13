@@ -8,6 +8,8 @@
 import { CoreCallError } from "../../core/protocol";
 import type { Session } from "../../ui/session";
 import {
+  sceneRefusal,
+  sceneTaken,
   singleUnit,
   type AlignReport,
   type Role,
@@ -25,6 +27,15 @@ export interface SceneRun {
   /** Why it did not run (a refused op is named here, in the hub's words). */
   error: string;
   running: boolean;
+  /** -- fixup sw3x -- why the hub took none of its writes ("" when taken). */
+  refusal: string;
+}
+
+/** `system.get`'s answer. -- fixup sw3x -- with the session's role now. */
+interface Got {
+  model: SystemModel;
+  revision: number;
+  role?: string;
 }
 
 export interface FeedState {
@@ -36,6 +47,10 @@ export interface FeedState {
   /** The last failure to read or write, "" when none. */
   error: string;
   scene: SceneRun | null;
+  /** -- fixup sw3x -- the last scene that was recalled (taken), not merely asked for. */
+  recalled: { scene: string; name: string } | null;
+  /** -- fixup sw3x -- the model's revision as last read (`system.get`). */
+  revision: number;
   align: { report: AlignReport | null; error: string; running: boolean } | null;
   /** The system mute's last writes. */
   mute: { writes: WriteResult[]; error: string } | null;
@@ -47,12 +62,14 @@ export const POLL_MS = 3000;
 const STATUS_GAP_MS = 1100;
 
 export class SystemFeed {
-  state: FeedState = { kind: "loading", model: null, status: null, role: "", error: "", scene: null, align: null, mute: null };
+  state: FeedState = { kind: "loading", model: null, status: null, role: "", error: "", scene: null, recalled: null, revision: 0, align: null, mute: null };
   private readonly listeners = new Set<() => void>();
   private timer: ReturnType<typeof setTimeout> | undefined;
   private alive = true;
   private lastStatus = 0;
   private reading = false;
+  /** -- fixup sw3x -- the frame of the last superframe scene this page had taken. */
+  private heldFrame: number | null = null;
   /** System views showing this feed: a device on its own is read only while one is. */
   private viewers = 0;
 
@@ -127,24 +144,26 @@ export class SystemFeed {
         this.set({ role: role as Role });
       }
       if (!this.state.model) {
-        const got = (await core.call("hubSystem", { t: "system.get" })) as { model: SystemModel };
+        const got = (await core.call("hubSystem", { t: "system.get" })) as unknown as Got;
+        if (got.role) this.set({ role: got.role as Role });
         if (!got.model.units.length && !got.model.senders.length) {
           // A hub without an installation: this device alone, as for USB.
           await this.readSingle();
           return;
         }
-        this.set({ model: got.model, kind: "hub" });
+        this.set({ model: got.model, revision: got.revision, kind: "hub" });
       }
       if (this.state.kind !== "hub") return this.readSingle();
       const wait = this.lastStatus + STATUS_GAP_MS - Date.now();
       if (wait > 0) await new Promise((r) => setTimeout(r, wait));
       this.lastStatus = Date.now();
       const status = (await core.call("hubSystem", { t: "system.status" })) as unknown as SystemStatus;
-      if (this.state.status && status.revision !== this.state.status.revision) {
-        const got = (await core.call("hubSystem", { t: "system.get" })) as { model: SystemModel };
-        this.set({ model: got.model });
+      if (status.revision !== this.state.revision) {
+        const got = (await core.call("hubSystem", { t: "system.get" })) as unknown as Got;
+        this.set({ model: got.model, revision: got.revision });
       }
-      this.set({ status, error: "" });
+      // -- fixup sw3x -- the role as the hub judges it now: a live change shows at the next poll.
+      this.set(status.role ? { status, role: status.role as Role, error: "" } : { status, error: "" });
     } catch (e) {
       // `rate_limited`: another read came first; the next poll asks again.
       if (!(e instanceof CoreCallError && e.code === "rate_limited")) this.set({ error: message(e) });
@@ -181,29 +200,56 @@ export class SystemFeed {
     }
   }
 
-  /** `system.set`: the whole model, as the hub keeps it. Admin. Answers whether it was taken. */
-  async setModel(model: SystemModel): Promise<boolean> {
+  /**
+   * `system.set`: the whole model, as the hub keeps it. Admin. -- fixup sw3x --
+   * `base` is the revision the edits started from: the hub refuses the model
+   * (`conflict`) when it has a newer one, so nobody else's change is lost.
+   */
+  async setModel(model: SystemModel, base: number): Promise<"ok" | "conflict" | "failed"> {
     try {
-      await this.session.core.call("hubSystem", { t: "system.set", model });
-      const got = (await this.session.core.call("hubSystem", { t: "system.get" })) as { model: SystemModel };
-      this.set({ model: got.model, error: "" });
+      await this.session.core.call("hubSystem", { t: "system.set", model, revision: base });
+      await this.reloadModel();
+      this.set({ error: "" });
       void this.refresh();
-      return true;
+      return "ok";
     } catch (e) {
+      if (e instanceof CoreCallError && e.code === "conflict") {
+        await this.reloadModel().catch(() => undefined);
+        return "conflict";
+      }
       this.set({ error: message(e) });
-      return false;
+      return "failed";
     }
+  }
+
+  /** The hub's model and revision now. */
+  async reloadModel(): Promise<void> {
+    const got = (await this.session.core.call("hubSystem", { t: "system.get" })) as unknown as Got;
+    this.set(got.role ? { model: got.model, revision: got.revision, role: got.role as Role } : { model: got.model, revision: got.revision });
   }
 
   /** `system.scene.apply`: recall a scene at one link frame on every unit. */
   async recall(sceneId: string): Promise<void> {
     const name = this.state.model?.scenes.find((s) => s.id === sceneId)?.name || sceneId;
-    this.set({ scene: { scene: sceneId, name, report: null, error: "", running: true } });
+    this.set({ scene: { scene: sceneId, name, report: null, error: "", running: true, refusal: "" } });
     try {
       const report = (await this.session.core.call("hubSystem", { t: "system.scene.apply", scene: sceneId })) as unknown as SceneReport;
-      this.set({ scene: { scene: sceneId, name, report, error: "", running: false } });
+      if (sceneTaken(report)) {
+        if (report.plan.path === "superframe") this.heldFrame = report.plan.frame;
+        this.set({ scene: { scene: sceneId, name, report, error: "", running: false, refusal: "" }, recalled: { scene: sceneId, name } });
+      } else {
+        // -- fixup sw3x -- nothing was taken: not recalled. Through the sender, say
+        // which scene's frame it still holds (the status's, else the one this page set).
+        const sender = report.writes[0]?.serial;
+        await this.refresh();
+        const seen = sender ? this.state.status?.observed[sender]?.pendingApplyFrame : null;
+        const after = report.frameAfterWrites ?? report.plan.frame - report.plan.leadFrames;
+        const pending = seen ?? (this.heldFrame !== null && this.heldFrame > after ? this.heldFrame : null);
+        const refusal = sceneRefusal(name, report, pending, this.state.status?.alignment.rateHz ?? 48000, new Date());
+        this.set({ scene: { scene: sceneId, name, report, error: "", running: false, refusal } });
+      }
     } catch (e) {
-      this.set({ scene: { scene: sceneId, name, report: null, error: message(e), running: false } });
+      this.set({ scene: { scene: sceneId, name, report: null, error: message(e), running: false, refusal: "" } });
     }
     void this.refresh();
   }

@@ -1,5 +1,5 @@
 // WP SW3: the Installer mode's "Clock and links" panel (SYS2 section 7). Per
-// unit the link delay (`d_local`) against its limits, `hops_offset`, the
+// unit the link delay (`d_local`) against its limits, the hop offset (`hops_offset`), the
 // latency after the link (measured or configured) and the lip sync of its
 // room; the slot matrix (the sender's link channels to each unit's 8 matrix
 // inputs); the alignment (`system.align`) with each unit's result; the link
@@ -24,6 +24,7 @@ import {
   slotWord,
   sourceOf,
   subjectName,
+  writeWhat,
   UNIT_INPUTS,
   unitSlots,
   withLinkDelay,
@@ -40,11 +41,21 @@ export function ClockLinks(props: { feed: SystemFeed; ask: Ask }) {
   const model = st.model!;
   const admin = mayWrite(st.role, "model") && !props.feed.readOnly;
   // Edits to the model are staged here until Save sends the whole model.
-  const [draft, setDraft] = useState<SystemModel | null>(null);
-  const shown = draft ?? model;
-  const edit = (m: SystemModel) => setDraft(m);
+  // -- fixup sw3x -- with the revision the edits started from: Save sends it, and
+  // the hub refuses the model if someone changed the installation meanwhile.
+  const [draft, setDraft] = useState<{ model: SystemModel; base: number } | null>(null);
+  const [conflict, setConflict] = useState(false);
+  const shown = draft?.model ?? model;
+  const edit = (m: SystemModel) => {
+    setDraft({ model: m, base: draft?.base ?? st.revision });
+    setConflict(false);
+  };
+  const stale = !!draft && (conflict || draft.base !== st.revision);
   const save = async () => {
-    if (draft && (await props.feed.setModel(draft))) setDraft(null);
+    if (!draft || stale) return;
+    const r = await props.feed.setModel(draft.model, draft.base);
+    if (r === "ok") setDraft(null);
+    if (r === "conflict") setConflict(true);
   };
 
   return (
@@ -53,7 +64,24 @@ export function ClockLinks(props: { feed: SystemFeed; ask: Ask }) {
       {admin ? null : <p class="sys-note">{writeNote(st.role, "model")}: this panel is read only.</p>}
       <UnitsTable feed={props.feed} model={shown} admin={admin} onEdit={edit} />
       <SlotMatrix model={shown} admin={admin} onEdit={edit} />
-      {draft ? (
+      {draft && stale ? (
+        <div class="sys-save sys-stale" role="alert" aria-label="Installation changed on the hub">
+          <span>
+            The installation changed on the hub while you edited it. Saving now would undo that change, so it is not offered:
+            reload the hub's installation and make your changes again.
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setDraft(null);
+              setConflict(false);
+              void props.feed.reloadModel();
+            }}
+          >
+            Reload
+          </button>
+        </div>
+      ) : draft ? (
         <div class="sys-save" role="group" aria-label="Unsaved installation">
           <span>The installation has unsaved changes. Save sends them to the hub; Align writes them to the units.</span>
           <button type="button" onClick={() => void save()}>
@@ -108,12 +136,13 @@ function UnitsTable(props: { feed: SystemFeed; model: SystemModel; admin: boolea
     <>
       <div class="sys-row">
         <span>
-          Link delay (D): <strong>{a ? framesMs(a.dFrames, rate) : "–"}</strong> {a?.dAuto ? "(the smallest every unit takes)" : ""}
+          <abbr title="D: the delay every unit's link delay is worked out from">System delay</abbr>: <strong>{a ? framesMs(a.dFrames, rate) : "–"}</strong>{" "}
+          {a?.dAuto ? "(the smallest every unit takes)" : ""}
         </span>
         <label class="sys-inline">
-          Fixed D, frames
+          Fixed system delay, frames
           <NumberCell
-            label="Fixed link delay in frames"
+            label="Fixed system delay in frames"
             value={model.dFrames}
             lo={0}
             hi={65535}
@@ -131,9 +160,15 @@ function UnitsTable(props: { feed: SystemFeed; model: SystemModel; admin: boolea
               <th>Unit</th>
               <th>Hops</th>
               <th>Path delay</th>
-              <th>d_local</th>
-              <th>Limits</th>
-              <th>hops_offset</th>
+              <th>
+                <abbr title="d_local (EXT_LINK_PHASE): frames from a link frame's arrival to its playing, ms beside">Link delay</abbr>
+              </th>
+              <th>
+                <abbr title="d_local_min..d_local_max (EXT_LINK_INFO), in frames">Link delay range</abbr>
+              </th>
+              <th>
+                <abbr title="hops_offset (EXT_LINK_PHASE): frames added for the boxes between the sender and this unit">Hop offset</abbr>
+              </th>
               <th>Latency, µs</th>
               <th>Measured, µs</th>
               <th>Lip sync</th>
@@ -152,7 +187,7 @@ function UnitsTable(props: { feed: SystemFeed; model: SystemModel; admin: boolea
                   <td>{plan?.hops ?? o?.hops ?? "–"}</td>
                   <td>{plan ? `${plan.pathDelayFrames} frames` : "–"}</td>
                   <td title={read ? `Read from the unit: ${read[1]}` : undefined}>
-                    {plan ? plan.dLocal : "–"}
+                    {plan ? framesMs(plan.dLocal, rate) : "–"}
                     {read && plan && read[1] !== plan.dLocal ? <span class="sys-diff"> (unit: {read[1]})</span> : null}
                   </td>
                   <td>{o?.dLocalMin != null ? `${o.dLocalMin}..${o.dLocalMax}` : "unknown"}</td>
@@ -297,7 +332,7 @@ export function WritesByElement(props: { writes: WriteResult[]; names: (element:
           <strong>{props.names(el)}</strong>
           {ws.map((w, i) => (
             <span key={i} class={`sys-result sys-${resultTone(w.result)}`} data-result={w.result}>
-              {props.what ? props.what(w) : w.what}: {resultWord(w.result)}
+              {props.what ? props.what(w) : writeWhat(w.what)}: {resultWord(w.result)}
             </span>
           ))}
         </li>
@@ -342,15 +377,15 @@ function AlignPanel(props: { feed: SystemFeed; ask: Ask; admin: boolean; mayAlig
       {al?.report ? (
         <>
           <p class="sys-note" aria-label="Alignment result">
-            {al.report.applied ? "Written" : "Computed, not written"}: D = {framesMs(al.report.alignment.dFrames, al.report.alignment.rateHz || 48000)}
+            {al.report.applied ? "Written" : "Computed, not written"}: system delay {framesMs(al.report.alignment.dFrames, al.report.alignment.rateHz || 48000)}
             {al.report.alignment.issues.length ? `, ${al.report.alignment.issues.length} issue(s)` : ""}
           </p>
           <ul class="sys-results" aria-label="Computed per unit">
             {al.report.alignment.units.map((u) => (
               <li key={u.unit} aria-label={`Plan for ${names(u.unit)}`}>
                 <strong>{names(u.unit)}</strong>
-                <span>d_local {u.dLocal}</span>
-                <span>hops_offset {u.hopsOffset}</span>
+                <span title="d_local">Link delay {framesMs(u.dLocal, al.report!.alignment.rateHz || 48000)}</span>
+                <span title="hops_offset">Hop offset {u.hopsOffset}</span>
                 <span class={`sys-result sys-${u.writable ? "ok" : "warn"}`}>{u.writable ? "Writable" : "Not written"}</span>
               </li>
             ))}

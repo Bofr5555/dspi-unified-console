@@ -50,7 +50,8 @@ export function SceneBar(props: { feed: SystemFeed; session: Session; ask: Ask }
           <button
             type="button"
             key={s.id}
-            class={`sys-scene${run?.scene === s.id ? " active" : ""}`}
+            class={`sys-scene${st.recalled?.scene === s.id ? " active" : ""}`}
+            aria-current={st.recalled?.scene === s.id ? "true" : undefined}
             aria-label={`Recall ${s.name || s.id}`}
             disabled={!allowed || run?.running}
             title={allowed ? undefined : writeNote(st.role, "scene")}
@@ -68,13 +69,19 @@ export function SceneBar(props: { feed: SystemFeed; session: Session; ask: Ask }
               {run.name}: refused. {run.error}
             </p>
           ) : null}
+          {/* -- fixup sw3x -- a recall the hub took none of: said as such, never marked active */}
+          {run.refusal ? (
+            <p class="error" role="alert">
+              {run.refusal}
+            </p>
+          ) : null}
           {run.report ? (
             <>
-              <p class="sys-note">
+              {run.refusal ? null : <p class="sys-note">
                 {run.name} at link frame {run.report.plan.frame} ({run.report.plan.leadFrames} frames ahead), {pathWord(run.report.plan.path)}
                 {run.report.plan.systemMute != null ? `, system mute ${run.report.plan.systemMute ? "on" : "off"}` : ""}:{" "}
                 <strong>{run.report.onTime ? "on time on every unit" : "not every unit on time"}</strong>
-              </p>
+              </p>}
               <WritesByElement
                 writes={run.report.writes}
                 names={names}
