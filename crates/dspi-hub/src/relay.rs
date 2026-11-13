@@ -96,6 +96,14 @@ impl Relay {
             .unwrap_or_else(PoisonError::into_inner)
     }
 
+    // -- WP HUBFLAKE4 --
+    /// Hold every push back while the guard lives: a test's way to stop a broadcast
+    /// partway.
+    #[cfg(test)]
+    pub(crate) fn hold(&self) -> impl Sized + '_ {
+        self.lock()
+    }
+
     /// Add a subscriber. Returns its id for [`Relay::remove`].
     pub fn add(&self, session: SessionId, scope: Scope, outbox: Arc<Outbox>) -> u64 {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);

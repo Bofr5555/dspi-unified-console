@@ -72,6 +72,7 @@ result wait, or a listener call.
 |---|---|---|---|
 | L0 | `DspiCore::Inner` (not ours) | the core | **Held across `LocalTransport` calls**, so it waits on workers. Hence the rule below |
 | L0b | `HubInner::advertiser` (HB5) | the responder | Above L1, as `names_saving` is: the device list is read under it. Taken by the supervisor, `publish`, and an upgrade's `Origin` check. Its longest hold is a goodbye on a conflict, about a second at most |
+| L0c | `HubInner::locks_syncing` (HUBFLAKE4) | the order of lock changes | Above L1: held across a whole `sync_locks`, its reads of the routers, its registry write and its `device.changed` broadcast, so a sync returns only once what it found is sent. Never taken under L1, L2 or L3 |
 | L1 | `HubInner::state` | registry, attachments, sessions | Spawning a device's threads happens here; it does not wait for them |
 | L1b | `AuthStore` (HB1) | clients, pairing | Never held into L1 |
 | L2 | `Router::state` | inflight, lock table, writers | Per device. Taken on submit and around the call, not across it |
