@@ -125,6 +125,8 @@ mod diag;
 pub use diag::{EXT_FAKE_CLIP, FAKE_HW_REV};
 // -- WP SW1 --
 mod audio_link;
+// -- WP SW2 --
+pub use audio_link::AudioLinkSetup;
 pub use audio_link::{
     EXT_FAKE_LINK_SIM, LINK_SIM_BANK_ERROR, LINK_SIM_LOCK, LINK_SIM_LOSE, LINK_SIM_REANCHOR,
 };
@@ -347,6 +349,24 @@ impl FakeDevice {
         let dev = Self::demo_with(true);
         dev.shared.lock().options.audio_link = true;
         dev
+    }
+
+    // -- WP SW2 --
+    /// [`FakeDevice::demo_audio_link`] at another place on the link: a unit
+    /// behind re-emitters, a repeater, a fan-out or the sender build
+    /// ([`AudioLinkSetup`]).
+    pub fn demo_audio_link_as(setup: AudioLinkSetup) -> Self {
+        let dev = Self::demo_audio_link();
+        dev.shared.lock().audio_link.setup = setup;
+        dev
+    }
+
+    /// This fake with another serial in its descriptor, which is what a hub
+    /// and the core key a device by, so several fakes can be attached at
+    /// once. `GET_SERIAL` still answers the demo's.
+    pub fn with_serial(mut self, serial: &str) -> Self {
+        self.descriptor.serial = serial.into();
+        self
     }
 
     fn demo_with(surfaces: bool) -> Self {

@@ -363,3 +363,43 @@ fn wp_bulkfix_bf_a_failed_import_repair_shows_the_device_muted_and_why() {
         logged.iter().map(|e| &e.text).collect::<Vec<_>>()
     );
 }
+
+// -- WP SW2 --
+
+/// SW1's note: an apply-at-frame UNMUTE from a unit on the audio link goes
+/// past the per-output unmute, so the guard takes it as an unmute of every
+/// suspect output: the gains are re-sent first, or the op is refused.
+#[test]
+fn wp_sw2_an_apply_at_frame_unmute_is_gated_as_an_unmute() {
+    let link_core = |fail: bool| {
+        let dev = BulkDbDevice::new(FakeDevice::demo_audio_link(), buggy());
+        let (probe, remote) = (dev.probe(), dev.remote());
+        let core = DspiCore::new();
+        core.attach_probed(Box::new(dev), "SW2".into(), 0).unwrap();
+        core.fetch_all().unwrap();
+        deep_cuts(&core);
+        probe.fail(op::REQ_SET_OUTPUT_GAIN, true);
+        assert!(core.apply_all_params().is_err());
+        probe.fail(op::REQ_SET_OUTPUT_GAIN, fail);
+        assert_ne!(suspects(&core), 0);
+        (core, probe, remote)
+    };
+    let frame = |core: &DspiCore| core.fetch_audio_link_frame_counter().unwrap().frame + 48_000;
+
+    let (core, probe, _) = link_core(false);
+    core.apply_at_frame(frame(&core), 2, 0, 0).unwrap();
+    assert_eq!(suspects(&core), 0);
+    assert!(
+        probe.mismatch_db() <= TOLERANCE_DB,
+        "{}",
+        probe.mismatch_db()
+    );
+
+    let (core, probe, _) = link_core(true);
+    let e = core.apply_at_frame(frame(&core), 2, 0, 0).unwrap_err();
+    assert!(e.to_string().contains("stays muted"), "{e}");
+    assert_eq!(core.fetch_apply_at_frame_status().unwrap().pending, 0);
+    // A MUTE is not gated.
+    core.apply_at_frame(frame(&core), 1, 0, 0).unwrap();
+    assert!(probe.worst_excess_db() <= TOLERANCE_DB);
+}

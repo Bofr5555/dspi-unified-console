@@ -1288,7 +1288,8 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * Errors as [`DspiCore::set_audio_link_slots`]; `InvalidArgument` for an
      * op above [`APPLY_OP_MAX`] or an `arg` or `value` outside its range
      * (unused ones 0; a preset slot 0-9, a master volume of -12800..0
-     * hundredths of a dB, a rate code 0-2, a delay of 0 samples or more).
+     * hundredths of a dB, a rate code 0-2, an output below 9 and a delay of
+     * 0-2047 samples).
      * `Refused` when the queue is full, the link is not locked, or an
      * output or delay is past the device's.
      */
@@ -4112,7 +4113,8 @@ open func applyAllParams()throws   {try rustCallWithError(FfiConverterTypeDspiEr
      * Errors as [`DspiCore::set_audio_link_slots`]; `InvalidArgument` for an
      * op above [`APPLY_OP_MAX`] or an `arg` or `value` outside its range
      * (unused ones 0; a preset slot 0-9, a master volume of -12800..0
-     * hundredths of a dB, a rate code 0-2, a delay of 0 samples or more).
+     * hundredths of a dB, a rate code 0-2, an output below 9 and a delay of
+     * 0-2047 samples).
      * `Refused` when the queue is full, the link is not locked, or an
      * output or delay is past the device's.
      */
@@ -25897,7 +25899,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_apply_all_params() != 8407) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_apply_at_frame() != 10586) {
+    if (uniffi_dspi_core_checksum_method_dspicore_apply_at_frame() != 17337) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_audio_link_info() != 38734) {

@@ -3,7 +3,8 @@
 //! notifications (0xE1 `LINK_STATE`, 0xE2 `APPLY_RESULT`).
 //!
 //! The layouts are the fork's `extension_channel_spec.md` section 2.8 (WP
-//! LK7, DSPi-bofr c3909e5), which supersedes SYS2 5.3 where they differ:
+//! LK7, DSPi-bofr c3909e5; `EXT_LINK_STATUS` offset 50 from LK45F, bofr-main
+//! 5a5658d), which supersedes SYS2 5.3 where they differ:
 //! a 52-byte status, a 24-byte `EXT_LINK_CTRL_MSG` IN, `d_local_min/max` in
 //! the info, the event reasons, apply op 0 as `CANCEL_ALL`. The firmware
 //! (LK5, LK6) has no header for them yet, so they are transcribed rather than
@@ -74,6 +75,32 @@ pub const RECEIVER_IDS: [u16; 10] = [
     EXT_LINK_STATS_RESET,
     EXT_LINK_DIAG,
 ];
+
+// -- WP SW2 --
+/// The sender's sub-commands (2.8, "Per build", roles 2 and 4): what a sender
+/// or fan-out lists.
+pub const SENDER_IDS: [u16; 8] = [
+    EXT_LINK_INFO,
+    EXT_LINK_STATUS,
+    EXT_LINK_CONFIG,
+    EXT_FRAME_COUNTER,
+    EXT_LINK_TX,
+    EXT_LINK_CTRL_MSG,
+    EXT_LINK_STATS_RESET,
+    EXT_LINK_DIAG,
+];
+
+/// A superframe is 32 frames (`link_protocol_spec.md` 6).
+pub const SUPERFRAME_FRAMES: u64 = 32;
+
+/// 2.8.9's lead rule for `EXT_LINK_CTRL_MSG` OUT: the earliest frame a sender
+/// whose counter reads `sender_frame` accepts, the next superframe start plus
+/// one superframe. `None` past the counter's range.
+pub fn ctrl_msg_min_frame(sender_frame: u64) -> Option<u64> {
+    sender_frame
+        .checked_next_multiple_of(SUPERFRAME_FRAMES)?
+        .checked_add(SUPERFRAME_FRAMES)
+}
 
 /// What a link sub-command is called, for listings (the Terminal's extension
 /// list); `None` outside the range. Always "audio link": "link" alone is DSPi
@@ -548,6 +575,13 @@ pub struct LinkStatus {
     pub vcxo_ppm: f32,
     pub phase_error_frames: f32,
     pub fill_frames: u16,
+    // -- WP SW2 --
+    /// Offset 50 (LK45F): on a re-emitter (fan-out, role 4, or repeater, role
+    /// 3) the frames between receiving link frame F and sending it again, 0
+    /// while it is not re-emitting; 0 on every other unit. The hub
+    /// compensates it through `EXT_LINK_PHASE.hops_offset` of the units
+    /// behind it (`link_protocol_spec.md` 7.2).
+    pub hop_delay_frames: u8,
 }
 
 impl LinkStatus {
@@ -575,6 +609,8 @@ impl LinkStatus {
             vcxo_ppm: f32_at(40)?,
             phase_error_frames: f32_at(44)?,
             fill_frames: u16_at(b, 48)?,
+            // -- WP SW2 --
+            hop_delay_frames: byte(b, 50)?,
         })
     }
 
@@ -607,6 +643,8 @@ impl LinkStatus {
             b[16 + 4 * i..20 + 4 * i].copy_from_slice(&v.to_le_bytes());
         }
         b[48..50].copy_from_slice(&self.fill_frames.to_le_bytes());
+        // -- WP SW2 -- offset 51 is reserved, 0.
+        b[50] = self.hop_delay_frames;
         b
     }
 }
@@ -776,6 +814,14 @@ impl FrameCounter {
     }
 }
 
+// -- fixup sw2x (F4) --
+/// Outputs an apply op may name (`OUT_DELAY`, `CLICK`): the 8 output slots and
+/// the PDM sub of an RP2350 (`sender_link.h` `SND_OP_OUTPUTS`).
+pub const APPLY_OUTPUTS: u8 = 9;
+/// The longest `OUT_DELAY`, samples: `MAX_DELAY_SAMPLES - 1` on an RP2350
+/// (2.8.7, `SND_OP_DELAY_MAX`).
+pub const APPLY_DELAY_MAX: i16 = 2047;
+
 /// `EXT_APPLY_AT_FRAME` OUT (and the sender's `EXT_LINK_CTRL_MSG` apply):
 /// run `op` when the link frame reaches `frame`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -809,8 +855,10 @@ impl ApplyRequest {
     }
 
     /// Whether `arg` and `value` are in the op's range (2.8.7; unused ones
-    /// 0). `OUT_DELAY`'s sample limit is the device's (2047 on an RP2350,
-    /// 1023 on an RP2040) and is checked only for sign here.
+    /// 0). -- fixup sw2x (F4) -- as the sender checks them (DSPi-bofr
+    /// `sender_link.c` `snd_op_args_ok`): an output below [`APPLY_OUTPUTS`] for
+    /// `OUT_DELAY` and `CLICK`, a delay of 0..=[`APPLY_DELAY_MAX`] samples (an
+    /// RP2040 unit refuses above 1023 itself).
     pub fn args_valid(&self) -> bool {
         let (a, v) = (self.arg, self.value);
         match self.op {
@@ -819,9 +867,9 @@ impl ApplyRequest {
             }
             ApplyOp::PresetLoad => a <= 9 && v == 0,
             ApplyOp::MasterVolume => a == 0 && (-12800..=0).contains(&v),
-            ApplyOp::OutDelay => v >= 0,
+            ApplyOp::OutDelay => a < APPLY_OUTPUTS && (0..=APPLY_DELAY_MAX).contains(&v),
             ApplyOp::Rate => a <= 2 && v == 0,
-            ApplyOp::Click => v == 0,
+            ApplyOp::Click => a < APPLY_OUTPUTS && v == 0,
             ApplyOp::Other(_) => false,
         }
     }
@@ -1176,6 +1224,7 @@ mod tests_wp_sw1 {
             vcxo_ppm: -12.5,
             phase_error_frames: 0.25,
             fill_frames: 96,
+            hop_delay_frames: 0,
         };
         let b = s.encode();
         assert_eq!(b.len(), 52);
@@ -1185,6 +1234,61 @@ mod tests_wp_sw1 {
         assert_eq!(f32::from_le_bytes(b[40..44].try_into().unwrap()), -12.5);
         assert_eq!(&b[48..52], &[96, 0, 0, 0]);
         assert_eq!(LinkStatus::decode(&b), Some(s));
+        assert_eq!(LinkStatus::decode(&b[..51]), None);
+    }
+
+    // -- fixup sw2x --
+    /// Review sw2x probe C: `OUT_DELAY` and `CLICK` are bounded as the sender
+    /// bounds them.
+    #[test]
+    fn wp_sw2x_out_delay_and_click_are_bounded() {
+        let r = |op, arg, value| {
+            ApplyRequest {
+                frame: 0,
+                op,
+                arg,
+                value,
+            }
+            .args_valid()
+        };
+        assert!(r(ApplyOp::OutDelay, 8, 2047));
+        assert!(!r(ApplyOp::OutDelay, 200, 30000));
+        assert!(!r(ApplyOp::OutDelay, 0, 2048));
+        assert!(!r(ApplyOp::OutDelay, 9, 0));
+        assert!(r(ApplyOp::Click, 8, 0));
+        assert!(!r(ApplyOp::Click, 250, 0));
+        assert!(!r(ApplyOp::Click, 9, 0));
+    }
+
+    // -- WP SW2 --
+    /// 2.8.9: the next superframe start plus 32.
+    #[test]
+    fn wp_sw2_ctrl_msg_lead() {
+        assert_eq!(ctrl_msg_min_frame(0), Some(32));
+        assert_eq!(ctrl_msg_min_frame(1), Some(64));
+        assert_eq!(ctrl_msg_min_frame(32), Some(64));
+        assert_eq!(ctrl_msg_min_frame(u64::MAX), None);
+        assert!(SENDER_IDS.iter().all(|id| LINK_IDS.contains(id)));
+        assert!(!SENDER_IDS.contains(&EXT_LINK_SLOTS) && !RECEIVER_IDS.contains(&EXT_LINK_TX));
+    }
+
+    // -- WP SW2 --
+    /// `extension_channel_spec.md` 2.8.2 on bofr-main 5a5658d (LK45F): offset
+    /// 50 is `hop_delay_frames`, u8; 51 is reserved. A fan-out that re-emits
+    /// 3 frames late, behind one re-emitter, reports hops 1 and 3.
+    #[test]
+    fn wp_sw2_status_offset_50_is_the_hop_delay() {
+        let mut b = [0u8; LinkStatus::SIZE];
+        b[0] = 2;
+        b[4] = 1;
+        b[50] = 3;
+        b[51] = 0xAA;
+        let s = LinkStatus::decode(&b).unwrap();
+        assert_eq!((s.hops, s.hop_delay_frames), (1, 3));
+        let e = s.encode();
+        assert_eq!(e[50], 3);
+        assert_eq!(e[51], 0, "reserved reads 0 in what the fake sends");
+        // Still 52 bytes: a 51-byte reply has no hop delay and is short.
         assert_eq!(LinkStatus::decode(&b[..51]), None);
     }
 

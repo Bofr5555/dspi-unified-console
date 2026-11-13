@@ -270,6 +270,15 @@ impl GainGuard {
     }
 }
 
+// -- WP SW2 --
+/// `REQ_EXTENSION` `EXT_APPLY_AT_FRAME` OUT with op 2 `UNMUTE`.
+fn is_apply_unmute(opcode: u8, value: u16, data: &[u8]) -> bool {
+    use dspi_proto::ext::audio_link::{ApplyOp, EXT_APPLY_AT_FRAME};
+    opcode == op::REQ_EXTENSION
+        && value == EXT_APPLY_AT_FRAME
+        && data.get(8) == Some(&ApplyOp::Unmute.raw())
+}
+
 /// The transport behind [`GainGuard::wrap`].
 struct Guarded {
     inner: Box<dyn Transport>,
@@ -312,6 +321,20 @@ impl Guarded {
         Ok(())
     }
 
+    // -- WP SW2 --
+    /// Before an unmute of the whole unit: [`Self::before_unmute`] for every
+    /// suspect output (the first call also seeds a lazy guard).
+    fn before_unmute_all(&mut self) -> Result<(), TransportError> {
+        self.before_unmute(0)?;
+        let suspects = self.guard.suspects();
+        for o in 1..32 {
+            if suspects & bit(o) != 0 {
+                self.before_unmute(o)?;
+            }
+        }
+        Ok(())
+    }
+
     /// A preset load or factory reset that the device answered with 0
     /// (`PRESET_OK` / `FLASH_OK`) converted every gain with `powf`.
     fn after_in(&self, opcode: u8, reply: &Result<Vec<u8>, TransportError>) {
@@ -344,6 +367,13 @@ impl Transport for Guarded {
     fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> Result<(), TransportError> {
         if opcode == op::REQ_SET_OUTPUT_MUTE && data.first() == Some(&0) {
             self.before_unmute(usize::from(value))?;
+        }
+        // -- WP SW2 -- the audio link's apply-at-frame UNMUTE (op 2,
+        // `extension_channel_spec.md` 2.8.7) unmutes the unit at a later frame:
+        // the suspect outputs' gains are re-sent now, or the op is refused, as
+        // for an unmute of each.
+        if is_apply_unmute(opcode, value, data) {
+            self.before_unmute_all()?;
         }
         self.inner.control_out(opcode, value, data)
     }

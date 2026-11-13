@@ -1384,6 +1384,8 @@ fn upgrade(
         tx,
         session: None,
         writer: None,
+        // -- fixup sw2x --
+        last_system_status: None,
     };
     connection.run(reader, upgraded);
 }
@@ -1527,7 +1529,15 @@ struct Connection {
     tx: Arc<WsTx>,
     session: Option<Arc<Session>>,
     writer: Option<JoinHandle<()>>,
+    // -- fixup sw2x --
+    /// The last `system.status` this connection's session was answered.
+    last_system_status: Option<Instant>,
 }
+
+// -- fixup sw2x --
+/// A session may ask `system.status` at most this often: each one costs every
+/// unit's worker five or more transfers.
+pub const SYSTEM_STATUS_INTERVAL: Duration = Duration::from_secs(1);
 
 impl Drop for Connection {
     fn drop(&mut self) {
@@ -1866,9 +1876,114 @@ impl Connection {
             // HB1's entry.
             "hub.stats" | "hub.rename" if !admin => denied(),
             "fw.install" | "hub.stats" | "hub.rename" => err(id, "unsupported", None),
+            // -- WP SW2 --
+            t if t.starts_with("system.") => self.system(t, id, message, session.role()),
             _ => err(id, "unknown_type", None),
         };
         self.reply(answer);
+    }
+
+    // -- WP SW2 --
+    /// The audio link's system model (`docs/integrator/audio-link.md`). Reading is
+    /// for every role; acknowledging an alarm and applying a scene for control
+    /// and admin; changing the model and writing the alignment for admin, as link
+    /// configuration is an admin action (`extension_channel_spec.md` 2.8). The
+    /// reads and writes block on the devices, on this connection alone.
+    fn system(
+        &mut self,
+        t: &str,
+        id: Option<u64>,
+        message: &Map<String, Value>,
+        role: Role,
+    ) -> String {
+        let hub = &self.shared.hub;
+        let admin_only = matches!(t, "system.set" | "system.align");
+        // -- fixup sw2x -- a scene and the system mute are then judged op by op
+        // against the policy (`HubHandle::system_apply_scene`).
+        let control = matches!(t, "system.scene.apply" | "system.alarm.ack" | "system.mute");
+        if (admin_only && role != Role::Admin) || (control && role == Role::Viewer) {
+            let need = if admin_only { "admin" } else { "control" };
+            return err(id, "denied", Some(&format!("{need} role required")));
+        }
+        let json = |v: Result<Value, serde_json::Error>| match v {
+            Ok(body) => ok(id, body),
+            Err(_) => err(id, "internal", None),
+        };
+        match t {
+            "system.get" => {
+                let (model, revision) = hub.system_model();
+                json(serde_json::to_value(model).map(|m| json!({"model": m, "revision": revision})))
+            }
+            "system.set" => {
+                let Some(model) = message.get("model").cloned() else {
+                    return err(id, "bad_request", Some("no model"));
+                };
+                let model = match serde_json::from_value(model) {
+                    Ok(m) => m,
+                    Err(e) => return err(id, "bad_request", Some(&e.to_string())),
+                };
+                match hub.system_set_model(model) {
+                    Ok(revision) => ok(id, json!({"revision": revision})),
+                    Err(crate::system::ModelRefused::Invalid(e)) => {
+                        err(id, "bad_request", Some(&e.to_string()))
+                    }
+                    Err(e @ crate::system::ModelRefused::NotSaved(_)) => {
+                        err(id, "internal", Some(&e.to_string()))
+                    }
+                }
+            }
+            "system.status" => {
+                // -- fixup sw2x -- at most one a second per session.
+                let now = Instant::now();
+                if let Some(last) = self.last_system_status
+                    && now.saturating_duration_since(last) < SYSTEM_STATUS_INTERVAL
+                {
+                    return err(
+                        id,
+                        "rate_limited",
+                        Some("system.status at most once a second per session"),
+                    );
+                }
+                self.last_system_status = Some(now);
+                json(serde_json::to_value(hub.system_status()))
+            }
+            "system.mute" => {
+                let Some(muted) = message.get("muted").and_then(Value::as_bool) else {
+                    return err(id, "bad_request", Some("no muted"));
+                };
+                match hub.system_set_mute(muted, role) {
+                    Ok(writes) => json(serde_json::to_value(writes).map(|w| json!({"writes": w}))),
+                    Err(e) => system_refused(id, &e),
+                }
+            }
+            "system.align" => {
+                let apply = message
+                    .get("apply")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                json(serde_json::to_value(hub.system_align(apply)))
+            }
+            "system.scene.apply" => {
+                let Some(scene) = message.get("scene").and_then(Value::as_str) else {
+                    return err(id, "bad_request", Some("no scene"));
+                };
+                match hub.system_apply_scene(scene, role) {
+                    Ok(report) => json(serde_json::to_value(report)),
+                    Err(e) => system_refused(id, &e),
+                }
+            }
+            "system.alarms" => {
+                json(serde_json::to_value(hub.system_alarms()).map(|a| json!({"alarms": a})))
+            }
+            "system.alarm.ack" => match message.get("alarm").and_then(Value::as_u64) {
+                Some(alarm) => match hub.system_acknowledge(alarm) {
+                    Some(a) => json(serde_json::to_value(a).map(|a| json!({"alarm": a}))),
+                    None => err(id, "bad_request", Some("no such alarm on")),
+                },
+                None => err(id, "bad_request", Some("no alarm")),
+            },
+            _ => err(id, "unknown_type", None),
+        }
     }
 
     /// Blocks for the image if nothing is cached, on this connection alone.
@@ -2047,6 +2162,23 @@ fn ok(id: Option<u64>, body: Value) -> String {
         reply.insert("id".into(), id.into());
     }
     Value::Object(reply).to_string()
+}
+
+// -- fixup sw2x --
+/// A refused scene or system mute as an `err`.
+fn system_refused(id: Option<u64>, e: &crate::system::SystemRefused) -> String {
+    use crate::system::SystemRefused as R;
+    use crate::system::scene::SceneRefused as S;
+    match e {
+        R::Scene(S::NoScene) => err(id, "bad_request", Some("no such scene")),
+        R::Scene(S::NoFrame) => err(
+            id,
+            "no_device",
+            Some("no unit of the scene reports a link frame"),
+        ),
+        R::Denied(why) => err(id, "denied", Some(why)),
+        R::NoSender => err(id, "no_device", Some("no sender of the model is reachable")),
+    }
 }
 
 /// `{"t":"err","id":…,"code":…}`. A wrong PIN has no `msg`, as real hubs (spec 7.1).

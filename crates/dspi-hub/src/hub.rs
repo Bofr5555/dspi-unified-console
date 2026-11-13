@@ -170,7 +170,8 @@ struct State {
 pub(crate) struct HubInner {
     name: String,
     hub_id: String,
-    policy: Arc<Policy>,
+    // -- fixup sw2x -- read by the system model's per-op role check.
+    pub(crate) policy: Arc<Policy>,
     state: Mutex<State>,
     pub(crate) relay: Arc<Relay>,
     /// Set under `state`, so an attach or an open either finished before it or fails.
@@ -192,6 +193,9 @@ pub(crate) struct HubInner {
     /// to copy the names, and it is never taken under L1.
     names_saving: Mutex<()>,
     warm_snapshots: bool,
+    // -- WP SW2 --
+    /// The audio link's system model. Its lock is a leaf.
+    pub(crate) system: Arc<crate::system::SystemShared>,
     // -- WP HB5 --
     /// The responder while sharing. Above L1: L1 is taken under it, so that the last
     /// update has the latest devices, and it is never taken under L1. Not held across
@@ -261,6 +265,14 @@ impl Hub {
         // -- WP HB3 --
         let names = config.names.take();
         let stored = names.as_ref().map(|n| n.load()).unwrap_or_default();
+        // -- WP SW2 -- the model persists where the clients and names do.
+        let system_store = auth.as_ref().map(|a| {
+            Arc::new(crate::auth::StoredSystem(Arc::clone(a)))
+                as Arc<dyn crate::system::SystemStore>
+        });
+        let system = Arc::new(crate::system::SystemShared::new(system_store));
+        let relay = Arc::new(Relay::default());
+        relay.set_tap(Arc::clone(&system));
         let (sup_tx, sup_rx) = mpsc::channel();
         let (ev_tx, ev_rx) = mpsc::channel();
         let inner = Arc::new(HubInner {
@@ -274,7 +286,7 @@ impl Hub {
                 next_session: FIRST_REMOTE_SESSION_ID,
                 next_generation: 1,
             }),
-            relay: Arc::new(Relay::default()),
+            relay,
             stopping: AtomicBool::new(false),
             sup: sup_tx,
             events: ev_tx,
@@ -288,6 +300,8 @@ impl Hub {
             names,
             names_saving: Mutex::new(()),
             warm_snapshots: config.warm_snapshots || network.is_some(),
+            // -- WP SW2 --
+            system,
             // -- WP HB5 --
             advertiser: Mutex::new(None),
             // -- WP HUBFLAKE4 --
@@ -652,6 +666,19 @@ impl HubHandle {
     }
 }
 
+// -- WP SW2 --
+impl HubHandle {
+    /// The online device with this serial.
+    pub(crate) fn device_by_serial(&self, serial: &str) -> Option<Arc<DeviceShared>> {
+        let st = guard(&self.inner.state);
+        st.registry
+            .by_serial(serial)
+            .filter(|d| d.state == DeviceState::Online)
+            .and_then(|d| st.attached.get(&d.handle))
+            .map(|a| Arc::clone(&a.shared))
+    }
+}
+
 // -- WP HB3 --
 impl HubHandle {
     fn device_at(&self, handle: u8) -> Option<Arc<DeviceShared>> {
@@ -998,6 +1025,11 @@ impl HubInner {
         }
         if self.warm_snapshots {
             shared.warm_snapshot();
+        }
+        // -- fixup sw2x (F5) -- a unit of the system model, new or back on another
+        // handle: learn whether it sends 0xE1, without waiting.
+        if self.system.watches(&serial) {
+            crate::system::learn_events(&self.system, &shared);
         }
         if let Some(name) = adopt {
             self.adopt_name(&shared, serial.clone(), &name);

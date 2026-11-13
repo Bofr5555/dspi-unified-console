@@ -618,6 +618,22 @@ impl NameStore for StoredNames {
     }
 }
 
+// -- WP SW2 --
+/// The system model, kept in the same file as the clients and names.
+pub(crate) struct StoredSystem(pub(crate) Arc<AuthStore>);
+
+impl crate::system::SystemStore for StoredSystem {
+    fn load(&self) -> Option<crate::system::model::SystemModel> {
+        self.0.lock().store.system()
+    }
+
+    fn save(&self, model: &crate::system::model::SystemModel) -> Result<(), HubError> {
+        let mut s = self.0.lock();
+        s.store.set_system(model)?;
+        s.save()
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_hb1 {

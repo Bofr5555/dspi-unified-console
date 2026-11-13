@@ -16,6 +16,7 @@
 //! | [`registry`], [`snapshot`], [`polls`] | handles and names, the cache, polls | HB3 |
 //! | [`server`], [`auth`], [`store`] | the socket, pairing, what is kept on disk | HB1 |
 //! | [`advertise`], [`web`] | Bonjour, the bundled web UI | HB5 |
+//! | [`system`] | the audio link's system model: installation, alignment, scenes, alarms | SW2 |
 #![warn(
     missing_docs,
     clippy::unwrap_used,
@@ -44,6 +45,8 @@ pub mod server;
 pub mod session;
 pub mod snapshot;
 pub mod store;
+// -- WP SW2 --
+pub mod system;
 pub mod usb;
 pub mod web;
 
@@ -65,3 +68,7 @@ pub use dspi_link::DEFAULT_PORT;
 pub use server::NetworkControl;
 #[cfg(all(feature = "usb", not(target_os = "android")))]
 pub use usb::UsbBus;
+// -- WP SW2 --
+pub use system::{
+    AlignReport, ModelRefused, SceneReport, SystemRefused, SystemStatus, SystemStore, WriteResult,
+};
