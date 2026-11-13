@@ -397,7 +397,9 @@ extension DSPViewModel {
         channelData[ch]?[band] = p
         if let core = typedCore {
             let wire = Self.coreBand(p)
-            core.write(lane: nil) { try $0.setFilter(ch: Self.wire(ch), band: Self.wire(band), params: wire) }
+            core.commit(lane: "eq[\(ch)][\(band)]") {   // -- fixup sw9 F2 -- behind the drag's lane
+                try $0.setFilter(ch: Self.wire(ch), band: Self.wire(band), params: wire)
+            }
         } else {
             transport.sendControlRequest(request: REQ_SET_EQ_PARAM, value: 0, index: 0, data: eqParamPacket(ch: ch, band: band, p: p))
         }
@@ -581,7 +583,7 @@ extension DSPViewModel {
         // array with two entries would leave inputs 2+ out of range.
         self.preampDB = Array(repeating: val, count: preampDB.count)
         if let core = typedCore {   // -- WP SW9 --
-            core.write(lane: nil) { [val] in try $0.setPreamp(db: val) }
+            core.commit(lane: "pre.all") { [val] in try $0.setPreamp(db: val) }   // -- fixup sw9 F2 --
             return
         }
         let data = Data(bytes: &val, count: 4)
@@ -601,7 +603,9 @@ extension DSPViewModel {
         // inputs outside this pair.
         if let core = typedCore {   // -- WP SW9 --
             for input in [channel] + (partner.map { [$0] } ?? []) {
-                core.write(lane: nil) { [val] in try $0.setInputPreamp(input: Self.wire(input), db: val) }
+                core.commit(lane: "pre[\(input)]") { [val] in   // -- fixup sw9 F2 --
+                    try $0.setInputPreamp(input: Self.wire(input), db: val)
+                }
             }
             return
         }
@@ -618,7 +622,7 @@ extension DSPViewModel {
         var val = keptMasterVolume(db)
         self.masterVolumeDB = val
         if let core = typedCore {   // -- WP SW9 --
-            core.write(lane: nil) { [val] in try $0.setMasterVolume(db: val) }
+            core.commit(lane: "vol.master") { [val] in try $0.setMasterVolume(db: val) }   // -- fixup sw9 F2 --
             return
         }
         let data = Data(bytes: &val, count: 4)
@@ -646,7 +650,7 @@ extension DSPViewModel {
         var val = Self.clampUserVolume(db)
         self.userVolumeDB = val
         if let core = typedCore {   // -- WP SW9 --
-            core.write(lane: nil) { [val] in try $0.setUserVolume(db: val) }
+            core.commit(lane: "vol.user") { [val] in try $0.setUserVolume(db: val) }   // -- fixup sw9 F2 --
             return
         }
         let data = Data(bytes: &val, count: 4)
@@ -2041,7 +2045,17 @@ extension DSPViewModel {
 
     // MARK: - Matrix Mixer
 
+    /// -- WP SW9 -- fixup sw9 F3: a crosspoint gain as it will be kept:
+    /// through a core, its 0.1 dB grid (`quantize_gain`), so the value shown
+    /// is the one the device gets; else as given.
+    func keptMatrixGain(_ gain: Float) -> Float {
+        guard typedCore != nil else { return gain }
+        let g = (gain * 10).rounded() / 10
+        return g == -0.0 ? 0.0 : g
+    }
+
     func setMatrixRoute(input: Int, output: Int, enabled: Bool, gain: Float, invert: Bool) {
+        let gain = keptMatrixGain(gain)   // -- fixup sw9 F3 --
         matrixRouting[input][output] = enabled
         matrixGain[input][output] = gain
         matrixInvert[input][output] = invert
@@ -2153,7 +2167,9 @@ extension DSPViewModel {
         // so the curve does not flick back to the pre-drag gain.
         if outputGainPreview.gains[output] != nil { outputGainPreview.gains[output] = nil }
         if let core = typedCore {   // -- WP SW9 --
-            core.write(lane: nil) { [val] in try $0.setOutputGain(output: Self.wire(output), db: val) }
+            core.commit(lane: "out.gain[\(output)]") { [val] in   // -- fixup sw9 F2 --
+                try $0.setOutputGain(output: Self.wire(output), db: val)
+            }
             return
         }
         let data = Data(bytes: &val, count: 4)
@@ -2183,7 +2199,9 @@ extension DSPViewModel {
         guard val <= maxOutputDelayMS else { refuseOutputDelay(output: output, ms: val); return }
         outputDelayMS[output] = val
         if let core = typedCore {   // -- WP SW9 --
-            core.write(lane: nil) { [val] in try $0.setOutputDelay(output: Self.wire(output), ms: val) }
+            core.commit(lane: "out.delay[\(output)]") { [val] in   // -- fixup sw9 F2 --
+                try $0.setOutputDelay(output: Self.wire(output), ms: val)
+            }
             return
         }
         let data = Data(bytes: &val, count: 4)

@@ -250,6 +250,69 @@ final class CoreDomainSW9Tests: XCTestCase {
         XCTAssertTrue(spinUntil(5) { vm.masterVolumeDB == before }, "then the drag: \(vm.masterVolumeDB)")
     }
 
+    // MARK: - Fixup sw9
+
+    /// F1 (with the core's P0W2): a graph drag whose motion changes kind
+    /// mid-way (gain only, then frequency and gain) is still one Undo step.
+    func testSW9AMixedMotionGraphDragIsOneUndoStep() throws {
+        let (_, t, vm) = demoVM()
+        var p = DSPi_Console.FilterParams(type: .peaking, freq: 1000, q: 1, gain: 0)
+        vm.setFilter(ch: 0, band: 3, p: p)            // a known start, a step of its own
+        XCTAssertTrue(spinUntil(5) { vm.channelData[0]?[3] == p })
+        let start = p
+        t.setDragging(true)
+        for step in 1...5 {                           // vertical: gain only
+            p.gain = Float(step) * 0.5
+            vm.sendFilterToDevice(ch: 0, band: 3, p: p)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
+        for step in 1...5 {                           // diagonal: frequency and gain
+            p.freq = 1000 + Float(step) * 50
+            p.gain = 2.5 + Float(step) * 0.5
+            vm.sendFilterToDevice(ch: 0, band: 3, p: p)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
+        vm.setFilter(ch: 0, band: 3, p: p)            // the release
+        t.setDragging(false)
+        XCTAssertTrue(spinUntil(5) { vm.undo.canUndo })
+        vm.undo.undo()
+        XCTAssertTrue(spinUntil(5) { vm.channelData[0]?[3] == start },
+                      "one Undo puts the band back where the drag began: \(String(describing: vm.channelData[0]?[3]))")
+        vm.undo.redo()
+        XCTAssertTrue(spinUntil(5) { vm.channelData[0]?[3] == p }, "and Redo to where it ended")
+    }
+
+    /// F2: a lane value issued after a commit of the same setting is sent
+    /// after it (the review's probe P2); the commit supersedes the value
+    /// still queued before it.
+    func testSW9ALaneValueAfterACommitIsNotOvertaken() {
+        let (core, t, vm) = demoVM()
+        let busy = DispatchSemaphore(value: 0)
+        t.coreQueue.async { busy.wait() }
+        vm.sendMasterVolumeToDevice(-30)   // a lane value, queued
+        vm.setMasterVolume(-25)            // the commit: -30 is superseded (the demo starts at -20)
+        vm.sendMasterVolumeToDevice(-10)   // newer than the commit
+        busy.signal()
+        flush(t)
+        XCTAssertEqual(t.readState().masterVolumeDb, -10, "the newest value issued is the device's")
+        let sent = entries(core, t, "vol.master")
+        XCTAssertEqual(sent.count, 2, "the commit, then the newer value; -30 never sent: \(sent.map(\.after))")
+    }
+
+    /// F3: a crosspoint gain is kept on the core's 0.1 dB grid, so the value
+    /// shown at once is the device's and nothing snaps after the window.
+    func testSW9MatrixGainFollowsTheCoresGrid() {
+        let (_, t, vm) = demoVM()
+        vm.setMatrixRoute(input: 0, output: 1, enabled: true, gain: -4.25, invert: false)
+        let shownAtOnce = vm.matrixGain[0][1]
+        flush(t)
+        let kept = t.readState().matrixGain[0][1]
+        XCTAssertEqual(kept, -4.3)
+        XCTAssertEqual(shownAtOnce, kept)
+        settle(CoreMirror.defaultPendingWindow + 0.3)
+        XCTAssertEqual(vm.matrixGain[0][1], kept)
+    }
+
     // MARK: - No raw writes in this domain
 
     /// Every setter of the domain goes to a typed core call: the journal
