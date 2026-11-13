@@ -286,11 +286,16 @@ final class ExtensionChannelViewModelTests: XCTestCase {
         // The connect path's own fetch probes once.
         fake.selectDevice(FakeTransport.demoDevice)
         XCTAssertTrue(spinUntil(30) { vm.coreVregStatus != nil })
-        XCTAssertEqual(counter.extensionGets(EXT_LIST), 1)
+        // -- WP SW11 -- Through a core the probe is its connect probe, and
+        // the console reads its result (extStatus): it sends no EXT_LIST.
+        let probes = CoreTransportUnderTest.enabled ? 0 : 1
+        XCTAssertEqual(counter.extensionGets(EXT_LIST), probes)
         fetched(vm)
-        XCTAssertEqual(counter.extensionGets(EXT_LIST), 1, "a refresh reuses the probe")
+        XCTAssertEqual(counter.extensionGets(EXT_LIST), probes, "a refresh reuses the probe")
+        vm.coreVregStatus = nil
         fake.reconnect()
-        XCTAssertTrue(spinUntil(30) { counter.extensionGets(EXT_LIST) == 2 }, "a new connection probes again")
+        XCTAssertTrue(spinUntil(30) { counter.extensionGets(EXT_LIST) == 2 * probes && vm.coreVregStatus != nil },
+                      "a new connection probes again")
         XCTAssertTrue(spinUntil(5) { vm.coreVregSupported })
     }
 
@@ -366,7 +371,11 @@ final class ExtensionChannelViewModelTests: XCTestCase {
 
     /// The fake stays disconnected, so the view model's own connect path never
     /// runs and the probe below is the only one.
-    private func probe(_ results: [Result<Data, LinkStatus>]) -> (ScriptedProbeTransport, DSPViewModel) {
+    private func probe(_ results: [Result<Data, LinkStatus>]) throws -> (ScriptedProbeTransport, DSPViewModel) {
+        // -- WP SW11 -- The console's own probe policy, on the paths without
+        // a core.  Through a core, `probeExtensions` reads the core's connect
+        // probe (extStatus), whose policy the core's own tests cover.
+        try XCTSkipIf(CoreTransportUnderTest.enabled, "through a core the probe is the core's")
         let fake = FakeTransport(autoSelect: false)
         // -- WP SW4 --
         let t = ScriptedProbeTransport(CoreTransportUnderTest.over(fake), listResults: results)
@@ -381,37 +390,37 @@ final class ExtensionChannelViewModelTests: XCTestCase {
         return (t, vm)
     }
 
-    func testAStallIsFinal() {
-        let (t, vm) = probe([.failure(.error)])
+    func testAStallIsFinal() throws {
+        let (t, vm) = try probe([.failure(.error)])
         XCTAssertEqual(t.listCalls, 1)
         XCTAssertEqual(vm.extensionProbe, .unsupported)
     }
 
     /// DSPi Link: hubs classify the unlisted 0x00 as `config`, so a viewer or
     /// control session is denied; the features stay hidden.
-    func testAHubDenialIsFinal() {
-        let (t, vm) = probe([.failure(.denied)])
+    func testAHubDenialIsFinal() throws {
+        let (t, vm) = try probe([.failure(.denied)])
         XCTAssertEqual(t.listCalls, 1)
         XCTAssertEqual(vm.extensionProbe, .unsupported)
         XCTAssertFalse(vm.crossfeedPairMapSupported)
     }
 
-    func testOtherFailuresAreRetriedOnce() {
-        let (t, vm) = probe([.failure(.timeout), .success(Data([0x02, 0x00]))])
+    func testOtherFailuresAreRetriedOnce() throws {
+        let (t, vm) = try probe([.failure(.timeout), .success(Data([0x02, 0x00]))])
         XCTAssertEqual(t.listCalls, 2)
         XCTAssertEqual(vm.extensionProbe, .supported(DeviceExtensions(ids: [EXT_CORE_VREG])))
         XCTAssertTrue(vm.coreVregSupported)
         XCTAssertFalse(vm.crossfeedPairMapSupported)
     }
 
-    func testTwoFailuresGiveUp() {
-        let (t, vm) = probe([.failure(.busy), .failure(.timeout), .success(Data([0x01, 0x00]))])
+    func testTwoFailuresGiveUp() throws {
+        let (t, vm) = try probe([.failure(.busy), .failure(.timeout), .success(Data([0x01, 0x00]))])
         XCTAssertEqual(t.listCalls, 2)
         XCTAssertEqual(vm.extensionProbe, .unsupported)
     }
 
-    func testAnEmptyListIsSupportedWithNothing() {
-        let (_, vm) = probe([.success(Data())])
+    func testAnEmptyListIsSupportedWithNothing() throws {
+        let (_, vm) = try probe([.success(Data())])
         XCTAssertEqual(vm.extensionProbe, .supported(.none))
         XCTAssertFalse(vm.crossfeedPairMapSupported)
         XCTAssertFalse(vm.coreVregSupported)

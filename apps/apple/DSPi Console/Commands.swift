@@ -677,6 +677,7 @@ extension DSPViewModel {
     /// for non-HOST sources, so other hosts' edits flow through automatically.
     func setLgSoundSyncEnabled(_ enabled: Bool) {
         DispatchQueue.main.async { self.lgSoundSyncEnabled = enabled }
+        if typedWrite({ try $0.setLgSoundSync(enabled: enabled) }) { return }   // -- WP SW11 --
         transport.sendControlRequest(request: REQ_SET_LG_SOUND_SYNC_ENABLE, value: 0, index: 0,
                                data: Data([enabled ? 1 : 0]))
     }
@@ -695,8 +696,12 @@ extension DSPViewModel {
     /// than the optimistic guess. (Firmware contract: confirm via GET 0xEB.)
     func setDacHwMuteConfig(_ config: DacHwMuteConfig) {
         DispatchQueue.main.async { self.dacHwMuteConfig = config }
-        transport.sendControlRequest(request: REQ_SET_DAC_HW_MUTE_CONFIG,
-                               value: 0, index: 0, data: config.toData())
+        // -- WP SW11 -- Through a core, its setter; the read-back below is its re-read.
+        if !typedWrite({ try $0.setDacMute(enabled: config.enabled, activeLow: config.activeLow, pin: config.pin,
+                                           holdMs: config.holdMs, releaseMs: config.releaseMs) }) {
+            transport.sendControlRequest(request: REQ_SET_DAC_HW_MUTE_CONFIG,
+                                   value: 0, index: 0, data: config.toData())
+        }
         DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.15) {
             self.fetchDacHwMuteConfig()
         }
@@ -706,6 +711,20 @@ extension DSPViewModel {
     /// than V10; if the call returns nil, `dacHwMuteSupported` stays false
     /// and the Settings section hides itself.
     func fetchDacHwMuteConfig() {
+        // -- WP SW11 -- Through a core, its re-read into its mirror.
+        if let core = typedCore {
+            let generation = transport.generation
+            guard case .success = core.call({ try $0.fetchDacMute() }) else { return }
+            let s = core.readState()
+            let cfg = DacHwMuteConfig(enabled: s.dacMuteEnabled, activeLow: s.dacMuteActiveLow, pin: s.dacMutePin,
+                                      holdMs: s.dacMuteHoldMs, releaseMs: s.dacMuteReleaseMs)
+            DispatchQueue.main.async {
+                guard self.transport.generation == generation else { return }
+                if self.dacHwMuteConfig != cfg { self.dacHwMuteConfig = cfg }
+                self.dacHwMuteSupported = true
+            }
+            return
+        }
         guard let d = transport.getControlRequest(request: REQ_GET_DAC_HW_MUTE_CONFIG,
                                             value: 0, index: 0, length: 16),
               let cfg = DacHwMuteConfig.fromData(d) else { return }
@@ -722,6 +741,7 @@ extension DSPViewModel {
     /// the firmware's main loop after the status returns.
     @discardableResult
     func testDacHwMute() -> UInt8 {
+        if let core = typedCore { return Self.pinStatus(core.call { try $0.testDacMute() }) }   // -- WP SW11 --
         guard let d = transport.getControlRequest(request: REQ_TEST_DAC_HW_MUTE,
                                             value: 0, index: 0, length: 1),
               d.count >= 1 else {
@@ -733,6 +753,13 @@ extension DSPViewModel {
     /// Probe the firmware for LG Sound Sync support and read the current
     /// enable flag.  STALLs on firmware older than V8.
     func fetchLgSoundSyncEnabled() {
+        // -- WP SW11 -- Through a core, its mirror holds the flag; the probe
+        // is the core's feature list.
+        if let core = typedCore {
+            let supported = coreFeature(core, "lg_sound_sync")
+            DispatchQueue.main.async { if self.lgSoundSyncSupported != supported { self.lgSoundSyncSupported = supported } }
+            return
+        }
         if let d = transport.getControlRequest(request: REQ_GET_LG_SOUND_SYNC_ENABLE, value: 0, index: 0, length: 1),
            d.count >= 1 {
             let en = d[0] != 0
@@ -2202,7 +2229,45 @@ extension DSPViewModel {
 
     // MARK: - Pin Configuration
 
+    // -- WP SW11 -- Through a core, the pins, I2S, ADAT, inputs, UART/I2C,
+    // LG Sound Sync, DAC mute and names call its typed API: the core checks
+    // and journals each change (Undo steps back what its registry calls
+    // undoable: channel names, LG Sound Sync, the master clock; the pins,
+    // buses, inputs and the flash-written names are recorded and stepped
+    // over, as in Qt), and the settings are read from its mirror, which
+    // CoreMirror shows.  The setters that return a PIN_CONFIG_* status
+    // block for the core's answer (`writeAndWait`).  Without a core (USB without
+    // -CoreTransport, MIDI, the Link client) they stay raw SETs and GETs.
+
+    /// -- WP SW11 -- A typed setter's outcome as the PIN_CONFIG_* status the
+    /// raw request returns: the device's refusal carries it, any other
+    /// failure is 0xFF.
+    static func pinStatus(_ result: Result<Void, DspiError>) -> UInt8 {
+        switch result {
+        case .success: return PIN_CONFIG_SUCCESS
+        case .failure(.Refused(let status)): return status
+        case .failure: return 0xFF
+        }
+    }
+
+    /// -- WP SW11 -- Through a core, `body` as a typed call with a status
+    /// (blocking, then the state is published); nil without one, for the raw
+    /// request.
+    private func typedPinStatus(_ body: (DspiCore) throws -> Void) -> UInt8? {
+        guard let core = typedCore else { return nil }
+        return Self.pinStatus(core.writeAndWait(body))
+    }
+
+    /// -- WP SW11 -- Whether the core finds `feature` on the device (no I/O).
+    private func coreFeature(_ core: CoreStateSource, _ feature: String) -> Bool {
+        (try? core.call { $0.featurePresent(name: feature) }.get()) ?? false
+    }
+
     func fetchOutputPin(output: Int) {
+        if let core = typedCore {   // -- WP SW11 -- its re-read, into the mirror shown
+            _ = core.writeAndWait { _ = try $0.fetchOutputPin(slot: UInt8(output)) }
+            return
+        }
         if let d = transport.getControlRequest(request: REQ_GET_OUTPUT_PIN, value: UInt16(output), index: 2, length: 1) {
             let pin = d[0]
             DispatchQueue.main.async {
@@ -2215,6 +2280,10 @@ extension DSPViewModel {
     /// Single IN transfer: wValue = (new_pin << 8) | output_index
     @discardableResult
     func setOutputPin(output: Int, pin: UInt8) -> UInt8 {
+        if let status = typedPinStatus({ try $0.setOutputPin(slot: UInt8(output), pin: pin) }) {   // -- WP SW11 --
+            if status == PIN_CONFIG_SUCCESS { DispatchQueue.main.async { self.outputPins[output] = pin } }
+            return status
+        }
         let wValue = (UInt16(pin) << 8) | UInt16(output)
         if let d = transport.getControlRequest(request: REQ_SET_OUTPUT_PIN, value: wValue, index: 2, length: 1) {
             let status = d[0]
@@ -2248,6 +2317,10 @@ extension DSPViewModel {
     /// Switch an output slot between S/PDIF (0) and I2S (1). Returns firmware status code.
     @discardableResult
     func setOutputSlotType(slot: Int, type: UInt8) -> UInt8 {
+        if let status = typedPinStatus({ try $0.setOutputType(slot: UInt8(slot), kind: type) }) {   // -- WP SW11 --
+            if status == PIN_CONFIG_SUCCESS { DispatchQueue.main.async { self.outputSlotTypes[slot] = type } }
+            return status
+        }
         let wValue = (UInt16(type) << 8) | UInt16(slot)
         if let d = transport.getControlRequest(request: REQ_SET_OUTPUT_TYPE, value: wValue, index: 2, length: 1) {
             let status = d[0]
@@ -2260,10 +2333,24 @@ extension DSPViewModel {
     }
 
     func fetchOutputSlotType(slot: Int) {
+        // -- WP SW11 -- Through a core, its mirror holds the types; a re-read
+        // of them is `refreshOutputSlotTypes`.
+        if typedCore != nil { return }
         if let d = transport.getControlRequest(request: REQ_GET_OUTPUT_TYPE, value: UInt16(slot), index: 2, length: 1) {
             let type = d[0]
             DispatchQueue.main.async { self.outputSlotTypes[slot] = type }
         }
+    }
+
+    /// Re-read every slot's bus (STM32 firmware coerces the dependent slots
+    /// when a parent goes S/PDIF).  Blocking.  -- WP SW11 -- Through a core,
+    /// its full re-read: it has no per-slot read, its mirror is published.
+    func refreshOutputSlotTypes() {
+        if let core = typedCore {
+            _ = core.writeAndWait { try $0.refreshParams() }
+            return
+        }
+        for slot in 0..<numOutputSlots { fetchOutputSlotType(slot: slot) }
     }
 
     /// Set a BCK GPIO pin (LRCLK = BCK + 1).  `role` selects the master/unified
@@ -2273,6 +2360,14 @@ extension DSPViewModel {
     /// when it is the one clocking outputs (clock_pins_spec.md §3).
     @discardableResult
     func setI2SBckPin(_ pin: UInt8, role: UInt8 = I2S_BCK_ROLE_MASTER) -> UInt8 {
+        if let status = typedPinStatus({ try $0.setI2sBckPin(role: role, pin: pin) }) {   // -- WP SW11 --
+            if status == PIN_CONFIG_SUCCESS {
+                DispatchQueue.main.async {
+                    if role == I2S_BCK_ROLE_SLAVE { self.i2sBckPinSlave = pin } else { self.i2sBckPin = pin }
+                }
+            }
+            return status
+        }
         let wValue = (UInt16(role) << 8) | UInt16(pin)
         if let d = transport.getControlRequest(request: REQ_SET_I2S_BCK_PIN, value: wValue, index: 2, length: 1) {
             let status = d[0]
@@ -2288,6 +2383,7 @@ extension DSPViewModel {
     }
 
     func fetchI2SBckPin(role: UInt8 = I2S_BCK_ROLE_MASTER) {
+        if typedCore != nil { return }   // -- WP SW11 -- the core's mirror holds both pairs
         if let d = transport.getControlRequest(request: REQ_GET_I2S_BCK_PIN, value: UInt16(role), index: 2, length: 1) {
             let pin = d[0]
             DispatchQueue.main.async {
@@ -2300,6 +2396,10 @@ extension DSPViewModel {
     /// Enable or disable the master clock output.
     @discardableResult
     func setMckEnable(_ enabled: Bool) -> UInt8 {
+        if let status = typedPinStatus({ try $0.setMckEnabled(enabled: enabled) }) {   // -- WP SW11 --
+            if status == PIN_CONFIG_SUCCESS { DispatchQueue.main.async { self.mckEnabled = enabled } }
+            return status
+        }
         if let d = transport.getControlRequest(request: REQ_SET_MCK_ENABLE, value: enabled ? 1 : 0, index: 2, length: 1) {
             let status = d[0]
             if status == PIN_CONFIG_SUCCESS {
@@ -2311,6 +2411,7 @@ extension DSPViewModel {
     }
 
     func fetchMckEnable() {
+        if typedCore != nil { return }   // -- WP SW11 -- the core's mirror holds it
         if let d = transport.getControlRequest(request: REQ_GET_MCK_ENABLE, value: 0, index: 2, length: 1) {
             let val = d[0] != 0
             DispatchQueue.main.async { self.mckEnabled = val }
@@ -2320,6 +2421,10 @@ extension DSPViewModel {
     /// Set MCK GPIO pin. MCK must be disabled first.
     @discardableResult
     func setMckPin(_ pin: UInt8) -> UInt8 {
+        if let status = typedPinStatus({ try $0.setMckPin(pin: pin) }) {   // -- WP SW11 --
+            if status == PIN_CONFIG_SUCCESS { DispatchQueue.main.async { self.mckPin = pin } }
+            return status
+        }
         if let d = transport.getControlRequest(request: REQ_SET_MCK_PIN, value: UInt16(pin), index: 2, length: 1) {
             let status = d[0]
             if status == PIN_CONFIG_SUCCESS {
@@ -2331,6 +2436,7 @@ extension DSPViewModel {
     }
 
     func fetchMckPin() {
+        if typedCore != nil { return }   // -- WP SW11 -- the core's mirror holds it
         if let d = transport.getControlRequest(request: REQ_GET_MCK_PIN, value: 0, index: 2, length: 1) {
             DispatchQueue.main.async { self.mckPin = d[0] }
         }
@@ -2341,6 +2447,10 @@ extension DSPViewModel {
     @discardableResult
     func setMckMultiplier(_ multiplier: Int) -> UInt8 {
         let wireValue: UInt16 = (multiplier == 256) ? 1 : 0
+        if let status = typedPinStatus({ try $0.setMckMultiplier(mult: UInt8(wireValue)) }) {   // -- WP SW11 --
+            if status == PIN_CONFIG_SUCCESS { DispatchQueue.main.async { self.mckMultiplier = multiplier } }
+            return status
+        }
         if let d = transport.getControlRequest(request: REQ_SET_MCK_MULTIPLIER, value: wireValue, index: 2, length: 1) {
             let status = d[0]
             if status == PIN_CONFIG_SUCCESS {
@@ -2352,10 +2462,37 @@ extension DSPViewModel {
     }
 
     func fetchMckMultiplier() {
+        if typedCore != nil { return }   // -- WP SW11 -- the core's mirror holds it
         if let d = transport.getControlRequest(request: REQ_GET_MCK_MULTIPLIER, value: 0, index: 2, length: 1) {
             let raw = d[0]
             let value = raw == 1 ? 256 : 128  // V5 encoding: 0 = 128x, 1 = 256x
             DispatchQueue.main.async { self.mckMultiplier = value }
+        }
+    }
+
+    // MARK: - Stream states and names through the core
+
+    /// -- WP SW11 -- What a core's notification said beyond the mirror,
+    /// which CoreMirror has applied already.  A stream state (CG25's
+    /// NOTIFY_STREAMS: ADAT out, the I2S slave and ADAT input locks) is read
+    /// again in full; another client's source or device name is read from the
+    /// core's copy (no traffic).  Without a core the interrupt monitor's
+    /// hooks do this (DSPViewModel).  Main thread.
+    func followCoreEvents(_ flags: UInt32) {
+        guard transport.coreStateSource != nil else { return }
+        if flags & DspiConstants.NOTIFY_STREAMS != 0 {
+            let (adat, i2s, adatIn) = (adatSupported, i2sClockModeSupported, adatInputSupported)
+            DispatchQueue.global(qos: .userInitiated).async {
+                if adat { self.fetchAdatStatus() }
+                if i2s { self.fetchI2SSlaveStatus() }
+                if adatIn { self.fetchAdatInputStatus() }
+            }
+        }
+        if flags & DspiConstants.NOTIFY_NAMES != 0 {
+            DispatchQueue.global(qos: .userInitiated).async {
+                self.fetchInputSourceNames()
+                self.fetchDeviceName()
+            }
         }
     }
 
@@ -2370,6 +2507,31 @@ extension DSPViewModel {
     /// means the firmware predates ADAT; combined with the RP2350 gate this sets
     /// `adatSupported`.  Called from `fetchAll` after the bulk fetch.
     func fetchAdatStatus() {
+        // -- WP SW11 -- Through a core, the feature is the core's (and RP2350
+        // only, as below), as Qt gates it; a failed status read keeps the
+        // last status.
+        if let core = typedCore {
+            let generation = transport.generation
+            let supported = coreFeature(core, "adat_output")
+            DispatchQueue.main.async {
+                guard self.transport.generation == generation else { return }
+                let shown = supported && self.platformName == "RP2350"
+                if self.adatSupported != shown { self.adatSupported = shown }
+            }
+            guard supported, case .success(let s) = core.call({ try $0.fetchAdatOutStatus() }) else { return }
+            var status = AdatStatus()
+            status.enabled = s.enabled
+            status.active = s.active
+            status.pin = s.pin
+            status.rateOk = s.rateOk
+            status.resyncCount = s.resyncCount
+            status.slipCount = s.slipCount
+            DispatchQueue.main.async {
+                guard self.transport.generation == generation else { return }
+                if self.adatStatus != status { self.adatStatus = status }
+            }
+            return
+        }
         guard let data = transport.getControlRequest(request: REQ_GET_ADAT_STATUS, value: 0, index: 2, length: 8),
               let status = AdatStatus.fromData(data) else {
             DispatchQueue.main.async { self.adatSupported = false }
@@ -2394,6 +2556,15 @@ extension DSPViewModel {
     /// failure).
     @discardableResult
     func setAdatEnable(_ enabled: Bool) -> UInt8 {
+        if let status = typedPinStatus({ try $0.setAdatOutEnabled(enabled: enabled) }) {   // -- WP SW11 --
+            if status == PIN_CONFIG_SUCCESS {
+                DispatchQueue.main.async {
+                    self.adatEnabled = enabled
+                    self.adatStatus.enabled = enabled
+                }
+            }
+            return status
+        }
         if let d = transport.getControlRequest(request: REQ_SET_ADAT_ENABLE, value: enabled ? 1 : 0, index: 2, length: 1),
            d.count >= 1 {
             let status = d[0]
@@ -2413,6 +2584,16 @@ extension DSPViewModel {
     /// under a muted restart.  Returns the firmware status byte.
     @discardableResult
     func setAdatPin(_ pin: UInt8) -> UInt8 {
+        if let status = typedPinStatus({ try $0.setAdatOutPin(pin: pin) }) {   // -- WP SW11 --
+            if status == PIN_CONFIG_SUCCESS {
+                let applied = pin == 0 ? ADAT_PIN_DEFAULT : pin
+                DispatchQueue.main.async {
+                    self.adatPin = applied
+                    self.adatStatus.pin = applied
+                }
+            }
+            return status
+        }
         if let d = transport.getControlRequest(request: REQ_SET_ADAT_PIN, value: UInt16(pin), index: 2, length: 1),
            d.count >= 1 {
             let status = d[0]
@@ -2439,6 +2620,19 @@ extension DSPViewModel {
     /// A STALL (nil) means the firmware predates ADAT input; combined with the
     /// RP2350 gate this sets `adatInputSupported`.  Called from `fetchAll`.
     func fetchAdatInputConfig() {
+        if let core = typedCore {   // -- WP SW11 -- the feature is the core's; the settings are its mirror's
+            let generation = transport.generation
+            guard coreFeature(core, "adat_input") else {
+                DispatchQueue.main.async { if self.transport.generation == generation { self.adatInputSupported = false } }
+                return
+            }
+            DispatchQueue.main.async {
+                guard self.transport.generation == generation else { return }
+                self.adatInputSupported = (self.platformName == "RP2350")
+            }
+            fetchAdatInputStatus()
+            return
+        }
         guard let data = transport.getControlRequest(request: REQ_GET_ADAT_INPUT_STATUS, value: 0, index: 2, length: 20),
               let status = AdatInputStatus.fromData(data) else {
             DispatchQueue.main.async { self.adatInputSupported = false }
@@ -2459,6 +2653,27 @@ extension DSPViewModel {
     /// detected/measured rate) for the settings lock indicator.  Also re-syncs the
     /// configured enable / pin / clock mode the packet carries.
     func fetchAdatInputStatus() {
+        // -- WP SW11 -- Through a core, its lock read (input 1); the settings
+        // the raw packet carries come from its mirror (CoreMirror).
+        if let core = typedCore {
+            let generation = transport.generation
+            guard case .success(let lock) = core.call({ try $0.fetchInputLock(which: 1) }) else { return }
+            DispatchQueue.main.async {
+                guard self.transport.generation == generation else { return }
+                var status = self.adatInputStatus
+                status.state = lock.state
+                status.clockMode = lock.clockMode
+                status.rateOk = lock.rateOk
+                status.lockCount = lock.lockCount
+                status.lossCount = lock.lossCount
+                status.detectedRate = lock.detectedRate
+                status.measuredHz = lock.measuredHz
+                status.enabled = self.adatInputEnabled
+                status.pin = self.adatInputPin
+                if self.adatInputStatus != status { self.adatInputStatus = status }
+            }
+            return
+        }
         guard let d = transport.getControlRequest(request: REQ_GET_ADAT_INPUT_STATUS, value: 0, index: 2, length: 20),
               let status = AdatInputStatus.fromData(d) else { return }
         DispatchQueue.main.async {
@@ -2475,6 +2690,15 @@ extension DSPViewModel {
     /// firmware PIN_CONFIG_* status byte (0xFF on transfer failure).
     @discardableResult
     func setAdatInputEnable(_ enabled: Bool) -> UInt8 {
+        if let status = typedPinStatus({ try $0.setAdatInputEnabled(enabled: enabled) }) {   // -- WP SW11 --
+            if status == PIN_CONFIG_SUCCESS {
+                DispatchQueue.main.async {
+                    self.adatInputEnabled = enabled
+                    self.adatInputStatus.enabled = enabled
+                }
+            }
+            return status
+        }
         if let d = transport.getControlRequest(request: REQ_SET_ADAT_INPUT_ENABLE, value: enabled ? 1 : 0, index: 2, length: 1),
            d.count >= 1 {
             let status = d[0]
@@ -2495,6 +2719,15 @@ extension DSPViewModel {
     /// Returns the firmware PIN_CONFIG_* status byte.
     @discardableResult
     func setAdatInputPin(_ pin: UInt8) -> UInt8 {
+        if let status = typedPinStatus({ try $0.setAdatInputPin(pin: pin) }) {   // -- WP SW11 --
+            if status == PIN_CONFIG_SUCCESS {
+                DispatchQueue.main.async {
+                    self.adatInputPin = pin
+                    self.adatInputStatus.pin = pin
+                }
+            }
+            return status
+        }
         if let d = transport.getControlRequest(request: REQ_SET_ADAT_INPUT_PIN, value: UInt16(pin), index: 2, length: 1),
            d.count >= 1 {
             let status = d[0]
@@ -2518,6 +2751,15 @@ extension DSPViewModel {
     @discardableResult
     func setAdatInputClockMode(_ mode: UInt8) -> UInt8 {
         let clamped: UInt8 = mode == ADAT_INPUT_CLOCK_MODE_SLAVE ? ADAT_INPUT_CLOCK_MODE_SLAVE : ADAT_INPUT_CLOCK_MODE_MASTER
+        if let status = typedPinStatus({ try $0.setAdatInputClockMode(mode: clamped) }) {   // -- WP SW11 --
+            if status == PIN_CONFIG_SUCCESS {
+                DispatchQueue.main.async {
+                    self.adatInputClockMode = clamped
+                    self.adatInputStatus.clockMode = clamped
+                }
+            }
+            return status
+        }
         if let d = transport.getControlRequest(request: REQ_SET_ADAT_INPUT_CLOCK_MODE, value: UInt16(clamped), index: 2, length: 1),
            d.count >= 1 {
             let status = d[0]
@@ -2536,6 +2778,23 @@ extension DSPViewModel {
 
     /// Probes GET_INPUT_SOURCE. If the device STALLs (nil), the feature is unsupported.
     func fetchInputSource() {
+        // -- WP SW11 -- Through a core, the source is its mirror's and the
+        // feature its feature list's; then the inputs' reads, through it too.
+        if let core = typedCore {
+            let generation = transport.generation
+            let supported = coreFeature(core, "input_source")
+            DispatchQueue.main.async {
+                guard self.transport.generation == generation else { return }
+                if self.inputSourceSupported != supported { self.inputSourceSupported = supported }
+            }
+            if supported {
+                fetchSpdifInputConfig()
+                fetchI2SInputConfig()
+            }
+            fetchInputSourceNames()
+            fetchDeviceName()
+            return
+        }
         let data = transport.getControlRequest(request: REQ_GET_INPUT_SOURCE, value: 0, index: 2, length: 1)
         DispatchQueue.main.async {
             if let data = data, data.count >= 1 {
@@ -2559,6 +2818,28 @@ extension DSPViewModel {
     /// legacy gain, so only that probe decides support; a later failed read
     /// just leaves that source on its built-in label.
     func fetchInputSourceNames() {
+        // -- WP SW11 -- Through a core, the names it read on connect and
+        // keeps current (no traffic).  `Unsupported` on source 0: no names.
+        if let core = typedCore {
+            let generation = transport.generation
+            var names = Array(repeating: "", count: INPUT_SOURCE_NAME_SLOTS)
+            var supported = false
+            for source in 0...INPUT_SOURCE_MAX {
+                let r = core.call { try $0.cachedInputSourceName(source: UInt8(source)) }
+                if source == 0 {
+                    guard case .success = r else { break }
+                    supported = true
+                }
+                if case .success(let name) = r { names[source] = name }
+            }
+            DispatchQueue.main.async {
+                guard self.transport.generation == generation else { return }
+                self.inputSourceNamesSupported = supported
+                let shown = supported ? names : Array(repeating: "", count: INPUT_SOURCE_NAME_SLOTS)
+                if self.inputSourceNames != shown { self.inputSourceNames = shown }
+            }
+            return
+        }
         var names = Array(repeating: "", count: INPUT_SOURCE_NAME_SLOTS)
         var supported = false
         for source in 0...INPUT_SOURCE_MAX {
@@ -2583,12 +2864,13 @@ extension DSPViewModel {
     func setInputSourceName(source: Int, name: String) {
         guard inputSourceNamesSupported, (0...INPUT_SOURCE_MAX).contains(source) else { return }
         let ascii = DSPViewModel.sanitizeInputSourceName(name)
-        var payload = Data(count: INPUT_SOURCE_NAME_LEN)
-        payload.replaceSubrange(0..<ascii.utf8.count, with: Data(ascii.utf8))
-        transport.sendControlRequest(request: REQ_SET_INPUT_SOURCE_NAME, value: UInt16(source), index: 2, data: payload)
         DispatchQueue.main.async {
             self.inputSourceNames[source] = ascii
         }
+        if typedWrite({ try $0.setInputSourceName(source: UInt8(source), name: ascii) }) { return }   // -- WP SW11 --
+        var payload = Data(count: INPUT_SOURCE_NAME_LEN)
+        payload.replaceSubrange(0..<ascii.utf8.count, with: Data(ascii.utf8))
+        transport.sendControlRequest(request: REQ_SET_INPUT_SOURCE_NAME, value: UInt16(source), index: 2, data: payload)
     }
 
     /// Read the board name.  The probe is this GET alone: a STALL or a reply
@@ -2596,6 +2878,20 @@ extension DSPViewModel {
     func fetchDeviceName() {
         // A late reply from the previous device must not land on the new one.
         let generation = transport.generation
+        // -- WP SW11 -- Through a core, the name it keeps (no traffic);
+        // `Unsupported`: the firmware has none.
+        if let core = typedCore {
+            let r = core.call { try $0.cachedDeviceName() }
+            let name = (try? r.get()) ?? ""
+            let supported: Bool
+            if case .success = r { supported = true } else { supported = false }
+            DispatchQueue.main.async {
+                guard self.transport.generation == generation else { return }
+                self.deviceNameSupported = supported
+                if self.deviceName != name { self.deviceName = name }
+            }
+            return
+        }
         let d = transport.getControlRequest(request: REQ_GET_DEVICE_NAME, value: 0,
                                             index: 2, length: UInt16(DEVICE_NAME_LEN))
         let supported = d?.count == DEVICE_NAME_LEN
@@ -2612,12 +2908,13 @@ extension DSPViewModel {
     func setDeviceName(_ name: String) {
         guard deviceNameSupported else { return }
         let ascii = DSPViewModel.sanitizeInputSourceName(name)
-        var payload = Data(count: DEVICE_NAME_LEN)
-        payload.replaceSubrange(0..<ascii.utf8.count, with: Data(ascii.utf8))
-        transport.sendControlRequest(request: REQ_SET_DEVICE_NAME, value: 0, index: 2, data: payload)
         DispatchQueue.main.async {
             self.deviceName = ascii
         }
+        if typedWrite({ try $0.setDeviceName(name: ascii) }) { return }   // -- WP SW11 --
+        var payload = Data(count: DEVICE_NAME_LEN)
+        payload.replaceSubrange(0..<ascii.utf8.count, with: Data(ascii.utf8))
+        transport.sendControlRequest(request: REQ_SET_DEVICE_NAME, value: 0, index: 2, data: payload)
     }
 
     /// Reads the whole S/PDIF input inventory in one transfer (REQ_GET_SPDIF_INPUT_CONFIG,
@@ -2625,6 +2922,18 @@ extension DSPViewModel {
     /// older firmware the request STALLs; we fall back to the single-input pin read
     /// (REQ_GET_SPDIF_RX_PIN index 0) and mark multi-input as unsupported.
     func fetchSpdifInputConfig() {
+        // -- WP SW11 -- Through a core, the pins and the enable mask are its
+        // mirror's; more than one input is its feature, then four, as in Qt.
+        if let core = typedCore {
+            let generation = transport.generation
+            let multi = coreFeature(core, "spdif_multi_input")
+            DispatchQueue.main.async {
+                guard self.transport.generation == generation else { return }
+                self.multiSpdifSupported = multi
+                self.spdifInputCount = multi ? SPDIF_RX_NUM_INPUTS : 1
+            }
+            return
+        }
         // The response is 2 + count bytes.  Ask for the largest inventory we know
         // about; a three-input firmware answers short, which is why the pin list
         // is sized from the returned count rather than a fixed length.
@@ -2665,6 +2974,7 @@ extension DSPViewModel {
         DispatchQueue.main.async {
             self.inputSource = source
         }
+        if typedWrite({ try $0.setInputSource(source: UInt8(source)) }) { return }   // -- WP SW11 --
 
         transport.sendControlRequest(request: REQ_SET_INPUT_SOURCE, value: 0, index: 2, data: byte)
 
@@ -2677,6 +2987,10 @@ extension DSPViewModel {
 
     /// Reads a single S/PDIF input's GPIO pin (default index 0 = input 1).
     func fetchSpdifRxPin(index: Int = 0) {
+        if let core = typedCore {   // -- WP SW11 -- its re-read, into the mirror shown
+            _ = core.writeAndWait { _ = try $0.fetchSpdifRxPin(index: UInt8(index)) }
+            return
+        }
         if let data = transport.getControlRequest(request: REQ_GET_SPDIF_RX_PIN, value: UInt16(index), index: 2, length: 1),
            data.count >= 1 {
             let pin = data[0]
@@ -2694,6 +3008,15 @@ extension DSPViewModel {
     /// pin as a preference validated at enable time.
     @discardableResult
     func setSpdifRxPin(index: Int = 0, _ pin: UInt8) -> UInt8 {
+        if let status = typedPinStatus({ try $0.setSpdifRxPin(index: UInt8(index), pin: pin) }) {   // -- WP SW11 --
+            if status == PIN_CONFIG_SUCCESS {
+                DispatchQueue.main.async {
+                    if index == 0 { self.spdifRxPin = pin }
+                    else if self.spdifRxPinsExt.indices.contains(index - 1) { self.spdifRxPinsExt[index - 1] = pin }
+                }
+            }
+            return status
+        }
         let wValue = UInt16((index << 8) | Int(pin))
         if let d = transport.getControlRequest(request: REQ_SET_SPDIF_RX_PIN, value: wValue, index: 2, length: 1) {
             let status = d[0]
@@ -2714,6 +3037,13 @@ extension DSPViewModel {
     /// pin; disabling is refused (PIN_IN_USE) while the input is the active source.
     @discardableResult
     func setSpdifInputEnable(index: Int, _ enable: Bool) -> UInt8 {
+        if let status = typedPinStatus({ try $0.setSpdifInputEnabled(index: UInt8(index), enabled: enable) }) {   // -- WP SW11 --
+            if status == PIN_CONFIG_SUCCESS, index >= 1, self.spdifExtEnabled.indices.contains(index - 1) {
+                let i = index - 1
+                DispatchQueue.main.async { self.spdifExtEnabled[i] = enable }
+            }
+            return status
+        }
         let wValue = UInt16((index << 8) | (enable ? 1 : 0))
         if let d = transport.getControlRequest(request: REQ_SET_SPDIF_INPUT_ENABLE, value: wValue, index: 2, length: 1),
            d.count >= 1 {
@@ -2733,6 +3063,20 @@ extension DSPViewModel {
     /// older firmware; on success we read every stereo pair's data pin, the
     /// active channel count, the shared BCK pin, and the selected input rate.
     func fetchI2SInputConfig() {
+        // -- WP SW11 -- Through a core, the pins, channels and rate are its
+        // mirror's; the features are its feature list's.
+        if let core = typedCore {
+            let generation = transport.generation
+            let supported = coreFeature(core, "i2s_input_channels")
+            DispatchQueue.main.async {
+                guard self.transport.generation == generation else { return }
+                if self.i2sInputSupported != supported { self.i2sInputSupported = supported }
+            }
+            guard supported else { return }
+            fetchI2SClockMode()
+            fetchI2SClockPinMode()
+            return
+        }
         guard let data = transport.getControlRequest(request: REQ_GET_I2S_RX_PIN, value: 0, index: 2, length: 1),
               data.count >= 1 else {
             DispatchQueue.main.async { self.i2sInputSupported = false }
@@ -2760,6 +3104,7 @@ extension DSPViewModel {
     /// Reads the active I2S input channel count (2/4/6/8).  STALLs on firmware
     /// that predates multichannel I2S; leaves the default (2) in that case.
     func fetchI2SInputChannels() {
+        if typedCore != nil { return }   // -- WP SW11 -- the core's mirror holds it
         guard let d = transport.getControlRequest(request: REQ_GET_I2S_INPUT_CHANNELS, value: 0, index: 2, length: 1),
               d.count >= 1, d[0] != 0 else { return }
         let count = Int(d[0])
@@ -2774,6 +3119,10 @@ extension DSPViewModel {
     /// pushes NOTIFY_EVT_INPUT_FORMAT so the channel strips relayout.
     @discardableResult
     func setI2SInputChannels(_ count: Int) -> UInt8 {
+        if let status = typedPinStatus({ try $0.setI2sInputChannels(channels: UInt8(clamping: count)) }) {   // -- WP SW11 --
+            if status == PIN_CONFIG_SUCCESS { DispatchQueue.main.async { self.i2sInputChannels = count } }
+            return status
+        }
         if let d = transport.getControlRequest(request: REQ_SET_I2S_INPUT_CHANNELS, value: UInt16(count), index: 2, length: 1),
            d.count >= 1 {
             let status = d[0]
@@ -2789,6 +3138,7 @@ extension DSPViewModel {
     /// Only the selected I2S rate drives the picker; the current rate is valid
     /// for all sources but we already track it via REQ_GET_STATUS.
     func fetchInputRate() {
+        if typedCore != nil { return }   // -- WP SW11 -- the core's mirror holds the selected rate
         guard let data = transport.getControlRequest(request: REQ_GET_INPUT_RATE, value: 0, index: 2, length: 8),
               data.count >= 8 else { return }
         let selected: UInt32 = data.withUnsafeBytes { $0.load(fromByteOffset: 4, as: UInt32.self) }
@@ -2805,6 +3155,9 @@ extension DSPViewModel {
     func setInputRate(_ hz: UInt32) {
         guard I2S_INPUT_RATES_HZ.contains(hz) else { return }
         DispatchQueue.main.async { self.i2sInputRateHz = hz }
+        // -- WP SW11 -- The core takes the rate's index (0 = 44.1k, 1 = 48k, 2 = 96k).
+        let index: UInt8 = hz == 44_100 ? 0 : hz == 96_000 ? 2 : 1
+        if typedWrite({ try $0.setInputRate(index: index) }) { return }
         var le = hz.littleEndian
         let payload = withUnsafeBytes(of: &le) { Data($0) }
         transport.sendControlRequest(request: REQ_SET_INPUT_RATE, value: 0, index: 2, data: payload)
@@ -2816,6 +3169,14 @@ extension DSPViewModel {
     /// multichannel config) restarts the input so every pair re-syncs.
     @discardableResult
     func setI2SRxPin(pair: Int = 0, _ pin: UInt8) -> UInt8 {
+        if let status = typedPinStatus({ try $0.setI2sRxPin(pair: UInt8(pair), pin: pin) }) {   // -- WP SW11 --
+            if status == PIN_CONFIG_SUCCESS {
+                DispatchQueue.main.async {
+                    if self.i2sRxPins.indices.contains(pair) { self.i2sRxPins[pair] = pin }
+                }
+            }
+            return status
+        }
         let wValue = UInt16((pair << 8) | Int(pin))
         if let d = transport.getControlRequest(request: REQ_SET_I2S_RX_PIN, value: wValue, index: 2, length: 1),
            d.count >= 1 {
@@ -2839,6 +3200,18 @@ extension DSPViewModel {
     /// leaves `i2sClockModeSupported` false so the mode picker hides itself.
     /// On success it also fetches the current slave-lock status.
     func fetchI2SClockMode() {
+        // -- WP SW11 -- Through a core, the mode is its mirror's and the
+        // feature its feature list's.
+        if let core = typedCore {
+            let generation = transport.generation
+            let supported = coreFeature(core, "i2s_slave_clock")
+            DispatchQueue.main.async {
+                guard self.transport.generation == generation else { return }
+                if self.i2sClockModeSupported != supported { self.i2sClockModeSupported = supported }
+            }
+            if supported { fetchI2SSlaveStatus() }
+            return
+        }
         guard let d = transport.getControlRequest(request: REQ_GET_I2S_CLOCK_MODE, value: 0, index: 2, length: 1),
               d.count >= 1 else {
             DispatchQueue.main.async { self.i2sClockModeSupported = false }
@@ -2863,6 +3236,7 @@ extension DSPViewModel {
     func setI2SClockMode(_ mode: UInt8) {
         let clamped: UInt8 = mode == I2S_CLOCK_MODE_SLAVE ? I2S_CLOCK_MODE_SLAVE : I2S_CLOCK_MODE_MASTER
         DispatchQueue.main.async { self.i2sClockMode = clamped }
+        if typedWrite({ try $0.setI2sClockMode(mode: clamped) }) { return }   // -- WP SW11 --
         transport.sendControlRequest(request: REQ_SET_I2S_CLOCK_MODE, value: 0, index: 2, data: Data([clamped]))
     }
 
@@ -2871,6 +3245,24 @@ extension DSPViewModel {
     /// + measured rates).  STALLs on firmware that predates the feature; the live
     /// mode byte it carries also refreshes `i2sClockMode`.
     func fetchI2SSlaveStatus() {
+        // -- WP SW11 -- Through a core, its lock read (input 0).
+        if let core = typedCore {
+            let generation = transport.generation
+            guard case .success(let lock) = core.call({ try $0.fetchInputLock(which: 0) }) else { return }
+            var status = I2sSlaveStatus()
+            status.state = lock.state
+            status.clockMode = lock.clockMode
+            status.lockCount = lock.lockCount
+            status.lossCount = lock.lossCount
+            status.detectedRate = lock.detectedRate
+            status.measuredHz = lock.measuredHz
+            DispatchQueue.main.async {
+                guard self.transport.generation == generation else { return }
+                self.i2sClockModeSupported = true
+                if self.i2sSlaveStatus != status { self.i2sSlaveStatus = status }
+            }
+            return
+        }
         guard let d = transport.getControlRequest(request: REQ_GET_I2S_SLAVE_STATUS, value: 0, index: 2, length: 16),
               let status = I2sSlaveStatus.fromData(d) else { return }
         DispatchQueue.main.async {
@@ -2888,6 +3280,17 @@ extension DSPViewModel {
     /// itself.  On success it also reads the stored slave-pair BCK pin (role 1)
     /// so the picker and pin-conflict checks reflect it even while dormant.
     func fetchI2SClockPinMode() {
+        // -- WP SW11 -- Through a core, the mode and the slave pair's pin are
+        // its mirror's and the feature its feature list's.
+        if let core = typedCore {
+            let generation = transport.generation
+            let supported = coreFeature(core, "i2s_clock_pin_mode")
+            DispatchQueue.main.async {
+                guard self.transport.generation == generation else { return }
+                if self.i2sClockPinModeSupported != supported { self.i2sClockPinModeSupported = supported }
+            }
+            return
+        }
         guard let d = transport.getControlRequest(request: REQ_GET_I2S_CLOCK_PIN_MODE, value: 0, index: 2, length: 1),
               d.count >= 1 else {
             DispatchQueue.main.async { self.i2sClockPinModeSupported = false }
@@ -2909,6 +3312,10 @@ extension DSPViewModel {
     /// (beginOutputEdit) for the save flow to pick it up.
     @discardableResult
     func setI2SClockPinMode(_ mode: UInt8) -> UInt8 {
+        if let status = typedPinStatus({ try $0.setI2sClockPinMode(mode: mode) }) {   // -- WP SW11 --
+            if status == PIN_CONFIG_SUCCESS { DispatchQueue.main.async { self.i2sClockPinMode = mode } }
+            return status
+        }
         if let d = transport.getControlRequest(request: REQ_SET_I2S_CLOCK_PIN_MODE, value: UInt16(mode), index: 2, length: 1) {
             let status = d[0]
             if status == PIN_CONFIG_SUCCESS {
@@ -2926,6 +3333,7 @@ extension DSPViewModel {
     /// on firmware that predates this feature; if it returns nil,
     /// `controlInterfacesSupported` stays false and the Settings page hides itself.
     func fetchControlInterfaces() {
+        if let core = typedCore { fetchControlInterfaces(core); return }   // -- WP SW11 --
         guard let s = transport.getControlRequest(request: REQ_GET_CTRL_IFACE_STATUS, value: 0, index: 2, length: 8),
               let status = CtrlIfaceStatus.fromData(s) else {
             DispatchQueue.main.async { self.controlInterfacesSupported = false }
@@ -2941,6 +3349,7 @@ extension DSPViewModel {
 
     /// Read the live 8-byte UART control-interface config.
     func fetchUartCtrlConfig() {
+        if let core = typedCore { fetchControlInterfaces(core); return }   // -- WP SW11 --
         guard let d = transport.getControlRequest(request: REQ_GET_UART_CONFIG, value: 0, index: 2, length: 8),
               let cfg = UartCtrlConfig.fromData(d) else { return }
         DispatchQueue.main.async { self.uartCtrlConfig = cfg }
@@ -2948,6 +3357,7 @@ extension DSPViewModel {
 
     /// Read the live 8-byte I2C control-interface config.
     func fetchI2cCtrlConfig() {
+        if let core = typedCore { fetchControlInterfaces(core); return }   // -- WP SW11 --
         guard let d = transport.getControlRequest(request: REQ_GET_I2C_CONFIG, value: 0, index: 2, length: 8),
               let cfg = I2cCtrlConfig.fromData(d) else { return }
         DispatchQueue.main.async { self.i2cCtrlConfig = cfg }
@@ -2956,6 +3366,7 @@ extension DSPViewModel {
     /// Read just the interface status (last-apply outcome + live flags).  Cheap
     /// enough to poll after a SET to learn whether the peripheral came up.
     func fetchCtrlIfaceStatus() {
+        if let core = typedCore { fetchControlInterfaces(core); return }   // -- WP SW11 --
         guard let d = transport.getControlRequest(request: REQ_GET_CTRL_IFACE_STATUS, value: 0, index: 2, length: 8),
               let status = CtrlIfaceStatus.fromData(d) else { return }
         DispatchQueue.main.async { self.ctrlIfaceStatus = status }
@@ -2971,6 +3382,12 @@ extension DSPViewModel {
     @discardableResult
     func setUartCtrlConfig(_ config: UartCtrlConfig) -> UInt8 {
         let generation = transport.generation
+        if let core = typedCore {   // -- WP SW11 --
+            let uart = UartConfig(enabled: config.enabled, txPin: config.txPin, rxPin: config.rxPin,
+                                  notify: config.notifyEnable, baud: config.baud)
+            return applyControlInterface(core, generation: generation) { try $0.setUart(config: uart) }?
+                .uartLastStatus ?? 0xFF
+        }
         transport.sendControlRequest(request: REQ_SET_UART_CONFIG, value: 0, index: 2, data: config.toData())
         // Deferred apply + ~45 ms flash blackout on the device; wait before reading.
         Thread.sleep(forTimeInterval: 0.25)
@@ -2992,6 +3409,12 @@ extension DSPViewModel {
     @discardableResult
     func setI2cCtrlConfig(_ config: I2cCtrlConfig) -> UInt8 {
         let generation = transport.generation
+        if let core = typedCore {   // -- WP SW11 --
+            let i2c = I2cConfig(enabled: config.enabled, sdaPin: config.sdaPin, sclPin: config.sclPin,
+                                address: config.address)
+            return applyControlInterface(core, generation: generation) { try $0.setI2c(config: i2c) }?
+                .i2cLastStatus ?? 0xFF
+        }
         transport.sendControlRequest(request: REQ_SET_I2C_CONFIG, value: 0, index: 2, data: config.toData())
         Thread.sleep(forTimeInterval: 0.25)
         // Same device-scoping as setUartCtrlConfig.
@@ -3003,6 +3426,52 @@ extension DSPViewModel {
             return status.i2cLastStatus
         }
         return 0xFF
+    }
+
+    // -- WP SW11 -- The control interfaces through a core.
+
+    /// Its re-read of both configs and the status into its mirror, then
+    /// published.  A device without them fails the status read.
+    private func fetchControlInterfaces(_ core: CoreStateSource) {
+        let generation = transport.generation
+        let ok: Bool
+        if case .success = core.call({ try $0.fetchCtrlIfaces() }) { ok = true } else { ok = false }
+        let s = core.readState()
+        publishControlInterfaces(s, supported: ok && s.ctrlIfaceSupported, generation: generation)
+    }
+
+    private func publishControlInterfaces(_ s: DspState, supported: Bool, generation: UInt64) {
+        let uart = UartCtrlConfig(enabled: s.uart.enabled, txPin: s.uart.txPin, rxPin: s.uart.rxPin,
+                                  notifyEnable: s.uart.notify, baud: s.uart.baud)
+        let i2c = I2cCtrlConfig(enabled: s.i2c.enabled, sdaPin: s.i2c.sdaPin, sclPin: s.i2c.sclPin,
+                                address: s.i2c.address)
+        let status = CtrlIfaceStatus(uartLastStatus: s.ctrlStatus.uartLastStatus, uartLive: s.ctrlStatus.uartLive,
+                                     i2cLastStatus: s.ctrlStatus.i2cLastStatus, i2cLive: s.ctrlStatus.i2cLive,
+                                     protoVersion: s.ctrlStatus.protocolVersion)
+        DispatchQueue.main.async {
+            guard self.transport.generation == generation else { return }
+            self.controlInterfacesSupported = supported
+            guard supported else { return }
+            self.ctrlIfaceStatus = status
+            self.uartCtrlConfig = uart
+            self.i2cCtrlConfig = i2c
+        }
+    }
+
+    /// The core's setter, then, after the firmware's deferred apply, its
+    /// re-read; the status after it, or nil when the write failed or the
+    /// device changed meanwhile.  Blocking, as the raw path.
+    private func applyControlInterface(_ core: CoreStateSource, generation: UInt64,
+                                       _ body: (DspiCore) throws -> Void) -> CtrlIfaceStatus? {
+        guard case .success = core.writeAndWait(body) else { return nil }
+        Thread.sleep(forTimeInterval: 0.25)
+        guard transport.generation == generation else { return nil }
+        guard case .success = core.call({ try $0.fetchCtrlIfaces() }) else { return nil }
+        let s = core.readState()
+        publishControlInterfaces(s, supported: s.ctrlIfaceSupported, generation: generation)
+        return CtrlIfaceStatus(uartLastStatus: s.ctrlStatus.uartLastStatus, uartLive: s.ctrlStatus.uartLive,
+                               i2cLastStatus: s.ctrlStatus.i2cLastStatus, i2cLive: s.ctrlStatus.i2cLive,
+                               protoVersion: s.ctrlStatus.protocolVersion)
     }
 
     // MARK: - Control Surfaces
@@ -4566,16 +5035,22 @@ extension DSPViewModel {
     // MARK: - Channel Names
 
     func setChannelName(channel: Int, name: String) {
+        DispatchQueue.main.async {
+            self.channelNames[channel] = String(name.prefix(31))
+        }
+        // -- WP SW11 -- Through a core, its setter (31 bytes, cut on a character).
+        if typedWrite({ try $0.setChannelName(ch: Self.wire(channel), name: String(name.prefix(31))) }) { return }
         var nameData = Data(count: 32)  // Always send full 32-byte buffer, zero-padded
         let utf8 = Data(name.prefix(31).utf8)
         nameData.replaceSubrange(0..<utf8.count, with: utf8)
         transport.sendControlRequest(request: REQ_SET_CHANNEL_NAME, value: UInt16(channel), index: 2, data: nameData)
-        DispatchQueue.main.async {
-            self.channelNames[channel] = String(name.prefix(31))
-        }
     }
 
     func fetchChannelName(channel: Int) {
+        if let core = typedCore {   // -- WP SW11 -- its re-read, into the mirror shown
+            _ = core.writeAndWait { _ = try $0.getChannelName(ch: Self.wire(channel)) }
+            return
+        }
         guard let data = transport.getControlRequest(request: REQ_GET_CHANNEL_NAME, value: UInt16(channel), index: 2, length: 32) else { return }
         let name: String
         if let nulIndex = data.firstIndex(of: 0) {

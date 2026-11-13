@@ -45,16 +45,28 @@ extension DSPViewModel {
         if done && !force { return }
 
         var state: ExtensionProbeState = .unsupported
-        for attempt in 0..<2 {
-            let result = transport.getControlResult(request: REQ_EXTENSION, value: EXT_LIST,
-                                                    index: EXT_WINDEX, length: EXT_LIST_READ_LENGTH)
-            if case .success(let data) = result {
-                state = .supported(DeviceExtensions(listReply: data))
-                break
+        if let core = typedCore {
+            // -- WP SW11 -- Through a core, what its connect probed (no
+            // traffic).  A sub-command counts only when its own probe read
+            // worked too, as the core's has_pair_map / has_core_vreg say.
+            if case .success(let ext) = core.call({ try $0.extStatus() }), !ext.supported.isEmpty {
+                var ids = Set(ext.supported).subtracting([EXT_LIST])
+                if !ext.hasPairMap { ids.remove(EXT_CROSSFEED_PAIR_MAP) }
+                if !ext.hasCoreVreg { ids.remove(EXT_CORE_VREG) }
+                state = .supported(DeviceExtensions(ids: ids))
             }
-            if case .failure(let status) = result, Self.extensionProbeIsFinal(status) { break }
-            if attempt == 0 { Thread.sleep(forTimeInterval: 0.2) }
-            guard transport.generation == generation else { return }
+        } else {
+            for attempt in 0..<2 {
+                let result = transport.getControlResult(request: REQ_EXTENSION, value: EXT_LIST,
+                                                        index: EXT_WINDEX, length: EXT_LIST_READ_LENGTH)
+                if case .success(let data) = result {
+                    state = .supported(DeviceExtensions(listReply: data))
+                    break
+                }
+                if case .failure(let status) = result, Self.extensionProbeIsFinal(status) { break }
+                if attempt == 0 { Thread.sleep(forTimeInterval: 0.2) }
+                guard transport.generation == generation else { return }
+            }
         }
         guard transport.generation == generation else { return }
         extensionProbeLock.lock(); extensionProbeGeneration = generation; extensionProbeLock.unlock()
@@ -123,8 +135,13 @@ extension DSPViewModel {
 
     // MARK: - Core voltage
 
-    /// One EXT_CORE_VREG IN read, or nil.  Blocking.
+    /// One EXT_CORE_VREG IN read, or nil.  Blocking.  -- WP SW11 -- Through
+    /// a core, its `fetchCoreVreg` (a read: this app writes no voltage).
     func readCoreVregStatus() -> CoreVregStatus? {
+        if let core = typedCore {
+            guard case .success(let info) = core.call({ try $0.fetchCoreVreg() }) else { return nil }
+            return CoreVregStatus(info)
+        }
         guard case .success(let data) = transport.getControlResult(
             request: REQ_EXTENSION, value: EXT_CORE_VREG, index: EXT_WINDEX,
             length: UInt16(CoreVregStatus.size)) else { return nil }
@@ -143,5 +160,22 @@ extension DSPViewModel {
                 self.coreVregStatus = status
             }
         }
+    }
+}
+
+// -- WP SW11 --
+extension CoreVregStatus {
+    /// The core's decoded copy of the same 16 bytes.
+    init(_ info: CoreVregInfo) {
+        liveVreg = info.liveVreg
+        storedSel = info.storedSel
+        defaultVreg = info.defaultVreg
+        flags = (info.autoRaised ? Self.flagAutoRaised : 0) | (info.autoDisabled ? Self.flagAutoDisabled : 0)
+        hangCount = info.hangCount
+        trialActive = info.trialActive
+        trialVreg = info.trialVreg
+        failedTrialVreg = info.failedTrialVreg
+        failedTrialUptimeS = info.failedTrialUptimeS
+        uptimeS = info.uptimeS
     }
 }
