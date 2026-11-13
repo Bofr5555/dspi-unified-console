@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import SwiftUI
 import dspi_core
+import dspi_constants
 
 extension DSPViewModel {
 
@@ -899,54 +900,43 @@ extension DSPViewModel {
 
     // MARK: - Loudness Compensation
 
+    // -- WP SW10 -- Through a core, the effects' setters are its typed calls
+    // (a commit: no lane key), and their drag-time sends go through SW9's
+    // write lane under the setting's registry path.  The core clamps as the
+    // firmware does, follows the limiter's link groups and the tube's type
+    // rows, and journals each change, so Undo steps it back.  Without a core
+    // (USB without -CoreTransport, MIDI, the Link client) they stay raw SETs.
+
+    /// -- WP SW10 -- Through a core, `body` as a typed write (in `lane` when
+    /// given) and true; false without one, for the raw SET.
+    private func typedWrite(lane: String? = nil, _ body: @escaping (DspiCore) throws -> Void) -> Bool {
+        guard let core = typedCore else { return false }
+        core.write(lane: lane, body)
+        return true
+    }
+
     func setLoudness(_ enabled: Bool) {
         self.loudnessEnabled = enabled
+        if typedWrite({ try $0.setLoudness(enabled: enabled) }) { return }
         var val: UInt8 = enabled ? 1 : 0
         let data = Data(bytes: &val, count: 1)
         transport.sendControlRequest(request: REQ_SET_LOUDNESS, value: 0, index: 0, data: data)
     }
 
-    func fetchLoudness() {
-        if let d = transport.getControlRequest(request: REQ_GET_LOUDNESS, value: 0, index: 0, length: 1) {
-            let val = d[0] != 0
-            DispatchQueue.main.async { self.loudnessEnabled = val }
-        }
-    }
-
     func setLoudnessRef(_ spl: Float) {
         self.loudness.refSPL = spl
+        if typedWrite({ try $0.setLoudnessRef(spl: spl) }) { return }
         var val = spl
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_LOUDNESS_REF, value: 0, index: 0, data: data)
     }
 
-    func fetchLoudnessRef() {
-        if let d = transport.getControlRequest(request: REQ_GET_LOUDNESS_REF, value: 0, index: 0, length: 4) {
-            let val = d.withUnsafeBytes { $0.load(as: Float.self) }
-            DispatchQueue.main.async {
-                if abs(self.loudness.refSPL - val) > 0.01 {
-                    self.loudness.refSPL = val
-                }
-            }
-        }
-    }
-
     func setLoudnessIntensity(_ pct: Float) {
         self.loudness.intensity = pct
+        if typedWrite({ try $0.setLoudnessIntensity(pct: pct) }) { return }
         var val = pct
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_LOUDNESS_INTENSITY, value: 0, index: 0, data: data)
-    }
-
-    func fetchLoudnessIntensity() {
-        if let d = transport.getControlRequest(request: REQ_GET_LOUDNESS_INTENSITY, value: 0, index: 0, length: 4) {
-            let val = d.withUnsafeBytes { $0.load(as: Float.self) }
-            DispatchQueue.main.async {
-                if abs(self.loudness.intensity - val) > 0.01 {
-                    self.loudness.intensity = val
-                }
-            }
-        }
     }
 
     /// Sets the per-output loudness mask (V19+).  Bit k enables compensation on
@@ -954,6 +944,7 @@ extension DSPViewModel {
     /// switches masks glitch-free from the next packet (no recompute or reset).
     func setLoudnessMask(_ mask: UInt16) {
         self.loudness.outputMask = mask
+        if typedWrite({ try $0.setLoudnessMask(mask: mask) }) { return }
         let data = Data([UInt8(mask & 0xFF), UInt8(mask >> 8)])
         transport.sendControlRequest(request: REQ_SET_LOUDNESS_MASK, value: 0, index: 0, data: data)
     }
@@ -966,27 +957,14 @@ extension DSPViewModel {
         setLoudnessMask(mask)
     }
 
-    func fetchLoudnessMask() {
-        if let d = transport.getControlRequest(request: REQ_GET_LOUDNESS_MASK, value: 0, index: 0, length: 2), d.count >= 2 {
-            let val = UInt16(d[0]) | (UInt16(d[1]) << 8)
-            DispatchQueue.main.async { self.loudness.outputMask = val }
-        }
-    }
-
     // MARK: - Headphone Crossfeed
 
     func setCrossfeed(_ enabled: Bool) {
         self.crossfeedEnabled = enabled
+        if typedWrite({ try $0.setCrossfeed(enabled: enabled) }) { return }
         var val: UInt8 = enabled ? 1 : 0
         let data = Data(bytes: &val, count: 1)
         transport.sendControlRequest(request: REQ_SET_CROSSFEED, value: 0, index: 0, data: data)
-    }
-
-    func fetchCrossfeed() {
-        if let d = transport.getControlRequest(request: REQ_GET_CROSSFEED, value: 0, index: 0, length: 1) {
-            let val = d[0] != 0
-            DispatchQueue.main.async { self.crossfeedEnabled = val }
-        }
     }
 
     private static let presetValues: [(freq: Float, feed: Float)] = [
@@ -997,9 +975,11 @@ extension DSPViewModel {
 
     func setCrossfeedPreset(_ preset: Int) {
         self.crossfeed.preset = preset
-        var val = UInt8(preset)
-        let data = Data(bytes: &val, count: 1)
-        transport.sendControlRequest(request: REQ_SET_CROSSFEED_PRESET, value: 0, index: 0, data: data)
+        if !typedWrite({ try $0.setCrossfeedPreset(preset: UInt8(clamping: preset)) }) {
+            var val = UInt8(preset)
+            let data = Data(bytes: &val, count: 1)
+            transport.sendControlRequest(request: REQ_SET_CROSSFEED_PRESET, value: 0, index: 0, data: data)
+        }
         // Apply known preset values locally so the graph updates immediately
         if preset < DSPViewModel.presetValues.count {
             self.crossfeed.freq = DSPViewModel.presetValues[preset].freq
@@ -1007,61 +987,28 @@ extension DSPViewModel {
         }
     }
 
-    func fetchCrossfeedPreset() {
-        if let d = transport.getControlRequest(request: REQ_GET_CROSSFEED_PRESET, value: 0, index: 0, length: 1) {
-            let val = Int(d[0])
-            DispatchQueue.main.async { self.crossfeed.preset = val }
-        }
-    }
-
     func setCrossfeedFreq(_ freq: Float) {
         self.crossfeed.freq = freq
+        if typedWrite({ try $0.setCrossfeedFreq(freq: freq) }) { return }
         var val = freq
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_CROSSFEED_FREQ, value: 0, index: 0, data: data)
     }
 
-    func fetchCrossfeedFreq() {
-        if let d = transport.getControlRequest(request: REQ_GET_CROSSFEED_FREQ, value: 0, index: 0, length: 4) {
-            let val = d.withUnsafeBytes { $0.load(as: Float.self) }
-            DispatchQueue.main.async {
-                if abs(self.crossfeed.freq - val) > 0.01 {
-                    self.crossfeed.freq = val
-                }
-            }
-        }
-    }
-
     func setCrossfeedFeed(_ feed: Float) {
         self.crossfeed.feed = feed
+        if typedWrite({ try $0.setCrossfeedFeed(feed: feed) }) { return }
         var val = feed
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_CROSSFEED_FEED, value: 0, index: 0, data: data)
     }
 
-    func fetchCrossfeedFeed() {
-        if let d = transport.getControlRequest(request: REQ_GET_CROSSFEED_FEED, value: 0, index: 0, length: 4) {
-            let val = d.withUnsafeBytes { $0.load(as: Float.self) }
-            DispatchQueue.main.async {
-                if abs(self.crossfeed.feed - val) > 0.01 {
-                    self.crossfeed.feed = val
-                }
-            }
-        }
-    }
-
     func setCrossfeedITD(_ enabled: Bool) {
         self.crossfeed.itd = enabled
+        if typedWrite({ try $0.setCrossfeedItd(enabled: enabled) }) { return }
         var val: UInt8 = enabled ? 1 : 0
         let data = Data(bytes: &val, count: 1)
         transport.sendControlRequest(request: REQ_SET_CROSSFEED_ITD, value: 0, index: 0, data: data)
-    }
-
-    func fetchCrossfeedITD() {
-        if let d = transport.getControlRequest(request: REQ_GET_CROSSFEED_ITD, value: 0, index: 0, length: 1) {
-            let val = d[0] != 0
-            DispatchQueue.main.async { self.crossfeed.itd = val }
-        }
     }
 
     /// Sets the crossfeed output-pair mask (V20+).  Bit p runs crossfeed on output
@@ -1069,6 +1016,7 @@ extension DSPViewModel {
     /// the platform's valid pair bits and switches masks glitch-free (no recompute).
     func setCrossfeedMask(_ mask: UInt8) {
         self.crossfeed.outputMask = mask
+        if typedWrite({ try $0.setCrossfeedOutputs(pairMask: mask) }) { return }
         var val = mask
         let data = Data(bytes: &val, count: 1)
         transport.sendControlRequest(request: REQ_SET_CROSSFEED_OUTPUTS, value: 0, index: 0, data: data)
@@ -1082,13 +1030,6 @@ extension DSPViewModel {
         setCrossfeedMask(mask)
     }
 
-    func fetchCrossfeedMask() {
-        if let d = transport.getControlRequest(request: REQ_GET_CROSSFEED_OUTPUTS, value: 0, index: 0, length: 1), !d.isEmpty {
-            let val = d[0]
-            DispatchQueue.main.async { self.crossfeed.outputMask = val }
-        }
-    }
-
     // MARK: - Psychoacoustic Bass
 
     /// Device-only live send for a drag on any plain float parameter, the
@@ -1096,105 +1037,94 @@ extension DSPViewModel {
     /// transmits without publishing, so the gesture re-renders nothing; the
     /// matching `set*` commits once on release.  Clamping is the caller's, and
     /// the firmware clamps again regardless.
+    /// -- WP SW10 -- Through a core, the request's typed setter in the lane.
     func sendFloatParamToDevice(_ request: UInt8, _ value: Float,
                                 wValue: UInt16 = 0, wIndex: UInt16 = 0) {
+        if typedCore != nil, let typed = Self.typedFloatSet(request) {
+            _ = typedWrite(lane: typed.lane) { try typed.set($0, value) }
+            return
+        }
         var v = value
         transport.sendControlRequest(request: request, value: wValue, index: wIndex,
                                      data: Data(bytes: &v, count: 4))
     }
 
+    /// -- WP SW10 -- The typed setter of a float SET a drag sends live, and
+    /// its lane key (the registry path).  nil for a request no view sends
+    /// live, which then goes raw.
+    static func typedFloatSet(_ request: UInt8) -> (lane: String, set: (DspiCore, Float) throws -> Void)? {
+        func bass(_ id: UInt8) -> (DspiCore, Float) throws -> Void { { try $0.setPsybassParam(param: id, value: $1) } }
+        func sub(_ id: UInt8) -> (DspiCore, Float) throws -> Void { { try $0.setSubharmParam(id: id, value: $1) } }
+        switch request {
+        case REQ_SET_LOUDNESS_REF: return ("loud.ref", { try $0.setLoudnessRef(spl: $1) })
+        case REQ_SET_LOUDNESS_INTENSITY: return ("loud.intensity", { try $0.setLoudnessIntensity(pct: $1) })
+        case REQ_SET_CROSSFEED_FREQ: return ("cf.freq", { try $0.setCrossfeedFreq(freq: $1) })
+        case REQ_SET_CROSSFEED_FEED: return ("cf.feed", { try $0.setCrossfeedFeed(feed: $1) })
+        case REQ_SET_PSYBASS_CUTOFF: return ("bass.cutoff", bass(DspiConstants.PSYBASS_PARAM_CUTOFF))
+        case REQ_SET_PSYBASS_HARMONICS: return ("bass.harmonics", bass(DspiConstants.PSYBASS_PARAM_HARMONICS))
+        case REQ_SET_PSYBASS_DRIVE: return ("bass.drive", bass(DspiConstants.PSYBASS_PARAM_DRIVE))
+        case REQ_SET_PSYBASS_CHARACTER: return ("bass.character", bass(DspiConstants.PSYBASS_PARAM_CHARACTER))
+        case REQ_SET_PSYBASS_ORIGINAL: return ("bass.original", bass(DspiConstants.PSYBASS_PARAM_ORIGINAL))
+        case REQ_SET_SUBHARM_LOW: return ("sub.low", sub(DspiConstants.SUBHARM_PARAM_LOW))
+        case REQ_SET_SUBHARM_HIGH: return ("sub.high", sub(DspiConstants.SUBHARM_PARAM_HIGH))
+        case REQ_SET_SUBHARM_TOP: return ("sub.top", sub(DspiConstants.SUBHARM_PARAM_TOP))
+        case REQ_SET_SUBHARM_BOOST: return ("sub.boost", sub(DspiConstants.SUBHARM_PARAM_BOOST))
+        case REQ_SET_SUBHARM_DEPTH: return ("sub.depth", sub(DspiConstants.SUBHARM_PARAM_DEPTH))
+        case REQ_SET_SUBHARM_HOLD: return ("sub.hold", sub(DspiConstants.SUBHARM_PARAM_HOLD))
+        case REQ_SET_SUBHARM_CEILING: return ("sub.ceiling", sub(DspiConstants.SUBHARM_PARAM_CEILING))
+        case REQ_SET_LEVELLER_AMOUNT: return ("lev.amount", { try $0.setLevellerAmount(pct: $1) })
+        case REQ_SET_LEVELLER_MAXGAIN: return ("lev.maxgain", { try $0.setLevellerMaxGain(db: $1) })
+        case REQ_SET_LEVELLER_GATE: return ("lev.gate", { try $0.setLevellerGate(db: $1) })
+        default: return nil
+        }
+    }
+
     func setPsybass(_ enabled: Bool) {
         self.psybassEnabled = enabled
+        if typedWrite({ try $0.setPsybassEnabled(enabled: enabled) }) { return }
         var val: UInt8 = enabled ? 1 : 0
         let data = Data(bytes: &val, count: 1)
         transport.sendControlRequest(request: REQ_SET_PSYBASS, value: 0, index: 0, data: data)
     }
 
-    func fetchPsybass() {
-        if let d = transport.getControlRequest(request: REQ_GET_PSYBASS, value: 0, index: 0, length: 1), !d.isEmpty {
-            let val = d[0] != 0
-            DispatchQueue.main.async { self.psybassEnabled = val }
-        }
-    }
-
     func setPsybassCutoff(_ hz: Float) {
         self.psybass.cutoffHz = hz
+        if typedWrite({ try $0.setPsybassParam(param: DspiConstants.PSYBASS_PARAM_CUTOFF, value: hz) }) { return }
         var val = hz
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_PSYBASS_CUTOFF, value: 0, index: 0, data: data)
     }
 
-    func fetchPsybassCutoff() {
-        if let d = transport.getControlRequest(request: REQ_GET_PSYBASS_CUTOFF, value: 0, index: 0, length: 4), d.count >= 4 {
-            let val = d.withUnsafeBytes { $0.load(as: Float.self) }
-            DispatchQueue.main.async {
-                if abs(self.psybass.cutoffHz - val) > 0.01 { self.psybass.cutoffHz = val }
-            }
-        }
-    }
-
     func setPsybassHarmonics(_ db: Float) {
         self.psybass.harmonicsDB = db
+        if typedWrite({ try $0.setPsybassParam(param: DspiConstants.PSYBASS_PARAM_HARMONICS, value: db) }) { return }
         var val = db
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_PSYBASS_HARMONICS, value: 0, index: 0, data: data)
     }
 
-    func fetchPsybassHarmonics() {
-        if let d = transport.getControlRequest(request: REQ_GET_PSYBASS_HARMONICS, value: 0, index: 0, length: 4), d.count >= 4 {
-            let val = d.withUnsafeBytes { $0.load(as: Float.self) }
-            DispatchQueue.main.async {
-                if abs(self.psybass.harmonicsDB - val) > 0.01 { self.psybass.harmonicsDB = val }
-            }
-        }
-    }
-
     func setPsybassDrive(_ db: Float) {
         self.psybass.driveDB = db
+        if typedWrite({ try $0.setPsybassParam(param: DspiConstants.PSYBASS_PARAM_DRIVE, value: db) }) { return }
         var val = db
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_PSYBASS_DRIVE, value: 0, index: 0, data: data)
     }
 
-    func fetchPsybassDrive() {
-        if let d = transport.getControlRequest(request: REQ_GET_PSYBASS_DRIVE, value: 0, index: 0, length: 4), d.count >= 4 {
-            let val = d.withUnsafeBytes { $0.load(as: Float.self) }
-            DispatchQueue.main.async {
-                if abs(self.psybass.driveDB - val) > 0.01 { self.psybass.driveDB = val }
-            }
-        }
-    }
-
     func setPsybassCharacter(_ pct: Float) {
         self.psybass.characterPct = pct
+        if typedWrite({ try $0.setPsybassParam(param: DspiConstants.PSYBASS_PARAM_CHARACTER, value: pct) }) { return }
         var val = pct
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_PSYBASS_CHARACTER, value: 0, index: 0, data: data)
     }
 
-    func fetchPsybassCharacter() {
-        if let d = transport.getControlRequest(request: REQ_GET_PSYBASS_CHARACTER, value: 0, index: 0, length: 4), d.count >= 4 {
-            let val = d.withUnsafeBytes { $0.load(as: Float.self) }
-            DispatchQueue.main.async {
-                if abs(self.psybass.characterPct - val) > 0.01 { self.psybass.characterPct = val }
-            }
-        }
-    }
-
     func setPsybassOriginal(_ db: Float) {
         self.psybass.originalDB = db
+        if typedWrite({ try $0.setPsybassParam(param: DspiConstants.PSYBASS_PARAM_ORIGINAL, value: db) }) { return }
         var val = db
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_PSYBASS_ORIGINAL, value: 0, index: 0, data: data)
-    }
-
-    func fetchPsybassOriginal() {
-        if let d = transport.getControlRequest(request: REQ_GET_PSYBASS_ORIGINAL, value: 0, index: 0, length: 4), d.count >= 4 {
-            let val = d.withUnsafeBytes { $0.load(as: Float.self) }
-            DispatchQueue.main.async {
-                if abs(self.psybass.originalDB - val) > 0.01 { self.psybass.originalDB = val }
-            }
-        }
     }
 
     /// Sets the per-output psybass mask.  Bit k processes output channel k; sent
@@ -1202,6 +1132,7 @@ extension DSPViewModel {
     /// from the next packet (no recompute) and clears skipped outputs' state.
     func setPsybassMask(_ mask: UInt16) {
         self.psybass.outputMask = mask
+        if typedWrite({ try $0.setPsybassMask(mask: mask) }) { return }
         let data = Data([UInt8(mask & 0xFF), UInt8(mask >> 8)])
         transport.sendControlRequest(request: REQ_SET_PSYBASS_MASK, value: 0, index: 0, data: data)
     }
@@ -1214,13 +1145,6 @@ extension DSPViewModel {
         setPsybassMask(mask)
     }
 
-    func fetchPsybassMask() {
-        if let d = transport.getControlRequest(request: REQ_GET_PSYBASS_MASK, value: 0, index: 0, length: 2), d.count >= 2 {
-            let val = UInt16(d[0]) | (UInt16(d[1]) << 8)
-            DispatchQueue.main.async { self.psybass.outputMask = val }
-        }
-    }
-
     // MARK: - Subharmonic Synthesizer
 
     // Every SET is fire-and-forget and updates app state first, exactly like
@@ -1230,85 +1154,52 @@ extension DSPViewModel {
 
     func setSubharm(_ enabled: Bool) {
         self.subharmEnabled = enabled
-        var val: UInt8 = enabled ? 1 : 0
-        let data = Data(bytes: &val, count: 1)
-        transport.sendControlRequest(request: REQ_SET_SUBHARM, value: 0, index: 0, data: data)
-        fetchSubharmHeadroomAsync()
-    }
-
-    func fetchSubharm() {
-        if let d = transport.getControlRequest(request: REQ_GET_SUBHARM, value: 0, index: 0, length: 1), !d.isEmpty {
-            let val = d[0] != 0
-            DispatchQueue.main.async { self.subharmEnabled = val }
+        if !typedWrite({ try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_ENABLED, value: enabled ? 1 : 0) }) {
+            var val: UInt8 = enabled ? 1 : 0
+            let data = Data(bytes: &val, count: 1)
+            transport.sendControlRequest(request: REQ_SET_SUBHARM, value: 0, index: 0, data: data)
         }
+        fetchSubharmHeadroomAsync()
     }
 
     func setSubharmLow(_ db: Float) {
         self.subharm.lowDB = db
-        var val = db
-        let data = Data(bytes: &val, count: 4)
-        transport.sendControlRequest(request: REQ_SET_SUBHARM_LOW, value: 0, index: 0, data: data)
-        fetchSubharmHeadroomAsync()
-    }
-
-    func fetchSubharmLow() {
-        if let d = transport.getControlRequest(request: REQ_GET_SUBHARM_LOW, value: 0, index: 0, length: 4), d.count >= 4 {
-            let val = d.withUnsafeBytes { $0.load(as: Float.self) }
-            DispatchQueue.main.async {
-                if abs(self.subharm.lowDB - val) > 0.01 { self.subharm.lowDB = val }
-            }
+        if !typedWrite({ try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_LOW, value: db) }) {
+            var val = db
+            let data = Data(bytes: &val, count: 4)
+            transport.sendControlRequest(request: REQ_SET_SUBHARM_LOW, value: 0, index: 0, data: data)
         }
+        fetchSubharmHeadroomAsync()
     }
 
     func setSubharmHigh(_ db: Float) {
         self.subharm.highDB = db
-        var val = db
-        let data = Data(bytes: &val, count: 4)
-        transport.sendControlRequest(request: REQ_SET_SUBHARM_HIGH, value: 0, index: 0, data: data)
-        fetchSubharmHeadroomAsync()
-    }
-
-    func fetchSubharmHigh() {
-        if let d = transport.getControlRequest(request: REQ_GET_SUBHARM_HIGH, value: 0, index: 0, length: 4), d.count >= 4 {
-            let val = d.withUnsafeBytes { $0.load(as: Float.self) }
-            DispatchQueue.main.async {
-                if abs(self.subharm.highDB - val) > 0.01 { self.subharm.highDB = val }
-            }
+        if !typedWrite({ try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_HIGH, value: db) }) {
+            var val = db
+            let data = Data(bytes: &val, count: 4)
+            transport.sendControlRequest(request: REQ_SET_SUBHARM_HIGH, value: 0, index: 0, data: data)
         }
+        fetchSubharmHeadroomAsync()
     }
 
     func setSubharmTop(_ db: Float) {
         self.subharm.topDB = db
-        var val = db
-        let data = Data(bytes: &val, count: 4)
-        transport.sendControlRequest(request: REQ_SET_SUBHARM_TOP, value: 0, index: 0, data: data)
-        fetchSubharmHeadroomAsync()
-    }
-
-    func fetchSubharmTop() {
-        if let d = transport.getControlRequest(request: REQ_GET_SUBHARM_TOP, value: 0, index: 0, length: 4), d.count >= 4 {
-            let val = d.withUnsafeBytes { $0.load(as: Float.self) }
-            DispatchQueue.main.async {
-                if abs(self.subharm.topDB - val) > 0.01 { self.subharm.topDB = val }
-            }
+        if !typedWrite({ try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_TOP, value: db) }) {
+            var val = db
+            let data = Data(bytes: &val, count: 4)
+            transport.sendControlRequest(request: REQ_SET_SUBHARM_TOP, value: 0, index: 0, data: data)
         }
+        fetchSubharmHeadroomAsync()
     }
 
     func setSubharmBoost(_ db: Float) {
         self.subharm.boostDB = db
-        var val = db
-        let data = Data(bytes: &val, count: 4)
-        transport.sendControlRequest(request: REQ_SET_SUBHARM_BOOST, value: 0, index: 0, data: data)
-        fetchSubharmHeadroomAsync()
-    }
-
-    func fetchSubharmBoost() {
-        if let d = transport.getControlRequest(request: REQ_GET_SUBHARM_BOOST, value: 0, index: 0, length: 4), d.count >= 4 {
-            let val = d.withUnsafeBytes { $0.load(as: Float.self) }
-            DispatchQueue.main.async {
-                if abs(self.subharm.boostDB - val) > 0.01 { self.subharm.boostDB = val }
-            }
+        if !typedWrite({ try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_BOOST, value: db) }) {
+            var val = db
+            let data = Data(bytes: &val, count: 4)
+            transport.sendControlRequest(request: REQ_SET_SUBHARM_BOOST, value: 0, index: 0, data: data)
         }
+        fetchSubharmHeadroomAsync()
     }
 
     /// Sets the per-output subharm mask.  Bit k processes output channel k, sent
@@ -1318,6 +1209,7 @@ extension DSPViewModel {
     /// does not depend on the mask, so this SET needs no re-read.
     func setSubharmMask(_ mask: UInt16) {
         self.subharm.outputMask = mask
+        if typedWrite({ try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_MASK, value: Float(mask)) }) { return }
         let data = Data([UInt8(mask & 0xFF), UInt8(mask >> 8)])
         transport.sendControlRequest(request: REQ_SET_SUBHARM_MASK, value: 0, index: 0, data: data)
     }
@@ -1330,22 +1222,23 @@ extension DSPViewModel {
         setSubharmMask(mask)
     }
 
-    func fetchSubharmMask() {
-        if let d = transport.getControlRequest(request: REQ_GET_SUBHARM_MASK, value: 0, index: 0, length: 2), d.count >= 2 {
-            let val = UInt16(d[0]) | (UInt16(d[1]) << 8)
-            DispatchQueue.main.async { self.subharm.outputMask = val }
-        }
-    }
-
     /// Reads the worst-case gain of the live configuration (0 dB while disabled).
     /// Computed by the firmware on each GET, so it can never lag a coefficient
     /// recompute that a SET just triggered.
+    /// -- WP SW10 -- Through a core, its `fetchSubharmHeadroom`, which runs
+    /// behind the writes queued before it.
     func fetchSubharmHeadroom() {
-        if let d = transport.getControlRequest(request: REQ_GET_SUBHARM_HEADROOM, value: 0, index: 0, length: 4), d.count >= 4 {
-            let val = d.withUnsafeBytes { $0.load(as: Float.self) }
-            DispatchQueue.main.async {
-                if abs(self.subharm.headroomDB - val) > 0.001 { self.subharm.headroomDB = val }
-            }
+        let val: Float
+        if let core = typedCore {
+            guard case .success(let v) = core.call({ try $0.fetchSubharmHeadroom() }) else { return }
+            val = v
+        } else {
+            guard let d = transport.getControlRequest(request: REQ_GET_SUBHARM_HEADROOM, value: 0, index: 0, length: 4),
+                  d.count >= 4 else { return }
+            val = d.withUnsafeBytes { $0.load(as: Float.self) }
+        }
+        DispatchQueue.main.async {
+            if abs(self.subharm.headroomDB - val) > 0.001 { self.subharm.headroomDB = val }
         }
     }
 
@@ -1367,51 +1260,32 @@ extension DSPViewModel {
     func setSubharmSelectMode(_ mode: Int) {
         let clamped = min(max(mode, SUBHARM_SELECT_ALL), SUBHARM_SELECT_SUSTAINED)
         self.subharm.selectMode = clamped
-        var val = UInt8(clamped)
-        let data = Data(bytes: &val, count: 1)
-        transport.sendControlRequest(request: REQ_SET_SUBHARM_SELECT, value: 0, index: 0, data: data)
-        fetchSubharmHeadroomAsync()
-    }
-
-    func fetchSubharmSelectMode() {
-        if let d = transport.getControlRequest(request: REQ_GET_SUBHARM_SELECT, value: 0, index: 0, length: 1), !d.isEmpty {
-            let val = min(Int(d[0]), SUBHARM_SELECT_SUSTAINED)
-            DispatchQueue.main.async { self.subharm.selectMode = val }
+        if !typedWrite({ try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_SELECT, value: Float(clamped)) }) {
+            var val = UInt8(clamped)
+            let data = Data(bytes: &val, count: 1)
+            transport.sendControlRequest(request: REQ_SET_SUBHARM_SELECT, value: 0, index: 0, data: data)
         }
+        fetchSubharmHeadroomAsync()
     }
 
     func setSubharmSelectDepth(_ pct: Float) {
         self.subharm.selectDepthPct = pct
-        var val = pct
-        let data = Data(bytes: &val, count: 4)
-        transport.sendControlRequest(request: REQ_SET_SUBHARM_DEPTH, value: 0, index: 0, data: data)
-        fetchSubharmHeadroomAsync()
-    }
-
-    func fetchSubharmSelectDepth() {
-        if let d = transport.getControlRequest(request: REQ_GET_SUBHARM_DEPTH, value: 0, index: 0, length: 4), d.count >= 4 {
-            let val = d.withUnsafeBytes { $0.load(as: Float.self) }
-            DispatchQueue.main.async {
-                if abs(self.subharm.selectDepthPct - val) > 0.01 { self.subharm.selectDepthPct = val }
-            }
+        if !typedWrite({ try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_DEPTH, value: pct) }) {
+            var val = pct
+            let data = Data(bytes: &val, count: 4)
+            transport.sendControlRequest(request: REQ_SET_SUBHARM_DEPTH, value: 0, index: 0, data: data)
         }
+        fetchSubharmHeadroomAsync()
     }
 
     func setSubharmSelectHold(_ ms: Float) {
         self.subharm.selectHoldMs = ms
-        var val = ms
-        let data = Data(bytes: &val, count: 4)
-        transport.sendControlRequest(request: REQ_SET_SUBHARM_HOLD, value: 0, index: 0, data: data)
-        fetchSubharmHeadroomAsync()
-    }
-
-    func fetchSubharmSelectHold() {
-        if let d = transport.getControlRequest(request: REQ_GET_SUBHARM_HOLD, value: 0, index: 0, length: 4), d.count >= 4 {
-            let val = d.withUnsafeBytes { $0.load(as: Float.self) }
-            DispatchQueue.main.async {
-                if abs(self.subharm.selectHoldMs - val) > 0.01 { self.subharm.selectHoldMs = val }
-            }
+        if !typedWrite({ try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_HOLD, value: ms) }) {
+            var val = ms
+            let data = Data(bytes: &val, count: 4)
+            transport.sendControlRequest(request: REQ_SET_SUBHARM_HOLD, value: 0, index: 0, data: data)
         }
+        fetchSubharmHeadroomAsync()
     }
 
     /// Sub ceiling in dBFS; 0 turns the limiter off.  It bounds the sub before it
@@ -1419,19 +1293,12 @@ extension DSPViewModel {
     /// ceiling allows - which is why this SET re-reads it like a level does.
     func setSubharmCeiling(_ dbfs: Float) {
         self.subharm.ceilingDB = dbfs
-        var val = dbfs
-        let data = Data(bytes: &val, count: 4)
-        transport.sendControlRequest(request: REQ_SET_SUBHARM_CEILING, value: 0, index: 0, data: data)
-        fetchSubharmHeadroomAsync()
-    }
-
-    func fetchSubharmCeiling() {
-        if let d = transport.getControlRequest(request: REQ_GET_SUBHARM_CEILING, value: 0, index: 0, length: 4), d.count >= 4 {
-            let val = d.withUnsafeBytes { $0.load(as: Float.self) }
-            DispatchQueue.main.async {
-                if abs(self.subharm.ceilingDB - val) > 0.01 { self.subharm.ceilingDB = val }
-            }
+        if !typedWrite({ try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_CEILING, value: dbfs) }) {
+            var val = dbfs
+            let data = Data(bytes: &val, count: 4)
+            transport.sendControlRequest(request: REQ_SET_SUBHARM_CEILING, value: 0, index: 0, data: data)
         }
+        fetchSubharmHeadroomAsync()
     }
 
     /// Link each output pair to its mono sum.  Read live each packet by the
@@ -1439,16 +1306,10 @@ extension DSPViewModel {
     /// mono sum is never larger than the louder of the two channels.
     func setSubharmLinkPairs(_ linked: Bool) {
         self.subharm.linkPairs = linked
+        if typedWrite({ try $0.setSubharmParam(id: DspiConstants.SUBHARM_PARAM_LINK, value: linked ? 1 : 0) }) { return }
         var val: UInt8 = linked ? 1 : 0
         let data = Data(bytes: &val, count: 1)
         transport.sendControlRequest(request: REQ_SET_SUBHARM_LINK, value: 0, index: 0, data: data)
-    }
-
-    func fetchSubharmLinkPairs() {
-        if let d = transport.getControlRequest(request: REQ_GET_SUBHARM_LINK, value: 0, index: 0, length: 1), !d.isEmpty {
-            let val = d[0] != 0
-            DispatchQueue.main.async { self.subharm.linkPairs = val }
-        }
     }
 
     /// Solo the synthesized sub on the masked outputs.  Runtime only: it is not
@@ -1457,12 +1318,22 @@ extension DSPViewModel {
     /// the window closes so a device is never left playing without program.
     func setSubharmSolo(_ solo: Bool) {
         self.subharm.solo = solo
+        if typedWrite({ try $0.setSubharmSolo(solo: solo) }) { return }
         var val: UInt8 = solo ? 1 : 0
         let data = Data(bytes: &val, count: 1)
         transport.sendControlRequest(request: REQ_SET_SUBHARM_SOLO, value: 0, index: 0, data: data)
     }
 
+    /// -- WP SW10 -- Through a core, the core's copy (SWIFT-SEAMS 3: a field
+    /// read): read on connect and kept by this app's writes.  The firmware
+    /// never notifies solo, so another Link client's change shows after the
+    /// next full read.
     func fetchSubharmSolo() {
+        if let core = typedCore {
+            let val = core.readState().subharmSolo
+            DispatchQueue.main.async { self.subharm.solo = val }
+            return
+        }
         if let d = transport.getControlRequest(request: REQ_GET_SUBHARM_SOLO, value: 0, index: 0, length: 1), !d.isEmpty {
             let val = d[0] != 0
             DispatchQueue.main.async { self.subharm.solo = val }
@@ -1476,6 +1347,12 @@ extension DSPViewModel {
     func fetchSubharmMeter() {
         let want = numOutputChannels
         guard want > 0 else { return }
+        if let core = typedCore {   // -- WP SW10 --
+            guard case .success(let all) = core.call({ try $0.fetchSubharmMeter() }) else { return }
+            let levels = Array(all.prefix(want))
+            DispatchQueue.main.async { self.subharm.meter.levels = levels }
+            return
+        }
         guard let d = transport.getControlRequest(request: REQ_GET_SUBHARM_METER, value: 0, index: 0,
                                             length: UInt16(want * 2)), d.count >= 2 else { return }
         var levels: [Float] = []
@@ -1508,18 +1385,15 @@ extension DSPViewModel {
     // type to Custom) because the firmware's notifications for our own writes are
     // filtered out as HOST-sourced and would never correct us.
 
-    private func sendTubeParam(_ index: UInt16, _ value: Float) {
+    /// -- WP SW10 -- Through a core, `setTubeParam` (it follows the type
+    /// rows and the drop to Custom too); `lane` for a drag-time send.
+    private func sendTubeParam(_ index: UInt16, _ value: Float, lane: Bool = false) {
+        if typedWrite(lane: lane ? "tube[\(index)]" : nil, { try $0.setTubeParam(idx: UInt8(clamping: index), value: value) }) {
+            return
+        }
         var val = value
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_TUBE_PARAM, value: index, index: 0, data: data)
-    }
-
-    /// Reads one parameter; nil when the GET STALLs (index out of range, or
-    /// firmware older than V31).
-    func fetchTubeParam(_ index: UInt16) -> Float? {
-        guard let d = transport.getControlRequest(request: REQ_GET_TUBE_PARAM, value: index, index: 0, length: 4),
-              d.count >= 4 else { return nil }
-        return d.withUnsafeBytes { $0.load(as: Float.self) }
     }
 
     private static func clampTube(_ v: Float, _ lo: Float, _ hi: Float) -> Float {
@@ -1531,7 +1405,7 @@ extension DSPViewModel {
     /// re-renders the window; `ParameterRow` commits once on release through
     /// the matching `setTube*`.
     func sendTubeParamToDevice(_ index: UInt16, _ value: Float, _ lo: Float, _ hi: Float) {
-        sendTubeParam(index, Self.clampTube(value, lo, hi))
+        sendTubeParam(index, Self.clampTube(value, lo, hi), lane: true)
     }
 
     func setTube(_ enabled: Bool) {
@@ -1652,22 +1526,18 @@ extension DSPViewModel {
     // the whole group, and a joining output adopts the group's settings.  The
     // app mirrors that through `LimiterGang` so it shows what the device holds.
 
-    private func sendLimiterParam(output: UInt8, _ index: UInt8, _ value: Float) {
+    /// -- WP SW10 -- Through a core, `setLimiterParam`; `lane` for a
+    /// drag-time send.  The core gangs a linked group in its mirror as the
+    /// firmware does; `LimiterGang` stays for the paths without a core.
+    private func sendLimiterParam(output: UInt8, _ index: UInt8, _ value: Float, lane: Bool = false) {
+        if typedWrite(lane: lane ? "limit[\(output)][\(index)]" : nil,
+                      { try $0.setLimiterParam(output: output, param: index, value: value) }) {
+            return
+        }
         var val = value
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_LIMITER, value: (UInt16(output) << 8) | UInt16(index),
                                      index: 0, data: data)
-    }
-
-    /// Reads one parameter; nil when the GET STALLs (bad output or index, or
-    /// firmware older than V32).
-    func fetchLimiterParam(output: Int, _ index: UInt8) -> Float? {
-        guard output >= 0, output < 0xFF,
-              let d = transport.getControlRequest(request: REQ_LIMITER,
-                                                  value: (UInt16(output) << 8) | UInt16(index),
-                                                  index: 0, length: 4),
-              d.count >= 4 else { return nil }
-        return d.withUnsafeBytes { $0.load(as: Float.self) }
     }
 
     static func clampLimiterThreshold(_ db: Float) -> Float {
@@ -1693,7 +1563,7 @@ extension DSPViewModel {
         guard isLimiterOutput(output) else { return }
         let v = index == LIMITER_PARAM_RELEASE_MS ? Self.clampLimiterRelease(value)
                                                   : Self.clampLimiterThreshold(value)
-        sendLimiterParam(output: UInt8(output), index, v)
+        sendLimiterParam(output: UInt8(output), index, v, lane: true)
     }
 
     /// Mirrors an enable, threshold or release SET: it reaches the whole
@@ -1814,13 +1684,18 @@ extension DSPViewModel {
             }
             return
         }
-        guard let d = transport.getControlRequest(request: REQ_LIMITER, value: UInt16(LIMITER_GET_METER),
-                                                  index: 0, length: UInt16(want * 2)), d.count >= 2 else { return }
         var gr: [Float] = []
-        gr.reserveCapacity(min(want, d.count / 2))
-        for i in 0..<min(want, d.count / 2) {
-            let raw = UInt16(d[i * 2]) | (UInt16(d[i * 2 + 1]) << 8)
-            gr.append(Float(raw) / 100)
+        if let core = typedCore {   // -- WP SW10 --
+            guard case .success(let all) = core.call({ try $0.fetchLimiterMeter() }) else { return }
+            gr = Array(all.prefix(want))
+        } else {
+            guard let d = transport.getControlRequest(request: REQ_LIMITER, value: UInt16(LIMITER_GET_METER),
+                                                      index: 0, length: UInt16(want * 2)), d.count >= 2 else { return }
+            gr.reserveCapacity(min(want, d.count / 2))
+            for i in 0..<min(want, d.count / 2) {
+                let raw = UInt16(d[i * 2]) | (UInt16(d[i * 2 + 1]) << 8)
+                gr.append(Float(raw) / 100)
+            }
         }
         DispatchQueue.main.async {
             if self.limiter.meter.reductionDB != gr { self.limiter.meter.reductionDB = gr }
@@ -1832,7 +1707,13 @@ extension DSPViewModel {
     /// Sends one upmix parameter as a 4-byte LE float via REQ_UPMIX_SET_PARAM
     /// (spec §6.2).  Preferred for live sliders: no read-modify-write race with
     /// other controllers.  The firmware clamps out-of-range values.
-    private func sendUpmixParam(_ paramId: UInt16, _ value: Float) {
+    /// -- WP SW10 -- Through a core, `setUpmixParam`; `lane` for a drag-time
+    /// send.
+    private func sendUpmixParam(_ paramId: UInt16, _ value: Float, lane: Bool = false) {
+        if typedWrite(lane: lane ? "up[\(paramId)]" : nil,
+                      { try $0.setUpmixParam(id: UInt8(clamping: paramId), value: value) }) {
+            return
+        }
         var v = value
         let data = Data(bytes: &v, count: 4)
         transport.sendControlRequest(request: REQ_UPMIX_SET_PARAM, value: paramId, index: 0, data: data)
@@ -1855,7 +1736,7 @@ extension DSPViewModel {
 
     /// Device-only live send for a drag; see `sendFloatParamToDevice`.
     func sendUpmixParamToDevice(_ index: UInt16, _ value: Float) {
-        sendUpmixParam(index, value)
+        sendUpmixParam(index, value, lane: true)
     }
 
     func setUpmixStrength(_ pct: Float) {
@@ -1918,7 +1799,10 @@ extension DSPViewModel {
     /// Reads the whole 44-byte UpmixConfigPacket in one transfer and publishes it
     /// (spec §6.1).  Called after a preset load / bulk SET; the bulk parse also
     /// keeps these fields current.  On RP2040 the GET returns zeros (feature off).
+    /// -- WP SW10 -- Through a core, nothing to read: the core's mirror holds
+    /// the upmixer's settings and CoreMirror publishes them.
     func fetchUpmixConfig() {
+        guard typedCore == nil else { return }
         guard let d = transport.getControlRequest(request: REQ_UPMIX_GET_CONFIG, value: 0, index: 0,
                                             length: UInt16(UPMIX_CONFIG_PACKET_SIZE)),
               d.count >= UPMIX_CONFIG_PACKET_SIZE else { return }
@@ -1951,6 +1835,19 @@ extension DSPViewModel {
     /// Polls the 16-byte UpmixStatus telemetry (spec §6.3).  Called from the
     /// shared poll timer only while the upmixer window is open.
     func fetchUpmixStatus() {
+        if let core = typedCore {   // -- WP SW10 --
+            guard case .success(let st) = core.call({ try $0.fetchUpmixStatus() }) else { return }
+            DispatchQueue.main.async {
+                self.upmix.telemetry.active = st.active
+                self.upmix.telemetry.parkedReason = st.parkedReason
+                self.upmix.telemetry.corr = st.correlation
+                self.upmix.telemetry.balance = st.balance
+                self.upmix.telemetry.centerGain = st.centerGain
+                self.upmix.telemetry.lsGain = st.lsGain
+                self.upmix.telemetry.rsGain = st.rsGain
+            }
+            return
+        }
         guard let d = transport.getControlRequest(request: REQ_UPMIX_GET_STATUS, value: 0, index: 0,
                                             length: UPMIX_STATUS_SIZE),
               d.count >= 16 else { return }
@@ -1976,6 +1873,7 @@ extension DSPViewModel {
 
     func setLeveller(_ enabled: Bool) {
         self.levellerEnabled = enabled
+        if typedWrite({ try $0.setLevellerEnabled(enabled: enabled) }) { return }
         var val: UInt8 = enabled ? 1 : 0
         let data = Data(bytes: &val, count: 1)
         transport.sendControlRequest(request: REQ_SET_LEVELLER, value: 0, index: 0, data: data)
@@ -1983,6 +1881,7 @@ extension DSPViewModel {
 
     func setLevellerAmount(_ amount: Float) {
         self.leveller.amount = amount
+        if typedWrite({ try $0.setLevellerAmount(pct: amount) }) { return }
         var val = amount
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_LEVELLER_AMOUNT, value: 0, index: 0, data: data)
@@ -1990,6 +1889,7 @@ extension DSPViewModel {
 
     func setLevellerSpeed(_ speed: Int) {
         self.leveller.speed = speed
+        if typedWrite({ try $0.setLevellerSpeed(speed: UInt8(clamping: speed)) }) { return }
         var val = UInt8(speed)
         let data = Data(bytes: &val, count: 1)
         transport.sendControlRequest(request: REQ_SET_LEVELLER_SPEED, value: 0, index: 0, data: data)
@@ -1997,6 +1897,7 @@ extension DSPViewModel {
 
     func setLevellerMaxGain(_ db: Float) {
         self.leveller.maxGainDB = db
+        if typedWrite({ try $0.setLevellerMaxGain(db: db) }) { return }
         var val = db
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_LEVELLER_MAXGAIN, value: 0, index: 0, data: data)
@@ -2004,6 +1905,7 @@ extension DSPViewModel {
 
     func setLevellerLookahead(_ enabled: Bool) {
         self.leveller.lookahead = enabled
+        if typedWrite({ try $0.setLevellerLookahead(enabled: enabled) }) { return }
         var val: UInt8 = enabled ? 1 : 0
         let data = Data(bytes: &val, count: 1)
         transport.sendControlRequest(request: REQ_SET_LEVELLER_LOOKAHEAD, value: 0, index: 0, data: data)
@@ -2011,6 +1913,7 @@ extension DSPViewModel {
 
     func setLevellerGate(_ db: Float) {
         self.leveller.gateDB = db
+        if typedWrite({ try $0.setLevellerGate(db: db) }) { return }
         var val = db
         let data = Data(bytes: &val, count: 4)
         transport.sendControlRequest(request: REQ_SET_LEVELLER_GATE, value: 0, index: 0, data: data)
@@ -2023,6 +1926,7 @@ extension DSPViewModel {
     func setLevellerMasks(detector: UInt8, apply: UInt8) {
         self.leveller.detectorMask = detector
         self.leveller.applyMask = apply
+        if typedWrite({ try $0.setLevellerMasks(detector: detector, apply: apply) }) { return }
         let data = Data([detector, apply])
         transport.sendControlRequest(request: REQ_SET_LEVELLER_MASKS, value: 0, index: 0, data: data)
     }

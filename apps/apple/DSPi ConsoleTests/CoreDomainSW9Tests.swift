@@ -9,64 +9,11 @@ import dspi_constants
 /// (CoreBackedTransport, SWIFT-SEAMS 5.2).  The edits go through the view
 /// model as the views make them, and Undo and Redo step them back through the
 /// core's journal (CoreUndo.swift).
-final class CoreDomainSW9Tests: XCTestCase {
-
-    private func settle(_ seconds: TimeInterval = 0.3) {
-        RunLoop.current.run(until: Date().addingTimeInterval(seconds))
-    }
-
-    /// The core's demo device, the core behind it, and a view model on it.
-    private func demoVM() -> (DspiCore, CoreBackedTransport, DSPViewModel) {
-        let core = DspiCore()
-        let t = CoreBackedTransport(link: .demo, core: core)
-        let vm = DSPViewModel(transport: t)
-        t.selectDevice(FakeTransport.demoDevice)
-        XCTAssertTrue(spinUntil(30) { vm.isDeviceConnected && vm.fullReadGeneration == t.generation },
-                      "the connect-time read finishes")
-        settle()
-        return (core, t, vm)
-    }
-
-    /// Swift's FakeTransport under the core (CG26): the device keeps its
-    /// state across the core's reconnects, and every transfer is the core's.
-    private func hostVM() -> (FakeTransport, DspiCore, CoreBackedTransport, DSPViewModel) {
-        let fake = FakeTransport(autoSelect: false)
-        let core = DspiCore()
-        let t = CoreBackedTransport(link: .host(fake, .fake), core: core)
-        let vm = DSPViewModel(transport: t)
-        fake.selectDevice(FakeTransport.demoDevice)
-        XCTAssertTrue(spinUntil(30) { vm.isDeviceConnected && vm.fullReadGeneration == t.generation },
-                      "the connect-time read finishes")
-        settle()
-        return (fake, core, t, vm)
-    }
-
-    /// Every write queued so far has run on the core's queue.
-    private func flush(_ t: CoreBackedTransport) {
-        t.coreQueue.sync {}
-    }
-
-    /// The journal entries this connection's own edits made for `path`.
-    private func entries(_ core: DspiCore, _ t: CoreBackedTransport, _ path: String) -> [HistoryEntry] {
-        flush(t)
-        return t.coreQueue.sync { core.history(n: 200) }.filter { $0.path == path && $0.source == .local }
-    }
+final class CoreDomainSW9Tests: XCTestCase, CoreDomainTesting {   // -- WP SW10 -- the harness is shared
 
     private static func masterVolume(_ fake: FakeTransport) -> Float? {
         fake.getControlRequest(request: REQ_GET_MASTER_VOLUME, value: 0, index: 0, length: 4)?
             .withUnsafeBytes { $0.load(as: Float.self) }
-    }
-
-    /// Undo, then Redo, as the Edit menu does, and what is shown after each.
-    private func undoAndRedo(_ vm: DSPViewModel, file: StaticString = #filePath, line: UInt = #line,
-                             undone: () -> Bool, redone: () -> Bool) {
-        XCTAssertTrue(spinUntil(5) { vm.undo.canUndo }, "Undo is enabled after the edit", file: file, line: line)
-        vm.undo.undo()
-        XCTAssertTrue(spinUntil(5, undone), "undone", file: file, line: line)
-        XCTAssertTrue(spinUntil(5) { vm.undo.canRedo }, "Redo is enabled", file: file, line: line)
-        vm.undo.redo()
-        XCTAssertTrue(spinUntil(5, redone), "redone", file: file, line: line)
-        XCTAssertNil(vm.undo.notice, "a plain step says nothing", file: file, line: line)
     }
 
     // MARK: - Undo and Redo, one domain at a time
