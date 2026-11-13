@@ -4,7 +4,7 @@
 
 use serde_json::{Value, json};
 
-use super::system::{align_outcome, build_view, recall_outcome};
+use super::alink_system::{align_outcome, build_view, recall_outcome};
 
 fn model() -> Value {
     json!({
@@ -50,7 +50,7 @@ fn wp_hwlk1f_a_unit_without_the_link_is_not_unknown_nor_counted() {
         (k.state.as_str(), k.state_word.as_str(), k.role.as_str()),
         ("no_alink", "No audio link (firmware)", "No audio link")
     );
-    assert!(k.link_delay_frames.is_none() && k.link_delay_ms.is_none() && !k.pending);
+    assert!(k.alink_delay_frames.is_none() && k.alink_delay_ms.is_none() && !k.pending);
     assert_eq!((v.unit_count, v.locked), (2, 1));
     assert_eq!(
         v.summary,
@@ -67,7 +67,7 @@ fn wp_hwlk1f_a_unit_without_the_link_is_not_unknown_nor_counted() {
     );
     assert_eq!(v.unit_count, 3);
 
-    // Every unit with the link locked, one without: a warning, not ok.
+    // Every unit with the alink locked, one without: a warning, not ok.
     let mut m = model();
     m["units"].as_array_mut().unwrap().pop();
     let v = build_view(
@@ -215,7 +215,7 @@ fn wp_hwlk1f_align_says_nothing_was_written_and_why() {
     ]);
     assert_eq!(
         align_outcome(&partial, &model()).message,
-        "The link delays were written on Main left (each re-anchored with a short silence); \
+        "The audio link delays were written on Main left (each re-anchored with a short silence); \
          skipped on K340 (no audio link (firmware))."
     );
     let kept = report(vec![
@@ -229,7 +229,7 @@ fn wp_hwlk1f_align_says_nothing_was_written_and_why() {
     let none = report(vec![w("A", "phase", "unchanged", None)]);
     assert_eq!(
         align_outcome(&none, &model()).message,
-        "Nothing was written: every unit already has its link delays."
+        "Nothing was written: every unit already has its audio link delays."
     );
     // An older hub without reasons: the unit alone.
     let old = report(vec![w("K", "phase", "skipped", None)]);

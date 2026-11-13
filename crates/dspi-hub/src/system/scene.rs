@@ -1,5 +1,5 @@
 //! Scenes applied at a frame (WP SW2, SYS2 3.4, `extension_channel_spec.md`
-//! 2.8.7 and 2.8.9): which link frame, and which writes reach every unit. Pure:
+//! 2.8.7 and 2.8.9): which alink frame, and which writes reach every unit. Pure:
 //! the I/O is in `system::run`.
 //!
 //! - **The frame.** The newest frame any of the scene's units (or its sender)
@@ -7,13 +7,13 @@
 //!   units hear one counter, so their frames agree to within the reads' round
 //!   trip, which the lead covers many times over.
 //! - **The superframe path.** A scene of one op for every unit behind one
-//!   sender goes to that sender as one `EXT_LINK_CTRL_MSG`: no control-path
+//!   sender goes to that sender as one `EXT_ALINK_CTRL_MSG`: no control-path
 //!   latency, the same frame everywhere. Taken only when the sender is reachable
 //!   and lists the OUT form, every unit of the model is behind it, and the op is
 //!   not `UNMUTE`.
 //! - **The per-unit path** otherwise: one `EXT_APPLY_AT_FRAME` per unit and op,
 //!   at most four per unit (the model refuses more).
-//! - **The system mute** (fixup sw2x F1). Every `EXT_LINK_CTRL_MSG` write sets
+//! - **The system mute** (fixup sw2x F1). Every `EXT_ALINK_CTRL_MSG` write sets
 //!   the sender's system-mute bit from its `system_flags`, op or not, so the
 //!   superframe write carries the bit as it is ([`SenderSeen::system_mute`]),
 //!   unless the scene itself says otherwise ([`super::model::Scene::system_mute`]).
@@ -23,7 +23,7 @@
 //! - **Units without the audio link** (WP HWLK1F): a firmware without it
 //!   takes no frame, so its ops are written at once with the unit's own
 //!   commands ([`ScenePlan::direct`]) and the rest goes at the frame. Ops on
-//!   units with the link that no frame could be read for are listed
+//!   units with the alink that no frame could be read for are listed
 //!   ([`ScenePlan::unscheduled`]) instead of refusing the scene: it is refused
 //!   only when no unit can apply any of it.
 //! - **Why not `UNMUTE` through the sender.** BULKFIX's guard
@@ -33,7 +33,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use dspi_proto::ext::audio_link::{ApplyOp, ApplyRequest, SUPERFRAME_FRAMES, ctrl_msg_min_frame};
+use dspi_proto::ext::alink::{ApplyOp, ApplyRequest, SUPERFRAME_FRAMES, ctrl_msg_min_frame};
 use serde::Serialize;
 
 use super::model::{SystemModel, scene_op};
@@ -48,7 +48,7 @@ pub struct SenderSeen {
     /// The frame it is sending.
     pub frame: u64,
     // -- fixup sw2x (F1) --
-    /// Its system mute now (`EXT_LINK_CTRL_MSG` IN flags bit 0).
+    /// Its system mute now (`EXT_ALINK_CTRL_MSG` IN flags bit 0).
     pub system_mute: bool,
 }
 
@@ -86,7 +86,7 @@ impl PlannedOp {
 pub struct ScenePlan {
     /// The scene.
     pub scene: String,
-    /// The link frame every op acts on.
+    /// The alink frame every op acts on.
     pub frame: u64,
     /// `superframe`, `per_unit`, or `none` (a scene that only sets the system
     /// mute).
@@ -106,7 +106,7 @@ pub struct ScenePlan {
     /// the unit's own commands, not at [`Self::frame`].
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub direct: Vec<PlannedOp>,
-    /// Ops on units with the link that cannot be scheduled: no unit of
+    /// Ops on units with the alink that cannot be scheduled: no unit of
     /// theirs reports a frame and no sender is reachable. Not written.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub unscheduled: Vec<PlannedOp>,
@@ -121,7 +121,7 @@ pub enum SceneRefused {
     NoFrame,
 }
 
-/// Plan `scene_id`. `frames` holds each reachable unit's link frame by serial;
+/// Plan `scene_id`. `frames` holds each reachable unit's alink frame by serial;
 /// `sender` the sender if it can take the superframe path; `lead` the frames
 /// between the newest frame read and the frame the ops act on.
 pub fn plan(
@@ -180,7 +180,7 @@ pub fn plan_mixed(
             .units
             .iter()
             .all(|u| model.path_to(&u.id).is_some_and(|(from, _)| from == s.id));
-        // -- WP HWLK1F -- every unit with the link: the others take it at once
+        // -- WP HWLK1F -- every unit with the alink: the others take it at once
         let covers = model.resolve_target(&action.target).is_some_and(|t| {
             model
                 .units
@@ -372,7 +372,7 @@ mod tests_wp_sw2 {
 
     // -- WP HWLK1F --
     /// A unit without the audio link takes its ops at once; the others are
-    /// planned as before, through the sender when every unit with the link is
+    /// planned as before, through the sender when every unit with the alink is
     /// covered; with no frame anywhere, what can go at once still does.
     #[test]
     fn wp_hwlk1f_units_without_the_link_go_at_once() {
@@ -383,7 +383,7 @@ mod tests_wp_sw2 {
         assert_eq!(p.path, "superframe");
         assert_eq!(p.direct.len(), 1);
         assert_eq!(p.direct[0].element, "C");
-        // Every unit with the link, C left out of the target: still the sender.
+        // Every unit with the alink, C left out of the target: still the sender.
         m.groups = vec![Group {
             id: "linked".into(),
             name: String::new(),

@@ -4,8 +4,8 @@
 
 use serde_json::{Value, json};
 
-use super::system::{align_outcome, apply_edits, build_view, recall_outcome};
-use super::{LinkRoomLipSync, LinkSystemEdits, LinkUnitLatency};
+use super::alink_system::{align_outcome, apply_edits, build_view, recall_outcome};
+use super::{AlinkRoomLipSync, AlinkSystemEdits, AlinkUnitLatency};
 use crate::{DspiCore, DspiError};
 
 fn model() -> Value {
@@ -53,7 +53,7 @@ fn status() -> Value {
             "issues": [{"subject": "C", "code": "offline", "message": "Bar is not connected"}]
         },
         "alarms": [
-            {"id": 1, "code": "link_lost", "subject": "B", "severity": "warning", "message": "Link lost",
+            {"id": 1, "code": "alink_lost", "subject": "B", "severity": "warning", "message": "Link lost",
              "state": "raised", "raisedAt": 1, "count": 1},
             {"id": 2, "code": "x", "subject": "C", "severity": "critical", "message": "Gone",
              "state": "acknowledged", "raisedAt": 2, "count": 1},
@@ -84,16 +84,19 @@ fn wp_lkui1_the_view_has_every_element_with_its_link_state() {
         (a.role.as_str(), a.state_word.as_str(), a.room.as_str()),
         ("Receiver", "Locked", "Main room")
     );
-    assert_eq!(a.link_delay_frames, Some(120));
-    assert!((a.link_delay_ms.unwrap() - 2.5).abs() < 1e-9);
-    assert_eq!((a.link_delay_min, a.link_delay_max), (Some(64), Some(400)));
+    assert_eq!(a.alink_delay_frames, Some(120));
+    assert!((a.alink_delay_ms.unwrap() - 2.5).abs() < 1e-9);
+    assert_eq!(
+        (a.alink_delay_min, a.alink_delay_max),
+        (Some(64), Some(400))
+    );
     assert_eq!(a.phase_error_frames, Some(0.25));
     assert!(!a.pending, "A has the planned delay");
     // B: the plan asks 117 + 3, the unit has 128 + 0: pending; a name falls back to the id.
     let b = by("B");
     assert_eq!((b.name.as_str(), b.state.as_str()), ("B", "holdover"));
     assert_eq!(
-        (b.link_delay_frames, b.unit_link_delay_frames),
+        (b.alink_delay_frames, b.unit_alink_delay_frames),
         (Some(117), Some(128))
     );
     assert_eq!((b.hop_offset, b.unit_hop_offset), (Some(3), Some(0)));
@@ -110,7 +113,7 @@ fn wp_lkui1_the_view_has_every_element_with_its_link_state() {
     );
     assert_eq!(
         v.summary,
-        "Audio link: 1 of 3 locked, 1 in holdover, 1 not connected, link delay to write on 1"
+        "Audio link: 1 of 3 locked, 1 in holdover, 1 not connected, audio link delay to write on 1"
     );
     assert_eq!(v.health, "problem");
     // Alarms still on, critical first, with the element's name.
@@ -177,14 +180,14 @@ fn wp_lkui1_a_hub_without_an_installation_says_so() {
 #[test]
 fn wp_lkui1_edits_change_only_what_was_edited() {
     let mut m = model();
-    let edits = LinkSystemEdits {
+    let edits = AlinkSystemEdits {
         set_system_delay: true,
         system_delay_frames: Some(200),
-        rooms: vec![LinkRoomLipSync {
+        rooms: vec![AlinkRoomLipSync {
             room_id: "bar".into(),
             lip_sync_us: None,
         }],
-        units: vec![LinkUnitLatency {
+        units: vec![AlinkUnitLatency {
             unit_id: "A".into(),
             measured_latency_us: Some(80),
         }],
@@ -195,31 +198,31 @@ fn wp_lkui1_edits_change_only_what_was_edited() {
     assert_eq!(m["units"][0]["measuredLatencyUs"], 80);
     assert_eq!(m["units"][1]["measuredLatencyUs"], 120, "B untouched");
     // Back to automatic.
-    let auto = LinkSystemEdits {
+    let auto = AlinkSystemEdits {
         set_system_delay: true,
-        ..LinkSystemEdits::default()
+        ..AlinkSystemEdits::default()
     };
     apply_edits(&mut m, &auto).unwrap();
     assert_eq!(m["dFrames"], Value::Null);
     // Not setting it leaves it.
     let mut m2 = model();
     m2["dFrames"] = json!(150);
-    apply_edits(&mut m2, &LinkSystemEdits::default()).unwrap();
+    apply_edits(&mut m2, &AlinkSystemEdits::default()).unwrap();
     assert_eq!(m2["dFrames"], 150);
     // An id the model lacks: refused, nothing half done.
     let mut m3 = model();
-    let bad = LinkSystemEdits {
-        units: vec![LinkUnitLatency {
+    let bad = AlinkSystemEdits {
+        units: vec![AlinkUnitLatency {
             unit_id: "Z".into(),
             measured_latency_us: Some(1),
         }],
-        ..LinkSystemEdits::default()
+        ..AlinkSystemEdits::default()
     };
     assert!(matches!(
         apply_edits(&mut m3, &bad),
         Err(DspiError::InvalidArgument { .. })
     ));
-    assert!(apply_edits(&mut Value::Null, &LinkSystemEdits::default()).is_err());
+    assert!(apply_edits(&mut Value::Null, &AlinkSystemEdits::default()).is_err());
 }
 
 #[test]
@@ -342,17 +345,17 @@ fn wp_lkui1_writing_the_link_delays() {
     assert!(a.applied);
     assert_eq!(
         a.message,
-        "The link delays were written. Each unit re-anchored with a short silence."
+        "The audio link delays were written. Each unit re-anchored with a short silence."
     );
     assert_eq!(
         (a.writes[0].what.as_str(), a.writes[1].what.as_str()),
-        ("Link delay", "Delay OUT2")
+        ("Audio link delay", "Delay OUT2")
     );
     let stopped = json!({"applied": false, "writes": [],
                          "alignment": {"issues": [{"code": "range", "message": "D is out of B's range"}]}});
     assert_eq!(
         align_outcome(&stopped, &model()).message,
-        "The link delays were not written: D is out of B's range."
+        "The audio link delays were not written: D is out of B's range."
     );
 }
 
@@ -360,19 +363,19 @@ fn wp_lkui1_writing_the_link_delays() {
 fn wp_lkui1_without_a_hub_session_the_calls_say_disconnected() {
     let core = DspiCore::new();
     assert!(matches!(
-        core.link_system_view(),
+        core.alink_system_view(),
         Err(DspiError::Disconnected)
     ));
     assert!(matches!(
-        core.link_system_save(0, LinkSystemEdits::default()),
+        core.alink_system_save(0, AlinkSystemEdits::default()),
         Err(DspiError::Disconnected)
     ));
     assert!(matches!(
-        core.link_system_recall("x".into()),
+        core.alink_system_recall("x".into()),
         Err(DspiError::Disconnected)
     ));
     assert!(matches!(
-        core.link_system_align(),
+        core.alink_system_align(),
         Err(DspiError::Disconnected)
     ));
 }

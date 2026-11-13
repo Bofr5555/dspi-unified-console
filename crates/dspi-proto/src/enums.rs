@@ -194,7 +194,7 @@ open_enum! {
         I2s   = 2, "I2S";
         Adat  = 3, "ADAT";
         // -- WP SW1 -- the audio link input (SYS2 5.1), docs/GLOSSARY.md
-        Link  = 7, "Audio link";
+        Alink = 7, "Audio link";
     }
 }
 
@@ -576,10 +576,10 @@ mod tests {
     fn newer_input_sources_are_known() {
         assert_eq!(InputSource::from_raw(3), InputSource::Adat);
         // -- WP SW1 --
-        assert_eq!(InputSource::from_raw(7), InputSource::Link);
+        assert_eq!(InputSource::from_raw(7), InputSource::Alink);
         assert_eq!(
-            InputSource::Link.to_raw(),
-            crate::ext::audio_link::INPUT_SOURCE_LINK
+            InputSource::Alink.to_raw(),
+            crate::ext::alink::INPUT_SOURCE_ALINK
         );
     }
 

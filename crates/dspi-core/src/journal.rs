@@ -109,17 +109,17 @@ pub(crate) const EQ_BAND: &str = "eq.band";
 /// (`set_crossfeed_pair_map`): four bytes, as the binding takes them.
 pub(crate) const EXT_PAIRMAP: &str = "ext.pairmap";
 
-// -- WP SW1 (fixup sw1, F1) -- the audio link's writes (`audio_link.rs`)
-/// The link slots, 8 bytes (`set_audio_link_slots`): undoable.
-pub(crate) const AUDIO_LINK_SLOTS: &str = "ext.audio_link.slots";
+// -- WP SW1 (fixup sw1, F1) -- the audio link's writes (`alink.rs`)
+/// The audio link slots, 8 bytes (`set_alink_slots`): undoable.
+pub(crate) const ALINK_SLOTS: &str = "ext.alink.slots";
 /// The phase-lock mode and delay, `[mode, d_local LE, hops_offset LE]`
-/// (`set_audio_link_phase`): recorded, never undone (it re-anchors).
-pub(crate) const AUDIO_LINK_PHASE: &str = "ext.audio_link.phase";
+/// (`set_alink_phase`): recorded, never undone (it re-anchors).
+pub(crate) const ALINK_PHASE: &str = "ext.alink.phase";
 /// An apply-at-frame op (`apply_at_frame`): op and arg as indices, the
 /// request's 16 bytes as the value. An action.
-pub(crate) const AUDIO_LINK_APPLY: &str = "ext.audio_link.apply";
-/// The counters cleared (`reset_audio_link_stats`). An action.
-pub(crate) const AUDIO_LINK_STATS_RESET: &str = "ext.audio_link.stats_reset";
+pub(crate) const ALINK_APPLY: &str = "ext.alink.apply";
+/// The counters cleared (`reset_alink_stats`). An action.
+pub(crate) const ALINK_STATS_RESET: &str = "ext.alink.stats_reset";
 
 /// The first crossover band on the wire (`XOVER_BAND_BASE`, 20).
 const XOVER_BASE: u8 = {
@@ -141,10 +141,10 @@ const OWN_PATHS: &[(&str, Hazard)] = &[
     // -- WP SW1 (fixup sw1, F1) -- the audio link: slots are live routing;
     // a phase change re-anchors (a short silence); apply and the counter
     // reset are actions.
-    (AUDIO_LINK_SLOTS, Hazard::None),
-    (AUDIO_LINK_PHASE, Hazard::Audible),
-    (AUDIO_LINK_APPLY, Hazard::Irreversible),
-    (AUDIO_LINK_STATS_RESET, Hazard::Irreversible),
+    (ALINK_SLOTS, Hazard::None),
+    (ALINK_PHASE, Hazard::Audible),
+    (ALINK_APPLY, Hazard::Irreversible),
+    (ALINK_STATS_RESET, Hazard::Irreversible),
 ];
 
 /// The hazard of a journal path: the registry's, or one of [`OWN_PATHS`].
@@ -929,11 +929,11 @@ pub struct HistoryEntry {
     /// gain and the Linkwitz target Q as little-endian `f32`s), `ext.pairmap`
     /// (the crossfeed pair map's four bytes), `ext.vreg` (a core-voltage
     /// request: op and value), `raw` (a raw request: opcode and `wValue` as
-    /// indices, the payload as the value), `ext.audio_link.slots` (the 8
-    /// slot bytes), `ext.audio_link.phase` (mode, then the delay and the
-    /// hops offset as little-endian 16-bit values), `ext.audio_link.apply`
+    /// indices, the payload as the value), `ext.alink.slots` (the 8
+    /// slot bytes), `ext.alink.phase` (mode, then the delay and the
+    /// hops offset as little-endian 16-bit values), `ext.alink.apply`
     /// (op and arg as indices, the 16-byte request as the value) and
-    /// `ext.audio_link.stats_reset`. A control-surface operation is
+    /// `ext.alink.stats_reset`. A control-surface operation is
     /// under its `cs.*` path with the operation's JSON as text.
     pub path: String,
     /// The path's indices (an output, a channel and a band, ...).
@@ -1278,11 +1278,11 @@ impl DspiCore {
     /// [`DspiCore::write_param`].
     fn write_journal_value(&self, path: &str, ix: &[u8], value: Value) -> Result<()> {
         // -- WP SW1 (fixup sw1, F1) --
-        if path == AUDIO_LINK_SLOTS {
+        if path == ALINK_SLOTS {
             return match value {
-                Value::Bytes(slots) => self.set_audio_link_slots(slots),
+                Value::Bytes(slots) => self.set_alink_slots(slots),
                 _ => Err(DspiError::InvalidArgument {
-                    msg: format!("{AUDIO_LINK_SLOTS}: not 8 slots"),
+                    msg: format!("{ALINK_SLOTS}: not 8 slots"),
                 }),
             };
         }

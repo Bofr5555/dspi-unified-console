@@ -273,7 +273,7 @@ impl GainGuard {
 // -- WP SW2 --
 /// `REQ_EXTENSION` `EXT_APPLY_AT_FRAME` OUT with op 2 `UNMUTE`.
 fn is_apply_unmute(opcode: u8, value: u16, data: &[u8]) -> bool {
-    use dspi_proto::ext::audio_link::{ApplyOp, EXT_APPLY_AT_FRAME};
+    use dspi_proto::ext::alink::{ApplyOp, EXT_APPLY_AT_FRAME};
     opcode == op::REQ_EXTENSION
         && value == EXT_APPLY_AT_FRAME
         && data.get(8) == Some(&ApplyOp::Unmute.raw())

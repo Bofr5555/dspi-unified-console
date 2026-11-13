@@ -422,8 +422,24 @@ const SOURCE: &[(u8, &str)] = &[
     (5, "spdif3"),
     (6, "spdif4"),
     // -- WP SW1 -- the audio link input (SYS2 5.1); stock firmware refuses it
-    (7, "link"),
+    // -- WP ALINK1 -- named `alink`; `link` still reads as 7 (`choice_alias`)
+    (7, "alink"),
 ];
+
+// -- WP ALINK1 --
+/// Choice names that older builds wrote and readers still take: the audio link
+/// input was `link` before ALINK1 named it `alink` (CLI scripts, JSON dumps).
+const CHOICE_ALIASES: &[(&str, &str, u8)] = &[("in.source", "link", 7)];
+
+/// The raw value an old choice name stands for on `path`, when `name` is one
+/// (ALINK1: `in.source` `link` is 7, now written `alink`). `name` is matched
+/// in lower case.
+pub fn choice_alias(path: &str, name: &str) -> Option<u8> {
+    CHOICE_ALIASES
+        .iter()
+        .find(|(p, n, _)| *p == path && n.eq_ignore_ascii_case(name))
+        .map(|(_, _, v)| *v)
+}
 /// `OutputLatencyId` (output_latency.h): stable ids, 0 is never valid.
 const OUTPUT_LATENCY: &[(u8, &str)] = &[
     (1, "0.67ms"),
@@ -4231,6 +4247,11 @@ mod tests {
         let ids: Vec<u8> = sources.iter().map(|(v, _)| *v).collect();
         // -- WP SW1 -- 7: the audio link (extension_channel_spec.md 2.8.3)
         assert_eq!(ids, [0, 1, 2, 3, 4, 5, 6, 7]);
+        // -- WP ALINK1 -- written `alink`; the old name `link` still reads as 7.
+        assert!(sources.contains(&(7, "alink")));
+        assert_eq!(super::choice_alias("in.source", "link"), Some(7));
+        assert_eq!(super::choice_alias("in.source", "LINK"), Some(7));
+        assert_eq!(super::choice_alias("out.type", "link"), None);
         for path in ["pre", "pre.all"] {
             assert!(
                 by_path(path)

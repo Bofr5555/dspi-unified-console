@@ -44,7 +44,7 @@ const NOT_EXPORTED: &[&str] = &[
     "link_tick",
     // -- WP SW3 (fixup wb8) -- The web's System view: the hub's `system.*` on the
     // session's own connection (dspi-wasm `hubSystem`, `hubRole`); the other clients
-    // use the typed `link_system_*` calls.
+    // use the typed `alink_system_*` calls.
     "link_hub_request",
     "link_hub_role",
     // -- WP WB8 -- The web demo's clip (dspi-wasm `demo {action: "clip"}`), for tests.
@@ -150,8 +150,8 @@ fn camel(snake: &str) -> String {
 fn core_methods() -> BTreeSet<String> {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../dspi-core/src");
     let mut names = BTreeSet::new();
-    // -- fixup wb8 -- the module folders too (`link/system.rs`, LKUI1's exported
-    // `link_system_*`), not only the top level; test modules are left out
+    // -- fixup wb8 -- the module folders too (`alink/system.rs`, LKUI1's exported
+    // `alink_system_*`), not only the top level; test modules are left out
     let mut files = Vec::new();
     let mut dirs = vec![src];
     while let Some(dir) = dirs.pop() {

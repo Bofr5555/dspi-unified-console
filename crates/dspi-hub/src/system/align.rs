@@ -1,12 +1,12 @@
 //! The alignment engine (WP SW2, SYS2 3.1-3.2 and 3.5, `link_protocol_spec.md`
 //! 7.2): from the model and what the devices report, each unit's
-//! `EXT_LINK_PHASE` (`d_local`, `hops_offset`) and its outputs' `out.delay`, so
-//! that every unit plays link frame F at the same instant and every speaker in
+//! `EXT_ALINK_PHASE` (`d_local`, `hops_offset`) and its outputs' `out.delay`, so
+//! that every unit plays alink frame F at the same instant and every speaker in
 //! a room is heard at once at the listening position. Pure: the I/O is in
 //! `system::run`.
 //!
 //! In frames at the stream's rate, for a unit `u` behind re-emitters with hop
-//! delays `d_1..d_h` (`h` = its hops), with latency after the link `L_u` and its
+//! delays `d_1..d_h` (`h` = its hops), with latency after the alink `L_u` and its
 //! room's lip-sync offset `S_u`:
 //!
 //! - frame F reaches `u` at `t_F + sum(d_k)`, so its effective delay
@@ -24,7 +24,7 @@
 
 use std::collections::BTreeMap;
 
-use dspi_proto::ext::audio_link::HOPS_OFFSET_MAX;
+use dspi_proto::ext::alink::HOPS_OFFSET_MAX;
 use serde::Serialize;
 
 use super::model::{SystemModel, Unit};
@@ -43,49 +43,49 @@ pub const DEFAULT_D: u16 = 128;
 pub const MAX_OUT_DELAY_SAMPLES: u32 = 2046;
 
 /// What the hub read from one device, by serial. Every field is optional: a
-/// device offline, without the link, or not reporting it.
+/// device offline, without the alink, or not reporting it.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Observed {
     /// Attached to the hub now.
     pub online: bool,
-    /// `EXT_LINK_INFO.role`'s name.
+    /// `EXT_ALINK_INFO.role`'s name.
     pub role: Option<String>,
-    /// `EXT_LINK_INFO.d_local_min`.
+    /// `EXT_ALINK_INFO.d_local_min`.
     pub d_local_min: Option<u16>,
-    /// `EXT_LINK_INFO.d_local_max`.
+    /// `EXT_ALINK_INFO.d_local_max`.
     pub d_local_max: Option<u16>,
-    /// `EXT_LINK_STATUS.state`'s name.
+    /// `EXT_ALINK_STATUS.state`'s name.
     pub state: Option<String>,
-    /// `EXT_LINK_STATUS.hops`.
+    /// `EXT_ALINK_STATUS.hops`.
     pub hops: Option<u8>,
-    /// `EXT_LINK_STATUS.hop_delay_frames` (offset 50).
+    /// `EXT_ALINK_STATUS.hop_delay_frames` (offset 50).
     pub hop_delay_frames: Option<u8>,
-    /// `EXT_LINK_STATUS.sender_id`.
+    /// `EXT_ALINK_STATUS.sender_id`.
     pub sender_id: Option<u8>,
-    /// `EXT_LINK_STATUS.rate_code`.
+    /// `EXT_ALINK_STATUS.rate_code`.
     pub rate_code: Option<u8>,
-    /// `EXT_LINK_STATUS.crc16_errors`.
+    /// `EXT_ALINK_STATUS.crc16_errors`.
     pub crc16_errors: Option<u32>,
-    /// `EXT_LINK_STATUS.loss_count`.
+    /// `EXT_ALINK_STATUS.loss_count`.
     pub loss_count: Option<u32>,
-    /// `EXT_LINK_STATUS.phase_error_frames`.
+    /// `EXT_ALINK_STATUS.phase_error_frames`.
     pub phase_error_frames: Option<f32>,
-    /// The link frame (`EXT_FRAME_COUNTER`, else `EXT_LINK_STATUS`).
+    /// The alink frame (`EXT_FRAME_COUNTER`, else `EXT_ALINK_STATUS`).
     pub frame: Option<u64>,
-    /// `EXT_LINK_PHASE` as read: mode, d_local, hops_offset, flags.
+    /// `EXT_ALINK_PHASE` as read: mode, d_local, hops_offset, flags.
     pub phase: Option<(u8, u16, i16, u8)>,
-    /// The listed sub-commands include `EXT_LINK_CTRL_MSG` OUT (a sender build).
+    /// The listed sub-commands include `EXT_ALINK_CTRL_MSG` OUT (a sender build).
     pub superframe_path: bool,
     /// The device announces 0xE1 (`EXT_NOTIFY_FEATURES` bit 2).
     pub state_events: bool,
     // -- fixup sw2x (F1) --
-    /// A sender's system mute (`EXT_LINK_CTRL_MSG` IN flags bit 0).
+    /// A sender's system mute (`EXT_ALINK_CTRL_MSG` IN flags bit 0).
     pub system_mute: Option<bool>,
-    // -- WP SW3 -- for the clients' "Clock and links" panel
-    /// The rest of `EXT_LINK_STATUS`'s counters and loop terms.
-    pub stats: Option<LinkStats>,
-    /// A receiver's trim scan at link-up (`EXT_LINK_DIAG` version 1).
+    // -- WP SW3 -- for the clients' "Clock and audio links" panel
+    /// The rest of `EXT_ALINK_STATUS`'s counters and loop terms.
+    pub stats: Option<AlinkStats>,
+    /// A receiver's trim scan at link-up (`EXT_ALINK_DIAG` version 1).
     pub trim_scan: Option<TrimScan>,
     // -- fixup sw3x --
     /// A sender's superframe apply still waiting for its frame: it takes no
@@ -93,7 +93,7 @@ pub struct Observed {
     pub pending_apply_frame: Option<u64>,
     // -- WP HWLK1F --
     /// Whether the device's firmware has the audio link at all: `present`
-    /// (`EXT_LINK_INFO` answers), `none` (its `EXT_LIST` names no 0x8000 block,
+    /// (`EXT_ALINK_INFO` answers), `none` (its `EXT_LIST` names no 0x8000 block,
     /// or the block stalls: a K340 on bofr-main 470a127, stock firmware), or
     /// `None` when that could not be told (offline, no answer).
     pub alink: Option<AlinkFirmware>,
@@ -104,7 +104,7 @@ pub struct Observed {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AlinkFirmware {
-    /// `EXT_LINK_INFO` answers.
+    /// `EXT_ALINK_INFO` answers.
     Present,
     /// No audio link in this firmware: never locked, never at a frame.
     #[serde(rename = "none")]
@@ -120,14 +120,14 @@ impl Observed {
 }
 
 // -- WP SW3 --
-/// `EXT_LINK_STATUS`'s counters (from boot or the last stats reset, wrapping
-/// at 2^32) and loop terms, as the "Clock and links" panel shows them.
+/// `EXT_ALINK_STATUS`'s counters (from boot or the last stats reset, wrapping
+/// at 2^32) and loop terms, as the "Clock and audio links" panel shows them.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LinkStats {
+pub struct AlinkStats {
     /// The line class, 1-3 (L1-L3); 0 unknown.
     pub line_class: u8,
-    /// Link channels in the stream; 0 unknown.
+    /// Audio link channels in the stream; 0 unknown.
     pub channels: u8,
     /// Entries into locked.
     pub lock_count: u32,
@@ -144,7 +144,7 @@ pub struct LinkStats {
 }
 
 // -- WP SW3 --
-/// The trim scan at link-up (`dspi_proto::ext::audio_link::TrimScan`).
+/// The trim scan at link-up (`dspi_proto::ext::alink::TrimScan`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TrimScan {
@@ -172,7 +172,7 @@ pub struct UnitPlan {
     pub hops: u8,
     /// `sum(d_k)`: frames the re-emitters add.
     pub path_delay_frames: u32,
-    /// Its latency after the link, frames.
+    /// Its latency after the alink, frames.
     pub latency_frames: i64,
     /// Its room's lip-sync offset, frames.
     pub lip_sync_frames: i64,

@@ -2012,7 +2012,7 @@ pub(crate) fn source_title(source: u8, names: &[String], other_spdif_on: bool) -
         3 => "ADAT".to_owned(),
         4..=6 => format!("S/PDIF {}", source.saturating_sub(2)),
         // -- WP SW1 (fixup sw1, F4) --
-        crate::audio_link::INPUT_SOURCE_AUDIO_LINK => "Audio link".to_owned(),
+        crate::alink::INPUT_SOURCE_ALINK => "Audio link".to_owned(),
         n => format!("Source {n}"),
     }
 }

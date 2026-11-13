@@ -62,7 +62,7 @@ const NAME_LEN_U16: u16 = {
 /// Highest `InputSource` the firmware selects (`INPUT_SOURCE_MAX`,
 /// audio_input.h:26: S/PDIF input 4; WP SW1: 7, the audio link, on a unit
 /// that has it, SYS2 5.1).
-const INPUT_SOURCE_MAX: u8 = crate::audio_link::INPUT_SOURCE_AUDIO_LINK;
+const INPUT_SOURCE_MAX: u8 = crate::alink::INPUT_SOURCE_ALINK;
 
 /// The master volume value that mutes (`REQ_SET_MASTER_VOLUME`).
 const MASTER_VOL_MUTE_DB: f32 = -128.0;
@@ -539,7 +539,7 @@ impl DspiCore {
     ///
     /// Errors: [`DspiError::InvalidArgument`] above 7;
     /// [`DspiError::Unsupported`], with no traffic, for 7 on a unit without
-    /// the link input (`audio_link_info`'s `link_input`); the connection and
+    /// the link input (`alink_info`'s `alink_input`); the connection and
     /// transfer errors of every setter.
     pub fn set_input_source(&self, source: u8) -> Result<()> {
         // -- WP SW1 --
@@ -551,7 +551,7 @@ impl DspiCore {
             )));
         }
         // -- WP SW1 --
-        if !crate::audio_link::source_selectable(inner.conn()?, source) {
+        if !crate::alink::source_selectable(inner.conn()?, source) {
             return Err(DspiError::Unsupported);
         }
         let change = inner.journal_begin("in.source", &[])?;

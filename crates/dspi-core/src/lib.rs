@@ -75,7 +75,7 @@ mod ext;
 // -- WP FWX --
 mod ext_diag;
 // -- WP SW1 -- the audio link (SYS2), not DSPi Link
-mod audio_link;
+mod alink;
 pub mod files;
 // -- WP P1DF --
 mod doc_diff;
@@ -165,9 +165,9 @@ pub use dspi_proto::ext::PairMap;
 // -- WP FWX --
 pub use ext_diag::{DeviceResetInfo, IDENTIFY_TONE_DBFS, IdentifyInfo};
 // -- WP SW1 --
-pub use audio_link::{
-    APPLY_OP_MAX, AUDIO_LINK_SLOT_SILENT, ApplyAtFrameStatus, AudioLinkFrameCounter, AudioLinkInfo,
-    AudioLinkPhase, AudioLinkStatus, INPUT_SOURCE_AUDIO_LINK,
+pub use alink::{
+    ALINK_SLOT_SILENT, APPLY_OP_MAX, AlinkFrameCounter, AlinkInfo, AlinkPhase, AlinkStatus,
+    ApplyAtFrameStatus, INPUT_SOURCE_ALINK,
 };
 // -- WP CG23 --
 pub use raw::RawNotification;

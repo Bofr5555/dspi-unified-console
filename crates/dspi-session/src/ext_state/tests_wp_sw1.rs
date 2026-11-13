@@ -1,10 +1,10 @@
-//! WP SW1: the probe reads `EXT_LINK_INFO` only when `EXT_LIST` names it, and
-//! the link's I/O, against a mock device. Old firmware gets no extra traffic:
+//! WP SW1: the probe reads `EXT_ALINK_INFO` only when `EXT_LIST` names it, and
+//! the alink's I/O, against a mock device. Old firmware gets no extra traffic:
 //! the transfers are counted.
 
 use super::*;
-use crate::ext::{self as sx, ApplyOp, ApplyRequest, ExtError, LinkPhase, LinkSlots, LinkState};
-use dspi_proto::ext::audio_link::{LinkRole, LinkStatus};
+use crate::ext::{self as sx, AlinkPhase, AlinkSlots, AlinkState, ApplyOp, ApplyRequest, ExtError};
+use dspi_proto::ext::alink::{AlinkRole, AlinkStatus};
 use dspi_transport::MockTransport;
 use dspi_transport::mock::{Direction, Reply};
 
@@ -12,12 +12,12 @@ fn list(ids: &[u16]) -> Vec<u8> {
     ids.iter().flat_map(|id| id.to_le_bytes()).collect()
 }
 
-fn info(role: LinkRole) -> LinkInfo {
-    LinkInfo {
+fn info(role: AlinkRole) -> AlinkInfo {
+    AlinkInfo {
         role,
         protocol_version: 1,
         class_mask: 1,
-        max_links: 1,
+        max_alinks: 1,
         max_channels: 8,
         slots_per_unit: 8,
         flags: 0,
@@ -48,9 +48,9 @@ fn wp_sw1_old_firmware_gets_no_extra_transfer() {
     // Stock firmware: one EXT_LIST, which stalls.
     let (e, seen) = probe(vec![Reply::Stall]);
     assert_eq!(seen, vec![(Direction::In, 0)]);
-    assert!(!e.audio_link() && !e.link_input());
+    assert!(!e.alink() && !e.alink_input());
 
-    // bofr-main de9614c: 1-6 listed, no link. The same reads as before SW1:
+    // bofr-main de9614c: 1-6 listed, no alink. The same reads as before SW1:
     // the list and the four known sub-commands, nothing at 0x8000.
     let (e, seen) = probe(vec![
         Reply::Data(list(&[1, 2, 3, 4, 5, 6])),
@@ -61,8 +61,8 @@ fn wp_sw1_old_firmware_gets_no_extra_transfer() {
     ]);
     assert_eq!(seen.len(), 5, "{seen:?}");
     assert!(seen.iter().all(|(_, v)| *v < 0x8000));
-    assert!(!e.audio_link());
-    assert!(!e.link_state_events() && !e.apply_result_events());
+    assert!(!e.alink());
+    assert!(!e.alink_state_events() && !e.apply_result_events());
 }
 
 #[test]
@@ -70,7 +70,7 @@ fn wp_sw1_a_listed_link_info_is_read_once() {
     let (e, seen) = probe(vec![
         Reply::Data(list(&[3, 0x8000, 0x8001, 0x8003])),
         Reply::Data(vec![0b1100, 0, 0, 0]),
-        Reply::Data(info(LinkRole::Receiver).encode().to_vec()),
+        Reply::Data(info(AlinkRole::Receiver).encode().to_vec()),
     ]);
     assert_eq!(
         seen,
@@ -80,44 +80,44 @@ fn wp_sw1_a_listed_link_info_is_read_once() {
             (Direction::In, 0x8000)
         ]
     );
-    assert!(e.audio_link() && e.link_input());
-    assert!(e.link_state_events() && e.apply_result_events());
-    assert_eq!(e.link_info.unwrap().max_channels, 8);
+    assert!(e.alink() && e.alink_input());
+    assert!(e.alink_state_events() && e.apply_result_events());
+    assert_eq!(e.alink_info.unwrap().max_channels, 8);
     // Listed but not read: status and slots are read on demand only.
     assert!(e.has(0x8001) && e.has(0x8003));
 
-    // A sender has the link but no link input.
+    // A sender has the alink but no alink input.
     let (e, _) = probe(vec![
         Reply::Data(list(&[0x8000])),
-        Reply::Data(info(LinkRole::Sender).encode().to_vec()),
+        Reply::Data(info(AlinkRole::Sender).encode().to_vec()),
     ]);
-    assert!(e.audio_link() && !e.link_input());
+    assert!(e.alink() && !e.alink_input());
 
-    // Role 0 or another protocol version: no link (2.8.13).
+    // Role 0 or another protocol version: no alink (2.8.13).
     let (e, _) = probe(vec![
         Reply::Data(list(&[0x8000])),
-        Reply::Data(info(LinkRole::None).encode().to_vec()),
+        Reply::Data(info(AlinkRole::None).encode().to_vec()),
     ]);
-    assert!(e.link_info.is_some() && !e.audio_link() && !e.link_input());
-    let mut v2 = info(LinkRole::Receiver);
+    assert!(e.alink_info.is_some() && !e.alink() && !e.alink_input());
+    let mut v2 = info(AlinkRole::Receiver);
     v2.protocol_version = 2;
     let (e, _) = probe(vec![
         Reply::Data(list(&[0x8000])),
         Reply::Data(v2.encode().to_vec()),
     ]);
-    assert!(!e.audio_link() && !e.link_input());
+    assert!(!e.alink() && !e.alink_input());
 
     // A short or stalled info is absent, not an error.
     let (e, _) = probe(vec![Reply::Data(list(&[0x8000])), Reply::Data(vec![1; 31])]);
-    assert!(e.has(0x8000) && !e.audio_link());
+    assert!(e.has(0x8000) && !e.alink());
     let (e, _) = probe(vec![Reply::Data(list(&[0x8000])), Reply::Stall]);
-    assert!(!e.audio_link());
+    assert!(!e.alink());
 }
 
 #[test]
 fn wp_sw1_link_io_uses_the_specs_ids_and_sizes() {
-    let status = LinkStatus {
-        state: LinkState::Locked,
+    let status = AlinkStatus {
+        state: AlinkState::Locked,
         class: 1,
         rate_code: 1,
         channels: 8,
@@ -142,12 +142,12 @@ fn wp_sw1_link_io_uses_the_specs_ids_and_sizes() {
         Reply::Sequence(vec![Reply::Data(status.encode().to_vec())]),
     );
     let log = t.log_handle();
-    assert_eq!(sx::read_link_status(&mut t).unwrap(), status);
-    let slots = LinkSlots([0, 1, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]);
-    sx::write_link_slots(&mut t, slots).unwrap();
-    sx::write_link_phase(
+    assert_eq!(sx::read_alink_status(&mut t).unwrap(), status);
+    let slots = AlinkSlots([0, 1, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]);
+    sx::write_alink_slots(&mut t, slots).unwrap();
+    sx::write_alink_phase(
         &mut t,
-        LinkPhase {
+        AlinkPhase {
             mode: 1,
             d_local: 128,
             hops_offset: 0,
@@ -166,7 +166,7 @@ fn wp_sw1_link_io_uses_the_specs_ids_and_sizes() {
         },
     )
     .unwrap();
-    sx::reset_link_stats(&mut t).unwrap();
+    sx::reset_alink_stats(&mut t).unwrap();
     let log = log.lock().unwrap();
     let seen: Vec<_> = log
         .iter()
@@ -188,7 +188,7 @@ fn wp_sw1_link_io_uses_the_specs_ids_and_sizes() {
 fn wp_sw1_short_or_stalled_link_reads_are_errors_not_panics() {
     let mut t = MockTransport::new().data(op::REQ_EXTENSION, vec![2; 10]);
     assert!(matches!(
-        sx::read_link_status(&mut t),
+        sx::read_alink_status(&mut t),
         Err(ExtError::Transport(TransportError::ShortRead {
             wanted: 52,
             ..
@@ -200,7 +200,7 @@ fn wp_sw1_short_or_stalled_link_reads_are_errors_not_panics() {
         Err(ExtError::Unsupported { id: 0x8005 })
     ));
     assert!(matches!(
-        sx::write_link_slots(&mut t, LinkSlots::SILENT),
+        sx::write_alink_slots(&mut t, AlinkSlots::SILENT),
         Err(ExtError::Refused { id: 0x8003 })
     ));
     let msg = sx::read_frame_counter(&mut t).unwrap_err().to_string();

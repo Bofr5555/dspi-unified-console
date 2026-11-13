@@ -1239,25 +1239,25 @@ uint32_t dspi_diagnostics_file_name(struct FfiCore *core, char *buf, uint32_t le
 uint8_t dspi_identify(struct FfiCore *core, uint8_t seconds, uint8_t tone_output);
 uint32_t dspi_fetch_identify(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_fetch_reset_info(struct FfiCore *core, char *buf, uint32_t len);
-uint32_t dspi_audio_link_info(struct FfiCore *core, char *buf, uint32_t len);
-uint32_t dspi_fetch_audio_link_info(struct FfiCore *core, char *buf, uint32_t len);
-uint32_t dspi_fetch_audio_link_status(struct FfiCore *core, char *buf, uint32_t len);
-bool dspi_fetch_audio_link_slots(struct FfiCore *core, uint8_t *out, uint32_t out_len);
-uint8_t dspi_set_audio_link_slots(struct FfiCore *core, const uint8_t *slots, uint32_t slots_len);
-uint32_t dspi_fetch_audio_link_phase(struct FfiCore *core, char *buf, uint32_t len);
-uint8_t dspi_set_audio_link_phase(struct FfiCore *core,
+uint32_t dspi_alink_info(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_fetch_alink_info(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_fetch_alink_status(struct FfiCore *core, char *buf, uint32_t len);
+bool dspi_fetch_alink_slots(struct FfiCore *core, uint8_t *out, uint32_t out_len);
+uint8_t dspi_set_alink_slots(struct FfiCore *core, const uint8_t *slots, uint32_t slots_len);
+uint32_t dspi_fetch_alink_phase(struct FfiCore *core, char *buf, uint32_t len);
+uint8_t dspi_set_alink_phase(struct FfiCore *core,
 uint8_t mode,
 uint16_t d_local,
 int16_t hops_offset);
-uint32_t dspi_fetch_audio_link_frame_counter(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_fetch_alink_frame_counter(struct FfiCore *core, char *buf, uint32_t len);
 uint8_t dspi_apply_at_frame(struct FfiCore *core,
 uint64_t frame,
 uint8_t op,
 uint8_t arg,
 int16_t value);
 uint32_t dspi_fetch_apply_at_frame_status(struct FfiCore *core, char *buf, uint32_t len);
-uint8_t dspi_reset_audio_link_stats(struct FfiCore *core);
-bool dspi_open_demo_audio_link(struct FfiCore *core);
+uint8_t dspi_reset_alink_stats(struct FfiCore *core);
+bool dspi_open_demo_alink(struct FfiCore *core);
 uint32_t dspi_notice_for(const char *key, const char *detail, char *buf, uint32_t len);
 uint32_t dspi_notice_texts(char *buf, uint32_t len);
 bool dspi_link_browse_start(struct FfiCore *core,
@@ -1305,14 +1305,14 @@ const char *path,
 char *buf,
 uint32_t len);
 uint32_t dspi_link_fetch_info(const char *host, uint16_t port, char *buf, uint32_t len);
-uint32_t dspi_link_system_view(struct FfiCore *core, char *buf, uint32_t len);
-uint32_t dspi_link_system_save(struct FfiCore *core,
+uint32_t dspi_alink_system_view(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_alink_system_save(struct FfiCore *core,
 uint64_t revision,
 const char *edits_json,
 char *buf,
 uint32_t len);
-uint32_t dspi_link_system_align(struct FfiCore *core, char *buf, uint32_t len);
-uint32_t dspi_link_system_recall(struct FfiCore *core, const char *scene, char *buf, uint32_t len);
+uint32_t dspi_alink_system_align(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_alink_system_recall(struct FfiCore *core, const char *scene, char *buf, uint32_t len);
 uint32_t dspi_midi_ports(char *buf, uint32_t len);
 bool dspi_open_midi(struct FfiCore *core, const char *name);
 struct FfiHub *dspi_hub_new(void);

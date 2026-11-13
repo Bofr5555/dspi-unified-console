@@ -51,7 +51,7 @@ mod diag;
 // -- WP FWX --
 mod ext_diag;
 // -- WP SW1 --
-mod audio_link;
+mod alink;
 // -- WP P1NT --
 mod notice_text;
 

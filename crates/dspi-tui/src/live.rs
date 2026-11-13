@@ -899,7 +899,7 @@ impl Live {
             // -- WP SW1 (fixup sw1, F4) -- a unit on the audio link (7) shows
             // it; it is offered only there, as the Terminal does not probe
             // the link yet.
-            if raw == usize::from(dspi_proto::ext::audio_link::INPUT_SOURCE_LINK) {
+            if raw == usize::from(dspi_proto::ext::alink::INPUT_SOURCE_ALINK) {
                 choices.push("Audio link".into());
             }
             let idx = raw.min(choices.len() - 1);
