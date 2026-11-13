@@ -1,0 +1,4 @@
+# -- WP QP2 -- Icons of the channel pages (see ../manifest.txt for the format)
+link                input header: pair linked
+unlink              input header: pair not linked
+volume-x            output card: muted

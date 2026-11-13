@@ -3,33 +3,27 @@
 # exe, dspi_capi.dll, the Qt and MinGW runtime DLLs it loads, the Qt plugins
 # and the QML modules the app imports. What windeployqt does on Windows.
 #
-#   deploy-mingw.sh <build dir> <output dir> [qt major, default 6]
+#   deploy-mingw.sh <build dir> <output dir>
 #
-# Needs x86_64-w64-mingw32-objdump, the mingw Qt (Fedora: mingw64-qt6-*),
-# and the host qmlimportscanner of the same Qt major (Fedora:
-# qt6-qtdeclarative-devel). Override MINGW_ROOT / QMLIMPORTSCANNER if your
-# distribution puts them elsewhere.
+# Needs x86_64-w64-mingw32-objdump, the mingw Qt 6 (Fedora: mingw64-qt6-*),
+# and the host qmlimportscanner of Qt 6 (Fedora: qt6-qtdeclarative-devel).
+# Override MINGW_ROOT / QMLIMPORTSCANNER if your distribution puts them
+# elsewhere.
 set -euo pipefail
-build=$1; out=$2; major=${3:-6}
+build=$1; out=$2
 here=$(cd "$(dirname "$0")" && pwd)
 src=$(cd "$here/../../qt" && pwd)
 M=${MINGW_ROOT:-/usr/x86_64-w64-mingw32/sys-root/mingw}
 OBJDUMP=${OBJDUMP:-x86_64-w64-mingw32-objdump}
 STRIP=${STRIP:-x86_64-w64-mingw32-strip}
-if [ "$major" = 6 ]; then
-    plugins=$M/lib/qt6/plugins; qml=$M/lib/qt6/qml
-    scanner=${QMLIMPORTSCANNER:-/usr/lib64/qt6/libexec/qmlimportscanner}
-    plugin_list="platforms/qwindows.dll imageformats/qsvg.dll imageformats/qico.dll iconengines/qsvgicon.dll
-                 styles/qmodernwindowsstyle.dll tls/qschannelbackend.dll tls/qcertonlybackend.dll"
-else
-    plugins=$M/lib/qt5/plugins; qml=$M/lib/qt5/qml
-    scanner=${QMLIMPORTSCANNER:-/usr/lib64/qt5/bin/qmlimportscanner}
-    plugin_list="platforms/qwindows.dll imageformats/qsvg.dll imageformats/qico.dll iconengines/qsvgicon.dll
-                 styles/qwindowsvistastyle.dll"
-fi
+plugins=$M/lib/qt6/plugins; qml=$M/lib/qt6/qml
+scanner=${QMLIMPORTSCANNER:-/usr/lib64/qt6/libexec/qmlimportscanner}
+# -- WP QP20 -- tls/ for the update checker's https requests
+plugin_list="platforms/qwindows.dll imageformats/qsvg.dll imageformats/qico.dll iconengines/qsvgicon.dll
+             styles/qmodernwindowsstyle.dll tls/qschannelbackend.dll tls/qcertonlybackend.dll"
 
 rm -rf "$out"; mkdir -p "$out"
-cp "$build/DSPiConsole.exe" "$build/dspi_capi.dll" "$out/"
+cp "$build/uconsole-for-dspi.exe" "$build/dspi_capi.dll" "$out/"
 
 # Plugins, in the folders Qt looks for them next to the exe
 for p in $plugin_list; do
@@ -37,8 +31,10 @@ for p in $plugin_list; do
     mkdir -p "$out/$(dirname "$p")"; cp "$plugins/$p" "$out/$p"
 done
 
-# QML modules the app's QML imports (and what they import), whole folders
-"$scanner" -rootPath "$src/qml" -importPath "$qml" -qrcFiles "$src/resources.qrc" 2>/dev/null \
+# QML modules the app's QML imports (and what they import), whole folders.
+# -- WP QP20 -- The app's own module (UConsole) is compiled into the exe; the
+# scanner reads its sources for their imports.
+"$scanner" -rootPath "$src/qml" -importPath "$qml" 2>/dev/null \
   | python3 -c '
 import json, sys
 for m in json.load(sys.stdin):
@@ -51,12 +47,12 @@ for m in json.load(sys.stdin):
     # Only the module's own files; nested modules come on their own lines
     find "$dir" -maxdepth 1 -type f ! -name '*.a' ! -name '*d.dll' -exec cp {} "$out/qml/$rel/" \;
 done
-# Qt 6 Fusion and the labs modules load their implementation modules at run time
-for extra in QtQuick/Controls/impl QtQuick/Controls/Fusion/impl QtQuick/Controls/Basic QtQuick/Controls/Basic/impl \
-             QtQuick/Templates QtQml/WorkerScript QtQml/Models QtQml/Base; do
+# The Basic style and the controls load their implementation modules at run time
+for extra in $(sed -n 's/^runtime //p' "$here/../qt-modules.txt"); do
     [ -d "$qml/$extra" ] && [ ! -d "$out/qml/$extra" ] || continue
     mkdir -p "$out/qml/$extra"; find "$qml/$extra" -maxdepth 1 -type f ! -name '*.a' -exec cp {} "$out/qml/$extra/" \;
 done
+[ -d "$out/qml/QtQuick/Controls" ] || { echo "deploy-mingw: no QtQuick.Controls found by $scanner" >&2; exit 1; }
 
 # Every DLL any of those loads that ships with mingw / Qt (system DLLs stay out)
 changed=1

@@ -1,0 +1,16 @@
+# -- WP QP16 -- Firmware and read-only (see ../manifest.txt for the format)
+cpu                 firmware window header
+circle-check        firmware: ready, verified, image checked
+cable               firmware: connect a board
+search              firmware: looking for the board
+hard-drive          firmware: the bootloader drive
+download            firmware: writing
+refresh-cw          firmware: waiting for the device
+triangle-alert      firmware: failure; mismatch banner
+circle-alert        firmware: not quite ready
+circle-dot          firmware: BOOTSEL hint
+arrow-down-to-line  firmware: downgrade note
+check               firmware: step dots
+loader-circle       firmware and udev dialog: busy
+lock                read-only banner
+timer               delay-refusal banner

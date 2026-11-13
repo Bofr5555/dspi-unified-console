@@ -1,0 +1,76 @@
+# The Lucide icons the app ships, one name per line, with what uses it.
+# fetch-lucide.sh copies exactly these (and those in manifest.d/<wp>.txt, one
+# file per work package) from the pinned release into this
+# directory; CMakeLists.txt puts them in the app. Add a name, run the script,
+# commit the new .svg with this file.
+activity            quick strip: leveller
+arrow-down-to-line  settings: inputs
+audio-lines         quick strip: psychoacoustic bass
+audio-waveform      settings: spectrum analyser
+cable               settings: outputs
+chart-line          settings: graphing
+check               lists, menus
+chevron-down        popups
+chevron-left        settings: back
+chevron-right       menus: submenu arrow; settings: forward
+chevron-up          popups
+chevrons-up-down    device button
+circle-alert        status
+circle-check        status
+circle-dot          settings: control surfaces; control surfaces: button
+circle-x            status
+clipboard           channel clipboard
+clock               stats
+copy                channel clipboard
+cpu                 settings: overview, control interfaces
+download            settings: updates
+external-link       help links
+eye                 graph: curve shown
+eye-off             graph: curve hidden
+file-down           export
+file-up             import
+folder-open         open a file
+gauge               dashboard
+hard-drive          settings: global parameters
+hash                stats
+headphones          quick strip: crossfeed
+heart               about
+info                banners; quick strip: stats
+key-round           devices: pairing
+layout-grid         settings: channel groups
+lightbulb           control surfaces: LED
+list-ordered        settings: macros
+loader-circle       busy
+lock                devices: locked
+minus               steppers
+monitor             control surfaces: display
+moon                theme
+move                graph: drag
+pause               signal generator
+pin                 settings: overview pins
+play                signal generator
+plug                devices
+plug-zap            devices
+plus                steppers, add
+power               settings: auxiliary outputs
+radio               control surfaces: IR
+refresh-cw          devices: rescan
+rotate-cw           control surfaces: encoder
+save                preset save
+search              settings search
+settings            quick strip: settings
+settings-2          settings: advanced
+sliders-horizontal  quick strip: matrix
+sliders-vertical    control surfaces: potentiometer
+square              signal generator: stop
+star                AutoEQ favourites
+sun                 theme
+toggle-left         control surfaces: switch
+trash               delete
+triangle-alert      banners
+usb                 devices
+volume-2            quick strip: loudness
+waves-arrow-down    settings: I2S
+network             settings: networking
+wifi                devices: hubs
+x                   quick strip: bypass; dismiss

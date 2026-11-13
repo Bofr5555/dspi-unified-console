@@ -4,9 +4,6 @@
 #
 #   ci/macvm.sh macos   macOS Swift app: build, unit tests
 #   ci/macvm.sh ios     iOS app: build, unit and UI tests in the Simulator
-#   ci/macvm.sh qt-dmg  Qt app: the .dmg (apps/desktop/packaging/macos/ci-dmg.sh),
-#                       started from the .dmg on the demo device; the .dmg is
-#                       copied back next to the matrix logs (WP QD21b)
 #   ci/macvm.sh swift-dmg  Swift app: its .dmg (apps/apple/ci-dmg.sh), started
 #                       from the .dmg on the demo device, copied back the same
 #                       way (WP REL013M)
@@ -23,9 +20,9 @@ cd "$(dirname "$0")/.."
 platform=${1:-}
 case "$platform" in
   macos|ios) script="apps/apple/ci-test.sh $platform" ;;
-  qt-dmg) script=apps/desktop/packaging/macos/ci-dmg.sh ;;  # -- WP QD21b --
+  # -- WP QP0 -- The Qt .dmg row is dropped: the Swift app is the Mac release
   swift-dmg) script=apps/apple/ci-dmg.sh ;;  # -- WP REL013M --
-  *) echo "usage: $0 macos|ios|qt-dmg|swift-dmg" >&2; exit 2 ;;
+  *) echo "usage: $0 macos|ios|swift-dmg" >&2; exit 2 ;;
 esac
 host=${DSPI_MACVM:-macvm}
 vm() { ssh -o ConnectTimeout=10 -o BatchMode=yes "$host" "$@"; }

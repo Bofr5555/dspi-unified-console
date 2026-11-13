@@ -1,22 +1,20 @@
 #!/bin/bash
 # -- WP QD42 -- The source of every library the release packages bundle as
-# binaries, for publishing with the release (the LGPL requires Qt's and
-# KWindowSystem's; the rest are there so nothing is missing). Downloads only
+# binaries, for publishing with the release (the LGPL requires Qt's; the rest
+# are there so nothing is missing). Downloads only
 # from each project's or distribution's own servers, checks every file, and
 # writes MANIFEST.tsv (packages, file, URL, SHA-256, how it was checked).
 # Not run in CI. Nothing is published.
 #
 #   apps/desktop/packaging/release-sources.sh [dist dir ...]
 #
-# Always, from the versions the build scripts pin (licences/qt-modules.sh,
-# linux/Containerfile.ubuntu):
-#   qt/        Qt's source archives of the modules the AppImage and the .dmg
-#              ship, from download.qt.io, against the SHA-256 it publishes
-#              next to each (read from download.qt.io itself, never a mirror)
-#   kde/       KWindowSystem (AppImage), from download.kde.org: the SHA-256
-#              pinned in Containerfile.ubuntu and the one KDE publishes, and
-#              the release signature, against the signer's key from KDE's
-#              release keyring (invent.kde.org/sysadmin/release-keyring)
+# Always, from the versions the build scripts pin (licences/qt-modules.sh):
+#   qt/        Qt's source archives of the modules the AppImage and the Windows
+#              build ship, from download.qt.io, against the SHA-256 it publishes
+#              next to each (read from download.qt.io itself, never a mirror).
+#              -- WP QP20 -- The Windows build's own source is Fedora's (below);
+#              its archives here are what update-licences.sh reads Qt's
+#              licence files from. KWindowSystem and the Qt .dmg are gone.
 # With dist dirs (build-release.sh's dist/ and build-windows.sh's output), from
 # each package's LICENSES/BUNDLED.txt:
 #   icu/       ICU (in the AppImage, from Qt's ICU build), from the ICU
@@ -86,51 +84,29 @@ qt_for() {  # <package kind> <label>
         echo "$2 qt/$m-everywhere-src-$version.tar.xz $url sha256-published-by-download.qt.io"
     done
 }
-{ qt_for appimage AppImage; qt_for macos dmg; } | while read -r for file url how; do
+{ qt_for appimage AppImage; qt_for windows Windows; } | while read -r for file url how; do
     row "$for" "$file" "$url" "$how"
 done
 
-# ── KWindowSystem (AppImage) ──
-cf=$here/linux/Containerfile.ubuntu
-kf=$(sed -n 's/^ARG KF_VERSION=//p' "$cf")
-kpin=$(sed -n 's/^ARG KWINDOWSYSTEM_SHA256=//p' "$cf")
-[ -n "$kf" ] && [ -n "$kpin" ] || fail "no KF_VERSION / KWINDOWSYSTEM_SHA256 in $cf"
-kurl=https://download.kde.org/stable/frameworks/${kf%.*}/kwindowsystem-$kf.tar.xz
-kpub=$(get_from download.kde.org "$kurl.sha256" | cut -c1-64) || fail "no published SHA-256 for $kurl"
-[ "$kpub" = "$kpin" ] || fail "download.kde.org states $kpub for kwindowsystem-$kf.tar.xz, Containerfile.ubuntu pins $kpin"
-fetch "$kurl" "kde/kwindowsystem-$kf.tar.xz" "$kpin"
 mkdir -p "$out/keys"
-get_from download.kde.org "$kurl.sig" >"$out/kde/kwindowsystem-$kf.tar.xz.sig" || fail "no signature for $kurl"
-# Every key in KDE's release keyring (all keys ever used for KDE releases); the
-# signer's fingerprint goes into the manifest
-kring=https://invent.kde.org/sysadmin/release-keyring
-mkdir -p "$out/keys/kde"
-for k in $(get_from invent.kde.org "https://invent.kde.org/api/v4/projects/sysadmin%2Frelease-keyring/repository/tree?path=keys&per_page=100" \
-           | python3 -c 'import json, sys; print(" ".join(x["name"] for x in json.load(sys.stdin) if x["name"].endswith(".asc")))'); do
-    get_from invent.kde.org "$kring/-/raw/master/keys/$k" >"$out/keys/kde/$k" || fail "cannot read $kring's $k"
-done
 gpg_verify() {  # <key file or dir under $out> <signature under $out> <file under $out>: prints the signer
     podman run --rm --network=none -v "$out":/o:ro,z registry.fedoraproject.org/fedora:44 bash -c '
         set -e; export GNUPGHOME=$(mktemp -d)
         if [ -d "/o/$1" ]; then cat "/o/$1"/*.asc; else cat "/o/$1"; fi | gpg -q --import 2>/dev/null || true
         gpg --status-fd 1 --verify "/o/$2" "/o/$3" 2>/dev/null | sed -n "s/^\[GNUPG:\] VALIDSIG \([0-9A-F]*\) .*/\1/p" | grep .' _ "$1" "$2" "$3"
 }
-ksig=$(gpg_verify keys/kde "kde/kwindowsystem-$kf.tar.xz.sig" "kde/kwindowsystem-$kf.tar.xz") \
-    || fail "kwindowsystem-$kf.tar.xz: the signature does not verify against $kring"
-row AppImage "kde/kwindowsystem-$kf.tar.xz" "$kurl" "sha256-pinned+published-by-download.kde.org;signature-by-$ksig"
-row AppImage "kde/kwindowsystem-$kf.tar.xz.sig" "$kurl.sig" "signature"
 
 # ── What the packages in the dist dirs list as bundled ──
 bundled=$out/.bundled
 : >"$bundled"
 for d in "$@"; do
     d=$(cd "$d" && pwd)
-    for t in "$d"/DSPi-uConsole-*-linux-x86_64.tar.gz; do
+    for t in "$d"/uConsole-for-DSPi-*-linux-x86_64.tar.gz; do
         [ -f "$t" ] || continue
         tar -xzOf "$t" --wildcards '*/LICENSES/BUNDLED.txt' | sed 's/^/AppImage\t/' >>"$bundled" \
             || fail "$t has no LICENSES/BUNDLED.txt"
     done
-    for b in "$d"/DSPi-uConsole-*-windows-x86_64/LICENSES/BUNDLED.txt; do
+    for b in "$d"/uConsole-for-DSPi-*-windows-x86_64/LICENSES/BUNDLED.txt; do
         [ -f "$b" ] && sed 's/^/Windows\t/' "$b" >>"$bundled"
     done
 done
@@ -339,7 +315,7 @@ if [ -n "$fd" ]; then
 fi
 
 {
-    printf '# Sources for DSPi uConsole release packages; made by apps/desktop/packaging/release-sources.sh on %s\n' "$(date -u +%Y-%m-%d)"
+    printf '# Sources for uConsole for DSPi release packages; made by apps/desktop/packaging/release-sources.sh on %s\n' "$(date -u +%Y-%m-%d)"
     printf '# packages\tfile\turl\tsha256\tchecked by\n'
     sort -k2,2 "$rows"
 } >"$manifest"

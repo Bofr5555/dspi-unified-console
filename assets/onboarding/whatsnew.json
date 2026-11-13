@@ -6,7 +6,7 @@
       "Settings > Global Parameters has a Latency section. Pick a target from 0.67 ms to 8 ms; the default is 4 ms. The 0.67 and 1 ms options suit S/PDIF, I2S and ADAT inputs, and run as 2 ms on USB.",
       "Stats has an Output Ring Health section showing the fill target, underruns, the lowest fill and the worst input gaps, so you can tell whether a latency setting holds up.",
       "Give the board its own name under Settings > Global Parameters > Device Name. The device menu and DSPi Link hubs show it.",
-      "Rename input sources under Settings > Inputs > Source Names[[if macos:, or right-click the source picker in the sidebar]]. The names appear wherever Console names a source.",
+      "Rename input sources under Settings > Inputs > Source Names[[if desktop:, or right-click the source picker in the sidebar]]. The names appear wherever Console names a source.",
       "Control Surfaces can drive the output limiter, save the active preset, and set the target latency. The Input & Presets family is now called Device.",
       "Display pages for filter parameters can choose which band they show, and the page table fits each page on one line.",
       "The Networking settings page is reorganised around sharing and other hubs. Hubs that change address are followed without a restart, and a hub that loses power drops off the list within seconds.",
@@ -55,7 +55,7 @@
     "version": "1.1.6-beta4",
     "headline": "Tube modelling, output limiters and filters you shape on the graph",
     "items": [
-      "The Tube Modeller gives each output the character of one of 16 popular vacuum tubes, with drive, mix and an output stage that recreates how a valve amplifier's transformer meets a loudspeaker. Find it under [[effects_menu]] > Tube Modeller[[shortcut:Shift+D]].",
+      "The Tube Modeller gives each output the character of one of 16 popular vacuum tubes, with drive, mix and an output stage that recreates how a valve amplifier's transformer meets a loudspeaker. Find it under Tools > Tube Modeller[[shortcut:Shift+D]].",
       "Every output now has its own brickwall limiter with adjustable threshold and release. [[if desktop:Click]][[if mobile:Tap]] the icon under an output's mute button to switch it on, or [[if desktop:right-click]][[if mobile:touch and hold]] it for settings. Linked outputs share their limiter settings, and the limiter also guards against test signals overdriving a tweeter.",
       "Filters can now be edited directly on the response graph. Drag a band's dot to change its frequency and gain, [[if desktop:scroll]][[if mobile:pinch]] to change its width, and use the card beside it to pick a shape.[[if windows_or_linux: The graph can also show phase.]]",
       {
@@ -84,7 +84,7 @@
     "headline": "A spectrum analyser[[if can_install_firmware:, firmware updates]] and a guided start",
     "items": [
       "A spectrum analyser shows the sound on any input or output as it plays. It appears above the filter list, on the dashboard for every output, and in its own window under Tools > Spectrum Analyser[[shortcut:Shift+A]]. The device does the measuring, so it works with every source, including S/PDIF, ADAT and I2S.",
-      "The Subharmonic Synthesizer adds a new octave below the bass, for recordings that are light on low end. Find it under [[effects_menu]] > Subharmonic Synthesizer[[shortcut:Shift+S]].",
+      "The Subharmonic Synthesizer adds a new octave below the bass, for recordings that are light on low end. Find it under Tools > Subharmonic Synthesizer[[shortcut:Shift+S]].",
       {
         "when": "can_install_firmware",
         "text": "Console now carries the matching firmware and installs it for you. If a connected device runs a different version, a banner offers a one-click update.[[if windows_or_linux: Find it under Device > Firmware Update.]]"

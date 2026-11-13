@@ -1,16 +1,27 @@
 #!/usr/bin/env bash
-# Runs inside the Debian build container (see build-release.sh): the .deb,
-# against the system Qt 6 (Debian 13 and newer, Ubuntu 25.04 and newer).
+# Builds the .deb against Debian's own Qt in Containerfile.debian's image:
+# the app, checked, then CPack's package (qt/cmake/wp/qp20.cmake: the
+# dependencies, the udev rule, the notices in /usr/share/doc/uconsole-for-dspi,
+# the maintainer scripts). Run from the repository root:
+#
+#   apps/desktop/packaging/linux/build-debian.sh [output dir, default dist/]
+#
+# -- WP QP20 -- writes uconsole-for-dspi_<version>_amd64.deb. A distribution
+# package never checks for updates (no DSPI_UPDATE_FEED_URL): apt does that.
 set -euo pipefail
-here=/src/apps/desktop/packaging/linux
-
-# Build from a copy, leaving the host's build directories alone
-rm -rf /work && mkdir /work
-tar -C /src --exclude=./target --exclude=./apps/desktop/qt/build --exclude=./.git --exclude=./dist -cf - . | tar -C /work -xf -
-cd /work
+here=$(cd "$(dirname "$0")" && pwd)
+repo=$(cd "$here/../../../.." && pwd)
+build=${BUILD_DIR:-$repo/apps/desktop/build-debian}
+out=${1:-$repo/dist}
+cd "$repo"
 cargo build --release --locked -p dspi-capi --features link,midir,mdns,hub
-cd /work/apps/desktop
-cmake -S qt -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6 -DDSPI_PACKAGE_FORMAT=deb   # -- WP QD42 --
-cmake --build build -j"${JOBS:-4}"
-"$here/check-binary.sh" build/DSPiConsole 2.41
-(cd build && cpack -G DEB && cp dspi-uconsole_*.deb /dist/)
+cmake -S apps/desktop/qt -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=/usr -DDSPI_CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$repo/target}" \
+      -DDSPI_NOTICES=deb -DDSPI_UPDATE_FEED_URL=
+cmake --build "$build" -j"${JOBS:-4}" --target uconsole-for-dspi
+"$here/check-binary.sh" "$build/uconsole-for-dspi" 2.41
+(cd "$build" && cpack -G DEB)
+mkdir -p "$out"
+cp "$build"/uconsole-for-dspi_*_amd64.deb "$out/"
+dpkg-deb --info "$out"/uconsole-for-dspi_*_amd64.deb | sed -n 's/^ \(Package\|Version\|Depends\|Recommends\):/\1:/p'
+ls -la "$out"/uconsole-for-dspi_*_amd64.deb

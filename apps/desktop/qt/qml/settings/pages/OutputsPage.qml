@@ -1,320 +1,142 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
-import "../"
-import "../../components"
+import QtQuick
+import QtQuick.Layouts
+import UConsole
 
-// Output hardware: each slot's type and pin, and the ADAT optical output.
+// -- WP QP11 -- Settings > Outputs (the Mac's HardwareSettingsTab outputs
+// page): each output slot's bus and GPIO, the PDM sub's GPIO, the ADAT bulk
+// output, and Reset Pins. Changes apply to the device at once; the save bar
+// keeps them (behaviour.md §8).
 SettingsPage {
     id: page
-    title: qsTr("Outputs")
-    subtitle: qsTr("The type and GPIO pin of each physical output. Changes apply at once.")
+    objectName: "OutputsPage"
+    readonly property var hw: HardwareController
+    readonly property var state: hw.hw
+    readonly property bool editable: hw.writable
 
-    readonly property var hw: bridge.hardware
-    readonly property bool rp2350: hw.rp2350 === true
-    readonly property int slots: hw.numPinOutputs || 0
+    Component.onCompleted: { hw.clearStatus(); hw.watch(true) }
+    Component.onDestruction: hw.watch(false)
 
-    property string status: ""
-    property bool statusError: false
-    function report(code, pin, okText) {
-        statusError = code !== 0
-        status = code === 0 ? (okText || "")
-               : code === 4 ? qsTr("Disable this output in the Matrix Mixer before changing its pin.")
-               : ctx.statusText(code, pin)
-    }
-    function slotName(i) {
-        return i === slots - 1 ? qsTr("Sub") : qsTr("OUT %1/%2").arg(2 * i + 1).arg(2 * i + 2)
-    }
-
-    // ADAT output state while the page shows it
-    property var adatStatus: ({})
-    Timer {
-        interval: 2000
-        repeat: true
-        triggeredOnStart: true
-        running: page.visible && bridge.connected && page.rp2350 && page.hw.adatOutEnabled === true
-        onTriggered: page.adatStatus = bridge.fetchAdatOutStatus()
-    }
-
-    SettingsSection {
-        visible: !isMacOS
+    SettingsGroup {
+        objectName: "Outputs.slots"
         title: qsTr("Slots")
-        enabled: bridge.connected
+        iconName: "layout-grid"
+        enabled: page.editable
 
         Repeater {
-            model: page.slots
-            SettingsRow {
-                id: slotRow
-                readonly property bool isSub: index === page.slots - 1
-                readonly property int kind: !isSub && page.hw.outputTypes ? page.hw.outputTypes[index] : 0
-                title: page.slotName(index)
-                detail: isSub ? qsTr("PDM subwoofer output") : kind === 1 ? qsTr("I2S stereo pair (clocks in I2S Configuration)") : qsTr("S/PDIF stereo pair")
+            model: page.state.outputs || []
+            delegate: RowLayout {
+                id: row
+                required property var modelData
+                required property int index
+                objectName: "Outputs.row." + modelData.id
+                Layout.fillWidth: true
+                spacing: Theme.spacingSmall
 
-                readonly property int slot: index
-                readonly property int pin: page.hw.outputPins ? page.hw.outputPins[index] : 0xFF
-                readonly property var pinChoices: { bridge.hardware; return page.ctx ? page.ctx.pinOptions(pin) : [] }
-
-                Row {
-                    spacing: 8
-                    StyledComboBox {
-                        Accessible.name: qsTr("%1 type").arg(slotRow.title)
-                        width: Math.max(92, fitWidth)
-                        enabled: !slotRow.isSub
-                        model: slotRow.isSub ? [qsTr("PDM")] : [qsTr("S/PDIF"), qsTr("I2S")]
-                        currentIndex: slotRow.isSub ? 0 : slotRow.kind
-                        onActivated: if (!slotRow.isSub && index !== slotRow.kind)
-                            page.report(bridge.setOutputType(slotRow.slot, index), undefined,
-                                        index === 1 ? qsTr("%1 is now I2S.").arg(slotRow.title) : qsTr("%1 is now S/PDIF.").arg(slotRow.title))
-                    }
-                    StyledComboBox {
-                        Accessible.name: qsTr("%1 pin").arg(slotRow.title)
-                        width: Math.max(108, fitWidth)
-                        model: slotRow.pinChoices.map(function(o) { return o.text })
-                        currentIndex: page.ctx ? page.ctx.optionIndex(slotRow.pinChoices, slotRow.pin) : -1
-                        onActivated: {
-                            var p = slotRow.pinChoices[index].value
-                            if (p !== slotRow.pin)
-                                page.report(bridge.setOutputPin(slotRow.slot, p), p, qsTr("%2 now uses GPIO %1.").arg(p).arg(slotRow.title))
-                        }
-                    }
+                // The channel's colour as a small tag (owner rule)
+                Rectangle {
+                    implicitWidth: 8
+                    implicitHeight: 8
+                    radius: 4
+                    color: row.modelData.slot ? ChannelPalette.output(row.modelData.channel, false) : ChannelPalette.pdm
                 }
-            }
-        }
-
-        SettingsButtonRow {
-            title: qsTr("Reset Pins")
-            detail: qsTr("Sets every output pin back to its default. Output types are unchanged.")
-            buttonText: qsTr("Reset")
-            onClicked: {
-                var worst = 0
-                for (var i = 0; i < page.slots; i++) {
-                    var code = bridge.setOutputPin(i, 255)
-                    if (code !== 0) worst = code
-                }
-                page.report(worst, undefined, qsTr("Output pins reset to their defaults."))
-            }
-        }
-    }
-
-    SettingsSection {
-        visible: !isMacOS && page.rp2350
-        title: qsTr("ADAT Output")
-        enabled: bridge.connected
-        footnote: qsTr("ADAT runs at 44.1 and 48 kHz and pauses above that.")
-
-        SettingsSwitchRow {
-            title: qsTr("Enable ADAT")
-            detail: qsTr("Stream all 8 output channels as one optical ADAT lightpipe (44.1/48 kHz, 24-bit). Runs alongside the existing outputs; drive a TOSLINK transmitter from the data pin.")
-            checked: page.hw.adatOutEnabled === true
-            onToggled: page.report(bridge.setAdatOutEnabled(checked), page.hw.adatOutPin, checked ? qsTr("ADAT output enabled.") : qsTr("ADAT output disabled."))
-        }
-        SettingsPinRow {
-            title: qsTr("Serial Data")
-            detail: qsTr("GPIO driving the ADAT optical output. Default GPIO 12.")
-            pin: page.hw.adatOutPin
-            onChosen: page.report(bridge.setAdatOutPin(pin), pin, qsTr("ADAT output now uses GPIO %1.").arg(pin))
-        }
-        SettingsValueRow {
-            visible: page.hw.adatOutEnabled === true
-            title: qsTr("State")
-            value: page.adatStatus.active ? qsTr("Streaming")
-                 : page.adatStatus.rateOk === false ? qsTr("Suspended (rate above 48 kHz)") : qsTr("Enabled")
-        }
-    }
-
-    SettingsSection {
-        visible: !isMacOS
-        title: qsTr("Storage")
-        enabled: bridge.connected
-        SettingsRow {
-            title: bridge.outputConfigMode === 1 ? qsTr("Saved with each preset") : qsTr("Stored once for the board")
-            detail: bridge.outputConfigMode === 1
-                    ? qsTr("Pins, types, clocks and output limiters change when you load a preset. Save the preset to keep these changes.")
-                    : qsTr("Loading a preset never changes your wiring. Save in the bar below to keep these changes.")
-        }
-        SettingsButtonRow {
-            title: qsTr("Change where this is stored")
-            buttonText: qsTr("Global Parameters…")
-            onClicked: page.ctx.navigate("global")
-        }
-    }
-
-    SettingsStatusLine { visible: !isMacOS && page.status !== ""; text: page.status; error: page.statusError }
-
-    // ── macOS: the native Outputs page (DSPi_ConsoleApp.swift:8868) ──
-    function resetPins() {
-        var worst = 0
-        for (var i = 0; i < page.slots; i++) {
-            var code = bridge.setOutputPin(i, 255)
-            if (code !== 0) worst = code
-        }
-        page.report(worst, undefined, qsTr("Output pins reset to their defaults."))
-    }
-    Loader {
-        active: isMacOS
-        visible: isMacOS
-        width: parent.width
-        sourceComponent: Column {
-            spacing: 11
-
-            SettingsSection {
-                title: qsTr("Slots")
-                icon: "grid-2x2"
-                enabled: bridge.connected
-                Repeater {
-                    model: page.slots
-                    MacSlotRow {}
-                }
-            }
-
-            SettingsSection {
-                visible: page.rp2350
-                title: qsTr("Bulk Output")
-                icon: "fibre"
-                iconSize: 24
-                enabled: bridge.connected
-                SettingsSwitchRow {
-                    icon: "fibre"
-                    extraPadding: 4
-                    title: qsTr("Enable ADAT")
-                    detail: qsTr("Stream all 8 output channels as one optical ADAT lightpipe (44.1/48 kHz, 24-bit). Runs alongside the existing outputs; drive a TOSLINK transmitter from the data pin.")
-                    checked: page.hw.adatOutEnabled === true
-                    onToggled: page.report(bridge.setAdatOutEnabled(checked), page.hw.adatOutPin, checked ? qsTr("ADAT output enabled.") : qsTr("ADAT output disabled."))
-                }
-                SettingsPinRow {
-                    icon: "connector"
-                    title: qsTr("Serial Data")
-                    detail: qsTr("GPIO driving the ADAT optical output. Default GPIO 12.")
-                    pin: page.hw.adatOutPin
-                    onChosen: page.report(bridge.setAdatOutPin(pin), pin, qsTr("ADAT output now uses GPIO %1.").arg(pin))
-                }
-            }
-
-            // Status on the left, Reset Pins on the right, in a card of its own
-            SettingsSection {
-                Item {
-                    width: parent.width
-                    height: 35
-                    Row {
-                        x: 10
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 6
-                        visible: page.status !== ""
-                        Icon {
-                            anchors.verticalCenter: parent.verticalCenter
-                            name: page.statusError ? "warning" : "check-circle"
-                            size: 12
-                            color: page.statusError ? MacColors.orange : MacColors.green
-                        }
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: Math.min(implicitWidth, parent.parent.width - resetText.width - 46)
-                            elide: Text.ElideRight
-                            text: page.status
-                            font.pixelSize: 10
-                            color: page.statusError ? MacColors.orange : MacColors.secondaryLabel
-                        }
-                    }
-                    Text {
-                        id: resetText
-                        anchors.right: parent.right
-                        anchors.rightMargin: 10
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: qsTr("Reset Pins")
-                        font.pixelSize: 13
-                        color: bridge.connected ? MacColors.accent : MacColors.opacity(MacColors.secondaryLabel, 0.5)
-                        ClickArea {
-                            anchors.fill: parent
-                            anchors.margins: -4
-                            enabled: bridge.connected
-                            Accessible.name: resetText.text
-                            onActivated: page.resetPins()
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // A slot row as the native assignmentRow: the output pair's colour dot,
-    // its name in a 56 pt column, a qsTr("Default") capsule while type and pin are
-    // the factory ones, and the type and pin menus on the right
-    component MacSlotRow: SettingsRow {
-        id: slotRow
-        readonly property bool isSub: index === page.slots - 1
-        readonly property int slot: index
-        readonly property int kind: !isSub && page.hw.outputTypes ? page.hw.outputTypes[index] : 0
-        readonly property int pin: page.hw.outputPins ? page.hw.outputPins[index] : 0xFF
-        readonly property int defaultPin: isSub ? 10 : [6, 7, 8, 9][index]
-        readonly property bool isDefault: kind === 0 && pin === defaultPin
-        readonly property var pinChoices: { bridge.hardware; return page.ctx ? page.ctx.pinOptions(pin) : [] }
-        // The R channel colour of the pair (ChannelPalette.outputs), the PDM purple
-        readonly property color dotColor: isSub ? "#BA87F2" : ["#59D180", "#F2A64D", "#8CB3F2", "#F299A6"][index % 4]
-        title: ""
-        height: 41
-
-        // On the row itself, not in its trailing area
-        Row {
-            parent: slotRow
-            x: 10
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 8
-            Rectangle {
-                anchors.verticalCenter: parent.verticalCenter
-                width: 8; height: 8; radius: 4
-                color: slotRow.dotColor
-            }
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                width: 56
-                text: page.slotName(slotRow.slot)
-                font.pixelSize: 13
-                color: MacColors.label
-            }
-            Rectangle {
-                visible: slotRow.isDefault
-                anchors.verticalCenter: parent.verticalCenter
-                width: defaultText.implicitWidth + 14
-                height: defaultText.implicitHeight + 4
-                radius: height / 2
-                color: MacColors.opacity(MacColors.secondaryLabel, 0.15)
                 Text {
-                    id: defaultText
-                    anchors.centerIn: parent
-                    text: qsTr("Default")
-                    font.pixelSize: 10
-                    font.weight: Font.Medium
-                    color: MacColors.secondaryLabel
+                    Layout.preferredWidth: 64
+                    text: row.modelData.title
+                    font: Theme.fontBody
+                    color: page.editable ? Theme.text : Theme.textDisabled
+                }
+                Rectangle {
+                    visible: row.modelData.isDefault
+                    objectName: "Outputs.default." + row.modelData.id
+                    implicitWidth: defaultText.implicitWidth + 14
+                    implicitHeight: defaultText.implicitHeight + 4
+                    radius: height / 2
+                    color: Theme.controlHover
+                    Text {
+                        id: defaultText
+                        anchors.centerIn: parent
+                        text: qsTr("Default")
+                        font: Theme.fontCaption
+                        color: Theme.textMuted
+                    }
+                }
+                Item {
+                    Layout.fillWidth: true
+                    implicitHeight: 1
+                }
+                // The bus: S/PDIF or I2S for a slot (I2S where the chip allows
+                // it), PDM only for the sub
+                ChoicePicker {
+                    objectName: "Outputs.type." + row.modelData.id
+                    label: qsTr("%1 type").arg(row.modelData.name)
+                    implicitWidth: 92
+                    enabled: row.modelData.slot
+                    choices: row.modelData.slot
+                             ? (row.modelData.i2sAllowed ? [{ value: 0, text: qsTr("S/PDIF") }, { value: 1, text: qsTr("I2S") }]
+                                                          : [{ value: 0, text: qsTr("S/PDIF") }])
+                             : [{ value: 0, text: qsTr("PDM") }]
+                    value: row.modelData.type
+                    onChosen: v => page.hw.setOutputType(row.modelData.id, v)
+                }
+                // The STM32H723 drives fixed pins: nothing to assign
+                PinPicker {
+                    objectName: "Outputs.pin." + row.modelData.id
+                    visible: !page.hw.stm32
+                    label: qsTr("%1 pin").arg(row.modelData.name)
+                    pins: { page.hw.revision; return page.hw.pinChoices(HardwareController.OutputPin, row.modelData.id, row.modelData.pin) }
+                    pin: row.modelData.pin
+                    onPicked: p => page.hw.setOutputPin(row.modelData.id, p)
                 }
             }
         }
+    }
 
-        Row {
-            spacing: 8
-            StyledComboBox {
-                Accessible.name: qsTr("%1 type").arg(slotRow.title)
-                macForm: true
-                anchors.verticalCenter: parent.verticalCenter
-                enabled: !slotRow.isSub
-                model: slotRow.isSub ? [qsTr("PDM")] : [qsTr("S/PDIF"), qsTr("I2S")]
-                currentIndex: slotRow.isSub ? 0 : slotRow.kind
-                onActivated: if (!slotRow.isSub && index !== slotRow.kind)
-                    page.report(bridge.setOutputType(slotRow.slot, index), undefined,
-                                index === 1 ? qsTr("%1 is now I2S.").arg(slotRow.isSub ? qsTr("Sub") : page.slotName(slotRow.slot))
-                                            : qsTr("%1 is now S/PDIF.").arg(slotRow.isSub ? qsTr("Sub") : page.slotName(slotRow.slot)))
+    // ADAT bulk output (RP2350): all eight outputs as one lightpipe
+    SettingsGroup {
+        objectName: "Outputs.adat"
+        visible: page.hw.has.adatOut === true
+        title: qsTr("Bulk Output")
+        iconName: "cable"
+        enabled: page.editable
+        SettingsToggle {
+            objectName: "Outputs.adatEnabled"
+            title: qsTr("Enable ADAT")
+            caption: qsTr("Stream all 8 output channels as one optical ADAT lightpipe (44.1/48 kHz, 24-bit). Runs alongside the existing outputs; drive a TOSLINK transmitter from the data pin.")
+            checked: page.state.adatOutEnabled === true
+            onToggled: on => page.hw.setAdatOutEnabled(on)
+        }
+        HwRow {
+            title: qsTr("Serial Data")
+            caption: qsTr("GPIO driving the ADAT optical output. Default GPIO %1.").arg(12)
+            PinPicker {
+                objectName: "Outputs.adatPin"
+                label: qsTr("ADAT data pin")
+                pins: { page.hw.revision; return page.hw.pinChoices(HardwareController.AdatOut, 0, page.state.adatOutPin) }
+                pin: page.state.adatOutPin === undefined ? -1 : page.state.adatOutPin
+                onPicked: p => page.hw.setAdatOutPin(p)
             }
-            StyledComboBox {
-                Accessible.name: qsTr("%1 pin").arg(slotRow.title)
-                macForm: true
-                anchors.verticalCenter: parent.verticalCenter
-                width: Math.max(92, implicitWidth)
-                model: slotRow.pinChoices.map(function(o) { return o.text })
-                currentIndex: page.ctx ? page.ctx.optionIndex(slotRow.pinChoices, slotRow.pin) : -1
-                onActivated: {
-                    var p = slotRow.pinChoices[index].value
-                    if (p !== slotRow.pin)
-                        page.report(bridge.setOutputPin(slotRow.slot, p), p, qsTr("%2 now uses GPIO %1.").arg(p).arg(page.slotName(slotRow.slot)))
-                }
-            }
+        }
+    }
+
+    // The outcome of the last change, and Reset Pins
+    RowLayout {
+        Layout.fillWidth: true
+        visible: !page.hw.stm32 || page.hw.statusText.length > 0
+        spacing: Theme.spacingSmall
+        StatusLine {
+            objectName: "Outputs.status"
+            Layout.fillWidth: true
+        }
+        Item {
+            Layout.fillWidth: true
+            visible: page.hw.statusText.length === 0
+        }
+        AppButton {
+            objectName: "Outputs.resetPins"
+            visible: !page.hw.stm32
+            text: qsTr("Reset Pins")
+            enabled: page.editable
+            onClicked: page.hw.resetPins()
         }
     }
 }

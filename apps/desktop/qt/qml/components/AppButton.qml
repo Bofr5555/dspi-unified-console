@@ -1,34 +1,66 @@
-import QtQuick 2.15
+import QtQuick
+import QtQuick.Controls.Basic
+import UConsole
 
-// A button in the app's style: outlined (secondary) or filled accent
-// (primary); 28 px, radius 8.
-Rectangle {
-    id: btn
-    property string text: ""
+// A push button: bordered, or filled with the accent for the default action
+// of a dialog or a bar (`primary`), or red for a destructive one
+// (`destructive`). An optional icon sits before the text.
+Button {
+    id: button
     property bool primary: false
-    signal clicked()
-    width: Math.max(72, label.implicitWidth + 28)
-    height: 28
-    radius: 8
-    opacity: enabled ? 1 : 0.4
-    color: isMacOS ? (primary ? (mouse.pressed ? MacColors.defaultButtonPressed : MacColors.prominentButton) : mouse.pressed ? Qt.rgba(1, 1, 1, 0.36) : Qt.rgba(1, 1, 1, 0.25)) : primary ? (mouse.pressed ? "#0060cc" : "#0a7cff")
-         : mouse.pressed ? Qt.rgba(1, 1, 1, 0.13) : mouse.containsMouse ? Qt.rgba(1, 1, 1, 0.07) : "transparent"
-    border.color: isMacOS ? "transparent" : primary ? "transparent" : Qt.rgba(1, 1, 1, 0.18)
-    Text {
-        id: label
-        anchors.centerIn: parent
-        text: btn.text
-        font.pixelSize: 13
-        font.weight: btn.primary ? Font.DemiBold : Font.Normal
-        color: isMacOS ? (btn.primary ? Qt.rgba(1, 1, 1, 0.86) : Qt.rgba(1, 1, 1, 0.89)) : "white"
+    property bool destructive: false
+    property string iconName
+    property string toolTip
+
+    implicitHeight: Theme.controlHeight
+    leftPadding: 10
+    rightPadding: 10
+    topPadding: 2
+    bottomPadding: 2
+    font: Theme.fontBody
+    hoverEnabled: true
+    focusPolicy: Qt.StrongFocus
+
+    readonly property color fill: primary ? Theme.accent : destructive ? Theme.danger : Theme.control
+    readonly property color ink: primary || destructive ? Theme.textOnAccent : Theme.text
+
+    contentItem: Item {
+        implicitWidth: label.implicitWidth
+        implicitHeight: label.implicitHeight
+        Row {
+            id: label
+            anchors.centerIn: parent
+            spacing: 6
+            Icon {
+                visible: button.iconName.length > 0
+                anchors.verticalCenter: parent.verticalCenter
+                name: button.iconName
+                size: 14
+                color: button.enabled ? button.ink : Theme.textDisabled
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: button.text
+                font: button.font
+                color: button.enabled ? button.ink : Theme.textDisabled
+            }
+        }
     }
-    ClickArea {
-        id: mouse
-        anchors.fill: parent
-        hoverEnabled: true
-        cursorShape: btn.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-        focusRadius: btn.radius + 2
-        Accessible.name: btn.text
-        onActivated: btn.clicked()
+    background: Rectangle {
+        implicitWidth: 72
+        radius: Theme.radiusSmall
+        color: button.down ? Qt.darker(button.fill, 1.15) : button.hovered && button.enabled ? Qt.lighter(button.fill, 1.08) : button.fill
+        opacity: button.enabled ? 1 : 0.6
+        border.width: button.visualFocus ? 2 : (button.primary || button.destructive ? 0 : 1)
+        border.color: button.visualFocus ? Theme.focusRing : Theme.border
     }
+
+    HelpTip {
+        text: button.toolTip
+        visible: button.hovered && button.toolTip.length > 0
+    }
+
+    Accessible.role: Accessible.Button
+    Accessible.name: text.length ? text : toolTip
+    Accessible.description: toolTip
 }

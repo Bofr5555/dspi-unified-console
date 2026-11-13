@@ -1,444 +1,674 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
-import "../"
-import "../../components"
+import QtQuick
+import QtQuick.Layouts
+import UConsole
 
-// WP QD14: Networking (NetworkingSettingsView.swift). Share this machine's devices
-// on the network, the hub's name, access and port, the paired clients and their
-// roles, a pairing code, other hubs, and running in the background. `hub` is
-// HubController; the background switches are the tray's (QD12).
+// Settings > Networking (the Mac's NetworkingSettingsTab): share this
+// computer's devices on the network, name the hub, choose its access, pair
+// clients and manage them, the other hubs, and running in the background. On
+// Windows, while sharing, the firewall and Public-network rows (behaviour.md
+// §10, §11). While the page shows, the hub browser runs and the firewall is
+// read again every few seconds.
 SettingsPage {
     id: page
-    title: qsTr("Networking")
-    writesToDevice: false
-    objectName: "networkingPage"
+    objectName: "NetworkingPage"
+    readonly property bool pinAccess: HubController.access === "pin"
+    readonly property bool watching: visible && Window.window !== null && Window.window.visible
+    readonly property string fwRules: FirewallController.rules
+    readonly property bool firewallShown: FirewallController.supported && HubController.sharing
+                                          && (fwRules === "blocked" || fwRules === "none")
 
-    Component.onCompleted: hub.watch()       // -- WP QD37 -- a watch of its own
-    Component.onDestruction: hub.unwatch()
-
-    readonly property color secondary: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
-    readonly property color primary: isMacOS ? MacColors.label : "white"
-
-    function ago(seconds) {
-        var s = Math.max(0, Math.floor(Date.now() / 1000) - seconds)
-        if (s < 60) return qsTr("just now")
-        var n
-        if (s < 3600) { n = Math.floor(s / 60); return n === 1 ? qsTr("%1 minute ago").arg(n) : qsTr("%1 minutes ago").arg(n) }
-        if (s < 86400) { n = Math.floor(s / 3600); return n === 1 ? qsTr("%1 hour ago").arg(n) : qsTr("%1 hours ago").arg(n) }
-        n = Math.floor(s / 86400)
-        return n === 1 ? qsTr("%1 day ago").arg(n) : qsTr("%1 days ago").arg(n)
+    onWatchingChanged: {
+        DevicesController.setPageWatching(watching)
+        if (watching) HubController.refresh()
     }
-    readonly property string statusLine: {
-        var n = hub.connections
-        var c = n === 0 ? qsTr("No clients connected") : n === 1 ? qsTr("%1 client connected").arg(n) : qsTr("%1 clients connected").arg(n)
-        return hub.address !== "" ? hub.address + " · " + c : c
+    Binding {
+        target: FirewallController
+        property: "watching"
+        value: page.watching && HubController.sharing && FirewallController.supported
+    }
+    Component.onDestruction: {
+        DevicesController.setPageWatching(false)
+        FirewallController.watching = false
     }
 
-    // A one-line text field in the settings style, committing on Enter or focus loss
-    component Field: Rectangle {
-        id: box
-        property alias text: input.text
-        property alias input: input
-        property string placeholder: ""
-        // -- WP QD22 -- What a screen reader calls the field: the row's title
-        property string accessibleName: placeholder
-        property var validator: null
-        signal committed(string text)
-        signal accepted()
-        width: 190
-        height: 26
-        radius: 6
-        opacity: enabled ? 1 : 0.5
-        color: Qt.rgba(1, 1, 1, input.activeFocus ? 0.10 : 0.05)
-        border.width: input.activeFocus ? 1 : 0
-        border.color: isMacOS ? MacColors.accent : "#0a7cff"
-        TextInput {
-            id: input
-            x: 8
-            width: parent.width - 16
-            height: parent.height
-            verticalAlignment: Text.AlignVCenter
-            selectByMouse: true
-            clip: true
-            activeFocusOnTab: true
-            Accessible.name: box.accessibleName
-            font.pixelSize: 13
-            color: page.primary
-            selectionColor: isMacOS ? MacColors.selectedControl : "#0a7cff"
-            selectedTextColor: "white"
-            validator: box.validator
-            onAccepted: { focus = false; box.accepted() }
-            onActiveFocusChanged: if (!activeFocus) box.committed(text)
+    // "1:59"
+    function countdown(seconds) {
+        const s = Math.max(0, seconds)
+        return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0")
+    }
+    // How long ago, in the largest whole unit
+    function ago(epochSeconds) {
+        const s = Math.max(0, Math.floor(Date.now() / 1000 - epochSeconds))
+        if (s < 60) return s === 1 ? qsTr("1 second") : qsTr("%1 seconds").arg(s)
+        const m = Math.floor(s / 60)
+        if (s < 3600) return m === 1 ? qsTr("1 minute") : qsTr("%1 minutes").arg(m)
+        const h = Math.floor(s / 3600)
+        if (s < 86400) return h === 1 ? qsTr("1 hour") : qsTr("%1 hours").arg(h)
+        const days = Math.floor(s / 86400)
+        return days === 1 ? qsTr("1 day") : qsTr("%1 days").arg(days)
+    }
+    // An access change that would cost paired clients asks first
+    function askAccess(mode) {
+        const cost = HubController.revokeCost(mode)
+        if (cost === 0) {
+            HubController.setAccess(mode)
+            return
+        }
+        accessQuestion.mode = mode
+        accessQuestion.text = cost === 1
+                ? qsTr("1 paired client will have to pair again. This cannot be undone.")
+                : qsTr("%1 paired clients will have to pair again. This cannot be undone.").arg(cost)
+        accessQuestion.open()
+    }
+
+    // ---- Sharing -----------------------------------------------------------------
+    SettingsGroup {
+        objectName: "Networking.sharing"
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spacing
+            Rectangle {
+                implicitWidth: 40
+                implicitHeight: 40
+                radius: 9
+                color: Theme.settingsTint("networking")
+                Icon {
+                    anchors.centerIn: parent
+                    name: "network"
+                    size: 20
+                    color: Theme.textOnAccent
+                }
+            }
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 3
+                Text {
+                    Layout.fillWidth: true
+                    text: qsTr("Share Devices on This Network")
+                    font: Theme.fontTitle
+                    color: Theme.text
+                    wrapMode: Text.Wrap
+                }
+                RowLayout {
+                    visible: HubController.running
+                    spacing: 5
+                    Rectangle {
+                        implicitWidth: 7
+                        implicitHeight: 7
+                        radius: 3.5
+                        color: Theme.connected
+                    }
+                    Text {
+                        objectName: "Networking.status"
+                        Layout.fillWidth: true
+                        text: HubController.statusLine
+                        font: Theme.fontBody
+                        color: Theme.textMuted
+                        elide: Text.ElideRight
+                    }
+                }
+                Text {
+                    visible: !HubController.running
+                    Layout.fillWidth: true
+                    text: HubController.busy
+                          ? (HubController.sharing ? qsTr("Starting…") : qsTr("Stopping…"))
+                          : qsTr("Lets other consoles and browsers on this network control the DSPi devices plugged in here.")
+                    font: Theme.fontBody
+                    color: Theme.textMuted
+                    wrapMode: Text.Wrap
+                }
+            }
+            AppSwitch {
+                id: shareSwitch
+                objectName: "Networking.share"
+                checked: HubController.sharing
+                onToggled: {
+                    HubController.sharing = checked
+                    checked = Qt.binding(() => HubController.sharing)
+                }
+                Accessible.name: qsTr("Share devices on this network")
+            }
+        }
+        // A start that failed: the OS's reason, the switch left on
+        RowLayout {
+            objectName: "Networking.error"
+            visible: HubController.lastError.length > 0
+            Layout.fillWidth: true
+            spacing: 6
+            Icon {
+                name: "triangle-alert"
+                size: 14
+                color: Theme.warning
+            }
             Text {
-                visible: input.text === ""
-                anchors.verticalCenter: parent.verticalCenter
-                text: box.placeholder
-                font: input.font
-                color: isMacOS ? MacColors.tertiaryLabel : Qt.rgba(1, 1, 1, 0.35)
+                objectName: "Networking.errorText"
+                Layout.fillWidth: true
+                text: HubController.lastError
+                font: Theme.fontBody
+                color: Theme.warning
+                wrapMode: Text.Wrap
             }
         }
-    }
-
-    // ── Sharing ──
-    SettingsSection {
-        SettingsSwitchRow {
-            objectName: "networkingShare"
-            title: qsTr("Share Devices on This Network")
-            detail: hub.running ? page.statusLine
-                    : hub.busy && hub.sharing ? qsTr("Starting…")
-                    : qsTr("Lets phones, browsers and other Consoles control the DSPi devices plugged in here.")
-            checked: hub.sharing
-            onToggled: hub.setSharing(checked)
-        }
-        // -- WP QD36 -- Design choice (review c4h F4): the app's demo is not a USB device,
-        // so the hub shares a demo of its own, opened when sharing starts on the demo
-        SettingsRow {
-            objectName: "networkingDemoNote"
-            visible: demo.active
-            title: qsTr("The hub shares its own demo device")
-            detail: qsTr("Clients see a separate demo device, not the one shown here: changes made here don't show on theirs. It stays on the hub until sharing restarts.")
-        }
-        SettingsRow {
-            visible: hub.running && hub.inaccessible > 0
-            title: hub.inaccessible === 1 ? qsTr("1 device could not be opened") : qsTr("%1 devices could not be opened").arg(hub.inaccessible)
-            detail: qsTr("Another program has it, or this user may not open it.")
-        }
-        // -- WP UPW2 -- What Windows lets through, while sharing is on or starting
-        SettingsButtonRow {
-            objectName: "networkingFirewall"
-            visible: firewall.supported && hub.sharing && (firewall.rules === "blocked" || firewall.rules === "none")
-            title: firewall.rules === "blocked" ? qsTr("Windows Firewall blocks DSPi uConsole")
-                                                : qsTr("Windows Firewall has no rule for DSPi uConsole")
-            titleColor: "#ff9f0a"
-            detail: (firewall.rules === "blocked"
-                     ? qsTr("Other Consoles can't connect. Pressing Cancel when Windows first asked about DSPi uConsole leaves this block.")
-                     : qsTr("Other Consoles may not be able to connect."))
-                    + qsTr(" Allowing it lets it in on Private networks only. Windows then asks for permission for “Network Command Shell”, the part of Windows that changes the rule.")
-            buttonText: firewall.fixing ? qsTr("Waiting for Windows…") : qsTr("Allow in Windows Firewall")
-            enabled: !firewall.fixing
-            onClicked: firewall.allow()
-        }
-        SettingsButtonRow {
-            objectName: "networkingPublicNetwork"
-            visible: firewall.supported && hub.sharing && firewall.publicNetwork
-            title: qsTr("This network is set to Public")
-            titleColor: "#ff9f0a"
-            detail: qsTr("Windows keeps other Consoles out on a Public network. If you trust this network, make it Private in Network Settings.")
-            buttonText: qsTr("Open Network Settings")
-            onClicked: firewall.openNetworkSettings()
-        }
-    }
-    SettingsStatusLine {
-        objectName: "networkingError"
-        text: hub.lastError !== "" ? hub.lastError : hub.lastNote
-        error: hub.lastError !== ""
-    }
-    // -- WP UPW2 --
-    SettingsStatusLine {
-        objectName: "networkingFirewallError"
-        text: firewall.supported && hub.sharing ? firewall.fixError : ""
-        error: true
-    }
-    // Read again while sharing is on and this page is open: the user may change the
-    // rules or the network in Windows' own settings meanwhile
-    Timer {
-        interval: 5000
-        repeat: true
-        triggeredOnStart: true
-        running: firewall.supported && hub.sharing && page.visible
-        onTriggered: firewall.check()
-    }
-
-    // ── This hub ──
-    SettingsSection {
-        title: qsTr("This Hub")
-        footnote: qsTr("Other Consoles see this hub by this name. Sharing works on your local network only. To reach it from elsewhere, use a VPN such as Tailscale. Don't forward the port on your router.")
-                  + (hub.access === "pin" ? qsTr(" The pairing code crosses the network as plain text, without encryption: pair only on a network you trust.") : "")
-                  + (hub.running ? qsTr(" Turn sharing off to change the port.") : "")
-
-        SettingsRow {
-            title: qsTr("Name")
-            Field {
-                id: nameField
-                objectName: "networkingName"
-                text: hub.hubName
-                placeholder: qsTr("Hub name")
-                onCommitted: function (text) { if (!hub.setHubName(text)) input.text = hub.hubName }
-                Connections {
-                    target: hub
-                    function onStateChanged() { if (!nameField.input.activeFocus) nameField.text = hub.hubName }
-                }
+        // The hub serves a demo of its own while the app shows the demo
+        RowLayout {
+            objectName: "Networking.demoNote"
+            visible: HubController.sharesOwnDemo
+            Layout.fillWidth: true
+            spacing: 6
+            Icon {
+                name: "info"
+                size: 14
+                color: Theme.textMuted
+            }
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("The hub shares a demo device of its own, separate from the one shown here.")
+                font: Theme.fontBody
+                color: Theme.textMuted
+                wrapMode: Text.Wrap
             }
         }
-        SettingsChoiceRow {
-            objectName: "networkingAccess"
-            title: qsTr("Access")
-            options: [ { text: qsTr("Require Pairing"), value: "pin" }, { text: qsTr("Open"), value: "open" } ]
-            value: hub.access
-            onChosen: function (mode) {
-                if (mode === hub.access) return
-                var cost = hub.revokeCost(mode)
-                if (cost > 0 || mode === "open") {
-                    accessDialog.mode = mode
-                    accessDialog.cost = cost
-                    accessDialog.open()
-                } else {
-                    hub.setAccess(mode)
-                }
-            }
-        }
-        SettingsRow {
-            title: qsTr("Port")
-            Field {
-                accessibleName: qsTr("Port")
-                objectName: "networkingPort"
-                width: 80
-                enabled: !hub.running
-                text: hub.port > 0 ? String(hub.port) : ""
-                validator: IntValidator { bottom: 1; top: 65535 }
-                onCommitted: function (text) { if (!hub.setPort(parseInt(text))) input.text = hub.port > 0 ? String(hub.port) : "" }
-            }
-        }
-    }
-
-    AppDialog {
-        id: accessDialog
-        objectName: "networkingAccessDialog"
-        property string mode: ""
-        property int cost: 0
-        icon: "warning"
-        iconTint: "#ff9f0a"
-        title: mode === "open" ? qsTr("Let anyone on this network in?") : qsTr("Require pairing?")
-        message: (mode === "open" ? qsTr("Every connection on this network will be an admin, with no code asked. ") : "")
-                 + (cost > 0 ? (cost === 1 ? qsTr("The paired client must pair again: changing the access mode forgets every client, and cannot be undone.")
-                                           : qsTr("All %1 paired clients must pair again: changing the access mode forgets every client, and cannot be undone.").arg(cost)) : "")
-        buttons: [ { key: "cancel", text: qsTr("Cancel") },
-                   { key: "change", text: mode === "open" ? qsTr("Make Open") : qsTr("Require Pairing"), role: cost > 0 ? "destructive" : "primary" } ]
-        onChosen: function (key) { if (key === "change") hub.setAccess(mode) }
-    }
-
-    // ── Paired clients ──
-    SettingsSection {
-        visible: hub.access === "pin"
-        title: qsTr("Paired Clients")
-        footnote: qsTr("Viewer can only watch. Control can adjust devices. Admin can also change these hub settings.")
-                  + (hub.running ? "" : qsTr(" Turn sharing on to pair a new client."))
-
-        // The code to type on the new client
-        Item {
-            objectName: "networkingPairingCode"
-            visible: hub.pairingCode !== ""
-            width: parent.width
-            height: visible ? codeColumn.height + 20 : 0
-            Column {
-                id: codeColumn
-                anchors.centerIn: parent
+        // Windows Firewall (behaviour.md §11.1): only when it blocks the app or has no rule
+        ColumnLayout {
+            objectName: "Networking.firewall"
+            visible: page.firewallShown
+            Layout.fillWidth: true
+            spacing: 4
+            RowLayout {
+                Layout.fillWidth: true
                 spacing: 6
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: qsTr("Enter this code on the new client")
-                    font.pixelSize: 12
-                    color: page.secondary
-                }
-                TextEdit {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: hub.pairingCode
-                    readOnly: true
-                    selectByMouse: true
-                    font.pixelSize: 32
-                    font.family: "monospace"
-                    font.weight: Font.DemiBold
-                    font.letterSpacing: 8
-                    color: page.primary
+                Icon {
+                    name: "triangle-alert"
+                    size: 14
+                    color: Theme.warning
                 }
                 Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: qsTr("Expires in %1:%2").arg(Math.floor(hub.pairingSecondsLeft / 60)).arg(("0" + hub.pairingSecondsLeft % 60).slice(-2))
-                    font.pixelSize: 11
-                    color: page.secondary
-                }
-                AppButton {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: qsTr("Cancel")
-                    onClicked: hub.cancelPairing()
-                }
-            }
-        }
-
-        SettingsRow {
-            visible: hub.clients.length === 0
-            title: qsTr("No paired clients yet.")
-            titleColor: page.secondary
-        }
-        Repeater {
-            model: hub.clients
-            SettingsRow {
-                objectName: "networkingClient"
-                verbatim: true
-                title: modelData.name
-                detail: (modelData.online ? qsTr("Connected") : modelData.lastSeen ? qsTr("Last seen %1").arg(page.ago(modelData.lastSeen)) : qsTr("Never connected"))
-                Row {
-                    spacing: 10
-                    StyledComboBox {
-                        Accessible.name: qsTr("%1 role").arg(modelData.name)
-                        anchors.verticalCenter: parent.verticalCenter
-                        enabled: hub.running
-                        model: [ qsTr("Viewer"), qsTr("Control"), qsTr("Admin") ]
-                        currentIndex: [ "viewer", "control", "admin" ].indexOf(modelData.role)
-                        onActivated: function (index) { hub.setRole(modelData.cid, [ "viewer", "control", "admin" ][index]) }
-                    }
-                    Item {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 22; height: 22
-                        enabled: hub.running
-                        opacity: enabled ? 1 : 0.4
-                        Icon {
-                            anchors.centerIn: parent
-                            name: "minus-circle"
-                            size: 16
-                            color: removeMouse.containsMouse ? "#ff6961" : page.secondary
-                        }
-                        ClickArea {
-                            id: removeMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            focusRadius: 13
-                            Accessible.name: parent.ToolTip.text
-                            onActivated: hub.revoke(modelData.cid)
-                        }
-                        ToolTip.visible: removeMouse.containsMouse
-                        ToolTip.delay: 600
-                        ToolTip.text: qsTr("Remove this client: it must pair again")
-                    }
+                    objectName: "Networking.firewallText"
+                    Layout.fillWidth: true
+                    text: page.fwRules === "blocked"
+                          ? qsTr("Windows Firewall blocks %1.").arg(AppIdentity.displayName)
+                          : qsTr("Windows Firewall has no rule for %1.").arg(AppIdentity.displayName)
+                    font: Theme.fontBody
+                    color: Theme.text
+                    wrapMode: Text.Wrap
                 }
             }
+            Text {
+                Layout.fillWidth: true
+                text: FirewallController.pathNameable
+                      ? qsTr("Allowing it lets it in on Private networks only. Windows will ask permission for “Network Command Shell”, the part of Windows that changes the rule.")
+                      : qsTr("Windows Firewall cannot name a program whose folder has a % sign in its name. Move %1 to another folder.").arg(AppIdentity.displayName)
+                font: Theme.fontSmall
+                color: Theme.textMuted
+                wrapMode: Text.Wrap
+            }
+            Text {
+                visible: FirewallController.fixError.length > 0
+                Layout.fillWidth: true
+                text: FirewallController.fixError
+                font: Theme.fontSmall
+                color: Theme.warning
+                wrapMode: Text.Wrap
+            }
+            AppButton {
+                objectName: "Networking.firewallAllow"
+                visible: FirewallController.pathNameable
+                enabled: !FirewallController.fixing
+                text: qsTr("Allow in Windows Firewall")
+                onClicked: FirewallController.allow()
+            }
         }
-        SettingsButtonRow {
-            objectName: "networkingPair"
-            visible: hub.pairingCode === ""
-            enabled: hub.running
-            title: qsTr("Pair a New Client")
-            detail: qsTr("Shows a code to type on the new client, for a few minutes.")
-            buttonText: qsTr("Pair…")
-            onClicked: hub.allowNewClient()
+        // A Public network on an adapter with a gateway (behaviour.md §11.2)
+        ColumnLayout {
+            objectName: "Networking.publicNetwork"
+            visible: FirewallController.supported && HubController.sharing && FirewallController.onPublicNetwork
+            Layout.fillWidth: true
+            spacing: 4
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                Icon {
+                    name: "triangle-alert"
+                    size: 14
+                    color: Theme.warning
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: qsTr("This network is set to Public, so other devices on it may not reach this hub.")
+                    font: Theme.fontBody
+                    color: Theme.text
+                    wrapMode: Text.Wrap
+                }
+            }
+            AppButton {
+                objectName: "Networking.openNetworkSettings"
+                text: qsTr("Open Network Settings")
+                onClicked: FirewallController.openNetworkSettings()
+            }
         }
     }
 
-    // ── Other hubs ──
-    SettingsSection {
+    // ---- This hub ------------------------------------------------------------------
+    SettingsGroup {
+        title: qsTr("This Hub")
+        iconName: "radio"
+        footer: [qsTr("Other consoles see this console as a hub with this name. Sharing works on your local network only. To reach it from elsewhere, use a VPN such as Tailscale. Don't forward the port on your router."),
+                 qsTr("The pairing code crosses the network as plain text, without encryption."),
+                 HubController.running ? qsTr("Turn sharing off to change the port.") : ""]
+                .filter(line => line.length > 0).join("\n")
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spacing
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Name")
+                font: Theme.fontBody
+                color: Theme.text
+            }
+            BorderedField {
+                id: nameField
+                objectName: "Networking.name"
+                label: qsTr("Hub name")
+                placeholderText: qsTr("Hub name")
+                Layout.preferredWidth: 260
+                horizontalAlignment: TextInput.AlignRight
+                text: HubController.hubName
+                onCommitted: typed => {
+                    if (typed.trim().length > 0) HubController.setHubName(typed)
+                    text = Qt.binding(() => HubController.hubName)
+                }
+            }
+        }
+        SettingsPickerRow {
+            id: accessPicker
+            objectName: "Networking.access"
+            inline: true
+            label: qsTr("Access")
+            values: ["none", "pin"]
+            texts: [qsTr("Open"), qsTr("Require Pairing")]
+            value: HubController.access
+            onChosen: mode => page.askAccess(mode)
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spacing
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Port")
+                font: Theme.fontBody
+                color: Theme.text
+            }
+            BorderedField {
+                id: portField
+                objectName: "Networking.port"
+                label: qsTr("Port")
+                Layout.preferredWidth: 80
+                horizontalAlignment: TextInput.AlignRight
+                enabled: !HubController.running && !HubController.busy
+                validator: IntValidator { bottom: 1; top: 65535 }
+                text: String(HubController.port)
+                onCommitted: typed => {
+                    HubController.setPort(parseInt(typed))
+                    text = Qt.binding(() => String(HubController.port))
+                }
+            }
+        }
+    }
+
+    // ---- Paired clients ----------------------------------------------------------------
+    SettingsGroup {
+        objectName: "Networking.clients"
+        visible: page.pinAccess
+        title: qsTr("Paired Clients")
+        iconName: "key-round"
+        footer: [qsTr("Viewer can only watch. Control can adjust devices. Admin can also change these hub settings."),
+                 HubController.running ? "" : qsTr("Turn sharing on to pair a new client.")]
+                .filter(line => line.length > 0).join("\n")
+
+        // The open pairing window: the six digits, large, with the time left
+        Item {
+            objectName: "Networking.pairingCard"
+            visible: HubController.pairingCode.length > 0
+            Layout.fillWidth: true
+            implicitHeight: pairingColumn.implicitHeight + 2 * Theme.spacingSmall
+        ColumnLayout {
+            id: pairingColumn
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: Theme.spacingSmall
+            spacing: 6
+            Text {
+                Layout.alignment: Qt.AlignHCenter
+                text: qsTr("Enter this code on the new client")
+                font: Theme.fontBody
+                color: Theme.textMuted
+            }
+            TextEdit {
+                objectName: "Networking.pairingCode"
+                Layout.alignment: Qt.AlignHCenter
+                text: HubController.pairingCode
+                readOnly: true
+                selectByMouse: true
+                font: Qt.font({ family: Shell.monospaceFamily, pixelSize: 34, weight: Font.DemiBold, letterSpacing: 8 })
+                color: Theme.text
+                selectionColor: Theme.selection
+                selectedTextColor: Theme.text
+                Accessible.role: Accessible.StaticText
+                Accessible.name: qsTr("Pairing code")
+                Accessible.description: text
+            }
+            Text {
+                objectName: "Networking.pairingExpiry"
+                Layout.alignment: Qt.AlignHCenter
+                text: qsTr("Expires in %1").arg(page.countdown(HubController.pairingSecondsLeft))
+                font: Theme.fontSmall
+                color: Theme.textMuted
+            }
+            AppButton {
+                objectName: "Networking.pairingCancel"
+                Layout.alignment: Qt.AlignHCenter
+                text: qsTr("Cancel")
+                onClicked: HubController.cancelPairing()
+            }
+        }
+        }
+
+        Text {
+            visible: HubController.clients.length === 0
+            Layout.fillWidth: true
+            text: qsTr("No paired clients yet.")
+            font: Theme.fontBody
+            color: Theme.textMuted
+        }
+        Repeater {
+            model: HubController.clients
+            delegate: RowLayout {
+                id: clientRow
+                required property var modelData
+                required property int index
+                objectName: "Networking.client." + index
+                Layout.fillWidth: true
+                spacing: 10
+                Icon {
+                    name: "circle-user"
+                    size: 22
+                    color: Theme.textMuted
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Text {
+                        Layout.fillWidth: true
+                        text: clientRow.modelData.name
+                        font: Theme.fontBody
+                        color: Theme.text
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: clientRow.modelData.online ? qsTr("Connected now")
+                              : clientRow.modelData.lastSeen > 0
+                                ? qsTr("Last seen %1 ago").arg(page.ago(clientRow.modelData.lastSeen))
+                                : qsTr("Never connected")
+                        font: Theme.fontSmall
+                        color: Theme.textMuted
+                    }
+                }
+                AppComboBox {
+                    objectName: "Networking.client." + clientRow.index + ".role"
+                    label: qsTr("Role")
+                    Layout.preferredWidth: 110
+                    enabled: HubController.running
+                    readonly property var roles: ["viewer", "control", "admin"]
+                    model: [qsTr("Viewer"), qsTr("Control"), qsTr("Admin")]
+                    currentIndex: roles.indexOf(clientRow.modelData.role)
+                    onActivated: choice => HubController.setRole(clientRow.modelData.cid, roles[choice])
+                }
+                IconButton {
+                    objectName: "Networking.client." + clientRow.index + ".remove"
+                    iconName: "circle-minus"
+                    iconColor: Theme.dangerText
+                    toolTip: qsTr("Remove this client")
+                    enabled: HubController.running
+                    onClicked: HubController.revoke(clientRow.modelData.cid)
+                }
+            }
+        }
+        RowLayout {
+            visible: HubController.pairingCode.length === 0
+            Layout.fillWidth: true
+            spacing: Theme.spacing
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Pair a New Client")
+                font: Theme.fontBody
+                color: HubController.running ? Theme.text : Theme.textDisabled
+            }
+            // A code issued while the hub is stopped could never be used
+            AppButton {
+                objectName: "Networking.pair"
+                text: qsTr("Pair…")
+                enabled: HubController.running
+                onClicked: HubController.allowNewClient()
+            }
+        }
+    }
+
+    // ---- Other hubs ------------------------------------------------------------------
+    SettingsGroup {
+        objectName: "Networking.otherHubs"
         title: qsTr("Other Hubs")
-        footnote: qsTr("Connecting to a hub shows its devices in place of the ones plugged in here.")
-
-        SettingsSwitchRow {
-            objectName: "networkingLook"
+        iconName: "wifi"
+        footer: qsTr("Devices from these hubs appear in the device list, labelled with their hub.")
+        SettingsToggle {
+            objectName: "Networking.lookForHubs"
             title: qsTr("Find hubs automatically")
-            checked: hub.lookForHubs
-            onToggled: hub.lookForHubs = checked
+            checked: DevicesController.lookForHubs
+            onToggled: on => DevicesController.lookForHubs = on
         }
-        SettingsRow {
-            visible: hub.lookForHubs && hub.browseError !== ""
-            title: hub.browseError
-            titleColor: "#ff9f0a"
-            verbatim: true
+        RowLayout {
+            visible: DevicesController.lookForHubs && DevicesController.browseError.length > 0
+            Layout.fillWidth: true
+            spacing: 6
+            Icon {
+                name: "triangle-alert"
+                size: 14
+                color: Theme.warning
+            }
+            Text {
+                Layout.fillWidth: true
+                text: DevicesController.browseError
+                font: Theme.fontBody
+                color: Theme.warning
+                wrapMode: Text.Wrap
+            }
         }
         Repeater {
-            model: hub.hubs
-            SettingsRow {
-                verbatim: true
-                title: modelData.name
-                detail: modelData.host + ":" + modelData.port + ", " + (modelData.deviceCount === 1 ? qsTr("%1 device").arg(modelData.deviceCount) : qsTr("%1 devices").arg(modelData.deviceCount))
-                        + " · " + (modelData.auth === "none" ? qsTr("Open") : qsTr("Private"))
-                Row {
-                    spacing: 8
-                    AppButton {
-                        text: qsTr("Connect")
-                        onClicked: linkSession.connectToHub(modelData.url, modelData.id)
+            model: DevicesController.hubs
+            delegate: RowLayout {
+                id: hubRow
+                required property var modelData
+                required property int index
+                objectName: "Networking.hub." + index
+                readonly property bool open: modelData.auth === "none"
+                Layout.fillWidth: true
+                spacing: 10
+                Icon {
+                    name: hubRow.modelData.kind === "console" ? "monitor" : "network"
+                    size: 18
+                    color: Theme.textMuted
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Text {
+                        Layout.fillWidth: true
+                        text: hubRow.modelData.name
+                        font: Theme.fontBody
+                        color: Theme.text
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        readonly property int devices: hubRow.modelData.deviceCount || 0
+                        readonly property string where: hubRow.modelData.host + ":" + hubRow.modelData.port
+                        text: devices === 1 ? qsTr("%1, 1 device").arg(where)
+                                            : qsTr("%1, %2 devices").arg(where).arg(devices)
+                        font: Theme.fontSmall
+                        color: Theme.textMuted
+                        elide: Text.ElideRight
+                    }
+                }
+                Rectangle {
+                    implicitWidth: badge.implicitWidth + 14
+                    implicitHeight: badge.implicitHeight + 4
+                    radius: height / 2
+                    color: "transparent"
+                    border.width: 1
+                    border.color: hubRow.open ? Theme.success : Theme.accentText
+                    RowLayout {
+                        id: badge
+                        anchors.centerIn: parent
+                        spacing: 3
+                        Icon {
+                            name: hubRow.open ? "lock-open" : "lock"
+                            size: 11
+                            color: hubRow.open ? Theme.success : Theme.accentText
+                        }
+                        Text {
+                            text: hubRow.open ? qsTr("Open") : qsTr("Private")
+                            font: Theme.fontCaption
+                            color: hubRow.open ? Theme.success : Theme.accentText
+                        }
                     }
                 }
             }
         }
-        SettingsRow {
-            visible: hub.hubs.length === 0
-            title: hub.lookForHubs ? qsTr("Looking for hubs…") : qsTr("Not looking for hubs.")
-            titleColor: page.secondary
+        Text {
+            visible: DevicesController.hubs.length === 0
+            Layout.fillWidth: true
+            text: DevicesController.lookForHubs ? qsTr("Looking for hubs…") : qsTr("No hubs added.")
+            font: Theme.fontBody
+            color: Theme.textMuted
         }
-        SettingsRow {
-            title: qsTr("Connect by Address")
-            detail: qsTr("Host name or IP address. Add :port if the hub doesn't use the usual one.")
-            Row {
-                spacing: 8
-                Field {
-                    id: addressField
-                    objectName: "networkingAddress"
-                    accessibleName: qsTr("Hub address")
-                    width: 170
-                    placeholder: "192.168.1.20"
-                    onAccepted: connectButton.clicked()
-                }
-                AppButton {
-                    id: connectButton
-                    text: qsTr("Connect")
-                    enabled: addressField.text.trim() !== ""
-                    onClicked: if (linkSession.connectToAddress(addressField.text.trim())) addressField.text = ""
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spacing
+            Text {
+                text: qsTr("Connect by Address")
+                font: Theme.fontBody
+                color: Theme.text
+            }
+            BorderedField {
+                id: addressField
+                objectName: "Networking.address"
+                label: qsTr("Hub address")
+                placeholderText: qsTr("192.168.1.20 or studio.local")
+                Layout.fillWidth: true
+                onAccepted: connectButton.clicked()
+                onTextChanged: addressError.visible = false
+            }
+            AppButton {
+                id: connectButton
+                objectName: "Networking.connect"
+                text: qsTr("Connect")
+                enabled: addressField.text.trim().length > 0
+                onClicked: {
+                    const ok = DevicesController.connectAddress(addressField.text.trim())
+                    addressError.visible = !ok
+                    if (ok) addressField.text = ""
                 }
             }
         }
-    }
-    SettingsStatusLine {
-        text: linkSession.errorText
-        error: true
+        Text {
+            id: addressError
+            objectName: "Networking.addressError"
+            visible: false
+            Layout.fillWidth: true
+            text: qsTr("Hostname or IP address. Add :port if the hub doesn't use %1.").arg(11915)
+            font: Theme.fontSmall
+            color: Theme.warning
+            wrapMode: Text.Wrap
+        }
     }
 
-    // ── Running in the background (QD12's tray) ──
-    SettingsSection {
+    // ---- Running in the background ----------------------------------------------------
+    SettingsGroup {
+        objectName: "Networking.background"
         title: qsTr("Running in the Background")
-        footnote: tray.trayAvailable ? "" : qsTr("No tray icon can be shown right now, so closing the window quits.")
-        SettingsSwitchRow {
-            objectName: "networkingShowInTray"
+        iconName: "moon"
+        footer: TrayController.trayAvailable ? ""
+                : qsTr("No tray is available on this desktop, so closing the window quits %1.").arg(AppIdentity.displayName)
+        SettingsToggle {
+            objectName: "Networking.showInTray"
             title: qsTr("Show in the tray")
-            detail: qsTr("Closing the window keeps the Console running in the tray, and sharing.")
-            checked: tray.showInTray
-            onToggled: tray.showInTray = checked
+            caption: qsTr("Closing the window keeps %1 running in the tray.").arg(AppIdentity.displayName)
+            checked: TrayController.showInTray
+            onToggled: on => TrayController.showInTray = on
         }
-        SettingsSwitchRow {
+        SettingsToggle {
+            objectName: "Networking.startInTray"
             title: qsTr("Start in the tray only")
-            enabled: tray.showInTray
-            checked: tray.startMinimised
-            onToggled: tray.startMinimised = checked
+            enabled: TrayController.showInTray
+            checked: TrayController.startMinimised
+            onToggled: on => TrayController.startMinimised = on
         }
-        // -- WP QD13 -- Open at login, and keeping awake while sharing (`system`)
-        SettingsSwitchRow {
-            objectName: "networkingOpenAtLogin"
-            visible: system.loginSupported
+        SettingsToggle {
+            objectName: "Networking.openAtLogin"
             title: qsTr("Open at login")
-            // -- WP QD13b -- An entry another copy of the app made stays that copy's
-            detail: system.loginOtherProgram !== "" ? qsTr("Opens another copy: %1").arg(system.loginOtherProgram) : ""
-            checked: system.openAtLogin
-            onToggled: system.openAtLogin = checked
+            enabled: SystemIntegration.loginSupported
+            caption: SystemIntegration.loginOtherProgram.length > 0
+                     ? qsTr("Opens the copy at %1.").arg(SystemIntegration.loginOtherProgram) : ""
+            checked: SystemIntegration.openAtLogin
+            onToggled: on => SystemIntegration.openAtLogin = on
         }
-        // -- WP QD13b --
-        SettingsButtonRow {
-            objectName: "networkingLoginHere"
-            visible: system.loginSupported && system.loginOtherProgram !== ""
-            title: qsTr("Open this copy at login instead")
-            detail: system.thisProgram
-            buttonText: qsTr("Use This Copy")
-            onClicked: system.pointLoginHere()
+        AppButton {
+            objectName: "Networking.loginHere"
+            visible: SystemIntegration.loginOtherProgram.length > 0
+            text: qsTr("Open This Copy at Login")
+            onClicked: SystemIntegration.pointLoginHere()
         }
-        SettingsSwitchRow {
-            objectName: "networkingKeepAwake"
-            visible: system.keepAwakeSupported
+        RowLayout {
+            visible: SystemIntegration.loginError.length > 0
+            Layout.fillWidth: true
+            spacing: 6
+            Icon {
+                name: "triangle-alert"
+                size: 14
+                color: Theme.warning
+            }
+            Text {
+                Layout.fillWidth: true
+                text: SystemIntegration.loginError
+                font: Theme.fontBody
+                color: Theme.warning
+                wrapMode: Text.Wrap
+            }
+        }
+        SettingsToggle {
+            objectName: "Networking.keepAwake"
             title: qsTr("Keep awake while sharing")
-            detail: qsTr("Idle sleep waits while devices are shared; the screen can still turn off.")
-            checked: system.keepAwake
-            onToggled: system.keepAwake = checked
+            caption: SystemIntegration.awakeError
+            enabled: SystemIntegration.keepAwakeSupported
+            checked: SystemIntegration.keepAwake
+            onToggled: on => SystemIntegration.keepAwake = on
         }
     }
-    // -- WP QD13 --
-    SettingsStatusLine {
-        objectName: "networkingSystemError"
-        text: system.loginError !== "" ? system.loginError : system.awakeError
-        error: true
+
+    QuestionDialog {
+        id: accessQuestion
+        objectName: "Networking.accessQuestion"
+        property string mode
+        title: qsTr("Change the access?")
+        acceptText: qsTr("Change")
+        destructive: true
+        onAnswered: answer => {
+            if (answer === "accept") {
+                HubController.setAccess(mode)
+                return
+            }
+            // The popup shows what was picked: back to the access in force
+            accessPicker.value = ""
+            accessPicker.value = Qt.binding(() => HubController.access)
+        }
     }
 }

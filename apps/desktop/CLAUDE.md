@@ -1,168 +1,30 @@
-# DSPi uConsole for Linux (the Qt app; it was DSPi Console until 2026-11-09)
+# Working on the desktop app
 
-Qt 6 or 5.15 / QML front end (`qt/`) on the repository's Rust core:
-`crates/dspi-capi` (library `dspi_capi`, header `dspi_core.h` via cbindgen) over
-`crates/dspi-core`, for DSPi firmware 1.1.6 (wire format V32). The macOS Console
-(`WeebLabs/DSPi-Console`) is the behavioural and visual reference; the Windows
-Console (`WeebLabs/DSPi-Console-Windows`) is a second reference. Phase plan and
-status: `Documentation/parity-plan.md`.
+Read `README.md` in this directory first: layout, threading, how a feature
+plugs in.
 
-## Build and run
-
-From the repository root (toolchains run in containers: `ci/check.sh --step qt`,
-`--step qt-offscreen`, see the root `README.md`):
-
-```
-cargo build --release -p dspi-capi --features link,midir,mdns,hub         # target/release/libdspi_capi.a, crates/dspi-capi/include/dspi_core.h
-cmake -S apps/desktop/qt -B apps/desktop/qt/build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build apps/desktop/qt/build
-QT_FORCE_STDERR_LOGGING=1 apps/desktop/qt/build/DSPiConsole          # --demo: the simulated device
-```
-
-- New QML files must be added to `qt/resources.qrc` **and** the directory's
-  `qmldir` (directory imports from qrc need the qmldir entry).
-- Fedora's Qt logs to the journal unless `QT_FORCE_STDERR_LOGGING=1` is set; an
-  empty log file proves nothing without it.
-- `qmllint` checks syntax only. Runtime QML errors show in the log at load, or
-  render a component offscreen with a stub `bridge` object:
-  `QT_FORCE_STDERR_LOGGING=1 QT_QUICK_BACKEND=software QT_QPA_PLATFORM=offscreen qml-qt5 harness.qml`
-  (set `font.family: "Noto Sans"` in the harness window, or text spacing is wrong;
-  icons can be blank on the first offscreen run, so render twice).
-- The user tests on real hardware. Don't drive the running app against the
-  connected DSPi; build, lint, render offscreen, relaunch, and hand it over.
-
-## Release
-
-`packaging/linux/build-release.sh` builds into `dist/`, in podman containers:
-the AppImage and `-linux-x86_64.tar.gz` (AppImage, `70-dspi.rules`, `install.sh`)
-on Ubuntu 24.04 with the official Qt 6.8 LTS (`fetch-qt.sh`, hashes pinned in
-`qt-6.8.3.sha256`), the `.deb` on Debian 13 and the `.rpm` on Fedora 42, both on
-the distribution's Qt 6. `packaging/linux/test-packages.sh` installs each in a
-clean container and runs it. Packages come from the
-CMake install rules and CPack config at the end of `qt/CMakeLists.txt`. The
-version comes from `setApplicationVersion` in `qt/src/main.cpp`, the same
-version as every other client of the project (packages use `~` for a
-pre-release: `0.14.0~beta1`). Per release, also bump the `<release>`
-in `packaging/linux/dspi-uconsole.metainfo.xml` and `pkgver` in
-`packaging/arch/PKGBUILD`, which fetches the tag `v<pkgver>` (then regenerate `.SRCINFO`). Releases are
-tagged `v<version>` and named `DSPi uConsole v<version>`, like the macOS and
-Windows repos.
-
-## Git
-
-- Work on `main`. Commit or push only when asked. Never commit
-  `channel_editor.png`.
-
-## Rendering and updates
-
-**Never redraw anything unnecessarily.** During a drag or an animation,
-update only what that drag or animation needs to look and behave correctly;
-nothing else re-renders or recomputes.
-
-- `bridge.stateChanged` re-evaluates every binding in the app. Never emit it
-  per mouse move or animation frame. Live updates use the bridge's
-  `sendOnly` variants (device and core state change, no signal), and the
-  release commits once with the normal call.
-- While dragging, the dragged control's own number and graph read the
-  slider's value directly (`slider.pressed ? slider.value : stored`, or
-  `ParamRow.displayValue`), not a round-trip through the bridge.
-- Device updates during a drag go through `Throttle` (first value at once,
-  then the latest every 30 ms; `cancel()` before the release commits).
-- Graphs redraw only the curves affected, and without animation mid-drag
-  (`previewChanged` → `BodePlotItem::refreshNow`).
-- No polling or timers that repaint when nothing changed; no bindings that
-  rebuild models or lists on unrelated state.
-
-## UI design language
-
-The app follows the redesigned macOS-style look. New or changed UI must match it.
-
-### Rules
-
-- **Reuse the shared components** (below). Never use stock Qt Quick Controls
-  `Menu`, `Dialog`, `ComboBox`, `Switch`, `Slider` or bare `TextField` in app UI;
-  they render in the Fusion style and look out of place.
-- **Keep scale proportionate.** New UI must sit at the same scale as the main
-  window (sidebar rows 30 px, menu rows 28 px, 13 px body text, 22–28 px
-  controls, the 72 px output channel card). Popups and panels should be compact:
-  just big enough for their controls, not covering the page they adjust. Before
-  finishing, compare a render against the main window and the existing menus;
-  if anything (icon tiles, titles, padding, control heights) is a size up from
-  its neighbours, bring it down. Put one-off explanations in tooltips rather
-  than extra lines. Reference: the output limiter popup is ~270 × 320 px
-  (padding 12, section gap 10, 28 px header tile, 26 px buttons).
-- **Change only what was asked.** Don't restyle colours app-wide or touch other
-  screens as a side effect; propose wider changes first.
-- **Match macOS layouts.** Check the macOS Console (its README and `Images/`)
-  before designing a screen, and mirror its structure.
-- **Icons**: stroke icons drawn by `components/Icon.qml` (24×24 viewBox,
-  1.7 stroke). Add new shapes to its `shapes` map (and an SVG in `qt/icons/`).
-  No emoji or Unicode glyphs as icons.
-- **No shader effects** (QtGraphicalEffects): they vanish under the software
-  renderer. Shadows are layered rectangles; tinting is done in `Icon`.
-
-### Palette
-
-| Use | Value |
-|---|---|
-| Accent (selection, on states, primary buttons) | `#0a7cff` (lit icons `#3a96dd` / `#3a96ff`) |
-| Warning / active-but-attention (INV, limiting, conflicts) | `#ff9f0a` |
-| Danger (mute, destructive) | `#ff453a`; destructive fill `#d9363e`, text `#ff6961` |
-| OK / connected | `#32d74b` |
-| Menus, popups, dialogs background | `MenuStyle.background` (`#1d1d1f`), border `rgba(255,255,255,0.08)` |
-| Secondary windows | `#1e1e20` (`AppWindow` default) |
-| Cards in Settings / tool windows / matrix | fill `rgba(255,255,255,0.045)`, border `rgba(255,255,255,0.07)`, radius 10 |
-| Channel-page cards (top card + band list) | `nativeAltBaseColor` (macOS: `rgba(0.21,0.21,0.21,0.6)`), border `rgba(255,255,255,0.1)`, radius 10 |
-| Hairlines / dividers | `rgba(255,255,255,0.07–0.08)` |
-| Text | primary white at 0.9; secondary 0.5–0.65; disabled 0.3–0.4; units 0.45 |
-| Hover fill | `rgba(255,255,255,0.06–0.08)`; pressed 0.12–0.14 |
-
-Channel colours come from the bridge (`bridge.channelColor`).
-
-### Type and spacing
-
-- UI font (Noto Sans), 13 px body; 11–12 px secondary; small caps section labels
-  11 px bold, letter-spacing 0.4, grey (`GAIN`, `DELAY`, `THRESHOLD`).
-- Section titles above cards: 13 px DemiBold, grey 0.6, Title Case.
-- Numbers use the UI font (not monospace) with a grey unit after them.
-- Titlebar 30 px. Menu rows 28 px, icons 15 px. Card padding 14–18 px; gap
-  between stacked cards 16–18 px; content margins 16 px.
-
-### Shared components (`qt/qml/components/`)
-
-| Need | Use |
-|---|---|
-| A secondary window | `AppWindow` (custom titlebar, resize edges, shadow/blur); declare content as children |
-| Titlebar | `WindowTitleBar` (used by `AppWindow` and the main window) |
-| Right-click / action menu | `ActionMenu` (`openAt(item, x, y)`, items with icon, shortcut, separator, danger, enabled) |
-| Pick one of several | `ChoiceMenu` (+ `SidebarPicker` for sidebar rows) |
-| App menu | `AppMenu` |
-| Filter type | `FilterTypeMenu` (inline slope chips) |
-| Confirmation / question | `AppDialog` (buttons fill the width equally; roles primary / destructive / secondary; optional `details` box) |
-| Number entry | `ValueField` (in-place edit, hover fill, accent ring, Esc cancels) |
-| Slider | `StyledSlider` |
-| On/off | `ToggleSwitch` |
-| Drop-down in a form | `StyledComboBox` |
-| Menu sizes / colours | `MenuStyle` singleton |
-| Tool window header / parameter row / channel chips | `ToolHeader`, `ParamRow`, `ChannelChips` |
-| Settings page parts | `qt/qml/settings/` (`SettingsPage`, `SettingsSection`, `Settings*Row`); add pages to the registry in `SettingsWindow.qml` |
-| Window blur and shadow | `windowEffects` (C++ `WindowEffects`) |
-| Tooltip | attached `ToolTip.text` / `ToolTip.visible`; styled app-wide by `qml/style/ToolTip.qml` (the app style overrides only ToolTip, falling back to Fusion) |
-
-### Patterns
-
-- **Popups and menus**: dark rounded card (radius 9–14), soft layered shadow,
-  fade + slight scale-in (≈120 ms), open toward the side with room, close on
-  Esc / outside click, keyboard ↑/↓/Enter where there's a list.
-- **Selection**: accent fill with white text for the hovered/selected row;
-  check mark for the current choice.
-- **Segmented choices**: rounded track `rgba(255,255,255,0.06)`, selected segment
-  filled with the accent (see the limiter link group).
-- **Buttons**: outlined (`rgba(255,255,255,0.18)` border, radius 8) for secondary
-  actions; filled accent for primary; filled red for destructive.
-- **Sections in a card**: label left, value right on top, control (slider)
-  underneath; sections separated by full-height hairlines (output channel card).
-- **Right-click resets** sliders and level fields to their default.
-- **Text field focus** is released app-wide by `TextFocusReleaser` (`qt/src/TextFocusReleaser.h`, installed in main.cpp):
-  clicking outside a focused field, or Return/Enter in a single-line field,
-  commits the edit and drops focus. Don't add per-page focus handling for this.
+- Toolchains only in containers: `ci/run.sh '<cmd>'`. Never cmake, qmake,
+  lupdate or cargo on the host. Build directories under `/work` (the
+  container's view of `~/.cache/dspi-build/work/<branch>`), never in the tree
+  and never on tmpfs.
+- Checks: `ci/check.sh --step qt` (build, contrast; the .ts only on qtport),
+  `--step qt-offscreen` (the smoke driver; `DSPI_SMOKE_SECTION=<name>` runs
+  one section), `--step qt-ts` (the coordinator's, on qtport).
+- The screens follow the Mac console (`apps/apple/DSPi Console/*.swift`): its
+  layout and its words. Shared wording comes from the core by key
+  (`dspi_link_phase_text`, the onboarding JSON, `dspi_output_labels`,
+  `dspi_about_json`), never rewritten in the app.
+- Every user-visible string through `qsTr` (QML) or `tr` (C++). A work
+  package does not commit `translations/uconsole-for-dspi_en.ts`; the coordinator
+  regenerates it on qtport (README.md, "Shared files: the merge rule").
+- No colour literals in screens: `Theme` and `ChannelPalette` tokens only, and
+  the components in `qml/components` (README.md, "Components") instead of the
+  Basic style's controls. Icons by Lucide name through `Icon`; a new one goes
+  into `icons/lucide/manifest.d/<wp>.txt` and `icons/fetch-lucide.sh` is run again.
+- Custom controls carry `Accessible.role` and `Accessible.name`.
+- Nothing in QML or in a controller's GUI-thread code calls a blocking `dspi_*`
+  function: post it to `Core::worker()`. Writes go through `DeviceModel::write()`
+  (named by target: it coalesces by name); periodic reads through `Poller`.
+- Object names for the smoke driver: `smoke/NAMES.md` (rule), `smoke/names/<wp>.md`.
+- Files to build: your own `cmake/wp/<wp>.cmake`, never `CMakeLists.txt`.
+  `qml/main/MenuTable.qml` takes additive edits under a `// -- WP <ID> --` marker.

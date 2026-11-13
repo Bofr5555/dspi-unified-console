@@ -1,0 +1,8 @@
+# -- WP QP12 -- Control surfaces (see ../manifest.txt for the format)
+pointer             control surfaces: push button badge
+sun-dim             control surfaces: dimmable output badge
+group               settings: channel groups page and cards
+unplug              control surfaces: no device connected
+circle-dashed       control surfaces: remote button not learned
+arrow-up            control surfaces: move a macro step up
+arrow-down          control surfaces: move a macro step down

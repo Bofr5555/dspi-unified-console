@@ -1,44 +1,40 @@
-# Maintainer: DSPi unified console maintainers
-# Builds DSPi uConsole from source against the system Qt 6, from the
-# dspi-unified-console repository (the app is apps/desktop, its core crates/).
-pkgname=dspi-uconsole
+# -- WP QP20 -- Arch Linux package of uConsole for DSPi, for the AUR, built
+# from the release's desktop source archive (ci/release-source.sh
+# --with-desktop) against Arch's Qt. A distribution package: no update feed
+# (pacman updates it). Update pkgver and the sum with each release
+# (updpkgsums), then regenerate .SRCINFO (makepkg --printsrcinfo > .SRCINFO).
+pkgname=uconsole-for-dspi
 pkgver=0.13.0
 pkgrel=1
-pkgdesc="Control application for the DSPi audio processor"
+pkgdesc='uConsole for DSPi: set up and control a DSPi audio processor'
 arch=('x86_64')
-# The repository is private for now: AUR users can fetch the source only once it is public
-url="https://github.com/Bofr5555/dspi-unified-console"
-license=('GPL-3.0-or-later')
-depends=('qt6-base' 'qt6-declarative' 'qt6-svg' 'qt6-wayland' 'kwindowsystem' 'hicolor-icon-theme'
-         'alsa-lib' 'libx11' 'libglvnd' 'libstdc++' 'libgcc' 'glibc')
-makedepends=('git' 'cargo' 'cmake' 'ninja')
-optdepends=('xdg-desktop-portal: native file dialogs'
-            'udisks2: firmware updates')
-install=dspi-uconsole.install
-# The commit the 0.13.0 release files were rebuilt from (renamed DSPi uConsole,
-# 2026-11-10); tag v0.13.0 does not contain it. The next release goes back to
-# #tag=v$pkgver.
-_commit=dfdc60af1e5055af574702f86cafacf6ab929b67
-source=("$pkgname::git+$url.git#commit=$_commit")
+url='https://github.com/Bofr5555/dspi-unified-console'
+license=('GPL-3.0-only')
+depends=('qt6-base' 'qt6-declarative' 'qt6-svg' 'alsa-lib' 'gcc-libs' 'glibc' 'hicolor-icon-theme')
+makedepends=('cargo' 'cmake' 'ninja' 'qt6-tools')
+optdepends=('qt6-wayland: run on Wayland without XWayland'
+            'polkit: install the udev rule from the app when a DSPi cannot be opened')
+install=uconsole-for-dspi.install
+_stem="uConsole-for-DSPi-$pkgver-desktop-source"   # the release file and its folder
+source=("$url/releases/download/v$pkgver/$_stem.tar.gz")
 sha256sums=('SKIP')
 
 prepare() {
-    cd "$pkgname"
+    cd "$_stem"
     export RUSTUP_TOOLCHAIN=stable
-    cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+    cargo fetch --locked --target "$(rustc -vV | sed -n 's/^host: //p')"
 }
 
 build() {
-    cd "$pkgname"
-    export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR=target
+    cd "$_stem"
+    export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR="$srcdir/target"
     cargo build --frozen --release -p dspi-capi --features link,midir,mdns,hub
-    # -- WP QD16 -- pacman updates the app: no check for releases of our own
-    cmake -S apps/desktop/qt -B build -G Ninja -DCMAKE_BUILD_TYPE=None -DCMAKE_INSTALL_PREFIX=/usr \
-          -DDSPI_QT_MAJOR=6 -DDSPI_CARGO_TARGET_DIR="$PWD/target" -DDSPI_UPDATE_CHECK=OFF
-    cmake --build build
+    cmake -S apps/desktop/qt -B "$srcdir/build" -G Ninja -DCMAKE_BUILD_TYPE=None \
+        -DCMAKE_INSTALL_PREFIX=/usr -DDSPI_CARGO_TARGET_DIR="$CARGO_TARGET_DIR" \
+        -DDSPI_NOTICES=rpm -DDSPI_UPDATE_FEED_URL=
+    cmake --build "$srcdir/build" --target uconsole-for-dspi
 }
 
 package() {
-    cd "$pkgname"
-    DESTDIR="$pkgdir" cmake --install build
+    DESTDIR="$pkgdir" cmake --install "$srcdir/build"
 }

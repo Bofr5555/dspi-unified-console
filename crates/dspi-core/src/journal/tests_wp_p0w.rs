@@ -943,7 +943,7 @@ fn remote_demo() -> (Arc<DspiCore>, dspi_transport::FakeRemote) {
     (core, remote)
 }
 
-/// Our master volume, then the computer's volume control moves it.
+/// Our master volume, then the USB audio volume control moves it.
 fn overwritten_by_uac1() -> (Arc<DspiCore>, f32) {
     let (core, remote) = remote_demo();
     let start = core.get_state().master_volume_db;
@@ -973,7 +973,11 @@ fn wp_p0w_fixup_a_foreign_change_skip_and_name() {
     assert_eq!(m.skipped.len(), 1);
     assert_eq!(m.skipped[0].path, "vol.master");
     let note = m.note.unwrap();
-    assert!(note.contains("the computer's volume control"), "{note}");
+    // -- WP QPI4 -- the label and no host-device noun
+    assert_eq!(
+        note,
+        "Master volume was changed by the USB audio volume control since; it was left as they set it"
+    );
     assert_eq!(core.get_state().master_volume_db, -12.0, "theirs stays");
     assert!(!core.can_undo() && !core.can_redo(), "the entry is gone");
 }
@@ -1089,7 +1093,7 @@ fn wp_p0wecho_a_foreign_write_after_the_late_echo_is_still_named() {
     let m = core.redo().unwrap();
     assert!(m.entry.is_none(), "{m:?}");
     let note = m.note.unwrap();
-    assert!(note.contains("the computer's volume control"), "{note}");
+    assert!(note.contains("the USB audio volume control"), "{note}");
 }
 
 #[test]
@@ -1135,6 +1139,9 @@ fn wp_p0wecho_a_late_echo_of_a_drag_tick_does_not_cost_the_undo() {
 fn wp_p0wecho_own_writes_are_bounded_by_age_and_count() {
     let mut w = OwnWrites::default();
     w.note("vol.master", &[], &Value::Float(-10.0), 1_000);
+    // -- WP SWAPFIX -- only a value written over since is a late echo
+    assert!(!w.explains("vol.master", &[], &Value::Float(-10.0), 1_000));
+    w.note("vol.master", &[], &Value::Float(-12.0), 1_000);
     assert!(w.explains("vol.master", &[], &Value::Float(-10.0), 1_000 + OWN_ECHO_MS));
     assert!(!w.explains("vol.master", &[], &Value::Float(-10.0), 1_001 + OWN_ECHO_MS));
     assert!(!w.explains("vol.master", &[], &Value::Float(-11.0), 1_000));

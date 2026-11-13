@@ -1,45 +1,33 @@
-# Ubuntu 24.04 (glibc 2.39) with the official Qt 6.8 LTS from download.qt.io: the
-# AppImage built here runs on 24.04 and every newer distribution (Debian 13,
-# Fedora 42 and newer). Not 24.04's own Qt 6.4: the app crashes on it at the first
-# window activation. The .deb and .rpm stay on the distributions' Qt 6
-# (Containerfile.debian, Containerfile.fedora).
-# Qt: fetch-qt.sh, each archive checked against the SHA-256 pinned in
-# qt-6.8.3.sha256 and the one download.qt.io publishes. KDE's KWindowSystem
-# (window blur), which 24.04 has only for Qt 5, is built here against that Qt
-# from download.kde.org's tarballs, checked the same way.
-# Rust from rustup-init, pinned and checked as in ci/container/Containerfile.qtport.
+# The Linux release build image: Ubuntu 24.04 (glibc 2.39, the oldest the
+# release supports), Qt 6.8 from download.qt.io (qt-6.8.3.sha256, installed
+# by fetch-qt.sh into /opt/qt) and Rust from rustup (the CI image's pins).
+#
+#   podman build -t uconsole-for-dspi-ubuntu -f apps/desktop/packaging/linux/Containerfile.ubuntu apps/desktop/packaging/linux
+#   podman run --rm -v "$PWD":/src:Z -w /src uconsole-for-dspi-ubuntu apps/desktop/packaging/linux/build-ubuntu.sh
+# (build-release.sh does both, and then make-appimage.sh in the same image)
 FROM docker.io/library/ubuntu:24.04
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential cmake ninja-build pkg-config curl ca-certificates file patchelf p7zip-full xz-utils \
-        libgl-dev libopengl-dev libglx-dev libegl-dev libvulkan-dev libxkbcommon-dev libxkbcommon-x11-0 \
-        libglib2.0-0t64 libfontconfig1 libfreetype6 libdbus-1-3 libasound2-dev \
-        libx11-dev libx11-xcb-dev libxcb1-dev libxfixes-dev libxrender-dev libxcb-icccm4-dev libxcb-keysyms1-dev libxcb-res0-dev libxcb-xfixes0-dev libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
-        libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 \
-        libwayland-dev wayland-protocols plasma-wayland-protocols \
-    && rm -rf /var/lib/apt/lists/*
-COPY fetch-qt.sh qt-6.8.3.sha256 /opt/qt-fetch/
-RUN /opt/qt-fetch/fetch-qt.sh /opt/qt-fetch/qt-6.8.3.sha256 /opt/qt
-ENV QTDIR=/opt/qt
-ENV PATH=$QTDIR/bin:$PATH CMAKE_PREFIX_PATH=$QTDIR:/opt/kf6 LD_LIBRARY_PATH=$QTDIR/lib:/opt/kf6/lib
-# KDE Frameworks 6.8: extra-cmake-modules and kwindowsystem (whose translations need qttools) (SHA-256 as download.kde.org publishes)
-ARG KF_VERSION=6.8.0
-ARG ECM_SHA256=ff8a0bf72285bec1768e3acd8f7c665a26d55a1527e96d73e35789dc9f0e3472
-ARG KWINDOWSYSTEM_SHA256=7b4c520e79c2eb10f98a1d7b4d75633ee90d1873afbadf9f60751e67bc0e2436
-RUN d=$(mktemp -d) && cd "$d" \
- && for p in "extra-cmake-modules $ECM_SHA256" "kwindowsystem $KWINDOWSYSTEM_SHA256"; do set -- $p; \
-      f="$1-$KF_VERSION.tar.xz"; u="https://download.kde.org/stable/frameworks/${KF_VERSION%.*}/$f"; \
-      curl -sSfL --retry 4 -o "$f" "$u" \
-      && [ "$(curl -sSfL --retry 4 "$u.sha256" | awk '{print $1}')" = "$2" ] \
-      && echo "$2  $f" | sha256sum -c - && tar -xf "$f" \
-      && cmake -S "$1-$KF_VERSION" -B "build-$1" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/kf6 \
-           -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_TESTING=OFF -DBUILD_QCH=OFF -DBUILD_PYTHON_BINDINGS=OFF \
-      && cmake --build "build-$1" -j4 && cmake --install "build-$1" || exit 1; done \
- && cd / && rm -rf "$d"
+
 ARG RUSTUP_VERSION=1.29.2
 ARG RUSTUP_INIT_SHA256=5be191e8c70a5007074254cb74d78dbfdd25cd5a61c27de7b8e5410122ec24f4
 ARG RUST_TOOLCHAIN=1.99.1
-ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo PATH=/opt/cargo/bin:$PATH
+
+# -- WP QP20 -- The AppImage (make-appimage.sh): squashfs-tools and patchelf, and
+# the libraries Qt's platform plugins load that a desktop may lack, so the
+# AppImage bundles them (licences/stage.sh lists each with its copyright file)
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      ca-certificates curl p7zip-full cmake ninja-build g++ pkg-config file binutils \
+      libasound2-dev libgl-dev libegl-dev libxkbcommon-dev libfontconfig1-dev libdbus-1-dev \
+      squashfs-tools patchelf python3 \
+      libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+      libxcb-render-util0 libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-xfixes0 libxcb-xkb1 \
+      libxcb-xinput0 libxcb-util1 libwayland-cursor0 libwayland-egl1 libglib2.0-0t64 \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY fetch-qt.sh qt-6.8.3.sha256 /opt/qt-pins/
+RUN /opt/qt-pins/fetch-qt.sh /opt/qt-pins/qt-6.8.3.sha256 /opt/qt
+
+ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo PATH=/opt/cargo/bin:/opt/qt/bin:$PATH
 RUN d=$(mktemp -d) \
  && curl --proto '=https' --tlsv1.2 -fsSL -o "$d/rustup-init" \
       "https://static.rust-lang.org/rustup/archive/$RUSTUP_VERSION/x86_64-unknown-linux-gnu/rustup-init" \

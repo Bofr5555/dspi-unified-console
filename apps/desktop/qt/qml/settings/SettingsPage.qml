@@ -1,52 +1,26 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
+import QtQuick
+import QtQuick.Controls.Basic
+import QtQuick.Layouts
+import UConsole
 
-// A settings page: an optional subtitle and a scrolling column of
-// SettingsSection cards. Declare sections as children. The page title shows
-// in the window's titlebar (as in the macOS toolbar), not on the page.
+// A Settings page's frame (the Mac's grouped Form): a scrolling column of
+// SettingsGroup sections, opened at its top.
 Flickable {
     id: page
-    property string title: ""
-    property string subtitle: ""
-    property var ctx                       // SettingsContext, set by the window
-    default property alias content: body.data
-    // -- WP QD6 -- False on a page of this app's own settings or of readings: such a
-    // page stays live on firmware that's read-only. Elsewhere the page shows and
-    // scrolls, and its controls are off.
-    property bool writesToDevice: true
+    default property alias content: column.data
+    property int maxContentWidth: 640
 
-    contentWidth: width
-    contentHeight: column.height + (isMacOS ? 20 : 36)
     clip: true
+    contentWidth: width
+    contentHeight: column.implicitHeight + 2 * Theme.spacingLarge
     boundsBehavior: Flickable.StopAtBounds
-    ScrollBar.vertical: ScrollBar {}
+    ScrollBar.vertical: AppScrollBar {}
 
-    // macOS: cards 20 pt in from the column edges, sections 11 pt apart (a
-    // section's header adds its own 46 pt band above the card), no subtitle -
-    // as the native grouped Form
-    Column {
+    ColumnLayout {
         id: column
-        x: isMacOS ? 20 : 24
-        y: isMacOS ? 0 : 18
-        width: page.width - (isMacOS ? 40 : 48)
-        spacing: 14
-
-        Text {
-            visible: !isMacOS && page.subtitle !== ""
-            width: parent.width
-            leftPadding: 4
-            rightPadding: 4
-            wrapMode: Text.WordWrap
-            text: page.subtitle
-            font.pixelSize: 12
-            color: Qt.rgba(1, 1, 1, 0.55)
-        }
-
-        Column {
-            id: body
-            width: parent.width
-            enabled: !page.writesToDevice || bridge.writable
-            spacing: isMacOS ? 11 : 18
-        }
+        x: Math.max(Theme.spacingLarge, (page.width - width) / 2)
+        y: Theme.spacingLarge
+        width: Math.min(page.width - 2 * Theme.spacingLarge, page.maxContentWidth)
+        spacing: Theme.spacingLarge
     }
 }

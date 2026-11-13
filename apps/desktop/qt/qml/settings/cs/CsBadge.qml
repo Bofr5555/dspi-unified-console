@@ -1,23 +1,23 @@
-import QtQuick 2.15
-import "../../components"
+import QtQuick
+import UConsole
 
-// A component type's tinted tile with its white glyph (the card's badge).
+// -- WP QP12 -- A component type's badge (the Mac's csTypeBadge): a rounded
+// square in the type's tint with its glyph.
 Rectangle {
     id: badge
-    property string icon: ""
-    property color tint: "#8354a0"
-    property int size: 28
-    width: size
-    height: size
-    radius: Math.round(size * 0.24)
-    gradient: Gradient {
-        GradientStop { position: 0; color: isMacOS ? Qt.hsla(badge.tint.hslHue, badge.tint.hslSaturation, Math.min(1, badge.tint.hslLightness + 0.145), 1) : Qt.lighter(badge.tint, 1.18) }
-        GradientStop { position: 1; color: badge.tint }
-    }
+    property int type
+    property int size: 32
+
+    implicitWidth: size
+    implicitHeight: size
+    radius: size * 0.24
+    color: Theme.csTypeTint(type)
     Icon {
         anchors.centerIn: parent
-        name: badge.icon
-        size: Math.round(badge.size * 0.6)
-        color: "white"
+        name: CsController.typeIcon(badge.type)
+        size: Math.round(badge.size * 0.5)
+        color: Theme.textOnAccent
     }
+    Accessible.role: Accessible.Graphic
+    Accessible.name: CsController.typeName(badge.type)
 }

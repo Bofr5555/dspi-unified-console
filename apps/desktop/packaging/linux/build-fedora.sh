@@ -1,13 +1,32 @@
 #!/usr/bin/env bash
-# Runs inside the Fedora build container (see build-release.sh): the .rpm, on Qt 6.
+# -- WP QP20 -- Builds the .rpm against Fedora's own Qt in
+# Containerfile.fedora's image: the app, checked, then CPack's package
+# (qt/cmake/wp/qp20.cmake: License GPL-3.0-only, the udev rule, the notices in
+# /usr/share/licenses/uconsole-for-dspi, the scriptlets). Run from the repository
+# root:
+#
+#   apps/desktop/packaging/linux/build-fedora.sh [output dir, default dist/]
+#
+# writes uconsole-for-dspi-<version>-1.fc<N>.x86_64.rpm for the image's Fedora
+# release N (Containerfile.fedora says why one per release). A distribution
+# package never checks for updates (no DSPI_UPDATE_FEED_URL): dnf does that.
 set -euo pipefail
-here=/src/apps/desktop/packaging/linux
-rm -rf /work && mkdir /work
-tar -C /src --exclude=./target --exclude=./apps/desktop/qt/build --exclude=./.git --exclude=./dist -cf - . | tar -C /work -xf -
-cd /work
+here=$(cd "$(dirname "$0")" && pwd)
+repo=$(cd "$here/../../../.." && pwd)
+fc=$(. /etc/os-release && echo "$VERSION_ID")
+build=${BUILD_DIR:-$repo/apps/desktop/build-fedora$fc}
+out=${1:-$repo/dist}
+cd "$repo"
 cargo build --release --locked -p dspi-capi --features link,midir,mdns,hub
-cd /work/apps/desktop
-cmake -S qt -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_QT_MAJOR=6
-cmake --build build -j"${JOBS:-4}"
-"$here/check-binary.sh" build/DSPiConsole 2.41
-(cd build && cpack -G RPM && cp dspi-uconsole-*.rpm /dist/)
+cmake -S apps/desktop/qt -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=/usr -DDSPI_CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$repo/target}" \
+      -DDSPI_NOTICES=rpm -DDSPI_UPDATE_FEED_URL=
+cmake --build "$build" -j"${JOBS:-4}" --target uconsole-for-dspi
+# The release's own glibc: the .rpm is for this Fedora release only
+"$here/check-binary.sh" "$build/uconsole-for-dspi" "$(ldd --version | sed -n '1s/.* //p')"
+(cd "$build" && cpack -G RPM)
+mkdir -p "$out"
+rpm=$(ls "$build"/uconsole-for-dspi-*.fc"$fc".x86_64.rpm)
+cp "$rpm" "$out/"
+rpm -qp --qf 'Name: %{NAME}\nVersion: %{VERSION}-%{RELEASE}\nLicense: %{LICENSE}\n' "$rpm"
+ls -la "$out/${rpm##*/}"

@@ -1,0 +1,3 @@
+# -- WP QP18 -- Polish across the tree (see ../manifest.txt for the format)
+undo-2              History window: Undo
+redo-2              History window: Redo

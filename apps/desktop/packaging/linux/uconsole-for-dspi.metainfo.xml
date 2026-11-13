@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata (freedesktop.org AppStream specification, desktop-application) -->
+<component type="desktop-application">
+  <id>uconsole-for-dspi</id>
+  <!-- WP QP20: the app's licence label, and this file's -->
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <name>uConsole for DSPi</name>
+  <summary>Set up and control a DSPi audio processor</summary>
+  <description>
+    <p>
+      DSPi turns a Raspberry Pi Pico (RP2040) or Pico 2 (RP2350) into a USB sound card with a
+      digital signal processor inside it. This app is where you shape that processing.
+    </p>
+    <ul>
+      <li>Draw EQ curves directly on a response graph</li>
+      <li>Route any input to any output and align speakers in time</li>
+      <li>Add loudness compensation, headphone crossfeed and other effects</li>
+      <li>Wire up physical knobs and remotes, and keep everything in presets on the device</li>
+      <li>Share devices on the local network</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">uconsole-for-dspi.desktop</launchable>
+  <url type="homepage">https://github.com/Bofr5555/dspi-unified-console</url>
+  <url type="bugtracker">https://github.com/Bofr5555/dspi-unified-console/issues</url>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+  </categories>
+  <provides>
+    <binary>uconsole-for-dspi</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+</component>

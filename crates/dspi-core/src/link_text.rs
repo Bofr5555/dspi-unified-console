@@ -202,9 +202,6 @@ fn term(name: &str, platform: Platform) -> Option<&'static str> {
         // The settings page that holds outputs and pins.
         ("hardware_page", MacOs | Android | Ios) => "Hardware",
         ("hardware_page", Windows | Linux) => "Outputs",
-        // -- WP QD32 -- The menu that holds the effect windows. Qt's has its own.
-        ("effects_menu", MacOs | Android | Ios) => "Tools",
-        ("effects_menu", Windows | Linux) => "Effects",
         // Only in `desktop` lines: mobile systems have no such choice.
         ("sound_settings", MacOs) => "macOS Sound settings",
         ("sound_settings", Windows) => "Windows Sound settings",
@@ -983,16 +980,11 @@ mod tests_wp_qd32 {
 
     use super::*;
 
-    const APP_MENU: &str = include_str!("../../../apps/desktop/qt/qml/components/AppMenu.qml");
-    const SETTINGS: &str = include_str!("../../../apps/desktop/qt/qml/SettingsWindow.qml");
-    const INPUTS_PAGE: &str =
-        include_str!("../../../apps/desktop/qt/qml/settings/pages/InputsPage.qml");
-    const GLOBAL_PAGE: &str =
-        include_str!("../../../apps/desktop/qt/qml/settings/pages/GlobalParametersPage.qml");
-    const SIDEBAR: &str = include_str!("../../../apps/desktop/qt/qml/Sidebar.qml");
-
-    /// Named in the notes, and not in Qt until QD14 adds it.
-    const PENDING_PAGES: [&str; 1] = ["Networking"];
+    // WP QPI1: the checks that read the desktop app's QML (menu paths, settings
+    // page titles, the source picker's right-click) went with the Qt tree they
+    // read. The rebuilt app follows the Mac console (Tools, no Effects menu;
+    // a source rename menu on right-click), so they were dropped, not pointed
+    // at the new files; the release notes' Qt lines are checked as text below.
 
     fn release_text(platform: Platform) -> String {
         let doc: Value = serde_json::from_str(&render_whats_new(platform)).unwrap();
@@ -1009,131 +1001,16 @@ mod tests_wp_qd32 {
             .join("\n")
     }
 
-    /// QML with `qsTr("x")` read as `"x"` (WP QD23 wrapped the labels).
-    fn plain(qml: &str) -> String {
-        let mut out = String::with_capacity(qml.len());
-        let mut rest = qml;
-        while let Some(i) = rest.find("qsTr(\"") {
-            out.push_str(&rest[..i]);
-            let after = &rest[i + 5..];
-            // The string literal, then the call's own closing parenthesis.
-            match after[1..].find('"') {
-                Some(end) => {
-                    out.push_str(&after[..end + 2]);
-                    rest = after[end + 2..]
-                        .strip_prefix(')')
-                        .unwrap_or(&after[end + 2..]);
-                }
-                None => {
-                    out.push_str(after);
-                    rest = "";
-                }
-            }
-        }
-        out.push_str(rest);
-        out
-    }
-
-    /// Every `text: "..."` in a slice of QML, `qsTr` or not.
-    fn quoted_after(qml: &str, field: &str) -> Vec<String> {
-        plain(qml)
-            .split(field)
-            .skip(1)
-            .filter_map(|rest| rest.split('"').next())
-            .map(str::to_owned)
-            .collect()
-    }
-
-    /// The labels of an `AppMenu.qml` group, without the ellipsis.
-    fn menu_items(group: &str) -> Vec<String> {
-        let start = format!("{{ text: \"{group}\", icon");
-        let menu = plain(APP_MENU);
-        let body = menu.split(&start).nth(1).expect(group);
-        let body = body.split("\n        ]").next().unwrap();
-        quoted_after(body, "text: \"")
-            .into_iter()
-            .map(|t| t.trim_end_matches('\u{2026}').to_owned())
-            .collect()
-    }
-
-    /// What follows each `root > ` in `text`.
-    fn after<'a>(text: &'a str, root: &str) -> Vec<&'a str> {
-        let marker = format!("{root} > ");
-        text.split(&marker).skip(1).collect()
-    }
-
+    // -- WP QP18 -- The rebuilt desktop app keeps the effect windows under
+    // Tools, as the Mac does, with the same shortcuts; its source picker has
+    // the rename menu on right-click too.
     #[test]
-    fn wp_qd32_every_menu_path_exists_in_qt() {
-        for platform in [Platform::Windows, Platform::Linux] {
-            let text = release_text(platform);
-            let mut seen = 0;
-            for group in ["Tools", "Effects", "Device"] {
-                let items = menu_items(group);
-                assert!(!items.is_empty(), "{group}");
-                for rest in after(&text, group) {
-                    assert!(
-                        items.iter().any(|i| rest.starts_with(i.as_str())),
-                        "{group} > {rest}"
-                    );
-                    seen += 1;
-                }
-            }
-            let pages = quoted_after(SETTINGS, "title: \"");
-            for rest in after(&text, "Settings") {
-                assert!(
-                    pages
-                        .iter()
-                        .map(String::as_str)
-                        .chain(PENDING_PAGES)
-                        .any(|p| rest.starts_with(p)),
-                    "Settings > {rest}"
-                );
-                seen += 1;
-            }
-            assert!(seen >= 8, "{platform:?}: only {seen} paths");
-        }
-    }
-
-    #[test]
-    fn wp_qd32_sections_named_in_the_notes_are_on_qts_pages() {
-        let text = release_text(Platform::Linux);
-        assert!(text.contains("Settings > Inputs > Source Names"));
-        assert!(INPUTS_PAGE.contains("title: qsTr(\"Source Names\")"));
-        assert!(text.contains("Settings > Global Parameters > Device Name"));
-        assert!(GLOBAL_PAGE.contains("title: qsTr(\"Device Name\")"));
-        assert!(text.contains("Settings > Global Parameters has a Latency section"));
-        assert!(GLOBAL_PAGE.contains("title: qsTr(\"Latency\")"));
-    }
-
-    /// Qt's source picker has no right-click: the sidebar connects no
-    /// `onContextMenuRequested` to it. When it gets one, the condition can widen.
-    #[test]
-    fn wp_qd32_the_source_picker_right_click_is_macos_only() {
-        let picker = SIDEBAR
-            .split("objectName: \"sourcePicker\"")
-            .nth(1)
-            .unwrap();
-        let picker = picker.split("onChosen:").next().unwrap();
-        assert!(!picker.contains("onContextMenuRequested"));
-        const LINE: &str = "right-click the source picker";
-        assert!(release_text(Platform::MacOs).contains(LINE));
-        for platform in [
-            Platform::Windows,
-            Platform::Linux,
-            Platform::Android,
-            Platform::Ios,
-        ] {
-            assert!(!release_text(platform).contains(LINE), "{platform:?}");
-        }
-    }
-
-    #[test]
-    fn wp_qd32_effects_are_under_effects_only_in_qt() {
+    fn wp_qp18_effects_are_under_tools_everywhere() {
         for (name, keys) in [
             ("Tube Modeller", "Shift+D"),
             ("Subharmonic Synthesizer", "Shift+S"),
         ] {
-            let qt = format!("Effects > {name} (Ctrl+{keys})");
+            let qt = format!("Tools > {name} (Ctrl+{keys})");
             let mac = format!("Tools > {name} (Cmd+{keys})");
             let mobile = format!("Tools > {name}.");
             assert!(release_text(Platform::Linux).contains(&qt));
@@ -1142,8 +1019,26 @@ mod tests_wp_qd32 {
             assert!(release_text(Platform::Android).contains(&mobile));
             assert!(release_text(Platform::Ios).contains(&mobile));
         }
-        // The analyser really is in Tools, in Qt as well.
+        for platform in [
+            Platform::Linux,
+            Platform::Windows,
+            Platform::MacOs,
+            Platform::Android,
+            Platform::Ios,
+        ] {
+            assert!(
+                !release_text(platform).contains("Effects >"),
+                "{platform:?}"
+            );
+        }
         assert!(release_text(Platform::Linux).contains("Tools > Spectrum Analyser (Ctrl+Shift+A)"));
+        let picker = "or right-click the source picker in the sidebar";
+        for platform in [Platform::Linux, Platform::Windows, Platform::MacOs] {
+            assert!(release_text(platform).contains(picker), "{platform:?}");
+        }
+        for platform in [Platform::Android, Platform::Ios] {
+            assert!(!release_text(platform).contains(picker), "{platform:?}");
+        }
     }
 
     /// Qt's own release notes: what the other platforms' text does not say. The

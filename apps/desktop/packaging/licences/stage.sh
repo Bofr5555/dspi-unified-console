@@ -1,18 +1,20 @@
 #!/bin/bash
 # -- WP QD42 -- Puts the licence texts and the notice into a package that
 # bundles Qt, at <dest>: NOTICE.txt and LICENSES/ with
-#   GPL-3.0.txt, LGPL-3.0.txt   DSPi Console's licence, and Qt's (from www.gnu.org)
-#   TERMS.txt                   (WP LIC1) DSPi Console's additional terms under
+#   GPL-3.0.txt, LGPL-3.0.txt   the app's licence, and Qt's (from www.gnu.org)
+#   TERMS.txt                   (WP LIC1) the app's additional terms under
 #                               GPL-3.0 section 7, and its copyright (TERMS.txt here)
 #   rust-crates.txt             (WP LIC1) the Rust crates in its core and their
 #                               licence texts (gen_rust_notices.py)
 #   Qt/                         Qt's LICENSES/ and THIRD-PARTY.txt (qt-<version>/)
-#   KWindowSystem/, ICU/        (AppImage) theirs
+#   Lucide/                     (WP QP20) the Qt app's icons' licence (ISC, and MIT for
+#                               the icons derived from Feather), from qt/icons/lucide/
+#   ICU/                        (AppImage) ICU's
 #   AppImage-runtime/           (AppImage) the runtime's, and those of what it links
 #                               (libfuse, squashfuse; WP LIC1: musl, zlib, zstd and
 #                               mimalloc from Alpine, ALPINE.txt)
-#   BUNDLED.txt                 every library in the package that is not DSPi
-#                               Console's own: package, version, where it comes
+#   BUNDLED.txt                 every library in the package that is not the
+#                               app's own: package, version, where it comes
 #                               from, its source, its licence, its files
 #                               (tab-separated); release-sources.sh fetches the
 #                               sources it names
@@ -21,18 +23,20 @@
 #
 #   stage.sh appimage <AppDir> <dest> <app version>   in Containerfile.ubuntu's image
 #   stage.sh windows <bundle> <dest> <app version>    in the MinGW build image (Fedora)
-#   stage.sh macos <app bundle> <dest> <app version>  on the Mac (bash 3.2)
 #   stage.sh swift <app bundle> <dest> <app version>  (WP REL013M) the Swift macOS
 #                               app, on the Mac: no Qt, no LGPL-3.0.txt; its core's
 #                               crates (apps/apple/licences/rust-crates.txt) and the
 #                               Swift packages linked into it, from $PACKAGE_RESOLVED
 #                               with their licence files from $SWIFTPM_CHECKOUTS
 # Fails on a file in the package it cannot account for, and when this folder
-# has no licence texts for the Qt (or KWindowSystem, ICU) the package carries
+# has no licence texts for the Qt (or ICU) the package carries
 # (update-licences.sh adds them).
+# -- WP QP20 -- The Qt app's packages (appimage, windows) name it "uConsole for
+# DSPi" (AppIdentity) and label it GPL-3.0-only; the Qt .dmg is gone (the Mac
+# release is the Swift app, which keeps its own name).
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-kind=${1:?usage: stage.sh appimage|windows|macos|swift <package dir> <dest> <app version>}
+kind=${1:?usage: stage.sh appimage|windows|swift <package dir> <dest> <app version>}
 pkg=${2:?}; dest=${3:?}; version=${4:?}
 fail() { echo "stage-licences: $*" >&2; exit 1; }
 L=$dest/LICENSES
@@ -44,11 +48,21 @@ cp "$here/TERMS.txt" "$here/rust-crates.txt" "$L/"   # -- WP LIC1 --
 cp "$here/../../../../assets/licences/firmware-THIRD-PARTY-NOTICES.txt" \
    "$here/../../../../assets/licences/AutoEq-MIT.txt" "$L/"
 # -- WP CLEAN1 -- the release's source archive (ci/release-source.sh), which the
-# notice names: published beside the downloads, not a link into the repository
-source_asset=${DSPI_SOURCE_ASSET:-dspi-uconsole-$version-source.tar.gz}
+# notice names: published beside the downloads, not a link into the repository.
+# -- WP QP20 -- The Qt app's is the one with apps/desktop (--with-desktop).
+if [ "$kind" = swift ]; then
+    app_name="uConsole for DSPi"
+    source_asset=${DSPI_SOURCE_ASSET:-uConsole-for-DSPi-$version-source.tar.gz}
+else
+    app_name=$(sed -n 's/.*displayName = "\(.*\)";/\1/p' "$here/../../qt/src/AppIdentity.h")
+    [ -n "$app_name" ] || fail "no displayName in qt/src/AppIdentity.h"
+    source_asset=${DSPI_SOURCE_ASSET:-uConsole-for-DSPi-$version-desktop-source.tar.gz}
+    mkdir -p "$L/Lucide"
+    cp "$here/../../qt/icons/lucide/LICENSE" "$L/Lucide/LICENSE"
+fi
 tab=$(printf '\t')
 bundled=$L/BUNDLED.txt
-printf '# Libraries in this package that are not part of DSPi uConsole (tab-separated):\n# package\tversion\tfrom\tsource\tlicence\tfiles\n' >"$bundled"
+printf '# Libraries in this package that are not part of %s (tab-separated):\n# package\tversion\tfrom\tsource\tlicence\tfiles\n' "$app_name" >"$bundled"
 row() { printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$@" >>"$bundled"; }
 copy_dir() {  # <licences/ subfolder> <dest name> <what>
     [ -d "$here/$1" ] || fail "no licence texts for $3 in $here/$1 (run update-licences.sh)"
@@ -64,28 +78,25 @@ join() { tr '\n' ' ' | sed 's/ $//'; }
 
 case $kind in
 appimage)
-    Q=${QTDIR:-/opt/qt}; K=${KF_DIR:-/opt/kf6}
+    Q=${QTDIR:-/opt/qt}
     qt=$("$Q/bin/qtpaths" --qt-version)
     [ "$("$here/qt-modules.sh" appimage | cut -d' ' -f1)" = "$qt" ] || fail "the image's Qt is $qt, the pins say otherwise"
     copy_dir "qt-$qt" Qt "Qt $qt"
-    qtfiles=; icufiles=; kfiles=; debs=
+    qtfiles=; icufiles=; debs=
     for f in "$pkg"/usr/lib/*.so*; do
         b=${f##*/}
         if [ -e "$Q/lib/$b" ]; then
             case $b in libicu*) icufiles="$icufiles usr/lib/$b" ;; *) qtfiles="$qtfiles usr/lib/$b" ;; esac
-        elif [ -e "$K/lib/$b" ]; then
-            kfiles="$kfiles usr/lib/$b"
         else
             p=$(dpkg -S "*/x86_64-linux-gnu/$b" 2>/dev/null | head -n 1 | cut -d: -f1) || true
-            [ -n "$p" ] || fail "usr/lib/$b comes from neither Qt, KWindowSystem nor an Ubuntu package"
+            [ -n "$p" ] || fail "usr/lib/$b comes from neither Qt nor an Ubuntu package"
             debs="$debs$p $b"$'\n'
         fi
     done
-    # Plugins and QML modules: Qt's, and KWindowSystem's plugins
+    # Plugins and QML modules: Qt's
     while read -r f; do
         rel=${f#"$pkg"/usr/}
         case $rel in
-            plugins/kf6/*) [ -e "$K/lib/$rel" ] || fail "usr/$rel is not KWindowSystem's"; kfiles="$kfiles usr/$rel" ;;
             plugins/*|qml/*) [ -e "$Q/$rel" ] || fail "usr/$rel is not Qt's" ;;
             *) fail "usr/$rel: not accounted for" ;;
         esac
@@ -96,11 +107,6 @@ appimage)
         icu=$(ls "$Q"/lib/libicuuc.so.*.* | sed -n 's/.*libicuuc\.so\.\([0-9]*\.[0-9]*\)$/\1/p' | head -n 1)
         copy_dir "icu-$icu" ICU "ICU $icu"
         row ICU "$icu" unicode-org/icu "icu4c-${icu//./_}-src.tgz (built by the Qt Company, shipped with Qt on download.qt.io)" "LICENSES/ICU/LICENSE" "${icufiles# }"
-    fi
-    if [ -n "$kfiles" ]; then
-        kf=$(ls "$K"/lib/libKF6WindowSystem.so.*.*.* | sed -n 's/.*\.so\.\([0-9]*\.[0-9]*\.[0-9]*\)$/\1/p' | head -n 1)
-        copy_dir "kwindowsystem-$kf/LICENSES" KWindowSystem "KWindowSystem $kf"
-        row KWindowSystem "$kf" download.kde.org "kwindowsystem-$kf.tar.xz" "LICENSES/KWindowSystem/" "${kfiles# }"
     fi
     # The AppImage's runtime (its first part, prepended later): the commit it states
     if [ -n "${APPIMAGE_RUNTIME:-}" ]; then
@@ -137,7 +143,7 @@ windows)
     while read -r f; do
         rel=${f#"$pkg"/}
         case $rel in
-            DSPiConsole.exe|dspi_capi.dll|qt.conf|NOTICE.txt|LICENSES/*) continue ;;
+            uconsole-for-dspi.exe|dspi_capi.dll|qt.conf|NOTICE.txt|LICENSES/*) continue ;;
             qml/*) from=$M/lib/qt6/$rel ;;
             */*) from=$M/lib/qt6/plugins/$rel ;;
             *) from=$M/bin/$rel ;;
@@ -166,21 +172,6 @@ windows)
         row "$p" "$ver" "$distro" "$srpm" "$lic" "$files"
     done
     sources="Their source code, Qt's among it, is included with this release (the Fedora source packages named there)."
-    ;;
-macos)
-    qt=$(sed -n 's/^qtver=\([0-9.]*\)$/\1/p' "$here/../macos/fetch-qt.sh")
-    built=$("${QTDIR:?set QTDIR, as for build-macos.sh}/bin/qtpaths" --qt-version)
-    [ "$built" = "$qt" ] || fail "the app is built on Qt $built, fetch-qt.sh pins $qt: the notice would name the wrong Qt"
-    copy_dir "qt-$qt" Qt "Qt $qt"
-    fw=$pkg/Contents/Frameworks
-    for f in "$fw"/*; do
-        [ -e "$f" ] || continue
-        case ${f##*/} in Qt*.framework) ;; *) fail "Contents/Frameworks/${f##*/} is not Qt's" ;; esac
-    done
-    qs=$(qt_sources macos) || fail "cannot read Qt's modules from the pins"
-    row Qt "$qt" download.qt.io "$qs" "LGPL-3.0-only (LICENSES/LGPL-3.0.txt, LICENSES/Qt/)" \
-        "Contents/Frameworks/Qt*.framework Contents/PlugIns Contents/Resources/qml"
-    sources="Qt's source for this version is included with this release (the source archives named there)."
     ;;
 swift)
     # -- WP REL013M --
@@ -214,7 +205,7 @@ swift)
             if [ -f "$f" ]; then cp "$f" "$L/swift/$id/"; fi
         done
         ls "$L/swift/$id"/LICENSE* >/dev/null 2>&1 || fail "$id has no LICENSE file"
-        row "$id" "$ver" "${loc%.git}" "$id at $rev" "LICENSES/swift/$id/" "Contents/MacOS/DSPi uConsole (linked in)"
+        row "$id" "$ver" "${loc%.git}" "$id at $rev" "LICENSES/swift/$id/" "Contents/MacOS/uConsole for DSPi (linked in)"
         i=$((i + 1))
     done
     [ "$i" -gt 0 ] || fail "no Swift packages in $resolved"
@@ -224,22 +215,27 @@ swift)
 esac
 
 # The notice: plain facts (DRAFT, as TERMS.txt). -- WP CLEAN1 -- The program as a
-# whole: GPL-3.0; Bofr5555's own additions: GPL-3.0-or-later with section 7 terms
+# whole: GPL-3.0; Bofr5555's own additions: GPL-3.0-or-later with section 7 terms.
+# -- WP QP20 -- The package's own label first: GPL-3.0-only.
 {
-    echo "DSPi uConsole $version"
+    echo "$app_name $version"
     echo
     echo "DRAFT notice, pending the owner's approval."
     echo
-    echo "DSPi uConsole as a whole is distributed under the GNU General Public License"
-    echo "version 3 (LICENSES/GPL-3.0.txt). Bofr5555's own contributions are licensed"
-    echo "under version 3 or (at your option) any later version, with additional terms"
-    echo "under its section 7 (LICENSES/TERMS.txt, also below)."
-    echo "Its complete source code is published with this release, beside its"
-    echo "downloads, as $source_asset."
+    echo "Licence: GPL-3.0-only (the GNU General Public License version 3)."
+    echo
+    { echo "$app_name as a whole is distributed under the GNU General Public License version 3 (LICENSES/GPL-3.0.txt). Bofr5555's own contributions are licensed under version 3 or (at your option) any later version, with additional terms under its section 7 (LICENSES/TERMS.txt, also below)."
+      echo "Its complete source code is published with this release, beside its downloads, as $source_asset."
+    } | fold -s -w 79 | sed 's/ $//'
     echo
     echo "The DSPi firmware images it bundles are Weeb Labs' release v1.1.6 (GPL-3.0);"
     echo "their third-party notices are in LICENSES/firmware-THIRD-PARTY-NOTICES.txt."
     echo "Its AutoEQ database holds AutoEq data (MIT, LICENSES/AutoEq-MIT.txt)."
+    if [ -d "$L/Lucide" ]; then   # -- WP QP20 --
+        echo
+        echo "Its icons are from Lucide (ISC; the icons derived from Feather, MIT); their"
+        echo "licence is in LICENSES/Lucide/LICENSE."
+    fi
     # -- WP LIC1 -- the Rust crates in its core
     echo
     echo "Its core links third-party Rust crates; they and their licence texts are"
@@ -260,14 +256,8 @@ esac
         echo "LICENSES/BUNDLED.txt: squashfuse, musl, zlib, zstd and mimalloc, their"
         echo "licence texts in LICENSES/AppImage-runtime/."
     fi
-    if [ -d "$L/KWindowSystem" ]; then
-        echo
-        echo "This program uses KDE's KWindowSystem $kf; its licence files are in"
-        echo "LICENSES/KWindowSystem/."
-    fi
     echo
-    echo "Every library in this package that is not part of DSPi uConsole is listed in"
-    echo "LICENSES/BUNDLED.txt, with its version, its source and its licence."
+    echo "Every library in this package that is not part of $app_name is listed in LICENSES/BUNDLED.txt, with its version, its source and its licence." | fold -s -w 79 | sed 's/ $//'
     [ -z "$sources" ] || echo "$sources" | fold -s -w 79 | sed 's/ $//'
     # -- WP LIC1 -- the copyright and the additional terms, verbatim
     echo

@@ -45,6 +45,14 @@
 //! notification's source and Link origin (owner, 2026-11-12). A value the
 //! mirror holds no single copy of (a limiter write to every output) is not
 //! judged.
+//!
+//! A re-read of the device ([`DspiCore::fetch_all`], on a refresh or a
+//! reconnect of a Link session) puts the device's values in the mirror.
+//! Entries it contradicts are judged by the same rule when undo or redo
+//! reaches them: left alone, dropped, the writer named ("another writer" when
+//! only the re-read saw it). The re-read also ends the step a drag gathers,
+//! so a change after it is undone to the value the re-read found, never to
+//! one from before it (WP SWAPFIX).
 #![warn(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -180,17 +188,40 @@ pub(crate) fn note_foreign(
     let writer = match (origin, source) {
         (Some(sid), _) if sid != 0 => format!("DSPi Link session {sid}"),
         (_, S::Gpio) => "a control surface".into(),
-        (_, S::Uac1) => "the computer's volume control".into(),
+        // -- WP QPI4 -- no host-device noun (GLOSSARY.md §1)
+        (_, S::Uac1) => "the USB audio volume control".into(),
         (_, S::Uart) => "the UART".into(),
         (_, S::I2c) => "the I2C bus".into(),
         (_, S::Midi) => "MIDI".into(),
         (_, S::Preset) => "a preset load".into(),
         (_, S::Factory) => "a factory reset".into(),
-        (_, S::HostSet | S::BulkSet) => "another program on the computer".into(),
+        (_, S::HostSet | S::BulkSet) => "another app".into(),
         _ => "another writer".into(),
     };
     let at_ms = now_ms();
     conn.last_foreign = Some(ForeignWrite { at_ms, writer });
+    // -- WP SWAPFIX -- a change of ours after theirs is a step of its own
+    if let Ok(session) = conn.session() {
+        session.end_step();
+    }
+}
+
+// -- WP SWAPFIX --
+/// A re-read of the device ([`DspiCore::fetch_all`]): the journal's step
+/// ends, so a change after it never joins one from before it; and when the
+/// device held something other than the mirror (`changed`), someone this
+/// client did not hear from changed it, named as "another writer" for
+/// undo's foreign-change rule.
+pub(crate) fn note_reread(conn: &mut crate::Connection, changed: bool) {
+    if changed {
+        conn.last_foreign = Some(ForeignWrite {
+            at_ms: now_ms(),
+            writer: "another writer".into(),
+        });
+    }
+    if let Ok(session) = conn.session() {
+        session.end_step();
+    }
 }
 
 /// Whether someone else changed `entry`'s value since this client left it
@@ -215,9 +246,10 @@ fn overwritten(inner: &Inner, entry: &JournalEntry, expected: &Value) -> Option<
         .and_then(|c| c.last_foreign.as_ref())
         .filter(|f| f.at_ms >= entry.at_ms)
         .map_or("another writer", |f| f.writer.as_str());
+    // -- WP QPI4 -- the registry's label, not the path in backticks
+    let what = by_path(entry.path).map_or(entry.path, |d| d.label);
     Some(format!(
-        "`{}` was changed by {who} since; it was left as they set it",
-        entry.path
+        "{what} was changed by {who} since; it was left as they set it"
     ))
 }
 
@@ -269,14 +301,20 @@ impl OwnWrites {
     }
 
     /// Whether `value` at `path`/`indices` is one this session wrote within
-    /// [`OWN_ECHO_MS`] of `now_ms`.
+    /// [`OWN_ECHO_MS`] of `now_ms` and has written over since: a late echo
+    /// brings back an older value. The newest one is what this session
+    /// left there, by a setter or by undo putting someone else's value back
+    /// (WP SWAPFIX), so it explains no difference.
     fn explains(&self, path: &str, indices: &[u8], value: &Value, now_ms: u64) -> bool {
-        self.0.iter().any(|w| {
-            w.path == path
-                && w.indices == indices
-                && &w.value == value
-                && now_ms.saturating_sub(w.at_ms) <= OWN_ECHO_MS
-        })
+        let mut mine = self
+            .0
+            .iter()
+            .rev()
+            .filter(|w| w.path == path && w.indices == indices);
+        if mine.next().is_none_or(|newest| &newest.value == value) {
+            return false;
+        }
+        mine.any(|w| &w.value == value && now_ms.saturating_sub(w.at_ms) <= OWN_ECHO_MS)
     }
 }
 
@@ -944,3 +982,9 @@ pub(crate) fn history_mark(inner: &mut Inner) -> Option<(u64, u64)> {
 #[allow(clippy::arithmetic_side_effects)]
 #[path = "journal/tests_wp_p0w.rs"]
 mod tests_wp_p0w;
+
+// -- WP SWAPFIX --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+#[path = "journal/tests_wp_swapfix.rs"]
+mod tests_wp_swapfix;

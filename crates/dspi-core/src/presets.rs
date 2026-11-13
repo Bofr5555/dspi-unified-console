@@ -463,7 +463,10 @@ impl DspiCore {
         };
         let result = sent.and_then(|()| {
             clock::sleep(FACTORY_RESET_SETTLE);
-            self.fetch_all()
+            self.fetch_all()?;
+            // -- WP SWAPFIX -- the re-read keeps a baseline; the reset's is new
+            self.capture_baseline();
+            Ok(())
         });
         self.release_device_lock(lock);
         result
@@ -871,6 +874,32 @@ fn name_within(name: &str) -> &str {
 pub(crate) fn capture_baseline_locked(inner: &mut Inner) {
     inner.baseline =
         (inner.conn.is_some() && inner.state.bulk_valid).then(|| inner.state.bulk_raw.clone());
+    // -- WP SWAPFIX --
+    inner.baseline_of = inner
+        .baseline
+        .as_ref()
+        .and(inner.conn.as_ref())
+        .map(|c| (c.serial.clone(), inner.state.active_preset_slot));
+}
+
+// -- WP SWAPFIX --
+/// After a re-read ([`DspiCore::fetch_all`]): keep the baseline when it was
+/// captured for this device on this active preset and still has the image's
+/// size; capture it otherwise (none yet, another device, another preset, a
+/// firmware with another layout).
+pub(crate) fn keep_or_capture_baseline_locked(inner: &mut Inner) {
+    let same = match (&inner.baseline, &inner.baseline_of, &inner.conn) {
+        (Some(base), Some((serial, slot)), Some(conn)) => {
+            inner.state.bulk_valid
+                && *serial == conn.serial
+                && *slot == inner.state.active_preset_slot
+                && base.len() == inner.state.bulk_raw.len()
+        }
+        _ => false,
+    };
+    if !same {
+        capture_baseline_locked(inner);
+    }
 }
 
 /// After a re-read caused by a preset load (this client's or anyone's): the
@@ -1530,7 +1559,16 @@ impl Rows<'_> {
                 s.channel_delays.get(ch).copied().unwrap_or(0.0),
                 l.channel_delays.get(ch).copied().unwrap_or(0.0),
             );
-            if !same(a, b) {
+            // -- WP SWAPFIX -- an output's delay is in the image twice (the
+            // channel's and the output's): the output's line below says it
+            let listed = ch
+                .checked_sub(inputs)
+                .filter(|&o| o < outputs)
+                .is_some_and(|o| {
+                    let num = |v: &[f32]| v.get(o).copied().unwrap_or(0.0);
+                    !same(num(&s.output_delay_ms), num(&l.output_delay_ms))
+                });
+            if !same(a, b) && !listed {
                 let name = self.label(ch, || format!("Ch {ch}"));
                 self.out
                     .push(format!("{name} delay: {} ms → {} ms", delay(a), delay(b)));

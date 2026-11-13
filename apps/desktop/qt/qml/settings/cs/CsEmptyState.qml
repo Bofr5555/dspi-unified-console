@@ -1,51 +1,65 @@
-import QtQuick 2.15
-import "../../components"
+import QtQuick
+import QtQuick.Layouts
+import UConsole
 
-// A list's empty state: a hint of what can be added, a title, a line of
-// text and the add button (children).
-Rectangle {
+// -- WP QP12 -- A list with nothing in it yet (the Mac's empty states): a hint
+// of what can go in it, a title, a line, and the button that adds one.
+ColumnLayout {
     id: empty
-    property string title: ""
-    property string text: ""
-    default property alias art: artRow.data
-    property alias action: actionSlot.data
-    width: parent ? parent.width : 400
-    height: col.height + 36
-    radius: isMacOS ? 5 : 10
-    color: isMacOS ? "#2b2b2b" : Qt.rgba(1, 1, 1, 0.045)
-    border.color: isMacOS ? Qt.rgba(1, 1, 1, 0.11) : Qt.rgba(1, 1, 1, 0.07)
-    Column {
-        id: col
-        y: 18
-        width: parent.width
-        spacing: 12
-        Row { id: artRow; anchors.horizontalCenter: parent.horizontalCenter; spacing: 10 }
-        Column {
-            width: parent.width
-            spacing: 3
-            Text {
-                width: parent.width
-                horizontalAlignment: Text.AlignHCenter
-                text: empty.title
-                font.pixelSize: 14
-                font.weight: Font.DemiBold
-                color: isMacOS ? MacColors.label : "white"
-            }
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: Math.min(340, parent.width - 40)
-                horizontalAlignment: Text.AlignHCenter
-                wrapMode: Text.WordWrap
-                text: empty.text
-                font.pixelSize: 12
-                color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.55)
+    property var badgeTypes: []
+    property string iconName
+    property string title
+    property string text
+    default property alias action: actionSlot.data
+
+    Layout.fillWidth: true
+    spacing: 14
+
+    Row {
+        Layout.alignment: Qt.AlignHCenter
+        spacing: 10
+        visible: empty.badgeTypes.length > 0
+        Repeater {
+            model: empty.badgeTypes
+            delegate: CsBadge {
+                required property var modelData
+                type: modelData
+                size: 28
             }
         }
-        Item {
-            id: actionSlot
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: childrenRect.width
-            height: childrenRect.height
+    }
+    Icon {
+        Layout.alignment: Qt.AlignHCenter
+        visible: empty.badgeTypes.length === 0 && empty.iconName.length > 0
+        name: empty.iconName
+        size: 28
+        color: Theme.textMuted
+    }
+    ColumnLayout {
+        Layout.alignment: Qt.AlignHCenter
+        spacing: 3
+        Text {
+            Layout.alignment: Qt.AlignHCenter
+            text: empty.title
+            font: Theme.fontTitle
+            color: Theme.text
+            Accessible.role: Accessible.Heading
+            Accessible.name: text
         }
+        Text {
+            Layout.alignment: Qt.AlignHCenter
+            Layout.maximumWidth: 340
+            text: empty.text
+            font: Theme.fontSmall
+            color: Theme.textMuted
+            wrapMode: Text.Wrap
+            horizontalAlignment: Qt.AlignHCenter
+        }
+    }
+    Item {
+        id: actionSlot
+        Layout.alignment: Qt.AlignHCenter
+        implicitWidth: childrenRect.width
+        implicitHeight: childrenRect.height
     }
 }

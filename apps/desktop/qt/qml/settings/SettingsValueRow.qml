@@ -1,16 +1,37 @@
-import QtQuick 2.15
-import "../components"
+import QtQuick
+import QtQuick.Layouts
+import UConsole
 
-// A read-only row: title on the left, value text on the right.
-SettingsRow {
+// A read-only row: the label on the left, its value on the right, selectable
+// for copying (the Mac's status rows).
+RowLayout {
     id: row
-    property string value: ""
+    property string title
+    property string value
     property bool mono: false
 
+    Layout.fillWidth: true
+    spacing: Theme.spacing
+
     Text {
+        text: row.title
+        font: Theme.fontBody
+        color: Theme.text
+    }
+    TextEdit {
+        objectName: row.objectName.length ? row.objectName + ".value" : ""
+        Layout.fillWidth: true
         text: row.value
-        font.pixelSize: 13
-        font.family: row.mono ? "monospace" : Qt.application.font.family
-        color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.6)
+        readOnly: true
+        selectByMouse: true
+        font: row.mono ? Theme.fontMono : Theme.fontBody
+        color: Theme.textMuted
+        selectionColor: Theme.selection
+        selectedTextColor: Theme.text
+        horizontalAlignment: TextEdit.AlignRight
+        wrapMode: TextEdit.Wrap
+        Accessible.role: Accessible.StaticText
+        Accessible.name: row.title
+        Accessible.description: row.value
     }
 }

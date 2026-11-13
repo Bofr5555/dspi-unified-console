@@ -1,165 +1,174 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
-import "../../components"
+import QtQuick
+import QtQuick.Controls.Basic
+import QtQuick.Layouts
+import QtQml
+import UConsole
 
-// One card on the Control pages: a header (disclosure chevron, badge, an
-// editable name over a one-line summary, trailing status, remove), the
-// body rows while expanded, and a footer (the Apply row).
+// -- WP QP12 -- One control-surface card (the Mac's slotSection, groupCard
+// and macroCard): the header a collapsed card shows (disclosure, badge,
+// editable name over the summary, state, remove), the editor while open, and
+// the Apply row while open or while something is pending.
 Rectangle {
     id: card
+    // The record (CsController.record(key))
+    property var rec: ({})
     property bool expanded: false
-    property string name: ""
-    property string placeholder: ""
-    property bool nameEditable: true
-    property string summary: ""
-    property color summaryColor: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
+    // The badge: a component type, or a plain glyph
+    property int badgeType: -1
+    property string iconName
+    property color iconColor: Theme.accentText
+    // The badge's menu: [{type, name, icon, disabled}] to change the type
+    property var typeChoices: []
+    property bool showPill: false
+    property bool ready: true
+    property string hint
     property bool removable: true
-    property string removeTip: qsTr("Remove")
-    default property alias body: bodyColumn.data
-    property alias badge: badgeSlot.data
-    property alias trailing: trailingRow.data
-    property alias footer: footerColumn.data
-    signal toggle()
-    signal nameEdited(string text)
-    signal removeClicked()
+    default property alias editor: bodyColumn.data
+    // Beside the remove button (a macro's run button)
+    property alias headerExtras: trailingRow.data
+    // At the start of the Apply row (the receiver's Add Remote Button)
+    property alias applyLeading: applyRow.leading
+    readonly property string base: objectName
 
-    width: parent ? parent.width : 400
-    height: column.height
-    radius: isMacOS ? 5 : 10
-    color: isMacOS ? "#2b2b2b" : Qt.rgba(1, 1, 1, 0.045)
-    border.color: isMacOS ? Qt.rgba(1, 1, 1, 0.11) : Qt.rgba(1, 1, 1, 0.07)
+    Layout.fillWidth: true
+    implicitHeight: column.implicitHeight + 2 * Theme.spacing
+    radius: Theme.radius
+    color: Theme.panel
+    border.width: 1
+    border.color: Theme.separator
+    Accessible.role: Accessible.Grouping
+    Accessible.name: (rec.name || "").length > 0 ? rec.name : (rec.placeholder || "")
 
-    Column {
+    ColumnLayout {
         id: column
-        width: parent.width
+        x: Theme.spacing
+        y: Theme.spacing
+        width: parent.width - 2 * Theme.spacing
+        spacing: Theme.spacing
 
-        Item {
-            id: header
-            width: parent.width
-            height: 48
-
-            ClickArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                focusRadius: 10
-                // -- WP QD22 -- Opens or closes the card
-                Accessible.name: card.expanded ? qsTr("%1, open").arg(card.name !== "" ? card.name : card.placeholder) : qsTr("%1, closed").arg(card.name !== "" ? card.name : card.placeholder)
-                Accessible.description: card.summary
-                onActivated: card.toggle()
-            }
-            Icon {
-                id: chevron
-                x: 12
-                anchors.verticalCenter: parent.verticalCenter
-                name: "chev-right"
-                size: 13
-                color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5)
-                rotation: card.expanded ? 90 : 0
-                Behavior on rotation { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 12
+            IconButton {
+                objectName: card.base + ".disclose"
+                iconName: card.expanded ? "chevron-down" : "chevron-right"
+                iconSize: 12
+                toolTip: card.expanded ? qsTr("Collapse") : qsTr("Expand")
+                onClicked: card.expanded = !card.expanded
             }
             Item {
-                id: badgeSlot
-                x: chevron.x + chevron.width + 8
-                width: childrenRect.width
-                height: childrenRect.height
-                anchors.verticalCenter: parent.verticalCenter
-            }
-            Column {
-                anchors.left: badgeSlot.right
-                anchors.leftMargin: 10
-                anchors.right: trailingRow.left
-                anchors.rightMargin: 10
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 1
-
-                // The name edits in place; Return or a click elsewhere commits
-                TextInput {
-                    id: nameInput
-                    activeFocusOnTab: true   // -- WP QD22 --
-                    Accessible.name: qsTr("Name")
-                    width: Math.min(parent.width, Math.max(60, Math.max(contentWidth, placeholderText.implicitWidth) + 12))
-                    height: 20
-                    leftPadding: 4
-                    rightPadding: 4
-                    x: -4
-                    verticalAlignment: Text.AlignVCenter
-                    text: card.name
-                    readOnly: !card.nameEditable
-                    maximumLength: 31
-                    selectByMouse: true
-                    clip: true
-                    font.pixelSize: 13
-                    font.weight: Font.DemiBold
-                    color: isMacOS ? MacColors.label : "white"
-                    selectionColor: isMacOS ? MacColors.selectedControl : "#0a7cff"
-                    onEditingFinished: if (text !== card.name) card.nameEdited(text)
-                    Keys.onEscapePressed: { text = card.name; focus = false }
-                    Connections {
-                        target: card
-                        function onNameChanged() { if (!nameInput.activeFocus) nameInput.text = card.name }
-                    }
-                    Rectangle {
-                        z: -1
-                        anchors.fill: parent
-                        radius: 5
-                        color: isMacOS ? "transparent" : nameInput.activeFocus ? Qt.rgba(1, 1, 1, 0.10)
-                             : nameHover.containsMouse && card.nameEditable ? Qt.rgba(1, 1, 1, 0.06) : "transparent"
-                        border.width: nameInput.activeFocus ? 1.5 : 0
-                        border.color: isMacOS ? "transparent" : "#0a7cff"
-                    }
-                    Text {
-                        id: placeholderText
-                        visible: nameInput.text === "" && !nameInput.activeFocus
-                        x: 4
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: card.placeholder
-                        font: nameInput.font
-                        color: isMacOS ? MacColors.placeholderText : "white"
-                    }
+                implicitWidth: card.badgeType >= 0 ? 32 : 20
+                implicitHeight: card.badgeType >= 0 ? 32 : 20
+                CsBadge {
+                    visible: card.badgeType >= 0
+                    type: card.badgeType
                     MouseArea {
-                        id: nameHover
                         anchors.fill: parent
-                        hoverEnabled: true
-                        acceptedButtons: Qt.NoButton
-                        cursorShape: card.nameEditable ? Qt.IBeamCursor : Qt.ArrowCursor
+                        enabled: card.typeChoices.length > 1 && CsController.writable
+                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        onClicked: typeMenu.popup()
                     }
+                    ToolTip.visible: badgeHover.hovered && card.typeChoices.length > 1
+                    ToolTip.text: qsTr("Change the component type")
+                    HoverHandler { id: badgeHover }
+                }
+                Icon {
+                    visible: card.badgeType < 0
+                    anchors.centerIn: parent
+                    name: card.iconName
+                    size: 14
+                    color: card.iconColor
+                }
+                AppMenu {
+                    id: typeMenu
+                    objectName: card.base + ".typeMenu"
+                    Instantiator {
+                        model: card.typeChoices
+                        delegate: AppMenuItem {
+                            required property var modelData
+                            text: modelData.name
+                            enabled: !modelData.disabled
+                            onTriggered: CsController.edit(card.rec.key, "type", modelData.type)
+                        }
+                        onObjectAdded: (index, object) => typeMenu.insertItem(index, object)
+                        onObjectRemoved: (index, object) => typeMenu.removeItem(object)
+                    }
+                }
+            }
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 2
+                BorderedField {
+                    objectName: card.base + ".name"
+                    Layout.fillWidth: true
+                    Layout.maximumWidth: 280
+                    label: qsTr("Name")
+                    text: card.rec.name || ""
+                    placeholderText: card.rec.placeholder || ""
+                    enabled: CsController.writable
+                    onTextEdited: CsController.setName(card.rec.key, text)
+                    ToolTip.visible: hovered && !activeFocus
+                    ToolTip.text: qsTr("Click to rename")
                 }
                 Text {
-                    width: parent.width
-                    elide: Text.ElideRight
-                    text: card.summary
-                    font.pixelSize: 11
-                    color: card.summaryColor
+                    objectName: card.base + ".summary"
+                    Layout.fillWidth: true
+                    text: card.rec.summary || ""
+                    font: Theme.fontSmall
+                    color: card.rec.running === true ? Theme.success : Theme.textMuted
+                    wrapMode: Text.Wrap
                 }
             }
-            Row {
-                id: trailingRow
-                anchors.right: removeButton.left
-                anchors.rightMargin: 6
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 8
+            Icon {
+                visible: (card.rec.warning || "").length > 0
+                name: "triangle-alert"
+                size: 12
+                color: Theme.warning
+                ToolTip.visible: warnHover.hovered
+                ToolTip.text: card.rec.warning || ""
+                HoverHandler { id: warnHover }
             }
-            CsButton {
-                id: removeButton
+            CsPill {
+                objectName: card.base + ".pill"
+                visible: card.showPill
+                text: card.rec.pill || ""
+                good: card.rec.pillGood === true
+            }
+            RowLayout {
+                id: trailingRow
+                spacing: 2
+            }
+            IconButton {
+                objectName: card.base + ".remove"
                 visible: card.removable
-                bare: true
-                icon: "trash"
-                tip: card.removeTip
-                anchors.right: parent.right
-                anchors.rightMargin: 12
-                anchors.verticalCenter: parent.verticalCenter
-                onClicked: card.removeClicked()
+                iconName: "trash"
+                iconSize: 13
+                toolTip: qsTr("Remove")
+                enabled: !card.rec.applying && (card.rec.liveConfigured !== true || CsController.writable)
+                onClicked: CsController.remove(card.rec.key)
             }
         }
 
-        Column {
+        ColumnLayout {
             id: bodyColumn
-            width: parent.width
             visible: card.expanded
+            Layout.fillWidth: true
+            Layout.leftMargin: 26
+            spacing: Theme.spacing
         }
-        Column {
-            id: footerColumn
-            width: parent.width
+
+        CsApplyRow {
+            id: applyRow
+            objectName: card.base + ".applyRow"
+            visible: card.expanded || card.rec.dirty === true || card.rec.applying === true || (card.rec.message || "").length > 0
+            dirty: card.rec.dirty === true
+            applying: card.rec.applying === true
+            message: card.rec.message || ""
+            isError: card.rec.isError === true
+            ready: card.ready
+            hint: card.hint
+            onApply: CsController.apply(card.rec.key)
+            onRevert: CsController.revertRecord(card.rec.key)
         }
     }
 }

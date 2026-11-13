@@ -2,205 +2,102 @@
 #define SMOKEDRIVER_H
 
 #include <QObject>
-#include <QStringList>
-// -- WP QD23 --
-#include <QSet>
+#include <QString>
 #include <functional>
 
-class QCoreApplication;
 class QQmlApplicationEngine;
 class QQuickItem;
 class QQuickWindow;
-class QImage;
-class DSPiBridge;
-class RtaController;
-class SiggenController;
-class CsController;
-class FirmwareUpdater;
-class AutoEqLibrary;
-class StatsController;
-class MonitorModel;
-class ConfigFiles;
+class Core;
+class DeviceModel;
+class Shell;
 
 // Drives the real app (real QML, real controllers, the merged core) on the demo
 // device, from inside its event loop, and exits with the number of failures.
-// Only in the DSPiConsoleSmoke target (CMake DSPI_SMOKE).
+// Only in the uconsole-for-dspi-smoke target (CMake DSPI_SMOKE).
+//
+// A work package adds its screens' checks as a section of its own, in its own
+// file under smoke/, without editing this driver:
+//
+//     static void sidebarSection(SmokeDriver &d) {
+//         d.check("qp1: the rows show the names", ...);
+//     }
+//     static const SmokeDriver::Section sidebar("qp1-sidebar", 100, &sidebarSection);
+//
+// Sections run in `order`, then by name; DSPI_SMOKE_SECTION=<name>[,<name>...]
+// runs only those (run.sh passes it through). Object names follow the rule in
+// NAMES.md.
+//
+// -- WP QP19 -- A launch of its own (run.sh starts each) runs only the sections
+// of its mode, chosen by the environment (behaviour.md §23):
+//
+//     static const SmokeDriver::Section tray("qp19-tray", 10, &traySection, SmokeDriver::Mode::Tray);
+//
+// A mode with no section in this build exits 2.
 class SmokeDriver : public QObject {
 public:
+    enum class Mode {
+        Main,        // --demo, the sections of every work package
+        Hardware,    // DSPI_SMOKE_HW=1 (a real DSPi) or dry (the same pass on the demo)
+        Replug,      // DSPI_SMOKE_HW=replug, the owner unplugs and replugs
+        DemoEntry,   // DSPI_SMOKE_DEMO_ENTRY, started without --demo
+        Tray,        // DSPI_SMOKE_TRAY=hidden|hidden-quit|app-quit|no-tray
+        Pseudo,      // DSPI_SMOKE_PSEUDO=en|pseudo
+        SelfTest,    // DSPI_SMOKE_SELFTEST=thread|noquit: the driver's own failure paths fire
+    };
     struct App {
         QQmlApplicationEngine *engine;
-        DSPiBridge *bridge;
-        RtaController *rta;
-        SiggenController *siggen;
-        CsController *cs;
-        FirmwareUpdater *firmware;
-        AutoEqLibrary *autoeq;
-        StatsController *stats;
-        MonitorModel *monitor;
-        ConfigFiles *config;
+        Core *core;
+        DeviceModel *device;
+        Shell *shell;
     };
+    using SectionFn = void (*)(SmokeDriver &driver);
+    struct Section {
+        Section(const char *name, int order, SectionFn run, Mode mode = Mode::Main);
+    };
+    // This launch's mode, and the value of its variable ("dry", "hidden", ...)
+    static Mode mode();
+    static QString modeValue();
+
     explicit SmokeDriver(const App &app) : m_(app) {}
     void start();
 
-private:
-    void run();
-    void check(const char *what, bool ok);
-    void section(const char *name);
-    // -- WP QD38 -- Ends the last section and prints the run's section times
-    void sectionTimes();
+    // For the sections
+    const App &app() const { return m_; }
+    void check(const QString &what, bool ok);
+    // -- WP QP19 -- An item the hardware pass leaves out, with why; the summary
+    // counts them (", <n> not run")
+    void notRun(const QString &what, const QString &why);
+    // A launch that ends the app its own way (the tray's): prints the summary
+    // now, keeps the failures for the exit, and exits 3 when the app has not
+    // quit `withinMs` later
+    void expectQuit(int withinMs);
     void spin(int ms);
     bool waitFor(int ms, const std::function<bool()> &done);
-    QObject *root() const;
-    QQuickWindow *window(const char *id) const;
-    void openAndGrab(const char *toolName);
+    // Until no core call is queued or running (DeviceModel.busy is false)
+    bool waitIdle(int ms = 5000);
+    QQuickWindow *mainWindow() const;
+    // The first object named `name`: the main window's QObject children, then
+    // its item tree (delegates of views are found there)
+    QObject *object(const QString &name) const;
+    QQuickItem *item(const QString &name, QQuickItem *scope = nullptr) const;
+    // Saves a screenshot as <DSPI_SMOKE_OUT>/<file>; false if it came out empty
+    bool grab(QQuickWindow *window, const QString &file);
+    QString outDir() const { return m_out; }
 
-    void testState();
-    void testSetters();
-    // -- WP SL1 --
-    void testDelaySliders();
-    // -- WP QD41 --
-    void testSliderKeys();
-    void testDelayRefusal();   // -- WP DL3 --
-    void runK340Labels();      // -- BUG1 --
-    void testRouting();
-    void testCrossfeedRows();
-    void testPresets();
-    void testNotificationsAndMonitor();
-    void testRta();
-    void testControlSurfaces();
-    void testSiggenAndStats();
-    void testFiles();
-    void testImportAppliesOnce();
-    void testSeam();
-    void testAutoEq();
-    void testWindows();
-    void testSettingsPages();
-    void testSweep();
-    void testReconnect();
-    void testIdleAndCost();
-    void testBypassRepaint();
-    // -- WP QD30 --
-    void testPopoverAnchor();
-    // -- WP QD4 --
-    void testNames();
-    // -- WP QD5 --
-    void testOutputLatency();
-    void testClockDiagAndCpuBars();
-    // -- WP QD29 --
-    void testRingHealth();
-    // -- WP QD34 --
-    void testPollingOffUiThread();
-    // -- WP QD31 --
-    void testSaveBarSetters();
-    // -- WP QD1 --
-    void testCsRefusals();
-    void testCsCallerRefusals();
-    void testSaveBarRefusal();
-    // -- WP CG16 --
-    void testCsPages();
-    // -- WP CG20 --
-    void testCsRules();
-    // -- WP QD2 --
-    void testPairMap();
-    // -- WP QD3 --
-    void testCoreVoltage();
-    // -- WP QD6 --
-    void testReadOnly();
-    void testDeviceChanging();
-    void testReadOnlyFixture(int wire);
-    void readOnlyClickAround(QQuickWindow *window, const char *where, QQuickItem *scope = nullptr);
-    // -- WP QD8 --
-    void testLink();
-    // -- WP QD10 --
-    void testLinkFault();
-    // -- WP QD9 --
-    void testDevices();
-    // -- WP HB6 --
-    void testHub();
-    // -- WP QD7 --
-    void runDemoEntry();
-    void testDemoEntry();
-    void testDemoLabel();
-    // -- WP QD33 --
-    void testAbout();
-    // -- WP QD32 --
-    void testOnboarding();
-    // -- WP QD27 --
-    void testAutoEqUpdate();
-    void testAutoEqHttp();
-    // -- WP QD18 --
-    void testHostAudio();
-    void testHostAudioOnHub();
-    // -- WP QD12 --
-    void testTray();
-    void runTrayLaunch(const QString &mode);
-    // -- WP QD11 --
-    void testFirmware();
-    // -- WP QD28 --
-    void testVregCalibration();
-    // -- WP QD14 --
-    void testNetworking();
-    // -- WP QD19 --
-    void testRtaFollowing();
-    // -- WP QD17 --
-    void testShortcuts();
-    void testShownInputCount();
-    // -- WP QD22 --
-    void testAccessibility();
-    void a11yAudit(QQuickWindow *w, QQuickItem *scope, const QString &where, bool tabWalk);
-    // -- WP QD13 --
-    void testSystemIntegration();
-    // -- WP QD16 --
-    void testUpdates();
-    void testNoUpdates();
-    // -- WP QD23 --
-public:
-    static void installPseudoLocale(QCoreApplication *app);
 private:
-    void runPseudoLocale();
-    void pseudoScan(QQuickWindow *w, QQuickItem *scope, const QString &where);
-    QStringList m_pseudoClipped;
-    QSet<QString> m_pseudoBaseline;
-
-    // Whether a bypass toggle repaints the open channel's graph editor. Leaves
-    // bypass as it found it. NotRun fills `why`.
-    enum class Outcome { Pass, Fail, NotRun };
-    Outcome bypassRepaints(QString *why);
-    QImage grabItem(QQuickItem *item);
+    void run();
+    void section(const char *name);
+    // Ends the last section and prints the run's section times
+    void sectionTimes();
+    void summary();
     static int qmlErrors();
-
-    // The hardware passes (DSPI_SMOKE_HW; SmokeDriverHw.cpp, SmokeDriverReplug.cpp)
-    struct Baseline {
-        QByteArray image;       // the bulk image, re-read from the device
-        QByteArray perItem;     // what is outside it: preset directory, Core 1 mode, solo
-    };
-    void runHardware();
-    void runReplug();
-    bool replugCycle(int cycle, const QString &serial, Baseline *want);
-    bool hwPreflight();
-    bool readBaseline(Baseline *out);
-    bool compareBaseline(const Baseline &want, const char *when);
-    void hwRta();
-    void hwRtaTap(int tap, const char *name);
-    void hwControlSurfaces();
-    void hwStats();
-    void hwIoStatus();
-    void hwMeters();
-    void hwSiggenCaps();
-    void hwBypass();
-    void hwReselect(const Baseline &want);
-    void pass(const QString &item, const QString &detail = QString());
-    void fail(const QString &item, const QString &detail = QString());
-    void notRun(const QString &item, const QString &why);
-    void outcome(const QString &item, bool ok, const QString &detail = QString());
-    void reading(const QString &item, bool ok, const QString &detail = QString());
-    void finish();
-    int m_passed = 0;
-    int m_notRun = 0;
 
     App m_;
     int m_failures = 0;
     int m_checks = 0;
+    int m_notRun = 0;
+    bool m_quitExpected = false;
     QString m_out;
 };
 

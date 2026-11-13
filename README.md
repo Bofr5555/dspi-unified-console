@@ -166,15 +166,13 @@ Per client:
 | Android | `--step android` (core libraries), `android-tests`, `android-aab` | `apps/android/tools/ci.sh` |
 | Swift, macOS and iOS | not in a container: `ci/macvm.sh macos` or `ios` runs it in the macOS VM | `apps/apple/build-xcframework.sh`, then `apps/apple/ci-test.sh macos` or `ios` |
 | Web | `--step web` (Chromium and Firefox on the core's demo) | `apps/web/README.md`; `uconsole web --demo` serves it on localhost |
-| Qt, macOS | not in a container: `ci/macvm.sh qt-dmg` builds the `.dmg` and starts it on the demo device | `apps/desktop/packaging/macos/ci-dmg.sh` |
 | Swift, macOS `.dmg` | not in a container: `ci/macvm.sh swift-dmg` builds the release `.dmg` and starts it on the demo device | `apps/apple/package-macos.sh`, then `apps/apple/test-dmg.sh` |
 | Bindings | `--step kotlin`, `--step swift`, `--step drift` | `ci/compile-bindings.sh` |
 
 Other checks: `--step test`, `proptest`, `deny`, `licences`, `wasm`, `wasm-core`,
 `ios-check`. On Linux the workspace needs ALSA development files for MIDI; the
 Linux Qt app needs the udev rule in `apps/desktop/packaging/linux/` for USB access.
-`apps/desktop/packaging/macos/` builds the Qt app as a `.dmg` (the `qt-dmg` row);
-the Swift app remains the macOS client.
+The Qt app has no macOS build; the Swift app is the macOS client.
 
 ## The core
 

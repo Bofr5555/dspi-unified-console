@@ -29,9 +29,8 @@ rows=(
   "licences|Licences: iOS inventory|container|licences"
   "linux-qt6|Linux Qt 6|container|qt"
   "linux-qt6-demo|Linux Qt 6, demo device, offscreen|container|qt-offscreen"
-  "linux-qt5|Linux Qt 5|container|qt5"
-  "linux-qt5-demo|Linux Qt 5, demo device, offscreen|container|qt5-offscreen"
   "linux-terminal|Linux Terminal|container|terminal"
+  # -- WP QP20 -- The Windows packaging of the new Qt tree, back on
   "windows-qt|Windows Qt (MinGW), zip and installer|container|qt-windows"
   "windows-gnu|Windows workspace (GNU)|container|windows-gnu"
   "windows-terminal|Windows core and Terminal (MSVC)|xwin, container|windows-msvc"
@@ -51,8 +50,6 @@ rows=(
   # -- WP SW2 -- Not run (exit 3) when the VM is down or has no GUI login.
   "macos-swift|macOS Swift app|macvm|=ci/macvm.sh macos"
   "ios-sim|iOS Simulator|macvm|=ci/macvm.sh ios"
-  # -- WP QD21b -- built, then started from the .dmg on the demo device
-  "qt-dmg|Qt .dmg, demo device|macvm|=ci/macvm.sh qt-dmg"
 )
 
 only=""

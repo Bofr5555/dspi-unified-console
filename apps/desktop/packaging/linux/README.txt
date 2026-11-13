@@ -1,33 +1,24 @@
-DSPi uConsole for Linux
-======================
+uConsole for DSPi for Linux (x86_64)
 
-Install (recommended)
----------------------
-    ./install.sh
+This folder holds the app as an AppImage, which runs on most Linux systems
+from 2024 on (glibc 2.39 or newer) and brings its own Qt.
 
-This copies the AppImage to ~/.local/bin, adds DSPi uConsole to your
-application menu, and installs a udev rule so the app can open the DSPi
-without root (it asks for your password once for that). Run it again to
-update; run ./install.sh --uninstall to remove everything.
+Run it as it is:
+    ./uConsole-for-DSPi-<version>-x86_64.AppImage
+(It needs FUSE 3 to mount itself. Without it, run it with
+--appimage-extract-and-run, or set APPIMAGE_EXTRACT_AND_RUN=1.)
 
-Run without installing
-----------------------
-    chmod +x DSPi-uConsole-*-x86_64.AppImage
-    ./DSPi-uConsole-*-x86_64.AppImage
+Or install it for yourself, with a menu entry:
+    ./install.sh            (./install.sh --uninstall removes it again)
 
-You still need the udev rule once, or the device can't be opened:
+Opening a DSPi needs permission to use its USB interface. Your distribution
+may already give it to the person at the seat; if not, the app says so and
+offers to install a udev rule (it asks for an administrator's password once).
+./install.sh --udev installs the same rule now. The rule is
+70-uconsole-for-dspi.rules in this folder.
 
-    sudo cp 70-dspi.rules /etc/udev/rules.d/
-    sudo udevadm control --reload-rules
-    (then unplug and replug the DSPi)
+Updating the firmware puts the board in BOOTSEL mode, where it shows as a USB
+drive; your desktop mounts it as it does any drive.
 
-Requirements
-------------
-64-bit x86 Linux with glibc 2.39 or newer (Ubuntu 24.04, Debian 13,
-Fedora 42, or anything newer). X11 and Wayland are both supported. The
-AppImage brings its own Qt 6; it uses your system's graphics (OpenGL),
-fonts and sound (ALSA) libraries, which every desktop has.
-
-If the AppImage won't start with a FUSE error, run it with
---appimage-extract-and-run, or install your distribution's FUSE package
-(libfuse2 / fuse).
+Settings live in ~/.config/uconsole-for-dspi/. The licences of the app and of everything
+it bundles are in NOTICE.txt and LICENSES/ (also in the app: Settings > About).

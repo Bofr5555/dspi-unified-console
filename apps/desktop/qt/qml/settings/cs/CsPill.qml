@@ -1,19 +1,42 @@
-import QtQuick 2.15
+import QtQuick
+import UConsole
 
-// Dot-and-text status capsule: Pending, Active or Inactive.
-Rectangle {
+// -- WP QP12 -- A card's state (the Mac's status pill): a dot and a word on a
+// faint capsule of the same tint, green when good, orange otherwise.
+Item {
     id: pill
-    property string text: ""
-    property color tint: "#32d74b"
-    width: row.implicitWidth + 16
-    height: 20
-    radius: 10
-    color: isMacOS ? Qt.rgba(tint.r, tint.g, tint.b, 0.12) : Qt.rgba(tint.r, tint.g, tint.b, 0.13)
-    Row {
-        id: row
-        anchors.centerIn: parent
-        spacing: 5
-        Rectangle { width: 6; height: 6; radius: 3; color: pill.tint; anchors.verticalCenter: parent.verticalCenter }
-        Text { text: pill.text; font.pixelSize: 11; font.weight: Font.Medium; color: pill.tint }
+    property string text
+    property bool good
+
+    readonly property color tint: good ? Theme.success : Theme.warning
+    implicitWidth: word.x + word.implicitWidth + 8
+    implicitHeight: 18
+
+    Rectangle {
+        width: pill.width
+        height: pill.height
+        radius: pill.height / 2
+        color: pill.tint
+        opacity: 0.12
     }
+    Rectangle {
+        id: dot
+        x: 8
+        y: (pill.height - 6) / 2
+        width: 6
+        height: 6
+        radius: 3
+        color: pill.tint
+    }
+    Text {
+        id: word
+        objectName: pill.objectName.length ? pill.objectName + ".text" : ""
+        x: dot.x + dot.width + 5
+        y: (pill.height - implicitHeight) / 2
+        text: pill.text
+        font: Qt.font({ pixelSize: Theme.fontCaption.pixelSize, weight: Font.Medium })
+        color: pill.tint
+    }
+    Accessible.role: Accessible.StaticText
+    Accessible.name: text
 }

@@ -1,0 +1,2 @@
+# -- WP QP15 -- Files and AutoEQ (see ../manifest.txt for the format)
+ear                 AutoEQ browser: in-ear and earbud profiles

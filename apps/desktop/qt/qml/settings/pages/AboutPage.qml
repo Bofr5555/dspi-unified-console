@@ -1,136 +1,255 @@
-import QtQuick 2.15
-import "../"
-import "../../components"
+import QtQuick
+import QtQuick.Controls.Basic
+import QtQuick.Layouts
+import UConsole
 
+// Settings > About (the Mac's GeneralSettingsTab): the app, its version for
+// this platform and the credit lines; the makers and the project; the links
+// with their note; the credits; and the third-party notices, each opened in a
+// text viewer (behaviour.md §27). The wording is the core's About table
+// (AboutController); sections other packages add (the licence) go below.
 SettingsPage {
-    writesToDevice: false   // -- WP QD6 --
-    title: qsTr("About")
+    id: page
+    objectName: "AboutPage"
 
-    // Who made what, the links and the credits come from assets/about.json through
-    // aboutInfo (AboutController), as written, so any wording fits: rows and the card
-    // grow with it, and a list it leaves empty is not shown.
+    Component.onCompleted: AboutController.rescanNotices()
 
-    // App identity
-    Rectangle {
-        objectName: "aboutIdentity"
-        width: parent.width
-        height: Math.max(116, identity.height + 32)
-        radius: isMacOS ? 5 : 12
-        color: isMacOS ? "#2b2b2b" : Qt.rgba(1, 1, 1, 0.045)
-        border.color: isMacOS ? Qt.rgba(1, 1, 1, 0.11) : Qt.rgba(1, 1, 1, 0.07)
-
-        Rectangle {
-            id: appTile
-            x: 20
-            anchors.verticalCenter: parent.verticalCenter
-            width: 72; height: 72; radius: 18
-            gradient: Gradient {
-                GradientStop { position: 0; color: "#3a96ff" }
-                GradientStop { position: 1; color: "#6b4cf0" }
+    SettingsGroup {
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 14
+            Icon {
+                Layout.alignment: Qt.AlignTop
+                name: "volume-2"
+                size: 32
+                color: Theme.accentText
             }
-            Icon { anchors.centerIn: parent; name: "sliders"; size: 38; color: "white" }
-        }
-        Column {
-            id: identity
-            anchors.left: appTile.right
-            anchors.leftMargin: 18
-            anchors.right: parent.right
-            anchors.rightMargin: 20
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 4
-            Text { text: qsTr("DSPi uConsole"); font.pixelSize: 22; font.weight: Font.Bold; color: isMacOS ? MacColors.label : "white" }
-            Text { text: qsTr("Version %1 for %2").arg(Qt.application.version).arg(isMacOS ? "macOS" : isWindows ? "Windows" : "Linux"); font.pixelSize: 13; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.6) }
-            Repeater {
-                model: aboutInfo.creditLines
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 2
                 Text {
-                    width: parent.width
-                    wrapMode: Text.Wrap
-                    textFormat: Text.PlainText
-                    text: modelData
-                    font.pixelSize: 13
-                    color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.45)
+                    objectName: "About.name"
+                    text: AppIdentity.displayName
+                    font: Qt.font({ pixelSize: Theme.fontBody.pixelSize, weight: Font.DemiBold })
+                    color: Theme.text
                 }
-            }
-        }
-    }
-
-    // The links section's heading and note are the table's (WP CG29): they say whose
-    // links these are. The note sits above the rows, as it must be read before them.
-    Repeater {
-        model: [
-            { title: qsTr("Made by"), note: "", rows: aboutInfo.makers },
-            { title: aboutInfo.linksTitle, note: aboutInfo.linksNote, rows: aboutInfo.links },
-            { title: qsTr("Credits"), note: "", rows: aboutInfo.credits }
-        ]
-        SettingsSection {
-            title: modelData.title
-            note: modelData.note
-            visible: modelData.rows.length > 0
-            Repeater {
-                model: modelData.rows
-                SettingsRow {
-                    readonly property bool hasLink: modelData.url !== ""
-                    title: modelData.title
-                    titleColor: isMacOS ? (hasLink ? Qt.rgba(0.72, 0.72, 0.72, 1) : MacColors.label) : "white"
-                    detail: modelData.detail
-                    verbatim: true
-                    clickable: hasLink
-                    onActivated: Qt.openUrlExternally(modelData.url)
-                    // A Repeater, as an Icon that is only hidden would still reserve its width
-                    Repeater {
-                        model: hasLink ? 1 : 0
-                        Icon { name: "external"; size: 16; color: Qt.rgba(1, 1, 1, 0.5) }
+                Text {
+                    text: qsTr("USB Audio DSP Controller")
+                    font: Theme.fontSmall
+                    color: Theme.textMuted
+                }
+                Text {
+                    objectName: "About.version"
+                    text: qsTr("Version %1 %2").arg(AppIdentity.version).arg(AboutController.platformLabel)
+                    font: Theme.fontSmall
+                    color: Theme.textMuted
+                }
+                Repeater {
+                    model: AboutController.creditLines
+                    delegate: Text {
+                        required property string modelData
+                        required property int index
+                        objectName: "About.credit." + index
+                        Layout.fillWidth: true
+                        text: modelData
+                        font: Theme.fontSmall
+                        color: Theme.textMuted
+                        wrapMode: Text.Wrap
                     }
                 }
             }
         }
     }
 
-    // -- WP LIC1 -- The project's licence and its section 7 terms, as the table words
-    // them (assets/about.json `licence`). The terms require them here, with the credit
-    // lines above and the licence texts below.
-    SettingsSection {
-        objectName: "aboutLicence"
-        visible: aboutInfo.licenceStatement !== ""
-        title: aboutInfo.licenceTitle
-        note: {
-            var lines = []
-            for (var i = 0; i < aboutInfo.licenceCopyright.length; i++) lines.push(aboutInfo.licenceCopyright[i])
-            lines.push(aboutInfo.licenceStatement)
-            return lines.join("\n\n")
+    SettingsGroup {
+        title: qsTr("Made By")
+        iconName: "heart"
+        Repeater {
+            model: AboutController.makers
+            delegate: ColumnLayout {
+                required property var modelData
+                Layout.fillWidth: true
+                spacing: 2
+                LinkRow {
+                    title: modelData.name
+                    url: modelData.url
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: modelData.made.join(", ")
+                    font: Theme.fontSmall
+                    color: Theme.textMuted
+                    wrapMode: Text.Wrap
+                }
+            }
+        }
+        LinkRow {
+            objectName: "About.project"
+            title: qsTr("%1 on GitHub").arg(AppIdentity.displayName)
+            url: AppIdentity.projectUrl
+        }
+    }
+
+    SettingsGroup {
+        title: AboutController.linksTitle.length ? AboutController.linksTitle : qsTr("Links & Support")
+        iconName: "external-link"
+        Text {
+            visible: text.length > 0
+            Layout.fillWidth: true
+            text: AboutController.linksNote
+            font: Theme.fontSmall
+            color: Theme.textMuted
+            wrapMode: Text.Wrap
         }
         Repeater {
-            model: [
-                { title: qsTr("GNU General Public License, version 3"), detail: aboutInfo.licenceSpdx, file: "GPL-3.0.txt" },
-                { title: qsTr("Qt: GNU Lesser General Public License, version 3"), detail: "LGPL-3.0-only", file: "LGPL-3.0.txt" },
-                { title: qsTr("Rust crates: licences and notices"), detail: qsTr("The crates the core links"), file: "rust-crates.txt" }
-            ]
-            SettingsRow {
-                objectName: "licenceTextRow"
+            model: AboutController.links
+            delegate: LinkRow {
+                required property var modelData
+                objectName: "About.link." + modelData.id
                 title: modelData.title
                 detail: modelData.detail
-                verbatim: true
-                clickable: true
-                onActivated: { licenceText.heading = modelData.title; licenceText.file = modelData.file; licenceText.open() }
+                url: modelData.url
             }
         }
-        footnote: aboutInfo.licenceNotices
     }
-    SettingsSection {
-        objectName: "aboutTerms"
-        visible: aboutInfo.terms.length > 0
-        title: aboutInfo.termsTitle
-        note: aboutInfo.termsNote
+
+    SettingsGroup {
+        title: qsTr("Credits")
+        iconName: "star"
         Repeater {
-            model: aboutInfo.terms
-            SettingsRow {
-                objectName: "licenceTermRow"
-                title: (index + 1) + ". " + modelData.title
-                detail: modelData.detail
-                verbatim: true
+            model: AboutController.credits
+            delegate: ColumnLayout {
+                required property var modelData
+                Layout.fillWidth: true
+                spacing: 1
+                Text {
+                    Layout.fillWidth: true
+                    text: modelData.name
+                    font: Theme.fontBody
+                    color: Theme.text
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: modelData.what
+                    font: Theme.fontSmall
+                    color: Theme.textMuted
+                    wrapMode: Text.Wrap
+                }
             }
         }
-        footnote: aboutInfo.licenceFreedoms
     }
-    LicenceTextPopup { id: licenceText }
+
+    SettingsExtensions {
+        page: "about"
+    }
+
+    SettingsGroup {
+        objectName: "About.notices"
+        title: qsTr("Third-Party Notices")
+        iconName: "file-down"
+        footer: AboutController.notices.length ? "" : qsTr("This build carries no notice files; a package lists them here.")
+        Repeater {
+            model: AboutController.notices
+            delegate: AbstractButton {
+                id: notice
+                required property var modelData
+                required property int index
+                objectName: "About.notice." + index
+                Layout.fillWidth: true
+                implicitHeight: Theme.rowHeight
+                hoverEnabled: true
+                focusPolicy: Qt.TabFocus
+                onClicked: {
+                    AboutController.openNotice(index)
+                    viewer.open()
+                }
+                background: Rectangle {
+                    radius: Theme.radiusSmall
+                    color: notice.hovered ? Theme.controlHover : "transparent"
+                    border.width: notice.visualFocus ? 2 : 0
+                    border.color: Theme.focusRing
+                }
+                contentItem: RowLayout {
+                    spacing: Theme.spacingSmall
+                    Icon {
+                        name: "info"
+                        size: 14
+                        color: Theme.accentText
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: notice.modelData.title
+                        font: Theme.fontBody
+                        color: Theme.accentText
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        text: notice.modelData.detail
+                        font: Theme.fontSmall
+                        color: Theme.textMuted
+                        elide: Text.ElideLeft
+                        Layout.maximumWidth: 220
+                    }
+                }
+                Accessible.role: Accessible.Link
+                Accessible.name: modelData.title
+                Accessible.description: modelData.detail
+                Accessible.onPressAction: notice.clicked()
+            }
+        }
+    }
+
+    NoticeViewer {
+        id: viewer
+        objectName: "About.viewer"
+        parent: page.Window.window ? page.Window.window.contentItem : page
+    }
+
+    // A web link row: title (and detail) opening the page in the browser
+    component LinkRow: AbstractButton {
+        id: link
+        property string title
+        property string detail
+        property string url
+        Layout.fillWidth: true
+        implicitHeight: Theme.rowHeight
+        hoverEnabled: true
+        focusPolicy: Qt.TabFocus
+        enabled: url.length > 0
+        onClicked: AboutController.openLink(url)
+        background: Rectangle {
+            radius: Theme.radiusSmall
+            color: link.hovered ? Theme.controlHover : "transparent"
+            border.width: link.visualFocus ? 2 : 0
+            border.color: Theme.focusRing
+        }
+        contentItem: RowLayout {
+            spacing: Theme.spacingSmall
+            Icon {
+                name: "external-link"
+                size: 14
+                color: Theme.accentText
+            }
+            Text {
+                text: link.title
+                font: Theme.fontBody
+                color: Theme.accentText
+            }
+            Text {
+                Layout.fillWidth: true
+                text: link.detail
+                font: Theme.fontSmall
+                color: Theme.textMuted
+                elide: Text.ElideRight
+            }
+        }
+        HelpTip {
+            text: link.url
+            visible: link.hovered
+        }
+        Accessible.role: Accessible.Link
+        Accessible.name: title
+        Accessible.description: url
+        Accessible.onPressAction: link.clicked()
+    }
 }

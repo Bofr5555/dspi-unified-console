@@ -1,78 +1,104 @@
-import QtQuick 2.15
-import "../"
+import QtQuick
+import QtQuick.Layouts
+import UConsole
 
-// -- WP QD28 -- An Item round the page, so Core Voltage can open in its place: that
-// page is reachable from here only, with no entry of its own in the window.
-Item {
-    id: advanced
-    property var ctx                    // SettingsContext, set by the window
-    readonly property string title: qsTr("Advanced")
-    property bool coreVoltageOpen: false
-    // Only while the core's flow could be used, or a run of it is in a phase
-    readonly property bool coreVoltageOffered: bridge.connected && ext.hasCoreVreg && bridge.writable
-                                               && (!vreg.polled || vreg.available)
+// Settings > Advanced (the Mac's AdvancedSettingsTab): reset the channel
+// names, the debug switch, and on the desktop the open device's facts and the
+// Core Voltage entry (behaviour.md §8). Sections other packages add (the
+// onboarding developer rows, behind the debug switch) go below.
+SettingsPage {
+    id: page
+    objectName: "AdvancedPage"
+    readonly property var vreg: SettingsController.coreVoltage
 
-    SettingsPage {
-        id: main
-        anchors.fill: parent
-        visible: !advanced.coreVoltageOpen
-        ctx: advanced.ctx
-        title: advanced.title
-
-        SettingsSection {
-            title: qsTr("Device")
-            enabled: bridge.connected
-            SettingsValueRow { title: qsTr("Platform"); value: bridge.connected ? bridge.platformName : "—" }
-            SettingsValueRow { title: qsTr("Firmware"); value: bridge.firmwareVersion || "—" }
-            SettingsValueRow { title: qsTr("Serial Number"); value: bridge.selectedSerial || "—"; mono: true }
-            SettingsValueRow {
-                title: qsTr("Channels")
-                value: bridge.connected ? qsTr("%1 inputs, %2 outputs").arg(bridge.numInputChannels).arg(bridge.numOutputChannels) : "—"
+    SettingsGroup {
+        title: qsTr("Channel Names")
+        iconName: "list-ordered"
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spacing
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Reset all channel names to factory defaults.")
+                font: Theme.fontBody
+                color: Theme.text
+                wrapMode: Text.Wrap
             }
-        }
-
-        SettingsSection {
-            title: qsTr("Channel Names")
-            footnote: qsTr("Renames every channel back to its default (USB L, SPDIF 1 L and so on). Takes effect immediately.")
-            SettingsButtonRow {
-                title: qsTr("Reset Channel Names")
-                buttonText: qsTr("Reset")
-                enabled: bridge.connected
-                onClicked: bridge.resetChannelNames()
-            }
-        }
-
-        // -- WP QD28 --
-        SettingsSection {
-            objectName: "advancedCoreVoltage"
-            visible: advanced.coreVoltageOffered || vreg.phase !== "idle"
-            title: qsTr("Core Voltage")
-            footnote: qsTr("Changes the voltage of the device's processor. For a device that hangs or drops off USB; read the warning first.")
-            SettingsButtonRow {
-                objectName: "advancedCoreVoltageOpen"
-                title: qsTr("Core Voltage")
-                detail: {
-                    var s = vreg.view.status
-                    if (vreg.phase !== "idle" && vreg.phase !== "review") return qsTr("Calibration: %1").arg(vreg.view.message || vreg.phase)
-                    if (s && s.trialActive) return qsTr("A trial is running at %1").arg(vreg.volts(s.trialVreg))
-                    return s ? qsTr("Running at %1").arg(s.millivolts > 0 ? qsTr("%1 V").arg((s.millivolts / 1000).toFixed(2)) : vreg.volts(s.liveVreg)) : ""
-                }
-                buttonText: qsTr("Open…")
-                onClicked: advanced.coreVoltageOpen = true
+            AppButton {
+                objectName: "Advanced.resetNames"
+                text: qsTr("Reset")
+                enabled: DeviceModel.connected && !DeviceModel.readOnly
+                onClicked: SettingsController.resetChannelNames()
             }
         }
     }
 
-    Loader {
-        id: coreVoltage
-        objectName: "coreVoltageLoader"
-        anchors.fill: parent
-        active: advanced.coreVoltageOpen
-        source: "CoreVoltagePage.qml"
-        onLoaded: item.ctx = advanced.ctx
+    SettingsGroup {
+        title: qsTr("Diagnostics")
+        iconName: "activity"
+        SettingsToggle {
+            objectName: "Advanced.debug"
+            title: qsTr("Show Debug Information")
+            caption: qsTr("Display additional diagnostic data in the UI")
+            checked: SettingsController.showDebugInfo
+            onToggled: on => SettingsController.showDebugInfo = on
+        }
     }
-    Connections {
-        target: coreVoltage.item
-        function onBack() { advanced.coreVoltageOpen = false }
+
+    SettingsGroup {
+        objectName: "Advanced.device"
+        visible: DeviceModel.connected
+        title: qsTr("Device")
+        iconName: "hard-drive"
+        SettingsValueRow {
+            title: qsTr("Platform")
+            value: DeviceModel.platformName
+        }
+        SettingsValueRow {
+            objectName: "Advanced.firmware"
+            title: qsTr("Firmware")
+            value: DeviceModel.firmwareVersion
+        }
+        SettingsValueRow {
+            title: qsTr("Serial Number")
+            value: DeviceModel.serial
+            mono: true
+        }
+        SettingsValueRow {
+            title: qsTr("Channels")
+            value: qsTr("%1 in, %2 out").arg(DeviceModel.numInputs).arg(DeviceModel.numOutputs)
+        }
+    }
+
+    // The entry to the Core Voltage page, once a package registers it, on
+    // firmware with the extension (behaviour.md §20)
+    SettingsGroup {
+        objectName: "Advanced.coreVoltage"
+        visible: DeviceModel.connected && page.vreg.supported === true
+                 && SettingsController.pageType("coreVoltage").length > 0
+                 && CoreVoltageController.supported   // -- WP QP23 -- the probe's answer, as the page's
+        title: qsTr("Core Voltage")
+        iconName: "gauge"
+        RowLayout {
+            Layout.fillWidth: true
+            Text {
+                Layout.fillWidth: true
+                text: page.vreg.read === true
+                      ? qsTr("Running at %1").arg(SettingsController.voltsLabel(page.vreg.liveVreg))
+                        + (page.vreg.trialActive ? " " + qsTr("(trial)") : "")
+                      : qsTr("Reading…")
+                font: Theme.fontBody
+                color: Theme.text
+            }
+            AppButton {
+                objectName: "Advanced.coreVoltageOpen"
+                text: qsTr("Open…")
+                onClicked: SettingsController.open("coreVoltage")
+            }
+        }
+    }
+
+    SettingsExtensions {
+        page: "advanced"
     }
 }

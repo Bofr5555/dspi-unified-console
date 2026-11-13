@@ -1,36 +1,119 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
+import QtQuick
+import QtQuick.Controls.Basic
+import UConsole
 
+// The app's slider (the Mac's CustomSlider and ParameterRow behaviour): the
+// thumb follows every event; `valueMoved` sends values live during a drag, at most
+// 30 a second with only the latest kept; `committed` fires once on release, on
+// each key step and on a reset. A right-click resets to `resetValue` when one
+// is set (the desktop gesture for the Mac's reset, PARITY M51).
 Slider {
-    id: sliderRoot
-    height: 12
+    id: slider
+    property string label
+    property real resetValue: NaN
+    signal valueMoved(real value)
+    signal committed(real value)
 
-    property color trackColor: isMacOS ? Qt.rgba(1, 1, 1, 0.1) : Qt.rgba(0.5, 0.5, 0.5, 0.2)
-    property color activeColor: isMacOS ? MacColors.sliderFill : "#0078d4"
+    implicitWidth: 160
+    implicitHeight: 18
+    focusPolicy: Qt.StrongFocus
 
-    background: Rectangle {
-        x: sliderRoot.leftPadding
-        y: sliderRoot.topPadding + sliderRoot.availableHeight / 2 - height / 2
-        width: sliderRoot.availableWidth
-        height: 3
-        radius: 2
-        color: trackColor
-
-        Rectangle {
-            width: sliderRoot.visualPosition * parent.width
-            height: parent.height
-            radius: 2
-            color: isMacOS ? (sliderRoot.enabled ? activeColor : MacColors.opacity(activeColor, 0.5)) : sliderRoot.enabled ? activeColor : Qt.rgba(0.5, 0.5, 0.5, 0.3)
+    property real _pending: NaN
+    Timer {
+        id: coalesce
+        interval: 33
+        onTriggered: {
+            if (!isNaN(slider._pending)) {
+                const v = slider._pending
+                slider._pending = NaN
+                slider.valueMoved(v)
+                coalesce.start()
+            }
         }
     }
 
-    handle: Rectangle {
-        x: sliderRoot.leftPadding + sliderRoot.visualPosition * (sliderRoot.availableWidth - width)
-        y: sliderRoot.topPadding + sliderRoot.availableHeight / 2 - height / 2
-        width: 12
-        height: 12
-        radius: 6
-        color: isMacOS ? (sliderRoot.enabled ? Qt.rgba(0.6, 0.6, 0.6, 1) : Qt.rgba(0.408, 0.408, 0.408, 1)) : sliderRoot.enabled ? "white" : Qt.rgba(0.7, 0.7, 0.7, 1.0)
-        FocusRing { radius: 8; shown: sliderRoot.visualFocus }
+    onMoved: {
+        if (pressed) {
+            if (coalesce.running) {
+                _pending = value
+            } else {
+                valueMoved(value)
+                coalesce.start()
+            }
+        } else {
+            // A key step: no drag to wait for
+            committed(value)
+        }
     }
+    onPressedChanged: {
+        if (!pressed) {
+            coalesce.stop()
+            _pending = NaN
+            committed(value)
+        }
+    }
+
+    // Above the handle and the track: the Slider takes any press it sees and
+    // moves to it, so the right button is caught before it gets there. The
+    // left button passes through.
+    MouseArea {
+        z: 1
+        acceptedButtons: Qt.RightButton
+        enabled: !isNaN(slider.resetValue)
+        anchors.fill: parent
+        onClicked: {
+            slider.value = slider.resetValue
+            slider.committed(slider.value)
+        }
+    }
+
+    background: Rectangle {
+        x: slider.leftPadding
+        y: slider.topPadding + slider.availableHeight / 2 - height / 2
+        width: slider.availableWidth
+        height: 4
+        radius: 2
+        color: Theme.border
+        Rectangle {
+            width: slider.visualPosition * parent.width
+            height: parent.height
+            radius: 2
+            color: slider.enabled ? Theme.accent : Theme.textDisabled
+        }
+    }
+    handle: Rectangle {
+        x: slider.leftPadding + slider.visualPosition * (slider.availableWidth - width)
+        y: slider.topPadding + slider.availableHeight / 2 - height / 2
+        width: 14
+        height: 14
+        radius: 7
+        color: slider.pressed ? Theme.controlPressed : Theme.control
+        border.width: slider.visualFocus ? 2 : 1
+        border.color: slider.visualFocus ? Theme.focusRing : Theme.border
+    }
+
+    // -- WP QP18 -- (QD41) Up and Down step a horizontal slider too, as Right
+    // and Left do, and commit; so do assistive technology's increase and decrease
+    function stepBy(up) {
+        if (!enabled) return
+        const before = value
+        if (up) increase()
+        else decrease()
+        if (value !== before) {
+            moved()
+        }
+    }
+    Keys.onUpPressed: event => {
+        if (orientation === Qt.Horizontal) stepBy(true)
+        else event.accepted = false
+    }
+    Keys.onDownPressed: event => {
+        if (orientation === Qt.Horizontal) stepBy(false)
+        else event.accepted = false
+    }
+
+    Accessible.role: Accessible.Slider
+    Accessible.name: label
+    Accessible.onIncreaseAction: stepBy(true)
+    Accessible.onDecreaseAction: stepBy(false)
 }

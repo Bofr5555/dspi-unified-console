@@ -1,0 +1,6 @@
+# -- WP QP20 -- The AppImage runtime make-appimage.sh puts in front of the
+# AppImage: AppImage's type2-runtime at commit fedfad5, the "continuous"
+# release's runtime-x86_64 (944632 bytes, uploaded 2026-10-19T20:37:12Z), the
+# build licences/appimage-runtime-fedfad5/ describes (ALPINE.txt). A new
+# runtime needs a new pin here and its licence folder (update-licences.sh).
+617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46  https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64

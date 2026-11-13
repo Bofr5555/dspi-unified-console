@@ -1,315 +1,187 @@
-# DSPi uConsole for Linux and Windows
+# The desktop app (Windows and Linux)
 
-A Linux and Windows control application for the [DSPi audio processor](https://github.com/WeebLabs/DSPi), open source DSP
-firmware that turns a Raspberry Pi Pico (RP2040) or Pico 2 (RP2350) into a multi-output USB audio interface with
-an onboard signal processor.
+The Qt app for Windows and Linux, built on the project's Rust core through its
+C ABI (`crates/dspi-capi`, header `include/dspi_core.h`). Its screens follow
+the Mac console (`apps/apple`): the same layout, the same words, the same
+behaviour, with the Windows and Linux additions listed in `docs/PARITY.md`.
 
-DSPi uConsole controls the whole device: parametric equalisation, active crossovers, routing, time alignment,
-loudness compensation, headphone crossfeed, dynamics, bass enhancement, stereo upmixing, a limiter on every
-output, physical control surfaces and hardware configuration, all applied live over USB with no reflashing.
+- Qt 6.8 or newer, Qt Quick with the Basic style and the app's own components.
+  No Qt 5.
+- The system's window frame with the menu bar inside the window.
+- Light and dark follow the system; dark is the look when the system says
+  nothing.
+- The name people see is in one place: `src/AppIdentity.h`.
+- Settings are kept under the organisation and application
+  `uconsole-for-dspi` (`AppIdentity.h`).
 
-It is a Qt 6 or 5.15 / QML interface on this repository's Rust core, and follows the design and behaviour of
-[DSPi Console for macOS](https://github.com/WeebLabs/DSPi-Console). It grew from Weeb Labs'
-[DSPi Console for Linux](https://github.com/WeebLabs/DSPi-Console-Linux) and is one of the clients in the
-`dspi-unified-console` repository; the root [`README.md`](../../README.md) has the project, its status and the
-credits. This repository is not an official Weeb Labs repository and has no public releases yet.
+## Building
 
----
+Toolchains run in the project's containers (`ci/run.sh`), never on the host:
 
-## Contents
+    ci/check.sh --step qt             # the app, the .ts check
+    ci/check.sh --step qt-offscreen   # the app with its smoke driver, on the demo device
+    ci/check.sh --step qt-ts          # only the .ts check
 
-- [Firmware versions](#firmware-versions)
-- [Installing](#installing)
-- [Getting started](#getting-started)
-- [Features](#features)
-- [Keyboard shortcuts](#keyboard-shortcuts)
-- [Troubleshooting](#troubleshooting)
-- [Building from source](#building-from-source)
-- [Project structure](#project-structure)
-- [Upstream projects](#upstream-projects)
+By hand, in the container:
 
----
+    cargo build --release -p dspi-capi --features link,midir,mdns,hub
+    cmake -S apps/desktop/qt -B /work/build -G Ninja -DDSPI_CARGO_TARGET_DIR=/target [-DDSPI_SMOKE=ON]
+    cmake --build /work/build
 
-## Firmware versions
+`uconsole-for-dspi --demo` opens the built-in demo device.
 
-Console has full control of firmware on wire format V32, which is DSPi firmware 1.1.6. A device on any other
-format connects **read-only**: a banner says so, controls are disabled and nothing is written to it. Firmware
-Update stays available, with the bundled 1.1.6 images for RP2040 and RP2350 boards.
+## Layout
 
-The extension channel of Bofr5555's firmware fork (crossfeed output pairs, core voltage) is used where the
-firmware has it; on stock Weeb Labs firmware those controls are hidden.
+    qt/CMakeLists.txt        one QML module, UConsole: every QML file, C++ type and icon
+    qt/cmake/wp/             each work package's own file list (<wp>.cmake)
+    qt/src/main.cpp          the app's start and end
+    qt/src/AppIdentity.h     the display name, the settings names, the project's links
+    qt/src/core/             the core wrapper: Core, CoreWorker, DeviceModel, the list models
+    qt/src/controllers/      Registrar, Shell; one controller per feature
+    qt/src/platform/         the icon provider, the token store, tray and system integration,
+                             the update checker (AppUpdater), the bootloader locator,
+                             device access (DeviceAccess: the udev rule)
+    qt/src/render/           the drawn items: BodePlot (the graph), PeqOverlay, Meter, PinGrid,
+                             RtaSurface and RtaBars (the spectrum), TubeIllustration
+    qt/qml/Theme/            Theme (every colour, size and font) and ChannelPalette
+    qt/qml/components/       the shared controls (below)
+    qt/qml/main/             the main window, the menu table, the banner host, the
+                             sidebar, the right pane, the device button
+    qt/icons/lucide/         the Lucide icons the app ships (manifest.txt, fetch-lucide.sh)
+    qt/icons/own/            icons drawn for the app, in Lucide's style
+    qt/smoke/                the offscreen smoke driver (NAMES.md: the naming rule;
+                             names/<wp>.md: each package's names)
+    qt/tools/contrast.py     the theme's WCAG contrast check (ci/check.sh --step qt)
+    qt/translations/         uconsole-for-dspi_en.ts, generated (English only)
+    packaging/               installers and packages per platform
 
----
+## How the app talks to the core
 
-## Installing
+- **One thread calls the core:** `CoreWorker`. Every blocking call (reads,
+  writes, scans, hot-plug polls, files) is posted to it and its result comes
+  back to the GUI thread as a queued call. Nothing in QML calls the core.
+- **The state** is read on the worker as a whole snapshot (`DeviceSnapshot`:
+  a copy of the core's state record, the device's name, the output labels) and
+  applied by `DeviceModel` on the GUI thread. QML binds to `DeviceModel`'s
+  properties and list models (`channels`, `presets`, `BandListModel`).
+- **Notifications:** the core's listener thread only schedules; the worker
+  processes the batch (`dspi_process_notifications`) and reads a snapshot when
+  something changed.
+- **Writes** go one way: a controller validates and calls
+  `DeviceModel::write(what, setter, done)`; the setter runs on the worker, a
+  fresh snapshot follows, and a refusal emits `writeFailed`. `what` is also the
+  coalescing key: a write whose key matches one still queued replaces it
+  (latest wins), so name a write by its target (`"output gain 3"`). A slider
+  dragged over a slow link then sends its newest value, not a backlog.
+- **Periodic reads** go through `Poller` (`AppContext::poller`), never a timer of
+  a controller's own. The base runs two polls: the meters every 60 ms
+  (`Poller.peaks`, `clipFlags`) and the status every second (`cpu0`, `cpu1`,
+  `activeInputs`). A package adds its own:
 
-There are no published downloads of this app yet. The packages are built from this repository (see
-[Release builds](#release-builds)):
+      m_poll = ctx.poller->add(QStringLiteral("subharmonic meter"), 100, this,
+          [](FfiCore *c) { float v = 0; return dspi_fetch_subharm_meter(c, &v) ? v : NAN; },  // worker
+          [this](float v) { setMeter(v); });                                                 // GUI
+      ctx.poller->setEnabled(m_poll, windowShown);
 
-| System | Package | Built by |
-|---|---|---|
-| Ubuntu 22.04+, Debian 12+ | `dspi-uconsole_<version>_amd64.deb` | `packaging/linux/build-release.sh` |
-| Fedora 42+ | `dspi-uconsole-<version>-1.x86_64.rpm` | `packaging/linux/build-release.sh` |
-| Other x86_64 Linux (glibc 2.35+) | the AppImage, or the `.tar.gz` with an installer | `packaging/linux/build-release.sh` |
-| Arch | `packaging/arch/PKGBUILD` | `makepkg` |
-| Windows x86_64 | a folder that runs as is, a `.zip` of it, and a per-user installer | `packaging/windows/build-windows.sh` |
+  A tick is skipped while the poll's last read is in flight; nothing polls
+  while no device is open; over a slow transport (`Poller.slowTransport`, set
+  by the Link client) every poll runs at 2 Hz at most. Polls are never paused
+  for anything else.
 
-The Linux builds are for 64-bit x86 and work on X11 and Wayland. The `.deb` and `.rpm` install the udev rule,
-add DSPi uConsole to the application menu and use your distribution's Qt and KDE libraries. Settings are kept
-in `~/.config/DSPi` on Linux and in an INI file in the roaming AppData folder on Windows.
+## Components
 
-### Ubuntu, Debian and Mint
+`qml/components/`, each with `Accessible.role` and `Accessible.name` and themed
+for both schemes; screens use these, not the Basic style's controls:
 
-```
-sudo apt install ./dspi-uconsole_<version>_amd64.deb
-```
-
-Remove it with `sudo apt remove dspi-uconsole`.
-
-### Fedora
-
-```
-sudo dnf install ./dspi-uconsole-<version>-1.x86_64.rpm
-```
-
-Remove it with `sudo dnf remove dspi-uconsole`.
-
-### AppImage with the installer
-
-```
-tar -xzf DSPi-uConsole-v<version>-linux-x86_64.tar.gz
-cd DSPi-uConsole-v<version>
-./install.sh
-```
-
-The installer copies the AppImage to `~/.local/bin`, adds DSPi uConsole to your application menu, and installs
-the udev rule (it asks for your password once). Run it again to update, or `./install.sh --uninstall` to remove
-everything.
-
-### Running the AppImage directly
-
-```
-chmod +x DSPi-uConsole-v<version>-x86_64.AppImage
-./DSPi-uConsole-v<version>-x86_64.AppImage
-```
-
-This way the udev rule has to be installed by hand, once (below).
-
-### Windows
-
-Run `DSPi-uConsole-<version>-windows-x86_64-setup.exe`, or unpack the `.zip` and start `DSPiConsole.exe`.
-Windows needs no driver: the firmware carries the descriptors that make Windows bind its WinUSB driver itself.
-This has not yet been checked on real Windows with a device (work package QD25 in
-`docs/core-merge/PLAN-CLIENTS.md`).
-
-### The udev rule
-
-Linux only lets root open USB devices unless a udev rule says otherwise. The packages and the installer handle
-this; to do it by hand, use `70-dspi.rules` (in the release archive, and in `packaging/linux/`):
-
-```
-sudo cp 70-dspi.rules /etc/udev/rules.d/
-sudo udevadm control --reload-rules
-```
-
-Then unplug the DSPi and plug it in again. The rule covers current firmware (USB vendor ID `2e8b`) and older
-firmware (`2e8a`). Playback through the DSPi doesn't need it: it's a standard USB audio device.
-
----
-
-## Getting started
-
-On first launch a **Getting Started** wizard takes a new board from a blank Pico to verified DSPi firmware.
-Skip it if your board already runs DSPi; it can be run again from **Help** in the menu.
-
-Console connects to the DSPi automatically. With several connected, click the device name in the sidebar
-footer to pick one; right-click it to rescan for a device plugged in later. With no DSPi, **Open Demo** offers a
-simulated one, and `--demo` starts on it. **Devices…** in the menu lists the DSPis on USB, the demo, and DSPi
-Link hubs found on the network or typed in by address.
-
-**Changes are applied live but not saved.** Press **Ctrl+S** (Commit Parameters) to store them in the active
-preset on the device. The menu also offers Revert to Saved and Factory Reset. Console
-tracks unsaved changes and asks before switching presets or devices, or quitting.
-
----
-
-## Features
-
-- **Channel pages** for every input and output: up to 10 PEQ bands per channel with all filter types,
-  including shelves and cuts by slope, all-pass and the Linkwitz Transform; crossover bands on outputs; preamp,
-  gain, delay, mute, polarity and routing; copy and paste of a channel's settings.
-- **On-graph editing:** drag a band's dot to change frequency and gain, scroll to change its width, and use
-  the card beside it for exact values and shape. Select and move several bands at once. The graph can show
-  phase.
-- **Spectrum analyser** behind the response graph, as third-octave bars beneath it, or in its own window. The
-  device measures, so every source works (USB, S/PDIF, ADAT, I2S).
-- **Dashboard** of every channel's bands and output delays, in Auto, 1, 2 or 3 cards per row.
-- **Matrix mixer** with per-crosspoint gain and inversion, input trims, Direct 1:1 and Clear.
-- **Effects:** loudness compensation, headphone crossfeed, volume leveller, psychoacoustic bass, subharmonic
-  synthesizer, tube modeller and stereo upmixer.
-- **Output limiter** on every output, with threshold and release.
-- **Presets** on the device, with names, startup preset and unsaved-change tracking. Configurations export and
-  import as `.dspipreset` files shared with the macOS and Windows Consoles; filters as REW or AutoEQ text.
-- **AutoEQ browser** for the bundled headphone correction database.
-- **Control surfaces:** buttons, potentiometers, encoders, switches, LEDs, an IR remote and a small display on
-  spare GPIOs, with channel groups, macros and auxiliary outputs (Settings > Control).
-- **Tools:** signal generator, Stats for Nerds and an interrupt monitor.
-- **Firmware Update** for RP2040 and RP2350, with a configuration export offered first.
-- **DSPi Link** (Settings > Networking): control a DSPi through a hub on the local network, with PIN pairing,
-  or share this machine's DSPis as a hub. Link traffic, the PIN included, is plain text: use it on a network
-  you trust.
-- **Tray icon**, close to tray, open at login, and keeping the machine awake while sharing.
-- **Update check**, off until you turn it on. A build with `-DDSPI_UPDATE_CHECK=OFF` leaves it out, as the
-  Arch package does.
-
----
-
-## Keyboard shortcuts
-
-| Shortcut | Action |
+| Component | For |
 |---|---|
-| Ctrl+S | Commit parameters to the active preset |
-| Ctrl+I / Ctrl+E | Import / export filters |
-| Ctrl+C / Ctrl+V | Copy / paste a channel page's settings |
-| Ctrl+, | Settings |
-| Ctrl+Shift+M | Matrix Mixer |
-| Ctrl+Shift+A | Spectrum Analyser |
-| Ctrl+Shift+G | Signal Generator |
-| Ctrl+Shift+B | AutoEQ profiles |
-| Ctrl+Shift+L | Loudness Compensation |
-| Ctrl+Shift+X | Headphone Crossfeed |
-| Ctrl+Shift+V | Volume Leveller |
-| Ctrl+Shift+P | Psychoacoustic Bass |
-| Ctrl+Shift+S | Subharmonic Synthesizer |
-| Ctrl+Shift+D | Tube Modeller |
-| Ctrl+Shift+U | Stereo Upmixer |
-| Ctrl+Shift+T | Stats for Nerds |
-| Ctrl+Shift+I | Interrupt Monitor |
-| Ctrl+Alt+M | Minimise to the tray |
-| Ctrl+Q | Quit |
+| `AppButton` | push buttons; `primary` (accent), `destructive`, `iconName`, `toolTip` |
+| `IconButton` | borderless icon buttons; `secondaryClicked` (right-click) |
+| `AppSwitch`, `AppCheckBox` | on/off settings; the check box also partly checked |
+| `AppComboBox` | popup choices (presets, sources, settings pickers); `label` |
+| `AppSpinBox` | a number with steppers in real units: `realValue`, `realFrom/To/Step`, `decimals`, `unit`, `committed` |
+| `CustomSlider` | sliders: `valueMoved` live (≤ 30/s), `committed` on release; right-click resets |
+| `BorderedField` | text fields; `committed`, Escape restores |
+| `AppTabBar` + `AppTabButton` | segmented choices (PEQ / XO) |
+| `AppScrollBar` | `ScrollBar.vertical: AppScrollBar {}` |
+| `SectionHeading` | section titles (`caps`, `rule`) |
+| `Card`, `Pill` | grouped controls; channel labels and curve toggles |
+| `PopoverPanel` | popovers anchored to a control |
+| `QuestionDialog` | questions before a change: `acceptText`, `rejectText`, `alternativeText`, `destructive`, `answered(answer)` |
+| `Banner` | the banners under the menu bar |
+| `Icon`, `HelpTip` | Lucide icons tinted by the theme; tooltips |
+| `AppMenu`, `AppMenuItem`, `AppMenuBar` | menus |
+| `ToolWindow` | tool windows: remembered size, the menu table's shortcuts (`TableShortcuts`) |
+| `LevelMeter` | a dBFS meter: three bands or one colour, the core's hold line and clip hold, a gain reduction variant (QP18) |
+| `NumericField` | a number typed in its unit ("2k", "2.5 kHz", "+=3"), nudged by Up/Down, held to its range with a badge (QP18) |
+| `StatusBar` | a window's foot: connection, scene, mode, then the caller's items (QP18) |
 
-Right-click a slider or level field to reset it to its default. Each macOS shortcut and its key here is in the
-table at the top of `qt/smoke/SmokeDriverShortcuts.cpp`, which the smoke test presses.
+A finished action that needs no answer is a notice (`NoticeCenter.post(text)`,
+shown in the banner stack), never a modal "Success" alert; a question is a
+`QuestionDialog`. Undo and redo are the core journal's (`HistoryController`).
 
----
+Colours come from `Theme` tokens only. Text tokens reach WCAG AA (4.5:1) on
+every surface; `tools/contrast.py` checks it in `ci/check.sh --step qt`.
 
-## Troubleshooting
+## Adding a feature
 
-**"Could not open DSPi".** The udev rule is missing or hasn't applied yet. Install it (see
-[The udev rule](#the-udev-rule)), then unplug and replug the device.
+A work package adds its files without editing the shell:
 
-**"Could not open DSPi" right after installing a package.** If the DSPi was plugged in during the install,
-unplug it and plug it back in.
+- a **controller** with `Registrar::Controller<T>` (constructor
+  `T(const AppContext &, QObject *)`), seen by QML as a singleton of module
+  `UConsole`;
+- a **banner** with `Registrar::Banner("<QML type>", order)`: a `Banner` that
+  decides its own `visible`;
+- a **tool window** with `Registrar::Window("<action id>", "<QML type>")`: a
+  `ToolWindow`, opened by its menu row;
+- a **menu row's action** with `ctx.shell->addHandler("<action id>", this, ...)`;
+  every row of the Mac's menus is in `qml/main/MenuTable.qml` already and does
+  nothing until something handles its id (one handler per id);
+- a **hardware setting held for the save bar** with a `SaveParticipant`
+  added with `HardwareController::addSaveParticipant(participant, order)` (QP11); an edit of
+  the output configuration made elsewhere calls
+  `HardwareController::beginOutputEdit()` before it writes;
+- **Qt modules and libraries** through the base's lists in the package's
+  cmake file: `list(APPEND DSPI_QT_COMPONENTS Network)`,
+  `list(APPEND DSPI_APP_LIBS Qt6::Network)`, and for anything else per target
+  a `function(<name> target)` appended to `DSPI_APP_HOOKS`;
+- a **smoke section** with `SmokeDriver::Section` in its own file under
+  `qt/smoke/`.
 
-**The AppImage won't start, with a FUSE error.** Install your distribution's FUSE package (`libfuse2` or
-`fuse`), or run it with `--appimage-extract-and-run`.
+`src/controllers/Registrar.h` has the details.
 
-**Controls or whole windows are missing.** Console hides features the firmware doesn't report, which almost
-always means a version mismatch. Install the matching firmware from **Firmware Update**.
+## Shared files: the merge rule
 
-**The device isn't detected at all.** Check that the cable carries data and that the DSPi appears as a USB
-audio device (`lsusb` shows `2e8b:feaa`). A board left in bootloader mode appears as a removable drive
-instead; Firmware Update finds it.
+Work packages run in parallel on branches cut from `qtport`. So that their
+merges do not conflict, nothing generated or listed is edited by two of them:
 
-**Changes are lost after a power cycle.** Changes are live until saved: press Ctrl+S.
+- **Files to build:** each package lists its sources, QML files, singletons
+  and smoke sections in its own `qt/cmake/wp/<wp>.cmake` (`cmake/wp/README.md`).
+  `CMakeLists.txt` includes them all; packages do not edit it.
+- **Icons:** each package names the icons it adds in
+  `qt/icons/lucide/manifest.d/<wp>.txt` and commits the SVGs
+  `icons/fetch-lucide.sh` copies; `manifest.txt` is the base's.
+- **The translation file** `qt/translations/uconsole-for-dspi_en.ts` is not
+  committed by a package. The coordinator regenerates it on `qtport` after
+  each merge (QP18 during its pass), and `ci/check.sh --step qt-ts` checks it
+  there. On a package's branch `--step qt` skips the `.ts` check
+  (`DSPI_TS_CHECK=1` forces it).
+- **Smoke object names:** each package documents its names in
+  `qt/smoke/names/<wp>.md`; `NAMES.md` holds only the rule.
+- **The menu table** (`qml/main/MenuTable.qml`) has every row already; a
+  package fills a row through `Shell` and edits the table only to add a row,
+  under its `// -- WP <ID> --` marker.
+- **The parked files' table** below is updated by the coordinator when a
+  package that adapts a parked file is merged.
 
-**No blurred sidebar.** The translucent, blurred sidebar needs KDE Plasma (KWin) with its blur effect on.
-Elsewhere the sidebar is solid; everything else is the same. On Wayland the KDE effects also need
-`kwayland-integration` (the KF5 KWindowSystem Wayland plugin).
+## Parked files
 
-**The system volume doesn't reach the DSPi.** With PipeWire this needs the DSPi card profile from the firmware
-repository (`tools/linux-pipewire-card-profile`). Without it PipeWire may pick the IEC958 profile with software
-volume, and the DSPi never sees a change.
+None left: QP19 converted or retired the last smoke files (the core-voltage
+states the old `SmokeDriverExt.cpp` checked are listed in
+`Documentation/behaviour.md` §20 for the core-voltage page's work package).
 
-**QML warnings don't show in a log.** Fedora's Qt logs to the systemd journal when standard error is not a
-terminal. Run with `QT_FORCE_STDERR_LOGGING=1`.
+QP14 built `src/platform/SystemIntegration.*` and `FirewallController.*`, and
+its sections are `SmokeNetworking.cpp`, `SmokeTray.cpp`, `SmokeSystem.cpp`;
+QP15 removed `SmokeDriverAutoEq.cpp`.
 
----
-
-## Building from source
-
-This app's Rust core is `crates/dspi-capi` over `crates/dspi-core` at the repository root. The root `README.md`
-has every build, including the containers this project uses (`ci/check.sh --step qt`, `--step qt-offscreen`,
-`--step qt-windows`); the steps below are for building on your own machine.
-
-Install a Rust toolchain ([rustup](https://rustup.rs)), CMake, a C++17 compiler and Qt 6 or Qt 5.15 with Qt Quick
-Controls 2. CMake prefers Qt 6; `-DDSPI_QT_MAJOR=5` forces Qt 5. KF5 or KF6 WindowSystem is optional and enables
-the KDE blur and window shadows. The USB code is pure Rust, so libusb and libudev are not needed. The package
-lists below are for Qt 5:
-
-```
-# Fedora
-sudo dnf install cmake gcc-c++ qt5-qtbase-devel qt5-qtdeclarative-devel \
-    qt5-qtquickcontrols2-devel qt5-qtsvg qt5-qtwayland kf5-kwindowsystem-devel alsa-lib-devel
-
-# Debian / Ubuntu
-sudo apt install build-essential cmake pkg-config qtbase5-dev \
-    qtdeclarative5-dev qtquickcontrols2-5-dev libqt5svg5 qtwayland5 libkf5windowsystem-dev libasound2-dev \
-    qml-module-qtquick2 qml-module-qtquick-window2 qml-module-qtquick-layouts \
-    qml-module-qtquick-controls2 qml-module-qtquick-templates2 qml-module-qt-labs-settings \
-    qml-module-qt-labs-platform
-
-# Arch
-sudo pacman -S cmake qt5-base qt5-declarative qt5-quickcontrols2 qt5-svg qt5-wayland kwindowsystem5 alsa-lib
-```
-
-Then, from the repository root:
-
-```
-cargo build --release -p dspi-capi --features link,midir,mdns,hub            # Rust core and crates/dspi-capi/include/dspi_core.h
-cmake -S apps/desktop/qt -B apps/desktop/qt/build -DCMAKE_BUILD_TYPE=Release
-cmake --build apps/desktop/qt/build -j"$(nproc)"
-./apps/desktop/qt/build/DSPiConsole           # with no DSPi, Open Demo offers a simulated one; --demo starts on it
-```
-
-The QML, firmware images and AutoEQ database are compiled into the binary.
-
-### Release builds
-
-`packaging/linux/build-release.sh` builds the AppImage, the release archive, the `.deb` and the `.rpm` into
-`dist/`. Each is built in a podman container of the oldest distribution it supports (Ubuntu 22.04 and
-Fedora 42). `cmake --install` lays out a system install, and the Arch package is in `packaging/arch/`.
-
-`packaging/windows/build-windows.sh` cross-compiles the Windows build on Linux (the core with cargo, the app
-with MinGW Qt 6) in the container from `packaging/windows/Containerfile`, and makes the folder, the `.zip` and
-the installer.
-
-Every package carries the licence texts and a notice; `packaging/release-sources.sh` fetches the source of
-each library the packages bundle, for publishing with the release ([`packaging/README.md`](packaging/README.md)).
-
----
-
-## Project structure
-
-| Path | Contents |
-|---|---|
-| `../../crates/dspi-capi/` | The C API the app links, generated into `include/` by cbindgen, over the repository's Rust core (`../../crates/dspi-core/`): USB protocol, device state, preset tracking, control surfaces, filter response math. |
-| `qt/src/` | C++: the bridge between the core and QML, the response graph and on-graph editor, analyser and meter views, firmware updater, AutoEQ library. |
-| `qt/qml/` | The interface: main window, channel pages, tool windows, settings and shared components. |
-| `qt/firmware/` | The bundled DSPi firmware images. |
-| `qt/autoeq/` | The bundled AutoEQ headphone database. |
-| `packaging/linux/` | Release builds (AppImage, .deb, .rpm), udev rule, desktop entry, AppStream data and installer. |
-| `packaging/arch/` | The Arch package. |
-| `packaging/windows/` | The Windows build, `.zip` and installer. |
-| `packaging/licences/` | The licence texts the packages carry, and the scripts that stage and refresh them; `packaging/release-sources.sh` fetches the bundled libraries' sources ([`packaging/README.md`](packaging/README.md)). |
-| `qt/smoke/` | The smoke driver: the app run offscreen on the demo device, a fake hub and fakes of the platform. |
-| `Documentation/` | `core_spec.md`, the old core's API from before wire format V32, kept for history; it does not describe `dspi-capi`. |
-
-What the app lacks against the macOS Console is in [`docs/PARITY.md`](../../docs/PARITY.md), section 5.
-
----
-
-## Upstream projects
-
-- [DSPi](https://github.com/WeebLabs/DSPi): the firmware, with the hardware documentation, signal chain
-  reference and USB control protocol specification.
-- [DSPi Console for macOS](https://github.com/WeebLabs/DSPi-Console): the reference for behaviour and look.
-- [DSPi Console for Windows](https://github.com/WeebLabs/DSPi-Console-Windows): the Windows application, in C#.
-- [DSPi Console for Linux](https://github.com/WeebLabs/DSPi-Console-Linux): the Linux application this app grew
-  from.
-
-### Acknowledgements
-
-- Headphone correction profiles come from the [AutoEQ project](https://github.com/jaakkopasanen/AutoEq).
-- Crossfeed is derived from the BS2B algorithm.
-- Loudness compensation follows the ISO 226:2003 equal-loudness contours.
+`src/platform/TokenStore.*` is built (it needs nothing of the app) and wired by QP13.

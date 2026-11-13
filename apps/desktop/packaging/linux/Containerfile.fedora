@@ -1,13 +1,25 @@
-# Fedora 42 (glibc 2.41, Qt 6.9): the .rpm built here installs on Fedora 42 and newer.
-# Rust from rustup-init, pinned and checked as in ci/container/Containerfile.qtport.
-FROM registry.fedoraproject.org/fedora:42
-RUN dnf -y install --setopt=install_weak_deps=False \
-        gcc-c++ cmake ninja-build make pkgconf-pkg-config rpm-build curl \
-        qt6-qtbase-devel qt6-qtdeclarative-devel kf6-kwindowsystem-devel alsa-lib-devel \
-    && dnf clean all
+# -- WP QP20 -- A Fedora release with its own Qt 6: the build an .rpm is made
+# from, against the distribution's Qt (CPack's RPM generator, rpmbuild's
+# dependency list). The app's QML is compiled ahead of time against that Qt,
+# which ties the binary to its Qt minor version (rpm: Qt_6.<minor>_PRIVATE_API),
+# so each Fedora release gets its own .rpm (…-1.fc<N>.x86_64.rpm), built in its
+# own image:
+#
+#   podman build --build-arg FEDORA=44 -t uconsole-for-dspi-fedora:44 -f apps/desktop/packaging/linux/Containerfile.fedora apps/desktop/packaging/linux
+#   podman run --rm -v "$PWD":/src:Z -w /src uconsole-for-dspi-fedora:44 apps/desktop/packaging/linux/build-fedora.sh
+ARG FEDORA=43
+FROM registry.fedoraproject.org/fedora:${FEDORA}
+
 ARG RUSTUP_VERSION=1.29.2
 ARG RUSTUP_INIT_SHA256=5be191e8c70a5007074254cb74d78dbfdd25cd5a61c27de7b8e5410122ec24f4
 ARG RUST_TOOLCHAIN=1.99.1
+
+RUN dnf -y install --setopt=install_weak_deps=False \
+      ca-certificates curl cmake ninja-build gcc-c++ pkgconf-pkg-config file binutils rpm-build \
+      alsa-lib-devel systemd-devel \
+      qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtdeclarative-devel qt6-qtsvg-devel qt6-qttools-devel \
+ && dnf clean all
+
 ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo PATH=/opt/cargo/bin:$PATH
 RUN d=$(mktemp -d) \
  && curl --proto '=https' --tlsv1.2 -fsSL -o "$d/rustup-init" \

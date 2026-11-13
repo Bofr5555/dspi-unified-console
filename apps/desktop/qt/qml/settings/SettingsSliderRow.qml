@@ -1,46 +1,41 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
-import "../components"
+import QtQuick
+import QtQuick.Controls.Basic
+import QtQuick.Layouts
+import UConsole
 
-// A row with a slider and its value. `format` turns the value into the
-// label text; `moved` fires while dragging, `committed` on release.
-SettingsRow {
+// A slider under its label, the label carrying the value ("Line Width:
+// 1.5pt"); it applies while dragging and on release. Right-click puts it back
+// to `resetValue`. `step` 0 slides freely.
+ColumnLayout {
     id: row
-    property real value: 0
-    property real from: 0
-    property real to: 100
-    property real stepSize: 1
-    property var format: function (v) { return v.toFixed(0) }
+    property string label
+    property real minimum: 0
+    property real maximum: 1
+    property real step: 0
+    property real resetValue: NaN
+    property real value
     signal moved(real value)
-    signal committed(real value)
 
-    Row {
-        spacing: 12
-        StyledSlider {
-            id: slider
-            width: 200
-            from: row.from
-            to: row.to
-            stepSize: row.stepSize
-            value: row.value
-            Accessible.name: row.title
-            Accessible.description: row.format(slider.value)
-            anchors.verticalCenter: parent.verticalCenter
-            onMoved: row.moved(value)
-            onSettled: row.committed(value)
-            Connections {
-                target: row
-                function onValueChanged() { if (!slider.pressed) slider.value = row.value }
-            }
-        }
-        Text {
-            width: 96
-            horizontalAlignment: Text.AlignRight
-            text: row.format(slider.value)
-            font.pixelSize: 12
-            font.family: "monospace"
-            color: isMacOS ? MacColors.label : Qt.rgba(1, 1, 1, 0.75)
-            anchors.verticalCenter: parent.verticalCenter
-        }
+    spacing: 4
+    Layout.fillWidth: true
+
+    Text {
+        text: row.label
+        color: row.enabled ? Theme.text : Theme.textDisabled
+        font: Theme.fontBody
+        Layout.fillWidth: true
+    }
+    CustomSlider {
+        objectName: row.objectName.length ? row.objectName + ".slider" : ""
+        label: row.label
+        from: row.minimum
+        to: row.maximum
+        stepSize: row.step
+        snapMode: row.step > 0 ? Slider.SnapAlways : Slider.NoSnap
+        resetValue: row.resetValue
+        value: row.value
+        onValueMoved: v => row.moved(v)
+        onCommitted: v => row.moved(v)
+        Layout.fillWidth: true
     }
 }

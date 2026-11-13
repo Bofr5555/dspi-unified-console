@@ -1,5 +1,5 @@
 #!/bin/bash
-# The normal DSPiConsole on your desktop session, from the build container, to try
+# The normal uconsole-for-dspi on your desktop session, from the build container, to try
 # by hand: the signal generator and the rest. This is the real app with write access
 # to the device; nothing guards what you click. The signal generator plays on the
 # device itself, so no audio is forwarded.
@@ -39,9 +39,9 @@ fi
 ci/check.sh --step qt
 
 home=$B/work/$branch/home-gui
-if [ ! -f "$home/.config/DSPi/DSPi Console.conf" ]; then
-    mkdir -p "$home/.config/DSPi"
-    printf '[onboarding]\nsetupDone=true\n' > "$home/.config/DSPi/DSPi Console.conf"
+if [ ! -f "$home/.config/uconsole-for-dspi/uconsole-for-dspi.conf" ]; then
+    mkdir -p "$home/.config/uconsole-for-dspi"
+    printf '[onboarding]\nsetupDone=true\n' > "$home/.config/uconsole-for-dspi/uconsole-for-dspi.conf"
 fi
 
 # As run-replug.sh: the whole of /dev/bus/usb, real sysfs, no keep-id, no network.
@@ -51,4 +51,4 @@ exec podman run --rm -i --init --security-opt label=disable --network=none \
     -v "$B/work/$branch":/work \
     -e HOME=/work/home-gui -e TMPDIR=/work/tmp -e QT_QUICK_BACKEND=software -e "RUST_LOG=${RUST_LOG:-warn}" \
     "${DSPI_IMAGE:-localhost/dspi-coremerge:3}" \
-    /work/build-desktop-qt6-capi/DSPiConsole "$@"
+    /work/build-desktop-qt/uconsole-for-dspi "$@"

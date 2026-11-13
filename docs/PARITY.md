@@ -246,7 +246,7 @@ The core itself still needs an FFI surface (C ABI or UniFFI) over `dspi-session`
 | DSPi Link hub/sharing | L | Done (`HubController`, `FirewallController`) |
 | Demo device | S | Done (`DemoController`) |
 | Firmware updater: 1.1.6 final images, custom `.uf2`, optional download | S | UI (bundle) / Core (writer) |
-| Tray / menu-bar mode (keep running, quick volume) | M | Done, without quick volume (`TrayController`) |
+| Tray / menu-bar mode (keep running, quick volume) | M | Done, with quick volume (`TrayController`, QP14) |
 | Accessibility (`Accessible.name/role` on custom controls) | M | UI: done in QD22; the Orca pass is left |
 | Localisation (`qsTr` + `.ts` files) | M | UI |
 | Separate C0/C1 CPU bars | S | UI (declined on purpose; optional) |
@@ -415,7 +415,7 @@ M3 and M14 (`fw.install`) are deleted: no hub implements them (`PLAN-CLIENTS.md`
 | M25 | Host audio format (idle channel count, `DSPViewModel.swift:1947-1951`) | QD18 | skip: the device report collapses when idle, and it has no host API | have: `feature-home/HostChannelCount.kt` (AN35) over AN18's `HostAudioFormat.kt`, refreshed on `AudioDeviceCallback` and handed to the bridge (`setHostInputChannels`), whose `liveInputCount` is `effectiveInputChannels` as macOS `numMatrixInputs`: the strips, the pair links and their mirror use that one count | SW20 | later: a page cannot see the host's audio format |
 | M26 | C0 and C1 CPU bars | QD5 | have | have | have | WB6f (status rail) |
 | M27 | Pop-out tool windows | have | have (graph) | n.a.: routes | n.a.: sheets | n.a.: a session's screens are tabs in its view |
-| M53 | Stats for Nerds, Reset Watermarks (`StatsView.swift:918-1187`), **including Output Ring Health (`:206-223,478-504,1080-1106`) and fill thresholds taken from it (`:1222`)** | **partial**: every other section, and the reset (`qml/StatsWindow.qml:231-500,331-332`). No ring health. **CG12, QD29** | **partial**: same (`screens/stats.rs:199-510`, reset `:31,358`). **CG12, TM16** | **partial**: same (`feature-analysis/StatsView.kt:274-654`, reset `:431`). **CG12, AN25** | **have**: shared view | WB6j (analyser, generator and Stats) |
+| M53 | Stats for nerbs, Reset Watermarks (`StatsView.swift:918-1187`), **including Output Ring Health (`:206-223,478-504,1080-1106`) and fill thresholds taken from it (`:1222`)** | **partial**: every other section, and the reset (`qml/StatsWindow.qml:231-500,331-332`). No ring health. **CG12, QD29** | **partial**: same (`screens/stats.rs:199-510`, reset `:31,358`). **CG12, TM16** | **partial**: same (`feature-analysis/StatsView.kt:274-654`, reset `:431`). **CG12, AN25** | **have**: shared view | WB6j (analyser, generator and Stats) |
 | M54 | Interrupt Monitor (`InterruptMonitor.swift:1001-1010`) | have | have | have | have | WB6j (analyser, generator and Stats) |
 
 Web slices: the letters in the Web column are `PLAN-CLIENTS.md` section 5.5's WB6 slice table, whose order puts the System view

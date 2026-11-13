@@ -1,73 +1,58 @@
 #!/bin/sh
-# Installs DSPi uConsole for the current user: the AppImage in ~/.local/bin,
-# a menu entry with its icon, and the udev rule that lets you open a DSPi
-# without root (that step asks for your password).
-#   ./install.sh               install or update
-#   ./install.sh --uninstall   remove (the udev rule too)
-set -e
-cd "$(dirname "$0")"
+# -- WP QP20 -- Installs uConsole for DSPi from this folder for the person
+# running it, with no root: the AppImage into ~/.local/bin/uconsole-for-dspi, the
+# menu entry and the icon under ~/.local/share. With --udev it also asks (with
+# pkexec, or sudo in a terminal) to install the udev rule that lets this seat
+# open a DSPi without root; the app offers the same when it needs it.
+#
+#   ./install.sh [--udev]      install, or update an earlier install
+#   ./install.sh --uninstall   remove what install.sh put in place (not the
+#                              udev rule, nor the app's settings)
+set -eu
+here=$(cd "$(dirname "$0")" && pwd)
+bin=${XDG_BIN_HOME:-$HOME/.local/bin}
+data=${XDG_DATA_HOME:-$HOME/.local/share}
+app=$bin/uconsole-for-dspi
+entry=$data/applications/uconsole-for-dspi.desktop
+icon=$data/icons/hicolor/scalable/apps/uconsole-for-dspi.svg
+rule=/etc/udev/rules.d/70-uconsole-for-dspi.rules
 
-bin="$HOME/.local/bin/DSPi-uConsole.AppImage"
-desktop="$HOME/.local/share/applications/dspi-uconsole.desktop"
-icon="$HOME/.local/share/icons/hicolor/scalable/apps/dspi-uconsole.svg"
-rule=/etc/udev/rules.d/70-dspi.rules
-
-as_root() {
-    if [ "$(id -u)" -eq 0 ]; then "$@"
-    elif command -v sudo >/dev/null 2>&1; then sudo "$@"
-    elif command -v pkexec >/dev/null 2>&1; then pkexec "$@"
-    else echo "Run as root: $*" >&2; return 1
-    fi
+refresh() {
+    command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q "$data/applications" || true
+    command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q -t "$data/icons/hicolor" || true
 }
 
-refresh_menus() {
-    command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q "$HOME/.local/share/applications" || true
-    command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q -t "$HOME/.local/share/icons/hicolor" || true
-}
+case ${1:-} in
+--uninstall)
+    rm -f "$app" "$entry" "$icon"
+    refresh
+    echo "Removed $app, its menu entry and its icon."
+    [ ! -e "$rule" ] || echo "The udev rule stays in $rule; remove it as root if no longer wanted."
+    exit 0 ;;
+''|--udev) ;;
+*) echo "usage: install.sh [--udev] | --uninstall" >&2; exit 2 ;;
+esac
 
-if [ "$1" = "--uninstall" ]; then
-    rm -f "$bin" "$desktop" "$icon"
-    refresh_menus
-    if [ -f "$rule" ]; then
-        echo "Removing the udev rule (needs root)..."
-        as_root rm -f "$rule" && as_root udevadm control --reload-rules || true
+image=$(ls "$here"/uConsole-for-DSPi-*-x86_64.AppImage 2>/dev/null | head -n 1)
+[ -n "$image" ] || { echo "install.sh: no AppImage beside this script" >&2; exit 1; }
+mkdir -p "$bin" "$data/applications" "$(dirname "$icon")"
+# Replaced by a rename, so a running copy keeps its file until it quits
+cp "$image" "$app.new" && chmod 755 "$app.new" && mv -f "$app.new" "$app"
+# The entry starts this copy: Exec by its full path (quoted for the desktop
+# entry spec), and it is the one desktops show
+q=$(printf '%s' "$app" | sed 's/\\/\\\\\\\\/g; s/"/\\\\"/g; s/`/\\\\`/g; s/\$/\\\\$/g')
+{ grep -v '^Exec=' "$here/uconsole-for-dspi.desktop"; printf 'Exec="%s"\n' "$q"; } >"$entry.new" && mv -f "$entry.new" "$entry"
+cp "$here/uconsole-for-dspi.svg" "$icon"
+refresh
+echo "Installed $app (menu: uConsole for DSPi)."
+case :$PATH: in *:"$bin":*) ;; *) echo "Note: $bin is not on your PATH; the menu entry works regardless." ;; esac
+
+if [ "${1:-}" = --udev ]; then
+    script='install -m 0644 "$1" /etc/udev/rules.d/70-uconsole-for-dspi.rules && udevadm control --reload-rules && udevadm trigger --subsystem-match=usb --action=change'
+    if command -v pkexec >/dev/null 2>&1; then
+        pkexec /bin/sh -c "$script" sh "$here/70-uconsole-for-dspi.rules"
+    else
+        sudo /bin/sh -c "$script" sh "$here/70-uconsole-for-dspi.rules"
     fi
-    echo "DSPi uConsole removed. Your settings stay in ~/.config/DSPi."
-    exit 0
+    echo "Installed the udev rule $rule."
 fi
-
-app=$(ls DSPi-uConsole-*-x86_64.AppImage 2>/dev/null | head -n 1)
-if [ -z "$app" ]; then
-    echo "No DSPi-uConsole-*.AppImage next to this script." >&2
-    exit 1
-fi
-
-mkdir -p "$(dirname "$bin")" "$(dirname "$desktop")" "$(dirname "$icon")"
-install -m 755 "$app" "$bin"
-install -m 644 dspi-uconsole.svg "$icon"
-cat > "$desktop" <<DESKTOP
-[Desktop Entry]
-Type=Application
-Name=DSPi uConsole
-GenericName=DSP Controller
-Comment=Configure and tune a DSPi audio processor
-Exec="$bin"
-Icon=dspi-uconsole
-Terminal=false
-Categories=AudioVideo;Audio;Mixer;
-Keywords=DSP;EQ;equalizer;crossover;audio;
-StartupWMClass=dspi-uconsole
-DESKTOP
-refresh_menus
-echo "Installed $app to $bin, with a menu entry."
-
-if [ -f "$rule" ] && cmp -s 70-dspi.rules "$rule"; then
-    echo "The udev rule is already installed."
-else
-    echo "Installing the udev rule so DSPi uConsole can open the device (needs root)..."
-    as_root install -D -m 644 70-dspi.rules "$rule"
-    as_root udevadm control --reload-rules
-    as_root udevadm trigger --subsystem-match=usb --attr-match=idProduct=feaa || true
-    echo "Done. If the DSPi was already plugged in and still isn't found, unplug it and plug it back in."
-fi
-echo "Start DSPi uConsole from your application menu."

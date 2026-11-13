@@ -1,66 +1,107 @@
-import QtQuick 2.15
-import "../components"
+import QtQuick
+import QtQuick.Layouts
+import UConsole
 
-// Shown while Settings holds changes not yet written to the device.
+// -- WP QP11 -- The bar along the bottom of every Settings page while device
+// settings are held (the Mac's SettingsSaveBar; behaviour.md §8): one Save and
+// one Revert for whatever is pending, on whichever page shows. A Save the
+// device partly refused leaves it up with an orange line naming what was not
+// taken (QD31); a saved latency the device has not applied yet keeps it up too
+// (behaviour.md §16).
 Rectangle {
     id: bar
-    property bool canRevert: true     // hardware edits saved to RAM can't be undone
-    property string message: ""       // -- WP QD1 -- why the device refused the last save or revert
-    signal save()
-    signal revert()
+    objectName: "SaveBar"
+    readonly property var hw: HardwareController
 
-    height: 48
-    color: "#242426"
-    Rectangle { width: parent.width; height: 1; color: isMacOS ? MacColors.opacity(MacColors.label, 0.08) : Qt.rgba(1, 1, 1, 0.08) }
+    visible: hw.pending || hw.saveFailure.length > 0
+    implicitHeight: visible ? content.implicitHeight + 2 * Theme.spacingSmall : 0
+    color: Theme.sidebar
 
-    Column {
-        x: 20
-        anchors.verticalCenter: parent.verticalCenter
-        spacing: 1
-        Text { text: qsTr("Unsaved changes"); font.pixelSize: 13; font.weight: Font.DemiBold; color: isMacOS ? MacColors.secondaryLabel : "white" }
-        Text { visible: bar.message === ""; text: qsTr("Saving writes these settings to the device's flash"); font.pixelSize: 11; color: isMacOS ? MacColors.secondaryLabel : Qt.rgba(1, 1, 1, 0.5) }
-        // -- WP QD1 --
-        Text { objectName: "saveBarReason"; visible: bar.message !== ""; width: bar.width - 220; elide: Text.ElideRight; text: bar.message; font.pixelSize: 11; color: "#ff9f0a" }
+    Rectangle {
+        anchors.top: parent.top
+        width: parent.width
+        height: 1
+        color: Theme.separator
     }
 
-    // A button in the app's style: outlined (secondary) or filled accent
-    component BarButton: Rectangle {
-        id: btn
-        property string text: ""
-        property bool primary: false
-        signal clicked()
-        width: Math.max(72, label.implicitWidth + 28)
-        height: 28
-        radius: 8
-        color: isMacOS ? (primary ? (mouse.pressed ? MacColors.defaultButtonPressed : MacColors.prominentButton) : mouse.pressed ? Qt.rgba(1, 1, 1, 0.36) : MacColors.control)
-             : primary ? (mouse.pressed ? "#0060cc" : "#0a7cff")
-             : mouse.pressed ? Qt.rgba(1, 1, 1, 0.13) : mouse.containsMouse ? Qt.rgba(1, 1, 1, 0.07) : "transparent"
-        border.color: isMacOS ? "transparent" : primary ? "transparent" : Qt.rgba(1, 1, 1, 0.18)
-        Text {
-            id: label
-            anchors.centerIn: parent
-            text: btn.text
-            font.pixelSize: 13
-            font.weight: btn.primary ? Font.DemiBold : Font.Normal
-            color: isMacOS ? MacColors.label : "white"
-        }
-        ClickArea {
-            id: mouse
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            focusRadius: btn.radius + 2
-            Accessible.name: btn.text
-            onActivated: btn.clicked()
-        }
-    }
+    RowLayout {
+        id: content
+        anchors.fill: parent
+        anchors.leftMargin: Theme.spacingLarge
+        anchors.rightMargin: Theme.spacingLarge
+        anchors.topMargin: Theme.spacingSmall
+        anchors.bottomMargin: Theme.spacingSmall
+        spacing: Theme.spacingSmall
 
-    Row {
-        anchors.right: parent.right
-        anchors.rightMargin: 16
-        anchors.verticalCenter: parent.verticalCenter
-        spacing: 8
-        BarButton { visible: bar.canRevert; text: qsTr("Revert"); onClicked: bar.revert() }
-        BarButton { text: qsTr("Save"); primary: true; onClicked: bar.save() }
+        Icon {
+            Layout.alignment: Qt.AlignTop
+            name: "circle-alert"
+            size: 14
+            color: Theme.warning
+        }
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 1
+            Text {
+                objectName: "SaveBar.title"
+                text: qsTr("Unsaved changes")
+                font: Theme.fontSmall
+                color: Theme.textMuted
+            }
+            Text {
+                objectName: "SaveBar.subtitle"
+                Layout.fillWidth: true
+                // Control Surfaces changes are live already: say so when that is all
+                text: bar.hw.liveOnly ? qsTr("Your controls are live now; saving keeps them across a reboot.")
+                                      : qsTr("Saving writes these settings to the device's flash.")
+                font: Theme.fontCaption
+                color: Theme.textMuted
+                wrapMode: Text.Wrap
+            }
+            Text {
+                objectName: "SaveBar.failure"
+                Layout.fillWidth: true
+                visible: text.length > 0
+                text: bar.hw.saveFailure
+                font: Theme.fontSmall
+                color: Theme.warning
+                wrapMode: Text.Wrap
+                Accessible.role: Accessible.AlertMessage
+                Accessible.name: text
+            }
+            Text {
+                objectName: "SaveBar.held"
+                Layout.fillWidth: true
+                visible: text.length > 0
+                text: bar.hw.heldNote
+                font: Theme.fontSmall
+                color: Theme.warning
+                wrapMode: Text.Wrap
+                Accessible.role: Accessible.AlertMessage
+                Accessible.name: text
+            }
+        }
+        Icon {
+            visible: bar.hw.busy
+            name: "loader-circle"
+            size: 14
+            color: Theme.textMuted
+            accessibleName: qsTr("Saving")
+        }
+        AppButton {
+            objectName: "SaveBar.revert"
+            text: qsTr("Revert")
+            // The drafts are the app's: Revert works offline, except for a
+            // live preview only the device can put back
+            enabled: !bar.hw.busy && !(bar.hw.liveOnly && !DeviceModel.connected)
+            onClicked: bar.hw.revert()
+        }
+        AppButton {
+            objectName: "SaveBar.save"
+            text: qsTr("Save")
+            primary: true
+            enabled: !bar.hw.busy && bar.hw.writable && bar.hw.pending
+            onClicked: bar.hw.save()
+        }
     }
 }
