@@ -150,6 +150,7 @@ struct ParameterRow: View {
     /// goes to the device through the coalescer, and SwiftUI hears about it
     /// exactly once, on release.
     @State private var dragValue = DragValueBox()
+    @State private var dragMark = CoreDragMark()   // -- WP SW9 --
     @State private var readout = LiveValueReadout()
 
     var body: some View {
@@ -215,7 +216,7 @@ struct ParameterRow: View {
                     }),
                 range: range,
                 onEditingChanged: { editing in
-                    CoreUndo.drag(editing)   // -- WP SWMAC1 --
+                    dragMark.set(editing)   // -- WP SWMAC1 --, SW9
                     if editing {
                         // Nothing here touches SwiftUI state: the grab must not
                         // provoke a layout pass before the first movement.
@@ -237,6 +238,7 @@ struct ParameterRow: View {
                     }
                 }
             )
+            .endsCoreDrag(dragMark)   // -- WP SW9 -- ended if the view goes mid-drag
             .disabled(!isEnabled)
             .onAppear { localValue = value }
             // While a drag is in progress the model is not an input, so a late

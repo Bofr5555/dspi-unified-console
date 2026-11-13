@@ -564,6 +564,18 @@ four cases:
 **Writes are never replayed** (owner's Link rule, PLAN-CLIENTS section 1). Release commits the last value with the
 ordinary setter. SW9 owns it.
 
+*As built (SW9, `Core/CoreBackedTransport.swift` `write(lane:_:)`).* The lane's key is the setting (`vol.master`,
+`out.gain[o]`, `eq[ch][band]`, ...). A write carries the local `generation` it was issued for and is dropped when that
+moved; any failed write empties the lane. A lost link fails the next write, which covers "`isConnected` goes false" and
+"leaves `Bound`". A setting's committed value (the release, a typed value) goes through `commit(lane:_:)`: it supersedes the value
+still queued for its key and retires that key's queued job, so a lane value issued after the commit gets a job of its
+own behind it and is never overtaken by it (fixup sw9 F2). Other discrete edits go through the same queue in order,
+without a key. After each run of queued writes the core's state is published with the journal and the unsaved-changes list
+(a typed write's echo changes nothing in the mirror, so no drain would), so the last state the mirror holds is the
+one after the last write. Of the domain's single-setting `fetch*` functions, the twelve with no caller were deleted;
+`fetchUserVolume` stays for the paths without a core, and `fetchOutputEnable`, `fetchOutputLatency` and
+`fetchCore1Mode` read through the core when one is attached.
+
 **Resync.** `scheduleDeviceResync` (`DSPViewModel.swift:2592`) and its coalescing are replaced by the core's own
 re-read, which `NOTIFY_REFRESHED` reports. A preset load's re-baseline is `loadPreset` doing `captureBaseline`
 (`presets.rs:111-128`).

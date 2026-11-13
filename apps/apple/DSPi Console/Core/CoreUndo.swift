@@ -14,6 +14,8 @@
 //  the domains still send raw SETs until SW9-SW14 move them to the typed API,
 //  and a raw SET is history only (`raw_set`: nobody knows what it moved), so
 //  until then most edits cannot be undone and Undo stays disabled.
+//  -- WP SW9 -- Volume, EQ, crossover, outputs and the matrix are on the
+//  typed setters now (Commands.swift), so those edits are undone.
 //
 
 import Foundation
@@ -106,6 +108,39 @@ final class CoreUndo: ObservableObject {
     static func drag(_ dragging: Bool) {
         let mark: () -> Void = { AppState.shared.viewModel.transport.coreStateSource?.setDragging(dragging) }
         if dragging { mark() } else { DispatchQueue.main.async(execute: mark) }
+    }
+}
+
+// -- WP SW9 -- review lk1 S1
+/// One control's drag mark.  On while that control drags and ended once,
+/// also when the control leaves the screen or its gesture is cancelled
+/// mid-drag: SwiftUI then sends no `onEditingChanged(false)` or `onEnded`,
+/// and the core would keep gathering every later write into one step.
+/// Main thread only; a view holds one in `@State`.
+final class CoreDragMark {
+    private(set) var isOn = false
+    private let mark: (Bool) -> Void
+
+    /// `mark`: the core's drag mark (tests pass their own).
+    init(mark: @escaping (Bool) -> Void = CoreUndo.drag) {
+        self.mark = mark
+    }
+
+    /// The control's drag began (true) or ended (false); a repeat is ignored.
+    func set(_ on: Bool) {
+        guard on != isOn else { return }
+        isOn = on
+        mark(on)
+    }
+
+    /// End the drag if it is still on.
+    func end() { set(false) }
+}
+
+extension View {
+    /// End `mark` when this view leaves the screen mid-drag.
+    func endsCoreDrag(_ mark: CoreDragMark) -> some View {
+        onDisappear { mark.end() }
     }
 }
 

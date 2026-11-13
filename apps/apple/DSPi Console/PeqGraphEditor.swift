@@ -81,6 +81,9 @@ struct PeqGraphEditorOverlay: NSViewRepresentable {
 }
 
 final class PeqGraphEditorView: NSView {
+    /// -- WP SW9 -- The core's drag mark for this editor's drags (tests put
+    /// a recorder in).
+    var dragMark = CoreDragMark()
     /// Whether this Mac can draw the editor at all.  Without Metal the graph
     /// keeps its SwiftUI curves and offers no on-graph editing.
     static var isAvailable: Bool { PeqGraphResources.shared != nil }
@@ -294,6 +297,7 @@ final class PeqGraphEditorView: NSView {
 
     func teardown() {
         commitLive()
+        endDragMark()   // -- WP SW9 --
         metal?.stopAnimating()
         subscriptions.removeAll()
         [hudHideTimer, revealTimer, deviceTimer, commitTimer].forEach { $0?.invalidate() }
@@ -334,9 +338,26 @@ final class PeqGraphEditorView: NSView {
         if editing, old.channel != new.channel { metal?.drawNow() }
     }
 
+    // -- WP SW9 -- review lk1 S1: a drag cut off by the view leaving its
+    // window (a closed tool window, a dismissed sheet) gets no mouse-up, so
+    // the core's drag mark is ended here.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil {
+            commitLive()
+            endDragMark()
+        }
+    }
+
+    private func endDragMark() {
+        guard case .drag = gesture else { return }
+        dragMark.end()
+        gesture = .idle
+    }
+
     private func resetInteraction() {
         closeCard()
-        if case .drag = gesture { CoreUndo.drag(false) }   // -- WP SWMAC1 --
+        if case .drag = gesture { dragMark.set(false) }   // -- WP SWMAC1 --, SW9
         gesture = .idle
         selection = []
         anchor = nil
@@ -1025,7 +1046,7 @@ final class PeqGraphEditorView: NSView {
             hideHUD(animated: true)
         case .drag:
             commitLive()
-            CoreUndo.drag(false)   // -- WP SWMAC1 --
+            dragMark.set(false)   // -- WP SWMAC1 --, SW9
             NSCursor.openHand.set()
         case .marquee:
             marqueeLayer.isHidden = true
@@ -1043,7 +1064,7 @@ final class PeqGraphEditorView: NSView {
         for b in bands where isBand(b) || live[b] != nil { start[b] = current(b) }
         start[grabbed] = current(grabbed)
         gesture = .drag(DragContext(grabbed: grabbed, start: start, last: point, qMode: qMode))
-        CoreUndo.drag(true)   // -- WP SWMAC1 --
+        dragMark.set(true)   // -- WP SWMAC1 --, SW9
         ghost = nil
         hideAxisLabels()
         showHUD(for: grabbed)

@@ -37,6 +37,12 @@ struct PeqTouchEditor: View {
     @State private var dragStart: (band: Int, params: FilterParams)?
     @State private var pinchStart: (band: Int, q: Float)?
     @State private var lastSend = Date.distantPast
+    /// -- WP SW9 -- The core's drag mark (review lk1 S1), and whether each
+    /// gesture is under way: SwiftUI resets these when a gesture ends or is
+    /// cancelled, but calls `onEnded` only when it ends.
+    @State private var dragMark = CoreDragMark()
+    @GestureState private var dotDragging = false
+    @GestureState private var pinching = false
 
     /// Visible dot and its touch target.
     private static let dotSize: CGFloat = 14
@@ -73,6 +79,10 @@ struct PeqTouchEditor: View {
                         dot(i, in: g)
                     }
                 }
+                // -- WP SW9 -- A cancelled gesture or a view gone mid-drag
+                // ends the mark too.
+                .onChange(of: dotDragging || pinching) { active in if !active { dragMark.end() } }
+                .endsCoreDrag(dragMark)
             } else {
                 Color.clear.allowsHitTesting(false)
             }
@@ -173,10 +183,11 @@ struct PeqTouchEditor: View {
 
     private func dotDrag(_ i: Int, in g: PeqGraphGeometry) -> some Gesture {
         DragGesture(minimumDistance: 3, coordinateSpace: .local)
+            .updating($dotDragging) { _, active, _ in active = true }   // -- WP SW9 --
             .onChanged { value in
                 guard let ch = channel else { return }
+                dragMark.set(true)   // -- WP SWMAC1 --, SW9
                 if dragStart?.band != i {
-                    if dragStart == nil { CoreUndo.drag(true) }   // -- WP SWMAC1 --
                     dragStart = (i, config.bands[i])
                     selection.selected = [i]
                 }
@@ -187,7 +198,7 @@ struct PeqTouchEditor: View {
                 sendLive(ch: ch, [(band: i, params: p)])
             }
             .onEnded { _ in
-                defer { CoreUndo.drag(false) }   // -- WP SWMAC1 --
+                defer { dragMark.set(false) }   // -- WP SWMAC1 --, SW9
                 guard let ch = channel, let p = live[i] else { dragStart = nil; return }
                 vm.commitGraphBands(ch: ch, [(band: i, params: p)])
                 finish()
@@ -232,13 +243,14 @@ struct PeqTouchEditor: View {
 
     private var pinch: some Gesture {
         MagnifyGesture()
+            .updating($pinching) { _, active, _ in active = true }   // -- WP SW9 --
             .onChanged { value in
                 guard let ch = channel else { return }
                 if pinchStart == nil {
                     guard selection.selected.count == 1, let i = selection.selected.first,
                           config.bands[i].type.usesQ else { return }
                     pinchStart = (i, config.bands[i].q)
-                    CoreUndo.drag(true)   // -- WP SWMAC1 --
+                    dragMark.set(true)   // -- WP SWMAC1 --, SW9
                 }
                 guard let start = pinchStart else { return }
                 var p = config.bands[start.band]
@@ -251,7 +263,7 @@ struct PeqTouchEditor: View {
                 if let ch = channel, let start = pinchStart, let p = live[start.band] {
                     vm.commitGraphBands(ch: ch, [(band: start.band, params: p)])
                 }
-                if pinchStart != nil { CoreUndo.drag(false) }   // -- WP SWMAC1 --
+                if pinchStart != nil { dragMark.set(false) }   // -- WP SWMAC1 --, SW9
                 finish()
             }
     }
