@@ -773,6 +773,32 @@ mod tests {
         session_free(h).unwrap();
     }
 
+    // -- WP P0W2 --
+    /// A graph drag of one band through the worker calls, frequency alone
+    /// and frequency with gain mixed, is one step; undo puts the band back.
+    #[test]
+    fn wp_p0w2_a_mixed_axis_band_drag_is_one_step() {
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        ok(h, "open", json!({ "kind": "demo" }));
+        let band = || core_of(h).unwrap().get_state().filters[0][1];
+        let start = band();
+        let field = |path: &str, v: f32| json!({ "path": path, "indices": [0, 1], "value": { "float": v } });
+        ok(h, "setDragging", json!({ "dragging": true }));
+        ok(h, "write", field("eq.freq", start.freq + 10.0));
+        ok(h, "write", field("eq.freq", start.freq + 30.0));
+        ok(h, "write", field("eq.gain", start.gain + 1.0));
+        ok(h, "write", field("eq.freq", start.freq + 35.0));
+        ok(h, "setDragging", json!({ "dragging": false }));
+        let hist = ok(h, "history", json!({ "n": 10 }));
+        assert_eq!(hist.as_array().unwrap().len(), 1, "{hist}");
+        assert_eq!(hist[0]["path"], "eq.band");
+        ok(h, "undo", Value::Null);
+        assert_eq!(band(), start);
+        assert_eq!(ok(h, "canUndo", Value::Null)["canUndo"], false);
+        session_free(h).unwrap();
+    }
+
     #[test]
     fn wb3_two_demo_sessions_connect_write_with_read_back_and_stay_apart() {
         guard::reset_for_test();

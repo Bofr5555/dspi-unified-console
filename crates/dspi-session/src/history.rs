@@ -22,7 +22,11 @@
 //!   tick, and undo should take back the drag. The caller marks only the
 //!   writes of a continuous drag, and ends the step when the drag ends
 //!   ([`Session::end_step`]); there is no time window, so a drag held still
-//!   stays one step and a typed value never joins (WP QTGAP1).
+//!   stays one step and a typed value never joins (WP QTGAP1). A caller
+//!   that journals one group of values under several paths (a band's field,
+//!   or the whole band) widens the step to the group's path
+//!   ([`Session::widen_step`]) when the drag moves another of them, so the
+//!   drag stays one step whatever it moves (WP P0W2).
 //! - **A re-read or another writer ends a step** ([`Session::end_step`]):
 //!   a change after it starts a new entry, whatever it repeats, so undo never
 //!   goes back past what the re-read or the other writer left (WP SWAPFIX).
@@ -209,18 +213,52 @@ impl Session {
     /// marked to coalesce, of the same path and indices from the same source;
     /// nothing has been undone since.
     fn coalesces(&self, change: &Change) -> bool {
-        let (Some(last), Some(top)) = (self.journal.last(), self.undo_stack.last()) else {
-            return false;
-        };
-        change.source == ChangeSource::Local
+        self.gathering(change.source, &change.indices)
+            .is_some_and(|last| last.path == change.path)
+    }
+
+    // -- WP P0W2 --
+    /// The step a change from `source` at `indices`, marked to coalesce,
+    /// would join if it had the same path: the newest of the journal and of
+    /// the undo stack are that same entry, marked to coalesce, from that
+    /// source and at those indices; nothing has been undone since. A caller
+    /// that journals a parameter group under several paths (one field of a
+    /// band, or the whole band) reads it to decide whether a change of
+    /// another path of the group belongs to the same drag.
+    pub fn gathering(&self, source: ChangeSource, indices: &[u8]) -> Option<&JournalEntry> {
+        let (last, top) = (self.journal.last()?, self.undo_stack.last()?);
+        (source == ChangeSource::Local
             && self.redo_stack.is_empty()
             && last.coalesce
-            && last.source == change.source
-            && last.path == change.path
-            && last.indices == change.indices
+            && last.source == source
+            && last.indices == indices
             && top.path == last.path
             && top.indices == last.indices
-            && top.at_ms == last.at_ms
+            && top.at_ms == last.at_ms)
+            .then_some(last)
+    }
+
+    /// Widen the step being gathered ([`Session::gathering`]) to `path`,
+    /// with `before` as the value undo restores: the caller's word that
+    /// `before` is what `path` held when the step began. A change of `path`
+    /// marked to coalesce then joins it. Nothing happens when no step is
+    /// being gathered.
+    pub fn widen_step(&mut self, path: &'static str, before: Option<Value>) {
+        let gathering = self
+            .journal
+            .last()
+            .is_some_and(|l| self.gathering(l.source, &l.indices).is_some());
+        if !gathering {
+            return;
+        }
+        self.history_version = self.history_version.wrapping_add(1);
+        for e in [self.journal.last_mut(), self.undo_stack.last_mut()]
+            .into_iter()
+            .flatten()
+        {
+            e.path = path;
+            e.before = before.clone();
+        }
     }
 
     // -- WP SWAPFIX --
@@ -474,6 +512,57 @@ mod tests_wp_p0w {
             Some(Value::Float(-1.0)),
             "back to the end of the step before"
         );
+    }
+
+    // -- WP P0W2 --
+    #[test]
+    fn wp_p0w2_a_widened_step_takes_the_groups_changes() {
+        let mut s = session();
+        let mut a = Change::of(
+            "eq.freq",
+            vec![0, 1],
+            Some(Value::Float(100.0)),
+            Value::Float(110.0),
+        );
+        a.coalesce = true;
+        s.record_change(a);
+        assert_eq!(
+            s.gathering(ChangeSource::Local, &[0, 1]).unwrap().path,
+            "eq.freq"
+        );
+        assert!(
+            s.gathering(ChangeSource::Local, &[0, 2]).is_none(),
+            "another band"
+        );
+        assert!(
+            s.gathering(ChangeSource::Undo, &[0, 1]).is_none(),
+            "a replay"
+        );
+
+        s.widen_step("eq.band", Some(Value::Bytes(vec![1])));
+        let mut b = Change::of(
+            "eq.band",
+            vec![0, 1],
+            Some(Value::Bytes(vec![2])),
+            Value::Bytes(vec![3]),
+        );
+        b.coalesce = true;
+        s.record_change(b);
+        assert_eq!(s.history(10).len(), 1);
+        let e = s.take_undo().entry.unwrap();
+        assert_eq!(e.path, "eq.band");
+        assert_eq!(
+            e.before,
+            Some(Value::Bytes(vec![1])),
+            "the start of the step"
+        );
+        assert_eq!(e.after, Value::Bytes(vec![3]));
+
+        // An ended step is not widened.
+        s.end_step();
+        s.widen_step("eq.band", None);
+        assert_eq!(s.history(1)[0].path, "eq.band");
+        assert!(s.gathering(ChangeSource::Local, &[0, 1]).is_none());
     }
 
     #[test]

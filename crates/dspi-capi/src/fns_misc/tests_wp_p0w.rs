@@ -90,3 +90,34 @@ fn wp_qtgap1_a_drag_through_c() {
     assert_eq!(r["entry"]["before"], json!({ "float": -2.0 }), "{r}");
     dspi_core_free(h);
 }
+
+// -- WP P0W2 --
+/// A graph drag mixing one-axis and two-axis moves of one band, sent whole
+/// with `dspi_set_filter`, is one step; undo puts the band back as it was.
+#[test]
+fn wp_p0w2_a_mixed_axis_band_drag_through_c_is_one_step() {
+    use crate::fns_device::dspi_set_filter;
+    let band = |h: *mut FfiCore| -> FilterParams {
+        // SAFETY: the handle is live; the record stays valid until the next call.
+        unsafe { (*dspi_get_state(h)).filters[0][1] }
+    };
+    let h = dspi_core_new();
+    assert!(dspi_open_demo(h));
+    let start = band(h);
+    let mut p = start;
+    dspi_set_dragging(h, true);
+    for (df, dg) in [(10.0, 0.0), (20.0, 1.0), (0.0, 1.5), (5.0, 0.0)] {
+        p.freq += df;
+        p.gain += dg;
+        assert!(dspi_set_filter(h, 0, 1, p));
+    }
+    dspi_set_dragging(h, false);
+    let r = reply(|b, l| dspi_history(h, 10, b, l));
+    assert_eq!(r["value"].as_array().unwrap().len(), 1, "{r}");
+    assert_eq!(r["value"][0]["path"], "eq.band");
+    let r = reply(|b, l| dspi_undo(h, b, l));
+    assert_eq!(r["ok"], true, "{r}");
+    assert_eq!(band(h), start);
+    assert!(!dspi_can_undo(h));
+    dspi_core_free(h);
+}
