@@ -1139,6 +1139,9 @@ fn wp_p0wecho_a_late_echo_of_a_drag_tick_does_not_cost_the_undo() {
 fn wp_p0wecho_own_writes_are_bounded_by_age_and_count() {
     let mut w = OwnWrites::default();
     w.note("vol.master", &[], &Value::Float(-10.0), 1_000);
+    // -- WP SWAPFIX -- only a value written over since is a late echo
+    assert!(!w.explains("vol.master", &[], &Value::Float(-10.0), 1_000));
+    w.note("vol.master", &[], &Value::Float(-12.0), 1_000);
     assert!(w.explains("vol.master", &[], &Value::Float(-10.0), 1_000 + OWN_ECHO_MS));
     assert!(!w.explains("vol.master", &[], &Value::Float(-10.0), 1_001 + OWN_ECHO_MS));
     assert!(!w.explains("vol.master", &[], &Value::Float(-11.0), 1_000));

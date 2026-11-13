@@ -90,9 +90,13 @@ impl DspiCore {
     /// are kept and only the per-item values are read. The flag is consumed,
     /// so a later call reads everything.
     ///
-    /// Ends by capturing the preset baseline, so an embedder using this as a
-    /// refresh also resets [`DspiCore::preset_dirty`]; to re-read without that,
-    /// use [`DspiCore::refresh_params`].
+    /// Ends by capturing the preset baseline when there is none for this
+    /// device and its active preset (the first read after opening it, another
+    /// device, another preset active). A re-read of the same device on the
+    /// same preset (a refresh, a reconnect) keeps it, so unsaved changes stay
+    /// unsaved until they are saved or reverted, and a change someone else
+    /// made meanwhile is compared with the same baseline (owner, 2026-11-13).
+    /// [`DspiCore::capture_baseline`] takes the live state as the baseline.
     ///
     /// Holds the core's lock for the whole read: a few hundred milliseconds
     /// over USB, seconds over MIDI or a slow Link. Every other call that
@@ -132,11 +136,14 @@ impl DspiCore {
         if wire.is_some() && conn.pending_probe.is_none() {
             read_per_item(conn, &mut next);
         }
+        // -- WP SWAPFIX -- the journal's view of a re-read (journal.rs)
+        let changed = inner.state.bulk_valid && next.bulk_raw != inner.state.bulk_raw;
+        crate::journal::note_reread(conn, changed);
         conn.wire = wire;
         conn.fresh_image = false;
         inner.state = next;
-        // What the device runs now is the state a preset is compared with.
-        presets::capture_baseline_locked(inner);
+        // -- WP SWAPFIX -- a re-read keeps the unsaved-changes baseline
+        presets::keep_or_capture_baseline_locked(inner);
         Ok(())
     }
 
