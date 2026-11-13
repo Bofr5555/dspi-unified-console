@@ -7,10 +7,11 @@
 ; -- WP QP20 -- Every name here is "uConsole for DSPi": the uninstall key, the
 ; key holding the install folder, the folder and the Start menu shortcut
 ; (-- WP RN1 --: no earlier install to carry over). The app's own entries (the
-; Run value "uConsole for DSPi" for open at login, the settings under
-; %APPDATA%\uconsole-for-dspi) are the app's and stay as they are on an install
-; or an update; the uninstaller removes the Run value (-- WP QPI4 --), whose
-; name is the one the app writes (SystemIntegration.cpp's kRunName).
+; Run value "uConsole for DSPi" for open at login, the settings file
+; %APPDATA%\uconsole-for-dspi\uconsole-for-dspi.ini) are the app's and stay as
+; they are on an install or an update; the uninstaller removes the Run value
+; (-- WP QPI4 --), whose name is the one the app writes (SystemIntegration.cpp's
+; kRunName), the settings file and the app's firewall rule (-- WP SWAPFIX --).
 
 Unicode true
 !include "MUI2.nsh"
@@ -31,6 +32,9 @@ Unicode true
 !define DIR_KEY "Software\${APP}"
 !define RUN_KEY "Software\Microsoft\Windows\CurrentVersion\Run"
 !define RUN_NAME "${APP}"
+; -- WP SWAPFIX -- the app's settings (QSettings, INI: behaviour.md §21)
+!define SETTINGS_DIR "uconsole-for-dspi"
+!define SETTINGS_FILE "uconsole-for-dspi.ini"
 
 Name "${APP}"
 OutFile "${OUTFILE}"
@@ -113,8 +117,22 @@ Section "Install"
   WriteRegDWORD HKCU "${UNINST_KEY}" "NoRepair" 1
 SectionEnd
 
+; -- WP SWAPFIX -- The inbound firewall rules named after the app: the one
+; the app adds (FirewallController.cpp, named by its display name) and the ones
+; Windows adds from its own prompt (named by the exe's FileDescription, the
+; same name). Reading them needs no rights; deleting them does, so netsh runs
+; elevated (one UAC prompt), and only when such a rule exists. A declined
+; prompt leaves the rule; the uninstall goes on.
+Function un.RemoveFirewallRule
+  nsExec::ExecToStack '"$SYSDIR\netsh.exe" advfirewall firewall show rule name="${APP}"'
+  Pop $0
+  Pop $1
+  StrCmp $0 "0" 0 done
+  ExecShellWait "runas" "$SYSDIR\netsh.exe" 'advfirewall firewall delete rule name="${APP}"' SW_HIDE
+  done:
+FunctionEnd
+
 Section "Uninstall"
-  ; The settings (%APPDATA%\uconsole-for-dspi) stay, as Windows apps usually leave them
   Call un.CheckNotRunning
   Delete "$SMPROGRAMS\${APP}.lnk"
   RMDir /r "$INSTDIR"
@@ -122,4 +140,9 @@ Section "Uninstall"
   DeleteRegKey HKCU "${DIR_KEY}"
   ; -- WP QPI4 -- open at login would start a deleted exe
   DeleteRegValue HKCU "${RUN_KEY}" "${RUN_NAME}"
+  ; -- WP SWAPFIX -- the settings file (owner, 2026-11-13); its folder only
+  ; when nothing else is in it (the hub store, the AutoEQ cache stay)
+  Delete "$APPDATA\${SETTINGS_DIR}\${SETTINGS_FILE}"
+  RMDir "$APPDATA\${SETTINGS_DIR}"
+  Call un.RemoveFirewallRule
 SectionEnd

@@ -158,6 +158,15 @@ void onboardingSection(SmokeDriver &d) {
         d.check(QStringLiteral("SYNC1: Save Diagnostics writes the core's bundle"),
                 d.waitFor(15000, [&]() { return !title.isEmpty(); }) && !failed && !ob->savingDiagnostics()
                     && QFileInfo(zip).size() > 0);
+        // -- WP SWAPFIX -- the settings are a file (INI; on Windows not the
+        // registry), and the bundle carries it (a zip names its entries in the clear)
+        const QString settingsFile = QSettings().fileName();
+        const QString settingsName = QFileInfo(settingsFile).fileName();
+        QFile bundle(zip);
+        const QByteArray bytes = bundle.open(QIODevice::ReadOnly) ? bundle.readAll() : QByteArray();
+        d.check(QStringLiteral("swapfix-f4: the settings are a file (%1)").arg(settingsFile), QFileInfo::exists(settingsFile));
+        d.check(QStringLiteral("swapfix-f4: the bundle carries the settings file"),
+                bytes.contains((QStringLiteral("client/") + settingsName).toUtf8()));
         QObject::disconnect(seen);
         QObject *alert = d.object(QStringLiteral("HelpHost.notice"));
         if (alert) QMetaObject::invokeMethod(alert, "close");

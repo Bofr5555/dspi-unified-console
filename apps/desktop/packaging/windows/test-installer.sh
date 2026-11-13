@@ -12,6 +12,9 @@
 # it GPL-3.0-only and carries Lucide's licence. -- WP RN1 -- Every entry the
 # installer writes carries that name: the uninstall key, the key recording the
 # folder, the Start menu shortcut, and the open-at-login value it removes.
+# -- WP SWAPFIX -- The settings are an INI file under %APPDATA% (none in the
+# registry); the uninstaller removes it and the app's firewall rule (netsh,
+# stood in for by a program that logs its calls).
 set -uo pipefail
 setup=$(realpath "$1")
 export WINEPREFIX=${WINEPREFIX:-$HOME/wine-installer-test} WINEDEBUG=-all WINEDLLOVERRIDES="mscoree,mshtml="
@@ -109,6 +112,44 @@ wine "$unix/Uninstall.exe" /S "_?=$dir"; check "uninstall while the app runs is 
 
 # Quit it: the installer and uninstaller go through
 kill "$app" 2>/dev/null; wineserver -k; wineserver -w; wait "$app" 2>/dev/null
+# -- WP SWAPFIX -- the settings are an INI file in the app's AppData folder,
+# never the registry (owner 2026-11-13, behaviour.md §21): a new install
+# writes onboarding/whatsNewShown at its first start
+appdata=$(find "$WINEPREFIX/drive_c/users" -maxdepth 3 -path '*/AppData/Roaming' -type d 2>/dev/null | head -1)
+ini="$appdata/uconsole-for-dspi/uconsole-for-dspi.ini"
+grep -q '^whatsNewShown=' "$ini" 2>/dev/null && echo "test-installer: ok: the settings are ${ini#"$WINEPREFIX/"}" \
+    || { echo "test-installer: FAIL: no settings in ${ini#"$WINEPREFIX/"}"; fails=$((fails + 1)); }
+wine reg query 'HKCU\Software\uconsole-for-dspi' >/dev/null 2>&1 \
+    && { echo "test-installer: FAIL: settings in the registry (HKCU\Software\uconsole-for-dspi)"; fails=$((fails + 1)); } \
+    || echo "test-installer: ok: no settings in the registry"
+# -- WP SWAPFIX -- a stand-in for netsh.exe that logs what it is asked and
+# keeps one firewall rule as a file: `show rule` answers 0 while C:\netsh-rule
+# exists (netsh's "No rules match" is exit 1), `delete rule` removes it
+fake="$WINEPREFIX/drive_c/netsh-fake.c"
+cat >"$fake" <<'C'
+#include <stdio.h>
+#include <string.h>
+int main(int argc, char **argv) {
+    FILE *log = fopen("C:\\netsh-log.txt", "a");
+    for (int i = 1; i < argc; i++) fprintf(log, "%s%s", i > 1 ? " " : "", argv[i]);
+    fprintf(log, "\n");
+    fclose(log);
+    if (argc > 3 && !strcmp(argv[3], "show")) {
+        FILE *rule = fopen("C:\\netsh-rule", "r");
+        if (!rule) { puts("No rules match the specified criteria."); return 1; }
+        fclose(rule);
+        return 0;
+    }
+    if (argc > 3 && !strcmp(argv[3], "delete")) return remove("C:\\netsh-rule") == 0 ? 0 : 1;
+    return 0;
+}
+C
+for d in system32 syswow64; do
+    [ -d "$WINEPREFIX/drive_c/windows/$d" ] && x86_64-w64-mingw32-gcc -O2 -o "$WINEPREFIX/drive_c/windows/$d/netsh.exe" "$fake"
+done
+export WINEDLLOVERRIDES="$WINEDLLOVERRIDES;netsh.exe=n"
+netshlog="$WINEPREFIX/drive_c/netsh-log.txt"
+rule="$WINEPREFIX/drive_c/netsh-rule"
 # -- WP QPI4 -- open at login on, as the app writes it: an update keeps it,
 # the uninstall removes it
 run='HKCU\Software\Microsoft\Windows\CurrentVersion\Run'
@@ -116,7 +157,15 @@ wine reg add "$run" /v "uConsole for DSPi" /d "\"$dir\\uconsole-for-dspi.exe\"" 
 wine "$setup" /S; check "install after the app quit (an update: into the recorded folder)" 0 $?
 wine reg query "$run" /v "uConsole for DSPi" >/dev/null 2>&1 && echo "test-installer: ok: an update keeps open at login" \
     || { echo "test-installer: FAIL: the update removed the open-at-login entry"; fails=$((fails + 1)); }
+rm -f "$netshlog"; : >"$rule"   # -- WP SWAPFIX -- the app's rule is there
 wine "$unix/Uninstall.exe" /S "_?=$dir"; check "uninstall after the app quit" 0 $?
+# -- WP SWAPFIX -- the firewall rule and the settings file go with the app
+# (the stand-in's log has Windows line ends)
+tr -d '\r' <"$netshlog" 2>/dev/null | grep -qx 'advfirewall firewall delete rule name=uConsole for DSPi' && [ ! -e "$rule" ] \
+    && echo "test-installer: ok: the app's firewall rule is removed" \
+    || { echo "test-installer: FAIL: the firewall rule stays (netsh: $(tr '\n' '|' <"$netshlog" 2>/dev/null))"; fails=$((fails + 1)); }
+[ ! -e "$ini" ] && echo "test-installer: ok: the settings file is removed" \
+    || { echo "test-installer: FAIL: the settings file is still there"; fails=$((fails + 1)); }
 wine reg query "$run" /v "uConsole for DSPi" >/dev/null 2>&1 \
     && { echo "test-installer: FAIL: the open-at-login entry is still there"; fails=$((fails + 1)); } \
     || echo "test-installer: ok: the open-at-login entry is removed"
@@ -127,6 +176,14 @@ wine reg query "$key" >/dev/null 2>&1 && { echo "test-installer: FAIL: the unins
 wine reg query "$dirkey" >/dev/null 2>&1 && { echo "test-installer: FAIL: $dirkey is still there"; fails=$((fails + 1)); }
 [ -z "$left" ] && echo "test-installer: ok: no Start menu shortcut, uninstall key or folder key left" \
     || { echo "test-installer: FAIL: Start menu shortcuts left: $left"; fails=$((fails + 1)); }
+
+# -- WP SWAPFIX -- without a rule nothing is deleted (and nobody is asked)
+wine "$setup" /S "/D=$dir"; check "install again" 0 $?
+rm -f "$netshlog" "$rule"
+wine "$unix/Uninstall.exe" /S "_?=$dir"; check "uninstall with no firewall rule" 0 $?
+grep -q ' show rule ' "$netshlog" 2>/dev/null && ! grep -q ' delete rule ' "$netshlog" \
+    && echo "test-installer: ok: no firewall rule, nothing deleted" \
+    || { echo "test-installer: FAIL: netsh without a rule: $(tr '\n' '|' <"$netshlog" 2>/dev/null)"; fails=$((fails + 1)); }
 
 [ "$fails" = 0 ] && echo "test-installer: PASS" || echo "test-installer: $fails failed"
 [ "$fails" = 0 ]

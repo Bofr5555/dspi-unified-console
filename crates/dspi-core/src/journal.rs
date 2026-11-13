@@ -45,6 +45,14 @@
 //! notification's source and Link origin (owner, 2026-11-12). A value the
 //! mirror holds no single copy of (a limiter write to every output) is not
 //! judged.
+//!
+//! A re-read of the device ([`DspiCore::fetch_all`], on a refresh or a
+//! reconnect of a Link session) puts the device's values in the mirror.
+//! Entries it contradicts are judged by the same rule when undo or redo
+//! reaches them: left alone, dropped, the writer named ("another writer" when
+//! only the re-read saw it). The re-read also ends the step a drag gathers,
+//! so a change after it is undone to the value the re-read found, never to
+//! one from before it (WP SWAPFIX).
 #![warn(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -192,6 +200,28 @@ pub(crate) fn note_foreign(
     };
     let at_ms = now_ms();
     conn.last_foreign = Some(ForeignWrite { at_ms, writer });
+    // -- WP SWAPFIX -- a change of ours after theirs is a step of its own
+    if let Ok(session) = conn.session() {
+        session.end_step();
+    }
+}
+
+// -- WP SWAPFIX --
+/// A re-read of the device ([`DspiCore::fetch_all`]): the journal's step
+/// ends, so a change after it never joins one from before it; and when the
+/// device held something other than the mirror (`changed`), someone this
+/// client did not hear from changed it, named as "another writer" for
+/// undo's foreign-change rule.
+pub(crate) fn note_reread(conn: &mut crate::Connection, changed: bool) {
+    if changed {
+        conn.last_foreign = Some(ForeignWrite {
+            at_ms: now_ms(),
+            writer: "another writer".into(),
+        });
+    }
+    if let Ok(session) = conn.session() {
+        session.end_step();
+    }
 }
 
 /// Whether someone else changed `entry`'s value since this client left it
@@ -271,14 +301,20 @@ impl OwnWrites {
     }
 
     /// Whether `value` at `path`/`indices` is one this session wrote within
-    /// [`OWN_ECHO_MS`] of `now_ms`.
+    /// [`OWN_ECHO_MS`] of `now_ms` and has written over since: a late echo
+    /// brings back an older value. The newest one is what this session
+    /// left there, by a setter or by undo putting someone else's value back
+    /// (WP SWAPFIX), so it explains no difference.
     fn explains(&self, path: &str, indices: &[u8], value: &Value, now_ms: u64) -> bool {
-        self.0.iter().any(|w| {
-            w.path == path
-                && w.indices == indices
-                && &w.value == value
-                && now_ms.saturating_sub(w.at_ms) <= OWN_ECHO_MS
-        })
+        let mut mine = self
+            .0
+            .iter()
+            .rev()
+            .filter(|w| w.path == path && w.indices == indices);
+        if mine.next().is_none_or(|newest| &newest.value == value) {
+            return false;
+        }
+        mine.any(|w| &w.value == value && now_ms.saturating_sub(w.at_ms) <= OWN_ECHO_MS)
     }
 }
 
@@ -946,3 +982,9 @@ pub(crate) fn history_mark(inner: &mut Inner) -> Option<(u64, u64)> {
 #[allow(clippy::arithmetic_side_effects)]
 #[path = "journal/tests_wp_p0w.rs"]
 mod tests_wp_p0w;
+
+// -- WP SWAPFIX --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+#[path = "journal/tests_wp_swapfix.rs"]
+mod tests_wp_swapfix;

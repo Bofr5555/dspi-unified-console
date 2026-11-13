@@ -278,6 +278,10 @@ pub(crate) struct Inner {
     /// Bulk image captured by `capture_baseline`, for `preset_dirty` and
     /// `preset_changes` (WP C5).
     pub(crate) baseline: Option<Vec<u8>>,
+    // -- WP SWAPFIX --
+    /// The device (serial) and active preset slot `baseline` was captured
+    /// for: a re-read of the same device on the same preset keeps it.
+    pub(crate) baseline_of: Option<(String, u8)>,
     /// The notification monitor's log (WP C7).
     pub(crate) monitor: monitor::MonitorLog,
     /// The analyser's state and worker (WP C9).
@@ -619,6 +623,7 @@ impl Inner {
             conn: None,
             state: state::default_state(),
             baseline: None,
+            baseline_of: None,
             monitor: monitor::MonitorLog::default(),
             rta: rta::RtaState::default(),
             cs: cs::CsState::default(),

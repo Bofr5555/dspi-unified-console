@@ -20,6 +20,9 @@
 //!   one (same path and indices, from the same source, within
 //!   [`COALESCE_MS`]) updates that entry instead of adding one: a slider sends
 //!   a write per tick, and undo should take back the drag.
+//! - **A re-read or another writer ends a step** ([`Session::end_step`]):
+//!   a change after it starts a new entry, whatever it repeats, so undo never
+//!   goes back past what the re-read or the other writer left (WP SWAPFIX).
 //! - **Bounded.** The journal keeps the newest [`JOURNAL_CAP`] entries, the
 //!   undo stack the newest [`UNDO_CAP`].
 //! - **Per connection.** The journal belongs to the session, and the session
@@ -218,6 +221,16 @@ impl Session {
             && top.indices == last.indices
             && top.at_ms == last.at_ms
             && at_ms.saturating_sub(last.at_ms) <= COALESCE_MS
+    }
+
+    // -- WP SWAPFIX --
+    /// End the step the newest entry is gathering: the next change starts an
+    /// entry of its own even when it repeats that one (a re-read of the
+    /// device, or another writer's change, came between them).
+    pub fn end_step(&mut self) {
+        if let Some(e) = self.journal.last_mut() {
+            e.coalesce = false;
+        }
     }
 
     /// Mark the [`Session::write`]s that follow as replays by `source` (an
@@ -441,6 +454,26 @@ mod tests_wp_p0w {
         b.coalesce = true;
         s.record_change(b);
         assert_eq!(s.history(10).len(), 4);
+    }
+
+    // -- WP SWAPFIX --
+    #[test]
+    fn wp_swapfix_an_ended_step_gathers_nothing_more() {
+        let mut s = session();
+        let mut c = gain(0.0, -1.0);
+        c.coalesce = true;
+        s.record_change(c);
+        s.end_step();
+        let mut c = gain(-1.0, -2.0);
+        c.coalesce = true;
+        s.record_change(c);
+        assert_eq!(s.history(10).len(), 2);
+        let e = s.take_undo().entry.unwrap();
+        assert_eq!(
+            e.before,
+            Some(Value::Float(-1.0)),
+            "back to the end of the step before"
+        );
     }
 
     #[test]

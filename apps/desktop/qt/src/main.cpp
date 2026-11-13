@@ -12,6 +12,7 @@
 #include <QCommandLineParser>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
+#include <QSettings>
 #include <cstdio>
 #include <memory>
 
@@ -29,6 +30,14 @@ static Qt::ColorScheme colorSchemeOverride() {
 }
 
 int main(int argc, char *argv[]) {
+    // -- WP SWAPFIX -- The settings are an INI file on every system (owner,
+    // 2026-11-13): on Windows %APPDATA%\uconsole-for-dspi\uconsole-for-dspi.ini,
+    // not the registry (behaviour.md §21). Elsewhere the native format is that
+    // INI file already (.conf, which IniFormat would rename). Before the first
+    // QSettings.
+#ifdef Q_OS_WIN
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+#endif
     QApplication::setOrganizationName(QString::fromUtf8(AppIdentityNames::settingsOrganisation));
     QApplication::setApplicationName(QString::fromUtf8(AppIdentityNames::settingsApplication));
     QApplication::setApplicationVersion(AppIdentity::version());

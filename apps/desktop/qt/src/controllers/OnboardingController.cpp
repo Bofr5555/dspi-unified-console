@@ -13,6 +13,8 @@
 #include "Snapshot.h"
 
 #include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -170,10 +172,21 @@ void OnboardingController::saveDiagnosticsTo(const QString &path) {
           QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)).filePath(QStringLiteral("hub")) },
     };
     const QByteArray file = QDir::toNativeSeparators(path).toUtf8();
-    const QByteArray opts = QJsonDocument(options).toJson(QJsonDocument::Compact);
+    // -- WP SWAPFIX -- the settings file goes in too, on every system
+    // (client/<its name>; the core removes what looks like a secret)
+    QSettings settings;
+    settings.sync();
+    const QString settingsFile = settings.fileName();
     m_ctx.core->worker()->call(
         this,
-        [file, opts](FfiCore *c) {
+        [file, options, settingsFile](FfiCore *c) {
+            QJsonObject withFiles = options;
+            QFile f(settingsFile);
+            if (f.open(QIODevice::ReadOnly))
+                withFiles.insert(QStringLiteral("files"),
+                                 QJsonArray{ QJsonObject{ { QStringLiteral("name"), QFileInfo(settingsFile).fileName() },
+                                                          { QStringLiteral("text"), QString::fromUtf8(f.read(1 << 20)) } } });
+            const QByteArray opts = QJsonDocument(withFiles).toJson(QJsonDocument::Compact);
             // The bundle is written on every call, so one buffer is enough
             QByteArray reply(1024, '\0');
             dspi_diagnostics_save(c, file.constData(), opts.constData(), reply.data(), uint32_t(reply.size()));

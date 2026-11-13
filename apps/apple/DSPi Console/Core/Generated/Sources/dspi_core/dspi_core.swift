@@ -1955,9 +1955,13 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * are kept and only the per-item values are read. The flag is consumed,
      * so a later call reads everything.
      *
-     * Ends by capturing the preset baseline, so an embedder using this as a
-     * refresh also resets [`DspiCore::preset_dirty`]; to re-read without that,
-     * use [`DspiCore::refresh_params`].
+     * Ends by capturing the preset baseline when there is none for this
+     * device and its active preset (the first read after opening it, another
+     * device, another preset active). A re-read of the same device on the
+     * same preset (a refresh, a reconnect) keeps it, so unsaved changes stay
+     * unsaved until they are saved or reverted, and a change someone else
+     * made meanwhile is compared with the same baseline (owner, 2026-11-13).
+     * [`DspiCore::capture_baseline`] takes the live state as the baseline.
      *
      * Holds the core's lock for the whole read: a few hundred milliseconds
      * over USB, seconds over MIDI or a slow Link. Every other call that
@@ -5102,9 +5106,13 @@ open func fetchAdatOutStatus()throws  -> AdatOutStatus  {
      * are kept and only the per-item values are read. The flag is consumed,
      * so a later call reads everything.
      *
-     * Ends by capturing the preset baseline, so an embedder using this as a
-     * refresh also resets [`DspiCore::preset_dirty`]; to re-read without that,
-     * use [`DspiCore::refresh_params`].
+     * Ends by capturing the preset baseline when there is none for this
+     * device and its active preset (the first read after opening it, another
+     * device, another preset active). A re-read of the same device on the
+     * same preset (a refresh, a reconnect) keeps it, so unsaved changes stay
+     * unsaved until they are saved or reverted, and a change someone else
+     * made meanwhile is compared with the same baseline (owner, 2026-11-13).
+     * [`DspiCore::capture_baseline`] takes the live state as the baseline.
      *
      * Holds the core's lock for the whole read: a few hundred milliseconds
      * over USB, seconds over MIDI or a slow Link. Every other call that
@@ -26066,7 +26074,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_adat_out_status() != 51824) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_fetch_all() != 28305) {
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_all() != 41865) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_apply_at_frame_status() != 42011) {
