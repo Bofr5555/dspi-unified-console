@@ -19,16 +19,13 @@
 //! recorded with an audible hazard (it re-anchors with a short silence), so
 //! undo steps over it; apply-at-frame and the counter reset are actions.
 //!
-//! Notes for SW2 (the hub), from review sw1, not fixed here:
-//! - The link's writes send no `PARAM_CHANGED` (2.8). The hub's router
-//!   (`dspi-hub` `router.rs` `is_silent`) knows only `EXT_CORE_VREG` as a
-//!   silent extension write, so a link write leaves a `Writer` entry waiting,
-//!   and the next unrelated scalar notification can take its attribution:
-//!   add 0x8000-0x800A to the silent list.
-//! - Apply-at-frame `UNMUTE` (op 2) arrives as `REQ_EXTENSION 0x8006`, past
-//!   BULKFIX's `GainGuard`, which intercepts `REQ_SET_OUTPUT_MUTE` only. No
-//!   effect today (every link build carries `FIX_BULK_DB_POWF`, so the guard
-//!   gates nothing there); keep it in mind if that changes.
+//! Review sw1's two notes, closed by WP SW2:
+//! - The link's writes send no `PARAM_CHANGED` (2.8): the hub's router
+//!   (`dspi-hub` `router.rs` `is_silent`) treats the whole block
+//!   0x8000-0x80FF as silent, so no `Writer` entry waits for one.
+//! - Apply-at-frame `UNMUTE` (op 2) is gated by BULKFIX's `GainGuard` as an
+//!   unmute of every suspect output (`dspi_session::bulk_gain`): the gains
+//!   are re-sent first, or the op is refused.
 
 use dspi_session::ext::alink::{self, LINK_SLOT_SILENT, LINK_SLOTS};
 use dspi_session::ext::{
