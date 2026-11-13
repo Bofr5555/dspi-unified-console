@@ -1880,6 +1880,10 @@ class DSPViewModel: ObservableObject {
     /// part of the preview (spec 3.4/3.5), so a rename counts here too.
     var csDirty: Bool {
         guard csStatus.dirty else { return false }
+        // -- WP SW12 -- Through a core its snapshot's flag already is this
+        // rule: the device's dirty flag and a difference from the clean copy
+        // the core keeps (cs.rs, `CsState::unsaved`).
+        if transport.coreStateSource != nil { return true }
         guard let cleanBindings = csCleanBindings, let cleanIr = csCleanIrCommands,
               let cleanNames = csCleanNames, let cleanGroups = csCleanGroups,
               let cleanMacros = csCleanMacros,

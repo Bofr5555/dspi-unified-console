@@ -237,6 +237,13 @@ final class CoreDomainSW11Tests: XCTestCase, CoreDomainTesting {
             XCTAssertEqual(enabled, PIN_CONFIG_INVALID_PIN, "no ADAT input pin set")
             XCTAssertFalse(vm.adatInputEnabled)
         }
+        // -- WP SW12 -- review sw11 N3: a refusal whatever the demo image
+        // holds: five I2S input channels is no channel count, and the device
+        // answers INVALID_PIN on the wire; the shown count stays.
+        let channels = vm.i2sInputChannels
+        XCTAssertEqual(offMain { vm.setI2SInputChannels(5) }, PIN_CONFIG_INVALID_PIN, "the device's refusal")
+        settle()
+        XCTAssertEqual(vm.i2sInputChannels, channels, "a refused count is not shown")
         XCTAssertEqual(vm.mckMultiplier, before)
     }
 

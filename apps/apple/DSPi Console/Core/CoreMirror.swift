@@ -111,6 +111,12 @@ protocol CoreStateSource: AnyObject {
     /// after a queued write.  Never replayed.  Blocking: call off the main
     /// thread.
     func writeAndWait<T>(_ body: (DspiCore) throws -> T) -> Result<T, DspiError>
+    // -- WP SW12 --
+    /// A typed re-read (no write) on the core's queue, behind every write
+    /// sent before it, then the state published as after a queued write.
+    /// No write time is stamped and no refusal posted (review sw11 N2).
+    /// Blocking: call off the main thread.
+    func readAndPublish<T>(_ body: (DspiCore) throws -> T) -> Result<T, DspiError>
 }
 
 extension CoreStateSource {
@@ -131,6 +137,7 @@ extension CoreStateSource {
     func commit(lane: String, _ body: @escaping (DspiCore) throws -> Void) {}
     func call<T>(_ body: (DspiCore) throws -> T) -> Result<T, DspiError> { .failure(.Unsupported) }
     func writeAndWait<T>(_ body: (DspiCore) throws -> T) -> Result<T, DspiError> { .failure(.Unsupported) }   // -- WP SW11 --
+    func readAndPublish<T>(_ body: (DspiCore) throws -> T) -> Result<T, DspiError> { .failure(.Unsupported) }   // -- WP SW12 --
 }
 
 /// What one `processNotifications` changed, and the core's state after it.
