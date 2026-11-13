@@ -5438,6 +5438,22 @@ uint8_t dspi_reset_audio_link_stats(struct FfiCore *core);
 bool dspi_open_demo_audio_link(struct FfiCore *core);
 
 /**
+ * The notice for a key, in JSON: {ok, key, kind, title, reason, action, detail}.
+ * `key` is a failure reply's `noticeKey`; `detail` (null reads as empty) is put in
+ * `detail`, normally that reply's `error`. `kind` is `info`, `warning` or `error`.
+ * A key the table does not have gives the `unknown` row. Returns the bytes needed
+ * including the NUL, 0 for a null `key` or a panic.
+ */
+uint32_t dspi_notice_for(const char *key, const char *detail, char *buf, uint32_t len);
+
+/**
+ * The whole notice table in JSON, every key once, `detail` empty: {ok,
+ * value:[{key, kind, title, reason, action, detail}]}. Returns the bytes needed
+ * including the NUL, 0 for a panic.
+ */
+uint32_t dspi_notice_texts(char *buf, uint32_t len);
+
+/**
  * Start looking for hubs on the local network, replacing any browse running.
  * Returns at once; false only with a null handle, in a build without the
  * feature, or when a thread cannot start. A network failure shows in

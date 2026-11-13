@@ -1536,6 +1536,12 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1604,6 +1610,12 @@ fun uniffi_dspi_core_checksum_func_link_phase_text(
 fun uniffi_dspi_core_checksum_func_link_phase_texts(
 ): Short
 fun uniffi_dspi_core_checksum_func_link_ws_url(
+): Short
+fun uniffi_dspi_core_checksum_func_notice_for(
+): Short
+fun uniffi_dspi_core_checksum_func_notice_for_key(
+): Short
+fun uniffi_dspi_core_checksum_func_notice_texts(
 ): Short
 fun uniffi_dspi_core_checksum_func_onboarding_getting_started_json(
 ): Short
@@ -2879,6 +2891,12 @@ fun uniffi_dspi_core_fn_func_link_phase_texts(uniffi_out_err: UniffiRustCallStat
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_link_ws_url(`host`: RustBuffer.ByValue,`port`: Short,`path`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_notice_for(`error`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_notice_for_key(`key`: RustBuffer.ByValue,`detail`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_notice_texts(uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_onboarding_getting_started_json(uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_onboarding_whats_new_json(uniffi_out_err: UniffiRustCallStatus, 
@@ -3098,6 +3116,15 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_link_ws_url() != 18495.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_notice_for() != 13472.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_notice_for_key() != 23208.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_notice_texts() != 1574.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_onboarding_getting_started_json() != 59413.toShort()) {
@@ -20639,6 +20666,75 @@ public object FfiConverterTypeNamedValue: FfiConverterRustBuffer<NamedValue> {
 
 
 /**
+ * What to tell the user about an error.
+ */
+data class Notice (
+    /**
+     * Stable key, for localising: `disconnected`, `dlink.wrong_pin`.
+     */
+    var `key`: kotlin.String, 
+    /**
+     * How to show it.
+     */
+    var `kind`: NoticeKind, 
+    /**
+     * A short title.
+     */
+    var `title`: kotlin.String, 
+    /**
+     * Why it happened.
+     */
+    var `reason`: kotlin.String, 
+    /**
+     * What to do.
+     */
+    var `action`: kotlin.String, 
+    /**
+     * The error's own words (may be empty); not localised.
+     */
+    var `detail`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeNotice: FfiConverterRustBuffer<Notice> {
+    override fun read(buf: ByteBuffer): Notice {
+        return Notice(
+            FfiConverterString.read(buf),
+            FfiConverterTypeNoticeKind.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: Notice) = (
+            FfiConverterString.allocationSize(value.`key`) +
+            FfiConverterTypeNoticeKind.allocationSize(value.`kind`) +
+            FfiConverterString.allocationSize(value.`title`) +
+            FfiConverterString.allocationSize(value.`reason`) +
+            FfiConverterString.allocationSize(value.`action`) +
+            FfiConverterString.allocationSize(value.`detail`)
+    )
+
+    override fun write(value: Notice, buf: ByteBuffer) {
+            FfiConverterString.write(value.`key`, buf)
+            FfiConverterTypeNoticeKind.write(value.`kind`, buf)
+            FfiConverterString.write(value.`title`, buf)
+            FfiConverterString.write(value.`reason`, buf)
+            FfiConverterString.write(value.`action`, buf)
+            FfiConverterString.write(value.`detail`, buf)
+    }
+}
+
+
+
+/**
  * What a batch of device notifications changed.
  */
 data class NotifyResult (
@@ -23947,6 +24043,49 @@ public object FfiConverterTypeLinkPhase: FfiConverterRustBuffer<LinkPhase> {
 
 
 /**
+ * How a notice is shown.
+ */
+
+enum class NoticeKind {
+    
+    /**
+     * Nothing went wrong; something to know.
+     */
+    INFO,
+    /**
+     * Not done, for a reason the user can change or wait out.
+     */
+    WARNING,
+    /**
+     * Not done: something failed.
+     */
+    ERROR;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeNoticeKind: FfiConverterRustBuffer<NoticeKind> {
+    override fun read(buf: ByteBuffer) = try {
+        NoticeKind.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: NoticeKind) = 4UL
+
+    override fun write(value: NoticeKind, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
  * A parameter value: `dspi_proto::value::Value` across the bindings. In
  * JSON (the C ABI, the web binding) it is tagged by kind in lower case:
  * `{"float": -12.5}`, `{"bool": true}`, `{"bytes": [1, 2]}`, `"trigger"`.
@@ -25645,6 +25784,34 @@ public object FfiConverterSequenceTypeNamedValue: FfiConverterRustBuffer<List<Na
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeNotice: FfiConverterRustBuffer<List<Notice>> {
+    override fun read(buf: ByteBuffer): List<Notice> {
+        val len = buf.getInt()
+        return List<Notice>(len) {
+            FfiConverterTypeNotice.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<Notice>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeNotice.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<Notice>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeNotice.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeOutputCard: FfiConverterRustBuffer<List<OutputCard>> {
     override fun read(buf: ByteBuffer): List<OutputCard> {
         val len = buf.getInt()
@@ -26431,6 +26598,45 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_link_ws_url(
         FfiConverterString.lower(`host`),FfiConverterUShort.lower(`port`),FfiConverterString.lower(`path`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * What to tell the user about `error`.
+         */ fun `noticeFor`(`error`: DspiException): Notice {
+            return FfiConverterTypeNotice.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_notice_for(
+        FfiConverterTypeDspiError.lower(`error`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The notice with this key (a failure reply's `noticeKey` in the C ABI and the
+         * web binding), with `detail` as its detail. A key the table does not have
+         * gives the `unknown` row.
+         */ fun `noticeForKey`(`key`: kotlin.String, `detail`: kotlin.String): Notice {
+            return FfiConverterTypeNotice.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_notice_for_key(
+        FfiConverterString.lower(`key`),FfiConverterString.lower(`detail`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The whole table, every key once and with no detail, for a client's
+         * translation files.
+         */ fun `noticeTexts`(): List<Notice> {
+            return FfiConverterSequenceTypeNotice.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_notice_texts(
+        _status)
 }
     )
     }

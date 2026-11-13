@@ -952,7 +952,11 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // -- WP P0E -- the diagnostics bundle: device reads (the Stats
             // window's) and a local file; nothing is written to the device.
             "diagnosticsSave",
-            "diagnosticsFileName"
+            "diagnosticsFileName",
+            // -- WP P1NT -- stateless text: the notice table.
+            "noticeFor",
+            "noticeForKey",
+            "noticeTexts"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

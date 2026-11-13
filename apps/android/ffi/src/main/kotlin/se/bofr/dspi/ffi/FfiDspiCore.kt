@@ -630,6 +630,12 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun filterTypeName(code: Int): String = se.bofr.dspi.ffi.uniffi.filterTypeName(code.toUByte())
 
+    override fun noticeFor(error: DspiException): Notice = se.bofr.dspi.ffi.uniffi.noticeFor(error.toFfi()).toDomain()
+
+    override fun noticeForKey(key: String, detail: String): Notice = se.bofr.dspi.ffi.uniffi.noticeForKey(key, detail).toDomain()
+
+    override fun noticeTexts(): List<Notice> = se.bofr.dspi.ffi.uniffi.noticeTexts().map { it.toDomain() }
+
     override fun outputLabelsFor(input: OutputLabelInput): List<OutputLabel> = se.bofr.dspi.ffi.uniffi.outputLabelsFor(input.toFfi()).map { it.toDomain() }
 
     override fun outputCardsFor(input: OutputLabelInput): List<OutputCard> = se.bofr.dspi.ffi.uniffi.outputCardsFor(input.toFfi()).map { it.toDomain() }
@@ -2587,6 +2593,26 @@ internal fun FilterTypeName.toFfi() =
         name = name,
     )
 
+internal fun se.bofr.dspi.ffi.uniffi.Notice.toDomain() =
+    Notice(
+        key = key,
+        kind = kind.toDomain(),
+        title = title,
+        reason = reason,
+        action = action,
+        detail = detail,
+    )
+
+internal fun Notice.toFfi() =
+    se.bofr.dspi.ffi.uniffi.Notice(
+        key = key,
+        kind = kind.toFfi(),
+        title = title,
+        reason = reason,
+        action = action,
+        detail = detail,
+    )
+
 internal fun se.bofr.dspi.ffi.uniffi.OutputLabel.toDomain() =
     OutputLabel(
         output = output.toInt(),
@@ -2857,6 +2883,20 @@ internal fun HistorySource.toFfi(): se.bofr.dspi.ffi.uniffi.HistorySource =
         HistorySource.LOCAL -> se.bofr.dspi.ffi.uniffi.HistorySource.LOCAL
         HistorySource.UNDO -> se.bofr.dspi.ffi.uniffi.HistorySource.UNDO
         HistorySource.REDO -> se.bofr.dspi.ffi.uniffi.HistorySource.REDO
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.NoticeKind.toDomain(): NoticeKind =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.NoticeKind.INFO -> NoticeKind.INFO
+        se.bofr.dspi.ffi.uniffi.NoticeKind.WARNING -> NoticeKind.WARNING
+        se.bofr.dspi.ffi.uniffi.NoticeKind.ERROR -> NoticeKind.ERROR
+    }
+
+internal fun NoticeKind.toFfi(): se.bofr.dspi.ffi.uniffi.NoticeKind =
+    when (this) {
+        NoticeKind.INFO -> se.bofr.dspi.ffi.uniffi.NoticeKind.INFO
+        NoticeKind.WARNING -> se.bofr.dspi.ffi.uniffi.NoticeKind.WARNING
+        NoticeKind.ERROR -> se.bofr.dspi.ffi.uniffi.NoticeKind.ERROR
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.VregCalPhase.toDomain(): VregCalPhase =

@@ -19548,6 +19548,147 @@ public func FfiConverterTypeNamedValue_lower(_ value: NamedValue) -> RustBuffer 
 
 
 /**
+ * What to tell the user about an error.
+ */
+public struct Notice {
+    /**
+     * Stable key, for localising: `disconnected`, `dlink.wrong_pin`.
+     */
+    public var key: String
+    /**
+     * How to show it.
+     */
+    public var kind: NoticeKind
+    /**
+     * A short title.
+     */
+    public var title: String
+    /**
+     * Why it happened.
+     */
+    public var reason: String
+    /**
+     * What to do.
+     */
+    public var action: String
+    /**
+     * The error's own words (may be empty); not localised.
+     */
+    public var detail: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Stable key, for localising: `disconnected`, `dlink.wrong_pin`.
+         */key: String, 
+        /**
+         * How to show it.
+         */kind: NoticeKind, 
+        /**
+         * A short title.
+         */title: String, 
+        /**
+         * Why it happened.
+         */reason: String, 
+        /**
+         * What to do.
+         */action: String, 
+        /**
+         * The error's own words (may be empty); not localised.
+         */detail: String) {
+        self.key = key
+        self.kind = kind
+        self.title = title
+        self.reason = reason
+        self.action = action
+        self.detail = detail
+    }
+}
+
+#if compiler(>=6)
+extension Notice: Sendable {}
+#endif
+
+
+extension Notice: Equatable, Hashable {
+    public static func ==(lhs: Notice, rhs: Notice) -> Bool {
+        if lhs.key != rhs.key {
+            return false
+        }
+        if lhs.kind != rhs.kind {
+            return false
+        }
+        if lhs.title != rhs.title {
+            return false
+        }
+        if lhs.reason != rhs.reason {
+            return false
+        }
+        if lhs.action != rhs.action {
+            return false
+        }
+        if lhs.detail != rhs.detail {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(key)
+        hasher.combine(kind)
+        hasher.combine(title)
+        hasher.combine(reason)
+        hasher.combine(action)
+        hasher.combine(detail)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotice: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Notice {
+        return
+            try Notice(
+                key: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterTypeNoticeKind.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                reason: FfiConverterString.read(from: &buf), 
+                action: FfiConverterString.read(from: &buf), 
+                detail: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: Notice, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.key, into: &buf)
+        FfiConverterTypeNoticeKind.write(value.kind, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.reason, into: &buf)
+        FfiConverterString.write(value.action, into: &buf)
+        FfiConverterString.write(value.detail, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotice_lift(_ buf: RustBuffer) throws -> Notice {
+    return try FfiConverterTypeNotice.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotice_lower(_ value: Notice) -> RustBuffer {
+    return FfiConverterTypeNotice.lower(value)
+}
+
+
+/**
  * What a batch of device notifications changed.
  */
 public struct NotifyResult {
@@ -25682,6 +25823,95 @@ extension LinkPhase: Equatable, Hashable {}
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * How a notice is shown.
+ */
+
+public enum NoticeKind {
+    
+    /**
+     * Nothing went wrong; something to know.
+     */
+    case info
+    /**
+     * Not done, for a reason the user can change or wait out.
+     */
+    case warning
+    /**
+     * Not done: something failed.
+     */
+    case error
+}
+
+
+#if compiler(>=6)
+extension NoticeKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNoticeKind: FfiConverterRustBuffer {
+    typealias SwiftType = NoticeKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NoticeKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .info
+        
+        case 2: return .warning
+        
+        case 3: return .error
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NoticeKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .info:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .warning:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .error:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNoticeKind_lift(_ buf: RustBuffer) throws -> NoticeKind {
+    return try FfiConverterTypeNoticeKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNoticeKind_lower(_ value: NoticeKind) -> RustBuffer {
+    return FfiConverterTypeNoticeKind.lower(value)
+}
+
+
+extension NoticeKind: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * A parameter value: `dspi_proto::value::Value` across the bindings. In
  * JSON (the C ABI, the web binding) it is tagged by kind in lower case:
  * `{"float": -12.5}`, `{"bool": true}`, `{"bytes": [1, 2]}`, `"trigger"`.
@@ -27256,6 +27486,31 @@ fileprivate struct FfiConverterSequenceTypeNamedValue: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeNotice: FfiConverterRustBuffer {
+    typealias SwiftType = [Notice]
+
+    public static func write(_ value: [Notice], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeNotice.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Notice] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Notice]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeNotice.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeOutputCard: FfiConverterRustBuffer {
     typealias SwiftType = [OutputCard]
 
@@ -27958,6 +28213,39 @@ public func linkWsUrl(host: String, port: UInt16, path: String) -> String  {
 })
 }
 /**
+ * What to tell the user about `error`.
+ */
+public func noticeFor(error: DspiError) -> Notice  {
+    return try!  FfiConverterTypeNotice_lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_notice_for(
+        FfiConverterTypeDspiError_lower(error),$0
+    )
+})
+}
+/**
+ * The notice with this key (a failure reply's `noticeKey` in the C ABI and the
+ * web binding), with `detail` as its detail. A key the table does not have
+ * gives the `unknown` row.
+ */
+public func noticeForKey(key: String, detail: String) -> Notice  {
+    return try!  FfiConverterTypeNotice_lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_notice_for_key(
+        FfiConverterString.lower(key),
+        FfiConverterString.lower(detail),$0
+    )
+})
+}
+/**
+ * The whole table, every key once and with no detail, for a client's
+ * translation files.
+ */
+public func noticeTexts() -> [Notice]  {
+    return try!  FfiConverterSequenceTypeNotice.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_notice_texts($0
+    )
+})
+}
+/**
  * The Getting Started wizard's data for this build's platform: see the module
  * docs.
  */
@@ -28130,6 +28418,15 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_link_ws_url() != 18495) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_notice_for() != 13472) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_notice_for_key() != 23208) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_notice_texts() != 1574) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_onboarding_getting_started_json() != 59413) {

@@ -3073,6 +3073,36 @@ data class FilterTypeName(
 )
 
 /**
+ * What to tell the user about an error.
+ */
+data class Notice(
+    /**
+     * Stable key, for localising: `disconnected`, `dlink.wrong_pin`.
+     */
+    val key: String,
+    /**
+     * How to show it.
+     */
+    val kind: NoticeKind,
+    /**
+     * A short title.
+     */
+    val title: String,
+    /**
+     * Why it happened.
+     */
+    val reason: String,
+    /**
+     * What to do.
+     */
+    val action: String,
+    /**
+     * The error's own words (may be empty); not localised.
+     */
+    val detail: String,
+)
+
+/**
  * One output's label.
  */
 data class OutputLabel(
@@ -3522,6 +3552,24 @@ enum class HistorySource {
      * The repeat of an undone change, sent by [`DspiCore::redo`].
      */
     REDO,
+}
+
+/**
+ * How a notice is shown.
+ */
+enum class NoticeKind {
+    /**
+     * Nothing went wrong; something to know.
+     */
+    INFO,
+    /**
+     * Not done, for a reason the user can change or wait out.
+     */
+    WARNING,
+    /**
+     * Not done: something failed.
+     */
+    ERROR,
 }
 
 /**
