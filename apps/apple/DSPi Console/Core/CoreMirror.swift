@@ -101,6 +101,12 @@ protocol CoreStateSource: AnyObject {
     /// A typed read (or a write with a reply) on the core's queue.  Blocking:
     /// call off the main thread.
     func call<T>(_ body: (DspiCore) throws -> T) -> Result<T, DspiError>
+    // -- WP SW11 --
+    /// A typed write with a reply (a pin setter's status) on the core's
+    /// queue, behind every write sent before it, then the state published as
+    /// after a queued write.  Never replayed.  Blocking: call off the main
+    /// thread.
+    func commit<T>(_ body: (DspiCore) throws -> T) -> Result<T, DspiError>
 }
 
 extension CoreStateSource {
@@ -119,6 +125,7 @@ extension CoreStateSource {
     // -- WP SW9 -- A source without a core takes no typed call.
     func write(lane: String?, _ body: @escaping (DspiCore) throws -> Void) {}
     func call<T>(_ body: (DspiCore) throws -> T) -> Result<T, DspiError> { .failure(.Unsupported) }
+    func commit<T>(_ body: (DspiCore) throws -> T) -> Result<T, DspiError> { .failure(.Unsupported) }   // -- WP SW11 --
 }
 
 /// What one `processNotifications` changed, and the core's state after it.
@@ -140,6 +147,7 @@ struct CoreStateChange {
     /// The `NotifyResult` flags after which the mirror is read again.
     static let stateFlags = DspiConstants.NOTIFY_STATE | DspiConstants.NOTIFY_REFRESHED
         | DspiConstants.NOTIFY_PRESET | DspiConstants.NOTIFY_NAMES
+        | DspiConstants.NOTIFY_STREAMS   // -- WP SW11 -- (CG25)
 
     var refreshed: Bool { flags & DspiConstants.NOTIFY_REFRESHED != 0 }
     var presetLoaded: Bool { flags & DspiConstants.NOTIFY_PRESET != 0 }
@@ -262,6 +270,7 @@ final class CoreMirror {
         // load unsaved (CG33), and its list comes with the change.
         if let changes = change.presetChanges { showPresetChanges(changes, from: source) }
         if let journal = change.journal { vm.undo.show(journal) }   // -- WP SWMAC1 --
+        vm.followCoreEvents(change.flags)   // -- WP SW11 --
     }
 
     // -- WP SWMAC1 --

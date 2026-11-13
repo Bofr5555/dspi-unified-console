@@ -132,6 +132,9 @@ final class CoreBackedTransport: DeviceTransport {
     #if DEBUG
     private let mainGetLock = NSLock()
     private var mainGets: Set<UInt8> = []
+    /// -- WP SW11 -- Tests only: the opcode of every raw SET and GET the app
+    /// sent through this transport (`DeviceTransport`'s calls), in order.
+    private var rawOpcodes: [UInt8] = []
     #endif
 
     /// - Parameters:
@@ -348,6 +351,9 @@ final class CoreBackedTransport: DeviceTransport {
 
     /// The core picks the interface, so `index` is dropped.
     func sendControlRequest(request: UInt8, value: UInt16, index: UInt16, data: Data) {
+        #if DEBUG
+        noteRaw(request)   // -- WP SW11 --
+        #endif
         stateLock.lock(); lastRawSetAt = ProcessInfo.processInfo.systemUptime; stateLock.unlock()   // -- WP SWF7 --
         coreQueue.async { [weak self] in
             guard let self = self else { return }
@@ -383,6 +389,7 @@ final class CoreBackedTransport: DeviceTransport {
     func getControlResult(request: UInt8, value: UInt16, index: UInt16, length: UInt16) -> Result<Data, LinkStatus> {
         #if DEBUG
         if Thread.isMainThread { noteGetFromMain(request) }
+        noteRaw(request)   // -- WP SW11 --
         #endif
         return onCoreSync {
             do {
@@ -406,6 +413,18 @@ final class CoreBackedTransport: DeviceTransport {
         if first {
             Self.log.debug("GET 0x\(String(format: "%02X", request), privacy: .public) from the main thread")
         }
+    }
+
+    // -- WP SW11 --
+    private func noteRaw(_ request: UInt8) {
+        mainGetLock.lock(); rawOpcodes.append(request); mainGetLock.unlock()
+    }
+
+    /// -- WP SW11 -- Tests only: the raw opcodes sent since the last call
+    /// (a domain with a core attached sends none of its own).
+    func takeRawOpcodesForTest() -> [UInt8] {
+        mainGetLock.lock(); defer { rawOpcodes = []; mainGetLock.unlock() }
+        return rawOpcodes
     }
     #endif
 
@@ -713,6 +732,34 @@ extension CoreBackedTransport: CoreStateSource, CoreStateSourceProviding {
         stateFanout.publish(CoreStateChange(flags: 0, state: onCore { $0.getState() },
                                             presetChanges: onCore { $0.presetChanges() }, journal: journal,
                                             confirms: false))
+    }
+
+    // -- WP SW11 -- A typed write whose reply the caller needs (a pin
+    // setter's status), then the state publish a queued write gets.
+    func commit<T>(_ body: (DspiCore) throws -> T) -> Result<T, DspiError> {
+        stateLock.lock(); lastRawSetAt = ProcessInfo.processInfo.systemUptime; stateLock.unlock()
+        return onCoreSync {
+            self.lastRawSetSentAt = ProcessInfo.processInfo.systemUptime
+            let result: Result<T, DspiError>
+            do {
+                result = .success(try self.onCore(body))
+            } catch {
+                let failure = error as? DspiError ?? .Transfer(msg: String(describing: error))
+                switch failure {
+                case .Locked: DeviceLock.notice.post()
+                case .ReadOnly: RefusedWrite.handleReadOnly(fanout: self.fanout)
+                case .Denied: RefusedWrite.handle(.denied, fanout: self.fanout)
+                case .InvalidArgument(let msg): RefusedWrite.handleInvalid(msg, fanout: self.fanout)
+                default: break
+                }
+                result = .failure(failure)
+            }
+            if !self.writePublishQueued {
+                self.writePublishQueued = true
+                self.coreQueue.async { [weak self] in self?.publishAfterWrites() }
+            }
+            return result
+        }
     }
 
     func call<T>(_ body: (DspiCore) throws -> T) -> Result<T, DspiError> {

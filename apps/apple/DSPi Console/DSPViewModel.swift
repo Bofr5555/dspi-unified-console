@@ -2771,6 +2771,8 @@ class DSPViewModel: ObservableObject {
         // full AdatStatus (resync / slip counts) off the main thread.
         AppState.shared.interruptMonitor.onAdatState = { [weak self] enabled, active, pin in
             guard let self = self else { return }
+            // -- WP SW11 -- Through the core, its NOTIFY_STREAMS (followCoreEvents).
+            guard self.transport.coreStateSource == nil else { return }
             self.adatEnabled = enabled
             self.adatStatus.enabled = enabled
             self.adatStatus.active = active
@@ -2787,6 +2789,7 @@ class DSPViewModel: ObservableObject {
         // full 16-byte status (lock/loss counts, measured Hz) off the main thread.
         AppState.shared.interruptMonitor.onI2sSlaveState = { [weak self] state, detectedRate in
             guard let self = self else { return }
+            guard self.transport.coreStateSource == nil else { return }   // -- WP SW11 --
             self.i2sClockModeSupported = true
             self.i2sSlaveStatus.state = state
             self.i2sSlaveStatus.detectedRate = detectedRate
@@ -2799,6 +2802,7 @@ class DSPViewModel: ObservableObject {
         // indicator, then refresh the full 20-byte status off the main thread.
         AppState.shared.interruptMonitor.onAdatInputState = { [weak self] state, detectedRate, clockMode in
             guard let self = self else { return }
+            guard self.transport.coreStateSource == nil else { return }   // -- WP SW11 --
             self.adatInputStatus.state = state
             self.adatInputStatus.detectedRate = detectedRate
             self.adatInputStatus.clockMode = clockMode
@@ -2808,11 +2812,14 @@ class DSPViewModel: ObservableObject {
 
         AppState.shared.interruptMonitor.onInputSourceName = { [weak self] source, name in
             guard let self = self, self.inputSourceNames.indices.contains(source) else { return }
+            // -- WP SW11 -- Through the core, its NOTIFY_NAMES (followCoreEvents).
+            guard self.transport.coreStateSource == nil else { return }
             if self.inputSourceNames[source] != name { self.inputSourceNames[source] = name }
         }
 
         AppState.shared.interruptMonitor.onDeviceName = { [weak self] name in
             guard let self = self, self.deviceNameSupported else { return }
+            guard self.transport.coreStateSource == nil else { return }   // -- WP SW11 --
             if self.deviceName != name { self.deviceName = name }
         }
 

@@ -8791,11 +8791,21 @@ struct HardwareSettingsTab: View {
             return
         }
 
-        // assignOutputPin handles the PDM disable/enable cycle when the
-        // firmware refuses because the output is active.
-        let status = vm.assignOutputPin(output: outputIndex, pin: pin)
-
         let outputName = visiblePinOutputs.first(where: { $0.id == outputIndex })?.name ?? "Output \(outputIndex)"
+        // -- WP SW11 -- The write waits for the device's status (through a
+        // core, its typed setter): off main, as the page's other writes.
+        DispatchQueue.global(qos: .userInitiated).async {
+            // assignOutputPin handles the PDM disable/enable cycle when the
+            // firmware refuses because the output is active.
+            let status = vm.assignOutputPin(output: outputIndex, pin: pin)
+            if [PIN_CONFIG_INVALID_PIN, PIN_CONFIG_PIN_IN_USE, PIN_CONFIG_OUTPUT_ACTIVE].contains(status) {
+                vm.fetchOutputPin(output: outputIndex)
+            }
+            DispatchQueue.main.async { showPinStatus(status, outputIndex: outputIndex, outputName: outputName, pin: pin) }
+        }
+    }
+
+    private func showPinStatus(_ status: UInt8, outputIndex: Int, outputName: String, pin: UInt8) {
         switch status {
         case PIN_CONFIG_SUCCESS:
             statusMessage = "\(outputName) reassigned to GPIO \(pin)"
@@ -8803,7 +8813,6 @@ struct HardwareSettingsTab: View {
         case PIN_CONFIG_INVALID_PIN:
             statusMessage = "GPIO \(pin) is not available on this platform"
             statusIsError = true
-            vm.fetchOutputPin(output: outputIndex)
         case PIN_CONFIG_PIN_IN_USE:
             if let owner = pinInUseBy(pin, excluding: .output(outputIndex)) {
                 statusMessage = "GPIO \(pin) is already assigned to \(owner)"
@@ -8811,14 +8820,12 @@ struct HardwareSettingsTab: View {
                 statusMessage = "GPIO \(pin) is already in use by another output"
             }
             statusIsError = true
-            vm.fetchOutputPin(output: outputIndex)
         case PIN_CONFIG_INVALID_OUTPUT:
             statusMessage = "Invalid output index"
             statusIsError = true
         case PIN_CONFIG_OUTPUT_ACTIVE:
             statusMessage = "PDM output must be disabled before changing its pin"
             statusIsError = true
-            vm.fetchOutputPin(output: outputIndex)
         default:
             statusMessage = "USB communication error"
             statusIsError = true
@@ -8832,16 +8839,20 @@ struct HardwareSettingsTab: View {
             return
         }
 
-        for output in visiblePinOutputs {
-            let status = vm.assignOutputPin(output: output.id, pin: output.defaultPin)
-            if status != PIN_CONFIG_SUCCESS {
-                statusMessage = "Failed to reset \(output.name)"
-                statusIsError = true
-                return
+        // -- WP SW11 -- Off main, as setPinForOutput.
+        let outputs = visiblePinOutputs
+        DispatchQueue.global(qos: .userInitiated).async {
+            let failed = outputs.first { vm.assignOutputPin(output: $0.id, pin: $0.defaultPin) != PIN_CONFIG_SUCCESS }
+            DispatchQueue.main.async {
+                if let failed {
+                    statusMessage = "Failed to reset \(failed.name)"
+                    statusIsError = true
+                } else {
+                    statusMessage = "All pins reset to defaults"
+                    statusIsError = false
+                }
             }
         }
-        statusMessage = "All pins reset to defaults"
-        statusIsError = false
     }
 
     var body: some View {
@@ -10074,9 +10085,7 @@ struct HardwareSettingsTab: View {
                     // STM32 firmware coerces dependent I2S slots down to S/PDIF
                     // when their parent goes S/PDIF; refetch so the UI reflects it.
                     if status == PIN_CONFIG_SUCCESS && self.isSTM32 {
-                        for s in 0..<vm.numOutputSlots {
-                            vm.fetchOutputSlotType(slot: s)
-                        }
+                        vm.refreshOutputSlotTypes()   // -- WP SW11 --
                     }
                     DispatchQueue.main.async {
                         if status != PIN_CONFIG_SUCCESS {
