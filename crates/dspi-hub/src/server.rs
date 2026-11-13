@@ -2194,7 +2194,7 @@ fn system_refused(id: Option<u64>, e: &crate::system::SystemRefused) -> String {
         R::Scene(S::NoFrame) => err(
             id,
             "no_device",
-            Some("no unit of the scene reports a link frame"),
+            Some("no unit of the scene reports an audio link frame"),
         ),
         R::Denied(why) => err(id, "denied", Some(why)),
         R::NoSender => err(id, "no_device", Some("no sender of the model is reachable")),

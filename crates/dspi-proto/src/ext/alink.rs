@@ -1,11 +1,11 @@
 //! WP SW1 (SYS2 sections 2, 5.3 and 7): the audio link's extension
 //! sub-commands (0x8000-0x800A, the fork's private range) and its two
-//! notifications (0xE1 `LINK_STATE`, 0xE2 `APPLY_RESULT`).
+//! notifications (0xE1 `ALINK_STATE`, 0xE2 `APPLY_RESULT`).
 //!
 //! The layouts are the fork's `extension_channel_spec.md` section 2.8 (WP
-//! LK7, DSPi-bofr c3909e5; `EXT_LINK_STATUS` offset 50 from LK45F, bofr-main
+//! LK7, DSPi-bofr c3909e5; `EXT_ALINK_STATUS` offset 50 from LK45F, bofr-main
 //! 5a5658d), which supersedes SYS2 5.3 where they differ:
-//! a 52-byte status, a 24-byte `EXT_LINK_CTRL_MSG` IN, `d_local_min/max` in
+//! a 52-byte status, a 24-byte `EXT_ALINK_CTRL_MSG` IN, `d_local_min/max` in
 //! the info, the event reasons, apply op 0 as `CANCEL_ALL`. The firmware
 //! (LK5, LK6) has no header for them yet, so they are transcribed rather than
 //! generated: re-pin them to the vendored headers when it does.
@@ -14,86 +14,86 @@
 //! bytes and never panics: a short reply is `None`, extra bytes are ignored.
 //! A host reads none of these unless `EXT_LIST` names them, and decodes the
 //! events only behind their `EXT_NOTIFY_FEATURES` bits, so stock firmware and
-//! the fork without the link see no extra traffic.
+//! the fork without the alink see no extra traffic.
 
-/// `EXT_LINK_INFO` IN, 32 B: role, capabilities, pins.
-pub const EXT_LINK_INFO: u16 = 0x8000;
-/// `EXT_LINK_STATUS` IN: lock state, frame counter, error counters, servo.
-pub const EXT_LINK_STATUS: u16 = 0x8001;
-/// `EXT_LINK_CONFIG` IN/OUT, 8 B: enable, pins, class, flags.
-pub const EXT_LINK_CONFIG: u16 = 0x8002;
-/// `EXT_LINK_SLOTS` IN/OUT, 8 B: the link slot for each matrix input.
-pub const EXT_LINK_SLOTS: u16 = 0x8003;
-/// `EXT_LINK_PHASE` IN/OUT, 8 B: phase-lock mode and the fixed delay.
-pub const EXT_LINK_PHASE: u16 = 0x8004;
-/// `EXT_FRAME_COUNTER` IN, 16 B: the link frame and output frame at the read.
+/// `EXT_ALINK_INFO` IN, 32 B: role, capabilities, pins.
+pub const EXT_ALINK_INFO: u16 = 0x8000;
+/// `EXT_ALINK_STATUS` IN: lock state, frame counter, error counters, servo.
+pub const EXT_ALINK_STATUS: u16 = 0x8001;
+/// `EXT_ALINK_CONFIG` IN/OUT, 8 B: enable, pins, class, flags.
+pub const EXT_ALINK_CONFIG: u16 = 0x8002;
+/// `EXT_ALINK_SLOTS` IN/OUT, 8 B: the audio link slot for each matrix input.
+pub const EXT_ALINK_SLOTS: u16 = 0x8003;
+/// `EXT_ALINK_PHASE` IN/OUT, 8 B: phase-lock mode and the fixed delay.
+pub const EXT_ALINK_PHASE: u16 = 0x8004;
+/// `EXT_FRAME_COUNTER` IN, 16 B: the alink frame and output frame at the read.
 pub const EXT_FRAME_COUNTER: u16 = 0x8005;
 /// `EXT_APPLY_AT_FRAME` OUT 16 B (queue an op) / IN 16 B (the queue's state).
 pub const EXT_APPLY_AT_FRAME: u16 = 0x8006;
-/// `EXT_LINK_TX` IN/OUT, 16 B: a sender's links.
-pub const EXT_LINK_TX: u16 = 0x8007;
-/// `EXT_LINK_CTRL_MSG` OUT 16 B: a sender injects a superframe apply.
-pub const EXT_LINK_CTRL_MSG: u16 = 0x8008;
-/// `EXT_LINK_STATS_RESET` OUT, 1 B: clear the error counters.
-pub const EXT_LINK_STATS_RESET: u16 = 0x8009;
-/// `EXT_LINK_DIAG` IN, 64 B: bench diagnostics (not decoded here).
-pub const EXT_LINK_DIAG: u16 = 0x800A;
+/// `EXT_ALINK_TX` IN/OUT, 16 B: a sender's alinks.
+pub const EXT_ALINK_TX: u16 = 0x8007;
+/// `EXT_ALINK_CTRL_MSG` OUT 16 B: a sender injects a superframe apply.
+pub const EXT_ALINK_CTRL_MSG: u16 = 0x8008;
+/// `EXT_ALINK_STATS_RESET` OUT, 1 B: clear the error counters.
+pub const EXT_ALINK_STATS_RESET: u16 = 0x8009;
+/// `EXT_ALINK_DIAG` IN, 64 B: bench diagnostics (not decoded here).
+pub const EXT_ALINK_DIAG: u16 = 0x800A;
 
 /// The audio link's sub-commands, ascending.
-pub const LINK_IDS: [u16; 11] = [
-    EXT_LINK_INFO,
-    EXT_LINK_STATUS,
-    EXT_LINK_CONFIG,
-    EXT_LINK_SLOTS,
-    EXT_LINK_PHASE,
+pub const ALINK_IDS: [u16; 11] = [
+    EXT_ALINK_INFO,
+    EXT_ALINK_STATUS,
+    EXT_ALINK_CONFIG,
+    EXT_ALINK_SLOTS,
+    EXT_ALINK_PHASE,
     EXT_FRAME_COUNTER,
     EXT_APPLY_AT_FRAME,
-    EXT_LINK_TX,
-    EXT_LINK_CTRL_MSG,
-    EXT_LINK_STATS_RESET,
-    EXT_LINK_DIAG,
+    EXT_ALINK_TX,
+    EXT_ALINK_CTRL_MSG,
+    EXT_ALINK_STATS_RESET,
+    EXT_ALINK_DIAG,
 ];
 
-/// `EXT_LINK_DIAG`'s reply size. Its layout is versioned by byte 0 and not
+/// `EXT_ALINK_DIAG`'s reply size. Its layout is versioned by byte 0 and not
 /// for apps to parse (2.8.11).
-pub const LINK_DIAG_SIZE: usize = 64;
+pub const ALINK_DIAG_SIZE: usize = 64;
 
-/// The frame and superframe version this build speaks (`EXT_LINK_INFO`
-/// byte 1). A unit reporting another is treated as having no link (2.8.13).
-pub const LINK_PROTOCOL_VERSION: u8 = 1;
+/// The frame and superframe version this build speaks (`EXT_ALINK_INFO`
+/// byte 1). A unit reporting another is treated as having no alink (2.8.13).
+pub const ALINK_PROTOCOL_VERSION: u8 = 1;
 
 /// The receiver's sub-commands (2.8, "Per build"): what a receiver lists.
 pub const RECEIVER_IDS: [u16; 10] = [
-    EXT_LINK_INFO,
-    EXT_LINK_STATUS,
-    EXT_LINK_CONFIG,
-    EXT_LINK_SLOTS,
-    EXT_LINK_PHASE,
+    EXT_ALINK_INFO,
+    EXT_ALINK_STATUS,
+    EXT_ALINK_CONFIG,
+    EXT_ALINK_SLOTS,
+    EXT_ALINK_PHASE,
     EXT_FRAME_COUNTER,
     EXT_APPLY_AT_FRAME,
-    EXT_LINK_CTRL_MSG,
-    EXT_LINK_STATS_RESET,
-    EXT_LINK_DIAG,
+    EXT_ALINK_CTRL_MSG,
+    EXT_ALINK_STATS_RESET,
+    EXT_ALINK_DIAG,
 ];
 
 // -- WP SW2 --
 /// The sender's sub-commands (2.8, "Per build", roles 2 and 4): what a sender
 /// or fan-out lists.
 pub const SENDER_IDS: [u16; 8] = [
-    EXT_LINK_INFO,
-    EXT_LINK_STATUS,
-    EXT_LINK_CONFIG,
+    EXT_ALINK_INFO,
+    EXT_ALINK_STATUS,
+    EXT_ALINK_CONFIG,
     EXT_FRAME_COUNTER,
-    EXT_LINK_TX,
-    EXT_LINK_CTRL_MSG,
-    EXT_LINK_STATS_RESET,
-    EXT_LINK_DIAG,
+    EXT_ALINK_TX,
+    EXT_ALINK_CTRL_MSG,
+    EXT_ALINK_STATS_RESET,
+    EXT_ALINK_DIAG,
 ];
 
-/// A superframe is 32 frames (`link_protocol_spec.md` 6).
+/// A superframe is 32 frames (`alink_protocol_spec.md` 6).
 pub const SUPERFRAME_FRAMES: u64 = 32;
 
-/// 2.8.9's lead rule for `EXT_LINK_CTRL_MSG` OUT: the earliest frame a sender
+/// 2.8.9's lead rule for `EXT_ALINK_CTRL_MSG` OUT: the earliest frame a sender
 /// whose counter reads `sender_frame` accepts, the next superframe start plus
 /// one superframe. `None` past the counter's range.
 pub fn ctrl_msg_min_frame(sender_frame: u64) -> Option<u64> {
@@ -102,55 +102,55 @@ pub fn ctrl_msg_min_frame(sender_frame: u64) -> Option<u64> {
         .checked_add(SUPERFRAME_FRAMES)
 }
 
-/// What a link sub-command is called, for listings (the Terminal's extension
+/// What an alink sub-command is called, for listings (the Terminal's extension
 /// list); `None` outside the range. Always "audio link": "link" alone is DSPi
 /// Link.
-pub fn link_name(id: u16) -> Option<&'static str> {
+pub fn alink_name(id: u16) -> Option<&'static str> {
     Some(match id {
-        EXT_LINK_INFO => "audio link info",
-        EXT_LINK_STATUS => "audio link status",
-        EXT_LINK_CONFIG => "audio link config",
-        EXT_LINK_SLOTS => "audio link slots",
-        EXT_LINK_PHASE => "audio link phase",
+        EXT_ALINK_INFO => "audio link info",
+        EXT_ALINK_STATUS => "audio link status",
+        EXT_ALINK_CONFIG => "audio link config",
+        EXT_ALINK_SLOTS => "audio link slots",
+        EXT_ALINK_PHASE => "audio link phase",
         EXT_FRAME_COUNTER => "audio link frame counter",
         EXT_APPLY_AT_FRAME => "audio link apply at frame",
-        EXT_LINK_TX => "audio link transmit",
-        EXT_LINK_CTRL_MSG => "audio link control message",
-        EXT_LINK_STATS_RESET => "audio link stats reset",
-        EXT_LINK_DIAG => "audio link diagnostics",
+        EXT_ALINK_TX => "audio link transmit",
+        EXT_ALINK_CTRL_MSG => "audio link control message",
+        EXT_ALINK_STATS_RESET => "audio link stats reset",
+        EXT_ALINK_DIAG => "audio link diagnostics",
         _ => return None,
     })
 }
 
-/// `INPUT_SOURCE_LINK`: `REQ_SET_INPUT_SOURCE` with 7 selects the link input
+/// `INPUT_SOURCE_ALINK`: `REQ_SET_INPUT_SOURCE` with 7 selects the alink input
 /// (SYS2 5.1). Stock firmware refuses 7.
-pub const INPUT_SOURCE_LINK: u8 = 7;
+pub const INPUT_SOURCE_ALINK: u8 = 7;
 
-/// `EXT_NOTIFY_FEATURES` bit 2: the device sends [`NOTIFY_EVT_LINK_STATE`].
-pub const NOTIFY_FEAT_LINK_STATE: u32 = 1 << 2;
+/// `EXT_NOTIFY_FEATURES` bit 2: the device sends [`NOTIFY_EVT_ALINK_STATE`].
+pub const NOTIFY_FEAT_ALINK_STATE: u32 = 1 << 2;
 /// `EXT_NOTIFY_FEATURES` bit 3: the device sends [`NOTIFY_EVT_APPLY_RESULT`].
 pub const NOTIFY_FEAT_APPLY_RESULT: u32 = 1 << 3;
-/// `NOTIFY_EVT_LINK_STATE`: lock, loss, re-anchor.
-pub const NOTIFY_EVT_LINK_STATE: u8 = 0xE1;
+/// `NOTIFY_EVT_ALINK_STATE`: lock, loss, re-anchor.
+pub const NOTIFY_EVT_ALINK_STATE: u8 = 0xE1;
 /// `NOTIFY_EVT_APPLY_RESULT`: an apply-at-frame op completed.
 pub const NOTIFY_EVT_APPLY_RESULT: u8 = 0xE2;
 /// The firmware's rate limit on the link-state event, as for the clip event
 /// (the apply result is not limited).
-pub const LINK_STATE_MIN_INTERVAL_MS: u16 = 250;
+pub const ALINK_STATE_MIN_INTERVAL_MS: u16 = 250;
 
-/// Matrix inputs a unit takes from the link (`EXT_LINK_SLOTS`).
-pub const LINK_SLOTS: usize = 8;
+/// Matrix inputs a unit takes from the alink (`EXT_ALINK_SLOTS`).
+pub const ALINK_SLOTS: usize = 8;
 /// A slot byte that feeds silence to its matrix input.
-pub const LINK_SLOT_SILENT: u8 = 0xFF;
-/// The most channels a link frame carries (superframe byte 4: 1..64). A
+pub const ALINK_SLOT_SILENT: u8 = 0xFF;
+/// The most channels an alink frame carries (superframe byte 4: 1..64). A
 /// slot is below this or silent.
-pub const LINK_MAX_CHANNELS: u8 = 64;
-/// `hops_offset`'s range in `EXT_LINK_PHASE`.
+pub const ALINK_MAX_CHANNELS: u8 = 64;
+/// `hops_offset`'s range in `EXT_ALINK_PHASE`.
 pub const HOPS_OFFSET_MAX: i16 = 64;
 
-/// `EXT_LINK_INFO.features` bits (2.8.1).
+/// `EXT_ALINK_INFO.features` bits (2.8.1).
 pub mod feature {
-    /// `EXT_LINK_PHASE` mode 1.
+    /// `EXT_ALINK_PHASE` mode 1.
     pub const PHASE_LOCK: u32 = 1 << 0;
     pub const APPLY_AT_FRAME: u32 = 1 << 1;
     pub const REPEATER: u32 = 1 << 2;
@@ -190,9 +190,9 @@ fn byte(b: &[u8], i: usize) -> Option<u8> {
 
 // ------------------------------------------------------------ enums
 
-/// What the unit is on the link (`EXT_LINK_INFO` byte 0).
+/// What the unit is on the alink (`EXT_ALINK_INFO` byte 0).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LinkRole {
+pub enum AlinkRole {
     None,
     Receiver,
     Sender,
@@ -202,7 +202,7 @@ pub enum LinkRole {
     Other(u8),
 }
 
-impl LinkRole {
+impl AlinkRole {
     pub fn from_raw(b: u8) -> Self {
         match b {
             0 => Self::None,
@@ -237,25 +237,25 @@ impl LinkRole {
         }
     }
 
-    /// Whether the unit takes audio from a link (and so offers the link
+    /// Whether the unit takes audio from an alink (and so offers the alink
     /// input source).
     pub fn receives(self) -> bool {
         matches!(self, Self::Receiver | Self::Repeater)
     }
 }
 
-/// The receiver's lock state (`EXT_LINK_STATUS` byte 0, event 0xE1).
+/// The receiver's lock state (`EXT_ALINK_STATUS` byte 0, event 0xE1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LinkState {
+pub enum AlinkState {
     Off,
     Searching,
     Locked,
-    /// The link was lost: outputs muted, VCXO trim held.
+    /// The alink was lost: outputs muted, VCXO trim held.
     Holdover,
     Other(u8),
 }
 
-impl LinkState {
+impl AlinkState {
     pub fn from_raw(b: u8) -> Self {
         match b {
             0 => Self::Off,
@@ -289,7 +289,7 @@ impl LinkState {
 
 /// Why a link-state event was sent (event 0xE1 byte 6, 2.8.12).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LinkEventReason {
+pub enum AlinkEventReason {
     None,
     /// Anchored and playing.
     Locked,
@@ -299,7 +299,7 @@ pub enum LinkEventReason {
     HeaderErrors,
     CommaLost,
     /// Phase error beyond half a frame after a loss, or a new
-    /// `EXT_LINK_PHASE`: a short silence.
+    /// `EXT_ALINK_PHASE`: a short silence.
     Reanchor,
     /// VCXO authority exceeded.
     VcxoLimit,
@@ -308,7 +308,7 @@ pub enum LinkEventReason {
     Other(u8),
 }
 
-impl LinkEventReason {
+impl AlinkEventReason {
     pub fn from_raw(b: u8) -> Self {
         match b {
             0 => Self::None,
@@ -352,7 +352,7 @@ impl LinkEventReason {
         }
     }
 
-    /// The link went away: LOS, bad headers, a lost comma.
+    /// The alink went away: LOS, bad headers, a lost comma.
     pub fn is_loss(self) -> bool {
         matches!(self, Self::Los | Self::HeaderErrors | Self::CommaLost)
     }
@@ -362,7 +362,7 @@ impl LinkEventReason {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApplyOp {
     /// `EXT_APPLY_AT_FRAME`: cancel every pending op (`frame` ignored).
-    /// `EXT_LINK_CTRL_MSG`: no apply, clear a pending injection.
+    /// `EXT_ALINK_CTRL_MSG`: no apply, clear a pending injection.
     CancelAll,
     Mute,
     Unmute,
@@ -477,15 +477,15 @@ impl ApplyResult {
 
 // ------------------------------------------------------------ records
 
-/// `EXT_LINK_INFO` IN, 32 bytes.
+/// `EXT_ALINK_INFO` IN, 32 bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LinkInfo {
-    pub role: LinkRole,
+pub struct AlinkInfo {
+    pub role: AlinkRole,
     pub protocol_version: u8,
     /// b0 L1, b1 L2, b2 L3.
     pub class_mask: u8,
-    /// A sender's link outputs; 1 on a receiver.
-    pub max_links: u8,
+    /// A sender's alink outputs; 1 on a receiver.
+    pub max_alinks: u8,
     pub max_channels: u8,
     /// Matrix inputs a unit takes (8).
     pub slots_per_unit: u8,
@@ -501,22 +501,22 @@ pub struct LinkInfo {
     pub d_local_max: u16,
 }
 
-impl LinkInfo {
+impl AlinkInfo {
     pub const SIZE: usize = 32;
 
-    /// Whether the unit has a link this build can use: a role, and the
+    /// Whether the unit has an alink this build can use: a role, and the
     /// protocol version it speaks (2.8.13).
     pub fn usable(&self) -> bool {
-        self.role != LinkRole::None && self.protocol_version == LINK_PROTOCOL_VERSION
+        self.role != AlinkRole::None && self.protocol_version == ALINK_PROTOCOL_VERSION
     }
 
     pub fn decode(b: &[u8]) -> Option<Self> {
         let b = b.get(..Self::SIZE)?;
         Some(Self {
-            role: LinkRole::from_raw(byte(b, 0)?),
+            role: AlinkRole::from_raw(byte(b, 0)?),
             protocol_version: byte(b, 1)?,
             class_mask: byte(b, 2)?,
-            max_links: byte(b, 3)?,
+            max_alinks: byte(b, 3)?,
             max_channels: byte(b, 4)?,
             slots_per_unit: byte(b, 5)?,
             flags: u16_at(b, 6)?,
@@ -534,7 +534,7 @@ impl LinkInfo {
         b[0] = self.role.raw();
         b[1] = self.protocol_version;
         b[2] = self.class_mask;
-        b[3] = self.max_links;
+        b[3] = self.max_alinks;
         b[4] = self.max_channels;
         b[5] = self.slots_per_unit;
         b[6..8].copy_from_slice(&self.flags.to_le_bytes());
@@ -547,10 +547,10 @@ impl LinkInfo {
     }
 }
 
-/// `EXT_LINK_STATUS` IN, 52 bytes (2.8.2).
+/// `EXT_ALINK_STATUS` IN, 52 bytes (2.8.2).
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct LinkStatus {
-    pub state: LinkState,
+pub struct AlinkStatus {
+    pub state: AlinkState,
     /// 0 unknown, 1-3 = L1-L3.
     pub class: u8,
     /// 0 = 44.1, 1 = 48, 2 = 96 kHz, 0xFF unknown.
@@ -564,7 +564,7 @@ pub struct LinkStatus {
     /// mute, 1 rate change pending, 2 apply pending, 3 the sender has a live
     /// USB stream, 4 test pattern, 5 the sender is slaved.
     pub flags: u8,
-    /// The link frame counter F.
+    /// The alink frame counter F.
     pub frame: u64,
     pub lock_count: u32,
     pub loss_count: u32,
@@ -577,21 +577,21 @@ pub struct LinkStatus {
     pub fill_frames: u16,
     // -- WP SW2 --
     /// Offset 50 (LK45F): on a re-emitter (fan-out, role 4, or repeater, role
-    /// 3) the frames between receiving link frame F and sending it again, 0
+    /// 3) the frames between receiving alink frame F and sending it again, 0
     /// while it is not re-emitting; 0 on every other unit. The hub
-    /// compensates it through `EXT_LINK_PHASE.hops_offset` of the units
-    /// behind it (`link_protocol_spec.md` 7.2).
+    /// compensates it through `EXT_ALINK_PHASE.hops_offset` of the units
+    /// behind it (`alink_protocol_spec.md` 7.2).
     pub hop_delay_frames: u8,
 }
 
-impl LinkStatus {
+impl AlinkStatus {
     pub const SIZE: usize = 52;
 
     pub fn decode(b: &[u8]) -> Option<Self> {
         let b = b.get(..Self::SIZE)?;
         let f32_at = |i| u32_at(b, i).map(f32::from_bits);
         Some(Self {
-            state: LinkState::from_raw(byte(b, 0)?),
+            state: AlinkState::from_raw(byte(b, 0)?),
             class: byte(b, 1)?,
             rate_code: byte(b, 2)?,
             channels: byte(b, 3)?,
@@ -649,10 +649,10 @@ impl LinkStatus {
     }
 }
 
-/// `EXT_LINK_CONFIG` IN/OUT, 8 bytes. 0xFF in a pin field is "default" (rx)
+/// `EXT_ALINK_CONFIG` IN/OUT, 8 bytes. 0xFF in a pin field is "default" (rx)
 /// or "none" (the others).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LinkConfig {
+pub struct AlinkConfig {
     pub enable: bool,
     pub rx_pin: u8,
     /// 0 auto, 1-3.
@@ -664,7 +664,7 @@ pub struct LinkConfig {
     pub flags: u8,
 }
 
-impl LinkConfig {
+impl AlinkConfig {
     pub const SIZE: usize = 8;
 
     pub fn decode(b: &[u8]) -> Option<Self> {
@@ -694,41 +694,41 @@ impl LinkConfig {
     }
 }
 
-/// `EXT_LINK_SLOTS` IN/OUT: the link slot for each matrix input, or
-/// [`LINK_SLOT_SILENT`].
+/// `EXT_ALINK_SLOTS` IN/OUT: the audio link slot for each matrix input, or
+/// [`ALINK_SLOT_SILENT`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LinkSlots(pub [u8; LINK_SLOTS]);
+pub struct AlinkSlots(pub [u8; ALINK_SLOTS]);
 
-impl LinkSlots {
-    pub const SIZE: usize = LINK_SLOTS;
+impl AlinkSlots {
+    pub const SIZE: usize = ALINK_SLOTS;
     /// Every input silent.
-    pub const SILENT: LinkSlots = LinkSlots([LINK_SLOT_SILENT; LINK_SLOTS]);
+    pub const SILENT: AlinkSlots = AlinkSlots([ALINK_SLOT_SILENT; ALINK_SLOTS]);
 
     pub fn decode(b: &[u8]) -> Option<Self> {
-        b.get(..Self::SIZE)?.try_into().ok().map(LinkSlots)
+        b.get(..Self::SIZE)?.try_into().ok().map(AlinkSlots)
     }
 
     /// The default: slot `i` into input `i`.
-    pub const IDENTITY: LinkSlots = LinkSlots([0, 1, 2, 3, 4, 5, 6, 7]);
+    pub const IDENTITY: AlinkSlots = AlinkSlots([0, 1, 2, 3, 4, 5, 6, 7]);
 
-    /// Each slot below [`LINK_MAX_CHANNELS`] or silent; 64-0xFE are refused.
+    /// Each slot below [`ALINK_MAX_CHANNELS`] or silent; 64-0xFE are refused.
     /// A slot at or above the stream's channels is accepted and plays
     /// silence until the stream grows (2.8.4).
     pub fn is_valid(&self) -> bool {
         self.0
             .iter()
-            .all(|s| *s == LINK_SLOT_SILENT || *s < LINK_MAX_CHANNELS)
+            .all(|s| *s == ALINK_SLOT_SILENT || *s < ALINK_MAX_CHANNELS)
     }
 }
 
-/// `EXT_LINK_PHASE` mode: today's fill servo.
+/// `EXT_ALINK_PHASE` mode: today's fill servo.
 pub const PHASE_MODE_FILL: u8 = 0;
-/// `EXT_LINK_PHASE` mode: phase lock to the frame counter.
+/// `EXT_ALINK_PHASE` mode: phase lock to the frame counter.
 pub const PHASE_MODE_LOCK: u8 = 1;
 
-/// `EXT_LINK_PHASE` IN/OUT, 8 bytes.
+/// `EXT_ALINK_PHASE` IN/OUT, 8 bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LinkPhase {
+pub struct AlinkPhase {
     /// [`PHASE_MODE_FILL`] or [`PHASE_MODE_LOCK`].
     pub mode: u8,
     /// The unit's fixed delay in frames (D - hops).
@@ -741,11 +741,11 @@ pub struct LinkPhase {
     pub state: u8,
 }
 
-/// `EXT_LINK_PHASE.flags` bit 0: the effective delay is below `d_local_min`;
+/// `EXT_ALINK_PHASE.flags` bit 0: the effective delay is below `d_local_min`;
 /// the unit runs as the fill servo until a valid value is written.
 pub const PHASE_FLAG_D_BELOW_MIN: u8 = 1 << 0;
 
-impl LinkPhase {
+impl AlinkPhase {
     pub const SIZE: usize = 8;
 
     pub fn decode(b: &[u8]) -> Option<Self> {
@@ -766,8 +766,8 @@ impl LinkPhase {
 
     /// Whether a write would be accepted by a unit reporting `info` (2.8.5):
     /// mode 0 or 1, `hops_offset` within +-64, the effective delay within
-    /// [`LinkInfo::d_local_min`, `d_local_max`], no OUT flags.
-    pub fn is_valid_for(&self, info: &LinkInfo) -> bool {
+    /// [`AlinkInfo::d_local_min`, `d_local_max`], no OUT flags.
+    pub fn is_valid_for(&self, info: &AlinkInfo) -> bool {
         self.mode <= PHASE_MODE_LOCK
             && (-HOPS_OFFSET_MAX..=HOPS_OFFSET_MAX).contains(&self.hops_offset)
             && self.flags == 0
@@ -786,7 +786,7 @@ impl LinkPhase {
 /// `EXT_FRAME_COUNTER` IN, 16 bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FrameCounter {
-    /// The link frame F at the read.
+    /// The alink frame F at the read.
     pub frame: u64,
     /// The unit's time at the read, µs (wraps).
     pub time_us: u32,
@@ -816,14 +816,14 @@ impl FrameCounter {
 
 // -- fixup sw2x (F4) --
 /// Outputs an apply op may name (`OUT_DELAY`, `CLICK`): the 8 output slots and
-/// the PDM sub of an RP2350 (`sender_link.h` `SND_OP_OUTPUTS`).
+/// the PDM sub of an RP2350 (`sender_alink.h` `SND_OP_OUTPUTS`).
 pub const APPLY_OUTPUTS: u8 = 9;
 /// The longest `OUT_DELAY`, samples: `MAX_DELAY_SAMPLES - 1` on an RP2350
 /// (2.8.7, `SND_OP_DELAY_MAX`).
 pub const APPLY_DELAY_MAX: i16 = 2047;
 
-/// `EXT_APPLY_AT_FRAME` OUT (and the sender's `EXT_LINK_CTRL_MSG` apply):
-/// run `op` when the link frame reaches `frame`.
+/// `EXT_APPLY_AT_FRAME` OUT (and the sender's `EXT_ALINK_CTRL_MSG` apply):
+/// run `op` when the alink frame reaches `frame`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ApplyRequest {
     pub frame: u64,
@@ -856,7 +856,7 @@ impl ApplyRequest {
 
     /// Whether `arg` and `value` are in the op's range (2.8.7; unused ones
     /// 0). -- fixup sw2x (F4) -- as the sender checks them (DSPi-bofr
-    /// `sender_link.c` `snd_op_args_ok`): an output below [`APPLY_OUTPUTS`] for
+    /// `sender_alink.c` `snd_op_args_ok`): an output below [`APPLY_OUTPUTS`] for
     /// `OUT_DELAY` and `CLICK`, a delay of 0..=[`APPLY_DELAY_MAX`] samples (an
     /// RP2040 unit refuses above 1023 itself).
     pub fn args_valid(&self) -> bool {
@@ -874,7 +874,7 @@ impl ApplyRequest {
         }
     }
 
-    /// `EXT_LINK_CTRL_MSG` OUT on a sender: the apply plus the superframe's
+    /// `EXT_ALINK_CTRL_MSG` OUT on a sender: the apply plus the superframe's
     /// system flags.
     pub fn encode_ctrl_msg(&self, system_flags: u8) -> [u8; Self::SIZE] {
         let mut b = self.encode();
@@ -916,7 +916,7 @@ impl ApplyStatus {
     }
 }
 
-/// `EXT_LINK_CTRL_MSG` IN, 24 bytes: the last valid superframe received
+/// `EXT_ALINK_CTRL_MSG` IN, 24 bytes: the last valid superframe received
 /// (receiver) or sent (sender), 2.8.9. All zero before the first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SuperframeSnapshot {
@@ -965,10 +965,10 @@ impl SuperframeSnapshot {
     }
 }
 
-/// `EXT_LINK_TX` IN/OUT, 16 bytes: a sender's link outputs.
+/// `EXT_ALINK_TX` IN/OUT, 16 bytes: a sender's alink outputs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LinkTx {
-    pub link_mask: u16,
+pub struct AlinkTx {
+    pub alink_mask: u16,
     pub class: u8,
     pub channels: u8,
     pub rate_code: u8,
@@ -984,13 +984,13 @@ pub struct LinkTx {
     pub flags: u8,
 }
 
-impl LinkTx {
+impl AlinkTx {
     pub const SIZE: usize = 16;
 
     pub fn decode(b: &[u8]) -> Option<Self> {
         let b = b.get(..Self::SIZE)?;
         Some(Self {
-            link_mask: u16_at(b, 0)?,
+            alink_mask: u16_at(b, 0)?,
             class: byte(b, 2)?,
             channels: byte(b, 3)?,
             rate_code: byte(b, 4)?,
@@ -1006,7 +1006,7 @@ impl LinkTx {
 
     pub fn encode(&self) -> [u8; Self::SIZE] {
         let mut b = [0u8; Self::SIZE];
-        b[..2].copy_from_slice(&self.link_mask.to_le_bytes());
+        b[..2].copy_from_slice(&self.alink_mask.to_le_bytes());
         b[2..8].copy_from_slice(&[
             self.class,
             self.channels,
@@ -1023,31 +1023,31 @@ impl LinkTx {
     }
 }
 
-/// `EXT_LINK_STATS_RESET`'s payload: clear the counters.
-pub const LINK_STATS_RESET: [u8; 1] = [1];
+/// `EXT_ALINK_STATS_RESET`'s payload: clear the counters.
+pub const ALINK_STATS_RESET: [u8; 1] = [1];
 
 // ------------------------------------------------------------ events
 
 /// Event 0xE1: `[state, class, reason, 0, F_low32]` from byte 4 of the
 /// packet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LinkStateEvent {
-    pub state: LinkState,
+pub struct AlinkStateEvent {
+    pub state: AlinkState,
     pub class: u8,
-    pub reason: LinkEventReason,
-    /// The link frame's low 32 bits when it was sent.
+    pub reason: AlinkEventReason,
+    /// The alink frame's low 32 bits when it was sent.
     pub frame_low: u32,
 }
 
-impl LinkStateEvent {
+impl AlinkStateEvent {
     /// The payload size from byte 4.
     pub const PAYLOAD: usize = 8;
 
     pub fn decode(payload: &[u8]) -> Option<Self> {
         Some(Self {
-            state: LinkState::from_raw(byte(payload, 0)?),
+            state: AlinkState::from_raw(byte(payload, 0)?),
             class: byte(payload, 1)?,
-            reason: LinkEventReason::from_raw(byte(payload, 2)?),
+            reason: AlinkEventReason::from_raw(byte(payload, 2)?),
             frame_low: u32_at(payload, 4)?,
         })
     }
@@ -1064,7 +1064,7 @@ impl LinkStateEvent {
     /// Whether the event says the audio stopped: a loss reason, or any
     /// state but locked.
     pub fn is_loss(&self) -> bool {
-        self.reason.is_loss() || self.state != LinkState::Locked
+        self.reason.is_loss() || self.state != AlinkState::Locked
     }
 }
 
@@ -1097,34 +1097,34 @@ impl ApplyResultEvent {
     }
 }
 
-/// One of the link's notifications.
+/// One of the alink's notifications.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LinkEvent {
-    State(LinkStateEvent),
+pub enum AlinkEvent {
+    State(AlinkStateEvent),
     Apply(ApplyResultEvent),
 }
 
-/// The link's events behind their feature bits, as [`super::clip_event`]:
+/// The alink's events behind their feature bits, as [`super::clip_event`]:
 /// `notify_features` is the device's `EXT_NOTIFY_FEATURES` (`None` when it
 /// lacks or refused it), `id` and `payload` an `Event::Unknown`'s (bytes 4
 /// on). Only a device announcing bit 2 has its 0xE1 read, only bit 3 its
 /// 0xE2.
-pub fn link_event(notify_features: Option<u32>, id: u8, payload: &[u8]) -> Option<LinkEvent> {
+pub fn alink_event(notify_features: Option<u32>, id: u8, payload: &[u8]) -> Option<AlinkEvent> {
     let f = notify_features?;
     match id {
-        NOTIFY_EVT_LINK_STATE if f & NOTIFY_FEAT_LINK_STATE != 0 => {
-            LinkStateEvent::decode(payload).map(LinkEvent::State)
+        NOTIFY_EVT_ALINK_STATE if f & NOTIFY_FEAT_ALINK_STATE != 0 => {
+            AlinkStateEvent::decode(payload).map(AlinkEvent::State)
         }
         NOTIFY_EVT_APPLY_RESULT if f & NOTIFY_FEAT_APPLY_RESULT != 0 => {
-            ApplyResultEvent::decode(payload).map(LinkEvent::Apply)
+            ApplyResultEvent::decode(payload).map(AlinkEvent::Apply)
         }
         _ => None,
     }
 }
 
 // -- WP SW3 --
-/// The trim scan at link-up from `EXT_LINK_DIAG` (2.8.11, offsets 32-39): the
-/// sampling trims that decoded clean and the one in use. A healthy link has a
+/// The trim scan at link-up from `EXT_ALINK_DIAG` (2.8.11, offsets 32-39): the
+/// sampling trims that decoded clean and the one in use. A healthy alink has a
 /// clean range centred on 0 within one step. The DIAG layout is versioned by
 /// byte 0, so only version 1 (a receiver's) is read; a sender build (`0x81`)
 /// or a later layout gives `None`.
@@ -1146,9 +1146,9 @@ impl TrimScan {
     /// The DIAG layout this decodes.
     pub const DIAG_VERSION: u8 = 1;
 
-    /// From a whole `EXT_LINK_DIAG` reply; `None` when short or not version 1.
+    /// From a whole `EXT_ALINK_DIAG` reply; `None` when short or not version 1.
     pub fn decode_diag(b: &[u8]) -> Option<Self> {
-        let b = b.get(..LINK_DIAG_SIZE)?;
+        let b = b.get(..ALINK_DIAG_SIZE)?;
         if byte(b, 0)? != Self::DIAG_VERSION {
             return None;
         }
@@ -1179,7 +1179,7 @@ mod tests_wp_sw3 {
 
     #[test]
     fn wp_sw3_trim_scan_from_diag_version_1_only() {
-        let mut d = vec![0u8; LINK_DIAG_SIZE];
+        let mut d = vec![0u8; ALINK_DIAG_SIZE];
         d[0] = 1;
         d[32] = (-3i8) as u8;
         d[33] = 4;
@@ -1207,24 +1207,24 @@ mod tests_wp_sw1 {
 
     #[test]
     fn wp_sw1_ids_and_bits_are_the_specs() {
-        assert_eq!(LINK_IDS.first(), Some(&0x8000));
-        assert_eq!(LINK_IDS.last(), Some(&0x800A));
-        assert!(LINK_IDS.windows(2).all(|w| w[1] == w[0] + 1));
-        for id in LINK_IDS {
-            assert!(link_name(id).is_some());
-            assert_eq!(super::super::name(id), link_name(id).unwrap());
+        assert_eq!(ALINK_IDS.first(), Some(&0x8000));
+        assert_eq!(ALINK_IDS.last(), Some(&0x800A));
+        assert!(ALINK_IDS.windows(2).all(|w| w[1] == w[0] + 1));
+        for id in ALINK_IDS {
+            assert!(alink_name(id).is_some());
+            assert_eq!(super::super::name(id), alink_name(id).unwrap());
             // -- fixup sw1 (F2) -- never a bare "link" (that is DSPi Link)
-            assert!(link_name(id).unwrap().starts_with("audio link "));
+            assert!(alink_name(id).unwrap().starts_with("audio link "));
         }
-        // A receiver lists all but the sender's EXT_LINK_TX.
-        assert!(!RECEIVER_IDS.contains(&EXT_LINK_TX));
-        assert_eq!(RECEIVER_IDS.len(), LINK_IDS.len() - 1);
-        assert_eq!(link_name(0x800B), None);
+        // A receiver lists all but the sender's EXT_ALINK_TX.
+        assert!(!RECEIVER_IDS.contains(&EXT_ALINK_TX));
+        assert_eq!(RECEIVER_IDS.len(), ALINK_IDS.len() - 1);
+        assert_eq!(alink_name(0x800B), None);
         assert_eq!(super::super::name(0x800B), "experimental");
-        assert_eq!(INPUT_SOURCE_LINK, 7);
-        assert_eq!((NOTIFY_FEAT_LINK_STATE, NOTIFY_FEAT_APPLY_RESULT), (4, 8));
+        assert_eq!(INPUT_SOURCE_ALINK, 7);
+        assert_eq!((NOTIFY_FEAT_ALINK_STATE, NOTIFY_FEAT_APPLY_RESULT), (4, 8));
         assert_eq!(
-            (NOTIFY_EVT_LINK_STATE, NOTIFY_EVT_APPLY_RESULT),
+            (NOTIFY_EVT_ALINK_STATE, NOTIFY_EVT_APPLY_RESULT),
             (0xE1, 0xE2)
         );
         // The fork's clip event keeps its own bit and id.
@@ -1239,9 +1239,9 @@ mod tests_wp_sw1 {
 
     #[test]
     fn wp_sw1_info_example_round_trips() {
-        let i = LinkInfo::decode(&INFO_EXAMPLE).unwrap();
-        assert_eq!(i.role, LinkRole::Receiver);
-        assert_eq!((i.protocol_version, i.class_mask, i.max_links), (1, 7, 1));
+        let i = AlinkInfo::decode(&INFO_EXAMPLE).unwrap();
+        assert_eq!(i.role, AlinkRole::Receiver);
+        assert_eq!((i.protocol_version, i.class_mask, i.max_alinks), (1, 7, 1));
         assert_eq!((i.max_channels, i.slots_per_unit), (64, 8));
         assert_eq!((i.rx_pin, i.tx_pin), (0, 0xFF));
         assert_eq!(
@@ -1251,28 +1251,28 @@ mod tests_wp_sw1 {
         assert_eq!((i.d_local_min, i.d_local_max), (112, 1024));
         assert!(i.usable());
         assert_eq!(i.encode(), INFO_EXAMPLE);
-        assert_eq!(LinkInfo::decode(&INFO_EXAMPLE[..31]), None);
-        // Role 0 or another protocol version: no link.
+        assert_eq!(AlinkInfo::decode(&INFO_EXAMPLE[..31]), None);
+        // Role 0 or another protocol version: no alink.
         assert!(
-            !LinkInfo {
-                role: LinkRole::None,
+            !AlinkInfo {
+                role: AlinkRole::None,
                 ..i
             }
             .usable()
         );
         assert!(
-            !LinkInfo {
+            !AlinkInfo {
                 protocol_version: 2,
                 ..i
             }
             .usable()
         );
-        assert!(LinkRole::Receiver.receives() && LinkRole::Repeater.receives());
-        assert!(!LinkRole::Sender.receives());
+        assert!(AlinkRole::Receiver.receives() && AlinkRole::Repeater.receives());
+        assert!(!AlinkRole::Sender.receives());
         for raw in 0..=255u8 {
-            assert_eq!(LinkRole::from_raw(raw).raw(), raw);
-            assert_eq!(LinkState::from_raw(raw).raw(), raw);
-            assert_eq!(LinkEventReason::from_raw(raw).raw(), raw);
+            assert_eq!(AlinkRole::from_raw(raw).raw(), raw);
+            assert_eq!(AlinkState::from_raw(raw).raw(), raw);
+            assert_eq!(AlinkEventReason::from_raw(raw).raw(), raw);
             assert_eq!(ApplyOp::from_raw(raw).raw(), raw);
             assert_eq!(ApplyResult::from_raw(raw).raw(), raw);
         }
@@ -1280,8 +1280,8 @@ mod tests_wp_sw1 {
 
     #[test]
     fn wp_sw1_status_layout() {
-        let s = LinkStatus {
-            state: LinkState::Locked,
+        let s = AlinkStatus {
+            state: AlinkState::Locked,
             class: 1,
             rate_code: 1,
             channels: 8,
@@ -1308,8 +1308,8 @@ mod tests_wp_sw1 {
         assert_eq!(&b[36..40], &[6, 0, 0, 0]);
         assert_eq!(f32::from_le_bytes(b[40..44].try_into().unwrap()), -12.5);
         assert_eq!(&b[48..52], &[96, 0, 0, 0]);
-        assert_eq!(LinkStatus::decode(&b), Some(s));
-        assert_eq!(LinkStatus::decode(&b[..51]), None);
+        assert_eq!(AlinkStatus::decode(&b), Some(s));
+        assert_eq!(AlinkStatus::decode(&b[..51]), None);
     }
 
     // -- fixup sw2x --
@@ -1343,8 +1343,8 @@ mod tests_wp_sw1 {
         assert_eq!(ctrl_msg_min_frame(1), Some(64));
         assert_eq!(ctrl_msg_min_frame(32), Some(64));
         assert_eq!(ctrl_msg_min_frame(u64::MAX), None);
-        assert!(SENDER_IDS.iter().all(|id| LINK_IDS.contains(id)));
-        assert!(!SENDER_IDS.contains(&EXT_LINK_SLOTS) && !RECEIVER_IDS.contains(&EXT_LINK_TX));
+        assert!(SENDER_IDS.iter().all(|id| ALINK_IDS.contains(id)));
+        assert!(!SENDER_IDS.contains(&EXT_ALINK_SLOTS) && !RECEIVER_IDS.contains(&EXT_ALINK_TX));
     }
 
     // -- WP SW2 --
@@ -1353,68 +1353,68 @@ mod tests_wp_sw1 {
     /// 3 frames late, behind one re-emitter, reports hops 1 and 3.
     #[test]
     fn wp_sw2_status_offset_50_is_the_hop_delay() {
-        let mut b = [0u8; LinkStatus::SIZE];
+        let mut b = [0u8; AlinkStatus::SIZE];
         b[0] = 2;
         b[4] = 1;
         b[50] = 3;
         b[51] = 0xAA;
-        let s = LinkStatus::decode(&b).unwrap();
+        let s = AlinkStatus::decode(&b).unwrap();
         assert_eq!((s.hops, s.hop_delay_frames), (1, 3));
         let e = s.encode();
         assert_eq!(e[50], 3);
         assert_eq!(e[51], 0, "reserved reads 0 in what the fake sends");
         // Still 52 bytes: a 51-byte reply has no hop delay and is short.
-        assert_eq!(LinkStatus::decode(&b[..51]), None);
+        assert_eq!(AlinkStatus::decode(&b[..51]), None);
     }
 
     #[test]
     fn wp_sw1_slots_and_phase() {
-        assert!(LinkSlots([4, 5, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]).is_valid());
+        assert!(AlinkSlots([4, 5, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]).is_valid());
         // At or above C is fine; 64..0xFE is refused.
-        assert!(LinkSlots([63; 8]).is_valid());
-        assert!(!LinkSlots([64, 0, 0, 0, 0, 0, 0, 0]).is_valid());
-        assert!(!LinkSlots([0xFE; 8]).is_valid());
-        assert!(LinkSlots::SILENT.is_valid() && LinkSlots::IDENTITY.is_valid());
-        assert_eq!(LinkSlots::decode(&LinkSlots::IDENTITY.0[..7]), None);
+        assert!(AlinkSlots([63; 8]).is_valid());
+        assert!(!AlinkSlots([64, 0, 0, 0, 0, 0, 0, 0]).is_valid());
+        assert!(!AlinkSlots([0xFE; 8]).is_valid());
+        assert!(AlinkSlots::SILENT.is_valid() && AlinkSlots::IDENTITY.is_valid());
+        assert_eq!(AlinkSlots::decode(&AlinkSlots::IDENTITY.0[..7]), None);
 
         // 2.8.5's example.
         let ex = [0x01, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x02];
-        let p = LinkPhase::decode(&ex).unwrap();
+        let p = AlinkPhase::decode(&ex).unwrap();
         assert_eq!(
             (p.mode, p.d_local, p.hops_offset, p.flags, p.state),
             (1, 128, 0, 0, 2)
         );
         assert_eq!(p.encode(), ex);
-        let info = LinkInfo::decode(&INFO_EXAMPLE).unwrap();
+        let info = AlinkInfo::decode(&INFO_EXAMPLE).unwrap();
         assert!(p.is_valid_for(&info));
-        let bad = |q: LinkPhase| !q.is_valid_for(&info);
-        assert!(bad(LinkPhase { mode: 2, ..p }));
-        assert!(bad(LinkPhase { d_local: 111, ..p }));
-        assert!(bad(LinkPhase { d_local: 1025, ..p }));
-        assert!(bad(LinkPhase {
+        let bad = |q: AlinkPhase| !q.is_valid_for(&info);
+        assert!(bad(AlinkPhase { mode: 2, ..p }));
+        assert!(bad(AlinkPhase { d_local: 111, ..p }));
+        assert!(bad(AlinkPhase { d_local: 1025, ..p }));
+        assert!(bad(AlinkPhase {
             hops_offset: 65,
             ..p
         }));
-        assert!(bad(LinkPhase {
+        assert!(bad(AlinkPhase {
             flags: PHASE_FLAG_D_BELOW_MIN,
             ..p
         }));
         // The offset counts: 120 - 8 = 112 is in, 112 - 1 is not.
         assert!(
-            LinkPhase {
+            AlinkPhase {
                 d_local: 120,
                 hops_offset: -8,
                 ..p
             }
             .is_valid_for(&info)
         );
-        assert!(bad(LinkPhase {
+        assert!(bad(AlinkPhase {
             d_local: 112,
             hops_offset: -1,
             ..p
         }));
         assert_eq!(
-            LinkPhase {
+            AlinkPhase {
                 hops_offset: -1,
                 ..p
             }
@@ -1495,7 +1495,7 @@ mod tests_wp_sw1 {
 
         // 2.8.3's example.
         let ex = [0x01, 0x00, 0x01, 0x16, 0x15, 0xff, 0x01, 0x00];
-        let c = LinkConfig::decode(&ex).unwrap();
+        let c = AlinkConfig::decode(&ex).unwrap();
         assert!(c.enable);
         assert_eq!(
             (c.rx_pin, c.class, c.tx_pin, c.los_pin, c.txdis_pin, c.flags),
@@ -1511,8 +1511,8 @@ mod tests_wp_sw1 {
         assert_eq!(FrameCounter::decode(&c.encode()), Some(c));
         assert_eq!(FrameCounter::decode(&c.encode()[..15]), None);
 
-        let tx = LinkTx {
-            link_mask: 0x0003,
+        let tx = AlinkTx {
+            alink_mask: 0x0003,
             class: 1,
             channels: 8,
             rate_code: 1,
@@ -1524,7 +1524,7 @@ mod tests_wp_sw1 {
             usb_alt: 3,
             flags: 0,
         };
-        assert_eq!(LinkTx::decode(&tx.encode()), Some(tx));
+        assert_eq!(AlinkTx::decode(&tx.encode()), Some(tx));
     }
 
     #[test]
@@ -1533,15 +1533,15 @@ mod tests_wp_sw1 {
         let p = [
             0x02, 0xe1, 0x00, 0x00, 0x02, 0x01, 0x01, 0x00, 0x40, 0x42, 0x0f, 0x00,
         ];
-        let want = LinkStateEvent {
-            state: LinkState::Locked,
+        let want = AlinkStateEvent {
+            state: AlinkState::Locked,
             class: 1,
-            reason: LinkEventReason::Locked,
+            reason: AlinkEventReason::Locked,
             frame_low: 1_000_000,
         };
         assert_eq!(
-            link_event(Some(4), 0xE1, &p[4..]),
-            Some(LinkEvent::State(want))
+            alink_event(Some(4), 0xE1, &p[4..]),
+            Some(AlinkEvent::State(want))
         );
         assert_eq!(want.encode(), p[4..]);
         assert!(!want.is_loss());
@@ -1555,47 +1555,47 @@ mod tests_wp_sw1 {
             frame_low: 1_002_400,
         };
         assert_eq!(
-            link_event(Some(8), 0xE2, &p[4..]),
-            Some(LinkEvent::Apply(want))
+            alink_event(Some(8), 0xE2, &p[4..]),
+            Some(AlinkEvent::Apply(want))
         );
         assert_eq!(want.encode(), p[4..]);
 
-        let lost = LinkStateEvent {
-            state: LinkState::Holdover,
+        let lost = AlinkStateEvent {
+            state: AlinkState::Holdover,
             class: 1,
-            reason: LinkEventReason::Los,
+            reason: AlinkEventReason::Los,
             frame_low: 0,
         };
         let q = lost.encode();
         assert!(lost.is_loss());
         // No bit, the other bit, no features: nothing.
-        assert_eq!(link_event(Some(8), 0xE1, &q), None);
-        assert_eq!(link_event(Some(2), 0xE1, &q), None);
-        assert_eq!(link_event(None, 0xE1, &q), None);
-        assert_eq!(link_event(Some(4), 0xE2, &p[4..]), None);
-        // The clip id is not a link event.
-        assert_eq!(link_event(Some(u32::MAX), 0xE0, &q), None);
+        assert_eq!(alink_event(Some(8), 0xE1, &q), None);
+        assert_eq!(alink_event(Some(2), 0xE1, &q), None);
+        assert_eq!(alink_event(None, 0xE1, &q), None);
+        assert_eq!(alink_event(Some(4), 0xE2, &p[4..]), None);
+        // The clip id is not an alink event.
+        assert_eq!(alink_event(Some(u32::MAX), 0xE0, &q), None);
         // Short: nothing, never a panic.
-        assert_eq!(link_event(Some(u32::MAX), 0xE1, &q[..7]), None);
+        assert_eq!(alink_event(Some(u32::MAX), 0xE1, &q[..7]), None);
     }
 
     proptest! {
         #[test]
         fn proptest_wp_sw1_decoders_never_panic(b in proptest::collection::vec(any::<u8>(), 0..80)) {
-            let _ = LinkInfo::decode(&b);
-            let _ = LinkStatus::decode(&b);
-            let _ = LinkConfig::decode(&b);
-            let _ = LinkSlots::decode(&b);
-            let _ = LinkPhase::decode(&b);
+            let _ = AlinkInfo::decode(&b);
+            let _ = AlinkStatus::decode(&b);
+            let _ = AlinkConfig::decode(&b);
+            let _ = AlinkSlots::decode(&b);
+            let _ = AlinkPhase::decode(&b);
             let _ = FrameCounter::decode(&b);
             let _ = ApplyRequest::decode(&b).map(|a| a.args_valid());
             let _ = ApplyStatus::decode(&b);
             let _ = SuperframeSnapshot::decode(&b);
-            let _ = LinkTx::decode(&b);
+            let _ = AlinkTx::decode(&b);
             for id in 0xE0..=0xE3u8 {
-                let _ = link_event(Some(u32::MAX), id, &b);
+                let _ = alink_event(Some(u32::MAX), id, &b);
             }
-            prop_assert_eq!(LinkStatus::decode(&b).is_some(), b.len() >= LinkStatus::SIZE);
+            prop_assert_eq!(AlinkStatus::decode(&b).is_some(), b.len() >= AlinkStatus::SIZE);
         }
     }
 }

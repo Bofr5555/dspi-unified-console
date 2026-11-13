@@ -1,6 +1,6 @@
 //! The hub's system model for the audio link (WP SW2, SYS2 section 7): the
 //! installation ([`model`]), the alignment engine ([`align`]), scenes applied at
-//! a frame ([`scene`]) and link alarms ([`alarms`]), kept in the hub's store and
+//! a frame ([`scene`]) and alink alarms ([`alarms`]), kept in the hub's store and
 //! served over Link (`system.*`, `docs/integrator/audio-link.md`).
 //!
 //! The pure parts take what the hub read and say what to write; `run` reads and
@@ -25,7 +25,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
 
-use dspi_proto::ext::audio_link::{LinkEvent, link_event};
+use dspi_proto::ext::alink::{AlinkEvent, alink_event};
 use serde_json::json;
 
 use crate::error::HubError;
@@ -75,7 +75,7 @@ struct State {
     /// whatever handle it has now.
     events: BTreeMap<String, bool>,
     alignment: Option<Alignment>,
-    /// Units the hub has just re-anchored itself (a new `EXT_LINK_PHASE`), by
+    /// Units the hub has just re-anchored itself (a new `EXT_ALINK_PHASE`), by
     /// serial: their `REANCHOR` event before this is no alarm.
     reanchoring: BTreeMap<String, Instant>,
 }
@@ -284,7 +284,7 @@ impl SystemShared {
     /// Whether a packet is one [`Self::on_packet`] looks at (0xE1), so the
     /// caller fetches the device's serial only for those.
     pub(crate) fn wants(packet: &[u8]) -> bool {
-        packet.get(1) == Some(&dspi_proto::ext::audio_link::NOTIFY_EVT_LINK_STATE)
+        packet.get(1) == Some(&dspi_proto::ext::alink::NOTIFY_EVT_ALINK_STATE)
     }
 
     /// A packet from the device with this serial (the relay's tap, fixup sw2x
@@ -302,8 +302,8 @@ impl SystemShared {
         let changes = {
             let mut s = self.lock();
             let events = s.events.get(serial).copied().unwrap_or(false);
-            let features = events.then_some(dspi_proto::ext::audio_link::NOTIFY_FEAT_LINK_STATE);
-            let Some(LinkEvent::State(e)) = link_event(features, id, payload) else {
+            let features = events.then_some(dspi_proto::ext::alink::NOTIFY_FEAT_ALINK_STATE);
+            let Some(AlinkEvent::State(e)) = alink_event(features, id, payload) else {
                 return;
             };
             let Some(unit) = element_of(&s.model, serial) else {
@@ -375,7 +375,7 @@ mod tests_wp_sw2 {
         let a = s.alarms();
         assert_eq!(
             (a.len(), a[0].code.as_str(), a[0].subject.as_str()),
-            (1, "link_lost", "B")
+            (1, "alink_lost", "B")
         );
         // A device that does not announce the event, or not in the model: nothing.
         s.on_packet(&relay, "S-C", &lost);

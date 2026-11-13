@@ -2,11 +2,11 @@
 //! 2.8): the unit's role and limits, its lock status, the slots it takes, the
 //! phase-lock mode, the frame counter and apply-at-frame, over `DspiCore`'s
 //! calls of the same names. Not DSPi Link ([`crate::link`]). A unit without
-//! the link answers `unsupported` with nothing sent; `audioLinkInfo` answers
+//! the alink answers `unsupported` with nothing sent; `alinkInfo` answers
 //! null.
 //!
-//! The demo opens as a unit receiving the link with `open`'s
-//! `{"kind": "demo", "audioLink": true}`.
+//! The demo opens as a unit receiving the alink with `open`'s
+//! `{"kind": "demo", "alink": true}`.
 
 use dspi_core::DspiCore;
 use serde::Deserialize;
@@ -17,20 +17,20 @@ use crate::calls::{CallError, tidy};
 
 type CallResult = Result<Value, CallError>;
 
-/// `setAudioLinkSlots`'s parameters.
+/// `setAlinkSlots`'s parameters.
 #[derive(Debug, Deserialize)]
 pub struct SlotsParams {
-    /// 8 values: a link channel 0..63, or 255 for silence.
+    /// 8 values: an audio link channel 0..63, or 255 for silence.
     pub slots: Vec<u8>,
 }
 
-/// `setAudioLinkPhase`'s parameters.
+/// `setAlinkPhase`'s parameters.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PhaseParams {
     /// 0 fill servo, 1 phase lock.
     pub mode: u8,
-    /// The fixed delay, link frames.
+    /// The fixed delay, alink frames.
     pub d_local: u16,
     /// A trim of -64..64; normally 0.
     #[serde(default)]
@@ -40,7 +40,7 @@ pub struct PhaseParams {
 /// `applyAtFrame`'s parameters.
 #[derive(Debug, Deserialize)]
 pub struct ApplyParams {
-    /// The link frame.
+    /// The alink frame.
     pub frame: u64,
     /// 0 cancel all .. 8 sync pulse.
     pub op: u8,
@@ -68,20 +68,21 @@ fn done(r: dspi_core::Result<()>) -> CallResult {
 /// Dispatch one of this module's methods; `None` for another method.
 pub fn dispatch(core: &DspiCore, method: &str, params: Value) -> Option<CallResult> {
     Some(match method {
-        "audioLinkInfo" => record(core.audio_link_info()),
-        "fetchAudioLinkInfo" => record(core.fetch_audio_link_info()),
-        "audioLinkStatus" => record(core.fetch_audio_link_status()),
-        "audioLinkSlots" => record(core.fetch_audio_link_slots()),
-        "setAudioLinkSlots" => parse::<SlotsParams>(params, method)
-            .and_then(|s| done(core.set_audio_link_slots(s.slots))),
-        "audioLinkPhase" => record(core.fetch_audio_link_phase()),
-        "setAudioLinkPhase" => parse::<PhaseParams>(params, method)
-            .and_then(|x| done(core.set_audio_link_phase(x.mode, x.d_local, x.hops_offset))),
-        "audioLinkFrameCounter" => record(core.fetch_audio_link_frame_counter()),
+        "alinkInfo" => record(core.alink_info()),
+        "fetchAlinkInfo" => record(core.fetch_alink_info()),
+        "alinkStatus" => record(core.fetch_alink_status()),
+        "alinkSlots" => record(core.fetch_alink_slots()),
+        "setAlinkSlots" => {
+            parse::<SlotsParams>(params, method).and_then(|s| done(core.set_alink_slots(s.slots)))
+        }
+        "alinkPhase" => record(core.fetch_alink_phase()),
+        "setAlinkPhase" => parse::<PhaseParams>(params, method)
+            .and_then(|x| done(core.set_alink_phase(x.mode, x.d_local, x.hops_offset))),
+        "alinkFrameCounter" => record(core.fetch_alink_frame_counter()),
         "applyAtFrame" => parse::<ApplyParams>(params, method)
             .and_then(|a| done(core.apply_at_frame(a.frame, a.op, a.arg, a.value))),
         "applyAtFrameStatus" => record(core.fetch_apply_at_frame_status()),
-        "resetAudioLinkStats" => done(core.reset_audio_link_stats()),
+        "resetAlinkStats" => done(core.reset_alink_stats()),
         _ => return None,
     })
 }
@@ -112,22 +113,22 @@ mod tests_wp_sw1 {
     fn wp_sw1_the_link_calls_on_the_demo_with_the_link() {
         guard::reset_for_test();
         let h = session_new().unwrap();
-        ok(h, "open", json!({ "kind": "demo", "audioLink": true }));
-        let info = ok(h, "audioLinkInfo", Value::Null);
+        ok(h, "open", json!({ "kind": "demo", "alink": true }));
+        let info = ok(h, "alinkInfo", Value::Null);
         assert_eq!(info["role"], "receiver", "{info}");
         // -- fixup wb8 -- FIXS1: the default 4 ms option's range, 257..399
         assert_eq!(info["dLocalMin"], 257);
         assert_eq!(info["dLocalMax"], 399);
-        assert_eq!(ok(h, "audioLinkStatus", Value::Null)["state"], "locked");
+        assert_eq!(ok(h, "alinkStatus", Value::Null)["state"], "locked");
         ok(
             h,
-            "setAudioLinkSlots",
+            "setAlinkSlots",
             json!({ "slots": [6, 7, 255, 255, 255, 255, 255, 255] }),
         );
-        assert_eq!(ok(h, "audioLinkSlots", Value::Null)[0], 6);
-        ok(h, "setAudioLinkPhase", json!({ "mode": 1, "dLocal": 320 }));
-        assert_eq!(ok(h, "audioLinkPhase", Value::Null)["dLocal"], 320);
-        let f = ok(h, "audioLinkFrameCounter", Value::Null)["frame"]
+        assert_eq!(ok(h, "alinkSlots", Value::Null)[0], 6);
+        ok(h, "setAlinkPhase", json!({ "mode": 1, "dLocal": 320 }));
+        assert_eq!(ok(h, "alinkPhase", Value::Null)["dLocal"], 320);
+        let f = ok(h, "alinkFrameCounter", Value::Null)["frame"]
             .as_u64()
             .unwrap();
         ok(
@@ -136,10 +137,10 @@ mod tests_wp_sw1 {
             json!({ "frame": f + 48_000_000, "op": 1 }),
         );
         assert_eq!(ok(h, "applyAtFrameStatus", Value::Null)["pending"], 1);
-        ok(h, "resetAudioLinkStats", Value::Null);
+        ok(h, "resetAlinkStats", Value::Null);
         let bad = run(h, "applyAtFrame", json!({ "frame": 1, "op": 99 }));
         assert_eq!(bad["code"], "invalid", "{bad}");
-        let bad = run(h, "setAudioLinkPhase", json!({ "mode": "x" }));
+        let bad = run(h, "setAlinkPhase", json!({ "mode": "x" }));
         assert_eq!(bad["code"], "invalid", "{bad}");
     }
 
@@ -148,8 +149,8 @@ mod tests_wp_sw1 {
         guard::reset_for_test();
         let h = session_new().unwrap();
         ok(h, "open", json!({ "kind": "demo" }));
-        assert_eq!(ok(h, "audioLinkInfo", Value::Null), Value::Null);
-        let r = run(h, "audioLinkStatus", Value::Null);
+        assert_eq!(ok(h, "alinkInfo", Value::Null), Value::Null);
+        let r = run(h, "alinkStatus", Value::Null);
         assert_eq!(r["code"], "unsupported", "{r}");
     }
 }

@@ -24,9 +24,9 @@ use std::time::{Duration, Instant};
 
 use dspi_core::DspiCore;
 use dspi_hub::{AccessMode, Hub, HubConfig, NetworkConfig, Role};
-use dspi_proto::ext::audio_link::LinkRole;
+use dspi_proto::ext::alink::AlinkRole;
 use dspi_proto::generated::opcodes as op;
-use dspi_transport::fake::AudioLinkSetup;
+use dspi_transport::fake::AlinkSetup;
 use dspi_transport::{
     DeviceDescriptor, FakeDevice, InRead, NotificationSource, Transport, TransportCaps,
     TransportError,
@@ -48,7 +48,7 @@ fn store_dir() -> PathBuf {
     dir
 }
 
-/// Every OUT the unit without the link was sent: (opcode, wValue, payload).
+/// Every OUT the unit without the alink was sent: (opcode, wValue, payload).
 type Outs = Arc<Mutex<Vec<(u8, u16, Vec<u8>)>>>;
 
 /// The demo device (no audio link), recording its OUTs and its preset loads.
@@ -95,7 +95,7 @@ impl Transport for Plain {
 }
 
 /// The installation: sender, fan-out, units A, B (behind the fan-out), the
-/// K340-like unit K without the link, and unit D, which is never attached.
+/// K340-like unit K without the alink, and unit D, which is never attached.
 fn model(with_d: bool) -> Value {
     let mut units = vec![
         json!({"id": "A", "name": "Main left", "serial": "HW-A", "room": "main", "upstream": "tx", "output": 0}),
@@ -139,20 +139,20 @@ fn hub(access: AccessMode, with_d: bool) -> (Hub, Outs) {
         ..HubConfig::in_process("HWLK1F hub")
     })
     .unwrap();
-    let at = |role, hops, hop_delay_frames| AudioLinkSetup {
+    let at = |role, hops, hop_delay_frames| AlinkSetup {
         role,
         hops,
         hop_delay_frames,
-        ..AudioLinkSetup::default()
+        ..AlinkSetup::default()
     };
     for (serial, setup) in [
-        ("HW-TX", at(LinkRole::Sender, 0, 0)),
-        ("HW-FAN", at(LinkRole::FanOut, 0, 3)),
-        ("HW-A", at(LinkRole::Receiver, 0, 0)),
-        ("HW-B", at(LinkRole::Receiver, 1, 0)),
+        ("HW-TX", at(AlinkRole::Sender, 0, 0)),
+        ("HW-FAN", at(AlinkRole::FanOut, 0, 3)),
+        ("HW-A", at(AlinkRole::Receiver, 0, 0)),
+        ("HW-B", at(AlinkRole::Receiver, 1, 0)),
     ] {
         hub.attach(
-            Box::new(FakeDevice::demo_audio_link_as(setup).with_serial(serial)),
+            Box::new(FakeDevice::demo_alink_as(setup).with_serial(serial)),
             0,
         )
         .unwrap();
@@ -186,10 +186,10 @@ fn connect(hub: &Hub) -> Arc<DspiCore> {
     core
 }
 
-fn fresh_view(core: &DspiCore) -> dspi_core::link::LinkSystemView {
+fn fresh_view(core: &DspiCore) -> dspi_core::link::AlinkSystemView {
     let start = Instant::now();
     loop {
-        let v = core.link_system_view().unwrap();
+        let v = core.alink_system_view().unwrap();
         if !v.stale {
             return v;
         }
@@ -202,7 +202,7 @@ fn f32_at(b: &[u8]) -> f32 {
     f32::from_le_bytes(b[..4].try_into().unwrap())
 }
 
-/// F1: the hub tells a firmware without the link from an unread one, and
+/// F1: the hub tells a firmware without the alink from an unread one, and
 /// every client says so: not Unknown, not a Receiver, not among the locked.
 #[test]
 fn wp_hwlk1f_a_unit_without_the_audio_link_is_shown_as_such() {
@@ -241,7 +241,7 @@ fn wp_hwlk1f_a_unit_without_the_audio_link_is_shown_as_such() {
         ),
         ("no_alink", "No audio link (firmware)", "No audio link")
     );
-    assert!(row.connected && !row.pending && row.link_delay_frames.is_none());
+    assert!(row.connected && !row.pending && row.alink_delay_frames.is_none());
     assert_eq!(
         v.unit_count, 2,
         "K is not counted among the units that lock"
@@ -249,7 +249,7 @@ fn wp_hwlk1f_a_unit_without_the_audio_link_is_shown_as_such() {
     assert_eq!(v.locked, 2);
     assert_eq!(
         v.summary,
-        "Audio link: 2 of 2 locked, 1 without the audio link (firmware), link delay to write on 2"
+        "Audio link: 2 of 2 locked, 1 without the audio link (firmware), audio link delay to write on 2"
     );
     assert_eq!(v.health, "warning");
     assert!(
@@ -261,7 +261,7 @@ fn wp_hwlk1f_a_unit_without_the_audio_link_is_shown_as_such() {
 }
 
 /// F2/F4: a scene for every unit goes through the sender for the units with
-/// the link and at once to K, and says so; one for K alone is applied at once,
+/// the alink and at once to K, and says so; one for K alone is applied at once,
 /// not refused; one K cannot do (a click) is refused, nothing written.
 #[test]
 fn wp_hwlk1f_scenes_apply_at_once_on_a_unit_without_the_link() {
@@ -287,12 +287,12 @@ fn wp_hwlk1f_scenes_apply_at_once_on_a_unit_without_the_link() {
     }
     let core = connect(&hub);
     fresh_view(&core);
-    let rc = core.link_system_recall("evening".into()).unwrap();
+    let rc = core.alink_system_recall("evening".into()).unwrap();
     assert!(rc.taken && !rc.on_time);
     assert!(
-        rc.message
-            .starts_with("Evening recalled: applied now on K340 (no audio link); at link frame ")
-            && rc.message.ends_with(" through the sender on the others."),
+        rc.message.starts_with(
+            "Evening recalled: applied now on K340 (no audio link); at audio link frame "
+        ) && rc.message.ends_with(" through the sender on the others."),
         "{}",
         rc.message
     );
@@ -302,7 +302,7 @@ fn wp_hwlk1f_scenes_apply_at_once_on_a_unit_without_the_link() {
         ("Master volume", "Applied now")
     );
 
-    // K alone: at once, never "no unit reports a link frame".
+    // K alone: at once, never "no unit reports an alink frame".
     let r = h.system_apply_scene("k1", Role::Admin).unwrap();
     assert_eq!((r.plan.path.as_str(), r.writes.len()), ("direct", 1));
     assert_eq!(r.writes[0].result, "applied_now");
@@ -352,7 +352,7 @@ fn wp_hwlk1f_scenes_apply_at_once_on_a_unit_without_the_link() {
     // A click has no direct command: not applied; nothing else to apply.
     let r = h.system_apply_scene("kclick", Role::Admin).unwrap();
     assert_eq!(r.writes[0].result, "unsupported");
-    let rc = core.link_system_recall("kclick".into()).unwrap();
+    let rc = core.alink_system_recall("kclick".into()).unwrap();
     assert!(!rc.taken, "{}", rc.message);
     assert_eq!(
         rc.message,
@@ -377,7 +377,7 @@ fn wp_hwlk1f_an_absent_unit_is_never_on_time() {
     assert!(!r.on_time);
     let core = connect(&hub);
     fresh_view(&core);
-    let rc = core.link_system_recall("evening".into()).unwrap();
+    let rc = core.alink_system_recall("evening".into()).unwrap();
     assert!(rc.message.contains("; Bar not connected"), "{}", rc.message);
     assert!(!rc.message.contains("on time on every unit"));
     hub.stop();
@@ -390,11 +390,11 @@ fn wp_hwlk1f_align_says_what_was_written_and_skipped() {
     let (hub, outs) = hub(AccessMode::Open, true);
     let core = connect(&hub);
     fresh_view(&core);
-    let a = core.link_system_align().unwrap();
+    let a = core.alink_system_align().unwrap();
     assert!(a.applied);
     assert!(
         a.message
-            .starts_with("The link delays were written on Main left, Main right")
+            .starts_with("The audio link delays were written on Main left, Main right")
             && a.message
                 .contains("skipped on K340 (no audio link (firmware)), Bar (not connected)"),
         "{}",
@@ -424,7 +424,7 @@ fn wp_hwlk1f_align_says_what_was_written_and_skipped() {
         .system_set_model(serde_json::from_value(only_k).unwrap())
         .unwrap();
     fresh_view(&core);
-    let a = core.link_system_align().unwrap();
+    let a = core.alink_system_align().unwrap();
     assert_eq!(
         a.message,
         "Nothing was written: skipped on K340 (no audio link (firmware))."
@@ -470,7 +470,7 @@ fn request(ws: &mut Ws, v: Value) -> Value {
 }
 
 /// Decision 1 at the wire: `system.set` keeps a model naming a unit without
-/// the link, and warns.
+/// the alink, and warns.
 #[test]
 fn wp_hwlk1f_saving_a_unit_without_the_link_warns() {
     let (hub, _) = hub(AccessMode::Open, false);

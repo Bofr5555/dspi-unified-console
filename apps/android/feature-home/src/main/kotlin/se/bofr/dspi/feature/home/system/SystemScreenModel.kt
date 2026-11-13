@@ -1,6 +1,6 @@
 // -- WP LKUI1 -- the System screen's state: the hub's audio link installation as
-// the core gives it (DspiBridge.linkSystem*, dspi-core link/system.rs), the last
-// recall, and the Clock-and-links draft with the revision it was made on.
+// the core gives it (DspiBridge.alinkSystem*, dspi-core alink/system.rs), the last
+// recall, and the Clock-and-audio-links draft with the revision it was made on.
 package se.bofr.dspi.feature.home.system
 
 import kotlinx.coroutines.CancellationException
@@ -15,17 +15,17 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.core.DspiException
-import se.bofr.dspi.core.LinkRoomLipSync
-import se.bofr.dspi.core.LinkSceneRecall
-import se.bofr.dspi.core.LinkSystemEdits
-import se.bofr.dspi.core.LinkSystemView
-import se.bofr.dspi.core.LinkUnitLatency
+import se.bofr.dspi.core.AlinkRoomLipSync
+import se.bofr.dspi.core.AlinkSceneRecall
+import se.bofr.dspi.core.AlinkSystemEdits
+import se.bofr.dspi.core.AlinkSystemView
+import se.bofr.dspi.core.AlinkUnitLatency
 
 /** What the last recall did, in the core's words (or the hub's, for a refusal by role). */
 data class RecallLine(val name: String, val taken: Boolean, val message: String, val writes: List<String>)
 
 /**
- * The Clock-and-links edits not saved yet, made on [revision]. [rooms] and
+ * The Clock-and-audio-links edits not saved yet, made on [revision]. [rooms] and
  * [units] map an id to µs, or to null for "the model's own".
  */
 data class SystemDraft(
@@ -38,17 +38,17 @@ data class SystemDraft(
 ) {
     val dirty: Boolean get() = delaySet || rooms.isNotEmpty() || units.isNotEmpty()
 
-    fun edits() = LinkSystemEdits(
+    fun edits() = AlinkSystemEdits(
         setSystemDelay = delaySet,
         systemDelayFrames = if (delayAuto) null else delayFrames,
-        rooms = rooms.map { (id, us) -> LinkRoomLipSync(id, us) },
-        units = units.map { (id, us) -> LinkUnitLatency(id, us) }
+        rooms = rooms.map { (id, us) -> AlinkRoomLipSync(id, us) },
+        units = units.map { (id, us) -> AlinkUnitLatency(id, us) }
     )
 }
 
 data class SystemUiState(
     /** Null while not on a hub (or before the first answer). */
-    val view: LinkSystemView? = null,
+    val view: AlinkSystemView? = null,
     /** Why the view could not be read; "" when it was. */
     val error: String = "",
     val busy: Boolean = false,
@@ -102,7 +102,7 @@ class SystemScreenModel(private val bridge: DspiBridge, private val scope: Corou
         if (reading.isLocked) return
         reading.withLock {
             val v = try {
-                bridge.linkSystemView()
+                bridge.alinkSystemView()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: DspiException.Disconnected) {
@@ -139,7 +139,7 @@ class SystemScreenModel(private val bridge: DspiBridge, private val scope: Corou
         val name = s.view?.scenes?.firstOrNull { it.id == id }?.name ?: id
         act {
             val line = try {
-                line(bridge.linkSystemRecall(id))
+                line(bridge.alinkSystemRecall(id))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: DspiException) {
@@ -153,7 +153,7 @@ class SystemScreenModel(private val bridge: DspiBridge, private val scope: Corou
         if (!_state.value.mayEdit) return
         act {
             try {
-                val r = bridge.linkSystemAlign()
+                val r = bridge.alinkSystemAlign()
                 _state.update { it.copy(actionMessage = r.message, actionFailed = !r.applied) }
             } catch (e: CancellationException) {
                 throw e
@@ -190,7 +190,7 @@ class SystemScreenModel(private val bridge: DspiBridge, private val scope: Corou
         if (!s.draft.dirty || s.stale || !s.mayEdit) return
         act {
             try {
-                bridge.linkSystemSave(s.draft.revision, s.draft.edits())
+                bridge.alinkSystemSave(s.draft.revision, s.draft.edits())
                 _state.update { it.copy(draft = SystemDraft(), stale = false, actionMessage = "Saved on the hub.", actionFailed = false) }
             } catch (e: CancellationException) {
                 throw e
@@ -223,7 +223,7 @@ class SystemScreenModel(private val bridge: DspiBridge, private val scope: Corou
             else -> e.message.orEmpty()
         }
 
-        fun line(r: LinkSceneRecall) = RecallLine(r.name, r.taken, r.message, r.writes.map { "${it.unit} · ${it.what}: ${it.resultWord}" })
+        fun line(r: AlinkSceneRecall) = RecallLine(r.name, r.taken, r.message, r.writes.map { "${it.unit} · ${it.what}: ${it.resultWord}" })
     }
 
     /** A parsed value that may itself be null ("the model's own"). */

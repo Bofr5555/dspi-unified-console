@@ -32,7 +32,7 @@ runs the TypeScript client; its Node image is `NODE` in `ci/container/images.con
 |---|---|---|---|---|
 | C1 | hello: proto 1, the hub's id, `auth: pin`, `cmd` and no `fw_install` in caps, `max_frame` | yes | yes | yes |
 | C2 | a wrong PIN is the typed wrong-PIN error and the session waits; the right one then pairs | yes | yes | yes |
-| C3 | pairing as admin lists the device: handle 0, online, a serial | yes | yes | yes |
+| C3 | pairing as admin with a plain PIN gives control (HWLK1F); with a window that may give admin (`pin-admin`, `--pair-admin`) it gives admin and lists the device: handle 0, online, a serial | yes | yes | yes |
 | C4 | the token reconnects with no PIN, as a new session with the same role | yes | yes | yes |
 | C5 | GET_PLATFORM answers 7 bytes; an unknown handle `NO_DEVICE` | yes | yes | yes |
 | C6 | a write: the writer's echo and a second session's copy both carry the writer's session as `origin` | yes | yes | yes |

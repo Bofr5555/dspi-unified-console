@@ -190,12 +190,12 @@ fn is_silent(req: &CmdRequest) -> bool {
         // -- WP SW2 -- the audio link's block sends no `PARAM_CHANGED` for any write
         // (`extension_channel_spec.md` 2.8): a waiting writer would take the next
         // console's change.
-        || (req.b_request == op::REQ_EXTENSION && is_audio_link_id(req.w_value))
+        || (req.b_request == op::REQ_EXTENSION && is_alink_id(req.w_value))
 }
 
 // -- WP SW2 --
 /// The fork's audio link block, 0x8000-0x80FF (2.8).
-fn is_audio_link_id(id: u16) -> bool {
+fn is_alink_id(id: u16) -> bool {
     id & 0xFF00 == 0x8000
 }
 
@@ -597,18 +597,18 @@ mod tests_wp_hb0 {
     }
 
     // -- WP SW2 --
-    /// SW1's note: a link write (slots, phase, apply at frame) leaves no writer
+    /// SW1's note: an alink write (slots, phase, apply at frame) leaves no writer
     /// waiting, so the next console's scalar change is attributed to it alone.
     #[test]
     fn wp_sw2_audio_link_writes_are_silent() {
-        use dspi_proto::ext::audio_link as alink;
+        use dspi_proto::ext::alink;
         let (r, t) = (router(8), Instant::now());
-        for id in alink::LINK_IDS {
+        for id in alink::ALINK_IDS {
             assert!(is_silent(&set(op::REQ_EXTENSION, id)), "{id:#06x}");
         }
         for id in [
-            alink::EXT_LINK_SLOTS,
-            alink::EXT_LINK_PHASE,
+            alink::EXT_ALINK_SLOTS,
+            alink::EXT_ALINK_PHASE,
             alink::EXT_APPLY_AT_FRAME,
         ] {
             wrote(&r, 2, &set(op::REQ_EXTENSION, id), t);

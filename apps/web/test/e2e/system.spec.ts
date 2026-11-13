@@ -1,6 +1,6 @@
-// WP SW3 e2e: the System view (WB6d), the Installer mode's "Clock and links" panel, the
+// WP SW3 e2e: the System view (WB6d), the Installer mode's "Clock and audio links" panel, the
 // scene bar (WB6e) and the status rail (WB6f), against the real hub: `uconsole --demo hub
-// --web --audio-link`, an installation of the fake device's audio-link roles (a sender, a
+// --web --alink`, an installation of the fake device's audio-link roles (a sender, a
 // fan-out re-emitting 3 frames late, four units) with its system model. Everything goes
 // through the hub's `system.*` on the session's own Link connection. An open hub makes the
 // page Admin; a hub with a PIN pairs it as Control, and the hub's roles decide.
@@ -17,14 +17,14 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 type OwnHub = { port: number; pin: string; child: ChildProcess; store: string };
 
 /**
- * `uconsole --demo hub --web --audio-link ...` on a free port (or `port`), once it is up (with
+ * `uconsole --demo hub --web --alink ...` on a free port (or `port`), once it is up (with
  * `pairing`, its PIN). -- fixup sw3x -- `store` and `port` to start the same hub again.
  */
 async function linkHub(extra: string[], pairing = false, store?: string, port0 = 0): Promise<OwnHub> {
   store ??= `${process.env.TMPDIR ?? "test-results"}/sw3-${process.pid}-${Math.random().toString(36).slice(2)}`;
   const child = spawn(
     process.env.DSPI_TERM!,
-    ["--demo", "hub", "--web", "--loopback", "--audio-link", "--console", "dist", ...extra, "--port", String(port0), "--json", "--no-keep-awake", "--store", store],
+    ["--demo", "hub", "--web", "--loopback", "--alink", "--console", "dist", ...extra, "--port", String(port0), "--json", "--no-keep-awake", "--store", store],
     { stdio: ["ignore", "pipe", "inherit"] },
   );
   const lines = createInterface({ input: child.stdout! });
@@ -99,7 +99,7 @@ test.describe("SW3: an audio link installation on the hub", () => {
 
   test("SW3: the System view shows rooms, zones, units and the topology", async ({ page }) => {
     hub = await linkHub(["--open", "--forget-clients"]);
-    const session = await openUnit(page, hub, "DEMO-LINK-A");
+    const session = await openUnit(page, hub, "DEMO-ALINK-A");
     // On an installation the System view is the first screen (Advanced).
     await expect(session.getByRole("tab", { name: "System" })).toHaveAttribute("aria-selected", "true");
     const system = session.getByRole("region", { name: "System" });
@@ -120,7 +120,7 @@ test.describe("SW3: an audio link installation on the hub", () => {
     await expect(fanItem.getByLabel("Unit Main right")).toBeVisible();
     await expect(fanItem.getByLabel("Unit Terrace")).toBeVisible();
     await expect(fanItem.getByLabel("Unit Main left")).toHaveCount(0);
-    await expect(topo.getByLabel("Link slots of Bar")).toBeVisible();
+    await expect(topo.getByLabel("Audio link slots of Bar")).toBeVisible();
     // The rail: connected, no alarms, the system mute off, Advanced.
     const rail = session.getByRole("complementary", { name: "Status" });
     await expect(rail.getByLabel("Connection")).toContainText("Connected");
@@ -132,7 +132,7 @@ test.describe("SW3: an audio link installation on the hub", () => {
 
   test("SW3: a scene is recalled at one frame and each unit's result shown", async ({ page }) => {
     hub = await linkHub(["--open", "--forget-clients"]);
-    const session = await openUnit(page, hub, "DEMO-LINK-A");
+    const session = await openUnit(page, hub, "DEMO-ALINK-A");
     const bar = session.getByLabel("Scenes", { exact: true });
     // One op for every unit: through the sender's superframe.
     await bar.getByRole("button", { name: "Recall Evening" }).click();
@@ -163,7 +163,7 @@ test.describe("SW3: an audio link installation on the hub", () => {
 
   test("SW3: the system mute and an alarm acknowledged from the rail", async ({ page }) => {
     hub = await linkHub(["--open", "--forget-clients"]);
-    const session = await openUnit(page, hub, "DEMO-LINK-B");
+    const session = await openUnit(page, hub, "DEMO-ALINK-B");
     const rail = session.getByRole("complementary", { name: "Status" });
     const mute = rail.getByRole("button", { name: "System mute" });
     await expect(mute).toContainText(": off");
@@ -181,18 +181,18 @@ test.describe("SW3: an audio link installation on the hub", () => {
     await expect(rail.getByLabel("Alarms")).toHaveText("No alarms");
   });
 
-  test("SW3: Clock and links: delays, slots, the alignment, link stats and the trim scan (Admin)", async ({ page }) => {
+  test("SW3: Clock and audio links: delays, slots, the alignment, link stats and the trim scan (Admin)", async ({ page }) => {
     hub = await linkHub(["--open", "--forget-clients"]);
-    const session = await openUnit(page, hub, "DEMO-LINK-A");
+    const session = await openUnit(page, hub, "DEMO-ALINK-A");
     const system = session.getByRole("region", { name: "System" });
-    await expect(system.getByRole("region", { name: "Clock and links" })).toHaveCount(0);
+    await expect(system.getByRole("region", { name: "Clock and audio links" })).toHaveCount(0);
     await setMode(session, page, "Installer");
-    const panel = system.getByRole("region", { name: "Clock and links" });
+    const panel = system.getByRole("region", { name: "Clock and audio links" });
     await expect(panel).toBeVisible();
     await expect(panel.getByText("this panel is read only")).toHaveCount(0);
-    // Per unit: the range the unit reports, its link delay and hop offset as the hub computes them,
+    // Per unit: the range the unit reports, its audio link delay and hop offset as the hub computes them,
     // in the glossary's words with the firmware's names in a tooltip.
-    await expect(panel.getByRole("columnheader", { name: "Link delay", exact: true }).locator("abbr")).toHaveAttribute("title", /^d_local /);
+    await expect(panel.getByRole("columnheader", { name: "Audio link delay", exact: true }).locator("abbr")).toHaveAttribute("title", /^d_local /);
     await expect(panel.getByRole("columnheader", { name: "Hop offset" }).locator("abbr")).toHaveAttribute("title", /^hops_offset /);
     await expect(panel).not.toContainText(/d_local|hops_offset/);
     const units = panel.getByRole("table", { name: "Units on the audio link" });
@@ -200,24 +200,24 @@ test.describe("SW3: an audio link installation on the hub", () => {
     await expect(right).toContainText("257..");
     await expect(right).toContainText("3 frames"); // behind the fan-out
     // Link stats and the trim scan of a receiver.
-    const stats = panel.getByRole("table", { name: "Link stats" });
-    await expect(stats.getByRole("row", { name: "Link stats of Main left" })).toContainText("locked");
+    const stats = panel.getByRole("table", { name: "Audio link stats" });
+    await expect(stats.getByRole("row", { name: "Audio link stats of Main left" })).toContainText("locked");
     await expect(stats.getByLabel("Trim scan: clean -3 to 4, using 0").first()).toBeVisible();
     // Compute, then align: each unit's result.
     const align = panel.getByRole("region", { name: "Alignment" });
     await align.getByRole("button", { name: "Compute" }).click();
     await expect(align.getByLabel("Alignment result")).toContainText("Computed, not written");
     await expect(align.getByLabel("Plan for Terrace")).toContainText("Writable");
-    await align.getByRole("button", { name: "Align link delays…", exact: true }).click();
-    await page.getByRole("dialog", { name: "Align link delays?" }).getByRole("button", { name: "Align" }).click();
+    await align.getByRole("button", { name: "Align audio link delays…", exact: true }).click();
+    await page.getByRole("dialog", { name: "Align audio link delays?" }).getByRole("button", { name: "Align" }).click();
     // -- WP HWLK1F -- the core's sentence for what was written
-    await expect(align.getByLabel("Alignment result")).toContainText("The link delays were written.");
+    await expect(align.getByLabel("Alignment result")).toContainText("The audio link delays were written.");
     const writes = align.getByRole("list", { name: "Alignment writes" });
-    await expect(writes.getByLabel("Result for Main right")).toContainText("Link delay: Done");
+    await expect(writes.getByLabel("Result for Main right")).toContainText("Audio link delay: Done");
     await expect(writes.getByLabel("Result for Main left")).toContainText("Delay OUT1");
-    await shot(page, "clock-and-links");
-    // The slot matrix: Main right's input 3 from link channel 6, a measured latency; saved, then aligned.
-    const matrix = panel.getByRole("table", { name: "Link slots" });
+    await shot(page, "alink-clock");
+    // The slot matrix: Main right's input 3 from audio link channel 6, a measured latency; saved, then aligned.
+    const matrix = panel.getByRole("table", { name: "Audio link slots" });
     const cell = matrix.getByRole("button", { name: "Main right IN3 from Ch 6" });
     await expect(cell).toHaveAttribute("aria-pressed", "false");
     await cell.click();
@@ -230,19 +230,19 @@ test.describe("SW3: an audio link installation on the hub", () => {
     await expect(cell).toHaveAttribute("aria-pressed", "true");
     await expect(measured).toHaveValue("250");
     await expect(system.getByRole("region", { name: "Room Main room" }).getByLabel("Unit Main right")).toContainText("Ch 6");
-    await align.getByRole("button", { name: "Align link delays…", exact: true }).click();
-    await page.getByRole("dialog", { name: "Align link delays?" }).getByRole("button", { name: "Align" }).click();
-    await expect(writes.getByLabel("Result for Main right")).toContainText("Link slots: Done");
+    await align.getByRole("button", { name: "Align audio link delays…", exact: true }).click();
+    await page.getByRole("dialog", { name: "Align audio link delays?" }).getByRole("button", { name: "Align" }).click();
+    await expect(writes.getByLabel("Result for Main right")).toContainText("Audio link slots: Done");
   });
 
   test("SW3: a Control role sees the installer panel read only and a refused op named", async ({ page }) => {
     hub = await linkHub(["--pair"], true);
-    const session = await openUnit(page, hub, "DEMO-LINK-C");
+    const session = await openUnit(page, hub, "DEMO-ALINK-C");
     await setMode(session, page, "Installer");
-    const panel = session.getByRole("region", { name: "Clock and links" });
+    const panel = session.getByRole("region", { name: "Clock and audio links" });
     await expect(panel.getByText("Changing the installation needs the hub's Admin role: this panel is read only.")).toBeVisible();
-    await expect(panel.getByRole("button", { name: "Align link delays…", exact: true })).toBeDisabled();
-    await expect(panel.getByRole("table", { name: "Link slots" }).getByRole("button").first()).toBeDisabled();
+    await expect(panel.getByRole("button", { name: "Align audio link delays…", exact: true })).toBeDisabled();
+    await expect(panel.getByRole("table", { name: "Audio link slots" }).getByRole("button").first()).toBeDisabled();
     await expect(panel.getByLabel(/^Measured latency of/)).toHaveCount(0);
     // The hub takes system.align from Admin only; the status's computation is shown all the same.
     await expect(panel.getByRole("button", { name: "Compute" })).toBeDisabled();
@@ -260,7 +260,7 @@ test.describe("SW3: an audio link installation on the hub", () => {
   // -- fixup sw3x --
   test("SW3: a second scene through the sender while one is scheduled is refused, said plainly and not marked", async ({ page }) => {
     hub = await linkHub(["--open", "--forget-clients"]);
-    const session = await openUnit(page, hub, "DEMO-LINK-A");
+    const session = await openUnit(page, hub, "DEMO-ALINK-A");
     const bar = session.getByLabel("Scenes", { exact: true });
     const result = session.getByLabel("Scene result");
     const rail = session.getByRole("complementary", { name: "Status" });
@@ -270,7 +270,7 @@ test.describe("SW3: an audio link installation on the hub", () => {
     await bar.getByRole("button", { name: "Recall Closed" }).click();
     const alert = result.getByRole("alert");
     // -- WP WB8 -- the core's sentence (`sceneOutcome`), the one every client shows
-    await expect(alert).toHaveText(/^Closed was refused: a scene is already scheduled on the sender for link frame \d+, \d+ ms after this recall\. The sender takes one scene at a time; recall Closed again after that\. System mute unchanged\.$/);
+    await expect(alert).toHaveText(/^Closed was refused: a scene is already scheduled on the sender for audio link frame \d+, \d+ ms after this recall\. The sender takes one scene at a time; recall Closed again after that\. System mute unchanged\.$/);
     await expect(result).not.toContainText("system mute on");
     // -- fixup lk1 -- the sender's write is the scene's, never read as a refused mute
     await expect(result.getByRole("list", { name: "Per unit" })).toContainText("Scene Closed: Refused");
@@ -287,7 +287,7 @@ test.describe("SW3: an audio link installation on the hub", () => {
   test("HWLK1F: a unit without the audio link is said so, takes a scene at once, is skipped by the alignment and warned about", async ({ page }) => {
     test.setTimeout(60_000);
     hub = await linkHub(["--open", "--forget-clients", "--with-plain-unit"]);
-    const session = await openUnit(page, hub, "DEMO-LINK-A");
+    const session = await openUnit(page, hub, "DEMO-ALINK-A");
     const system = session.getByRole("region", { name: "System" });
     const plain = system.getByRole("region", { name: "Room Bar" }).getByLabel("Unit Plain unit");
     await expect(plain).toContainText("Connected");
@@ -297,18 +297,18 @@ test.describe("SW3: an audio link installation on the hub", () => {
     // A scene for every unit: at once on P, through the sender on the others; never "on time on every unit".
     await session.getByLabel("Scenes", { exact: true }).getByRole("button", { name: "Recall Evening" }).click();
     const result = session.getByLabel("Scene result");
-    await expect(result).toContainText(/Evening recalled: applied now on Plain unit \(no audio link\); at link frame \d+ through the sender on the others\./);
+    await expect(result).toContainText(/Evening recalled: applied now on Plain unit \(no audio link\); at audio link frame \d+ through the sender on the others\./);
     await expect(result).not.toContainText("on time on every unit");
     await expect(result.getByRole("list", { name: "Per unit" }).getByLabel("Result for Plain unit")).toContainText("Master volume -12.0 dB: Applied now");
     await shot(page, "hwlk1f-scene");
     // Aligning: written on the others, skipped on P, and why.
     await setMode(session, page, "Installer");
-    const panel = system.getByRole("region", { name: "Clock and links" });
+    const panel = system.getByRole("region", { name: "Clock and audio links" });
     const align = panel.getByRole("region", { name: "Alignment" });
-    await align.getByRole("button", { name: "Align link delays…", exact: true }).click();
-    await page.getByRole("dialog", { name: "Align link delays?" }).getByRole("button", { name: "Align" }).click();
+    await align.getByRole("button", { name: "Align audio link delays…", exact: true }).click();
+    await page.getByRole("dialog", { name: "Align audio link delays?" }).getByRole("button", { name: "Align" }).click();
     await expect(align.getByLabel("Alignment result")).toContainText("skipped on Plain unit (no audio link (firmware))");
-    await expect(align.getByLabel("Alignment result")).toContainText("The link delays were written on Main left");
+    await expect(align.getByLabel("Alignment result")).toContainText("The audio link delays were written on Main left");
     // Saving the installation keeps P, with the hub's warning.
     const measured = panel.getByRole("table", { name: "Units on the audio link" }).getByLabel("Measured latency of Main right");
     await measured.fill("250");
@@ -325,18 +325,18 @@ test.describe("SW3: an audio link installation on the hub", () => {
     // -- fixup fs1 -- two hub sessions and two Installer dialogs: Firefox on a busy host needs more than 30 s
     test.setTimeout(60_000);
     hub = await linkHub(["--open", "--forget-clients"]);
-    const session = await openUnit(page, hub, "DEMO-LINK-A");
+    const session = await openUnit(page, hub, "DEMO-ALINK-A");
     await setMode(session, page, "Installer");
-    const panel = session.getByRole("region", { name: "Clock and links" });
-    await panel.getByRole("table", { name: "Link slots" }).getByRole("button", { name: "Bar IN3 from Ch 7" }).click();
+    const panel = session.getByRole("region", { name: "Clock and audio links" });
+    await panel.getByRole("table", { name: "Audio link slots" }).getByRole("button", { name: "Bar IN3 from Ch 7" }).click();
     await expect(panel.getByRole("group", { name: "Unsaved installation" })).toBeVisible();
     // Another installer changes the installation meanwhile, on another page.
     const other = await browser.newPage();
     try {
-      const s2 = await openUnit(other, hub, "DEMO-LINK-B");
+      const s2 = await openUnit(other, hub, "DEMO-ALINK-B");
       await setMode(s2, other, "Installer");
-      const p2 = s2.getByRole("region", { name: "Clock and links" });
-      const theirs = p2.getByRole("table", { name: "Link slots" }).getByRole("button", { name: "Terrace IN4 from Ch 7" });
+      const p2 = s2.getByRole("region", { name: "Clock and audio links" });
+      const theirs = p2.getByRole("table", { name: "Audio link slots" }).getByRole("button", { name: "Terrace IN4 from Ch 7" });
       await theirs.click();
       await p2.getByRole("button", { name: "Save" }).click();
       await expect(p2.getByRole("group", { name: "Unsaved installation" })).toHaveCount(0);
@@ -349,7 +349,7 @@ test.describe("SW3: an audio link installation on the hub", () => {
     await expect(panel.getByRole("button", { name: "Save" })).toHaveCount(0);
     await shot(page, "save-stale");
     await stale.getByRole("button", { name: "Reload" }).click();
-    const matrix = panel.getByRole("table", { name: "Link slots" });
+    const matrix = panel.getByRole("table", { name: "Audio link slots" });
     await expect(matrix.getByRole("button", { name: "Terrace IN4 from Ch 7" })).toHaveAttribute("aria-pressed", "true");
     await expect(matrix.getByRole("button", { name: "Bar IN3 from Ch 7" })).toHaveAttribute("aria-pressed", "false");
   });
@@ -359,7 +359,7 @@ test.describe("SW3: an audio link installation on the hub", () => {
   test("SW3: a Control role may mute; made a Viewer, the page offers nothing that writes", async ({ page }) => {
     test.setTimeout(120_000);
     hub = await linkHub(["--pair"], true);
-    const session = await openUnit(page, hub, "DEMO-LINK-D");
+    const session = await openUnit(page, hub, "DEMO-ALINK-D");
     const rail = session.getByRole("complementary", { name: "Status" });
     const mute = rail.getByRole("button", { name: "System mute" });
     await mute.click();
@@ -378,7 +378,7 @@ test.describe("SW3: an audio link installation on the hub", () => {
     expect(listed.clients.map((c) => c.role)).toEqual(["control"]);
     execFileSync(process.env.DSPI_TERM!, ["hub", "role", String(listed.clients[0]!.cid), "viewer", "--store", store]);
     hub = await linkHub([], false, store, port);
-    const s2 = await openUnit(page, hub, "DEMO-LINK-D", false);
+    const s2 = await openUnit(page, hub, "DEMO-ALINK-D", false);
     const rail2 = s2.getByRole("complementary", { name: "Status" });
     await expect(rail2.getByLabel("Connection")).toContainText("Connected");
     const system = s2.getByRole("region", { name: "System" });
@@ -390,16 +390,16 @@ test.describe("SW3: an audio link installation on the hub", () => {
       await expect(bar2.getByRole("button", { name: `Recall ${name}` })).toBeDisabled();
     }
     await setMode(s2, page, "Installer");
-    const panel = system.getByRole("region", { name: "Clock and links" });
+    const panel = system.getByRole("region", { name: "Clock and audio links" });
     await expect(panel.getByText("Changing the installation needs the hub's Admin role: this panel is read only.")).toBeVisible();
     await expect(panel.getByRole("button", { name: "Compute" })).toBeDisabled();
-    await expect(panel.getByRole("button", { name: "Align link delays…", exact: true })).toBeDisabled();
-    const cells = panel.getByRole("table", { name: "Link slots" }).getByRole("button");
+    await expect(panel.getByRole("button", { name: "Align audio link delays…", exact: true })).toBeDisabled();
+    const cells = panel.getByRole("table", { name: "Audio link slots" }).getByRole("button");
     expect(await cells.evaluateAll((els) => els.every((e) => (e as HTMLButtonElement).disabled))).toBe(true);
     await expect(panel.getByLabel(/^Measured latency of/)).toHaveCount(0);
     // Reads stay: the status's computation and the link stats.
     await expect(panel.getByRole("row", { name: "Clock of Terrace" })).toContainText("3 frames");
-    await expect(panel.getByRole("table", { name: "Link stats" }).getByRole("row", { name: "Link stats of Bar" })).toContainText("locked");
+    await expect(panel.getByRole("table", { name: "Audio link stats" }).getByRole("row", { name: "Audio link stats of Bar" })).toContainText("locked");
   });
 });
 

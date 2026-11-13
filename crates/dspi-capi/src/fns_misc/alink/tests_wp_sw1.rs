@@ -1,5 +1,5 @@
-//! WP SW1: the audio link through the C ABI, on the demo with the link and on
-//! the plain demo (no link: `unsupported`).
+//! WP SW1: the audio link through the C ABI, on the demo with the alink and on
+//! the plain demo (no alink: `unsupported`).
 
 use std::sync::Mutex;
 
@@ -35,37 +35,37 @@ fn reply(
 #[test]
 fn wp_sw1_the_link_through_c() {
     let h = handle();
-    assert!(dspi_open_demo_audio_link(h));
-    let info = reply(h, dspi_audio_link_info);
+    assert!(dspi_open_demo_alink(h));
+    let info = reply(h, dspi_alink_info);
     assert_eq!(info["ok"], true);
     assert_eq!(info["role"], "receiver");
     // -- fixup lk1 (M1) -- FIXS1's firmware range at the 4 ms latency option: 257..399
     assert_eq!(info["dLocalMin"], 257);
     assert_eq!(info["dLocalMax"], 399);
-    assert_eq!(info["linkInput"], true);
-    assert_eq!(reply(h, dspi_fetch_audio_link_info)["maxChannels"], 64);
+    assert_eq!(info["alinkInput"], true);
+    assert_eq!(reply(h, dspi_fetch_alink_info)["maxChannels"], 64);
 
-    let s = reply(h, dspi_fetch_audio_link_status);
+    let s = reply(h, dspi_fetch_alink_status);
     assert_eq!(s["state"], "locked");
     assert!(s["frame"].as_u64().unwrap() > 0);
 
     let slots = [3u8, 2, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
-    assert_eq!(dspi_set_audio_link_slots(h, slots.as_ptr(), 8), 0);
+    assert_eq!(dspi_set_alink_slots(h, slots.as_ptr(), 8), 0);
     let mut out = [0u8; 8];
-    assert!(dspi_fetch_audio_link_slots(h, out.as_mut_ptr(), 8));
+    assert!(dspi_fetch_alink_slots(h, out.as_mut_ptr(), 8));
     assert_eq!(out, slots);
-    assert!(!dspi_fetch_audio_link_slots(h, out.as_mut_ptr(), 7));
-    assert_eq!(dspi_set_audio_link_slots(h, slots.as_ptr(), 7), 0xFF);
-    assert_eq!(dspi_set_audio_link_slots(h, std::ptr::null(), 8), 0xFF);
+    assert!(!dspi_fetch_alink_slots(h, out.as_mut_ptr(), 7));
+    assert_eq!(dspi_set_alink_slots(h, slots.as_ptr(), 7), 0xFF);
+    assert_eq!(dspi_set_alink_slots(h, std::ptr::null(), 8), 0xFF);
 
-    assert_eq!(dspi_set_audio_link_phase(h, 1, 300, -1), 0);
-    let p = reply(h, dspi_fetch_audio_link_phase);
+    assert_eq!(dspi_set_alink_phase(h, 1, 300, -1), 0);
+    let p = reply(h, dspi_fetch_alink_phase);
     assert_eq!(
         (p["dLocal"].as_u64(), p["hopsOffset"].as_i64()),
         (Some(300), Some(-1))
     );
 
-    let f = reply(h, dspi_fetch_audio_link_frame_counter)["frame"]
+    let f = reply(h, dspi_fetch_alink_frame_counter)["frame"]
         .as_u64()
         .unwrap();
     assert_eq!(dspi_apply_at_frame(h, f + 48_000_000, 7, 1, 0), 0);
@@ -77,7 +77,7 @@ fn wp_sw1_the_link_through_c() {
         (Some("click"), Some("cancelled"))
     );
     assert_eq!(dspi_apply_at_frame(h, 0, 9, 0, 0), 0xFF);
-    assert_eq!(dspi_reset_audio_link_stats(h), 0);
+    assert_eq!(dspi_reset_alink_stats(h), 0);
     free(h);
 }
 
@@ -85,26 +85,26 @@ fn wp_sw1_the_link_through_c() {
 fn wp_sw1_without_the_link_c_says_unsupported() {
     let h = handle();
     assert!(dspi_open_demo(h));
-    let info = reply(h, dspi_audio_link_info);
+    let info = reply(h, dspi_alink_info);
     assert_eq!(
         (info["ok"].as_bool(), info["value"].is_null()),
         (Some(true), true)
     );
     for f in [
-        dspi_fetch_audio_link_status as extern "C" fn(*mut FfiCore, *mut c_char, u32) -> u32,
-        dspi_fetch_audio_link_info,
-        dspi_fetch_audio_link_phase,
-        dspi_fetch_audio_link_frame_counter,
+        dspi_fetch_alink_status as extern "C" fn(*mut FfiCore, *mut c_char, u32) -> u32,
+        dspi_fetch_alink_info,
+        dspi_fetch_alink_phase,
+        dspi_fetch_alink_frame_counter,
         dspi_fetch_apply_at_frame_status,
     ] {
         let v = reply(h, f);
         assert_eq!(v["code"], "unsupported", "{v}");
     }
-    assert_eq!(dspi_reset_audio_link_stats(h), 0xFF);
+    assert_eq!(dspi_reset_alink_stats(h), 0xFF);
     // Null handles never crash.
-    assert_eq!(dspi_reset_audio_link_stats(std::ptr::null_mut()), 0xFF);
+    assert_eq!(dspi_reset_alink_stats(std::ptr::null_mut()), 0xFF);
     assert_eq!(
-        dspi_fetch_audio_link_status(std::ptr::null_mut(), std::ptr::null_mut(), 0),
+        dspi_fetch_alink_status(std::ptr::null_mut(), std::ptr::null_mut(), 0),
         0
     );
     free(h);

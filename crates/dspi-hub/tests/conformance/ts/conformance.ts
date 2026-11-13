@@ -38,8 +38,10 @@ async function ctl(command: string): Promise<Record<string, unknown>> {
   return JSON.parse(next.value) as Record<string, unknown>;
 }
 
-async function newPin(): Promise<string> {
-  pin = String((await ctl("pin")).pin);
+/** A fresh window's PIN. -- WP ALINK1 -- `admin`: a window that may give admin
+ * (`uconsole hub --pair-admin`); a plain PIN gives at most control (HWLK1F). */
+async function newPin(admin = false): Promise<string> {
+  pin = String((await ctl(admin ? "pin-admin" : "pin")).pin);
   return pin;
 }
 
@@ -89,7 +91,7 @@ function setVolume(c: LinkClient, db: number): Promise<CmdResponseFrame> {
 async function paired(name: string, role: "admin" | "control" | "viewer"): Promise<{ c: LinkClient; token: string }> {
   const c = client();
   await c.connect(URL, { clientName: name, app: "wp_hb7 ts", version: "0" });
-  const token = await c.pair(await newPin(), name, role);
+  const token = await c.pair(await newPin(role === "admin"), name, role);
   expect(c.state === "ready", `state ${c.state} after pairing`);
   return { c, token: token ?? fail("no token") };
 }
@@ -129,6 +131,11 @@ const scenarios: [string, () => Promise<void>][] = [
     expect(c.state === "ready", `state ${c.state}`);
   }],
   ["C3 pair lists the device", async () => {
+    // -- WP ALINK1 -- a plain PIN caps the role at control, whatever is asked (HWLK1F)
+    const capped = keep(client());
+    await capped.connect(URL, { clientName: "ts c3 capped", app: "wp_hb7 ts", version: "0" });
+    await capped.pair(await newPin(), "ts c3 capped", "admin");
+    expect(capped.state === "ready" && capped.role === "control", `a plain PIN gave ${capped.role}`);
     const { c } = await paired("ts c3", "admin");
     keep(c);
     expect(c.role === "admin", `role ${c.role}`);

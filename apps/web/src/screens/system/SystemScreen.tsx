@@ -1,14 +1,14 @@
 // WP SW3, WB6d: the System view. Rooms and zones with their units, each
 // unit's state (connected, the audio link's lock, alarms), and the topology:
-// the sender, fan-outs, units, the links between them and the link channels
+// the sender, fan-outs, units, the alinks between them and the audio link channels
 // each unit takes. A device the console holds itself is a system of one unit.
-// The Installer mode adds the "Clock and links" panel (ClockLinks.tsx).
+// The Installer mode adds the "Clock and audio links" panel (AlinkClock.tsx).
 
 import { useEffect, useState } from "preact/hooks";
 import type { ScreenProps } from "../../ui/screens";
-import { ClockLinks } from "./ClockLinks";
+import { AlinkClock } from "./AlinkClock";
 import type { FeedState, SystemFeed } from "./feed";
-import { NO_ALINK, linkRoleWord, lockWord, roomsView, slotWord, topology, type TopoNode, type UnitView } from "./model";
+import { NO_ALINK, alinkRoleWord, lockWord, roomsView, slotWord, topology, type TopoNode, type UnitView } from "./model";
 
 export function useFeed(feed: SystemFeed): FeedState {
   const [, bump] = useState(0);
@@ -50,7 +50,7 @@ function SystemView(props: { feed: SystemFeed; installer: boolean; ask: ScreenPr
           </p>
           <div class="sys-rooms">
             <section class="sys-room" aria-label="This device">
-              <UnitRow u={singleRow(st)} role={linkRoleWord(observed?.role)} />
+              <UnitRow u={singleRow(st)} role={alinkRoleWord(observed?.role)} />
             </section>
           </div>
         </>
@@ -80,15 +80,15 @@ function SystemView(props: { feed: SystemFeed; installer: boolean; ask: ScreenPr
           </ul>
         </>
       )}
-      {props.installer && !single ? <ClockLinks feed={props.feed} ask={props.ask} /> : null}
+      {props.installer && !single ? <AlinkClock feed={props.feed} ask={props.ask} /> : null}
       {props.installer && single ? (
-        <p class="sys-note">Clock and links: the audio link's alignment is set by a hub with an installation.</p>
+        <p class="sys-note">Clock and audio links: the audio link's alignment is set by a hub with an installation.</p>
       ) : null}
     </section>
   );
 }
 
-/** The one unit of a device on its own: its link's state, or that it has none. */
+/** The one unit of a device on its own: its alink's state, or that it has none. */
 function singleRow(st: FeedState): UnitView {
   const u = st.model!.units[0]!;
   const o = st.status?.observed[u.serial];
@@ -144,7 +144,7 @@ function TopoItem(props: { n: TopoNode }) {
         {n.hopDelayFrames !== null ? <span class="sys-chip">+{n.hopDelayFrames} frames</span> : null}
         {n.alarms ? <span class="sys-alarm-count">{n.alarms === 1 ? "1 alarm" : `${n.alarms} alarms`}</span> : null}
         {n.slots ? (
-          <span class="sys-slot-row" aria-label={`Link slots of ${n.name}`}>
+          <span class="sys-slot-row" aria-label={`Audio link slots of ${n.name}`}>
             {n.slots.map((c, i) => (
               <span key={i} class={`sys-slot${c === 255 ? " sys-slot-silent" : ""}`} title={`IN${i + 1}: ${slotWord(c)}`}>
                 {c === 255 ? "–" : c}

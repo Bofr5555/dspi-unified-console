@@ -6,9 +6,9 @@ import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.FilterParams
 import se.bofr.dspi.core.HistoryMove
 import se.bofr.dspi.core.I2cConfig
-import se.bofr.dspi.core.LinkSceneRecall
-import se.bofr.dspi.core.LinkSystemAlign
-import se.bofr.dspi.core.LinkSystemEdits
+import se.bofr.dspi.core.AlinkSceneRecall
+import se.bofr.dspi.core.AlinkSystemAlign
+import se.bofr.dspi.core.AlinkSystemEdits
 import se.bofr.dspi.core.SiggenConfig
 import se.bofr.dspi.core.UartConfig
 import se.bofr.dspi.core.VregDemoEvent
@@ -68,14 +68,14 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
     }
 
     // -- WP SW1 -- the audio link's writes (slots, phase lock, apply at frame, counters)
-    override fun setAudioLinkSlots(slots: List<Int>) {
-        guard("setAudioLinkSlots")
-        return inner.setAudioLinkSlots(slots)
+    override fun setAlinkSlots(slots: List<Int>) {
+        guard("setAlinkSlots")
+        return inner.setAlinkSlots(slots)
     }
 
-    override fun setAudioLinkPhase(mode: Int, dLocal: Int, hopsOffset: Int) {
-        guard("setAudioLinkPhase")
-        return inner.setAudioLinkPhase(mode, dLocal, hopsOffset)
+    override fun setAlinkPhase(mode: Int, dLocal: Int, hopsOffset: Int) {
+        guard("setAlinkPhase")
+        return inner.setAlinkPhase(mode, dLocal, hopsOffset)
     }
 
     override fun applyAtFrame(frame: Long, op: Int, arg: Int, value: Int) {
@@ -83,26 +83,26 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.applyAtFrame(frame, op, arg, value)
     }
 
-    override fun resetAudioLinkStats() {
-        guard("resetAudioLinkStats")
-        return inner.resetAudioLinkStats()
+    override fun resetAlinkStats() {
+        guard("resetAlinkStats")
+        return inner.resetAlinkStats()
     }
 
     // -- WP LKUI1 -- the hub's audio link installation: saving the model, writing the
-    // link delays and recalling a scene change devices (the hub judges the role too)
-    override fun linkSystemSave(revision: Long, edits: LinkSystemEdits): Long {
-        guard("linkSystemSave")
-        return inner.linkSystemSave(revision, edits)
+    // audio link delays and recalling a scene change devices (the hub judges the role too)
+    override fun alinkSystemSave(revision: Long, edits: AlinkSystemEdits): Long {
+        guard("alinkSystemSave")
+        return inner.alinkSystemSave(revision, edits)
     }
 
-    override fun linkSystemAlign(): LinkSystemAlign {
-        guard("linkSystemAlign")
-        return inner.linkSystemAlign()
+    override fun alinkSystemAlign(): AlinkSystemAlign {
+        guard("alinkSystemAlign")
+        return inner.alinkSystemAlign()
     }
 
-    override fun linkSystemRecall(scene: String): LinkSceneRecall {
-        guard("linkSystemRecall")
-        return inner.linkSystemRecall(scene)
+    override fun alinkSystemRecall(scene: String): AlinkSceneRecall {
+        guard("alinkSystemRecall")
+        return inner.alinkSystemRecall(scene)
     }
 
     // Review w1d (integration with CG11, CG14): the calibration flow's writes.
@@ -748,14 +748,14 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // -- WP FWX --
             "identify",
             // -- WP SW1 --
-            "setAudioLinkSlots",
-            "setAudioLinkPhase",
+            "setAlinkSlots",
+            "setAlinkPhase",
             "applyAtFrame",
-            "resetAudioLinkStats",
+            "resetAlinkStats",
             // -- WP LKUI1 --
-            "linkSystemSave",
-            "linkSystemAlign",
-            "linkSystemRecall",
+            "alinkSystemSave",
+            "alinkSystemAlign",
+            "alinkSystemRecall",
             // -- WP P1DF --
             "configImportSelected"
         )
@@ -885,14 +885,14 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "resetInfoAtConnect",
             "hasClipEvents",
             // -- WP SW1 -- the audio link's reads, and the demo with it (as openDemo)
-            "audioLinkInfo",
-            "fetchAudioLinkInfo",
-            "fetchAudioLinkStatus",
-            "fetchAudioLinkSlots",
-            "fetchAudioLinkPhase",
-            "fetchAudioLinkFrameCounter",
+            "alinkInfo",
+            "fetchAlinkInfo",
+            "fetchAlinkStatus",
+            "fetchAlinkSlots",
+            "fetchAlinkPhase",
+            "fetchAlinkFrameCounter",
             "fetchApplyAtFrameStatus",
-            "openDemoAudioLink",
+            "openDemoAlink",
             // -- WP CS1 -- the USB error counters (0xB2), a read
             "fetchUsbErrorStats",
             "uf2Inspect",
@@ -911,7 +911,7 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "linkRetryNow",
             "linkSetUrl",
             // -- WP LKUI1 -- the hub's audio link installation, a read
-            "linkSystemView",
+            "alinkSystemView",
             "rawGet",
             "rtaGetOwnership",
             "rtaTakeControl",

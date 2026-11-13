@@ -98,12 +98,12 @@ use crate::callbacks::LinkListener;
 // -- WP LKUI1 --
 use crate::records::*;
 use crate::{DspiCore, DspiError, MeterRead, Result, SideChannel};
-use dspi_session::ext_state::ExtState;
-pub use system::{
-    LinkRoomLipSync, LinkSceneRecall, LinkSystemAlarm, LinkSystemAlign, LinkSystemEdits,
-    LinkSystemRoom, LinkSystemScene, LinkSystemUnit, LinkSystemView, LinkSystemWrite,
-    LinkUnitLatency,
+pub use alink_system::{
+    AlinkRoomLipSync, AlinkSceneRecall, AlinkSystemAlarm, AlinkSystemAlign, AlinkSystemEdits,
+    AlinkSystemRoom, AlinkSystemScene, AlinkSystemUnit, AlinkSystemView, AlinkSystemWrite,
+    AlinkUnitLatency,
 };
+use dspi_session::ext_state::ExtState;
 
 /// The role asked for when pairing, as the macOS Console does.
 const PAIR_ROLE: &str = "control";
@@ -336,7 +336,7 @@ pub(crate) struct LinkSession {
     tx: Sender<Msg>,
     // -- WP LKUI1 --
     /// The audio link installation as last read (`system.rs`).
-    system: system::Cache,
+    system: alink_system::Cache,
 }
 
 impl Drop for LinkSession {
@@ -985,7 +985,7 @@ impl DspiCore {
             cancel: Arc::clone(&cancel),
             tx,
             // -- WP LKUI1 --
-            system: system::Cache::default(),
+            system: alink_system::Cache::default(),
         };
         let (me, id) = (self.me.clone(), session.id);
         let kick = session.tx.clone();
@@ -3225,17 +3225,17 @@ mod tests_wp_wb4b;
 mod tests_wp_lkclose;
 
 // -- WP LKUI1 --
-#[path = "link/system.rs"]
-pub mod system;
+#[path = "alink/system.rs"]
+pub mod alink_system;
 
 // -- WP LKUI1 --
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
-#[path = "link/tests_wp_lkui1.rs"]
+#[path = "alink/tests_wp_lkui1.rs"]
 mod tests_wp_lkui1;
 
 // -- WP HWLK1F --
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
-#[path = "link/tests_wp_hwlk1f.rs"]
+#[path = "alink/tests_wp_hwlk1f.rs"]
 mod tests_wp_hwlk1f;

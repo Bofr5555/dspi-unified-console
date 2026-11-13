@@ -153,7 +153,7 @@ mod tests {
             // -- WP FWX --
             "src/fns_misc/ext_diag.rs",
             // -- WP SW1 --
-            "src/fns_misc/audio_link.rs",
+            "src/fns_misc/alink.rs",
             // -- WP P1NT --
             "src/fns_misc/notice_text.rs",
             "src/fns_browse.rs",

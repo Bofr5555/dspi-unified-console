@@ -550,7 +550,7 @@ pub(crate) mod link {
     }
 
     // -- WP LKUI1 --
-    // ── The audio link's installation on the hub (`dspi_core::link::system`) ──
+    // ── The audio link's installation on the hub (`dspi_core::link::alink_system`) ──
 
     /// A record as the JSON object a reply carries.
     fn record<T: serde::Serialize>(r: Result<T>) -> Result<Value> {
@@ -565,8 +565,8 @@ pub(crate) mod link {
     /// screen: JSON {ok, revision, installed, role, mayEdit, mayRecall,
     /// editNote, recallNote, systemDelayFrames, systemDelayMs, systemDelayAuto,
     /// rateHz, lipSyncUs, units: [{id, name, serial, kind, role, room,
-    /// connected, state, stateWord, pending, linkDelayFrames, linkDelayMs,
-    /// unitLinkDelayFrames, linkDelayMin, linkDelayMax, hopOffset,
+    /// connected, state, stateWord, pending, alinkDelayFrames, alinkDelayMs,
+    /// unitAlinkDelayFrames, alinkDelayMin, alinkDelayMax, hopOffset,
     /// unitHopOffset, phaseErrorFrames, hops, hopDelayFrames, latencyUs,
     /// measuredLatencyUs, alarms}], rooms: [{id, name, lipSyncUs}], scenes:
     /// [{id, name, systemMute}], alarms: [{id, severity, subject, message,
@@ -576,11 +576,15 @@ pub(crate) mod link {
     /// thread, and give a buffer of 64 KiB, as a short one means asking again.
     /// Returns the length needed; 0 for a panic.
     #[unsafe(no_mangle)]
-    pub extern "C" fn dspi_link_system_view(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
-        read(core, buf, len, |c| reply(record(c.link_system_view())))
+    pub extern "C" fn dspi_alink_system_view(
+        core: *mut FfiCore,
+        buf: *mut c_char,
+        len: u32,
+    ) -> u32 {
+        read(core, buf, len, |c| reply(record(c.alink_system_view())))
     }
 
-    /// Save the Clock-and-links edits made on the view of `revision`:
+    /// Save the Clock-and-audio-links edits made on the view of `revision`:
     /// `edits_json` is {setSystemDelay, systemDelayFrames (null: automatic),
     /// rooms: [{roomId, lipSyncUs}], units: [{unitId, measuredLatencyUs}]}.
     /// Replies JSON {ok, revision} (the new one), or code `conflict` when the
@@ -588,7 +592,7 @@ pub(crate) mod link {
     /// `denied` for a role other than admin. Blocks. Returns the length
     /// needed; see the module's rule on short buffers.
     #[unsafe(no_mangle)]
-    pub extern "C" fn dspi_link_system_save(
+    pub extern "C" fn dspi_alink_system_save(
         core: *mut FfiCore,
         revision: u64,
         edits_json: *const c_char,
@@ -601,22 +605,22 @@ pub(crate) mod link {
                     msg: format!("edits_json: {e}"),
                 }
             })?;
-            c.link_system_save(revision, edits)
+            c.alink_system_save(revision, edits)
                 .map(|r| json!({ "revision": r }))
         })
     }
 
-    /// Write the link delays the system delay asks for to every unit (each
+    /// Write the audio link delays the system delay asks for to every unit (each
     /// re-anchors with a short silence). Replies JSON {ok, applied, message,
     /// writes: [{unit, what, result, resultWord, tone}]}. Admin only. Blocks.
     /// Returns the length needed; see the module's rule on short buffers.
     #[unsafe(no_mangle)]
-    pub extern "C" fn dspi_link_system_align(
+    pub extern "C" fn dspi_alink_system_align(
         core: *mut FfiCore,
         buf: *mut c_char,
         len: u32,
     ) -> u32 {
-        act(core, buf, len, |c| record(c.link_system_align()))
+        act(core, buf, len, |c| record(c.alink_system_align()))
     }
 
     /// Recall scene `scene` (an id from the view). Replies JSON {ok, scene,
@@ -627,7 +631,7 @@ pub(crate) mod link {
     /// words. Blocks. Returns the length needed; see the module's rule on
     /// short buffers.
     #[unsafe(no_mangle)]
-    pub extern "C" fn dspi_link_system_recall(
+    pub extern "C" fn dspi_alink_system_recall(
         core: *mut FfiCore,
         scene: *const c_char,
         buf: *mut c_char,
@@ -635,7 +639,7 @@ pub(crate) mod link {
     ) -> u32 {
         act(core, buf, len, |c| {
             let scene = arg(scene, "scene")?.to_owned();
-            record(c.link_system_recall(scene))
+            record(c.alink_system_recall(scene))
         })
     }
 }

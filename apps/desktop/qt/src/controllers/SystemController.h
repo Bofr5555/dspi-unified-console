@@ -21,10 +21,10 @@ class QQmlEngine;
 struct FfiCore;
 
 // -- WP LKUI1 -- The audio link's installation on the hub this console is on
-// (the web console's System view, SW3): its elements with their role and link
-// state, the scene bar, the Clock-and-links editor and a one-line status. The
-// core turns the hub's system.* answers into rows (dspi_link_system_view and
-// friends, dspi-core link/system.rs); this only keeps them for QML, keeps the
+// (the web console's System view, SW3): its elements with their role and alink
+// state, the scene bar, the Clock-and-audio-links editor and a one-line status. The
+// core turns the hub's system.* answers into rows (dspi_alink_system_view and
+// friends, dspi-core alink/system.rs); this only keeps them for QML, keeps the
 // editor's draft and runs the calls.
 //
 // The calls ask the hub over the network (a status read touches every unit on
@@ -136,7 +136,7 @@ public:
     Q_INVOKABLE void refresh();
     // Scene `id` from `scenes`
     Q_INVOKABLE void recall(const QString &id);
-    // Writes the link delays the system delay asks for (Admin)
+    // Writes the audio link delays the system delay asks for (Admin)
     Q_INVOKABLE void align();
     // The draft: the system delay (automatic, or frames), a room's lip sync
     // and a unit's measured latency in µs ("" clears it: the model's own).

@@ -7,12 +7,12 @@ use crate::{NotificationSource, Transport, TransportError};
 use dspi_proto::generated::opcodes as op;
 use std::time::Duration;
 
-fn device(audio_link: bool) -> FakeDevice {
+fn device(alink: bool) -> FakeDevice {
     FakeDevice::new(
         Capture::demo(),
         FakeOptions {
             extensions: true,
-            audio_link,
+            alink,
             ..FakeOptions::default()
         },
     )
@@ -50,11 +50,11 @@ fn wp_sw1_without_the_option_there_is_no_link() {
     let mut d = device(false);
     assert!(list(&mut d).iter().all(|id| *id < 0x8000));
     assert!(matches!(
-        get(&mut d, alink::EXT_LINK_INFO, 32),
+        get(&mut d, alink::EXT_ALINK_INFO, 32),
         Err(TransportError::Stalled { .. })
     ));
     assert!(matches!(
-        set(&mut d, EXT_FAKE_LINK_SIM, &[LINK_SIM_LOSE]),
+        set(&mut d, EXT_FAKE_ALINK_SIM, &[ALINK_SIM_LOSE]),
         Err(TransportError::Stalled { .. })
     ));
 }
@@ -66,7 +66,7 @@ fn wp_sw1_a_receiver_lists_and_answers_the_link() {
     for id in alink::RECEIVER_IDS {
         assert!(ids.contains(&id), "{id:#x} in {ids:x?}");
     }
-    assert!(!ids.contains(&alink::EXT_LINK_TX));
+    assert!(!ids.contains(&alink::EXT_ALINK_TX));
     // 16 ids at most: the list still fits the host's 64-byte read.
     assert!(ids.len() <= 32);
     let f = get(&mut d, dspi_proto::generated::ext::EXT_NOTIFY_FEATURES, 4).unwrap();
@@ -82,17 +82,17 @@ fn wp_sw1_a_receiver_lists_and_answers_the_link() {
             1, 1, 7, 1, 0x40, 8, 0, 0, 0, 0xff, 0, 0, 0x23, 0, 0, 0, 0x01, 1, 0x8f, 1
         ]
     );
-    let s = LinkStatus::decode(&get(&mut d, 0x8001, 52).unwrap()).unwrap();
+    let s = AlinkStatus::decode(&get(&mut d, 0x8001, 52).unwrap()).unwrap();
     assert_eq!(
         (s.state, s.channels, s.sender_id),
-        (LinkState::Locked, 8, 0x42)
+        (AlinkState::Locked, 8, 0x42)
     );
     assert!(s.frame >= FRAME_BASE);
-    assert_eq!(get(&mut d, 0x8003, 8).unwrap(), LinkSlots::IDENTITY.0);
+    assert_eq!(get(&mut d, 0x8003, 8).unwrap(), AlinkSlots::IDENTITY.0);
     assert_eq!(get(&mut d, 0x800A, 64).unwrap()[0], 1);
     let snap = SuperframeSnapshot::decode(&get(&mut d, 0x8008, 24).unwrap()).unwrap();
     assert_eq!((snap.channels, snap.sender_id), (8, 0x42));
-    assert!(get(&mut d, alink::EXT_LINK_TX, 16).is_err());
+    assert!(get(&mut d, alink::EXT_ALINK_TX, 16).is_err());
 
     // Slots: written and read back; 64..0xFE stalls, at or above C does not.
     set(&mut d, 0x8003, &[4, 5, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]).unwrap();
@@ -116,7 +116,7 @@ fn wp_sw1_a_receiver_lists_and_answers_the_link() {
 
     // Phase: within 257..399 and +-64; OUT flags must be 0.
     let ph = |mode, d_local, hops_offset, flags| {
-        LinkPhase {
+        AlinkPhase {
             mode,
             d_local,
             hops_offset,
@@ -126,7 +126,7 @@ fn wp_sw1_a_receiver_lists_and_answers_the_link() {
         .encode()
     };
     set(&mut d, 0x8004, &ph(0, 257, 0, 0)).unwrap();
-    let p = LinkPhase::decode(&get(&mut d, 0x8004, 8).unwrap()).unwrap();
+    let p = AlinkPhase::decode(&get(&mut d, 0x8004, 8).unwrap()).unwrap();
     assert_eq!((p.mode, p.d_local, p.state), (0, 257, 0));
     assert!(set(&mut d, 0x8004, &ph(2, 300, 0, 0)).is_err());
     assert!(set(&mut d, 0x8004, &ph(1, 256, 0, 0)).is_err());
@@ -139,7 +139,7 @@ fn wp_sw1_a_receiver_lists_and_answers_the_link() {
     // Stats reset takes exactly [1].
     assert!(set(&mut d, 0x8009, &[0]).is_err());
     set(&mut d, 0x8009, &[1]).unwrap();
-    let s = LinkStatus::decode(&get(&mut d, 0x8001, 52).unwrap()).unwrap();
+    let s = AlinkStatus::decode(&get(&mut d, 0x8001, 52).unwrap()).unwrap();
     assert_eq!(s.lock_count, 0);
 
     // Input source 7 is selectable.
@@ -160,11 +160,11 @@ fn wp_sw1_input_source_7_needs_the_link() {
     );
 }
 
-fn state_events(src: &mut Box<dyn NotificationSource>) -> Vec<LinkStateEvent> {
+fn state_events(src: &mut Box<dyn NotificationSource>) -> Vec<AlinkStateEvent> {
     drain(src)
         .into_iter()
         .filter(|p| p.get(1) == Some(&0xE1))
-        .map(|p| LinkStateEvent::decode(&p[4..]).unwrap())
+        .map(|p| AlinkStateEvent::decode(&p[4..]).unwrap())
         .collect()
 }
 
@@ -173,9 +173,9 @@ fn wp_sw1_loss_lock_and_reanchor_send_events() {
     let mut d = device(true);
     let mut src = d.notifications().unwrap();
     drain(&mut src);
-    set(&mut d, EXT_FAKE_LINK_SIM, &[LINK_SIM_LOSE]).unwrap();
-    let s1 = LinkStatus::decode(&get(&mut d, 0x8001, 52).unwrap()).unwrap();
-    assert_eq!((s1.state, s1.loss_count), (LinkState::Holdover, 1));
+    set(&mut d, EXT_FAKE_ALINK_SIM, &[ALINK_SIM_LOSE]).unwrap();
+    let s1 = AlinkStatus::decode(&get(&mut d, 0x8001, 52).unwrap()).unwrap();
+    assert_eq!((s1.state, s1.loss_count), (AlinkState::Holdover, 1));
     // Extrapolated in holdover: still valid, still running.
     assert!(s1.frame >= FRAME_BASE);
     assert_eq!(get(&mut d, 0x8004, 8).unwrap()[7], 3);
@@ -187,28 +187,28 @@ fn wp_sw1_loss_lock_and_reanchor_send_events() {
         value: 0,
     };
     assert!(set(&mut d, 0x8006, &r.encode()).is_err());
-    set(&mut d, EXT_FAKE_LINK_SIM, &[LINK_SIM_REANCHOR]).unwrap();
-    set(&mut d, EXT_FAKE_LINK_SIM, &[LINK_SIM_BANK_ERROR]).unwrap();
-    assert!(set(&mut d, EXT_FAKE_LINK_SIM, &[9]).is_err());
-    let s = LinkStatus::decode(&get(&mut d, 0x8001, 52).unwrap()).unwrap();
+    set(&mut d, EXT_FAKE_ALINK_SIM, &[ALINK_SIM_REANCHOR]).unwrap();
+    set(&mut d, EXT_FAKE_ALINK_SIM, &[ALINK_SIM_BANK_ERROR]).unwrap();
+    assert!(set(&mut d, EXT_FAKE_ALINK_SIM, &[9]).is_err());
+    let s = AlinkStatus::decode(&get(&mut d, 0x8001, 52).unwrap()).unwrap();
     assert_eq!(
         (s.state, s.crc16_errors, s.lock_count),
-        (LinkState::Locked, 1, 2)
+        (AlinkState::Locked, 1, 2)
     );
 
     let events = state_events(&mut src);
     assert_eq!(events.len(), 2);
     assert_eq!(
         (events[0].state, events[0].reason),
-        (LinkState::Holdover, LinkEventReason::Los)
+        (AlinkState::Holdover, AlinkEventReason::Los)
     );
     assert_eq!(
         (events[1].state, events[1].reason),
-        (LinkState::Locked, LinkEventReason::Reanchor)
+        (AlinkState::Locked, AlinkEventReason::Reanchor)
     );
 
     // A new delay while phase-locked re-anchors; the same one does nothing.
-    let p = LinkPhase {
+    let p = AlinkPhase {
         mode: 1,
         d_local: 320,
         hops_offset: 0,
@@ -219,9 +219,9 @@ fn wp_sw1_loss_lock_and_reanchor_send_events() {
     set(&mut d, 0x8004, &p.encode()).unwrap();
     let events = state_events(&mut src);
     assert_eq!(events.len(), 1);
-    assert_eq!(events[0].reason, LinkEventReason::Reanchor);
+    assert_eq!(events[0].reason, AlinkEventReason::Reanchor);
 
-    // Disabling a locked link: off, reason DISABLED; enabling locks again.
+    // Disabling a locked alink: off, reason DISABLED; enabling locks again.
     set(&mut d, 0x8002, &[0, 0xFF, 0, 0xFF, 0xFF, 0xFF, 3, 0]).unwrap();
     assert_eq!(get(&mut d, 0x8001, 52).unwrap()[0], 0);
     assert_eq!(
@@ -235,7 +235,7 @@ fn wp_sw1_loss_lock_and_reanchor_send_events() {
     let reasons: Vec<_> = events.iter().map(|e| e.reason).collect();
     assert_eq!(
         reasons,
-        [LinkEventReason::Disabled, LinkEventReason::Locked]
+        [AlinkEventReason::Disabled, AlinkEventReason::Locked]
     );
 }
 
@@ -318,7 +318,7 @@ fn wp_sw1_apply_at_frame_queues_and_reports() {
 
 #[test]
 fn wp_sw1_the_demo_with_the_link() {
-    let mut d = FakeDevice::demo_audio_link();
+    let mut d = FakeDevice::demo_alink();
     assert!(list(&mut d).contains(&0x8000));
     let mut plain = FakeDevice::demo();
     assert!(!list(&mut plain).contains(&0x8000));
@@ -330,21 +330,21 @@ fn wp_sw1_the_demo_with_the_link() {
 fn wp_sw1_fixup_rx_pin_follows_the_config_and_disable_from_holdover() {
     let mut d = device(true);
     assert_eq!(
-        LinkInfo::decode(&get(&mut d, 0x8000, 32).unwrap())
+        AlinkInfo::decode(&get(&mut d, 0x8000, 32).unwrap())
             .unwrap()
             .rx_pin,
         0
     );
     set(&mut d, 0x8002, &[1, 5, 0, 0xFF, 0xFF, 0xFF, 3, 0]).unwrap();
     assert_eq!(
-        LinkInfo::decode(&get(&mut d, 0x8000, 32).unwrap())
+        AlinkInfo::decode(&get(&mut d, 0x8000, 32).unwrap())
             .unwrap()
             .rx_pin,
         5
     );
     set(&mut d, 0x8002, &[1, 0xFF, 0, 0xFF, 0xFF, 0xFF, 3, 0]).unwrap();
     assert_eq!(
-        LinkInfo::decode(&get(&mut d, 0x8000, 32).unwrap())
+        AlinkInfo::decode(&get(&mut d, 0x8000, 32).unwrap())
             .unwrap()
             .rx_pin,
         0
@@ -352,7 +352,7 @@ fn wp_sw1_fixup_rx_pin_follows_the_config_and_disable_from_holdover() {
 
     let mut src = d.notifications().unwrap();
     drain(&mut src);
-    set(&mut d, EXT_FAKE_LINK_SIM, &[LINK_SIM_LOSE]).unwrap();
+    set(&mut d, EXT_FAKE_ALINK_SIM, &[ALINK_SIM_LOSE]).unwrap();
     assert_eq!(get(&mut d, 0x8001, 52).unwrap()[0], 3);
     set(&mut d, 0x8002, &[0, 0xFF, 0, 0xFF, 0xFF, 0xFF, 3, 0]).unwrap();
     assert_eq!(get(&mut d, 0x8001, 52).unwrap()[0], 0);
@@ -363,8 +363,8 @@ fn wp_sw1_fixup_rx_pin_follows_the_config_and_disable_from_holdover() {
     assert_eq!(
         reasons,
         [
-            (LinkState::Holdover, LinkEventReason::Los),
-            (LinkState::Off, LinkEventReason::Disabled)
+            (AlinkState::Holdover, AlinkEventReason::Los),
+            (AlinkState::Off, AlinkEventReason::Disabled)
         ]
     );
 }
@@ -374,19 +374,19 @@ fn wp_sw1_fixup_rx_pin_follows_the_config_and_disable_from_holdover() {
 fn wp_fixs1_the_delay_range_follows_the_latency_option_as_the_firmware() {
     let mut d = device(true);
     let range = |d: &mut FakeDevice| {
-        let i = LinkInfo::decode(&get(d, 0x8000, 32).unwrap()).unwrap();
+        let i = AlinkInfo::decode(&get(d, 0x8000, 32).unwrap()).unwrap();
         (i.d_local_min, i.d_local_max)
     };
     // Spec 2.8.1 at 48 kHz: the default 4 ms option, then the 1 ms one.
     assert_eq!(range(&mut d), (257, 399));
-    let p = LinkPhase::decode(&get(&mut d, 0x8004, 8).unwrap()).unwrap();
+    let p = AlinkPhase::decode(&get(&mut d, 0x8004, 8).unwrap()).unwrap();
     assert_eq!((p.d_local, p.flags, p.state), (300, 0, 2), "starts inside");
     d.control_out(op::REQ_OUTPUT_LATENCY, 0, &[2]).unwrap();
     assert_eq!(range(&mut d), (81, 431));
     set(&mut d, 0x8004, &[1, 0, 81, 0, 0, 0, 0, 0]).unwrap();
     // Back to 4 ms: 81 is now below the minimum, said and free (2.8.5).
     d.control_out(op::REQ_OUTPUT_LATENCY, 0, &[5]).unwrap();
-    let p = LinkPhase::decode(&get(&mut d, 0x8004, 8).unwrap()).unwrap();
+    let p = AlinkPhase::decode(&get(&mut d, 0x8004, 8).unwrap()).unwrap();
     assert_eq!(
         (p.d_local, p.flags, p.state),
         (81, alink::PHASE_FLAG_D_BELOW_MIN, 0)
@@ -398,7 +398,7 @@ fn wp_fixs1_the_delay_range_follows_the_latency_option_as_the_firmware() {
 fn wp_fixs1_phase_error_small_when_locked_growing_in_holdover() {
     let mut d = device(true);
     let err = |d: &mut FakeDevice| {
-        LinkStatus::decode(&get(d, 0x8001, 52).unwrap())
+        AlinkStatus::decode(&get(d, 0x8001, 52).unwrap())
             .unwrap()
             .phase_error_frames
     };
@@ -414,13 +414,13 @@ fn wp_fixs1_phase_error_small_when_locked_growing_in_holdover() {
     assert!(curve.iter().all(|e| (0.0099..=0.0501).contains(e)));
     assert!(curve.windows(2).all(|w| (w[1] - w[0]).abs() < 0.001));
     let remote = d.remote();
-    assert!(remote.link_sim(LINK_SIM_LOSE));
+    assert!(remote.alink_sim(ALINK_SIM_LOSE));
     let e0 = err(&mut d);
     std::thread::sleep(Duration::from_millis(50));
     let e1 = err(&mut d);
     std::thread::sleep(Duration::from_millis(50));
     let e2 = err(&mut d);
     assert!(e0 < e1 && e1 < e2, "holdover grows: {e0} {e1} {e2}");
-    assert!(remote.link_sim(LINK_SIM_LOCK));
+    assert!(remote.alink_sim(ALINK_SIM_LOCK));
     assert!((0.01..=0.05).contains(&err(&mut d)));
 }

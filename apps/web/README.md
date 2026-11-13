@@ -231,14 +231,14 @@ the session's role; the page only leaves out what it would refuse.
 
 - **System view** (WB6d, `SystemScreen.tsx`): rooms and zones with their units, each
   unit connected or not, its audio link's lock and its alarms; the topology (sender,
-  fan-outs, units, the output each hangs on, hop delays, each unit's link slots). On
+  fan-outs, units, the output each hangs on, hop delays, each unit's audio link slots). On
   a hub with an installation it is the first screen; a device the console holds
   itself (USB, the demo), or a hub without an installation, is a single unit, read
   only while the view is shown.
-- **Clock and links** (Installer mode, `ClockLinks.tsx`): per unit `d_local` against
+- **Clock and audio links** (Installer mode, `AlinkClock.tsx`): per unit `d_local` against
   its limits, `hops_offset` (with what the unit has, when it differs), the path and
-  latencies, a measured latency and each room's lip sync; the link delay D; the slot
-  matrix (link channels to each unit's 8 inputs); Compute and Align
+  latencies, a measured latency and each room's lip sync; the audio link delay D; the slot
+  matrix (audio link channels to each unit's 8 inputs); Compute and Align
   (`system.align`, asked first: a re-anchor is 2 to 6 ms of silence) with each
   unit's result; link stats and the trim scan. Edits are staged and saved as one
   `system.set`. Model and alignment are Admin only: other roles see it read only.
@@ -252,7 +252,7 @@ the session's role; the page only leaves out what it would refuse.
   and the alarms with Acknowledge.
 
 The e2e (`test/e2e/system.spec.ts`) runs against `uconsole --demo hub --web
---audio-link`: the fake device's audio-link roles (a sender, a fan-out, four units)
+--alink`: the fake device's audio-link roles (a sender, a fan-out, four units)
 with a system model, open (Admin) and with a PIN (Control).
 
 ## Undo and Redo, the event log, diagnostics (WB8u)
@@ -291,7 +291,7 @@ WB8, the real-hardware WebUSB checks named above.)
   sender refused; a timeout, a lock and any other answer each have their own.
 - -- WP HWLK1F -- **A taken scene and a written alignment** are the core's sentences too
   (`sceneOutcome`, `alignOutcome`): a unit whose firmware has no audio link takes a
-  scene at once ("applied now on K (no audio link); at link frame N … on the others"),
+  scene at once ("applied now on K (no audio link); at audio link frame N … on the others"),
   "on time on every unit" only when it is true, and an alignment says what it wrote,
   what it skipped and why, or that it wrote nothing. Such a unit shows "No audio link
   (firmware)", never "Unknown"; a save that names one shows the hub's warning.
@@ -399,7 +399,7 @@ The web step also runs the hosting routes on the real `uconsole` (`test/e2e/host
 | `src/screens/matrix/` | WB6c: the matrix mixer |
 | `src/screens/events/` | WB8u: the event log and Save Diagnostics…; `model.ts` its rows, filter and text |
 | `src/ui/undo.tsx` | WB8u: Undo and Redo, the keys, what a step left alone |
-| `src/screens/system/` | SW3: the System view, Clock and links, the scene bar, the status rail; `model.ts` their logic, `feed.ts` the hub's `system.*` |
+| `src/screens/system/` | SW3: the System view, Clock and audio links, the scene bar, the status rail; `model.ts` their logic, `feed.ts` the hub's `system.*` |
 | `src/index.tsx` | `mount()` and the public types |
 | `src/standalone.ts`, `index.html` | the standalone page (`?readonly` for a display page) |
 | `test/unit/` | `node --test` |

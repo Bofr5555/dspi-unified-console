@@ -124,11 +124,11 @@ mod features;
 mod diag;
 pub use diag::{EXT_FAKE_CLIP, FAKE_HW_REV};
 // -- WP SW1 --
-mod audio_link;
+mod alink;
 // -- WP SW2 --
-pub use audio_link::AudioLinkSetup;
-pub use audio_link::{
-    EXT_FAKE_LINK_SIM, LINK_SIM_BANK_ERROR, LINK_SIM_LOCK, LINK_SIM_LOSE, LINK_SIM_REANCHOR,
+pub use alink::AlinkSetup;
+pub use alink::{
+    ALINK_SIM_BANK_ERROR, ALINK_SIM_LOCK, ALINK_SIM_LOSE, ALINK_SIM_REANCHOR, EXT_FAKE_ALINK_SIM,
 };
 // -- WP CG22 --
 mod analysis;
@@ -244,12 +244,12 @@ pub struct FakeOptions {
     pub diag_ext: bool,
     // -- WP SW1 --
     /// Answer the audio link's sub-commands as a receiving unit, report
-    /// `NOTIFY_FEAT_LINK_STATE` and `_APPLY_RESULT`, send their events and
-    /// take input source 7 (`fake/audio_link.rs`), as LK5/LK6 firmware is
+    /// `NOTIFY_FEAT_ALINK_STATE` and `_APPLY_RESULT`, send their events and
+    /// take input source 7 (`fake/alink.rs`), as LK5/LK6 firmware is
     /// specified to. Off: no link, as every firmware today. Only
     /// discoverable with [`FakeOptions::extensions`] on.
-    /// [`FakeDevice::demo_audio_link`] has it on.
-    pub audio_link: bool,
+    /// [`FakeDevice::demo_alink`] has it on.
+    pub alink: bool,
 }
 
 /// `wLength` is 16 bits.
@@ -343,21 +343,21 @@ impl FakeDevice {
 
     // -- WP SW1 --
     /// [`FakeDevice::demo`] as a unit receiving the audio link
-    /// ([`FakeOptions::audio_link`]): for clients and the hub without
+    /// ([`FakeOptions::alink`]): for clients and the hub without
     /// hardware.
-    pub fn demo_audio_link() -> Self {
+    pub fn demo_alink() -> Self {
         let dev = Self::demo_with(true);
-        dev.shared.lock().options.audio_link = true;
+        dev.shared.lock().options.alink = true;
         dev
     }
 
     // -- WP SW2 --
-    /// [`FakeDevice::demo_audio_link`] at another place on the link: a unit
+    /// [`FakeDevice::demo_alink`] at another place on the link: a unit
     /// behind re-emitters, a repeater, a fan-out or the sender build
-    /// ([`AudioLinkSetup`]).
-    pub fn demo_audio_link_as(setup: AudioLinkSetup) -> Self {
-        let dev = Self::demo_audio_link();
-        dev.shared.lock().audio_link.setup = setup;
+    /// ([`AlinkSetup`]).
+    pub fn demo_alink_as(setup: AlinkSetup) -> Self {
+        let dev = Self::demo_alink();
+        dev.shared.lock().alink.setup = setup;
         dev
     }
 
@@ -482,12 +482,12 @@ impl FakeRemote {
     }
 
     // -- WP SW1 --
-    /// Play the audio link's side, as [`EXT_FAKE_LINK_SIM`] does: one of
-    /// [`LINK_SIM_LOSE`], [`LINK_SIM_LOCK`], [`LINK_SIM_REANCHOR`],
-    /// [`LINK_SIM_BANK_ERROR`]. False without [`FakeOptions::audio_link`] or
+    /// Play the audio link's side, as [`EXT_FAKE_ALINK_SIM`] does: one of
+    /// [`ALINK_SIM_LOSE`], [`ALINK_SIM_LOCK`], [`ALINK_SIM_REANCHOR`],
+    /// [`ALINK_SIM_BANK_ERROR`]. False without [`FakeOptions::alink`] or
     /// for another value.
-    pub fn link_sim(&self, op: u8) -> bool {
-        let ok = self.shared.lock().set_link(EXT_FAKE_LINK_SIM, &[op]) == Some(true);
+    pub fn alink_sim(&self, op: u8) -> bool {
+        let ok = self.shared.lock().set_alink(EXT_FAKE_ALINK_SIM, &[op]) == Some(true);
         self.shared.wake.notify_all();
         ok
     }
@@ -621,7 +621,7 @@ pub const FAKE_ONLY_EXTENSIONS: &[u16] = &[
     // -- WP FWX --
     EXT_FAKE_CLIP,
     // -- WP SW1 --
-    EXT_FAKE_LINK_SIM,
+    EXT_FAKE_ALINK_SIM,
 ];
 
 /// What can happen to a simulated device's core-voltage state (WP CG11).
@@ -1175,8 +1175,8 @@ struct State {
     /// Identify's blink and last tone (`fake/diag.rs`).
     diag: diag::Diag,
     // -- WP SW1 --
-    /// The audio link's state (`fake/audio_link.rs`).
-    audio_link: audio_link::AudioLink,
+    /// The audio link's state (`fake/alink.rs`).
+    alink: alink::Alink,
     /// Opcodes [`FakeRemote::stall`] made fail.
     stalled: Vec<u8>,
     /// SETs [`FakeRemote::ignore`] made ACK and drop.
@@ -1244,7 +1244,7 @@ impl State {
             // -- WP FWX --
             diag: diag::Diag::default(),
             // -- WP SW1 --
-            audio_link: audio_link::AudioLink::default(),
+            alink: alink::Alink::default(),
             stalled: Vec::new(),
             ignored: Vec::new(),
             notify_failures: 0,
@@ -1618,7 +1618,7 @@ impl State {
             // `case REQ_GET_USB_ERROR_STATS`).
             op::REQ_GET_USB_ERROR_STATS => Some(vec![0; 24]),
             op::REQ_RESET_USB_ERROR_STATS => Some(vec![1]),
-            op::REQ_EXTENSION if self.options.extensions => match self.get_link(value) {
+            op::REQ_EXTENSION if self.options.extensions => match self.get_alink(value) {
                 // -- WP SW1 --
                 Some(link) => link,
                 None => self.get_ext(value),
@@ -1875,19 +1875,19 @@ impl State {
             gext::EXT_LIST => {
                 let mut ids = vec![gext::EXT_CROSSFEED_PAIR_MAP, gext::EXT_CORE_VREG];
                 // -- WP FWX --
-                if self.options.bulk_source || self.options.diag_ext || self.options.audio_link {
+                if self.options.bulk_source || self.options.diag_ext || self.options.alink {
                     ids.push(gext::EXT_NOTIFY_FEATURES);
                 }
                 if self.options.diag_ext {
                     ids.extend([gext::EXT_IDENTIFY, gext::EXT_RESET_INFO]);
                 }
                 // -- WP SW1 --
-                ids.extend(self.link_ids());
+                ids.extend(self.alink_ids());
                 Some(ids.iter().flat_map(|id| id.to_le_bytes()).collect())
             }
             // `NOTIFY_FEAT_BULK_SOURCE` (bit 0), `NOTIFY_FEAT_CLIP_EVENT` (bit 1).
             gext::EXT_NOTIFY_FEATURES
-                if self.options.bulk_source || self.options.diag_ext || self.options.audio_link =>
+                if self.options.bulk_source || self.options.diag_ext || self.options.alink =>
             {
                 Some(self.notify_features().to_le_bytes().to_vec())
             }
@@ -2142,7 +2142,7 @@ impl State {
             return ok;
         }
         // -- WP SW1 --
-        if let Some(ok) = self.set_link(value, data) {
+        if let Some(ok) = self.set_alink(value, data) {
             return ok;
         }
         match value {

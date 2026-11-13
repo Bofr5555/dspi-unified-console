@@ -589,8 +589,14 @@ pub fn parse_value(d: &ParamDesc, raw: &str) -> Result<Value, ParseError> {
         Kind::Trigger => Value::Trigger,
         Kind::Choice(variants) => {
             let lower = raw.to_ascii_lowercase();
-            match variants.iter().find(|(_, n)| *n == lower) {
-                Some((v, _)) => Value::Choice(*v),
+            // -- WP ALINK1 -- an old name (`in.source link`) still reads.
+            let named = variants
+                .iter()
+                .find(|(_, n)| *n == lower)
+                .map(|(v, _)| *v)
+                .or_else(|| dspi_proto::registry::choice_alias(d.path, &lower));
+            match named {
+                Some(v) => Value::Choice(v),
                 None => match raw.parse::<u8>() {
                     Ok(n) if variants.iter().any(|(v, _)| *v == n) => Value::Choice(n),
                     _ => {
@@ -1014,6 +1020,19 @@ mod tests {
         match p("in.source 1").unwrap() {
             Command::Set { value, .. } => assert_eq!(value, Value::Choice(1)),
             other => panic!("{other:?}"),
+        }
+    }
+
+    // -- WP ALINK1 --
+    /// The audio link input is `alink`; `link`, its name before ALINK1, still
+    /// reads as 7.
+    #[test]
+    fn wp_alink1_the_audio_link_source_takes_alink_and_the_old_link() {
+        for word in ["alink", "link", "LINK"] {
+            match p(&format!("in.source {word}")).unwrap() {
+                Command::Set { value, .. } => assert_eq!(value, Value::Choice(7), "{word}"),
+                other => panic!("{other:?}"),
+            }
         }
     }
 

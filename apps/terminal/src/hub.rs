@@ -58,8 +58,8 @@ use dspi_hub::{
 };
 use dspi_transport::FakeDevice;
 // -- WP SW3 --
-use dspi_proto::ext::audio_link::LinkRole;
-use dspi_transport::fake::AudioLinkSetup;
+use dspi_proto::ext::alink::AlinkRole;
+use dspi_transport::fake::AlinkSetup;
 use dspi_tui::shell::connect::{Target, printable};
 use serde_json::{Value, json};
 
@@ -137,17 +137,17 @@ struct RunOptions {
     /// `--share-usb` with `--local`: the hub holds this machine's USB devices.
     share_usb: bool,
     // -- WP SW3 --
-    /// `--demo --audio-link`: an installation of simulated devices on the audio
-    /// link (a sender, a fan-out, four units) with its system model.
-    audio_link: bool,
+    /// `--demo --alink`: an installation of simulated devices on the audio
+    /// alink (a sender, a fan-out, four units) with its system model.
+    alink: bool,
     // -- WP HWLK1F --
     /// `--pair-admin`: the pairing window at the start may give admin, to the
     /// one client that asks for it. Otherwise a PIN gives at most control.
     pair_admin: bool,
-    /// `--with-usb` (a test option, with `--demo --audio-link`): this machine's
+    /// `--with-usb` (a test option, with `--demo --alink`): this machine's
     /// USB devices too, beside the simulated installation.
     with_usb: bool,
-    /// `--with-plain-unit` (a test option, with `--demo --audio-link`): one
+    /// `--with-plain-unit` (a test option, with `--demo --alink`): one
     /// more simulated DSPi, without the audio link, in the installation.
     with_plain_unit: bool,
 }
@@ -265,13 +265,13 @@ OPTIONS:
                               (default port {LOCAL_PORT}), a secure page with
                               WebUSB and Link together. The hub holds no USB
                               device, so the browser can; --share-usb: it does
-    --audio-link              with --demo: an installation on the audio link instead
+    --alink                   with --demo: an installation on the audio link instead
                               of the one device (a sender, a fan-out and four
                               units), and its system model when none is kept
-    --with-usb                test option, with --demo --audio-link: this
+    --with-usb                test option, with --demo --alink: this
                               machine's USB DSPis too, to test a mixed
                               installation on hardware (add them to the model)
-    --with-plain-unit         test option, with --demo --audio-link: one more
+    --with-plain-unit         test option, with --demo --alink: one more
                               simulated DSPi without the audio link (unit P)
     --loopback                listen on this machine only, and do not advertise
     --no-keep-awake           let the machine sleep while sharing
@@ -319,7 +319,7 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
     // -- WP WB7 --
     let (mut web, mut console, mut local, mut share_usb) = (false, None, false, false);
     // -- WP SW3 --
-    let mut audio_link = false;
+    let mut alink = false;
     // -- WP HWLK1F --
     let (mut pair_admin, mut with_usb, mut with_plain_unit) = (false, false, false);
     let mut port_given = false;
@@ -370,7 +370,8 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
             "--local" => local = true,
             "--share-usb" => share_usb = true,
             // -- WP SW3 --
-            "--audio-link" => audio_link = true,
+            // -- WP ALINK1 -- `--alink`; `--audio-link`, its name before, is a hidden alias
+            "--alink" | "--audio-link" => alink = true,
             // -- WP HWLK1F --
             "--pair-admin" => pair_admin = true,
             "--with-usb" => with_usb = true,
@@ -388,6 +389,7 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 | "--web"
                 | "--local"
                 | "--share-usb"
+                | "--alink"
                 | "--audio-link"
                 | "--pair-admin"
                 | "--with-usb"
@@ -426,9 +428,9 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 ));
             }
             // -- WP SW3 --
-            if audio_link && !demo {
+            if alink && !demo {
                 return Err(usage(format!(
-                    "--audio-link is for `{COMMAND} --demo hub`: it shares simulated devices"
+                    "--alink is for `{COMMAND} --demo hub`: it shares simulated devices"
                 )));
             }
             // -- WP HWLK1F --
@@ -436,9 +438,9 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 (with_usb, "--with-usb"),
                 (with_plain_unit, "--with-plain-unit"),
             ] {
-                if given && !audio_link {
+                if given && !alink {
                     return Err(usage(format!(
-                        "{flag} is a test option of `{COMMAND} --demo hub --audio-link`"
+                        "{flag} is a test option of `{COMMAND} --demo hub --alink`"
                     )));
                 }
             }
@@ -466,7 +468,7 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 local,
                 share_usb,
                 // -- WP SW3 --
-                audio_link,
+                alink,
                 // -- WP HWLK1F --
                 pair_admin,
                 with_usb,
@@ -680,7 +682,7 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
         config.bus = Some(Box::new(UsbBus::default()));
     }
     // -- WP HWLK1F -- a test option: the simulated installation and this machine's USB
-    if opts.demo && opts.audio_link && opts.with_usb {
+    if opts.demo && opts.alink && opts.with_usb {
         config.bus = Some(Box::new(UsbBus::default()));
     }
     let hub = Hub::start(config)?;
@@ -714,8 +716,8 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
         _lock: lock,
     };
     // -- WP SW3 --
-    if opts.audio_link {
-        demo_audio_link(&running.handle, opts.with_plain_unit)?;
+    if opts.alink {
+        demo_alink(&running.handle, opts.with_plain_unit)?;
         // -- WP HWLK1F --
         if opts.with_usb {
             running.handle.scan_now();
@@ -735,30 +737,30 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
 }
 
 // -- WP SW3 --
-/// `--demo --audio-link`'s devices: (serial, place on the link). The fan-out
+/// `--demo --alink`'s devices: (serial, place on the alink). The fan-out
 /// re-emits 3 frames late; units B and C are behind it.
-fn audio_link_rig() -> Vec<(&'static str, AudioLinkSetup)> {
-    let at = |role, hops, hop_delay_frames| AudioLinkSetup {
+fn alink_rig() -> Vec<(&'static str, AlinkSetup)> {
+    let at = |role, hops, hop_delay_frames| AlinkSetup {
         role,
         hops,
         hop_delay_frames,
-        ..AudioLinkSetup::default()
+        ..AlinkSetup::default()
     };
     vec![
-        ("DEMO-LINK-TX", at(LinkRole::Sender, 0, 0)),
-        ("DEMO-LINK-FAN", at(LinkRole::FanOut, 0, 3)),
-        ("DEMO-LINK-A", at(LinkRole::Receiver, 0, 0)),
-        ("DEMO-LINK-B", at(LinkRole::Receiver, 1, 0)),
-        ("DEMO-LINK-C", at(LinkRole::Receiver, 1, 0)),
-        ("DEMO-LINK-D", at(LinkRole::Receiver, 0, 0)),
+        ("DEMO-ALINK-TX", at(AlinkRole::Sender, 0, 0)),
+        ("DEMO-ALINK-FAN", at(AlinkRole::FanOut, 0, 3)),
+        ("DEMO-ALINK-A", at(AlinkRole::Receiver, 0, 0)),
+        ("DEMO-ALINK-B", at(AlinkRole::Receiver, 1, 0)),
+        ("DEMO-ALINK-C", at(AlinkRole::Receiver, 1, 0)),
+        ("DEMO-ALINK-D", at(AlinkRole::Receiver, 0, 0)),
     ]
 }
 
 // -- WP SW3 --
-/// `--demo --audio-link`'s system model (`docs/integrator/audio-link.md`):
+/// `--demo --alink`'s system model (`docs/integrator/audio-link.md`):
 /// three rooms, a zone, a group, one source, the sender, the fan-out, four
 /// units and four scenes, one of them admin-only (a test click).
-fn audio_link_model() -> Value {
+fn alink_model() -> Value {
     let silent = |a: u8, b: u8| json!([a, b, 255, 255, 255, 255, 255, 255]);
     json!({
         "rooms": [
@@ -769,17 +771,17 @@ fn audio_link_model() -> Value {
         "zones": [{"id": "inside", "name": "Inside", "rooms": ["main", "bar"], "source": "music"}],
         "groups": [{"id": "fronts", "name": "Front of house", "units": ["A", "B"]}],
         "sources": [{"id": "music", "name": "Music", "sender": "tx", "channels": [0, 1, 2, 3, 4, 5, 6, 7]}],
-        "senders": [{"id": "tx", "name": "Sender", "serial": "DEMO-LINK-TX", "senderId": 66}],
-        "fanOuts": [{"id": "fan", "name": "Fan-out", "serial": "DEMO-LINK-FAN", "upstream": "tx", "output": 1}],
+        "senders": [{"id": "tx", "name": "Sender", "serial": "DEMO-ALINK-TX", "senderId": 66}],
+        "fanOuts": [{"id": "fan", "name": "Fan-out", "serial": "DEMO-ALINK-FAN", "upstream": "tx", "output": 1}],
         "units": [
-            {"id": "A", "name": "Main left", "serial": "DEMO-LINK-A", "room": "main", "upstream": "tx",
+            {"id": "A", "name": "Main left", "serial": "DEMO-ALINK-A", "room": "main", "upstream": "tx",
              "output": 0, "slots": silent(0, 1),
              "speakers": [{"output": 0, "distanceM": 3.4}, {"output": 1, "distanceM": 2.9}]},
-            {"id": "B", "name": "Main right", "serial": "DEMO-LINK-B", "room": "main", "upstream": "fan",
+            {"id": "B", "name": "Main right", "serial": "DEMO-ALINK-B", "room": "main", "upstream": "fan",
              "slots": silent(0, 1)},
-            {"id": "C", "name": "Terrace", "serial": "DEMO-LINK-C", "room": "terrace", "upstream": "fan",
+            {"id": "C", "name": "Terrace", "serial": "DEMO-ALINK-C", "room": "terrace", "upstream": "fan",
              "slots": silent(2, 3), "measuredLatencyUs": 120},
-            {"id": "D", "name": "Bar", "serial": "DEMO-LINK-D", "room": "bar", "upstream": "tx",
+            {"id": "D", "name": "Bar", "serial": "DEMO-ALINK-D", "room": "bar", "upstream": "tx",
              "output": 2, "slots": silent(4, 5), "latencyUs": 40}
         ],
         "scenes": [
@@ -800,20 +802,20 @@ const PLAIN_SERIAL: &str = "DEMO-PLAIN";
 
 // -- WP HWLK1F --
 /// `--with-plain-unit`'s unit in the demo model: in the bar, behind the sender
-/// as the model has it, with a speaker; its firmware has no link.
+/// as the model has it, with a speaker; its firmware has no alink.
 fn plain_unit_model() -> Value {
     json!({"id": "P", "name": "Plain unit", "serial": PLAIN_SERIAL, "room": "bar",
            "upstream": "tx", "speakers": [{"output": 0, "distanceM": 2.0}]})
 }
 
 // -- WP SW3 --
-/// Attach `--demo --audio-link`'s devices and give the hub their model, unless
+/// Attach `--demo --alink`'s devices and give the hub their model, unless
 /// its store keeps one already (an installer's edits survive a restart).
-fn demo_audio_link(handle: &HubHandle, plain_unit: bool) -> Result<(), Failure> {
-    for (serial, setup) in audio_link_rig() {
+fn demo_alink(handle: &HubHandle, plain_unit: bool) -> Result<(), Failure> {
+    for (serial, setup) in alink_rig() {
         handle
             .attach(
-                Box::new(FakeDevice::demo_audio_link_as(setup).with_serial(serial)),
+                Box::new(FakeDevice::demo_alink_as(setup).with_serial(serial)),
                 0,
             )
             .map_err(|e| Failure::Failed(format!("{serial} did not attach: {e}")))?;
@@ -825,7 +827,7 @@ fn demo_audio_link(handle: &HubHandle, plain_unit: bool) -> Result<(), Failure> 
             .map_err(|e| Failure::Failed(format!("{PLAIN_SERIAL} did not attach: {e}")))?;
     }
     if handle.system_model().0.units.is_empty() {
-        let mut value = audio_link_model();
+        let mut value = alink_model();
         if plain_unit && let Some(units) = value.get_mut("units").and_then(Value::as_array_mut) {
             units.push(plain_unit_model());
         }
@@ -1483,7 +1485,7 @@ mod tests_wp_tm11 {
             local: false,
             share_usb: false,
             // -- WP SW3 --
-            audio_link: false,
+            alink: false,
             // -- WP HWLK1F --
             pair_admin: false,
             with_usb: false,
@@ -2043,39 +2045,42 @@ mod tests_wp_sw3 {
     #[test]
     fn wp_sw3_audio_link_is_a_demo_hub_option() {
         let store = Some(PathBuf::from("/store"));
-        match parse(&["--audio-link"], true, store.clone()).unwrap() {
-            HubCommand::Run(o) => assert!(o.audio_link && o.demo),
-            other => panic!("{other:?}"),
+        // -- WP ALINK1 -- `--alink`, and `--audio-link` as its hidden alias
+        for flag in ["--alink", "--audio-link"] {
+            match parse(&[flag], true, store.clone()).unwrap() {
+                HubCommand::Run(o) => assert!(o.alink && o.demo, "{flag}"),
+                other => panic!("{other:?}"),
+            }
+            assert!(matches!(
+                parse(&[flag], false, store.clone()),
+                Err(Failure::Usage(_))
+            ));
+            assert!(matches!(
+                parse(&["clients", flag], false, store.clone()),
+                Err(Failure::Usage(_))
+            ));
         }
-        assert!(matches!(
-            parse(&["--audio-link"], false, store.clone()),
-            Err(Failure::Usage(_))
-        ));
-        assert!(matches!(
-            parse(&["clients", "--audio-link"], false, store),
-            Err(Failure::Usage(_))
-        ));
     }
 
     #[test]
     fn wp_sw3_the_demo_installation_attaches_with_its_model() {
         let store = scratch("rig");
         let mut opts = tests_wp_tm11_options(&store);
-        opts.audio_link = true;
+        opts.alink = true;
         let running = start(&opts, false).unwrap();
         let (model, revision) = running.handle.system_model();
         assert_eq!(revision, 1);
         assert_eq!(model.units.len(), 4);
         assert_eq!(model.scenes.len(), 4);
         let status = running.handle.system_status();
-        for (serial, _) in audio_link_rig() {
+        for (serial, _) in alink_rig() {
             assert!(
                 status.observed.get(serial).is_some_and(|o| o.online),
                 "{serial}"
             );
         }
-        // A receiver reports its link stats and the trim scan.
-        let a = &status.observed["DEMO-LINK-A"];
+        // A receiver reports its alink stats and the trim scan.
+        let a = &status.observed["DEMO-ALINK-A"];
         assert_eq!(a.trim_scan.as_ref().map(|t| t.state.as_str()), Some("done"));
         assert!(a.stats.is_some());
         // -- fixup sw3x -- a sender holds one superframe apply at a time: the
@@ -2085,7 +2090,7 @@ mod tests_wp_sw3 {
             .system_apply_scene("evening", Role::Admin)
             .unwrap();
         assert_eq!(first.plan.path, "superframe");
-        let held = running.handle.system_status().observed["DEMO-LINK-TX"].pending_apply_frame;
+        let held = running.handle.system_status().observed["DEMO-ALINK-TX"].pending_apply_frame;
         assert_eq!(held, Some(first.plan.frame));
         let second = running
             .handle
@@ -2121,7 +2126,7 @@ mod tests_wp_sw3 {
             console: None,
             local: false,
             share_usb: false,
-            audio_link: false,
+            alink: false,
             // -- WP HWLK1F --
             pair_admin: false,
             with_usb: false,
@@ -2167,8 +2172,8 @@ mod tests_wp_hwlk1f {
             run(&["--pair-admin", "--open"], false),
             Err(Failure::Usage(_))
         ));
-        let o = run(&["--audio-link", "--with-usb", "--with-plain-unit"], true).unwrap();
-        assert!(o.audio_link && o.with_usb && o.with_plain_unit && o.demo);
+        let o = run(&["--alink", "--with-usb", "--with-plain-unit"], true).unwrap();
+        assert!(o.alink && o.with_usb && o.with_plain_unit && o.demo);
         for f in ["--with-usb", "--with-plain-unit"] {
             assert!(matches!(run(&[f], true), Err(Failure::Usage(_))), "{f}");
             assert!(matches!(run(&[f], false), Err(Failure::Usage(_))), "{f}");
@@ -2181,7 +2186,7 @@ mod tests_wp_hwlk1f {
             ),
             Err(Failure::Usage(_))
         ));
-        let o = run(&["--audio-link"], true).unwrap();
+        let o = run(&["--alink"], true).unwrap();
         assert!(
             !o.with_usb && !o.with_plain_unit && !o.pair_admin,
             "off unless given"
@@ -2203,7 +2208,7 @@ mod tests_wp_hwlk1f {
             console: None,
             local: false,
             share_usb: false,
-            audio_link: false,
+            alink: false,
             pair_admin: false,
             with_usb: false,
             with_plain_unit: false,
@@ -2238,7 +2243,7 @@ mod tests_wp_hwlk1f {
     fn wp_hwlk1f_the_plain_unit_joins_the_demo_installation() {
         let store = scratch("plain");
         let mut opts = options(&store);
-        opts.audio_link = true;
+        opts.alink = true;
         opts.with_plain_unit = true;
         let running = start(&opts, false).unwrap();
         let (model, _) = running.handle.system_model();
@@ -2248,8 +2253,8 @@ mod tests_wp_hwlk1f {
         let p = &status.observed[PLAIN_SERIAL];
         assert!(p.online && p.without_alink());
         assert!(
-            status.observed["DEMO-LINK-A"].alink.is_some()
-                && !status.observed["DEMO-LINK-A"].without_alink()
+            status.observed["DEMO-ALINK-A"].alink.is_some()
+                && !status.observed["DEMO-ALINK-A"].without_alink()
         );
         let r = running
             .handle

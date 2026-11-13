@@ -1,7 +1,7 @@
 // -- WP LKUI1 -- Window > System... against a real hub with an audio link
-// installation: `uconsole --demo hub --audio-link` (DSPI_SMOKE_UCONSOLE), with
+// installation: `uconsole --demo hub --alink` (DSPI_SMOKE_UCONSOLE), with
 // the app's own LinkController, SystemController and QML. Locked units are
-// shown with their link delay; the link delays are written; a scene is
+// shown with their audio link delay; the audio link delays are written; a scene is
 // recalled and the next one, before its frame, is refused in words naming the
 // held frame; an edit made while the hub's installation changes withdraws Save
 // and offers Reload, and a Save sent stale is a conflict; Simple shows the
@@ -37,7 +37,7 @@ extern "C" {
 
 namespace {
 
-// One `uconsole --demo hub --audio-link` process
+// One `uconsole --demo hub --alink` process
 class UconsoleHub {
 public:
     // `pairing`: wait for the PIN of the pairing window `--pair` opens
@@ -45,7 +45,7 @@ public:
         const QString binary = qEnvironmentVariable("DSPI_SMOKE_UCONSOLE");
         if (binary.isEmpty()) return false;
         m_proc.setProcessChannelMode(QProcess::ForwardedErrorChannel);
-        m_proc.start(binary, QStringList{ "--demo", "hub", "--audio-link", "--loopback", "--json", "--no-keep-awake",
+        m_proc.start(binary, QStringList{ "--demo", "hub", "--alink", "--loopback", "--json", "--no-keep-awake",
                                           "--store", store, "--port", QString::number(port0) }
                                  + extra);
         if (!m_proc.waitForStarted(5000)) return false;
@@ -109,11 +109,11 @@ bool saveElsewhere(const QString &url, const QByteArray &edits) {
     if (dspi_link_connect(other, u.constData(), "lkui1-other", "0", "", "", buf.data(), uint32_t(buf.size())) > 0
         && QJsonDocument::fromJson(buf.constData()).object().value(QLatin1String("ok")).toBool()) {
         buf.fill('\0');
-        dspi_link_system_view(other, buf.data(), uint32_t(buf.size()));
+        dspi_alink_system_view(other, buf.data(), uint32_t(buf.size()));
         const QJsonObject view = QJsonDocument::fromJson(buf.constData()).object();
         const quint64 revision = quint64(view.value(QLatin1String("revision")).toInteger());
         buf.fill('\0');
-        dspi_link_system_save(other, revision, edits.constData(), buf.data(), uint32_t(buf.size()));
+        dspi_alink_system_save(other, revision, edits.constData(), buf.data(), uint32_t(buf.size()));
         ok = QJsonDocument::fromJson(buf.constData()).object().value(QLatin1String("ok")).toBool();
     }
     dspi_link_close(other);
@@ -121,7 +121,7 @@ bool saveElsewhere(const QString &url, const QByteArray &edits) {
     return ok;
 }
 
-void linkSystemSection(SmokeDriver &d) {
+void alinkSystemSection(SmokeDriver &d) {
     auto *link = Registrar::instance<LinkController>();
     auto *sys = Registrar::instance<SystemController>();
     auto *modes = Registrar::instance<ModeController>();
@@ -177,11 +177,11 @@ void linkSystemSection(SmokeDriver &d) {
     // ---- An open hub: Admin ----------------------------------------------------
     UconsoleHub hub;
     const bool up = hub.start(out + QStringLiteral("/hub-open"), { QStringLiteral("--open"), QStringLiteral("--forget-clients") });
-    d.check("lkui1: uconsole --demo hub --audio-link runs (DSPI_SMOKE_UCONSOLE)", up);
+    d.check("lkui1: uconsole --demo hub --alink runs (DSPI_SMOKE_UCONSOLE)", up);
     if (!up) return;
     d.check("lkui1: no view while not on a hub", !sys->available());
     link->connectToHub(hub.url);
-    d.check("lkui1: on the hub, DEMO-LINK-A bound", settled() && bind(QStringLiteral("DEMO-LINK-A")));
+    d.check("lkui1: on the hub, DEMO-ALINK-A bound", settled() && bind(QStringLiteral("DEMO-ALINK-A")));
     d.check("lkui1: the installation is read", d.waitFor(15000, [&] { return sys->available() && sys->installed(); }));
     d.check("lkui1: Admin on an open hub", sys->role() == QLatin1String("admin") && sys->mayEdit() && sys->mayRecall());
     int units = 0, locked = 0;
@@ -190,11 +190,11 @@ void linkSystemSection(SmokeDriver &d) {
         if (u.value(QStringLiteral("kind")).toString() != QLatin1String("unit")) continue;
         ++units;
         locked += u.value(QStringLiteral("stateWord")).toString() == QLatin1String("Locked")
-                  && u.value(QStringLiteral("linkDelayFrames")).toInt() > 0
-                  && u.value(QStringLiteral("linkDelayMax")).toInt() >= u.value(QStringLiteral("linkDelayMin")).toInt();
+                  && u.value(QStringLiteral("alinkDelayFrames")).toInt() > 0
+                  && u.value(QStringLiteral("alinkDelayMax")).toInt() >= u.value(QStringLiteral("alinkDelayMin")).toInt();
     }
     std::printf("smoke: lkui1: %s\n", qPrintable(sys->summary()));
-    d.check("lkui1: four units, all locked with a link delay and its range", units == 4 && locked == 4);
+    d.check("lkui1: four units, all locked with an audio link delay and its range", units == 4 && locked == 4);
     d.check("lkui1: the summary says so", sys->summary().startsWith(QLatin1String("Audio link: 4 of 4 locked")));
     QQuickItem *strip = d.item(QStringLiteral("SystemStatusStrip"));
     d.check("lkui1: the status line under the menu bar", strip && d.waitFor(3000, [&] { return strip->isVisible(); })
@@ -235,10 +235,10 @@ void linkSystemSection(SmokeDriver &d) {
     d.spin(200);
     d.check("lkui1: writable again", sys->mayEdit() && sys->mayRecall());
 
-    // Align the link delays: none pending afterwards
+    // Align the audio link delays: none pending afterwards
     sys->align();
-    d.check("lkui1: the link delays are written", d.waitFor(20000, [&] {
-        return !sys->busy() && sys->actionMessage().startsWith(QLatin1String("The link delays were written"));
+    d.check("lkui1: the audio link delays are written", d.waitFor(20000, [&] {
+        return !sys->busy() && sys->actionMessage().startsWith(QLatin1String("The audio link delays were written"));
     }) && fresh() && sys->pendingUnits() == 0);
     shoot(QStringLiteral("system"));
 
@@ -258,7 +258,7 @@ void linkSystemSection(SmokeDriver &d) {
     std::printf("smoke: lkui1: %s\n", qPrintable(refused));
     d.check("lkui1: Closed refused, naming the frame the sender holds",
             !sys->lastRecall().value(QStringLiteral("taken")).toBool()
-                && refused.startsWith(QLatin1String("Closed was refused: a scene is already scheduled on the sender for link frame "))
+                && refused.startsWith(QLatin1String("Closed was refused: a scene is already scheduled on the sender for audio link frame "))
                 && sys->recalledScene() == QLatin1String("Evening"));
     shoot(QStringLiteral("scene-refused"));
 
@@ -322,7 +322,7 @@ void linkSystemSection(SmokeDriver &d) {
     link->connectToHub(pinHub.url);
     d.check("lkui1: the PIN hub asks for its PIN", settled() && d.waitFor(5000, [&] { return phaseIs("needs_pairing"); }));
     link->pair(pinHub.pin);
-    d.check("lkui1: paired, DEMO-LINK-B bound", settled() && bind(QStringLiteral("DEMO-LINK-B")));
+    d.check("lkui1: paired, DEMO-ALINK-B bound", settled() && bind(QStringLiteral("DEMO-ALINK-B")));
     d.check("lkui1: the last hub's recall is not shown on this one", sys->lastRecall().isEmpty() && sys->recalledScene().isEmpty());
     d.check("lkui1: Control on a PIN hub", d.waitFor(15000, [&] { return sys->available() && sys->role() == QLatin1String("control"); })
                                               && !sys->mayEdit() && sys->mayRecall());
@@ -374,7 +374,7 @@ void linkSystemSection(SmokeDriver &d) {
             mixed.start(out + QStringLiteral("/hub-mixed"),
                         { QStringLiteral("--open"), QStringLiteral("--forget-clients"), QStringLiteral("--with-plain-unit") }));
     link->connectToHub(mixed.url);
-    d.check("hwlk1f: on the hub, DEMO-LINK-A bound", settled() && bind(QStringLiteral("DEMO-LINK-A")));
+    d.check("hwlk1f: on the hub, DEMO-ALINK-A bound", settled() && bind(QStringLiteral("DEMO-ALINK-A")));
     d.check("hwlk1f: the installation is read", d.waitFor(15000, [&] { return sys->available() && sys->installed() && sys->role() == QLatin1String("admin"); }));
     QVariantMap plain;
     for (const QVariant &v : sys->units())
@@ -398,7 +398,7 @@ void linkSystemSection(SmokeDriver &d) {
     std::printf("smoke: hwlk1f: %s\n", qPrintable(mixedRecall));
     d.check("hwlk1f: Evening applied now on P, at the frame on the others, not 'on time on every unit'",
             sys->lastRecall().value(QStringLiteral("taken")).toBool() && !sys->lastRecall().value(QStringLiteral("onTime")).toBool()
-                && mixedRecall.startsWith(QLatin1String("Evening recalled: applied now on Plain unit (no audio link); at link frame "))
+                && mixedRecall.startsWith(QLatin1String("Evening recalled: applied now on Plain unit (no audio link); at audio link frame "))
                 && mixedRecall.endsWith(QLatin1String(" through the sender on the others.")));
     sys->align();
     d.check("hwlk1f: align says P was skipped and why", d.waitFor(20000, [&] {
@@ -417,4 +417,4 @@ void linkSystemSection(SmokeDriver &d) {
 
 } // namespace
 
-const SmokeDriver::Section linkSystem("lkui1-system", 133, &linkSystemSection);
+const SmokeDriver::Section alinkSystem("lkui1-system", 133, &alinkSystemSection);

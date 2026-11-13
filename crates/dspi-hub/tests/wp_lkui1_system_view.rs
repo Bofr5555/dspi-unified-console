@@ -1,5 +1,5 @@
-//! WP LKUI1: the core's typed System calls (`link_system_view`, `_save`,
-//! `_align`, `_recall`, dspi-core `link/system.rs`) against a real hub with
+//! WP LKUI1: the core's typed System calls (`alink_system_view`, `_save`,
+//! `_align`, `_recall`, dspi-core `alink/system.rs`) against a real hub with
 //! the fake devices' audio link: a sender, a fan-out and three units. What
 //! the native System screens (Qt, Android) show and do goes through these.
 #![allow(clippy::arithmetic_side_effects)]
@@ -11,12 +11,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
-use dspi_core::link::{LinkSystemEdits, LinkUnitLatency};
+use dspi_core::link::{AlinkSystemEdits, AlinkUnitLatency};
 use dspi_core::{DspiCore, DspiError};
 use dspi_hub::{AccessMode, Hub, HubConfig, NetworkConfig, Role};
-use dspi_proto::ext::audio_link::LinkRole;
+use dspi_proto::ext::alink::AlinkRole;
 use dspi_transport::FakeDevice;
-use dspi_transport::fake::AudioLinkSetup;
+use dspi_transport::fake::AlinkSetup;
 use serde_json::json;
 
 fn store_dir() -> PathBuf {
@@ -44,21 +44,21 @@ fn hub(access: AccessMode) -> Hub {
         ..HubConfig::in_process("LKUI1 hub")
     })
     .unwrap();
-    let at = |role, hops, hop_delay_frames| AudioLinkSetup {
+    let at = |role, hops, hop_delay_frames| AlinkSetup {
         role,
         hops,
         hop_delay_frames,
-        ..AudioLinkSetup::default()
+        ..AlinkSetup::default()
     };
     for (serial, setup) in [
-        ("LK-TX", at(LinkRole::Sender, 0, 0)),
-        ("LK-FAN", at(LinkRole::FanOut, 0, 3)),
-        ("LK-A", at(LinkRole::Receiver, 0, 0)),
-        ("LK-B", at(LinkRole::Receiver, 1, 0)),
-        ("LK-C", at(LinkRole::Receiver, 1, 0)),
+        ("LK-TX", at(AlinkRole::Sender, 0, 0)),
+        ("LK-FAN", at(AlinkRole::FanOut, 0, 3)),
+        ("LK-A", at(AlinkRole::Receiver, 0, 0)),
+        ("LK-B", at(AlinkRole::Receiver, 1, 0)),
+        ("LK-C", at(AlinkRole::Receiver, 1, 0)),
     ] {
         hub.attach(
-            Box::new(FakeDevice::demo_audio_link_as(setup).with_serial(serial)),
+            Box::new(FakeDevice::demo_alink_as(setup).with_serial(serial)),
             0,
         )
         .unwrap();
@@ -99,10 +99,10 @@ fn connect(hub: &Hub) -> Arc<DspiCore> {
 }
 
 /// The view, once the hub lets this session read its status again (1/s).
-fn fresh_view(core: &DspiCore) -> dspi_core::link::LinkSystemView {
+fn fresh_view(core: &DspiCore) -> dspi_core::link::AlinkSystemView {
     let start = Instant::now();
     loop {
-        let v = core.link_system_view().unwrap();
+        let v = core.alink_system_view().unwrap();
         if !v.stale {
             return v;
         }
@@ -139,12 +139,12 @@ fn wp_lkui1_view_recall_refusal_align_and_stale_save_on_a_real_hub() {
         assert!(u.connected, "{u:?}");
         assert_eq!(u.state_word, "Locked", "{u:?}");
         assert!(
-            u.link_delay_frames.is_some()
-                && u.link_delay_min.is_some()
-                && u.link_delay_max.is_some(),
+            u.alink_delay_frames.is_some()
+                && u.alink_delay_min.is_some()
+                && u.alink_delay_max.is_some(),
             "{u:?}"
         );
-        assert!(u.link_delay_ms.unwrap() > 0.0);
+        assert!(u.alink_delay_ms.unwrap() > 0.0);
     }
     assert_eq!(v.locked, 3);
     assert!(
@@ -158,16 +158,16 @@ fn wp_lkui1_view_recall_refusal_align_and_stale_save_on_a_real_hub() {
     );
 
     // Asked again at once: the hub's limit, the last view again.
-    assert!(core.link_system_view().unwrap().stale);
+    assert!(core.alink_system_view().unwrap().stale);
 
-    // Write the link delays: nothing pending afterwards.
-    let aligned = core.link_system_align().unwrap();
+    // Write the audio link delays: nothing pending afterwards.
+    let aligned = core.alink_system_align().unwrap();
     assert!(aligned.applied, "{aligned:?}");
     let v = fresh_view(&core);
     assert_eq!(v.pending, 0, "{v:?}");
 
     // A recall through the sender, then a second before its frame: refused, the held frame named.
-    let first = core.link_system_recall("evening".into()).unwrap();
+    let first = core.alink_system_recall("evening".into()).unwrap();
     assert!(first.taken, "{first:?}");
     assert!(
         first
@@ -176,12 +176,12 @@ fn wp_lkui1_view_recall_refusal_align_and_stale_save_on_a_real_hub() {
         "{}",
         first.message
     );
-    let second = core.link_system_recall("closed".into()).unwrap();
+    let second = core.alink_system_recall("closed".into()).unwrap();
     assert!(!second.taken, "{second:?}");
     assert_eq!(second.held_frame, Some(first.frame));
     assert!(
         second.message.starts_with(&format!(
-            "Closed was refused: a scene is already scheduled on the sender for link frame {}",
+            "Closed was refused: a scene is already scheduled on the sender for audio link frame {}",
             first.frame
         )),
         "{}",
@@ -202,16 +202,16 @@ fn wp_lkui1_view_recall_refusal_align_and_stale_save_on_a_real_hub() {
 
     // A save on the view's revision is taken; one on an older revision is a conflict.
     let base = fresh_view(&core).revision;
-    let edits = LinkSystemEdits {
-        units: vec![LinkUnitLatency {
+    let edits = AlinkSystemEdits {
+        units: vec![AlinkUnitLatency {
             unit_id: "B".into(),
             measured_latency_us: Some(150),
         }],
-        ..LinkSystemEdits::default()
+        ..AlinkSystemEdits::default()
     };
-    let saved = core.link_system_save(base, edits.clone()).unwrap();
+    let saved = core.alink_system_save(base, edits.clone()).unwrap();
     assert_eq!(saved, base + 1);
-    match core.link_system_save(base, edits) {
+    match core.alink_system_save(base, edits) {
         Err(DspiError::Link { code, msg }) => {
             assert_eq!(code, "conflict");
             assert!(msg.contains("Reload"), "{msg}");
@@ -241,12 +241,12 @@ fn wp_lkui1_a_viewer_is_offered_nothing_and_refused_by_the_hub() {
     assert_eq!(v.role, "control");
     assert!(!v.may_edit && v.may_recall);
     // Control may not save; the admin-only test click is refused with the hub's words.
-    let r = core.link_system_save(v.revision, LinkSystemEdits::default());
+    let r = core.alink_system_save(v.revision, AlinkSystemEdits::default());
     assert!(
         matches!(r, Err(DspiError::Link { ref code, .. }) if code == "denied"),
         "{r:?}"
     );
-    match core.link_system_recall("click".into()) {
+    match core.alink_system_recall("click".into()) {
         Err(DspiError::Link { code, msg }) => assert_eq!(code, "denied", "{msg}"),
         other => panic!("{other:?}"),
     }
@@ -256,7 +256,7 @@ fn wp_lkui1_a_viewer_is_offered_nothing_and_refused_by_the_hub() {
     let v = fresh_view(&core);
     assert_eq!(v.role, "viewer");
     assert!(!v.may_edit && !v.may_recall);
-    let r = core.link_system_recall("evening".into());
+    let r = core.alink_system_recall("evening".into());
     assert!(
         matches!(r, Err(DspiError::Link { ref code, .. }) if code == "denied"),
         "{r:?}"

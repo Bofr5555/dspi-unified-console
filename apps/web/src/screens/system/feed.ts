@@ -184,13 +184,13 @@ export class SystemFeed {
     const core = this.session.core;
     let link: Parameters<typeof singleUnit>[1] = null;
     try {
-      const info = await core.call("audioLinkInfo", undefined);
+      const info = await core.call("alinkInfo", undefined);
       if (info) {
-        const [status, slots] = await Promise.all([core.call("audioLinkStatus", undefined), core.call("audioLinkSlots", undefined)]);
+        const [status, slots] = await Promise.all([core.call("alinkStatus", undefined), core.call("alinkSlots", undefined)]);
         link = { role: info.role, state: status.state, slots, dLocalMin: info.dLocalMin, dLocalMax: info.dLocalMax };
       }
     } catch {
-      // A unit whose link cannot be read is shown without it.
+      // A unit whose alink cannot be read is shown without it.
     }
     const one = singleUnit({ name: snap.device.name, serial: snap.device.serial ?? "" }, link, this.session.state.status === "open");
     this.set({ kind: "single", model: one.model, status: one.status, error: "" });
@@ -240,7 +240,7 @@ export class SystemFeed {
     this.set(got.role ? { model: got.model, revision: got.revision, role: got.role as Role } : { model: got.model, revision: got.revision });
   }
 
-  /** `system.scene.apply`: recall a scene at one link frame on every unit. */
+  /** `system.scene.apply`: recall a scene at one alink frame on every unit. */
   async recall(sceneId: string): Promise<void> {
     const name = this.state.model?.scenes.find((s) => s.id === sceneId)?.name || sceneId;
     this.set({ scene: { scene: sceneId, name, report: null, error: "", running: true, refusal: "", outcome: "" } });

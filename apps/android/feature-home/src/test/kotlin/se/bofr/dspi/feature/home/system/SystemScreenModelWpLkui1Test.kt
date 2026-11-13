@@ -17,7 +17,7 @@ import se.bofr.dspi.fake.FakeDspiCore
 
 /**
  * WP LKUI1: the System screen's model over the bridge and the fake core's audio
- * link installation (FakeAudioLinkSystem: `uconsole --demo hub --audio-link` as the
+ * link installation (FakeAlinkSystem: `uconsole --demo hub --alink` as the
  * core gives it): the view, recalls and the refused one, the draft guarded by its
  * revision, and what the roles and G1 leave on offer.
  */
@@ -30,7 +30,7 @@ class SystemScreenModelWpLkui1Test {
 
         // The test's own scope: advanceUntilIdle waits for the model's actions
         val model = SystemScreenModel(bridge, scope)
-        val system get() = core.audioLinkSystem
+        val system get() = core.alinkSystem
     }
 
     private suspend fun TestScope.rig(onHub: Boolean = true, role: String = "admin"): Rig {
@@ -60,23 +60,23 @@ class SystemScreenModelWpLkui1Test {
         assertTrue(v.installed && v.mayEdit && v.mayRecall)
         val units = v.units.filter { it.kind == "unit" }
         assertEquals(4, units.size)
-        assertTrue(units.all { it.stateWord == "Locked" && it.linkDelayFrames != null && it.linkDelayMin != null })
+        assertTrue(units.all { it.stateWord == "Locked" && it.alinkDelayFrames != null && it.alinkDelayMin != null })
         assertEquals(listOf("Sender", "Fan-out"), v.units.take(2).map { it.role })
         assertTrue(v.summary, v.summary.startsWith("Audio link: 4 of 4 locked"))
         // -- fixup lk1 -- the demo hub's numbers: range 257..399 (4 ms), D 260, units at 300 until aligned
         assertEquals(4L, v.pending)
         assertEquals(260L, v.systemDelayFrames)
-        assertEquals(listOf(260L, 259L, 259L, 260L), units.map { it.linkDelayFrames })
+        assertEquals(listOf(260L, 259L, 259L, 260L), units.map { it.alinkDelayFrames })
         assertEquals(listOf(6, 4, -2, 4), units.map { it.hopOffset })
-        assertTrue(units.all { it.linkDelayMin == 257L && it.linkDelayMax == 399L && it.unitLinkDelayFrames == 300L })
-        // Writing the link delays leaves none pending
+        assertTrue(units.all { it.alinkDelayMin == 257L && it.alinkDelayMax == 399L && it.unitAlinkDelayFrames == 300L })
+        // Writing the audio link delays leaves none pending
         r.model.align()
         advanceUntilIdle()
-        assertEquals("The link delays were written. Each unit re-anchored with a short silence.", r.model.state.value.actionMessage)
+        assertEquals("The audio link delays were written. Each unit re-anchored with a short silence.", r.model.state.value.actionMessage)
         assertEquals(0L, r.model.state.value.view!!.pending)
         assertEquals(
             listOf(260L, 259L, 259L, 260L),
-            r.model.state.value.view!!.units.filter { it.kind == "unit" }.map { it.unitLinkDelayFrames }
+            r.model.state.value.view!!.units.filter { it.kind == "unit" }.map { it.unitAlinkDelayFrames }
         )
     }
 
@@ -96,7 +96,7 @@ class SystemScreenModelWpLkui1Test {
         assertFalse(second.lastRecall!!.taken)
         assertTrue(
             second.lastRecall!!.message,
-            second.lastRecall!!.message.startsWith("Closed was refused: a scene is already scheduled on the sender for link frame $held")
+            second.lastRecall!!.message.startsWith("Closed was refused: a scene is already scheduled on the sender for audio link frame $held")
         )
         assertEquals("the scene recalled is still Evening", "Evening", second.recalledScene)
         // -- fixup lk1 -- the sender's write is the scene's, and the mute is said to be unchanged
@@ -133,9 +133,9 @@ class SystemScreenModelWpLkui1Test {
         assertTrue(
             "nothing sent",
             r.core.calls.drop(before).none {
-                it.startsWith("linkSystemRecall") ||
-                    it.startsWith("linkSystemAlign") ||
-                    it.startsWith("linkSystemSave")
+                it.startsWith("alinkSystemRecall") ||
+                    it.startsWith("alinkSystemAlign") ||
+                    it.startsWith("alinkSystemSave")
             }
         )
         assertNull(r.model.state.value.lastRecall)
@@ -158,7 +158,7 @@ class SystemScreenModelWpLkui1Test {
         val before = r.core.calls.size
         r.model.save()
         advanceUntilIdle()
-        assertTrue("Save withdrawn", r.core.calls.drop(before).none { it.startsWith("linkSystemSave") })
+        assertTrue("Save withdrawn", r.core.calls.drop(before).none { it.startsWith("alinkSystemSave") })
         r.model.reload()
         advanceUntilIdle()
         s = r.model.state.value
@@ -203,7 +203,7 @@ class SystemScreenModelWpLkui1Test {
         advanceUntilIdle()
         val line = r.model.state.value.lastRecall!!
         assertFalse(line.taken)
-        assertTrue("G1 stops it before the core", r.core.calls.none { it.startsWith("linkSystemRecall") })
+        assertTrue("G1 stops it before the core", r.core.calls.none { it.startsWith("alinkSystemRecall") })
     }
 
     @Test

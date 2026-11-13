@@ -3,9 +3,9 @@
 //!
 //! P1 (F1): a unit WITH the audio link whose transfers fault (a bus error, Link
 //!     status `ERROR` like a stall, but not a stall) is never taken for a
-//!     firmware without the link: it keeps what it was last seen as, and its
+//!     firmware without the alink: it keeps what it was last seen as, and its
 //!     scene ops are never written at once. Without a last poll it is not told.
-//! P2 (F4): an offline unit without the link is as last seen: its facts are
+//! P2 (F4): an offline unit without the alink is as last seen: its facts are
 //!     kept across polls, and a scene's op for it is `no_device` at once.
 //! P3 (F3): the core's align sentence when every write failed: nothing written.
 #![allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
@@ -14,9 +14,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use dspi_hub::{Hub, HubConfig, Role};
-use dspi_proto::ext::audio_link::{EXT_FRAME_COUNTER, EXT_LINK_INFO, LinkRole};
+use dspi_proto::ext::alink::{AlinkRole, EXT_ALINK_INFO, EXT_FRAME_COUNTER};
 use dspi_proto::generated::opcodes as op;
-use dspi_transport::fake::AudioLinkSetup;
+use dspi_transport::fake::AlinkSetup;
 use dspi_transport::{
     DeviceDescriptor, FakeDevice, InRead, NotificationSource, Transport, TransportCaps,
     TransportError,
@@ -25,7 +25,7 @@ use serde_json::{Value, json};
 
 type Outs = Arc<Mutex<Vec<(u8, u16, Vec<u8>)>>>;
 
-/// A link receiver whose `EXT_LINK_INFO` and `EXT_FRAME_COUNTER` reads fault
+/// An alink receiver whose `EXT_ALINK_INFO` and `EXT_FRAME_COUNTER` reads fault
 /// (a bus error, not a stall) while `faulting` is set.
 struct Flaky {
     inner: FakeDevice,
@@ -36,7 +36,7 @@ struct Flaky {
 impl Flaky {
     fn fault(&self, o: u8, v: u16) -> bool {
         o == op::REQ_EXTENSION
-            && (v == EXT_LINK_INFO || v == EXT_FRAME_COUNTER)
+            && (v == EXT_ALINK_INFO || v == EXT_FRAME_COUNTER)
             && self.faulting.load(Ordering::SeqCst)
     }
 }
@@ -103,17 +103,17 @@ fn hub() -> (Hub, Arc<AtomicBool>, Outs, u8) {
         ..HubConfig::in_process("fixup hwlk1f")
     })
     .unwrap();
-    let at = |role| AudioLinkSetup {
+    let at = |role| AlinkSetup {
         role,
-        ..AudioLinkSetup::default()
+        ..AlinkSetup::default()
     };
     hub.attach(
-        Box::new(FakeDevice::demo_audio_link_as(at(LinkRole::Sender)).with_serial("HW-TX")),
+        Box::new(FakeDevice::demo_alink_as(at(AlinkRole::Sender)).with_serial("HW-TX")),
         0,
     )
     .unwrap();
     hub.attach(
-        Box::new(FakeDevice::demo_audio_link_as(at(LinkRole::Receiver)).with_serial("HW-A")),
+        Box::new(FakeDevice::demo_alink_as(at(AlinkRole::Receiver)).with_serial("HW-A")),
         0,
     )
     .unwrap();
@@ -121,7 +121,7 @@ fn hub() -> (Hub, Arc<AtomicBool>, Outs, u8) {
     let outs = Outs::default();
     hub.attach(
         Box::new(Flaky {
-            inner: FakeDevice::demo_audio_link_as(at(LinkRole::Receiver)).with_serial("HW-F"),
+            inner: FakeDevice::demo_alink_as(at(AlinkRole::Receiver)).with_serial("HW-F"),
             faulting: Arc::clone(&faulting),
             outs: Arc::clone(&outs),
         }),
@@ -137,7 +137,7 @@ fn hub() -> (Hub, Arc<AtomicBool>, Outs, u8) {
     (hub, faulting, outs, k)
 }
 
-/// P1: a bus fault on two reads keeps a link unit as last seen, and nothing
+/// P1: a bus fault on two reads keeps an alink unit as last seen, and nothing
 /// meant for its frame is written at once.
 #[test]
 fn fixup_hwlk1f_p1_a_transient_fault_is_never_taken_for_no_audio_link() {
@@ -186,7 +186,7 @@ fn fixup_hwlk1f_p1_a_transient_fault_is_never_taken_for_no_audio_link() {
     assert_eq!(f.len(), 1, "{:?}", r2.writes);
     assert_eq!(
         (f[0].result.as_str(), f[0].reason.as_deref()),
-        ("no_frame", Some("no link frame read"))
+        ("no_frame", Some("no audio link frame read"))
     );
     assert!(!r2.on_time);
     let at_once: Vec<_> = outs
@@ -221,7 +221,7 @@ fn fixup_hwlk1f_p1_a_fault_before_any_poll_is_not_told() {
     );
 }
 
-/// P2: an offline unit without the link is remembered as such across polls.
+/// P2: an offline unit without the alink is remembered as such across polls.
 #[test]
 fn fixup_hwlk1f_p2_an_offline_plain_unit_is_as_last_seen() {
     let (hub, _, _, k) = hub();
@@ -267,7 +267,7 @@ fn fixup_hwlk1f_p3_align_sentence_when_every_write_failed() {
             {"serial": "HW-K", "element": "K", "what": "phase", "result": "skipped", "reason": "no audio link (firmware)"}
         ]
     });
-    let out = dspi_core::link::system::system_align_outcome(&report, &model);
+    let out = dspi_core::link::alink_system::system_align_outcome(&report, &model);
     assert_eq!(
         out.message,
         "Nothing was written: 2 writes failed; skipped on K340 (no audio link (firmware))."

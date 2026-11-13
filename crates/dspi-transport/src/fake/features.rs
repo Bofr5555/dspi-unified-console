@@ -776,7 +776,7 @@ impl State {
                     != 0
             }
             // -- WP SW1 -- the audio link input
-            dspi_proto::ext::audio_link::INPUT_SOURCE_LINK => self.link_input(),
+            dspi_proto::ext::alink::INPUT_SOURCE_ALINK => self.alink_input(),
             _ => false,
         }
     }
@@ -1328,9 +1328,9 @@ impl State {
 
     // -- WP FIXS1 --
     /// The requested output latency option's `(latency_us, batch_us)` as the
-    /// link input resolves it (`refresh_limits` in link_input.c: source 7,
+    /// link input resolves it (`refresh_limits` in alink_input.c: source 7,
     /// so a stream-only option stands).
-    pub(super) fn latency_for_link(&self) -> (u16, u16) {
+    pub(super) fn latency_for_alink(&self) -> (u16, u16) {
         let find = |id: u8| LATENCY_OPTIONS.iter().copied().find(|o| o.0 == id);
         find(self.extras.latency)
             .or_else(|| find(LATENCY_DEFAULT))

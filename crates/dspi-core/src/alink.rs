@@ -1,17 +1,17 @@
 //! WP SW1 (SYS2 sections 3, 5 and 7): the audio link, the optical or SFP
 //! stream from a sender that a unit plays with a fixed delay. Not DSPi Link,
-//! the network control protocol of [`crate::link`].
+//! the network control protocol of [`crate::alink`].
 //!
-//! The calls read and write the link's extension sub-commands (0x8000-0x800A,
-//! the fork's `extension_channel_spec.md` 2.8, `dspi_proto::ext::audio_link`):
+//! The calls read and write the alink's extension sub-commands (0x8000-0x800A,
+//! the fork's `extension_channel_spec.md` 2.8, `dspi_proto::ext::alink`):
 //! the unit's role, its lock status and
 //! counters, the slots it takes from the frame, the phase-lock mode and its
 //! delay, the frame counter, and "apply at frame N".
 //!
 //! Everything is gated on what the connect probe found (`ExtState`): a unit
-//! whose `EXT_LIST` did not name `EXT_LINK_INFO` (stock firmware, the fork
-//! without the link) answers [`DspiError::Unsupported`] with no traffic, as
-//! does a sub-command the list did not name. The link's events (0xE1 lock,
+//! whose `EXT_LIST` did not name `EXT_ALINK_INFO` (stock firmware, the fork
+//! without the alink) answers [`DspiError::Unsupported`] with no traffic, as
+//! does a sub-command the list did not name. The alink's events (0xE1 lock,
 //! loss and re-anchor, 0xE2 apply results) go into the event log
 //! (`events.rs`), only from a device that announces them.
 //!
@@ -20,18 +20,15 @@
 //! undo steps over it; apply-at-frame and the counter reset are actions.
 //!
 //! Review sw1's two notes, closed by WP SW2:
-//! - The link's writes send no `PARAM_CHANGED` (2.8): the hub's router
+//! - The alink's writes send no `PARAM_CHANGED` (2.8): the hub's router
 //!   (`dspi-hub` `router.rs` `is_silent`) treats the whole block
 //!   0x8000-0x80FF as silent, so no `Writer` entry waits for one.
 //! - Apply-at-frame `UNMUTE` (op 2) is gated by BULKFIX's `GainGuard` as an
 //!   unmute of every suspect output (`dspi_session::bulk_gain`): the gains
 //!   are re-sent first, or the op is refused.
 
-use dspi_session::ext::alink::{self, LINK_SLOT_SILENT, LINK_SLOTS};
-use dspi_session::ext::{
-    self as sx, ApplyOp, ApplyRequest, ApplyStatus, FrameCounter, LinkInfo, LinkPhase, LinkSlots,
-    LinkStatus,
-};
+use dspi_session::ext::alink::{self, ALINK_SLOTS};
+use dspi_session::ext::{self as sx, AlinkSlots, ApplyOp, ApplyRequest, ApplyStatus, FrameCounter};
 
 use dspi_transport::Transport;
 
@@ -42,36 +39,36 @@ use crate::journal;
 use crate::{Connection, DspiCore, DspiError, Inner, Result};
 
 /// A slot value that feeds silence to its matrix input
-/// ([`DspiCore::set_audio_link_slots`]).
-pub const AUDIO_LINK_SLOT_SILENT: u8 = LINK_SLOT_SILENT;
+/// ([`DspiCore::set_alink_slots`]).
+pub const ALINK_SLOT_SILENT: u8 = alink::ALINK_SLOT_SILENT;
 
 /// `REQ_SET_INPUT_SOURCE`'s value for the audio link input.
-pub const INPUT_SOURCE_AUDIO_LINK: u8 = alink::INPUT_SOURCE_LINK;
+pub const INPUT_SOURCE_ALINK: u8 = alink::INPUT_SOURCE_ALINK;
 
-/// What `EXT_LINK_INFO` reports, read once at connect.
+/// What `EXT_ALINK_INFO` reports, read once at connect.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AudioLinkInfo {
+pub struct AlinkInfo {
     /// `none`, `receiver`, `sender`, `repeater`, `fan_out` or `unknown`.
     pub role: String,
     /// The firmware's role code.
     pub role_code: u8,
-    /// The link protocol version the unit speaks.
+    /// The alink protocol version the unit speaks.
     pub protocol_version: u8,
     /// Line-rate classes the unit handles: bit 0 L1, bit 1 L2, bit 2 L3.
     pub class_mask: u8,
-    /// A sender's link outputs; 1 on a receiver.
-    pub max_links: u8,
+    /// A sender's alink outputs; 1 on a receiver.
+    pub max_alinks: u8,
     /// The most channels in a frame the unit decodes.
     pub max_channels: u8,
-    /// Matrix inputs the unit takes from the link (8).
+    /// Matrix inputs the unit takes from the alink (8).
     pub slots_per_unit: u8,
     /// The receive GPIO, 0xFF for none.
     pub rx_pin: u8,
     /// The repeater or sender GPIO, 0xFF for none.
     pub tx_pin: u8,
-    /// The firmware's link feature bits: 0 phase lock, 1 apply at frame, 2
+    /// The firmware's alink feature bits: 0 phase lock, 1 apply at frame, 2
     /// repeater, 3 fan-out, 4 test patterns, 5 LOS pin.
     pub feature_bits: u32,
     /// The smallest fixed delay (`d_local + hops_offset`, frames) the unit
@@ -79,27 +76,27 @@ pub struct AudioLinkInfo {
     pub d_local_min: u16,
     /// The largest.
     pub d_local_max: u16,
-    /// Whether the unit takes audio from the link, so input source 7 is the
-    /// link input.
-    pub link_input: bool,
-    /// Whether the unit sends link lock, loss and re-anchor events.
+    /// Whether the unit takes audio from the alink, so input source 7 is the
+    /// alink input.
+    pub alink_input: bool,
+    /// Whether the unit sends alink lock, loss and re-anchor events.
     pub state_events: bool,
     /// Whether the unit sends apply-at-frame results.
     pub apply_events: bool,
 }
 
-/// What `EXT_LINK_STATUS` reports.
+/// What `EXT_ALINK_STATUS` reports.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AudioLinkStatus {
+pub struct AlinkStatus {
     /// `off`, `searching`, `locked`, `holdover` (lost: muted, clock held) or
     /// `unknown`.
     pub state: String,
     /// The firmware's state code.
     pub state_code: u8,
     /// The line-rate class, 1-3 (L1-L3); 0 while unknown.
-    pub link_class: u8,
+    pub alink_class: u8,
     /// 0 = 44.1, 1 = 48, 2 = 96 kHz.
     pub rate_code: u8,
     /// Channels in the frame.
@@ -112,11 +109,11 @@ pub struct AudioLinkStatus {
     pub sender_id: u8,
     /// The superframe's flags.
     pub flags: u8,
-    /// The link frame counter.
+    /// The alink frame counter.
     pub frame: u64,
-    /// Times the link locked since the counters were cleared.
+    /// Times the alink locked since the counters were cleared.
     pub lock_count: u32,
-    /// Times the link was lost.
+    /// Times the alink was lost.
     pub loss_count: u32,
     /// Frame header check errors.
     pub crc8_errors: u32,
@@ -134,14 +131,14 @@ pub struct AudioLinkStatus {
     pub fill_frames: u16,
 }
 
-/// What `EXT_LINK_PHASE` reports: the phase-lock mode and the fixed delay.
+/// What `EXT_ALINK_PHASE` reports: the phase-lock mode and the fixed delay.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AudioLinkPhase {
+pub struct AlinkPhase {
     /// 0 fill servo (as S/PDIF and ADAT), 1 phase lock.
     pub mode: u8,
-    /// The unit's fixed delay in link frames (the system's D less its hops).
+    /// The unit's fixed delay in alink frames (the system's D less its hops).
     pub d_local: u16,
     /// Normally 0: `d_local` already includes the hops.
     pub hops_offset: i16,
@@ -155,8 +152,8 @@ pub struct AudioLinkPhase {
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AudioLinkFrameCounter {
-    /// The link frame at the read.
+pub struct AlinkFrameCounter {
+    /// The alink frame at the read.
     pub frame: u64,
     /// The unit's clock at the read, µs (wraps).
     pub time_us: u32,
@@ -193,77 +190,77 @@ pub const APPLY_OP_MAX: u8 = ApplyOp::MAX;
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
     /// The unit's audio link as the connect probe found it, without
-    /// traffic: `None` when the device has no link (stock firmware, the fork
+    /// traffic: `None` when the device has no alink (stock firmware, the fork
     /// without it, role 0, a protocol version this build does not speak, or
     /// a hub that refused the read). `Disconnected` without a device.
-    pub fn audio_link_info(&self) -> Result<Option<AudioLinkInfo>> {
+    pub fn alink_info(&self) -> Result<Option<AlinkInfo>> {
         self.ensure_probed();
         let mut inner = self.lock();
         Ok(info_of(&inner.conn()?.ext))
     }
 
-    /// Read `EXT_LINK_INFO` again and keep it: its delay limits follow the
+    /// Read `EXT_ALINK_INFO` again and keep it: its delay limits follow the
     /// output latency option, so re-read after changing that. Errors as
-    /// [`DspiCore::fetch_audio_link_status`].
-    pub fn fetch_audio_link_info(&self) -> Result<AudioLinkInfo> {
+    /// [`DspiCore::fetch_alink_status`].
+    pub fn fetch_alink_info(&self) -> Result<AlinkInfo> {
         self.ensure_probed();
         let mut inner = self.lock();
-        let conn = link_conn(&mut inner, alink::EXT_LINK_INFO)?;
-        let i = sx::read_link_info(conn.transport()).map_err(read_error)?;
-        conn.ext.link_info = Some(i);
+        let conn = alink_conn(&mut inner, alink::EXT_ALINK_INFO)?;
+        let i = sx::read_alink_info(conn.transport()).map_err(read_error)?;
+        conn.ext.alink_info = Some(i);
         info_of(&conn.ext).ok_or(DspiError::Unsupported)
     }
 
-    /// Read `EXT_LINK_STATUS`: lock state, frame counter, error counters,
+    /// Read `EXT_ALINK_STATUS`: lock state, frame counter, error counters,
     /// clock trim and phase error.
     ///
-    /// `Unsupported`, with no traffic, without the link; also when the read
+    /// `Unsupported`, with no traffic, without the alink; also when the read
     /// stalls or a DSPi Link hub refuses it. `Disconnected` without a device;
     /// `Transfer` for a short or failed read.
-    pub fn fetch_audio_link_status(&self) -> Result<AudioLinkStatus> {
+    pub fn fetch_alink_status(&self) -> Result<AlinkStatus> {
         self.ensure_probed();
         let mut inner = self.lock();
-        let conn = link_conn(&mut inner, alink::EXT_LINK_STATUS)?;
-        let s = sx::read_link_status(conn.transport()).map_err(read_error)?;
+        let conn = alink_conn(&mut inner, alink::EXT_ALINK_STATUS)?;
+        let s = sx::read_alink_status(conn.transport()).map_err(read_error)?;
         Ok(status(&s))
     }
 
-    /// Read `EXT_LINK_SLOTS`: for each of the 8 matrix inputs, the link slot
-    /// it takes, or [`AUDIO_LINK_SLOT_SILENT`]. Errors as
-    /// [`DspiCore::fetch_audio_link_status`].
-    pub fn fetch_audio_link_slots(&self) -> Result<Vec<u8>> {
+    /// Read `EXT_ALINK_SLOTS`: for each of the 8 matrix inputs, the audio link slot
+    /// it takes, or [`ALINK_SLOT_SILENT`]. Errors as
+    /// [`DspiCore::fetch_alink_status`].
+    pub fn fetch_alink_slots(&self) -> Result<Vec<u8>> {
         self.ensure_probed();
         let mut inner = self.lock();
-        let conn = link_conn(&mut inner, alink::EXT_LINK_SLOTS)?;
-        let s = sx::read_link_slots(conn.transport()).map_err(read_error)?;
+        let conn = alink_conn(&mut inner, alink::EXT_ALINK_SLOTS)?;
+        let s = sx::read_alink_slots(conn.transport()).map_err(read_error)?;
         Ok(s.0.to_vec())
     }
 
-    /// Write `EXT_LINK_SLOTS`: which link channel (0-63) feeds each of the 8
-    /// matrix inputs, [`AUDIO_LINK_SLOT_SILENT`] for none. A channel the
+    /// Write `EXT_ALINK_SLOTS`: which audio link channel (0-63) feeds each of the 8
+    /// matrix inputs, [`ALINK_SLOT_SILENT`] for none. A channel the
     /// stream does not carry yet plays silence until it does.
     ///
     /// Errors, with no traffic: `Disconnected`; `Unsupported` without the
-    /// link; `InvalidArgument` for a length other than 8 or a value from 64
+    /// alink; `InvalidArgument` for a length other than 8 or a value from 64
     /// to 254; `ReadOnly`. From the device: `Refused` when it stalls;
-    /// `Denied`, `Locked` or `Transfer` from the link.
-    pub fn set_audio_link_slots(&self, slots: Vec<u8>) -> Result<()> {
+    /// `Denied`, `Locked` or `Transfer` from the alink.
+    pub fn set_alink_slots(&self, slots: Vec<u8>) -> Result<()> {
         self.ensure_probed();
         let mut inner = self.lock();
-        link_conn(&mut inner, alink::EXT_LINK_SLOTS)?;
-        let slots = <[u8; LINK_SLOTS]>::try_from(slots.as_slice())
-            .map(LinkSlots)
+        alink_conn(&mut inner, alink::EXT_ALINK_SLOTS)?;
+        let slots = <[u8; ALINK_SLOTS]>::try_from(slots.as_slice())
+            .map(AlinkSlots)
             .map_err(|_| DspiError::InvalidArgument {
                 msg: format!(
-                    "audio link slots: {} given, {LINK_SLOTS} needed",
+                    "audio link slots: {} given, {ALINK_SLOTS} needed",
                     slots.len()
                 ),
             })?;
         if !slots.is_valid() {
             return Err(DspiError::InvalidArgument {
                 msg: format!(
-                    "audio link slots: each is a channel below {} or {LINK_SLOT_SILENT} for silence",
-                    alink::LINK_MAX_CHANNELS
+                    "audio link slots: each is a channel below {} or {ALINK_SLOT_SILENT} for silence",
+                    alink::ALINK_MAX_CHANNELS
                 ),
             });
         }
@@ -272,35 +269,35 @@ impl DspiCore {
         journal::check_replay(&inner)?;
         let mut w = inner.writable_conn()?;
         let t = w.conn().transport();
-        let before = sx::read_link_slots(t)
+        let before = sx::read_alink_slots(t)
             .ok()
             .map(|s| Value::Bytes(s.0.to_vec()));
-        sx::write_link_slots(t, slots).map_err(write_error)?;
-        journal::Pending::of(journal::AUDIO_LINK_SLOTS, &[], before)
+        sx::write_alink_slots(t, slots).map_err(write_error)?;
+        journal::Pending::of(journal::ALINK_SLOTS, &[], before)
             .done_with(&mut inner, Value::Bytes(slots.0.to_vec()));
         Ok(())
     }
 
-    /// Read `EXT_LINK_PHASE`: the phase-lock mode, the fixed delay and the
-    /// lock's state. Errors as [`DspiCore::fetch_audio_link_status`].
-    pub fn fetch_audio_link_phase(&self) -> Result<AudioLinkPhase> {
+    /// Read `EXT_ALINK_PHASE`: the phase-lock mode, the fixed delay and the
+    /// lock's state. Errors as [`DspiCore::fetch_alink_status`].
+    pub fn fetch_alink_phase(&self) -> Result<AlinkPhase> {
         self.ensure_probed();
         let mut inner = self.lock();
-        let conn = link_conn(&mut inner, alink::EXT_LINK_PHASE)?;
-        let p = sx::read_link_phase(conn.transport()).map_err(read_error)?;
+        let conn = alink_conn(&mut inner, alink::EXT_ALINK_PHASE)?;
+        let p = sx::read_alink_phase(conn.transport()).map_err(read_error)?;
         Ok(phase(&p))
     }
 
-    /// Write `EXT_LINK_PHASE`: `mode` 0 (fill servo) or 1 (phase lock), the
-    /// fixed delay `d_local` in link frames, and `hops_offset` (normally 0, a
+    /// Write `EXT_ALINK_PHASE`: `mode` 0 (fill servo) or 1 (phase lock), the
+    /// fixed delay `d_local` in alink frames, and `hops_offset` (normally 0, a
     /// trim of -64..64). A change of mode or delay while phase-locked
     /// re-anchors: 2-6 ms of silence.
     ///
-    /// Errors as [`DspiCore::set_audio_link_slots`]; `InvalidArgument` for a
+    /// Errors as [`DspiCore::set_alink_slots`]; `InvalidArgument` for a
     /// mode above 1 or an offset past 64. `Refused` when the effective delay
-    /// is outside the unit's limits ([`DspiCore::fetch_audio_link_info`] has
+    /// is outside the unit's limits ([`DspiCore::fetch_alink_info`] has
     /// them as they are now).
-    pub fn set_audio_link_phase(&self, mode: u8, d_local: u16, hops_offset: i16) -> Result<()> {
+    pub fn set_alink_phase(&self, mode: u8, d_local: u16, hops_offset: i16) -> Result<()> {
         self.ensure_probed();
         if mode > alink::PHASE_MODE_LOCK {
             return Err(DspiError::InvalidArgument {
@@ -316,8 +313,8 @@ impl DspiCore {
             });
         }
         let mut inner = self.lock();
-        link_conn(&mut inner, alink::EXT_LINK_PHASE)?;
-        let p = LinkPhase {
+        alink_conn(&mut inner, alink::EXT_ALINK_PHASE)?;
+        let p = sx::AlinkPhase {
             mode,
             d_local,
             hops_offset,
@@ -328,36 +325,36 @@ impl DspiCore {
         // with a short silence (an audible hazard, so undo steps over it).
         let mut w = inner.writable_conn()?;
         let t = w.conn().transport();
-        let before = sx::read_link_phase(t).ok().map(|b| phase_value(&b));
-        sx::write_link_phase(t, p).map_err(write_error)?;
-        journal::Pending::of(journal::AUDIO_LINK_PHASE, &[], before)
+        let before = sx::read_alink_phase(t).ok().map(|b| phase_value(&b));
+        sx::write_alink_phase(t, p).map_err(write_error)?;
+        journal::Pending::of(journal::ALINK_PHASE, &[], before)
             .done_with(&mut inner, phase_value(&p));
         Ok(())
     }
 
-    /// Read `EXT_FRAME_COUNTER`: the link frame, the unit's clock and its
+    /// Read `EXT_FRAME_COUNTER`: the alink frame, the unit's clock and its
     /// output frames at one instant. Errors as
-    /// [`DspiCore::fetch_audio_link_status`].
-    pub fn fetch_audio_link_frame_counter(&self) -> Result<AudioLinkFrameCounter> {
+    /// [`DspiCore::fetch_alink_status`].
+    pub fn fetch_alink_frame_counter(&self) -> Result<AlinkFrameCounter> {
         self.ensure_probed();
         let mut inner = self.lock();
-        let conn = link_conn(&mut inner, alink::EXT_FRAME_COUNTER)?;
+        let conn = alink_conn(&mut inner, alink::EXT_FRAME_COUNTER)?;
         let c = sx::read_frame_counter(conn.transport()).map_err(read_error)?;
         Ok(frame_counter(&c))
     }
 
     /// `EXT_APPLY_AT_FRAME`: run `op` ([`APPLY_OP_MAX`] lists them) on the
-    /// samples of link frame `frame`, heard `d_local` frames later on every
+    /// samples of alink frame `frame`, heard `d_local` frames later on every
     /// phase-locked unit at once; a frame already passed runs at once and
     /// reports "late". Op 0 cancels every pending op (`frame` ignored). The
     /// unit queues up to four.
     ///
-    /// Errors as [`DspiCore::set_audio_link_slots`]; `InvalidArgument` for an
+    /// Errors as [`DspiCore::set_alink_slots`]; `InvalidArgument` for an
     /// op above [`APPLY_OP_MAX`] or an `arg` or `value` outside its range
     /// (unused ones 0; a preset slot 0-9, a master volume of -12800..0
     /// hundredths of a dB, a rate code 0-2, an output below 9 and a delay of
     /// 0-2047 samples).
-    /// `Refused` when the queue is full, the link is not locked, or an
+    /// `Refused` when the queue is full, the alink is not locked, or an
     /// output or delay is past the device's.
     pub fn apply_at_frame(&self, frame: u64, op: u8, arg: u8, value: i16) -> Result<()> {
         self.ensure_probed();
@@ -375,13 +372,13 @@ impl DspiCore {
             });
         }
         let mut inner = self.lock();
-        link_conn(&mut inner, alink::EXT_APPLY_AT_FRAME)?;
+        alink_conn(&mut inner, alink::EXT_APPLY_AT_FRAME)?;
         let mut w = inner.writable_conn()?;
         sx::apply_at_frame(w.conn().transport(), req).map_err(write_error)?;
         // -- fixup sw1 (F1) -- an action: history, never undone
         journal::journal(
             &mut inner,
-            journal::AUDIO_LINK_APPLY,
+            journal::ALINK_APPLY,
             &[op, arg],
             Value::Bytes(req.encode().to_vec()),
         );
@@ -389,40 +386,35 @@ impl DspiCore {
     }
 
     /// Read `EXT_APPLY_AT_FRAME`: ops pending and how the last one ended.
-    /// Errors as [`DspiCore::fetch_audio_link_status`].
+    /// Errors as [`DspiCore::fetch_alink_status`].
     pub fn fetch_apply_at_frame_status(&self) -> Result<ApplyAtFrameStatus> {
         self.ensure_probed();
         let mut inner = self.lock();
-        let conn = link_conn(&mut inner, alink::EXT_APPLY_AT_FRAME)?;
+        let conn = alink_conn(&mut inner, alink::EXT_APPLY_AT_FRAME)?;
         let s = sx::read_apply_status(conn.transport()).map_err(read_error)?;
         Ok(apply_status(&s))
     }
 
-    /// `EXT_LINK_STATS_RESET`: clear the link's error and lock counters.
-    /// Errors as [`DspiCore::set_audio_link_slots`].
-    pub fn reset_audio_link_stats(&self) -> Result<()> {
+    /// `EXT_ALINK_STATS_RESET`: clear the alink's error and lock counters.
+    /// Errors as [`DspiCore::set_alink_slots`].
+    pub fn reset_alink_stats(&self) -> Result<()> {
         self.ensure_probed();
         let mut inner = self.lock();
-        link_conn(&mut inner, alink::EXT_LINK_STATS_RESET)?;
+        alink_conn(&mut inner, alink::EXT_ALINK_STATS_RESET)?;
         let mut w = inner.writable_conn()?;
-        sx::reset_link_stats(w.conn().transport()).map_err(write_error)?;
+        sx::reset_alink_stats(w.conn().transport()).map_err(write_error)?;
         // -- fixup sw1 (F1) -- an action: history, never undone
-        journal::journal(
-            &mut inner,
-            journal::AUDIO_LINK_STATS_RESET,
-            &[],
-            Value::Trigger,
-        );
+        journal::journal(&mut inner, journal::ALINK_STATS_RESET, &[], Value::Trigger);
         Ok(())
     }
 
     /// Open the demo device as a unit receiving the audio link (the fake
-    /// device's link model, `extension_channel_spec.md` 2.8's example
+    /// device's alink model, `extension_channel_spec.md` 2.8's example
     /// receiver: locked on L1, 8 channels at 48 kHz, its frame counter
     /// running), for clients and the hub without hardware. Replaces any open
     /// device.
-    pub fn open_demo_audio_link(&self) -> Result<()> {
-        let demo = dspi_transport::FakeDevice::demo_audio_link();
+    pub fn open_demo_alink(&self) -> Result<()> {
+        let demo = dspi_transport::FakeDevice::demo_alink();
         let serial = demo.descriptor().serial.clone();
         self.attach_probed(Box::new(demo), serial, 0)
     }
@@ -430,38 +422,38 @@ impl DspiCore {
 
 /// The open connection when it has the audio link and `EXT_LIST` named
 /// `id`; else `Unsupported` (no traffic) or `Disconnected`.
-fn link_conn(inner: &mut Inner, id: u16) -> Result<&mut Connection> {
+fn alink_conn(inner: &mut Inner, id: u16) -> Result<&mut Connection> {
     let conn = inner.conn()?;
-    if !conn.ext.audio_link() || !conn.ext.has(id) {
+    if !conn.ext.alink() || !conn.ext.has(id) {
         return Err(DspiError::Unsupported);
     }
     Ok(conn)
 }
 
-/// Whether input source `source` may be selected on `conn`: the link input
-/// (7) only on a unit that receives the link. Used by `set_input_source`.
+/// Whether input source `source` may be selected on `conn`: the alink input
+/// (7) only on a unit that receives the alink. Used by `set_input_source`.
 pub(crate) fn source_selectable(conn: &Connection, source: u8) -> bool {
-    source != INPUT_SOURCE_AUDIO_LINK || conn.ext.link_input()
+    source != INPUT_SOURCE_ALINK || conn.ext.alink_input()
 }
 
-/// The link's info as the connection holds it, when usable.
-fn info_of(ext: &dspi_session::ext_state::ExtState) -> Option<AudioLinkInfo> {
-    let i = ext.link_info.filter(|_| ext.audio_link())?;
-    Some(AudioLinkInfo {
-        link_input: ext.link_input(),
-        state_events: ext.link_state_events(),
+/// The alink's info as the connection holds it, when usable.
+fn info_of(ext: &dspi_session::ext_state::ExtState) -> Option<AlinkInfo> {
+    let i = ext.alink_info.filter(|_| ext.alink())?;
+    Some(AlinkInfo {
+        alink_input: ext.alink_input(),
+        state_events: ext.alink_state_events(),
         apply_events: ext.apply_result_events(),
         ..info(&i)
     })
 }
 
-fn info(i: &LinkInfo) -> AudioLinkInfo {
-    AudioLinkInfo {
+fn info(i: &sx::AlinkInfo) -> AlinkInfo {
+    AlinkInfo {
         role: i.role.as_str().into(),
         role_code: i.role.raw(),
         protocol_version: i.protocol_version,
         class_mask: i.class_mask,
-        max_links: i.max_links,
+        max_alinks: i.max_alinks,
         max_channels: i.max_channels,
         slots_per_unit: i.slots_per_unit,
         rx_pin: i.rx_pin,
@@ -469,17 +461,17 @@ fn info(i: &LinkInfo) -> AudioLinkInfo {
         feature_bits: i.feature_bits,
         d_local_min: i.d_local_min,
         d_local_max: i.d_local_max,
-        link_input: false,
+        alink_input: false,
         state_events: false,
         apply_events: false,
     }
 }
 
-fn status(s: &LinkStatus) -> AudioLinkStatus {
-    AudioLinkStatus {
+fn status(s: &sx::AlinkStatus) -> AlinkStatus {
+    AlinkStatus {
         state: s.state.as_str().into(),
         state_code: s.state.raw(),
-        link_class: s.class,
+        alink_class: s.class,
         rate_code: s.rate_code,
         channels: s.channels,
         hops: s.hops,
@@ -499,8 +491,8 @@ fn status(s: &LinkStatus) -> AudioLinkStatus {
     }
 }
 
-fn phase(p: &LinkPhase) -> AudioLinkPhase {
-    AudioLinkPhase {
+fn phase(p: &sx::AlinkPhase) -> AlinkPhase {
+    AlinkPhase {
         mode: p.mode,
         d_local: p.d_local,
         hops_offset: p.hops_offset,
@@ -511,15 +503,15 @@ fn phase(p: &LinkPhase) -> AudioLinkPhase {
 
 /// The journal's value of a phase setting: `[mode, d_local LE, hops_offset
 /// LE]`, without the device's flags and state.
-fn phase_value(p: &LinkPhase) -> Value {
+fn phase_value(p: &sx::AlinkPhase) -> Value {
     let mut b = vec![p.mode];
     b.extend(p.d_local.to_le_bytes());
     b.extend(p.hops_offset.to_le_bytes());
     Value::Bytes(b)
 }
 
-fn frame_counter(c: &FrameCounter) -> AudioLinkFrameCounter {
-    AudioLinkFrameCounter {
+fn frame_counter(c: &FrameCounter) -> AlinkFrameCounter {
+    AlinkFrameCounter {
         frame: c.frame,
         time_us: c.time_us,
         output_frames: c.output_frames,

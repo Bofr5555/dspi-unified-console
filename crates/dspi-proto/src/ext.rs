@@ -10,7 +10,7 @@ use crate::generated;
 mod diag;
 pub use diag::*;
 // -- WP SW1 -- the audio link's sub-commands and events (SYS2 5.3)
-pub mod audio_link;
+pub mod alink;
 
 /// A user-supplied value that does not parse (a pair map, a voltage).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -33,7 +33,7 @@ pub fn name(id: u16) -> &'static str {
         // -- WP CS1 --
         generated::ext::EXT_FIRMWARE_FIXES => "firmware fixes",
         // -- WP SW1 --
-        0x8000..=0x800A => audio_link::link_name(id).unwrap_or("experimental"),
+        0x8000..=0x800A => alink::alink_name(id).unwrap_or("experimental"),
         0x800B..=0xFFFF => "experimental",
         _ => "unknown",
     }

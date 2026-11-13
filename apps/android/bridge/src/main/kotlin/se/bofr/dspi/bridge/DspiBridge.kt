@@ -1029,25 +1029,25 @@ interface DspiBridge {
     fun setUiVisible(visible: Boolean)
 
     // ═══ The hub's audio link installation (-- WP LKUI1 --) ═══════════════
-    // The System screen's calls (dspi-core link/system.rs): they ask the hub
+    // The System screen's calls (dspi-core alink/system.rs): they ask the hub
     // over the network, off the FFI thread. Off a hub they throw
     // [se.bofr.dspi.core.DspiException.Disconnected]; the hub's refusals are
     // [se.bofr.dspi.core.DspiException.Link] with its code (`denied`,
-    // `conflict`, ...) and words. Saving, writing the link delays and
+    // `conflict`, ...) and words. Saving, writing the audio link delays and
     // recalling a scene are writes (G1: refused while writes are not allowed).
 
     /** The installation as the System screen shows it. */
-    suspend fun linkSystemView(): se.bofr.dspi.core.LinkSystemView = throw se.bofr.dspi.core.DspiException.Disconnected()
+    suspend fun alinkSystemView(): se.bofr.dspi.core.AlinkSystemView = throw se.bofr.dspi.core.DspiException.Disconnected()
 
-    /** Save Clock-and-links edits made on the view of [revision]; the new revision. */
-    suspend fun linkSystemSave(revision: Long, edits: se.bofr.dspi.core.LinkSystemEdits): Long =
+    /** Save Clock-and-audio-links edits made on the view of [revision]; the new revision. */
+    suspend fun alinkSystemSave(revision: Long, edits: se.bofr.dspi.core.AlinkSystemEdits): Long =
         throw se.bofr.dspi.core.DspiException.Disconnected()
 
-    /** Write the link delays the system delay asks for to every unit. */
-    suspend fun linkSystemAlign(): se.bofr.dspi.core.LinkSystemAlign = throw se.bofr.dspi.core.DspiException.Disconnected()
+    /** Write the audio link delays the system delay asks for to every unit. */
+    suspend fun alinkSystemAlign(): se.bofr.dspi.core.AlinkSystemAlign = throw se.bofr.dspi.core.DspiException.Disconnected()
 
     /** Recall scene [scene] (an id from the view). */
-    suspend fun linkSystemRecall(scene: String): se.bofr.dspi.core.LinkSceneRecall = throw se.bofr.dspi.core.DspiException.Disconnected()
+    suspend fun alinkSystemRecall(scene: String): se.bofr.dspi.core.AlinkSceneRecall = throw se.bofr.dspi.core.DspiException.Disconnected()
 
     // ═══ Undo and redo (-- WP AN42 --) ═══════════════════════════════════
     // The core's journal (P0W, docs/integrator/undo.md): the core decides what

@@ -22,95 +22,95 @@ package se.bofr.dspi.core
 interface DspiCoreApi : AutoCloseable {
     /**
      * The unit's audio link as the connect probe found it, without
-     * traffic: `None` when the device has no link (stock firmware, the fork
+     * traffic: `None` when the device has no alink (stock firmware, the fork
      * without it, role 0, a protocol version this build does not speak, or
      * a hub that refused the read). `Disconnected` without a device.
      */
     @Throws(DspiException::class)
-    fun audioLinkInfo(): AudioLinkInfo?
+    fun alinkInfo(): AlinkInfo?
 
     /**
-     * Read `EXT_LINK_INFO` again and keep it: its delay limits follow the
+     * Read `EXT_ALINK_INFO` again and keep it: its delay limits follow the
      * output latency option, so re-read after changing that. Errors as
-     * [`DspiCore::fetch_audio_link_status`].
+     * [`DspiCore::fetch_alink_status`].
      */
     @Throws(DspiException::class)
-    fun fetchAudioLinkInfo(): AudioLinkInfo
+    fun fetchAlinkInfo(): AlinkInfo
 
     /**
-     * Read `EXT_LINK_STATUS`: lock state, frame counter, error counters,
+     * Read `EXT_ALINK_STATUS`: lock state, frame counter, error counters,
      * clock trim and phase error.
      *
-     * `Unsupported`, with no traffic, without the link; also when the read
+     * `Unsupported`, with no traffic, without the alink; also when the read
      * stalls or a DSPi Link hub refuses it. `Disconnected` without a device;
      * `Transfer` for a short or failed read.
      */
     @Throws(DspiException::class)
-    fun fetchAudioLinkStatus(): AudioLinkStatus
+    fun fetchAlinkStatus(): AlinkStatus
 
     /**
-     * Read `EXT_LINK_SLOTS`: for each of the 8 matrix inputs, the link slot
-     * it takes, or [`AUDIO_LINK_SLOT_SILENT`]. Errors as
-     * [`DspiCore::fetch_audio_link_status`].
+     * Read `EXT_ALINK_SLOTS`: for each of the 8 matrix inputs, the audio link slot
+     * it takes, or [`ALINK_SLOT_SILENT`]. Errors as
+     * [`DspiCore::fetch_alink_status`].
      */
     @Throws(DspiException::class)
-    fun fetchAudioLinkSlots(): List<Int>
+    fun fetchAlinkSlots(): List<Int>
 
     /**
-     * Write `EXT_LINK_SLOTS`: which link channel (0-63) feeds each of the 8
-     * matrix inputs, [`AUDIO_LINK_SLOT_SILENT`] for none. A channel the
+     * Write `EXT_ALINK_SLOTS`: which audio link channel (0-63) feeds each of the 8
+     * matrix inputs, [`ALINK_SLOT_SILENT`] for none. A channel the
      * stream does not carry yet plays silence until it does.
      *
      * Errors, with no traffic: `Disconnected`; `Unsupported` without the
-     * link; `InvalidArgument` for a length other than 8 or a value from 64
+     * alink; `InvalidArgument` for a length other than 8 or a value from 64
      * to 254; `ReadOnly`. From the device: `Refused` when it stalls;
-     * `Denied`, `Locked` or `Transfer` from the link.
+     * `Denied`, `Locked` or `Transfer` from the alink.
      */
     @Throws(DspiException::class)
-    fun setAudioLinkSlots(slots: List<Int>)
+    fun setAlinkSlots(slots: List<Int>)
 
     /**
-     * Read `EXT_LINK_PHASE`: the phase-lock mode, the fixed delay and the
-     * lock's state. Errors as [`DspiCore::fetch_audio_link_status`].
+     * Read `EXT_ALINK_PHASE`: the phase-lock mode, the fixed delay and the
+     * lock's state. Errors as [`DspiCore::fetch_alink_status`].
      */
     @Throws(DspiException::class)
-    fun fetchAudioLinkPhase(): AudioLinkPhase
+    fun fetchAlinkPhase(): AlinkPhase
 
     /**
-     * Write `EXT_LINK_PHASE`: `mode` 0 (fill servo) or 1 (phase lock), the
-     * fixed delay `d_local` in link frames, and `hops_offset` (normally 0, a
+     * Write `EXT_ALINK_PHASE`: `mode` 0 (fill servo) or 1 (phase lock), the
+     * fixed delay `d_local` in alink frames, and `hops_offset` (normally 0, a
      * trim of -64..64). A change of mode or delay while phase-locked
      * re-anchors: 2-6 ms of silence.
      *
-     * Errors as [`DspiCore::set_audio_link_slots`]; `InvalidArgument` for a
+     * Errors as [`DspiCore::set_alink_slots`]; `InvalidArgument` for a
      * mode above 1 or an offset past 64. `Refused` when the effective delay
-     * is outside the unit's limits ([`DspiCore::fetch_audio_link_info`] has
+     * is outside the unit's limits ([`DspiCore::fetch_alink_info`] has
      * them as they are now).
      */
     @Throws(DspiException::class)
-    fun setAudioLinkPhase(mode: Int, dLocal: Int, hopsOffset: Int)
+    fun setAlinkPhase(mode: Int, dLocal: Int, hopsOffset: Int)
 
     /**
-     * Read `EXT_FRAME_COUNTER`: the link frame, the unit's clock and its
+     * Read `EXT_FRAME_COUNTER`: the alink frame, the unit's clock and its
      * output frames at one instant. Errors as
-     * [`DspiCore::fetch_audio_link_status`].
+     * [`DspiCore::fetch_alink_status`].
      */
     @Throws(DspiException::class)
-    fun fetchAudioLinkFrameCounter(): AudioLinkFrameCounter
+    fun fetchAlinkFrameCounter(): AlinkFrameCounter
 
     /**
      * `EXT_APPLY_AT_FRAME`: run `op` ([`APPLY_OP_MAX`] lists them) on the
-     * samples of link frame `frame`, heard `d_local` frames later on every
+     * samples of alink frame `frame`, heard `d_local` frames later on every
      * phase-locked unit at once; a frame already passed runs at once and
      * reports "late". Op 0 cancels every pending op (`frame` ignored). The
      * unit queues up to four.
      *
-     * Errors as [`DspiCore::set_audio_link_slots`]; `InvalidArgument` for an
+     * Errors as [`DspiCore::set_alink_slots`]; `InvalidArgument` for an
      * op above [`APPLY_OP_MAX`] or an `arg` or `value` outside its range
      * (unused ones 0; a preset slot 0-9, a master volume of -12800..0
      * hundredths of a dB, a rate code 0-2, an output below 9 and a delay of
      * 0-2047 samples).
-     * `Refused` when the queue is full, the link is not locked, or an
+     * `Refused` when the queue is full, the alink is not locked, or an
      * output or delay is past the device's.
      */
     @Throws(DspiException::class)
@@ -118,27 +118,79 @@ interface DspiCoreApi : AutoCloseable {
 
     /**
      * Read `EXT_APPLY_AT_FRAME`: ops pending and how the last one ended.
-     * Errors as [`DspiCore::fetch_audio_link_status`].
+     * Errors as [`DspiCore::fetch_alink_status`].
      */
     @Throws(DspiException::class)
     fun fetchApplyAtFrameStatus(): ApplyAtFrameStatus
 
     /**
-     * `EXT_LINK_STATS_RESET`: clear the link's error and lock counters.
-     * Errors as [`DspiCore::set_audio_link_slots`].
+     * `EXT_ALINK_STATS_RESET`: clear the alink's error and lock counters.
+     * Errors as [`DspiCore::set_alink_slots`].
      */
     @Throws(DspiException::class)
-    fun resetAudioLinkStats()
+    fun resetAlinkStats()
 
     /**
      * Open the demo device as a unit receiving the audio link (the fake
-     * device's link model, `extension_channel_spec.md` 2.8's example
+     * device's alink model, `extension_channel_spec.md` 2.8's example
      * receiver: locked on L1, 8 channels at 48 kHz, its frame counter
      * running), for clients and the hub without hardware. Replaces any open
      * device.
      */
     @Throws(DspiException::class)
-    fun openDemoAudioLink()
+    fun openDemoAlink()
+
+    /**
+     * The audio link's installation on the hub this session is on: its
+     * elements with their alink state, the rooms, the scenes, alarms and a
+     * one-line summary. Reads `system.status` (and `system.get` when the
+     * model changed). The hub answers the status at most once a second per
+     * session; asked sooner, this gives the last view again with `stale`.
+     * Blocks on the network: keep it off a UI thread.
+     *
+     * Errors: [`DspiError::Disconnected`] with no hub session,
+     * [`DspiError::Link`] with the hub's code or the client's.
+     */
+    @Throws(DspiException::class)
+    fun alinkSystemView(): AlinkSystemView
+
+    /**
+     * Save the "Clock and audio links" edits made on the view of `revision`, as
+     * one `system.set` the hub takes only while its model is still at that
+     * revision. Returns the new revision. Admin only.
+     *
+     * Errors: [`DspiError::Link`] `conflict` when the installation changed on
+     * the hub meanwhile (nothing is saved; read the view again and edit
+     * again), `denied` for another role, `bad_request` for values the hub
+     * refuses, with its words; [`DspiError::Disconnected`] with no session.
+     */
+    @Throws(DspiException::class)
+    fun alinkSystemSave(revision: Long, edits: AlinkSystemEdits): Long
+
+    /**
+     * Write the audio link delays and hop offsets the system delay asks for to
+     * every unit (`system.align` with `apply`). Each unit re-anchors: a
+     * short silence (2 to 6 ms). Admin only. Blocks while the hub writes
+     * every unit.
+     *
+     * Errors: as [`Self::alink_system_save`], without `conflict`.
+     */
+    @Throws(DspiException::class)
+    fun alinkSystemAlign(): AlinkSystemAlign
+
+    /**
+     * Recall scene `scene` (an id from the view) on every unit it names
+     * (`system.scene.apply`). A recall the hub took but every device
+     * refused (a sender holds one scene at a time) is answered with
+     * `taken` false and the words to show, naming the frame it holds.
+     * Control or admin.
+     *
+     * Errors: [`DspiError::Link`] `denied` when the role may not make one of
+     * the scene's operations (the hub's words name it), `bad_request` for a
+     * scene the model does not have; [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)
+    fun alinkSystemRecall(scene: String): AlinkSceneRecall
 
     /**
      * Identify the firmware and read every parameter into the mirror.
@@ -1694,58 +1746,6 @@ interface DspiCoreApi : AutoCloseable {
     fun linkSetUrl(url: String)
 
     /**
-     * The audio link's installation on the hub this session is on: its
-     * elements with their link state, the rooms, the scenes, alarms and a
-     * one-line summary. Reads `system.status` (and `system.get` when the
-     * model changed). The hub answers the status at most once a second per
-     * session; asked sooner, this gives the last view again with `stale`.
-     * Blocks on the network: keep it off a UI thread.
-     *
-     * Errors: [`DspiError::Disconnected`] with no hub session,
-     * [`DspiError::Link`] with the hub's code or the client's.
-     */
-    @Throws(DspiException::class)
-    fun linkSystemView(): LinkSystemView
-
-    /**
-     * Save the "Clock and links" edits made on the view of `revision`, as
-     * one `system.set` the hub takes only while its model is still at that
-     * revision. Returns the new revision. Admin only.
-     *
-     * Errors: [`DspiError::Link`] `conflict` when the installation changed on
-     * the hub meanwhile (nothing is saved; read the view again and edit
-     * again), `denied` for another role, `bad_request` for values the hub
-     * refuses, with its words; [`DspiError::Disconnected`] with no session.
-     */
-    @Throws(DspiException::class)
-    fun linkSystemSave(revision: Long, edits: LinkSystemEdits): Long
-
-    /**
-     * Write the link delays and hop offsets the system delay asks for to
-     * every unit (`system.align` with `apply`). Each unit re-anchors: a
-     * short silence (2 to 6 ms). Admin only. Blocks while the hub writes
-     * every unit.
-     *
-     * Errors: as [`Self::link_system_save`], without `conflict`.
-     */
-    @Throws(DspiException::class)
-    fun linkSystemAlign(): LinkSystemAlign
-
-    /**
-     * Recall scene `scene` (an id from the view) on every unit it names
-     * (`system.scene.apply`). A recall the hub took but every device
-     * refused (a sender holds one scene at a time) is answered with
-     * `taken` false and the words to show, naming the frame it holds.
-     * Control or admin.
-     *
-     * Errors: [`DspiError::Link`] `denied` when the role may not make one of
-     * the scene's operations (the hub's words name it), `bad_request` for a
-     * scene the model does not have; [`DspiError::Disconnected`].
-     */
-    @Throws(DspiException::class)
-    fun linkSystemRecall(scene: String): LinkSceneRecall
-
-    /**
      * The monitor lines with an id above `after_id`, oldest first, and the
      * id to pass next time (`after_id` itself when there is nothing new).
      * Pass 0 for everything still kept. Never fails.
@@ -2136,7 +2136,7 @@ interface DspiCoreApi : AutoCloseable {
      *
      * Errors: [`DspiError::InvalidArgument`] above 7;
      * [`DspiError::Unsupported`], with no traffic, for 7 on a unit without
-     * the link input (`audio_link_info`'s `link_input`); the connection and
+     * the link input (`alink_info`'s `alink_input`); the connection and
      * transfer errors of every setter.
      */
     @Throws(DspiException::class)

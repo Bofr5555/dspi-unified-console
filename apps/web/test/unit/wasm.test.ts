@@ -285,7 +285,7 @@ test("WB8: a refused recall in the core's words, one sentence per sender's answe
   assert.equal(refused.heldFrame, held);
   assert.equal(
     refused.message,
-    "Closed was refused: a scene is already scheduled on the sender for link frame 2000010, 100 ms after this recall. The sender takes one scene at a time; recall Closed again after that. System mute unchanged.",
+    "Closed was refused: a scene is already scheduled on the sender for audio link frame 2000010, 100 ms after this recall. The sender takes one scene at a time; recall Closed again after that. System mute unchanged.",
   );
   assert.match((await core.call("sceneOutcome", { scene: "closed", report: report("refused"), model, heldFrame: null })).message, /still holds one/);
   const timeout = await core.call("sceneOutcome", { scene: "closed", report: report("timeout"), model, heldFrame: held });
@@ -318,7 +318,7 @@ test("HWLK1F: the core's words for a mixed recall and an alignment that wrote no
     },
   });
   assert.equal(recall.taken, true);
-  assert.equal(recall.message, "Evening recalled: applied now on K340 (no audio link); at link frame 9600 through the sender on the others.");
+  assert.equal(recall.message, "Evening recalled: applied now on K340 (no audio link); at audio link frame 9600 through the sender on the others.");
   const align = await core.call("alignOutcome", {
     model,
     report: { applied: true, alignment: { issues: [] }, writes: [{ serial: "K", element: "K", what: "phase", result: "skipped", reason: "no audio link (firmware)" }] },

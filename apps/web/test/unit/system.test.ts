@@ -43,7 +43,7 @@ import {
   type SystemStatus,
 } from "../../src/screens/system/model";
 
-/** The installation of `uconsole --demo hub --audio-link`, trimmed. */
+/** The installation of `uconsole --demo hub --alink`, trimmed. */
 function model(): SystemModel {
   return {
     rooms: [
@@ -66,7 +66,7 @@ function model(): SystemModel {
 }
 
 function alarm(id: number, subject: string, state: Alarm["state"], severity = "critical", raisedAt = id): Alarm {
-  return { id, code: "link_lost", subject, severity, message: `${subject} lost`, state, raisedAt, clearedAt: state === "cleared" ? raisedAt + 1 : null, count: 1 };
+  return { id, code: "alink_lost", subject, severity, message: `${subject} lost`, state, raisedAt, clearedAt: state === "cleared" ? raisedAt + 1 : null, count: 1 };
 }
 
 function status(over: Partial<SystemStatus> = {}): SystemStatus {
@@ -115,7 +115,7 @@ test("SW3: the topology hangs fan-outs and units under their upstream, a repeate
   assert.deepEqual(topology(m, null).map((n) => n.id), ["tx", "L"]);
 });
 
-test("SW3: the slot matrix: rows are the link channels in use, an edit sets one input, a second press silences it", () => {
+test("SW3: the slot matrix: rows are the audio link channels in use, an edit sets one input, a second press silences it", () => {
   const m = model();
   assert.deepEqual(senderChannels(m), [0, 1, 2, 3, 4, 5, 6, 7]);
   assert.deepEqual(unitSlots(m.units[1]!), [255, 255, 255, 255, 255, 255, 255, 255]);
@@ -270,7 +270,7 @@ after(() => {
   for (const c of made) c.dispose();
 });
 
-async function demoSession(audioLink: boolean) {
+async function demoSession(alink: boolean) {
   const core = new WasmCore(await loadWasmModule(readFileSync(pageModule)));
   made.push(core);
   const client = {
@@ -282,7 +282,7 @@ async function demoSession(audioLink: boolean) {
     dispose: async () => undefined,
   } as unknown as CoreClient;
   const session = new Session("s", "i", "Here", { kind: "demo" }, "control", client);
-  await session.open({ kind: "demo", audioLink });
+  await session.open({ kind: "demo", alink });
   return session;
 }
 
@@ -322,8 +322,8 @@ test("SW3 fixup sw3x: a recall none of whose writes was taken is refused", () =>
   assert.equal(sceneTaken(report("per_unit", ["refused_at_apply", "late"])), true, "one late unit: recalled, late");
   assert.equal(sceneTaken(report("superframe", ["refused"])), false);
   // -- WP WB8 -- why is the core's sentence (`sceneOutcome`): wasm.test.ts and the e2e check its words
-  assert.equal(writeWhat("phase"), "Link delay");
-  assert.equal(writeWhat("slots"), "Link slots");
+  assert.equal(writeWhat("phase"), "Audio link delay");
+  assert.equal(writeWhat("slots"), "Audio link slots");
   assert.equal(writeWhat("out_delay:1"), "Delay OUT2");
 });
 
@@ -408,7 +408,7 @@ test("HWLK1F: a unit whose firmware has no audio link reads as such, never Unkno
   assert.equal(resultWord("applied_now"), "Applied now");
   assert.equal(resultTone("applied_now"), "ok");
   assert.equal(resultWord("unsupported"), "Needs the audio link");
-  assert.equal(resultWord("no_frame"), "No link frame");
+  assert.equal(resultWord("no_frame"), "No audio link frame");
   assert.ok(sceneTaken({ plan: { scene: "s", frame: 0, path: "direct", ops: [], leadFrames: 0 }, writes: [{ serial: "K", element: "K", what: "mute", result: "applied_now" }], onTime: false }));
 });
 

@@ -372,7 +372,7 @@ fn wp_bulkfix_bf_a_failed_import_repair_shows_the_device_muted_and_why() {
 #[test]
 fn wp_sw2_an_apply_at_frame_unmute_is_gated_as_an_unmute() {
     let link_core = |fail: bool| {
-        let dev = BulkDbDevice::new(FakeDevice::demo_audio_link(), buggy());
+        let dev = BulkDbDevice::new(FakeDevice::demo_alink(), buggy());
         let (probe, remote) = (dev.probe(), dev.remote());
         let core = DspiCore::new();
         core.attach_probed(Box::new(dev), "SW2".into(), 0).unwrap();
@@ -384,7 +384,7 @@ fn wp_sw2_an_apply_at_frame_unmute_is_gated_as_an_unmute() {
         assert_ne!(suspects(&core), 0);
         (core, probe, remote)
     };
-    let frame = |core: &DspiCore| core.fetch_audio_link_frame_counter().unwrap().frame + 48_000;
+    let frame = |core: &DspiCore| core.fetch_alink_frame_counter().unwrap().frame + 48_000;
 
     let (core, probe, _) = link_core(false);
     core.apply_at_frame(frame(&core), 2, 0, 0).unwrap();
