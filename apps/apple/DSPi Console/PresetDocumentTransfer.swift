@@ -1,4 +1,5 @@
 import Foundation
+import dspi_core  // -- WP P1XF --
 
 // Moving a `PresetDocument` between a file and a device: capture reads the view
 // model, apply writes it back through the ordinary setters.
@@ -9,6 +10,21 @@ import Foundation
 // back as a status code we can report instead of a silent no-op.
 
 // MARK: - Capture
+
+// -- WP P1XF --
+/// The device's custom crossfeed pair in the core's image (`bulk_raw`,
+/// `WireCrossfeedParams` custom_fc and custom_feed_db).  The core's
+/// `crossfeed_freq`/`_feed` give a named preset's own values instead.  nil
+/// without a valid image.
+func customCrossfeedPair(_ s: DspState) -> (freq: Float, feed: Float)? {
+    let at = BULK_CROSSFEED_OFFSET + 4
+    let raw = [UInt8](s.bulkRaw)
+    guard s.bulkValid, raw.count >= at + 8 else { return nil }
+    func float(_ i: Int) -> Float {
+        Float(bitPattern: UInt32(raw[i]) | UInt32(raw[i + 1]) << 8 | UInt32(raw[i + 2]) << 16 | UInt32(raw[i + 3]) << 24)
+    }
+    return (float(at), float(at + 4))
+}
 
 extension PresetDocument {
 
@@ -50,8 +66,12 @@ extension PresetDocument {
 
         doc.crossfeed.enabled = vm.crossfeedEnabled
         doc.crossfeed.preset = vm.crossfeed.preset
-        doc.crossfeed.freqHz = vm.crossfeed.freq
-        doc.crossfeed.feedDb = vm.crossfeed.feed
+        // -- WP P1XF -- through a core the view shows a named preset's own
+        // values; the document carries the device's custom pair, as the Mac's
+        // own export and the core's do, so an import gives it back
+        let custom = vm.coreMirror.attachedSource == nil ? nil : vm.coreMirror.latest.flatMap(customCrossfeedPair)
+        doc.crossfeed.freqHz = custom?.freq ?? vm.crossfeed.freq
+        doc.crossfeed.feedDb = custom?.feed ?? vm.crossfeed.feed
         doc.crossfeed.itd = vm.crossfeed.itd
         doc.crossfeed.outputPairMask = Int(vm.crossfeed.outputMask)
         if vm.crossfeedPairMapSupported {

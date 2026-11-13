@@ -2477,7 +2477,9 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     
     /**
      * Copy of the cached state (the C ABI returns a borrowed pointer).
-     * Defaults while disconnected. Never fails.
+     * Defaults while disconnected. Never fails. Under a named crossfeed
+     * preset, `crossfeed_freq` and `crossfeed_feed` are that preset's values
+     * (see `set_crossfeed_preset`).
      */
     func getState()  -> DspState
     
@@ -3320,8 +3322,12 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     
     /**
      * Crossfeed preset: 0 default, 1 Chu Moy, 2 Meier, 3 custom. Only the
-     * preset changes: `crossfeed_freq` and `crossfeed_feed` are the device's
-     * custom values, which it keeps whatever the preset.
+     * preset is sent: the device keeps its custom frequency and feed whatever
+     * the preset. While a named preset (0 to 2) is chosen, `get_state` gives
+     * that preset's frequency and feed (700 Hz / 4.5 dB, 700 Hz / 6 dB,
+     * 650 Hz / 9.5 dB), which the device runs; with Custom (3) it gives the
+     * custom pair again. A preset export, the bulk image and undo keep the
+     * custom pair.
      *
      * Errors: [`DspiError::InvalidArgument`] for another preset; the
      * connection and transfer errors of every setter.
@@ -5963,7 +5969,9 @@ open func getPresetName(slot: UInt8)throws  -> String  {
     
     /**
      * Copy of the cached state (the C ABI returns a borrowed pointer).
-     * Defaults while disconnected. Never fails.
+     * Defaults while disconnected. Never fails. Under a named crossfeed
+     * preset, `crossfeed_freq` and `crossfeed_feed` are that preset's values
+     * (see `set_crossfeed_preset`).
      */
 open func getState() -> DspState  {
     return try!  FfiConverterTypeDspState_lift(try! rustCall() {
@@ -7197,8 +7205,12 @@ open func setCrossfeedPairMap(map: Data)throws   {try rustCallWithError(FfiConve
     
     /**
      * Crossfeed preset: 0 default, 1 Chu Moy, 2 Meier, 3 custom. Only the
-     * preset changes: `crossfeed_freq` and `crossfeed_feed` are the device's
-     * custom values, which it keeps whatever the preset.
+     * preset is sent: the device keeps its custom frequency and feed whatever
+     * the preset. While a named preset (0 to 2) is chosen, `get_state` gives
+     * that preset's frequency and feed (700 Hz / 4.5 dB, 700 Hz / 6 dB,
+     * 650 Hz / 9.5 dB), which the device runs; with Custom (3) it gives the
+     * custom pair again. A preset export, the bulk image and undo keep the
+     * custom pair.
      *
      * Errors: [`DspiError::InvalidArgument`] for another preset; the
      * connection and transfer errors of every setter.
@@ -28566,7 +28578,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_get_preset_name() != 34340) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_get_state() != 32151) {
+    if (uniffi_dspi_core_checksum_method_dspicore_get_state() != 48604) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_has_clip_events() != 9559) {
@@ -28794,7 +28806,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_set_crossfeed_pair_map() != 32715) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_set_crossfeed_preset() != 45693) {
+    if (uniffi_dspi_core_checksum_method_dspicore_set_crossfeed_preset() != 53246) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_crossover() != 11478) {

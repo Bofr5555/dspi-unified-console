@@ -196,9 +196,22 @@ final class CoreMirrorSW8Tests: XCTestCase {
 
         let a = Self.fields(swift), b = Self.fields(mirrored)
         XCTAssertEqual(Set(a.keys), Set(b.keys))
-        for key in a.keys.sorted() {
+        for key in a.keys.sorted() where key != "crossfeed" {
             XCTAssertEqual(b[key], a[key], "field \(key)")
         }
+        // -- WP P1XF -- the image runs Meier with a 650 Hz / 6 dB custom pair:
+        // the Swift decoder shows the custom pair, the core Meier's own values
+        // (650 Hz / 9.5 dB), and the export through the core the custom pair
+        let c = swift.crossfeed
+        XCTAssertEqual(c.preset, 2)
+        XCTAssertEqual(c.freq, 650)
+        XCTAssertEqual(c.feed, 6)
+        XCTAssertEqual(b["crossfeed"],
+                       "\(swift.crossfeedEnabled) 2 \(c.itd) \(Float(650)) \(Float(9.5)) \(c.outputMask) \(c.pairMap.bytes)")
+        let doc = PresetDocument.capture(from: mirrored)
+        XCTAssertEqual(doc.crossfeed.preset, 2)
+        XCTAssertEqual(doc.crossfeed.freqHz, 650)
+        XCTAssertEqual(doc.crossfeed.feedDb, 6, "the device's custom feed, not Meier's 9.5")
         // The image really was the changed one on both sides.
         XCTAssertEqual(mirrored.masterVolumeDB, -12.5)
         XCTAssertEqual(mirrored.channelNames[3], "Bench 3")

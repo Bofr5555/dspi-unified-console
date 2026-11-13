@@ -49,6 +49,20 @@ const PRESETS: [(&str, &str, &str); 4] = [
     ("Custom", "User-defined parameters", "custom"),
 ];
 
+// -- WP P1XF --
+/// The named voicings' (cutoff Hz, feed dB), by preset number, as the firmware
+/// runs them (`crossfeed.c` `presets`; the core's `CROSSFEED_PRESETS`). The
+/// graph draws these under a named voicing, the custom pair under Custom.
+const PRESET_VALUES: [(f32, f32); 3] = [(700.0, 4.5), (700.0, 6.0), (650.0, 9.5)];
+
+/// What the device runs: the named voicing's values, or the custom pair.
+fn running(cf: &dspi_session::state::Crossfeed) -> (f32, f32) {
+    PRESET_VALUES
+        .get(usize::from(cf.preset))
+        .copied()
+        .unwrap_or((cf.custom_fc, cf.custom_feed_db))
+}
+
 /// The Console's output-pair presets menu.
 const PAIR_PRESETS: [&str; 3] = ["All pairs", "Pair 1 only (Headphones)", "None"];
 
@@ -379,8 +393,9 @@ impl CrossfeedPanel {
             action: None,
         }];
         rows.push(Row::Graph(if cf.enabled {
-            let (cross, direct) =
-                curves::crossfeed_curves(cf.custom_fc as f64, cf.custom_feed_db as f64);
+            // -- WP P1XF -- a named voicing draws its own values
+            let (fc, feed) = running(&cf);
+            let (cross, direct) = curves::crossfeed_curves(fc as f64, feed as f64);
             PanelGraph::Curves {
                 series: vec![
                     ("Crossfeed".into(), theme.warning, cross),
@@ -781,6 +796,43 @@ mod tests {
         assert!(f.contains("Jan Meier"), "{f}");
         assert!(f.contains("Cutoff Frequency"), "{f}");
         assert!(f.contains("700 Hz"), "{f}");
+    }
+
+    // -- WP P1XF --
+    /// A named voicing's graph draws that voicing's own values, which the
+    /// device runs, not the custom pair it keeps; Custom draws the custom pair.
+    #[test]
+    fn wp_p1xf_a_named_voicing_draws_its_own_values() {
+        let (p, mut state) = panel();
+        let theme = panel::key_theme();
+        let (_, cf, _) = dspi_proto::generated::SECTIONS
+            .iter()
+            .find(|(n, _, _)| *n == "crossfeed")
+            .copied()
+            .unwrap();
+        state.bulk.patch(cf + 4, &800.0f32.to_le_bytes());
+        state.bulk.patch(cf + 8, &5.0f32.to_le_bytes());
+        let graph = |state: &DeviceState| -> Vec<f64> {
+            p.rows(state, theme)
+                .into_iter()
+                .find_map(|r| match r {
+                    Row::Graph(PanelGraph::Curves { series, .. }) => Some(series[0].2.clone()),
+                    _ => None,
+                })
+                .expect("a graph")
+        };
+        for (preset, &(fc, feed)) in (0u8..).zip(PRESET_VALUES.iter()) {
+            state.bulk.patch(cf + 1, &[preset]);
+            let want = curves::crossfeed_curves(fc as f64, feed as f64).0;
+            assert_eq!(graph(&state), want, "preset {preset}");
+        }
+        assert_eq!(
+            PRESET_VALUES,
+            [(700.0, 4.5), (700.0, 6.0), (650.0, 9.5)],
+            "the firmware's table (crossfeed.c)"
+        );
+        state.bulk.patch(cf + 1, &[CUSTOM]);
+        assert_eq!(graph(&state), curves::crossfeed_curves(800.0, 5.0).0);
     }
 
     /// D24: `CrossfeedView.swift:301` draws PARAMETERS at 0.5 opacity outside
