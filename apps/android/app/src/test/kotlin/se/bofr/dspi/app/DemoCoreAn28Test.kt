@@ -66,7 +66,9 @@ class DemoCoreAn28Test {
         core.linkSetUrl("ws://hub")
     }
 
-    /** A new way out to hardware fails here until it is classified, instead of passing to the core by delegation. */
+    /** A new way out to hardware fails here until it is classified, instead of passing to the core by delegation.
+     *  `openDemoAudioLink` (SW1) opens only the core's fake device with an audio-link model, like `openDemo`, so it is
+     *  classified as safe to delegate. */
     @Test
     fun an28EveryCallThatLooksLikeAWayOutIsListed() {
         val names = DspiCoreApi::class.java.methods.map { it.name }.toSet()
@@ -74,7 +76,8 @@ class DemoCoreAn28Test {
             "^(open|flash|scan|select|poll|enter|bootloader|linkConnect|linkPair|linkSelect|linkDevices|linkRetry|linkSetUrl|linkFetch)|InBootloader"
         )
         val guarded = setOf(
-            "openFd", "openDemo", "scanDevices", "selectDevice", "pollHotplug", "enterBootloader", "bootloaderCounts", "bootloaderDrives",
+            "openFd", "openDemo", "openDemoAudioLink", "scanDevices", "selectDevice", "pollHotplug", "enterBootloader", "bootloaderCounts",
+            "bootloaderDrives",
             "flashToDrive", "flashToDriveGuarded", "firmwareGuardBoardInBootloader", "linkConnect", "linkPair", "linkDevices",
             "linkSelectDevice", "linkRetryNow", "linkSetUrl", "linkFetchInfo"
         )
