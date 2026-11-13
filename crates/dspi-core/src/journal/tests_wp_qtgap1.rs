@@ -88,18 +88,24 @@ fn wp_qtgap1_a_typed_value_next_to_a_drag_stays_apart() {
     assert_eq!(gain0(&core), start);
 }
 
-/// Within a drag, another control's write is a step of its own and ends
-/// the one gathered before it, as before.
+/// Within a drag, another control's write joins the same step (WP P0W2,
+/// follow-up O1, coordinator's decision: everything one drag writes is one
+/// step); undo puts both back.
 #[test]
-fn wp_qtgap1_a_drag_joins_only_its_own_value() {
+fn wp_qtgap1_a_drag_joins_every_value_it_moves() {
     let core = demo();
+    let start1 = core.get_state().output_gain_db[1];
+    let start = gain0(&core);
     core.set_dragging(true);
     core.set_output_gain(0, -1.0).unwrap();
     core.set_output_gain(0, -2.0).unwrap();
     core.set_output_gain(1, -1.0).unwrap();
     core.set_output_gain(0, -3.0).unwrap();
     core.set_dragging(false);
-    assert_eq!(core.history(10).len(), 3);
+    assert_eq!(core.history(10).len(), 1);
+    core.undo().unwrap();
+    assert_eq!(gain0(&core), start);
+    assert_eq!(core.get_state().output_gain_db[1], start1);
 }
 
 /// An undo in the middle of a drag is not joined, and the drag's next
@@ -124,8 +130,8 @@ fn wp_qtgap1_an_undo_during_a_drag_is_never_joined() {
     );
 }
 
-/// The mark is harmless with no device, and outlives a reconnect without
-/// joining anything from before it.
+/// The mark is harmless with no device, and joins nothing from before a
+/// reconnect (WP P0W2, fixup p0w2b: it ends with its connection).
 #[test]
 fn wp_qtgap1_the_mark_with_no_device() {
     let core = DspiCore::new();

@@ -3694,7 +3694,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_device_name() != 13429.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_dragging() != 26164.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_dragging() != 49751.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_filter() != 29347.toShort()) {
@@ -7556,12 +7556,17 @@ public interface DspiCoreInterface {
     
     /**
      * Mark a continuous drag (a slider or a graph handle held and moved):
-     * `true` when it starts, `false` when it ends. Between the two, the
-     * repeated writes of one live value join a single undo step, however
-     * long the drag lasts; any other write (a typed value, a key step, a
-     * click) is always a step of its own. Each call ends the step being
-     * gathered, so two drags of one control are two steps. A client that
-     * never calls this gets one step per write.
+     * `true` when it starts, `false` when it ends. Between the two, every
+     * write undo can reverse joins a single undo step, however long the
+     * drag lasts and however many values it moves (several bands, a band's
+     * fields, a slider per tick); undo puts each back as it was when the
+     * drag began. A write outside a drag (a typed value, a key step, a
+     * click) is always a step of its own, and one undo cannot reverse ends
+     * the step. Each call ends the step being gathered, so two drags are two
+     * steps. A drag ends with its connection: after a disconnect, another
+     * device opened or a re-attach, writes are steps of their own until the
+     * next `true`; with no device the mark is ignored. A client that never
+     * calls this gets one step per write.
      */
     fun `setDragging`(`dragging`: kotlin.Boolean)
     
@@ -12373,12 +12378,17 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     
     /**
      * Mark a continuous drag (a slider or a graph handle held and moved):
-     * `true` when it starts, `false` when it ends. Between the two, the
-     * repeated writes of one live value join a single undo step, however
-     * long the drag lasts; any other write (a typed value, a key step, a
-     * click) is always a step of its own. Each call ends the step being
-     * gathered, so two drags of one control are two steps. A client that
-     * never calls this gets one step per write.
+     * `true` when it starts, `false` when it ends. Between the two, every
+     * write undo can reverse joins a single undo step, however long the
+     * drag lasts and however many values it moves (several bands, a band's
+     * fields, a slider per tick); undo puts each back as it was when the
+     * drag began. A write outside a drag (a typed value, a key step, a
+     * click) is always a step of its own, and one undo cannot reverse ends
+     * the step. Each call ends the step being gathered, so two drags are two
+     * steps. A drag ends with its connection: after a disconnect, another
+     * device opened or a re-attach, writes are steps of their own until the
+     * next `true`; with no device the mark is ignored. A client that never
+     * calls this gets one step per write.
      */override fun `setDragging`(`dragging`: kotlin.Boolean)
         = 
     callWithPointer {
@@ -18696,12 +18706,15 @@ data class HistoryMove (
      * The changes stepped over on the way, newest first, which cannot be
      * undone (see [`HistoryEntry::undoable`]). An entry here that is
      * undoable had no value before to restore, or someone else has changed
-     * it since (`note` says who); the walk stopped there.
+     * it since (`note` says who); the walk stopped there. A drag's step of
+     * several values lists here each value someone else changed since, one
+     * entry each, also when its other values moved.
      */
     var `skipped`: List<HistoryEntry>, 
     /**
-     * Why nothing moved, in words, when another writer changed the value
-     * since (only where the core leaves such a change alone); `None`
+     * Why a value was left alone, in words, when another writer changed it
+     * since (only where the core leaves such a change alone): nothing moved,
+     * or, for a drag's step of several values, the others did. `None`
      * otherwise.
      */
     var `note`: kotlin.String?

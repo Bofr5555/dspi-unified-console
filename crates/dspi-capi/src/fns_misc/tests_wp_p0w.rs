@@ -121,3 +121,53 @@ fn wp_p0w2_a_mixed_axis_band_drag_through_c_is_one_step() {
     assert!(!dspi_can_undo(h));
     dspi_core_free(h);
 }
+
+// -- WP P0W2 (O1) --
+/// A drag of two bands, both sent whole every tick, is one step; one undo
+/// puts both back.
+#[test]
+fn wp_p0w2_o1_a_multi_band_drag_through_c_is_one_step() {
+    use crate::fns_device::dspi_set_filter;
+    let band = |h: *mut FfiCore, b: usize| -> FilterParams {
+        // SAFETY: the handle is live; the record stays valid until the next call.
+        unsafe { (*dspi_get_state(h)).filters[0][b] }
+    };
+    let h = dspi_core_new();
+    assert!(dspi_open_demo(h));
+    let (s1, s2) = (band(h, 1), band(h, 2));
+    dspi_set_dragging(h, true);
+    for (df, dg) in [(10.0, 0.0), (20.0, 1.0), (0.0, 1.5), (5.0, 0.0)] {
+        for b in [1u8, 2] {
+            let mut p = band(h, usize::from(b));
+            p.freq += df;
+            p.gain += dg;
+            assert!(dspi_set_filter(h, 0, b, p));
+        }
+    }
+    dspi_set_dragging(h, false);
+    let r = reply(|b, l| dspi_history(h, 10, b, l));
+    assert_eq!(r["value"].as_array().unwrap().len(), 1, "{r}");
+    let r = reply(|b, l| dspi_undo(h, b, l));
+    assert_eq!(r["ok"], true, "{r}");
+    assert_eq!((band(h, 1), band(h, 2)), (s1, s2));
+    assert!(!dspi_can_undo(h));
+    dspi_core_free(h);
+}
+
+// -- WP P0W2 (fixup p0w2b, F3) --
+/// A drag mark left set across a disconnect joins nothing afterwards.
+#[test]
+fn wp_p0w2b_f3_a_drag_mark_ends_with_its_connection_through_c() {
+    use crate::fns_device::dspi_disconnect;
+    let h = dspi_core_new();
+    assert!(dspi_open_demo(h));
+    dspi_set_dragging(h, true);
+    assert!(dspi_set_output_gain(h, 0, -1.0));
+    dspi_disconnect(h);
+    assert!(dspi_open_demo(h));
+    assert!(dspi_set_output_gain(h, 0, -2.0));
+    assert!(dspi_set_output_gain(h, 0, -3.0));
+    let r = reply(|b, l| dspi_history(h, 10, b, l));
+    assert_eq!(r["value"].as_array().unwrap().len(), 2, "{r}");
+    dspi_core_free(h);
+}

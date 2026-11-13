@@ -131,10 +131,9 @@ fn wp_p0w2_typed_band_values_never_join() {
     assert_eq!(core.history(10).len(), 3);
 }
 
-/// Two drags of one band are two steps; a second band in the same drag is
-/// a step of its own.
+/// Two drags of one band are two steps.
 #[test]
-fn wp_p0w2_two_drags_and_two_bands_stay_apart() {
+fn wp_p0w2_two_drags_stay_apart() {
     let core = demo();
     let start = band0(&core, 1);
     mixed_drag(&core, 1);
@@ -145,24 +144,6 @@ fn wp_p0w2_two_drags_and_two_bands_stay_apart() {
     assert_eq!(band0(&core, 1), after_first);
     core.undo().unwrap();
     assert_eq!(band0(&core, 1), start);
-
-    let (s1, s2) = (band0(&core, 1), band0(&core, 2));
-    let (mut p1, mut p2) = (s1, s2);
-    core.set_dragging(true);
-    p1.freq += 10.0;
-    core.set_filter(0, 1, p1).unwrap();
-    p2.freq += 10.0;
-    p2.gain += 1.0;
-    core.set_filter(0, 2, p2).unwrap();
-    core.set_dragging(false);
-    let h = core.history(2);
-    assert_eq!(
-        (h[0].indices.as_slice(), h[1].indices.as_slice()),
-        (&[0, 2][..], &[0, 1][..])
-    );
-    assert!(h.iter().all(|e| e.source == HistorySource::Local));
-    core.undo().unwrap();
-    assert_eq!((band0(&core, 1), band0(&core, 2)), (p1, s2));
 }
 
 /// Another writer during the drag ends the step: the session's rule, the
@@ -201,4 +182,269 @@ fn wp_p0w2_another_writer_is_skipped_and_named_after_a_mixed_drag() {
     assert_eq!(m.skipped.len(), 1);
     assert!(m.note.unwrap().contains("MIDI"));
     assert_eq!(band0(&core, 1).freq, 4321.0, "theirs stays");
+}
+
+// ── Follow-up O1: one drag is one step across bands and controls ─────
+
+/// The web's multi-selection drag: every selected band written whole per
+/// tick, two bands over four ticks, mixed axes.
+fn multi_band_drag(core: &DspiCore, bands: &[u8]) {
+    core.set_dragging(true);
+    for (df, dg) in [(10.0, 0.0), (20.0, 1.0), (0.0, 1.5), (5.0, 0.0)] {
+        for &b in bands {
+            let mut p = band0(core, usize::from(b));
+            p.freq += df;
+            p.gain += dg;
+            core.set_filter(0, b, p).unwrap();
+        }
+    }
+    core.set_dragging(false);
+}
+
+#[test]
+fn wp_p0w2_o1_a_multi_band_drag_is_one_step() {
+    let core = demo();
+    let (s1, s2) = (band0(&core, 1), band0(&core, 2));
+    multi_band_drag(&core, &[1, 2]);
+    let (e1, e2) = (band0(&core, 1), band0(&core, 2));
+    assert!(e1 != s1 && e2 != s2);
+    let h = core.history(10);
+    assert_eq!(h.len(), 1, "{h:?}");
+
+    let m = core.undo().unwrap();
+    assert!(m.entry.is_some() && m.note.is_none(), "{m:?}");
+    assert_eq!((band0(&core, 1), band0(&core, 2)), (s1, s2));
+    assert!(!core.can_undo());
+    core.redo().unwrap();
+    assert_eq!((band0(&core, 1), band0(&core, 2)), (e1, e2));
+    core.undo().unwrap();
+    assert_eq!((band0(&core, 1), band0(&core, 2)), (s1, s2));
+}
+
+/// Across parameter groups too: a band, an output gain and a delay moved in
+/// one drag go back together.
+#[test]
+fn wp_p0w2_o1_a_drag_across_groups_is_one_step() {
+    let core = demo();
+    let s = core.get_state();
+    let (b1, g0, d0) = (s.filters[0][1], s.output_gain_db[0], s.output_delay_ms[0]);
+    core.set_dragging(true);
+    for t in 1..=3 {
+        let mut p = band0(&core, 1);
+        p.freq += 10.0;
+        core.set_filter(0, 1, p).unwrap();
+        core.set_output_gain(0, -(t as f32)).unwrap();
+        core.set_output_delay(0, t as f32 * 0.5).unwrap();
+    }
+    core.set_dragging(false);
+    assert_eq!(core.history(10).len(), 1);
+    core.undo().unwrap();
+    let s = core.get_state();
+    assert_eq!(
+        (s.filters[0][1], s.output_gain_db[0], s.output_delay_ms[0]),
+        (b1, g0, d0)
+    );
+}
+
+/// Typed values next to a multi-band drag stay apart from it.
+#[test]
+fn wp_p0w2_o1_typed_values_beside_a_multi_band_drag_stay_apart() {
+    let core = demo();
+    let mut p = band0(&core, 1);
+    p.freq += 100.0;
+    core.set_filter(0, 1, p).unwrap();
+    multi_band_drag(&core, &[1, 2]);
+    let mut p = band0(&core, 2);
+    p.gain -= 1.0;
+    core.set_filter(0, 2, p).unwrap();
+    assert_eq!(core.history(10).len(), 3);
+}
+
+/// Another writer changes one of the dragged bands afterwards: undo leaves
+/// that band as they set it and names them, and puts the other back; redo
+/// then moves only the band undo put back.
+#[test]
+fn wp_p0w2_o1_another_writer_is_judged_value_by_value() {
+    use dspi_proto::generated as g;
+    let dev = dspi_transport::FakeDevice::demo();
+    let remote = dev.remote();
+    let core = DspiCore::new();
+    core.attach_probed(Box::new(dev), "DEMO".into(), 0).unwrap();
+    core.process_notifications();
+    let s2 = band0(&core, 2);
+    multi_band_drag(&core, &[1, 2]);
+    let e2 = band0(&core, 2);
+
+    let mut band = [0u8; 16];
+    band[0] = 1;
+    band[4..8].copy_from_slice(&4321.0f32.to_le_bytes());
+    band[8..12].copy_from_slice(&0.7f32.to_le_bytes());
+    band[12..].copy_from_slice(&3.0f32.to_le_bytes());
+    // Channel 0, band 1: 16 bytes a band.
+    assert!(remote.poke(g::OFF_EQ + 16, &band, g::notify::PARAM_SRC_MIDI as u8));
+    let t = dspi_transport::clock::Instant::now();
+    while band0(&core, 1).freq != 4321.0 {
+        assert!(
+            t.elapsed() < std::time::Duration::from_secs(5),
+            "no notification"
+        );
+        core.process_notifications();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let m = core.undo().unwrap();
+    assert!(m.entry.is_some(), "the other band went back: {m:?}");
+    let note = m.note.unwrap();
+    assert!(
+        note.contains("MIDI") && note.starts_with("Filter band"),
+        "{note}"
+    );
+    assert_eq!(band0(&core, 1).freq, 4321.0, "theirs stays");
+    assert_eq!(band0(&core, 2), s2);
+
+    let m = core.redo().unwrap();
+    assert!(m.entry.is_some() && m.note.is_none(), "{m:?}");
+    assert_eq!(band0(&core, 2), e2);
+    assert_eq!(band0(&core, 1).freq, 4321.0, "still theirs");
+}
+
+// ── Fixup p0w2b ─────────────────────────────────────────────────────
+
+/// A demo with its remote, and a band of channel 0 overwritten over MIDI.
+fn remote_demo() -> (Arc<DspiCore>, dspi_transport::FakeRemote) {
+    let dev = dspi_transport::FakeDevice::demo();
+    let remote = dev.remote();
+    let core = DspiCore::new();
+    core.attach_probed(Box::new(dev), "DEMO".into(), 0).unwrap();
+    core.process_notifications();
+    (core, remote)
+}
+
+fn overwrite_over_midi(core: &DspiCore, remote: &dspi_transport::FakeRemote, b: u8, hz: f32) {
+    use dspi_proto::generated as g;
+    let mut band = [0u8; 16];
+    band[0] = 1;
+    band[4..8].copy_from_slice(&hz.to_le_bytes());
+    band[8..12].copy_from_slice(&0.7f32.to_le_bytes());
+    band[12..].copy_from_slice(&3.0f32.to_le_bytes());
+    // Channel 0: 16 bytes a band.
+    let off = g::OFF_EQ + usize::from(b) * 16;
+    assert!(remote.poke(off, &band, g::notify::PARAM_SRC_MIDI as u8));
+    let t = dspi_transport::clock::Instant::now();
+    while band0(core, usize::from(b)).freq != hz {
+        assert!(
+            t.elapsed() < std::time::Duration::from_secs(5),
+            "no notification"
+        );
+        core.process_notifications();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+/// F1: a partial undo lists each value it left in `skipped`, one entry per
+/// value, and keeps the note; redo after it does the same for a value
+/// someone changed after the undo.
+#[test]
+fn wp_p0w2b_f1_a_partial_undo_lists_every_value_it_left() {
+    let (core, remote) = remote_demo();
+    let s2 = band0(&core, 2);
+    multi_band_drag(&core, &[1, 2, 3]);
+    overwrite_over_midi(&core, &remote, 1, 4321.0);
+    overwrite_over_midi(&core, &remote, 3, 5432.0);
+
+    let m = core.undo().unwrap();
+    assert!(m.entry.is_some(), "{m:?}");
+    let left: Vec<(&str, &[u8])> = m
+        .skipped
+        .iter()
+        .map(|e| (e.path.as_str(), e.indices.as_slice()))
+        .collect();
+    assert_eq!(
+        left,
+        [("eq.band", &[0, 1][..]), ("eq.band", &[0, 3][..])],
+        "{m:?}"
+    );
+    assert!(m.skipped.iter().all(|e| e.undoable && e.before.is_some()));
+    assert!(m.note.unwrap().contains("MIDI"));
+    assert_eq!(band0(&core, 2), s2, "the band nobody touched went back");
+    assert_eq!(
+        (band0(&core, 1).freq, band0(&core, 3).freq),
+        (4321.0, 5432.0)
+    );
+
+    // Someone changes band 2 after the undo: redo leaves it and lists it.
+    overwrite_over_midi(&core, &remote, 2, 6543.0);
+    let m = core.redo().unwrap();
+    assert!(m.entry.is_none(), "{m:?}");
+    assert_eq!(m.skipped.len(), 1);
+    assert_eq!(m.skipped[0].indices, vec![0, 2]);
+    assert!(m.note.is_some());
+}
+
+/// F1: when every value was changed by someone else, each is listed too
+/// (the same shape as a partial undo).
+#[test]
+fn wp_p0w2b_f1_an_undo_that_moves_nothing_lists_every_value() {
+    let (core, remote) = remote_demo();
+    multi_band_drag(&core, &[1, 2]);
+    overwrite_over_midi(&core, &remote, 1, 4321.0);
+    overwrite_over_midi(&core, &remote, 2, 5432.0);
+    let m = core.undo().unwrap();
+    assert!(m.entry.is_none(), "{m:?}");
+    assert_eq!(m.skipped.len(), 2, "{m:?}");
+    assert!(m.note.is_some());
+    assert!(!core.can_undo());
+}
+
+/// Two typed gain writes are two steps.
+fn typed_writes_are_steps(core: &DspiCore) -> bool {
+    let n = core.history(100).len();
+    core.set_output_gain(0, -7.0).unwrap();
+    core.set_output_gain(1, -8.0).unwrap();
+    core.history(100).len() == n + 2
+}
+
+/// F3: a drag ends with its connection: a mark left set across a
+/// disconnect, another open, or a re-attach joins nothing afterwards.
+#[test]
+fn wp_p0w2b_f3_a_drag_mark_ends_with_its_connection() {
+    // A disconnect, then the device again.
+    let core = demo();
+    core.set_dragging(true);
+    core.set_output_gain(0, -1.0).unwrap();
+    core.disconnect();
+    core.open_demo().unwrap();
+    assert!(typed_writes_are_steps(&core), "after a disconnect");
+
+    // Another device opened over the marked one, with no disconnect.
+    core.set_dragging(true);
+    core.open_demo().unwrap();
+    assert!(typed_writes_are_steps(&core), "after another open");
+
+    // A new connection attached (a re-attach: a new generation).
+    core.set_dragging(true);
+    let dev = dspi_transport::FakeDevice::demo();
+    core.attach_probed(Box::new(dev), "DEMO".into(), 0).unwrap();
+    assert!(typed_writes_are_steps(&core), "after a re-attach");
+
+    // A mark made with no device is ignored once one opens.
+    let core = DspiCore::new();
+    core.set_dragging(true);
+    core.open_demo().unwrap();
+    assert!(
+        typed_writes_are_steps(&core),
+        "a mark from before any device"
+    );
+
+    // And a mark made now still gathers.
+    core.set_dragging(true);
+    core.set_output_gain(0, -1.0).unwrap();
+    core.set_output_gain(1, -1.0).unwrap();
+    core.set_dragging(false);
+    assert_eq!(core.history(1)[0].path, "out.gain");
+    let n = core.history(100).len();
+    core.set_dragging(true);
+    core.set_output_gain(0, -2.0).unwrap();
+    core.set_output_gain(1, -2.0).unwrap();
+    core.set_dragging(false);
+    assert_eq!(core.history(100).len(), n + 1);
 }
