@@ -54,14 +54,14 @@ class SystemChipVisibilityWpLkui1Test {
         }
     }
 
-    private fun views() = core.calls.count { it.startsWith("linkSystemView") }
+    private fun views() = core.calls.count { it.startsWith("alinkSystemView") }
 
     @Test
     fun wpLkui1TheChipStopsPollingWhileTheActivityIsStopped() {
         rule.mainClock.autoAdvance = false
         scope.launch { bridge.attachDevice(42, core.serial, DspiConstants.VENDOR_ID) }
         settle()
-        core.audioLinkSystem.onHub = true
+        core.alinkSystem.onHub = true
         rule.setContent { DspiTheme(darkTheme = true) { SystemStatusChip(bridge, onNavigate = {}) } }
         settle()
         seconds(10)

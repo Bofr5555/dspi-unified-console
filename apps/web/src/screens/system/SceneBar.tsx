@@ -1,5 +1,5 @@
 // WP SW3, WB6e: the scene bar. The installation's scenes as numbered recall
-// buttons; a recall is `system.scene.apply`, which acts at one link frame on
+// buttons; a recall is `system.scene.apply`, which acts at one alink frame on
 // every unit, and the bar then shows what each unit said: queued, applied,
 // late or refused. A scene the role may not run is refused whole, and the
 // hub's answer names the op. Recall asks first when this session's device has
@@ -7,7 +7,7 @@
 
 import type { Ask } from "../../ui/screens";
 import type { Session } from "../../ui/session";
-import { WritesByElement } from "./ClockLinks";
+import { WritesByElement } from "./AlinkClock";
 import type { SystemFeed } from "./feed";
 import { useFeed } from "./SystemScreen";
 import { mayWrite, opWord, subjectName, writeNote } from "./model";

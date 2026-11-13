@@ -9572,15 +9572,39 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Link delay</source>
+        <source>Audio link delay</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Audio link delay range</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The audio link delay the system delay asks for is not written to this unit yet (unit: %1 frames, hop offset %2)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clock and audio links</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>D: every unit&apos;s audio link delay is worked out from it</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Align audio link delays…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Align every unit: write the audio link delays the system delay asks for</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Align audio link delays?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Frames, with ms beside them (d_local)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Link delay range</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9604,15 +9628,7 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>The link delay the system delay asks for is not written to this unit yet (unit: %1 frames, hop offset %2)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>+%1 frames</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Clock and links</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9621,10 +9637,6 @@ This wiring is a board-level setting: it is stored on the device, survives prese
     </message>
     <message>
         <source>System delay</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>D: every unit&apos;s link delay is worked out from it</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9689,18 +9701,6 @@ This wiring is a board-level setting: it is stored on the device, survives prese
     </message>
     <message>
         <source>Revert</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Align link delays…</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Align every unit: write the link delays the system delay asks for</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Align link delays?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

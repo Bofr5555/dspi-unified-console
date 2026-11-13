@@ -1,5 +1,5 @@
 // The screenshot tour (test/shots/tour.spec.ts), not a test suite: pictures of the console on
-// the core's demo device and on `uconsole --demo hub --audio-link`, dark and light, at a desktop
+// the core's demo device and on `uconsole --demo hub --alink`, dark and light, at a desktop
 // width and at 375 px. Run through tools/shots/web.sh, which builds with apps/web/tools/ci.sh
 // --no-e2e and then runs this config alone in the same Playwright image:
 //

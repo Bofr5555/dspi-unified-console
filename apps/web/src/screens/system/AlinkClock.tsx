@@ -1,8 +1,8 @@
-// WP SW3: the Installer mode's "Clock and links" panel (SYS2 section 7). Per
-// unit the link delay (`d_local`) against its limits, the hop offset (`hops_offset`), the
-// latency after the link (measured or configured) and the lip sync of its
-// room; the slot matrix (the sender's link channels to each unit's 8 matrix
-// inputs); the alignment (`system.align`) with each unit's result; the link
+// WP SW3: the Installer mode's "Clock and audio links" panel (SYS2 section 7). Per
+// unit the audio link delay (`d_local`) against its limits, the hop offset (`hops_offset`), the
+// latency after the alink (measured or configured) and the lip sync of its
+// room; the slot matrix (the sender's audio link channels to each unit's 8 matrix
+// inputs); the alignment (`system.align`) with each unit's result; the alink
 // stats and the trim scan. Everything goes through the hub's `system.*`; the
 // model and the alignment are admin-only, so a Control or Viewer role sees the
 // panel read only (docs/UI-MODES.md section 4).
@@ -27,7 +27,7 @@ import {
   writeWhat,
   UNIT_INPUTS,
   unitSlots,
-  withLinkDelay,
+  withAlinkDelay,
   withMeasuredLatency,
   withRoomLipSync,
   withSlot,
@@ -36,7 +36,7 @@ import {
   type WriteResult,
 } from "./model";
 
-export function ClockLinks(props: { feed: SystemFeed; ask: Ask }) {
+export function AlinkClock(props: { feed: SystemFeed; ask: Ask }) {
   const st = useFeed(props.feed);
   const model = st.model!;
   const admin = mayWrite(st.role, "model") && !props.feed.readOnly;
@@ -59,8 +59,8 @@ export function ClockLinks(props: { feed: SystemFeed; ask: Ask }) {
   };
 
   return (
-    <section class="sys-clock" aria-label="Clock and links">
-      <h3>Clock and links</h3>
+    <section class="sys-clock" aria-label="Clock and audio links">
+      <h3>Clock and audio links</h3>
       {admin ? null : <p class="sys-note">{writeNote(st.role, "model")}: this panel is read only.</p>}
       {/* -- WP HWLK1F -- the model was kept; the hub warns about units without the audio link */}
       {st.warnings.length ? (
@@ -93,7 +93,7 @@ export function ClockLinks(props: { feed: SystemFeed; ask: Ask }) {
         </div>
       ) : draft ? (
         <div class="sys-save" role="group" aria-label="Unsaved installation">
-          <span>The installation has unsaved changes. Save sends them to the hub; Align link delays writes them to the units.</span>
+          <span>The installation has unsaved changes. Save sends them to the hub; Align audio link delays writes them to the units.</span>
           <button type="button" onClick={() => void save()}>
             Save
           </button>
@@ -146,7 +146,7 @@ function UnitsTable(props: { feed: SystemFeed; model: SystemModel; admin: boolea
     <>
       <div class="sys-row">
         <span>
-          <abbr title="D: the delay every unit's link delay is worked out from">System delay</abbr>: <strong>{a ? framesMs(a.dFrames, rate) : "–"}</strong>{" "}
+          <abbr title="D: the delay every unit's audio link delay is worked out from">System delay</abbr>: <strong>{a ? framesMs(a.dFrames, rate) : "–"}</strong>{" "}
           {a?.dAuto ? "(the smallest every unit takes)" : ""}
         </span>
         <label class="sys-inline">
@@ -158,7 +158,7 @@ function UnitsTable(props: { feed: SystemFeed; model: SystemModel; admin: boolea
             hi={65535}
             admin={props.admin}
             placeholder="auto"
-            onCommit={(v) => props.onEdit(withLinkDelay(model, v))}
+            onCommit={(v) => props.onEdit(withAlinkDelay(model, v))}
           />
         </label>
         <span>Rate {rate / 1000} kHz</span>
@@ -171,13 +171,13 @@ function UnitsTable(props: { feed: SystemFeed; model: SystemModel; admin: boolea
               <th>Hops</th>
               <th>Path delay</th>
               <th>
-                <abbr title="d_local (EXT_LINK_PHASE): frames from a link frame's arrival to its playing, ms beside">Link delay</abbr>
+                <abbr title="d_local (EXT_ALINK_PHASE): frames from a link frame's arrival to its playing, ms beside">Audio link delay</abbr>
               </th>
               <th>
-                <abbr title="d_local_min..d_local_max (EXT_LINK_INFO), in frames">Link delay range</abbr>
+                <abbr title="d_local_min..d_local_max (EXT_ALINK_INFO), in frames">Audio link delay range</abbr>
               </th>
               <th>
-                <abbr title="hops_offset (EXT_LINK_PHASE): frames added for the boxes between the sender and this unit">Hop offset</abbr>
+                <abbr title="hops_offset (EXT_ALINK_PHASE): frames added for the boxes between the sender and this unit">Hop offset</abbr>
               </th>
               <th>Latency, µs</th>
               <th>Measured, µs</th>
@@ -268,18 +268,18 @@ function UnitsTable(props: { feed: SystemFeed; model: SystemModel; admin: boolea
   );
 }
 
-/** The sender's link channels (rows) to each unit's matrix inputs (columns). One channel per input, or silent. */
+/** The sender's audio link channels (rows) to each unit's matrix inputs (columns). One channel per input, or silent. */
 function SlotMatrix(props: { model: SystemModel; admin: boolean; onEdit: (m: SystemModel) => void }) {
   const { model } = props;
   const channels = senderChannels(model);
   return (
     <>
-      <h4>Link slots</h4>
+      <h4>Audio link slots</h4>
       <div class="sys-scroll">
-        <table class="sys-matrix" aria-label="Link slots">
+        <table class="sys-matrix" aria-label="Audio link slots">
           <thead>
             <tr>
-              <th rowSpan={2}>Link channel</th>
+              <th rowSpan={2}>Audio link channel</th>
               {model.units.map((u) => (
                 <th key={u.id} colSpan={UNIT_INPUTS} class="sys-matrix-unit">
                   {u.name || u.id}
@@ -357,8 +357,8 @@ function AlignPanel(props: { feed: SystemFeed; ask: Ask; admin: boolean; mayAlig
   const names = (id: string) => subjectName(st.model, id);
   const apply = async () => {
     const go = await props.ask({
-      title: "Align link delays?",
-      body: <p>Each unit whose link delay changes re-anchors: 2 to 6 ms of silence. Speaker delays are written too.</p>,
+      title: "Align audio link delays?",
+      body: <p>Each unit whose audio link delay changes re-anchors: 2 to 6 ms of silence. Speaker delays are written too.</p>,
       buttons: [
         { label: "Align", value: "align" },
         { label: "Cancel", value: "cancel" },
@@ -375,7 +375,7 @@ function AlignPanel(props: { feed: SystemFeed; ask: Ask; admin: boolean; mayAlig
           Compute
         </button>
         <button type="button" disabled={!props.admin || al?.running} onClick={() => void apply()} title={props.admin ? undefined : writeNote(st.role, "align")}>
-          Align link delays…
+          Align audio link delays…
         </button>
         {al?.running ? <span class="sys-muted">Working…</span> : null}
       </div>
@@ -396,7 +396,7 @@ function AlignPanel(props: { feed: SystemFeed; ask: Ask; admin: boolean; mayAlig
             {al.report.alignment.units.map((u) => (
               <li key={u.unit} aria-label={`Plan for ${names(u.unit)}`}>
                 <strong>{names(u.unit)}</strong>
-                <span title="d_local">Link delay {framesMs(u.dLocal, al.report!.alignment.rateHz || 48000)}</span>
+                <span title="d_local">Audio link delay {framesMs(u.dLocal, al.report!.alignment.rateHz || 48000)}</span>
                 <span title="hops_offset">Hop offset {u.hopsOffset}</span>
                 <span class={`sys-result sys-${u.writable ? "ok" : "warn"}`}>{u.writable ? "Writable" : "Not written"}</span>
               </li>
@@ -418,9 +418,9 @@ function StatsTable(props: { feed: SystemFeed }) {
   ];
   return (
     <>
-      <h4>Link stats and trim scan</h4>
+      <h4>Audio link stats and trim scan</h4>
       <div class="sys-scroll">
-        <table class="sys-table" aria-label="Link stats">
+        <table class="sys-table" aria-label="Audio link stats">
           <thead>
             <tr>
               <th>Element</th>
@@ -443,7 +443,7 @@ function StatsTable(props: { feed: SystemFeed }) {
               const o = st.status?.observed[r.serial];
               const s = o?.stats;
               return (
-                <tr key={r.id} aria-label={`Link stats of ${r.name}`}>
+                <tr key={r.id} aria-label={`Audio link stats of ${r.name}`}>
                   <th scope="row">{r.name}</th>
                   <td>{o?.online ? (o.state ?? "–") : "offline"}</td>
                   <td>{s ? classWord(s.lineClass) : "–"}</td>

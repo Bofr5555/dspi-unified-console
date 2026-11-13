@@ -28,12 +28,12 @@
     },
     {
       "name": "hub",
-      "argv": ["/hub/uconsole", "--demo", "hub", "--audio-link", "--loopback", "--open", "--forget-clients", "--port", "0", "--no-keep-awake", "--store", "/wtmp/shots-hub-store"],
+      "argv": ["/hub/uconsole", "--demo", "hub", "--alink", "--loopback", "--open", "--forget-clients", "--port", "0", "--no-keep-awake", "--store", "/wtmp/shots-hub-store"],
       "steps": [
         ["wait", 4],
         ["keys", "devices\r"], ["wait", 1.5],
         ["keys", "status\r"], ["wait", 1.5],
-        ["shot", "audio-link-hub"],
+        ["shot", "alink-hub"],
         ["keys", "quit\r"], ["wait", 1.5]
       ]
     }

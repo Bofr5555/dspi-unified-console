@@ -1,7 +1,7 @@
 // WP SW3: the hub's audio-link system model as the web console shows it
 // (docs/integrator/audio-link.md): the records of `system.*`, camelCase as the
 // hub's serde writes them, and the pure logic of the System view (WB6d), the
-// "Clock and links" panel, the scene bar (WB6e) and the status rail (WB6f).
+// "Clock and audio links" panel, the scene bar (WB6e) and the status rail (WB6f).
 // No I/O here: `feed.ts` asks the hub, the views draw.
 
 import type { KeyValueStore } from "../../fleet/local";
@@ -58,7 +58,7 @@ export interface Unit {
   output?: number | null;
   repeater?: boolean;
   hopDelayFrames?: number | null;
-  /** 8 link channels, one per matrix input; 255 is silent. Absent: the unit's own. */
+  /** 8 audio link channels, one per matrix input; 255 is silent. Absent: the unit's own. */
   slots?: number[] | null;
   latencyUs?: number;
   measuredLatencyUs?: number | null;
@@ -112,7 +112,7 @@ export interface Observed {
   superframePath?: boolean;
   stateEvents?: boolean;
   systemMute?: boolean | null;
-  stats?: LinkStats | null;
+  stats?: AlinkStats | null;
   trimScan?: TrimScan | null;
   /** -- fixup sw3x -- a sender's superframe apply still waiting for its frame. */
   pendingApplyFrame?: number | null;
@@ -122,7 +122,7 @@ export interface Observed {
    */
   alink?: "present" | "none" | null;
 }
-export interface LinkStats {
+export interface AlinkStats {
   lineClass: number;
   channels: number;
   lockCount: number;
@@ -215,7 +215,7 @@ export interface ScenePlan {
   systemFlags?: number;
   /** -- WP HWLK1F -- ops on units without the audio link, written at once (not at `frame`). */
   direct?: PlannedOp[];
-  /** -- WP HWLK1F -- ops on units with the link that no frame could be read for: not written. */
+  /** -- WP HWLK1F -- ops on units with the alink that no frame could be read for: not written. */
   unscheduled?: PlannedOp[];
 }
 export interface SceneReport {
@@ -235,7 +235,7 @@ export type SystemWrite = "model" | "align" | "scene" | "mute" | "ack";
 
 /**
  * Whether `role` may make `what`: the model and the alignment are admin-only
- * (link configuration is an admin action), scenes, the system mute and an
+ * (alink configuration is an admin action), scenes, the system mute and an
  * alarm's acknowledgement need control. The hub judges again; this only keeps
  * controls it would refuse from being offered.
  */
@@ -299,7 +299,7 @@ function readModes(storage: KeyValueStore | null): { every?: string; devices: Re
 
 // ---------------------------------------------------------------- words
 
-/** The link's state in the glossary's words (section 3.1). */
+/** The alink's state in the glossary's words (section 3.1). */
 export function lockWord(state: string | null | undefined): string {
   switch (state) {
     case "locked":
@@ -325,8 +325,8 @@ export function elementLock(o: Observed | undefined, connected: (o: Observed) =>
   return o.alink === "none" ? NO_ALINK : connected(o);
 }
 
-/** The role on the link in the glossary's words. */
-export function linkRoleWord(role: string | null | undefined): string {
+/** The role on the alink in the glossary's words. */
+export function alinkRoleWord(role: string | null | undefined): string {
   switch (role) {
     case "sender":
       return "Sender";
@@ -342,7 +342,7 @@ export function linkRoleWord(role: string | null | undefined): string {
   }
 }
 
-/** A link channel: "Ch 3" (numbered from 0, as the glossary's link channels), or "Silent". */
+/** An audio link channel: "Ch 3" (numbered from 0, as the glossary's audio link channels), or "Silent". */
 export function slotWord(ch: number): string {
   return ch === 255 ? "Silent" : `Ch ${ch}`;
 }
@@ -356,7 +356,7 @@ export function framesMs(frames: number, rateHz: number): string {
   return `${frames} (${ms.toFixed(2)} ms)`;
 }
 
-/** The stream's rate from `EXT_LINK_STATUS.rate_code`. */
+/** The stream's rate from `EXT_ALINK_STATUS.rate_code`. */
 export function rateOf(code: number | null | undefined): string {
   return code === 0 ? "44.1 kHz" : code === 1 ? "48 kHz" : code === 2 ? "96 kHz" : "Unknown";
 }
@@ -562,7 +562,7 @@ export function topology(model: SystemModel, status: SystemStatus | null): TopoN
   return roots.map(strip);
 }
 
-/** The link channels a sender's sources carry, 0..63, for the slot matrix's rows. */
+/** The audio link channels a sender's sources carry, 0..63, for the slot matrix's rows. */
 export function senderChannels(model: SystemModel): number[] {
   const used = new Set<number>();
   for (const s of model.sources) for (const c of s.channels) used.add(c);
@@ -571,14 +571,14 @@ export function senderChannels(model: SystemModel): number[] {
   return Array.from({ length: Math.min(64, max + 1) }, (_, i) => i);
 }
 
-/** The source carrying link channel `ch`, if one names it. */
+/** The source carrying audio link channel `ch`, if one names it. */
 export function sourceOf(model: SystemModel, ch: number): SourceDef | undefined {
   return model.sources.find((s) => s.channels.includes(ch));
 }
 
 // ---------------------------------------------------------------- model edits (admin)
 
-/** `model` with unit `unitId`'s matrix input `input` fed by link channel `ch` (255: silent). */
+/** `model` with unit `unitId`'s matrix input `input` fed by audio link channel `ch` (255: silent). */
 export function withSlot(model: SystemModel, unitId: string, input: number, ch: number): SystemModel {
   return {
     ...model,
@@ -601,8 +601,8 @@ export function withRoomLipSync(model: SystemModel, roomId: string, us: number |
   return { ...model, rooms: model.rooms.map((r) => (r.id === roomId ? { ...r, lipSyncUs: us } : r)) };
 }
 
-/** `model` with its link delay D (frames; null: the smallest every unit takes). */
-export function withLinkDelay(model: SystemModel, frames: number | null): SystemModel {
+/** `model` with its audio link delay D (frames; null: the smallest every unit takes). */
+export function withAlinkDelay(model: SystemModel, frames: number | null): SystemModel {
   return { ...model, dFrames: frames };
 }
 
@@ -619,8 +619,8 @@ export function parseWhole(text: string, lo: number, hi: number): number | null 
 
 /**
  * A device the console holds itself (USB, the demo) as a system of one unit,
- * so the System view works without a hub. Its link state comes from the
- * device's own audio link calls when it has the link.
+ * so the System view works without a hub. Its alink state comes from the
+ * device's own audio link calls when it has the alink.
  */
 export function singleUnit(
   device: { name: string; serial: string },
@@ -681,12 +681,12 @@ export function sceneTaken(report: SceneReport): boolean {
 }
 
 // -- WP WB8 -- why a recall was refused is the core's sentence now (`sceneOutcome`,
-// dspi_core::link::system::scene_recall_outcome), not composed here.
+// dspi_core::link::alink_system::scene_recall_outcome), not composed here.
 
-/** -- fixup sw3x -- an alignment write in the glossary's words: `phase` is the link delay, `slots` the link slots. */
+/** -- fixup sw3x -- an alignment write in the glossary's words: `phase` is the audio link delay, `slots` the audio link slots. */
 export function writeWhat(what: string): string {
-  if (what === "phase") return "Link delay";
-  if (what === "slots") return "Link slots";
+  if (what === "phase") return "Audio link delay";
+  if (what === "slots") return "Audio link slots";
   const out = /^out_delay:(\d+)$/.exec(what);
   if (out) return `Delay OUT${Number(out[1]) + 1}`;
   return what;

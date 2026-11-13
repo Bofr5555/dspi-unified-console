@@ -1,6 +1,6 @@
 #!/bin/bash
 # The web console's screenshot tour (apps/web/test/shots/tour.spec.ts) on the core's demo
-# device and on `uconsole --demo hub --audio-link`: dark and light, 1366 px and 375 px.
+# device and on `uconsole --demo hub --alink`: dark and light, 1366 px and 375 px.
 #
 #   tools/shots/web.sh <out dir>          PNGs into <out dir>
 #

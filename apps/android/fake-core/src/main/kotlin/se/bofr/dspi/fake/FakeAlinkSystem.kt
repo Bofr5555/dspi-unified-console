@@ -1,31 +1,31 @@
 // -- WP LKUI1 -- the hub's audio link installation, faked for the System screen's
-// tests and previews: what dspi-core's link_system_* give for `uconsole --demo hub
-// --audio-link` (a sender, a fan-out, four units, four scenes), with the hub's
+// tests and previews: what dspi-core's alink_system_* give for `uconsole --demo hub
+// --alink` (a sender, a fan-out, four units, four scenes), with the hub's
 // rules that matter to the screen: roles, the revision guard on Save, and a sender
 // that holds one scene at a time.
 package se.bofr.dspi.fake
 
 import se.bofr.dspi.core.DspiException
-import se.bofr.dspi.core.LinkSceneRecall
-import se.bofr.dspi.core.LinkSystemAlign
-import se.bofr.dspi.core.LinkSystemEdits
-import se.bofr.dspi.core.LinkSystemRoom
-import se.bofr.dspi.core.LinkSystemScene
-import se.bofr.dspi.core.LinkSystemUnit
-import se.bofr.dspi.core.LinkSystemView
-import se.bofr.dspi.core.LinkSystemWrite
+import se.bofr.dspi.core.AlinkSceneRecall
+import se.bofr.dspi.core.AlinkSystemAlign
+import se.bofr.dspi.core.AlinkSystemEdits
+import se.bofr.dspi.core.AlinkSystemRoom
+import se.bofr.dspi.core.AlinkSystemScene
+import se.bofr.dspi.core.AlinkSystemUnit
+import se.bofr.dspi.core.AlinkSystemView
+import se.bofr.dspi.core.AlinkSystemWrite
 
-class FakeAudioLinkSystem {
+class FakeAlinkSystem {
     private companion object {
-        /** The firmware's link delay range at the default 4 ms output latency option. */
+        /** The firmware's audio link delay range at the default 4 ms output latency option. */
         const val D_LOCAL_MIN = 257L
         const val D_LOCAL_MAX = 399L
 
-        /** The system delay the demo hub takes by itself, and a unit's link delay before alignment. */
+        /** The system delay the demo hub takes by itself, and a unit's audio link delay before alignment. */
         const val D_AUTO = 260L
         const val UNIT_START = 300L
 
-        /** Each unit's link delay against D, and its hop offset, as the demo hub's alignment gives them. */
+        /** Each unit's audio link delay against D, and its hop offset, as the demo hub's alignment gives them. */
         val PLAN = mapOf("A" to (0L to 6), "B" to (-1L to 4), "C" to (-1L to -2), "D" to (0L to 4))
     }
 
@@ -36,7 +36,7 @@ class FakeAudioLinkSystem {
     @Volatile var role = "admin"
 
     /**
-     * -- WP HWLK1F -- `uconsole --demo hub --audio-link --with-plain-unit`: one more
+     * -- WP HWLK1F -- `uconsole --demo hub --alink --with-plain-unit`: one more
      * unit, P in the bar, whose firmware has no audio link, as the core shows it.
      */
     @Volatile var plainUnit = false
@@ -60,10 +60,10 @@ class FakeAudioLinkSystem {
         Triple("D", "Bar", "bar")
     )
     private val scenes = listOf(
-        LinkSystemScene("evening", "Evening", null),
-        LinkSystemScene("quiet", "Quiet inside", null),
-        LinkSystemScene("closed", "Closed", true),
-        LinkSystemScene("click", "Test click", null)
+        AlinkSystemScene("evening", "Evening", null),
+        AlinkSystemScene("quiet", "Quiet inside", null),
+        AlinkSystemScene("closed", "Closed", true),
+        AlinkSystemScene("click", "Test click", null)
     )
 
     /** Another installer saved meanwhile: the revision moves. */
@@ -82,19 +82,19 @@ class FakeAudioLinkSystem {
 
     private fun denied(need: String) = DspiException.Link("denied", "$need role required")
 
-    @Synchronized fun view(): LinkSystemView {
+    @Synchronized fun view(): AlinkSystemView {
         session()
-        // -- fixup lk1 -- the demo hub's numbers (`uconsole --demo hub --audio-link` over the
-        // Rust fake): a link delay range of 257..399 at the 4 ms latency option, D 260, each
-        // unit's link delay and hop offset as the alignment gives them, and every unit at
-        // 300 frames, hop offset 0, until the link delays are written
+        // -- fixup lk1 -- the demo hub's numbers (`uconsole --demo hub --alink` over the
+        // Rust fake): an audio link delay range of 257..399 at the 4 ms latency option, D 260, each
+        // unit's audio link delay and hop offset as the alignment gives them, and every unit at
+        // 300 frames, hop offset 0, until the audio link delays are written
         val d = systemDelay ?: D_AUTO
         val rate = 48_000L
         val ms = { f: Long -> f * 1000.0 / rate }
         val pendingUnits = if (aligned) 0L else units.size.toLong()
         val rows = mutableListOf(
-            unit("tx", "Sender", "DEMO-LINK-TX", "sender", "Sender", "", "clock", "Clock"),
-            unit("fan", "Fan-out", "DEMO-LINK-FAN", "fan_out", "Fan-out", "", "locked", "Locked").copy(hopDelayFrames = 3)
+            unit("tx", "Sender", "DEMO-ALINK-TX", "sender", "Sender", "", "clock", "Clock"),
+            unit("fan", "Fan-out", "DEMO-ALINK-FAN", "fan_out", "Fan-out", "", "locked", "Locked").copy(hopDelayFrames = 3)
         )
         for (u in units) {
             val (id, name, room) = u
@@ -102,13 +102,13 @@ class FakeAudioLinkSystem {
             val (delta, offset) = PLAN.getValue(id)
             val planned = d + delta
             val pending = !aligned
-            rows += unit(id, name, "DEMO-LINK-$id", "unit", "Receiver", rooms.first { it.first == room }.second, "locked", "Locked").copy(
+            rows += unit(id, name, "DEMO-ALINK-$id", "unit", "Receiver", rooms.first { it.first == room }.second, "locked", "Locked").copy(
                 pending = pending,
-                linkDelayFrames = planned,
-                linkDelayMs = ms(planned),
-                unitLinkDelayFrames = if (pending) UNIT_START else planned,
-                linkDelayMin = D_LOCAL_MIN,
-                linkDelayMax = D_LOCAL_MAX,
+                alinkDelayFrames = planned,
+                alinkDelayMs = ms(planned),
+                unitAlinkDelayFrames = if (pending) UNIT_START else planned,
+                alinkDelayMin = D_LOCAL_MIN,
+                alinkDelayMax = D_LOCAL_MAX,
                 hopOffset = offset,
                 unitHopOffset = if (pending) 0 else offset,
                 phaseErrorFrames = 0.04f,
@@ -116,14 +116,14 @@ class FakeAudioLinkSystem {
                 measuredLatencyUs = latency[id]
             )
         }
-        // -- WP HWLK1F -- said as such, no link delay, not counted among the units that lock
+        // -- WP HWLK1F -- said as such, no audio link delay, not counted among the units that lock
         if (plainUnit) {
             rows += unit("P", "Plain unit", "DEMO-PLAIN", "unit", "No audio link", "Bar", "no_alink", "No audio link (firmware)")
         }
         val plain = if (plainUnit) ", 1 without the audio link (firmware)" else ""
         val admin = role == "admin"
         val control = admin || role == "control"
-        return LinkSystemView(
+        return AlinkSystemView(
             revision = revision,
             installed = true,
             role = role,
@@ -137,7 +137,7 @@ class FakeAudioLinkSystem {
             rateHz = rate,
             lipSyncUs = 0,
             units = rows,
-            rooms = rooms.map { (id, name) -> LinkSystemRoom(id, name, lipSync[id]) },
+            rooms = rooms.map { (id, name) -> AlinkSystemRoom(id, name, lipSync[id]) },
             scenes = scenes,
             alarms = emptyList(),
             systemMute = false,
@@ -146,7 +146,7 @@ class FakeAudioLinkSystem {
             holdover = 0,
             pending = pendingUnits,
             unitCount = 4,
-            summary = "Audio link: 4 of 4 locked" + plain + if (pendingUnits > 0) ", link delay to write on $pendingUnits" else "",
+            summary = "Audio link: 4 of 4 locked" + plain + if (pendingUnits > 0) ", audio link delay to write on $pendingUnits" else "",
             health = if (pendingUnits > 0 || plainUnit) "warning" else "ok",
             issues = emptyList(),
             stale = false
@@ -154,12 +154,12 @@ class FakeAudioLinkSystem {
     }
 
     private fun unit(id: String, name: String, serial: String, kind: String, role: String, room: String, state: String, word: String) =
-        LinkSystemUnit(
+        AlinkSystemUnit(
             id, name, serial, kind, role, room, true, state, word, false, null, null, null, null, null, null, null, null,
             null, null, 0, null, 0
         )
 
-    @Synchronized fun save(revision: Long, edits: LinkSystemEdits): Long {
+    @Synchronized fun save(revision: Long, edits: AlinkSystemEdits): Long {
         session()
         if (role != "admin") throw denied("admin")
         if (revision != this.revision) {
@@ -176,27 +176,27 @@ class FakeAudioLinkSystem {
         return this.revision
     }
 
-    @Synchronized fun align(): LinkSystemAlign {
+    @Synchronized fun align(): AlinkSystemAlign {
         session()
         if (role != "admin") throw denied("admin")
         aligned = true
-        val written = units.map { LinkSystemWrite(it.second, "Link delay", "ok", "Done", "ok") }
+        val written = units.map { AlinkSystemWrite(it.second, "Audio link delay", "ok", "Done", "ok") }
         if (plainUnit) {
-            return LinkSystemAlign(
+            return AlinkSystemAlign(
                 true,
-                "The link delays were written on ${units.joinToString(", ") { it.second }} " +
+                "The audio link delays were written on ${units.joinToString(", ") { it.second }} " +
                     "(each re-anchored with a short silence); skipped on Plain unit (no audio link (firmware)).",
-                written + LinkSystemWrite("Plain unit", "Link delay", "skipped", "Skipped", "warn")
+                written + AlinkSystemWrite("Plain unit", "Audio link delay", "skipped", "Skipped", "warn")
             )
         }
-        return LinkSystemAlign(
+        return AlinkSystemAlign(
             true,
-            "The link delays were written. Each unit re-anchored with a short silence.",
+            "The audio link delays were written. Each unit re-anchored with a short silence.",
             written
         )
     }
 
-    @Synchronized fun recall(scene: String): LinkSceneRecall {
+    @Synchronized fun recall(scene: String): AlinkSceneRecall {
         session()
         if (role == "viewer") throw denied("control")
         val s = scenes.firstOrNull { it.id == scene } ?: throw DspiException.Link("bad_request", "no scene $scene")
@@ -206,32 +206,32 @@ class FakeAudioLinkSystem {
         frame += 10_000
         val held = heldFrame
         if (held != null) {
-            return LinkSceneRecall(
+            return AlinkSceneRecall(
                 s.id, s.name, false, frame + 4_800, 100.0, false, held,
                 "${s.name} was refused: a scene is already scheduled on the sender for link frame $held, 90 ms after this recall. " +
                     "The sender takes one scene at a time; recall ${s.name} again after that." +
                     (if (s.systemMute != null) " System mute unchanged." else ""),
-                listOf(LinkSystemWrite("Sender", "Scene ${s.name}", "refused", "Refused", "bad"))
+                listOf(AlinkSystemWrite("Sender", "Scene ${s.name}", "refused", "Refused", "bad"))
             )
         }
         heldFrame = frame + 4_800
         // -- WP HWLK1F -- a scene for every unit: at once on P, never "on time" then
         if (plainUnit && s.id != "click") {
-            return LinkSceneRecall(
+            return AlinkSceneRecall(
                 s.id, s.name, true, frame + 4_800, 100.0, false, null,
                 "${s.name} recalled: applied now on Plain unit (no audio link); at link frame ${frame + 4_800} " +
                     "through the sender on the others" + (if (s.systemMute == true) "; system mute on" else "") + ".",
                 listOf(
-                    LinkSystemWrite("Sender", "Scene ${s.name}", "queued", "Queued", "ok"),
-                    LinkSystemWrite("Plain unit", "Master volume", "applied_now", "Applied now", "ok")
+                    AlinkSystemWrite("Sender", "Scene ${s.name}", "queued", "Queued", "ok"),
+                    AlinkSystemWrite("Plain unit", "Master volume", "applied_now", "Applied now", "ok")
                 )
             )
         }
-        return LinkSceneRecall(
+        return AlinkSceneRecall(
             s.id, s.name, true, frame + 4_800, 100.0, true, null,
             "${s.name} recalled through the sender, at link frame ${frame + 4_800}" +
                 (if (s.systemMute == true) ", system mute on" else "") + ".",
-            listOf(LinkSystemWrite("Sender", "Scene ${s.name}", "queued", "Queued", "ok"))
+            listOf(AlinkSystemWrite("Sender", "Scene ${s.name}", "queued", "Queued", "ok"))
         )
     }
 }

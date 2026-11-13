@@ -14,7 +14,7 @@ the stream.
 |---|---|
 | `crates/dspi-hub/src/system/` | the model, the alignment engine, scenes, alarms, the I/O |
 | `crates/dspi-hub/tests/wp_sw2_system.rs` | the behaviour below, against fake units |
-| `crates/dspi-core/src/audio_link.rs` | one unit's link from a client (SW1) |
+| `crates/dspi-core/src/alink.rs` | one unit's link from a client (SW1) |
 | DSPi-bofr `Documentation/Features/extension_channel_spec.md` 2.8 | the firmware's link commands (normative) |
 | DSPi-bofr `Documentation/Features/link_protocol_spec.md` 7.2 | hops and hop delays (normative) |
 | SYS2 spec sections 1, 3 and 7 | the design |
@@ -22,7 +22,7 @@ the stream.
 **State:** host side complete against the fake device's link model. Receiver
 firmware (LK5) is partial and not yet run on hardware; the phase lock and the
 apply queue (LK6) are not in firmware yet, so on real units today
-`EXT_LINK_PHASE` and `EXT_APPLY_AT_FRAME` are unlisted and the hub reports
+`EXT_ALINK_PHASE` and `EXT_APPLY_AT_FRAME` are unlisted and the hub reports
 those units as unable to take the alignment.
 
 ## What the stream cannot tell the hub
@@ -37,16 +37,16 @@ topology:
 - **fan-outs** (senders slaved to a link input) and **repeaters** (units with a
   transmit pin), each naming its `upstream`;
 - **units**, each naming its `upstream` (a sender, a fan-out or a repeater), its
-  room, the 8 link channels it takes (`slots`), its latency after the link
+  room, the 8 audio link channels it takes (`slots`), its latency after the link
   (configured `latencyUs`, or `measuredLatencyUs`, which wins), and its speakers'
   distances by output.
 
-Each re-emitter's hop delay is read from its `EXT_LINK_STATUS` offset 50
+Each re-emitter's hop delay is read from its `EXT_ALINK_STATUS` offset 50
 (`hop_delay_frames`); when it cannot be read, the model's `hopDelayFrames` is
 used, and failing that 1 frame, with an issue `hop_delay_assumed`.
 
 Rooms, zones (rooms sharing a source), groups (named sets of units) and sources
-(programmes on link channels) complete the installation; scenes target them.
+(programmes on audio link channels) complete the installation; scenes target them.
 
 ## The alignment
 
@@ -55,12 +55,12 @@ d1..dh, latency L_u after the link and its room's lip-sync offset S_u:
 
 - E_u = D − Σd + (L_max − L_u) + S_u is the unit's effective delay, so frame F
   is heard at t_F + D + L_max + S_u on every unit of a room;
-- the hub writes `EXT_LINK_PHASE` with phase lock, `d_local = D − h` and
+- the hub writes `EXT_ALINK_PHASE` with phase lock, `d_local = D − h` and
   `hops_offset = E_u − d_local` (for a unit behind one 3-frame fan-out and
   nothing else, −2, as 2.8.5 says). Past the firmware's −64..64 the remainder
   moves into `d_local`, since the firmware uses only the sum;
 - D is the model's `dFrames`, or when that is null the smallest D that puts
-  every unit at or above its `d_local_min` (`EXT_LINK_INFO`). A unit outside its
+  every unit at or above its `d_local_min` (`EXT_ALINK_INFO`). A unit outside its
   `d_local_min..d_local_max` gets the issue `delay_out_of_range` and is not
   written;
 - each speaker's `out.delay` is (r_max − r) / 343 m/s, r_max being the furthest
@@ -78,7 +78,7 @@ A write that changes a unit's phase re-anchors it: 2 to 6 ms of silence. The
 hub reads each value first and writes only what differs, so running the
 alignment again changes nothing. The hub's own re-anchors raise no alarm.
 
-The limits come from each unit's `EXT_LINK_INFO` and follow its output latency
+The limits come from each unit's `EXT_ALINK_INFO` and follow its output latency
 option (LK6 at 48 kHz: 81..431 frames under the 1 ms option, 257..399 under the
 default 4 ms). D = 128 is used only when no unit reports limits, and then
 nothing is written.
@@ -109,13 +109,13 @@ that did not answer, is counted at 100 ms), plus 50 ms. It converts the time at
 96 kHz so the lead is never short at any rate, then rounds up to a superframe
 boundary. Then:
 
-- **through the sender's superframe** (`EXT_LINK_CTRL_MSG`) when the scene is
+- **through the sender's superframe** (`EXT_ALINK_CTRL_MSG`) when the scene is
   one op for every unit, every unit is behind that sender, the hub reaches the
   sender, and the op is not `unmute`: one write, no control-path latency;
 - **to each unit** (`EXT_APPLY_AT_FRAME`) otherwise.
 
 -- WP HWLK1F -- **Units without the audio link.** A unit whose firmware has no
-audio link (its `EXT_LIST` names no 0x8000 block, or `EXT_LINK_INFO` stalls: a
+audio link (its `EXT_LIST` names no 0x8000 block, or `EXT_ALINK_INFO` stalls: a
 K340 on bofr-main 470a127, stock firmware) takes no frame. Its ops are written at
 once with its own commands (`mute`/`unmute` the user mute, `preset_load`,
 `master_volume`, `out_delay` as samples at the model's rate), listed in the
@@ -155,7 +155,7 @@ write's result is in the answer.
 
 **The system mute.** The sender's superframe carries a system-mute bit; while
 it is set every unit on the link plays silence. The sender takes the bit from
-`system_flags` on every `EXT_LINK_CTRL_MSG` write, whatever the op. So the
+`system_flags` on every `EXT_ALINK_CTRL_MSG` write, whatever the op. So the
 hub reads the bit before a superframe write and writes it back unchanged
 (`plan.systemFlags`). A sender whose bit cannot be read is not used for the
 superframe path. Only `system.mute` or a scene with `systemMute` changes it.
@@ -172,9 +172,9 @@ nothing is written and the answer is `denied`, naming the op.
 
 | Code | Severity | Raised | Cleared |
 |---|---|---|---|
-| `link_lost` | critical | a unit not locked at a read, or an `0xE1` with a loss reason. One loss is one alarm: its count is the unit's losses since it was raised. Another loss before it clears raises it again, acknowledged or not, with the new count | locked again |
+| `alink_lost` | critical | a unit not locked at a read, or an `0xE1` with a loss reason. One loss is one alarm: its count is the unit's losses since it was raised. Another loss before it clears raises it again, acknowledged or not, with the new count | locked again |
 | `unit_offline` | critical | a unit of the model not attached | attached |
-| `link_errors` | warning | 16 or more CRC-16 errors within any 60 s of the hub's time. The growth between two reads is spread evenly over the time between them, so the rate decides, not how often clients read: 16 errors over four hours never alarm. A loss is `link_lost`'s | 60 s with no new error |
+| `alink_errors` | warning | 16 or more CRC-16 errors within any 60 s of the hub's time. The growth between two reads is spread evenly over the time between them, so the rate decides, not how often clients read: 16 errors over four hours never alarm. A loss is `alink_lost`'s | 60 s with no new error |
 | `reanchor` | warning | an `0xE1` `REANCHOR` the hub did not cause | acknowledged |
 | `delay_below_min` | critical | the unit's `D_BELOW_MIN` flag | the flag gone |
 | `system_muted` | warning | a sender's system mute seen set, at a read or a write | seen clear |
@@ -214,9 +214,9 @@ request within that time gets `rate_limited`, because each read costs every
 unit's worker five or more transfers.
 
 -- WP SW3 -- `observed` also carries each unit's `stats` (the rest of
-`EXT_LINK_STATUS`: `lineClass`, `channels`, `lockCount`, `crc8Errors`,
+`EXT_ALINK_STATUS`: `lineClass`, `channels`, `lockCount`, `crc8Errors`,
 `bitSlips`, `superframeErrors`, `vcxoPpm`, `fillFrames`) and a receiver's
-`trimScan` from `EXT_LINK_DIAG` (`state`, `trimLo`, `trimHi`, `trimUsed`,
+`trimScan` from `EXT_ALINK_DIAG` (`state`, `trimLo`, `trimHi`, `trimUsed`,
 `cleanMask`), read only when the DIAG layout is version 1. A sender's carries
 `pendingApplyFrame`, the frame of a superframe apply it still holds: it takes
 no other until that frame has passed, and refuses one meanwhile (the write's
@@ -237,10 +237,10 @@ what an alignment did: "Nothing was written: skipped on K (no audio link
 (firmware))." when nothing was (also when every write failed: "Nothing was
 written: 2 writes failed; …"), else the units written and those skipped.
 
--- WP HWLK1F -- `observed` carries `alink`: `present` (`EXT_LINK_INFO`
+-- WP HWLK1F -- `observed` carries `alink`: `present` (`EXT_ALINK_INFO`
 answers), `none` (the firmware has no audio link, as above) or null (not told).
 -- fixup hwlk1f -- `none` comes only from the firmware's own answer: the device
-stalls `EXT_LINK_INFO` (a stall, not a bus fault, a short or malformed reply or
+stalls `EXT_ALINK_INFO` (a stall, not a bus fault, a short or malformed reply or
 a timeout, which share the Link status `ERROR`), or `EXT_LIST` answers without
 it. A read that tells nothing keeps the last value seen. A unit not attached
 keeps everything it last reported (with `online: false`), so it is as last
@@ -295,11 +295,11 @@ ignored with a log line and left in the file until a new one is set.
   waits for the slowest unit anywhere (more latency, never misalignment).
 - A periodic poll: alarms follow events and `system.status` reads. A client that
   shows the system calls `system.status` every few seconds.
-- The native clients' System view and "Clock and links" panel: the web console has
+- The native clients' System view and "Clock and audio links" panel: the web console has
   them (WP SW3, `apps/web/README.md`); Qt and Android have them over the core's
-  typed calls (WP LKUI1: `link_system_view`, `link_system_save` with the revision,
-  `link_system_align`, `link_system_recall`; C `dspi_link_system_*`), without the
+  typed calls (WP LKUI1: `alink_system_view`, `alink_system_save` with the revision,
+  `alink_system_align`, `alink_system_recall`; C `dspi_alink_system_*`), without the
   slot matrix, link stats, trim scan, system mute toggle or alarm acknowledge
   (`docs/PARITY.md` section 2.I). Swift is pending.
-- Resetting a unit's link stats through the hub: `EXT_LINK_STATS_RESET` is not a
+- Resetting a unit's link stats through the hub: `EXT_ALINK_STATS_RESET` is not a
   `system.*` request yet.
