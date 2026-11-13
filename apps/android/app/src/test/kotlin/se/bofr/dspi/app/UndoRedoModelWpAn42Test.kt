@@ -115,7 +115,7 @@ class UndoRedoModelWpAn42Test {
     }
 
     private fun entry(path: String, vararg ix: Int, undoable: Boolean = true) =
-        HistoryEntry(path, ix.toList(), null, ParamValue.Bool(true), HistorySource.LOCAL, 0L, undoable)
+        HistoryEntry(path, ix.toList(), null, ParamValue.Bool(true), HistorySource.LOCAL, 0L, undoable, label = null) // review p1a: label from P1UG
 
     @Test
     fun wpAn42TheWordsForEachKindOfStep() {
