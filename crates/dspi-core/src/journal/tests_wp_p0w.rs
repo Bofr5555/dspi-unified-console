@@ -1093,7 +1093,7 @@ fn wp_p0wecho_a_foreign_write_after_the_late_echo_is_still_named() {
     let m = core.redo().unwrap();
     assert!(m.entry.is_none(), "{m:?}");
     let note = m.note.unwrap();
-    assert!(note.contains("the computer's volume control"), "{note}");
+    assert!(note.contains("the USB audio volume control"), "{note}");
 }
 
 #[test]
