@@ -18,11 +18,11 @@ QtObject {
         {
             title: qsTr("&File"),
             rows: [
-                { id: "file.importFilters", text: qsTr("Import Filters..."), shortcut: "Ctrl+I" },
-                { id: "file.exportFilters", text: qsTr("Export Filters..."), shortcut: "Ctrl+E" },
+                { id: "file.importFilters", text: qsTr("Import Filters…"), shortcut: "Ctrl+I" },
+                { id: "file.exportFilters", text: qsTr("Export Filters…"), shortcut: "Ctrl+E" },
                 { separator: true },
-                { id: "file.importConfiguration", text: qsTr("Import Device Configuration...") },
-                { id: "file.exportConfiguration", text: qsTr("Export Device Configuration...") },
+                { id: "file.importConfiguration", text: qsTr("Import Device Configuration…") },
+                { id: "file.exportConfiguration", text: qsTr("Export Device Configuration…") },
                 { separator: true },
                 { id: "file.saveMasterVolume", text: qsTr("Save Master Volume") },
                 { id: "file.saveOutputConfiguration", text: qsTr("Save Output Configuration") },
@@ -36,7 +36,7 @@ QtObject {
                 // -- WP QP18 -- the core's change journal (HistoryController)
                 { id: "edit.undo", text: qsTr("Undo"), shortcut: "Ctrl+Z", enabled: () => HistoryController.canUndo },
                 { id: "edit.redo", text: qsTr("Redo"), shortcut: "Ctrl+Shift+Z", enabled: () => HistoryController.canRedo },
-                { id: "edit.history", text: qsTr("History..."), shortcut: "Ctrl+Shift+H" },
+                { id: "edit.history", text: qsTr("History…"), shortcut: "Ctrl+Shift+H" },
                 { separator: true },
                 { id: "edit.cut", text: qsTr("Cut"), shortcut: "Ctrl+X" },
                 { id: "edit.copy", text: qsTr("Copy"), shortcut: "Ctrl+C" },
@@ -44,16 +44,16 @@ QtObject {
                 { id: "edit.delete", text: qsTr("Delete") },
                 { id: "edit.selectAll", text: qsTr("Select All"), shortcut: "Ctrl+A" },
                 { separator: true },
-                { id: "edit.settings", text: qsTr("Settings..."), shortcut: "Ctrl+," }
+                { id: "edit.settings", text: qsTr("Settings…"), shortcut: "Ctrl+," }
             ]
         },
         {
             title: qsTr("&Device"),
             rows: [
                 // -- WP QP18 -- Commit and Revert get shortcuts (owner, 2026-11-12)
-                { id: "device.commit", text: qsTr("Commit Parameters..."), shortcut: "Ctrl+S" },
-                { id: "device.revert", text: qsTr("Revert to Saved..."), shortcut: "Ctrl+Shift+R" },
-                { id: "device.factoryReset", text: qsTr("Factory Reset...") },
+                { id: "device.commit", text: qsTr("Commit Parameters…"), shortcut: "Ctrl+S" },
+                { id: "device.revert", text: qsTr("Revert to Saved…"), shortcut: "Ctrl+Shift+R" },
+                { id: "device.factoryReset", text: qsTr("Factory Reset…") },
                 { separator: true },
                 // -- WP QP18 -- presets 1-9, mute and bypass from the keyboard (ShortcutController)
                 {
@@ -66,16 +66,16 @@ QtObject {
                 { id: "device.mute", text: qsTr("Mute"), shortcut: "Ctrl+M" },
                 { id: "device.bypass", text: qsTr("Bypass Master EQ"), shortcut: "Ctrl+B" },
                 { separator: true },
-                { id: "device.firmwareUpdate", text: qsTr("Firmware Update..."), platformHidden: "STM32H723" },
+                { id: "device.firmwareUpdate", text: qsTr("Firmware Update…"), platformHidden: "STM32H723" },
                 { separator: true },
                 { id: "device.reconnect", text: qsTr("Reconnect") },
-                { id: "device.devices", text: qsTr("Devices...") }
+                { id: "device.devices", text: qsTr("Devices…") }
             ]
         },
         {
             title: qsTr("&AutoEQ"),
             rows: [
-                { id: "autoeq.browse", text: qsTr("Browse Profiles..."), shortcut: "Ctrl+Shift+B" },
+                { id: "autoeq.browse", text: qsTr("Browse Profiles…"), shortcut: "Ctrl+Shift+B" },
                 {
                     submenu: qsTr("Favorite Profiles"),
                     rows: [
@@ -83,25 +83,25 @@ QtObject {
                     ]
                 },
                 { separator: true },
-                { id: "autoeq.updateDatabase", text: qsTr("Update Database...") }
+                { id: "autoeq.updateDatabase", text: qsTr("Update Database…") }
             ]
         },
         {
             title: qsTr("&Tools"),
             rows: [
-                { id: "tools.matrix", text: qsTr("Matrix Mixer..."), shortcut: "Ctrl+Shift+M" },
-                { id: "tools.loudness", text: qsTr("Loudness Compensation..."), shortcut: "Ctrl+Shift+L" },
-                { id: "tools.crossfeed", text: qsTr("Headphone Crossfeed..."), shortcut: "Ctrl+Shift+X" },
-                { id: "tools.psybass", text: qsTr("Psychoacoustic Bass..."), shortcut: "Ctrl+Shift+P" },
-                { id: "tools.subharmonic", text: qsTr("Subharmonic Synthesizer..."), shortcut: "Ctrl+Shift+S" },
-                { id: "tools.tube", text: qsTr("Tube Modeller..."), shortcut: "Ctrl+Shift+D" },
-                { id: "tools.upmixer", text: qsTr("Stereo Upmixer..."), shortcut: "Ctrl+Shift+U" },
-                { id: "tools.leveller", text: qsTr("Volume Leveller..."), shortcut: "Ctrl+Shift+V" },
-                { id: "tools.signalGenerator", text: qsTr("Signal Generator..."), shortcut: "Ctrl+Shift+G" },
-                { id: "tools.spectrum", text: qsTr("Spectrum Analyser..."), shortcut: "Ctrl+Shift+A" },
+                { id: "tools.matrix", text: qsTr("Matrix Mixer…"), shortcut: "Ctrl+Shift+M" },
+                { id: "tools.loudness", text: qsTr("Loudness Compensation…"), shortcut: "Ctrl+Shift+L" },
+                { id: "tools.crossfeed", text: qsTr("Headphone Crossfeed…"), shortcut: "Ctrl+Shift+X" },
+                { id: "tools.psybass", text: qsTr("Psychoacoustic Bass…"), shortcut: "Ctrl+Shift+P" },
+                { id: "tools.subharmonic", text: qsTr("Subharmonic Synthesizer…"), shortcut: "Ctrl+Shift+S" },
+                { id: "tools.tube", text: qsTr("Tube Modeller…"), shortcut: "Ctrl+Shift+D" },
+                { id: "tools.upmixer", text: qsTr("Stereo Upmixer…"), shortcut: "Ctrl+Shift+U" },
+                { id: "tools.leveller", text: qsTr("Volume Leveller…"), shortcut: "Ctrl+Shift+V" },
+                { id: "tools.signalGenerator", text: qsTr("Signal Generator…"), shortcut: "Ctrl+Shift+G" },
+                { id: "tools.spectrum", text: qsTr("Spectrum Analyser…"), shortcut: "Ctrl+Shift+A" },
                 { id: "tools.stats", text: qsTr("Stats for nerbs"), shortcut: "Ctrl+Shift+T" },
                 { separator: true },
-                { id: "tools.interruptMonitor", text: qsTr("Interrupt Monitor..."), shortcut: "Ctrl+Shift+I" }
+                { id: "tools.interruptMonitor", text: qsTr("Interrupt Monitor…"), shortcut: "Ctrl+Shift+I" }
             ]
         },
         {
@@ -111,13 +111,13 @@ QtObject {
                 { id: "window.popOutGraph", text: qsTr("Pop Out Graph") },
                 // -- WP QP18 -- docs/UI-MODES.md §5 (ModeController)
                 { separator: true },
-                { id: "window.mode", text: qsTr("Mode...") }
+                { id: "window.mode", text: qsTr("Mode…") }
             ]
         },
         {
             title: qsTr("&Help"),
             rows: [
-                { id: "help.gettingStarted", text: qsTr("Getting Started...") },
+                { id: "help.gettingStarted", text: qsTr("Getting Started…") },
                 { separator: true },
                 //: %1 is the app's name
                 { id: "help.whatsNew", text: qsTr("What's New in %1").arg(AppIdentity.displayName) },
@@ -127,8 +127,8 @@ QtObject {
                 { id: "help.firmwareGithub", text: qsTr("DSPi Firmware on GitHub") },
                 { separator: true },
                 // -- WP QP17 -- shown once the core can write the bundle (PRO1 E2)
-                { id: "help.saveDiagnostics", text: qsTr("Save Diagnostics..."), optional: true },
-                { id: "help.checkForUpdates", text: qsTr("Check for Updates..."), optional: true },
+                { id: "help.saveDiagnostics", text: qsTr("Save Diagnostics…"), optional: true },
+                { id: "help.checkForUpdates", text: qsTr("Check for Updates…"), optional: true },
                 //: %1 is the app's name
                 { id: "help.about", text: qsTr("About %1").arg(AppIdentity.displayName) }
             ]

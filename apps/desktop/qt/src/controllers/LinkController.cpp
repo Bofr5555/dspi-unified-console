@@ -246,7 +246,7 @@ QString LinkController::sessionTip() const {
             name = device.value(QStringLiteral("name")).toString();
     }
     if (name.isEmpty()) name = tr("DSPi");
-    const QString where = tr("Choose devices in Device > Devices...");
+    const QString where = tr("Choose devices in Device > Devices…");
     if (m_hubName.isEmpty()) return tr("%1 (%2)").arg(name, m_boundSerial) + QLatin1Char('\n') + where;
     return tr("%1 via %2 (%3)").arg(name, m_hubName, m_boundSerial) + QLatin1Char('\n') + where;
 }

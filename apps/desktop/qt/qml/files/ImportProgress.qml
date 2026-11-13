@@ -30,7 +30,7 @@ Popup {
         Accessible.name: label.text
         Text {
             id: label
-            text: qsTr("Writing settings to the device...")
+            text: qsTr("Writing settings to the device…")
             font: Theme.fontBody
             color: Theme.text
         }

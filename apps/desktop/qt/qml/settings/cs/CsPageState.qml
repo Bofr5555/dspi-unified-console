@@ -18,7 +18,7 @@ ColumnLayout {
         Icon { name: "loader-circle"; size: 14; color: Theme.textMuted }
         Text {
             objectName: "Cs.reading"
-            text: qsTr("Reading control-surface capabilities from the device...")
+            text: qsTr("Reading control-surface capabilities from the device…")
             font: Theme.fontSmall
             color: Theme.textMuted
         }

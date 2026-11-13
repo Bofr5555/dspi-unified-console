@@ -13,7 +13,7 @@ Banner {
 
     AppButton {
         objectName: "FirmwareBanner.update"
-        text: FirmwareController.match === "newer" ? qsTr("Details...") : qsTr("Update...")
+        text: FirmwareController.match === "newer" ? qsTr("Details…") : qsTr("Update…")
         onClicked: FirmwareController.openWindow()
     }
     AppButton {

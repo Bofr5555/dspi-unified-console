@@ -135,7 +135,7 @@ ToolWindow {
                     spacing: Theme.spacingSmall
                     AppButton {
                         objectName: "FirmwareWindow.chooseImage"
-                        text: qsTr("Choose .uf2...")
+                        text: qsTr("Choose .uf2…")
                         enabled: !window.fw.confirmed
                         onClicked: FirmwareController.chooseCustomImage()
                     }
@@ -394,7 +394,7 @@ ToolWindow {
             AppButton {
                 objectName: "FirmwareWindow.export"
                 visible: !parent.done && window.fw.showExport
-                text: qsTr("Export Configuration...")
+                text: qsTr("Export Configuration…")
                 onClicked: FirmwareController.exportConfiguration()
             }
             Item { Layout.fillWidth: true }

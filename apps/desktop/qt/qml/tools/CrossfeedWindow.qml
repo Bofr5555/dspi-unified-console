@@ -58,12 +58,19 @@ ToolWindow {
         EffectRule {}
 
         Flickable {
+            id: body
             Layout.fillWidth: true
             Layout.fillHeight: true
             contentHeight: columns.implicitHeight + 2 * Theme.spacingLarge
             clip: true
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: AppScrollBar {}
+
+            // Opened again, the window starts at the top, as the Mac's does
+            Connections {
+                target: window
+                function onVisibleChanged() { if (window.visible) body.contentY = 0 }
+            }
 
             RowLayout {
                 id: columns

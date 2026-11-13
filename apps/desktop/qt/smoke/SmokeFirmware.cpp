@@ -218,12 +218,12 @@ void mismatch(Qp16Fw &f) {
     d.check(QStringLiteral("qp16: it names both versions and the app"),
             fw->mismatchText() == QStringLiteral("This device runs firmware 1.1.6; %1 expects 1.1.7.").arg(QLatin1String("uConsole for DSPi")));
     QObject *update = d.object(QStringLiteral("FirmwareBanner.update"));
-    d.check(QStringLiteral("qp16: its button says Update..."), update && update->property("text").toString() == QLatin1String("Update..."));
+    d.check(QStringLiteral("qp16: its button says Update..."), update && update->property("text").toString() == QStringLiteral("Update…"));
     d.check(QStringLiteral("qp16: screenshot of the mismatch banner"), d.grab(d.mainWindow(), QStringLiteral("window-firmware-banner.png")));
     fw->setExpectedVersionForTest(QStringLiteral("1.1.5"));
     d.spin(50);
     d.check(QStringLiteral("qp16: a newer device: Details..., and says some features may not be shown"),
-            fw->match() == QLatin1String("newer") && update && update->property("text").toString() == QLatin1String("Details...") &&
+            fw->match() == QLatin1String("newer") && update && update->property("text").toString() == QStringLiteral("Details…") &&
                 fw->mismatchText().contains(QLatin1String("newer than uConsole for DSPi 1.1.5")));
     fw->hideMismatch();
     d.spin(50);

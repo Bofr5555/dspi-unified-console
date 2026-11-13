@@ -531,8 +531,8 @@ QString SidebarController::unsavedSummary() const {
     for (int i = 0; i < m_unsavedLines.size() && i < kSummaryLines; ++i) lines.append(QStringLiteral("• ") + m_unsavedLines.at(i));
     const int more = int(m_unsavedLines.size()) - kSummaryLines;
     // -- WP QPI2 -- spelt out: without a .qm "%n ... (s)" shows the "(s)"
-    if (more == 1) lines.append(tr("...and 1 more change"));
-    else if (more > 1) lines.append(tr("...and %1 more changes").arg(more));
+    if (more == 1) lines.append(tr("…and 1 more change"));
+    else if (more > 1) lines.append(tr("…and %1 more changes").arg(more));
     return lines.join(QLatin1Char('\n'));
 }
 

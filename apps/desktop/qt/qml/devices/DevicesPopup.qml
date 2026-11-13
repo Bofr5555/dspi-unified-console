@@ -227,7 +227,7 @@ PopoverPanel {
                     Layout.fillWidth: true
                     Layout.leftMargin: 32
                     visible: DevicesController.hubs.length === 0
-                    text: DevicesController.lookForHubs ? qsTr("Looking for hubs...") : qsTr("No hubs added.")
+                    text: DevicesController.lookForHubs ? qsTr("Looking for hubs…") : qsTr("No hubs added.")
                     font: Theme.fontSmall
                     color: Theme.textMuted
                 }

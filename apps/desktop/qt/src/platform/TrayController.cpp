@@ -262,7 +262,7 @@ void TrayController::refreshMenu() {
     share->setVisible(h != nullptr);
     share->setChecked(h && h->sharing() && h->lastError().isEmpty());
     QAction *pair = child(m_menu, "Tray.pair");
-    pair->setText(pin.isEmpty() ? tr("Allow a New Client...") : tr("Cancel Pairing"));
+    pair->setText(pin.isEmpty() ? tr("Allow a New Client…") : tr("Cancel Pairing"));
     pair->setVisible(h && h->access() == QLatin1String("pin"));
     pair->setEnabled(running);
 

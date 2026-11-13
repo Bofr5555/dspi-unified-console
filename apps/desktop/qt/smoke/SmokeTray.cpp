@@ -206,7 +206,7 @@ void traySection(SmokeDriver &d) {
                 && text(tray, "Tray.address") == hub->address());
     d.check(QStringLiteral("qp14: sharing: the icon says so"), !plainIcon.isNull() && iconImage() != plainIcon);
     d.check(QStringLiteral("qp14: sharing: Allow a New Client is on"),
-            action(tray, "Tray.pair")->isEnabled() && text(tray, "Tray.pair") == QLatin1String("Allow a New Client..."));
+            action(tray, "Tray.pair")->isEnabled() && text(tray, "Tray.pair") == QStringLiteral("Allow a New Client…"));
     action(tray, "Tray.pair")->trigger();
     d.check(QStringLiteral("qp14: Allow opens a window and shows its code"), d.waitFor(5000, [&]() {
         return shown(tray, "Tray.pairingCode") && text(tray, "Tray.pairingCode") == QStringLiteral("Pairing code %1").arg(hub->pairingCode());

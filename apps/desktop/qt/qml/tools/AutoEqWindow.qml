@@ -58,7 +58,7 @@ ToolWindow {
                     id: search
                     objectName: "AutoEqWindow.search"
                     Layout.fillWidth: true
-                    placeholderText: qsTr("Search headphones...")
+                    placeholderText: qsTr("Search headphones…")
                     text: AutoEqController.profiles.searchText
                     onTextEdited: AutoEqController.profiles.searchText = text
                     Accessible.name: qsTr("Search headphones")
@@ -142,7 +142,7 @@ ToolWindow {
                     font: Theme.fontBody
                     color: Theme.textMuted
                     text: AutoEqController.loadProblem.length > 0 ? AutoEqController.loadProblem
-                        : search.text.length === 0 ? qsTr("Loading headphone database...")
+                        : search.text.length === 0 ? qsTr("Loading headphone database…")
                         //: %1 is the search text
                         : qsTr("No headphones found matching \"%1\"").arg(search.text)
                 }

@@ -444,7 +444,7 @@ void AutoEqController::rebuildFromGitHub() {
     m_rebuildShown = true;
     m_rebuildFinished = false;
     m_rebuildFraction = 0;
-    m_rebuildLine = tr("Connecting to GitHub...");
+    m_rebuildLine = tr("Connecting to GitHub…");
     emit rebuildMoved();
     m_rebuildPoll.start();
 }
