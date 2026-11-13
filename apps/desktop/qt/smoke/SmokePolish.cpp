@@ -250,6 +250,31 @@ void checkUndo(SmokeDriver &d) {
     d.check(QStringLiteral("qp18: Ctrl+Z undoes it"), d.waitFor(3000, [&]() { return outputGain(device, 0) == start; }));
     d.waitIdle();
 
+    // -- WP QTGAP1 -- Typed values are a step each, however close together;
+    // the writes between beginDrag() and endDrag() are one step
+    {
+        const float a = start == -2.5f ? -3.5f : -2.5f, b = start == -4.5f ? -5.5f : -4.5f;
+        auto set = [&](float v) {
+            device->write(QStringLiteral("output gain 0"), [v](FfiCore *c) { return dspi_set_output_gain(c, 0, v); });
+            d.waitIdle();
+        };
+        auto undoTo = [&](float v) {
+            d.app().shell->trigger(QStringLiteral("edit.undo"));
+            return d.waitFor(3000, [&]() { return outputGain(device, 0) == v; });
+        };
+        set(a);
+        set(b);
+        d.check(QStringLiteral("qtgap1: two typed values are two undo steps"), undoTo(a) && undoTo(start));
+        device->beginDrag();
+        d.check(QStringLiteral("qtgap1: the drag mark is held"), device->dragging());
+        set(a);
+        set(b);
+        device->endDrag();
+        d.check(QStringLiteral("qtgap1: the drag mark is let go"), !device->dragging());
+        d.check(QStringLiteral("qtgap1: a drag is one undo step"), undoTo(start));
+        d.waitIdle();
+    }
+
     // The History window
     QWindow *window = d.app().shell->openWindow(QStringLiteral("edit.history"));
     auto *historyWindow = qobject_cast<QQuickWindow *>(window);

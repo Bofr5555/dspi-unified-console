@@ -252,6 +252,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun redo(): HistoryMove = throw NotImplementedError("redo")
 
+    override fun setDragging(dragging: Boolean): Unit = throw NotImplementedError("set_dragging")
+
     override fun canUndo(): Boolean = throw NotImplementedError("can_undo")
 
     override fun canRedo(): Boolean = throw NotImplementedError("can_redo")

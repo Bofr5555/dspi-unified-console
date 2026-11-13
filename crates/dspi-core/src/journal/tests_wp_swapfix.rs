@@ -64,6 +64,7 @@ fn wp_swapfix_f1_undo_after_a_reread_writes_what_the_reread_found() {
 #[test]
 fn wp_swapfix_f1_a_reread_ends_the_step_a_drag_gathers() {
     let (core, _) = demo();
+    core.set_dragging(true); // -- WP QTGAP1 -- only a drag gathers
     core.set_output_delay(0, 1.0).unwrap();
     core.set_output_delay(0, 1.25).unwrap();
     assert_eq!(core.history(10).len(), 1, "one step before the re-read");

@@ -3300,6 +3300,17 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func setDeviceName(name: String) throws 
     
     /**
+     * Mark a continuous drag (a slider or a graph handle held and moved):
+     * `true` when it starts, `false` when it ends. Between the two, the
+     * repeated writes of one live value join a single undo step, however
+     * long the drag lasts; any other write (a typed value, a key step, a
+     * click) is always a step of its own. Each call ends the step being
+     * gathered, so two drags of one control are two steps. A client that
+     * never calls this gets one step per write.
+     */
+    func setDragging(dragging: Bool) 
+    
+    /**
      * PEQ band 0..9 of wire channel `ch`, sent as one whole band
      * (`REQ_SET_EQ_PARAM`).
      *
@@ -7082,6 +7093,22 @@ open func setDelay(ch: UInt8, ms: Float)throws   {try rustCallWithError(FfiConve
 open func setDeviceName(name: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_set_device_name(self.uniffiClonePointer(),
         FfiConverterString.lower(name),$0
+    )
+}
+}
+    
+    /**
+     * Mark a continuous drag (a slider or a graph handle held and moved):
+     * `true` when it starts, `false` when it ends. Between the two, the
+     * repeated writes of one live value join a single undo step, however
+     * long the drag lasts; any other write (a typed value, a key step, a
+     * click) is always a step of its own. Each call ends the step being
+     * gathered, so two drags of one control are two steps. A client that
+     * never calls this gets one step per write.
+     */
+open func setDragging(dragging: Bool)  {try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_set_dragging(self.uniffiClonePointer(),
+        FfiConverterBool.lower(dragging),$0
     )
 }
 }
@@ -26440,6 +26467,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_device_name() != 13429) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_set_dragging() != 26164) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_filter() != 29347) {

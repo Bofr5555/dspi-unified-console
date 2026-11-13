@@ -812,10 +812,22 @@ void PeqOverlay::commitLive() {
         if (b < m_committed.size() && !Peq::same(p, m_committed[b])) changes << qMakePair(b, p);
     }
     m_live.clear();
-    if (changes.isEmpty() || m_channel < 0 || !m_editor) return;
-    for (const auto &[b, p] : std::as_const(changes)) m_committed[b] = p;
-    const int ch = m_channel;
-    writing([&] { m_editor->writeBands(ch, changes); });
+    if (!changes.isEmpty() && m_channel >= 0 && m_editor) {
+        for (const auto &[b, p] : std::as_const(changes)) m_committed[b] = p;
+        const int ch = m_channel;
+        writing([&] { m_editor->writeBands(ch, changes); });
+    }
+    holdDrag(false);   // -- WP QTGAP1 -- after the drag's last write
+}
+
+// -- WP QTGAP1 --
+void PeqOverlay::holdDrag(bool on) {
+    if (on == m_holdsDrag) return;
+    DeviceModel *device = DeviceModel::instance();
+    m_holdsDrag = on && device;
+    if (!device) return;
+    if (on) device->beginDrag();
+    else device->endDrag();
 }
 
 // Wheel and key edits: live now, committed once they pause
@@ -1240,6 +1252,7 @@ void PeqOverlay::mouseReleaseEvent(QMouseEvent *ev) {
 
 void PeqOverlay::beginDrag(int grabbed, const QSet<int> &bands, const QPointF &at, bool qMode) {
     m_commit.stop();
+    holdDrag(true);   // -- WP QTGAP1 --
     Gesture g;
     g.kind = Gesture::Drag;
     g.grabbed = grabbed;
@@ -1868,6 +1881,7 @@ void PeqOverlay::chipAdjust(int field, double delta, int phase) {
     if (!m_chipShown) return;
     if (phase == 0) {
         m_commit.stop();
+        holdDrag(true);   // -- WP QTGAP1 --
         m_chipAdjustStart = current(m_chipBand);
     } else if (phase == 1) {
         if (m_chipAdjustStart)

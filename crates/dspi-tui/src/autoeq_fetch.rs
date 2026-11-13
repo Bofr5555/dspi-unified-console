@@ -148,7 +148,7 @@ mod tests_wp_tm12 {
         FetchRequest {
             url,
             accept: accept.map(str::to_string),
-            user_agent: "DSPi-Console".to_string(),
+            user_agent: dspi_session::autoeq::FETCH_USER_AGENT.to_string(),
         }
     }
 
@@ -271,7 +271,8 @@ mod tests_wp_tm12 {
         assert!(seen[1].starts_with("GET /there "), "{seen:?}");
         for head in seen.iter() {
             let head = head.to_ascii_lowercase();
-            assert!(head.contains("user-agent: dspi-console\r\n"), "{head}");
+            let agent = dspi_session::autoeq::FETCH_USER_AGENT.to_ascii_lowercase();
+            assert!(head.contains(&format!("user-agent: {agent}\r\n")), "{head}");
             assert!(
                 head.contains("accept: application/vnd.github.v3+json\r\n"),
                 "{head}"

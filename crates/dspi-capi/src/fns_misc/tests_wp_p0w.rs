@@ -70,3 +70,23 @@ fn wp_p0w_the_history_flag_is_in_the_header_constants() {
         dspi_core::consts::NOTIFY_HISTORY
     );
 }
+
+// -- WP QTGAP1 --
+/// Only writes inside `dspi_set_dragging(true)` .. `(false)` join one step.
+#[test]
+fn wp_qtgap1_a_drag_through_c() {
+    dspi_set_dragging(ptr::null(), true);
+    let h = dspi_core_new();
+    assert!(dspi_open_demo(h));
+    assert!(dspi_set_output_gain(h, 0, -1.0));
+    assert!(dspi_set_output_gain(h, 0, -2.0));
+    dspi_set_dragging(h, true);
+    assert!(dspi_set_output_gain(h, 0, -3.0));
+    assert!(dspi_set_output_gain(h, 0, -4.0));
+    dspi_set_dragging(h, false);
+    let r = reply(|b, l| dspi_history(h, 10, b, l));
+    assert_eq!(r["value"].as_array().unwrap().len(), 3, "{r}");
+    let r = reply(|b, l| dspi_undo(h, b, l));
+    assert_eq!(r["entry"]["before"], json!({ "float": -2.0 }), "{r}");
+    dspi_core_free(h);
+}
