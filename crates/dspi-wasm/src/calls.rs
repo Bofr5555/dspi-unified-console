@@ -306,6 +306,9 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         "presetCopy" => presets::copy(&core, params(req.params)?),
         "presetRevert" => presets::revert(&core),
         "factoryReset" => presets::factory_reset(&core),
+        // -- WP P1DF -- the document diff and the import preview
+        "configDiff" => presets::diff(params(req.params)?),
+        "configPreview" => presets::preview(&core, params(req.params)?),
         // -- WP WB6b -- the EQ graph's curves, the core's maths (src/curves.rs)
         "curveGrid" => Ok(curves::grid()),
         "curves" => curves::curves(params(req.params)?),

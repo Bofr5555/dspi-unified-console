@@ -192,6 +192,10 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun configImport(text: String, options: Long): String = core.configImport(text, options.toUInt())
 
+    override fun configImportSelected(text: String, options: Long, eqChannels: Long): String = core.configImportSelected(text, options.toUInt(), eqChannels.toUInt())
+
+    override fun configPreview(text: String, options: Long, eqChannels: Long): String = core.configPreview(text, options.toUInt(), eqChannels.toUInt())
+
     override fun filtersExport(inputs: Int): String = call { core.filtersExport(inputs.toUByte()) }
 
     override fun filtersInspect(text: String, inputs: Int): String = core.filtersInspect(text, inputs.toUByte())
@@ -595,6 +599,8 @@ class FfiDspiCore : DspiCoreApi {
     override fun quantizeDelay(ms: Float): Float = se.bofr.dspi.ffi.uniffi.quantizeDelay(ms)
 
     override fun configInspect(text: String): String = se.bofr.dspi.ffi.uniffi.configInspect(text)
+
+    override fun configDiff(before: String, after: String): String = se.bofr.dspi.ffi.uniffi.configDiff(before, after)
 
     override fun uf2Inspect(image: List<Int>): Uf2Info = se.bofr.dspi.ffi.uniffi.uf2Inspect(ByteArray(image.size) { image[it].toByte() }).toDomain()
 

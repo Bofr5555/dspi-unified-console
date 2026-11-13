@@ -569,6 +569,18 @@ fn collect(root: &Path) -> Vec<Group> {
 
     take!(files, "u32", Dec, dspi_session::filterfile => [FORMAT_VERSION]);
     take!(files, "u32", Dec, consts => [IMPORT_VOLUMES, IMPORT_HARDWARE]);
+    // -- WP P1DF --
+    take!(files, "u32", Dec, consts => [
+        IMPORT_EQ,
+        IMPORT_CROSSOVER,
+        IMPORT_ROUTING,
+        IMPORT_OUTPUTS,
+        IMPORT_LIMITERS,
+        IMPORT_EFFECTS,
+        IMPORT_NAMES,
+        IMPORT_ALL_BLOCKS,
+        IMPORT_BY_BLOCK,
+    ]);
 
     let mut cs = Group::new("cs", "Control surface table sizes");
     renamed!(

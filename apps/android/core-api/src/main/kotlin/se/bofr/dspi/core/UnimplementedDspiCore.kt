@@ -136,6 +136,10 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun configImport(text: String, options: Long): String = throw NotImplementedError("config_import")
 
+    override fun configImportSelected(text: String, options: Long, eqChannels: Long): String = throw NotImplementedError("config_import_selected")
+
+    override fun configPreview(text: String, options: Long, eqChannels: Long): String = throw NotImplementedError("config_preview")
+
     override fun filtersExport(inputs: Int): String = throw NotImplementedError("filters_export")
 
     override fun filtersInspect(text: String, inputs: Int): String = throw NotImplementedError("filters_inspect")
@@ -539,6 +543,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun quantizeDelay(ms: Float): Float = throw NotImplementedError("quantize_delay")
 
     override fun configInspect(text: String): String = throw NotImplementedError("config_inspect")
+
+    override fun configDiff(before: String, after: String): String = throw NotImplementedError("config_diff")
 
     override fun uf2Inspect(image: List<Int>): Uf2Info = throw NotImplementedError("uf2_inspect")
 

@@ -867,6 +867,63 @@ pub extern "C" fn dspi_config_import(
     })
 }
 
+// -- WP P1DF --
+/// Apply a configuration document by block: `options` as
+/// `dspi_config_import`'s, or with `DSPI_IMPORT_BY_BLOCK` the
+/// `DSPI_IMPORT_*` block bits; `eq_channels` the wire channels whose EQ is
+/// applied (bit k: channel k; all bits: every one). JSON reply; the device
+/// has changed whatever the buffer.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_config_import_selected(
+    core: *mut FfiCore,
+    text: *const c_char,
+    options: u32,
+    eq_channels: u32,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    self::text(core, buf, len, |c| match arg(text, "text") {
+        Ok(doc) => c.config_import_selected(doc.to_owned(), options, eq_channels),
+        Err(e) => json_reply::<()>(Err(e)),
+    })
+}
+
+/// What `dspi_config_import_selected` with the same arguments would change
+/// on the device, without writing: JSON rows `{block, section, item,
+/// before, after}`, counts per block and a summary. No I/O.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_config_preview(
+    core: *mut FfiCore,
+    text: *const c_char,
+    options: u32,
+    eq_channels: u32,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    self::text(core, buf, len, |c| match arg(text, "text") {
+        Ok(doc) => c.config_preview(doc.to_owned(), options, eq_channels),
+        Err(e) => json_reply::<()>(Err(e)),
+    })
+}
+
+/// What differs between two configuration documents, `before` and `after`,
+/// without a device: the JSON of `dspi_config_preview`. Returns the bytes
+/// needed, 0 only for a panic.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_config_diff(
+    before: *const c_char,
+    after: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    free_text(buf, len, || {
+        match (arg(before, "before"), arg(after, "after")) {
+            (Ok(a), Ok(b)) => dspi_core::files::config_diff(a.to_owned(), b.to_owned()),
+            (Err(e), _) | (_, Err(e)) => json_reply::<()>(Err(e)),
+        }
+    })
+}
+
 /// The filters of the device's `inputs` inputs and every output as a filter
 /// document, or a JSON failure.
 #[unsafe(no_mangle)]
@@ -1898,6 +1955,10 @@ mod tests_wp_qd6;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_qp16;
+// -- WP P1DF --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_p1df;
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]

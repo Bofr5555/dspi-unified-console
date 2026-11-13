@@ -1431,6 +1431,30 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func configImport(text: String, options: UInt32)  -> String
     
     /**
+     * [`DspiCore::config_import`] with the EQ narrowed to the wire channels
+     * in `eq_channels` (bit k: channel k; `u32::MAX` every one). `options`
+     * as there: with [`IMPORT_BY_BLOCK`] each `IMPORT_*` block bit says
+     * whether its block is applied (EQ, crossover, routing and matrix,
+     * outputs, limiters, effects, volume levels, hardware I/O, names), and
+     * a block left out keeps the device's values; without it the old two
+     * bits keep their meaning. The reply is `config_import`'s, plus
+     * `blocks`: the block bits applied.
+     */
+    func configImportSelected(text: String, options: UInt32, eqChannels: UInt32)  -> String
+    
+    /**
+     * What importing `text` with `options` and `eq_channels` (as
+     * [`DspiCore::config_import_selected`] takes them) would change on the
+     * device, without writing anything: the preview shown before an import
+     * (PRO1 W5). No I/O.
+     *
+     * Returns [`config_diff`]'s JSON, the device's values as `before`.
+     * `{ok: false, error}` for a text that is not a document this build
+     * reads, or with no device whose settings have been read.
+     */
+    func configPreview(text: String, options: UInt32, eqChannels: UInt32)  -> String
+    
+    /**
      * The open connection's generation: unique per connection and never
      * reused while the process runs, so it changes on every reopen and on
      * a Link re-bind. 0 when nothing is open.
@@ -4382,6 +4406,46 @@ open func configImport(text: String, options: UInt32) -> String  {
     uniffi_dspi_core_fn_method_dspicore_config_import(self.uniffiClonePointer(),
         FfiConverterString.lower(text),
         FfiConverterUInt32.lower(options),$0
+    )
+})
+}
+    
+    /**
+     * [`DspiCore::config_import`] with the EQ narrowed to the wire channels
+     * in `eq_channels` (bit k: channel k; `u32::MAX` every one). `options`
+     * as there: with [`IMPORT_BY_BLOCK`] each `IMPORT_*` block bit says
+     * whether its block is applied (EQ, crossover, routing and matrix,
+     * outputs, limiters, effects, volume levels, hardware I/O, names), and
+     * a block left out keeps the device's values; without it the old two
+     * bits keep their meaning. The reply is `config_import`'s, plus
+     * `blocks`: the block bits applied.
+     */
+open func configImportSelected(text: String, options: UInt32, eqChannels: UInt32) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_config_import_selected(self.uniffiClonePointer(),
+        FfiConverterString.lower(text),
+        FfiConverterUInt32.lower(options),
+        FfiConverterUInt32.lower(eqChannels),$0
+    )
+})
+}
+    
+    /**
+     * What importing `text` with `options` and `eq_channels` (as
+     * [`DspiCore::config_import_selected`] takes them) would change on the
+     * device, without writing anything: the preview shown before an import
+     * (PRO1 W5). No I/O.
+     *
+     * Returns [`config_diff`]'s JSON, the device's values as `before`.
+     * `{ok: false, error}` for a text that is not a document this build
+     * reads, or with no device whose settings have been read.
+     */
+open func configPreview(text: String, options: UInt32, eqChannels: UInt32) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_config_preview(self.uniffiClonePointer(),
+        FfiConverterString.lower(text),
+        FfiConverterUInt32.lower(options),
+        FfiConverterUInt32.lower(eqChannels),$0
     )
 })
 }
@@ -27752,6 +27816,31 @@ public func computeResponse(filters: [FilterParams], freq: Float) -> Float  {
 })
 }
 /**
+ * What differs between two `.dspipreset` documents, `before` and `after`,
+ * with no device (PRO1 W5). `after` is read on top of `before`, as an
+ * import of it after the other would be, so a value `after` holds none for
+ * is no change; both are read onto a device shaped as `before`'s `meta`
+ * says.
+ *
+ * Returns JSON `{ok, error, rows, count, blocks, summary, notes, kind}`:
+ * `rows` one per changed value, `{block, section, item, before, after}`,
+ * `block` the import block that carries it (`eq`, `crossover`, `routing`,
+ * `outputs`, `limiters`, `effects`, `volumes`, `hardware`, `names`);
+ * `blocks` the number of rows per block; `summary` the unsaved-changes
+ * list's sentences for the same change; `notes` what reading `after`
+ * reported (channels missing, values left alone or clamped); `kind`
+ * `after`'s `meta.kind`. `{ok: false, error}` when either text is not a
+ * document this build reads (the error names which).
+ */
+public func configDiff(before: String, after: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_config_diff(
+        FfiConverterString.lower(before),
+        FfiConverterString.lower(after),$0
+    )
+})
+}
+/**
  * Check a `.dspipreset` document and describe it, as JSON
  * `{ok, error, name, platform, firmware, savedUtc}`. `ok` is false, with the
  * reason in `error`, for text that is not a document this build reads: not
@@ -28087,6 +28176,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_func_compute_response() != 46454) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_func_config_diff() != 57472) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_func_config_inspect() != 19604) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -28205,6 +28297,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_config_import() != 20391) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_config_import_selected() != 53546) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_config_preview() != 60996) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_connection_generation() != 50111) {
