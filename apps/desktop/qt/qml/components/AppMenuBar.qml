@@ -2,32 +2,37 @@ import QtQuick
 import QtQuick.Controls.Basic
 import UConsole
 
-// The in-window menu bar under the system's window frame.
+// The in-window menu bar under the system's window frame: the menu titles on
+// the window colour, with a hairline along its foot.
 MenuBar {
     id: bar
     font: Theme.fontBody
-    delegate: MenuBarItem {
-        id: item
+
+    // One menu title. Mnemonics are not drawn, so their marker is dropped.
+    component Title: MenuBarItem {
+        id: title
         font: bar.font
-        contentItem: Text {
-            text: item.text.replace("&", "")
-            font: item.font
-            color: Theme.text
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
         background: Rectangle {
-            color: item.highlighted ? Theme.controlHover : "transparent"
             radius: Theme.radiusSmall
+            color: title.highlighted ? Theme.controlHover : "transparent"
+        }
+        contentItem: Text {
+            text: title.text.replace("&", "")
+            color: Theme.text
+            font: title.font
+            horizontalAlignment: Qt.AlignHCenter
+            verticalAlignment: Qt.AlignVCenter
         }
     }
+
+    delegate: Title {}
     background: Rectangle {
         color: Theme.window
         Rectangle {
-            anchors.bottom: parent.bottom
-            width: parent.width
-            height: 1
             color: Theme.separator
+            implicitHeight: 1
+            y: parent.height - implicitHeight
+            implicitWidth: parent.width
         }
     }
 }
