@@ -226,6 +226,10 @@ struct IOSRootView: View {
             Button("Spectrum Analyser") { spectrum.show(vm: vm) }
             Button("Filter Response") { graph.show(vm: vm) }
         }
+        // -- WP P1SW1 -- snapshots, A/B and the safe apply (a half-height sheet)
+        Section {
+            Button("Snapshots...") { SnapshotsSheet.show() }
+        }
         Section {
             Button("AutoEQ Profiles") { autoEQ.show() }
             Button("Stats for nerbs") { stats.show(transport: vm.transport) }
@@ -263,6 +267,11 @@ struct IOSRootView: View {
         Button("Export Filters...") { FileMenuActions.exportFilters() }
         Button("Import Device Configuration...") { FileMenuActions.importConfiguration() }
         Button("Export Device Configuration...") { FileMenuActions.exportConfiguration() }
+        // -- WP P1SW1 -- offline files and templates
+        Button("Open File...") { OfflineFiles.openFile() }
+        Button("Open Template...") { OfflineFiles.showTemplates() }
+        Button("Save File...") { OfflineFiles.saveFile() }
+        Button("Save as Template...") { OfflineFiles.askSaveTemplate() }
     }
 
     /// One-time launch work: onboarding, and the launch-argument hooks used
@@ -326,6 +335,7 @@ struct IOSRootView: View {
         case "interrupts": interrupts.show()
         case "autoeq":     autoEQ.show()
         case "graph":      graph.show(vm: vm)
+        case "snapshots":  SnapshotsSheet.show()   // -- WP P1SW1 --
         case "whatsnew":   whatsNew.show()
         case "settings":   showSettings = true
         case "devices":    showDevices = true
