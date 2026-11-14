@@ -101,7 +101,14 @@ final class InstallerP1SW2UITests: XCTestCase {
         let lockNow = app.buttons["installerLockNow"].firstMatch
         reveal(app, lockNow)
         lockNow.tap()
-        pause(2)
+        // -- WP P1SW3F -- locked, the Installer pages go: wait for that, and
+        // tap once more if the first tap was lost (a full run's flake).
+        let gone = NSPredicate(format: "exists == false")
+        if XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: gone, object: lockNow)], timeout: 5) != .completed,
+           lockNow.exists {
+            lockNow.tap()
+        }
+        pause(1)
         // Locked: the Installer pages are gone from Settings.
         app.buttons["Done"].firstMatch.tap()
 
