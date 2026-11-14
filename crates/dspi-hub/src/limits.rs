@@ -229,6 +229,17 @@ pub struct HubLimits {
     saving: Mutex<()>,
     /// Wakes the `hub-system` thread to hold a device.
     wake: Mutex<Option<Sender<()>>>,
+    /// -- WP FLAKE2 -- the monotonic and the wall clock together, read when the
+    /// wrong-PIN windows are loaded and saved (tests set it).
+    clock: Clock,
+}
+
+// -- WP FLAKE2 --
+/// The time now on both clocks.
+pub(crate) type Clock = Arc<dyn Fn() -> (Instant, std::time::SystemTime) + Send + Sync>;
+
+fn real_clock() -> Clock {
+    Arc::new(|| (Instant::now(), std::time::SystemTime::now()))
 }
 
 impl std::fmt::Debug for HubLimits {
@@ -251,9 +262,15 @@ fn is_locked(profile: Option<&LimitsProfile>, pin: bool) -> bool {
 impl HubLimits {
     /// Over this store (none: kept for this run only).
     pub fn new(persist: Option<Arc<dyn LimitsPersist>>) -> Self {
+        Self::with_clock(persist, real_clock())
+    }
+
+    // -- WP FLAKE2 --
+    /// [`Self::new`], reading the time from `clock`.
+    pub(crate) fn with_clock(persist: Option<Arc<dyn LimitsPersist>>, clock: Clock) -> Self {
         let mut stored = persist.as_ref().map(|p| p.load()).unwrap_or_default();
         // -- WP P1DKFIX -- F6: the wrong-PIN windows as they were.
-        let (now, wall) = (Instant::now(), std::time::SystemTime::now());
+        let (now, wall) = clock();
         let tries: BTreeMap<String, PinTries> = std::mem::take(&mut stored.tries)
             .into_iter()
             .filter(|(s, _)| stored.pins.contains_key(s))
@@ -283,6 +300,7 @@ impl HubLimits {
             persist,
             saving: Mutex::new(()),
             wake: Mutex::new(None),
+            clock,
         }
     }
 
@@ -305,8 +323,8 @@ impl HubLimits {
         let data = {
             let st = guard(&self.state);
             let mut data = st.stored.clone();
-            // -- WP P1DKFIX -- F6
-            let (now, wall) = (Instant::now(), std::time::SystemTime::now());
+            // -- WP P1DKFIX -- F6 (-- WP FLAKE2 -- on the limits' clock)
+            let (now, wall) = (self.clock)();
             data.tries = st
                 .tries
                 .iter()

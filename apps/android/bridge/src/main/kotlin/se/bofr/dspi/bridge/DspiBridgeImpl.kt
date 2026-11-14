@@ -775,20 +775,19 @@ class DspiBridgeImpl(
      */
     private suspend fun processNotifications() {
         lastNotify = clock()
-        val (r, snap) =
+        val r =
             onFfi {
                 val r = core.processNotifications()
-                if (r.flags and DspiConstants.NOTIFY_STATE.toLong() == 0L) return@onFfi r to null
-                val refreshed = r.flags and DspiConstants.NOTIFY_REFRESHED.toLong() != 0L
-                if (!refreshed) {
+                if (r.flags and DspiConstants.NOTIFY_STATE.toLong() != 0L && r.flags and DspiConstants.NOTIFY_REFRESHED.toLong() == 0L) {
                     val st = core.getState()
                     val m = ChannelMap(st.numInputChannels, st.numOutputChannels)
                     for (w in 0 until MAX_CHANNELS) if ((r.filterChannels shr w) and 1L == 1L) markDirty(m.appId(w))
                 }
-                r to snapshot(all = refreshed)
+                r
             }
+        val stateChanged = r.flags and DspiConstants.NOTIFY_STATE.toLong() != 0L
         // -- WP AN42 -- the journal moved without a state change (another writer's entry, a drag mark ended by the core)
-        if (snap == null && r.flags and DspiConstants.NOTIFY_HISTORY.toLong() != 0L) refreshUndo()
+        if (!stateChanged && r.flags and DspiConstants.NOTIFY_HISTORY.toLong() != 0L) refreshUndo()
         deviceSettings.refreshNames() // -- WP AN6 -- no traffic; name events raise no state flag
         emit(BridgeEvent.NotificationsArrived)
         notificationHooks.forEach { it() }
@@ -803,10 +802,15 @@ class DspiBridgeImpl(
             emit(BridgeEvent.CsNotified(aux, learn))
             csHooks.forEach { it(aux, learn) }
         }
-        if (snap == null) return
+        if (!stateChanged) return
         // Qt polls the status before stateChanged
         if (flags and DspiConstants.NOTIFY_INPUT_FORMAT.toLong() != 0L) pollStatus()
-        publish(snap, flags and DspiConstants.NOTIFY_CURVES.toLong() != 0L)
+        // -- WP FLAKE2 -- the snapshot is taken here, after the suspensions above (the names'
+        // read, the status poll), and published as soon as it is read: one taken before them
+        // could reach the screen after a write made meanwhile had published its newer state, and
+        // put the old values back until the next change (InstallerWpP1an2Test's "timed out: route")
+        val refreshed = flags and DspiConstants.NOTIFY_REFRESHED.toLong() != 0L
+        publish(onFfi { snapshot(all = refreshed) }, flags and DspiConstants.NOTIFY_CURVES.toLong() != 0L)
     }
 
     // ═══ Timers (status poll 60 ms, hotplug 500 ms) ═══

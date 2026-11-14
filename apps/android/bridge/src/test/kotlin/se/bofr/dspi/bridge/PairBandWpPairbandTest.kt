@@ -46,7 +46,13 @@ class PairBandWpPairbandTest {
         b.commitBands(0, listOf(3), listOf(peq(700f, 3f)))
         b.setDragging(false)
         runCurrent()
-        assertEquals("no one-sided write while linked", 0, core.calls.count { it.startsWith("setFilter(") || it.startsWith("setBandBypass(") })
+        assertEquals(
+            "no one-sided write while linked",
+            0,
+            core.calls.count {
+                it.startsWith("setFilter(") || it.startsWith("setBandBypass(")
+            }
+        )
         assertEquals(4, core.calls.count { it.startsWith("setInputPairFilter") })
         assertEquals(1, core.calls.count { it.startsWith("setInputPairBandBypass") })
         assertTrue(core.calls.first { it.startsWith("setInputPairFilter") }.startsWith("setInputPairFilter(1, 2,"))
