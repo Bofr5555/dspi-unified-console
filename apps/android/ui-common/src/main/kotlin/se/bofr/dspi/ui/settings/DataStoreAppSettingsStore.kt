@@ -259,7 +259,9 @@ internal object AppSettingsFields {
         b("tubeModellerAdvanced", { it.tubeModellerAdvanced }, { copy(tubeModellerAdvanced = it) }),
         // -- WP AN19 --
         b(ONBOARDING_SETUP_DONE.name, { it.onboardingSetupDone }, { copy(onboardingSetupDone = it) }),
-        s("whatsNew.lastShownVersion", { it.whatsNewLastShownVersion }, { copy(whatsNewLastShownVersion = it) })
+        s("whatsNew.lastShownVersion", { it.whatsNewLastShownVersion }, { copy(whatsNewLastShownVersion = it) }),
+        // -- WP P1DCFIX --
+        i("safeApply.timeoutS", { it.safeApplyTimeoutS }, { copy(safeApplyTimeoutS = it) })
     )
 
     /** The macOS key names, in declaration order (for tests). */

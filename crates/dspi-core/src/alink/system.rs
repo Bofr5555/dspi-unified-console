@@ -1855,11 +1855,11 @@ pub(crate) fn align_outcome(report: &Value, model: &Value) -> AlinkSystemAlign {
 }
 
 // -- WP P1QT1 -- `system.set`'s whole answer for the C ABI (HWLK1F's note: the
-// System window shows the hub's warnings after Save). Not a UniFFI export:
-// Android's `alink_system_save` keeps returning the revision until its own WP
-// asks for this.
+// System window shows the hub's warnings after Save).
+// -- WP P1DCFIX -- and over UniFFI, for Android's System screen.
 
 /// What saving the "Clock and audio links" edits did.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AlinkSystemSaved {
@@ -1871,6 +1871,7 @@ pub struct AlinkSystemSaved {
     pub warnings: Vec<String>,
 }
 
+#[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
     /// [`DspiCore::alink_system_save`] with the hub's whole answer: the new
     /// revision and the warnings `system.set` gave about the model it kept.

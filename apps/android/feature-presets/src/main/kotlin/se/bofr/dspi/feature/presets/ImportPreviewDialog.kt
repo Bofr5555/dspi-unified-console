@@ -35,6 +35,9 @@ const val IMPORT_PREVIEW_TAG = "import-preview"
 /** Test tag of its Import button. */
 const val IMPORT_PREVIEW_APPLY_TAG = "import-preview-apply"
 
+/** Test tag of the "Apply with rollback" row. -- WP P1DCFIX -- */
+const val IMPORT_PREVIEW_ROLLBACK_TAG = "import-preview-rollback"
+
 /** "Apply with rollback": what it does, in one line. */
 const val ROLLBACK_EXPLAINED = "After the import, Keep or Revert. Without an answer the settings from before come back."
 
@@ -80,7 +83,7 @@ fun ImportPreviewSheet(
                 onClick = onApply,
                 enabled = p.selected.isNotEmpty() && canWrite,
                 modifier = Modifier.testTag(IMPORT_PREVIEW_APPLY_TAG)
-            ) { Text(if (p.guarded) "Apply with rollback" else "Import") }
+            ) { Text(if (p.guarded || p.guardDefault) "Apply with rollback" else "Import") }
         }
         HorizontalDivider()
         LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -111,11 +114,14 @@ fun ImportPreviewSheet(
             }
             item {
                 Heading("Way back")
+                // -- WP P1DCFIX -- (F4) fixed on over a hub with the guard, as Qt
                 CheckRow(
                     title = "Apply with rollback",
-                    detail = if (p.guardDefault) "on by default over DSPi Link" else "",
-                    checked = p.guarded,
-                    onChange = onGuarded
+                    detail = if (p.guardDefault) "always over DSPi Link" else "",
+                    checked = p.guarded || p.guardDefault,
+                    onChange = onGuarded,
+                    enabled = !p.guardDefault,
+                    modifier = Modifier.testTag(IMPORT_PREVIEW_ROLLBACK_TAG)
                 )
                 Text(
                     ROLLBACK_EXPLAINED,
@@ -152,12 +158,19 @@ private fun Heading(text: String) {
 }
 
 @Composable
-private fun CheckRow(title: String, detail: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+private fun CheckRow(
+    title: String,
+    detail: String,
+    checked: Boolean,
+    onChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier
+) {
     Row(
-        Modifier.fillMaxWidth().clickable(role = Role.Checkbox) { onChange(!checked) }.padding(horizontal = 8.dp),
+        modifier.fillMaxWidth().clickable(enabled = enabled, role = Role.Checkbox) { onChange(!checked) }.padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Checkbox(checked = checked, onCheckedChange = null, modifier = Modifier.padding(8.dp))
+        Checkbox(checked = checked, onCheckedChange = null, enabled = enabled, modifier = Modifier.padding(8.dp))
         Text(title, modifier = Modifier.weight(1f))
         if (detail.isNotEmpty()) {
             Text(

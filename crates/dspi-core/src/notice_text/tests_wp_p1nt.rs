@@ -142,6 +142,12 @@ fn wp_p1nt_codes_refine_the_key_where_the_table_has_a_row() {
                 );
                 continue;
             }
+            // -- WP P1DCFIX -- the safe apply's countdown: no error makes
+            // this key, the clients ask for it while a guard waits
+            if family == "guard" {
+                assert_eq!(n.key, crate::guarded::NOTICE_GUARD_WAITING);
+                continue;
+            }
             let e = match family {
                 "dlink" => dlink(code),
                 "autoeq" => DspiError::AutoEq {
@@ -235,4 +241,17 @@ fn wp_p1nt_kinds_serialise_as_words() {
     assert_eq!(notice_for(DspiError::Disconnected).kind, NoticeKind::Error);
     let info = notice_for_key("dlink.still_reading".into(), String::new());
     assert_eq!(info.kind, NoticeKind::Info);
+}
+
+/// WP P1DCFIX (F7): the countdown sentence every client shows while a guard
+/// waits: an info row, the seconds as `{s}` exactly once.
+#[test]
+fn wp_p1dcfix_the_countdown_has_one_sentence_with_the_seconds() {
+    let n = notice_for_key(crate::guarded::NOTICE_GUARD_WAITING.into(), String::new());
+    assert_eq!(n.key, "guard.waiting");
+    assert_eq!(n.kind, NoticeKind::Info);
+    assert_eq!(n.title, "Keep these settings?");
+    assert_eq!(n.reason, "They go back in {s} s unless you press Keep.");
+    let all = format!("{} {} {}", n.title, n.reason, n.action);
+    assert_eq!(all.matches("{s}").count(), 1, "{all}");
 }

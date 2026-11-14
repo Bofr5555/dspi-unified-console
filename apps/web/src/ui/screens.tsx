@@ -75,7 +75,8 @@ export const SCREENS: ScreenDef[] = [
   { id: "matrix", label: "Matrix", View: MatrixScreen },
   // -- WP SW3 -- (UI-MODES: the Pro layer, not in Simple)
   { id: "system", label: "System", View: SystemScreen },
-  // -- WP P1WB1 -- (Advanced and Installer: setting up and handing over)
+  // -- WP P1WB1 -- (Advanced and Installer: setting up and handing over;
+  // -- WP P1DCFIX -- Simple has Snapshots as recall and A/B only)
   { id: "snapshots", label: "Snapshots", View: SnapshotsScreen },
   { id: "files", label: "Files", View: FilesScreen },
   // -- WP WB8 -- (UI-MODES: monitoring of the Advanced and Installer modes)
@@ -83,8 +84,8 @@ export const SCREENS: ScreenDef[] = [
 ];
 
 // -- WP P1WB1 --
-/** The screens Simple leaves out besides the Pro layer's: snapshots and files are for setting up. */
-const SETUP = new Set(["snapshots", "files"]);
+/** The screens Simple leaves out besides the Pro layer's: files are for setting up (-- WP P1DCFIX -- Snapshots stay, recall and A/B only). */
+const SETUP = new Set(["files"]);
 
 // -- WP SW3 --
 /**
@@ -201,7 +202,8 @@ export function Screens(props: { session: Session }) {
       {/* -- WP SW3 -- on an installation, the scene bar */}
       {mode !== "simple" ? <SceneBar feed={system} session={session} ask={ask} /> : null}
       {/* -- WP P1WB1 -- the scene bar's host-side half: the A/B toggle; a safe apply's countdown in every mode */}
-      {mode !== "simple" ? <AbBar desk={desk} /> : null}
+      {/* -- WP P1DCFIX -- the A/B toggle in every mode too (Simple has the compare) */}
+      <AbBar desk={desk} />
       <GuardBar desk={desk} />
       {/* -- WP WB8 -- the tabs and, beside them, Undo and Redo */}
       <div class="screen-bar">

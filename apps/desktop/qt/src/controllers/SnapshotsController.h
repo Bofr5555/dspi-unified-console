@@ -66,9 +66,20 @@ class SnapshotsController : public QObject {
     Q_PROPERTY(int guardRemainingMs READ guardRemainingMs NOTIFY guardChanged)
     // What the guarded apply changed, in the unsaved-changes list's words
     Q_PROPERTY(QStringList guardChanges READ guardChanges NOTIFY guardChanged)
+    // -- WP P1DCFIX --
+    // The countdown's sentence, the core's (notice `guard.waiting`): `{s}` is
+    // the whole seconds left
+    Q_PROPERTY(QString guardWaitingText READ guardWaitingText NOTIFY guardWaitingTextChanged)
+    // How long a guarded apply (a recall, an import) waits for Keep, in
+    // seconds: 30 unless set (Advanced), 5 to 300; remembered on this console
+    Q_PROPERTY(int guardTimeoutS READ guardTimeoutS WRITE setGuardTimeoutS NOTIFY guardTimeoutSChanged)
 public:
     // How often the guard is driven while it waits (the countdown bar's tick)
     static constexpr int kGuardPollMs = 250;
+    // -- WP P1DCFIX -- the safe apply's timeout: the default and its range
+    static constexpr int kGuardTimeoutDefaultS = 30;
+    static constexpr int kGuardTimeoutMinS = 5;
+    static constexpr int kGuardTimeoutMaxS = 300;
 
     SnapshotsController(const AppContext &ctx, QObject *parent = nullptr);
     static SnapshotsController *create(QQmlEngine *, QJSEngine *);
@@ -92,6 +103,9 @@ public:
     int guardTimeoutMs() const { return m_guard.value(QLatin1String("timeoutMs")).toInt(); }
     int guardRemainingMs() const { return m_guard.value(QLatin1String("remainingMs")).toInt(); }
     QStringList guardChanges() const;
+    QString guardWaitingText() const { return m_waitingText; }   // -- WP P1DCFIX --
+    int guardTimeoutS() const { return m_timeoutS; }
+    void setGuardTimeoutS(int seconds);
 
     // The store (no device write)
     Q_INVOKABLE void reload();
@@ -131,6 +145,8 @@ signals:
     // A store call finished: what it was ("capture", "rename", "note",
     // "delete", "export", "import") and whether it went through (the smoke driver)
     void stored(const QString &op, bool ok);
+    void guardWaitingTextChanged();   // -- WP P1DCFIX --
+    void guardTimeoutSChanged();
 
 private:
     // A store call on the worker, its JSON reply on the GUI thread
@@ -163,6 +179,9 @@ private:
     Poller::Id m_poll = -1;
     QString m_serial;
     bool m_connected = false;
+    // -- WP P1DCFIX --
+    QString m_waitingText;
+    int m_timeoutS = kGuardTimeoutDefaultS;
 };
 
 #endif // SNAPSHOTSCONTROLLER_H

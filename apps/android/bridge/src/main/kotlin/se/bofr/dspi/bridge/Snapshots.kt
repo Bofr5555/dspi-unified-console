@@ -117,14 +117,34 @@ interface Snapshots {
     /** The open device or document as a template named [name] (`save_as_template`). */
     suspend fun saveAsTemplate(name: String): Result<String>
 
+    // -- WP P1DCFIX -- (F8) both read files: off the caller's thread (the FFI thread)
     /** `template_list`'s JSON: the shipped templates, then [userDir]'s. No device. */
-    fun templates(userDir: String): String
+    suspend fun templates(userDir: String): String
 
-    fun templateText(id: String, userDir: String): Result<String>
+    suspend fun templateText(id: String, userDir: String): Result<String>
+
+    // -- WP P1DCFIX -- (F7) the countdown's words are the core's (P1NT's `guard.waiting`)
+    /**
+     * The sentence the countdown shows while a guard waits, with `{s}` for the
+     * whole seconds left ([countdownLine]). The core's notice; its English
+     * words when the core has none (a test double).
+     */
+    suspend fun countdownWords(): String = COUNTDOWN_WORDS
 
     companion object {
         /** Every channel's EQ (`eq_channels` = `u32::MAX`). */
         const val ALL_CHANNELS: Long = 0xFFFF_FFFFL
+
+        // -- WP P1DCFIX --
+        /** The core's notice key for the countdown sentence. */
+        const val COUNTDOWN_NOTICE_KEY = "guard.waiting"
+
+        /** The core's `guard.waiting` title and reason, for a core without the notice table. */
+        const val COUNTDOWN_WORDS = "Keep these settings? They go back in {s} s unless you press Keep."
+
+        /** [words] (with `{s}`) for [remainingMs]: the whole seconds left, never below 0. */
+        fun countdownLine(words: String, remainingMs: Long): String =
+            words.replace("{s}", ((remainingMs + 999) / 1000).coerceAtLeast(0).toString())
 
         val IDLE_GUARD = GuardedApply(0, GuardPhase.IDLE, "", false, 0, 0, "", "", emptyList(), emptyList())
         val NO_COMPARE = AbCompare(false, null, "", "", null)
@@ -200,9 +220,9 @@ interface Snapshots {
 
         override suspend fun saveAsTemplate(name: String): Result<String> = no()
 
-        override fun templates(userDir: String) = "[]"
+        override suspend fun templates(userDir: String) = "[]"
 
-        override fun templateText(id: String, userDir: String): Result<String> = no()
+        override suspend fun templateText(id: String, userDir: String): Result<String> = no()
     }
 }
 
@@ -386,12 +406,17 @@ internal class SnapshotsImpl(private val bridge: DspiBridgeImpl) : Snapshots {
         return call { core.saveAsTemplate(name, bridge.appVersion, links) }
     }
 
-    override fun templates(userDir: String): String = runCatching { core.templateList(userDir) }.getOrDefault("[]")
+    // -- WP P1DCFIX -- (F8) on the FFI thread, never the caller's
+    override suspend fun templates(userDir: String): String = bridge.onFfi { runCatching { core.templateList(userDir) }.getOrDefault("[]") }
 
-    override fun templateText(id: String, userDir: String): Result<String> = try {
-        Result.success(core.templateText(id, userDir))
-    } catch (e: DspiException) {
-        Result.failure(SnapshotsException(Snapshots.wordsOf(e), e))
+    override suspend fun templateText(id: String, userDir: String): Result<String> = call { core.templateText(id, userDir) }
+
+    override suspend fun countdownWords(): String = bridge.onFfi {
+        runCatching { core.noticeForKey(Snapshots.COUNTDOWN_NOTICE_KEY, "") }.getOrNull()
+            ?.takeIf { it.key == Snapshots.COUNTDOWN_NOTICE_KEY }
+            ?.let { "${it.title} ${it.reason}".trim() }
+            ?.takeIf { "{s}" in it }
+            ?: Snapshots.COUNTDOWN_WORDS
     }
 
     private companion object {

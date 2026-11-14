@@ -154,7 +154,7 @@ test("SW3: the mode is remembered per device, or for every device, Advanced by d
   mem.set("dspi-web.mode", "{nonsense");
   assert.equal(loadMode(store, "S1"), "advanced");
   assert.equal(loadMode(null, "S1"), "advanced");
-  assert.deepEqual(screensFor("simple", true).map((s) => s.id), ["main", "eq", "matrix"]);
+  assert.deepEqual(screensFor("simple", true).map((s) => s.id), ["main", "eq", "matrix", "snapshots"]); // -- WP P1DCFIX -- recall and A/B only
   // -- WP P1WB1 -- Snapshots and Files in Advanced and Installer
   assert.deepEqual(screensFor("advanced", true).map((s) => s.id), ["system", "main", "eq", "matrix", "snapshots", "files", "events"]);
   assert.deepEqual(screensFor("installer", false).map((s) => s.id), ["main", "eq", "matrix", "snapshots", "files", "system", "events"]);

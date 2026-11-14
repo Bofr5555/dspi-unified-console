@@ -40,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -56,7 +57,12 @@ import se.bofr.dspi.feature.presets.autoeq.FavoriteProfile
 import se.bofr.dspi.ui.DspiRoutes
 import se.bofr.dspi.ui.alert.AlertHost
 import se.bofr.dspi.ui.alert.ConsoleAlertHost
+import se.bofr.dspi.ui.settings.AppSettings
+import se.bofr.dspi.ui.settings.LocalAppSettings
 import se.bofr.dspi.ui.writesAllowed
+
+/** Test tag of the page's notice line (a file action's outcome). -- WP P1DCFIX -- */
+const val PRESETS_NOTICE_TAG = "presets-notice"
 
 /** The menu-action objects of one Presets screen, sharing one alert slot. */
 class PresetsController(val bridge: DspiBridge, scope: CoroutineScope, val autoEQ: AutoEQManager, io: CoroutineDispatcher) {
@@ -175,6 +181,10 @@ fun PresetsView(
     val inFlight by controller.presetMenu.presetSwitchInFlight.collectAsState()
     val favorites by controller.autoEQ.favoriteProfiles.collectAsState()
     var showAutoEQBrowser by rememberSaveable { mutableStateOf(initialShowBrowser) }
+    // -- WP P1DCFIX --
+    val notice by controller.files.notice.collectAsState()
+    val appSettings by LocalAppSettings.current.settings.collectAsState()
+    controller.files.guardTimeoutS = AppSettings.safeApplyTimeout(appSettings.safeApplyTimeoutS).toLong()
 
     val connected = status.connected
     val names = state.presetNames
@@ -233,6 +243,18 @@ fun PresetsView(
                     Text("Presets & Files", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                     if (!connected) {
                         Text("No device", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 12.dp))
+                    }
+                }
+                // -- WP P1DCFIX -- (F5) a file action's outcome: one line, no success modal
+                if (notice.isNotEmpty()) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            notice,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f).testTag(PRESETS_NOTICE_TAG)
+                        )
+                        TextButton(onClick = controller.files::clearNotice) { Text("OK") }
                     }
                 }
                 if (twoPane) {

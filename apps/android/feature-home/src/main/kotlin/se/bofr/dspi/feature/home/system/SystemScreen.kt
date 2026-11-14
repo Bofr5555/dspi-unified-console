@@ -44,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -367,7 +368,14 @@ private fun AlinkClock(model: SystemScreenModel, s: SystemUiState) {
     if (s.actionMessage.isNotEmpty()) {
         Text(s.actionMessage, style = DspiType.caption, color = if (s.actionFailed) c.red else c.secondaryLabel)
     }
+    // -- WP P1DCFIX -- the hub's warnings after Save, one line each (no modal)
+    s.saveWarnings.forEach { w ->
+        Text(w, style = DspiType.caption, color = c.orange, modifier = Modifier.testTag(SYSTEM_SAVE_WARNING_TAG))
+    }
 }
+
+/** Test tag of each line of the hub's warnings after Save. -- WP P1DCFIX -- */
+const val SYSTEM_SAVE_WARNING_TAG = "system-save-warning"
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

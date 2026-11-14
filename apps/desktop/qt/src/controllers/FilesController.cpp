@@ -482,11 +482,14 @@ void FilesController::applyConfiguration(int blocks, bool guarded) {
     if (guarded) {
         // -- WP P1QT1 -- with rollback: the core captures a snapshot first, and
         // the countdown bar (SnapshotsController) offers Keep and Revert
+        // -- WP P1DCFIX -- for the time set in the Snapshots window (30 s unless set)
+        auto *snapshots = Registrar::instance<SnapshotsController>();
+        const uint32_t timeout = snapshots ? uint32_t(snapshots->guardTimeoutS()) : 0;
         m_ctx.device->write(
             QStringLiteral("configuration import"),
-            [text, options, reply](FfiCore *c) {
-                *reply = QJsonDocument::fromJson(callOnce([c, &text, options](char *b, uint32_t n) {
-                             return dspi_apply_guarded_import(c, text.constData(), options, 0xFFFFFFFFu, 0, b, n);
+            [text, options, reply, timeout](FfiCore *c) {
+                *reply = QJsonDocument::fromJson(callOnce([c, &text, options, timeout](char *b, uint32_t n) {
+                             return dspi_apply_guarded_import(c, text.constData(), options, 0xFFFFFFFFu, timeout, b, n);
                          })).object();
                 return reply->value(QLatin1String("ok")).toBool();
             },

@@ -7,6 +7,7 @@ import se.bofr.dspi.core.AbSide
 import se.bofr.dspi.core.AlinkSceneRecall
 import se.bofr.dspi.core.AlinkSystemAlign
 import se.bofr.dspi.core.AlinkSystemEdits
+import se.bofr.dspi.core.AlinkSystemSaved
 import se.bofr.dspi.core.DspiCoreApi
 import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.FilterParams
@@ -121,6 +122,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
     override fun alinkSystemSave(revision: Long, edits: AlinkSystemEdits): Long {
         guard("alinkSystemSave")
         return inner.alinkSystemSave(revision, edits)
+    }
+
+    // -- WP P1DCFIX -- the save with the hub's warnings
+    override fun alinkSystemSaveReport(revision: Long, edits: AlinkSystemEdits): AlinkSystemSaved {
+        guard("alinkSystemSaveReport")
+        return inner.alinkSystemSaveReport(revision, edits)
     }
 
     override fun alinkSystemAlign(): AlinkSystemAlign {
@@ -902,6 +909,8 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "alinkSystemSave",
             "alinkSystemAlign",
             "alinkSystemRecall",
+            // -- WP P1DCFIX --
+            "alinkSystemSaveReport",
             // -- WP P1DF --
             "configImportSelected",
             // -- WP P1PR --

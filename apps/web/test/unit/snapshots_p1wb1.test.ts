@@ -6,10 +6,13 @@ import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { consoleKey } from "../../src/ui/keys";
+import { abKeyHint, consoleKey } from "../../src/ui/keys";
 import {
+  GUARD_WAITING_KEY,
   SnapshotDesk,
   docMeta,
+  guardOffered,
+  waitingWords,
   fileNameFor,
   importOptions,
   mayToggle,
@@ -17,6 +20,7 @@ import {
   type DeskState,
 } from "../../src/screens/snapshots/model";
 import {
+  CoreCallError,
   IMPORT_ALL_BLOCKS,
   IMPORT_BY_BLOCK,
   IMPORT_EQ,
@@ -36,7 +40,7 @@ const key = (k: string, o: { ctrl?: boolean; meta?: boolean; shift?: boolean; al
   altKey: !!o.alt,
 });
 
-test("P1WB1: the keys are Qt's table's, Ctrl (Cmd on a Mac), none bare or with Alt", () => {
+test("P1WB1: the keys are Qt's table's, Ctrl (Cmd on a Mac), none with Alt (P1DCFIX: A/B is a plain B)", () => {
   assert.deepEqual(consoleKey(key("1", { ctrl: true }), false), { action: "preset", slot: 0 });
   assert.deepEqual(consoleKey(key("9", { ctrl: true }), false), { action: "preset", slot: 8 });
   assert.deepEqual(consoleKey(key("&", { ctrl: true, code: "Digit1" }), false), { action: "preset", slot: 0 }, "a layout that shifts digits");
@@ -46,14 +50,40 @@ test("P1WB1: the keys are Qt's table's, Ctrl (Cmd on a Mac), none bare or with A
   assert.equal(consoleKey(key("r", { ctrl: true }), false), null, "Ctrl+R stays the browser's reload");
   assert.deepEqual(consoleKey(key("m", { ctrl: true }), false), { action: "mute" });
   assert.deepEqual(consoleKey(key("b", { ctrl: true }), false), { action: "bypass" });
-  assert.deepEqual(consoleKey(key("k", { ctrl: true }), false), { action: "ab" });
+  assert.equal(consoleKey(key("k", { ctrl: true }), false), null, "P1DCFIX: Ctrl+K is no longer A/B");
   assert.equal(consoleKey(key("k"), false), null);
-  assert.equal(consoleKey(key("k", { ctrl: true, alt: true }), false), null);
   assert.equal(consoleKey(key("z", { ctrl: true }), false), null, "undo is undo.tsx's");
   // A Mac: Cmd, and Ctrl is not it.
-  assert.deepEqual(consoleKey(key("k", { meta: true }), true), { action: "ab" });
-  assert.equal(consoleKey(key("k", { ctrl: true }), true), null);
-  assert.equal(consoleKey(key("k", { ctrl: true, meta: true }), false), null);
+  assert.deepEqual(consoleKey(key("m", { meta: true }), true), { action: "mute" });
+  assert.equal(consoleKey(key("m", { ctrl: true }), true), null);
+  assert.equal(consoleKey(key("m", { ctrl: true, meta: true }), false), null);
+  assert.equal(consoleKey(key("m", { ctrl: true, alt: true }), false), null);
+});
+
+test("P1DCFIX: the A/B key is a plain B, with no modifier, on every platform", () => {
+  for (const apple of [false, true]) {
+    assert.deepEqual(consoleKey(key("b"), apple), { action: "ab" });
+    assert.deepEqual(consoleKey(key("B"), apple), { action: "ab" }, "Caps Lock");
+    assert.equal(consoleKey(key("B", { shift: true }), apple), null);
+    assert.equal(consoleKey(key("b", { alt: true }), apple), null);
+    assert.equal(consoleKey(key("b", { meta: true, ctrl: true }), apple), null);
+    assert.equal(consoleKey(key("a"), apple), null, "no other plain letter");
+  }
+  assert.deepEqual(consoleKey(key("b", { ctrl: true }), false), { action: "bypass" }, "Ctrl+B stays Bypass");
+  assert.deepEqual(abKeyHint(), { text: "B", aria: "B" });
+});
+
+test("P1DCFIX: the countdown sentence is the core's, the seconds put in where it says", () => {
+  assert.equal(GUARD_WAITING_KEY, "guard.waiting");
+  const w = waitingWords("Keep these settings? They go back in {s} s unless you press Keep.", 12);
+  assert.equal(`${w.before}${w.seconds}${w.after}`, "Keep these settings? They go back in 12 s unless you press Keep.");
+  const odd = waitingWords("No number here.", 3);
+  assert.equal(`${odd.before}${odd.seconds}${odd.after}`, "No number here. 3 s");
+  const g = (phase: GuardedApplyRecord["phase"]) => ({ phase }) as GuardedApplyRecord;
+  assert.equal(guardOffered(g("waiting")), true);
+  assert.equal(guardOffered(g("lost")), true, "a lost guard keeps its Revert");
+  for (const p of ["idle", "kept", "reverted", "revert_failed", "not_written"] as const) assert.equal(guardOffered(g(p)), false, p);
+  assert.equal(guardOffered(null), false);
 });
 
 test("P1WB1: names, files, the countdown and when the toggle is on", () => {
@@ -185,6 +215,8 @@ test("P1WB1: safe apply: Keep keeps; the toggle is off while it waits; Revert pu
   await session.write("out.gain", { float: -9 }, [0]);
   const b = (await desk.capture("After", ""))!;
 
+  // -- WP P1DCFIX -- the countdown's words are the core's notice row
+  assert.equal(desk.state.waitingText, "Keep these settings? They go back in {s} s unless you press Keep.");
   // Keep.
   assert.equal(await desk.recall(a.id, true, 30), true);
   assert.equal(desk.state.guard!.phase, "waiting");
@@ -277,4 +309,108 @@ test("P1WB1: a template opens offline, says which file, saves, exports", { skip 
   await bad.session.openDocument("nope", "x.dspipreset");
   assert.equal(bad.session.state.status, "failed");
   assert.ok(bad.session.state.error);
+});
+
+// -- WP P1DCFIX --
+
+/** -- WP P1DCFIX -- a desk on a scripted core: where the guard stands is what the test says. */
+function scriptedDesk(answers: Record<string, (p: unknown) => unknown>) {
+  const calls: string[] = [];
+  const listeners = new Set<() => void>();
+  const session = {
+    readOnlyReason: "",
+    state: { status: "open" },
+    core: {
+      call: async (m: string, p: unknown) => {
+        calls.push(m);
+        const f = answers[m];
+        if (!f) throw new Error(`not scripted: ${m}`);
+        return f(p);
+      },
+    },
+    refresh: async () => undefined,
+    watch: (fn: () => void) => {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    },
+  };
+  const setStatus = (status: string) => {
+    session.state = { status };
+    for (const l of listeners) l();
+  };
+  const desk = new SnapshotDesk(session as unknown as Session, 20);
+  return { desk, calls, setStatus };
+}
+
+const NO_AB = { active: false, side: null, aName: "", bName: "", recall: null };
+const guardRec = (phase: GuardedApplyRecord["phase"], message = ""): GuardedApplyRecord => ({
+  id: 7,
+  phase,
+  label: "Kväll",
+  hub: false,
+  timeoutMs: 30_000,
+  remainingMs: phase === "waiting" ? 12_000 : 0,
+  reason: phase === "lost" ? "connection_lost" : phase === "reverted" ? "reverted" : "",
+  message,
+  changes: [],
+  notes: [],
+});
+
+test("P1DCFIX F1: a lost guard keeps its Revert once the device is open again, until the core says otherwise", async () => {
+  const LOST = "The connection was lost while waiting for Keep; the DSPi may still hold the change.";
+  let phase: GuardedApplyRecord["phase"] = "lost";
+  const { desk, calls, setStatus } = scriptedDesk({
+    applyGuardDefault: () => false,
+    abState: () => NO_AB,
+    applyStatus: () => guardRec(phase, phase === "lost" ? LOST : ""),
+    noticeFor: () => ({ key: "guard.waiting", kind: "info", title: "Keep these settings?", reason: "They go back in {s} s unless you press Keep.", action: "a", detail: "" }),
+    applyRevert: () => {
+      phase = "reverted";
+      return guardRec("reverted", "Reverted: the settings from before are back.");
+    },
+  });
+  desks.push(desk);
+  await desk.start();
+  assert.equal(desk.state.waitingText, "Keep these settings? They go back in {s} s unless you press Keep.");
+  assert.equal(desk.state.guard?.phase, "lost", "a new desk reads the lost guard");
+  assert.equal(guardOffered(desk.state.guard), true);
+  // Not hidden by time, never reverted by itself.
+  await sleep(120);
+  assert.equal(desk.state.guard?.phase, "lost");
+  assert.equal(calls.includes("applyRevert"), false, "nothing automatic");
+  assert.equal(await desk.keep(), false, "Keep is for a waiting guard");
+  // The session goes and comes back: asked again, still offered.
+  setStatus("failed");
+  setStatus("open");
+  await until("asked again", () => calls.filter((c) => c === "applyStatus").length >= 2);
+  assert.equal(desk.state.guard?.phase, "lost");
+  // The user's word: the revert goes through.
+  assert.equal(await desk.revert(), true);
+  assert.equal(calls.filter((c) => c === "applyRevert").length, 1);
+  assert.equal(desk.state.guard?.phase, "reverted");
+  assert.equal(guardOffered(desk.state.guard), false);
+  assert.equal(desk.state.outcome?.tone, "warn");
+});
+
+test("P1DCFIX F1: a waiting guard whose session dies shows where the core says it stands", async () => {
+  let dead = false;
+  const { desk } = scriptedDesk({
+    applyGuardDefault: () => false,
+    abState: () => NO_AB,
+    applyStatus: () => (dead ? guardRec("lost", "Lost.") : guardRec("waiting")),
+    noticeFor: () => {
+      throw new Error("no table");
+    },
+    applyPoll: () => {
+      if (dead) throw new CoreCallError("not_open", "not open");
+      return guardRec("waiting");
+    },
+  });
+  desks.push(desk);
+  await desk.start();
+  assert.equal(desk.state.guard?.phase, "waiting");
+  assert.match(desk.state.waitingText, /\{s\}/, "the fallback has the seconds too");
+  dead = true;
+  await until("the lost guard", () => desk.state.guard?.phase === "lost");
+  assert.equal(guardOffered(desk.state.guard), true);
 });

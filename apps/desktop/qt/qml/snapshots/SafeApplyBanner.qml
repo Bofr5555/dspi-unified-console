@@ -16,10 +16,11 @@ Banner {
     kind: "warning"
     iconName: "clock"
     visible: waiting || lost
+    // -- WP P1DCFIX -- the countdown in the core's words (notice guard.waiting)
     text: lost ? SnapshotsController.guardMessage
-          //: %1 what was applied (a file's or snapshot's name), %2 the seconds left
-          : qsTr("“%1” is applied. Keep it, or the settings from before come back in %2 s.")
-                .arg(SnapshotsController.guardLabel).arg(seconds)
+          //: %1 what was applied (a file's or snapshot's name), %2 the core's sentence with the seconds left
+          : qsTr("“%1”: %2").arg(SnapshotsController.guardLabel)
+                .arg(SnapshotsController.guardWaitingText.replace("{s}", String(seconds)))
 
     // The time left, as a bar that runs down
     Rectangle {

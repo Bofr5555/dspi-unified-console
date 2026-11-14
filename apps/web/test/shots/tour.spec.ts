@@ -202,7 +202,7 @@ test.describe("snapshots and files on the core's demo", () => {
     // Asked first when the settings are unsaved.
     await expect(dialog.or(guard)).toBeVisible();
     if (await dialog.isVisible()) await dialog.getByRole("button", { name: "Recall" }).click();
-    await expect(guard).toContainText("reverts in");
+    await expect(guard).toContainText("They go back in");
     await shot(page, "demo-safe-apply", { full: false });
     await guard.getByRole("button", { name: "Revert" }).click();
     await expect(guard).toHaveCount(0);

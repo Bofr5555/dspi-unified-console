@@ -221,7 +221,9 @@ class SnapshotsWpP1an1Test {
             files.setBlock(ImportBlock.EQ, true)
             files.applyPreview()
         }
-        until("imported") { host.alert.value != null }
+        // -- WP P1DCFIX -- (F5) a clean import is the page's notice line; only a report with problems is an alert
+        until("imported") { files.notice.value.isNotEmpty() || host.alert.value != null }
+        assertTrue("no success modal", host.alert.value?.messageText != "Success")
         assertEquals(-7f, bridge.outputGainDB(0))
     }
 

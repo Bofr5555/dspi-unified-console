@@ -38,7 +38,9 @@ class FileMenuActionsTest {
         runCurrent()
         assertNull(host.progress.value)
         assertTrue(core.presetCalls().any { it.startsWith("configImport") })
-        assertTrue(host.alert.value!!.messageText in setOf("Success", "Import Device Configuration"))
+        // -- WP P1DCFIX -- (F5) a clean import is the page's notice line, no success modal
+        val noticed = f.notice.value.isNotEmpty() && host.alert.value == null
+        assertTrue(noticed || host.alert.value?.messageText == "Import Device Configuration")
     }
 
     @Test

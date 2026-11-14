@@ -7,8 +7,10 @@ import UConsole
 // computer for the open device (P1SN), with the A/B compare (P1AB). Capture,
 // name and note them, recall one (with rollback when asked, or always over
 // DSPi Link to a hub with the guard), export and import them as files, and
-// compare two: the toggle (Ctrl+Shift+C) recalls the other side; the rows say
+// compare two: the toggle (B) recalls the other side; the rows say
 // what differs from A to B.
+// -- WP P1DCFIX -- In Simple mode the window recalls and compares only: no
+// capture, rename, note, delete, import, export, rollback choice or timeout.
 ToolWindow {
     id: window
     objectName: "SnapshotsWindow"
@@ -21,6 +23,7 @@ ToolWindow {
 
     readonly property bool hasDevice: DeviceModel.connected
     readonly property bool writable: hasDevice && !DeviceModel.readOnly
+    readonly property bool simple: ModeController.mode === "simple"   // -- WP P1DCFIX --
     property string selectedId: ""
     readonly property var selected: {
         const rows = SnapshotsController.snapshots
@@ -61,7 +64,9 @@ ToolWindow {
 
         // ---- Capture ----
         RowLayout {
+            objectName: "SnapshotsWindow.captureRow"
             Layout.fillWidth: true
+            visible: !window.simple
             spacing: Theme.spacingSmall
             BorderedField {
                 id: captureName
@@ -178,8 +183,9 @@ ToolWindow {
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.Wrap
                     visible: list.count === 0
-                    text: window.hasDevice ? qsTr("No snapshots of this device yet. Capture keeps its settings as they are now.")
-                                           : qsTr("No Device Connected")
+                    text: !window.hasDevice ? qsTr("No Device Connected")
+                          : window.simple ? qsTr("No snapshots of this device yet. They are captured in Advanced mode.")
+                                          : qsTr("No snapshots of this device yet. Capture keeps its settings as they are now.")
                     font: Theme.fontBody
                     color: Theme.textMuted
                 }
@@ -188,7 +194,9 @@ ToolWindow {
 
         // ---- The selected snapshot ----
         RowLayout {
+            objectName: "SnapshotsWindow.editRow"
             Layout.fillWidth: true
+            visible: !window.simple
             spacing: Theme.spacingSmall
             enabled: window.selected !== null
             BorderedField {
@@ -237,6 +245,7 @@ ToolWindow {
                 objectName: "SnapshotsWindow.export"
                 text: qsTr("Export…")
                 iconName: "file-down"
+                visible: !window.simple
                 enabled: window.selected !== null
                 onClicked: SnapshotsController.exportSnapshot(window.selectedId)
             }
@@ -244,6 +253,7 @@ ToolWindow {
                 objectName: "SnapshotsWindow.import"
                 text: qsTr("Import…")
                 iconName: "file-up"
+                visible: !window.simple
                 enabled: window.hasDevice
                 toolTip: qsTr("Keep a configuration file as a snapshot of this device")
                 onClicked: SnapshotsController.importSnapshot()
@@ -253,6 +263,7 @@ ToolWindow {
                 objectName: "SnapshotsWindow.delete"
                 text: qsTr("Delete…")
                 iconName: "trash"
+                visible: !window.simple
                 enabled: window.selected !== null
                 onClicked: {
                     deleteQuestion.snapshotId = window.selectedId
@@ -262,15 +273,38 @@ ToolWindow {
                 }
             }
         }
-        AppCheckBox {
-            objectName: "SnapshotsWindow.rollback"
-            text: SnapshotsController.guardDefault
-                  ? qsTr("Recall with rollback: always over DSPi Link (Keep or Revert)")
-                  : qsTr("Recall with rollback (Keep or Revert)")
-            checked: SnapshotsController.guardDefault || SnapshotsController.rollback
-            enabled: !SnapshotsController.guardDefault
-            onToggled: SnapshotsController.rollback = checked
-            Accessible.name: text
+        RowLayout {
+            Layout.fillWidth: true
+            visible: !window.simple   // -- WP P1DCFIX --
+            spacing: Theme.spacingSmall
+            AppCheckBox {
+                objectName: "SnapshotsWindow.rollback"
+                text: SnapshotsController.guardDefault
+                      ? qsTr("Recall with rollback: always over DSPi Link (Keep or Revert)")
+                      : qsTr("Recall with rollback (Keep or Revert)")
+                checked: SnapshotsController.guardDefault || SnapshotsController.rollback
+                enabled: !SnapshotsController.guardDefault
+                onToggled: SnapshotsController.rollback = checked
+                Accessible.name: text
+            }
+            Item { Layout.fillWidth: true }
+            // -- WP P1DCFIX -- how long a guarded recall or import waits for Keep
+            Text {
+                text: qsTr("Rollback after")
+                font: Theme.fontBody
+                color: Theme.text
+            }
+            AppSpinBox {
+                objectName: "SnapshotsWindow.timeout"
+                label: qsTr("Rollback after, seconds")
+                realFrom: 5
+                realTo: 300
+                realStep: 5
+                unit: qsTr("s")
+                realValue: SnapshotsController.guardTimeoutS
+                onCommitted: value => SnapshotsController.guardTimeoutS = Math.round(value)
+                Accessible.name: label
+            }
         }
 
         // ---- A/B ----
@@ -344,7 +378,7 @@ ToolWindow {
                 objectName: "SnapshotsWindow.abToggle"
                 text: qsTr("Toggle A/B")
                 toolTip: SnapshotsController.guardWaiting ? qsTr("Finish the safe apply first: Keep or Revert.")
-                                                          : qsTr("Recall the other side (Ctrl+Shift+C)")
+                                                          : qsTr("Recall the other side (B)")
                 enabled: SnapshotsController.canToggle
                 onClicked: SnapshotsController.abToggle()
             }

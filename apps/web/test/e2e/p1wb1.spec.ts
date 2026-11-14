@@ -40,6 +40,13 @@ async function openDemo(page: Page): Promise<Locator> {
 
 const tab = (session: Locator, name: string) => session.getByRole("tab", { name, exact: true });
 
+/** -- WP P1DCFIX -- (F6) the page's own unsaved indicator (Main's Presets card) shows; then back to `back`. */
+async function unsavedShown(session: Locator, back = "Snapshots") {
+  await tab(session, "Main").click();
+  await expect(session.getByText("Unsaved changes", { exact: true })).toBeVisible();
+  await tab(session, back).click();
+}
+
 async function noSidewaysScroll(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
 }
@@ -61,6 +68,8 @@ test("P1WB1 snapshots: capture downloads, recall puts every value back, Open Sna
 
   await call(page, "write", { path: "out.gain", indices: [0], value: { float: -7 } });
   await expect.poll(async () => (await coreState(page)).outputGainDb[0]).toBe(-7);
+  // -- WP P1DCFIX -- (F6) the page asks from what it knows: wait until it shows the change as unsaved
+  await unsavedShown(session);
   await list.getByRole("listitem", { name: "Kväll ✓" }).getByRole("button", { name: "Recall", exact: true }).click();
   // The change is unsaved: asked first, as the scene bar asks.
   const asked = page.getByRole("dialog", { name: "Recall Snapshot" });
@@ -99,9 +108,9 @@ test("P1WB1 A/B and safe apply: the toggle in the scene bar and its key, off dur
   await bar.getByRole("button", { name: /Now A · switch/ }).click();
   await expect(bar).toContainText("Now B");
   await expect.poll(async () => (await coreState(page)).outputGainDb[0]).toBe(-4);
-  // The key, with focus on no text field.
+  // The key (-- WP P1DCFIX -- a plain B), with focus on no text field.
   await page.locator("body").click({ position: { x: 1, y: 1 } });
-  await page.keyboard.press("Control+k");
+  await page.keyboard.press("b");
   await expect(bar).toContainText("Now A");
   await expect.poll(async () => (await coreState(page)).outputGainDb[0]).toBe(0);
   const compare = screen.getByRole("region", { name: "A/B compare" });
@@ -111,10 +120,10 @@ test("P1WB1 A/B and safe apply: the toggle in the scene bar and its key, off dur
   // A recall with rollback: the countdown bar; the toggle is off while it waits; Revert puts back and ends the compare.
   await row.getByRole("button", { name: "Recall with Rollback" }).click();
   const guard = session.getByRole("alert", { name: "Safe apply" });
-  await expect(guard).toContainText("reverts in");
+  await expect(guard).toContainText("Keep these settings? They go back in"); // -- WP P1DCFIX -- the core's words
   await expect.poll(async () => (await coreState(page)).outputGainDb[0]).toBe(-4);
   await expect(bar.getByRole("button", { name: /switch/ })).toBeDisabled();
-  await page.keyboard.press("Control+k");
+  await page.keyboard.press("b");
   if (test.info().project.name === "narrow") await noSidewaysScroll(page);
   await guard.getByRole("button", { name: "Revert" }).click();
   await expect(guard).toHaveCount(0);
@@ -216,6 +225,8 @@ test("P1WB1 keys: Qt's table, never while a text field has focus", async ({ page
   // Preset 2 (stored first), with an unsaved change: asked, as the picker asks.
   await call(page, "presetCopy", { source: 0, dest: 1 });
   await call(page, "write", { path: "out.gain", indices: [0], value: { float: -3 } });
+  // -- WP P1DCFIX -- (F6) once the page shows it as unsaved; the focus on Main's tab, in this console
+  await unsavedShown(session, "Main");
   await page.keyboard.press("Control+2");
   const ask = page.getByRole("dialog", { name: "Unsaved Changes" });
   await expect(ask).toBeVisible();
@@ -274,7 +285,7 @@ test.describe("over DSPi Link", () => {
     await expect(item.getByRole("button", { name: "Recall with Rollback" })).toHaveCount(0);
     await item.getByRole("button", { name: "Recall", exact: true }).click();
     const guard = session.getByRole("alert", { name: "Safe apply" });
-    await expect(guard).toContainText("the hub reverts it if this page goes away");
+    await expect(guard).toContainText("The hub puts them back too if this page goes away");
     await guard.getByRole("button", { name: "Keep" }).click();
     await expect(guard).toHaveCount(0);
     await expect(screen.getByRole("status", { name: "Result" })).toBeVisible();

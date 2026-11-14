@@ -10,6 +10,7 @@ import se.bofr.dspi.core.AdatOutStatus
 import se.bofr.dspi.core.AlinkSceneRecall
 import se.bofr.dspi.core.AlinkSystemAlign
 import se.bofr.dspi.core.AlinkSystemEdits
+import se.bofr.dspi.core.AlinkSystemSaved
 import se.bofr.dspi.core.AlinkSystemView
 import se.bofr.dspi.core.BootloaderCounts
 import se.bofr.dspi.core.BufferStats
@@ -429,6 +430,10 @@ open class FakeDspiCore(
 
     override fun alinkSystemSave(revision: Long, edits: AlinkSystemEdits): Long =
         op("alinkSystemSave", "$revision", device = false) { alinkSystem.save(revision, edits) }
+
+    // -- WP P1DCFIX --
+    override fun alinkSystemSaveReport(revision: Long, edits: AlinkSystemEdits): AlinkSystemSaved =
+        op("alinkSystemSaveReport", "$revision", device = false) { alinkSystem.saveReport(revision, edits) }
 
     override fun alinkSystemAlign(): AlinkSystemAlign = op("alinkSystemAlign", device = false) { alinkSystem.align() }
 

@@ -74,6 +74,22 @@ class FileMenuActions(private val bridge: DspiBridge, private val scope: Corouti
         return true
     }
 
+    // -- WP P1DCFIX -- (F5) a success is one line on the page, never a modal (U5)
+    private val _notice = MutableStateFlow("")
+
+    /** The last file action's outcome in one line ("" none): the page shows it, no alert. */
+    val notice: StateFlow<String> = _notice.asStateFlow()
+
+    fun clearNotice() {
+        _notice.value = ""
+    }
+
+    /**
+     * The safe apply's timeout for a guarded import, seconds (0 = the core's
+     * 30 s); the page sets it from the app's setting.
+     */
+    var guardTimeoutS: Long = 0
+
     // -- WP P1AN1 -- the import preview (PRO1 W5, W8, W6): what would change, block by block, then apply, with a way back
     private val _preview = MutableStateFlow<ImportPreview?>(null)
 
@@ -119,7 +135,8 @@ class FileMenuActions(private val bridge: DspiBridge, private val scope: Corouti
     }
 
     fun setGuarded(on: Boolean) {
-        _preview.value = _preview.value?.copy(guarded = on)
+        // -- WP P1DCFIX -- (F4) fixed on where the core guards by default (a hub with the guard)
+        _preview.value = _preview.value?.let { it.copy(guarded = on || it.guardDefault) }
     }
 
     fun cancelPreview() {
@@ -140,12 +157,14 @@ class FileMenuActions(private val bridge: DspiBridge, private val scope: Corouti
             return
         }
         val options = ImportBlock.bits(p.selected)
-        if (p.guarded) {
+        _notice.value = ""
+        // -- WP P1DCFIX -- (F4) never unguarded over a hub with the guard
+        if (p.guarded || p.guardDefault) {
             scope.launchDeviceSequence {
                 host.beginProgress("Importing configuration…")
                 val r =
                     try {
-                        bridge.snapshots.importGuarded(p.text, options)
+                        bridge.snapshots.importGuarded(p.text, options, timeoutS = guardTimeoutS)
                     } finally {
                         host.endProgress()
                     }
@@ -174,7 +193,8 @@ class FileMenuActions(private val bridge: DspiBridge, private val scope: Corouti
         val message = result.list("lines").orEmpty().filterIsInstance<String>().joinToString("\n\n")
         // Anything the device refused or couldn't do isn't a success: no "Success" heading over it.
         if (result.bool("clean") != false) {
-            host.showSuccess(message)
+            // -- WP P1DCFIX -- (F5) the notice line, no success modal
+            _notice.value = message.replace("\n\n", " ").ifEmpty { "Configuration imported." }
         } else {
             host.show(
                 ConsoleAlert(
@@ -203,8 +223,8 @@ class FileMenuActions(private val bridge: DspiBridge, private val scope: Corouti
         opener.open(text, fileName)
     }
 
-    /** The templates: the shipped ones, then [userDir]'s (`template_list`). Reads files: call off the main thread. */
-    fun templates(userDir: String): List<TemplateEntry> = OfflineFiles.parseTemplates(bridge.snapshots.templates(userDir))
+    /** The templates: the shipped ones, then [userDir]'s (`template_list`). Reads files on the bridge's FFI thread (F8). */
+    suspend fun templates(userDir: String): List<TemplateEntry> = OfflineFiles.parseTemplates(bridge.snapshots.templates(userDir))
 
     private val _templateChoice = MutableStateFlow<List<TemplateEntry>?>(null)
 
@@ -212,7 +232,7 @@ class FileMenuActions(private val bridge: DspiBridge, private val scope: Corouti
     val templateChoice: StateFlow<List<TemplateEntry>?> = _templateChoice.asStateFlow()
 
     fun showTemplates(userDir: String) {
-        scope.launch { _templateChoice.value = withContext(Dispatchers.IO) { templates(userDir) } }
+        scope.launch { _templateChoice.value = templates(userDir) }
     }
 
     fun closeTemplates() {
@@ -222,9 +242,12 @@ class FileMenuActions(private val bridge: DspiBridge, private val scope: Corouti
     /** Open template [t] offline, as a document named after it. */
     fun openTemplate(t: TemplateEntry, userDir: String, opener: DocumentOpener?) {
         _templateChoice.value = null
-        bridge.snapshots.templateText(t.id, userDir)
-            .onSuccess { openDocument(it, OfflineFiles.templateFileName(t.name), opener) }
-            .onFailure { host.showError(it.message ?: "The template could not be read.") }
+        // -- WP P1DCFIX -- (F8) the file is read off the UI thread
+        scope.launch {
+            bridge.snapshots.templateText(t.id, userDir)
+                .onSuccess { openDocument(it, OfflineFiles.templateFileName(t.name), opener) }
+                .onFailure { host.showError(it.message ?: "The template could not be read.") }
+        }
     }
 
     /** The open document as it now stands, for Save File…; null after an alert. */
@@ -264,7 +287,7 @@ class FileMenuActions(private val bridge: DspiBridge, private val scope: Corouti
                 writeFailed(e)
                 return@launch
             }
-            host.showSuccess("Template \"$name\" saved. Open it from Open Template….")
+            _notice.value = "Template \"$name\" saved. Open it from Open Template…." // -- WP P1DCFIX -- (F5)
         }
     }
 

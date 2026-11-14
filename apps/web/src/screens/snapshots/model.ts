@@ -58,12 +58,33 @@ export interface DeskState {
   abDiff: ConfigDiff | null;
   /** How long a guarded apply waits for Keep before it reverts, s. */
   timeoutS: number;
+  // -- WP P1DCFIX --
+  /** The core's countdown sentence (notice `guard.waiting`): `{s}` is the seconds left. */
+  waitingText: string;
 }
 
 /** The rollback's default, seconds (OD-P1g). */
 export const DEFAULT_TIMEOUT_S = 30;
 /** How often the page drives a waiting guard, ms. */
 export const GUARD_POLL_MS = 250;
+
+// -- WP P1DCFIX --
+/** The core's notice key for the countdown (P1NT's table, F7). */
+export const GUARD_WAITING_KEY = "guard.waiting";
+/** The same words, until the core has answered (the core's row is the one shown). */
+const WAITING_FALLBACK = "Keep these settings? They go back in {s} s unless you press Keep.";
+
+/** The countdown sentence with the seconds in, split around them (the page marks the number). */
+export function waitingWords(text: string, seconds: number): { before: string; seconds: number; after: string } {
+  const at = text.indexOf("{s}");
+  if (at < 0) return { before: `${text} `, seconds, after: " s" };
+  return { before: text.slice(0, at), seconds, after: text.slice(at + 3) };
+}
+
+/** A guard the bar offers: one waiting for Keep, or one lost with the device open again (Revert stays offered). */
+export function guardOffered(g: GuardedApplyRecord | null): boolean {
+  return !!g && (g.phase === "waiting" || g.phase === "lost");
+}
 
 const NO_COMPARE: AbCompareRecord = { active: false, side: null, aName: "", bName: "", recall: null };
 
@@ -116,11 +137,24 @@ function message(e: unknown): string {
 }
 
 export class SnapshotDesk {
-  state: DeskState = { docs: [], ab: NO_COMPARE, guard: null, guardDefault: false, busy: "", outcome: null, abDiff: null, timeoutS: DEFAULT_TIMEOUT_S };
+  state: DeskState = {
+    docs: [],
+    ab: NO_COMPARE,
+    guard: null,
+    guardDefault: false,
+    busy: "",
+    outcome: null,
+    abDiff: null,
+    timeoutS: DEFAULT_TIMEOUT_S,
+    waitingText: WAITING_FALLBACK,
+  };
   private readonly listeners = new Set<() => void>();
   private next = 1;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private alive = true;
+  // -- WP P1DCFIX -- the session's status, to ask the core again when it opens again
+  private unwatch: (() => void) | undefined;
+  private wasOpen = false;
 
   constructor(
     readonly session: Session,
@@ -135,13 +169,37 @@ export class SnapshotDesk {
   /** What the core says now: the guard's default, a compare, a guard (a reload of the view). */
   async start(): Promise<void> {
     const core = this.session.core;
-    const [guardDefault, ab, guard] = await Promise.all([
+    // -- WP P1DCFIX -- the same device open again: a lost guard's Revert is offered again (F1)
+    if (!this.unwatch && typeof this.session.watch === "function") {
+      this.wasOpen = this.session.state?.status === "open";
+      this.unwatch = this.session.watch(() => {
+        const open = this.session.state.status === "open";
+        if (open && !this.wasOpen) void this.reread();
+        this.wasOpen = open;
+      });
+    }
+    const [guardDefault, ab, guard, waiting] = await Promise.all([
       core.call("applyGuardDefault", undefined).catch(() => false),
       core.call("abState", undefined).catch(() => NO_COMPARE),
       core.call("applyStatus", undefined).catch(() => null),
+      core.call("noticeFor", { key: GUARD_WAITING_KEY }).catch(() => null),
     ]);
     if (!this.alive) return;
-    this.set({ guardDefault, ab, guard: guard && guard.phase !== "idle" ? guard : null });
+    const waitingText = waiting && waiting.key === GUARD_WAITING_KEY ? `${waiting.title} ${waiting.reason}` : this.state.waitingText;
+    this.set({ guardDefault, ab, guard: guard && guard.phase !== "idle" ? guard : null, waitingText });
+    if (guard?.phase === "waiting") this.schedule();
+  }
+
+  /** -- WP P1DCFIX -- what the core says of the guard and the compare now (a session that opened again). */
+  private async reread(): Promise<void> {
+    const core = this.session.core;
+    const [guardDefault, ab, guard] = await Promise.all([
+      core.call("applyGuardDefault", undefined).catch(() => this.state.guardDefault),
+      core.call("abState", undefined).catch(() => this.state.ab),
+      core.call("applyStatus", undefined).catch(() => null),
+    ]);
+    if (!this.alive) return;
+    this.set({ guardDefault, ab, guard: guard && guard.phase !== "idle" ? guard : this.state.guard });
     if (guard?.phase === "waiting") this.schedule();
   }
 
@@ -149,6 +207,8 @@ export class SnapshotDesk {
     this.alive = false;
     clearTimeout(this.timer);
     this.listeners.clear();
+    this.unwatch?.();
+    this.unwatch = undefined;
   }
 
   watch(fn: () => void): () => void {
@@ -329,12 +389,19 @@ export class SnapshotDesk {
     } catch (e) {
       // The session ended: nothing is replayed (the lost-Link rule). Said once.
       this.set({ outcome: { title: "Safe apply", lines: [message(e)], notes: [], tone: "error" } });
-      if (e instanceof CoreCallError && (e.code === "not_open" || e.code === "dead")) return;
+      if (e instanceof CoreCallError && (e.code === "not_open" || e.code === "dead")) {
+        // -- WP P1DCFIX -- where the core says it stands (no I/O): a lost guard keeps its Revert
+        const now = await this.session.core.call("applyStatus", undefined).catch(() => null);
+        if (this.alive && now && now.phase !== "waiting") this.set({ guard: now.phase === "idle" ? null : now });
+        return;
+      }
       this.schedule();
     }
   }
 
   private guardEnded(g: GuardedApplyRecord): void {
+    // -- WP P1DCFIX -- a lost guard is the bar's (with Revert), not a result line
+    if (g.phase === "lost") return;
     const tone = g.phase === "kept" ? "info" : g.phase === "reverted" ? "warn" : "error";
     this.set({ outcome: { title: g.label || "Safe apply", lines: [g.message].filter(Boolean), notes: g.notes, tone } });
   }
@@ -344,13 +411,15 @@ export class SnapshotDesk {
     return this.endGuard("applyConfirm");
   }
 
-  /** Put the settings from before back. */
+  /** Put the settings from before back: while it waits, or (on the user's word only) a lost one. */
   revert(): Promise<boolean> {
     return this.endGuard("applyRevert");
   }
 
   private async endGuard(method: "applyConfirm" | "applyRevert"): Promise<boolean> {
-    if (this.state.guard?.phase !== "waiting") return false;
+    const phase = this.state.guard?.phase;
+    // -- WP P1DCFIX -- a lost guard can still be reverted (F1); Keep is for a waiting one
+    if (phase !== "waiting" && !(phase === "lost" && method === "applyRevert")) return false;
     clearTimeout(this.timer);
     const g = await this.session.core.call(method, undefined).catch((e: unknown) => {
       this.set({ outcome: { title: "Safe apply", lines: [message(e)], notes: [], tone: "error" } });

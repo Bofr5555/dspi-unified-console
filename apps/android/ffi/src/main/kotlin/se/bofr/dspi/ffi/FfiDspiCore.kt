@@ -112,6 +112,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun alinkSystemRecall(scene: String): AlinkSceneRecall = call { core.alinkSystemRecall(scene).toDomain() }
 
+    override fun alinkSystemSaveReport(revision: Long, edits: AlinkSystemEdits): AlinkSystemSaved = call { core.alinkSystemSaveReport(revision.toULong(), edits.toFfi()).toDomain() }
+
     override fun usbDirectSupported(): Boolean = call { core.usbDirectSupported() }
 
     override fun fetchAlinkUsb(): AlinkUsbConfig = call { core.fetchAlinkUsb().toDomain() }
@@ -2613,6 +2615,18 @@ internal fun AlinkSystemAlign.toFfi() =
         applied = applied,
         message = message,
         writes = writes.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AlinkSystemSaved.toDomain() =
+    AlinkSystemSaved(
+        revision = revision.toLong(),
+        warnings = warnings,
+    )
+
+internal fun AlinkSystemSaved.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AlinkSystemSaved(
+        revision = revision.toULong(),
+        warnings = warnings,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.AlinkUsbConfig.toDomain() =

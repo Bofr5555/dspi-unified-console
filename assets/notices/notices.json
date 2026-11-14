@@ -93,6 +93,9 @@
     {"key": "config.not_read", "kind": "warning", "title": "Still reading the DSPi",
      "reason": "The DSPi's settings have not been read yet.",
      "action": "Try again in a moment."},
+    {"key": "guard.waiting", "kind": "info", "title": "Keep these settings?",
+     "reason": "They go back in {s} s unless you press Keep.",
+     "action": "Press Keep to keep them, or Revert to go back now."},
     {"key": "unknown", "kind": "error", "title": "Something went wrong",
      "reason": "The request did not complete.",
      "action": "Try again."}

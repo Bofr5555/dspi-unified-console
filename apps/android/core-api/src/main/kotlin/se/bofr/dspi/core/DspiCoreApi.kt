@@ -260,6 +260,14 @@ interface DspiCoreApi : AutoCloseable {
     fun alinkSystemRecall(scene: String): AlinkSceneRecall
 
     /**
+     * [`DspiCore::alink_system_save`] with the hub's whole answer: the new
+     * revision and the warnings `system.set` gave about the model it kept.
+     * Errors as there.
+     */
+    @Throws(DspiException::class)
+    fun alinkSystemSaveReport(revision: Long, edits: AlinkSystemEdits): AlinkSystemSaved
+
+    /**
      * Whether the unit has the alink's USB-direct block, as the connect
      * probe found it, without traffic. `Disconnected` without a device.
      */

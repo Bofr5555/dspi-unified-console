@@ -25,6 +25,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -54,6 +55,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import java.io.File
 import java.text.DateFormat
 import java.util.Date
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.core.AbSide
@@ -64,6 +66,8 @@ import se.bofr.dspi.feature.presets.DocDiff
 import se.bofr.dspi.feature.presets.PresetFileAccess
 import se.bofr.dspi.ui.DspiIcons
 import se.bofr.dspi.ui.alert.ConsoleAlertHost
+import se.bofr.dspi.ui.settings.AppSettings
+import se.bofr.dspi.ui.settings.LocalAppSettings
 import se.bofr.dspi.ui.writesAllowed
 
 const val SNAPSHOTS_SCREEN_TAG = "snapshots-screen"
@@ -153,6 +157,12 @@ fun SnapshotsView(
     val safeRecall by model.safeRecall.collectAsState()
     val guardDefault by model.guardDefault.collectAsState()
     val diff by model.diff.collectAsState()
+    // -- WP P1DCFIX -- the safe apply's timeout: the app's setting (default 30 s), adjustable in Advanced
+    val settingsStore = LocalAppSettings.current
+    val appSettings by settingsStore.settings.collectAsState()
+    val timeoutS = AppSettings.safeApplyTimeout(appSettings.safeApplyTimeoutS)
+    LaunchedEffect(model, timeoutS) { model.setTimeoutS(timeoutS) }
+    val onTimeout: (Int) -> Unit = { s -> settingsStore.update { it.copy(safeApplyTimeoutS = AppSettings.safeApplyTimeout(s)) } }
     val connected = status.connected
     val advanced = mode == SnapshotsMode.ADVANCED
     val canWrite = connected && writesAllowed() && !busy
@@ -189,9 +199,10 @@ fun SnapshotsView(
                     )
                 }
                 item {
+                    // -- WP P1DCFIX -- Simple: no rollback choice and no timeout (recall and A/B only)
                     if (guardDefault) {
                         Caption("Recalls over DSPi Link come with Keep and Revert.")
-                    } else {
+                    } else if (advanced) {
                         Row(
                             Modifier.fillMaxWidth().clickable(role = Role.Checkbox) {
                                 model.setSafeRecall(!safeRecall)
@@ -202,6 +213,7 @@ fun SnapshotsView(
                             Text("Recall with rollback", modifier = Modifier.weight(1f))
                         }
                     }
+                    if (advanced) TimeoutRow(timeoutS, onChange = onTimeout)
                     if (result.isNotEmpty()) Caption(result, Modifier.testTag(SNAPSHOT_RESULT_TAG))
                     HorizontalDivider()
                 }
@@ -245,6 +257,26 @@ fun SnapshotsView(
 }
 
 const val SNAPSHOT_RESULT_TAG = "snapshot-result"
+
+// -- WP P1DCFIX --
+const val SAFE_APPLY_TIMEOUT_TAG = "safe-apply-timeout"
+
+/** Advanced: how long a safe apply waits for Keep, 5–300 s in steps of 5. */
+@Composable
+private fun TimeoutRow(seconds: Int, onChange: (Int) -> Unit) {
+    var dragged by remember(seconds) { mutableStateOf(seconds.toFloat()) }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        Text("Rollback time: ${dragged.roundToInt()} s", style = MaterialTheme.typography.bodyMedium)
+        Slider(
+            value = dragged,
+            onValueChange = { dragged = (it / 5f).roundToInt() * 5f },
+            onValueChangeFinished = { onChange(dragged.roundToInt()) },
+            valueRange = AppSettings.SAFE_APPLY_TIMEOUT_MIN_S.toFloat()..AppSettings.SAFE_APPLY_TIMEOUT_MAX_S.toFloat(),
+            steps = (AppSettings.SAFE_APPLY_TIMEOUT_MAX_S - AppSettings.SAFE_APPLY_TIMEOUT_MIN_S) / 5 - 1,
+            modifier = Modifier.testTag(SAFE_APPLY_TIMEOUT_TAG).semantics { contentDescription = "Rollback time" }
+        )
+    }
+}
 
 @Composable
 private fun Caption(text: String, modifier: Modifier = Modifier) {

@@ -1047,6 +1047,11 @@ interface DspiBridge {
     suspend fun alinkSystemSave(revision: Long, edits: se.bofr.dspi.core.AlinkSystemEdits): Long =
         throw se.bofr.dspi.core.DspiException.Disconnected()
 
+    // -- WP P1DCFIX --
+    /** [alinkSystemSave] with the hub's whole answer: the new revision and its warnings about the model it kept. */
+    suspend fun alinkSystemSaveReport(revision: Long, edits: se.bofr.dspi.core.AlinkSystemEdits): se.bofr.dspi.core.AlinkSystemSaved =
+        se.bofr.dspi.core.AlinkSystemSaved(alinkSystemSave(revision, edits), emptyList())
+
     /** Write the audio link delays the system delay asks for to every unit. */
     suspend fun alinkSystemAlign(): se.bofr.dspi.core.AlinkSystemAlign = throw se.bofr.dspi.core.DspiException.Disconnected()
 

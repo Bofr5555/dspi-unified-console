@@ -1330,7 +1330,7 @@ waits for. One slice is one WP; letters give the order.
 | **WB6h** Effects | TODO | Crossfeed, loudness, leveller, psychoacoustic bass, tube, subharmonic and upmixer screens, each with its on or off state in the System view |
 | **WB6i** Settings | TODO | Device name, output latency, GPIO pins, Spectrum and Graphing settings, help links, Reset Channel Names, debug information (M55, M61, M62); core voltage behind the Installer mode, or behind Advanced until the mode model exists (M56) |
 | **WB6j** Analyser, generator and Stats | TODO | The analyser overlay and bar strip (M22, M23), the signal generator and Identify (M46), Stats for nerbs and the Interrupt Monitor (M53, M54), dashboard cards per row (M59) |
-| **WB6k** Files and AutoEQ | TODO | Filter import and export, `.dspipreset` with apply options, Save Master Volume and Output Configuration through browser download and upload (M28-M30); AutoEQ with the page supplying the fetch (M31, M32, CG6) |
+| **WB6k** Files and AutoEQ | TODO | Filter import and export, Save Master Volume and Output Configuration through browser download and upload (M28-M30); AutoEQ with the page supplying the fetch (M31, M32, CG6). `.dspipreset` import (with the apply options) and export are no longer WB6k's: P1WB1 built them (`FilesScreen.tsx`, wasm `configImport`/`configExport`; P1DCFIX's note) |
 | **WB6l** Control surfaces and shortcuts | TODO | The control-surface editor (CG20), the quick strip of effect toggles (M60), and the app shortcuts beyond the graph keys (M24) |
 
 ### 5.6 Audit and cross-client tests

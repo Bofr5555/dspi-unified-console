@@ -10,6 +10,7 @@ import se.bofr.dspi.core.AlinkSystemAlarm
 import se.bofr.dspi.core.AlinkSystemAlign
 import se.bofr.dspi.core.AlinkSystemEdits
 import se.bofr.dspi.core.AlinkSystemRoom
+import se.bofr.dspi.core.AlinkSystemSaved
 import se.bofr.dspi.core.AlinkSystemScene
 import se.bofr.dspi.core.AlinkSystemUnit
 import se.bofr.dspi.core.AlinkSystemView
@@ -254,6 +255,18 @@ class FakeAlinkSystem {
             // -- WP AUSB2 -- lock error, its cause, the action now and asked, firmware without it
             false, "", null, "", false
         )
+
+    // -- WP P1DCFIX -- `system.set`'s whole answer: the hub warns about a unit without the audio link
+    @Synchronized fun saveReport(revision: Long, edits: AlinkSystemEdits): AlinkSystemSaved {
+        val rev = save(revision, edits)
+        val warnings =
+            if (plainUnit) {
+                listOf("Plain unit (DEMO-PLAIN): its firmware has no audio link, so it plays unaligned.")
+            } else {
+                emptyList()
+            }
+        return AlinkSystemSaved(rev, warnings)
+    }
 
     @Synchronized fun save(revision: Long, edits: AlinkSystemEdits): Long {
         session()

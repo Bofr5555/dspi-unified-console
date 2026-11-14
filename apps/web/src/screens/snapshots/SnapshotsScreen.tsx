@@ -3,6 +3,9 @@
 // browser's downloads are the store). Each held snapshot can be recalled (with rollback when
 // the user asks, always over DSPi Link to a hub with the guard), compared with the device or
 // with another (A/B), downloaded again or let go. Read only: capture and download only.
+//
+// -- WP P1DCFIX -- Simple: the list with Recall and the A/B compare only; no capture, open,
+// download, remove, rollback choice or rollback time (those are Advanced's and Installer's).
 
 import { useRef, useState } from "preact/hooks";
 import type { ScreenProps } from "../../ui/screens";
@@ -14,11 +17,11 @@ import { abKeyHint } from "../../ui/keys";
 export function SnapshotsScreen(props: ScreenProps) {
   const desk = props.desk;
   if (!desk) return null;
-  return <SnapshotsView desk={desk} ask={props.ask} />;
+  return <SnapshotsView desk={desk} ask={props.ask} simple={props.mode === "simple"} />;
 }
 
-function SnapshotsView(props: { desk: SnapshotDesk; ask: ScreenProps["ask"] }) {
-  const { desk, ask } = props;
+function SnapshotsView(props: { desk: SnapshotDesk; ask: ScreenProps["ask"]; simple: boolean }) {
+  const { desk, ask, simple } = props;
   const st = useDesk(desk);
   const session = desk.session;
   const ro = desk.readOnly;
@@ -62,6 +65,7 @@ function SnapshotsView(props: { desk: SnapshotDesk; ask: ScreenProps["ask"] }) {
   return (
     <section class="snapshots" aria-label="Snapshots">
       <OutcomeLine desk={desk} outcome={st.outcome} />
+      {simple ? null : (
       <div class="card">
         <h3>Capture</h3>
         <p class="note">
@@ -102,12 +106,15 @@ function SnapshotsView(props: { desk: SnapshotDesk; ask: ScreenProps["ask"] }) {
           </div>
         </form>
       </div>
+      )}
       <div class="card">
         <h3>Snapshots</h3>
         {st.guardDefault ? (
           <p class="note">Every recall here can be taken back: it is kept only when you press Keep within {st.timeoutS} s.</p>
         ) : null}
-        {st.docs.length === 0 ? <p class="note">No snapshots yet.</p> : null}
+        {st.docs.length === 0 ? (
+          <p class="note">{simple ? "No snapshots yet. Snapshots captured or opened in Advanced mode are listed here." : "No snapshots yet."}</p>
+        ) : null}
         <ul class="snap-list" aria-label="Held snapshots">
           {st.docs.map((d) => (
             <li key={d.id} class="snap-row" aria-label={d.name}>
@@ -123,7 +130,7 @@ function SnapshotsView(props: { desk: SnapshotDesk; ask: ScreenProps["ask"] }) {
                 <button type="button" disabled={!!ro || busy || waiting} onClick={() => void recall(d, false)}>
                   Recall
                 </button>
-                {st.guardDefault ? null : (
+                {st.guardDefault || simple ? null : (
                   <button type="button" disabled={!!ro || busy || waiting} onClick={() => void recall(d, true)}>
                     Recall with Rollback
                   </button>
@@ -131,17 +138,22 @@ function SnapshotsView(props: { desk: SnapshotDesk; ask: ScreenProps["ask"] }) {
                 <button type="button" disabled={!!ro || busy || waiting || st.ab.active} onClick={() => void desk.abStart(d.id, null)}>
                   Compare
                 </button>
-                <button type="button" onClick={() => download(d.text, d.fileName.endsWith(".dspipreset") ? d.fileName : fileNameFor(d.name))}>
-                  Download
-                </button>
-                <button type="button" class="danger-text" aria-label={`Remove ${d.name} from the list`} onClick={() => desk.remove(d.id)}>
-                  Remove
-                </button>
+                {simple ? null : (
+                  <>
+                    <button type="button" onClick={() => download(d.text, d.fileName.endsWith(".dspipreset") ? d.fileName : fileNameFor(d.name))}>
+                      Download
+                    </button>
+                    <button type="button" class="danger-text" aria-label={`Remove ${d.name} from the list`} onClick={() => desk.remove(d.id)}>
+                      Remove
+                    </button>
+                  </>
+                )}
               </div>
             </li>
           ))}
         </ul>
-        {st.guardDefault ? null : (
+        {/* -- WP P1DCFIX -- the rollback time in Advanced and Installer, over DSPi Link too (5..300 s, 30 by default) */}
+        {simple ? null : (
           <label class="snap-timeout">
             Rollback time (s)
             <input

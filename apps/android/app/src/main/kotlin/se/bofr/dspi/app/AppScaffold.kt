@@ -86,6 +86,7 @@ import se.bofr.dspi.feature.presets.PresetMenuActions
 import se.bofr.dspi.feature.presets.PresetsScreen
 import se.bofr.dspi.feature.presets.ToolsMenuActions
 import se.bofr.dspi.feature.presets.snapshots.SafeApplyBar
+import se.bofr.dspi.feature.presets.snapshots.SnapshotsMode
 import se.bofr.dspi.feature.presets.snapshots.SnapshotsScreen
 import se.bofr.dspi.feature.settings.SettingsScreen
 import se.bofr.dspi.feature.tools.OutputLimiterView
@@ -161,7 +162,11 @@ fun AppScaffold(
     // -- WP AN35 --
     val keys = remember { ShortcutKeys() }
     val view = LocalView.current
-    LaunchedEffect(keys, view) { keys.editing = { view.onCheckIsTextEditor() } } // -- WP P1AN1 --
+    LaunchedEffect(keys, view) {
+        keys.editing = { view.onCheckIsTextEditor() } // -- WP P1AN1 --
+        // -- WP P1DCFIX -- a dialog's window has the keyboard: the app's window lost its focus
+        keys.dialogOpen = { !view.hasWindowFocus() }
+    }
     val focus = remember { FocusRequester() }
     var focusLost by remember { mutableIntStateOf(0) }
     // -- WP AN41 -- a write the core refused, in its words, over the screen
@@ -278,7 +283,9 @@ private fun DspiRoutesHost(
         }
         screen(nav, DspiRoutes.PRESETS) { _, go, back -> PresetsScreen(bridge, go, back) }
         // -- WP P1AN1 --
-        screen(nav, DspiRoutes.SNAPSHOTS) { _, go, back -> SnapshotsScreen(bridge, go, back) }
+        // -- WP P1DCFIX -- the app has no Simple/Advanced mode yet (P1AN2's mode switch passes the device's
+        // mode here); until then the screen is Advanced, its Simple branch (recall and A/B) tested on its own
+        screen(nav, DspiRoutes.SNAPSHOTS) { _, go, back -> SnapshotsScreen(bridge, go, back, mode = SnapshotsMode.ADVANCED) }
         screen(nav, DspiRoutes.SETTINGS) { _, go, back -> SettingsScreen(bridge, go, back) }
         // -- WP LKUI1 -- the hub's audio link installation, from Home's status chip
         screen(nav, DspiRoutes.SYSTEM) { _, go, back -> SystemScreen(bridge, go, back) }
@@ -489,11 +496,14 @@ internal class ShortcutKeys {
     // -- WP P1AN1 -- a text field has the keyboard (the Compose view's text input session)
     var editing: () -> Boolean = { false }
 
+    // -- WP P1DCFIX -- a dialog is open over the app's window
+    var dialogOpen: () -> Boolean = { false }
+
     fun onKey(e: KeyEvent): Boolean {
         if (e.type != KeyEventType.KeyDown || e.nativeKeyEvent.repeatCount > 0) return false
         val shortcut = ConsoleKeyMap.shortcutOf(e.key, e.isCtrlPressed || e.isMetaPressed, e.isShiftPressed, e.isAltPressed)
             ?: return false
-        if (shortcut.notWhileEditing && editing()) return false // -- WP P1AN1 --
+        if (shortcut.notWhileEditing && (editing() || dialogOpen())) return false // -- WP P1AN1 --, P1DCFIX: dialogs too
         return host?.let { ConsoleShortcuts.perform(shortcut, it) } ?: false
     }
 }

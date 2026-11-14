@@ -242,7 +242,7 @@ class SnapshotsUiWpP1an1Test {
         rule.onNodeWithTag(snapshotRecallTag(m.items.value.first { it.name == "Warm" }.id)).performClick()
         pumpUntil("bar") { shown(SAFE_APPLY_BAR_TAG) && bridge.snapshots.guard.value.phase == GuardPhase.WAITING }
         assertEquals(-4f, bridge.outputGainDB(0))
-        assertTrue(textShown("Keep it?"))
+        assertTrue(textShown("Keep these settings?")) // -- WP P1DCFIX -- the core's countdown sentence (F7)
         assertTrue("A/B waits for the safe apply", textShown(SnapshotsModel.FINISH_SAFE_APPLY))
         rule.onNodeWithTag(AB_TOGGLE_TAG).assertIsNotEnabled()
         shoot("safe-apply-bar-phone-dark")

@@ -25,9 +25,10 @@ import se.bofr.dspi.ui.alert.AlertTextField
 import se.bofr.dspi.ui.alert.ConsoleAlert
 
 /**
- * Simple shows the snapshots read-mostly: recall and A/B. Advanced edits them
- * (capture, rename, note, delete, import, export). docs/UI-MODES.md; the mode
- * switch itself is P1AN2's, which passes the device's mode here.
+ * Simple shows the snapshots read-mostly: recall and A/B (WP P1DCFIX, as Qt and
+ * the web: no capture, rename, note, delete, import, export, rollback choice
+ * or timeout). Advanced edits them. docs/UI-MODES.md; the mode switch itself
+ * is P1AN2's, which passes the device's mode here.
  */
 enum class SnapshotsMode { SIMPLE, ADVANCED }
 
@@ -80,6 +81,16 @@ class SnapshotsModel(
     val guard: StateFlow<GuardedApply> get() = snaps.guard
 
     private var folderSet = false
+
+    // -- WP P1DCFIX --
+    private val _timeoutS = MutableStateFlow(0)
+
+    /** The safe apply's timeout for a guarded recall, seconds (0 = the core's 30 s); the app's setting. */
+    val timeoutS: StateFlow<Int> = _timeoutS.asStateFlow()
+
+    fun setTimeoutS(s: Int) {
+        _timeoutS.value = s.coerceAtLeast(0)
+    }
 
     /** Name the store's folder (once) and read the list. */
     fun load() = once {
@@ -195,7 +206,7 @@ class SnapshotsModel(
             return@once
         }
         val guarded = snaps.guardDefault() || _safeRecall.value
-        snaps.recall(s.id, guarded).onSuccess { o ->
+        snaps.recall(s.id, guarded, _timeoutS.value.toLong()).onSuccess { o ->
             _result.value = o.recall?.let { recalledLine(it) } ?: "Recalled \"${s.name}\". Keep or Revert it in the bar below."
         }.onFailure(::show)
     }

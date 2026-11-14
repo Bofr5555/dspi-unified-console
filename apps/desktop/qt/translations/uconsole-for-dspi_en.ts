@@ -7034,8 +7034,8 @@ Macros are stored on the device alongside the controls and share their Save and 
 <context>
     <name>SafeApplyBanner</name>
     <message>
-        <source>“%1” is applied. Keep it, or the settings from before come back in %2 s.</source>
-        <extracomment>%1 what was applied (a file&apos;s or snapshot&apos;s name), %2 the seconds left</extracomment>
+        <source>“%1”: %2</source>
+        <extracomment>%1 what was applied (a file&apos;s or snapshot&apos;s name), %2 the core&apos;s sentence with the seconds left</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8436,6 +8436,10 @@ Macros are stored on the device alongside the controls and share their Save and 
 <context>
     <name>SnapshotsController</name>
     <message>
+        <source>Keep these settings? They go back in {s} s unless you press Keep.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The snapshot could not be stored.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8573,6 +8577,10 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>No snapshots of this device yet. They are captured in Advanced mode.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Snapshot name</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8630,6 +8638,18 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Rollback after</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rollback after, seconds</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>A/B Compare</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8666,7 +8686,7 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Recall the other side (Ctrl+Shift+C)</source>
+        <source>Recall the other side (B)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

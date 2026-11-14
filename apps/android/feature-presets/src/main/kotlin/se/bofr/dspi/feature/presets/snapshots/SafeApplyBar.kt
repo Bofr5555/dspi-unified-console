@@ -4,6 +4,9 @@
 // bar polls `apply_poll` while it is on screen (decision E6, WhileVisible);
 // over DSPi Link the hub runs it, and a console that goes away is reverted
 // there. After the end, the core's sentence stays for a few seconds.
+// WP P1DCFIX: the countdown is the core's sentence (P1NT `guard.waiting`, F7);
+// a lost guard's bar never hides by itself (F2): Revert stays offered while
+// the core says Lost, and is only ever the user's tap.
 package se.bofr.dspi.feature.presets.snapshots
 
 import androidx.compose.foundation.layout.Arrangement
@@ -35,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import se.bofr.dspi.bridge.DspiBridge
+import se.bofr.dspi.bridge.Snapshots
 import se.bofr.dspi.core.GuardPhase
 import se.bofr.dspi.core.GuardedApply
 import se.bofr.dspi.ui.rememberWhileVisible
@@ -49,19 +53,30 @@ internal const val GUARD_POLL_MS = 250L
 /** While the connection is lost: ask how it ended (the hub's answer after a reconnect). */
 internal const val GUARD_LOST_POLL_MS = 1_000L
 
-/** How long the end's sentence stays. */
+/** How long the end's sentence stays (a kept or reverted apply; never a lost one). */
 internal const val GUARD_END_SHOWN_MS = 8_000L
 
-/** The bar's words for [g]: the first line and the second ("" none). */
-internal fun guardLines(g: GuardedApply): Pair<String, String> = when (g.phase) {
-    GuardPhase.WAITING -> {
-        val what = g.label.ifEmpty { "the change" }
-        val s = ((g.remainingMs + 999) / 1000).coerceAtLeast(0)
-        "Applied \"$what\". Keep it?" to
-            ("Reverts in $s s without an answer." + if (g.hub) " The hub puts it back if this console goes away." else "")
-    }
+/**
+ * The bar's words for [g]: the first line and the second ("" none). While it
+ * waits: what was applied, then the core's countdown sentence [words] (`{s}`
+ * the seconds left).
+ */
+internal fun guardLines(g: GuardedApply, words: String = Snapshots.COUNTDOWN_WORDS): Pair<String, String> = when (g.phase) {
+    GuardPhase.WAITING -> "\"${g.label.ifEmpty { "The change" }}\"" to Snapshots.countdownLine(words, g.remainingMs)
     GuardPhase.LOST -> g.message.ifEmpty { "The connection was lost." } to ""
     else -> g.message to g.notes.joinToString(" ")
+}
+
+/**
+ * The bar shows for [g]: while it waits; while it is lost (until the user's
+ * OK, never by a timer: Revert stays offered); and the end of one this bar
+ * watched until [endShown] or the user's OK.
+ */
+internal fun guardBarShown(g: GuardedApply, watched: Long, endShown: Pair<Long, GuardPhase>?): Boolean = when (g.phase) {
+    GuardPhase.WAITING -> true
+    GuardPhase.IDLE -> false
+    GuardPhase.LOST -> endShown != (g.id to g.phase)
+    else -> g.id == watched && endShown != (g.id to g.phase) && g.message.isNotEmpty()
 }
 
 /**
@@ -86,17 +101,18 @@ fun SafeApplyBar(bridge: DspiBridge, modifier: Modifier = Modifier) {
     var watched by remember(bridge) { mutableLongStateOf(-1L) }
     var endShown by remember(bridge) { mutableStateOf<Pair<Long, GuardPhase>?>(null) }
     if (g.phase == GuardPhase.WAITING) watched = g.id
-    val ended = g.phase != GuardPhase.WAITING && g.phase != GuardPhase.IDLE && g.id == watched
+    // -- WP P1DCFIX -- a lost guard is not an end: no timer hides it (F2)
+    val ended = g.phase != GuardPhase.WAITING && g.phase != GuardPhase.IDLE && g.phase != GuardPhase.LOST && g.id == watched
     LaunchedEffect(g.id, g.phase, ended) {
         if (ended) {
             delay(GUARD_END_SHOWN_MS)
             endShown = g.id to g.phase
         }
     }
-    val show =
-        g.phase == GuardPhase.WAITING || (ended && endShown != (g.id to g.phase) && (g.message.isNotEmpty() || g.phase == GuardPhase.LOST))
-    if (!show) return
-    val (first, second) = guardLines(g)
+    var words by remember(bridge) { mutableStateOf(Snapshots.COUNTDOWN_WORDS) }
+    LaunchedEffect(bridge) { words = snaps.countdownWords() }
+    if (!guardBarShown(g, watched, endShown)) return
+    val (first, second) = guardLines(g, words)
     Surface(
         modifier.fillMaxWidth().padding(8.dp).testTag(SAFE_APPLY_BAR_TAG),
         color = MaterialTheme.colorScheme.inverseSurface,

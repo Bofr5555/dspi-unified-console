@@ -21,7 +21,8 @@ class ConsoleKeyMapWpP1an1Test {
         assertEquals(ConsoleShortcut.Revert, cmd(Key.R, shift = true))
         assertEquals(ConsoleShortcut.Mute, cmd(Key.M))
         assertEquals(ConsoleShortcut.Bypass, cmd(Key.B))
-        assertEquals(ConsoleShortcut.AbToggle, cmd(Key.T))
+        // -- WP P1DCFIX -- the A/B key is a plain B now; Command+T is nothing
+        assertNull(cmd(Key.T))
         // The Tools menu keeps its Command+Shift keys
         assertEquals(ConsoleShortcut.Open(DspiRoutes.MATRIX), cmd(Key.M, shift = true))
         assertEquals(ConsoleShortcut.Open(DspiRoutes.ANALYSIS), cmd(Key.T, shift = true))

@@ -81,7 +81,7 @@ Dialog {
                     required property var modelData
                     required property int index
                     width: ListView.view.width
-                    height: Theme.rowHeight + 12
+                    height: Math.max(Theme.rowHeight + 12, lines.implicitHeight + 8)   // -- WP P1DCFIX --
                     color: picker.chosen === index ? Theme.selection : "transparent"
                     TapHandler {
                         onTapped: picker.chosen = row.index
@@ -91,6 +91,7 @@ Dialog {
                         }
                     }
                     ColumnLayout {
+                        id: lines
                         anchors.fill: parent
                         anchors.leftMargin: Theme.spacingSmall
                         anchors.rightMargin: Theme.spacingSmall
@@ -112,9 +113,20 @@ Dialog {
                             color: Theme.textMuted
                             elide: Text.ElideRight
                         }
+                        // -- WP P1DCFIX -- the template's own status line, the core's
+                        // words (a shipped template awaiting approval says so)
+                        Text {
+                            objectName: "TemplatePicker.status." + row.index
+                            Layout.fillWidth: true
+                            visible: text.length > 0
+                            text: row.modelData.status || ""
+                            font: Theme.fontSmall
+                            color: Theme.warning
+                            elide: Text.ElideRight
+                        }
                     }
                     Accessible.role: Accessible.ListItem
-                    Accessible.name: row.modelData.name
+                    Accessible.name: row.modelData.status ? row.modelData.name + ", " + row.modelData.status : row.modelData.name
                 }
                 Text {
                     anchors.centerIn: parent

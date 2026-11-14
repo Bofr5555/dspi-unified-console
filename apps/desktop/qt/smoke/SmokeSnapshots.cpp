@@ -11,6 +11,7 @@
 #include "DeviceModel.h"
 #include "FilesController.h"
 #include "HistoryController.h"
+#include "ModeController.h"
 #include "NoticeCenter.h"
 #include "Registrar.h"
 #include "Shell.h"
@@ -27,6 +28,7 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSignalSpy>
+#include <QTest>
 #include <cmath>
 #include <functional>
 
@@ -226,8 +228,50 @@ static void snapshotsSection(SmokeDriver &d) {
     d.check("p1qt1: Toggle recalls B", d.waitFor(8000, [&] { return snaps->abSide() == QLatin1String("b") && near(gain0(device), other); }));
     d.waitIdle();
     shell->trigger(QStringLiteral("device.abToggle"));
-    d.check("p1qt1: Ctrl+Shift+C's row toggles back to A",
+    d.check("p1qt1: the A/B key's row toggles back to A",
             d.waitFor(8000, [&] { return snaps->abSide() == QLatin1String("a") && near(gain0(device), start); }));
+    d.waitIdle();
+
+    // -- WP P1DCFIX -- the A/B key is a bare B: it toggles, but not while a
+    // text field has the keyboard or a dialog asks something
+    const auto keyB = [&] {
+        window->requestActivate();
+        d.waitFor(1000, [&] { return QGuiApplication::focusWindow() == window; });
+        QTest::keyClick(window, Qt::Key_B);
+        d.spin(50);
+    };
+    window->contentItem()->forceActiveFocus();
+    keyB();
+    d.check("p1dcfix: a bare B toggles to B",
+            d.waitFor(8000, [&] { return snaps->abSide() == QLatin1String("b") && near(gain0(device), other); }) && d.waitIdle());
+    keyB();
+    d.check("p1dcfix: and B again back to A",
+            d.waitFor(8000, [&] { return snaps->abSide() == QLatin1String("a") && near(gain0(device), start); }) && d.waitIdle());
+    if (QQuickItem *field = d.item(QStringLiteral("SnapshotsWindow.captureName"), window->contentItem())) {
+        field->forceActiveFocus();
+        d.spin(50);
+        keyB();
+        d.spin(300);
+        d.check("p1dcfix: B in a text field is typed, not a toggle",
+                snaps->abSide() == QLatin1String("a") && field->property("text").toString().contains(QLatin1Char('b'), Qt::CaseInsensitive));
+        field->setProperty("text", QString());
+        window->contentItem()->forceActiveFocus();
+    } else {
+        d.check("p1dcfix: the capture field", false);
+    }
+    QObject *askB = question;   // the delete question, asked again
+    if (askB) QMetaObject::invokeMethod(askB, "open");
+    d.check("p1dcfix: a question is open", d.waitFor(3000, [&] { return opened(askB); }));
+    keyB();
+    d.spin(300);
+    d.check("p1dcfix: B while a dialog asks does nothing", snaps->abSide() == QLatin1String("a") && !snaps->busy());
+    if (askB) QMetaObject::invokeMethod(askB, "finish", Q_ARG(QVariant, QStringLiteral("reject")));
+    d.waitFor(3000, [&] { return !opened(askB); });
+    {
+        QObject *row = d.object(QStringLiteral("Menu.device.abToggle"));
+        QObject *action = row ? row->property("action").value<QObject *>() : nullptr;
+        d.check("p1dcfix: the menu row's shortcut is B", action && action->property("shortcut").toString() == QLatin1String("B"));
+    }
     d.waitIdle();
     d.check("p1qt1: A/B is no modal", noModal(files));
     window->raise();
@@ -236,14 +280,34 @@ static void snapshotsSection(SmokeDriver &d) {
     // ---- A guarded recall: the toggle is off, Revert ends the compare ----
     qp18NoticeMark();
     snaps->setRollback(true);
+    // -- WP P1DCFIX -- the timeout: 30 s unless set, 5 to 300, used by the recall
+    snaps->setGuardTimeoutS(30);
+    d.check("p1dcfix: the timeout is 30 s by default", snaps->guardTimeoutS() == SnapshotsController::kGuardTimeoutDefaultS);
+    snaps->setGuardTimeoutS(1);
+    const int low = snaps->guardTimeoutS();
+    snaps->setGuardTimeoutS(1000);
+    d.check("p1dcfix: the timeout stays within 5 to 300 s", low == 5 && snaps->guardTimeoutS() == 300);
+    snaps->setGuardTimeoutS(45);
+    QQuickItem *timeoutBox = d.item(QStringLiteral("SnapshotsWindow.timeout"), window->contentItem());
+    d.check("p1dcfix: Advanced shows the timeout", timeoutBox && timeoutBox->isVisible()
+                                                       && timeoutBox->property("realValue").toDouble() == 45.0);
     snaps->recall(idB);
     d.check("p1qt1: a recall with rollback waits for Keep", d.waitFor(8000, [&] { return snaps->guardWaiting(); }) && d.waitIdle());
+    d.check("p1dcfix: the recall waits the time set", snaps->guardTimeoutMs() == 45000);
     d.check("p1qt1: the device holds B meanwhile", near(gain0(device), other));
     QQuickItem *banner = d.item(QStringLiteral("SafeApplyBanner"));
     d.check("p1qt1: the countdown bar shows, with Keep and Revert",
             banner && banner->isVisible() && snaps->guardRemainingMs() > 0 && snaps->guardTimeoutMs() >= snaps->guardRemainingMs()
                 && d.item(QStringLiteral("SafeApplyBanner.keep")) && d.item(QStringLiteral("SafeApplyBanner.revert")));
     d.check("p1qt1: the A/B toggle is off during the countdown", snaps->abActive() && !snaps->canToggle());
+    // -- WP P1DCFIX -- the countdown in the core's words (notice guard.waiting)
+    {
+        const QString said = banner ? banner->property("text").toString() : QString();
+        d.check("p1dcfix: the countdown is the core's sentence, with the seconds",
+                snaps->guardWaitingText() == QLatin1String("Keep these settings? They go back in {s} s unless you press Keep.")
+                    && said.contains(QLatin1String("Bench B")) && said.contains(QLatin1String("Keep these settings? They go back in "))
+                    && !said.contains(QLatin1String("{s}")));
+    }
     const QString side = snaps->abSide();
     shell->trigger(QStringLiteral("device.abToggle"));
     d.spin(300);
@@ -266,7 +330,35 @@ static void snapshotsSection(SmokeDriver &d) {
     d.check("p1qt1: Keep keeps it", d.waitFor(8000, [&] { return snaps->guardPhase() == QLatin1String("kept"); })
                                        && near(gain0(device), other) && noModal(files));
     snaps->setRollback(false);
+    snaps->setGuardTimeoutS(SnapshotsController::kGuardTimeoutDefaultS);   // -- WP P1DCFIX --
     d.waitIdle();
+
+    // -- WP P1DCFIX -- Simple mode: recall and compare only
+    if (auto *modes = Registrar::instance<ModeController>()) {
+        const QString mode0 = modes->mode();
+        const bool ownChoice = modes->rememberedForDevice();
+        modes->choose(QStringLiteral("simple"), true);
+        d.spin(100);
+        const auto shown = [&](const char *name) {
+            QQuickItem *i = d.item(QString::fromLatin1(name), window->contentItem());
+            return i && i->isVisible();
+        };
+        d.check("p1dcfix: Simple shows the list, Recall and the compare",
+                shown("SnapshotsWindow.list") && shown("SnapshotsWindow.recall") && shown("SnapshotsWindow.compare"));
+        d.check("p1dcfix: Simple has no capture, rename, note, export, import or delete",
+                !shown("SnapshotsWindow.captureRow") && !shown("SnapshotsWindow.editRow") && !shown("SnapshotsWindow.export")
+                    && !shown("SnapshotsWindow.import") && !shown("SnapshotsWindow.delete"));
+        d.check("p1dcfix: Simple has no rollback choice and no timeout",
+                !shown("SnapshotsWindow.rollback") && !shown("SnapshotsWindow.timeout"));
+        window->raise();
+        shootBoth(d, window, QStringLiteral("snapshots-simple"));
+        modes->choose(mode0, !ownChoice);
+        d.spin(100);
+        d.check("p1dcfix: back in Advanced, capture and the timeout are back",
+                modes->mode() == mode0 && shown("SnapshotsWindow.captureRow") && shown("SnapshotsWindow.timeout"));
+    } else {
+        d.check("p1dcfix: the mode controller", false);
+    }
 
     // Leave the demo as it was: the snapshots out of the list, the gain back
     for (const QString &id : { idA, idB }) {
@@ -454,12 +546,25 @@ static void offlineSection(SmokeDriver &d) {
     shell->trigger(QStringLiteral("file.newFromTemplate"));
     d.check("p1qt1-offline: New from Template… lists the templates", d.waitFor(5000, [&] { return picker.count() > 0; }));
     QVariantMap k340;
-    for (const QVariant &t : picker.isEmpty() ? QVariantList() : picker.first().value(0).toList())
-        if (t.toMap().value(QStringLiteral("builtin")).toBool() && t.toMap().value(QStringLiteral("id")).toString().contains(QLatin1String("k340"), Qt::CaseInsensitive))
+    int k340Row = -1, rowAt = 0;
+    for (const QVariant &t : picker.isEmpty() ? QVariantList() : picker.first().value(0).toList()) {
+        if (t.toMap().value(QStringLiteral("builtin")).toBool() && t.toMap().value(QStringLiteral("id")).toString().contains(QLatin1String("k340"), Qt::CaseInsensitive)) {
             k340 = t.toMap();
+            k340Row = rowAt;
+        }
+        ++rowAt;
+    }
     d.check("p1qt1-offline: the K340 template is shipped", !k340.isEmpty());
     QObject *templates = files->host()->findChild<QObject *>(QStringLiteral("TemplatePicker"));
     d.check("p1qt1-offline: its picker opens", d.waitFor(3000, [&] { return opened(templates); }));
+    // -- WP P1DCFIX -- F3: the picker shows the core's status line (the K340 template's draft notice)
+    {
+        const QString status = k340.value(QStringLiteral("status")).toString();
+        QQuickItem *line = nullptr;
+        d.waitFor(3000, [&] { return (line = inPopup(d, templates, QStringLiteral("TemplatePicker.status.%1").arg(k340Row))) != nullptr; });
+        d.check("p1dcfix: the K340 template's status line is shown",
+                status.startsWith(QLatin1String("Draft")) && line && line->isVisible() && line->property("text").toString() == status);
+    }
     shootBoth(d, d.mainWindow(), QStringLiteral("template-picker"));
     QMetaObject::invokeMethod(templates, "close");
     d.waitFor(2000, [&] { return !opened(templates); });

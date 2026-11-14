@@ -50,7 +50,11 @@ internal sealed interface ConsoleShortcut {
     /** Command+B: bypass the master EQ. */
     data object Bypass : ConsoleShortcut
 
-    /** Command+T: the A/B toggle while a compare runs (PRO1 W4). */
+    /**
+     * B, no modifier (WP P1DCFIX, as Qt and the web): the A/B toggle while a
+     * compare runs (PRO1 W4). Never while a text field is edited or a dialog
+     * is open.
+     */
     data object AbToggle : ConsoleShortcut
 }
 
@@ -89,7 +93,14 @@ internal object ConsoleKeyMap {
      */
     fun shortcutOf(key: Key, command: Boolean, shift: Boolean, alt: Boolean): ConsoleShortcut? {
         if (alt) return null
-        if (!command) return if (key == Key.Spacebar && !shift) ConsoleShortcut.StartStopGenerator else null
+        if (!command) {
+            return when {
+                shift -> null
+                key == Key.Spacebar -> ConsoleShortcut.StartStopGenerator
+                key == Key.B -> ConsoleShortcut.AbToggle // -- WP P1DCFIX --
+                else -> null
+            }
+        }
         // -- WP AN42 --
         if (key == Key.Z) return if (shift) ConsoleShortcut.Redo else ConsoleShortcut.Undo
         if (key == Key.Y && !shift) return ConsoleShortcut.Redo
@@ -107,7 +118,6 @@ internal object ConsoleKeyMap {
             Key.S -> ConsoleShortcut.Commit
             Key.M -> ConsoleShortcut.Mute
             Key.B -> ConsoleShortcut.Bypass
-            Key.T -> ConsoleShortcut.AbToggle
             else -> null
         }
     }

@@ -22,7 +22,10 @@
 #include <QJsonDocument>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QSettings>
+#include <QWindow>
 #include <QStandardPaths>
+#include <algorithm>
 #include <memory>
 
 static const Registrar::Controller<SnapshotsController> snapshotsController;
@@ -34,8 +37,10 @@ namespace {
 constexpr uint32_t kReplyBytes = 256 << 10;
 // The core refuses a document over 4 MB; one byte more is enough for it to say so
 constexpr qint64 kReadLimit = (4 << 20) + 1;
-// The timeout the core takes for 0 (30 s, owner OD-P1g)
-constexpr uint32_t kDefaultTimeout = 0;
+// -- WP P1DCFIX -- the safe apply's timeout, remembered on this console
+const QString kTimeoutKey = QStringLiteral("snapshots/guardTimeoutS");
+// The notice the countdown says (P1NT's table; `{s}` the seconds left)
+constexpr const char *kWaitingNotice = "guard.waiting";
 
 QByteArray once(const std::function<uint32_t(char *, uint32_t)> &fill) {
     QByteArray buf(int(kReplyBytes), '\0');
@@ -56,6 +61,18 @@ const char *orNull(const QByteArray &s) { return s.isEmpty() ? nullptr : s.const
 bool typing() {
     QObject *focus = QGuiApplication::focusObject();
     return focus && (focus->inherits("QQuickTextInput") || focus->inherits("QQuickTextEdit"));
+}
+
+// -- WP P1DCFIX -- a dialog is open (a modal window, or a modal popup of the
+// window with the keyboard): the bare A/B key is not the device's then either
+bool dialogOpen() {
+    if (QGuiApplication::modalWindow()) return true;
+    QWindow *window = QGuiApplication::focusWindow();
+    if (!window) return false;
+    const QList<QObject *> all = window->findChildren<QObject *>();
+    for (QObject *o : all)
+        if (o->inherits("QQuickPopup") && o->property("modal").toBool() && o->property("opened").toBool()) return true;
+    return false;
 }
 
 QVariantMap row(const QJsonObject &s) {
@@ -90,9 +107,27 @@ SnapshotsController::SnapshotsController(const AppContext &ctx, QObject *parent)
         });
     ctx.poller->setEnabled(m_poll, false);
     connect(ctx.device, &DeviceModel::snapshotApplied, this, &SnapshotsController::onSnapshotApplied);
+    // -- WP P1DCFIX -- the A/B key is a bare B: never while typing or asked something
     ctx.shell->addHandler(QStringLiteral("device.abToggle"), this, [this] {
-        if (!typing()) abToggle();
+        if (!typing() && !dialogOpen()) abToggle();
     });
+    // -- WP P1DCFIX -- the timeout set before, and the countdown's words (the
+    // notice table: no handle, no I/O)
+    m_timeoutS = std::clamp(QSettings().value(kTimeoutKey, kGuardTimeoutDefaultS).toInt(), kGuardTimeoutMinS, kGuardTimeoutMaxS);
+    const QJsonObject notice = object(once([](char *b, uint32_t n) { return dspi_notice_for(kWaitingNotice, nullptr, b, n); }));
+    const QString title = notice.value(QLatin1String("title")).toString();
+    const QString reason = notice.value(QLatin1String("reason")).toString();
+    m_waitingText = isOk(notice) && notice.value(QLatin1String("key")).toString() == QLatin1String(kWaitingNotice)
+                        ? title + QLatin1Char(' ') + reason
+                        : tr("Keep these settings? They go back in {s} s unless you press Keep.");
+}
+
+void SnapshotsController::setGuardTimeoutS(int seconds) {
+    const int s = std::clamp(seconds, kGuardTimeoutMinS, kGuardTimeoutMaxS);
+    if (s == m_timeoutS) return;
+    m_timeoutS = s;
+    QSettings().setValue(kTimeoutKey, s);
+    emit guardTimeoutSChanged();
 }
 
 SnapshotsController *SnapshotsController::create(QQmlEngine *, QJSEngine *) {
@@ -304,7 +339,9 @@ void SnapshotsController::recall(const QString &id) {
     const QByteArray i = id.toUtf8();
     if (m_guardDefault || m_rollback) {
         writeCall(QStringLiteral("snapshot recall"),
-                  [i](FfiCore *c) { return once([&](char *b, uint32_t n) { return dspi_apply_guarded_snapshot(c, i.constData(), kDefaultTimeout, b, n); }); },
+                  [i, t = uint32_t(m_timeoutS)](FfiCore *c) {
+                      return once([&](char *b, uint32_t n) { return dspi_apply_guarded_snapshot(c, i.constData(), t, b, n); });
+                  },
                   [this](bool ok, const QJsonObject &o) {
                       if (ok) setGuard(o);
                       else failed(o, tr("The snapshot was not recalled."));

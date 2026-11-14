@@ -4,7 +4,7 @@
 // (no modal for a success).
 
 import { useEffect, useState } from "preact/hooks";
-import { mayToggle, secondsLeft, type DeskState, type Outcome, type SnapshotDesk } from "./model";
+import { guardOffered, mayToggle, secondsLeft, waitingWords, type DeskState, type Outcome, type SnapshotDesk } from "./model";
 import { abKeyHint } from "../../ui/keys";
 
 export function useDesk(desk: SnapshotDesk): DeskState {
@@ -56,20 +56,43 @@ export function AbBar(props: { desk: SnapshotDesk }) {
   );
 }
 
-/** A guarded apply's countdown with Keep and Revert, while it waits. */
+/**
+ * A guarded apply's countdown with Keep and Revert, while it waits, in the core's words
+ * (-- WP P1DCFIX -- F7). A lost one (the connection went while it waited) keeps its Revert for
+ * as long as the core says lost: the user's word only, never by itself (F1).
+ */
 export function GuardBar(props: { desk: SnapshotDesk }) {
   const st = useDesk(props.desk);
   const g = st.guard;
-  if (!g || g.phase !== "waiting") return null;
-  const left = secondsLeft(g);
+  if (!guardOffered(g) || !g) return null;
+  const busy = !!st.busy;
+  if (g.phase === "lost") {
+    return (
+      <div class="guard-bar" role="alert" aria-label="Safe apply">
+        <div class="guard-text">
+          <strong>{g.label || "Applied"}</strong>
+          <span> · {g.message}</span>
+        </div>
+        <div class="guard-buttons">
+          <button type="button" disabled={busy} onClick={() => void props.desk.revert()}>
+            Revert
+          </button>
+        </div>
+      </div>
+    );
+  }
+  const w = waitingWords(st.waitingText, secondsLeft(g));
   const part = g.timeoutMs > 0 ? Math.max(0, Math.min(1, g.remainingMs / g.timeoutMs)) : 0;
   return (
     <div class="guard-bar" role="alert" aria-label="Safe apply">
       <div class="guard-text">
         <strong>{g.label || "Applied"}</strong>
         <span>
-          {" "}
-          · reverts in <span class="guard-left">{left}</span> s unless you keep it{g.hub ? " (the hub reverts it if this page goes away)" : ""}
+          {" · "}
+          {w.before}
+          <span class="guard-left">{w.seconds}</span>
+          {w.after}
+          {g.hub ? " The hub puts them back too if this page goes away." : ""}
         </span>
       </div>
       <progress class="guard-progress" max={1} value={part} aria-label="Time left" />

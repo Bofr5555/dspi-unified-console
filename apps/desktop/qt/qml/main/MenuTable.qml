@@ -74,7 +74,8 @@ QtObject {
                 // -- WP P1QT1 -- snapshots and the A/B key (SnapshotsController)
                 { separator: true },
                 { id: "device.snapshots", text: qsTr("Snapshots…") },
-                { id: "device.abToggle", text: qsTr("Toggle A/B"), shortcut: "Ctrl+Shift+C", enabled: () => SnapshotsController.canToggle },
+                // -- WP P1DCFIX -- a bare B (never while typing or while a dialog asks)
+                { id: "device.abToggle", text: qsTr("Toggle A/B"), shortcut: "B", enabled: () => SnapshotsController.canToggle },
                 { separator: true },
                 { id: "device.firmwareUpdate", text: qsTr("Firmware Update…"), platformHidden: "STM32H723" },
                 { separator: true },
