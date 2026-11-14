@@ -740,7 +740,7 @@
 .dspi-web .ab-bar .ab-side { font-size: 0.85rem; color: var(--muted); overflow-wrap: anywhere; }
 .dspi-web .ab-bar .ab-side.on { color: inherit; font-weight: 600; }
 .dspi-web .ab-bar .ab-keep { display: inline-flex; gap: 0.35rem; margin-left: auto; }
-.dspi-web .guard-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.75rem; margin: 0.5rem 0; padding: 0.4rem 0.6rem; border: 1px solid var(--warn); border-radius: 8px; background: var(--panel); }
+.dspi-web .guard-bar { position: sticky; top: 0; z-index: 5; box-shadow: 0 2px 8px rgb(0 0 0 / 0.25); display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.75rem; margin: 0.5rem 0; padding: 0.4rem 0.6rem; border: 1px solid var(--warn); border-radius: 8px; background: var(--panel); }
 .dspi-web .guard-text { flex: 1 1 14rem; min-width: 0; overflow-wrap: anywhere; }
 .dspi-web .guard-left { font-variant-numeric: tabular-nums; font-weight: 600; }
 .dspi-web .guard-progress { flex: 1 1 6rem; min-width: 4rem; height: 0.5rem; accent-color: var(--warn); }

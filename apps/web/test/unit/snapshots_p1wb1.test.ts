@@ -63,6 +63,7 @@ test("P1WB1: names, files, the countdown and when the toggle is on", () => {
     kind: "snapshot",
     savedUtc: "2026-11-14T10:00:00Z",
   });
+  assert.equal(docMeta(JSON.stringify({ meta: { name: "S", kind: "snapshot" }, snapshot: { note: "own" } }), "").note, "own");
   assert.deepEqual(docMeta("not json", "dir/hall.dspipreset"), { name: "hall", note: "", kind: "preset", savedUtc: "" });
   assert.equal(fileNameFor('a/b:c*?"<>|'), "a_b_c_.dspipreset");
   assert.equal(fileNameFor(" .. "), "snapshot.dspipreset");

@@ -70,15 +70,23 @@ const NO_COMPARE: AbCompareRecord = { active: false, side: null, aName: "", bNam
 /** What the core's `meta` says of a document, for the list only (the core reads it again when used). */
 export function docMeta(text: string, fileName: string): { name: string; note: string; kind: string; savedUtc: string } {
   let meta: Record<string, unknown> = {};
+  let snap: Record<string, unknown> = {};
   try {
-    const doc = JSON.parse(text) as { meta?: unknown };
+    const doc = JSON.parse(text) as { meta?: unknown; snapshot?: unknown };
     if (doc && typeof doc.meta === "object" && doc.meta) meta = doc.meta as Record<string, unknown>;
+    // A snapshot's own block (P1SN) holds its note.
+    if (doc && typeof doc.snapshot === "object" && doc.snapshot) snap = doc.snapshot as Record<string, unknown>;
   } catch {
     // The core says why when it is used; listed under its file's name meanwhile.
   }
-  const str = (k: string) => (typeof meta[k] === "string" ? (meta[k] as string) : "");
+  const str = (o: Record<string, unknown>, k: string) => (typeof o[k] === "string" ? (o[k] as string) : "");
   const stem = fileName.replace(/^.*[\\/]/, "").replace(/\.[^.]+$/, "");
-  return { name: str("name") || stem || "Untitled", note: str("note"), kind: str("kind") || "preset", savedUtc: str("savedUtc") };
+  return {
+    name: str(meta, "name") || stem || "Untitled",
+    note: str(snap, "note") || str(meta, "note"),
+    kind: str(meta, "kind") || "preset",
+    savedUtc: str(meta, "savedUtc"),
+  };
 }
 
 /** A file name for a document called `name`: no path or reserved characters, with the extension. */
