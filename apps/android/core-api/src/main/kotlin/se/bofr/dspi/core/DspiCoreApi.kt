@@ -312,6 +312,25 @@ interface DspiCoreApi : AutoCloseable {
     fun openDemoUsbDirect()
 
     /**
+     * A single-use token for `op`, valid for 10 s on the current connection:
+     * mint it when the user has confirmed `op` (the confirmation dialog's OK),
+     * and pass it to the gated call. No I/O.
+     */
+    fun confirmToken(op: ConfirmOp): String
+
+    /**
+     * Whether a gated call without a token is refused from now on
+     * ([`DspiError::ConfirmationRequired`]). Off by default. Kept across
+     * connections; minted tokens stay as they are.
+     */
+    fun requireConfirmation(on: Boolean)
+
+    /**
+     * Whether gated calls need a token ([`DspiCore::require_confirmation`]).
+     */
+    fun confirmationRequired(): Boolean
+
+    /**
      * Identify the firmware and read every parameter into the mirror.
      *
      * Reads `REQ_GET_PLATFORM`, then the bulk image in whatever wire format
@@ -970,6 +989,16 @@ interface DspiCoreApi : AutoCloseable {
     fun configImportSelected(text: String, options: Long, eqChannels: Long): String
 
     /**
+     * [`DspiCore::config_import_selected`] with a confirmation token
+     * ([`crate::confirm`], [`crate::ConfirmOp::ConfigImport`]). Without a
+     * good one while tokens are required, or with a bad one at any time, the
+     * reply is a refusal (`noticeKey` `confirmation_required`) and nothing is
+     * written. A text that is not a document, or an empty selection, is
+     * refused first and leaves the token unspent.
+     */
+    fun configImportConfirmed(text: String, options: Long, eqChannels: Long, token: String?): String
+
+    /**
      * What importing `text` with `options` and `eq_channels` (as
      * [`DspiCore::config_import_selected`] takes them) would change on the
      * device, without writing anything: the preview shown before an import
@@ -1037,6 +1066,19 @@ interface DspiCoreApi : AutoCloseable {
     fun firmwareVersionMatches(version: String): Boolean
 
     /**
+     * [`crate::flash_to_drive_guarded`] with a confirmation token
+     * ([`crate::confirm`], [`crate::ConfirmOp::FirmwareFlash`]): mint it once
+     * the bootloader drive is there (the board has left, so a token minted
+     * while it was still connected no longer holds). Without a good token
+     * while tokens are required, or with a bad one at any time,
+     * [`DspiError::ConfirmationRequired`] and nothing reaches the drive.
+     *
+     * Errors: that, then those of `flash_to_drive_guarded`.
+     */
+    @Throws(DspiException::class)
+    fun flashConfirmed(image: List<Int>, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String, token: String?)
+
+    /**
      * What the open board needs, read from the device now. Call before
      * `enter_bootloader`, and keep the record for [`firmware_guard_check`].
      *
@@ -1100,6 +1142,13 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun saveOutputConfig()
+
+    /**
+     * [`DspiCore::save_output_config`] with a confirmation token
+     * ([`crate::confirm`]), as [`DspiCore::save_preset_confirmed`].
+     */
+    @Throws(DspiException::class)
+    fun saveOutputConfigConfirmed(token: String?)
 
     /**
      * On the demo device only, for clients' tests: how
@@ -1474,6 +1523,14 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun enterBootloader()
+
+    /**
+     * [`DspiCore::enter_bootloader`] with a confirmation token
+     * ([`crate::confirm`]), as [`DspiCore::save_preset_confirmed`]. With no
+     * device open a token is still checked, and nothing is sent.
+     */
+    @Throws(DspiException::class)
+    fun enterBootloaderConfirmed(token: String?)
 
     /**
      * 0 idle, 1 PDM, 2 EQ worker. Also stored in `DspState.core1_mode`.
@@ -2489,6 +2546,14 @@ interface DspiCoreApi : AutoCloseable {
     fun savePreset(slot: Int)
 
     /**
+     * [`DspiCore::save_preset`] with a confirmation token ([`crate::confirm`]):
+     * [`DspiError::ConfirmationRequired`], with nothing sent, without a good
+     * one while tokens are required, or with a bad one at any time.
+     */
+    @Throws(DspiException::class)
+    fun savePresetConfirmed(slot: Int, token: String?)
+
+    /**
      * Load preset `slot`, wait until the device runs it, then read the
      * image and the directory again; the loaded state becomes the baseline.
      * Runs under the device lock.
@@ -2520,6 +2585,13 @@ interface DspiCoreApi : AutoCloseable {
     fun copyPreset(source: Int, dest: Int)
 
     /**
+     * [`DspiCore::copy_preset`] with a confirmation token, as
+     * [`DspiCore::save_preset_confirmed`].
+     */
+    @Throws(DspiException::class)
+    fun copyPresetConfirmed(source: Int, dest: Int, token: String?)
+
+    /**
      * Delete preset `slot` and wait until the directory no longer holds
      * it; its name goes with it. Runs under the device lock.
      *
@@ -2531,6 +2603,13 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun deletePreset(slot: Int)
+
+    /**
+     * [`DspiCore::delete_preset`] with a confirmation token, as
+     * [`DspiCore::save_preset_confirmed`].
+     */
+    @Throws(DspiException::class)
+    fun deletePresetConfirmed(slot: Int, token: String?)
 
     /**
      * Name preset `slot`: at most 31 bytes of `name` (cut at a character
@@ -2587,6 +2666,13 @@ interface DspiCoreApi : AutoCloseable {
     fun saveParams()
 
     /**
+     * [`DspiCore::save_params`] with a confirmation token, as
+     * [`DspiCore::save_preset_confirmed`].
+     */
+    @Throws(DspiException::class)
+    fun saveParamsConfirmed(token: String?)
+
+    /**
      * Revert to saved: load the active slot again ([`DspiCore::load_preset`],
      * the device's deferred load, safe on every input).
      *
@@ -2611,6 +2697,13 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun factoryReset()
+
+    /**
+     * [`DspiCore::factory_reset`] with a confirmation token, as
+     * [`DspiCore::save_preset_confirmed`].
+     */
+    @Throws(DspiException::class)
+    fun factoryResetConfirmed(token: String?)
 
     /**
      * Take the live state as what the active preset holds: from now on
@@ -3070,6 +3163,16 @@ interface DspiCoreApi : AutoCloseable {
     fun coreVregCalCommit(typed: String?)
 
     /**
+     * [`DspiCore::core_vreg_cal_commit`] with a confirmation token
+     * ([`crate::confirm`], [`crate::ConfirmOp::VregSave`]): refused with
+     * [`DspiError::ConfirmationRequired`], with no write and noted in the
+     * view, as [`DspiCore::save_preset_confirmed`] is. The word stays as it
+     * is, beside the token.
+     */
+    @Throws(DspiException::class)
+    fun coreVregCalCommitConfirmed(typed: String?, token: String?)
+
+    /**
      * End a trial, or abort a run, with `TRIAL_END`, at any time but while a
      * save is being read back. Works without a fresh status, so a run can be
      * aborted while reads are failing. `Disconnected` and `ReadOnly` change
@@ -3086,6 +3189,13 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun coreVregManualSet(value: Int, typed: String?)
+
+    /**
+     * [`DspiCore::core_vreg_manual_set`] with a confirmation token, as
+     * [`DspiCore::core_vreg_cal_commit_confirmed`].
+     */
+    @Throws(DspiException::class)
+    fun coreVregManualSetConfirmed(value: Int, typed: String?, token: String?)
 
     /**
      * Manual `TRIAL`, with the flow's limits and confirmation. It shows as a

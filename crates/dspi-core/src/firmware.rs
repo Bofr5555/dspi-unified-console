@@ -602,6 +602,28 @@ impl DspiCore {
         guard.conn()?;
         Ok(version_matches(&guard.state, version))
     }
+
+    // -- WP P1TK --
+    /// [`crate::flash_to_drive_guarded`] with a confirmation token
+    /// ([`crate::confirm`], [`crate::ConfirmOp::FirmwareFlash`]): mint it once
+    /// the bootloader drive is there (the board has left, so a token minted
+    /// while it was still connected no longer holds). Without a good token
+    /// while tokens are required, or with a bad one at any time,
+    /// [`DspiError::ConfirmationRequired`] and nothing reaches the drive.
+    ///
+    /// Errors: that, then those of `flash_to_drive_guarded`.
+    pub fn flash_confirmed(
+        &self,
+        image: Vec<u8>,
+        drive: BootloaderDrive,
+        board: crate::FirmwareGuardBoard,
+        typed_confirmation: String,
+        token: Option<String>,
+    ) -> Result<()> {
+        // Nothing to re-check later: the write is to the drive, not the device.
+        let _ticket = self.confirm_gate(crate::ConfirmOp::FirmwareFlash, token.as_deref())?;
+        crate::flash_to_drive_guarded(image, drive, board, typed_confirmation)
+    }
 }
 
 // ── Bootloader on the bus ──────────────────────────────────────────────

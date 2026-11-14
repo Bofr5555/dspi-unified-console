@@ -601,6 +601,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_config_export(void*_Nonnull ptr, 
 RustBuffer uniffi_dspi_core_fn_method_dspicore_config_import(void*_Nonnull ptr, RustBuffer text, uint32_t options, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONFIG_IMPORT_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONFIG_IMPORT_CONFIRMED
+RustBuffer uniffi_dspi_core_fn_method_dspicore_config_import_confirmed(void*_Nonnull ptr, RustBuffer text, uint32_t options, uint32_t eq_channels, RustBuffer token, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONFIG_IMPORT_SELECTED
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONFIG_IMPORT_SELECTED
 RustBuffer uniffi_dspi_core_fn_method_dspicore_config_import_selected(void*_Nonnull ptr, RustBuffer text, uint32_t options, uint32_t eq_channels, RustCallStatus *_Nonnull out_status
@@ -611,6 +616,16 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_config_import_selected(void*_Nonn
 RustBuffer uniffi_dspi_core_fn_method_dspicore_config_preview(void*_Nonnull ptr, RustBuffer text, uint32_t options, uint32_t eq_channels, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONFIRM_TOKEN
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONFIRM_TOKEN
+RustBuffer uniffi_dspi_core_fn_method_dspicore_confirm_token(void*_Nonnull ptr, RustBuffer op, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONFIRMATION_REQUIRED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONFIRMATION_REQUIRED
+int8_t uniffi_dspi_core_fn_method_dspicore_confirmation_required(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONNECTION_GENERATION
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONNECTION_GENERATION
 uint64_t uniffi_dspi_core_fn_method_dspicore_connection_generation(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -619,6 +634,11 @@ uint64_t uniffi_dspi_core_fn_method_dspicore_connection_generation(void*_Nonnull
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_COPY_PRESET
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_COPY_PRESET
 void uniffi_dspi_core_fn_method_dspicore_copy_preset(void*_Nonnull ptr, uint8_t source, uint8_t dest, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_COPY_PRESET_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_COPY_PRESET_CONFIRMED
+void uniffi_dspi_core_fn_method_dspicore_copy_preset_confirmed(void*_Nonnull ptr, uint8_t source, uint8_t dest, RustBuffer token, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE1_CONFLICT_REASON
@@ -634,6 +654,11 @@ void uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_close(void*_Nonnull ptr, 
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_CAL_COMMIT
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_CAL_COMMIT
 void uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_commit(void*_Nonnull ptr, RustBuffer typed, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_CAL_COMMIT_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_CAL_COMMIT_CONFIRMED
+void uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_commit_confirmed(void*_Nonnull ptr, RustBuffer typed, RustBuffer token, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_CAL_KEEP
@@ -679,6 +704,11 @@ void uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_clear(void*_Nonnull pt
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_MANUAL_SET
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_MANUAL_SET
 void uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_set(void*_Nonnull ptr, uint8_t value, RustBuffer typed, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_MANUAL_SET_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_MANUAL_SET_CONFIRMED
+void uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_set_confirmed(void*_Nonnull ptr, uint8_t value, RustBuffer typed, RustBuffer token, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CORE_VREG_MANUAL_TRIAL
@@ -761,6 +791,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_cs_status_text(void*_Nonnull ptr,
 void uniffi_dspi_core_fn_method_dspicore_delete_preset(void*_Nonnull ptr, uint8_t slot, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DELETE_PRESET_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DELETE_PRESET_CONFIRMED
+void uniffi_dspi_core_fn_method_dspicore_delete_preset_confirmed(void*_Nonnull ptr, uint8_t slot, RustBuffer token, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DEMO_LATENCY_SETS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_DEMO_LATENCY_SETS
 uint32_t uniffi_dspi_core_fn_method_dspicore_demo_latency_sets(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -816,6 +851,11 @@ void uniffi_dspi_core_fn_method_dspicore_end_group(void*_Nonnull ptr, RustCallSt
 void uniffi_dspi_core_fn_method_dspicore_enter_bootloader(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_ENTER_BOOTLOADER_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_ENTER_BOOTLOADER_CONFIRMED
+void uniffi_dspi_core_fn_method_dspicore_enter_bootloader_confirmed(void*_Nonnull ptr, RustBuffer token, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_EVENT_LOG_DEVICES
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_EVENT_LOG_DEVICES
 RustBuffer uniffi_dspi_core_fn_method_dspicore_event_log_devices(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -844,6 +884,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_ext_status(void*_Nonnull ptr, Rus
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FACTORY_RESET
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FACTORY_RESET
 void uniffi_dspi_core_fn_method_dspicore_factory_reset(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FACTORY_RESET_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FACTORY_RESET_CONFIRMED
+void uniffi_dspi_core_fn_method_dspicore_factory_reset_confirmed(void*_Nonnull ptr, RustBuffer token, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FEATURE_PRESENT
@@ -1076,6 +1121,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_firmware_guard_board(void*_Nonnul
 int8_t uniffi_dspi_core_fn_method_dspicore_firmware_version_matches(void*_Nonnull ptr, RustBuffer version, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FLASH_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FLASH_CONFIRMED
+void uniffi_dspi_core_fn_method_dspicore_flash_confirmed(void*_Nonnull ptr, RustBuffer image, RustBuffer drive, RustBuffer board, RustBuffer typed_confirmation, RustBuffer token, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_GET_CHANNEL_NAME
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_GET_CHANNEL_NAME
 RustBuffer uniffi_dspi_core_fn_method_dspicore_get_channel_name(void*_Nonnull ptr, uint8_t ch, RustCallStatus *_Nonnull out_status
@@ -1301,6 +1351,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_redo(void*_Nonnull ptr, RustCallS
 void uniffi_dspi_core_fn_method_dspicore_refresh_params(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_REQUIRE_CONFIRMATION
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_REQUIRE_CONFIRMATION
+void uniffi_dspi_core_fn_method_dspicore_require_confirmation(void*_Nonnull ptr, int8_t on, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RESET_ALINK_STATS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RESET_ALINK_STATS
 void uniffi_dspi_core_fn_method_dspicore_reset_alink_stats(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -1366,14 +1421,29 @@ void uniffi_dspi_core_fn_method_dspicore_save_master_volume(void*_Nonnull ptr, R
 void uniffi_dspi_core_fn_method_dspicore_save_output_config(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SAVE_OUTPUT_CONFIG_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SAVE_OUTPUT_CONFIG_CONFIRMED
+void uniffi_dspi_core_fn_method_dspicore_save_output_config_confirmed(void*_Nonnull ptr, RustBuffer token, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SAVE_PARAMS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SAVE_PARAMS
 void uniffi_dspi_core_fn_method_dspicore_save_params(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SAVE_PARAMS_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SAVE_PARAMS_CONFIRMED
+void uniffi_dspi_core_fn_method_dspicore_save_params_confirmed(void*_Nonnull ptr, RustBuffer token, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SAVE_PRESET
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SAVE_PRESET
 void uniffi_dspi_core_fn_method_dspicore_save_preset(void*_Nonnull ptr, uint8_t slot, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SAVE_PRESET_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SAVE_PRESET_CONFIRMED
+void uniffi_dspi_core_fn_method_dspicore_save_preset_confirmed(void*_Nonnull ptr, uint8_t slot, RustBuffer token, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SCAN_DEVICES
@@ -2859,6 +2929,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_config_import(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONFIG_IMPORT_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONFIG_IMPORT_CONFIRMED
+uint16_t uniffi_dspi_core_checksum_method_dspicore_config_import_confirmed(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONFIG_IMPORT_SELECTED
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONFIG_IMPORT_SELECTED
 uint16_t uniffi_dspi_core_checksum_method_dspicore_config_import_selected(void
@@ -2871,6 +2947,18 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_config_preview(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONFIRM_TOKEN
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONFIRM_TOKEN
+uint16_t uniffi_dspi_core_checksum_method_dspicore_confirm_token(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONFIRMATION_REQUIRED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONFIRMATION_REQUIRED
+uint16_t uniffi_dspi_core_checksum_method_dspicore_confirmation_required(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONNECTION_GENERATION
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONNECTION_GENERATION
 uint16_t uniffi_dspi_core_checksum_method_dspicore_connection_generation(void
@@ -2880,6 +2968,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_connection_generation(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_COPY_PRESET
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_COPY_PRESET
 uint16_t uniffi_dspi_core_checksum_method_dspicore_copy_preset(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_COPY_PRESET_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_COPY_PRESET_CONFIRMED
+uint16_t uniffi_dspi_core_checksum_method_dspicore_copy_preset_confirmed(void
     
 );
 #endif
@@ -2898,6 +2992,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_close(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_CAL_COMMIT
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_CAL_COMMIT
 uint16_t uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_commit(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_CAL_COMMIT_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_CAL_COMMIT_CONFIRMED
+uint16_t uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_commit_confirmed(void
     
 );
 #endif
@@ -2952,6 +3052,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_clear(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_MANUAL_SET
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_MANUAL_SET
 uint16_t uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_set(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_MANUAL_SET_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CORE_VREG_MANUAL_SET_CONFIRMED
+uint16_t uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_set_confirmed(void
     
 );
 #endif
@@ -3051,6 +3157,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_delete_preset(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DELETE_PRESET_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DELETE_PRESET_CONFIRMED
+uint16_t uniffi_dspi_core_checksum_method_dspicore_delete_preset_confirmed(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DEMO_LATENCY_SETS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_DEMO_LATENCY_SETS
 uint16_t uniffi_dspi_core_checksum_method_dspicore_demo_latency_sets(void
@@ -3117,6 +3229,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_enter_bootloader(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_ENTER_BOOTLOADER_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_ENTER_BOOTLOADER_CONFIRMED
+uint16_t uniffi_dspi_core_checksum_method_dspicore_enter_bootloader_confirmed(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_EVENT_LOG_DEVICES
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_EVENT_LOG_DEVICES
 uint16_t uniffi_dspi_core_checksum_method_dspicore_event_log_devices(void
@@ -3150,6 +3268,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_ext_status(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FACTORY_RESET
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FACTORY_RESET
 uint16_t uniffi_dspi_core_checksum_method_dspicore_factory_reset(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FACTORY_RESET_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FACTORY_RESET_CONFIRMED
+uint16_t uniffi_dspi_core_checksum_method_dspicore_factory_reset_confirmed(void
     
 );
 #endif
@@ -3429,6 +3553,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_firmware_version_matches(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FLASH_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FLASH_CONFIRMED
+uint16_t uniffi_dspi_core_checksum_method_dspicore_flash_confirmed(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_GET_CHANNEL_NAME
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_GET_CHANNEL_NAME
 uint16_t uniffi_dspi_core_checksum_method_dspicore_get_channel_name(void
@@ -3699,6 +3829,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_refresh_params(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_REQUIRE_CONFIRMATION
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_REQUIRE_CONFIRMATION
+uint16_t uniffi_dspi_core_checksum_method_dspicore_require_confirmation(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_RESET_ALINK_STATS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_RESET_ALINK_STATS
 uint16_t uniffi_dspi_core_checksum_method_dspicore_reset_alink_stats(void
@@ -3777,15 +3913,33 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_save_output_config(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SAVE_OUTPUT_CONFIG_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SAVE_OUTPUT_CONFIG_CONFIRMED
+uint16_t uniffi_dspi_core_checksum_method_dspicore_save_output_config_confirmed(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SAVE_PARAMS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SAVE_PARAMS
 uint16_t uniffi_dspi_core_checksum_method_dspicore_save_params(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SAVE_PARAMS_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SAVE_PARAMS_CONFIRMED
+uint16_t uniffi_dspi_core_checksum_method_dspicore_save_params_confirmed(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SAVE_PRESET
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SAVE_PRESET
 uint16_t uniffi_dspi_core_checksum_method_dspicore_save_preset(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SAVE_PRESET_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SAVE_PRESET_CONFIRMED
+uint16_t uniffi_dspi_core_checksum_method_dspicore_save_preset_confirmed(void
     
 );
 #endif

@@ -1896,6 +1896,8 @@ fn write_error(e: &DspiError) -> String {
             "Another console is applying changes to this device. Try again in a moment.".into()
         }
         DspiError::Denied => "This console's role on the hub does not allow changes.".into(),
+        // -- WP P1TK --
+        DspiError::ConfirmationRequired { msg, .. } => msg.clone(),
         other => format!("The device could not be written: {other}."),
     }
 }
@@ -2142,22 +2144,24 @@ impl DspiCore {
     /// is written, journalled or logged; the undo history stays as it was.
     // -- WP P1AFIX -- (review p1a F4) the refusal of an empty selection
     pub fn config_import_selected(&self, text: String, options: u32, eq_channels: u32) -> String {
-        let doc = match parse_config(&text) {
-            Ok(d) => d,
-            Err(e) => return document_refusal(&e),
-        };
-        let sel = Selection::new(options, eq_channels);
-        if sel.blocks() == 0 {
-            return keyed_refusal(
-                "Nothing was selected to import; nothing was changed.",
-                NOTICE_CONFIG_NOTHING_SELECTED,
-            );
-        }
-        self.ensure_probed();
-        match self.import_document(&doc, sel) {
-            Ok(reply) => reply.to_string(),
-            Err(e) => device_refusal(&e),
-        }
+        self.config_import_with(text, options, eq_channels, None)
+    }
+
+    // -- WP P1TK --
+    /// [`DspiCore::config_import_selected`] with a confirmation token
+    /// ([`crate::confirm`], [`crate::ConfirmOp::ConfigImport`]). Without a
+    /// good one while tokens are required, or with a bad one at any time, the
+    /// reply is a refusal (`noticeKey` `confirmation_required`) and nothing is
+    /// written. A text that is not a document, or an empty selection, is
+    /// refused first and leaves the token unspent.
+    pub fn config_import_confirmed(
+        &self,
+        text: String,
+        options: u32,
+        eq_channels: u32,
+        token: Option<String>,
+    ) -> String {
+        self.config_import_with(text, options, eq_channels, token.as_deref())
     }
 
     /// What importing `text` with `options` and `eq_channels` (as
@@ -2197,7 +2201,43 @@ impl DspiCore {
 }
 
 impl DspiCore {
-    fn import_document(&self, doc: &Value, sel: Selection) -> Result<Value> {
+    // -- WP P1TK --
+    /// The body of `config_import_selected` and its `_confirmed` form.
+    fn config_import_with(
+        &self,
+        text: String,
+        options: u32,
+        eq_channels: u32,
+        token: Option<&str>,
+    ) -> String {
+        let doc = match parse_config(&text) {
+            Ok(d) => d,
+            Err(e) => return document_refusal(&e),
+        };
+        let sel = Selection::new(options, eq_channels);
+        if sel.blocks() == 0 {
+            return keyed_refusal(
+                "Nothing was selected to import; nothing was changed.",
+                NOTICE_CONFIG_NOTHING_SELECTED,
+            );
+        }
+        let ticket = match self.confirm_gate(crate::ConfirmOp::ConfigImport, token) {
+            Ok(t) => t,
+            Err(e) => return device_refusal(&e),
+        };
+        self.ensure_probed();
+        match self.import_document(&doc, sel, &ticket) {
+            Ok(reply) => reply.to_string(),
+            Err(e) => device_refusal(&e),
+        }
+    }
+
+    fn import_document(
+        &self,
+        doc: &Value,
+        sel: Selection,
+        ticket: &crate::confirm::Ticket,
+    ) -> Result<Value> {
         let lock = self.acquire_device_lock(LOCK_REASON)?;
         let result = (|| {
             let (mut built, before, separate) = {
@@ -2206,6 +2246,7 @@ impl DspiCore {
                 if !lock.is_current(inner) {
                     return Err(DspiError::Disconnected);
                 }
+                ticket.still_on(inner)?; // -- WP P1TK --
                 // -- WP BULKFIX --
                 let written = self.write_document(inner, doc, sel);
                 let left_muted = written.is_err() && crate::connect::bulk_left_muted(inner);

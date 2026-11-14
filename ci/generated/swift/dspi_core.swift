@@ -1524,6 +1524,16 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func configImport(text: String, options: UInt32)  -> String
     
     /**
+     * [`DspiCore::config_import_selected`] with a confirmation token
+     * ([`crate::confirm`], [`crate::ConfirmOp::ConfigImport`]). Without a
+     * good one while tokens are required, or with a bad one at any time, the
+     * reply is a refusal (`noticeKey` `confirmation_required`) and nothing is
+     * written. A text that is not a document, or an empty selection, is
+     * refused first and leaves the token unspent.
+     */
+    func configImportConfirmed(text: String, options: UInt32, eqChannels: UInt32, token: String?)  -> String
+    
+    /**
      * [`DspiCore::config_import`] with the EQ narrowed to the wire channels
      * in `eq_channels` (bit k: channel k; `u32::MAX` every one). `options`
      * as there: with [`IMPORT_BY_BLOCK`] each `IMPORT_*` block bit says
@@ -1552,6 +1562,18 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func configPreview(text: String, options: UInt32, eqChannels: UInt32)  -> String
     
     /**
+     * A single-use token for `op`, valid for 10 s on the current connection:
+     * mint it when the user has confirmed `op` (the confirmation dialog's OK),
+     * and pass it to the gated call. No I/O.
+     */
+    func confirmToken(op: ConfirmOp)  -> String
+    
+    /**
+     * Whether gated calls need a token ([`DspiCore::require_confirmation`]).
+     */
+    func confirmationRequired()  -> Bool
+    
+    /**
      * The open connection's generation: unique per connection and never
      * reused while the process runs, so it changes on every reopen and on
      * a Link re-bind. 0 when nothing is open.
@@ -1572,6 +1594,12 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * confirmed; otherwise as [`DspiCore::save_preset`].
      */
     func copyPreset(source: UInt8, dest: UInt8) throws 
+    
+    /**
+     * [`DspiCore::copy_preset`] with a confirmation token, as
+     * [`DspiCore::save_preset_confirmed`].
+     */
+    func copyPresetConfirmed(source: UInt8, dest: UInt8, token: String?) throws 
     
     /**
      * Whether enabling output `output` would collide on Core 1, and if so
@@ -1598,6 +1626,15 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * `Passed`, with the trial running. Errors as for starting.
      */
     func coreVregCalCommit(typed: String?) throws 
+    
+    /**
+     * [`DspiCore::core_vreg_cal_commit`] with a confirmation token
+     * ([`crate::confirm`], [`crate::ConfirmOp::VregSave`]): refused with
+     * [`DspiError::ConfirmationRequired`], with no write and noted in the
+     * view, as [`DspiCore::save_preset_confirmed`] is. The word stays as it
+     * is, beside the token.
+     */
+    func coreVregCalCommitConfirmed(typed: String?, token: String?) throws 
     
     /**
      * Keep a trial found on the device: the soak counts from now, for
@@ -1672,6 +1709,12 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * Read back by later polls, as a commit. Errors as for starting.
      */
     func coreVregManualSet(value: UInt8, typed: String?) throws 
+    
+    /**
+     * [`DspiCore::core_vreg_manual_set`] with a confirmation token, as
+     * [`DspiCore::core_vreg_cal_commit_confirmed`].
+     */
+    func coreVregManualSetConfirmed(value: UInt8, typed: String?, token: String?) throws 
     
     /**
      * Manual `TRIAL`, with the flow's limits and confirmation. It shows as a
@@ -1865,6 +1908,12 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func deletePreset(slot: UInt8) throws 
     
     /**
+     * [`DspiCore::delete_preset`] with a confirmation token, as
+     * [`DspiCore::save_preset_confirmed`].
+     */
+    func deletePresetConfirmed(slot: UInt8, token: String?) throws 
+    
+    /**
      * How many output-latency requests the demo device has received, for
      * clients' tests that a wait never sends one again. `Unsupported`, with no
      * traffic, on anything but a simulated device.
@@ -1993,6 +2042,13 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func enterBootloader() throws 
     
     /**
+     * [`DspiCore::enter_bootloader`] with a confirmation token
+     * ([`crate::confirm`]), as [`DspiCore::save_preset_confirmed`]. With no
+     * device open a token is still checked, and nothing is sent.
+     */
+    func enterBootloaderConfirmed(token: String?) throws 
+    
+    /**
      * The serials with an event log, sorted. Never fails.
      */
     func eventLogDevices()  -> [String]
@@ -2050,6 +2106,12 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * error, of the reset or the re-read.
      */
     func factoryReset() throws 
+    
+    /**
+     * [`DspiCore::factory_reset`] with a confirmation token, as
+     * [`DspiCore::save_preset_confirmed`].
+     */
+    func factoryResetConfirmed(token: String?) throws 
     
     /**
      * Whether the connect probe found feature `name` on the open device
@@ -2574,6 +2636,18 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func firmwareVersionMatches(version: String) throws  -> Bool
     
     /**
+     * [`crate::flash_to_drive_guarded`] with a confirmation token
+     * ([`crate::confirm`], [`crate::ConfirmOp::FirmwareFlash`]): mint it once
+     * the bootloader drive is there (the board has left, so a token minted
+     * while it was still connected no longer holds). Without a good token
+     * while tokens are required, or with a bad one at any time,
+     * [`DspiError::ConfirmationRequired`] and nothing reaches the drive.
+     *
+     * Errors: that, then those of `flash_to_drive_guarded`.
+     */
+    func flashConfirmed(image: Data, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String, token: String?) throws 
+    
+    /**
      * Reads the name of wire channel `ch` from the device
      * (`REQ_GET_CHANNEL_NAME`) and keeps it in the mirror. Works on a
      * read-only connection too (its image is then left alone).
@@ -3079,6 +3153,13 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func refreshParams() throws 
     
     /**
+     * Whether a gated call without a token is refused from now on
+     * ([`DspiError::ConfirmationRequired`]). Off by default. Kept across
+     * connections; minted tokens stay as they are.
+     */
+    func requireConfirmation(on: Bool) 
+    
+    /**
      * `EXT_ALINK_STATS_RESET`: clear the alink's error and lock counters.
      * Errors as [`DspiCore::set_alink_slots`].
      */
@@ -3208,6 +3289,12 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func saveOutputConfig() throws 
     
     /**
+     * [`DspiCore::save_output_config`] with a confirmation token
+     * ([`crate::confirm`]), as [`DspiCore::save_preset_confirmed`].
+     */
+    func saveOutputConfigConfirmed(token: String?) throws 
+    
+    /**
      * Save the live state to the active slot (`REQ_SAVE_PARAMS`), under the
      * device lock; the live state becomes the baseline.
      *
@@ -3217,6 +3304,12 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * error.
      */
     func saveParams() throws 
+    
+    /**
+     * [`DspiCore::save_params`] with a confirmation token, as
+     * [`DspiCore::save_preset_confirmed`].
+     */
+    func saveParamsConfirmed(token: String?) throws 
     
     /**
      * Save the live state to `slot` (0..10) and wait until the device has
@@ -3233,6 +3326,13 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`].
      */
     func savePreset(slot: UInt8) throws 
+    
+    /**
+     * [`DspiCore::save_preset`] with a confirmation token ([`crate::confirm`]):
+     * [`DspiError::ConfirmationRequired`], with nothing sent, without a good
+     * one while tokens are required, or with a bad one at any time.
+     */
+    func savePresetConfirmed(slot: UInt8, token: String?) throws 
     
     /**
      * Enumerate DSPis on USB (nusb): VID `2E8B` or the legacy VID, PID
@@ -4709,6 +4809,25 @@ open func configImport(text: String, options: UInt32) -> String  {
 }
     
     /**
+     * [`DspiCore::config_import_selected`] with a confirmation token
+     * ([`crate::confirm`], [`crate::ConfirmOp::ConfigImport`]). Without a
+     * good one while tokens are required, or with a bad one at any time, the
+     * reply is a refusal (`noticeKey` `confirmation_required`) and nothing is
+     * written. A text that is not a document, or an empty selection, is
+     * refused first and leaves the token unspent.
+     */
+open func configImportConfirmed(text: String, options: UInt32, eqChannels: UInt32, token: String?) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_config_import_confirmed(self.uniffiClonePointer(),
+        FfiConverterString.lower(text),
+        FfiConverterUInt32.lower(options),
+        FfiConverterUInt32.lower(eqChannels),
+        FfiConverterOptionString.lower(token),$0
+    )
+})
+}
+    
+    /**
      * [`DspiCore::config_import`] with the EQ narrowed to the wire channels
      * in `eq_channels` (bit k: channel k; `u32::MAX` every one). `options`
      * as there: with [`IMPORT_BY_BLOCK`] each `IMPORT_*` block bit says
@@ -4753,6 +4872,29 @@ open func configPreview(text: String, options: UInt32, eqChannels: UInt32) -> St
 }
     
     /**
+     * A single-use token for `op`, valid for 10 s on the current connection:
+     * mint it when the user has confirmed `op` (the confirmation dialog's OK),
+     * and pass it to the gated call. No I/O.
+     */
+open func confirmToken(op: ConfirmOp) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_confirm_token(self.uniffiClonePointer(),
+        FfiConverterTypeConfirmOp_lower(op),$0
+    )
+})
+}
+    
+    /**
+     * Whether gated calls need a token ([`DspiCore::require_confirmation`]).
+     */
+open func confirmationRequired() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_confirmation_required(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
      * The open connection's generation: unique per connection and never
      * reused while the process runs, so it changes on every reopen and on
      * a Link re-bind. 0 when nothing is open.
@@ -4781,6 +4923,19 @@ open func copyPreset(source: UInt8, dest: UInt8)throws   {try rustCallWithError(
     uniffi_dspi_core_fn_method_dspicore_copy_preset(self.uniffiClonePointer(),
         FfiConverterUInt8.lower(source),
         FfiConverterUInt8.lower(dest),$0
+    )
+}
+}
+    
+    /**
+     * [`DspiCore::copy_preset`] with a confirmation token, as
+     * [`DspiCore::save_preset_confirmed`].
+     */
+open func copyPresetConfirmed(source: UInt8, dest: UInt8, token: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_copy_preset_confirmed(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(source),
+        FfiConverterUInt8.lower(dest),
+        FfiConverterOptionString.lower(token),$0
     )
 }
 }
@@ -4822,6 +4977,21 @@ open func coreVregCalClose()throws   {try rustCallWithError(FfiConverterTypeDspi
 open func coreVregCalCommit(typed: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_commit(self.uniffiClonePointer(),
         FfiConverterOptionString.lower(typed),$0
+    )
+}
+}
+    
+    /**
+     * [`DspiCore::core_vreg_cal_commit`] with a confirmation token
+     * ([`crate::confirm`], [`crate::ConfirmOp::VregSave`]): refused with
+     * [`DspiError::ConfirmationRequired`], with no write and noted in the
+     * view, as [`DspiCore::save_preset_confirmed`] is. The word stays as it
+     * is, beside the token.
+     */
+open func coreVregCalCommitConfirmed(typed: String?, token: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_commit_confirmed(self.uniffiClonePointer(),
+        FfiConverterOptionString.lower(typed),
+        FfiConverterOptionString.lower(token),$0
     )
 }
 }
@@ -4943,6 +5113,19 @@ open func coreVregManualSet(value: UInt8, typed: String?)throws   {try rustCallW
     uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_set(self.uniffiClonePointer(),
         FfiConverterUInt8.lower(value),
         FfiConverterOptionString.lower(typed),$0
+    )
+}
+}
+    
+    /**
+     * [`DspiCore::core_vreg_manual_set`] with a confirmation token, as
+     * [`DspiCore::core_vreg_cal_commit_confirmed`].
+     */
+open func coreVregManualSetConfirmed(value: UInt8, typed: String?, token: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_set_confirmed(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(value),
+        FfiConverterOptionString.lower(typed),
+        FfiConverterOptionString.lower(token),$0
     )
 }
 }
@@ -5234,6 +5417,18 @@ open func deletePreset(slot: UInt8)throws   {try rustCallWithError(FfiConverterT
 }
     
     /**
+     * [`DspiCore::delete_preset`] with a confirmation token, as
+     * [`DspiCore::save_preset_confirmed`].
+     */
+open func deletePresetConfirmed(slot: UInt8, token: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_delete_preset_confirmed(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(slot),
+        FfiConverterOptionString.lower(token),$0
+    )
+}
+}
+    
+    /**
      * How many output-latency requests the demo device has received, for
      * clients' tests that a wait never sends one again. `Unsupported`, with no
      * traffic, on anything but a simulated device.
@@ -5419,6 +5614,18 @@ open func enterBootloader()throws   {try rustCallWithError(FfiConverterTypeDspiE
 }
     
     /**
+     * [`DspiCore::enter_bootloader`] with a confirmation token
+     * ([`crate::confirm`]), as [`DspiCore::save_preset_confirmed`]. With no
+     * device open a token is still checked, and nothing is sent.
+     */
+open func enterBootloaderConfirmed(token: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_enter_bootloader_confirmed(self.uniffiClonePointer(),
+        FfiConverterOptionString.lower(token),$0
+    )
+}
+}
+    
+    /**
      * The serials with an event log, sorted. Never fails.
      */
 open func eventLogDevices() -> [String]  {
@@ -5506,6 +5713,17 @@ open func extStatus()throws  -> ExtStatus  {
      */
 open func factoryReset()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_factory_reset(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+    /**
+     * [`DspiCore::factory_reset`] with a confirmation token, as
+     * [`DspiCore::save_preset_confirmed`].
+     */
+open func factoryResetConfirmed(token: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_factory_reset_confirmed(self.uniffiClonePointer(),
+        FfiConverterOptionString.lower(token),$0
     )
 }
 }
@@ -6271,6 +6489,27 @@ open func firmwareVersionMatches(version: String)throws  -> Bool  {
 }
     
     /**
+     * [`crate::flash_to_drive_guarded`] with a confirmation token
+     * ([`crate::confirm`], [`crate::ConfirmOp::FirmwareFlash`]): mint it once
+     * the bootloader drive is there (the board has left, so a token minted
+     * while it was still connected no longer holds). Without a good token
+     * while tokens are required, or with a bad one at any time,
+     * [`DspiError::ConfirmationRequired`] and nothing reaches the drive.
+     *
+     * Errors: that, then those of `flash_to_drive_guarded`.
+     */
+open func flashConfirmed(image: Data, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String, token: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_flash_confirmed(self.uniffiClonePointer(),
+        FfiConverterData.lower(image),
+        FfiConverterTypeBootloaderDrive_lower(drive),
+        FfiConverterTypeFirmwareGuardBoard_lower(board),
+        FfiConverterString.lower(typedConfirmation),
+        FfiConverterOptionString.lower(token),$0
+    )
+}
+}
+    
+    /**
      * Reads the name of wire channel `ch` from the device
      * (`REQ_GET_CHANNEL_NAME`) and keeps it in the mirror. Works on a
      * read-only connection too (its image is then left alone).
@@ -7014,6 +7253,18 @@ open func refreshParams()throws   {try rustCallWithError(FfiConverterTypeDspiErr
 }
     
     /**
+     * Whether a gated call without a token is refused from now on
+     * ([`DspiError::ConfirmationRequired`]). Off by default. Kept across
+     * connections; minted tokens stay as they are.
+     */
+open func requireConfirmation(on: Bool)  {try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_require_confirmation(self.uniffiClonePointer(),
+        FfiConverterBool.lower(on),$0
+    )
+}
+}
+    
+    /**
      * `EXT_ALINK_STATS_RESET`: clear the alink's error and lock counters.
      * Errors as [`DspiCore::set_alink_slots`].
      */
@@ -7201,6 +7452,17 @@ open func saveOutputConfig()throws   {try rustCallWithError(FfiConverterTypeDspi
 }
     
     /**
+     * [`DspiCore::save_output_config`] with a confirmation token
+     * ([`crate::confirm`]), as [`DspiCore::save_preset_confirmed`].
+     */
+open func saveOutputConfigConfirmed(token: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_save_output_config_confirmed(self.uniffiClonePointer(),
+        FfiConverterOptionString.lower(token),$0
+    )
+}
+}
+    
+    /**
      * Save the live state to the active slot (`REQ_SAVE_PARAMS`), under the
      * device lock; the live state becomes the baseline.
      *
@@ -7211,6 +7473,17 @@ open func saveOutputConfig()throws   {try rustCallWithError(FfiConverterTypeDspi
      */
 open func saveParams()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_save_params(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+    /**
+     * [`DspiCore::save_params`] with a confirmation token, as
+     * [`DspiCore::save_preset_confirmed`].
+     */
+open func saveParamsConfirmed(token: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_save_params_confirmed(self.uniffiClonePointer(),
+        FfiConverterOptionString.lower(token),$0
     )
 }
 }
@@ -7232,6 +7505,19 @@ open func saveParams()throws   {try rustCallWithError(FfiConverterTypeDspiError_
 open func savePreset(slot: UInt8)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_save_preset(self.uniffiClonePointer(),
         FfiConverterUInt8.lower(slot),$0
+    )
+}
+}
+    
+    /**
+     * [`DspiCore::save_preset`] with a confirmation token ([`crate::confirm`]):
+     * [`DspiError::ConfirmationRequired`], with nothing sent, without a good
+     * one while tokens are required, or with a bad one at any time.
+     */
+open func savePresetConfirmed(slot: UInt8, token: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_save_preset_confirmed(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(slot),
+        FfiConverterOptionString.lower(token),$0
     )
 }
 }
@@ -27139,6 +27425,167 @@ public func FfiConverterTypeVregChoice_lower(_ value: VregChoice) -> RustBuffer 
     return FfiConverterTypeVregChoice.lower(value)
 }
 
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * An operation that takes a confirmation token.
+ */
+
+public enum ConfirmOp {
+    
+    /**
+     * Save the live state to a preset slot ([`DspiCore::save_preset_confirmed`]).
+     */
+    case savePreset
+    /**
+     * Copy a preset ([`DspiCore::copy_preset_confirmed`]).
+     */
+    case copyPreset
+    /**
+     * Delete a preset ([`DspiCore::delete_preset_confirmed`]).
+     */
+    case deletePreset
+    /**
+     * Save the live state to the active slot ([`DspiCore::save_params_confirmed`]).
+     */
+    case saveParams
+    /**
+     * Factory reset ([`DspiCore::factory_reset_confirmed`]).
+     */
+    case factoryReset
+    /**
+     * Save the output configuration ([`DspiCore::save_output_config_confirmed`]).
+     */
+    case saveOutputConfig
+    /**
+     * Restart into the bootloader ([`DspiCore::enter_bootloader_confirmed`]).
+     */
+    case enterBootloader
+    /**
+     * Import a configuration document ([`DspiCore::config_import_confirmed`]).
+     */
+    case configImport
+    /**
+     * Store a core voltage ([`DspiCore::core_vreg_cal_commit_confirmed`],
+     * [`DspiCore::core_vreg_manual_set_confirmed`]).
+     */
+    case vregSave
+    /**
+     * Write a firmware image to the bootloader drive
+     * ([`DspiCore::flash_confirmed`]).
+     */
+    case firmwareFlash
+}
+
+
+#if compiler(>=6)
+extension ConfirmOp: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeConfirmOp: FfiConverterRustBuffer {
+    typealias SwiftType = ConfirmOp
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ConfirmOp {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .savePreset
+        
+        case 2: return .copyPreset
+        
+        case 3: return .deletePreset
+        
+        case 4: return .saveParams
+        
+        case 5: return .factoryReset
+        
+        case 6: return .saveOutputConfig
+        
+        case 7: return .enterBootloader
+        
+        case 8: return .configImport
+        
+        case 9: return .vregSave
+        
+        case 10: return .firmwareFlash
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ConfirmOp, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .savePreset:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .copyPreset:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .deletePreset:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .saveParams:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .factoryReset:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .saveOutputConfig:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .enterBootloader:
+            writeInt(&buf, Int32(7))
+        
+        
+        case .configImport:
+            writeInt(&buf, Int32(8))
+        
+        
+        case .vregSave:
+            writeInt(&buf, Int32(9))
+        
+        
+        case .firmwareFlash:
+            writeInt(&buf, Int32(10))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeConfirmOp_lift(_ buf: RustBuffer) throws -> ConfirmOp {
+    return try FfiConverterTypeConfirmOp.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeConfirmOp_lower(_ value: ConfirmOp) -> RustBuffer {
+    return FfiConverterTypeConfirmOp.lower(value)
+}
+
+
+extension ConfirmOp: Equatable, Hashable {}
+
+
+
+
+
+
 
 /**
  * Why a [`crate::DspiCore`] call failed.
@@ -27250,6 +27697,20 @@ public enum DspiError: Swift.Error {
          * Which voltage, and what to type.
          */msg: String
     )
+    /**
+     * A dangerous call (`crate::confirm`) was not let through: tokens are
+     * required and none was given, or the one given is not good for it.
+     * Nothing was sent. `code`: `missing`, `unknown`, `used`, `wrong_op`,
+     * `expired` or `connection_changed` (`crate::confirm::refusal`).
+     */
+    case ConfirmationRequired(
+        /**
+         * Why, as above.
+         */code: String, 
+        /**
+         * Which operation and why, for a log or a detail line.
+         */msg: String
+    )
 }
 
 
@@ -27296,6 +27757,10 @@ public struct FfiConverterTypeDspiError: FfiConverterRustBuffer {
             msg: try FfiConverterString.read(from: &buf)
             )
         case 13: return .OvervoltWordRequired(
+            msg: try FfiConverterString.read(from: &buf)
+            )
+        case 14: return .ConfirmationRequired(
+            code: try FfiConverterString.read(from: &buf), 
             msg: try FfiConverterString.read(from: &buf)
             )
 
@@ -27370,6 +27835,12 @@ public struct FfiConverterTypeDspiError: FfiConverterRustBuffer {
         
         case let .OvervoltWordRequired(msg):
             writeInt(&buf, Int32(13))
+            FfiConverterString.write(msg, into: &buf)
+            
+        
+        case let .ConfirmationRequired(code,msg):
+            writeInt(&buf, Int32(14))
+            FfiConverterString.write(code, into: &buf)
             FfiConverterString.write(msg, into: &buf)
             
         }
@@ -30945,16 +31416,28 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_config_import() != 20391) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_config_import_confirmed() != 34044) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_config_import_selected() != 35048) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_config_preview() != 60996) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_confirm_token() != 3433) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_confirmation_required() != 47132) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_connection_generation() != 50111) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_copy_preset() != 9367) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_copy_preset_confirmed() != 33372) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_core1_conflict_reason() != 6255) {
@@ -30964,6 +31447,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_commit() != 44738) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_commit_confirmed() != 11396) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_keep() != 33548) {
@@ -30991,6 +31477,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_set() != 2842) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_set_confirmed() != 3178) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_trial() != 30445) {
@@ -31041,6 +31530,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_delete_preset() != 218) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_delete_preset_confirmed() != 41129) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_demo_latency_sets() != 20471) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -31074,6 +31566,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_enter_bootloader() != 19680) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_enter_bootloader_confirmed() != 11255) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_event_log_devices() != 55922) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -31090,6 +31585,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_factory_reset() != 27488) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_factory_reset_confirmed() != 21942) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_feature_present() != 18345) {
@@ -31230,6 +31728,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_firmware_version_matches() != 52277) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_flash_confirmed() != 36538) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_get_channel_name() != 25587) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -31365,6 +31866,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_refresh_params() != 360) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_require_confirmation() != 45706) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_reset_alink_stats() != 30180) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -31404,10 +31908,19 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_save_output_config() != 27456) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_save_output_config_confirmed() != 26787) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_save_params() != 8876) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_save_params_confirmed() != 27808) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_save_preset() != 49987) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_save_preset_confirmed() != 24345) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_scan_devices() != 33045) {

@@ -77,6 +77,8 @@ impl From<DspiError> for CallError {
             // -- WP WB7 -- (c6m N2) the page forgets the token it offered
             DspiError::Link { code, .. } if code == "wrong_hub" => "wrong_hub",
             DspiError::Link { .. } => "link",
+            // -- WP P1TK --
+            DspiError::ConfirmationRequired { .. } => "confirmation_required",
             _ => "internal",
         };
         // -- WP P1NT --
@@ -326,7 +328,8 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         "presetChanges" => presets::changes(&core),
         "presetCopy" => presets::copy(&core, params(req.params)?),
         "presetRevert" => presets::revert(&core),
-        "factoryReset" => presets::factory_reset(&core),
+        // -- WP P1TK -- with an optional `{token}`
+        "factoryReset" => presets::factory_reset(&core, token_params(req.params)?),
         // -- WP P1DF -- the document diff and the import preview
         "configDiff" => presets::diff(params(req.params)?),
         "configPreview" => presets::preview(&core, params(req.params)?),
@@ -379,6 +382,31 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
             Ok(tidy(&dspi_core::notice_for_key(p.key, p.detail)))
         }
         "noticeTexts" => Ok(tidy(&dspi_core::notice_texts())),
+        // -- WP P1TK -- confirmation tokens (dspi_core::confirm)
+        "confirmToken" => {
+            #[derive(Deserialize)]
+            struct P {
+                op: String,
+            }
+            let p: P = params(req.params)?;
+            let op = dspi_core::ConfirmOp::from_key(&p.op).ok_or_else(|| {
+                CallError::new(
+                    "invalid",
+                    format!("{} is not an operation that is confirmed", p.op),
+                )
+            })?;
+            Ok(json!(core.confirm_token(op)))
+        }
+        "requireConfirmation" => {
+            #[derive(Deserialize)]
+            struct P {
+                on: bool,
+            }
+            let p: P = params(req.params)?;
+            core.require_confirmation(p.on);
+            Ok(Value::Null)
+        }
+        "confirmationRequired" => Ok(json!(core.confirmation_required())),
         #[cfg(any(test, feature = "test-hooks"))]
         "test.sleep" => {
             #[derive(Deserialize)]
@@ -395,6 +423,17 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
             "unknown_method",
             format!("unknown method {other}"),
         )),
+    }
+}
+
+// -- WP P1TK --
+/// The parameters of a call that takes only an optional token: null (none)
+/// or `{token}`.
+fn token_params(v: Value) -> Result<presets::TokenParams, CallError> {
+    if v.is_null() {
+        Ok(presets::TokenParams::default())
+    } else {
+        params(v)
     }
 }
 
@@ -750,6 +789,9 @@ fn demo_action(core: &DspiCore, demo: bool, a: DemoAction) -> CallResult {
 // -- WP P1NT --
 #[cfg(test)]
 mod tests_wp_p1nt;
+// -- WP P1TK --
+#[cfg(test)]
+mod tests_wp_p1tk;
 
 #[cfg(test)]
 mod tests {

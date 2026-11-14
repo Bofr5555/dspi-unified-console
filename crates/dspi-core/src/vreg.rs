@@ -434,13 +434,21 @@ impl DspiCore {
     /// says so, even if it was typed for the trial. A refusal leaves the flow in
     /// `Passed`, with the trial running. Errors as for starting.
     pub fn core_vreg_cal_commit(&self, typed: Option<String>) -> Result<()> {
-        self.vreg_call(|core, cal, s, now| {
-            let op = cal
-                .machine
-                .commit(s, typed.as_deref(), now)
-                .map_err(flow_error)?;
-            core.vreg_send(cal, op, typed.as_deref())
-        })
+        self.core_vreg_cal_commit_with(typed, None)
+    }
+
+    // -- WP P1TK --
+    /// [`DspiCore::core_vreg_cal_commit`] with a confirmation token
+    /// ([`crate::confirm`], [`crate::ConfirmOp::VregSave`]): refused with
+    /// [`DspiError::ConfirmationRequired`], with no write and noted in the
+    /// view, as [`DspiCore::save_preset_confirmed`] is. The word stays as it
+    /// is, beside the token.
+    pub fn core_vreg_cal_commit_confirmed(
+        &self,
+        typed: Option<String>,
+        token: Option<String>,
+    ) -> Result<()> {
+        self.core_vreg_cal_commit_with(typed, token.as_deref())
     }
 
     /// End a trial, or abort a run, with `TRIAL_END`, at any time but while a
@@ -458,13 +466,19 @@ impl DspiCore {
     /// build default; anything else has the flow's limits and confirmation.
     /// Read back by later polls, as a commit. Errors as for starting.
     pub fn core_vreg_manual_set(&self, value: u8, typed: Option<String>) -> Result<()> {
-        self.vreg_call(|core, cal, s, now| {
-            let op = cal
-                .machine
-                .manual_set(s, value, typed.as_deref(), now)
-                .map_err(flow_error)?;
-            core.vreg_send(cal, op, typed.as_deref())
-        })
+        self.core_vreg_manual_set_with(value, typed, None)
+    }
+
+    // -- WP P1TK --
+    /// [`DspiCore::core_vreg_manual_set`] with a confirmation token, as
+    /// [`DspiCore::core_vreg_cal_commit_confirmed`].
+    pub fn core_vreg_manual_set_confirmed(
+        &self,
+        value: u8,
+        typed: Option<String>,
+        token: Option<String>,
+    ) -> Result<()> {
+        self.core_vreg_manual_set_with(value, typed, token.as_deref())
     }
 
     /// Manual `TRIAL`, with the flow's limits and confirmation. It shows as a
@@ -524,6 +538,47 @@ fn note(cal: &mut CalState, r: Result<()>) -> Result<()> {
 }
 
 impl DspiCore {
+    // -- WP P1TK --
+    /// The body of `core_vreg_cal_commit` and its `_confirmed` form.
+    fn core_vreg_cal_commit_with(&self, typed: Option<String>, token: Option<&str>) -> Result<()> {
+        let ticket = self.vreg_gate(token)?;
+        self.vreg_call(|core, cal, s, now| {
+            ticket.still_on(&core.lock())?;
+            let op = cal
+                .machine
+                .commit(s, typed.as_deref(), now)
+                .map_err(flow_error)?;
+            core.vreg_send(cal, op, typed.as_deref())
+        })
+    }
+
+    /// The body of `core_vreg_manual_set` and its `_confirmed` form.
+    fn core_vreg_manual_set_with(
+        &self,
+        value: u8,
+        typed: Option<String>,
+        token: Option<&str>,
+    ) -> Result<()> {
+        let ticket = self.vreg_gate(token)?;
+        self.vreg_call(|core, cal, s, now| {
+            ticket.still_on(&core.lock())?;
+            let op = cal
+                .machine
+                .manual_set(s, value, typed.as_deref(), now)
+                .map_err(flow_error)?;
+            core.vreg_send(cal, op, typed.as_deref())
+        })
+    }
+
+    /// The gate of a stored voltage, before any traffic; a refusal is noted
+    /// for the view as the flow's own are.
+    fn vreg_gate(&self, token: Option<&str>) -> Result<crate::confirm::Ticket> {
+        self.confirm_gate(crate::ConfirmOp::VregSave, token)
+            .inspect_err(|e| {
+                self.vreg_cal_lock().last_error = Some(e.to_string());
+            })
+    }
+
     fn vreg_cal_lock(&self) -> MutexGuard<'_, CalState> {
         // Every update is a plain assignment between calls, so a panic leaves
         // nothing half-written that matters.

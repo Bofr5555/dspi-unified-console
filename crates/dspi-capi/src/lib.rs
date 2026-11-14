@@ -158,6 +158,8 @@ mod tests {
             "src/fns_misc/alink_usb.rs",
             // -- WP P1NT --
             "src/fns_misc/notice_text.rs",
+            // -- WP P1TK --
+            "src/fns_misc/confirm.rs",
             "src/fns_browse.rs",
             "src/fns_link.rs",
             "src/fns_hub.rs",
