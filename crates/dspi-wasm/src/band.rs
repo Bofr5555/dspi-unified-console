@@ -46,6 +46,49 @@ pub fn filter(core: &DspiCore, p: FilterCall) -> Result<Value, CallError> {
     Ok(tidy(&now))
 }
 
+// -- WP PAIRBAND --
+/// `inputPairFilter`'s parameters: `{input, band, filterType, freq, q, gain,
+/// qp?, bypass?}`.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PairFilterCall {
+    /// Either input of the linked pair (its partner is `input ^ 1`).
+    pub input: u8,
+    /// The PEQ band, 0..9.
+    pub band: u8,
+    #[serde(flatten)]
+    pub params: Band,
+}
+
+// -- WP PAIRBAND --
+/// `inputPairFilter`: a linked input pair's band, both sides, one undo step
+/// (`DspiCore::set_input_pair_filter`); a drag's ticks too. Answers null.
+pub fn input_pair_filter(core: &DspiCore, p: PairFilterCall) -> Result<Value, CallError> {
+    core.set_input_pair_filter(p.input, p.band, p.params.into())?;
+    Ok(Value::Null)
+}
+
+// -- WP PAIRBAND --
+/// `inputPairBandBypass`'s parameters.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PairBypassCall {
+    /// Either input of the linked pair.
+    pub input: u8,
+    /// The PEQ band, 0..9.
+    pub band: u8,
+    /// Bypass (`true`) or re-enable.
+    pub bypass: bool,
+}
+
+// -- WP PAIRBAND --
+/// `inputPairBandBypass`: a linked input pair's band bypass, both sides, one
+/// undo step (`DspiCore::set_input_pair_band_bypass`). Answers null.
+pub fn input_pair_band_bypass(core: &DspiCore, p: PairBypassCall) -> Result<Value, CallError> {
+    core.set_input_pair_band_bypass(p.input, p.band, p.bypass)?;
+    Ok(Value::Null)
+}
+
 #[cfg(test)]
 mod tests_wp_wb8 {
     use serde_json::{Value, json};
@@ -91,6 +134,74 @@ mod tests_wp_wb8 {
             h,
             "filter",
             json!({ "channel": 2, "band": 20, "filterType": 1, "freq": 100.0, "q": 1.0, "gain": 0.0 }),
+        );
+        assert_eq!(r["code"], "invalid", "{r}");
+    }
+}
+
+// -- WP PAIRBAND --
+#[cfg(test)]
+mod tests_wp_pairband {
+    use serde_json::{Value, json};
+
+    use crate::calls::{call, session_new};
+    use crate::guard;
+
+    fn run(h: u32, method: &str, params: Value) -> Value {
+        let out = call(
+            h,
+            json!({ "method": method, "params": params })
+                .to_string()
+                .as_bytes(),
+        );
+        serde_json::from_slice(&out).unwrap()
+    }
+
+    /// A drag of a linked pair's band through `inputPairFilter` is one undo
+    /// step that puts both sides back; the bypass is one step too.
+    #[test]
+    fn wp_pairband_a_linked_pair_band_through_the_worker_calls() {
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        assert_eq!(run(h, "open", json!({ "kind": "demo" }))["ok"], true);
+        let band = |freq: f32, gain: f32| json!({ "input": 0, "band": 1, "filterType": 1, "freq": freq, "q": 1.0, "gain": gain });
+        let r = run(h, "inputPairFilter", band(1000.0, 6.0));
+        assert_eq!(r["ok"], true, "{r}");
+        run(h, "setDragging", json!({ "dragging": true }));
+        for i in 1..=6 {
+            let r = run(
+                h,
+                "inputPairFilter",
+                band(1000.0 + 100.0 * i as f32, 6.0 - i as f32),
+            );
+            assert_eq!(r["ok"], true, "{r}");
+        }
+        run(h, "setDragging", json!({ "dragging": false }));
+        let st = run(h, "state", Value::Null);
+        assert_eq!(st["value"]["state"]["filters"][1][1]["freq"], 1600.0);
+        let r = run(h, "undo", Value::Null);
+        assert_eq!(r["ok"], true, "{r}");
+        let st = run(h, "state", Value::Null);
+        for ch in 0..2 {
+            let b = &st["value"]["state"]["filters"][ch][1];
+            assert_eq!(b["freq"], 1000.0, "side {ch}: {b}");
+            assert_eq!(b["gain"], 6.0, "side {ch}: {b}");
+        }
+        let r = run(
+            h,
+            "inputPairBandBypass",
+            json!({ "input": 1, "band": 1, "bypass": true }),
+        );
+        assert_eq!(r["ok"], true, "{r}");
+        run(h, "undo", Value::Null);
+        let st = run(h, "state", Value::Null);
+        for ch in 0..2 {
+            assert_eq!(st["value"]["state"]["filters"][ch][1]["bypass"], false);
+        }
+        let r = run(
+            h,
+            "inputPairFilter",
+            json!({ "input": 0, "band": 10, "filterType": 1, "freq": 100.0, "q": 1.0, "gain": 0.0 }),
         );
         assert_eq!(r["code"], "invalid", "{r}");
     }

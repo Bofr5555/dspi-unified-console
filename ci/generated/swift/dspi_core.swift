@@ -4281,6 +4281,44 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func setI2sRxPin(pair: UInt8, pin: UInt8) throws 
     
     /**
+     * Bypass (`true`) or re-enable PEQ band `band` (0..9) of a linked
+     * input pair, both sides, keeping their settings: `input` and then
+     * `input ^ 1` through [`DspiCore::set_band_bypass`], in one undo group
+     * with the label of [`DspiCore::set_input_pair_filter`]. One undo
+     * step; checks and errors as there.
+     */
+    func setInputPairBandBypass(input: UInt8, band: UInt8, bypass: Bool) throws 
+    
+    /**
+     * PEQ band `band` (0..9) of a linked input pair: `input` and its
+     * partner (`input ^ 1`, inputs 2p and 2p+1, which are wire channels
+     * 2p and 2p+1) both to `params`, as [`DspiCore::set_filter`] writes
+     * it, in one undo group ([`DspiCore::begin_group`]): one undo step
+     * labelled "EQ band, linked pair", and undo and redo move both sides
+     * together. `input`, the side the person edited, is written first.
+     * The link itself is the client's (a document's `inputPairLinked`):
+     * call this for every band edit while the pair is linked (the band
+     * list, a menu, a typed value, each tick of a graph drag), and
+     * `set_filter` otherwise.
+     *
+     * In a drag ([`DspiCore::set_dragging`]) the group joins the drag's
+     * step, so a whole drag of a pair's bands is one step that holds each
+     * band of each side once (WP P0W2) and undo puts both sides back as
+     * they were when the drag began. A value someone else changes on one
+     * side is judged on its own, as in every step: undo leaves theirs and
+     * names them, and puts the rest back.
+     *
+     * The inputs, the band and the values are checked before anything is
+     * sent. A failure on the second write leaves the first one written
+     * (one undo step takes it back).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an input or its partner
+     * out of range, a band out of range, or the values `set_filter`
+     * refuses; the connection and transfer errors of every setter.
+     */
+    func setInputPairFilter(input: UInt8, band: UInt8, params: FilterParams) throws 
+    
+    /**
      * Preamp of a linked input pair: `input` and its partner (`input ^ 1`,
      * inputs 2p and 2p+1) both to `db`, shaped as
      * [`DspiCore::set_input_preamp`] shapes it, in one undo group
@@ -9602,6 +9640,58 @@ open func setI2sRxPin(pair: UInt8, pin: UInt8)throws   {try rustCallWithError(Ff
     uniffi_dspi_core_fn_method_dspicore_set_i2s_rx_pin(self.uniffiClonePointer(),
         FfiConverterUInt8.lower(pair),
         FfiConverterUInt8.lower(pin),$0
+    )
+}
+}
+    
+    /**
+     * Bypass (`true`) or re-enable PEQ band `band` (0..9) of a linked
+     * input pair, both sides, keeping their settings: `input` and then
+     * `input ^ 1` through [`DspiCore::set_band_bypass`], in one undo group
+     * with the label of [`DspiCore::set_input_pair_filter`]. One undo
+     * step; checks and errors as there.
+     */
+open func setInputPairBandBypass(input: UInt8, band: UInt8, bypass: Bool)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_set_input_pair_band_bypass(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(input),
+        FfiConverterUInt8.lower(band),
+        FfiConverterBool.lower(bypass),$0
+    )
+}
+}
+    
+    /**
+     * PEQ band `band` (0..9) of a linked input pair: `input` and its
+     * partner (`input ^ 1`, inputs 2p and 2p+1, which are wire channels
+     * 2p and 2p+1) both to `params`, as [`DspiCore::set_filter`] writes
+     * it, in one undo group ([`DspiCore::begin_group`]): one undo step
+     * labelled "EQ band, linked pair", and undo and redo move both sides
+     * together. `input`, the side the person edited, is written first.
+     * The link itself is the client's (a document's `inputPairLinked`):
+     * call this for every band edit while the pair is linked (the band
+     * list, a menu, a typed value, each tick of a graph drag), and
+     * `set_filter` otherwise.
+     *
+     * In a drag ([`DspiCore::set_dragging`]) the group joins the drag's
+     * step, so a whole drag of a pair's bands is one step that holds each
+     * band of each side once (WP P0W2) and undo puts both sides back as
+     * they were when the drag began. A value someone else changes on one
+     * side is judged on its own, as in every step: undo leaves theirs and
+     * names them, and puts the rest back.
+     *
+     * The inputs, the band and the values are checked before anything is
+     * sent. A failure on the second write leaves the first one written
+     * (one undo step takes it back).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an input or its partner
+     * out of range, a band out of range, or the values `set_filter`
+     * refuses; the connection and transfer errors of every setter.
+     */
+open func setInputPairFilter(input: UInt8, band: UInt8, params: FilterParams)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_set_input_pair_filter(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(input),
+        FfiConverterUInt8.lower(band),
+        FfiConverterTypeFilterParams_lower(params),$0
     )
 }
 }
@@ -38493,6 +38583,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_i2s_rx_pin() != 19823) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_set_input_pair_band_bypass() != 3637) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_set_input_pair_filter() != 25730) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_input_pair_preamp() != 35944) {

@@ -271,6 +271,59 @@ impl DspiCore {
         r
     }
 
+    // -- WP PAIRBAND --
+    /// PEQ band `band` (0..9) of a linked input pair: `input` and its
+    /// partner (`input ^ 1`, inputs 2p and 2p+1, which are wire channels
+    /// 2p and 2p+1) both to `params`, as [`DspiCore::set_filter`] writes
+    /// it, in one undo group ([`DspiCore::begin_group`]): one undo step
+    /// labelled "EQ band, linked pair", and undo and redo move both sides
+    /// together. `input`, the side the person edited, is written first.
+    /// The link itself is the client's (a document's `inputPairLinked`):
+    /// call this for every band edit while the pair is linked (the band
+    /// list, a menu, a typed value, each tick of a graph drag), and
+    /// `set_filter` otherwise.
+    ///
+    /// In a drag ([`DspiCore::set_dragging`]) the group joins the drag's
+    /// step, so a whole drag of a pair's bands is one step that holds each
+    /// band of each side once (WP P0W2) and undo puts both sides back as
+    /// they were when the drag began. A value someone else changes on one
+    /// side is judged on its own, as in every step: undo leaves theirs and
+    /// names them, and puts the rest back.
+    ///
+    /// The inputs, the band and the values are checked before anything is
+    /// sent. A failure on the second write leaves the first one written
+    /// (one undo step takes it back).
+    ///
+    /// Errors: [`DspiError::InvalidArgument`] for an input or its partner
+    /// out of range, a band out of range, or the values `set_filter`
+    /// refuses; the connection and transfer errors of every setter.
+    pub fn set_input_pair_filter(&self, input: u8, band: u8, params: FilterParams) -> Result<()> {
+        let partner = pair_band_check(self, input, band)?;
+        checked_band(params)?;
+        self.begin_group(PAIR_BAND_LABEL.into());
+        let r = self
+            .set_filter(input, band, params)
+            .and_then(|()| self.set_filter(partner, band, params));
+        self.end_group();
+        r
+    }
+
+    // -- WP PAIRBAND --
+    /// Bypass (`true`) or re-enable PEQ band `band` (0..9) of a linked
+    /// input pair, both sides, keeping their settings: `input` and then
+    /// `input ^ 1` through [`DspiCore::set_band_bypass`], in one undo group
+    /// with the label of [`DspiCore::set_input_pair_filter`]. One undo
+    /// step; checks and errors as there.
+    pub fn set_input_pair_band_bypass(&self, input: u8, band: u8, bypass: bool) -> Result<()> {
+        let partner = pair_band_check(self, input, band)?;
+        self.begin_group(PAIR_BAND_LABEL.into());
+        let r = self
+            .set_band_bypass(input, band, bypass)
+            .and_then(|()| self.set_band_bypass(partner, band, bypass));
+        self.end_group();
+        r
+    }
+
     /// Bypass the whole EQ (`true`) or run it.
     ///
     /// Errors: the connection and transfer errors of every setter.
@@ -2001,3 +2054,31 @@ mod tests_wp_p1xf;
 // -- WP P1PR --
 /// The undo step's label of [`DspiCore::set_input_pair_preamp`].
 pub(crate) const PAIR_PREAMP_LABEL: &str = "Input trim, linked pair";
+
+// -- WP PAIRBAND --
+/// The undo step's label of [`DspiCore::set_input_pair_filter`] and
+/// [`DspiCore::set_input_pair_band_bypass`].
+pub(crate) const PAIR_BAND_LABEL: &str = "EQ band, linked pair";
+
+/// A linked pair's band write, checked before anything is sent: a writable
+/// device, `input` and its partner are inputs, `band` a PEQ band. The
+/// partner.
+fn pair_band_check(core: &DspiCore, input: u8, band: u8) -> Result<u8> {
+    let partner = input ^ 1;
+    let inner = core.writing()?;
+    input_index(&inner.state, input)?;
+    input_index(&inner.state, partner)?;
+    if band >= PEQ_BANDS {
+        return Err(invalid(format!("PEQ band {band} (0..{PEQ_BANDS})")));
+    }
+    Ok(partner)
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::arithmetic_side_effects,
+    clippy::unwrap_used,
+    clippy::indexing_slicing
+)]
+#[path = "params/tests_wp_pairband.rs"]
+mod tests_wp_pairband;

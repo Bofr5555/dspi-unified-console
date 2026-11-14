@@ -312,14 +312,48 @@ void ChannelController::writeBand(int channel, int band, bool crossover, const F
         });
 }
 
+// -- WP PAIRBAND --
+void ChannelController::writePairBand(int input, int partner, int band, const FilterParams &p) {
+    if (!writable() || !validBand(input, band, false) || !validBand(partner, band, false)) return;
+    const int keys[2] = { stageKey(input, band, false), stageKey(partner, band, false) };
+    const quint64 seq = ++m_seq;
+    for (const int key : keys) m_staged.insert(key, { p, seq });
+    ++m_revision;
+    emit changed();
+    const auto in = uint8_t(input), b = uint8_t(band);
+    // One key for the pair's band, whichever side is edited: the newest write wins in the queue
+    const QString what = QStringLiteral("filter pair %1 band %2").arg(input / 2).arg(band) + m_groupTag;
+    apply(
+        what, [in, b, p](FfiCore *c) { return dspi_set_input_pair_filter(c, in, b, p); },
+        [this, keys, seq](bool) {
+            bool dropped = false;
+            for (const int key : keys) {
+                const auto it = m_staged.constFind(key);
+                if (it != m_staged.cend() && it->seq == seq) {
+                    m_staged.remove(key);
+                    dropped = true;
+                }
+            }
+            if (dropped) {
+                ++m_revision;
+                emit changed();
+            }
+        });
+}
+
 void ChannelController::editBand(int channel, int band, bool crossover, const std::function<void(FilterParams &)> &edit) {
     if (!validBand(channel, band, crossover)) return;
     FilterParams p = current(channel, band, crossover);
     edit(p);
-    writeBand(channel, band, crossover, p);
     // Inputs only: crossovers are output bands
     const int partner = crossover ? -1 : linkedPartner(channel);
-    if (partner >= 0) writeBand(partner, band, false, p);
+    // -- WP PAIRBAND -- a linked pair is the core's one-step pair write (both
+    // sides, one undo step; a drag's ticks join the drag's step)
+    if (partner >= 0) {
+        writePairBand(channel, partner, band, p);
+        return;
+    }
+    writeBand(channel, band, crossover, p);
 }
 
 void ChannelController::setBandType(int channel, int band, bool crossover, int type) {

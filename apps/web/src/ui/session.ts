@@ -87,7 +87,10 @@ export type ChangeMethod = "presetCopy" | "presetRevert" | "factoryReset"
   // -- WP WB8 -- a whole band during a graph drag
   | "filter"
   // -- WP P1WB2 -- every limiter on at -1 dBFS, pairs linked (one undo step)
-  | "protectAllOutputs";
+  | "protectAllOutputs"
+  // -- WP PAIRBAND -- a linked input pair's band, both sides (one undo step)
+  | "inputPairFilter"
+  | "inputPairBandBypass";
 
 // -- WP WB6b --
 /** One write of `Session.writeAll`. */

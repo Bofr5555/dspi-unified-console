@@ -505,6 +505,10 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun setInputPairPreamp(input: Int, db: Float) = call { core.setInputPairPreamp(input.toUByte(), db) }
 
+    override fun setInputPairFilter(input: Int, band: Int, params: FilterParams) = call { core.setInputPairFilter(input.toUByte(), band.toUByte(), params.toFfi()) }
+
+    override fun setInputPairBandBypass(input: Int, band: Int, bypass: Boolean) = call { core.setInputPairBandBypass(input.toUByte(), band.toUByte(), bypass) }
+
     override fun setBypass(enabled: Boolean) = call { core.setBypass(enabled) }
 
     override fun setMasterVolume(db: Float) = call { core.setMasterVolume(db) }
