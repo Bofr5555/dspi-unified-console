@@ -70,6 +70,8 @@ impl DspiCore {
                 .control_in_upto(opcode, value, len)
                 .map_err(refusal)
         } else {
+            // -- WP TMCORE -- as in `raw_set`
+            let _analyser = is_analyser(opcode).then(crate::limits::LockScope::allow);
             // A write-as-read opcode on the Writable (§1.2); raw for any
             // reply length, and so a stall stays a refusal.
             let mut w = guard.writable_conn()?;
@@ -112,6 +114,9 @@ impl DspiCore {
                 ),
             });
         }
+        // -- WP TMCORE -- the analyser's requests pass the locked-user state,
+        // as the core's own analyser calls do (P1-D: viewing is not a write)
+        let _analyser = is_analyser(opcode).then(crate::limits::LockScope::allow);
         let mut guard = self.lock();
         let mut w = guard.writable_conn()?;
         // Raw on the Writable, so a stall stays a refusal.
@@ -190,6 +195,23 @@ impl DspiCore {
 }
 
 impl DspiCore {
+    // -- WP TMCORE --
+    /// The device's bulk image as it sends it (any wire format), read the
+    /// way this connection reads it (chunked over USB, single-shot over DSPi
+    /// Link and MIDI), with the core's lock held for the whole read: for a
+    /// client whose own code reads the image through the core's link (the
+    /// Terminal's `Session` over the core), since the chunk opcodes are not
+    /// [`raw_get`](Self::raw_get)'s. The mirror does not change. Not
+    /// exported to UniFFI.
+    ///
+    /// Errors: [`DspiError::Disconnected`]; the transfer's.
+    #[doc(hidden)]
+    pub fn read_image_bytes(&self) -> Result<Vec<u8>> {
+        let mut guard = self.lock();
+        let conn = guard.conn()?;
+        dspi_session::compat::read_bulk_bytes(conn.transport()).map_err(DspiError::from)
+    }
+
     /// Set `lost` on the next entry the tap keeps: a binding that drained
     /// entries and could not deliver them (the C ABI's too-small buffer)
     /// says so. Not exported to UniFFI.
@@ -351,6 +373,13 @@ pub(crate) fn epoch_ms(at: Instant) -> i64 {
 /// the chunk opcodes, because a chunked session spans transfers and any
 /// other request aborts it on the device, and the single-shot bulk write,
 /// because `apply_all_params` owns its checks, device lock and echo bracket.
+// -- WP TMCORE --
+/// The analyser's own requests (its configuration push and its start and
+/// stop), which the locked-user state lets through.
+fn is_analyser(opcode: u8) -> bool {
+    matches!(opcode, op::REQ_RTA_SET_CONFIG | op::REQ_RTA_CONTROL)
+}
+
 fn check_not_bulk_session(opcode: u8) -> Result<()> {
     if matches!(
         opcode,

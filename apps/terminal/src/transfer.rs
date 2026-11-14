@@ -461,7 +461,8 @@ fn import_preset(target: &Target, text: &str, path: &str, flags: &[&str], json: 
         }
     }
 
-    let mut session = match connect(target) {
+    // -- WP TMCORE -- the writes go through the console core
+    let mut session = match crate::connect_written(target, flags) {
         Ok(s) => s,
         Err(c) => return c,
     };
@@ -475,7 +476,10 @@ fn import_preset(target: &Target, text: &str, path: &str, flags: &[&str], json: 
     // -- WP P1TM -- held to this console's limits profile for the device
     // (P1LM's `apply_limited`), as the core holds its own imports.
     let profile = crate::pro::console_limits(&mut session);
+    // -- WP TMCORE -- one undo step
+    session.begin_group("Import Device Configuration");
     let report = preset_file::apply_limited(&mut session, &doc, options, profile.as_ref());
+    session.end_group();
 
     // The pair links are the interface's, not the device's, and a one-shot
     // command has nowhere to keep them. Better said than silently lost.
@@ -520,13 +524,16 @@ fn import_filters(
     flags: &[&str],
     json: bool,
 ) -> u8 {
-    let mut session = match connect(target) {
+    // -- WP TMCORE -- the writes go through the console core
+    let mut session = match crate::connect_written(target, flags) {
         Ok(s) => s,
         Err(c) => return c,
     };
     session.dry_run = flags.contains(&"--dry-run");
+    session.begin_group("Import Filters"); // -- WP TMCORE -- one undo step
     let (report, mapped, skipped) =
         apply_filters(&mut session, doc, flags.contains(&"--map-legacy"));
+    session.end_group();
     let caps = session.capabilities();
     let legacy_hint = !flags.contains(&"--map-legacy")
         && skipped
@@ -701,7 +708,8 @@ fn cs_import(target: &Target, path: &str, flags: &[&str], json: bool) -> u8 {
         Ok(d) => d,
         Err(e) => return usage_error(&e.to_string()),
     };
-    let mut session = match connect(target) {
+    // -- WP TMCORE -- the writes go through the console core
+    let mut session = match crate::connect_written(target, flags) {
         Ok(s) => s,
         Err(c) => return c,
     };

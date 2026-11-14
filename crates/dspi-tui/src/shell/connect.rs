@@ -181,6 +181,67 @@ impl LinkTarget {
     }
 }
 
+// -- WP TMCORE --
+// What the Terminal needs to open this target as a console core's DSPi Link
+// session (`dspi_core::DspiCore::link_connect`) with this target's tokens.
+impl LinkTarget {
+    /// The hub's WebSocket address.
+    pub fn link_url(&self) -> String {
+        self.ws_url()
+    }
+
+    /// `HOST:PORT`, for messages.
+    pub fn link_address(&self) -> String {
+        self.address()
+    }
+
+    /// Whether `hub_id` is another hub than the one this target knows.
+    pub fn names_other_hub(&self, hub_id: &str) -> bool {
+        self.is_other_hub(hub_id)
+    }
+
+    /// The pairing token stored for `hub_id`, if any.
+    pub fn stored_token(&self, hub_id: &str) -> Option<String> {
+        self.token_store().get(hub_id)
+    }
+
+    /// Keep `token` for `hub_id`.
+    pub fn store_token(&self, hub_id: &str, token: &str) -> std::io::Result<()> {
+        self.token_store().put(hub_id, token)
+    }
+
+    /// Drop the token kept for `hub_id` (one the hub refused).
+    pub fn forget_token(&self, hub_id: &str) -> std::io::Result<()> {
+        self.token_store().forget(hub_id)
+    }
+}
+
+// -- WP TMCORE --
+/// Pick a hub's device the way `--device` picks one: by the end of its serial
+/// or part of its name; with no `wanted`, the only one there is. Each item is
+/// `(serial, name)`; the answer is its index.
+pub fn pick_link_device(
+    items: &[(String, String)],
+    wanted: Option<&str>,
+) -> Result<usize, OpenError> {
+    let indexed: Vec<(usize, &(String, String))> = items.iter().enumerate().collect();
+    choose(
+        &indexed,
+        wanted,
+        |(_, (serial, name))| vec![serial.as_str(), name.as_str()],
+        |(_, (serial, name))| {
+            printable(&if name.is_empty() {
+                serial.clone()
+            } else {
+                format!("{serial} {name}")
+            })
+        },
+        "devices on this hub",
+        "--device <serial>",
+    )
+    .map(|(i, _)| *i)
+}
+
 /// Why a device could not be opened.
 #[derive(Debug, thiserror::Error)]
 pub enum OpenError {
@@ -1048,6 +1109,11 @@ pub enum Reconnect {
 
 #[cfg(test)]
 type Opener = dyn Fn() -> Result<Connected, OpenError> + Send + Sync;
+// -- WP TMCORE --
+/// Opens a target for the interface, in place of [`Target::connect`]: the
+/// Terminal's opener puts the device on a console core first.
+pub type TargetOpener = dyn Fn(&Target) -> Result<Connected, OpenError> + Send + Sync;
+
 /// One attempt; a hub found at another address is dialled there.
 type Dialer = dyn Fn(Option<&BrowsedHub>) -> Result<Connected, OpenError> + Send + Sync;
 
@@ -1114,6 +1180,32 @@ impl Reconnector {
             warnings,
             finder,
             ..Self::with_dialer(Arc::new(open), follows_advice)
+        }
+    }
+
+    // -- WP TMCORE --
+    /// [`Reconnector::new`], each attempt made by `open` (the Terminal opens
+    /// the device on a console core and routes the session through it). A
+    /// hub that moved is dialled at its new address, as `new` does.
+    pub fn with_open(target: Target, open: Arc<TargetOpener>) -> Self {
+        let source = browse_source().ok();
+        let follows_advice = matches!(target, Target::Link(_));
+        let finder = match (&target, source) {
+            (Target::Link(l), Some(source)) => l
+                .hub_id
+                .clone()
+                .map(|id| HubFinder::new(id, source, l.ws_url())),
+            _ => None,
+        };
+        let warnings = Arc::new(Mutex::new(Vec::new()));
+        let dial = move |moved: Option<&BrowsedHub>| match (&target, moved) {
+            (Target::Link(l), Some(hub)) => open(&Target::Link(l.at(hub))),
+            _ => open(&target),
+        };
+        Self {
+            warnings,
+            finder,
+            ..Self::with_dialer(Arc::new(dial), follows_advice)
         }
     }
 
