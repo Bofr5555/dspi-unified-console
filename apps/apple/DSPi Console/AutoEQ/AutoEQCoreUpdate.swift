@@ -249,7 +249,11 @@ final class AutoEQCoreRebuild: ObservableObject {
     /// it succeeded or was cancelled, the core's `autoeq` row (by its code,
     /// `autoeq.network`, `autoeq.rate_limited`) with the summary otherwise.
     static func notice(_ p: AutoEqRebuildProgress) -> ConsoleNotice {
-        if p.succeeded { return .result(summary(p)) }
+        // -- WP P1SW3F -- F5: profiles or folders that did not come are a
+        // warning that stays, as an import's report with notes is.
+        if p.succeeded {
+            return p.failedProfiles > 0 || p.failedListings > 0 ? .result(summary(p), kind: .warning) : .result(summary(p))
+        }
         if p.code == "cancelled" { return .result(summary(p)) }
         return .row(p.code.isEmpty ? "autoeq" : "autoeq.\(p.code)", detail: summary(p))
     }

@@ -63,3 +63,15 @@ extension CoreDomainTesting {
         XCTAssertNil(vm.undo.notice, "a plain step says nothing", file: file, line: line)
     }
 }
+
+// -- WP P1SW3F -- F5: test folders in the caches directory, not the
+// temporary one (no tmpfs for tests, as the build brief says).
+enum TestFolders {
+    /// A fresh folder named `prefix-<uuid>` under Caches/dspi-tests.
+    static func fresh(_ prefix: String) -> URL {
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Caches")
+        return caches.appendingPathComponent("dspi-tests", isDirectory: true)
+            .appendingPathComponent("\(prefix)-\(UUID().uuidString)", isDirectory: true)
+    }
+}

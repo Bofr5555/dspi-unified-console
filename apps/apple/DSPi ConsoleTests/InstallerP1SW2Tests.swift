@@ -22,8 +22,7 @@ final class InstallerP1SW2Tests: XCTestCase, CoreDomainTesting {
 
     /// A fresh folder of the test's own (the VM's temporary directory).
     private func folder(_ name: String) -> URL {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("P1SW2-\(name)-\(UUID().uuidString)", isDirectory: true)
+        let url = TestFolders.fresh("P1SW2-\(name)")   // -- WP P1SW3F -- F5: the caches directory
         folders.append(url)
         return url
     }

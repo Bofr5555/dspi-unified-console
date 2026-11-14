@@ -113,6 +113,22 @@ extension ConsoleNotice.Kind {
     }
 }
 
+// MARK: - A status byte with the core's error
+
+/// -- WP P1SW3F -- F1: a preset or flash call's status byte (`PRESET_*`,
+/// `FLASH_*`) and, through the core, the error behind a failure, so the
+/// notice is the core's own row for it.  `error` is nil on success and on
+/// the raw (non-core) path.
+struct CoreOutcome: Equatable {
+    let status: UInt8
+    let error: DspiError?
+
+    init(_ status: UInt8, _ error: DspiError? = nil) {
+        self.status = status
+        self.error = error
+    }
+}
+
 // MARK: - The app's failures, as the core's rows
 
 /// What the converted alerts say (P1SW3): each failure is a core row, with
@@ -137,28 +153,65 @@ enum AppNotices {
     static func transfer(_ what: String) -> ConsoleNotice { .row("transfer", detail: what) }
 
     /// A preset call's failure status (`PRESET_*`): the lock, or a transfer.
-    static func preset(_ status: UInt8, _ what: String) -> ConsoleNotice {
-        status == PRESET_STATUS_LOCKED ? locked(what) : transfer("\(what) (error \(status)).")
+    /// -- WP P1SW3F -- F1: with the core's error, the core's row for it (the
+    /// installer's lock, read-only firmware, a limit, a missing confirmation,
+    /// the hub's denial or lock), `what` as its detail.
+    static func preset(_ status: UInt8, _ what: String, error: DspiError? = nil) -> ConsoleNotice {
+        if let error, !isRefusalByte(error) { return .of(error, detail: what) }
+        return status == PRESET_STATUS_LOCKED ? locked(what) : transfer("\(what) (error \(status)).")
+    }
+
+    static func preset(_ outcome: CoreOutcome, _ what: String) -> ConsoleNotice {
+        preset(outcome.status, what, error: outcome.error)
+    }
+
+    /// The device's own refusal byte: the status says more than the core's
+    /// generic `refused` row.
+    private static func isRefusalByte(_ error: DspiError) -> Bool {
+        if case .Refused = error { return true }
+        return false
     }
 
     /// A preset load that failed (the "Load Failed" alert).
-    static func presetLoad(_ status: UInt8) -> ConsoleNotice {
-        status == PRESET_ERR_CRC ? transfer("Preset data is corrupted.") : preset(status, "Failed to load preset")
+    static func presetLoad(_ status: UInt8, error: DspiError? = nil) -> ConsoleNotice {
+        status == PRESET_ERR_CRC ? transfer("Preset data is corrupted.")
+                                 : preset(status, "Failed to load preset", error: error)
     }
 
+    static func presetLoad(_ outcome: CoreOutcome) -> ConsoleNotice { presetLoad(outcome.status, error: outcome.error) }
+
     /// Revert to Saved's outcome (`FLASH_*`): a result line, or a row.
-    static func revert(_ status: UInt8) -> ConsoleNotice {
+    static func revert(_ status: UInt8, error: DspiError? = nil) -> ConsoleNotice {
         switch status {
         case FLASH_OK: return .result("Parameters reverted")
         case FLASH_ERR_NO_DATA: return .result("No saved parameters found. The device is using factory defaults.")
         case FLASH_ERR_CRC: return transfer("Saved data is corrupted.")
-        default: return transfer("Failed to load parameters.")
+        default:
+            if let error, !isRefusalByte(error) { return .of(error, detail: "Failed to load parameters.") }
+            return transfer("Failed to load parameters.")
         }
     }
 
+    static func revert(_ outcome: CoreOutcome) -> ConsoleNotice { revert(outcome.status, error: outcome.error) }
+
     /// Factory Reset's outcome.
-    static func factoryReset(_ status: UInt8) -> ConsoleNotice {
-        status == FLASH_OK ? .result("Factory reset complete") : transfer("Failed to reset parameters.")
+    static func factoryReset(_ status: UInt8, error: DspiError? = nil) -> ConsoleNotice {
+        if status == FLASH_OK { return .result("Factory reset complete") }
+        if let error, !isRefusalByte(error) { return .of(error, detail: "Failed to reset parameters.") }
+        return transfer("Failed to reset parameters.")
+    }
+
+    static func factoryReset(_ outcome: CoreOutcome) -> ConsoleNotice {
+        factoryReset(outcome.status, error: outcome.error)
+    }
+
+    /// Save Output Configuration's failure: the core's row with its error,
+    /// else the hub's lock or a device that did not acknowledge.
+    static func outputConfig(_ failure: LinkStatus, error: DspiError?) -> ConsoleNotice {
+        let what = "Output configuration not saved."
+        if let error, !isRefusalByte(error) { return .of(error, detail: what) }
+        return failure == .locked ? locked(what)
+                                  : transfer("Output configuration not saved: the device did not acknowledge the request.")
     }
 
     /// An AutoEQ database update that failed.
@@ -188,6 +241,9 @@ final class NoticeCenter: ObservableObject {
 
     private var clearWork: DispatchWorkItem?
     private let infoSeconds: TimeInterval
+    /// -- WP P1SW3F -- F4: hosts on screen.  An info notice's time runs only
+    /// while one shows it; with none it waits.
+    private(set) var visibleHosts = 0
 
     init(infoSeconds: TimeInterval = NoticeCenter.infoSeconds) {
         self.infoSeconds = infoSeconds
@@ -204,7 +260,10 @@ final class NoticeCenter: ObservableObject {
         last = notice
         if current == nil {
             show(notice)
-        } else if current != notice, waiting.last != notice {
+        } else if current == notice {
+            // -- WP P1SW3F -- F5: a repeat restarts its time, as in Qt
+            startTimer()
+        } else if waiting.last != notice {
             waiting.append(notice)
             if waiting.count > Self.maxWaiting { waiting.removeFirst(waiting.count - Self.maxWaiting) }
         }
@@ -236,13 +295,33 @@ final class NoticeCenter: ObservableObject {
     }
 
     private func show(_ notice: ConsoleNotice) {
+        current = notice
+        startTimer()
+    }
+
+    /// An info notice's time from now, while a host shows it.
+    private func startTimer() {
         clearWork?.cancel()
         clearWork = nil
-        current = notice
-        guard notice.kind == .info else { return }
+        guard current?.kind == .info, visibleHosts > 0 else { return }
         let work = DispatchWorkItem { [weak self] in self?.dismiss() }
         clearWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + infoSeconds, execute: work)
+    }
+
+    /// -- WP P1SW3F -- F4: a host came on screen (its `onAppear`).
+    func hostAppeared() {
+        visibleHosts += 1
+        if visibleHosts == 1 { startTimer() }
+    }
+
+    /// A host went (its `onDisappear`); with none left the time stops.
+    func hostDisappeared() {
+        visibleHosts = max(0, visibleHosts - 1)
+        if visibleHosts == 0 {
+            clearWork?.cancel()
+            clearWork = nil
+        }
     }
 }
 
@@ -254,6 +333,14 @@ struct NoticeHost: View {
     @ObservedObject var center: NoticeCenter
 
     var body: some View {
+        // -- WP P1SW3F -- F4: always in the hierarchy (zero height with no
+        // notice), so the centre knows a host is on screen.
+        VStack(spacing: 0) { notice }
+            .onAppear { center.hostAppeared() }
+            .onDisappear { center.hostDisappeared() }
+    }
+
+    @ViewBuilder private var notice: some View {
         if let n = center.current {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: Self.icon(n.kind))

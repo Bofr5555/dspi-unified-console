@@ -242,6 +242,9 @@ struct ToolSheetHost: View {
                 // than centred, which put a tool's own header under the bar.
                 .defaultScrollAnchor(.topLeading)
             }
+            // -- WP P1SW3F -- F4: the main window's notices over a tool sheet
+            // (one centre, a host per sheet: the same notice)
+            .safeAreaInset(edge: .bottom, spacing: 0) { NoticeHost(center: .main) }
             .navigationTitle(sheet.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

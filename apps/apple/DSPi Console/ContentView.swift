@@ -237,8 +237,8 @@ struct ContentView: View {
             if vm.presetNames[slot].isEmpty {
                 vm.setPresetName(slot: slot, name: "Preset \(slot + 1)")
             }
-            let status = vm.savePreset(slot: slot, confirmed: .savePreset())
-            if status != PRESET_OK {
+            let status = vm.savePresetOutcome(slot: slot, confirmed: .savePreset())   // -- WP P1SW3F -- F1
+            if status.status != PRESET_OK {
                 DispatchQueue.main.async {
                     NoticeCenter.main.post(AppNotices.preset(status, "Failed to save preset"))   // -- WP P1SW3 -- was a modal
                 }
@@ -323,9 +323,9 @@ struct ContentView: View {
             // save→wait, so the firmware actually processes both slot
             // writes instead of the second one overwriting the first's
             // pending slot before main-loop dispatch.
-            let status = vm.copyPreset(from: sourceSlot, to: destinationSlot, confirmed: .copyPreset())
+            let status = vm.copyPresetOutcome(from: sourceSlot, to: destinationSlot, confirmed: .copyPreset())   // -- WP P1SW3F -- F1
             guard vm.transport.generation == generation else { return }
-            guard status == PRESET_OK else {
+            guard status.status == PRESET_OK else {
                 DispatchQueue.main.async {
                     NoticeCenter.main.post(AppNotices.preset(status, "Failed to copy preset"))   // -- WP P1SW3 -- was a modal
                 }
@@ -360,7 +360,8 @@ struct ContentView: View {
             // wait is long enough for a device switch to land mid-flow, and
             // the follow-up reload must never run against the new device.
             let generation = vm.transport.generation
-            let status = vm.deletePreset(slot: slot, confirmed: .deletePreset())
+            let outcome = vm.deletePresetOutcome(slot: slot, confirmed: .deletePreset())   // -- WP P1SW3F -- F1
+            let status = outcome.status
             if status == PRESET_OK {
                 // Wait for the firmware's deferred delete to complete before
                 // any followup reads — otherwise fetchPresetDirectory would
@@ -380,7 +381,7 @@ struct ContentView: View {
             }
             DispatchQueue.main.async {
                 if status != PRESET_OK {
-                    NoticeCenter.main.post(AppNotices.preset(status, "Failed to clear preset"))   // -- WP P1SW3 -- was a modal
+                    NoticeCenter.main.post(AppNotices.preset(outcome, "Failed to clear preset"))   // -- WP P1SW3 -- was a modal
                 }
             }
         }
@@ -581,8 +582,8 @@ struct ContentView: View {
                             tooltip: "Headphone Crossfeed",
                             action: { vm.setCrossfeed(!vm.crossfeedEnabled) }
                         )
+                        .onRightClick { crossfeedController.show(vm: vm) }   // -- WP P1SW3F -- F3: inside the floor's .disabled
                         .disabled(!floor.allows(.other))   // -- WP SWF4 --, P1SW3: the floor
-                        .onRightClick { crossfeedController.show(vm: vm) }
 
                         SidebarIconButton(
                             icon: "speaker.zzz",
@@ -590,8 +591,8 @@ struct ContentView: View {
                             tooltip: "Loudness Compensation",
                             action: { vm.setLoudness(!vm.loudnessEnabled) }
                         )
+                        .onRightClick { loudnessController.show(vm: vm) }   // -- WP P1SW3F -- F3: inside the floor's .disabled
                         .disabled(!floor.allows(.other))   // -- WP SWF4 --, P1SW3: the floor
-                        .onRightClick { loudnessController.show(vm: vm) }
 
                         SidebarIconButton(
                             icon: "waveform.path.ecg",
@@ -599,8 +600,8 @@ struct ContentView: View {
                             tooltip: "Volume Leveller",
                             action: { vm.setLeveller(!vm.levellerEnabled) }
                         )
+                        .onRightClick { levellerController.show(vm: vm) }   // -- WP P1SW3F -- F3: inside the floor's .disabled
                         .disabled(!floor.allows(.other))   // -- WP SWF4 --, P1SW3: the floor
-                        .onRightClick { levellerController.show(vm: vm) }
 
                         SidebarIconButton(
                             icon: "",
@@ -611,8 +612,8 @@ struct ContentView: View {
                             tooltip: "Psychoacoustic Bass",
                             action: { vm.setPsybass(!vm.psybassEnabled) }
                         )
+                        .onRightClick { psybassController.show(vm: vm) }   // -- WP P1SW3F -- F3: inside the floor's .disabled
                         .disabled(!floor.allows(.other))   // -- WP SWF4 --, P1SW3: the floor
-                        .onRightClick { psybassController.show(vm: vm) }
 
                         SidebarIconButton(
                             icon: "info.circle",
@@ -690,7 +691,7 @@ struct ContentView: View {
                                             return
                                         }
 
-                                        let showLoadFailed: (UInt8) -> Void = { status in
+                                        let showLoadFailed: (CoreOutcome) -> Void = { status in   // -- WP P1SW3F -- F1
                                             vm.fetchPresetActive()
                                             NoticeCenter.main.post(AppNotices.presetLoad(status))   // -- WP P1SW3 -- was a modal (SWF7)
                                         }
@@ -698,7 +699,9 @@ struct ContentView: View {
                                         presetSwitchInFlight = true
                                         print("[PRESET] inFlight = true")
                                         vm.settleUnsavedChanges()   // -- WP SWF7 --
-                                        if vm.isDeviceConnected && vm.hasUnsavedChanges {
+                                        // -- WP P1SW3F -- F2: under the floor nothing may be saved, so
+                                        // a recall asks nothing (a locked user's mute is not kept).
+                                        if vm.isDeviceConnected && floor.asksBeforeRecall(hasUnsavedChanges: vm.hasUnsavedChanges) {
                                             let diff = vm.computeDiff()
                                             let handle: (UnsavedChangesAction) -> Void = { action in
                                             switch action {
@@ -707,8 +710,8 @@ struct ContentView: View {
                                                     if vm.presetNames[previousSlot].isEmpty {
                                                         vm.setPresetName(slot: previousSlot, name: "Preset \(previousSlot + 1)")
                                                     }
-                                                    let saveStatus = vm.savePreset(slot: previousSlot, confirmed: .savePreset())
-                                                    guard saveStatus == PRESET_OK else {
+                                                    let saveStatus = vm.savePresetOutcome(slot: previousSlot, confirmed: .savePreset())   // -- WP P1SW3F -- F1
+                                                    guard saveStatus.status == PRESET_OK else {
                                                         DispatchQueue.main.async {
                                                             vm.activePresetSlot = previousSlot
                                                             NoticeCenter.main.post(AppNotices.preset(saveStatus, "Failed to save preset; the preset switch was stopped"))   // -- WP P1SW3 -- was a modal
@@ -716,9 +719,9 @@ struct ContentView: View {
                                                         }
                                                         return
                                                     }
-                                                    let loadStatus = vm.loadPreset(slot: slot)
+                                                    let loadStatus = vm.loadPresetOutcome(slot: slot)
                                                     DispatchQueue.main.async {
-                                                        if loadStatus != PRESET_OK {
+                                                        if loadStatus.status != PRESET_OK {
                                                             showLoadFailed(loadStatus)
                                                         }
                                                         presetSwitchInFlight = false
@@ -726,9 +729,9 @@ struct ContentView: View {
                                                 }
                                             case .discard:
                                                 DispatchQueue.global(qos: .userInitiated).async {
-                                                    let status = vm.loadPreset(slot: slot)
+                                                    let status = vm.loadPresetOutcome(slot: slot)
                                                     DispatchQueue.main.async {
-                                                        if status != PRESET_OK {
+                                                        if status.status != PRESET_OK {
                                                             showLoadFailed(status)
                                                         }
                                                         presetSwitchInFlight = false
@@ -748,11 +751,11 @@ struct ContentView: View {
                                             print("[PRESET] no unsaved changes, loading slot \(slot)")
                                             vm.activePresetSlot = slot
                                             DispatchQueue.global(qos: .userInitiated).async {
-                                                let status = vm.loadPreset(slot: slot)
-                                                print("[PRESET] loadPreset returned status=\(status)")
+                                                let status = vm.loadPresetOutcome(slot: slot)   // -- WP P1SW3F -- F1
+                                                print("[PRESET] loadPreset returned status=\(status.status)")
                                                 DispatchQueue.main.async {
-                                                    if status != PRESET_OK {
-                                                        print("[PRESET] load FAILED status=\(status)")
+                                                    if status.status != PRESET_OK {
+                                                        print("[PRESET] load FAILED status=\(status.status)")
                                                         showLoadFailed(status)
                                                     } else {
                                                         print("[PRESET] load OK, activeSlot=\(vm.activePresetSlot)")
@@ -1034,9 +1037,9 @@ struct ContentView: View {
                         // and a legacy scroller steals ~15pt off the right edge,
                         // leaving the cards narrower than the graph above them.
                         ScrollView {
-                            // -- WP P1SW3 -- the page scrolls; its controls follow the floor
+                            // -- WP P1SW3 -- the page scrolls; its cards follow the floor
+                            // (-- WP P1SW3F -- F3: in DashboardCardFrame, so the layout gear stays)
                             DashboardOverview(vm: vm)
-                                .floorGated(.other)
                         }
                         // -- WP P1SW3 -- the floor's line over the page: an inset, not a
                         // second child of the scroll view, so the dashboard keeps its

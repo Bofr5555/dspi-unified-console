@@ -117,17 +117,20 @@ struct DSPiConsoleIOSApp: App {
 /// The Mac's Edit > Undo and Redo: the core's change journal (Core/CoreUndo.swift).
 struct IOSUndoButtons: View {
     @ObservedObject var undo: CoreUndo
+    // -- WP P1SW3F -- F3: Undo and Redo replay settings: off on the read-only floor
+    @ObservedObject private var installer = CoreInstaller.shared
+    private var floorAllows: Bool { ReadOnlyFloor.of(AppState.shared.viewModel, installer: installer).allows(.other) }
 
     var body: some View {
         HStack {
-            Button { undo.undo() } label: {
+            Button { if floorAllows { undo.undo() } } label: {
                 Label("Undo", systemImage: "arrow.uturn.backward")
             }
-            .disabled(!undo.canUndo)
-            Button { undo.redo() } label: {
+            .disabled(!undo.canUndo || !floorAllows)
+            Button { if floorAllows { undo.redo() } } label: {
                 Label("Redo", systemImage: "arrow.uturn.forward")
             }
-            .disabled(!undo.canRedo)
+            .disabled(!undo.canRedo || !floorAllows)
         }
     }
 }
@@ -391,6 +394,8 @@ struct IOSSettingsSheet: View {
                 .padding(.vertical, 12)
                 .background(.bar)
             }
+            // -- WP P1SW3F -- F4: the main window's notices over the sheet too
+            .safeAreaInset(edge: .bottom, spacing: 0) { NoticeHost(center: .main) }
             .preferredColorScheme(.dark)
     }
 }
@@ -497,6 +502,8 @@ struct IOSDevicesSheet: View {
                     Button("Done") { dismiss() }
                 }
             }
+            // -- WP P1SW3F -- F4: a device switch's outcome shows over the sheet
+            .safeAreaInset(edge: .bottom, spacing: 0) { NoticeHost(center: .main) }
         }
         .preferredColorScheme(.dark)
     }

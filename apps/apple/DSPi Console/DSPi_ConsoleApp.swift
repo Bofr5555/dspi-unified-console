@@ -10786,15 +10786,13 @@ struct FileMenuActions {
             return
         }
         DispatchQueue.global(qos: .userInitiated).async {
-            let result = vm.saveOutputConfigResult(confirmed: .saveOutputConfig())
+            let outcome = vm.saveOutputConfigOutcome(confirmed: .saveOutputConfig())   // -- WP P1SW3F -- F1
             DispatchQueue.main.async {
-                switch result {
+                switch outcome.result {
                 case .success:
                     showSuccess("Output configuration saved. It will be applied on next boot.")
-                case .failure(.locked):
-                    showError(AppNotices.locked("Output configuration not saved."))
-                case .failure:
-                    showError(AppNotices.transfer("Output configuration not saved: the device did not acknowledge the request."))
+                case .failure(let failure):
+                    showError(AppNotices.outputConfig(failure, error: outcome.error))
                 }
             }
         }
@@ -11530,9 +11528,9 @@ struct ToolsMenuActions {
         alert.addButton(withTitle: "Cancel")
 
         if alert.runModal() == .alertFirstButtonReturn {
-            let result = vm.savePreset(slot: slot, confirmed: .savePreset())
+            let result = vm.savePresetOutcome(slot: slot, confirmed: .savePreset())   // -- WP P1SW3F -- F1
             // -- WP P1SW3 -- a result line or the core's row, not a modal
-            NoticeCenter.main.post(result == PRESET_OK ? .result("Preset saved")
+            NoticeCenter.main.post(result.status == PRESET_OK ? .result("Preset saved")
                                                        : AppNotices.preset(result, "Failed to save preset"))
         }
     }
@@ -11551,7 +11549,7 @@ struct ToolsMenuActions {
                 showError(AppNotices.notConnected)
                 return
             }
-            NoticeCenter.main.post(AppNotices.revert(vm.loadParams()))   // -- WP P1SW3 --
+            NoticeCenter.main.post(AppNotices.revert(vm.loadParamsOutcome()))   // -- WP P1SW3 --
         }
     }
 
@@ -11569,7 +11567,7 @@ struct ToolsMenuActions {
                 showError(AppNotices.notConnected)
                 return
             }
-            NoticeCenter.main.post(AppNotices.factoryReset(vm.factoryReset(confirmed: .factoryReset())))   // -- WP P1SW3 --
+            NoticeCenter.main.post(AppNotices.factoryReset(vm.factoryResetOutcome(confirmed: .factoryReset())))   // -- WP P1SW3 --
         }
     }
 
@@ -11589,9 +11587,9 @@ struct ToolsMenuActions {
         }
         let slot = vm.activePresetSlot
         confirm("Save Preset", "Save current parameters to preset slot \(slot + 1)?", button: "Save") {
-            let result = vm.savePreset(slot: slot, confirmed: .savePreset())
+            let result = vm.savePresetOutcome(slot: slot, confirmed: .savePreset())   // -- WP P1SW3F -- F1
             // -- WP P1SW3 -- a result line or the core's row, not a modal
-            NoticeCenter.main.post(result == PRESET_OK ? .result("Preset saved")
+            NoticeCenter.main.post(result.status == PRESET_OK ? .result("Preset saved")
                                                        : AppNotices.preset(result, "Failed to save preset"))
         }
     }
@@ -11601,7 +11599,7 @@ struct ToolsMenuActions {
                 button: "Revert") {
             let vm = AppState.shared.viewModel
             guard vm.isDeviceConnected else { NoticeCenter.main.post(AppNotices.notConnected); return }
-            NoticeCenter.main.post(AppNotices.revert(vm.loadParams()))   // -- WP P1SW3 --
+            NoticeCenter.main.post(AppNotices.revert(vm.loadParamsOutcome()))   // -- WP P1SW3 --
         }
     }
 
@@ -11611,7 +11609,7 @@ struct ToolsMenuActions {
                 button: "Reset", critical: true) {
             let vm = AppState.shared.viewModel
             guard vm.isDeviceConnected else { NoticeCenter.main.post(AppNotices.notConnected); return }
-            NoticeCenter.main.post(AppNotices.factoryReset(vm.factoryReset(confirmed: .factoryReset())))   // -- WP P1SW3 --
+            NoticeCenter.main.post(AppNotices.factoryReset(vm.factoryResetOutcome(confirmed: .factoryReset())))   // -- WP P1SW3 --
         }
     }
 
@@ -11974,6 +11972,8 @@ private struct ChannelClipboardCommands: Commands {
                 if forwardToResponder(#selector(NSText.paste(_:))) { return }
                 let vm = AppState.shared.viewModel
                 guard let ch = vm.activeEqChannel else { return }
+                // -- WP P1SW3F -- F3: the read-only floor, as the context menu's Paste
+                guard ReadOnlyFloor.of(vm, installer: .shared).allows(.other) else { return }
                 vm.pasteChannelParams(eqChannel: ch)
             }
             .keyboardShortcut("v", modifiers: .command)
@@ -11994,6 +11994,10 @@ private struct ChannelClipboardCommands: Commands {
 private struct UndoCommands: Commands {
     @ObservedObject var undo: CoreUndo
     @ObservedObject private var editing = TextEditingWatch.shared
+    // -- WP P1SW3F -- F3: the core's Undo and Redo replay settings, which the
+    // read-only floor does not allow (a text field's typing still undoes).
+    @ObservedObject private var installer = CoreInstaller.shared
+    private var floorAllows: Bool { ReadOnlyFloor.of(AppState.shared.viewModel, installer: installer).allows(.other) }
 
     /// The field editor of a text field being edited, if it has typing to undo or redo.
     private func fieldEditor(redo: Bool) -> NSTextView? {
@@ -12006,17 +12010,19 @@ private struct UndoCommands: Commands {
         CommandGroup(replacing: .undoRedo) {
             Button("Undo") {
                 if let editor = fieldEditor(redo: false) { editor.undoManager?.undo(); return }
+                guard floorAllows else { return }   // -- WP P1SW3F -- F3
                 undo.undo()
             }
             .keyboardShortcut("z", modifiers: .command)
-            .disabled(!undo.canUndo && !editing.active)
+            .disabled(!(undo.canUndo && floorAllows) && !editing.active)
 
             Button("Redo") {
                 if let editor = fieldEditor(redo: true) { editor.undoManager?.redo(); return }
+                guard floorAllows else { return }   // -- WP P1SW3F -- F3
                 undo.redo()
             }
             .keyboardShortcut("z", modifiers: [.command, .shift])
-            .disabled(!undo.canRedo && !editing.active)
+            .disabled(!(undo.canRedo && floorAllows) && !editing.active)
         }
     }
 }

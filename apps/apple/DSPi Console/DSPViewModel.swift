@@ -3285,8 +3285,8 @@ class DSPViewModel: ObservableObject {
                     if self.presetNames[self.activePresetSlot].isEmpty {
                         self.setPresetName(slot: self.activePresetSlot, name: "Preset \(self.activePresetSlot + 1)")
                     }
-                    let saveStatus = self.savePreset(slot: self.activePresetSlot, confirmed: .savePreset())
-                    guard saveStatus == PRESET_OK else {
+                    let saveStatus = self.savePresetOutcome(slot: self.activePresetSlot, confirmed: .savePreset())   // -- WP P1SW3F -- F1
+                    guard saveStatus.status == PRESET_OK else {
                         // -- WP P1SW3 -- a notice, not a modal
                         NoticeCenter.main.post(AppNotices.preset(saveStatus, "Failed to save preset; the device switch was stopped"))
                         return
@@ -3340,8 +3340,8 @@ class DSPViewModel: ObservableObject {
                     if self.presetNames[self.activePresetSlot].isEmpty {
                         self.setPresetName(slot: self.activePresetSlot, name: "Preset \(self.activePresetSlot + 1)")
                     }
-                    let saveStatus = self.savePreset(slot: self.activePresetSlot, confirmed: .savePreset())
-                    guard saveStatus == PRESET_OK else {
+                    let saveStatus = self.savePresetOutcome(slot: self.activePresetSlot, confirmed: .savePreset())   // -- WP P1SW3F -- F1
+                    guard saveStatus.status == PRESET_OK else {
                         // -- WP P1SW3 -- a notice, not a modal
                         NoticeCenter.main.post(AppNotices.preset(saveStatus, "Failed to save preset; the device switch was stopped"))
                         return

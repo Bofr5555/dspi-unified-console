@@ -50,8 +50,7 @@ final class ReadOnlyFloorP1SW3Tests: XCTestCase, CoreDomainTesting {
     // MARK: - A locked demo device
 
     private func folder(_ name: String) -> URL {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("P1SW3-\(name)-\(UUID().uuidString)", isDirectory: true)
+        let url = TestFolders.fresh("P1SW3-\(name)")   // -- WP P1SW3F -- F5: the caches directory
         folders.append(url)
         return url
     }
@@ -188,6 +187,6 @@ final class ReadOnlyFloorP1SW3Tests: XCTestCase, CoreDomainTesting {
         let since = Date(timeIntervalSince1970: 1_000_000)
         let line = SystemStatus.staleLine(since: since, now: since.addingTimeInterval(12))
         XCTAssertTrue(line.hasPrefix("Meters stale since "), line)
-        XCTAssertTrue(line.hasSuffix("(12 s ago)"), line)
+        XCTAssertTrue(line.hasSuffix("(12 s ago): the last reading failed"), line)   // -- WP P1SW3F -- F5
     }
 }

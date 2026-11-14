@@ -71,6 +71,14 @@ struct ReadOnlyFloor: Equatable {
     /// Some control is off.
     var isReadOnly: Bool { cause != .none }
 
+    /// -- WP P1SW3F -- F2: a preset recall asks Save / Discard / Cancel
+    /// first.  Not under the floor: nothing may be saved there (the save is
+    /// a write it does not allow), so a locked user's unsaved mute does not
+    /// hold a recall up with a choice the lock then refuses.
+    func asksBeforeRecall(hasUnsavedChanges: Bool) -> Bool {
+        hasUnsavedChanges && allows(.other)
+    }
+
     /// The core's row that says why.
     var reasonKey: String {
         switch cause {

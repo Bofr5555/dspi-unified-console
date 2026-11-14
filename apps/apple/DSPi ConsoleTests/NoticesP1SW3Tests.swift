@@ -15,6 +15,7 @@ final class NoticesP1SW3Tests: XCTestCase {
 
     func testP1SW3TheHostShowsOneAtATimeInfoGoesByItselfWarningsStay() {
         let center = NoticeCenter(infoSeconds: 0.3)
+        center.hostAppeared()   // -- WP P1SW3F -- F4: the time runs while a host shows it
         XCTAssertNil(center.current)
 
         center.post(.result("Filters exported"))
@@ -186,6 +187,49 @@ final class NoticesP1SW3Tests: XCTestCase {
         XCTAssertEqual(report.title, "Import Device Configuration")
         XCTAssertEqual(report.reason, "Skipped: ADAT")
         XCTAssertEqual(report.kind, .warning)
+    }
+
+    // -- WP P1SW3F -- F4, F5
+
+    /// With no host on screen an info notice waits; a host's appearance
+    /// starts its time, and the last host's going stops it again.
+    func testP1SW3FAnInfoNoticeWaitsWhileNoHostShowsIt() {
+        let center = NoticeCenter(infoSeconds: 0.3)
+        center.post(.result("Filters imported"))
+        settleFor(0.8)
+        XCTAssertEqual(center.current?.title, "Filters imported", "no host: the notice waits")
+        center.hostAppeared()
+        center.hostAppeared()   // a second host (an iOS sheet) on the same centre
+        center.hostDisappeared()
+        XCTAssertEqual(center.visibleHosts, 1)
+        XCTAssertTrue(spinUntil(3) { center.current == nil }, "a host shows it: it goes after its time")
+
+        center.post(.result("Preset saved"))
+        center.hostDisappeared()
+        settleFor(0.8)
+        XCTAssertEqual(center.current?.title, "Preset saved", "the last host went: the time stopped")
+    }
+
+    /// A repeated notice restarts its time, as Qt's NoticeCenter does.
+    func testP1SW3FARepeatRestartsTheTime() {
+        let center = NoticeCenter(infoSeconds: 0.6)
+        center.hostAppeared()
+        center.post(.result("Preset saved"))
+        settleFor(0.4)
+        center.post(.result("Preset saved"))
+        settleFor(0.4)
+        XCTAssertEqual(center.current?.title, "Preset saved", "0.8 s after the first post, 0.4 s after the repeat")
+        XCTAssertTrue(center.waiting.isEmpty, "not queued twice")
+        XCTAssertTrue(spinUntil(3) { center.current == nil })
+    }
+
+    /// A rebuild that left profiles or folders out is a warning that stays.
+    func testP1SW3FAPartialAutoEQRebuildIsAWarning() {
+        let partial = AutoEqRebuildProgress(fraction: 1, status: "", finished: true, succeeded: true, code: "",
+                                            retryAfterS: nil, entries: 10, failedProfiles: 2, failedListings: 0,
+                                            skippedProfiles: 0)
+        XCTAssertEqual(AutoEQCoreRebuild.notice(partial).kind, .warning)
+        XCTAssertTrue(AutoEQCoreRebuild.notice(partial).title.contains("2 profiles could not be downloaded"))
     }
 
     #if os(iOS)

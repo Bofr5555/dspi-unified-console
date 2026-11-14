@@ -39,9 +39,18 @@ final class InstallerP1SW2UITests: XCTestCase {
     }
 
     private func type(_ app: XCUIApplication, _ field: XCUIElement, _ text: String) {
+        // -- WP P1SW3F -- F7: the field before's keyboard could cover this one
+        // (it exists, so `reveal` did not scroll, and the tap hit the keyboard):
+        // every field ends with Return, so the keyboard goes, and the Form
+        // scrolls while the field is not hittable.
         reveal(app, field)
+        var n = 0
+        while field.exists && !field.isHittable && n < 6 {
+            app.collectionViews.firstMatch.swipeUp()
+            n += 1
+        }
         field.tap()
-        field.typeText(text)
+        field.typeText(text.hasSuffix("\n") ? text : text + "\n")
     }
 
     func testP1SW2ModeSwitchInstallerPinLockedBannerAndUnlock() {

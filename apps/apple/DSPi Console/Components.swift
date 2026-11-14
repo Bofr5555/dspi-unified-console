@@ -11,18 +11,23 @@ struct RightClickHandler: NSViewRepresentable {
     func makeNSView(context: Context) -> RightClickNSView {
         let view = RightClickNSView()
         view.action = action
+        view.enabled = context.environment.isEnabled   // -- WP P1SW3F -- F3
         return view
     }
 
     func updateNSView(_ nsView: RightClickNSView, context: Context) {
         nsView.action = action
+        // -- WP P1SW3F -- F3: a disabled control's right-click does nothing
+        // (the read-only floor, `.disabled`), as its left-click.
+        nsView.enabled = context.environment.isEnabled
     }
 
     class RightClickNSView: NSView {
         var action: (() -> Void)?
+        var enabled = true
 
         override func hitTest(_ point: NSPoint) -> NSView? {
-            if let event = NSApp.currentEvent, event.type == .rightMouseDown {
+            if enabled, let event = NSApp.currentEvent, event.type == .rightMouseDown {
                 return self
             }
             return nil
@@ -84,12 +89,24 @@ struct OptionClickHandler: NSViewRepresentable {
     }
 }
 #else
+/// -- WP P1SW3F -- F3: the long press, only on an enabled control.
+private struct LongPressRightClick: ViewModifier {
+    @Environment(\.isEnabled) private var isEnabled
+    let action: () -> Void
+
+    func body(content: Content) -> some View {
+        content.simultaneousGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in
+            if isEnabled { action() }
+        })
+    }
+}
+
 extension View {
     /// Touch has no secondary click; a long press stands in for it (the
     /// Android port's gesture table does the same).  Simultaneous, so a tap on
     /// the same control still reaches its button.
     func onRightClick(perform action: @escaping () -> Void) -> some View {
-        self.simultaneousGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in action() })
+        modifier(LongPressRightClick(action: action))   // -- WP P1SW3F -- F3: not when disabled
     }
     /// Option-click has no touch equivalent yet (compact layout, A3).
     func onOptionClick(perform action: @escaping () -> Void) -> some View { self }

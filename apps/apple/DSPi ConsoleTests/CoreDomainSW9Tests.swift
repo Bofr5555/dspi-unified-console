@@ -39,7 +39,7 @@ final class CoreDomainSW9Tests: XCTestCase, CoreDomainTesting {   // -- WP SW10 
     }
 
     func testSW9UndoAndRedoAnEQBandEdit() throws {
-        let (_, _, vm) = demoVM()
+        let (core, t, vm) = demoVM()
         let band = try XCTUnwrap(vm.channelData[0]?[2])
         var edited = DSPi_Console.FilterParams(type: .peaking, freq: 2500, q: 1.4, gain: 4.5)
         edited.bypass = false
@@ -49,7 +49,14 @@ final class CoreDomainSW9Tests: XCTestCase, CoreDomainTesting {   // -- WP SW10 
 
         // A band's bypass switch is a step of its own.
         let bypassed = vm.channelData[0]?[2].bypass ?? false
+        // -- WP P1SW3F -- the SW9 flake: Undo is already enabled (the band
+        // edit), so the helper's Undo could run before the bypass write had
+        // reached the journal; it then undid the band edit and the bypass
+        // write, landing after it, cleared Redo.  Wait for the journal entry.
+        let logged = t.coreQueue.sync { core.history(n: 200).count }
         vm.setBandBypass(ch: 0, band: 2, bypass: !bypassed)
+        XCTAssertTrue(spinUntil(5) { t.coreQueue.sync { core.history(n: 200).count } > logged },
+                      "the bypass switch is in the journal")
         undoAndRedo(vm, undone: { vm.channelData[0]?[2].bypass == bypassed },
                     redone: { vm.channelData[0]?[2].bypass == !bypassed })
     }

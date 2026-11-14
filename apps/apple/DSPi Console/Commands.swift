@@ -5104,6 +5104,27 @@ extension DSPViewModel {
         }
     }
 
+    // -- WP P1SW3F -- F1: the `*Outcome` calls carry the core's error out with
+    // the status byte, so a notice is the core's own row (the installer's
+    // lock, read-only firmware, a limit, a missing confirmation, the hub's
+    // denial), not a "Transfer failed" built from 0xFF.  The byte-returning
+    // calls stay for every other caller.
+
+    /// -- WP SW13 -- Save live state to `slot`: as `savePreset`, with the
+    /// core's error.
+    func savePresetOutcome(slot: Int, confirmed: UserConfirmation) -> CoreOutcome {
+        if let core = typedCore {
+            switch core.writeAndWait({ try $0.savePresetConfirmed(slot: Self.wire(slot), token: confirmed.token($0, for: .savePreset)) }) {   // -- WP P1SW2 -- a token minted after the person confirmed
+            case .failure(let error): return CoreOutcome(Self.presetStatus(error), error)
+            case .success: corePresetSaved(core, slot: slot, active: slot)
+            }
+            return CoreOutcome(PRESET_OK)
+        }
+        return CoreOutcome(transport.withDeviceLock(reason: "Saving preset", timeout: 5) {
+            savePresetUnlocked(slot: slot)
+        } ?? PRESET_STATUS_LOCKED)
+    }
+
     /// -- WP SW13 -- The directory as the core's mirror holds it, on main.
     private func showCorePresetDirectory(_ d: PresetDirectory) {
         let occupied = d.occupiedMask
@@ -5214,16 +5235,7 @@ extension DSPViewModel {
     /// another session holds the lock; nothing is sent then.
     @discardableResult
     func savePreset(slot: Int, confirmed: UserConfirmation) -> UInt8 {   // -- WP P1SW2F -- F5
-        if let core = typedCore {   // -- WP SW13 -- the core takes the lock and waits
-            switch core.writeAndWait({ try $0.savePresetConfirmed(slot: Self.wire(slot), token: confirmed.token($0, for: .savePreset)) }) {   // -- WP P1SW2 -- a token minted after the person confirmed
-            case .failure(let error): return Self.presetStatus(error)
-            case .success: corePresetSaved(core, slot: slot, active: slot)
-            }
-            return PRESET_OK
-        }
-        return transport.withDeviceLock(reason: "Saving preset", timeout: 5) {
-            savePresetUnlocked(slot: slot)
-        } ?? PRESET_STATUS_LOCKED
+        savePresetOutcome(slot: slot, confirmed: confirmed).status   // -- WP P1SW3F -- F1
     }
 
     /// -- WP SW13 -- After a save through the core: `slot` is occupied and
@@ -5284,17 +5296,22 @@ extension DSPViewModel {
     /// Returns PRESET_OK on success, an error code on failure.
     @discardableResult
     func copyPreset(from sourceSlot: Int, to destinationSlot: Int, confirmed: UserConfirmation) -> UInt8 {
+        copyPresetOutcome(from: sourceSlot, to: destinationSlot, confirmed: confirmed).status   // -- WP P1SW3F -- F1
+    }
+
+    /// -- WP P1SW3F -- F1: `copyPreset` with the core's error.
+    func copyPresetOutcome(from sourceSlot: Int, to destinationSlot: Int, confirmed: UserConfirmation) -> CoreOutcome {
         if let core = typedCore {   // -- WP SW13 -- one lock and both waits, in the core
             switch core.writeAndWait({ try $0.copyPresetConfirmed(source: Self.wire(sourceSlot), dest: Self.wire(destinationSlot),
                                                               token: confirmed.token($0, for: .copyPreset)) }) {   // -- WP P1SW2 -- a token minted after the person confirmed
-            case .failure(let error): return Self.presetStatus(error)
+            case .failure(let error): return CoreOutcome(Self.presetStatus(error), error)
             case .success: corePresetSaved(core, slot: destinationSlot, active: sourceSlot)
             }
-            return PRESET_OK
+            return CoreOutcome(PRESET_OK)
         }
-        return transport.withDeviceLock(reason: "Copying preset", timeout: 10) {
+        return CoreOutcome(transport.withDeviceLock(reason: "Copying preset", timeout: 10) {
             copyPresetUnlocked(from: sourceSlot, to: destinationSlot)
-        } ?? PRESET_STATUS_LOCKED
+        } ?? PRESET_STATUS_LOCKED)
     }
 
     private func copyPresetUnlocked(from sourceSlot: Int, to destinationSlot: Int) -> UInt8 {
@@ -5316,14 +5333,23 @@ extension DSPViewModel {
 
     @discardableResult
     func loadPreset(slot: Int) -> UInt8 {
+        loadPresetOutcome(slot: slot).status   // -- WP P1SW3F -- F1
+    }
+
+    /// -- WP P1SW3F -- F1: `loadPreset` with the core's error.
+    func loadPresetOutcome(slot: Int) -> CoreOutcome {
         print("[PRESET] loadPreset(\(slot)) starting")
         // -- WP SWF6 -- Through the core: its load re-reads and rebases, and an
         // edit made before its notifications arrive stays unsaved (CG33).
         if let source = transport.coreStateSource {
-            let status = loadPresetThroughCore(source, slot: slot)
-            print("[PRESET] loadPreset(\(slot)) through the core, status=\(status)")
-            return status
+            let outcome = loadPresetThroughCoreOutcome(source, slot: slot)
+            print("[PRESET] loadPreset(\(slot)) through the core, status=\(outcome.status)")
+            return outcome
         }
+        return CoreOutcome(loadPresetRaw(slot: slot))
+    }
+
+    private func loadPresetRaw(slot: Int) -> UInt8 {
         // We refetch everything below, so drop the PRESET_LOADED /
         // BULK_INVALIDATED pair the device is about to send rather than pay for
         // a second bulk read of the state we are already fetching.  Armed
@@ -5389,26 +5415,31 @@ extension DSPViewModel {
 
     @discardableResult
     func deletePreset(slot: Int, confirmed: UserConfirmation) -> UInt8 {
+        deletePresetOutcome(slot: slot, confirmed: confirmed).status   // -- WP P1SW3F -- F1
+    }
+
+    /// -- WP P1SW3F -- F1: `deletePreset` with the core's error.
+    func deletePresetOutcome(slot: Int, confirmed: UserConfirmation) -> CoreOutcome {
         if let core = typedCore {   // -- WP SW13 --
             // The core waits for the deferred delete; deleting the active
             // slot loads the factory defaults, which it reads again.
             let wasActive = Int(core.readState().activePresetSlot) == slot
             switch core.writeAndWait({ try $0.deletePresetConfirmed(slot: Self.wire(slot), token: confirmed.token($0, for: .deletePreset)) }) {   // -- WP P1SW2 -- a token minted after the person confirmed
-            case .failure(let error): return Self.presetStatus(error)
+            case .failure(let error): return CoreOutcome(Self.presetStatus(error), error)
             case .success:
                 DispatchQueue.main.async { self.presetOccupied &= ~UInt16(1 << slot) }
                 if wasActive { applyCoreReread(core) }
             }
-            return PRESET_OK
+            return CoreOutcome(PRESET_OK)
         }
-        guard let data = transport.getControlRequest(request: REQ_PRESET_DELETE, value: UInt16(slot), index: 2, length: 1) else { return 0xFF }
+        guard let data = transport.getControlRequest(request: REQ_PRESET_DELETE, value: UInt16(slot), index: 2, length: 1) else { return CoreOutcome(0xFF) }
         let status = data[0]
         if status == PRESET_OK {
             DispatchQueue.main.async {
                 self.presetOccupied &= ~UInt16(1 << slot)
             }
         }
-        return status
+        return CoreOutcome(status)
     }
 
     /// Poll REQ_PRESET_GET_DIR until the firmware has actually finished
@@ -5508,13 +5539,22 @@ extension DSPViewModel {
     /// As `saveOutputConfig`, but tells a held device lock (`.locked`, nothing
     /// sent) apart from a device that did not acknowledge (`.error`).
     func saveOutputConfigResult(confirmed: UserConfirmation) -> Result<Void, LinkStatus> {
+        saveOutputConfigOutcome(confirmed: confirmed).result   // -- WP P1SW3F -- F1
+    }
+
+    /// -- WP P1SW3F -- F1: `saveOutputConfigResult` with the core's error.
+    func saveOutputConfigOutcome(confirmed: UserConfirmation) -> (result: Result<Void, LinkStatus>, error: DspiError?) {
         if let core = typedCore {   // -- WP SW13 -- the core takes the lock
             switch core.writeAndWait({ try $0.saveOutputConfigConfirmed(token: confirmed.token($0, for: .saveOutputConfig)) }) {   // -- WP P1SW2 -- a token minted after the person confirmed
-            case .success: return .success(())
-            case .failure(.Locked), .failure(.Denied): return .failure(.locked)
-            case .failure: return .failure(.error)
+            case .success: return (.success(()), nil)
+            case .failure(let e) where e == .Locked || e == .Denied: return (.failure(.locked), e)
+            case .failure(let e): return (.failure(.error), e)
             }
         }
+        return (saveOutputConfigRaw(), nil)
+    }
+
+    private func saveOutputConfigRaw() -> Result<Void, LinkStatus> {
         return transport.withDeviceLock(reason: "Saving output configuration", timeout: 5) {
             guard let data = transport.getControlRequest(request: REQ_SAVE_OUTPUT_CONFIG, value: 0, index: 2, length: 1),
                   data.first == 0 else {  // PRESET_OK
@@ -5897,8 +5937,11 @@ extension DSPViewModel {
         }.flatMap { $0 } ?? FLASH_ERR_WRITE
     }
 
-    func loadParams() -> UInt8 {
-        guard isDeviceConnected else { return FLASH_ERR_WRITE }
+    func loadParams() -> UInt8 { loadParamsOutcome().status }   // -- WP P1SW3F -- F1
+
+    /// -- WP P1SW3F -- F1: `loadParams` (FLASH_* codes) with the core's error.
+    func loadParamsOutcome() -> CoreOutcome {
+        guard isDeviceConnected else { return CoreOutcome(FLASH_ERR_WRITE) }
         // "Revert to Saved" reloads the active preset slot from flash,
         // discarding unsaved live edits.  Route it through the DEFERRED
         // REQ_PRESET_LOAD path (loadPreset) rather than a synchronous load: a
@@ -5910,17 +5953,22 @@ extension DSPViewModel {
         // it is safe on every input source, and it also refreshes the UI and
         // rebaselines the unsaved-changes snapshot.  (The legacy synchronous
         // load opcode 0x52 has since been repurposed as REQ_SAVE_OUTPUT_CONFIG.)
-        let status = loadPreset(slot: activePresetSlot)
+        let outcome = loadPresetOutcome(slot: activePresetSlot)
         // Map preset status codes onto the FLASH_* codes the caller expects.
-        switch status {
-        case PRESET_OK:      return FLASH_OK
-        case PRESET_ERR_CRC: return FLASH_ERR_CRC
-        default:             return FLASH_ERR_WRITE   // invalid slot / USB failure (0xFF)
+        switch outcome.status {
+        case PRESET_OK:      return CoreOutcome(FLASH_OK)
+        case PRESET_ERR_CRC: return CoreOutcome(FLASH_ERR_CRC, outcome.error)
+        default:             return CoreOutcome(FLASH_ERR_WRITE, outcome.error)   // invalid slot / USB failure (0xFF)
         }
     }
 
     func factoryReset(confirmed: UserConfirmation) -> UInt8 {
-        guard isDeviceConnected else { return FLASH_ERR_WRITE }
+        factoryResetOutcome(confirmed: confirmed).status   // -- WP P1SW3F -- F1
+    }
+
+    /// -- WP P1SW3F -- F1: `factoryReset` with the core's error.
+    func factoryResetOutcome(confirmed: UserConfirmation) -> CoreOutcome {
+        guard isDeviceConnected else { return CoreOutcome(FLASH_ERR_WRITE) }
         // fetchAll() below covers the rewrite; drop the device's own
         // BULK_INVALIDATED(source=FACTORY) so it doesn't duplicate that work.
         suppressDeviceResync()
@@ -5931,9 +5979,10 @@ extension DSPViewModel {
             switch core.writeAndWait({ try $0.factoryResetConfirmed(token: confirmed.token($0, for: .factoryReset)) }) {   // -- WP P1SW2 -- a token minted after the person confirmed
             case .success:
                 fetchAll()
-                return FLASH_OK
-            case .failure(.Refused(let status)): return status
-            case .failure: return FLASH_ERR_WRITE
+                return CoreOutcome(FLASH_OK)
+            case .failure(let error):
+                if case .Refused(let status) = error { return CoreOutcome(status, error) }
+                return CoreOutcome(FLASH_ERR_WRITE, error)
             }
         }
         if let data = transport.getControlRequest(request: REQ_FACTORY_RESET, value: 0, index: 0, length: 1) {
@@ -5942,9 +5991,9 @@ extension DSPViewModel {
                 // Re-fetch all params to update UI
                 fetchAll()
             }
-            return result
+            return CoreOutcome(result)
         }
-        return FLASH_ERR_WRITE
+        return CoreOutcome(FLASH_ERR_WRITE)
     }
 }
 
