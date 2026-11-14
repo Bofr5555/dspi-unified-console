@@ -27,8 +27,8 @@
 //!   `uconsole raw` ([`Target::open_raw`]), which lets the bootloader request through
 //!   on purpose: another wire format, or an image that cannot be read at all, is
 //!   when a board most needs this.
-//! - **Writing is not success.** [`dspi_core::flash_to_drive_guarded`] (through
-//!   `flash_confirmed`) returning means the write ended, or the drive went away
+//! - **Writing is not success.** [`dspi_core::DspiCore::flash_confirmed`] (the
+//!   guarded write, with its token) returning means the write ended, or the drive went away
 //!   during it, which is assumed to be the board rebooting and which a pulled
 //!   cable looks like too. Only the board
 //!   coming back with the image's version is success.
@@ -706,8 +706,8 @@ fn onto_device(
 /// A reboot refused before it was sent (the device lock, WP CG24) is said at
 /// once instead of waiting for a drive that cannot come (WP TM25).
 fn enter_bootloader(req: &Request, device: &Device) -> Result<(), u8> {
-    // -- WP P1TM -- gated (P1TK): asked already, so the token is minted here.
-    device.core.require_confirmation(true);
+    // -- WP P1TM -- gated (P1TK): asked already, so the token is minted here
+    // (required by every core, P1TZ).
     let token = device
         .core
         .confirm_token(dspi_core::ConfirmOp::EnterBootloader);
@@ -798,7 +798,6 @@ fn write(req: &Request, image: &Image, drive: &BootloaderDrive, passed: &Passed)
     // (or --force), so its token is minted here, with the drive there and no
     // device open on this core.
     let core = DspiCore::new();
-    core.require_confirmation(true);
     let token = core.confirm_token(dspi_core::ConfirmOp::FirmwareFlash);
     let written = core.flash_confirmed(
         image.bytes.clone(),

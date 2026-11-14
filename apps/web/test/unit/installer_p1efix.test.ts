@@ -1,5 +1,5 @@
 // WP P1EFIX unit tests (review p1e-a fixups): tokens are required before the session shows as
-// open (F5); on the real core, the locked-user line is the core's row `installer_lock.banner`
+// open (F5; since P1TZ by the core itself); on the real core, the locked-user line is the core's row `installer_lock.banner`
 // (F2), the limits editor's ranges are the core's one table (F7), and undoing Protect all
 // outputs says the limiters stay on.
 
@@ -13,35 +13,28 @@ import type { CoreClient } from "../../src/core/client";
 import { Session } from "../../src/ui/session";
 import { noticeRow } from "../../src/ui/texts";
 
-test("P1EFIX tokens: required before the session shows as open (a device and a document)", async () => {
-  const seen: { method: string; status: string }[] = [];
-  let session: Session | null = null;
+// -- WP P1TZ -- the core requires tokens from the start, so the session no longer turns them on:
+// it opens a device and a document without any switch call (the review's F5 holds by default).
+test("P1TZ tokens: the session opens a device and a document with no switch call", async () => {
+  const seen: string[] = [];
   const snapshot = { device: { serial: "X", readOnly: false, readOnlyReason: "" }, state: {} };
   const client = {
     call: (method: string) => {
-      seen.push({ method, status: session?.state.status ?? "" });
+      seen.push(method);
       if (method === "open") return Promise.resolve(snapshot);
       if (method === "documentOpen") return Promise.resolve({ ...snapshot, document: { fileName: "a.dspipreset" } });
-      if (method === "requireConfirmation") return Promise.resolve(true);
       return Promise.reject(new Error("not in this stub"));
     },
     subscribe: () => () => undefined,
     dispose: async () => undefined,
   } as unknown as CoreClient;
-  session = new Session("s", "i", "Here", { kind: "demo" }, "control", client);
+  const session = new Session("s", "i", "Here", { kind: "demo" }, "control", client);
   await session.open({ kind: "demo" });
   assert.equal(session.state.status, "open");
-  const req = seen.find((c) => c.method === "requireConfirmation");
-  assert.ok(req, "tokens required");
-  assert.notEqual(req.status, "open", "before the session shows as open");
-
-  seen.length = 0;
   const doc = new Session("d", "i", "Here", { kind: "demo" }, "control", client);
-  session = doc;
   await doc.openDocument("{}", "a.dspipreset");
   assert.equal(doc.state.status, "open");
-  const reqDoc = seen.find((c) => c.method === "requireConfirmation");
-  assert.ok(reqDoc && reqDoc.status !== "open", "a document too");
+  assert.ok(!seen.includes("requireConfirmation") && !seen.includes("confirmationRequired"), seen.join(","));
 });
 
 // -- On the real core --

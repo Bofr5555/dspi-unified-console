@@ -148,7 +148,7 @@ export class Session {
     try {
       const r = await this.core.call("documentOpen", { text, fileName });
       const { document, ...snapshot } = r;
-      await this.requireTokens(); // -- WP P1EFIX -- before the page can write
+      // Tokens are required by the core from the start (P1TZ): nothing to turn on before the page can write
       this.set({ status: "open", snapshot, document, error: "" });
       void this.afterOpen(); // -- WP P1WB2 --
     } catch (e) {
@@ -187,26 +187,15 @@ export class Session {
 
   private async load(target: DeviceTarget): Promise<void> {
     const snapshot = await this.core.call("open", target);
-    await this.requireTokens(); // -- WP P1EFIX -- before the page can write
+    // Tokens are required by the core from the start (P1TZ): nothing to turn on before the page can write
     this.set({ status: "open", snapshot, error: "" });
-    // -- WP P1WB2 -- every kind: tokens on, the notices, the limits this page keeps, the lock
+    // -- WP P1WB2 -- every kind: the notices, the limits this page keeps, the lock
     await this.afterOpen();
-  }
-
-  // -- WP P1EFIX --
-  /**
-   * Gated calls need a confirmation token from here on (P1TK; each prompt mints one). Called
-   * after the core opened the device (or the document) and before the session shows as open,
-   * so the page is never interactive with tokens off (review p1e-a F5). A core without the call
-   * (the tests' stub) leaves the session as it was.
-   */
-  private async requireTokens(): Promise<void> {
-    await this.core.call("requireConfirmation", { on: true }).catch(() => undefined);
   }
 
   // -- WP P1WB2 --
   /**
-   * Once a device (or a document) is open (tokens are already required, `requireTokens`):
+   * Once a device (or a document) is open (tokens are required by the core from the start, P1TZ):
    * the notice table is read, the limits profile this page
    * keeps for the device is applied (P1LM: the web has no files), and the lock is read.
    * Each step's failure leaves the session as it was (the tests' stub core has none of them).

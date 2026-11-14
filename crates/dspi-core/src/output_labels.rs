@@ -224,7 +224,7 @@ mod tests_bug1 {
     fn k340() -> Arc<DspiCore> {
         let core = demo();
         let r: serde_json::Value =
-            serde_json::from_str(&core.config_import(K340.into(), IMPORT_HARDWARE)).unwrap();
+            serde_json::from_str(&core.config_import_tok(K340.into(), IMPORT_HARDWARE)).unwrap();
         assert_eq!(r["ok"], true, "{r}");
         core
     }

@@ -263,13 +263,13 @@ pub fn firmware_guard_check(
     )
 }
 
-/// [`flash_to_drive`] behind the guard: the one to use wherever the core does
-/// the writing. Nothing reaches the drive unless the verdict allows it.
+/// [`flash_to_drive`] behind the guard. Nothing reaches the drive unless the
+/// verdict allows it. Not exported (WP P1TZ): bindings write through
+/// [`DspiCore::flash_confirmed`], which takes a confirmation token first.
 ///
 /// Errors: [`DspiError::FirmwareGuardBlocked`] with the guard's message when
 /// the image needs confirmation; otherwise those of [`flash_to_drive`].
-#[cfg_attr(feature = "uniffi", uniffi::export)]
-pub fn flash_to_drive_guarded(
+pub(crate) fn flash_to_drive_guarded(
     image: Vec<u8>,
     drive: BootloaderDrive,
     board: FirmwareGuardBoard,

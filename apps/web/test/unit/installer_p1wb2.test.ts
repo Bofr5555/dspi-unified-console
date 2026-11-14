@@ -175,7 +175,7 @@ async function sessionOn(): Promise<Session> {
 
 test("P1WB2 tokens: on from the open; a gated call without one is refused in the table's words; the page's own prompts carry one", { skip }, async () => {
   const s = await sessionOn();
-  assert.equal(await s.core.call("confirmationRequired", undefined), true);
+  // -- WP P1TZ -- required by the core from the start: the switch is gone
   await assert.rejects(
     s.core.call("write", { path: "preset.save", indices: [0], value: "trigger" }),
     (e: unknown) => e instanceof CoreCallError && e.noticeKey === "confirmation_required",

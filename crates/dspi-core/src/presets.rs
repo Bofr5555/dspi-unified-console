@@ -173,6 +173,7 @@ impl DeviceLock {
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
+    // -- WP P1TK --
     /// Save the live state to `slot` (0..10) and wait until the device has
     /// written it (it names the slot active). Runs under the device lock.
     /// The slot becomes the active one and the live state its baseline.
@@ -185,14 +186,10 @@ impl DspiCore {
     /// status; [`DspiError::Transfer`] when the save was not confirmed;
     /// [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
     /// [`DspiError::ReadOnly`]; [`DspiError::Disconnected`].
-    pub fn save_preset(&self, slot: u8) -> Result<()> {
-        self.save_preset_with(slot, None)
-    }
-
-    // -- WP P1TK --
-    /// [`DspiCore::save_preset`] with a confirmation token ([`crate::confirm`]):
-    /// [`DspiError::ConfirmationRequired`], with nothing sent, without a good
-    /// one while tokens are required, or with a bad one at any time.
+    ///
+    /// Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+    /// WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+    /// without a good one. There is no form without a token.
     pub fn save_preset_confirmed(&self, slot: u8, token: Option<String>) -> Result<()> {
         self.save_preset_with(slot, token.as_deref())
     }
@@ -206,7 +203,7 @@ impl DspiCore {
     /// load, and stays as it was otherwise. A load that is never confirmed
     /// (an empty slot changes nothing) still re-reads and succeeds.
     ///
-    /// Errors: as [`DspiCore::save_preset`], and the re-read's.
+    /// Errors: as [`DspiCore::save_preset_confirmed`], and the re-read's.
     pub fn load_preset(&self, slot: u8) -> Result<()> {
         let _lock = crate::limits::LockScope::allow(); // -- WP P1LK -- allowed while locked
         slot_in_range(slot)?;
@@ -246,6 +243,7 @@ impl DspiCore {
         Ok(())
     }
 
+    // -- WP P1TK --
     /// Copy the live state to `dest` and save it to `source` again, so
     /// `source` stays the active preset (the Mac console's "Copy to"). Each
     /// save waits for the device; one device lock covers both.
@@ -256,18 +254,16 @@ impl DspiCore {
     ///
     /// Errors: the first failing save's (`Refused` with its `PRESET_*`
     /// status); [`DspiError::Transfer`] when `dest`'s save was not
-    /// confirmed; otherwise as [`DspiCore::save_preset`].
-    pub fn copy_preset(&self, source: u8, dest: u8) -> Result<()> {
-        self.copy_preset_with(source, dest, None)
-    }
-
-    // -- WP P1TK --
-    /// [`DspiCore::copy_preset`] with a confirmation token, as
-    /// [`DspiCore::save_preset_confirmed`].
+    /// confirmed; otherwise as [`DspiCore::save_preset_confirmed`].
+    ///
+    /// Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+    /// WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+    /// without a good one. There is no form without a token.
     pub fn copy_preset_confirmed(&self, source: u8, dest: u8, token: Option<String>) -> Result<()> {
         self.copy_preset_with(source, dest, token.as_deref())
     }
 
+    // -- WP P1TK --
     /// Delete preset `slot` and wait until the directory no longer holds
     /// it; its name goes with it. Runs under the device lock.
     ///
@@ -275,14 +271,11 @@ impl DspiCore {
     /// the image is read again and becomes the baseline. A deletion that is
     /// never confirmed leaves the slot and its name in the mirror and fails.
     ///
-    /// Errors: as [`DspiCore::save_preset`].
-    pub fn delete_preset(&self, slot: u8) -> Result<()> {
-        self.delete_preset_with(slot, None)
-    }
-
-    // -- WP P1TK --
-    /// [`DspiCore::delete_preset`] with a confirmation token, as
-    /// [`DspiCore::save_preset_confirmed`].
+    /// Errors: as [`DspiCore::save_preset_confirmed`].
+    ///
+    /// Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+    /// WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+    /// without a good one. There is no form without a token.
     pub fn delete_preset_confirmed(&self, slot: u8, token: Option<String>) -> Result<()> {
         self.delete_preset_with(slot, token.as_deref())
     }
@@ -370,6 +363,7 @@ impl DspiCore {
         Ok(())
     }
 
+    // -- WP P1TK --
     /// Save the live state to the active slot (`REQ_SAVE_PARAMS`), under the
     /// device lock; the live state becomes the baseline.
     ///
@@ -377,13 +371,10 @@ impl DspiCore {
     /// [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
     /// [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; a transfer
     /// error.
-    pub fn save_params(&self) -> Result<()> {
-        self.save_params_with(None)
-    }
-
-    // -- WP P1TK --
-    /// [`DspiCore::save_params`] with a confirmation token, as
-    /// [`DspiCore::save_preset_confirmed`].
+    ///
+    /// Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+    /// WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+    /// without a good one. There is no form without a token.
     pub fn save_params_confirmed(&self, token: Option<String>) -> Result<()> {
         self.save_params_with(token.as_deref())
     }
@@ -408,6 +399,7 @@ impl DspiCore {
         })
     }
 
+    // -- WP P1TK --
     /// Restore the factory defaults on the live state (stored presets stay),
     /// give the device [`FACTORY_RESET_SETTLE`] to apply them (it defers the
     /// reset to its main loop), then read everything again as
@@ -418,13 +410,10 @@ impl DspiCore {
     /// [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
     /// [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; a transfer
     /// error, of the reset or the re-read.
-    pub fn factory_reset(&self) -> Result<()> {
-        self.factory_reset_with(None)
-    }
-
-    // -- WP P1TK --
-    /// [`DspiCore::factory_reset`] with a confirmation token, as
-    /// [`DspiCore::save_preset_confirmed`].
+    ///
+    /// Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+    /// WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+    /// without a good one. There is no form without a token.
     pub fn factory_reset_confirmed(&self, token: Option<String>) -> Result<()> {
         self.factory_reset_with(token.as_deref())
     }
@@ -515,7 +504,7 @@ impl DspiCore {
 
 impl DspiCore {
     // -- WP P1TK --
-    /// The body of [`DspiCore::save_preset`] and its `_confirmed` form (WP P1TK).
+    /// The body of [`DspiCore::save_preset_confirmed`] (WP P1TK).
     pub(crate) fn save_preset_with(&self, slot: u8, token: Option<&str>) -> Result<()> {
         slot_in_range(slot)?;
         let ticket = self.confirm_gate(ConfirmOp::SavePreset, token)?;
@@ -533,7 +522,7 @@ impl DspiCore {
         })
     }
 
-    /// The body of [`DspiCore::copy_preset`] and its `_confirmed` form (WP P1TK).
+    /// The body of [`DspiCore::copy_preset_confirmed`] (WP P1TK).
     pub(crate) fn copy_preset_with(&self, source: u8, dest: u8, token: Option<&str>) -> Result<()> {
         slot_in_range(source)?;
         slot_in_range(dest)?;
@@ -557,7 +546,7 @@ impl DspiCore {
         })
     }
 
-    /// The body of [`DspiCore::delete_preset`] and its `_confirmed` form (WP P1TK).
+    /// The body of [`DspiCore::delete_preset_confirmed`] (WP P1TK).
     pub(crate) fn delete_preset_with(&self, slot: u8, token: Option<&str>) -> Result<()> {
         slot_in_range(slot)?;
         let ticket = self.confirm_gate(ConfirmOp::DeletePreset, token)?;
@@ -587,7 +576,7 @@ impl DspiCore {
         })
     }
 
-    /// The body of [`DspiCore::save_params`] and its `_confirmed` form (WP P1TK).
+    /// The body of [`DspiCore::save_params_confirmed`] (WP P1TK).
     pub(crate) fn save_params_with(&self, token: Option<&str>) -> Result<()> {
         let ticket = self.confirm_gate(ConfirmOp::SaveParams, token)?;
         self.with_device_lock(SAVE_PARAMS_REASON, |inner| {
@@ -603,7 +592,7 @@ impl DspiCore {
         })
     }
 
-    /// The body of [`DspiCore::factory_reset`] and its `_confirmed` form (WP P1TK).
+    /// The body of [`DspiCore::factory_reset_confirmed`] (WP P1TK).
     pub(crate) fn factory_reset_with(&self, token: Option<&str>) -> Result<()> {
         let ticket = self.confirm_gate(ConfirmOp::FactoryReset, token)?;
         let lock = self.acquire_device_lock(RESET_REASON)?;
@@ -2307,7 +2296,7 @@ mod tests {
         core.set_input_preamp(0, -4.0).unwrap();
         assert!(core.preset_dirty());
         let mark = probe.mark();
-        core.save_preset(3).unwrap();
+        core.save_preset_tok(3).unwrap();
         let log = probe.since(mark);
         assert_eq!(
             log.first().map(String::as_str),
@@ -2350,9 +2339,9 @@ mod tests {
     fn clean1_a_load_reads_the_slot_back_and_is_clean() {
         let (core, probe) = fetched();
         core.set_input_preamp(0, -4.0).unwrap();
-        core.save_preset(1).unwrap();
+        core.save_preset_tok(1).unwrap();
         core.set_input_preamp(0, -2.0).unwrap();
-        core.save_preset(0).unwrap();
+        core.save_preset_tok(0).unwrap();
         core.set_input_preamp(0, 5.0).unwrap();
         let mark = probe.mark();
         core.load_preset(1).unwrap();
@@ -2372,7 +2361,7 @@ mod tests {
     fn clean1_revert_loads_the_active_slot_again() {
         let (core, probe) = fetched();
         core.set_input_preamp(0, -4.0).unwrap();
-        core.save_preset(2).unwrap();
+        core.save_preset_tok(2).unwrap();
         core.set_input_preamp(0, -1.0).unwrap();
         let mark = probe.mark();
         core.load_params().unwrap();
@@ -2410,7 +2399,7 @@ mod tests {
         let (core, probe) = fetched();
         core.set_input_preamp(0, -6.0).unwrap();
         let mark = probe.mark();
-        core.copy_preset(0, 5).unwrap();
+        core.copy_preset_tok(0, 5).unwrap();
         let log = probe.since(mark);
         let saves: Vec<_> = log
             .iter()
@@ -2431,11 +2420,11 @@ mod tests {
     #[test]
     fn clean1_delete_clears_the_slot_and_its_name() {
         let (core, probe) = fetched();
-        core.save_preset(4).unwrap();
+        core.save_preset_tok(4).unwrap();
         core.set_preset_name(4, "Gone".into()).unwrap();
-        core.save_preset(0).unwrap();
+        core.save_preset_tok(0).unwrap();
         let mark = probe.mark();
-        core.delete_preset(4).unwrap();
+        core.delete_preset_tok(4).unwrap();
         let log = probe.since(mark);
         assert!(log.contains(&format!("in {:02X} 4", op::REQ_PRESET_DELETE)));
         assert_eq!(count(&log, "lock"), 1);
@@ -2453,10 +2442,10 @@ mod tests {
     #[test]
     fn clean1_deleting_the_active_slot_reads_the_image_again() {
         let (core, probe) = fetched();
-        core.save_preset(2).unwrap();
+        core.save_preset_tok(2).unwrap();
         core.set_input_preamp(0, 2.0).unwrap();
         let mark = probe.mark();
-        core.delete_preset(2).unwrap();
+        core.delete_preset_tok(2).unwrap();
         let log = probe.since(mark);
         assert!(
             sent(&log, op::REQ_GET_ALL_PARAMS) || sent(&log, op::REQ_GET_ALL_PARAMS_CHUNK),
@@ -2471,7 +2460,7 @@ mod tests {
     #[test]
     fn clean1_names_go_out_and_come_back() {
         let (core, _) = fetched();
-        core.save_preset(3).unwrap();
+        core.save_preset_tok(3).unwrap();
         core.set_preset_name(3, "Night".into()).unwrap();
         assert_eq!(core.get_state().preset_names[3], "Night");
         assert_eq!(core.get_preset_name(3).unwrap(), "Night");
@@ -2522,11 +2511,11 @@ mod tests {
         });
         let mark = probe.mark();
         let past = MAX_PRESETS as u8;
-        assert_eq!(core.save_preset(past), refused);
+        assert_eq!(core.save_preset_tok(past), refused);
         assert_eq!(core.load_preset(past), refused);
-        assert_eq!(core.delete_preset(past), refused);
-        assert_eq!(core.copy_preset(0, past), refused);
-        assert_eq!(core.copy_preset(past, 0), refused);
+        assert_eq!(core.delete_preset_tok(past), refused);
+        assert_eq!(core.copy_preset_tok(0, past), refused);
+        assert_eq!(core.copy_preset_tok(past, 0), refused);
         assert_eq!(core.set_preset_name(past, "x".into()), refused);
         assert_eq!(
             core.get_preset_name(255),
@@ -2536,7 +2525,7 @@ mod tests {
         );
         assert!(probe.since(mark).is_empty());
         // Before the connection is even looked at.
-        assert_eq!(DspiCore::new().save_preset(past), refused);
+        assert_eq!(DspiCore::new().save_preset_tok(past), refused);
     }
 
     #[test]
@@ -2546,7 +2535,7 @@ mod tests {
         probe.reply(op::REQ_PRESET_SAVE, Some(vec![flash]));
         let mark = probe.mark();
         assert_eq!(
-            core.save_preset(1),
+            core.save_preset_tok(1),
             Err(DspiError::Refused { status: flash })
         );
         let log = probe.since(mark);
@@ -2562,12 +2551,12 @@ mod tests {
         let (core, probe) = fetched();
         probe.refuse_lock.store(true, Ordering::SeqCst);
         let mark = probe.mark();
-        assert_eq!(core.save_preset(1), Err(DspiError::Locked));
+        assert_eq!(core.save_preset_tok(1), Err(DspiError::Locked));
         assert_eq!(core.load_preset(1), Err(DspiError::Locked));
-        assert_eq!(core.copy_preset(0, 1), Err(DspiError::Locked));
-        assert_eq!(core.delete_preset(1), Err(DspiError::Locked));
-        assert_eq!(core.save_params(), Err(DspiError::Locked));
-        assert_eq!(core.factory_reset(), Err(DspiError::Locked));
+        assert_eq!(core.copy_preset_tok(0, 1), Err(DspiError::Locked));
+        assert_eq!(core.delete_preset_tok(1), Err(DspiError::Locked));
+        assert_eq!(core.save_params_tok(), Err(DspiError::Locked));
+        assert_eq!(core.factory_reset_tok(), Err(DspiError::Locked));
         let log = probe.since(mark);
         assert!(log.iter().all(|l| l.starts_with("lock ")), "{log:?}");
         assert_eq!(log.len(), 6);
@@ -2579,7 +2568,7 @@ mod tests {
         core.set_input_preamp(0, -3.5).unwrap();
         assert!(core.preset_dirty());
         let mark = probe.mark();
-        core.save_params().unwrap();
+        core.save_params_tok().unwrap();
         let log = probe.since(mark);
         assert!(log.contains(&format!("in {:02X} 0", op::REQ_SAVE_PARAMS)));
         assert_eq!(
@@ -2589,7 +2578,7 @@ mod tests {
         assert!(!core.preset_dirty());
         probe.reply(op::REQ_SAVE_PARAMS, Some(vec![FLASH_ERR_WRITE]));
         assert_eq!(
-            core.save_params(),
+            core.save_params_tok(),
             Err(DspiError::Refused {
                 status: FLASH_ERR_WRITE
             })
@@ -2602,7 +2591,7 @@ mod tests {
         let factory = preamp(&core);
         core.set_input_preamp(0, factory - 7.0).unwrap();
         let mark = probe.mark();
-        core.factory_reset().unwrap();
+        core.factory_reset_tok().unwrap();
         let log = probe.since(mark);
         let reset = log
             .iter()
@@ -2624,7 +2613,7 @@ mod tests {
         let factory = preamp(&core);
         core.set_input_preamp(0, factory - 7.0).unwrap();
         *probe.defer_reset.lock().unwrap() = Some(Duration::from_millis(100));
-        core.factory_reset().unwrap();
+        core.factory_reset_tok().unwrap();
         assert_eq!(preamp(&core), factory);
         assert!(!core.preset_dirty(), "{:?}", core.preset_changes());
         assert!(
@@ -2640,18 +2629,18 @@ mod tests {
         core.attach_probed(Box::new(spy), "OLD".into(), 0).unwrap();
         core.fetch_all().unwrap();
         let mark = probe.mark();
-        assert_eq!(core.save_preset(1), Err(DspiError::ReadOnly));
+        assert_eq!(core.save_preset_tok(1), Err(DspiError::ReadOnly));
         assert_eq!(core.load_preset(1), Err(DspiError::ReadOnly));
-        assert_eq!(core.copy_preset(0, 1), Err(DspiError::ReadOnly));
-        assert_eq!(core.delete_preset(1), Err(DspiError::ReadOnly));
+        assert_eq!(core.copy_preset_tok(0, 1), Err(DspiError::ReadOnly));
+        assert_eq!(core.delete_preset_tok(1), Err(DspiError::ReadOnly));
         assert_eq!(
             core.set_preset_name(1, "x".into()),
             Err(DspiError::ReadOnly)
         );
         assert_eq!(core.set_preset_startup(1, 1), Err(DspiError::ReadOnly));
-        assert_eq!(core.save_params(), Err(DspiError::ReadOnly));
+        assert_eq!(core.save_params_tok(), Err(DspiError::ReadOnly));
         assert_eq!(core.load_params(), Err(DspiError::ReadOnly));
-        assert_eq!(core.factory_reset(), Err(DspiError::ReadOnly));
+        assert_eq!(core.factory_reset_tok(), Err(DspiError::ReadOnly));
         assert!(probe.since(mark).is_empty(), "{:?}", probe.since(mark));
         // Reading still works, and an image of another format has no baseline.
         core.get_preset_directory().unwrap();
@@ -2661,10 +2650,10 @@ mod tests {
     #[test]
     fn clean1_with_no_device() {
         let core = DspiCore::new();
-        assert_eq!(core.save_preset(0), Err(DspiError::Disconnected));
+        assert_eq!(core.save_preset_tok(0), Err(DspiError::Disconnected));
         assert_eq!(core.load_preset(0), Err(DspiError::Disconnected));
-        assert_eq!(core.copy_preset(0, 1), Err(DspiError::Disconnected));
-        assert_eq!(core.delete_preset(0), Err(DspiError::Disconnected));
+        assert_eq!(core.copy_preset_tok(0, 1), Err(DspiError::Disconnected));
+        assert_eq!(core.delete_preset_tok(0), Err(DspiError::Disconnected));
         assert_eq!(
             core.set_preset_name(0, "x".into()),
             Err(DspiError::Disconnected)
@@ -2672,8 +2661,8 @@ mod tests {
         assert_eq!(core.get_preset_name(0), Err(DspiError::Disconnected));
         assert_eq!(core.get_preset_directory(), Err(DspiError::Disconnected));
         assert_eq!(core.set_preset_startup(0, 0), Err(DspiError::Disconnected));
-        assert_eq!(core.save_params(), Err(DspiError::Disconnected));
-        assert_eq!(core.factory_reset(), Err(DspiError::Disconnected));
+        assert_eq!(core.save_params_tok(), Err(DspiError::Disconnected));
+        assert_eq!(core.factory_reset_tok(), Err(DspiError::Disconnected));
         assert_eq!(
             core.device_lock_acquire("x".into(), 100),
             Err(DspiError::Disconnected)
@@ -2690,7 +2679,7 @@ mod tests {
     #[test]
     fn clean1_a_load_never_confirmed_goes_by_the_directory() {
         let (core, probe) = fetched();
-        core.save_preset(1).unwrap();
+        core.save_preset_tok(1).unwrap();
         probe.reply(op::REQ_PRESET_GET_ACTIVE, Some(vec![7]));
         probe.reply(op::REQ_PRESET_GET_DIR, Some(directory(0b11, 5)));
         core.set_input_preamp(0, 1.0).unwrap();
@@ -2702,8 +2691,8 @@ mod tests {
     #[test]
     fn clean1_a_confirmed_load_without_a_directory_is_on_its_slot() {
         let (core, probe) = fetched();
-        core.save_preset(1).unwrap();
-        core.save_preset(0).unwrap();
+        core.save_preset_tok(1).unwrap();
+        core.save_preset_tok(0).unwrap();
         probe.reply(op::REQ_PRESET_GET_DIR, None);
         core.load_preset(1).unwrap();
         assert_eq!(core.get_state().active_preset_slot, 1);
@@ -2716,7 +2705,7 @@ mod tests {
     #[test]
     fn clean1_the_directory_has_the_last_word_on_the_active_slot() {
         let (core, probe) = fetched();
-        core.save_preset(1).unwrap();
+        core.save_preset_tok(1).unwrap();
         probe.reply(op::REQ_PRESET_GET_DIR, Some(directory(0b11, 4)));
         core.load_preset(1).unwrap();
         assert_eq!(core.get_state().active_preset_slot, 4);
@@ -2730,7 +2719,7 @@ mod tests {
         probe.reply(op::REQ_PRESET_GET_ACTIVE, Some(vec![9]));
         probe.reply(op::REQ_PRESET_GET_DIR, Some(directory(0b101, 0)));
         assert!(matches!(
-            core.save_preset(2),
+            core.save_preset_tok(2),
             Err(DspiError::Transfer { .. })
         ));
         let s = core.get_state();
@@ -2741,11 +2730,11 @@ mod tests {
     #[test]
     fn clean1_a_delete_never_confirmed_keeps_the_slot_and_its_name() {
         let (core, probe) = fetched();
-        core.save_preset(3).unwrap();
+        core.save_preset_tok(3).unwrap();
         core.set_preset_name(3, "Keep".into()).unwrap();
         probe.reply(op::REQ_PRESET_GET_DIR, Some(directory(0x3FF, 3)));
         assert!(matches!(
-            core.delete_preset(3),
+            core.delete_preset_tok(3),
             Err(DspiError::Transfer { .. })
         ));
         let s = core.get_state();
@@ -2760,7 +2749,7 @@ mod tests {
         probe.reply(op::REQ_PRESET_GET_ACTIVE, Some(vec![9]));
         let mark = probe.mark();
         assert!(matches!(
-            core.copy_preset(0, 4),
+            core.copy_preset_tok(0, 4),
             Err(DspiError::Transfer { .. })
         ));
         let log = probe.since(mark);
@@ -2792,7 +2781,7 @@ mod tests {
         let mark = probe.mark();
         core.device_lock_acquire("Restore".into(), 5000).unwrap();
         assert_eq!(core.held_lock_holder(), Some(Holder::Caller));
-        core.save_preset(1).unwrap();
+        core.save_preset_tok(1).unwrap();
         core.load_preset(1).unwrap();
         core.apply_all_params().unwrap();
         // Again: nothing more is asked.
@@ -2835,7 +2824,7 @@ mod tests {
         assert_eq!(core.held_lock_holder(), None);
         probe.refuse_lock.store(false, Ordering::SeqCst);
         let mark = probe.mark();
-        core.save_preset(1).unwrap();
+        core.save_preset_tok(1).unwrap();
         let log = probe.since(mark);
         assert_eq!(count(&log, "lock "), 1);
         assert_eq!(count(&log, "unlock"), 1);
@@ -2848,7 +2837,7 @@ mod tests {
         core.expire_held_lock();
         assert_eq!(core.held_lock_holder(), None);
         let mark = probe.mark();
-        core.save_preset(1).unwrap();
+        core.save_preset_tok(1).unwrap();
         let log = probe.since(mark);
         let locks: Vec<_> = log
             .iter()
@@ -2884,7 +2873,7 @@ mod tests {
         assert_eq!(core.held_lock_holder(), None);
         core.fetch_all().unwrap();
         let mark = probe.mark();
-        core.save_preset(1).unwrap();
+        core.save_preset_tok(1).unwrap();
         assert_eq!(count(&probe.since(mark), "lock "), 1);
     }
 
@@ -2932,7 +2921,7 @@ mod tests {
         let (core, probe) = fetched();
         core.lock().conn().unwrap().side = Some(Arc::new(Side(Arc::clone(&probe))));
         let mark = probe.mark();
-        core.save_preset(1).unwrap();
+        core.save_preset_tok(1).unwrap();
         let log = probe.since(mark);
         assert_eq!(
             log.first().map(String::as_str),

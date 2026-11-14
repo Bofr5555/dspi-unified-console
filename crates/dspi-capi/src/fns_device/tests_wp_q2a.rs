@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use proptest::prelude::*;
 
 use super::*;
-use crate::types::{FLASH_OK, PRESET_ERR_INVALID_SLOT, PRESET_OK};
+use crate::types::{PRESET_ERR_INVALID_SLOT, PRESET_OK};
 
 const NULL: *mut FfiCore = ptr::null_mut();
 
@@ -88,13 +88,10 @@ fn wp_q2a_null_handle_gives_the_failure_value() {
     assert!(!dspi_get_preset_name(NULL, 0, buf.as_mut_ptr(), 8));
     assert_eq!(buf, [1 as c_char; 8], "nothing is written");
     assert_eq!(dspi_save_master_volume(NULL), 0xFF);
-    assert_eq!(dspi_save_preset(NULL, 0), 0xFF);
+    // -- WP P1TZ -- the save, copy, delete, save-params and factory-reset
+    // functions without a token are gone (the `_confirmed` ones: tests_wp_p1tk).
     assert_eq!(dspi_load_preset(NULL, 0), 0xFF);
-    assert_eq!(dspi_copy_preset(NULL, 0, 1), 0xFF);
-    assert_eq!(dspi_delete_preset(NULL, 0), 0xFF);
-    assert_eq!(dspi_save_params(NULL), FLASH_ERR_WRITE);
     assert_eq!(dspi_load_params(NULL), FLASH_ERR_WRITE);
-    assert_eq!(dspi_factory_reset(NULL), FLASH_ERR_WRITE);
     dspi_capture_baseline(NULL);
     assert!(!dspi_preset_dirty(NULL));
     assert_eq!(dspi_preset_changes(NULL, ptr::null_mut(), 0), 0);
@@ -147,10 +144,7 @@ fn wp_q2a_disconnected_calls_use_the_old_conventions() {
     assert!(!dspi_fetch_all(h.0));
     assert!(!dspi_set_master_volume(h.0, -3.0));
     assert_eq!(dspi_set_output_enable(h.0, 0, true), -1);
-    assert_eq!(dspi_save_preset(h.0, 0), 0xFF);
     assert_eq!(dspi_save_master_volume(h.0), 0xFF);
-    assert_eq!(dspi_save_params(h.0), FLASH_ERR_WRITE);
-    assert_eq!(dspi_factory_reset(h.0), FLASH_ERR_WRITE);
     assert!(!dspi_preset_dirty(h.0));
     assert_eq!(dspi_preamp_max_db(h.0), 18.0);
 }
@@ -165,7 +159,11 @@ fn wp_q2a_status_passes_the_device_status_through() {
         FLASH_ERR_WRITE
     );
     let h = Handle::demo();
-    assert_eq!(dspi_save_preset(h.0, 99), PRESET_ERR_INVALID_SLOT);
+    // -- WP P1TZ -- the save takes a token; its refusal of the slot is JSON.
+    let r = crate::fns_misc::with_token_for_test(h.0, "save_preset", |t, b, l| {
+        crate::fns_misc::dspi_save_preset_confirmed(h.0, 99, t, b, l)
+    });
+    assert_eq!(r["code"], "refused", "{r}");
     assert_eq!(dspi_load_preset(h.0, 99), PRESET_ERR_INVALID_SLOT);
 }
 
@@ -307,7 +305,14 @@ fn wp_q2a_meters_fill_every_output() {
 #[test]
 fn wp_q2a_presets_round_trip_and_report_changes() {
     let h = Handle::demo();
-    assert_eq!(dspi_save_preset(h.0, 1), PRESET_OK);
+    // -- WP P1TZ -- the save takes a token.
+    let ok = |op: &str, f: &dyn Fn(*const c_char, *mut c_char, u32) -> u32| {
+        let r = crate::fns_misc::with_token_for_test(h.0, op, f);
+        assert_eq!(r["ok"], true, "{op}: {r}");
+    };
+    ok("save_preset", &|t, b, l| {
+        crate::fns_misc::dspi_save_preset_confirmed(h.0, 1, t, b, l)
+    });
     assert!(dspi_set_preset_name(h.0, 1, c"Room".as_ptr()));
     let mut buf = [0 as c_char; 32];
     assert!(dspi_get_preset_name(h.0, 1, buf.as_mut_ptr(), 32));
@@ -341,8 +346,12 @@ fn wp_q2a_presets_round_trip_and_report_changes() {
     assert!(!list.is_empty());
 
     assert_eq!(dspi_load_preset(h.0, 1), PRESET_OK);
-    assert_eq!(dspi_save_params(h.0), FLASH_OK);
-    assert_eq!(dspi_delete_preset(h.0, 1), PRESET_OK);
+    ok("save_params", &|t, b, l| {
+        crate::fns_misc::dspi_save_params_confirmed(h.0, t, b, l)
+    });
+    ok("delete_preset", &|t, b, l| {
+        crate::fns_misc::dspi_delete_preset_confirmed(h.0, 1, t, b, l)
+    });
 }
 
 #[test]
@@ -502,7 +511,8 @@ proptest! {
             prop_assert!(!dspi_set_upmix_param(core, a, v));
             prop_assert!(!dspi_set_tube_param(core, a, v));
             prop_assert_eq!(dspi_set_output_enable(core, a, on), -1);
-            prop_assert_eq!(dspi_save_preset(core, a), status_for_slot(core, a));
+            // -- WP P1TZ -- the load (the save without a token is gone)
+            prop_assert_eq!(dspi_load_preset(core, a), status_for_slot(core, a));
         }
     }
 
@@ -522,7 +532,7 @@ proptest! {
     }
 }
 
-/// What `dspi_save_preset` gives with no device: an invalid slot is refused
+/// What `dspi_load_preset` gives with no device: an invalid slot is refused
 /// before the connection is looked at (on a real handle).
 fn status_for_slot(core: *mut FfiCore, slot: u8) -> u8 {
     if !core.is_null() && slot >= 10 {

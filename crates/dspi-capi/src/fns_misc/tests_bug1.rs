@@ -29,7 +29,10 @@ fn bug1_labels_and_cards_through_c() {
     let h = dspi_core_new();
     assert!(dspi_open_demo(h));
     let doc = CString::new(K340).unwrap();
-    let r = reply(|b, l| dspi_config_import(h, doc.as_ptr(), 2, b, l));
+    // -- WP P1TZ -- the import takes a token.
+    let r = with_token_for_test(h, "config_import", |t, b, l| {
+        dspi_config_import_confirmed(h, doc.as_ptr(), 2, u32::MAX, t, b, l)
+    });
     assert_eq!(r["ok"], true, "{r}");
 
     let r = reply(|b, l| dspi_output_labels(h, b, l));

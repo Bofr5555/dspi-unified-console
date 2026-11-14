@@ -61,7 +61,7 @@ fn others(core: &DspiCore) -> Vec<(&'static str, Result<()>)> {
     let import = |core: &DspiCore| {
         let doc = core.config_export("x".into(), "t".into(), 0).unwrap();
         let r: serde_json::Value =
-            serde_json::from_str(&core.config_import(doc, IMPORT_ALL_BLOCKS)).unwrap();
+            serde_json::from_str(&core.config_import_tok(doc, IMPORT_ALL_BLOCKS)).unwrap();
         if r["ok"] == true {
             Ok(())
         } else {
@@ -89,8 +89,8 @@ fn others(core: &DspiCore) -> Vec<(&'static str, Result<()>)> {
         ("set_master_volume_mode", core.set_master_volume_mode(1)),
         ("apply_all_params", core.apply_all_params()),
         ("config_import", import(core)),
-        ("save_preset", core.save_preset(1)),
-        ("factory_reset", core.factory_reset()),
+        ("save_preset", core.save_preset_tok(1)),
+        ("factory_reset", core.factory_reset_tok()),
     ]
 }
 
@@ -400,7 +400,6 @@ fn wp_p1lk_a_guarded_revert_passes_the_lock() {
 #[test]
 fn wp_tmcoref_the_bootloader_is_held_by_the_lock() {
     let core = demo();
-    core.require_confirmation(true);
     locked(&core);
     let token = core.confirm_token(crate::ConfirmOp::EnterBootloader);
     let e = core
@@ -418,7 +417,6 @@ fn wp_tmcoref_the_bootloader_is_held_by_the_lock() {
 #[test]
 fn wp_tmcoref_a_firmware_write_is_held_by_the_lock() {
     let core = demo();
-    core.require_confirmation(true);
     locked(&core);
     let drive = || crate::BootloaderDrive {
         path: "/nonexistent/tmcoref-drive".into(),

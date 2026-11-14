@@ -1094,8 +1094,7 @@ export interface InstallerMethods {
   endGroup: { params: undefined; result: null };
   /** A single-use token for one gated operation (`save_preset`, `delete_preset`, `copy_preset`, `factory_reset`, `config_import`, ...), 10 s. */
   confirmToken: { params: { op: string }; result: string };
-  requireConfirmation: { params: { on: boolean }; result: null };
-  confirmationRequired: { params: undefined; result: boolean };
+  // -- WP P1TZ -- tokens are always required: requireConfirmation and confirmationRequired are gone
   /** What an AutoEQ database entry would do to the pair `left`, `right` (wire channels); nothing written. */
   autoeqPreview: { params: { profile: unknown; left: number; right: number; applyLevel?: boolean }; result: AutoEqPreviewRecord };
   /** Apply it, in one undo group, through the limits; the state before as a snapshot document. */

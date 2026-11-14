@@ -108,7 +108,7 @@ fn wp_cs1_numbers_in_range_add_nothing() {
     let core = DspiCore::new();
     core.open_demo().unwrap();
     let text = core.config_export("demo".into(), "test".into(), 0).unwrap();
-    let r: Value = serde_json::from_str(&core.config_import(text, 0)).unwrap();
+    let r: Value = serde_json::from_str(&core.config_import_tok(text, 0)).unwrap();
     assert_eq!(r["ok"], true, "{r}");
     assert_eq!(r["outOfRange"], json!([]), "{r}");
 }
@@ -120,7 +120,7 @@ fn wp_cs1_the_import_reply_carries_the_rows() {
     core.open_demo().unwrap();
     let doc = r#"{"schemaVersion": 1,
       "channels": [{"isOutput": true, "outputIndex": 0, "gainDb": 40}]}"#;
-    let r: Value = serde_json::from_str(&core.config_import(doc.into(), 0)).unwrap();
+    let r: Value = serde_json::from_str(&core.config_import_tok(doc.into(), 0)).unwrap();
     assert_eq!(r["ok"], true, "{r}");
     assert_eq!(r["clean"], false);
     let row = &r["outOfRange"][0];

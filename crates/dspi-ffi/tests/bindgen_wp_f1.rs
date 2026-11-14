@@ -282,7 +282,7 @@ fn wp_f1_kotlin_surface_is_the_cores_public_api() {
         "fun `firmwareVersionMatches`",
         "fun `computeMagnitudeCurve`",
         "fun `uf2Inspect`",
-        "fun `flashToDrive`",
+        "fun `flashToDriveConfirmed`", // -- WP P1TZ -- a core method with a token
         "fun `configInspect`",
         "class DspiException",
         "data class DspState",
@@ -374,7 +374,7 @@ fn wp_cg8_firmware_guard_is_exported() {
         "fun `firmwareGuardCheck`",
         "fun `firmwareGuardBoard`",
         "fun `firmwareGuardBoardInBootloader`",
-        "fun `flashToDriveGuarded`",
+        "fun `flashConfirmed`", // -- WP P1TZ -- the guarded write, with a token
         "data class FirmwareGuardBoard",
         "data class FirmwareGuardVerdict",
         "enum class FirmwareGuardDecision",
@@ -389,7 +389,7 @@ fn wp_cg8_firmware_guard_is_exported() {
         "func firmwareGuardCheck(",
         "func firmwareGuardBoard(",
         "func firmwareGuardBoardInBootloader(",
-        "func flashToDriveGuarded(",
+        "func flashConfirmed(", // -- WP P1TZ --
         "struct FirmwareGuardVerdict",
     ] {
         assert!(swift.contains(item), "{item} is not in the Swift binding");

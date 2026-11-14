@@ -48,11 +48,11 @@ fn wp_p1tk_tokens_through_the_worker_calls() {
     guard::reset_for_test();
     let h = session_new().unwrap();
     ok(h, "open", json!({ "kind": "demo" }));
-    assert_eq!(ok(h, "confirmationRequired", Value::Null), false);
-    // Off: as before, no token needed.
-    ok(h, "factoryReset", Value::Null);
-    ok(h, "requireConfirmation", json!({ "on": true }));
-    assert_eq!(ok(h, "confirmationRequired", Value::Null), true);
+    // -- WP P1TZ -- required from the start; the switch is gone.
+    for gone in ["requireConfirmation", "confirmationRequired"] {
+        let r = run(h, gone, json!({ "on": false }));
+        assert_eq!(r["ok"], false, "{gone}: {r}");
+    }
 
     let save = json!({ "path": "preset.save", "indices": [1], "value": "trigger" });
     let token = |op: &str| {

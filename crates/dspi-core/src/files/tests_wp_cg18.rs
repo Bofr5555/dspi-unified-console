@@ -236,7 +236,7 @@ fn wp_cg18_round_trip_at_v32() {
     let before = core.get_state();
     let text = core.config_export("x".into(), "1".into(), 0).unwrap();
     assert!(text.contains("\"limiter\"") && text.contains("\"tube\""));
-    let r = json_of(&core.config_import(text.clone(), EVERY_OPTION));
+    let r = json_of(&core.config_import_tok(text.clone(), EVERY_OPTION));
     assert_eq!(r["ok"], true, "{r}");
     assert_eq!(r["clean"], true, "{r}");
     assert_eq!(r["leftAlone"], json!([]), "{r}");
@@ -363,7 +363,7 @@ fn wp_cg18_round_trip_from_v17() {
     // A V32 device keeps its own values for all of them.
     let core = demo();
     let before = core.get_state();
-    let r = json_of(&core.config_import(text, 0));
+    let r = json_of(&core.config_import_tok(text, 0));
     assert_eq!(r["ok"], true, "{r}");
     assert_eq!(r["clean"], false, "{r}");
     assert!(
@@ -445,7 +445,7 @@ fn wp_cg18_a_device_with_no_pair_map_exports_none() {
     k340.set_crossfeed_pair_map(custom.clone()).unwrap();
     let mine = k340.config_export("x".into(), "1".into(), 0).unwrap();
     assert_eq!(json_of(&mine)["crossfeed"]["pairMap"], json!(custom));
-    let r = json_of(&k340.config_import(text, 0));
+    let r = json_of(&k340.config_import_tok(text, 0));
     assert_eq!(r["ok"], true, "{r}");
     assert_eq!(k340.get_state().crossfeed_pair_map, custom);
 }

@@ -1,5 +1,5 @@
 //! WP TM3: the whole flow on a fake board and a fake bootloader drive. The drive
-//! is a real directory under the target directory, so `flash_to_drive_guarded`
+//! is a real directory under the target directory, so `flash_confirmed`
 //! does its real checks and its real write; only the board is pretend.
 
 use std::collections::VecDeque;

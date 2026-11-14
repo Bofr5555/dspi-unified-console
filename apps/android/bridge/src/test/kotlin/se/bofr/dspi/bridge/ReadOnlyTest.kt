@@ -368,7 +368,7 @@ class ReadOnlyTest {
         val r = WriteGuardedCore.PASS_THROUGH
         assertEquals(emptySet<String>(), w intersect r)
         assertEquals("unclassified core methods", emptySet<String>(), names - w - r)
-        assertTrue("enterBootloader" in r)
+        assertTrue("enterBootloaderConfirmed" in r) // -- WP P1TZ -- the only form
     }
 
     @Test

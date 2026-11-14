@@ -381,7 +381,7 @@ impl DspiCore {
     }
 
     /// Where the physical I/O configuration is stored: 0 = independently of
-    /// the presets (saved with [`DspiCore::save_output_config`]), 1 = with
+    /// the presets (saved with [`DspiCore::save_output_config_confirmed`]), 1 = with
     /// each preset. A device-global flash write the firmware runs later.
     /// Sets `DspState.output_config_mode`.
     ///
@@ -404,6 +404,7 @@ impl DspiCore {
         )
     }
 
+    // -- WP P1TK --
     /// FLASH WRITE: persist the live physical I/O configuration (the
     /// independent mode's explicit save). The firmware writes it later in
     /// its main loop. Runs under the DSPi Link device lock: the deferred
@@ -413,20 +414,17 @@ impl DspiCore {
     /// Errors: [`DspiError::Refused`] with a `PRESET_*` status;
     /// [`DspiError::Locked`] (Link); [`DspiError::ReadOnly`],
     /// [`DspiError::Disconnected`] or a transfer error.
-    pub fn save_output_config(&self) -> Result<()> {
-        self.save_output_config_with(None)
-    }
-
-    // -- WP P1TK --
-    /// [`DspiCore::save_output_config`] with a confirmation token
-    /// ([`crate::confirm`]), as [`DspiCore::save_preset_confirmed`].
+    ///
+    /// Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+    /// WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+    /// without a good one. There is no form without a token.
     pub fn save_output_config_confirmed(&self, token: Option<String>) -> Result<()> {
         self.save_output_config_with(token.as_deref())
     }
 
     // -- WP QD31 --
     /// On the demo device only, for clients' tests: how
-    /// [`save_output_config`](Self::save_output_config) answers from now on. 0 goes
+    /// [`save_output_config`](Self::save_output_config_confirmed) answers from now on. 0 goes
     /// through, 0xFF stalls, another byte is that status. `Unsupported`, with no
     /// traffic, on anything but a simulated device.
     pub fn demo_output_save_status(&self, status: u8) -> Result<()> {
@@ -1035,6 +1033,7 @@ impl DspiCore {
 
     // ── Bootloader, Core 1 ────────────────────────────────────────────
 
+    // -- WP P1TK --
     /// Reboots the device into its USB bootloader (it disappears). Ok
     /// whatever the transfer gives, as in the old core: the device drops off
     /// the bus (also Ok without a device, unless tokens are required: see
@@ -1044,7 +1043,7 @@ impl DspiCore {
     ///
     /// The connection stays open until the departure is noticed (hotplug or
     /// notifications). A firmware update then goes: this call; the
-    /// bootloader drive appears (`bootloader_drives`); `flash_to_drive`
+    /// bootloader drive appears (`bootloader_drives`); `flash_confirmed`
     /// writes the image; the DSPi re-enumerates. Only that last step
     /// confirms success: open it again and check the new version with
     /// [`DspiCore::firmware_version_matches`]; a timeout there is the
@@ -1062,18 +1061,13 @@ impl DspiCore {
     /// Errors: [`DspiError::Locked`] / [`DspiError::Denied`] when the Link
     /// hub refuses its lock; [`DspiError::Disconnected`] when the connection
     /// changed while the hub was asked;
-    /// [`DspiError::ConfirmationRequired`] while tokens are required
-    /// ([`DspiCore::require_confirmation`]), also with no device open: the
-    /// gate runs first, so that case is no longer the plain `Ok` (accepted
-    /// in review p1b).
-    pub fn enter_bootloader(&self) -> Result<()> {
-        self.enter_bootloader_with(None)
-    }
-
-    // -- WP P1TK --
-    /// [`DspiCore::enter_bootloader`] with a confirmation token
-    /// ([`crate::confirm`]), as [`DspiCore::save_preset_confirmed`]. With no
-    /// device open a token is still checked, and nothing is sent.
+    /// [`DspiError::ConfirmationRequired`] without a good token, also with no
+    /// device open: the gate runs first, so that case is no longer the plain
+    /// `Ok` (accepted in review p1b).
+    ///
+    /// Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+    /// WP P1TZ); with no device open a token is still checked, and nothing is
+    /// sent. There is no form without a token.
     pub fn enter_bootloader_confirmed(&self, token: Option<String>) -> Result<()> {
         self.enter_bootloader_with(token.as_deref())
     }
@@ -1727,7 +1721,7 @@ mod tests_wp_c6 {
     #[test]
     fn wp_c6_save_output_config_runs_under_the_lock() {
         let (core, _, log) = rig(&[(op::REQ_SAVE_OUTPUT_CONFIG, Some(vec![0]))]);
-        core.save_output_config().unwrap();
+        core.save_output_config_tok().unwrap();
         assert_eq!(
             entries(&log),
             vec![
@@ -1738,11 +1732,11 @@ mod tests_wp_c6 {
         );
         let (core, _, _) = rig(&[(op::REQ_SAVE_OUTPUT_CONFIG, Some(vec![4]))]);
         assert_eq!(
-            core.save_output_config(),
+            core.save_output_config_tok(),
             Err(DspiError::Refused { status: 4 })
         );
         let (core, _, _) = rig_on(FakeDevice::demo(), &[], true);
-        assert_eq!(core.save_output_config(), Err(DspiError::Locked));
+        assert_eq!(core.save_output_config_tok(), Err(DspiError::Locked));
     }
 
     #[test]
@@ -1901,7 +1895,7 @@ mod tests_wp_c6 {
         vec![
             ("set_output_pin", core.set_output_pin(0, 6)),
             ("set_output_config_mode", core.set_output_config_mode(0)),
-            ("save_output_config", core.save_output_config()),
+            ("save_output_config", core.save_output_config_tok()),
             ("set_output_type", core.set_output_type(0, 0)),
             ("set_i2s_bck_pin", core.set_i2s_bck_pin(0, 14)),
             ("set_i2s_clock_pin_mode", core.set_i2s_clock_pin_mode(0)),
@@ -1947,7 +1941,7 @@ mod tests_wp_c6 {
         assert_eq!(core.get_state(), state);
         // Entering the bootloader still works: an incompatible firmware
         // must stay updatable.
-        core.enter_bootloader().unwrap();
+        core.enter_bootloader_tok().unwrap();
         assert_eq!(
             entries(&log),
             vec![
@@ -1973,14 +1967,14 @@ mod tests_wp_c6 {
             Err(DspiError::Disconnected)
         );
         // Always Ok, as in the old core.
-        assert_eq!(core.enter_bootloader(), Ok(()));
+        assert_eq!(core.enter_bootloader_tok(), Ok(()));
     }
 
     #[test]
     fn wp_c6_enter_bootloader_ignores_the_vanishing_device() {
         // The fake stalls the opcode; a real device answers and reboots.
         let (core, _, log) = rig(&[]);
-        assert_eq!(core.enter_bootloader(), Ok(()));
+        assert_eq!(core.enter_bootloader_tok(), Ok(()));
         assert_eq!(
             entries(&log),
             vec![
@@ -1989,14 +1983,14 @@ mod tests_wp_c6 {
             ]
         );
         let (core, _, _) = rig(&[(op::REQ_ENTER_BOOTLOADER, Some(vec![1]))]);
-        assert_eq!(core.enter_bootloader(), Ok(()));
+        assert_eq!(core.enter_bootloader_tok(), Ok(()));
     }
 
     // -- WP CG24 --
     #[test]
     fn wp_cg24_the_bootloader_restart_holds_the_device_lock() {
         let (core, _, log) = rig(&[]);
-        core.enter_bootloader().unwrap();
+        core.enter_bootloader_tok().unwrap();
         assert_eq!(
             core.held_lock_holder(),
             Some(crate::presets::Holder::Bootloader)
@@ -2016,7 +2010,7 @@ mod tests_wp_c6 {
         let (core, _, log) = rig(&[]);
         core.device_lock_acquire("Installing firmware".into(), 60_000)
             .unwrap();
-        core.enter_bootloader().unwrap();
+        core.enter_bootloader_tok().unwrap();
         assert_eq!(
             core.held_lock_holder(),
             Some(crate::presets::Holder::Caller)
@@ -2032,7 +2026,7 @@ mod tests_wp_c6 {
         assert_eq!(e.last().map(String::as_str), Some("unlock"), "{e:?}");
         // A refused lock sends nothing.
         let (core, _, log) = rig_on(FakeDevice::demo(), &[], true);
-        assert_eq!(core.enter_bootloader(), Err(DspiError::Locked));
+        assert_eq!(core.enter_bootloader_tok(), Err(DspiError::Locked));
         assert_eq!(entries(&log), ["lock Installing firmware"]);
         assert_eq!(core.held_lock_holder(), None);
     }

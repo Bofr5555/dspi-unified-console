@@ -183,7 +183,7 @@ fn crossfeed_of(doc: &str) -> Value {
 fn wp_p1xf_the_export_matches_the_mac_fixture() {
     let (core, remote) = demo();
     let r: Value =
-        serde_json::from_str(&core.config_import(MAC.into(), IMPORT_VOLUMES | IMPORT_HARDWARE))
+        serde_json::from_str(&core.config_import_tok(MAC.into(), IMPORT_VOLUMES | IMPORT_HARDWARE))
             .unwrap();
     assert_eq!(r["ok"], true, "{r}");
     assert_eq!(shown(&core), (1, 700.0, 6.0), "the graph draws Chu Moy");
@@ -216,7 +216,7 @@ fn wp_p1xf_an_exported_custom_pair_under_a_named_preset_round_trips() {
         "{cf}"
     );
     let (other, remote) = demo();
-    let r: Value = serde_json::from_str(&other.config_import(out, 0)).unwrap();
+    let r: Value = serde_json::from_str(&other.config_import_tok(out, 0)).unwrap();
     assert_eq!(r["ok"], true, "{r}");
     assert_eq!(shown(&other), (2, 650.0, 9.5));
     assert_eq!(on_device(&remote), (2, 800.0, 5.0));

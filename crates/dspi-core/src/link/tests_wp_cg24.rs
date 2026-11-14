@@ -101,7 +101,7 @@ fn wp_cg24_a_nested_flow_keeps_the_held_lock() {
     a.apply_all_params().unwrap();
     assert_eq!(hub.lock_holder(), holder);
     // The fake hub has no presets (the save stalls): it returns, all the same.
-    let _ = a.save_preset(1);
+    let _ = a.save_preset_tok(1);
     assert_eq!(hub.lock_holder(), holder);
     assert_eq!(b.set_master_volume(-1.0), Err(DspiError::Locked));
     a.device_lock_release();
@@ -113,7 +113,7 @@ fn wp_cg24_a_nested_flow_keeps_the_held_lock() {
 fn wp_cg24_the_bootloader_restart_holds_the_lock() {
     let hub = hub();
     let (a, b) = (bound(&hub), bound(&hub));
-    a.enter_bootloader().unwrap();
+    a.enter_bootloader_tok().unwrap();
     assert_eq!(a.held_lock_holder(), Some(Holder::Bootloader));
     assert!(hub.lock_holder().is_some());
     assert_eq!(b.set_master_volume(-3.0), Err(DspiError::Locked));
@@ -125,7 +125,7 @@ fn wp_cg24_the_bootloader_restart_holds_the_lock() {
             .count()
     };
     let before = sent(&hub);
-    assert_eq!(b.enter_bootloader(), Err(DspiError::Locked));
+    assert_eq!(b.enter_bootloader_tok(), Err(DspiError::Locked));
     assert_eq!(sent(&hub), before);
     // The caller's release is not the install's: still locked.
     a.device_lock_release();
@@ -143,7 +143,7 @@ fn wp_cg24_an_install_inside_the_callers_lock_ends_with_its_release() {
     let (a, b) = (bound(&hub), bound(&hub));
     a.device_lock_acquire("Installing firmware".into(), 60_000)
         .unwrap();
-    a.enter_bootloader().unwrap();
+    a.enter_bootloader_tok().unwrap();
     assert_eq!(b.set_master_volume(-3.0), Err(DspiError::Locked));
     // The restart never happened.
     a.device_lock_release();
@@ -155,7 +155,7 @@ fn wp_cg24_an_install_inside_the_callers_lock_ends_with_its_release() {
 fn wp_cg24_a_closed_connection_gives_the_lock_back() {
     let hub = hub();
     let (a, b) = (bound(&hub), bound(&hub));
-    a.enter_bootloader().unwrap();
+    a.enter_bootloader_tok().unwrap();
     // The device left: the connection closes.
     a.disconnect();
     wait_unlocked(&hub);

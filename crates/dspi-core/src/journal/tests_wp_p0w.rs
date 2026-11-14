@@ -487,7 +487,7 @@ action!(wp_p0w_set_i2c, "dev.i2c", |c| {
     })
 });
 action!(wp_p0w_save_output_config, "dev.save.io", |c| c
-    .save_output_config());
+    .save_output_config_tok());
 
 // ── presets.rs ──────────────────────────────────────────────────────
 
@@ -498,13 +498,13 @@ setter!(wp_p0w_set_preset_startup, "preset.startup", [], |c| {
     let s = c.get_state();
     c.set_preset_startup(1 - s.preset_startup_mode.min(1), 2)
 });
-action!(wp_p0w_save_preset, "preset.save", |c| c.save_preset(1));
-action!(wp_p0w_save_params, "dev.save", |c| c.save_params());
+action!(wp_p0w_save_preset, "preset.save", |c| c.save_preset_tok(1));
+action!(wp_p0w_save_params, "dev.save", |c| c.save_params_tok());
 action!(wp_p0w_save_master_volume, "vol.master.save", |c| c
     .save_master_volume());
 action!(wp_p0w_delete_preset, "preset.delete", |c| {
-    c.save_preset(3)?;
-    c.delete_preset(3)
+    c.save_preset_tok(3)?;
+    c.delete_preset_tok(3)
 });
 
 // ── info.rs, stats.rs, raw.rs, ext.rs ───────────────────────────────
@@ -592,7 +592,7 @@ fn wp_p0w_cs_apply() {
 #[test]
 fn wp_p0w_load_preset_ends_the_history() {
     let core = demo();
-    core.save_preset(2).unwrap();
+    core.save_preset_tok(2).unwrap();
     core.set_output_gain(0, -9.0).unwrap();
     assert!(core.can_undo());
     core.load_preset(2).unwrap();
@@ -615,7 +615,7 @@ fn wp_p0w_load_preset_ends_the_history() {
 #[test]
 fn wp_p0w_load_params_ends_the_history() {
     let core = demo();
-    core.save_params().unwrap();
+    core.save_params_tok().unwrap();
     core.set_output_gain(0, -9.0).unwrap();
     core.load_params().unwrap();
     assert!(!core.can_undo());
@@ -636,7 +636,7 @@ fn wp_p0w_factory_reset_ends_the_history() {
     let core = demo();
     core.set_output_gain(0, -9.0).unwrap();
     let len = core.history(100).len();
-    core.factory_reset().unwrap();
+    core.factory_reset_tok().unwrap();
     // The reset reads the device again on the same connection.
     let h = core.history(100);
     assert!(h.len() > len, "{h:?}");
@@ -728,7 +728,7 @@ fn wp_p0w_a_new_change_ends_what_can_be_redone() {
 fn wp_p0w_undo_steps_over_what_it_cannot_undo() {
     let core = demo();
     core.set_output_gain(0, -5.0).unwrap();
-    core.save_params().unwrap();
+    core.save_params_tok().unwrap();
     let undone = core.undo().unwrap();
     assert_eq!(undone.entry.map(|e| e.path).as_deref(), Some("out.gain"));
     assert_eq!(undone.skipped.len(), 1);

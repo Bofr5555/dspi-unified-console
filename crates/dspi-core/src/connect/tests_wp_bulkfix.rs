@@ -158,7 +158,7 @@ fn wp_bulkfix_firmware_with_the_fix_gets_the_image_alone() {
 fn wp_bulkfix_the_k340_configuration_imports_and_plays_right() {
     let (core, probe, _) = core_on(buggy());
     let r: serde_json::Value =
-        serde_json::from_str(&core.config_import(K340.into(), IMPORT_HARDWARE)).unwrap();
+        serde_json::from_str(&core.config_import_tok(K340.into(), IMPORT_HARDWARE)).unwrap();
     assert_eq!(r["ok"], true, "{r}");
     // Past the apply however it was sent (a bulk read waits for it).
     core.fetch_all().unwrap();
@@ -187,7 +187,7 @@ fn wp_bulkfix_a_preset_recall_plays_right() {
     let (core, probe, _) = core_on(buggy());
     deep_cuts(&core);
     core.apply_all_params().unwrap();
-    core.save_preset(1).unwrap();
+    core.save_preset_tok(1).unwrap();
     // Another state, then the recall: the device loads the slot itself
     // (`REQ_PRESET_LOAD`, converted with powf), no bulk SET.
     {
@@ -291,7 +291,7 @@ fn wp_bulkfix_bf_a_raw_unmute_resends_the_gains_too() {
 #[test]
 fn wp_bulkfix_bf_a_preset_load_or_a_new_apply_clears_the_suspicion() {
     let (core, probe, _) = core_on(buggy());
-    core.save_preset(2).unwrap();
+    core.save_preset_tok(2).unwrap();
     deep_cuts(&core);
     probe.fail(op::REQ_SET_OUTPUT_GAIN, true);
     assert!(core.apply_all_params().is_err());
@@ -343,7 +343,7 @@ fn wp_bulkfix_bf_a_failed_import_repair_shows_the_device_muted_and_why() {
     let (core, probe, remote) = core_on(buggy());
     probe.fail(op::REQ_SET_OUTPUT_MUTE, true);
     let r: serde_json::Value =
-        serde_json::from_str(&core.config_import(K340.into(), IMPORT_HARDWARE)).unwrap();
+        serde_json::from_str(&core.config_import_tok(K340.into(), IMPORT_HARDWARE)).unwrap();
     assert_eq!(r["ok"], false, "{r}");
     let why = r["error"].as_str().unwrap_or_default();
     assert!(why.contains("left muted"), "{r}");

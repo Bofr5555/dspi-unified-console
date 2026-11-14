@@ -1334,7 +1334,7 @@ mod tests_wp_tmcore {
     fn wp_tmcore_a_dangerous_write_needs_its_token() {
         let dir = scratch("tmcore_token");
         let o = opened(&dir);
-        assert!(o.handle.core.confirmation_required());
+        // Tokens are required by every core (P1TZ).
         // Nobody to say yes: the core refuses, and the action says how.
         let mut s = routed(&o, Confirm::Refuse);
         let e = s.write("preset.save", &[1], Value::Trigger).unwrap_err();
