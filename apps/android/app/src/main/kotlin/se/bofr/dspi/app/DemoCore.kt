@@ -51,6 +51,17 @@ internal class DemoCore(private val core: DspiCoreApi) : DspiCoreApi by core {
     override fun flashToDriveGuarded(image: List<Int>, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String): Unit =
         throw DspiException.Unsupported()
 
+    // -- WP P1AN1 -- P1TK's token-taking forms of the same ways out (found missing by an28's test)
+    override fun flashConfirmed(
+        image: List<Int>,
+        drive: BootloaderDrive,
+        board: FirmwareGuardBoard,
+        typedConfirmation: String,
+        token: String?
+    ): Unit = throw DspiException.Unsupported()
+
+    override fun enterBootloaderConfirmed(token: String?): Unit = throw DspiException.Unsupported()
+
     // DSPi Link and its hubs
     override fun linkConnect(url: String, clientName: String, appVersion: String, token: String, expectedHubId: String): LinkHello =
         throw DspiException.Unsupported()

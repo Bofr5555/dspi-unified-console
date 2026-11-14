@@ -33,7 +33,36 @@ internal sealed interface ConsoleShortcut {
 
     /** Command+Shift+Z, and Command+Y as on the web and Windows. */
     data object Redo : ConsoleShortcut
+
+    // -- WP P1AN1 -- the keys Qt's table has (MenuTable.qml, QP18) and the new A/B key
+    /** Command+1–9: load preset [slot] (0-based), through the Unsaved Changes flow. */
+    data class Preset(val slot: Int) : ConsoleShortcut
+
+    /** Command+S: Commit Parameters…. */
+    data object Commit : ConsoleShortcut
+
+    /** Command+Shift+R: Revert to Saved…. */
+    data object Revert : ConsoleShortcut
+
+    /** Command+M: mute. */
+    data object Mute : ConsoleShortcut
+
+    /** Command+B: bypass the master EQ. */
+    data object Bypass : ConsoleShortcut
+
+    /** Command+T: the A/B toggle while a compare runs (PRO1 W4). */
+    data object AbToggle : ConsoleShortcut
 }
+
+// -- WP P1AN1 --
+/** The shortcuts that never act while a text field is being edited (PLAN-CLIENTS 5.9, U3). */
+internal val ConsoleShortcut.notWhileEditing: Boolean
+    get() = this is ConsoleShortcut.Preset ||
+        this == ConsoleShortcut.Commit ||
+        this == ConsoleShortcut.Revert ||
+        this == ConsoleShortcut.Mute ||
+        this == ConsoleShortcut.Bypass ||
+        this == ConsoleShortcut.AbToggle
 
 internal object ConsoleKeyMap {
     /** Command+Shift: the Tools menu (DSPi_ConsoleApp.swift:11984-12045) and AutoEQ's Browse Profiles. */
@@ -64,6 +93,9 @@ internal object ConsoleKeyMap {
         // -- WP AN42 --
         if (key == Key.Z) return if (shift) ConsoleShortcut.Redo else ConsoleShortcut.Undo
         if (key == Key.Y && !shift) return ConsoleShortcut.Redo
+        // -- WP P1AN1 --
+        if (key == Key.R && shift) return ConsoleShortcut.Revert
+        if (!shift) PRESET_KEYS.indexOf(key).takeIf { it >= 0 }?.let { return ConsoleShortcut.Preset(it) }
         if (shift) return commandShift[key]?.let { ConsoleShortcut.Open(it) }
         return when (key) {
             Key.Comma -> ConsoleShortcut.Open(DspiRoutes.SETTINGS)
@@ -71,9 +103,17 @@ internal object ConsoleKeyMap {
             Key.V -> ConsoleShortcut.PasteChannel
             // Import / Export Filters: the File menu is on Presets
             Key.I, Key.E -> ConsoleShortcut.Open(DspiRoutes.PRESETS)
+            // -- WP P1AN1 --
+            Key.S -> ConsoleShortcut.Commit
+            Key.M -> ConsoleShortcut.Mute
+            Key.B -> ConsoleShortcut.Bypass
+            Key.T -> ConsoleShortcut.AbToggle
             else -> null
         }
     }
+
+    // -- WP P1AN1 --
+    private val PRESET_KEYS = listOf(Key.One, Key.Two, Key.Three, Key.Four, Key.Five, Key.Six, Key.Seven, Key.Eight, Key.Nine)
 }
 
 /** What [ConsoleShortcuts.perform] reads and drives; the scaffold's nav and bridge in the app, a fake in tests. */
@@ -109,6 +149,20 @@ internal interface ShortcutHost {
     fun undo(): Boolean = false
 
     fun redo(): Boolean = false
+
+    // -- WP P1AN1 -- each false when nothing was done, so the key goes on unhandled
+    fun loadPreset(slot: Int): Boolean = false
+
+    fun commit(): Boolean = false
+
+    fun revert(): Boolean = false
+
+    fun toggleMute(): Boolean = false
+
+    fun toggleBypass(): Boolean = false
+
+    /** The A/B toggle: only while a compare runs and no safe apply waits (the core refuses it then). */
+    fun abToggle(): Boolean = false
 }
 
 internal object ConsoleShortcuts {
@@ -134,6 +188,13 @@ internal object ConsoleShortcuts {
         }
         ConsoleShortcut.Undo -> host.undo() // -- WP AN42 --
         ConsoleShortcut.Redo -> host.redo()
+        // -- WP P1AN1 --
+        is ConsoleShortcut.Preset -> host.writesAllowed && host.loadPreset(shortcut.slot)
+        ConsoleShortcut.Commit -> host.writesAllowed && host.commit()
+        ConsoleShortcut.Revert -> host.writesAllowed && host.revert()
+        ConsoleShortcut.Mute -> host.writesAllowed && host.toggleMute()
+        ConsoleShortcut.Bypass -> host.writesAllowed && host.toggleBypass()
+        ConsoleShortcut.AbToggle -> host.writesAllowed && host.abToggle()
         ConsoleShortcut.StartStopGenerator -> when {
             host.currentRoute != DspiRoutes.ANALYSIS -> false
             host.generatorRunning -> {

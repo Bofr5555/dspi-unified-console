@@ -42,6 +42,13 @@ sealed interface ConnectionStrip {
         override val short = "Demo: a simulated DSPi"
     }
 
+    // -- WP P1AN1 --
+    /** A document opened offline (P1OF): "File: <name>" in place of a device, with the way out. */
+    data class Document(val fileName: String) : ConnectionStrip {
+        override val text = "File: $fileName. Nothing is sent to a DSPi."
+        override val short = "File: $fileName"
+    }
+
     /**
      * REMOTE (DSPi Link): always visible, so a remote unit is never mistaken for the USB one.
      * [lost] (WP AN5): the connection is lost and the core is reconnecting, shown as the
@@ -98,8 +105,11 @@ fun connectionStrip(
     state: UsbSessionState,
     remote: LinkSessionState = LinkSessionState.Idle,
     lockNotice: Boolean = false,
-    wording: LinkWording = LinkWording.CORE
+    wording: LinkWording = LinkWording.CORE,
+    // -- WP P1AN1 -- the demo stack holds a document opened offline
+    document: String? = null
 ): ConnectionStrip = when {
+    mode == AppMode.DEMO && document != null -> ConnectionStrip.Document(document)
     mode == AppMode.DEMO -> ConnectionStrip.Demo
     mode == AppMode.REMOTE -> remoteStrip(remote, lockNotice, wording)
     else -> when (state) {

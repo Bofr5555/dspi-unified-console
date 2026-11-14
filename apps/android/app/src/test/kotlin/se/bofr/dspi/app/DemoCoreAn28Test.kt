@@ -51,6 +51,8 @@ class DemoCoreAn28Test {
             { core.enterBootloader() },
             { core.flashToDrive(listOf(0), drive) },
             { core.flashToDriveGuarded(listOf(0), drive, board, "yes") },
+            { core.flashConfirmed(listOf(0), drive, board, "yes", null) }, // -- WP P1AN1 --
+            { core.enterBootloaderConfirmed(null) },
             { core.firmwareGuardBoardInBootloader() },
             { core.linkConnect("ws://hub", "demo", "1", "", "") },
             { core.linkPair("1234") },
@@ -79,7 +81,10 @@ class DemoCoreAn28Test {
             "openFd", "openDemo", "openDemoAlink", "scanDevices", "selectDevice", "pollHotplug", "enterBootloader", "bootloaderCounts",
             "bootloaderDrives",
             "flashToDrive", "flashToDriveGuarded", "firmwareGuardBoardInBootloader", "linkConnect", "linkPair", "linkDevices",
-            "linkSelectDevice", "linkRetryNow", "linkSetUrl", "linkFetchInfo"
+            "linkSelectDevice", "linkRetryNow", "linkSetUrl", "linkFetchInfo",
+            // -- WP P1AN1 -- P1OF's `open_document` and the alink USB-direct demo open only the core's fake device;
+            // P1TK's confirmed bootloader and flash calls are refused as their plain forms are
+            "openDocument", "openDemoUsbDirect", "flashConfirmed", "enterBootloaderConfirmed"
         )
         assertEquals(guarded, names.filter { wayOut.containsMatchIn(it) }.toSet())
     }

@@ -51,6 +51,7 @@ import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -80,7 +81,12 @@ import se.bofr.dspi.feature.home.HostChannelsFeed
 import se.bofr.dspi.feature.home.system.SystemScreen
 import se.bofr.dspi.feature.matrix.MatrixMixerView
 import se.bofr.dspi.feature.onboarding.OnboardingSource
+import se.bofr.dspi.feature.presets.PRESET_SLOT_COUNT
+import se.bofr.dspi.feature.presets.PresetMenuActions
 import se.bofr.dspi.feature.presets.PresetsScreen
+import se.bofr.dspi.feature.presets.ToolsMenuActions
+import se.bofr.dspi.feature.presets.snapshots.SafeApplyBar
+import se.bofr.dspi.feature.presets.snapshots.SnapshotsScreen
 import se.bofr.dspi.feature.settings.SettingsScreen
 import se.bofr.dspi.feature.tools.OutputLimiterView
 import se.bofr.dspi.feature.tools.ToolsScreen
@@ -154,6 +160,8 @@ fun AppScaffold(
 ) {
     // -- WP AN35 --
     val keys = remember { ShortcutKeys() }
+    val view = LocalView.current
+    LaunchedEffect(keys, view) { keys.editing = { view.onCheckIsTextEditor() } } // -- WP P1AN1 --
     val focus = remember { FocusRequester() }
     var focusLost by remember { mutableIntStateOf(0) }
     // -- WP AN41 -- a write the core refused, in its words, over the screen
@@ -171,31 +179,47 @@ fun AppScaffold(
         snackbarHost = { RefusalNoticeHost(notices) },
         contentWindowInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout)
     ) { padding ->
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .onKeyEvent(keys::onKey) // -- WP AN35 --
-                .focusRequester(focus)
-                .onFocusChanged { if (!it.hasFocus) focusLost++ }
-                .focusable()
-        ) {
-            // In here: the Scaffold composes its content after the scaffold itself, the requester's node with it
-            LaunchedEffect(focusLost) { focus.requestFocus() }
-            ConnectionStripBar(strip, onExitDemo, onRequestPermission, onRemoteAction, history, devices) { c ->
-                if (c == DeviceChoice.Network) onConnectNetwork() else onChooseDevice(c)
-            }
-            key(bridge) {
-                // -- WP AN35 -- the host's USB format, for every route; the DSPi is on this phone's USB only outside demo and Link
-                HostChannelsFeed(bridge, enabled = strip !is ConnectionStrip.Demo && strip !is ConnectionStrip.Remote)
-                CompositionLocalProvider(
-                    LocalDemoMode provides (strip is ConnectionStrip.Demo),
-                    LocalOnboarding provides onboarding, // -- WP AN19 --
-                    LocalDragMarker provides dragMarker // -- WP AN42 --
-                ) {
-                    DspiNavHost(bridge, bootloaderLocator, remote = strip is ConnectionStrip.Remote, keys, history)
+        // -- WP P1AN1 -- the safe apply's bar floats over the screens (no layout growth)
+        Box(Modifier.fillMaxSize().padding(padding)) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .onKeyEvent(keys::onKey) // -- WP AN35 --
+                    .focusRequester(focus)
+                    .onFocusChanged { if (!it.hasFocus) focusLost++ }
+                    .focusable()
+            ) {
+                // In here: the Scaffold composes its content after the scaffold itself, the requester's node with it
+                LaunchedEffect(focusLost) { focus.requestFocus() }
+                ConnectionStripBar(
+                    strip,
+                    onExitDemo,
+                    onRequestPermission,
+                    onRemoteAction,
+                    history,
+                    devices,
+                    // -- WP P1AN1 -- the app bar's Snapshots entry
+                    onSnapshots = { keys.host?.let { h -> if (h.currentRoute != DspiRoutes.SNAPSHOTS) h.navigate(DspiRoutes.SNAPSHOTS) } }
+                ) { c ->
+                    if (c == DeviceChoice.Network) onConnectNetwork() else onChooseDevice(c)
+                }
+                key(bridge) {
+                    // -- WP AN35 -- the host's USB format, for every route; the DSPi is on this phone's USB only outside demo and Link
+                    HostChannelsFeed(
+                        bridge,
+                        enabled = strip !is ConnectionStrip.Demo && strip !is ConnectionStrip.Remote && strip !is ConnectionStrip.Document
+                    )
+                    CompositionLocalProvider(
+                        // -- WP P1AN1 -- a document opened offline has no device either
+                        LocalDemoMode provides (strip is ConnectionStrip.Demo || strip is ConnectionStrip.Document),
+                        LocalOnboarding provides onboarding, // -- WP AN19 --
+                        LocalDragMarker provides dragMarker // -- WP AN42 --
+                    ) {
+                        DspiNavHost(bridge, bootloaderLocator, remote = strip is ConnectionStrip.Remote, keys, history)
+                    }
                 }
             }
+            key(bridge) { SafeApplyBar(bridge, Modifier.align(Alignment.BottomCenter)) } // -- WP P1AN1 --
         }
     }
     overlay()
@@ -230,8 +254,10 @@ private fun DspiRoutesHost(
     val writes = rememberUpdatedState(LocalWritesAllowed.current)
     val appState = LocalAppState.current
     val scope = rememberCoroutineScope()
-    DisposableEffect(nav, bridge, appState, history) {
-        keys.host = NavShortcutHost(nav, bridge, appState, scope, history) { writes.value }
+    val keyAlerts = remember(bridge) { AlertHost() } // -- WP P1AN1 -- the preset and Commit keys' alerts
+    ConsoleAlertHost(keyAlerts)
+    DisposableEffect(nav, bridge, appState, history, keyAlerts) {
+        keys.host = NavShortcutHost(nav, bridge, appState, scope, history, keyAlerts) { writes.value }
         onDispose { keys.host = null }
     }
     NavHost(navController = nav, startDestination = DspiRoutes.HOME) {
@@ -251,6 +277,8 @@ private fun DspiRoutesHost(
             OutputLimiterView(bridge, entry.arguments?.getInt("out") ?: 0, go, back)
         }
         screen(nav, DspiRoutes.PRESETS) { _, go, back -> PresetsScreen(bridge, go, back) }
+        // -- WP P1AN1 --
+        screen(nav, DspiRoutes.SNAPSHOTS) { _, go, back -> SnapshotsScreen(bridge, go, back) }
         screen(nav, DspiRoutes.SETTINGS) { _, go, back -> SettingsScreen(bridge, go, back) }
         // -- WP LKUI1 -- the hub's audio link installation, from Home's status chip
         screen(nav, DspiRoutes.SYSTEM) { _, go, back -> SystemScreen(bridge, go, back) }
@@ -304,6 +332,13 @@ private fun NavGraphBuilder.screen(
     }
 }
 
+// -- WP P1AN1 --
+/** The app bar's entry to the Snapshots screen. */
+internal const val SNAPSHOTS_ENTRY = "Snapshots"
+
+/** Test tag of the wide strip's Snapshots button. */
+internal const val SNAPSHOTS_ENTRY_TAG = "strip-snapshots"
+
 /** Below this width the strip keeps to one line: its actions and the device list go into an overflow menu (WP AN42). */
 internal val STRIP_COMPACT_BELOW = 600.dp
 
@@ -317,6 +352,8 @@ private fun ConnectionStripBar(
     history: UndoRedoModel?,
     // -- WP AN7 --
     devices: List<DeviceRow>,
+    // -- WP P1AN1 --
+    onSnapshots: (() -> Unit)? = null,
     onChooseDevice: (DeviceChoice) -> Unit
 ) {
     // -- WP AN5 -- the owner's lost-connection banner; this bar is above every route, so it is on every screen
@@ -325,12 +362,13 @@ private fun ConnectionStripBar(
         return
     }
     // Demo and REMOTE stand out, so neither is taken for the USB unit
-    val demo = strip is ConnectionStrip.Demo || strip is ConnectionStrip.Remote
+    val demo = strip is ConnectionStrip.Demo || strip is ConnectionStrip.Remote || strip is ConnectionStrip.Document // -- WP P1AN1 --
     val colors = MaterialTheme.colorScheme
     val ink = if (demo) colors.onTertiaryContainer else colors.onSurfaceVariant
     val actions: List<Pair<String, () -> Unit>> =
         when (strip) {
             ConnectionStrip.Demo -> listOf("Exit demo" to onExitDemo)
+            is ConnectionStrip.Document -> listOf("Close file" to onExitDemo) // -- WP P1AN1 --
             is ConnectionStrip.Remote -> strip.actions.map { a -> a.label to { onRemoteAction(a) } }
             is ConnectionStrip.NeedsPermission -> listOf("Allow USB access" to onRequestPermission)
             ConnectionStrip.NoDevice, ConnectionStrip.Usb, is ConnectionStrip.Info -> emptyList()
@@ -361,10 +399,13 @@ private fun ConnectionStripBar(
                     )
                 }
                 history?.let { UndoRedoButtons(it, ink) }
-                StripMenu(actions, devices, onChooseDevice, ink)
+                // -- WP P1AN1 -- Snapshots first in the overflow: the bar keeps its one line
+                StripMenu(listOfNotNull(onSnapshots?.let { SNAPSHOTS_ENTRY to it }) + actions, devices, onChooseDevice, ink)
             } else {
                 Text(strip.text, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = ink)
                 actions.forEach { (label, act) -> TextButton(onClick = act) { Text(label) } }
+                // -- WP P1AN1 --
+                onSnapshots?.let { TextButton(onClick = it, Modifier.testTag(SNAPSHOTS_ENTRY_TAG)) { Text(SNAPSHOTS_ENTRY) } }
                 history?.let { UndoRedoButtons(it, ink) } // -- WP AN42 --
                 DeviceListButton(devices, onChooseDevice) // -- WP AN7 --
             }
@@ -445,10 +486,14 @@ private fun FirmwareNotice(back: () -> Unit, text: String) {
 internal class ShortcutKeys {
     var host: ShortcutHost? = null
 
+    // -- WP P1AN1 -- a text field has the keyboard (the Compose view's text input session)
+    var editing: () -> Boolean = { false }
+
     fun onKey(e: KeyEvent): Boolean {
         if (e.type != KeyEventType.KeyDown || e.nativeKeyEvent.repeatCount > 0) return false
         val shortcut = ConsoleKeyMap.shortcutOf(e.key, e.isCtrlPressed || e.isMetaPressed, e.isShiftPressed, e.isAltPressed)
             ?: return false
+        if (shortcut.notWhileEditing && editing()) return false // -- WP P1AN1 --
         return host?.let { ConsoleShortcuts.perform(shortcut, it) } ?: false
     }
 }
@@ -461,6 +506,8 @@ private class NavShortcutHost(
     private val scope: CoroutineScope,
     // -- WP AN42 --
     private val history: UndoRedoModel,
+    // -- WP P1AN1 --
+    private val alerts: AlertHost,
     private val writes: () -> Boolean
 ) : ShortcutHost {
     override val currentRoute: String?
@@ -505,4 +552,42 @@ private class NavShortcutHost(
     override fun undo() = history.undo()
 
     override fun redo() = history.redo()
+
+    // -- WP P1AN1 -- as the Presets page's menu actions, their alerts over every screen
+    override fun loadPreset(slot: Int): Boolean {
+        if (!bridge.connected || slot !in 0 until PRESET_SLOT_COUNT) return false
+        PresetMenuActions(bridge, scope, alerts).selectPreset(slot)
+        return true
+    }
+
+    override fun commit(): Boolean {
+        if (!bridge.connected) return false
+        ToolsMenuActions(bridge, scope, alerts).commitParameters()
+        return true
+    }
+
+    override fun revert(): Boolean {
+        if (!bridge.connected) return false
+        ToolsMenuActions(bridge, scope, alerts).revertToSaved()
+        return true
+    }
+
+    override fun toggleMute(): Boolean {
+        if (!bridge.connected) return false
+        bridge.setUserMute(!bridge.userMute)
+        return true
+    }
+
+    override fun toggleBypass(): Boolean {
+        if (!bridge.connected) return false
+        bridge.setBypass(!bridge.bypass)
+        return true
+    }
+
+    override fun abToggle(): Boolean {
+        val snaps = bridge.snapshots
+        if (!snaps.compare.value.active || snaps.guardWaiting) return false
+        scope.launch { snaps.abToggle() }
+        return true
+    }
 }
