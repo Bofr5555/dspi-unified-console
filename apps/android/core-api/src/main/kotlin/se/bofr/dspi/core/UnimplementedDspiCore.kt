@@ -366,6 +366,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun installerLockCover(pages: List<String>): LockState = throw NotImplementedError("installer_lock_cover")
 
+    override fun installerLockRefresh(): LockState = throw NotImplementedError("installer_lock_refresh")
+
     override fun linkConnect(url: String, clientName: String, appVersion: String, token: String, expectedHubId: String): LinkHello = throw NotImplementedError("link_connect")
 
     override fun linkPair(pin: String): String = throw NotImplementedError("link_pair")

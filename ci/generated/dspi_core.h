@@ -6035,14 +6035,24 @@ uint32_t dspi_mode_set_pinned(struct FfiCore *core, const char *mode, char *buf,
 /**
  * The open device's installer lock: JSON `{ok, serial, pinSet, unlocked,
  * locked, installerOpen, covers, allowedWrites, wrongTries, retryAfterMs,
- * recovered, note, contact, scopeNoticeKey, detail}`.
+ * recovered, note, contact, scopeNoticeKey, detail, heldBy, hubPinnedMode}`.
  */
 uint32_t dspi_installer_lock_state(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
+ * Read the hub's lock of the device bound over DSPi Link (`limits.get`,
+ * `mode.pinned`) and return the one lock state to show: the lock state's
+ * JSON (`heldBy` `hub` when the hub holds the PIN, `console` for this
+ * console's own, "" for none; `hubPinnedMode`), or a failure (`link`). With
+ * no hub session nothing is asked. Slow: off the UI thread.
+ */
+uint32_t dspi_installer_lock_refresh(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * Unlock the open device on this console with the PIN or the recovery
- * code: the lock state's JSON, or a failure (`installer_lock`: `wrong_pin`,
- * `wait`). Slow: off the UI thread.
+ * code (the hub's PIN when the hub holds the lock): the lock state's JSON,
+ * or a failure (`installer_lock`: `wrong_pin`, `wait`). Slow: off the UI
+ * thread.
  */
 uint32_t dspi_installer_unlock(struct FfiCore *core, const char *pin, char *buf, uint32_t len);
 

@@ -69,6 +69,9 @@ fn samples() -> Vec<DspiError> {
             code: "locked".into(),
             msg: msg(),
         },
+        // -- WP P1DKFIX --
+        DspiError::ImageRefused { msg: msg() },
+        DspiError::LimitsUnknown { msg: msg() },
     ]
 }
 

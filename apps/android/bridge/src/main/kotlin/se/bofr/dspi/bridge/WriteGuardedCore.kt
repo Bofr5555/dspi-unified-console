@@ -1234,7 +1234,10 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "installerUnlock",
             "installerLock",
             "installerPinSet",
-            "installerPinClear"
+            "installerPinClear",
+            // -- WP P1DKFIX -- the hub's lock, read (`limits.get`,
+            // `mode.pinned`): hub messages, nothing written to the device
+            "installerLockRefresh"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

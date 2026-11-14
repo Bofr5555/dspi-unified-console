@@ -2965,6 +2965,21 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func installerLockCover(pages: [String]) throws  -> LockState
     
     /**
+     * Read the lock of the device bound on this console's DSPi Link session
+     * from its hub (`limits.get`, and the mode the hub pins for this role:
+     * `mode.pinned`), and return the one lock state the console shows: the
+     * hub's when the hub holds a PIN for the device (`held_by` `hub`; then
+     * [`DspiCore::installer_unlock`] asks the hub and this console's own PIN
+     * asks nothing), this console's otherwise. Call it after binding a hub
+     * device and when the hub says its limits changed. With no hub session,
+     * or a hub without `limits`, nothing is asked: the console's own lock.
+     * Slow (a round trip): off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] when the hub could not answer.
+     */
+    func installerLockRefresh() throws  -> LockState
+    
+    /**
      * The open device's installer lock on this console: whether a PIN is
      * set, whether the locked-user state is on, what it covers and allows,
      * the refusal window after wrong PINs, the installer's note and contact.
@@ -3050,10 +3065,16 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * Keep limits profiles (and their PIN hashes) in files under `dir`, the
      * app's own data folder, one subfolder per device serial (created when
      * first written; "" forgets the folder). A profile set before a folder
-     * was named is kept for this core's lifetime only.
+     * was named is kept for this core's lifetime only. Name it before opening
+     * a device: with a device open whose installer PIN is set, this console
+     * must be unlocked for it. Every installer PIN this core knows stays in
+     * force, and is written to the new folder when that holds none for the
+     * device (WP P1DKFIX).
      *
      * Errors: [`DspiError::Unsupported`] on the web (no files: use
-     * [`DspiCore::limits_apply_profile`] with the document the page keeps).
+     * [`DspiCore::limits_apply_profile`] with the document the page keeps);
+     * [`DspiError::InstallerLock`] `pin_required` while the open device's
+     * PIN is set and this console is not unlocked (nothing changed).
      */
     func limitsSetDir(dir: String) throws 
     
@@ -7562,6 +7583,26 @@ open func installerLockCover(pages: [String])throws  -> LockState  {
 }
     
     /**
+     * Read the lock of the device bound on this console's DSPi Link session
+     * from its hub (`limits.get`, and the mode the hub pins for this role:
+     * `mode.pinned`), and return the one lock state the console shows: the
+     * hub's when the hub holds a PIN for the device (`held_by` `hub`; then
+     * [`DspiCore::installer_unlock`] asks the hub and this console's own PIN
+     * asks nothing), this console's otherwise. Call it after binding a hub
+     * device and when the hub says its limits changed. With no hub session,
+     * or a hub without `limits`, nothing is asked: the console's own lock.
+     * Slow (a round trip): off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] when the hub could not answer.
+     */
+open func installerLockRefresh()throws  -> LockState  {
+    return try  FfiConverterTypeLockState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_installer_lock_refresh(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
      * The open device's installer lock on this console: whether a PIN is
      * set, whether the locked-user state is on, what it covers and allows,
      * the refusal window after wrong PINs, the installer's note and contact.
@@ -7689,10 +7730,16 @@ open func limitsProfileDocument() -> String  {
      * Keep limits profiles (and their PIN hashes) in files under `dir`, the
      * app's own data folder, one subfolder per device serial (created when
      * first written; "" forgets the folder). A profile set before a folder
-     * was named is kept for this core's lifetime only.
+     * was named is kept for this core's lifetime only. Name it before opening
+     * a device: with a device open whose installer PIN is set, this console
+     * must be unlocked for it. Every installer PIN this core knows stays in
+     * force, and is written to the new folder when that holds none for the
+     * device (WP P1DKFIX).
      *
      * Errors: [`DspiError::Unsupported`] on the web (no files: use
-     * [`DspiCore::limits_apply_profile`] with the document the page keeps).
+     * [`DspiCore::limits_apply_profile`] with the document the page keeps);
+     * [`DspiError::InstallerLock`] `pin_required` while the open device's
+     * PIN is set and this console is not unlocked (nothing changed).
      */
 open func limitsSetDir(dir: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_limits_set_dir(self.uniffiClonePointer(),
@@ -24618,13 +24665,25 @@ public struct LockState {
     public var contact: String
     /**
      * The notice the unlock dialog shows in one line: the lock is on this
-     * console, the DSPi itself is open (`installer_lock.scope`).
+     * console, the DSPi itself is open (`installer_lock.scope`); or, when
+     * the hub holds it, the hub's PIN unlocks it (`installer_lock.hub`).
      */
     public var scopeNoticeKey: String
     /**
      * Why the PIN's file is unreadable, when it is.
      */
     public var detail: String
+    /**
+     * Which lock this is: `console` (this console's PIN), `hub` (the DSPi
+     * Link hub the device is reached through holds the PIN; unlocking asks
+     * the hub), or "" with no PIN. One lock, one prompt.
+     */
+    public var heldBy: String
+    /**
+     * The mode the hub pins for this console's role on this device
+     * (`mode.pinned`), "" for none.
+     */
+    public var hubPinnedMode: String
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -24672,11 +24731,21 @@ public struct LockState {
          */contact: String, 
         /**
          * The notice the unlock dialog shows in one line: the lock is on this
-         * console, the DSPi itself is open (`installer_lock.scope`).
+         * console, the DSPi itself is open (`installer_lock.scope`); or, when
+         * the hub holds it, the hub's PIN unlocks it (`installer_lock.hub`).
          */scopeNoticeKey: String, 
         /**
          * Why the PIN's file is unreadable, when it is.
-         */detail: String) {
+         */detail: String, 
+        /**
+         * Which lock this is: `console` (this console's PIN), `hub` (the DSPi
+         * Link hub the device is reached through holds the PIN; unlocking asks
+         * the hub), or "" with no PIN. One lock, one prompt.
+         */heldBy: String, 
+        /**
+         * The mode the hub pins for this console's role on this device
+         * (`mode.pinned`), "" for none.
+         */hubPinnedMode: String) {
         self.serial = serial
         self.pinSet = pinSet
         self.unlocked = unlocked
@@ -24691,6 +24760,8 @@ public struct LockState {
         self.contact = contact
         self.scopeNoticeKey = scopeNoticeKey
         self.detail = detail
+        self.heldBy = heldBy
+        self.hubPinnedMode = hubPinnedMode
     }
 }
 
@@ -24743,6 +24814,12 @@ extension LockState: Equatable, Hashable {
         if lhs.detail != rhs.detail {
             return false
         }
+        if lhs.heldBy != rhs.heldBy {
+            return false
+        }
+        if lhs.hubPinnedMode != rhs.hubPinnedMode {
+            return false
+        }
         return true
     }
 
@@ -24761,6 +24838,8 @@ extension LockState: Equatable, Hashable {
         hasher.combine(contact)
         hasher.combine(scopeNoticeKey)
         hasher.combine(detail)
+        hasher.combine(heldBy)
+        hasher.combine(hubPinnedMode)
     }
 }
 
@@ -24786,7 +24865,9 @@ public struct FfiConverterTypeLockState: FfiConverterRustBuffer {
                 note: FfiConverterString.read(from: &buf), 
                 contact: FfiConverterString.read(from: &buf), 
                 scopeNoticeKey: FfiConverterString.read(from: &buf), 
-                detail: FfiConverterString.read(from: &buf)
+                detail: FfiConverterString.read(from: &buf), 
+                heldBy: FfiConverterString.read(from: &buf), 
+                hubPinnedMode: FfiConverterString.read(from: &buf)
         )
     }
 
@@ -24805,6 +24886,8 @@ public struct FfiConverterTypeLockState: FfiConverterRustBuffer {
         FfiConverterString.write(value.contact, into: &buf)
         FfiConverterString.write(value.scopeNoticeKey, into: &buf)
         FfiConverterString.write(value.detail, into: &buf)
+        FfiConverterString.write(value.heldBy, into: &buf)
+        FfiConverterString.write(value.hubPinnedMode, into: &buf)
     }
 }
 
@@ -31955,6 +32038,27 @@ public enum DspiError: Swift.Error {
          * What and why, for a log or a detail line.
          */msg: String
     )
+    /**
+     * DSPi Link: the hub refused a whole-state write (an import, a snapshot
+     * recall, an A/B toggle, a guarded apply) from this console's role: the
+     * device has a limits profile or an installer lock on the hub, and only
+     * an Admin may write its whole state. Nothing was sent.
+     */
+    case ImageRefused(
+        /**
+         * The hub's words, for a log or a detail line.
+         */msg: String
+    )
+    /**
+     * DSPi Link: the hub could not read the device's state to judge this
+     * write against its limits profile, so it refused it. Nothing was sent;
+     * trying again may pass.
+     */
+    case LimitsUnknown(
+        /**
+         * The hub's words, for a log or a detail line.
+         */msg: String
+    )
 }
 
 
@@ -32013,6 +32117,12 @@ public struct FfiConverterTypeDspiError: FfiConverterRustBuffer {
             )
         case 16: return .InstallerLock(
             code: try FfiConverterString.read(from: &buf), 
+            msg: try FfiConverterString.read(from: &buf)
+            )
+        case 17: return .ImageRefused(
+            msg: try FfiConverterString.read(from: &buf)
+            )
+        case 18: return .LimitsUnknown(
             msg: try FfiConverterString.read(from: &buf)
             )
 
@@ -32105,6 +32215,16 @@ public struct FfiConverterTypeDspiError: FfiConverterRustBuffer {
         case let .InstallerLock(code,msg):
             writeInt(&buf, Int32(16))
             FfiConverterString.write(code, into: &buf)
+            FfiConverterString.write(msg, into: &buf)
+            
+        
+        case let .ImageRefused(msg):
+            writeInt(&buf, Int32(17))
+            FfiConverterString.write(msg, into: &buf)
+            
+        
+        case let .LimitsUnknown(msg):
+            writeInt(&buf, Int32(18))
             FfiConverterString.write(msg, into: &buf)
             
         }
@@ -36466,6 +36586,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_installer_lock_cover() != 6684) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_installer_lock_refresh() != 3606) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_installer_lock_state() != 5498) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -36490,7 +36613,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_limits_profile_document() != 12621) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_limits_set_dir() != 22784) {
+    if (uniffi_dspi_core_checksum_method_dspicore_limits_set_dir() != 53753) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_limits_status() != 25922) {

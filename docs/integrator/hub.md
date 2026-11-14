@@ -145,10 +145,10 @@ answer carries `"v": 1`. With no profile a device behaves as before.
 
 | Message | Role | What |
 |---|---|---|
-| `limits.get {id, handle}` | every role | `ok {serial, handle, profile, pin_set, locked, unlocked, held}`: the profile (as the `limits` block of a limits document) or `null`; whether a PIN is set; whether the device is locked, and whether it is unlocked for this session; the rows the hub last held |
+| `limits.get {id, handle}` | every role | `ok {serial, handle, profile, pin_set, locked, unlocked, held, wrong_tries, retry_in_ms}`: the profile (as the `limits` block of a limits document) or `null`; whether a PIN is set; whether the device is locked, and whether it is unlocked for this session; the rows the hub last held; the wrong PINs since the last good one and the refusal window left, ms (0: none) |
 | `limits.set {id, handle, profile}` | admin | sets the profile (a limits document, a document carrying one in `meta.limits`, or the profile object); `null` clears it. Its `serial` is the device's. A device outside the new profile is held at once: `ok {serial, held}` |
 | `limits.pin {id, handle, pin}` | admin | sets the PIN (4 to 64 characters), or clears it with `null`, which removes the lock |
-| `limits.unlock {id, handle, pin}` | control, admin | unlocks the device for this session (an Admin needs no PIN). A wrong PIN is `bad_pin`; after 5 in a row unlocking is refused for 30 s (`retry_later`, `retry_in_ms`) |
+| `limits.unlock {id, handle, pin}` | control, admin | unlocks the device for this session (an Admin needs no PIN). A wrong PIN is `bad_pin`. The consoles' rule: 3 wrong PINs are free, each further one opens a refusal window of 30 s, doubling to 15 min, inside which every attempt is refused unchecked (`retry_later`, `retry_in_ms`); a good PIN resets the count |
 | `limits.lock {id, handle}` | control, admin | locks the device again for this session |
 | `mode.pinned {id, handle?}` | every role | `ok {role, mode, locked?}`: the mode the hub pins for this session's role (`simple`, `advanced`, `installer`) or `null` (the user's choice), and with a handle whether that device is locked for this session |
 | `mode.pin {id, role, mode}` | admin | pins a role's mode, or unpins it with `null` |
@@ -159,9 +159,13 @@ PIN change, `limits.held {v, serial, handle, rows}` after the hub held a device,
 
 - **A write outside a limit** (output gain, output or channel delay, master
   volume, a PEQ boost, the high-pass an output must keep, a limiter that must
-  stay on below a ceiling) is refused before it reaches the device: `DENIED`
-  with a JSON payload `{"refused": "limit_exceeded", "limit", "msg"}`, from
-  Admin and Control alike. Muting is always allowed.
+  stay on below a ceiling, a limiter link group that would adopt settings past
+  it) is refused before it reaches the device: `DENIED` with a JSON payload
+  `{"refused": "limit_exceeded", "limit", "msg"}`, from Admin and Control
+  alike. Muting is always allowed. Every index is read as the firmware reads it
+  (the output of a gain or delay write is `wValue & 0xFF`, so `0x0100` is output
+  0), and a judged write the hub cannot read (a short payload, a value that is
+  not a number) is refused the same way, never passed unjudged.
 - **Bulk images** (`0xA1`, `0xA3`) from a Control client are refused while the
   device has a profile or a lock (`"refused": "image_refused"`): an import, a
   snapshot recall, an A/B toggle or a guarded apply that writes an image is
@@ -169,7 +173,14 @@ PIN change, `limits.held {v, serial, handle, rows}` after the hub held a device,
 - **The lock.** A device is locked when a PIN is set and its profile names what
   the lock covers (`lockedPages`). A Control client of a locked device may change
   the volume, the mute and the preset only (`"refused": "installer_lock"` otherwise)
+  and run the analyser (`RTA_CONTROL`, `RTA_SET_CONFIG`: it changes no audio)
   until it unlocks; reads stay open. Unlocking lasts for the session.
+- **Wrong PINs** are counted per device, whichever session sends them, before
+  the slow hash runs, so attempts sent at once all see the count (decided:
+  security over availability; one client's guesses delay another's unlock, an
+  Admin never needs the PIN). The count and the window are kept in the store
+  (`device_pin_tries`, the window's end on the wall clock, never trusted past
+  15 min), so a restart does not reset them.
 - **Held after the fact.** When the whole state changes in a way no write could be
   judged for (a preset loaded by anyone, a scene's preset load, an Admin's image,
   a factory reset), the hub reads the device back, writes every value outside the

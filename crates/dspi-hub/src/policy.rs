@@ -203,6 +203,10 @@ pub fn limits_allows(role: Role, message: &str) -> bool {
 /// (`docs/UI-MODES.md` section 3: volume, mute and preset; OD-P1i): the master and
 /// the user volume, the user and an output's mute, a preset load. Reads are never
 /// judged by the lock; any other change is outside it.
+///
+/// The analyser too (WP P1DKFIX, F7, decided): starting, stopping and
+/// configuring it (`RTA_CONTROL`, `RTA_SET_CONFIG`) changes no audio, and the
+/// core's lock lets it run as well.
 pub fn in_lock_scope(code: u8, dir: Dir) -> bool {
     matches!(
         (code, dir),
@@ -210,9 +214,10 @@ pub fn in_lock_scope(code: u8, dir: Dir) -> bool {
             op::REQ_SET_MASTER_VOLUME
                 | op::REQ_SET_USER_VOLUME
                 | op::REQ_SET_USER_MUTE
-                | op::REQ_SET_OUTPUT_MUTE,
+                | op::REQ_SET_OUTPUT_MUTE
+                | op::REQ_RTA_SET_CONFIG,
             Dir::Set
-        ) | (op::REQ_PRESET_LOAD, Dir::Get)
+        ) | (op::REQ_PRESET_LOAD | op::REQ_RTA_CONTROL, Dir::Get)
     )
 }
 
@@ -490,11 +495,24 @@ mod tests_wp_p1hl {
             (op::REQ_SET_OUTPUT_GAIN, Dir::Set),
             (op::REQ_SET_EQ_PARAM, Dir::Set),
             (op::REQ_SET_ALL_PARAMS, Dir::Set),
-            (op::REQ_RTA_CONTROL, Dir::Get),
             (op::REQ_PRESET_SAVE, Dir::Get),
             (op::REQ_SET_MASTER_VOLUME, Dir::Get),
         ] {
             assert!(!in_lock_scope(code, dir), "{code:#04x}");
         }
+    }
+
+    // -- WP P1DKFIX -- F7: the analyser runs while locked, as in the core.
+    #[test]
+    fn wp_p1dkfix_the_analyser_is_inside_the_lock_scope() {
+        let p = Policy::embedded();
+        for (code, dir) in [
+            (op::REQ_RTA_CONTROL, Dir::Get),
+            (op::REQ_RTA_SET_CONFIG, Dir::Set),
+        ] {
+            assert!(in_lock_scope(code, dir), "{code:#04x}");
+            assert!(p.allows(Role::Control, code, dir), "{code:#04x}");
+        }
+        assert!(!in_lock_scope(op::REQ_RTA_CONTROL, Dir::Set));
     }
 }

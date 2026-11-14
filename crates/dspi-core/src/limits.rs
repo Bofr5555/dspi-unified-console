@@ -678,18 +678,54 @@ impl DspiCore {
     /// Keep limits profiles (and their PIN hashes) in files under `dir`, the
     /// app's own data folder, one subfolder per device serial (created when
     /// first written; "" forgets the folder). A profile set before a folder
-    /// was named is kept for this core's lifetime only.
+    /// was named is kept for this core's lifetime only. Name it before opening
+    /// a device: with a device open whose installer PIN is set, this console
+    /// must be unlocked for it. Every installer PIN this core knows stays in
+    /// force, and is written to the new folder when that holds none for the
+    /// device (WP P1DKFIX).
     ///
     /// Errors: [`DspiError::Unsupported`] on the web (no files: use
-    /// [`DspiCore::limits_apply_profile`] with the document the page keeps).
+    /// [`DspiCore::limits_apply_profile`] with the document the page keeps);
+    /// [`DspiError::InstallerLock`] `pin_required` while the open device's
+    /// PIN is set and this console is not unlocked (nothing changed).
     pub fn limits_set_dir(&self, dir: String) -> Result<()> {
         #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
         {
-            {
+            let (store, carried, tries, profiles) = {
                 let mut inner = self.lock();
+                // -- WP P1DKFIX -- F2: a locked user cannot name the lock away.
+                if inner.conn.is_some() {
+                    lock::installer_gate(&mut inner)?;
+                }
+                // -- WP P1DKFIX -- F2: the profiles in force (what a lock
+                // covers) stay in force, as the PINs do.
+                if let Some(p) = inner
+                    .limits
+                    .current
+                    .as_ref()
+                    .and_then(|c| c.profile.clone())
+                    && !inner.limits.memory.iter().any(|m| m.serial == p.serial)
+                {
+                    inner.limits.memory.push(p);
+                }
+                let profiles = inner.limits.memory.clone();
                 inner.limits.dir = (!dir.trim().is_empty()).then(|| dir.into());
                 inner.limits.current = None;
-                inner.limits.lock.forget_files(); // -- WP P1LK --
+                let carried = inner.limits.lock.carry_over(); // -- WP P1LK --, P1DKFIX
+                let tries = inner.limits.lock.tries_of(&carried);
+                (inner.limits.store(), carried, tries, profiles)
+            };
+            // -- WP P1DKFIX -- F2: the PINs and profiles kept go to the new
+            // folder too, where it has none for that device.
+            if let Some(store) = &store {
+                lock::write_carried(store, &carried, &tries);
+                for p in &profiles {
+                    if matches!(store.load(&p.serial).state, LoadState::None)
+                        && let Err(e) = store.save(p)
+                    {
+                        log::warn!("a limits profile could not be written to the new folder: {e}");
+                    }
+                }
             }
             self.limits_preload(); // -- WP P1CFIX -- N1
             Ok(())
@@ -968,8 +1004,8 @@ impl DspiCore {
 // -- WP P1LK --
 mod lock;
 pub use lock::{
-    InstallerPin, LOCK_FIRST_WAIT_MS, LOCK_FREE_TRIES, LOCK_MAX_WAIT_MS, LOCK_SCOPE_NOTICE,
-    LOCKED_USER_WRITES, LockState,
+    HELD_BY_CONSOLE, HELD_BY_HUB, InstallerPin, LOCK_FIRST_WAIT_MS, LOCK_FREE_TRIES,
+    LOCK_HUB_NOTICE, LOCK_MAX_WAIT_MS, LOCK_SCOPE_NOTICE, LOCKED_USER_WRITES, LockState,
 };
 pub(crate) use lock::{LockScope, lock_check};
 
@@ -986,3 +1022,12 @@ mod tests_wp_p1lk;
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests_wp_p1cfix;
+
+// -- WP P1DKFIX --
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing
+)]
+mod tests_wp_p1dkfix;

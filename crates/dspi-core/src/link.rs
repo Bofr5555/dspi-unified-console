@@ -2171,6 +2171,34 @@ impl DspiCore {
     }
 }
 
+// -- WP P1DKFIX --
+impl crate::Inner {
+    /// The serial of the device bound on a live DSPi Link session, if any.
+    pub(crate) fn link_bound_serial(&self) -> Option<&str> {
+        let s = self.link.as_ref()?;
+        s.client.as_ref().filter(|c| !c.is_closed())?;
+        s.bound.as_ref().map(|b| b.serial.as_str())
+    }
+}
+
+// -- WP P1DKFIX --
+impl DspiCore {
+    /// The device bound on this session's live hub, when the hub answers
+    /// `limits.*` (its `hello` lists `limits`) and that device is the open
+    /// one: its handle and serial. No I/O.
+    pub(crate) fn link_limits_target(&self) -> Option<(u8, String)> {
+        let inner = self.lock();
+        let s = inner.link.as_ref()?;
+        let client = s.client.as_ref().filter(|c| !c.is_closed())?;
+        let bound = s.bound.as_ref()?;
+        if !client.hello().has_cap("limits") {
+            return None;
+        }
+        let open = inner.conn.as_ref().map(|c| c.serial.as_str());
+        (open == Some(bound.serial.as_str())).then(|| (bound.handle, bound.serial.clone()))
+    }
+}
+
 // -- WP P1SA --
 /// What a guarded apply (`guarded.rs`) needs of this session's hub.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

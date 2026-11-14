@@ -99,10 +99,11 @@ pub const VERSION: u32 = 1;
 pub const MODES: [&str; 3] = ["simple", "advanced", "installer"];
 /// The shortest and longest PIN taken.
 pub const PIN_LEN: std::ops::RangeInclusive<usize> = 4..=64;
-/// Wrong PINs in a row before unlocking is refused for [`PIN_WINDOW`].
-pub const PIN_TRIES: u32 = 5;
-/// How long unlocking is refused after [`PIN_TRIES`] wrong PINs.
-pub const PIN_WINDOW: Duration = Duration::from_secs(30);
+// -- WP P1DKFIX -- F4: the core's rule, one set of constants
+// (`dspi_session::limits`): this many wrong PINs are free; each further one
+// opens a refusal window of [`shared::LOCK_FIRST_WAIT_MS`], doubling to at
+// most [`shared::LOCK_MAX_WAIT_MS`].
+pub use dspi_session::limits::{LOCK_FIRST_WAIT_MS, LOCK_FREE_TRIES, LOCK_MAX_WAIT_MS};
 
 /// PEQ bands per channel, and the first crossover band on the wire.
 const PEQ_BANDS: u8 = 10;
@@ -137,6 +138,10 @@ pub struct StoredLimits {
     pub pins: BTreeMap<String, PinRecord>,
     /// The mode pinned per role (`viewer`, `control`, `admin`).
     pub modes: BTreeMap<String, String>,
+    // -- WP P1DKFIX -- F6
+    /// The wrong-PIN count and refusal window, by serial: a restart keeps
+    /// them (the window's end on the wall clock).
+    pub tries: BTreeMap<String, shared::StoredTries>,
 }
 
 /// Where [`StoredLimits`] persists (`auth::StoredLimitsFile`, the hub's store).
@@ -147,10 +152,56 @@ pub trait LimitsPersist: Send + Sync {
     fn save(&self, data: &StoredLimits) -> Result<(), HubError>;
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy)]
 struct PinTries {
     wrong: u32,
     until: Option<Instant>,
+}
+
+// -- WP P1DKFIX -- F4, F6
+impl PinTries {
+    /// The window left at `now`, if one is open.
+    fn wait_left(&self, now: Instant) -> Option<Duration> {
+        let until = self.until?;
+        (until > now).then(|| until.saturating_duration_since(now))
+    }
+
+    /// Count a wrong PIN at `now`: the window it earns opens.
+    fn count(&mut self, now: Instant) {
+        self.wrong = self.wrong.saturating_add(1);
+        if let Some(w) = shared::lock_window_for(self.wrong) {
+            self.until = now.checked_add(w).or(self.until);
+        }
+    }
+
+    /// As the store keeps it: the window's end on the wall clock.
+    fn stored(&self, now: Instant, wall: std::time::SystemTime) -> shared::StoredTries {
+        let left = self.wait_left(now).unwrap_or_default();
+        let until_unix_ms = if left.is_zero() {
+            0
+        } else {
+            unix_ms(wall).saturating_add(u64::try_from(left.as_millis()).unwrap_or(u64::MAX))
+        };
+        shared::StoredTries {
+            wrong: self.wrong,
+            until_unix_ms,
+        }
+    }
+
+    /// From the store, at `now`: never a window longer than the longest.
+    fn from_stored(t: shared::StoredTries, now: Instant, wall: std::time::SystemTime) -> Self {
+        let left = Duration::from_millis(t.left_ms(unix_ms(wall)));
+        Self {
+            wrong: t.wrong,
+            until: (!left.is_zero()).then(|| now.checked_add(left)).flatten(),
+        }
+    }
+}
+
+/// `t` as ms since the epoch; 0 before it.
+fn unix_ms(t: std::time::SystemTime) -> u64 {
+    t.duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }
 
 #[derive(Debug, Default)]
@@ -196,7 +247,14 @@ fn is_locked(profile: Option<&LimitsProfile>, pin: bool) -> bool {
 impl HubLimits {
     /// Over this store (none: kept for this run only).
     pub fn new(persist: Option<Arc<dyn LimitsPersist>>) -> Self {
-        let stored = persist.as_ref().map(|p| p.load()).unwrap_or_default();
+        let mut stored = persist.as_ref().map(|p| p.load()).unwrap_or_default();
+        // -- WP P1DKFIX -- F6: the wrong-PIN windows as they were.
+        let (now, wall) = (Instant::now(), std::time::SystemTime::now());
+        let tries: BTreeMap<String, PinTries> = std::mem::take(&mut stored.tries)
+            .into_iter()
+            .filter(|(s, _)| stored.pins.contains_key(s))
+            .map(|(s, t)| (s, PinTries::from_stored(t, now, wall)))
+            .collect();
         let stored = StoredLimits {
             profiles: stored
                 .profiles
@@ -212,6 +270,7 @@ impl HubLimits {
         Self {
             state: Mutex::new(State {
                 stored,
+                tries,
                 ..State::default()
             }),
             persist,
@@ -236,7 +295,18 @@ impl HubLimits {
             return Ok(());
         };
         let _in_order = guard(&self.saving);
-        let data = guard(&self.state).stored.clone();
+        let data = {
+            let st = guard(&self.state);
+            let mut data = st.stored.clone();
+            // -- WP P1DKFIX -- F6
+            let (now, wall) = (Instant::now(), std::time::SystemTime::now());
+            data.tries = st
+                .tries
+                .iter()
+                .map(|(s, t)| (s.clone(), t.stored(now, wall)))
+                .collect();
+            data
+        };
         persist.save(&data)
     }
 
@@ -339,9 +409,16 @@ impl HubLimits {
         self.save().map_err(PinRefused::Store)
     }
 
-    /// Unlock `serial` for `session` with `pin`, at `now`. Wrong PINs open a
-    /// refusal window ([`PIN_TRIES`], [`PIN_WINDOW`]) kept as the next allowed
-    /// time, never a sleep.
+    /// Unlock `serial` for `session` with `pin`, at `now`. The core's rule
+    /// (WP P1DKFIX, F3/F4): every attempt is counted as wrong **before** the
+    /// slow hash runs, under the state's lock, so attempts made at once all see
+    /// the count; a right PIN clears it. [`LOCK_FREE_TRIES`] are free, each
+    /// further one opens a refusal window ([`LOCK_FIRST_WAIT_MS`], doubling to
+    /// [`LOCK_MAX_WAIT_MS`]) kept as the next allowed time, never a sleep; an
+    /// attempt inside it is refused at once, nothing hashed. The count is per
+    /// device, whichever session sent the PIN (F8, decided: security over
+    /// availability; an Admin never needs the PIN), and it is kept in the
+    /// store, so a restart does not reset it (F6).
     pub fn unlock(
         &self,
         serial: &str,
@@ -350,36 +427,44 @@ impl HubLimits {
         now: Instant,
     ) -> Result<(), PinRefused> {
         let record = {
-            let st = guard(&self.state);
-            if let Some(until) = st.tries.get(serial).and_then(|t| t.until)
-                && now < until
-            {
-                return Err(PinRefused::Later(until.saturating_duration_since(now)));
+            let mut st = guard(&self.state);
+            let Some(record) = st.stored.pins.get(serial).cloned() else {
+                // No PIN: nothing to unlock, every session is in.
+                return Ok(());
+            };
+            let t = st.tries.entry(serial.to_owned()).or_default();
+            if let Some(left) = t.wait_left(now) {
+                return Err(PinRefused::Later(left));
             }
-            st.stored.pins.get(serial).cloned()
+            t.count(now);
+            record
         };
-        // No PIN: nothing to unlock, every session is in.
-        let Some(record) = record else {
-            return Ok(());
-        };
+        // Kept before the hash: a restart mid-guess keeps the count.
+        let _ = self.save();
         // The slow hash, with the lock released.
-        let right = record.matches(serial, pin);
-        let mut st = guard(&self.state);
-        if right {
+        if !record.matches(serial, pin) {
+            return Err(PinRefused::Wrong);
+        }
+        {
+            let mut st = guard(&self.state);
             st.tries.remove(serial);
             st.unlocked
                 .entry(serial.to_owned())
                 .or_default()
                 .insert(session);
-            return Ok(());
         }
-        let t = st.tries.entry(serial.to_owned()).or_default();
-        t.wrong = t.wrong.saturating_add(1);
-        if t.wrong >= PIN_TRIES {
-            t.wrong = 0;
-            t.until = now.checked_add(PIN_WINDOW);
-        }
-        Err(PinRefused::Wrong)
+        let _ = self.save();
+        Ok(())
+    }
+
+    // -- WP P1DKFIX --
+    /// `serial`'s wrong PINs and the refusal window left at `now`, for
+    /// `limits.get`.
+    pub fn tries(&self, serial: &str, now: Instant) -> (u32, Option<Duration>) {
+        guard(&self.state)
+            .tries
+            .get(serial)
+            .map_or((0, None), |t| (t.wrong, t.wait_left(now)))
     }
 
     /// `session` locks `serial` again.
@@ -668,9 +753,16 @@ fn is_bulk_write(req: &CmdRequest) -> bool {
 }
 
 /// A `REQ_SET_EQ_PARAM` payload: channel, band, the band as the rules see it,
-/// its gain.
+/// its gain. `None` for one shorter than the firmware's packet, or with a
+/// frequency, Q or gain that is not a number (WP P1DKFIX: refused).
 fn eq_write(payload: &[u8]) -> Option<(u8, u8, BandView, f32)> {
     if payload.len() < 16 {
+        return None;
+    }
+    if [4, 8, 12]
+        .iter()
+        .any(|at| le_f32(payload, *at).is_none_or(|v| !v.is_finite()))
+    {
         return None;
     }
     let filter_type = *payload.get(2)?;
@@ -695,8 +787,32 @@ fn any_ceiling(p: &LimitsProfile) -> bool {
     p.outputs.iter().any(|o| o.limiter_ceiling_db.is_some())
 }
 
+/// A write the judge cannot read as the firmware would (a short payload, a
+/// value that is not a number): refused, never passed unjudged (WP P1DKFIX,
+/// F1: fail closed). The core's setters never send one.
+fn malformed(code: &'static str, what: &str) -> Violation {
+    Violation {
+        code,
+        msg: format!("a {what} write the hub cannot judge against the limits is refused"),
+    }
+}
+
+/// The payload's first `f32`, finite, or the malformed refusal.
+fn finite_value(req: &CmdRequest, code: &'static str, what: &str) -> Result<f32, Violation> {
+    f32_payload(req)
+        .filter(|v| v.is_finite())
+        .ok_or_else(|| malformed(code, what))
+}
+
 /// Judge `req` against `p` with the device's image `img`. `Err(Ok(..))`: refused;
 /// `Err(Err(Need::Image))`: this write needs the image, which was not given.
+///
+/// Every index is read as the firmware reads it (WP P1DKFIX, F1): the output or
+/// channel of `SET_OUTPUT_GAIN`, `SET_OUTPUT_DELAY` and `SET_DELAY` is
+/// `wValue & 0xFF` (`vendor_commands.c`), so `wValue = 0x0100` is output 0;
+/// `SET_BAND_BYPASS` and `LIMITER` take `(wValue >> 8, wValue & 0xFF)`; an EQ
+/// write names its channel and band in its payload. A payload the firmware
+/// would act on but the judge cannot read is refused ([`malformed`]).
 pub(crate) fn judge(
     p: &LimitsProfile,
     req: &CmdRequest,
@@ -705,38 +821,33 @@ pub(crate) fn judge(
     if req.dir != Dir::Set && req.b_request != op::REQ_LIMITER {
         return Ok(());
     }
-    let lo = u8::try_from(req.w_value & 0xFF).unwrap_or(0);
-    let hi = u8::try_from(req.w_value >> 8).unwrap_or(0);
-    let value = || f32_payload(req);
+    // `vendor_last_wValue & 0xFF` and `>> 8`, as the firmware reads them.
+    let [lo, hi] = req.w_value.to_le_bytes();
     let r = match (req.b_request, req.dir) {
-        (op::REQ_SET_OUTPUT_GAIN, Dir::Set) => match (u8::try_from(req.w_value), value()) {
-            (Ok(o), Some(v)) => p.check_output_gain(o, v),
-            _ => Ok(()),
-        },
-        (op::REQ_SET_OUTPUT_DELAY, Dir::Set) => match (u8::try_from(req.w_value), value()) {
-            (Ok(o), Some(v)) => p.check_delay(o, v),
-            _ => Ok(()),
-        },
+        (op::REQ_SET_OUTPUT_GAIN, Dir::Set) => {
+            finite_value(req, "out_gain", "output gain").and_then(|v| p.check_output_gain(lo, v))
+        }
+        (op::REQ_SET_OUTPUT_DELAY, Dir::Set) => {
+            finite_value(req, "delay", "output delay").and_then(|v| p.check_delay(lo, v))
+        }
         (op::REQ_SET_DELAY, Dir::Set) => {
-            let (Ok(ch), Some(v)) = (u8::try_from(req.w_value), value()) else {
-                return Ok(());
-            };
+            let v = finite_value(req, "delay", "channel delay").map_err(Ok)?;
             if p.outputs.is_empty() {
                 return Ok(());
             }
             let img = img.ok_or(Err(Need::Image))?;
-            match img.output_of(ch) {
+            match img.output_of(lo) {
                 Some(o) => p.check_delay(o, v),
                 None => Ok(()),
             }
         }
-        (op::REQ_SET_MASTER_VOLUME, Dir::Set) => match value() {
-            Some(v) => p.check_master_volume(v),
-            None => Ok(()),
-        },
+        (op::REQ_SET_MASTER_VOLUME, Dir::Set) => {
+            finite_value(req, "master_volume", "master volume")
+                .and_then(|v| p.check_master_volume(v))
+        }
         (op::REQ_SET_EQ_PARAM, Dir::Set) => {
             let Some((ch, band, after, gain)) = eq_write(&req.payload) else {
-                return Ok(());
+                return Err(Ok(malformed("eq_boost", "EQ band")));
             };
             p.check_boost(after.filter_type, gain).map_err(Ok)?;
             if !any_highpass(p) {
@@ -752,7 +863,7 @@ pub(crate) fn judge(
         }
         (op::REQ_SET_BAND_BYPASS, Dir::Set) => {
             let Some(&b) = req.payload.first() else {
-                return Ok(());
+                return Err(Ok(malformed("highpass", "band bypass")));
             };
             if !any_highpass(p) {
                 return Ok(());
@@ -767,51 +878,116 @@ pub(crate) fn judge(
             p.check_highpass(o, &img.views(ch, None), &img.views(ch, Some((band, after))))
         }
         (op::REQ_LIMITER, Dir::Set) => {
-            let (out, idx) = (hi, lo);
-            let enabled = u16::from(idx) == limiter::LIMITER_PARAM_ENABLED;
-            let threshold = u16::from(idx) == limiter::LIMITER_PARAM_THRESHOLD_DB;
-            let (Some(v), true) = (value(), enabled || threshold) else {
-                return Ok(());
+            let (out, idx) = (hi, u16::from(lo));
+            // The firmware ignores a short payload and a NaN; any other value
+            // is judged, whatever the index (a link group moves settings too).
+            let Some(v) = f32_payload(req) else {
+                return Err(Ok(malformed("limiter", "limiter")));
             };
-            if !any_ceiling(p) {
+            if v.is_nan() || !any_ceiling(p) {
                 return Ok(());
             }
             let img = img.ok_or(Err(Need::Image))?;
-            judge_limiter(p, img, out, enabled, v)
+            judge_limiter(p, img, out, idx, v)
         }
         _ => Ok(()),
     };
     r.map_err(Ok)
 }
 
-/// A limiter write of `v` to `out`'s enable (`enabled`) or threshold: judged
-/// on every output it moves (all for `0xFF`, its link group otherwise), as the
-/// core's `judge_limiters`: refused when it takes a limiter outside its
-/// ceiling, or further outside; one that brings it closer passes.
+/// Each output's limiter (on, link group, threshold) after the firmware's
+/// `limiter_set_param(out, idx, v)` on the image's state (`limiter.c`): a
+/// setting moves its link group with it, `0xFF` moves every output, joining a
+/// group adopts the group's settings, a link group set on every output gangs
+/// each group to its first member. `None`: the image has no limiter section.
+fn limiter_after(img: &Image, out: u8, idx: u16, v: f32) -> Option<Vec<(bool, u8, f32)>> {
+    let n = img.n_out();
+    let mut st: Vec<(bool, u8, f32)> = (0..n).map(|o| img.limiter(o)).collect::<Option<_>>()?;
+    let max_group = f32::from(u8::try_from(limiter::LIMITER_LINK_GROUP_MAX).unwrap_or(u8::MAX));
+    let set_one = |st: &mut Vec<(bool, u8, f32)>, k: usize| {
+        let Some(l) = st.get_mut(k) else {
+            return;
+        };
+        match idx {
+            limiter::LIMITER_PARAM_ENABLED => l.0 = v != 0.0,
+            limiter::LIMITER_PARAM_THRESHOLD_DB => l.2 = v,
+            limiter::LIMITER_PARAM_LINK_GROUP => {
+                // `(uint8_t)(clamp(v, 0, MAX) + 0.5)`
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                let g = (v.clamp(0.0, max_group) + 0.5) as u8;
+                l.1 = g;
+            }
+            _ => {}
+        }
+    };
+    let peer = |st: &[(bool, u8, f32)], k: usize, g: u8| {
+        (0..st.len()).find(|m| *m != k && st.get(*m).is_some_and(|l| l.1 == g))
+    };
+    let copy = |st: &mut Vec<(bool, u8, f32)>, dst: usize, src: usize| {
+        if let Some(&(on, _, thr)) = st.get(src)
+            && let Some(d) = st.get_mut(dst)
+        {
+            d.0 = on;
+            d.2 = thr;
+        }
+    };
+    let o = usize::from(out);
+    if out == ALL_OUTPUTS {
+        for k in 0..st.len() {
+            set_one(&mut st, k);
+        }
+        if idx == limiter::LIMITER_PARAM_LINK_GROUP {
+            for k in 0..st.len() {
+                let g = st.get(k).map_or(0, |l| l.1);
+                if g == 0 {
+                    continue;
+                }
+                if let Some(lead) = peer(&st, k, g).filter(|lead| *lead < k) {
+                    copy(&mut st, k, lead);
+                }
+            }
+        }
+    } else if o >= st.len() {
+        // The firmware refuses it: nothing moves.
+    } else if idx == limiter::LIMITER_PARAM_LINK_GROUP {
+        set_one(&mut st, o);
+        let g = st.get(o).map_or(0, |l| l.1);
+        if g != 0
+            && let Some(p) = peer(&st, o, g)
+        {
+            copy(&mut st, o, p);
+        }
+    } else {
+        let g = st.get(o).map_or(0, |l| l.1);
+        for k in 0..st.len() {
+            if k == o || (g != 0 && st.get(k).is_some_and(|l| l.1 == g)) {
+                set_one(&mut st, k);
+            }
+        }
+    }
+    Some(st)
+}
+
+/// A limiter write of `v` to `out`'s parameter `idx`: judged on every output it
+/// moves ([`limiter_after`]), as the core's `judge_limiters`: refused when it
+/// takes a limiter outside its ceiling, or further outside; one that brings it
+/// closer passes. An image without a limiter section fails closed.
 fn judge_limiter(
     p: &LimitsProfile,
     img: &Image,
     out: u8,
-    enabled: bool,
+    idx: u16,
     v: f32,
 ) -> Result<(), Violation> {
-    let n = img.n_out();
-    let moved: Vec<u8> = if out == ALL_OUTPUTS {
-        (0..n).collect()
-    } else {
-        match img.limiter(out) {
-            Some((_, group, _)) if group != 0 => (0..n)
-                .filter(|o| img.limiter(*o).is_some_and(|l| l.1 == group))
-                .collect(),
-            _ => vec![out],
-        }
+    let Some(after) = limiter_after(img, out, idx, v) else {
+        return Err(malformed("limiter", "limiter"));
     };
-    for o in moved {
+    for (o, now) in (0..img.n_out()).zip(after) {
         let Some((on, _, thr)) = img.limiter(o) else {
             continue;
         };
         let was = (on, thr);
-        let now = if enabled { (v != 0.0, thr) } else { (on, v) };
+        let now = (now.0, now.2);
         if was == now {
             continue;
         }
@@ -1309,6 +1485,12 @@ impl HubHandle {
             "locked": d.locked,
             "unlocked": !l.locked_for(&serial, session.id(), session.role()),
             "held": l.held(&serial),
+            // -- WP P1DKFIX -- the refusal window, for the client's prompt
+            "wrong_tries": l.tries(&serial, Instant::now()).0,
+            "retry_in_ms": l
+                .tries(&serial, Instant::now())
+                .1
+                .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX)),
         }))
     }
 

@@ -66,7 +66,7 @@ pub extern "C" fn dspi_mode_set_pinned(
 
 /// The open device's installer lock: JSON `{ok, serial, pinSet, unlocked,
 /// locked, installerOpen, covers, allowedWrites, wrongTries, retryAfterMs,
-/// recovered, note, contact, scopeNoticeKey, detail}`.
+/// recovered, note, contact, scopeNoticeKey, detail, heldBy, hubPinnedMode}`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_installer_lock_state(
     core: *mut crate::FfiCore,
@@ -76,9 +76,25 @@ pub extern "C" fn dspi_installer_lock_state(
     text(core, buf, len, |c| json_reply(Ok(c.installer_lock_state())))
 }
 
+// -- WP P1DKFIX --
+/// Read the hub's lock of the device bound over DSPi Link (`limits.get`,
+/// `mode.pinned`) and return the one lock state to show: the lock state's
+/// JSON (`heldBy` `hub` when the hub holds the PIN, `console` for this
+/// console's own, "" for none; `hubPinnedMode`), or a failure (`link`). With
+/// no hub session nothing is asked. Slow: off the UI thread.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_installer_lock_refresh(
+    core: *mut crate::FfiCore,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| json_reply(c.installer_lock_refresh()))
+}
+
 /// Unlock the open device on this console with the PIN or the recovery
-/// code: the lock state's JSON, or a failure (`installer_lock`: `wrong_pin`,
-/// `wait`). Slow: off the UI thread.
+/// code (the hub's PIN when the hub holds the lock): the lock state's JSON,
+/// or a failure (`installer_lock`: `wrong_pin`, `wait`). Slow: off the UI
+/// thread.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_installer_unlock(
     core: *mut crate::FfiCore,
@@ -204,6 +220,13 @@ mod tests_wp_p1lk {
         );
         let st = reply(|b, l| dspi_installer_lock(h, b, l));
         assert_eq!(st["locked"], true, "{st}");
+        // -- WP P1DKFIX -- no hub: the refresh is the console's own lock.
+        let st = reply(|b, l| dspi_installer_lock_refresh(h, b, l));
+        assert_eq!(
+            (st["ok"].clone(), st["heldBy"].clone(), st["locked"].clone()),
+            (true.into(), "console".into(), true.into()),
+            "{st}"
+        );
 
         let gain =
             CString::new(r#"{"path":"out.gain","indices":[1],"value":{"float":1}}"#).unwrap();

@@ -87,16 +87,22 @@ pub fn map_status(status: u8, opcode: u8) -> Option<TransportError> {
 /// [`TransportError::hub_refusal`] reads back; any other answer maps as before.
 pub fn map_response(status: u8, opcode: u8, payload: &[u8]) -> Option<TransportError> {
     if status == status::DENIED
-        && let Some((key, msg)) = hub_refusal(payload)
+        && let Some((key, limit, msg)) = hub_refusal(payload)
     {
-        return Some(TransportError::Denied(format!("{key}: {msg}")));
+        // -- WP P1DKFIX -- F5: a `limit_exceeded` keeps the limit it names,
+        // as `limit_exceeded/<limit>` ([`TransportError::hub_refusal_limit`]).
+        return Some(TransportError::Denied(match limit {
+            Some(limit) => format!("{key}/{limit}: {msg}"),
+            None => format!("{key}: {msg}"),
+        }));
     }
     map_status(status, opcode)
 }
 
 // -- WP P1HL --
-/// The refusal a hub's `DENIED` payload names, with its words made safe to show.
-fn hub_refusal(payload: &[u8]) -> Option<(&'static str, String)> {
+/// The refusal a hub's `DENIED` payload names, the limit a `limit_exceeded`
+/// names (lower-case letters and `_` only), and its words made safe to show.
+fn hub_refusal(payload: &[u8]) -> Option<(&'static str, Option<String>, String)> {
     if payload.is_empty() || payload.len() > 4096 {
         return None;
     }
@@ -114,7 +120,12 @@ fn hub_refusal(payload: &[u8]) -> Option<(&'static str, String)> {
         .chars()
         .take(300)
         .collect();
-    Some((key, msg))
+    let limit = v
+        .get("limit")
+        .and_then(serde_json::Value::as_str)
+        .filter(|l| key == "limit_exceeded" && crate::is_limit_code(l))
+        .map(str::to_owned);
+    Some((key, limit, msg))
 }
 
 /// Whether a Link status is a busy window to retry (spec 8.1).
@@ -1143,6 +1154,9 @@ mod tests_wp_p1hl {
             ))
             .unwrap();
             assert_eq!(e.hub_refusal(), Some((key, "output 1 gain 6 dB")), "{e:?}");
+            // -- WP P1DKFIX -- only a limit refusal carries the limit.
+            let limit = (key == "limit_exceeded").then_some("out_gain");
+            assert_eq!(e.hub_refusal_limit(), limit, "{e:?}");
             assert!(
                 matches!(e, TransportError::Denied(_)),
                 "still a denial: {e:?}"
@@ -1167,6 +1181,10 @@ mod tests_wp_p1hl {
         // The hub's words are made safe to show.
         let e = denied("{\"refused\":\"installer_lock\",\"msg\":\"a\\u001b[2Jb\"}").unwrap();
         assert_eq!(e.hub_refusal(), Some(("installer_lock", "a\u{fffd}[2Jb")));
+        // -- WP P1DKFIX -- a limit that is not a code is dropped, the refusal kept.
+        let e = denied(r#"{"refused":"limit_exceeded","limit":"a: b","msg":"m"}"#).unwrap();
+        assert_eq!(e.hub_refusal(), Some(("limit_exceeded", "m")));
+        assert_eq!(e.hub_refusal_limit(), None);
         // A plain Denied whose words merely look like it is not a refusal unless the
         // key is one of the hub's.
         assert_eq!(

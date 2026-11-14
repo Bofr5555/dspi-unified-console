@@ -294,6 +294,20 @@ fn import_error(reply: &Value) -> DspiError {
             code: k.strip_prefix("dlink.").unwrap_or("link").to_owned(),
             msg,
         },
+        // -- WP P1DKFIX -- F5: the limits' and the lock's refusals keep their notice.
+        "limit_exceeded" => DspiError::LimitExceeded {
+            code: "limit".into(),
+            msg,
+        },
+        k if k.starts_with("installer_lock") => DspiError::InstallerLock {
+            code: k
+                .strip_prefix("installer_lock.")
+                .unwrap_or("locked")
+                .to_owned(),
+            msg,
+        },
+        "image_refused" => DspiError::ImageRefused { msg },
+        "limits_unknown" => DspiError::LimitsUnknown { msg },
         k if k.starts_with("config.") || k == "invalid" => DspiError::InvalidArgument { msg },
         _ => DspiError::Transfer { msg },
     }

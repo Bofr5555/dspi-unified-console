@@ -119,6 +119,8 @@ impl DspiCore {
     /// analyser stays unsupported.
     pub fn rta_start(&self) {
         let mut inner = self.lock();
+        // -- WP P1DKFIX -- F7: the analyser runs while the installer's lock is on.
+        let _analyser = crate::limits::LockScope::allow();
         if inner.rta.worker.is_some() || inner.writable_conn().is_err() {
             return;
         }
@@ -977,7 +979,9 @@ fn poll_once(c: &DspiCore, id: u64, probed: &mut bool, refused: &mut bool) -> Po
             idle: false,
         };
     }
-    // The analyser's configuration push and STOP are writes.
+    // The analyser's configuration push and STOP are writes; the installer's
+    // lock lets them through (-- WP P1DKFIX -- F7: they change no audio).
+    let _analyser = crate::limits::LockScope::allow();
     if inner.writable_conn().is_err() {
         return Polled {
             changed: false,
@@ -1050,6 +1054,8 @@ fn poll(inner: &mut Inner, id: u64, probed: &mut bool, refused: &mut bool, now: 
     // borrowed as a `Writable` alongside it.
     let mut eng = std::mem::take(&mut inner.rta.engine);
     let alive = (|| {
+        // -- WP P1DKFIX -- F7: the push and STOP pass the installer's lock.
+        let _analyser = crate::limits::LockScope::allow();
         let mut w = inner.writable_conn().ok()?;
         let t = w.conn().transport();
         if !*probed {

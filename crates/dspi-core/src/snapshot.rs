@@ -226,6 +226,9 @@ fn stops(e: &DspiError) -> bool {
             | DspiError::Locked
             | DspiError::Denied
             | DspiError::Link { .. }
+            // -- WP P1DKFIX -- a hub's lock or its refusal of an image ends it too
+            | DspiError::InstallerLock { .. }
+            | DspiError::ImageRefused { .. }
     )
 }
 

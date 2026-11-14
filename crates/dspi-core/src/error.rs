@@ -147,6 +147,25 @@ pub enum DspiError {
         /// What and why, for a log or a detail line.
         msg: String,
     },
+    // -- WP P1DKFIX --
+    /// DSPi Link: the hub refused a whole-state write (an import, a snapshot
+    /// recall, an A/B toggle, a guarded apply) from this console's role: the
+    /// device has a limits profile or an installer lock on the hub, and only
+    /// an Admin may write its whole state. Nothing was sent.
+    #[error("{msg}")]
+    ImageRefused {
+        /// The hub's words, for a log or a detail line.
+        msg: String,
+    },
+    // -- WP P1DKFIX --
+    /// DSPi Link: the hub could not read the device's state to judge this
+    /// write against its limits profile, so it refused it. Nothing was sent;
+    /// trying again may pass.
+    #[error("{msg}")]
+    LimitsUnknown {
+        /// The hub's words, for a log or a detail line.
+        msg: String,
+    },
 }
 
 // -- WP P1NT --
@@ -174,6 +193,9 @@ impl DspiError {
             Self::LimitExceeded { .. } => "limit_exceeded",
             // -- WP P1LK --
             Self::InstallerLock { .. } => "installer_lock",
+            // -- WP P1DKFIX --
+            Self::ImageRefused { .. } => "image_refused",
+            Self::LimitsUnknown { .. } => "limits_unknown",
         }
     }
 
@@ -205,7 +227,9 @@ impl DspiError {
             | Self::OvervoltWordRequired { msg }
             | Self::ConfirmationRequired { msg, .. }
             | Self::LimitExceeded { msg, .. }
-            | Self::InstallerLock { msg, .. } => msg.clone(), // -- WP P1LK --
+            | Self::InstallerLock { msg, .. } // -- WP P1LK --
+            | Self::ImageRefused { msg } // -- WP P1DKFIX --
+            | Self::LimitsUnknown { msg } => msg.clone(),
             Self::Refused { status } => format!("status {status}"),
             Self::Disconnected
             | Self::Unsupported
@@ -228,8 +252,47 @@ impl From<uniffi::UnexpectedUniFFICallbackError> for DspiError {
     }
 }
 
+// -- WP P1DKFIX -- F5
+/// The limits a hub names in a `limit_exceeded` refusal (P1LM's codes).
+const LIMIT_CODES: [&str; 6] = [
+    "out_gain",
+    "eq_boost",
+    "highpass",
+    "delay",
+    "limiter",
+    "master_volume",
+];
+
+// -- WP P1DKFIX -- F5
+/// A hub's named refusal (`TransportError::hub_refusal`) as the core's own
+/// error, so a client shows the same notice over Link as over USB.
+fn hub_refusal(e: &TransportError) -> Option<DspiError> {
+    let (key, msg) = e.hub_refusal()?;
+    let msg = msg.to_owned();
+    Some(match key {
+        "limit_exceeded" => DspiError::LimitExceeded {
+            code: e
+                .hub_refusal_limit()
+                .filter(|l| LIMIT_CODES.contains(l))
+                .unwrap_or("limit")
+                .to_owned(),
+            msg,
+        },
+        "installer_lock" => DspiError::InstallerLock {
+            code: "locked".into(),
+            msg,
+        },
+        "image_refused" => DspiError::ImageRefused { msg },
+        "limits_unknown" => DspiError::LimitsUnknown { msg },
+        _ => return None,
+    })
+}
+
 impl From<TransportError> for DspiError {
     fn from(e: TransportError) -> Self {
+        if let Some(mapped) = hub_refusal(&e) {
+            return mapped; // -- WP P1DKFIX -- F5
+        }
         match e {
             TransportError::Disconnected
             | TransportError::NotFound
@@ -289,6 +352,51 @@ mod tests {
             DspiError::from(TransportError::Stalled { opcode: 1 }),
             DspiError::Transfer { .. }
         ));
+    }
+
+    // -- WP P1DKFIX -- F5 (review p1d-core probe, adopted)
+    #[test]
+    fn wp_p1dkfix_a_hub_refusal_keeps_its_notice_in_the_core() {
+        let e = DspiError::from(TransportError::Denied(
+            "limit_exceeded/out_gain: output 1 gain 6 dB".into(),
+        ));
+        assert_eq!(
+            e,
+            DspiError::LimitExceeded {
+                code: "out_gain".into(),
+                msg: "output 1 gain 6 dB".into()
+            }
+        );
+        assert_eq!(e.notice_key(), "limit_exceeded");
+        // No limit named, or one this core does not know: still the notice.
+        for text in ["limit_exceeded: x", "limit_exceeded/rm_rf: x"] {
+            let e = DspiError::from(TransportError::Denied(text.into()));
+            assert!(
+                matches!(&e, DspiError::LimitExceeded { code, .. } if code == "limit"),
+                "{e:?}"
+            );
+        }
+        let e = DspiError::from(TransportError::Denied("installer_lock: locked".into()));
+        assert_eq!(
+            e,
+            DspiError::InstallerLock {
+                code: "locked".into(),
+                msg: "locked".into()
+            }
+        );
+        assert_eq!(e.notice_key(), "installer_lock.locked");
+        let e = DspiError::from(TransportError::Denied("image_refused: x".into()));
+        assert_eq!(e, DspiError::ImageRefused { msg: "x".into() });
+        assert_eq!(e.notice_key(), "image_refused");
+        let e = DspiError::from(TransportError::Denied("limits_unknown: y".into()));
+        assert_eq!(e, DspiError::LimitsUnknown { msg: "y".into() });
+        assert_eq!(e.notice_key(), "limits_unknown");
+        assert_eq!(e.notice_detail(), "y");
+        // A role's plain denial stays one.
+        assert_eq!(
+            DspiError::from(TransportError::Denied("opcode 0x74 is not allowed".into())),
+            DspiError::Denied
+        );
     }
 
     #[test]

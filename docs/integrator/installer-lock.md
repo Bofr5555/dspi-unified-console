@@ -19,9 +19,11 @@ every write passes as it does without this feature. A console never invents a lo
 
 - The locked-user state refuses every other write **before anything is sent**: `DspiError::InstallerLock { code:
   "locked" }`, notice key `installer_lock.locked`. The check sits where every write to the device starts, so a typed
-  setter, `write_param`, an undo or a redo, an import, a snapshot recall, an A/B toggle, a flash save, a factory reset,
-  the signal generator and the analyser's configuration push are all refused alike. A preset slot load passes, and the
-  limits hold after it (it only narrows). A revert of a guarded apply passes too.
+  setter, `write_param`, an undo or a redo (refused as `locked`; an undo group is undone whole or not at all), an
+  import, a snapshot recall, an A/B toggle, a flash save, a factory reset and the signal generator are all refused
+  alike. A preset slot load passes, and the limits hold after it (it only narrows). A revert of a guarded apply passes
+  too. **The analyser runs** while locked (its configuration push and STOP change no audio; decided in WP P1DKFIX),
+  on the hub as well.
 - What the lock covers is the profile's `lockedPages` (screen ids of the manifest); `installer_lock_cover(pages)`
   sets it. The write check does not depend on which pages: a covered lock allows only the writes above.
 - **Unlocking lasts for the session** of this core, per device (a reconnect keeps it), until `installer_lock()`.
@@ -31,7 +33,9 @@ every write passes as it does without this feature. A console never invents a lo
 - **Repeated wrong PINs** (`wrong_pin`): 3 are free; each further one opens a refusal window of 30 s, doubling up to
   15 min. The window is the next allowed time on the core's clock seam, never a sleep: an attempt inside it is refused
   at once (`wait`, notice `installer_lock.wait`) and `installer_lock_state().retryAfterMs` says how long. A good PIN
-  resets the count. The count lives for the core's session.
+  resets the count. With a limits folder named the count and the window are kept beside the PIN
+  (`limits.tries.json`, the window's end on the wall clock, never trusted past 15 min), so restarting the app does not
+  reset them; an unreadable count file leaves no free try. The hub uses the same rule.
 - A PIN has 4 to 64 characters, with no space at either end. Checking one takes 0.1 to 1 s (PBKDF2): call the PIN
   calls off the UI thread.
 
@@ -56,10 +60,40 @@ Beside the profile, in the device's folder, written atomically:
 | `limits.pin.json` | the PIN's hash: `{version, kdf: "pbkdf2-sha256", iterations, salt, hash}` |
 | `limits.recovery.json` | the recovery code's hash, the same shape |
 
+| `limits.tries.json` | the wrong PINs since the last good one and the refusal window's end (ms since the epoch) |
+
+**Naming another limits folder keeps the lock.** `limits_set_dir` is refused (`pin_required`) while the open device's
+PIN is set and this console is not unlocked, so a locked user cannot name the lock away. Named by the installer, every
+PIN and profile in force stays in force: kept in memory with no folder (""), written to the new folder where it holds
+none for that device. Name the folder at start-up, before opening a device; with no device open the call is never
+refused.
+
 A PIN file that does not read counts as a PIN set (fails closed): the device stays locked, `lockState.detail` says
 why, and only the recovery code or the folder's deletion opens it. With no limits folder named, the PIN is kept for
 the core's lifetime. **On the web** no PIN is set (`installer_pin_set` is `unsupported`: no files and no random
 source in the core); the hub keeps a managed device's lock.
+
+## A device on a hub: one lock, the hub's
+
+A hub (P1HL) keeps its own installer PIN per device and judges every Control client's writes against it over DSPi
+Link (`docs/integrator/hub.md`). On a device reached through a hub, **the core defers to the hub's lock** so the user
+sees one lock and one prompt:
+
+- `installer_lock_refresh()` reads the hub's `limits.get` and `mode.pinned` for the bound device (a round trip: off
+  the UI thread) and returns the lock state. Call it after binding a hub device, after a reconnect and when the hub
+  sends `limits.changed` or `mode.changed`. With no hub session, or a hub without the `limits` cap, it asks nothing.
+- When the hub holds a PIN for the device, `LockState.heldBy` is `hub`: `pinSet`, `locked`, `unlocked`, `covers`,
+  `wrongTries` and `retryAfterMs` are the hub's for this session (an Admin is always unlocked), `scopeNoticeKey` is
+  `installer_lock.hub`, and `hubPinnedMode` is the mode the hub pins for this role (also in `mode_pinned()`).
+  `installer_unlock(pin)` sends the PIN to the hub (`wrong_pin`, `wait` as above, with the hub's window) and
+  `installer_lock()` locks it there. This console's own PIN for that device asks nothing and refuses nothing meanwhile:
+  the hub refuses over Link, and its refusal reaches the client as `InstallerLock { code: "locked" }`.
+- Otherwise `heldBy` is `console` (this console's PIN) or "" (none). A console PIN still applies to the device when it
+  is attached over USB, and on a hub that holds no PIN for it.
+
+The hub's other named refusals keep their notice too: a limit is `LimitExceeded { code: <the limit> }`, an image a
+Control client may not write is `DspiError::ImageRefused` (`image_refused`), a write the hub could not judge because
+it could not read the device is `DspiError::LimitsUnknown` (`limits_unknown`).
 
 ## Modes
 
@@ -94,8 +128,9 @@ from Settings > Installer (OD-P1e).
 | `installer_pin_set(pin) -> InstallerPin {recoveryCode, state}` | `dspi_installer_pin_set` | `installerPinSet` (unsupported) |
 | `installer_pin_clear() -> LockState` | `dspi_installer_pin_clear` | `installerPinClear` |
 | `installer_lock_cover(pages) -> LockState` | `dspi_installer_lock_cover` (a JSON array) | `installerLockCover {pages}` |
+| `installer_lock_refresh() -> LockState` | `dspi_installer_lock_refresh` | `installerLockRefresh` |
 
 `LockState`: `serial, pinSet, unlocked, locked, installerOpen, covers, allowedWrites, wrongTries, retryAfterMs,
-recovered, note, contact, scopeNoticeKey, detail`. Errors: `DspiError::InstallerLock { code, msg }` with `code`
+recovered, note, contact, scopeNoticeKey, detail, heldBy, hubPinnedMode`. Errors: `DspiError::InstallerLock { code, msg }` with `code`
 `locked`, `pin_required`, `wrong_pin`, `wait` or `no_pin`; C and the web reply `"code": "installer_lock"` and the
 notice key `installer_lock.<code>`.

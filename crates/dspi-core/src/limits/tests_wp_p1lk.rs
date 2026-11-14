@@ -143,8 +143,17 @@ fn wp_p1lk_no_pin_every_mode_and_every_write_no_prompt() {
 #[test]
 fn wp_p1lk_locked_allows_volume_mute_preset_and_refuses_the_rest() {
     let core = demo();
-    core.set_output_gain(1, 0.0).unwrap(); // an entry to undo
+    core.set_output_gain(1, 0.5).unwrap(); // an entry to undo
     locked(&core);
+    // An undo of a write the lock refuses is refused too, as `locked`, and
+    // the entry stays (-- WP P1DKFIX -- F10: the refusal itself asserted,
+    // before a preset load ends the history).
+    let before = core.get_state();
+    let e = core.undo().unwrap_err();
+    assert_eq!(code_of(&e), "locked", "{e:?}");
+    assert_eq!(core.get_state().output_gain_db, before.output_gain_db);
+    let e = core.undo().unwrap_err();
+    assert_eq!(code_of(&e), "locked", "still there to undo: {e:?}");
     for (what, r) in allowed(&core) {
         assert!(r.is_ok(), "{what}: {r:?}");
     }
@@ -158,15 +167,6 @@ fn wp_p1lk_locked_allows_volume_mute_preset_and_refuses_the_rest() {
     }
     assert_eq!(core.get_state().output_gain_db, before.output_gain_db);
     assert_eq!(core.get_state().filters, before.filters);
-    // An undo of a write the lock refuses is refused too.
-    let mut undone = Vec::new();
-    while let Ok(m) = core.undo() {
-        match m.entry {
-            Some(e) => undone.push(e.path),
-            None => break,
-        }
-    }
-    assert!(!undone.iter().any(|p| p == "out.gain"), "{undone:?}");
     // The installer's actions need the unlock.
     for r in [
         core.limits_apply_profile(LimitsProfile::default().to_document())

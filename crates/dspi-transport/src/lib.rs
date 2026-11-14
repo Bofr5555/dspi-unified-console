@@ -130,9 +130,29 @@ impl TransportError {
             return None;
         };
         let (key, msg) = text.split_once(": ")?;
+        // -- WP P1DKFIX -- `limit_exceeded/<limit>` names the limit.
+        let key = key.split_once('/').map_or(key, |(k, _)| k);
         let key = HUB_REFUSALS.iter().copied().find(|k| *k == key)?;
         Some((key, msg))
     }
+
+    // -- WP P1DKFIX -- F5
+    /// The limit a hub's `limit_exceeded` refusal names (`out_gain`, ...),
+    /// when it names one.
+    pub fn hub_refusal_limit(&self) -> Option<&str> {
+        let TransportError::Denied(text) = self else {
+            return None;
+        };
+        let (key, _) = text.split_once(": ")?;
+        let (key, limit) = key.split_once('/')?;
+        (key == "limit_exceeded" && is_limit_code(limit)).then_some(limit)
+    }
+}
+
+// -- WP P1DKFIX --
+/// Whether `s` reads as a limit's code: 1 to 32 lower-case letters and `_`.
+pub(crate) fn is_limit_code(s: &str) -> bool {
+    (1..=32).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
 }
 
 /// Platform-specific advice for a permission failure.

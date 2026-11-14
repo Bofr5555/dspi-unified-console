@@ -83,6 +83,12 @@ or `x-<hex>` for a serial with other characters):
 | `limits.good.dspipreset` | the last profile that was written cleanly: the fallback |
 | `limits.pin.json` | the PIN's hash (P1LK) |
 | `limits.recovery.json` | the recovery code's hash (P1LK, [installer-lock.md](installer-lock.md)) |
+| `limits.tries.json` | the wrong-PIN count and refusal window (P1DKFIX) |
+
+Name the folder before opening a device: with a device open whose installer PIN
+is set, `limits_set_dir` needs the console unlocked (`pin_required`), and the
+PINs and profiles in force are carried to the new folder (P1DKFIX,
+[installer-lock.md](installer-lock.md)).
 
 Every file is written atomically: a temporary file beside it, then a rename,
 so a crash leaves the old file or the new one.

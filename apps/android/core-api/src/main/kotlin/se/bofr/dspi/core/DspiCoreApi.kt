@@ -2019,10 +2019,16 @@ interface DspiCoreApi : AutoCloseable {
      * Keep limits profiles (and their PIN hashes) in files under `dir`, the
      * app's own data folder, one subfolder per device serial (created when
      * first written; "" forgets the folder). A profile set before a folder
-     * was named is kept for this core's lifetime only.
+     * was named is kept for this core's lifetime only. Name it before opening
+     * a device: with a device open whose installer PIN is set, this console
+     * must be unlocked for it. Every installer PIN this core knows stays in
+     * force, and is written to the new folder when that holds none for the
+     * device (WP P1DKFIX).
      *
      * Errors: [`DspiError::Unsupported`] on the web (no files: use
-     * [`DspiCore::limits_apply_profile`] with the document the page keeps).
+     * [`DspiCore::limits_apply_profile`] with the document the page keeps);
+     * [`DspiError::InstallerLock`] `pin_required` while the open device's
+     * PIN is set and this console is not unlocked (nothing changed).
      */
     @Throws(DspiException::class)
     fun limitsSetDir(dir: String)
@@ -2135,6 +2141,22 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun installerLockCover(pages: List<String>): LockState
+
+    /**
+     * Read the lock of the device bound on this console's DSPi Link session
+     * from its hub (`limits.get`, and the mode the hub pins for this role:
+     * `mode.pinned`), and return the one lock state the console shows: the
+     * hub's when the hub holds a PIN for the device (`held_by` `hub`; then
+     * [`DspiCore::installer_unlock`] asks the hub and this console's own PIN
+     * asks nothing), this console's otherwise. Call it after binding a hub
+     * device and when the hub says its limits changed. With no hub session,
+     * or a hub without `limits`, nothing is asked: the console's own lock.
+     * Slow (a round trip): off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] when the hub could not answer.
+     */
+    @Throws(DspiException::class)
+    fun installerLockRefresh(): LockState
 
     /**
      * Open a DSPi Link session to `url` (`link_ws_url`), replacing any

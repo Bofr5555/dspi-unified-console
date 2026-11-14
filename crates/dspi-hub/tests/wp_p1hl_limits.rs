@@ -724,3 +724,200 @@ fn wp_p1hl_the_messages_go_over_the_socket() {
         "limit_exceeded"
     );
 }
+
+// ── WP P1DKFIX: review p1d-core's probes, adopted as tests of the fixes ─────
+
+/// A locked device's Control client: write-as-read commands that change the
+/// device (preset save/delete, flash save, names, images, a reset) are outside
+/// the lock's scope; the analyser (F7, decided) is inside it, as in the core.
+#[test]
+fn wp_p1dkfix_locked_control_write_as_reads_are_refused_the_analyser_runs() {
+    let hub = hub();
+    let handle = plug(&hub, "DK-LOCK");
+    let admin = Client::open(&hub, handle, Role::Admin);
+    let control = Client::open(&hub, handle, Role::Control);
+    let mut p = gain_profile();
+    p["lockedPages"] = json!(["eq"]);
+    assert!(ok(&admin.set_profile(p)));
+    assert!(ok(&admin.msg(
+        json!({"t": "limits.pin", "id": 3, "handle": handle, "pin": "2468"})
+    )));
+    assert_eq!(control.get()["locked"], true);
+    type Try = (&'static str, Dir, u8, u16, u16, Vec<u8>);
+    let tries: Vec<Try> = vec![
+        (
+            "PRESET_SAVE",
+            Dir::Get,
+            op::REQ_PRESET_SAVE,
+            1,
+            1,
+            Vec::new(),
+        ),
+        (
+            "PRESET_DELETE",
+            Dir::Get,
+            op::REQ_PRESET_DELETE,
+            1,
+            1,
+            Vec::new(),
+        ),
+        (
+            "SAVE_PARAMS",
+            Dir::Get,
+            op::REQ_SAVE_PARAMS,
+            0,
+            1,
+            Vec::new(),
+        ),
+        (
+            "SET_CHANNEL_NAME",
+            Dir::Set,
+            op::REQ_SET_CHANNEL_NAME,
+            0,
+            4,
+            b"Left".to_vec(),
+        ),
+        (
+            "SET_EQ_PARAM",
+            Dir::Set,
+            op::REQ_SET_EQ_PARAM,
+            0,
+            16,
+            vec![0u8; 16],
+        ),
+        (
+            "SET_ALL_PARAMS_CHUNK",
+            Dir::Set,
+            op::REQ_SET_ALL_PARAMS_CHUNK,
+            0,
+            4,
+            vec![0u8; 4],
+        ),
+        (
+            "FACTORY_RESET",
+            Dir::Get,
+            op::REQ_FACTORY_RESET,
+            0,
+            1,
+            Vec::new(),
+        ),
+    ];
+    for (what, dir, code, wv, len, payload) in tries {
+        let r = control.command(dir, code, wv, len, payload);
+        assert_eq!(r.status, status::DENIED, "{what}: {r:?}");
+    }
+    // The analyser: start and configure pass the lock.
+    for (what, dir, code, wv, len, payload) in [
+        (
+            "RTA_CONTROL",
+            Dir::Get,
+            op::REQ_RTA_CONTROL,
+            1,
+            1,
+            Vec::new(),
+        ),
+        (
+            "RTA_SET_CONFIG",
+            Dir::Set,
+            op::REQ_RTA_SET_CONFIG,
+            0,
+            4,
+            vec![0, 0, 0, 0],
+        ),
+    ] {
+        let r = control.command(dir, code, wv, len, payload);
+        assert_ne!(r.status, status::DENIED, "{what}: {r:?}");
+    }
+    // Volume, mute, preset load pass.
+    assert_eq!(
+        control.set_f32(op::REQ_SET_USER_VOLUME, 0, -12.0).status,
+        status::OK
+    );
+    assert_eq!(
+        control
+            .command(Dir::Get, op::REQ_PRESET_LOAD, 1, 1, Vec::new())
+            .status,
+        status::OK
+    );
+}
+
+/// F1: a Control client cannot write output 0's gain past the limit by naming
+/// it output 0x0100 (the firmware reads `wValue & 0xFF`).
+#[test]
+fn wp_p1dkfix_a_wide_output_index_is_judged_over_link() {
+    let hub = hub();
+    let handle = plug(&hub, "DK-WIDE");
+    let admin = Client::open(&hub, handle, Role::Admin);
+    let control = Client::open(&hub, handle, Role::Control);
+    assert!(ok(&admin.set_profile(gain_profile())));
+    let before = control.gain(0);
+    assert_eq!(
+        refusal(&control.set_gain(0, 10.0))["refused"],
+        "limit_exceeded"
+    );
+    for wide in [0x0100u16, 0xFF00] {
+        let r = control.set_gain(wide, 10.0);
+        assert_eq!(
+            refusal(&r)["refused"],
+            "limit_exceeded",
+            "{wide:#06x}: {r:?}"
+        );
+        assert_eq!(refusal(&r)["limit"], "out_gain");
+    }
+    assert_eq!(control.gain(0), before, "the device was not written");
+    // Unreadable: refused too, and an Admin's alike.
+    let short = control.command(Dir::Set, op::REQ_SET_OUTPUT_GAIN, 0, 2, vec![0, 0]);
+    assert_eq!(refusal(&short)["refused"], "limit_exceeded");
+    let nan = admin.set_gain(0, f32::NAN);
+    assert_eq!(refusal(&nan)["refused"], "limit_exceeded");
+}
+
+/// F6 and the client's prompt: `limits.get` says the wrong tries and the
+/// window left, and the store keeps them across a restart.
+#[test]
+fn wp_p1dkfix_limits_get_reports_the_window_and_the_store_keeps_it() {
+    let d = store_dir("tries");
+    let persist = Arc::new(FileStore(Mutex::new(HubStore::load(&d).unwrap())));
+    let l = HubLimits::new(Some(persist as Arc<dyn LimitsPersist>));
+    l.set_pin("SER-T", Some("2468")).unwrap();
+    let now = Instant::now();
+    for _ in 0..=dspi_hub::limits::LOCK_FREE_TRIES {
+        let _ = l.unlock("SER-T", 3, "0000", now);
+    }
+    let text = std::fs::read_to_string(d.join("hub-store.json")).unwrap();
+    let v: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(
+        v["device_pin_tries"]["SER-T"]["wrong"],
+        dspi_hub::limits::LOCK_FREE_TRIES + 1,
+        "{text}"
+    );
+    let again = HubLimits::new(Some(
+        Arc::new(FileStore(Mutex::new(HubStore::load(&d).unwrap()))) as Arc<dyn LimitsPersist>,
+    ));
+    assert!(again.tries("SER-T", Instant::now()).1.is_some());
+    // Over a hub: the answer carries the count and the window.
+    let hub = hub();
+    let handle = plug(&hub, "DK-GET");
+    let admin = Client::open(&hub, handle, Role::Admin);
+    let control = Client::open(&hub, handle, Role::Control);
+    let mut p = gain_profile();
+    p["lockedPages"] = json!(["eq"]);
+    assert!(ok(&admin.set_profile(p)));
+    assert!(ok(&admin.msg(
+        json!({"t": "limits.pin", "id": 3, "handle": handle, "pin": "2468"})
+    )));
+    for i in 0..=dspi_hub::limits::LOCK_FREE_TRIES {
+        let _ = control
+            .msg(json!({"t": "limits.unlock", "id": 10 + i, "handle": handle, "pin": "0000"}));
+    }
+    let st = control.get();
+    assert_eq!(
+        st["wrong_tries"],
+        dspi_hub::limits::LOCK_FREE_TRIES + 1,
+        "{st}"
+    );
+    assert!(st["retry_in_ms"].as_u64().unwrap() > 0, "{st}");
+    let later =
+        control.msg(json!({"t": "limits.unlock", "id": 30, "handle": handle, "pin": "2468"}));
+    assert_eq!(later["code"], "retry_later", "{later}");
+}

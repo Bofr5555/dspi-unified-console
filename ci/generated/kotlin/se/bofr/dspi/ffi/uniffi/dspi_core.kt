@@ -1706,6 +1706,8 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2122,6 +2124,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_inaccessible_devices(
 fun uniffi_dspi_core_checksum_method_dspicore_installer_lock(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_installer_lock_cover(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_installer_lock_refresh(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_installer_lock_state(
 ): Short
@@ -2904,6 +2908,8 @@ fun uniffi_dspi_core_fn_method_dspicore_inaccessible_devices(`ptr`: Pointer,unif
 fun uniffi_dspi_core_fn_method_dspicore_installer_lock(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_installer_lock_cover(`ptr`: Pointer,`pages`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_installer_lock_refresh(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_installer_lock_state(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -4132,6 +4138,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_installer_lock_cover() != 6684.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_installer_lock_refresh() != 3606.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_installer_lock_state() != 5498.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -4156,7 +4165,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_limits_profile_document() != 12621.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_limits_set_dir() != 22784.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_limits_set_dir() != 53753.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_limits_status() != 25922.toShort()) {
@@ -7937,6 +7946,21 @@ public interface DspiCoreInterface {
     fun `installerLockCover`(`pages`: List<kotlin.String>): LockState
     
     /**
+     * Read the lock of the device bound on this console's DSPi Link session
+     * from its hub (`limits.get`, and the mode the hub pins for this role:
+     * `mode.pinned`), and return the one lock state the console shows: the
+     * hub's when the hub holds a PIN for the device (`held_by` `hub`; then
+     * [`DspiCore::installer_unlock`] asks the hub and this console's own PIN
+     * asks nothing), this console's otherwise. Call it after binding a hub
+     * device and when the hub says its limits changed. With no hub session,
+     * or a hub without `limits`, nothing is asked: the console's own lock.
+     * Slow (a round trip): off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] when the hub could not answer.
+     */
+    fun `installerLockRefresh`(): LockState
+    
+    /**
      * The open device's installer lock on this console: whether a PIN is
      * set, whether the locked-user state is on, what it covers and allows,
      * the refusal window after wrong PINs, the installer's note and contact.
@@ -8022,10 +8046,16 @@ public interface DspiCoreInterface {
      * Keep limits profiles (and their PIN hashes) in files under `dir`, the
      * app's own data folder, one subfolder per device serial (created when
      * first written; "" forgets the folder). A profile set before a folder
-     * was named is kept for this core's lifetime only.
+     * was named is kept for this core's lifetime only. Name it before opening
+     * a device: with a device open whose installer PIN is set, this console
+     * must be unlocked for it. Every installer PIN this core knows stays in
+     * force, and is written to the new folder when that holds none for the
+     * device (WP P1DKFIX).
      *
      * Errors: [`DspiError::Unsupported`] on the web (no files: use
-     * [`DspiCore::limits_apply_profile`] with the document the page keeps).
+     * [`DspiCore::limits_apply_profile`] with the document the page keeps);
+     * [`DspiError::InstallerLock`] `pin_required` while the open device's
+     * PIN is set and this console is not unlocked (nothing changed).
      */
     fun `limitsSetDir`(`dir`: kotlin.String)
     
@@ -13316,6 +13346,32 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Read the lock of the device bound on this console's DSPi Link session
+     * from its hub (`limits.get`, and the mode the hub pins for this role:
+     * `mode.pinned`), and return the one lock state the console shows: the
+     * hub's when the hub holds a PIN for the device (`held_by` `hub`; then
+     * [`DspiCore::installer_unlock`] asks the hub and this console's own PIN
+     * asks nothing), this console's otherwise. Call it after binding a hub
+     * device and when the hub says its limits changed. With no hub session,
+     * or a hub without `limits`, nothing is asked: the console's own lock.
+     * Slow (a round trip): off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] when the hub could not answer.
+     */
+    @Throws(DspiException::class)override fun `installerLockRefresh`(): LockState {
+            return FfiConverterTypeLockState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_installer_lock_refresh(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * The open device's installer lock on this console: whether a PIN is
      * set, whether the locked-user state is on, what it covers and allows,
      * the refusal window after wrong PINs, the installer's note and contact.
@@ -13485,10 +13541,16 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * Keep limits profiles (and their PIN hashes) in files under `dir`, the
      * app's own data folder, one subfolder per device serial (created when
      * first written; "" forgets the folder). A profile set before a folder
-     * was named is kept for this core's lifetime only.
+     * was named is kept for this core's lifetime only. Name it before opening
+     * a device: with a device open whose installer PIN is set, this console
+     * must be unlocked for it. Every installer PIN this core knows stays in
+     * force, and is written to the new folder when that holds none for the
+     * device (WP P1DKFIX).
      *
      * Errors: [`DspiError::Unsupported`] on the web (no files: use
-     * [`DspiCore::limits_apply_profile`] with the document the page keeps).
+     * [`DspiCore::limits_apply_profile`] with the document the page keeps);
+     * [`DspiError::InstallerLock`] `pin_required` while the open device's
+     * PIN is set and this console is not unlocked (nothing changed).
      */
     @Throws(DspiException::class)override fun `limitsSetDir`(`dir`: kotlin.String)
         = 
@@ -25375,13 +25437,25 @@ data class LockState (
     var `contact`: kotlin.String, 
     /**
      * The notice the unlock dialog shows in one line: the lock is on this
-     * console, the DSPi itself is open (`installer_lock.scope`).
+     * console, the DSPi itself is open (`installer_lock.scope`); or, when
+     * the hub holds it, the hub's PIN unlocks it (`installer_lock.hub`).
      */
     var `scopeNoticeKey`: kotlin.String, 
     /**
      * Why the PIN's file is unreadable, when it is.
      */
-    var `detail`: kotlin.String
+    var `detail`: kotlin.String, 
+    /**
+     * Which lock this is: `console` (this console's PIN), `hub` (the DSPi
+     * Link hub the device is reached through holds the PIN; unlocking asks
+     * the hub), or "" with no PIN. One lock, one prompt.
+     */
+    var `heldBy`: kotlin.String, 
+    /**
+     * The mode the hub pins for this console's role on this device
+     * (`mode.pinned`), "" for none.
+     */
+    var `hubPinnedMode`: kotlin.String
 ) {
     
     companion object
@@ -25407,6 +25481,8 @@ public object FfiConverterTypeLockState: FfiConverterRustBuffer<LockState> {
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
         )
     }
 
@@ -25424,7 +25500,9 @@ public object FfiConverterTypeLockState: FfiConverterRustBuffer<LockState> {
             FfiConverterString.allocationSize(value.`note`) +
             FfiConverterString.allocationSize(value.`contact`) +
             FfiConverterString.allocationSize(value.`scopeNoticeKey`) +
-            FfiConverterString.allocationSize(value.`detail`)
+            FfiConverterString.allocationSize(value.`detail`) +
+            FfiConverterString.allocationSize(value.`heldBy`) +
+            FfiConverterString.allocationSize(value.`hubPinnedMode`)
     )
 
     override fun write(value: LockState, buf: ByteBuffer) {
@@ -25442,6 +25520,8 @@ public object FfiConverterTypeLockState: FfiConverterRustBuffer<LockState> {
             FfiConverterString.write(value.`contact`, buf)
             FfiConverterString.write(value.`scopeNoticeKey`, buf)
             FfiConverterString.write(value.`detail`, buf)
+            FfiConverterString.write(value.`heldBy`, buf)
+            FfiConverterString.write(value.`hubPinnedMode`, buf)
     }
 }
 
@@ -29117,6 +29197,39 @@ sealed class DspiException: kotlin.Exception() {
             get() = "code=${ `code` }, msg=${ `msg` }"
     }
     
+    /**
+     * DSPi Link: the hub refused a whole-state write (an import, a snapshot
+     * recall, an A/B toggle, a guarded apply) from this console's role: the
+     * device has a limits profile or an installer lock on the hub, and only
+     * an Admin may write its whole state. Nothing was sent.
+     */
+    class ImageRefused(
+        
+        /**
+         * The hub's words, for a log or a detail line.
+         */
+        val `msg`: kotlin.String
+        ) : DspiException() {
+        override val message
+            get() = "msg=${ `msg` }"
+    }
+    
+    /**
+     * DSPi Link: the hub could not read the device's state to judge this
+     * write against its limits profile, so it refused it. Nothing was sent;
+     * trying again may pass.
+     */
+    class LimitsUnknown(
+        
+        /**
+         * The hub's words, for a log or a detail line.
+         */
+        val `msg`: kotlin.String
+        ) : DspiException() {
+        override val message
+            get() = "msg=${ `msg` }"
+    }
+    
 
     companion object ErrorHandler : UniffiRustCallStatusErrorHandler<DspiException> {
         override fun lift(error_buf: RustBuffer.ByValue): DspiException = FfiConverterTypeDspiError.lift(error_buf)
@@ -29175,6 +29288,12 @@ public object FfiConverterTypeDspiError : FfiConverterRustBuffer<DspiException> 
                 )
             16 -> DspiException.InstallerLock(
                 FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
+                )
+            17 -> DspiException.ImageRefused(
+                FfiConverterString.read(buf),
+                )
+            18 -> DspiException.LimitsUnknown(
                 FfiConverterString.read(buf),
                 )
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
@@ -29264,6 +29383,16 @@ public object FfiConverterTypeDspiError : FfiConverterRustBuffer<DspiException> 
                 + FfiConverterString.allocationSize(value.`code`)
                 + FfiConverterString.allocationSize(value.`msg`)
             )
+            is DspiException.ImageRefused -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`msg`)
+            )
+            is DspiException.LimitsUnknown -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`msg`)
+            )
         }
     }
 
@@ -29347,6 +29476,16 @@ public object FfiConverterTypeDspiError : FfiConverterRustBuffer<DspiException> 
             is DspiException.InstallerLock -> {
                 buf.putInt(16)
                 FfiConverterString.write(value.`code`, buf)
+                FfiConverterString.write(value.`msg`, buf)
+                Unit
+            }
+            is DspiException.ImageRefused -> {
+                buf.putInt(17)
+                FfiConverterString.write(value.`msg`, buf)
+                Unit
+            }
+            is DspiException.LimitsUnknown -> {
+                buf.putInt(18)
                 FfiConverterString.write(value.`msg`, buf)
                 Unit
             }

@@ -39,6 +39,22 @@
 //! - **On the web** there are no files and no random source in the core: no
 //!   PIN is set there ([`DspiError::Unsupported`]); the hub keeps the lock of a
 //!   device it manages (P1HL).
+//! - **The wrong-PIN count survives a restart** (WP P1DKFIX, F6): with a
+//!   limits folder named it is kept beside the PIN (`limits.tries.json`, the
+//!   window's end on the wall clock, never trusted past
+//!   [`LOCK_MAX_WAIT_MS`]); an unreadable count file leaves no free tries.
+//! - **Naming another limits folder keeps the lock** (WP P1DKFIX, F2):
+//!   [`DspiCore::limits_set_dir`] is refused (`pin_required`) while the open
+//!   device's PIN is set and this console is not unlocked, and every PIN this
+//!   core knows is carried to the new folder (or kept in memory with none).
+//! - **A hub-managed device has one lock, the hub's** (WP P1DKFIX): on a DSPi
+//!   Link session whose hub holds a PIN for the bound device
+//!   ([`DspiCore::installer_lock_refresh`] reads `limits.get` and
+//!   `mode.pinned`), [`LockState`] reports the hub's lock (`held_by` `hub`),
+//!   [`DspiCore::installer_unlock`] and [`DspiCore::installer_lock`] go to
+//!   the hub, and the console's own PIN asks nothing and refuses nothing for
+//!   that device (the hub refuses over Link). A console PIN still applies to
+//!   a USB-attached device, and to a hub device whose hub holds no PIN.
 #![warn(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -56,14 +72,8 @@ use dspi_transport::clock::Instant;
 
 use crate::{DspiCore, DspiError, Inner, Result};
 
-/// Wrong PINs allowed before the refusal window opens.
-pub const LOCK_FREE_TRIES: u32 = 3;
-
-/// The first refusal window, ms; each further wrong PIN doubles it.
-pub const LOCK_FIRST_WAIT_MS: u64 = 30_000;
-
-/// The longest refusal window, ms.
-pub const LOCK_MAX_WAIT_MS: u64 = 15 * 60_000;
+// -- WP P1DKFIX -- one rule for the core and the hub (`dspi_session::limits`).
+pub use dspi_session::limits::{LOCK_FIRST_WAIT_MS, LOCK_FREE_TRIES, LOCK_MAX_WAIT_MS};
 
 /// The writes the locked-user state lets through (by registry path; the
 /// manifest's `lockedUser.writes`).
@@ -78,6 +88,11 @@ pub const LOCKED_USER_WRITES: [&str; 5] = [
 /// The notice a client shows in the unlock dialog: the lock is on this
 /// console, the DSPi itself is open (OD-P1d).
 pub const LOCK_SCOPE_NOTICE: &str = "installer_lock.scope";
+
+// -- WP P1DKFIX --
+/// The notice the unlock dialog shows when the hub holds the lock: the hub's
+/// PIN unlocks the device for this console.
+pub const LOCK_HUB_NOTICE: &str = "installer_lock.hub";
 
 /// A PIN's shortest and longest length, in characters.
 const PIN_MIN_CHARS: usize = 4;
@@ -171,12 +186,7 @@ struct Tries {
 
 /// The window a wrong PIN number `wrong` opens (none for the free ones).
 pub(crate) fn window_for(wrong: u32) -> Option<Duration> {
-    let past = wrong.checked_sub(LOCK_FREE_TRIES)?.checked_sub(1)?;
-    let factor = 1u64.checked_shl(past.min(20)).unwrap_or(u64::MAX);
-    let ms = LOCK_FIRST_WAIT_MS
-        .saturating_mul(factor)
-        .min(LOCK_MAX_WAIT_MS);
-    Some(Duration::from_millis(ms))
+    dspi_session::limits::lock_window_for(wrong)
 }
 
 impl Tries {
@@ -193,6 +203,65 @@ impl Tries {
             self.until = now.checked_add(w).or(self.until);
         }
     }
+
+    // -- WP P1DKFIX -- F6
+    /// As kept in a file: the window's end on the wall clock.
+    fn stored(&self, now: Instant) -> dspi_session::limits::StoredTries {
+        let left = self.wait_left(now).unwrap_or_default();
+        let until_unix_ms = if left.is_zero() {
+            0
+        } else {
+            unix_ms().saturating_add(u64::try_from(left.as_millis()).unwrap_or(u64::MAX))
+        };
+        dspi_session::limits::StoredTries {
+            wrong: self.wrong,
+            until_unix_ms,
+        }
+    }
+
+    // -- WP P1DKFIX -- F6
+    /// From a file, at `now`: the window left on the wall clock, never more
+    /// than the longest.
+    fn from_stored(serial: &str, st: dspi_session::limits::StoredTries, now: Instant) -> Self {
+        let left = Duration::from_millis(st.left_ms(unix_ms()));
+        Self {
+            serial: serial.to_owned(),
+            wrong: st.wrong,
+            until: (!left.is_zero()).then(|| now.checked_add(left)).flatten(),
+        }
+    }
+}
+
+// -- WP P1DKFIX -- F6
+/// The wall clock, ms since the epoch (the clock seam's; 0 before it).
+fn unix_ms() -> u64 {
+    dspi_transport::clock::system_time()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
+}
+
+// -- WP P1DKFIX --
+/// The hub's lock of the device bound on this console's DSPi Link session, as
+/// last read ([`DspiCore::installer_lock_refresh`]).
+#[derive(Debug, Clone, Default)]
+pub(crate) struct HubLock {
+    /// The bound device's serial.
+    pub(crate) serial: String,
+    /// The hub holds a PIN for it.
+    pub(crate) pin_set: bool,
+    /// The device is locked on the hub (a PIN, and pages it covers).
+    pub(crate) locked: bool,
+    /// This session may write past the lock: unlocked with the PIN, an
+    /// Admin, or nothing locked.
+    pub(crate) unlocked: bool,
+    /// What the hub's profile locks (`lockedPages`).
+    pub(crate) covers: Vec<String>,
+    /// The hub's wrong PINs for the device, and the end of its window.
+    pub(crate) wrong: u32,
+    pub(crate) until: Option<Instant>,
+    /// The installer's note and contact from the hub's profile.
+    pub(crate) note: String,
+    pub(crate) contact: String,
 }
 
 /// The installer's lock as this core holds it, per device serial.
@@ -209,13 +278,60 @@ pub(crate) struct LockBook {
     tries: Vec<Tries>,
     /// A mode the hub pins for a device: (serial, mode id) (P1HL).
     pub(crate) pinned: Option<(String, String)>,
+    // -- WP P1DKFIX --
+    /// The hub's lock of the device bound over DSPi Link, as last read.
+    pub(crate) hub: Option<HubLock>,
 }
 
 impl LockBook {
-    /// Forget what was read from files (another folder was named): PINs kept
-    /// in memory before a folder was named go with them.
-    pub(crate) fn forget_files(&mut self) {
-        self.pins.clear();
+    // -- WP P1DKFIX -- F2
+    /// Another folder was named: what was read as "no PIN" is read again from
+    /// it, but every PIN known (set, or unreadable: fails closed) is kept, so
+    /// naming a folder never drops a lock. The PINs kept, for the new folder.
+    pub(crate) fn carry_over(&mut self) -> Vec<(String, PinRecord, Option<PinRecord>)> {
+        self.pins.retain(|p| p.known.is_set());
+        self.pins
+            .iter()
+            .filter_map(|p| match &p.known {
+                Known::Set { pin, recovery } => {
+                    Some((p.serial.clone(), pin.clone(), recovery.clone()))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    // -- WP P1DKFIX -- F2, F6
+    /// The wrong tries of the PINs `carried`, as files keep them.
+    pub(crate) fn tries_of(
+        &self,
+        carried: &[(String, PinRecord, Option<PinRecord>)],
+    ) -> Vec<dspi_session::limits::StoredTries> {
+        let now = Instant::now();
+        carried
+            .iter()
+            .map(|(serial, _, _)| self.stored_tries(serial, now))
+            .collect()
+    }
+
+    // -- WP P1DKFIX -- F6
+    /// `serial`'s wrong tries, as a file keeps them, at `now` (none: none).
+    fn stored_tries(&self, serial: &str, now: Instant) -> dspi_session::limits::StoredTries {
+        self.tries
+            .iter()
+            .find(|t| t.serial == serial)
+            .map(|t| t.stored(now))
+            .unwrap_or_default()
+    }
+
+    // -- WP P1DKFIX -- F6
+    /// Take `serial`'s wrong tries from a file unless counted here already.
+    fn adopt_tries(&mut self, t: Option<Tries>) {
+        if let Some(t) = t
+            && !self.tries.iter().any(|x| x.serial == t.serial)
+        {
+            self.tries.push(t);
+        }
     }
 
     fn known(&self, serial: &str) -> Option<&Known> {
@@ -279,6 +395,67 @@ impl LockBook {
     }
 }
 
+// -- WP P1DKFIX -- F6
+/// `serial`'s wrong tries as its file holds them; an unreadable file leaves
+/// no free try (fails closed).
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+fn load_tries(store: &dspi_session::limits::LimitsStore, serial: &str) -> Option<Tries> {
+    let now = Instant::now();
+    match store.tries(serial) {
+        Ok(None) => None,
+        Ok(Some(st)) => Some(Tries::from_stored(serial, st, now)),
+        Err(e) => {
+            log::warn!("the installer PIN's try count is unreadable ({e}): no free try left");
+            Some(Tries {
+                serial: serial.to_owned(),
+                wrong: LOCK_FREE_TRIES,
+                until: None,
+            })
+        }
+    }
+}
+
+// -- WP P1DKFIX -- F2
+/// Write the PINs carried from another folder into `store`, each where the
+/// store has none for that device (best effort: they stand in memory either
+/// way), with their wrong tries.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+pub(crate) fn write_carried(
+    store: &dspi_session::limits::LimitsStore,
+    carried: &[(String, PinRecord, Option<PinRecord>)],
+    tries: &[dspi_session::limits::StoredTries],
+) {
+    for ((serial, pin, recovery), t) in carried.iter().zip(tries) {
+        if !matches!(store.pin(serial), Ok(None)) {
+            continue;
+        }
+        let kept = store.write_pin(pin, serial).and_then(|()| match recovery {
+            Some(r) => store.write_recovery(r, serial),
+            None => Ok(()),
+        });
+        if let Err(e) = kept {
+            log::warn!("an installer PIN could not be written to the new limits folder: {e}");
+        }
+        save_tries(Some(store), serial, t);
+    }
+}
+
+// -- WP P1DKFIX -- F6
+/// Keep `serial`'s wrong tries in its file (best effort: the count in memory
+/// stands for this session either way).
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+fn save_tries(
+    store: Option<&dspi_session::limits::LimitsStore>,
+    serial: &str,
+    tries: &dspi_session::limits::StoredTries,
+) {
+    if let Some(store) = store
+        && let Err(e) = store.write_tries(tries, serial)
+    {
+        log::warn!("the installer PIN's try count could not be kept: {e}");
+    }
+}
+
 /// `serial`'s PIN as its files hold it (file I/O: preloaded with the core's
 /// lock released, see `limits_preload`).
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
@@ -305,9 +482,34 @@ impl Inner {
         if let Some(store) = self.limits.store() {
             let k = load_known(&store, serial);
             self.limits.lock.put(serial, k.clone());
+            self.limits.lock.adopt_tries(load_tries(&store, serial)); // -- WP P1DKFIX --
             return k;
         }
         Known::None
+    }
+
+    // -- WP P1DKFIX --
+    /// The hub's lock of the open device, when this console reaches it over a
+    /// live DSPi Link session and the hub holds a PIN for it: the one lock
+    /// that device has here.
+    fn hub_lock(&self, serial: &str) -> Option<HubLock> {
+        let h = self.limits.lock.hub.as_ref()?;
+        if h.serial != serial || !h.pin_set || !self.hub_bound(serial) {
+            return None;
+        }
+        Some(h.clone())
+    }
+
+    // -- WP P1DKFIX --
+    /// Whether `serial` is the device bound on a live DSPi Link session.
+    #[cfg(feature = "link")]
+    fn hub_bound(&self, serial: &str) -> bool {
+        self.link_bound_serial().is_some_and(|s| s == serial)
+    }
+
+    #[cfg(not(feature = "link"))]
+    fn hub_bound(&self, _serial: &str) -> bool {
+        false
     }
 
     /// The open device's serial, or [`DspiError::Disconnected`].
@@ -323,18 +525,26 @@ impl Inner {
     }
 
     /// Whether the open device is in the locked-user state on this console.
+    /// On a device whose hub holds the lock: never here (the hub refuses).
     pub(crate) fn installer_locked(&mut self) -> bool {
         let Some(serial) = self.conn.as_ref().map(|c| c.serial.clone()) else {
             return false;
         };
+        if self.hub_lock(&serial).is_some() {
+            return false; // -- WP P1DKFIX -- the hub's lock is the one
+        }
         if !self.pin_known(&serial).is_set() || self.limits.lock.is_unlocked(&serial) {
             return false;
         }
         !self.lock_covers().is_empty()
     }
 
-    /// Whether the Installer pages are open for `serial`: no PIN, or unlocked.
+    /// Whether the Installer pages are open for `serial`: no PIN, or unlocked
+    /// (on the hub, when the hub holds the lock).
     fn installer_open(&mut self, serial: &str) -> bool {
+        if let Some(h) = self.hub_lock(serial) {
+            return h.unlocked; // -- WP P1DKFIX --
+        }
         !self.pin_known(serial).is_set() || self.limits.lock.is_unlocked(serial)
     }
 
@@ -348,6 +558,33 @@ impl Inner {
                 ..LockState::default()
             };
         };
+        // -- WP P1DKFIX -- a hub that holds the device's PIN: its lock alone.
+        if let Some(h) = self.hub_lock(&serial) {
+            let now = Instant::now();
+            let wait = h
+                .until
+                .and_then(|u| (u > now).then(|| u.duration_since(now)));
+            let pinned_mode = self.hub_pinned_mode(&serial);
+            return LockState {
+                pin_set: true,
+                unlocked: h.unlocked,
+                locked: h.locked && !h.unlocked,
+                installer_open: h.unlocked,
+                covers: h.covers,
+                allowed_writes: allowed(),
+                wrong_tries: h.wrong,
+                retry_after_ms: wait
+                    .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX)),
+                recovered: false,
+                note: h.note,
+                contact: h.contact,
+                scope_notice_key: LOCK_HUB_NOTICE.into(),
+                detail: String::new(),
+                held_by: HELD_BY_HUB.into(),
+                hub_pinned_mode: pinned_mode,
+                serial,
+            };
+        }
         let known = self.pin_known(&serial);
         let pin_set = known.is_set();
         let unlocked = pin_set && self.limits.lock.is_unlocked(&serial);
@@ -381,10 +618,33 @@ impl Inner {
                 Known::Unreadable { why, .. } => why,
                 _ => String::new(),
             },
+            held_by: if pin_set { HELD_BY_CONSOLE } else { "" }.into(), // -- WP P1DKFIX --
+            hub_pinned_mode: self.hub_pinned_mode(&serial),             // -- WP P1DKFIX --
             serial,
         }
     }
+
+    // -- WP P1DKFIX --
+    /// The mode the hub pins for this session's role, for `serial` (P1HL's
+    /// `mode.pinned`, as last read or set); "" for none.
+    fn hub_pinned_mode(&self, serial: &str) -> String {
+        self.limits
+            .lock
+            .pinned
+            .as_ref()
+            .filter(|(s, _)| s == serial)
+            .map(|(_, m)| m.clone())
+            .unwrap_or_default()
+    }
 }
+
+// -- WP P1DKFIX --
+/// [`LockState::held_by`]: the console's own PIN holds the lock.
+pub const HELD_BY_CONSOLE: &str = "console";
+// -- WP P1DKFIX --
+/// [`LockState::held_by`]: the hub this console reaches the device through
+/// holds the lock (its `limits.*`).
+pub const HELD_BY_HUB: &str = "hub";
 
 fn allowed() -> Vec<String> {
     LOCKED_USER_WRITES.iter().map(|s| (*s).to_owned()).collect()
@@ -520,10 +780,20 @@ pub struct LockState {
     /// How to reach the installer.
     pub contact: String,
     /// The notice the unlock dialog shows in one line: the lock is on this
-    /// console, the DSPi itself is open (`installer_lock.scope`).
+    /// console, the DSPi itself is open (`installer_lock.scope`); or, when
+    /// the hub holds it, the hub's PIN unlocks it (`installer_lock.hub`).
     pub scope_notice_key: String,
     /// Why the PIN's file is unreadable, when it is.
     pub detail: String,
+    // -- WP P1DKFIX --
+    /// Which lock this is: `console` (this console's PIN), `hub` (the DSPi
+    /// Link hub the device is reached through holds the PIN; unlocking asks
+    /// the hub), or "" with no PIN. One lock, one prompt.
+    pub held_by: String,
+    // -- WP P1DKFIX --
+    /// The mode the hub pins for this console's role on this device
+    /// (`mode.pinned`), "" for none.
+    pub hub_pinned_mode: String,
 }
 
 /// A PIN just set ([`DspiCore::installer_pin_set`]).
@@ -558,6 +828,11 @@ impl DspiCore {
     /// window after repeated wrong PINs is open (nothing checked;
     /// [`LockState::retry_after_ms`]).
     pub fn installer_unlock(&self, pin: String) -> Result<LockState> {
+        // -- WP P1DKFIX -- the hub holds this device's lock: ask the hub.
+        #[cfg(feature = "link")]
+        if let Some(handle) = self.hub_lock_handle() {
+            return self.hub_unlock(handle, &pin);
+        }
         let (serial, known) = {
             let mut inner = self.lock();
             let serial = inner.lock_serial()?;
@@ -583,6 +858,14 @@ impl DspiCore {
                     ),
                 ));
             }
+            // -- WP P1DKFIX -- F6: the count is kept before the check runs.
+            #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+            {
+                let tries = inner.limits.lock.stored_tries(&serial, now);
+                let store = inner.limits.store();
+                drop(inner);
+                save_tries(store.as_ref(), &serial, &tries);
+            }
             (serial, known)
         };
         let via = verify(&known, &serial, &pin);
@@ -595,7 +878,15 @@ impl DspiCore {
                     .limits
                     .lock
                     .set_recovered(&serial, via == Via::Recovery);
-                Ok(inner.lock_state())
+                let state = inner.lock_state();
+                // -- WP P1DKFIX -- F6
+                #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+                {
+                    let store = inner.limits.store();
+                    drop(inner);
+                    save_tries(store.as_ref(), &serial, &Default::default());
+                }
+                Ok(state)
             }
             None => Err(lock_error(
                 "wrong_pin",
@@ -609,6 +900,14 @@ impl DspiCore {
     /// Errors: [`DspiError::Disconnected`]; [`DspiError::InstallerLock`]
     /// `no_pin` when no PIN is set (nothing to lock).
     pub fn installer_lock(&self) -> Result<LockState> {
+        // -- WP P1DKFIX -- the hub holds this device's lock: lock it there.
+        #[cfg(feature = "link")]
+        if let Some(handle) = self.hub_lock_handle() {
+            let mut f = serde_json::Map::new();
+            f.insert("handle".into(), handle.into());
+            self.link_hub_request("limits.lock", f)?;
+            return self.installer_lock_refresh();
+        }
         let mut inner = self.lock();
         let serial = inner.lock_serial()?;
         if !inner.pin_known(&serial).is_set() {
@@ -692,9 +991,12 @@ impl DspiCore {
             inner.limits.lock.set_unlocked(&serial, true);
             inner.limits.lock.set_recovered(&serial, false);
             inner.limits.lock.reset_tries(&serial);
+            let state = inner.lock_state();
+            drop(inner);
+            save_tries(store.as_ref(), &serial, &Default::default()); // -- WP P1DKFIX -- F6
             Ok(InstallerPin {
                 recovery_code: code,
-                state: inner.lock_state(),
+                state,
             })
         }
     }
@@ -724,6 +1026,7 @@ impl DspiCore {
             };
             store.clear_pin(&serial).map_err(io)?;
             store.clear_recovery(&serial).map_err(io)?;
+            store.clear_tries(&serial).map_err(io)?; // -- WP P1DKFIX -- F6
         }
         let mut inner = self.lock();
         inner.limits.lock.put(&serial, Known::None);
@@ -762,6 +1065,133 @@ impl DspiCore {
     }
 }
 
+// -- WP P1DKFIX --
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl DspiCore {
+    /// Read the lock of the device bound on this console's DSPi Link session
+    /// from its hub (`limits.get`, and the mode the hub pins for this role:
+    /// `mode.pinned`), and return the one lock state the console shows: the
+    /// hub's when the hub holds a PIN for the device (`held_by` `hub`; then
+    /// [`DspiCore::installer_unlock`] asks the hub and this console's own PIN
+    /// asks nothing), this console's otherwise. Call it after binding a hub
+    /// device and when the hub says its limits changed. With no hub session,
+    /// or a hub without `limits`, nothing is asked: the console's own lock.
+    /// Slow (a round trip): off the UI thread.
+    ///
+    /// Errors: [`DspiError::Link`] when the hub could not answer.
+    pub fn installer_lock_refresh(&self) -> Result<LockState> {
+        #[cfg(feature = "link")]
+        {
+            let Some((handle, serial)) = self.link_limits_target() else {
+                self.lock().limits.lock.hub = None;
+                return Ok(self.lock().lock_state());
+            };
+            let mut f = serde_json::Map::new();
+            f.insert("handle".into(), handle.into());
+            let got = self.link_hub_request("limits.get", f.clone())?;
+            let pinned = self.link_hub_request("mode.pinned", f)?;
+            let hub = hub_lock_from(&serial, &got);
+            let mode = pinned
+                .get("mode")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned);
+            let mut inner = self.lock();
+            if inner.conn.as_ref().is_some_and(|c| c.serial == serial) {
+                inner.limits.lock.hub = Some(hub);
+                inner.limits.lock.pinned = mode.map(|m| (serial, m));
+            }
+            Ok(inner.lock_state())
+        }
+        #[cfg(not(feature = "link"))]
+        {
+            Ok(self.lock().lock_state())
+        }
+    }
+}
+
+// -- WP P1DKFIX --
+/// The hub's lock from its `limits.get` answer (`docs/integrator/hub.md`).
+#[cfg(feature = "link")]
+fn hub_lock_from(serial: &str, v: &serde_json::Value) -> HubLock {
+    use serde_json::Value;
+    let flag = |k: &str| v.get(k).and_then(Value::as_bool).unwrap_or(false);
+    let profile = v.get("profile").filter(|p| p.is_object());
+    let text = |k: &str| {
+        profile
+            .and_then(|p| p.get(k))
+            .and_then(Value::as_str)
+            .map(|t| t.chars().take(500).collect::<String>())
+            .unwrap_or_default()
+    };
+    let covers = profile
+        .and_then(|p| p.get("lockedPages"))
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .take(64)
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
+    let retry = v.get("retry_in_ms").and_then(Value::as_u64).unwrap_or(0);
+    let pin_set = flag("pin_set");
+    HubLock {
+        serial: serial.to_owned(),
+        pin_set,
+        locked: flag("locked"),
+        // Unknown counts as locked (fails closed) when a PIN is set.
+        unlocked: v
+            .get("unlocked")
+            .and_then(Value::as_bool)
+            .unwrap_or(!pin_set),
+        covers,
+        wrong: v
+            .get("wrong_tries")
+            .and_then(Value::as_u64)
+            .and_then(|n| u32::try_from(n).ok())
+            .unwrap_or(0),
+        until: (retry > 0)
+            .then(|| Instant::now().checked_add(Duration::from_millis(retry.min(LOCK_MAX_WAIT_MS))))
+            .flatten(),
+        note: text("note"),
+        contact: text("contact"),
+    }
+}
+
+// -- WP P1DKFIX --
+#[cfg(feature = "link")]
+impl DspiCore {
+    /// The hub handle of the open device when its hub holds its lock.
+    fn hub_lock_handle(&self) -> Option<u8> {
+        let (handle, serial) = self.link_limits_target()?;
+        let inner = self.lock();
+        inner.hub_lock(&serial).map(|_| handle)
+    }
+
+    /// Unlock on the hub with `pin` (`limits.unlock`), then read its lock
+    /// again. The hub's refusals in the console's words: `wrong_pin`, `wait`.
+    fn hub_unlock(&self, handle: u8, pin: &str) -> Result<LockState> {
+        let mut f = serde_json::Map::new();
+        f.insert("handle".into(), handle.into());
+        f.insert("pin".into(), pin.into());
+        let r = self.link_hub_request("limits.unlock", f);
+        let state = self.installer_lock_refresh();
+        match r {
+            Ok(_) => state,
+            Err(DspiError::Link { code, msg }) => Err(match code.as_str() {
+                "bad_pin" => lock_error(
+                    "wrong_pin",
+                    "That is not the installer's PIN for this DSPi on its hub.",
+                ),
+                "retry_later" => lock_error("wait", msg),
+                _ => DspiError::Link { code, msg },
+            }),
+            Err(e) => Err(e),
+        }
+    }
+}
+
 impl DspiCore {
     /// Read the open device's PIN files with the core's lock released (the
     /// profile's preload does the same for the profile).
@@ -782,11 +1212,13 @@ impl DspiCore {
                 (store, serial)
             };
             let known = load_known(&store, &serial);
+            let tries = load_tries(&store, &serial); // -- WP P1DKFIX -- F6
             let mut inner = self.lock();
             if inner.limits.store().as_ref() == Some(&store)
                 && inner.limits.lock.known(&serial).is_none()
             {
                 inner.limits.lock.put(&serial, known);
+                inner.limits.lock.adopt_tries(tries);
             }
         }
     }

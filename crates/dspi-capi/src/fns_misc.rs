@@ -93,6 +93,9 @@ fn error_code(e: &DspiError) -> &'static str {
         DspiError::LimitExceeded { .. } => "limit_exceeded",
         // -- WP P1LK --
         DspiError::InstallerLock { .. } => "installer_lock",
+        // -- WP P1DKFIX --
+        DspiError::ImageRefused { .. } => "image_refused",
+        DspiError::LimitsUnknown { .. } => "limits_unknown",
     }
 }
 

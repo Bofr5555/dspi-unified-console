@@ -124,8 +124,15 @@ fn wp_p1hl_plain_values_are_judged_on_the_wire() {
         "delay"
     );
     ok(set(op::REQ_SET_DELAY, 0, f(9.0)));
-    // A short payload is not this rule's to refuse: the device stalls on it.
-    ok(set(op::REQ_SET_OUTPUT_GAIN, 0, vec![1, 2]));
+    // A short payload fails closed (-- WP P1DKFIX -- F1).
+    assert_eq!(
+        refused(judge(
+            &p,
+            &set(op::REQ_SET_OUTPUT_GAIN, 0, vec![1, 2]),
+            None
+        )),
+        "out_gain"
+    );
 }
 
 #[test]
@@ -327,7 +334,8 @@ fn wp_p1hl_the_pin_is_kept_salted_and_slow_and_wrong_pins_wait() {
     // Another device's record never matches this one's PIN.
     assert!(!rec.matches("T", "4711"));
     let t0 = Instant::now();
-    for _ in 0..PIN_TRIES {
+    // -- WP P1DKFIX -- the core's rule: the free tries, then the window.
+    for _ in 0..=LOCK_FREE_TRIES {
         assert!(matches!(
             l.unlock("S", 5, "0000", t0),
             Err(PinRefused::Wrong)
@@ -337,7 +345,7 @@ fn wp_p1hl_the_pin_is_kept_salted_and_slow_and_wrong_pins_wait() {
         l.unlock("S", 5, "4711", t0),
         Err(PinRefused::Later(_))
     ));
-    let later = t0 + PIN_WINDOW;
+    let later = t0 + Duration::from_millis(LOCK_FIRST_WAIT_MS);
     l.unlock("S", 5, "4711", later).unwrap();
     assert!(l.unlocked("S", 5, Role::Control));
     assert!(!l.unlocked("S", 6, Role::Control));
@@ -470,4 +478,268 @@ fn wp_p1hl_refusals_carry_the_notice_key() {
             assert!(!msg.contains(noun), "{msg}");
         }
     }
+}
+
+// ── WP P1DKFIX: review p1d-core's probes, adopted as tests of the fixes ─────
+
+/// F3: wrong PINs sent at once are counted before the hash, so no more reach
+/// it than the free tries and the one that opens the window.
+#[test]
+fn wp_p1dkfix_parallel_wrong_pins_are_counted_before_the_hash() {
+    let l = Arc::new(HubLimits::new(None));
+    l.set_pin("S", Some("4711")).unwrap();
+    let t0 = Instant::now();
+    let threads: Vec<_> = (0..20u16)
+        .map(|i| {
+            let l = Arc::clone(&l);
+            std::thread::spawn(move || {
+                matches!(l.unlock("S", i, "0000", t0), Err(PinRefused::Wrong))
+            })
+        })
+        .collect();
+    let checked = threads
+        .into_iter()
+        .map(|t| t.join().unwrap())
+        .filter(|&w| w)
+        .count();
+    assert_eq!(
+        checked,
+        LOCK_FREE_TRIES as usize + 1,
+        "{checked} wrong PINs reached the hash"
+    );
+    // The right PIN inside the window is refused unchecked too.
+    assert!(matches!(
+        l.unlock("S", 1, "4711", t0),
+        Err(PinRefused::Later(_))
+    ));
+}
+
+/// F4: the window doubles with each wrong PIN past the free ones, to 15 min.
+#[test]
+fn wp_p1dkfix_the_refusal_window_grows_to_fifteen_minutes() {
+    let l = HubLimits::new(None);
+    l.set_pin("S", Some("4711")).unwrap();
+    let mut now = Instant::now();
+    for _ in 0..LOCK_FREE_TRIES {
+        assert!(matches!(
+            l.unlock("S", 1, "0000", now),
+            Err(PinRefused::Wrong)
+        ));
+        assert_eq!(l.tries("S", now).1, None, "a free try opens no window");
+    }
+    let mut windows = Vec::new();
+    for _ in 0..8 {
+        assert!(matches!(
+            l.unlock("S", 1, "0000", now),
+            Err(PinRefused::Wrong)
+        ));
+        let Err(PinRefused::Later(d)) = l.unlock("S", 1, "0000", now) else {
+            panic!("no window");
+        };
+        windows.push(d.as_millis() as u64);
+        now += d;
+    }
+    let s = LOCK_FIRST_WAIT_MS;
+    assert_eq!(
+        windows,
+        [
+            s,
+            2 * s,
+            4 * s,
+            8 * s,
+            16 * s,
+            LOCK_MAX_WAIT_MS,
+            LOCK_MAX_WAIT_MS,
+            LOCK_MAX_WAIT_MS
+        ]
+    );
+    // A right PIN after the window clears the count.
+    l.unlock("S", 1, "4711", now).unwrap();
+    assert_eq!(l.tries("S", now), (0, None));
+}
+
+/// F8 (decided): the count is per device, whichever session guessed; an Admin
+/// is never held by it.
+#[test]
+fn wp_p1dkfix_the_count_is_per_device_and_an_admin_is_unaffected() {
+    let l = HubLimits::new(None);
+    l.set_pin("S", Some("4711")).unwrap();
+    let t0 = Instant::now();
+    for i in 0..=LOCK_FREE_TRIES {
+        let _ = l.unlock("S", u16::try_from(i).unwrap(), "0000", t0);
+    }
+    assert!(matches!(
+        l.unlock("S", 99, "4711", t0),
+        Err(PinRefused::Later(_))
+    ));
+    assert!(l.unlocked("S", 99, Role::Admin));
+}
+
+/// F6: the count and the window survive a restart of the hub.
+#[test]
+fn wp_p1dkfix_the_wrong_pin_window_survives_a_restart() {
+    #[derive(Default)]
+    struct Mem(Mutex<StoredLimits>);
+    impl LimitsPersist for Mem {
+        fn load(&self) -> StoredLimits {
+            self.0.lock().unwrap().clone()
+        }
+        fn save(&self, data: &StoredLimits) -> Result<(), HubError> {
+            *self.0.lock().unwrap() = data.clone();
+            Ok(())
+        }
+    }
+    let mem = Arc::new(Mem::default());
+    let l = HubLimits::new(Some(mem.clone()));
+    l.set_pin("S", Some("4711")).unwrap();
+    let now = Instant::now();
+    for _ in 0..=LOCK_FREE_TRIES {
+        let _ = l.unlock("S", 1, "0000", now);
+    }
+    let kept = mem.load().tries["S"];
+    assert_eq!(kept.wrong, LOCK_FREE_TRIES + 1);
+    assert!(kept.until_unix_ms > 0);
+    drop(l);
+    let again = HubLimits::new(Some(mem.clone()));
+    let (wrong, left) = again.tries("S", Instant::now());
+    assert_eq!(wrong, LOCK_FREE_TRIES + 1);
+    let left = left.expect("the window survives");
+    assert!(left <= Duration::from_millis(LOCK_FIRST_WAIT_MS));
+    assert!(left > Duration::from_millis(LOCK_FIRST_WAIT_MS - 5_000));
+    assert!(matches!(
+        again.unlock("S", 1, "4711", Instant::now()),
+        Err(PinRefused::Later(_))
+    ));
+    // A window kept far in the future (a clock set back) is never longer
+    // than the longest.
+    let mut far = mem.load();
+    far.tries.get_mut("S").unwrap().until_unix_ms = u64::MAX;
+    *mem.0.lock().unwrap() = far;
+    let capped = HubLimits::new(Some(mem.clone()));
+    assert!(
+        capped.tries("S", Instant::now()).1.unwrap() <= Duration::from_millis(LOCK_MAX_WAIT_MS)
+    );
+    // A PIN set anew clears it, in the store too.
+    capped.set_pin("S", Some("2468")).unwrap();
+    assert!(!mem.load().tries.contains_key("S"));
+}
+
+/// F1: an index the firmware truncates (`wValue & 0xFF`) is judged as the
+/// output it reaches: output 0x0100 is output 0.
+#[test]
+fn wp_p1dkfix_an_output_index_past_255_is_judged_as_the_firmware_reads_it() {
+    let p = profile();
+    for (what, code) in [
+        ("gain", op::REQ_SET_OUTPUT_GAIN),
+        ("delay", op::REQ_SET_OUTPUT_DELAY),
+    ] {
+        for w_value in [0x0100, 0xFF00, 0xAB00] {
+            let r = judge(&p, &set(code, w_value, f(10.0)), None);
+            assert!(matches!(r, Err(Ok(_))), "{what} to {w_value:#06x}: {r:?}");
+        }
+        // Another output's low byte is another output, judged as such.
+        assert!(
+            judge(&p, &set(code, 0x0101, f(10.0)), None).is_ok(),
+            "{what}"
+        );
+    }
+    // A channel delay: the low byte is the wire channel.
+    let (d, _) = compliant();
+    let img = image(&d);
+    let ch = u16::from(img.n_in());
+    let r = judge(
+        &p,
+        &set(op::REQ_SET_DELAY, 0x0100 | ch, f(10.0)),
+        Some(&img),
+    );
+    assert!(matches!(r, Err(Ok(_))), "{r:?}");
+}
+
+/// F1: a write the judge cannot read is refused, never passed: a short
+/// payload, a value that is not a number.
+#[test]
+fn wp_p1dkfix_an_unreadable_write_fails_closed() {
+    let p = profile();
+    let (d, _) = compliant();
+    let img = image(&d);
+    let cases: Vec<(&str, CmdRequest)> = vec![
+        ("short gain", set(op::REQ_SET_OUTPUT_GAIN, 0, vec![0, 0])),
+        ("NaN gain", set(op::REQ_SET_OUTPUT_GAIN, 0, f(f32::NAN))),
+        (
+            "inf delay",
+            set(op::REQ_SET_OUTPUT_DELAY, 0, f(f32::INFINITY)),
+        ),
+        ("NaN delay", set(op::REQ_SET_DELAY, 0, f(f32::NAN))),
+        ("short master", set(op::REQ_SET_MASTER_VOLUME, 0, vec![])),
+        ("NaN master", set(op::REQ_SET_MASTER_VOLUME, 0, f(f32::NAN))),
+        ("short EQ", set(op::REQ_SET_EQ_PARAM, 0, vec![0; 15])),
+        (
+            "NaN EQ gain",
+            set(op::REQ_SET_EQ_PARAM, 0, {
+                let mut b = packet(0, 0, PEAKING, 1000.0, 0.0, false).encode();
+                b[12..16].copy_from_slice(&f32::NAN.to_le_bytes());
+                b
+            }),
+        ),
+        ("empty bypass", set(op::REQ_SET_BAND_BYPASS, 0, vec![])),
+        ("short limiter", set(op::REQ_LIMITER, 0, vec![1])),
+    ];
+    for (what, req) in cases {
+        let r = judge(&p, &req, Some(&img));
+        assert!(matches!(r, Err(Ok(_))), "{what}: {r:?}");
+    }
+    // The same writes well formed and within the limits pass.
+    assert!(judge(&p, &set(op::REQ_SET_OUTPUT_GAIN, 0, f(1.0)), Some(&img)).is_ok());
+    assert!(judge(&p, &set(op::REQ_SET_MASTER_VOLUME, 0, f(-20.0)), Some(&img)).is_ok());
+}
+
+/// F1 audit: a limiter link group moves settings (joining a group adopts
+/// its settings), so it is judged as the firmware applies it.
+#[test]
+fn wp_p1dkfix_a_limiter_link_group_cannot_switch_off_a_kept_limiter() {
+    let p = profile();
+    let (mut d, _) = compliant();
+    // Output 1: limiter off, in link group 2. Output 0 (kept on at -10 dBFS
+    // under a -6 ceiling) joining group 2 would adopt "off".
+    d.control_out(
+        op::REQ_LIMITER,
+        (1 << 8) | limiter::LIMITER_PARAM_LINK_GROUP,
+        &f(2.0),
+    )
+    .unwrap();
+    d.control_out(
+        op::REQ_LIMITER,
+        (1 << 8) | limiter::LIMITER_PARAM_ENABLED,
+        &f(0.0),
+    )
+    .unwrap();
+    let img = image(&d);
+    assert_eq!(img.limiter(0).map(|l| l.0), Some(true));
+    assert_eq!(img.limiter(1).map(|l| (l.0, l.1)), Some((false, 2)));
+    let join = set(op::REQ_LIMITER, limiter::LIMITER_PARAM_LINK_GROUP, f(2.0));
+    assert!(matches!(judge(&p, &join, Some(&img)), Err(Ok(v)) if v.code == "limiter"));
+    // A group value past the largest is clamped to it, as the firmware does.
+    d.control_out(
+        op::REQ_LIMITER,
+        (1 << 8) | limiter::LIMITER_PARAM_LINK_GROUP,
+        &f(4.0),
+    )
+    .unwrap();
+    let img = image(&d);
+    let join = set(op::REQ_LIMITER, limiter::LIMITER_PARAM_LINK_GROUP, f(9.0));
+    assert!(matches!(judge(&p, &join, Some(&img)), Err(Ok(_))));
+    // Every output into one group: each adopts the first member's (output 0's,
+    // on at -10): passes.
+    let all = set(
+        op::REQ_LIMITER,
+        (u16::from(ALL_OUTPUTS) << 8) | limiter::LIMITER_PARAM_LINK_GROUP,
+        f(3.0),
+    );
+    assert!(judge(&p, &all, Some(&img)).is_ok());
+    // A group of its own (no peer): nothing adopted, passes.
+    let alone = set(op::REQ_LIMITER, limiter::LIMITER_PARAM_LINK_GROUP, f(1.0));
+    assert!(judge(&p, &alone, Some(&img)).is_ok());
+    // The release moves nothing a profile limits.
+    let release = set(op::REQ_LIMITER, limiter::LIMITER_PARAM_RELEASE_MS, f(500.0));
+    assert!(judge(&p, &release, Some(&img)).is_ok());
 }

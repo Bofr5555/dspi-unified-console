@@ -57,6 +57,62 @@ pub const PIN_FILE: &str = "limits.pin.json";
 /// never in a document. The code itself is shown once, when the PIN is set.
 pub const RECOVERY_FILE: &str = "limits.recovery.json";
 
+// -- WP P1DKFIX --
+/// The wrong-PIN count and refusal window, beside the PIN's hash (F6): so a
+/// restart does not reset the window. Host-only, never in a document.
+pub const TRIES_FILE: &str = "limits.tries.json";
+
+// -- WP P1DKFIX --
+/// Wrong PINs allowed before the refusal window opens (the core's and the
+/// hub's rule alike).
+pub const LOCK_FREE_TRIES: u32 = 3;
+
+// -- WP P1DKFIX --
+/// The first refusal window, ms; each further wrong PIN doubles it.
+pub const LOCK_FIRST_WAIT_MS: u64 = 30_000;
+
+// -- WP P1DKFIX --
+/// The longest refusal window, ms.
+pub const LOCK_MAX_WAIT_MS: u64 = 15 * 60_000;
+
+// -- WP P1DKFIX --
+/// The refusal window wrong PIN number `wrong` opens: none for the
+/// [`LOCK_FREE_TRIES`] free ones, then [`LOCK_FIRST_WAIT_MS`] doubling to at
+/// most [`LOCK_MAX_WAIT_MS`].
+pub fn lock_window_for(wrong: u32) -> Option<std::time::Duration> {
+    let past = wrong.checked_sub(LOCK_FREE_TRIES)?.checked_sub(1)?;
+    let factor = 1u64.checked_shl(past.min(20)).unwrap_or(u64::MAX);
+    let ms = LOCK_FIRST_WAIT_MS
+        .saturating_mul(factor)
+        .min(LOCK_MAX_WAIT_MS);
+    Some(std::time::Duration::from_millis(ms))
+}
+
+// -- WP P1DKFIX --
+/// Wrong PINs as kept across a restart: the count since the last good PIN,
+/// and the end of the refusal window on the wall clock (ms since the epoch;
+/// 0: none). A reader trusts no window longer than [`LOCK_MAX_WAIT_MS`] from
+/// its own clock.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoredTries {
+    /// Wrong PINs since the last good one.
+    pub wrong: u32,
+    /// The end of the refusal window, ms since the Unix epoch; 0: none.
+    #[serde(default)]
+    pub until_unix_ms: u64,
+}
+
+// -- WP P1DKFIX --
+impl StoredTries {
+    /// How long the window has left at `now_unix_ms`, at most
+    /// [`LOCK_MAX_WAIT_MS`] (a clock set back never stretches it).
+    pub fn left_ms(&self, now_unix_ms: u64) -> u64 {
+        self.until_unix_ms
+            .saturating_sub(now_unix_ms)
+            .min(LOCK_MAX_WAIT_MS)
+    }
+}
+
 /// The largest profile document read.
 const MAX_DOC_BYTES: usize = 1 << 20;
 
@@ -694,7 +750,7 @@ mod files {
 
     use super::{
         GOOD_FILE, LimitsProfile, LoadState, Loaded, PIN_FILE, PIN_ITERATIONS, PROFILE_FILE,
-        PinRecord, RECOVERY_FILE, from_document,
+        PinRecord, RECOVERY_FILE, StoredTries, TRIES_FILE, from_document,
     };
     use crate::preset_file::save_file;
     use crate::snapshot_store::dir_name;
@@ -878,6 +934,37 @@ mod files {
         pub fn clear_recovery(&self, serial: &str) -> io::Result<()> {
             remove(&self.dir(serial).join(RECOVERY_FILE))
         }
+
+        // -- WP P1DKFIX --
+        /// Keep `serial`'s wrong-PIN count and window (atomic); a count of
+        /// none removes the file.
+        pub fn write_tries(&self, tries: &StoredTries, serial: &str) -> io::Result<()> {
+            if *tries == StoredTries::default() {
+                return self.clear_tries(serial);
+            }
+            let dir = self.dir(serial);
+            create_dir(&dir)?;
+            let text = serde_json::to_string_pretty(tries).map_err(io::Error::other)?;
+            save_file(&dir.join(TRIES_FILE), &text)
+        }
+
+        // -- WP P1DKFIX --
+        /// `serial`'s wrong-PIN count and window; none when no file is kept.
+        /// An unreadable file is an error (the caller fails closed).
+        pub fn tries(&self, serial: &str) -> io::Result<Option<StoredTries>> {
+            let Some(text) = read(&self.dir(serial).join(TRIES_FILE))? else {
+                return Ok(None);
+            };
+            serde_json::from_str(&text)
+                .map(Some)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        }
+
+        // -- WP P1DKFIX --
+        /// Remove `serial`'s wrong-PIN count.
+        pub fn clear_tries(&self, serial: &str) -> io::Result<()> {
+            remove(&self.dir(serial).join(TRIES_FILE))
+        }
     }
 
     // -- WP P1LK --
@@ -892,3 +979,59 @@ mod files {
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p1lm;
+
+// -- WP P1DKFIX --
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::arithmetic_side_effects)]
+mod tests_wp_p1dkfix {
+    use super::*;
+
+    #[test]
+    fn wp_p1dkfix_one_window_rule_for_the_core_and_the_hub() {
+        for n in 0..=LOCK_FREE_TRIES {
+            assert_eq!(lock_window_for(n), None, "{n}");
+        }
+        let ms = |n| lock_window_for(n).map(|d| d.as_millis() as u64);
+        assert_eq!(ms(LOCK_FREE_TRIES + 1), Some(LOCK_FIRST_WAIT_MS));
+        assert_eq!(ms(LOCK_FREE_TRIES + 2), Some(2 * LOCK_FIRST_WAIT_MS));
+        assert_eq!(ms(u32::MAX), Some(LOCK_MAX_WAIT_MS));
+        // A kept window is never longer than the longest from the reader's clock.
+        let t = StoredTries {
+            wrong: 9,
+            until_unix_ms: u64::MAX,
+        };
+        assert_eq!(t.left_ms(1_000), LOCK_MAX_WAIT_MS);
+        assert_eq!(
+            StoredTries {
+                wrong: 4,
+                until_unix_ms: 5_000
+            }
+            .left_ms(6_000),
+            0
+        );
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[test]
+    fn wp_p1dkfix_the_try_count_file_round_trips_and_clears() {
+        let d = std::env::temp_dir()
+            .join("wp-p1dkfix-session")
+            .join(format!(
+                "tries-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+        let _ = std::fs::remove_dir_all(&d);
+        let store = LimitsStore::new(&d);
+        assert_eq!(store.tries("S1").unwrap(), None);
+        let t = StoredTries {
+            wrong: 5,
+            until_unix_ms: 123,
+        };
+        store.write_tries(&t, "S1").unwrap();
+        assert_eq!(store.tries("S1").unwrap(), Some(t));
+        store.write_tries(&StoredTries::default(), "S1").unwrap();
+        assert_eq!(store.tries("S1").unwrap(), None, "none kept removes it");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+}

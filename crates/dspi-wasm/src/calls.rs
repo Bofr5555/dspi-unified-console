@@ -87,6 +87,9 @@ impl From<DspiError> for CallError {
             DspiError::LimitExceeded { .. } => "limit_exceeded",
             // -- WP P1LK --
             DspiError::InstallerLock { .. } => "installer_lock",
+            // -- WP P1DKFIX --
+            DspiError::ImageRefused { .. } => "image_refused",
+            DspiError::LimitsUnknown { .. } => "limits_unknown",
             _ => "internal",
         };
         // -- WP P1NT --

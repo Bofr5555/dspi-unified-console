@@ -3849,13 +3849,25 @@ data class LockState(
     val contact: String,
     /**
      * The notice the unlock dialog shows in one line: the lock is on this
-     * console, the DSPi itself is open (`installer_lock.scope`).
+     * console, the DSPi itself is open (`installer_lock.scope`); or, when
+     * the hub holds it, the hub's PIN unlocks it (`installer_lock.hub`).
      */
     val scopeNoticeKey: String,
     /**
      * Why the PIN's file is unreadable, when it is.
      */
     val detail: String,
+    /**
+     * Which lock this is: `console` (this console's PIN), `hub` (the DSPi
+     * Link hub the device is reached through holds the PIN; unlocking asks
+     * the hub), or "" with no PIN. One lock, one prompt.
+     */
+    val heldBy: String,
+    /**
+     * The mode the hub pins for this console's role on this device
+     * (`mode.pinned`), "" for none.
+     */
+    val hubPinnedMode: String,
 )
 
 /**

@@ -91,6 +91,21 @@ sealed class DspiException(message: String) : Exception(message) {
      */
     class InstallerLock(val code: String, val msg: String) : DspiException(msg)
 
+    /**
+     * WP P1DKFIX: DSPi Link: the hub refused a whole-state write (an import,
+     * a snapshot recall, an A/B toggle, a guarded apply) from this console's
+     * role: the device has a limits profile or an installer lock on the hub,
+     * and only an Admin may write its whole state. Nothing was sent.
+     */
+    class ImageRefused(val msg: String) : DspiException(msg)
+
+    /**
+     * WP P1DKFIX: DSPi Link: the hub could not read the device's state to
+     * judge this write against its limits profile, so it refused it. Nothing
+     * was sent; trying again may pass.
+     */
+    class LimitsUnknown(val msg: String) : DspiException(msg)
+
     companion object {
         /** macOS `DeviceLock.lockedMessage`. */
         const val LOCKED_MESSAGE = "Another console is applying changes"

@@ -422,6 +422,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun installerLockCover(pages: List<String>): LockState = call { core.installerLockCover(pages).toDomain() }
 
+    override fun installerLockRefresh(): LockState = call { core.installerLockRefresh().toDomain() }
+
     override fun linkConnect(url: String, clientName: String, appVersion: String, token: String, expectedHubId: String): LinkHello = call { core.linkConnect(url, clientName, appVersion, token, expectedHubId).toDomain() }
 
     override fun linkPair(pin: String): String = call { core.linkPair(pin) }
@@ -833,6 +835,8 @@ internal fun FfiException.toDomain(): DspiException =
         is FfiException.ConfirmationRequired -> DspiException.ConfirmationRequired(code, msg)
         is FfiException.LimitExceeded -> DspiException.LimitExceeded(code, msg)
         is FfiException.InstallerLock -> DspiException.InstallerLock(code, msg)
+        is FfiException.ImageRefused -> DspiException.ImageRefused(msg)
+        is FfiException.LimitsUnknown -> DspiException.LimitsUnknown(msg)
     }
 
 internal fun DspiException.toFfi(): FfiException =
@@ -853,6 +857,8 @@ internal fun DspiException.toFfi(): FfiException =
         is DspiException.ConfirmationRequired -> FfiException.ConfirmationRequired(code, msg)
         is DspiException.LimitExceeded -> FfiException.LimitExceeded(code, msg)
         is DspiException.InstallerLock -> FfiException.InstallerLock(code, msg)
+        is DspiException.ImageRefused -> FfiException.ImageRefused(msg)
+        is DspiException.LimitsUnknown -> FfiException.LimitsUnknown(msg)
     }
 
 // ── Record mapping (UniFFI <-> domain) ──
@@ -3179,6 +3185,8 @@ internal fun se.bofr.dspi.ffi.uniffi.LockState.toDomain() =
         contact = contact,
         scopeNoticeKey = scopeNoticeKey,
         detail = detail,
+        heldBy = heldBy,
+        hubPinnedMode = hubPinnedMode,
     )
 
 internal fun LockState.toFfi() =
@@ -3197,6 +3205,8 @@ internal fun LockState.toFfi() =
         contact = contact,
         scopeNoticeKey = scopeNoticeKey,
         detail = detail,
+        heldBy = heldBy,
+        hubPinnedMode = hubPinnedMode,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.InstallerPin.toDomain() =

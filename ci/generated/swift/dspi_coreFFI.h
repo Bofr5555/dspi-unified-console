@@ -1276,6 +1276,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_installer_lock(void*_Nonnull ptr,
 RustBuffer uniffi_dspi_core_fn_method_dspicore_installer_lock_cover(void*_Nonnull ptr, RustBuffer pages, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_INSTALLER_LOCK_REFRESH
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_INSTALLER_LOCK_REFRESH
+RustBuffer uniffi_dspi_core_fn_method_dspicore_installer_lock_refresh(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_INSTALLER_LOCK_STATE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_INSTALLER_LOCK_STATE
 RustBuffer uniffi_dspi_core_fn_method_dspicore_installer_lock_state(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -4015,6 +4020,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_installer_lock(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_INSTALLER_LOCK_COVER
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_INSTALLER_LOCK_COVER
 uint16_t uniffi_dspi_core_checksum_method_dspicore_installer_lock_cover(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_INSTALLER_LOCK_REFRESH
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_INSTALLER_LOCK_REFRESH
+uint16_t uniffi_dspi_core_checksum_method_dspicore_installer_lock_refresh(void
     
 );
 #endif

@@ -6,6 +6,10 @@
 //! - `modeSetPinned {mode}` ("" clears), `modePinned`: the hub's pinned mode.
 //! - `installerLockState`, `installerUnlock {pin}`, `installerLock`,
 //!   `installerPinClear`, `installerLockCover {pages}`.
+//! - `installerLockRefresh` (WP P1DKFIX): reads the hub's lock of the device
+//!   bound over this session's DSPi Link (`limits.get`, `mode.pinned`) and
+//!   answers the one lock state to show (`heldBy` `hub`: unlocking asks the
+//!   hub); with no hub session, the console's own.
 //! - `installerPinSet {pin}` fails with `unsupported`: the web keeps no PIN
 //!   (no files, no random source in the core); a hub keeps a managed
 //!   device's lock (P1HL).
@@ -67,6 +71,8 @@ pub fn dispatch(core: &DspiCore, method: &str, p: Value) -> Option<CallResult> {
         "installerLockState" => Ok(tidy(&core.installer_lock_state())),
         "installerUnlock" => params::<Pin>(p).and_then(|x| record(core.installer_unlock(x.pin))),
         "installerLock" => record(core.installer_lock()),
+        // -- WP P1DKFIX -- the hub's lock, read over this session's Link
+        "installerLockRefresh" => record(core.installer_lock_refresh()),
         "installerPinSet" => params::<Pin>(p).and_then(|x| record(core.installer_pin_set(x.pin))),
         "installerPinClear" => record(core.installer_pin_clear()),
         "installerLockCover" => {
@@ -126,6 +132,11 @@ mod tests_wp_p1lk {
         let r = run(h, "installerLock", Value::Null);
         assert_eq!(r["noticeKey"], "installer_lock.no_pin", "{r}");
         assert_eq!(r["code"], "installer_lock", "{r}");
+        // -- WP P1DKFIX -- no hub: the refresh asks nothing, the same state.
+        let r = run(h, "installerLockRefresh", Value::Null);
+        assert_eq!(r["ok"], true, "{r}");
+        assert_eq!(r["value"]["heldBy"], "", "{r}");
+        assert_eq!(r["value"]["pinSet"], false, "{r}");
         let r = run(h, "modeSetPinned", json!({ "mode": "simple" }));
         assert_eq!(r["ok"], true, "{r}");
         assert_eq!(run(h, "modePinned", Value::Null)["value"]["mode"], "simple");

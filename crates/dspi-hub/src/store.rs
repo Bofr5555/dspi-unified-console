@@ -79,6 +79,9 @@ struct FileData {
     device_pins: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     role_modes: Option<serde_json::Value>,
+    // -- WP P1DKFIX -- F6: wrong PINs and their window, by serial
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    device_pin_tries: Option<serde_json::Value>,
 }
 
 // -- WP P1HL --
@@ -155,6 +158,7 @@ struct StoredLimitsJson {
     device_limits: Option<serde_json::Value>,
     device_pins: Option<serde_json::Value>,
     role_modes: Option<serde_json::Value>,
+    device_pin_tries: Option<serde_json::Value>, // -- WP P1DKFIX --
 }
 
 fn io_error(what: &str, path: &Path, e: &io::Error) -> HubError {
@@ -314,6 +318,7 @@ impl HubStore {
                 device_limits: data.device_limits,
                 device_pins: data.device_pins,
                 role_modes: data.role_modes,
+                device_pin_tries: data.device_pin_tries, // -- WP P1DKFIX --
             },
         })
     }
@@ -350,6 +355,7 @@ impl HubStore {
                 device_limits: data.device_limits,
                 device_pins: data.device_pins,
                 role_modes: data.role_modes,
+                device_pin_tries: data.device_pin_tries, // -- WP P1DKFIX --
             },
         }))
     }
@@ -384,6 +390,7 @@ impl HubStore {
             device_limits: self.limits.device_limits.clone(),
             device_pins: self.limits.device_pins.clone(),
             role_modes: self.limits.role_modes.clone(),
+            device_pin_tries: self.limits.device_pin_tries.clone(), // -- WP P1DKFIX --
         };
         let bytes = serde_json::to_vec_pretty(&data)
             .map_err(|e| HubError::Io(format!("cannot encode the hub store: {e}")))?;
@@ -485,6 +492,8 @@ impl HubStore {
                     parse_role(r).is_some() && crate::limits::MODES.contains(&m.as_str())
                 })
                 .collect(),
+            // -- WP P1DKFIX --
+            tries: entries_of(self.limits.device_pin_tries.as_ref(), "device_pin_tries"),
         }
     }
 
@@ -499,6 +508,7 @@ impl HubStore {
             device_limits: map(serde_json::to_value(&data.profiles)),
             device_pins: map(serde_json::to_value(&data.pins)),
             role_modes: map(serde_json::to_value(&data.modes)),
+            device_pin_tries: map(serde_json::to_value(&data.tries)), // -- WP P1DKFIX --
         };
     }
 
