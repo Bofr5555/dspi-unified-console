@@ -24,9 +24,9 @@ class FileMenuActionsTest {
         val text = f.configurationDocument("Living Room.dspipreset")!!
         assertTrue(text.contains("\"Living Room\""))
         f.configurationExported(text)
-        assertEquals("Success", host.alert.value!!.messageText)
-        assertTrue(host.alert.value!!.informativeText.startsWith("Configuration exported.\n\n"))
-        host.press("OK")
+        // -- WP P1AN2 -- the notice line, one line
+        assertNull(host.alert.value)
+        assertTrue(host.notice.value, host.notice.value.startsWith("Configuration exported. "))
 
         // -- WP P1AN1 -- the import opens the preview (blocks, rollback) instead of the two-checkbox alert
         f.importConfiguration(text)
@@ -86,8 +86,8 @@ class FileMenuActionsTest {
         val f = FileMenuActions(b, this, host)
         val text = f.filtersDocument()!!
         f.filtersExported()
-        assertEquals("Filters exported successfully", host.alert.value!!.informativeText)
-        host.press("OK")
+        assertEquals("Filters exported successfully", host.notice.value) // -- WP P1AN2 --
+        assertNull(host.alert.value)
         f.importFilters(text)
         runCurrent()
         val pick = host.alert.value!!
@@ -96,7 +96,8 @@ class FileMenuActionsTest {
         host.press("Import", AlertResponse(checked = pick.checkboxes.filter { it.checked }.map { it.key }.toSet()))
         runCurrent()
         assertTrue(core.presetCalls().any { it.startsWith("filtersImport") })
-        assertEquals("Success", host.alert.value!!.messageText)
+        assertNull("no success modal (WP P1AN2)", host.alert.value)
+        assertTrue(host.notice.value.isNotEmpty())
     }
 
     @Test

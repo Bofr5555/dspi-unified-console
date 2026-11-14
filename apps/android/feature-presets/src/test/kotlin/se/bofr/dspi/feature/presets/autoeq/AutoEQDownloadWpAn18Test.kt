@@ -79,7 +79,7 @@ class AutoEQDownloadWpAn18Test {
         assertEquals("https://example.test/autoeq_database.json", seen[1])
         assertSame(fetch, seen[2])
         assertEquals(listOf("x/Y"), m.entries.value.map { it.id })
-        assertEquals("Database updated successfully.\nEntries: 1", host.alert.value!!.informativeText)
+        assertEquals("Database updated successfully. Entries: 1", host.notice.value) // -- WP P1AN2 -- the notice line
         assertNull(host.progress.value)
     }
 

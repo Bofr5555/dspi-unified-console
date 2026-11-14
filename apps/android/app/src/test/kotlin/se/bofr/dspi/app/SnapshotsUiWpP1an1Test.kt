@@ -133,13 +133,18 @@ class SnapshotsUiWpP1an1Test {
         mkdirs()
     }.path
 
+    // -- WP P1AN2 -- one store for the test (a new one per composition would make a new mode model each time)
+    private val advanced = InMemoryUiModeStore().apply { save("", "advanced", everyDevice = true) }
+
     private fun scaffold(bridge: DspiBridge, strip: ConnectionStrip, dark: Boolean) = content(dark) {
         AppScaffold(
             bridge,
             strip,
             onExitDemo = {},
             onRequestPermission = {},
-            devices = listOf(DeviceRow(DeviceChoice.Usb, "USB"), DeviceRow(DeviceChoice.Demo, "Demo", current = true))
+            devices = listOf(DeviceRow(DeviceChoice.Usb, "USB"), DeviceRow(DeviceChoice.Demo, "Demo", current = true)),
+            // -- WP P1AN2 -- the screen follows the device's mode now (the phone opens in Simple): Advanced here
+            modeStore = advanced
         )
     }
 

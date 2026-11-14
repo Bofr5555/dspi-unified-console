@@ -19,10 +19,21 @@ enum class SettingsCategory(val title: String, val tint: Long, val id: String) {
     CONTROL_INTERFACES("Control Interfaces", 0xFF8F60AD, "controlInterfaces"),
     CHANNEL_GROUPS("Channel Groups", 0xFF6C64B7, "channelGroups"),
     MACROS("Macros", 0xFF9E528D, "macros"),
-    AUX_OUTPUTS("Auxiliary Outputs", 0xFF7A5AAC, "auxOutputs");
+    AUX_OUTPUTS("Auxiliary Outputs", 0xFF7A5AAC, "auxOutputs"),
+
+    // -- WP P1AN2 -- the Installer mode's pages (UI-MODES section 2: limits and power-on)
+    INSTALLER("Installer", 0xFFB0602A, "installer"),
+    POWER_ON("At Power-On", 0xFF9A6A1E, "powerOn");
 
     /** Hidden when the connected hardware/firmware has no such page (macOS `isAvailable`). */
-    fun isAvailable(f: SettingsAvailability): Boolean = when (this) {
+    fun isAvailable(f: SettingsAvailability): Boolean = when {
+        // -- WP P1AN2 -- the locked-user state: About and the installer's note only
+        f.lockedUser -> this == GENERAL || this == INSTALLER
+        this == INSTALLER || this == POWER_ON -> f.installerMode
+        else -> availableOnDevice(f)
+    }
+
+    private fun availableOnDevice(f: SettingsAvailability): Boolean = when (this) {
         I2S_CONFIG -> f.platformName != "STM32H723"
         SPDIF_INPUT -> f.inputSourceSupported
         CONTROL_INTERFACES -> f.controlInterfacesSupported
@@ -44,7 +55,9 @@ enum class SettingsCategory(val title: String, val tint: Long, val id: String) {
             "Application" to listOf(GENERAL, ADVANCED, NETWORKING),
             "Display" to listOf(GRAPHING, SPECTRUM),
             "System" to listOf(OVERVIEW, SPDIF_INPUT, OUTPUT_ASSIGNMENT, I2S_CONFIG, GLOBAL_PARAMS),
-            "Control" to listOf(CONTROL_SURFACES, CONTROL_INTERFACES, CHANNEL_GROUPS, MACROS, AUX_OUTPUTS)
+            "Control" to listOf(CONTROL_SURFACES, CONTROL_INTERFACES, CHANNEL_GROUPS, MACROS, AUX_OUTPUTS),
+            // -- WP P1AN2 --
+            "Installer" to listOf(INSTALLER, POWER_ON)
         )
 
         fun ofId(id: String): SettingsCategory? = entries.firstOrNull { it.id == id }
@@ -62,5 +75,8 @@ data class SettingsAvailability(
     val csMacrosSupported: Boolean = false,
     val csAuxSupported: Boolean = false,
     /** The app provides a DSPi Link client (`LocalNetworking`). */
-    val networkingAvailable: Boolean = false
+    val networkingAvailable: Boolean = false,
+    // -- WP P1AN2 -- the UI mode: Installer shows its pages; the locked-user state shows About and the note
+    val installerMode: Boolean = false,
+    val lockedUser: Boolean = false
 )

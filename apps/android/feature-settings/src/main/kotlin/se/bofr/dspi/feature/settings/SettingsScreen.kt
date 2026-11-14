@@ -38,7 +38,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.ui.DspiRoutes
+import se.bofr.dspi.ui.LocalUiMode
 import se.bofr.dspi.ui.MacColors
+import se.bofr.dspi.ui.UiModes
 import se.bofr.dspi.ui.WritesExempt
 import se.bofr.dspi.ui.link.LocalNetworking
 import se.bofr.dspi.ui.settings.AppSettingsStore
@@ -88,7 +90,10 @@ fun SettingsView(
         csGroupsSupported = cs.groupsSupported,
         csMacrosSupported = cs.macrosSupported,
         csAuxSupported = cs.auxSupported,
-        networkingAvailable = LocalNetworking.current != null
+        networkingAvailable = LocalNetworking.current != null,
+        // -- WP P1AN2 --
+        installerMode = LocalUiMode.current == UiModes.INSTALLER,
+        lockedUser = LocalUiMode.current == UiModes.LOCKED_USER
     )
 
     var openPage by rememberSaveable { mutableStateOf(initialPage?.id) }
@@ -229,6 +234,9 @@ private fun SettingsDetail(
         SettingsCategory.MACROS -> ControlSurfacesSettingsTab(CsSection.MACROS, bridge, coordinator, cs)
         SettingsCategory.AUX_OUTPUTS -> ControlSurfacesSettingsTab(CsSection.AUX, bridge, coordinator, cs)
         SettingsCategory.NETWORKING -> LocalNetworking.current?.let { NetworkingSettingsTab(it) }
+        // -- WP P1AN2 --
+        SettingsCategory.INSTALLER -> InstallerSettingsTab(bridge, lockedUser = LocalUiMode.current == UiModes.LOCKED_USER)
+        SettingsCategory.POWER_ON -> PowerOnSettingsTab(bridge, onOpen)
     }
 }
 

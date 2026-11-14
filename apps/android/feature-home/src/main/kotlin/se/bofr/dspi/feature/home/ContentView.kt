@@ -366,7 +366,8 @@ private fun HealthLineRow(bridge: DspiBridge, modifier: Modifier = Modifier) {
         clipping = outputs.filter { bridge.isClipping(it.appCh) }.map { it.descriptor },
         limiting = outputs.filter { status.limiterReduction.getOrElse(it.index) { 0f } > 0f }.map { it.descriptor },
         cpu0 = status.cpu0,
-        cpu1 = status.cpu1
+        cpu1 = status.cpu1,
+        staleMs = status.ageMs.takeIf { status.stale } // -- WP P1AN2 --
     )
     val dot = when (line.health) {
         HomeModel.Health.OFFLINE -> c.gray

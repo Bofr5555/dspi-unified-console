@@ -25,15 +25,29 @@ internal const val REFUSAL_NOTICE_TAG = "refusal-notice"
  */
 fun refusalText(e: BridgeEvent): String? = ((e as? BridgeEvent.CommandFailed)?.error as? DspiException.InvalidArgument)?.msg
 
+// -- WP P1AN2 --
 /**
- * Shows each [refusalText] of [bridge]'s events in a snackbar over the screen
+ * P1NT: the core's notice row for a write it refused for a named reason (a
+ * limit, the installer's lock, a missing confirmation, the hub's image or
+ * limits refusal, a role), "Title: reason"; null for anything else. "Another
+ * console is applying changes" is the strip's own notice (macOS), not this.
+ */
+suspend fun coreRefusalText(bridge: DspiBridge, e: BridgeEvent): String? {
+    val err = (e as? BridgeEvent.CommandFailed)?.error as? DspiException ?: return null
+    if (err is DspiException.Locked) return null
+    return bridge.installer.noticeText(err)
+}
+
+/**
+ * Shows each [refusalText] (and [coreRefusalText]) of [bridge]'s events in a snackbar over the screen
  * (it takes no room in the layout, phones included); a newer refusal replaces
  * the one showing.
  */
 @Composable
 internal fun RefusalNotices(bridge: DspiBridge, host: SnackbarHostState) {
     LaunchedEffect(bridge) {
-        bridge.events.mapNotNull(::refusalText).collectLatest { host.showSnackbar(it, duration = SnackbarDuration.Short) }
+        bridge.events.mapNotNull { e -> refusalText(e) ?: coreRefusalText(bridge, e) }
+            .collectLatest { host.showSnackbar(it, duration = SnackbarDuration.Short) }
     }
 }
 
