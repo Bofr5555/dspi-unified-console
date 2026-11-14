@@ -80,7 +80,10 @@ class PairBandWpPairbandTest {
 
         // The bypass of a linked pair's band: one step too
         onMain { bridge.setFilter(1, 2, DspiConstants.FILTER_PEAKING, 800f, 3f, 1f) }
-        until("band") { sides(2).first.filterType == DspiConstants.FILTER_PEAKING && sides(2).second.filterType == DspiConstants.FILTER_PEAKING }
+        until("band") {
+            sides(2).first.filterType == DspiConstants.FILTER_PEAKING &&
+                sides(2).second.filterType == DspiConstants.FILTER_PEAKING
+        }
         onMain { bridge.setBandBypass(1, 2, true) }
         until("bypassed") { sides(2).first.bypass && sides(2).second.bypass }
         onMain { bridge.undo() }
@@ -114,7 +117,12 @@ class PairBandWpPairbandTest {
         val before = (0 until DspiConstants.BANDS_PER_CHANNEL).map { sides(it) }
         onMain { bridge.copyChannel(outApp) }
         onMain { bridge.pasteChannel(0) }
-        until("pasted on both sides") { (0 until 3).all { sides(it).first.freq == 300f + 700f * it && sides(it).second.freq == 300f + 700f * it } }
+        until("pasted on both sides") {
+            (0 until 3).all {
+                sides(it).first.freq == 300f + 700f * it &&
+                    sides(it).second.freq == 300f + 700f * it
+            }
+        }
         assertEquals("Paste EQ", core.history(1).first().label)
         val step = onMain { bridge.undo() }
         assertEquals("Paste EQ", (step as HistoryStep.Moved).move.entry?.label)
@@ -126,7 +134,9 @@ class PairBandWpPairbandTest {
     fun pairbandfBypassAllOnALinkedPairIsOneUndo() = withDemo {
         linkPairZero()
         for (b in 0 until 3) onMain { bridge.setFilter(0, b, DspiConstants.FILTER_PEAKING, 400f + 300f * b, 2f, 1f) }
-        until("bands") { (0 until 3).all { sides(it).first.filterType == DspiConstants.FILTER_PEAKING && sides(it).second == sides(it).first } }
+        until("bands") {
+            (0 until 3).all { sides(it).first.filterType == DspiConstants.FILTER_PEAKING && sides(it).second == sides(it).first }
+        }
         onMain { bridge.setAllBandsBypass(0, true, false) }
         until("bypassed") { (0 until 3).all { sides(it).first.bypass && sides(it).second.bypass } }
         assertEquals("Bypass All", core.history(1).first().label)
@@ -149,4 +159,3 @@ class PairBandWpPairbandTest {
         until("one undo puts the copied side back") { (0 until DspiConstants.BANDS_PER_CHANNEL).map { sides(it).second } == before }
     }
 }
-

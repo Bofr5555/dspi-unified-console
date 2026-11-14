@@ -37,6 +37,7 @@ import se.bofr.dspi.bridge.Installer
 import se.bofr.dspi.core.AutoEqFilter
 import se.bofr.dspi.core.AutoEqPreview
 import se.bofr.dspi.core.AutoEqProfile
+import se.bofr.dspi.ui.onMainThread
 
 /** Test tags. */
 internal const val AUTOEQ_PAIR_TAG = "autoeq-pair"
@@ -83,9 +84,11 @@ internal fun AutoEQPreviewPanel(
     var preview by remember(entry.id, pair) { mutableStateOf<AutoEqPreview?>(null) }
     var error by remember(entry.id, pair) { mutableStateOf("") }
     LaunchedEffect(entry.id, pair) {
-        bridge.installer.autoeqPreview(profileOf(entry), pair.left, pair.right)
-            .onSuccess { preview = it }
-            .onFailure { error = it.message.orEmpty() }
+        val r = bridge.installer.autoeqPreview(profileOf(entry), pair.left, pair.right)
+        // -- WP FLAKE2 -- the write on the main thread (onMainThread)
+        onMainThread {
+            r.onSuccess { preview = it }.onFailure { error = it.message.orEmpty() }
+        }
     }
     Column(Modifier.fillMaxWidth().testTag(AUTOEQ_PREVIEW_TAG), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {

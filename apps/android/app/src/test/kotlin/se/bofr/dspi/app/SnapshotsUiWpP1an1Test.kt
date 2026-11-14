@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
@@ -242,9 +243,16 @@ class SnapshotsUiWpP1an1Test {
             }
         }
         pumpUntil("rows") { textShown("Bright") }
+        // -- WP FLAKE2 -- as SnapshotsWpP1dcfixTest: the view's own load holds Recall off for a while
+        val recall = snapshotRecallTag(m.items.value.first { it.name == "Warm" }.id)
+        pumpUntil("recall on") {
+            !m.busy.value &&
+                rule.onAllNodes(hasTestTag(recall)).fetchSemanticsNodes().singleOrNull()
+                    ?.config?.contains(SemanticsProperties.Disabled) == false
+        }
         // The device is on A (-10 dB); recall Warm (-4 dB) with rollback
         rule.runOnUiThread { m.setSafeRecall(true) }
-        rule.onNodeWithTag(snapshotRecallTag(m.items.value.first { it.name == "Warm" }.id)).performClick()
+        rule.onNodeWithTag(recall).performClick()
         pumpUntil("bar") { shown(SAFE_APPLY_BAR_TAG) && bridge.snapshots.guard.value.phase == GuardPhase.WAITING }
         assertEquals(-4f, bridge.outputGainDB(0))
         assertTrue(textShown("Keep these settings?")) // -- WP P1DCFIX -- the core's countdown sentence (F7)
