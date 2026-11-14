@@ -1258,6 +1258,20 @@ int16_t value);
 uint32_t dspi_fetch_apply_at_frame_status(struct FfiCore *core, char *buf, uint32_t len);
 uint8_t dspi_reset_alink_stats(struct FfiCore *core);
 bool dspi_open_demo_alink(struct FfiCore *core);
+bool dspi_usb_direct_supported(struct FfiCore *core);
+uint32_t dspi_fetch_alink_usb(struct FfiCore *core, char *buf, uint32_t len);
+uint8_t dspi_set_alink_usb(struct FfiCore *core, uint8_t mode, bool auto_reanchor, uint16_t d);
+uint32_t dspi_fetch_alink_usb_status(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_fetch_alink_usb_diag(struct FfiCore *core, char *buf, uint32_t len);
+uint8_t dspi_clear_alink_usb_diag(struct FfiCore *core);
+uint32_t dspi_fetch_frame_counter_time_base(struct FfiCore *core, char *buf, uint32_t len);
+uint8_t dspi_apply_at_time_base(struct FfiCore *core,
+uint8_t time_base,
+uint64_t frame,
+uint8_t op,
+uint8_t arg,
+int16_t value);
+bool dspi_open_demo_usb_direct(struct FfiCore *core);
 uint32_t dspi_notice_for(const char *key, const char *detail, char *buf, uint32_t len);
 uint32_t dspi_notice_texts(char *buf, uint32_t len);
 bool dspi_link_browse_start(struct FfiCore *core,

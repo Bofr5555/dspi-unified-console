@@ -11,6 +11,8 @@ mod diag;
 pub use diag::*;
 // -- WP SW1 -- the audio link's sub-commands and events (SYS2 5.3)
 pub mod alink;
+// -- WP AUSB1 -- the alink's USB-direct block (2.9) and the USB time base
+pub mod alink_usb;
 
 /// A user-supplied value that does not parse (a pair map, a voltage).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -34,6 +36,8 @@ pub fn name(id: u16) -> &'static str {
         generated::ext::EXT_FIRMWARE_FIXES => "firmware fixes",
         // -- WP SW1 --
         0x8000..=0x800A => alink::alink_name(id).unwrap_or("experimental"),
+        // -- WP AUSB1 --
+        0x8010..=0x8012 => alink_usb::alink_usb_name(id).unwrap_or("experimental"),
         0x800B..=0xFFFF => "experimental",
         _ => "unknown",
     }

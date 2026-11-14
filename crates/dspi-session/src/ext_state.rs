@@ -15,6 +15,7 @@
 )]
 
 use dspi_proto::ext::alink::{self, AlinkInfo};
+use dspi_proto::ext::alink_usb; // -- WP AUSB1 --
 use dspi_proto::ext::{CoreVregStatus, LIST_READ_LEN, PairMap, ResetInfo, decode_list};
 use dspi_proto::generated::ext as g;
 use dspi_proto::generated::opcodes as op;
@@ -179,6 +180,27 @@ impl ExtState {
     pub fn apply_result_events(&self) -> bool {
         self.notify_features
             .is_some_and(|f| f & alink::NOTIFY_FEAT_APPLY_RESULT != 0)
+    }
+
+    // -- WP AUSB1 --
+    /// Whether the unit has the alink's USB-direct block: `EXT_LIST` names
+    /// `EXT_ALINK_USB` and `EXT_ALINK_USB_STATUS` (2.9, "Discovery"). Fork
+    /// firmware without it and stock firmware send nothing more.
+    pub fn usb_direct(&self) -> bool {
+        self.has(alink_usb::EXT_ALINK_USB) && self.has(alink_usb::EXT_ALINK_USB_STATUS)
+    }
+
+    /// Whether the device sends USB-direct events (0xE3, bit 4).
+    pub fn alink_usb_events(&self) -> bool {
+        self.notify_features
+            .is_some_and(|f| f & alink_usb::NOTIFY_FEAT_ALINK_USB != 0)
+    }
+
+    /// Whether `EXT_FRAME_COUNTER` and `EXT_APPLY_AT_FRAME` may be used: on a
+    /// unit with the alink or the USB-direct block, when `EXT_LIST` names `id`
+    /// (a USB-direct build without the alink lists both, 2.9).
+    pub fn time_base_id(&self, id: u16) -> bool {
+        (self.alink() || self.usb_direct()) && self.has(id)
     }
 }
 

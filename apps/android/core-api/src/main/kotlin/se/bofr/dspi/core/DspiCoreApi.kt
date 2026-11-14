@@ -193,6 +193,95 @@ interface DspiCoreApi : AutoCloseable {
     fun alinkSystemRecall(scene: String): AlinkSceneRecall
 
     /**
+     * Whether the unit has the alink's USB-direct block, as the connect
+     * probe found it, without traffic. `Disconnected` without a device.
+     */
+    @Throws(DspiException::class)
+    fun usbDirectSupported(): Boolean
+
+    /**
+     * Read `EXT_ALINK_USB`: the mode, automatic re-anchor, D, why mode 2
+     * runs as mode 1, and the state.
+     *
+     * `Unsupported`, with no traffic, without the block; also when the read
+     * stalls or a DSPi Link hub refuses it. `Disconnected` without a device;
+     * `Transfer` for a short or failed read.
+     */
+    @Throws(DspiException::class)
+    fun fetchAlinkUsb(): AlinkUsbConfig
+
+    /**
+     * Write `EXT_ALINK_USB`: `mode` 0 off, 1 rate lock, 2 phase lock;
+     * `auto_reanchor` (normally true); `d` samples from arrival to output,
+     * the same on every unit that should play aligned (170-399 at 48 kHz,
+     * 324-351 at 96 kHz in mode 2). Takes effect at once; a change of mode
+     * or D while phase-locked re-anchors (about D + 20 ms of silence). Saved
+     * with the output configuration.
+     *
+     * Errors, with no traffic: `Disconnected`; `Unsupported` without the
+     * block; `InvalidArgument` for a mode above 2 or D 0; `ReadOnly`. From the
+     * device: `Refused` when it stalls (mode 2 with D outside its limits now);
+     * `Denied`, `Locked` or `Transfer` from a hub.
+     */
+    @Throws(DspiException::class)
+    fun setAlinkUsb(mode: Int, autoReanchor: Boolean, d: Int)
+
+    /**
+     * Read `EXT_ALINK_USB_STATUS`. Errors as [`DspiCore::fetch_alink_usb`].
+     */
+    @Throws(DspiException::class)
+    fun fetchAlinkUsbStatus(): AlinkUsbStatus
+
+    /**
+     * Read `EXT_ALINK_USB_DIAG` (layout version 1; another reads as
+     * `Transfer`). Errors as [`DspiCore::fetch_alink_usb`].
+     */
+    @Throws(DspiException::class)
+    fun fetchAlinkUsbDiag(): AlinkUsbDiag
+
+    /**
+     * Clear `EXT_ALINK_USB_DIAG`. Errors as [`DspiCore::set_alink_usb`].
+     */
+    @Throws(DspiException::class)
+    fun clearAlinkUsbDiag()
+
+    /**
+     * Read `EXT_FRAME_COUNTER` with its time base: the alink's frame, or the
+     * USB sample index and bus frame on a USB-direct unit not in mode 0.
+     * `Unsupported`, with no traffic, on a unit with neither the alink nor
+     * the USB-direct block; otherwise errors as [`DspiCore::fetch_alink_usb`].
+     */
+    @Throws(DspiException::class)
+    fun fetchFrameCounterTimeBase(): AlinkTimeBaseCounter
+
+    /**
+     * `EXT_APPLY_AT_FRAME` on time base `time_base`: [`TIME_BASE_ALINK`]
+     * (`frame` an alink frame, as [`DspiCore::apply_at_frame`]),
+     * [`TIME_BASE_USB_SAMPLE`] (`frame` the unit's USB sample index S) or
+     * [`TIME_BASE_BUS_FRAME`] (`frame` a bus frame 0-2047 in bits 0-10 and
+     * the sample in it in bits 16-23: the same 8 bytes address the same
+     * instant on every unit of one host, up to 1.98 s ahead). Ops and their
+     * arguments are [`DspiCore::apply_at_frame`]'s.
+     *
+     * Errors, with no traffic: `Unsupported` for time base 0 without the
+     * alink, 1 or 2 without the USB-direct block; `InvalidArgument` for
+     * another time base, a bad bus-frame form, or an op or argument out of
+     * range; `ReadOnly`, `Disconnected`. `Refused` when the unit stalls (not
+     * phase-locked on the USB time base, a full queue).
+     */
+    @Throws(DspiException::class)
+    fun applyAtTimeBase(timeBase: Int, frame: Long, op: Int, arg: Int, value: Int)
+
+    /**
+     * Open the demo device as an alink USB-direct unit (the fake device's
+     * model, `extension_channel_spec.md` 2.9: phase-locked at 48 kHz with D
+     * 192, its host 11.5 ppm slow, a stream playing), for clients without
+     * hardware. Replaces any open device.
+     */
+    @Throws(DspiException::class)
+    fun openDemoUsbDirect()
+
+    /**
      * Identify the firmware and read every parameter into the mirror.
      *
      * Reads `REQ_GET_PLATFORM`, then the bulk image in whatever wire format

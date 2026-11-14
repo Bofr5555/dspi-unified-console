@@ -1554,6 +1554,24 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1669,6 +1687,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_apply_all_params(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_apply_at_frame(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_apply_at_time_base(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_begin_group(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_cached_device_name(
@@ -1682,6 +1702,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_can_undo(
 fun uniffi_dspi_core_checksum_method_dspicore_capture_baseline(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_check_core1_conflict(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_clear_alink_usb_diag(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_clear_clips(
 ): Short
@@ -1803,6 +1825,12 @@ fun uniffi_dspi_core_checksum_method_dspicore_fetch_alink_slots(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_alink_status(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_fetch_alink_usb(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_fetch_alink_usb_diag(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_fetch_alink_usb_status(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_all(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_apply_at_frame_status(
@@ -1820,6 +1848,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_fetch_crossfeed_pair_map(
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_ctrl_ifaces(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_dac_mute(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_fetch_frame_counter_time_base(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_fetch_identify(
 ): Short
@@ -1933,6 +1963,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_open_demo(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_open_demo_alink(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_open_demo_usb_direct(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_open_fd(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_open_host(
@@ -2008,6 +2040,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_set_adat_out_pin(
 fun uniffi_dspi_core_checksum_method_dspicore_set_alink_phase(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_set_alink_slots(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_set_alink_usb(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_set_band_bypass(
 ): Short
@@ -2167,6 +2201,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_test_dac_mute(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_undo(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_usb_direct_supported(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_wire_features(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_write_param(
@@ -2305,6 +2341,8 @@ fun uniffi_dspi_core_fn_method_dspicore_apply_all_params(`ptr`: Pointer,uniffi_o
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_apply_at_frame(`ptr`: Pointer,`frame`: Long,`op`: Byte,`arg`: Byte,`value`: Short,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_apply_at_time_base(`ptr`: Pointer,`timeBase`: Byte,`frame`: Long,`op`: Byte,`arg`: Byte,`value`: Short,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_begin_group(`ptr`: Pointer,`label`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_cached_device_name(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -2319,6 +2357,8 @@ fun uniffi_dspi_core_fn_method_dspicore_capture_baseline(`ptr`: Pointer,uniffi_o
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_check_core1_conflict(`ptr`: Pointer,`output`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
+fun uniffi_dspi_core_fn_method_dspicore_clear_alink_usb_diag(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_clear_clips(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_close_fd(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -2439,6 +2479,12 @@ fun uniffi_dspi_core_fn_method_dspicore_fetch_alink_slots(`ptr`: Pointer,uniffi_
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_alink_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_fetch_alink_usb(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_fetch_alink_usb_diag(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_fetch_alink_usb_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_all(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_fetch_apply_at_frame_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -2457,6 +2503,8 @@ fun uniffi_dspi_core_fn_method_dspicore_fetch_ctrl_ifaces(`ptr`: Pointer,uniffi_
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_fetch_dac_mute(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_fetch_frame_counter_time_base(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_identify(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_fetch_input_lock(`ptr`: Pointer,`which`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -2569,6 +2617,8 @@ fun uniffi_dspi_core_fn_method_dspicore_open_demo(`ptr`: Pointer,uniffi_out_err:
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_open_demo_alink(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_open_demo_usb_direct(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_open_fd(`ptr`: Pointer,`fd`: Int,`serial`: RustBuffer.ByValue,`vid`: Short,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_open_host(`ptr`: Pointer,`transport`: Pointer,`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -2644,6 +2694,8 @@ fun uniffi_dspi_core_fn_method_dspicore_set_adat_out_pin(`ptr`: Pointer,`pin`: B
 fun uniffi_dspi_core_fn_method_dspicore_set_alink_phase(`ptr`: Pointer,`mode`: Byte,`dLocal`: Short,`hopsOffset`: Short,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_set_alink_slots(`ptr`: Pointer,`slots`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_set_alink_usb(`ptr`: Pointer,`mode`: Byte,`autoReanchor`: Byte,`d`: Short,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_set_band_bypass(`ptr`: Pointer,`ch`: Byte,`band`: Byte,`bypass`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -2803,6 +2855,8 @@ fun uniffi_dspi_core_fn_method_dspicore_test_dac_mute(`ptr`: Pointer,uniffi_out_
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_undo(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_usb_direct_supported(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
 fun uniffi_dspi_core_fn_method_dspicore_wire_features(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
 fun uniffi_dspi_core_fn_method_dspicore_write_param(`ptr`: Pointer,`path`: RustBuffer.ByValue,`indices`: RustBuffer.ByValue,`value`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -3223,6 +3277,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_apply_at_frame() != 9986.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_apply_at_time_base() != 14078.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_begin_group() != 15128.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3242,6 +3299,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_check_core1_conflict() != 29922.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_clear_alink_usb_diag() != 55031.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_clear_clips() != 25742.toShort()) {
@@ -3424,6 +3484,15 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_alink_status() != 48493.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_alink_usb() != 17817.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_alink_usb_diag() != 26442.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_alink_usb_status() != 59602.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_all() != 41865.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3449,6 +3518,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_dac_mute() != 15871.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_frame_counter_time_base() != 56407.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_identify() != 43866.toShort()) {
@@ -3619,6 +3691,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_open_demo_alink() != 47520.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_open_demo_usb_direct() != 36241.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_open_fd() != 57502.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3731,6 +3806,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_alink_slots() != 51727.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_alink_usb() != 2052.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_band_bypass() != 64308.toShort()) {
@@ -3968,6 +4046,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_undo() != 33738.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_usb_direct_supported() != 35088.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_wire_features() != 30561.toShort()) {
@@ -5640,6 +5721,23 @@ public interface DspiCoreInterface {
     fun `applyAtFrame`(`frame`: kotlin.ULong, `op`: kotlin.UByte, `arg`: kotlin.UByte, `value`: kotlin.Short)
     
     /**
+     * `EXT_APPLY_AT_FRAME` on time base `time_base`: [`TIME_BASE_ALINK`]
+     * (`frame` an alink frame, as [`DspiCore::apply_at_frame`]),
+     * [`TIME_BASE_USB_SAMPLE`] (`frame` the unit's USB sample index S) or
+     * [`TIME_BASE_BUS_FRAME`] (`frame` a bus frame 0-2047 in bits 0-10 and
+     * the sample in it in bits 16-23: the same 8 bytes address the same
+     * instant on every unit of one host, up to 1.98 s ahead). Ops and their
+     * arguments are [`DspiCore::apply_at_frame`]'s.
+     *
+     * Errors, with no traffic: `Unsupported` for time base 0 without the
+     * alink, 1 or 2 without the USB-direct block; `InvalidArgument` for
+     * another time base, a bad bus-frame form, or an op or argument out of
+     * range; `ReadOnly`, `Disconnected`. `Refused` when the unit stalls (not
+     * phase-locked on the USB time base, a full queue).
+     */
+    fun `applyAtTimeBase`(`timeBase`: kotlin.UByte, `frame`: kotlin.ULong, `op`: kotlin.UByte, `arg`: kotlin.UByte, `value`: kotlin.Short)
+    
+    /**
      * Begin an undo group: everything written until the matching
      * [`DspiCore::end_group`] that undo can reverse is one undo step,
      * carrying `label` ([`HistoryEntry::label`]), as a drag is. Use it for
@@ -5716,6 +5814,11 @@ public interface DspiCoreInterface {
      * transfer error from the read.
      */
     fun `checkCore1Conflict`(`output`: kotlin.UByte): kotlin.Boolean
+    
+    /**
+     * Clear `EXT_ALINK_USB_DIAG`. Errors as [`DspiCore::set_alink_usb`].
+     */
+    fun `clearAlinkUsbDiag`()
     
     /**
      * Clear the device's sticky clip flags (`REQ_CLEAR_CLIPS`, which reads
@@ -6374,6 +6477,27 @@ public interface DspiCoreInterface {
     fun `fetchAlinkStatus`(): AlinkStatus
     
     /**
+     * Read `EXT_ALINK_USB`: the mode, automatic re-anchor, D, why mode 2
+     * runs as mode 1, and the state.
+     *
+     * `Unsupported`, with no traffic, without the block; also when the read
+     * stalls or a DSPi Link hub refuses it. `Disconnected` without a device;
+     * `Transfer` for a short or failed read.
+     */
+    fun `fetchAlinkUsb`(): AlinkUsbConfig
+    
+    /**
+     * Read `EXT_ALINK_USB_DIAG` (layout version 1; another reads as
+     * `Transfer`). Errors as [`DspiCore::fetch_alink_usb`].
+     */
+    fun `fetchAlinkUsbDiag`(): AlinkUsbDiag
+    
+    /**
+     * Read `EXT_ALINK_USB_STATUS`. Errors as [`DspiCore::fetch_alink_usb`].
+     */
+    fun `fetchAlinkUsbStatus`(): AlinkUsbStatus
+    
+    /**
      * Identify the firmware and read every parameter into the mirror.
      *
      * Reads `REQ_GET_PLATFORM`, then the bulk image in whatever wire format
@@ -6503,6 +6627,14 @@ public interface DspiCoreInterface {
      * unchanged on error.
      */
     fun `fetchDacMute`()
+    
+    /**
+     * Read `EXT_FRAME_COUNTER` with its time base: the alink's frame, or the
+     * USB sample index and bus frame on a USB-direct unit not in mode 0.
+     * `Unsupported`, with no traffic, on a unit with neither the alink nor
+     * the USB-direct block; otherwise errors as [`DspiCore::fetch_alink_usb`].
+     */
+    fun `fetchFrameCounterTimeBase`(): AlinkTimeBaseCounter
     
     /**
      * Read `EXT_IDENTIFY`: the blink time left and the board description.
@@ -7107,6 +7239,14 @@ public interface DspiCoreInterface {
     fun `openDemoAlink`()
     
     /**
+     * Open the demo device as an alink USB-direct unit (the fake device's
+     * model, `extension_channel_spec.md` 2.9: phase-locked at 48 kHz with D
+     * 192, its host 11.5 ppm slow, a stream playing), for clients without
+     * hardware. Replaces any open device.
+     */
+    fun `openDemoUsbDirect`()
+    
+    /**
      * Adopt a USB device the platform already opened: Android's
      * `UsbDeviceConnection.getFileDescriptor()`. The core `dup(2)`s the fd
      * and owns the duplicate, so the app keeps (and later closes) its own;
@@ -7565,6 +7705,21 @@ public interface DspiCoreInterface {
      * `Denied`, `Locked` or `Transfer` from the alink.
      */
     fun `setAlinkSlots`(`slots`: kotlin.ByteArray)
+    
+    /**
+     * Write `EXT_ALINK_USB`: `mode` 0 off, 1 rate lock, 2 phase lock;
+     * `auto_reanchor` (normally true); `d` samples from arrival to output,
+     * the same on every unit that should play aligned (170-399 at 48 kHz,
+     * 324-351 at 96 kHz in mode 2). Takes effect at once; a change of mode
+     * or D while phase-locked re-anchors (about D + 20 ms of silence). Saved
+     * with the output configuration.
+     *
+     * Errors, with no traffic: `Disconnected`; `Unsupported` without the
+     * block; `InvalidArgument` for a mode above 2 or D 0; `ReadOnly`. From the
+     * device: `Refused` when it stalls (mode 2 with D outside its limits now);
+     * `Denied`, `Locked` or `Transfer` from a hub.
+     */
+    fun `setAlinkUsb`(`mode`: kotlin.UByte, `autoReanchor`: kotlin.Boolean, `d`: kotlin.UShort)
     
     /**
      * Bypass (`true`) or re-enable one band of wire channel `ch`, keeping
@@ -8406,6 +8561,12 @@ public interface DspiCoreInterface {
     fun `undo`(): HistoryMove
     
     /**
+     * Whether the unit has the alink's USB-direct block, as the connect
+     * probe found it, without traffic. `Disconnected` without a device.
+     */
+    fun `usbDirectSupported`(): kotlin.Boolean
+    
+    /**
      * The `wire_compat::feat` bits the connected firmware's wire format carries:
      * every known bit on V32 and newer, none with no device or below V16.
      */
@@ -8710,6 +8871,33 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * `EXT_APPLY_AT_FRAME` on time base `time_base`: [`TIME_BASE_ALINK`]
+     * (`frame` an alink frame, as [`DspiCore::apply_at_frame`]),
+     * [`TIME_BASE_USB_SAMPLE`] (`frame` the unit's USB sample index S) or
+     * [`TIME_BASE_BUS_FRAME`] (`frame` a bus frame 0-2047 in bits 0-10 and
+     * the sample in it in bits 16-23: the same 8 bytes address the same
+     * instant on every unit of one host, up to 1.98 s ahead). Ops and their
+     * arguments are [`DspiCore::apply_at_frame`]'s.
+     *
+     * Errors, with no traffic: `Unsupported` for time base 0 without the
+     * alink, 1 or 2 without the USB-direct block; `InvalidArgument` for
+     * another time base, a bad bus-frame form, or an op or argument out of
+     * range; `ReadOnly`, `Disconnected`. `Refused` when the unit stalls (not
+     * phase-locked on the USB time base, a full queue).
+     */
+    @Throws(DspiException::class)override fun `applyAtTimeBase`(`timeBase`: kotlin.UByte, `frame`: kotlin.ULong, `op`: kotlin.UByte, `arg`: kotlin.UByte, `value`: kotlin.Short)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_apply_at_time_base(
+        it, FfiConverterUByte.lower(`timeBase`),FfiConverterULong.lower(`frame`),FfiConverterUByte.lower(`op`),FfiConverterUByte.lower(`arg`),FfiConverterShort.lower(`value`),_status)
+}
+    }
+    
+    
+
+    
+    /**
      * Begin an undo group: everything written until the matching
      * [`DspiCore::end_group`] that undo can reverse is one undo step,
      * carrying `label` ([`HistoryEntry::label`]), as a drag is. Use it for
@@ -8855,6 +9043,21 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     }
     )
     }
+    
+
+    
+    /**
+     * Clear `EXT_ALINK_USB_DIAG`. Errors as [`DspiCore::set_alink_usb`].
+     */
+    @Throws(DspiException::class)override fun `clearAlinkUsbDiag`()
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_clear_alink_usb_diag(
+        it, _status)
+}
+    }
+    
     
 
     
@@ -10124,6 +10327,60 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Read `EXT_ALINK_USB`: the mode, automatic re-anchor, D, why mode 2
+     * runs as mode 1, and the state.
+     *
+     * `Unsupported`, with no traffic, without the block; also when the read
+     * stalls or a DSPi Link hub refuses it. `Disconnected` without a device;
+     * `Transfer` for a short or failed read.
+     */
+    @Throws(DspiException::class)override fun `fetchAlinkUsb`(): AlinkUsbConfig {
+            return FfiConverterTypeAlinkUsbConfig.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_alink_usb(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Read `EXT_ALINK_USB_DIAG` (layout version 1; another reads as
+     * `Transfer`). Errors as [`DspiCore::fetch_alink_usb`].
+     */
+    @Throws(DspiException::class)override fun `fetchAlinkUsbDiag`(): AlinkUsbDiag {
+            return FfiConverterTypeAlinkUsbDiag.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_alink_usb_diag(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Read `EXT_ALINK_USB_STATUS`. Errors as [`DspiCore::fetch_alink_usb`].
+     */
+    @Throws(DspiException::class)override fun `fetchAlinkUsbStatus`(): AlinkUsbStatus {
+            return FfiConverterTypeAlinkUsbStatus.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_alink_usb_status(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Identify the firmware and read every parameter into the mirror.
      *
      * Reads `REQ_GET_PLATFORM`, then the bulk image in whatever wire format
@@ -10347,6 +10604,25 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * Read `EXT_FRAME_COUNTER` with its time base: the alink's frame, or the
+     * USB sample index and bus frame on a USB-direct unit not in mode 0.
+     * `Unsupported`, with no traffic, on a unit with neither the alink nor
+     * the USB-direct block; otherwise errors as [`DspiCore::fetch_alink_usb`].
+     */
+    @Throws(DspiException::class)override fun `fetchFrameCounterTimeBase`(): AlinkTimeBaseCounter {
+            return FfiConverterTypeAlinkTimeBaseCounter.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_fetch_frame_counter_time_base(
+        it, _status)
+}
+    }
+    )
+    }
     
 
     
@@ -11538,6 +11814,24 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Open the demo device as an alink USB-direct unit (the fake device's
+     * model, `extension_channel_spec.md` 2.9: phase-locked at 48 kHz with D
+     * 192, its host 11.5 ppm slow, a stream playing), for clients without
+     * hardware. Replaces any open device.
+     */
+    @Throws(DspiException::class)override fun `openDemoUsbDirect`()
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_open_demo_usb_direct(
+        it, _status)
+}
+    }
+    
+    
+
+    
+    /**
      * Adopt a USB device the platform already opened: Android's
      * `UsbDeviceConnection.getFileDescriptor()`. The core `dup(2)`s the fd
      * and owns the duplicate, so the app keeps (and later closes) its own;
@@ -12368,6 +12662,31 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_set_alink_slots(
         it, FfiConverterByteArray.lower(`slots`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Write `EXT_ALINK_USB`: `mode` 0 off, 1 rate lock, 2 phase lock;
+     * `auto_reanchor` (normally true); `d` samples from arrival to output,
+     * the same on every unit that should play aligned (170-399 at 48 kHz,
+     * 324-351 at 96 kHz in mode 2). Takes effect at once; a change of mode
+     * or D while phase-locked re-anchors (about D + 20 ms of silence). Saved
+     * with the output configuration.
+     *
+     * Errors, with no traffic: `Disconnected`; `Unsupported` without the
+     * block; `InvalidArgument` for a mode above 2 or D 0; `ReadOnly`. From the
+     * device: `Refused` when it stalls (mode 2 with D outside its limits now);
+     * `Denied`, `Locked` or `Transfer` from a hub.
+     */
+    @Throws(DspiException::class)override fun `setAlinkUsb`(`mode`: kotlin.UByte, `autoReanchor`: kotlin.Boolean, `d`: kotlin.UShort)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_set_alink_usb(
+        it, FfiConverterUByte.lower(`mode`),FfiConverterBoolean.lower(`autoReanchor`),FfiConverterUShort.lower(`d`),_status)
 }
     }
     
@@ -13995,6 +14314,23 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     callWithPointer {
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_undo(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Whether the unit has the alink's USB-direct block, as the connect
+     * probe found it, without traffic. `Disconnected` without a device.
+     */
+    @Throws(DspiException::class)override fun `usbDirectSupported`(): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_usb_direct_supported(
         it, _status)
 }
     }
@@ -16894,7 +17230,11 @@ data class AlinkSystemEdits (
     /**
      * Units' measured latencies.
      */
-    var `units`: List<AlinkUnitLatency>
+    var `units`: List<AlinkUnitLatency>, 
+    /**
+     * USB-direct units' modes (Installer).
+     */
+    var `usbModes`: List<AlinkUnitUsbMode>
 ) {
     
     companion object
@@ -16910,6 +17250,7 @@ public object FfiConverterTypeAlinkSystemEdits: FfiConverterRustBuffer<AlinkSyst
             FfiConverterOptionalUInt.read(buf),
             FfiConverterSequenceTypeAlinkRoomLipSync.read(buf),
             FfiConverterSequenceTypeAlinkUnitLatency.read(buf),
+            FfiConverterSequenceTypeAlinkUnitUsbMode.read(buf),
         )
     }
 
@@ -16917,7 +17258,8 @@ public object FfiConverterTypeAlinkSystemEdits: FfiConverterRustBuffer<AlinkSyst
             FfiConverterBoolean.allocationSize(value.`setSystemDelay`) +
             FfiConverterOptionalUInt.allocationSize(value.`systemDelayFrames`) +
             FfiConverterSequenceTypeAlinkRoomLipSync.allocationSize(value.`rooms`) +
-            FfiConverterSequenceTypeAlinkUnitLatency.allocationSize(value.`units`)
+            FfiConverterSequenceTypeAlinkUnitLatency.allocationSize(value.`units`) +
+            FfiConverterSequenceTypeAlinkUnitUsbMode.allocationSize(value.`usbModes`)
     )
 
     override fun write(value: AlinkSystemEdits, buf: ByteBuffer) {
@@ -16925,6 +17267,7 @@ public object FfiConverterTypeAlinkSystemEdits: FfiConverterRustBuffer<AlinkSyst
             FfiConverterOptionalUInt.write(value.`systemDelayFrames`, buf)
             FfiConverterSequenceTypeAlinkRoomLipSync.write(value.`rooms`, buf)
             FfiConverterSequenceTypeAlinkUnitLatency.write(value.`units`, buf)
+            FfiConverterSequenceTypeAlinkUnitUsbMode.write(value.`usbModes`, buf)
     }
 }
 
@@ -17129,7 +17472,87 @@ data class AlinkSystemUnit (
     /**
      * Its alarms still on.
      */
-    var `alarms`: kotlin.UInt
+    var `alarms`: kotlin.UInt, 
+    /**
+     * How the programme reaches it: `alink` (senders and fan-outs too) or
+     * `usb_direct`.
+     */
+    var `transport`: kotlin.String, 
+    /**
+     * A USB-direct unit's mode as the unit runs it: `off`, `rate_lock`,
+     * `phase_lock`.
+     */
+    var `usbMode`: kotlin.String?, 
+    /**
+     * The mode the installation asks for, when it names one.
+     */
+    var `usbModeWanted`: kotlin.String?, 
+    /**
+     * The delay D the alignment asks for, samples; else the unit's own.
+     */
+    var `usbDelaySamples`: kotlin.UInt?, 
+    /**
+     * [`Self::usb_delay_samples`] in ms at the system's rate.
+     */
+    var `usbDelayMs`: kotlin.Double?, 
+    /**
+     * The D the unit has now, samples.
+     */
+    var `unitUsbDelaySamples`: kotlin.UInt?, 
+    /**
+     * The shortest D phase lock takes now, samples.
+     */
+    var `usbDelayMin`: kotlin.UInt?, 
+    /**
+     * The longest.
+     */
+    var `usbDelayMax`: kotlin.UInt?, 
+    /**
+     * The host's SOF rate against the unit's crystal, ppm.
+     */
+    var `hostPpm`: kotlin.Float?, 
+    /**
+     * The unit's soft VCXO correction, ppm.
+     */
+    var `vcxoPpm`: kotlin.Float?, 
+    /**
+     * The phase error, samples.
+     */
+    var `phaseErrorSamples`: kotlin.Float?, 
+    /**
+     * Faded gaps since boot.
+     */
+    var `gaps`: kotlin.UInt?, 
+    /**
+     * Silence inserted for missing packets, samples since boot.
+     */
+    var `missedSamples`: kotlin.UInt?, 
+    /**
+     * Samples dropped as too late, since boot.
+     */
+    var `lateSamples`: kotlin.UInt?, 
+    /**
+     * Re-anchors since boot.
+     */
+    var `reanchors`: kotlin.UInt?, 
+    /**
+     * Timeline ends counted by the unit's diagnostics, and the latest cause.
+     */
+    var `timelineEnds`: kotlin.UInt?, 
+    /**
+     * The latest cause in words ("SOF lost", "bus reset"...); "" for none.
+     */
+    var `lastEnd`: kotlin.String, 
+    /**
+     * How many samples earlier its stream plays than the latest unit's (the
+     * alignment delays its outputs by that).
+     */
+    var `startOffsetSamples`: kotlin.Long?, 
+    /**
+     * The statistics in one line, for a details row: host and VCXO ppm,
+     * phase error, gaps, missed and late samples, re-anchors, timeline ends.
+     */
+    var `usbStats`: kotlin.String
 ) {
     
     companion object
@@ -17164,6 +17587,25 @@ public object FfiConverterTypeAlinkSystemUnit: FfiConverterRustBuffer<AlinkSyste
             FfiConverterLong.read(buf),
             FfiConverterOptionalLong.read(buf),
             FfiConverterUInt.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalLong.read(buf),
+            FfiConverterString.read(buf),
         )
     }
 
@@ -17190,7 +17632,26 @@ public object FfiConverterTypeAlinkSystemUnit: FfiConverterRustBuffer<AlinkSyste
             FfiConverterOptionalUInt.allocationSize(value.`hopDelayFrames`) +
             FfiConverterLong.allocationSize(value.`latencyUs`) +
             FfiConverterOptionalLong.allocationSize(value.`measuredLatencyUs`) +
-            FfiConverterUInt.allocationSize(value.`alarms`)
+            FfiConverterUInt.allocationSize(value.`alarms`) +
+            FfiConverterString.allocationSize(value.`transport`) +
+            FfiConverterOptionalString.allocationSize(value.`usbMode`) +
+            FfiConverterOptionalString.allocationSize(value.`usbModeWanted`) +
+            FfiConverterOptionalUInt.allocationSize(value.`usbDelaySamples`) +
+            FfiConverterOptionalDouble.allocationSize(value.`usbDelayMs`) +
+            FfiConverterOptionalUInt.allocationSize(value.`unitUsbDelaySamples`) +
+            FfiConverterOptionalUInt.allocationSize(value.`usbDelayMin`) +
+            FfiConverterOptionalUInt.allocationSize(value.`usbDelayMax`) +
+            FfiConverterOptionalFloat.allocationSize(value.`hostPpm`) +
+            FfiConverterOptionalFloat.allocationSize(value.`vcxoPpm`) +
+            FfiConverterOptionalFloat.allocationSize(value.`phaseErrorSamples`) +
+            FfiConverterOptionalUInt.allocationSize(value.`gaps`) +
+            FfiConverterOptionalUInt.allocationSize(value.`missedSamples`) +
+            FfiConverterOptionalUInt.allocationSize(value.`lateSamples`) +
+            FfiConverterOptionalUInt.allocationSize(value.`reanchors`) +
+            FfiConverterOptionalUInt.allocationSize(value.`timelineEnds`) +
+            FfiConverterString.allocationSize(value.`lastEnd`) +
+            FfiConverterOptionalLong.allocationSize(value.`startOffsetSamples`) +
+            FfiConverterString.allocationSize(value.`usbStats`)
     )
 
     override fun write(value: AlinkSystemUnit, buf: ByteBuffer) {
@@ -17217,6 +17678,25 @@ public object FfiConverterTypeAlinkSystemUnit: FfiConverterRustBuffer<AlinkSyste
             FfiConverterLong.write(value.`latencyUs`, buf)
             FfiConverterOptionalLong.write(value.`measuredLatencyUs`, buf)
             FfiConverterUInt.write(value.`alarms`, buf)
+            FfiConverterString.write(value.`transport`, buf)
+            FfiConverterOptionalString.write(value.`usbMode`, buf)
+            FfiConverterOptionalString.write(value.`usbModeWanted`, buf)
+            FfiConverterOptionalUInt.write(value.`usbDelaySamples`, buf)
+            FfiConverterOptionalDouble.write(value.`usbDelayMs`, buf)
+            FfiConverterOptionalUInt.write(value.`unitUsbDelaySamples`, buf)
+            FfiConverterOptionalUInt.write(value.`usbDelayMin`, buf)
+            FfiConverterOptionalUInt.write(value.`usbDelayMax`, buf)
+            FfiConverterOptionalFloat.write(value.`hostPpm`, buf)
+            FfiConverterOptionalFloat.write(value.`vcxoPpm`, buf)
+            FfiConverterOptionalFloat.write(value.`phaseErrorSamples`, buf)
+            FfiConverterOptionalUInt.write(value.`gaps`, buf)
+            FfiConverterOptionalUInt.write(value.`missedSamples`, buf)
+            FfiConverterOptionalUInt.write(value.`lateSamples`, buf)
+            FfiConverterOptionalUInt.write(value.`reanchors`, buf)
+            FfiConverterOptionalUInt.write(value.`timelineEnds`, buf)
+            FfiConverterString.write(value.`lastEnd`, buf)
+            FfiConverterOptionalLong.write(value.`startOffsetSamples`, buf)
+            FfiConverterString.write(value.`usbStats`, buf)
     }
 }
 
@@ -17314,8 +17794,18 @@ data class AlinkSystemView (
     /**
      * Units the model has, but those whose firmware has no audio link
      * (WP HWLK1F): "N of M locked" counts the units that can lock.
+     * -- WP AUSB1 -- USB-direct units are counted apart.
      */
     var `unitCount`: kotlin.UInt, 
+    /**
+     * USB-direct units in the model (WP AUSB1).
+     */
+    var `usbUnitCount`: kotlin.UInt, 
+    /**
+     * Those locked as asked: phase-locked (rate-locked when the mode asks
+     * only that).
+     */
+    var `usbLocked`: kotlin.UInt, 
     /**
      * One line for a status indicator: "Audio link: 4 of 4 locked".
      */
@@ -17367,6 +17857,8 @@ public object FfiConverterTypeAlinkSystemView: FfiConverterRustBuffer<AlinkSyste
             FfiConverterUInt.read(buf),
             FfiConverterUInt.read(buf),
             FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterSequenceString.read(buf),
@@ -17397,6 +17889,8 @@ public object FfiConverterTypeAlinkSystemView: FfiConverterRustBuffer<AlinkSyste
             FfiConverterUInt.allocationSize(value.`holdover`) +
             FfiConverterUInt.allocationSize(value.`pending`) +
             FfiConverterUInt.allocationSize(value.`unitCount`) +
+            FfiConverterUInt.allocationSize(value.`usbUnitCount`) +
+            FfiConverterUInt.allocationSize(value.`usbLocked`) +
             FfiConverterString.allocationSize(value.`summary`) +
             FfiConverterString.allocationSize(value.`health`) +
             FfiConverterSequenceString.allocationSize(value.`issues`) +
@@ -17426,6 +17920,8 @@ public object FfiConverterTypeAlinkSystemView: FfiConverterRustBuffer<AlinkSyste
             FfiConverterUInt.write(value.`holdover`, buf)
             FfiConverterUInt.write(value.`pending`, buf)
             FfiConverterUInt.write(value.`unitCount`, buf)
+            FfiConverterUInt.write(value.`usbUnitCount`, buf)
+            FfiConverterUInt.write(value.`usbLocked`, buf)
             FfiConverterString.write(value.`summary`, buf)
             FfiConverterString.write(value.`health`, buf)
             FfiConverterSequenceString.write(value.`issues`, buf)
@@ -17498,6 +17994,76 @@ public object FfiConverterTypeAlinkSystemWrite: FfiConverterRustBuffer<AlinkSyst
 
 
 /**
+ * What `EXT_FRAME_COUNTER` reports, with its time base.
+ */
+data class AlinkTimeBaseCounter (
+    /**
+     * The alink frame F (time base `alink`) or the USB sample S
+     * (`usb_sample`); 0 with none.
+     */
+    var `frame`: kotlin.ULong, 
+    /**
+     * The unit's clock at the read, µs (wraps).
+     */
+    var `timeUs`: kotlin.UInt, 
+    /**
+     * Output samples played, low 32 bits.
+     */
+    var `outputFrames`: kotlin.UInt, 
+    /**
+     * `alink`, `usb_sample` or `none`.
+     */
+    var `timeBase`: kotlin.String, 
+    /**
+     * Its code (0, 1, 0xFF).
+     */
+    var `timeBaseCode`: kotlin.UByte, 
+    /**
+     * The bus frame of the latest SOF (time base `usb_sample` only).
+     */
+    var `busFrame`: kotlin.UShort
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAlinkTimeBaseCounter: FfiConverterRustBuffer<AlinkTimeBaseCounter> {
+    override fun read(buf: ByteBuffer): AlinkTimeBaseCounter {
+        return AlinkTimeBaseCounter(
+            FfiConverterULong.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUShort.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AlinkTimeBaseCounter) = (
+            FfiConverterULong.allocationSize(value.`frame`) +
+            FfiConverterUInt.allocationSize(value.`timeUs`) +
+            FfiConverterUInt.allocationSize(value.`outputFrames`) +
+            FfiConverterString.allocationSize(value.`timeBase`) +
+            FfiConverterUByte.allocationSize(value.`timeBaseCode`) +
+            FfiConverterUShort.allocationSize(value.`busFrame`)
+    )
+
+    override fun write(value: AlinkTimeBaseCounter, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`frame`, buf)
+            FfiConverterUInt.write(value.`timeUs`, buf)
+            FfiConverterUInt.write(value.`outputFrames`, buf)
+            FfiConverterString.write(value.`timeBase`, buf)
+            FfiConverterUByte.write(value.`timeBaseCode`, buf)
+            FfiConverterUShort.write(value.`busFrame`, buf)
+    }
+}
+
+
+
+/**
  * One unit's measured latency to set.
  */
 data class AlinkUnitLatency (
@@ -17533,6 +18099,533 @@ public object FfiConverterTypeAlinkUnitLatency: FfiConverterRustBuffer<AlinkUnit
     override fun write(value: AlinkUnitLatency, buf: ByteBuffer) {
             FfiConverterString.write(value.`unitId`, buf)
             FfiConverterOptionalLong.write(value.`measuredLatencyUs`, buf)
+    }
+}
+
+
+
+/**
+ * One USB-direct unit's mode to set ("Clock and audio links", Installer):
+ * written with the audio link delays.
+ */
+data class AlinkUnitUsbMode (
+    /**
+     * The unit's id.
+     */
+    var `unitId`: kotlin.String, 
+    /**
+     * `off`, `rate_lock` or `phase_lock`; none: the unit's own is kept.
+     */
+    var `mode`: kotlin.String?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAlinkUnitUsbMode: FfiConverterRustBuffer<AlinkUnitUsbMode> {
+    override fun read(buf: ByteBuffer): AlinkUnitUsbMode {
+        return AlinkUnitUsbMode(
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AlinkUnitUsbMode) = (
+            FfiConverterString.allocationSize(value.`unitId`) +
+            FfiConverterOptionalString.allocationSize(value.`mode`)
+    )
+
+    override fun write(value: AlinkUnitUsbMode, buf: ByteBuffer) {
+            FfiConverterString.write(value.`unitId`, buf)
+            FfiConverterOptionalString.write(value.`mode`, buf)
+    }
+}
+
+
+
+/**
+ * What `EXT_ALINK_USB` reports.
+ */
+data class AlinkUsbConfig (
+    /**
+     * 0 off, 1 rate lock, 2 phase lock.
+     */
+    var `mode`: kotlin.UByte, 
+    /**
+     * `off`, `rate_lock`, `phase_lock` or `unknown`.
+     */
+    var `modeName`: kotlin.String, 
+    /**
+     * A phase error beyond 2 samples re-anchors (else it is pulled in while
+     * playing).
+     */
+    var `autoReanchor`: kotlin.Boolean, 
+    /**
+     * Samples from a USB sample's arrival to its output.
+     */
+    var `d`: kotlin.UShort, 
+    /**
+     * Mode 2 with D below the unit's minimum now: it runs as mode 1.
+     */
+    var `dBelowMin`: kotlin.Boolean, 
+    /**
+     * Mode 2 with D above its maximum: it runs as mode 1.
+     */
+    var `dAboveMax`: kotlin.Boolean, 
+    /**
+     * Mode 2 at 44.1 kHz: it runs as mode 1.
+     */
+    var `rateUnsupported`: kotlin.Boolean, 
+    /**
+     * The state, as [`AlinkUsbStatus::state`].
+     */
+    var `state`: kotlin.String, 
+    /**
+     * Its code.
+     */
+    var `stateCode`: kotlin.UByte
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAlinkUsbConfig: FfiConverterRustBuffer<AlinkUsbConfig> {
+    override fun read(buf: ByteBuffer): AlinkUsbConfig {
+        return AlinkUsbConfig(
+            FfiConverterUByte.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AlinkUsbConfig) = (
+            FfiConverterUByte.allocationSize(value.`mode`) +
+            FfiConverterString.allocationSize(value.`modeName`) +
+            FfiConverterBoolean.allocationSize(value.`autoReanchor`) +
+            FfiConverterUShort.allocationSize(value.`d`) +
+            FfiConverterBoolean.allocationSize(value.`dBelowMin`) +
+            FfiConverterBoolean.allocationSize(value.`dAboveMax`) +
+            FfiConverterBoolean.allocationSize(value.`rateUnsupported`) +
+            FfiConverterString.allocationSize(value.`state`) +
+            FfiConverterUByte.allocationSize(value.`stateCode`)
+    )
+
+    override fun write(value: AlinkUsbConfig, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`mode`, buf)
+            FfiConverterString.write(value.`modeName`, buf)
+            FfiConverterBoolean.write(value.`autoReanchor`, buf)
+            FfiConverterUShort.write(value.`d`, buf)
+            FfiConverterBoolean.write(value.`dBelowMin`, buf)
+            FfiConverterBoolean.write(value.`dAboveMax`, buf)
+            FfiConverterBoolean.write(value.`rateUnsupported`, buf)
+            FfiConverterString.write(value.`state`, buf)
+            FfiConverterUByte.write(value.`stateCode`, buf)
+    }
+}
+
+
+
+/**
+ * What `EXT_ALINK_USB_DIAG` reports: why a unit lost its timeline.
+ */
+data class AlinkUsbDiag (
+    /**
+     * The latest end's cause ([`AlinkUsbEnd::cause`]); none yet.
+     */
+    var `lastCause`: kotlin.String?, 
+    /**
+     * SOF absences ridden through.
+     */
+    var `rides`: kotlin.UShort, 
+    /**
+     * SOF absences of 50 ms or more.
+     */
+    var `holdovers`: kotlin.UShort, 
+    /**
+     * Timeline ends by cause, in the firmware's order.
+     */
+    var `ends`: List<AlinkUsbEnd>, 
+    /**
+     * USB suspends.
+     */
+    var `suspends`: kotlin.UShort, 
+    /**
+     * USB resumes.
+     */
+    var `resumes`: kotlin.UShort, 
+    /**
+     * USB bus resets.
+     */
+    var `busResets`: kotlin.UShort, 
+    /**
+     * Disconnects.
+     */
+    var `unplugs`: kotlin.UShort, 
+    /**
+     * The latest absence: frames counted on the bus.
+     */
+    var `lastFrames`: kotlin.UInt, 
+    /**
+     * Its duration by the unit's clock, µs.
+     */
+    var `lastUs`: kotlin.UInt, 
+    /**
+     * Clock minus frames at the host rate, µs.
+     */
+    var `lastDevUs`: kotlin.Int, 
+    /**
+     * The longest absence ridden through, µs.
+     */
+    var `longestRideUs`: kotlin.UInt, 
+    /**
+     * The longest main-loop pass, µs.
+     */
+    var `maxPassUs`: kotlin.UInt, 
+    /**
+     * The longest time without a SOF interrupt, µs.
+     */
+    var `maxIsrQuietUs`: kotlin.UInt, 
+    /**
+     * The latest SOF interrupt after its SOF, µs.
+     */
+    var `maxIsrLateUs`: kotlin.UInt, 
+    /**
+     * The running holdover's age, µs.
+     */
+    var `holdoverUs`: kotlin.UInt
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAlinkUsbDiag: FfiConverterRustBuffer<AlinkUsbDiag> {
+    override fun read(buf: ByteBuffer): AlinkUsbDiag {
+        return AlinkUsbDiag(
+            FfiConverterOptionalString.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterSequenceTypeAlinkUsbEnd.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AlinkUsbDiag) = (
+            FfiConverterOptionalString.allocationSize(value.`lastCause`) +
+            FfiConverterUShort.allocationSize(value.`rides`) +
+            FfiConverterUShort.allocationSize(value.`holdovers`) +
+            FfiConverterSequenceTypeAlinkUsbEnd.allocationSize(value.`ends`) +
+            FfiConverterUShort.allocationSize(value.`suspends`) +
+            FfiConverterUShort.allocationSize(value.`resumes`) +
+            FfiConverterUShort.allocationSize(value.`busResets`) +
+            FfiConverterUShort.allocationSize(value.`unplugs`) +
+            FfiConverterUInt.allocationSize(value.`lastFrames`) +
+            FfiConverterUInt.allocationSize(value.`lastUs`) +
+            FfiConverterInt.allocationSize(value.`lastDevUs`) +
+            FfiConverterUInt.allocationSize(value.`longestRideUs`) +
+            FfiConverterUInt.allocationSize(value.`maxPassUs`) +
+            FfiConverterUInt.allocationSize(value.`maxIsrQuietUs`) +
+            FfiConverterUInt.allocationSize(value.`maxIsrLateUs`) +
+            FfiConverterUInt.allocationSize(value.`holdoverUs`)
+    )
+
+    override fun write(value: AlinkUsbDiag, buf: ByteBuffer) {
+            FfiConverterOptionalString.write(value.`lastCause`, buf)
+            FfiConverterUShort.write(value.`rides`, buf)
+            FfiConverterUShort.write(value.`holdovers`, buf)
+            FfiConverterSequenceTypeAlinkUsbEnd.write(value.`ends`, buf)
+            FfiConverterUShort.write(value.`suspends`, buf)
+            FfiConverterUShort.write(value.`resumes`, buf)
+            FfiConverterUShort.write(value.`busResets`, buf)
+            FfiConverterUShort.write(value.`unplugs`, buf)
+            FfiConverterUInt.write(value.`lastFrames`, buf)
+            FfiConverterUInt.write(value.`lastUs`, buf)
+            FfiConverterInt.write(value.`lastDevUs`, buf)
+            FfiConverterUInt.write(value.`longestRideUs`, buf)
+            FfiConverterUInt.write(value.`maxPassUs`, buf)
+            FfiConverterUInt.write(value.`maxIsrQuietUs`, buf)
+            FfiConverterUInt.write(value.`maxIsrLateUs`, buf)
+            FfiConverterUInt.write(value.`holdoverUs`, buf)
+    }
+}
+
+
+
+/**
+ * One cause of timeline ends with its count (`EXT_ALINK_USB_DIAG`).
+ */
+data class AlinkUsbEnd (
+    /**
+     * `sof_lost`, `long_gap`, `discontinuity`, `host_rejected`,
+     * `rate_or_config`, `reanchor_phase_error`, `reanchor_output_reset`,
+     * `reanchor_other`, `stop`.
+     */
+    var `cause`: kotlin.String, 
+    /**
+     * How often.
+     */
+    var `count`: kotlin.UShort
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAlinkUsbEnd: FfiConverterRustBuffer<AlinkUsbEnd> {
+    override fun read(buf: ByteBuffer): AlinkUsbEnd {
+        return AlinkUsbEnd(
+            FfiConverterString.read(buf),
+            FfiConverterUShort.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AlinkUsbEnd) = (
+            FfiConverterString.allocationSize(value.`cause`) +
+            FfiConverterUShort.allocationSize(value.`count`)
+    )
+
+    override fun write(value: AlinkUsbEnd, buf: ByteBuffer) {
+            FfiConverterString.write(value.`cause`, buf)
+            FfiConverterUShort.write(value.`count`, buf)
+    }
+}
+
+
+
+/**
+ * What `EXT_ALINK_USB_STATUS` reports.
+ */
+data class AlinkUsbStatus (
+    /**
+     * `off` (mode 0, or the source is not USB), `no_sof`, `pull_in`,
+     * `rate_locked`, `anchoring`, `phase_locked`, `rejected` (the host is
+     * beyond 295 ppm) or `unknown`.
+     */
+    var `state`: kotlin.String, 
+    /**
+     * Its code.
+     */
+    var `stateCode`: kotlin.UByte, 
+    /**
+     * 0 free, 1 anchoring, 2 locked, 3 re-anchor pending.
+     */
+    var `phaseState`: kotlin.UByte, 
+    /**
+     * 0 = 44.1, 1 = 48, 2 = 96 kHz, 0xFF other.
+     */
+    var `rateCode`: kotlin.UByte, 
+    /**
+     * The rate, Hz; 0 when unknown.
+     */
+    var `rateHz`: kotlin.UInt, 
+    /**
+     * RP2350 hardware SOF timestamps.
+     */
+    var `hwTimestamp`: kotlin.Boolean, 
+    /**
+     * The host plays a stream to the unit.
+     */
+    var `stream`: kotlin.Boolean, 
+    /**
+     * The host follows the SOF-locked clock.
+     */
+    var `nominalFeedback`: kotlin.Boolean, 
+    /**
+     * A usable time base.
+     */
+    var `timeBase`: kotlin.Boolean, 
+    /**
+     * No SOF for over 50 ms: the time base is extrapolated.
+     */
+    var `holdover`: kotlin.Boolean, 
+    /**
+     * The host's SOF rate against the unit's crystal, ppm (+ = host fast).
+     */
+    var `hostPpm`: kotlin.Float, 
+    /**
+     * The soft VCXO's correction, ppm.
+     */
+    var `vcxoPpm`: kotlin.Float, 
+    /**
+     * The phase error, samples (phase-locked only).
+     */
+    var `phaseErrorSamples`: kotlin.Float, 
+    /**
+     * The USB sample index S arriving now; 0 without a time base.
+     */
+    var `sample`: kotlin.ULong, 
+    /**
+     * Its bus frame (0-2047).
+     */
+    var `busFrame`: kotlin.UShort, 
+    /**
+     * The smallest D phase lock takes now.
+     */
+    var `dMin`: kotlin.UShort, 
+    /**
+     * The largest.
+     */
+    var `dMax`: kotlin.UShort, 
+    /**
+     * The output ring's fill, samples.
+     */
+    var `fill`: kotlin.UShort, 
+    /**
+     * The bus frame the current stream's content began in (2.9.3); none
+     * without a stream on the timeline.
+     */
+    var `streamStartBusFrame`: kotlin.UShort?, 
+    /**
+     * Frames since then.
+     */
+    var `streamAgeFrames`: kotlin.UInt, 
+    /**
+     * Silence inserted minus late samples dropped since then.
+     */
+    var `streamShift`: kotlin.Int, 
+    /**
+     * Faded gaps since boot (wraps at 65536).
+     */
+    var `gapCount`: kotlin.UShort, 
+    /**
+     * Anchors since boot.
+     */
+    var `anchors`: kotlin.UInt, 
+    /**
+     * Re-anchors since boot.
+     */
+    var `reanchors`: kotlin.UInt, 
+    /**
+     * Silence inserted for missing packets, samples since boot.
+     */
+    var `missedSamples`: kotlin.UInt, 
+    /**
+     * Samples dropped because their packet came too late, since boot.
+     */
+    var `lateSamples`: kotlin.UInt
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAlinkUsbStatus: FfiConverterRustBuffer<AlinkUsbStatus> {
+    override fun read(buf: ByteBuffer): AlinkUsbStatus {
+        return AlinkUsbStatus(
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterOptionalUShort.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterInt.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AlinkUsbStatus) = (
+            FfiConverterString.allocationSize(value.`state`) +
+            FfiConverterUByte.allocationSize(value.`stateCode`) +
+            FfiConverterUByte.allocationSize(value.`phaseState`) +
+            FfiConverterUByte.allocationSize(value.`rateCode`) +
+            FfiConverterUInt.allocationSize(value.`rateHz`) +
+            FfiConverterBoolean.allocationSize(value.`hwTimestamp`) +
+            FfiConverterBoolean.allocationSize(value.`stream`) +
+            FfiConverterBoolean.allocationSize(value.`nominalFeedback`) +
+            FfiConverterBoolean.allocationSize(value.`timeBase`) +
+            FfiConverterBoolean.allocationSize(value.`holdover`) +
+            FfiConverterFloat.allocationSize(value.`hostPpm`) +
+            FfiConverterFloat.allocationSize(value.`vcxoPpm`) +
+            FfiConverterFloat.allocationSize(value.`phaseErrorSamples`) +
+            FfiConverterULong.allocationSize(value.`sample`) +
+            FfiConverterUShort.allocationSize(value.`busFrame`) +
+            FfiConverterUShort.allocationSize(value.`dMin`) +
+            FfiConverterUShort.allocationSize(value.`dMax`) +
+            FfiConverterUShort.allocationSize(value.`fill`) +
+            FfiConverterOptionalUShort.allocationSize(value.`streamStartBusFrame`) +
+            FfiConverterUInt.allocationSize(value.`streamAgeFrames`) +
+            FfiConverterInt.allocationSize(value.`streamShift`) +
+            FfiConverterUShort.allocationSize(value.`gapCount`) +
+            FfiConverterUInt.allocationSize(value.`anchors`) +
+            FfiConverterUInt.allocationSize(value.`reanchors`) +
+            FfiConverterUInt.allocationSize(value.`missedSamples`) +
+            FfiConverterUInt.allocationSize(value.`lateSamples`)
+    )
+
+    override fun write(value: AlinkUsbStatus, buf: ByteBuffer) {
+            FfiConverterString.write(value.`state`, buf)
+            FfiConverterUByte.write(value.`stateCode`, buf)
+            FfiConverterUByte.write(value.`phaseState`, buf)
+            FfiConverterUByte.write(value.`rateCode`, buf)
+            FfiConverterUInt.write(value.`rateHz`, buf)
+            FfiConverterBoolean.write(value.`hwTimestamp`, buf)
+            FfiConverterBoolean.write(value.`stream`, buf)
+            FfiConverterBoolean.write(value.`nominalFeedback`, buf)
+            FfiConverterBoolean.write(value.`timeBase`, buf)
+            FfiConverterBoolean.write(value.`holdover`, buf)
+            FfiConverterFloat.write(value.`hostPpm`, buf)
+            FfiConverterFloat.write(value.`vcxoPpm`, buf)
+            FfiConverterFloat.write(value.`phaseErrorSamples`, buf)
+            FfiConverterULong.write(value.`sample`, buf)
+            FfiConverterUShort.write(value.`busFrame`, buf)
+            FfiConverterUShort.write(value.`dMin`, buf)
+            FfiConverterUShort.write(value.`dMax`, buf)
+            FfiConverterUShort.write(value.`fill`, buf)
+            FfiConverterOptionalUShort.write(value.`streamStartBusFrame`, buf)
+            FfiConverterUInt.write(value.`streamAgeFrames`, buf)
+            FfiConverterInt.write(value.`streamShift`, buf)
+            FfiConverterUShort.write(value.`gapCount`, buf)
+            FfiConverterUInt.write(value.`anchors`, buf)
+            FfiConverterUInt.write(value.`reanchors`, buf)
+            FfiConverterUInt.write(value.`missedSamples`, buf)
+            FfiConverterUInt.write(value.`lateSamples`, buf)
     }
 }
 
@@ -25749,6 +26842,62 @@ public object FfiConverterSequenceTypeAlinkUnitLatency: FfiConverterRustBuffer<L
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeAlinkUnitLatency.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeAlinkUnitUsbMode: FfiConverterRustBuffer<List<AlinkUnitUsbMode>> {
+    override fun read(buf: ByteBuffer): List<AlinkUnitUsbMode> {
+        val len = buf.getInt()
+        return List<AlinkUnitUsbMode>(len) {
+            FfiConverterTypeAlinkUnitUsbMode.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<AlinkUnitUsbMode>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeAlinkUnitUsbMode.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<AlinkUnitUsbMode>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeAlinkUnitUsbMode.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeAlinkUsbEnd: FfiConverterRustBuffer<List<AlinkUsbEnd>> {
+    override fun read(buf: ByteBuffer): List<AlinkUsbEnd> {
+        val len = buf.getInt()
+        return List<AlinkUsbEnd>(len) {
+            FfiConverterTypeAlinkUsbEnd.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<AlinkUsbEnd>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeAlinkUsbEnd.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<AlinkUsbEnd>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeAlinkUsbEnd.write(it, buf)
         }
     }
 }

@@ -130,6 +130,13 @@ pub use alink::AlinkSetup;
 pub use alink::{
     ALINK_SIM_BANK_ERROR, ALINK_SIM_LOCK, ALINK_SIM_LOSE, ALINK_SIM_REANCHOR, EXT_FAKE_ALINK_SIM,
 };
+// -- WP AUSB1 --
+mod alink_usb;
+pub use alink_usb::{
+    ANCHOR as USB_DIRECT_ANCHOR, EXT_FAKE_ALINK_USB_SIM, PULL_IN as USB_DIRECT_PULL_IN,
+    USB_SIM_GAP, USB_SIM_HOLDOVER, USB_SIM_HOST_RANGE, USB_SIM_SETTLE, USB_SIM_SOF_LOST,
+    USB_SIM_STREAM_RESTART, UsbDirectSetup,
+};
 // -- WP CG22 --
 mod analysis;
 // -- WP CG16 --
@@ -361,6 +368,16 @@ impl FakeDevice {
         dev
     }
 
+    // -- WP AUSB1 --
+    /// [`FakeDevice::demo`] as an alink USB-direct unit (`fake/alink_usb.rs`):
+    /// `EXT_LIST` names 0x8005, 0x8006 and 0x8010-0x8012, `EXT_NOTIFY_FEATURES`
+    /// bits 3 and 4. Without the alink (as a K340 on bofr-main ebdf538).
+    pub fn demo_usb_direct(setup: UsbDirectSetup) -> Self {
+        let dev = Self::demo_with(true);
+        dev.shared.lock().alink_usb.enable(setup);
+        dev
+    }
+
     /// This fake with another serial in its descriptor, which is what a hub
     /// and the core key a device by, so several fakes can be attached at
     /// once. `GET_SERIAL` still answers the demo's.
@@ -488,6 +505,20 @@ impl FakeRemote {
     /// for another value.
     pub fn alink_sim(&self, op: u8) -> bool {
         let ok = self.shared.lock().set_alink(EXT_FAKE_ALINK_SIM, &[op]) == Some(true);
+        self.shared.wake.notify_all();
+        ok
+    }
+
+    // -- WP AUSB1 --
+    /// Play the USB bus's side, as [`EXT_FAKE_ALINK_USB_SIM`] does: one of
+    /// [`USB_SIM_HOLDOVER`] .. [`USB_SIM_SETTLE`]. False on a fake that is not
+    /// a USB-direct unit, or for another value.
+    pub fn usb_direct_sim(&self, op: u8) -> bool {
+        let ok = self
+            .shared
+            .lock()
+            .set_alink_usb(EXT_FAKE_ALINK_USB_SIM, &[op])
+            == Some(true);
         self.shared.wake.notify_all();
         ok
     }
@@ -622,6 +653,8 @@ pub const FAKE_ONLY_EXTENSIONS: &[u16] = &[
     EXT_FAKE_CLIP,
     // -- WP SW1 --
     EXT_FAKE_ALINK_SIM,
+    // -- WP AUSB1 --
+    EXT_FAKE_ALINK_USB_SIM,
 ];
 
 /// What can happen to a simulated device's core-voltage state (WP CG11).
@@ -1177,6 +1210,9 @@ struct State {
     // -- WP SW1 --
     /// The audio link's state (`fake/alink.rs`).
     alink: alink::Alink,
+    // -- WP AUSB1 --
+    /// The USB-direct block's state (`fake/alink_usb.rs`).
+    alink_usb: alink_usb::AlinkUsb,
     /// Opcodes [`FakeRemote::stall`] made fail.
     stalled: Vec<u8>,
     /// SETs [`FakeRemote::ignore`] made ACK and drop.
@@ -1245,6 +1281,8 @@ impl State {
             diag: diag::Diag::default(),
             // -- WP SW1 --
             alink: alink::Alink::default(),
+            // -- WP AUSB1 --
+            alink_usb: alink_usb::AlinkUsb::default(),
             stalled: Vec::new(),
             ignored: Vec::new(),
             notify_failures: 0,
@@ -1618,11 +1656,14 @@ impl State {
             // `case REQ_GET_USB_ERROR_STATS`).
             op::REQ_GET_USB_ERROR_STATS => Some(vec![0; 24]),
             op::REQ_RESET_USB_ERROR_STATS => Some(vec![1]),
-            op::REQ_EXTENSION if self.options.extensions => match self.get_alink(value) {
-                // -- WP SW1 --
-                Some(link) => link,
-                None => self.get_ext(value),
-            },
+            // -- WP AUSB1 -- the USB-direct block first: it answers 0x8005/0x8006 on its time base
+            op::REQ_EXTENSION if self.options.extensions => {
+                match self.get_alink_usb(value).or_else(|| self.get_alink(value)) {
+                    // -- WP SW1 --
+                    Some(link) => link,
+                    None => self.get_ext(value),
+                }
+            }
             _ => None,
         }
     }
@@ -1875,7 +1916,11 @@ impl State {
             gext::EXT_LIST => {
                 let mut ids = vec![gext::EXT_CROSSFEED_PAIR_MAP, gext::EXT_CORE_VREG];
                 // -- WP FWX --
-                if self.options.bulk_source || self.options.diag_ext || self.options.alink {
+                if self.options.bulk_source
+                    || self.options.diag_ext
+                    || self.options.alink
+                    || self.alink_usb.on
+                {
                     ids.push(gext::EXT_NOTIFY_FEATURES);
                 }
                 if self.options.diag_ext {
@@ -1883,11 +1928,18 @@ impl State {
                 }
                 // -- WP SW1 --
                 ids.extend(self.alink_ids());
+                // -- WP AUSB1 -- ascending, once each
+                ids.extend(self.alink_usb_ids());
+                ids.sort_unstable();
+                ids.dedup();
                 Some(ids.iter().flat_map(|id| id.to_le_bytes()).collect())
             }
             // `NOTIFY_FEAT_BULK_SOURCE` (bit 0), `NOTIFY_FEAT_CLIP_EVENT` (bit 1).
             gext::EXT_NOTIFY_FEATURES
-                if self.options.bulk_source || self.options.diag_ext || self.options.alink =>
+                if self.options.bulk_source
+                    || self.options.diag_ext
+                    || self.options.alink
+                    || self.alink_usb.on =>
             {
                 Some(self.notify_features().to_le_bytes().to_vec())
             }
@@ -2139,6 +2191,10 @@ impl State {
     fn set_ext(&mut self, value: u16, data: &[u8]) -> bool {
         // -- WP FWX --
         if let Some(ok) = self.set_diag(value, data) {
+            return ok;
+        }
+        // -- WP AUSB1 --
+        if let Some(ok) = self.set_alink_usb(value, data) {
             return ok;
         }
         // -- WP SW1 --

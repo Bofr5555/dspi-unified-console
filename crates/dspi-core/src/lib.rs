@@ -76,6 +76,8 @@ mod ext;
 mod ext_diag;
 // -- WP SW1 -- the audio link (SYS2), not DSPi Link
 mod alink;
+// -- WP AUSB1 -- the alink's USB-direct units (extension_channel_spec.md 2.9)
+mod alink_usb;
 pub mod files;
 // -- WP P1DF --
 mod doc_diff;
@@ -168,6 +170,12 @@ pub use ext_diag::{DeviceResetInfo, IDENTIFY_TONE_DBFS, IdentifyInfo};
 pub use alink::{
     ALINK_SLOT_SILENT, APPLY_OP_MAX, AlinkFrameCounter, AlinkInfo, AlinkPhase, AlinkStatus,
     ApplyAtFrameStatus, INPUT_SOURCE_ALINK,
+};
+// -- WP AUSB1 --
+pub use alink_usb::{
+    AlinkTimeBaseCounter, AlinkUsbConfig, AlinkUsbDiag, AlinkUsbEnd, AlinkUsbStatus,
+    TIME_BASE_ALINK, TIME_BASE_BUS_FRAME, TIME_BASE_USB_SAMPLE, USB_DEFAULT_D, USB_MODE_OFF,
+    USB_MODE_PHASE_LOCK, USB_MODE_RATE_LOCK,
 };
 // -- WP CG23 --
 pub use raw::RawNotification;

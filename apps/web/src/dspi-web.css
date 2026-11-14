@@ -601,6 +601,11 @@
 .dspi-web .sys-lock-off { color: var(--bad); border-color: var(--bad); }
 .dspi-web .sys-alarm-count { font-size: 0.75rem; color: var(--bad); font-weight: 600; }
 .dspi-web .sys-slots { color: var(--muted); font-size: 0.8rem; flex-basis: 100%; padding-left: 1.1rem; }
+/* -- WP AUSB1 -- USB-direct units: their lock and their statistics line */
+.dspi-web .sys-lock-phase-locked, .dspi-web .sys-lock-rate-locked { color: var(--ok); border-color: var(--ok); }
+.dspi-web .sys-lock-pulling-in, .dspi-web .sys-lock-anchoring { color: var(--warn); border-color: var(--warn); }
+.dspi-web .sys-lock-no-usb-time-base, .dspi-web .sys-lock-host-out-of-range { color: var(--bad); border-color: var(--bad); }
+.dspi-web .sys-usb-stats { color: var(--muted); font-size: 0.8rem; flex-basis: 100%; padding-left: 1.1rem; overflow-wrap: anywhere; }
 .dspi-web .sys-topo, .dspi-web .sys-topo ul { list-style: none; margin: 0; padding: 0; }
 .dspi-web .sys-topo ul { margin-left: 0.6rem; padding-left: 1rem; border-left: 1px solid var(--line); }
 .dspi-web .sys-node { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.5rem; padding: 0.25rem 0; font-size: 0.9rem; position: relative; }

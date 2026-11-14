@@ -32,6 +32,14 @@ import {
   withRoomLipSync,
   withSlot,
   writeNote,
+  // -- WP AUSB1 --
+  USB_MODES,
+  endWord,
+  isUsbDirect,
+  usbModeWord,
+  usbStateWord,
+  withUsbMode,
+  type UsbMode,
   type SystemModel,
   type WriteResult,
 } from "./model";
@@ -73,6 +81,8 @@ export function AlinkClock(props: { feed: SystemFeed; ask: Ask }) {
         </ul>
       ) : null}
       <UnitsTable feed={props.feed} model={shown} admin={admin} onEdit={edit} />
+      {/* -- WP AUSB1 -- */}
+      <UsbUnitsTable feed={props.feed} model={shown} admin={admin} onEdit={edit} />
       <SlotMatrix model={shown} admin={admin} onEdit={edit} />
       {draft && stale ? (
         <div class="sys-save sys-stale" role="alert" aria-label="Installation changed on the hub">
@@ -186,7 +196,7 @@ function UnitsTable(props: { feed: SystemFeed; model: SystemModel; admin: boolea
             </tr>
           </thead>
           <tbody>
-            {model.units.map((u) => {
+            {model.units.filter((u) => !isUsbDirect(u)).map((u) => {
               const plan = a?.units.find((p) => p.unit === u.id);
               const o = st.status?.observed[u.serial];
               const read = o?.phase;
@@ -268,9 +278,116 @@ function UnitsTable(props: { feed: SystemFeed; model: SystemModel; admin: boolea
   );
 }
 
+// -- WP AUSB1 --
+/**
+ * The USB-direct units: each one's mode (set here, written with the alignment),
+ * its state, its delay D against the system delay and its range, the start offset
+ * of its stream, its measured latency and the effective delay.
+ */
+function UsbUnitsTable(props: { feed: SystemFeed; model: SystemModel; admin: boolean; onEdit: (m: SystemModel) => void }) {
+  const st = useFeed(props.feed);
+  const { model } = props;
+  const units = model.units.filter(isUsbDirect);
+  if (!units.length) return null;
+  const a = st.status?.alignment;
+  const rate = a?.rateHz || model.rateHz || 48000;
+  return (
+    <>
+      <h4>USB-direct units</h4>
+      <div class="sys-scroll">
+        <table class="sys-table" aria-label="USB-direct units">
+          <thead>
+            <tr>
+              <th>Unit</th>
+              <th>
+                <abbr title="EXT_ALINK_USB mode: off, rate lock (the host's SOF clock), phase lock (sample-aligned)">Mode</abbr>
+              </th>
+              <th>State</th>
+              <th>
+                <abbr title="D (EXT_ALINK_USB): samples from a USB sample's arrival to its output, the system delay plus this unit's terms">USB-direct delay</abbr>
+              </th>
+              <th>
+                <abbr title="d_min..d_max (EXT_ALINK_USB_STATUS), samples">Range</abbr>
+              </th>
+              <th>
+                <abbr title="How much earlier this unit's stream plays than the latest USB-direct unit's: added to its outputs' delays">Start offset</abbr>
+              </th>
+              <th>Measured, µs</th>
+              <th>Effective</th>
+            </tr>
+          </thead>
+          <tbody>
+            {units.map((u) => {
+              const plan = a?.units.find((p) => p.unit === u.id);
+              const o = st.status?.observed[u.serial];
+              const seen = o?.usb;
+              const issues = a?.issues.filter((i) => i.subject === u.id) ?? [];
+              const name = u.name || u.id;
+              return (
+                <tr key={u.id} aria-label={`USB-direct clock of ${name}`} data-writable={plan?.writable ?? false}>
+                  <th scope="row">{name}</th>
+                  <td>
+                    {props.admin ? (
+                      <select
+                        aria-label={`USB-direct mode of ${name}`}
+                        value={u.usbMode ?? ""}
+                        onChange={(e) => {
+                          const v = (e.target as HTMLSelectElement).value;
+                          props.onEdit(withUsbMode(model, u.id, v ? (v as UsbMode) : null));
+                        }}
+                      >
+                        <option value="">The unit's own ({usbModeWord(seen?.mode)})</option>
+                        {USB_MODES.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span>{u.usbMode ? usbModeWord(u.usbMode) : `The unit's own (${usbModeWord(seen?.mode)})`}</span>
+                    )}
+                    {seen && u.usbMode && seen.mode !== u.usbMode ? <span class="sys-diff"> (unit: {usbModeWord(seen.mode)})</span> : null}
+                  </td>
+                  <td>{!o?.online ? "Offline" : o.usbDirect === "none" ? "No USB-direct (firmware)" : usbStateWord(seen?.state)}</td>
+                  <td title={seen ? `Read from the unit: ${seen.d}` : undefined}>
+                    {plan?.usbD != null ? `${framesMs(plan.usbD, rate).replace(/^(\d+)/, "$1 samples")}` : seen ? `${seen.d} samples` : "–"}
+                    {seen && plan?.usbD != null && seen.d !== plan.usbD ? <span class="sys-diff"> (unit: {seen.d})</span> : null}
+                  </td>
+                  <td>{seen ? `${seen.dMin}..${seen.dMax}` : "unknown"}</td>
+                  <td>{plan?.startOffsetSamples != null ? `${plan.startOffsetSamples} samples` : "–"}</td>
+                  <td>
+                    <NumberCell
+                      label={`Measured latency of ${name}`}
+                      value={u.measuredLatencyUs}
+                      lo={-100000}
+                      hi={100000}
+                      admin={props.admin}
+                      onCommit={(v) => props.onEdit(withMeasuredLatency(model, u.id, v))}
+                    />
+                  </td>
+                  <td>
+                    {plan ? `${plan.effective} samples` : "–"}
+                    {issues.map((i) => (
+                      <div class="sys-issue" key={i.code} data-code={i.code}>
+                        {i.message}
+                      </div>
+                    ))}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
 /** The sender's audio link channels (rows) to each unit's matrix inputs (columns). One channel per input, or silent. */
 function SlotMatrix(props: { model: SystemModel; admin: boolean; onEdit: (m: SystemModel) => void }) {
-  const { model } = props;
+  const { model: full } = props;
+  // -- WP AUSB1 -- a USB-direct unit takes no audio link channels
+  const model = { ...full, units: full.units.filter((u) => !isUsbDirect(u)) };
   const channels = senderChannels(model);
   return (
     <>
@@ -316,7 +433,7 @@ function SlotMatrix(props: { model: SystemModel; admin: boolean; onEdit: (m: Sys
                           aria-label={label}
                           aria-pressed={on}
                           disabled={!props.admin}
-                          onClick={() => props.onEdit(withSlot(model, u.id, i, on ? SILENT : ch))}
+                          onClick={() => props.onEdit(withSlot(full, u.id, i, on ? SILENT : ch))}
                         />
                       </td>
                     );
@@ -396,8 +513,19 @@ function AlignPanel(props: { feed: SystemFeed; ask: Ask; admin: boolean; mayAlig
             {al.report.alignment.units.map((u) => (
               <li key={u.unit} aria-label={`Plan for ${names(u.unit)}`}>
                 <strong>{names(u.unit)}</strong>
-                <span title="d_local">Audio link delay {framesMs(u.dLocal, al.report!.alignment.rateHz || 48000)}</span>
-                <span title="hops_offset">Hop offset {u.hopsOffset}</span>
+                {/* -- WP AUSB1 -- a USB-direct unit's D and mode */}
+                {u.transport === "usb_direct" ? (
+                  <span title="EXT_ALINK_USB">
+                    USB-direct {usbModeWord(u.usbMode)}
+                    {u.usbD != null ? `, delay ${u.usbD} samples` : ""}
+                    {u.startOffsetSamples ? `, start offset ${u.startOffsetSamples} samples` : ""}
+                  </span>
+                ) : (
+                  <>
+                    <span title="d_local">Audio link delay {framesMs(u.dLocal, al.report!.alignment.rateHz || 48000)}</span>
+                    <span title="hops_offset">Hop offset {u.hopsOffset}</span>
+                  </>
+                )}
                 <span class={`sys-result sys-${u.writable ? "ok" : "warn"}`}>{u.writable ? "Writable" : "Not written"}</span>
               </li>
             ))}
@@ -414,8 +542,10 @@ function StatsTable(props: { feed: SystemFeed }) {
   const model = st.model!;
   const rows = [
     ...model.fanOuts.filter((f) => f.serial).map((f) => ({ id: f.id, name: f.name || f.id, serial: f.serial! })),
-    ...model.units.map((u) => ({ id: u.id, name: u.name || u.id, serial: u.serial })),
+    ...model.units.filter((u) => !isUsbDirect(u)).map((u) => ({ id: u.id, name: u.name || u.id, serial: u.serial })),
   ];
+  // -- WP AUSB1 --
+  const usbRows = model.units.filter(isUsbDirect);
   return (
     <>
       <h4>Audio link stats and trim scan</h4>
@@ -465,6 +595,66 @@ function StatsTable(props: { feed: SystemFeed }) {
           </tbody>
         </table>
       </div>
+      {usbRows.length ? (
+        <>
+          {/* -- WP AUSB1 -- EXT_ALINK_USB_STATUS's counters and EXT_ALINK_USB_DIAG */}
+          <h4>USB-direct stats</h4>
+          <div class="sys-scroll">
+            <table class="sys-table" aria-label="USB-direct stats">
+              <thead>
+                <tr>
+                  <th>Unit</th>
+                  <th>State</th>
+                  <th>Rate</th>
+                  <th>
+                    <abbr title="The host's SOF rate against the unit's crystal (+ = host fast)">Host</abbr>
+                  </th>
+                  <th>VCXO</th>
+                  <th>Phase error</th>
+                  <th>Gaps</th>
+                  <th>Missed</th>
+                  <th>Late</th>
+                  <th>Anchors</th>
+                  <th>
+                    <abbr title="EXT_ALINK_USB_DIAG: timeline ends since boot or a clear, and the latest cause">Timeline ends</abbr>
+                  </th>
+                  <th>
+                    <abbr title="SOF absences of 50 ms or more, and those ridden through on the same timeline">Holdovers</abbr>
+                  </th>
+                  <th>
+                    <abbr title="USB suspends, bus resets and unplugs the unit counted">Bus events</abbr>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {usbRows.map((u) => {
+                  const o = st.status?.observed[u.serial];
+                  const s = o?.usb;
+                  const d = s?.diag;
+                  const name = u.name || u.id;
+                  return (
+                    <tr key={u.id} aria-label={`USB-direct stats of ${name}`}>
+                      <th scope="row">{name}</th>
+                      <td>{o?.online ? (s ? usbStateWord(s.state) : "–") : "offline"}</td>
+                      <td>{s ? rateOf(s.rateCode) : "–"}</td>
+                      <td>{s ? `${s.hostPpm.toFixed(1)} ppm` : "–"}</td>
+                      <td>{s ? `${s.vcxoPpm.toFixed(1)} ppm` : "–"}</td>
+                      <td>{s && s.state === "phase_locked" ? `${s.phaseError.toFixed(2)} samples` : "–"}</td>
+                      <td>{s?.gapCount ?? "–"}</td>
+                      <td>{s ? `${s.missedSamples} samples` : "–"}</td>
+                      <td>{s ? `${s.lateSamples} samples` : "–"}</td>
+                      <td>{s ? `${s.anchors} (re-anchors ${s.reanchors})` : "–"}</td>
+                      <td>{d ? `${d.ends} (last: ${endWord(d.lastCause)})` : "–"}</td>
+                      <td>{d ? `${d.holdovers} (ridden ${d.rides})` : "–"}</td>
+                      <td>{d ? `suspends ${d.suspends}, resets ${d.busResets}, unplugs ${d.unplugs}` : "–"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : null}
     </>
   );
 }

@@ -586,6 +586,10 @@ USAGE:
                              Raising it above 1.20 V from what the unit reports
                              now asks for the word OVERVOLT, or takes it from
                              --word OVERVOLT in a script; --force does not count
+    {COMMAND} ext usb-direct  read an alink USB-direct unit: its mode and D, the
+                             SOF lock (state, host and VCXO ppm, phase error),
+                             the stream's start, gaps, missed and late samples,
+                             and why its timeline ended (DIAG)
     {COMMAND} autoeq search <q> find a headphone correction profile
     {COMMAND} autoeq apply <id> apply one to the input channels
     {COMMAND} autoeq rebuild --yes
@@ -1454,6 +1458,8 @@ fn cmd_ext(target: &Target, args: &[&str], json: bool, word: Option<&str>) -> u8
         MapWrite(ext::PairMap),
         Vreg,
         VregOp(VregOp),
+        // -- WP AUSB1 --
+        UsbDirect,
     }
     let parsed: Result<Do, ExtError> = match args {
         [] | ["list"] => Ok(Do::List),
@@ -1473,11 +1479,13 @@ fn cmd_ext(target: &Target, args: &[&str], json: bool, word: Option<&str>) -> u8
         ["vreg", "auto", "on"] => Ok(Do::VregOp(VregOp::Auto(true))),
         ["vreg", "auto", "off"] => Ok(Do::VregOp(VregOp::Auto(false))),
         ["vreg", "clear"] => Ok(Do::VregOp(VregOp::Clear)),
+        // -- WP AUSB1 --
+        ["usb-direct"] => Ok(Do::UsbDirect),
         _ => Err(ExtError::BadArgument(
             concat!(
                 "usage: ",
                 dspi_cmd::command!(),
-                " ext [list] | xfeed-map [pairs] | vreg [set|trial|trial-end|auto|clear]"
+                " ext [list] | xfeed-map [pairs] | vreg [set|trial|trial-end|auto|clear] | usb-direct"
             )
             .into(),
         )),
@@ -1530,6 +1538,8 @@ fn cmd_ext(target: &Target, args: &[&str], json: bool, word: Option<&str>) -> u8
                             .join("\n")
                     }
                 }),
+                // -- WP AUSB1 --
+                Do::UsbDirect => usb_direct_text(t, json),
                 Do::VregOp(op) => vreg_send(t, op, word, &mut prompt_overvolt_word).map(|()| {
                     if json {
                         "{\"ok\":true}".into()
@@ -1604,6 +1614,179 @@ fn prompt_overvolt_word() -> Option<String> {
     let mut line = String::new();
     std::io::stdin().read_line(&mut line).ok()?;
     Some(line.trim_end_matches(['\r', '\n']).to_owned())
+}
+
+// -- WP AUSB1 --
+/// `ext usb-direct`: `EXT_ALINK_USB`, `_STATUS` and (when it reads) `_DIAG`,
+/// as text or one JSON object (`config`, `status`, `diag`).
+fn usb_direct_text(
+    t: &mut dyn dspi_transport::Transport,
+    json: bool,
+) -> dspi_session::ext::Result<String> {
+    use dspi_session::ext::{self, alink_usb as usb};
+    let c = ext::read_alink_usb(t)?;
+    let s = ext::read_alink_usb_status(t)?;
+    // An older or newer DIAG layout is not an error: it is left out.
+    let d = ext::read_alink_usb_diag(t).ok();
+    let mode = c.usb_mode().as_str();
+    let reasons: Vec<&str> = [
+        (usb::STATUS_D_BELOW_MIN, "d_below_min"),
+        (usb::STATUS_D_ABOVE_MAX, "d_above_max"),
+        (usb::STATUS_RATE_UNSUPPORTED, "rate_unsupported"),
+    ]
+    .iter()
+    .filter(|(bit, _)| c.status_flags & bit != 0)
+    .map(|(_, w)| *w)
+    .collect();
+    let rate_hz: u32 = match s.rate_code {
+        0 => 44_100,
+        1 => 48_000,
+        2 => 96_000,
+        _ => 0,
+    };
+    let start = s.stream_start_bus_frame();
+    if json {
+        let diag = d.map(|d| {
+            let ends: Vec<_> = d
+                .ends
+                .iter()
+                .zip(0u8..)
+                .map(|(n, i)| serde_json::json!({ "cause": usb::end_cause_name(i), "count": n }))
+                .collect();
+            serde_json::json!({
+                "lastCause": d.last_cause_name(), "rides": d.rides, "holdovers": d.holdovers,
+                "ends": ends, "suspends": d.suspends, "resumes": d.resumes,
+                "busResets": d.bus_resets, "unplugs": d.unplugs, "lastFrames": d.last_frames,
+                "lastUs": d.last_us, "lastDevUs": d.last_dev_us, "longestRideUs": d.longest_ride_us,
+                "maxPassUs": d.max_pass_us, "maxIsrQuietUs": d.max_isr_quiet_us,
+                "maxIsrLateUs": d.max_isr_late_us, "holdoverUs": d.holdover_us,
+            })
+        });
+        return Ok(serde_json::json!({
+            "config": {
+                "mode": c.mode, "modeName": mode, "autoReanchor": c.flags & usb::FLAG_AUTO_REANCHOR != 0,
+                "d": c.d, "runsAsRateLock": reasons,
+            },
+            "status": {
+                "state": s.state.as_str(), "phaseState": s.phase_state, "rateHz": rate_hz,
+                "hwTimestamp": s.flags & usb::USB_FLAG_HW_TIMESTAMP != 0,
+                "stream": s.flags & usb::USB_FLAG_STREAM != 0,
+                "timeBase": s.flags & usb::USB_FLAG_TIME_BASE != 0,
+                "holdover": s.flags & usb::USB_FLAG_HOLDOVER != 0,
+                "hostPpm": s.host_ppm, "vcxoPpm": s.vcxo_ppm, "phaseErrorSamples": s.phase_error,
+                "sample": s.sample, "busFrame": s.bus_frame, "dMin": s.d_min, "dMax": s.d_max,
+                "fill": s.fill, "streamStartBusFrame": start, "streamAgeFrames": s.stream_age_frames,
+                "streamShift": s.stream_shift, "gapCount": s.gap_count, "anchors": s.anchors,
+                "reanchors": s.reanchors, "missedSamples": s.missed_samples, "lateSamples": s.late_samples,
+            },
+            "diag": diag,
+        })
+        .to_string());
+    }
+    let ms = |d: u16| {
+        if rate_hz == 0 {
+            String::new()
+        } else {
+            format!(" ({:.2} ms)", f64::from(d) * 1000.0 / f64::from(rate_hz))
+        }
+    };
+    let mut lines = vec![
+        (
+            "mode",
+            format!(
+                "{}{}, D {} samples{}",
+                mode.replace('_', " "),
+                if c.flags & usb::FLAG_AUTO_REANCHOR != 0 {
+                    " (auto re-anchor)"
+                } else {
+                    ""
+                },
+                c.d,
+                ms(c.d)
+            ),
+        ),
+        (
+            "state",
+            format!(
+                "{} (phase state {})",
+                s.state.as_str().replace('_', " "),
+                s.phase_state
+            ),
+        ),
+    ];
+    if !reasons.is_empty() {
+        lines.push(("runs as", format!("rate lock: {}", reasons.join(", "))));
+    }
+    lines.extend([
+        (
+            "rate",
+            format!(
+                "{}{}",
+                if rate_hz == 0 {
+                    "unknown".to_owned()
+                } else {
+                    format!("{rate_hz} Hz")
+                },
+                if s.flags & usb::USB_FLAG_HW_TIMESTAMP != 0 {
+                    ", hardware SOF timestamps"
+                } else {
+                    ""
+                }
+            ),
+        ),
+        ("host", format!("{:+.2} ppm", s.host_ppm)),
+        ("vcxo", format!("{:+.2} ppm", s.vcxo_ppm)),
+        ("phase error", format!("{:+.2} samples", s.phase_error)),
+        ("bus frame", format!("{} (S {})", s.bus_frame, s.sample)),
+        ("D range", format!("{}..{}", s.d_min, s.d_max)),
+        ("fill", format!("{} samples", s.fill)),
+        (
+            "stream",
+            match start {
+                Some(f) => format!(
+                    "began at bus frame {f} ({} frames ago), shift {}",
+                    s.stream_age_frames, s.stream_shift
+                ),
+                None if s.flags & usb::USB_FLAG_STREAM != 0 => "playing, not on a timeline".into(),
+                None => "none".into(),
+            },
+        ),
+        (
+            "gaps",
+            format!(
+                "{} (missed {}, late {} samples)",
+                s.gap_count, s.missed_samples, s.late_samples
+            ),
+        ),
+        (
+            "anchors",
+            format!("{} (re-anchors {})", s.anchors, s.reanchors),
+        ),
+    ]);
+    if let Some(d) = d {
+        lines.push((
+            "timeline ends",
+            format!(
+                "{} (last: {}); holdovers {}, rides {}",
+                d.total_ends(),
+                d.last_cause_name().unwrap_or("none"),
+                d.holdovers,
+                d.rides
+            ),
+        ));
+        lines.push((
+            "bus events",
+            format!(
+                "suspends {}, resumes {}, resets {}, unplugs {}",
+                d.suspends, d.resumes, d.bus_resets, d.unplugs
+            ),
+        ));
+    }
+    Ok(lines
+        .iter()
+        .map(|(k, v)| format!("{k:<14}{v}"))
+        .collect::<Vec<_>>()
+        .join("\n"))
 }
 
 fn map_text(m: &dspi_session::ext::PairMap, json: bool) -> String {
@@ -3198,5 +3381,41 @@ mod tests_wp_clean1 {
     #[test]
     fn wp_clean1_the_binary_is_the_named_command() {
         assert_eq!(env!("CARGO_BIN_NAME"), dspi_cmd::COMMAND);
+    }
+}
+
+// -- WP AUSB1 --
+#[cfg(test)]
+mod tests_wp_ausb1 {
+    use super::*;
+    use dspi_transport::FakeDevice;
+    use dspi_transport::fake::UsbDirectSetup;
+
+    #[test]
+    fn wp_ausb1_ext_usb_direct_reads_text_and_json() {
+        let mut dev = FakeDevice::demo_usb_direct(UsbDirectSetup::default());
+        let text = usb_direct_text(&mut dev, false).unwrap();
+        for line in [
+            "mode          phase lock (auto re-anchor), D 192 samples (4.00 ms)",
+            "state         phase locked (phase state 2)",
+            "host          -11.50 ppm",
+            "D range       170..399",
+            "gaps          0 (missed 0, late 0 samples)",
+            "timeline ends 0 (last: none); holdovers 0, rides 0",
+        ] {
+            assert!(text.lines().any(|l| l == line), "{line:?} in\n{text}");
+        }
+        let v: serde_json::Value =
+            serde_json::from_str(&usb_direct_text(&mut dev, true).unwrap()).unwrap();
+        assert_eq!(v["config"]["modeName"], "phase_lock");
+        assert_eq!(v["status"]["state"], "phase_locked");
+        assert_eq!(v["status"]["rateHz"], 48_000);
+        assert_eq!(v["diag"]["ends"].as_array().map(Vec::len), Some(9));
+        // Firmware without the block: the device's own refusal, not a guess.
+        let mut plain = FakeDevice::demo();
+        assert!(matches!(
+            usb_direct_text(&mut plain, false),
+            Err(dspi_session::ext::ExtError::Unsupported { .. })
+        ));
     }
 }

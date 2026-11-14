@@ -154,6 +154,8 @@ mod tests {
             "src/fns_misc/ext_diag.rs",
             // -- WP SW1 --
             "src/fns_misc/alink.rs",
+            // -- WP AUSB1 --
+            "src/fns_misc/alink_usb.rs",
             // -- WP P1NT --
             "src/fns_misc/notice_text.rs",
             "src/fns_browse.rs",

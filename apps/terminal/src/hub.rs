@@ -59,7 +59,7 @@ use dspi_hub::{
 use dspi_transport::FakeDevice;
 // -- WP SW3 --
 use dspi_proto::ext::alink::AlinkRole;
-use dspi_transport::fake::AlinkSetup;
+use dspi_transport::fake::{AlinkSetup, UsbDirectSetup};
 use dspi_tui::shell::connect::{Target, printable};
 use serde_json::{Value, json};
 
@@ -138,7 +138,8 @@ struct RunOptions {
     share_usb: bool,
     // -- WP SW3 --
     /// `--demo --alink`: an installation of simulated devices on the audio
-    /// link (a sender, a fan-out, four units) with its system model.
+    /// link (a sender, a fan-out, four units; WP AUSB1: and two USB-direct
+    /// units) with its system model.
     alink: bool,
     // -- WP HWLK1F --
     /// `--pair-admin`: the pairing window at the start may give admin, to the
@@ -266,8 +267,9 @@ OPTIONS:
                               WebUSB and Link together. The hub holds no USB
                               device, so the browser can; --share-usb: it does
     --alink                   with --demo: an installation on the audio link instead
-                              of the one device (a sender, a fan-out and four
-                              units), and its system model when none is kept
+                              of the one device (a sender, a fan-out, four
+                              units and two USB-direct units), and its system
+                              model when none is kept
     --with-usb                test option, with --demo --alink: this
                               machine's USB DSPis too, to test a mixed
                               installation on hardware (add them to the model)
@@ -756,6 +758,19 @@ fn alink_rig() -> Vec<(&'static str, AlinkSetup)> {
     ]
 }
 
+// -- WP AUSB1 --
+/// `--demo --alink`'s USB-direct units: (serial, place on the host). The
+/// height unit's stream began 3 bus frames after the rear's, so aligning has a
+/// start offset to equalise.
+fn usb_rig() -> Vec<(&'static str, UsbDirectSetup)> {
+    let at = |stream_lag_frames, origin_wraps| UsbDirectSetup {
+        stream_lag_frames,
+        origin_wraps,
+        ..UsbDirectSetup::default()
+    };
+    vec![("DEMO-USB-REAR", at(0, 3)), ("DEMO-USB-HEIGHT", at(3, 11))]
+}
+
 // -- WP SW3 --
 /// `--demo --alink`'s system model (`docs/integrator/audio-link.md`):
 /// three rooms, a zone, a group, one source, the sender, the fan-out, four
@@ -782,7 +797,14 @@ fn alink_model() -> Value {
             {"id": "C", "name": "Terrace", "serial": "DEMO-ALINK-C", "room": "terrace", "upstream": "fan",
              "slots": silent(2, 3), "measuredLatencyUs": 120},
             {"id": "D", "name": "Bar", "serial": "DEMO-ALINK-D", "room": "bar", "upstream": "tx",
-             "output": 2, "slots": silent(4, 5), "latencyUs": 40}
+             "output": 2, "slots": silent(4, 5), "latencyUs": 40},
+            // -- WP AUSB1 -- two USB-direct units on this machine's USB, phase-locked
+            {"id": "R", "name": "Rear L/R", "serial": "DEMO-USB-REAR", "room": "main",
+             "transport": "usb_direct", "usbMode": "phase_lock",
+             "speakers": [{"output": 0, "distanceM": 3.1}, {"output": 1, "distanceM": 3.1}]},
+            {"id": "H", "name": "Height", "serial": "DEMO-USB-HEIGHT", "room": "main",
+             "transport": "usb_direct", "usbMode": "phase_lock",
+             "speakers": [{"output": 0, "distanceM": 2.6}]}
         ],
         "scenes": [
             {"id": "evening", "name": "Evening", "actions": [{"target": "all", "op": "master_volume", "value": -1200}]},
@@ -816,6 +838,15 @@ fn demo_alink(handle: &HubHandle, plain_unit: bool) -> Result<(), Failure> {
         handle
             .attach(
                 Box::new(FakeDevice::demo_alink_as(setup).with_serial(serial)),
+                0,
+            )
+            .map_err(|e| Failure::Failed(format!("{serial} did not attach: {e}")))?;
+    }
+    // -- WP AUSB1 -- the USB-direct units (`extension_channel_spec.md` 2.9)
+    for (serial, setup) in usb_rig() {
+        handle
+            .attach(
+                Box::new(FakeDevice::demo_usb_direct(setup).with_serial(serial)),
                 0,
             )
             .map_err(|e| Failure::Failed(format!("{serial} did not attach: {e}")))?;
@@ -2070,7 +2101,8 @@ mod tests_wp_sw3 {
         let running = start(&opts, false).unwrap();
         let (model, revision) = running.handle.system_model();
         assert_eq!(revision, 1);
-        assert_eq!(model.units.len(), 4);
+        // -- WP AUSB1 -- four on the audio link, two USB-direct
+        assert_eq!(model.units.len(), 6);
         assert_eq!(model.scenes.len(), 4);
         let status = running.handle.system_status();
         for (serial, _) in alink_rig() {
@@ -2079,6 +2111,22 @@ mod tests_wp_sw3 {
                 "{serial}"
             );
         }
+        // -- WP AUSB1 -- the USB-direct units are phase-locked, the height one 3 frames late
+        for (serial, _) in usb_rig() {
+            let o = &status.observed[serial];
+            assert_eq!(
+                o.usb.as_ref().map(|u| u.state.as_str()),
+                Some("phase_locked"),
+                "{serial}"
+            );
+        }
+        let rear = status
+            .alignment
+            .units
+            .iter()
+            .find(|p| p.unit == "R")
+            .unwrap();
+        assert_eq!(rear.start_offset_samples, Some(144));
         // A receiver reports its alink stats and the trim scan.
         let a = &status.observed["DEMO-ALINK-A"];
         assert_eq!(a.trim_scan.as_ref().map(|t| t.state.as_str()), Some("done"));
@@ -2097,8 +2145,21 @@ mod tests_wp_sw3 {
             .system_apply_scene("closed", Role::Admin)
             .unwrap();
         assert_eq!(second.plan.path, "superframe");
+        // -- WP AUSB1 -- the USB-direct units are held back with it: no half scene
         assert!(
-            second.writes.iter().all(|w| w.result == "refused"),
+            second.writes.iter().all(|w| w.result == "refused"
+                || (w.result == "skipped"
+                    && w.reason.as_deref() == Some(dspi_hub::system::USB_HELD_BACK))),
+            "{:?}",
+            second.writes
+        );
+        assert_eq!(
+            second
+                .writes
+                .iter()
+                .filter(|w| w.result == "skipped")
+                .count(),
+            2,
             "{:?}",
             second.writes
         );
@@ -2106,7 +2167,7 @@ mod tests_wp_sw3 {
         // A kept model is loaded, not replaced, at the next start.
         let running = start(&opts, false).unwrap();
         let (model, revision) = running.handle.system_model();
-        assert_eq!((model.units.len(), revision), (4, 0));
+        assert_eq!((model.units.len(), revision), (6, 0));
         drop(running);
         let _ = std::fs::remove_dir_all(&store);
     }
@@ -2247,8 +2308,11 @@ mod tests_wp_hwlk1f {
         opts.with_plain_unit = true;
         let running = start(&opts, false).unwrap();
         let (model, _) = running.handle.system_model();
-        assert_eq!(model.units.len(), 5);
-        assert_eq!(model.units[4].serial, PLAIN_SERIAL);
+        assert_eq!(model.units.len(), 7);
+        assert_eq!(
+            model.units.last().map(|u| u.serial.as_str()),
+            Some(PLAIN_SERIAL)
+        );
         let status = running.handle.system_status();
         let p = &status.observed[PLAIN_SERIAL];
         assert!(p.online && p.without_alink());

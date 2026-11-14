@@ -40,9 +40,13 @@ export function SceneBar(props: { feed: SystemFeed; session: Session; ask: Ask }
   const opOf = (element: string, what: string, reason?: string) => {
     // -- fixup lk1 -- through the sender the one write carries the whole scene: "Scene Closed", never a refused "Mute"
     // -- WP HWLK1F -- but a unit's own result (applied now, not connected) keeps its op
-    if (run?.report?.plan.path === "superframe" && !reason) return `Scene ${run.name}`;
+    // -- WP AUSB1 -- a USB-direct unit's own write at its bus frame keeps its op too
     const plan = run?.report?.plan;
-    const op = [...(plan?.ops ?? []), ...(plan?.direct ?? []), ...(plan?.unscheduled ?? [])].find((o) => o.element === element && o.op === what);
+    const usb = (plan?.usbOps ?? []).some((o) => o.element === element);
+    if (plan?.path === "superframe" && !reason && !usb) return `Scene ${run!.name}`;
+    const op = [...(plan?.ops ?? []), ...(plan?.direct ?? []), ...(plan?.unscheduled ?? []), ...(plan?.usbOps ?? [])].find(
+      (o) => o.element === element && o.op === what,
+    );
     return op ? opWord(op.op, op.arg, op.value) : what;
   };
   return (

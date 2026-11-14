@@ -427,6 +427,9 @@ enum Target {
         // -- WP SW1 -- a unit receiving the audio link
         #[serde(default, rename = "alink")]
         alink: bool,
+        // -- WP AUSB1 -- an alink USB-direct unit
+        #[serde(default, rename = "usbDirect")]
+        usb_direct: bool,
     },
     // -- WP WB4a --
     Usb(usb::UsbTarget),
@@ -439,9 +442,16 @@ const READ_ONLY_DEMO_WIRE: u8 = 31;
 
 fn open(h: u32, core: &DspiCore, target: Target) -> CallResult {
     match target {
-        Target::Demo { read_only, alink } => {
+        Target::Demo {
+            read_only,
+            alink,
+            usb_direct,
+        } => {
             if read_only {
                 core.open_demo_wire(READ_ONLY_DEMO_WIRE)?;
+            } else if usb_direct {
+                // -- WP AUSB1 --
+                core.open_demo_usb_direct()?;
             } else if alink {
                 // -- WP SW1 --
                 core.open_demo_alink()?;

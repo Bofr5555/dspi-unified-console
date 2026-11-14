@@ -248,8 +248,19 @@ pub struct Unit {
     /// Where it stands.
     #[serde(default)]
     pub room: Option<String>,
-    /// What feeds it: a sender, a fan-out or a repeating unit.
+    /// What feeds it: a sender, a fan-out or a repeating unit. -- WP AUSB1 --
+    /// Empty for a USB-direct unit, which the host's USB bus feeds.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub upstream: String,
+    // -- WP AUSB1 --
+    /// How the programme reaches it: the audio link (the default) or USB
+    /// directly from the host (`extension_channel_spec.md` 2.9).
+    #[serde(default, skip_serializing_if = "UnitTransport::is_alink")]
+    pub transport: UnitTransport,
+    /// A USB-direct unit's mode, written with the alignment: `off`,
+    /// `rate_lock` or `phase_lock`. `None`: the unit's own mode is kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usb_mode: Option<String>,
     /// Which output of the upstream element, for the record.
     #[serde(default)]
     pub output: Option<u8>,
@@ -280,7 +291,36 @@ impl Unit {
     pub fn latency(&self) -> i32 {
         self.measured_latency_us.unwrap_or(self.latency_us)
     }
+
+    // -- WP AUSB1 --
+    /// A USB-direct unit.
+    pub fn usb_direct(&self) -> bool {
+        self.transport == UnitTransport::UsbDirect
+    }
 }
+
+// -- WP AUSB1 --
+/// How the programme reaches a unit ([`Unit::transport`]).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UnitTransport {
+    /// The audio link, from a sender (through fan-outs and repeaters).
+    #[default]
+    Alink,
+    /// USB from the host, the unit locked to its Start of Frame.
+    UsbDirect,
+}
+
+impl UnitTransport {
+    /// The default, left out of the JSON.
+    pub fn is_alink(&self) -> bool {
+        *self == Self::Alink
+    }
+}
+
+// -- WP AUSB1 --
+/// The USB-direct modes a model may name ([`Unit::usb_mode`]).
+pub const USB_MODES: [&str; 3] = ["off", "rate_lock", "phase_lock"];
 
 /// A scene: ops that take effect at the same alink frame.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -462,7 +502,17 @@ impl SystemModel {
             .iter()
             .find(|f| f.id == id)
             .map(|f| f.upstream.as_str())
-            .or_else(|| self.unit(id).map(|u| u.upstream.as_str()))
+            .or_else(|| {
+                self.unit(id)
+                    .filter(|u| !u.usb_direct())
+                    .map(|u| u.upstream.as_str())
+            })
+    }
+
+    // -- WP AUSB1 --
+    /// The units on the audio link (not USB-direct), in model order.
+    pub fn alink_units(&self) -> impl Iterator<Item = &Unit> {
+        self.units.iter().filter(|u| !u.usb_direct())
     }
 
     /// The path from a sender to `id`: the sender, then the re-emitters in
@@ -612,7 +662,7 @@ impl SystemModel {
         let feeds = |up: &str| {
             is(up, Kind::Sender)
                 || is(up, Kind::FanOut)
-                || self.unit(up).is_some_and(|u| u.repeater)
+                || self.unit(up).is_some_and(|u| u.repeater && !u.usb_direct())
         };
         for f in &self.fan_outs {
             if !feeds(&f.upstream) {
@@ -626,10 +676,33 @@ impl SystemModel {
             }
         }
         for u in &self.units {
-            if !feeds(&u.upstream) {
+            // -- WP AUSB1 -- a USB-direct unit has no feed on the audio link
+            if u.usb_direct() {
+                if !u.upstream.is_empty()
+                    || u.repeater
+                    || u.slots.is_some()
+                    || u.hop_delay_frames.is_some()
+                {
+                    return bad(format!(
+                        "unit {}: a USB-direct unit has no upstream, slots or hop delay and repeats nothing",
+                        u.id
+                    ));
+                }
+            } else if u.usb_mode.is_some() {
+                return bad(format!(
+                    "unit {}: a USB mode is for a USB-direct unit",
+                    u.id
+                ));
+            } else if !feeds(&u.upstream) {
                 return bad(format!(
                     "unit {}: upstream {:?} is not a sender, fan-out or repeater",
                     u.id, u.upstream
+                ));
+            }
+            if let Some(m) = u.usb_mode.as_deref().filter(|m| !USB_MODES.contains(m)) {
+                return bad(format!(
+                    "unit {}: USB mode {m:?} (off, rate_lock or phase_lock)",
+                    u.id
                 ));
             }
             if let Some(r) = u.room.as_deref().filter(|r| !is(r, Kind::Room)) {
@@ -677,7 +750,7 @@ impl SystemModel {
             .fan_outs
             .iter()
             .map(|f| &f.id)
-            .chain(self.units.iter().map(|u| &u.id))
+            .chain(self.alink_units().map(|u| &u.id))
         {
             if self.path_to(id).is_none() {
                 return bad(format!(
