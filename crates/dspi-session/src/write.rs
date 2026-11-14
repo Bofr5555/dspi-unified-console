@@ -463,6 +463,9 @@ impl Session {
 
     // -- WP TMCORE --
     /// The route's undo or redo, when there is a route.
+    // -- WP TMCOREF -- only undo.rs (feature `undo`) calls it: a build
+    // without the feature (Android's) refuses dead code
+    #[cfg(feature = "undo")]
     pub(crate) fn routed_step(
         &mut self,
         redo: bool,
