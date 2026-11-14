@@ -27,7 +27,10 @@ export type Source =
    * choose_device step); with it (a fleet backend's `hubDevices`), that DSPi, by
    * its serial (WP WB4b).
    */
-  | { kind: "hub"; url: string; deviceId?: string; name?: string };
+  | { kind: "hub"; url: string; deviceId?: string; name?: string }
+  // -- WP P1WB1 --
+  /** A `.dspipreset` document opened with no device (offline editing, P1OF): the page's own, never a backend's. */
+  | { kind: "document"; fileName: string };
 
 /** A place with DSPi devices: one or more sources under one name. */
 export interface Installation {

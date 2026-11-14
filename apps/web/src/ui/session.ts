@@ -18,6 +18,8 @@ import {
   type LinkDeviceRecord,
   type LinkPhase,
   type ParamValue,
+  // -- WP P1WB1 --
+  type OpenedDocument,
 } from "../core/protocol";
 import type { CoreClient } from "../core/client";
 import { VIEW_ONLY_REASON, type Access, type Source } from "../fleet/types";
@@ -49,6 +51,9 @@ export interface SessionState {
   history: { canUndo: boolean; canRedo: boolean };
   /** What the last undo or redo has to say: another writer's change left alone (`warn`), changes stepped over (`info`). */
   notice: { text: string; tone: "warn" | "info" } | null;
+  // -- WP P1WB1 --
+  /** What an offline session was opened from (`documentOpen`): the strip says "File: <name>". Null on a device. */
+  document?: OpenedDocument | null;
 }
 
 // -- WP WB6a --
@@ -105,6 +110,38 @@ export class Session {
   get readOnlyReason(): string {
     if (this.access === "view") return VIEW_ONLY_REASON;
     return this.state.snapshot?.device.readOnly ? this.state.snapshot.device.readOnlyReason : "";
+  }
+
+  // -- WP P1WB1 -- offline editing (P1OF): a document opened with no device
+  /** Open the `.dspipreset` document `text` as this session's device; nothing touches USB. */
+  async openDocument(text: string, fileName: string): Promise<void> {
+    try {
+      const r = await this.core.call("documentOpen", { text, fileName });
+      const { document, ...snapshot } = r;
+      this.set({ status: "open", snapshot, document, error: "" });
+    } catch (e) {
+      this.set({ status: "failed", error: message(e) });
+    }
+  }
+
+  /** The document this session edits, or null on a device. */
+  get document(): OpenedDocument | null {
+    return this.state.document ?? null;
+  }
+
+  /** Read the device again and show it (after a recall, an import, a revert). */
+  async refresh(): Promise<void> {
+    try {
+      const snapshot = await this.core.call("state", undefined);
+      this.set({ snapshot });
+    } catch (e) {
+      this.set({ error: message(e) });
+    }
+  }
+
+  /** Show `text` as the session's error line, or clear it with "". */
+  report(text: string): void {
+    this.set({ error: text });
   }
 
   async open(target: DeviceTarget): Promise<void> {

@@ -164,10 +164,10 @@ export class WasmModule {
     if (n === CALL_BUSY) throw new CoreCallError("busy", "the core is already running a call");
     if (n === CALL_DEAD) throw new CoreCallError("dead", this.deadReason || "the core stopped after an internal error");
     const text = new TextDecoder().decode(new Uint8Array(this.x.memory.buffer, this.x.dspi_reply_ptr(), n));
-    const reply = JSON.parse(text) as { ok: true; value: unknown } | { ok: false; code: string; error: string };
+    const reply = JSON.parse(text) as { ok: true; value: unknown } | { ok: false; code: string; error: string; noticeKey?: string };
     if (!reply.ok) {
       if (reply.code === "dead") this.deadReason = reply.error;
-      throw new CoreCallError(reply.code, reply.error);
+      throw new CoreCallError(reply.code, reply.error, reply.noticeKey); // -- WP P1WB1 -- with its notice key
     }
     return reply.value;
   }
@@ -207,6 +207,8 @@ export class WasmCore implements CoreImpl {
     try {
       // -- WP WB4b -- (c6g N1) a session that opens something else gives its USB device back
       if (method === "open" && (params as DeviceTarget).kind !== "usb") this.releaseUsb();
+      // -- WP P1WB1 -- a document replaces the device as `open` does
+      if (method === "documentOpen") this.releaseUsb();
       const value =
         method === "open" && (params as DeviceTarget).kind === "usb"
           ? await this.openUsb(params as DeviceTarget & { kind: "usb" })
@@ -241,7 +243,8 @@ export class WasmCore implements CoreImpl {
   }
 
   private after(method: Method): void {
-    if (method === "open") {
+    // -- WP P1WB1 -- an offline document is polled as a device is
+    if (method === "open" || method === "documentOpen") {
       this.open = true;
       this.lostSent = false;
       this.schedulePoll(POLL_MS);

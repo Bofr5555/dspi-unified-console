@@ -725,3 +725,43 @@
   }
 }
 .dspi-web .events-manual { width: 100%; min-height: 6rem; font: 0.8rem/1.4 ui-monospace, monospace; margin-top: 0.5rem; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px; }
+
+/* -- WP P1WB1 -- snapshots, A/B, safe apply, files */
+.dspi-web .snapshots, .dspi-web .files { display: grid; gap: 0.75rem; min-width: 0; }
+.dspi-web .snap-capture, .dspi-web .snap-compare, .dspi-web .files-row { display: flex; flex-wrap: wrap; align-items: end; gap: 0.5rem; }
+.dspi-web .snap-capture label, .dspi-web .snap-compare label, .dspi-web .files-row label, .dspi-web .snap-timeout { display: grid; gap: 0.15rem; font-size: 0.85rem; min-width: 0; flex: 1 1 10rem; }
+.dspi-web .snap-capture input, .dspi-web .files-row input, .dspi-web .snap-compare select { min-width: 0; width: 100%; box-sizing: border-box; }
+.dspi-web .snap-timeout { max-width: 12rem; margin-top: 0.5rem; }
+.dspi-web .snap-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.dspi-web .snap-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
+.dspi-web .snap-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.35rem 0.75rem; padding: 0.4rem 0; border-top: 1px solid var(--line); min-width: 0; }
+.dspi-web .snap-what { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.5rem; min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .danger-text { color: var(--bad); }
+.dspi-web .ab-bar .ab-side { font-size: 0.85rem; color: var(--muted); overflow-wrap: anywhere; }
+.dspi-web .ab-bar .ab-side.on { color: inherit; font-weight: 600; }
+.dspi-web .ab-bar .ab-keep { display: inline-flex; gap: 0.35rem; margin-left: auto; }
+.dspi-web .guard-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.75rem; margin: 0.5rem 0; padding: 0.4rem 0.6rem; border: 1px solid var(--warn); border-radius: 8px; background: var(--panel); }
+.dspi-web .guard-text { flex: 1 1 14rem; min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .guard-left { font-variant-numeric: tabular-nums; font-weight: 600; }
+.dspi-web .guard-progress { flex: 1 1 6rem; min-width: 4rem; height: 0.5rem; accent-color: var(--warn); }
+.dspi-web .guard-buttons { display: flex; gap: 0.35rem; }
+.dspi-web .guard-buttons .primary { border-color: var(--accent); font-weight: 600; }
+.dspi-web .desk-outcome { border: 1px solid var(--line); border-radius: 6px; padding: 0.35rem 0.6rem; background: var(--panel); overflow-wrap: anywhere; }
+.dspi-web .desk-outcome.warn { border-color: var(--warn); }
+.dspi-web .desk-outcome.error { border-color: var(--bad); }
+.dspi-web .desk-outcome-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.dspi-web .desk-outcome .dismiss { flex: none; padding: 0 0.5rem; }
+.dspi-web .change-list.notes { color: var(--muted); }
+.dspi-web .diff { min-width: 0; }
+.dspi-web .diff-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; table-layout: fixed; }
+.dspi-web .diff-table th, .dspi-web .diff-table td { text-align: left; padding: 0.2rem 0.35rem; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; vertical-align: top; }
+.dspi-web .diff-table th:first-child { width: 50%; }
+.dspi-web .diff-block { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.dspi-web .import-blocks { display: flex; flex-wrap: wrap; gap: 0.25rem 0.9rem; border: 1px solid var(--line); border-radius: 6px; margin: 0.5rem 0; padding: 0.35rem 0.6rem; min-width: 0; }
+.dspi-web .import-blocks .check { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.9rem; }
+.dspi-web .file-badge { overflow-wrap: anywhere; }
+.dspi-web .open-files .template-list { list-style: none; padding: 0; margin: 0.35rem 0 0; }
+.dspi-web .side { min-width: 0; }
+.dspi-web .open-files { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 0.75rem; margin-bottom: 1rem; }
+.dspi-web .open-files h2 { margin-top: 0; }
+.dspi-web .open-files ul { list-style: none; margin: 0; padding: 0; }

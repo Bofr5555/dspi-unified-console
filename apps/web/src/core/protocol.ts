@@ -423,7 +423,7 @@ export type CoreEvent =
   | { event: "lost"; reason: string };
 
 /** Every call a core Worker answers. `params` and the result per method. */
-export interface CoreMethods extends AlinkMethods {
+export interface CoreMethods extends AlinkMethods, DocumentMethods {
   open: { params: DeviceTarget; result: DeviceSnapshot };
   state: { params: undefined; result: DeviceSnapshot };
   /**
@@ -542,6 +542,209 @@ export interface CoreMethods extends AlinkMethods {
   hubRole: { params: undefined; result: { role: string } };
   /** Tests only: make the stub core lose its link. The real core answers `unknown_method`. */
   simulate: { params: { what: "link-lost" | "link-closed" }; result: null };
+}
+
+// -- WP P1WB1 -- documents, snapshots, A/B, safe apply, offline files, limits status, notices
+// (crates/dspi-wasm/src/{presets,snapshots,ab,guarded,offline,limits}.rs; the core's P1 calls)
+
+/** An import block (`dspi_core::IMPORT_*`); with `IMPORT_BY_BLOCK` each bit says whether its block is applied. */
+export const IMPORT_VOLUMES = 1;
+export const IMPORT_HARDWARE = 1 << 1;
+export const IMPORT_EQ = 1 << 2;
+export const IMPORT_CROSSOVER = 1 << 3;
+export const IMPORT_ROUTING = 1 << 4;
+export const IMPORT_OUTPUTS = 1 << 5;
+export const IMPORT_LIMITERS = 1 << 6;
+export const IMPORT_EFFECTS = 1 << 7;
+export const IMPORT_NAMES = 1 << 8;
+export const IMPORT_ALL_BLOCKS = 0x1ff;
+/** The options are per block (the bits above), not the two old switches. */
+export const IMPORT_BY_BLOCK = 1 << 16;
+
+/** A block's key in a diff's rows and counts. */
+export type ImportBlock = "eq" | "crossover" | "routing" | "outputs" | "limiters" | "effects" | "volumes" | "hardware" | "names";
+
+/** One changed value (`config_diff`'s rows): in the unsaved-changes list's words. */
+export interface DiffRow {
+  block: ImportBlock;
+  section: string;
+  item: string;
+  before: string;
+  after: string;
+}
+
+/** `configDiff`, `configPreview` and `abDiff`: what differs, before an import or between two documents. */
+export interface ConfigDiff {
+  ok: true;
+  error: string;
+  rows: DiffRow[];
+  count: number;
+  /** Rows per block. */
+  blocks: Partial<Record<ImportBlock, number>>;
+  /** The unsaved-changes list's sentences for the same change. */
+  summary: string[];
+  /** What reading the document reported: channels missing, values left alone or clamped. */
+  notes: string[];
+  /** The (second) document's `meta.kind`: `preset`, `snapshot`, `template`, `limits`. */
+  kind: string;
+}
+
+/** `configImport`'s report (`DspiCore::config_import_selected`). */
+export interface ImportReport {
+  ok: true;
+  error: string;
+  /** The report, line by line. */
+  lines: string[];
+  /** False when anything was missing, skipped, left alone, shortened or out of range. */
+  clean: boolean;
+  /** The input-pair link mask to restore, null when the document has none. */
+  links: number | null;
+  /** I/O changed while the device keeps its output configuration apart from presets (save that to keep it). */
+  hardwareWritten: boolean;
+  leftAlone: string[];
+  outOfRange: { path: string; value: number; applied: number }[];
+  /** The block bits applied. */
+  blocks?: number;
+}
+
+/** What a snapshot recall did (`dspi_core::SnapshotRecall`). */
+export interface SnapshotRecallRecord {
+  name: string;
+  /** The snapshot's own image was written (false: a document without one, written as an import). */
+  image: boolean;
+  changes: string[];
+  /** What was not written, and why. */
+  notes: string[];
+}
+
+/** An A/B compare (`dspi_core::AbCompare`). */
+export interface AbCompareRecord {
+  active: boolean;
+  /** The side on the device; after `abKeep`, the one kept; null with no compare. */
+  side: "a" | "b" | null;
+  aName: string;
+  bName: string;
+  /** What this call recalled, if it recalled anything. */
+  recall: SnapshotRecallRecord | null;
+}
+
+/** Where a guarded apply stands (`dspi_core::GuardPhase`). */
+export type GuardPhase = "idle" | "waiting" | "kept" | "reverted" | "revert_failed" | "not_written" | "lost";
+
+/** A guarded apply, safe apply with rollback (`dspi_core::GuardedApply`). */
+export interface GuardedApplyRecord {
+  id: number;
+  phase: GuardPhase;
+  label: string;
+  /** The hub guards it too: a vanished page is reverted by the hub. */
+  hub: boolean;
+  timeoutMs: number;
+  remainingMs: number;
+  /** "" while waiting; `confirmed`, `timeout`, `reverted`, `failed`, `connection_lost`, `taken_over`, `hub_stopping`. */
+  reason: string;
+  /** One plain sentence, "" while waiting. */
+  message: string;
+  changes: string[];
+  notes: string[];
+}
+
+/** `documentOpen`'s `document`: what the offline session was opened from (`DspiCore::open_document`). */
+export interface OpenedDocument {
+  ok: true;
+  fileName: string;
+  name: string;
+  kind: string;
+  platform: string;
+  inputs: number;
+  outputs: number;
+  notes: string[];
+}
+
+/** `documentInfo` (`DspiCore::offline_document`). */
+export type DocumentInfo = { offline: false } | { offline: true; fileName: string; name: string; kind: string; platform: string };
+
+/** A template this build ships (`dspi_core::template_list`). */
+export interface TemplateRecord {
+  id: string;
+  name: string;
+  builtin: boolean;
+  platform: string;
+  inputs: number;
+  outputs: number;
+  savedUtc: string;
+  /** Its own status line (a shipped template awaiting approval says so), else "". */
+  status: string;
+}
+
+/** `limitsStatus` (`dspi_core::LimitsStatus`). */
+export interface LimitsStatusRecord {
+  active: boolean;
+  serial: string;
+  /** `none`, `ok`, `fell_back`, `unreadable`. */
+  state: string;
+  noticeKey: string;
+  detail: string;
+  lastHeld: string[];
+}
+
+/** A notice from the core's table (`dspi_core::Notice`). */
+export interface NoticeRecord {
+  key: string;
+  kind: "info" | "warning" | "error";
+  title: string;
+  reason: string;
+  action: string;
+  detail: string;
+}
+
+/** The P1 calls the web uses. */
+export interface DocumentMethods {
+  /** Two documents' difference, with no device. */
+  configDiff: { params: { before: string; after: string }; result: ConfigDiff };
+  /** What importing would change on the open device, nothing written. `eqChannels`: bit k wire channel k (every one when absent). */
+  configPreview: { params: { text: string; options?: number; eqChannels?: number }; result: ConfigDiff };
+  /** The chosen blocks of a document onto the open device. Fails `bad_document` or `refused`. */
+  configImport: { params: { text: string; options?: number; eqChannels?: number; token?: string }; result: ImportReport };
+  /** The open device as a `.dspipreset` document, to download. */
+  configExport: { params: { name?: string; appVersion?: string; links?: number }; result: { text: string } };
+  /** The open device as a snapshot document (`meta.kind = "snapshot"`), to download. */
+  snapshotCapture: { params: { name?: string; note?: string }; result: { text: string } };
+  /** Recall an uploaded snapshot document: one bulk image and the rest. Ends the undo history. */
+  snapshotRecall: { params: { text: string }; result: SnapshotRecallRecord };
+  /** Start a compare: B's document, A's (absent or "": the device now). Refused while a guard waits. */
+  abStart: { params: { a?: string; b: string }; result: AbCompareRecord };
+  abToggle: { params: undefined; result: AbCompareRecord };
+  abDiff: { params: undefined; result: ConfigDiff };
+  abKeep: { params: { side: "a" | "b" }; result: AbCompareRecord };
+  abState: { params: undefined; result: AbCompareRecord };
+  /** Import with a way back: waits for `applyConfirm`; a timeout (0: 30 s), Revert or a lost connection reverts. */
+  applyGuardedImport: { params: { text: string; options?: number; eqChannels?: number; timeoutS?: number }; result: GuardedApplyRecord };
+  /** Recall a snapshot document with a way back. */
+  applyGuardedSnapshot: { params: { text: string; timeoutS?: number }; result: GuardedApplyRecord };
+  applyGuardBegin: { params: { label?: string; timeoutS?: number }; result: GuardedApplyRecord };
+  /** Keep. */
+  applyConfirm: { params: undefined; result: GuardedApplyRecord };
+  /** Revert. */
+  applyRevert: { params: undefined; result: GuardedApplyRecord };
+  /** Drives the guard: the timeout's revert runs here (no timer in the core). */
+  applyPoll: { params: undefined; result: GuardedApplyRecord };
+  applyStatus: { params: undefined; result: GuardedApplyRecord };
+  /** Imports and recalls are guarded by default here (DSPi Link to a hub with the guard). */
+  applyGuardDefault: { params: undefined; result: boolean };
+  /** Open a document with no device (offline editing): the snapshot and what was opened. */
+  documentOpen: { params: { text: string; fileName?: string }; result: DeviceSnapshot & { document: OpenedDocument } };
+  documentInfo: { params: undefined; result: DocumentInfo };
+  /** The open document as it now stands; nothing is unsaved afterwards. */
+  documentSave: { params: { appVersion?: string; links?: number }; result: { text: string } };
+  /** The open device or document as a template (`meta.kind = "template"`). */
+  templateSave: { params: { name: string; appVersion?: string; links?: number }; result: { text: string } };
+  templateList: { params: undefined; result: TemplateRecord[] };
+  templateText: { params: { id: string }; result: { text: string } };
+  /** The limits profile's state for the open device (P1LM). */
+  limitsStatus: { params: undefined; result: LimitsStatusRecord };
+  /** The notice for a failure's `noticeKey` (P1NT). */
+  noticeFor: { params: { key: string; detail?: string }; result: NoticeRecord };
+  noticeTexts: { params: undefined; result: NoticeRecord[] };
 }
 
 // -- WP SW1 -- the audio link (crates/dspi-wasm/src/alink.rs; not DSPi Link)
@@ -703,6 +906,8 @@ export interface CoreError {
    */
   code: string;
   message: string;
+  /** -- WP P1WB1 -- the core's notice key (P1NT, `noticeFor`), when it has one. */
+  noticeKey?: string;
 }
 
 export type Reply =
@@ -720,7 +925,12 @@ export interface CoreImpl {
 }
 
 export class CoreCallError extends Error {
-  constructor(readonly code: string, message: string) {
+  constructor(
+    readonly code: string,
+    message: string,
+    // -- WP P1WB1 -- the core's notice key (P1NT), when the failure has one
+    readonly noticeKey?: string,
+  ) {
     super(message);
     this.name = "CoreCallError";
   }

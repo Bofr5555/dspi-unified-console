@@ -27,6 +27,12 @@ import { SystemScreen, useFeed } from "../screens/system/SystemScreen";
 import { EventsScreen } from "../screens/events/EventsScreen";
 import { useSessionState } from "./components";
 import { StepNotice, UndoButtons, useUndoKeys } from "./undo";
+// -- WP P1WB1 -- snapshots, A/B, safe apply, files; the keys Qt's table has
+import { SnapshotDesk } from "../screens/snapshots/model";
+import { AbBar, GuardBar } from "../screens/snapshots/Bars";
+import { SnapshotsScreen } from "../screens/snapshots/SnapshotsScreen";
+import { FilesScreen } from "../screens/files/FilesScreen";
+import { useConsoleKeys, type ConsoleKey } from "./keys";
 
 /** A question in a modal dialog; the answer is the chosen button's value, or "cancel". */
 export interface Question {
@@ -50,6 +56,9 @@ export interface ScreenProps {
   system?: SystemFeed;
   /** The mode the console shows (docs/UI-MODES.md). */
   mode?: Mode;
+  // -- WP P1WB1 --
+  /** The session's snapshots, A/B compare, safe apply and files. */
+  desk?: SnapshotDesk;
 }
 
 export interface ScreenDef {
@@ -66,9 +75,16 @@ export const SCREENS: ScreenDef[] = [
   { id: "matrix", label: "Matrix", View: MatrixScreen },
   // -- WP SW3 -- (UI-MODES: the Pro layer, not in Simple)
   { id: "system", label: "System", View: SystemScreen },
+  // -- WP P1WB1 -- (Advanced and Installer: setting up and handing over)
+  { id: "snapshots", label: "Snapshots", View: SnapshotsScreen },
+  { id: "files", label: "Files", View: FilesScreen },
   // -- WP WB8 -- (UI-MODES: monitoring of the Advanced and Installer modes)
   { id: "events", label: "Events", View: EventsScreen },
 ];
+
+// -- WP P1WB1 --
+/** The screens Simple leaves out besides the Pro layer's: snapshots and files are for setting up. */
+const SETUP = new Set(["snapshots", "files"]);
 
 // -- WP SW3 --
 /**
@@ -80,7 +96,7 @@ export const SCREENS: ScreenDef[] = [
 export function screensFor(mode: Mode, installation: boolean): ScreenDef[] {
   // -- WP WB8 -- the event log last, in Advanced and Installer
   const today = SCREENS.filter((x) => x.id !== "system" && x.id !== "events");
-  if (mode === "simple") return today;
+  if (mode === "simple") return today.filter((x) => !SETUP.has(x.id)); // -- WP P1WB1 --
   const system = SCREENS.find((x) => x.id === "system")!;
   const events = SCREENS.find((x) => x.id === "events")!;
   return installation ? [system, ...today, events] : [...today, system, events];
@@ -107,6 +123,12 @@ export function Screens(props: { session: Session }) {
   const st = useSessionState(session);
   const root = useRef<HTMLDivElement>(null);
   useUndoKeys(session, root);
+  // -- WP P1WB1 -- one desk per session: snapshots, A/B, safe apply, files
+  const desk = useMemo(() => new SnapshotDesk(session), [session]);
+  useEffect(() => {
+    void desk.start();
+    return () => desk.stop();
+  }, [desk]);
 
   const ask = useCallback<Ask>(
     (q) =>
@@ -148,6 +170,18 @@ export function Screens(props: { session: Session }) {
     return a === "save" || a === "discard" ? a : "cancel";
   }, [session, ask]);
 
+  // -- WP P1WB1 -- the keys Qt's table has (ui/keys.ts): presets, commit, revert, mute, bypass, A/B
+  const asking = useRef(false);
+  asking.current = question !== null;
+  const onKey = useCallback(
+    (k: ConsoleKey) => {
+      if (asking.current || session.state.status !== "open") return;
+      void runKey(k, session, desk, ask, unsaved);
+    },
+    [session, desk, ask, unsaved],
+  );
+  useConsoleKeys(root, onKey);
+
   // Closing the session (Disconnect) asks first, as the Console's device
   // switch does, whichever screen is shown.
   useEffect(() => {
@@ -166,6 +200,9 @@ export function Screens(props: { session: Session }) {
     <div class="session-screens" ref={root}>
       {/* -- WP SW3 -- on an installation, the scene bar */}
       {mode !== "simple" ? <SceneBar feed={system} session={session} ask={ask} /> : null}
+      {/* -- WP P1WB1 -- the scene bar's host-side half: the A/B toggle; a safe apply's countdown in every mode */}
+      {mode !== "simple" ? <AbBar desk={desk} /> : null}
+      <GuardBar desk={desk} />
       {/* -- WP WB8 -- the tabs and, beside them, Undo and Redo */}
       <div class="screen-bar">
         {shown.length > 1 ? (
@@ -180,7 +217,7 @@ export function Screens(props: { session: Session }) {
         <UndoButtons session={session} state={st} />
       </div>
       <StepNotice session={session} notice={st.notice} />
-      <screen.View session={session} ask={ask} unsaved={unsaved} system={system} mode={mode} />
+      <screen.View session={session} ask={ask} unsaved={unsaved} system={system} mode={mode} desk={desk} />
       {/* -- WP SW3 -- the status rail, below the screen as a status bar */}
       <StatusRail
         feed={system}
@@ -202,4 +239,44 @@ export function Screens(props: { session: Session }) {
       ) : null}
     </div>
   );
+}
+
+// -- WP P1WB1 --
+/**
+ * One key of Qt's table, as the menus do it: a preset load and Revert ask about unsaved
+ * changes first, Commit asks before it writes flash; mute and bypass flip; A/B toggles a
+ * running compare (off while a safe apply waits). Nothing while read only.
+ */
+export async function runKey(k: ConsoleKey, session: Session, desk: SnapshotDesk, ask: Ask, unsaved: () => Promise<Unsaved>): Promise<void> {
+  const snap = session.state.snapshot;
+  if (!snap || session.readOnlyReason) return;
+  const st = snap.state;
+  const confirm = async (title: string, text: string, yes: string) =>
+    (await ask({ title, body: <p>{text}</p>, buttons: [{ label: yes, value: "yes" }, { label: "Cancel", value: "cancel" }] })) === "yes";
+  switch (k.action) {
+    case "preset": {
+      if (k.slot === st.activePresetSlot) return;
+      const a = await unsaved();
+      if (a === "cancel") return;
+      if (a === "save" && !(await session.savePreset(st.activePresetSlot))) return;
+      await session.write("preset.load", "trigger", [k.slot]);
+      return;
+    }
+    case "commit":
+      if (await confirm("Save Preset", `Save current parameters to preset slot ${st.activePresetSlot + 1}?`, "Save")) await session.savePreset(st.activePresetSlot);
+      return;
+    case "revert":
+      if (await confirm("Revert to Saved", "Revert to last saved parameters? Current unsaved changes will be lost.", "Revert"))
+        await session.change("presetRevert", undefined);
+      return;
+    case "mute":
+      await session.write("vol.mute", { bool: !st.userMute });
+      return;
+    case "bypass":
+      await session.write("bypass", { bool: !st.bypass });
+      return;
+    case "ab":
+      await desk.abToggle();
+      return;
+  }
 }
