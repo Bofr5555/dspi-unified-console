@@ -104,4 +104,20 @@ class PairBandWpPairbandTest {
         onMain { bridge.redo() }
         until("one redo, the whole drag again") { sides(3).first.freq == 1500f && sides(3).second.freq == 1500f }
     }
+
+    @Test
+    fun pairbandAPasteOntoALinkedInputIsOneUndo() = withDemo {
+        linkPairZero()
+        val outApp = 2 // OUT1
+        for (b in 0 until 3) onMain { bridge.setFilter(outApp, b, DspiConstants.FILTER_PEAKING, 300f + 700f * b, 1.5f + b, 1f) }
+        until("source bands") { (0 until 3).all { bridge.filterType(outApp, it) == DspiConstants.FILTER_PEAKING } }
+        val before = (0 until DspiConstants.BANDS_PER_CHANNEL).map { sides(it) }
+        onMain { bridge.copyChannel(outApp) }
+        onMain { bridge.pasteChannel(0) }
+        until("pasted on both sides") { (0 until 3).all { sides(it).first.freq == 300f + 700f * it && sides(it).second.freq == 300f + 700f * it } }
+        assertEquals("Paste EQ", core.history(1).first().label)
+        val step = onMain { bridge.undo() }
+        assertEquals("Paste EQ", (step as HistoryStep.Moved).move.entry?.label)
+        until("one undo, every band of both sides back") { (0 until DspiConstants.BANDS_PER_CHANNEL).map { sides(it) } == before }
+    }
 }

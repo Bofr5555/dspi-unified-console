@@ -10,6 +10,7 @@
 #include "DeviceModel.h"
 #include "HistoryController.h"
 #include "Registrar.h"
+#include "SidebarController.h"
 
 #include "CoreApi.h"
 
@@ -114,6 +115,32 @@ void pairbandSection(SmokeDriver &d) {
     undo();
     undo();
     d.check("pairband: and the band is as it was", pairIs(d, g, lo, ro));
+    // A paste of a whole channel onto the linked input: one undo step ("Paste
+    // EQ") puts every band of both sides back
+    if (auto *sc = Registrar::instance<SidebarController>()) {
+        const int out = channels->outputChannel(0);
+        for (int k = 0; k < 3; ++k) {
+            channels->setBandType(out, k, false, FILTER_PEAKING);
+            channels->setBandValue(out, k, false, QStringLiteral("freq"), 300.0 + 700.0 * k);
+            channels->setBandValue(out, k, false, QStringLiteral("gain"), 1.5 + k);
+        }
+        d.waitIdle();
+        const DspState saved = st(d);
+        sc->copyChannel(out);
+        sc->pasteChannel(0);
+        d.waitIdle();
+        bool pasted = true;
+        for (int k = 0; k < 3; ++k) pasted = pasted && same(st(d).filters[0][k], st(d).filters[out][k]) && same(st(d).filters[1][k], st(d).filters[out][k]);
+        d.check("pairband: a paste onto the linked input reaches both sides", pasted);
+        std::printf("smoke: pairband: the paste's step is \"%s\"\n", qPrintable(title()));
+        d.check("pairband: the paste's step is labelled Paste EQ", title().startsWith(QLatin1String("Paste EQ")));
+        undo();
+        bool back = true;
+        for (int k = 0; k < BANDS_PER_CHANNEL; ++k) back = back && pairIs(d, k, saved.filters[0][k], saved.filters[1][k]);
+        d.check("pairband: one undo puts the whole paste back on both sides", back);
+        channels->clearBands(out, false);
+        d.waitIdle();
+    }
     if (!wasLinked) channels->unlinkPair(0);
     d.waitIdle();
 }

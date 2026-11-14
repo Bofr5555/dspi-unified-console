@@ -434,9 +434,13 @@ open class FakeDspiCore(
     }
 
     // P1PR's pair write: both inputs, as the core writes them (one step there; the fake keeps two)
-    override fun setInputPairPreamp(input: Int, db: Float) {
-        setInputPreamp(input, db)
-        setInputPreamp(input xor 1, db)
+    // -- WP PAIRBAND -- both inputs in one step, as the core's undo group
+    override fun setInputPairPreamp(input: Int, db: Float) = set("setInputPairPreamp", "$input, $db") {
+        val partner = input xor 1
+        if (input !in 0 until MAX_INPUTS || partner !in 0 until MAX_INPUTS) bad("input")
+        val v = preamp(db)
+        val pre = it.inputPreampDb.with(input, v).with(partner, v)
+        it.copy(inputPreampDb = pre, preampDb = if (input == 0 || partner == 0) v else it.preampDb)
     }
 
     // -- WP PAIRBAND -- a linked pair's band, both sides, one step (as the core's group)

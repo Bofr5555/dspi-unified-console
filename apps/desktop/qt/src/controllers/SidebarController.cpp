@@ -377,6 +377,8 @@ void SidebarController::pasteChannel(int channel) {
     const int output = channel - int(s->num_input_channels);
     const bool toOutput = output >= 0 && output < MAX_OUTPUTS;
     apply(QStringLiteral("paste channel %1").arg(channel), [cb, channel, partner, output, toOutput](FfiCore *c) {
+        // -- WP PAIRBAND -- the whole paste is one undo step
+        dspi_undo_group_begin(c, "Paste EQ");
         bool ok = true;
         for (int b = 0; b < BANDS_PER_CHANNEL; ++b) {
             const FilterParams f = b < cb.filters.size() ? cb.filters.at(b) : FilterParams{};
@@ -391,6 +393,7 @@ void SidebarController::pasteChannel(int channel) {
             ok = dspi_set_output_delay(c, uint8_t(output), qMin(cb.delayMs, dspi_max_delay_ms(c))) && ok;
             ok = dspi_set_output_mute(c, uint8_t(output), cb.muted) && ok;
         }
+        dspi_undo_group_end(c);   // -- WP PAIRBAND --
         return ok;
     });
 }

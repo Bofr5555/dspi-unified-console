@@ -2819,15 +2819,18 @@ class DspiBridgeImpl(
         val out = map.outputOf(ch)
         val t = targets(ch)
         fire("pasteChannel", Emit.CURVES) {
-            // Always all 10 PEQ bands (a linked input updates its partner too).
-            for (b in 0 until BANDS_PER_CHANNEL) applyFilter(t, b, c.filters[b])
-            if (c.output && out >= 0) {
-                for (b in 0 until MAX_XOVER_BANDS) core.setCrossover(w, b, c.xover[b])
-                core.setOutputGain(out, c.gain)
-                // -- WP AN41 -- a clip from a longer line (RP2350 onto RP2040) takes this device's line, as the
-                // fields do (bridge.maxDelayMs, read here on the FFI thread), instead of the core refusing the paste midway
-                core.setOutputDelay(out, c.delay.coerceAtMost(core.maxDelayMs()))
-                core.setOutputMute(out, c.mute)
+            // -- WP PAIRBAND -- the whole paste is one undo step
+            grouped(PASTE_LABEL) {
+                // Always all 10 PEQ bands (a linked input updates its partner too).
+                for (b in 0 until BANDS_PER_CHANNEL) applyFilter(t, b, c.filters[b])
+                if (c.output && out >= 0) {
+                    for (b in 0 until MAX_XOVER_BANDS) core.setCrossover(w, b, c.xover[b])
+                    core.setOutputGain(out, c.gain)
+                    // -- WP AN41 -- a clip from a longer line (RP2350 onto RP2040) takes this device's line, as the
+                    // fields do (bridge.maxDelayMs, read here on the FFI thread), instead of the core refusing the paste midway
+                    core.setOutputDelay(out, c.delay.coerceAtMost(core.maxDelayMs()))
+                    core.setOutputMute(out, c.mute)
+                }
             }
             markDirty(ch)
         }
@@ -2892,6 +2895,7 @@ class DspiBridgeImpl(
 
         // -- WP PAIRBAND -- the core's label for a linked pair's band (set_input_pair_filter)
         const val PAIR_BAND_LABEL = "EQ band, linked pair"
+        const val PASTE_LABEL = "Paste EQ"
         const val CLEAR_ALL_LABEL = "Clear All"
         const val DIRECT_ROUTING_LABEL = "Direct routing"
         const val CLEAR_ROUTING_LABEL = "Clear routing"
