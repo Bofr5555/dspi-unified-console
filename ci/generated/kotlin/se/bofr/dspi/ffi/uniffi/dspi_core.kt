@@ -1574,6 +1574,12 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1977,6 +1983,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_output_cards(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_output_labels(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_outputs_without_limiter(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_poll_hotplug(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_preamp_max_db(
@@ -1986,6 +1994,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_preset_changes(
 fun uniffi_dspi_core_checksum_method_dspicore_preset_dirty(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_process_notifications(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_protect_all_outputs(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_raw_get(
 ): Short
@@ -2092,6 +2102,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_set_i2s_clock_pin_mode(
 fun uniffi_dspi_core_checksum_method_dspicore_set_i2s_input_channels(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_set_i2s_rx_pin(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_set_input_pair_preamp(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_set_input_preamp(
 ): Short
@@ -2633,6 +2645,8 @@ fun uniffi_dspi_core_fn_method_dspicore_output_cards(`ptr`: Pointer,uniffi_out_e
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_output_labels(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_outputs_without_limiter(`ptr`: Pointer,`thresholdDb`: Float,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_poll_hotplug(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_preamp_max_db(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -2643,6 +2657,8 @@ fun uniffi_dspi_core_fn_method_dspicore_preset_dirty(`ptr`: Pointer,uniffi_out_e
 ): Byte
 fun uniffi_dspi_core_fn_method_dspicore_process_notifications(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_protect_all_outputs(`ptr`: Pointer,`ceilingDbfs`: Float,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_raw_get(`ptr`: Pointer,`opcode`: Byte,`value`: Short,`len`: Short,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_raw_set(`ptr`: Pointer,`opcode`: Byte,`value`: Short,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -2748,6 +2764,8 @@ fun uniffi_dspi_core_fn_method_dspicore_set_i2s_clock_pin_mode(`ptr`: Pointer,`m
 fun uniffi_dspi_core_fn_method_dspicore_set_i2s_input_channels(`ptr`: Pointer,`channels`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_set_i2s_rx_pin(`ptr`: Pointer,`pair`: Byte,`pin`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_set_input_pair_preamp(`ptr`: Pointer,`input`: Byte,`db`: Float,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_set_input_preamp(`ptr`: Pointer,`input`: Byte,`db`: Float,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -3715,6 +3733,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_output_labels() != 34681.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_outputs_without_limiter() != 24245.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_poll_hotplug() != 29460.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3728,6 +3749,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_process_notifications() != 22812.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_protect_all_outputs() != 22643.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_raw_get() != 1394.toShort()) {
@@ -3887,6 +3911,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_i2s_rx_pin() != 19823.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_input_pair_preamp() != 35944.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_input_preamp() != 39221.toShort()) {
@@ -7303,6 +7330,15 @@ public interface DspiCoreInterface {
     fun `outputLabels`(): List<OutputLabel>
     
     /**
+     * The outputs (0-based, ascending) that are on, have a gain above
+     * `threshold_db` and no limiter on: PRO1 S2's warning "an output above
+     * -10 dB gain has no limiter" (pass -10). Read from the mirror, nothing
+     * sent; works on a read-only connection. Empty with no device, on
+     * firmware without the output limiter, and for a NaN threshold.
+     */
+    fun `outputsWithoutLimiter`(`thresholdDb`: kotlin.Float): kotlin.ByteArray
+    
+    /**
      * Compare the USB bus with the last poll and report arrivals and
      * departures (by serial) to the hotplug listener; reconnect the
      * selected device when it reappears, and close the open device when it
@@ -7384,6 +7420,30 @@ public interface DspiCoreInterface {
      * source names after a lost packet).
      */
     fun `processNotifications`(): NotifyResult
+    
+    /**
+     * Protect every output (PRO1 S2): every output's limiter on, each
+     * stereo pair of outputs linked (outputs 2p and 2p+1 in link group p+1,
+     * for the first four pairs below the PDM sub, which is the last output;
+     * every other output unlinked), and every limiter at `ceiling_dbfs`.
+     * -1 dBFS is the usual ceiling; the value is clamped to the limiter's
+     * -30..0 dB as [`DspiCore::set_limiter_param`] clamps it. The release is
+     * not changed (a pair adopts its lower output's). A write that would
+     * change nothing is not sent.
+     *
+     * Undo: one undo group labelled "Protect all outputs". Switching a
+     * limiter is audible (`limit.on`'s hazard in the registry), so no undo
+     * switches one back off: the enable is written first and stands apart,
+     * and one undo puts back the link groups, the thresholds and the
+     * releases, leaving the limiters on.
+     *
+     * The ceiling is checked before anything is sent. A failure part way
+     * leaves what was written.
+     *
+     * Errors: `InvalidArgument` (a NaN ceiling), `Disconnected`,
+     * `ReadOnly`, `Unsupported` (no limiter), `Transfer`.
+     */
+    fun `protectAllOutputs`(`ceilingDbfs`: kotlin.Float)
     
     /**
      * One IN transfer: `opcode`, `value` as `wValue`, at most `len` bytes
@@ -8018,6 +8078,25 @@ public interface DspiCoreInterface {
      * only) or a transfer error.
      */
     fun `setI2sRxPin`(`pair`: kotlin.UByte, `pin`: kotlin.UByte)
+    
+    /**
+     * Preamp of a linked input pair: `input` and its partner (`input ^ 1`,
+     * inputs 2p and 2p+1) both to `db`, shaped as
+     * [`DspiCore::set_input_preamp`] shapes it, in one undo group
+     * ([`DspiCore::begin_group`]): one undo step labelled "Input trim,
+     * linked pair". `input`, the side the user moved, is written first.
+     * The link itself is the client's (a document's `inputPairLinked`):
+     * call this while the pair is linked, `set_input_preamp` otherwise.
+     *
+     * Both inputs and the value are checked before anything is sent. A
+     * failure on the second write leaves the first one written (one undo
+     * step takes it back).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an input or its partner
+     * out of range, or a NaN; the connection and transfer errors of every
+     * setter.
+     */
+    fun `setInputPairPreamp`(`input`: kotlin.UByte, `db`: kotlin.Float)
     
     /**
      * Preamp of one input (`REQ_SET_PREAMP_CH`), in dB, clamped to
@@ -11969,6 +12048,25 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * The outputs (0-based, ascending) that are on, have a gain above
+     * `threshold_db` and no limiter on: PRO1 S2's warning "an output above
+     * -10 dB gain has no limiter" (pass -10). Read from the mirror, nothing
+     * sent; works on a read-only connection. Empty with no device, on
+     * firmware without the output limiter, and for a NaN threshold.
+     */override fun `outputsWithoutLimiter`(`thresholdDb`: kotlin.Float): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_outputs_without_limiter(
+        it, FfiConverterFloat.lower(`thresholdDb`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Compare the USB bus with the last poll and report arrivals and
      * departures (by serial) to the hotplug listener; reconnect the
      * selected device when it reappears, and close the open device when it
@@ -12097,6 +12195,40 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     }
     )
     }
+    
+
+    
+    /**
+     * Protect every output (PRO1 S2): every output's limiter on, each
+     * stereo pair of outputs linked (outputs 2p and 2p+1 in link group p+1,
+     * for the first four pairs below the PDM sub, which is the last output;
+     * every other output unlinked), and every limiter at `ceiling_dbfs`.
+     * -1 dBFS is the usual ceiling; the value is clamped to the limiter's
+     * -30..0 dB as [`DspiCore::set_limiter_param`] clamps it. The release is
+     * not changed (a pair adopts its lower output's). A write that would
+     * change nothing is not sent.
+     *
+     * Undo: one undo group labelled "Protect all outputs". Switching a
+     * limiter is audible (`limit.on`'s hazard in the registry), so no undo
+     * switches one back off: the enable is written first and stands apart,
+     * and one undo puts back the link groups, the thresholds and the
+     * releases, leaving the limiters on.
+     *
+     * The ceiling is checked before anything is sent. A failure part way
+     * leaves what was written.
+     *
+     * Errors: `InvalidArgument` (a NaN ceiling), `Disconnected`,
+     * `ReadOnly`, `Unsupported` (no limiter), `Transfer`.
+     */
+    @Throws(DspiException::class)override fun `protectAllOutputs`(`ceilingDbfs`: kotlin.Float)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_protect_all_outputs(
+        it, FfiConverterFloat.lower(`ceilingDbfs`),_status)
+}
+    }
+    
     
 
     
@@ -13254,6 +13386,35 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_set_i2s_rx_pin(
         it, FfiConverterUByte.lower(`pair`),FfiConverterUByte.lower(`pin`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Preamp of a linked input pair: `input` and its partner (`input ^ 1`,
+     * inputs 2p and 2p+1) both to `db`, shaped as
+     * [`DspiCore::set_input_preamp`] shapes it, in one undo group
+     * ([`DspiCore::begin_group`]): one undo step labelled "Input trim,
+     * linked pair". `input`, the side the user moved, is written first.
+     * The link itself is the client's (a document's `inputPairLinked`):
+     * call this while the pair is linked, `set_input_preamp` otherwise.
+     *
+     * Both inputs and the value are checked before anything is sent. A
+     * failure on the second write leaves the first one written (one undo
+     * step takes it back).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an input or its partner
+     * out of range, or a NaN; the connection and transfer errors of every
+     * setter.
+     */
+    @Throws(DspiException::class)override fun `setInputPairPreamp`(`input`: kotlin.UByte, `db`: kotlin.Float)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_set_input_pair_preamp(
+        it, FfiConverterUByte.lower(`input`),FfiConverterFloat.lower(`db`),_status)
 }
     }
     

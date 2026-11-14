@@ -570,6 +570,14 @@ pub extern "C" fn dspi_set_input_preamp(core: *mut FfiCore, input: u8, db: f32) 
     flag(core, |c| c.set_input_preamp(input, db))
 }
 
+// -- WP P1PR --
+/// Set the preamp of a linked input pair (`input` and `input ^ 1`), in dB:
+/// one undo step (`DspiCore::set_input_pair_preamp`).
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_set_input_pair_preamp(core: *mut FfiCore, input: u8, db: f32) -> bool {
+    flag(core, |c| c.set_input_pair_preamp(input, db))
+}
+
 /// Bypass all processing, or stop.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_bypass(core: *mut FfiCore, enabled: bool) -> bool {
@@ -818,6 +826,28 @@ pub extern "C" fn dspi_fetch_limiter_meter(core: *mut FfiCore, out_gr: *mut f32)
     fetch_floats(core, out_gr, DspiCore::fetch_limiter_meter)
 }
 
+// -- WP P1PR --
+/// Protect every output: stereo pairs linked, every limiter on at
+/// `ceiling_dbfs` (-1 is the usual ceiling), one undo step
+/// (`DspiCore::protect_all_outputs`).
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_protect_all_outputs(core: *mut FfiCore, ceiling_dbfs: f32) -> bool {
+    flag(core, |c| c.protect_all_outputs(ceiling_dbfs))
+}
+
+// -- WP P1PR --
+/// The outputs that are on, above `threshold_db` of gain and without a
+/// limiter, as a mask (bit k = output k; `DspiCore::outputs_without_limiter`,
+/// pass -10 for the warning). 0 for a null handle or none.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_outputs_without_limiter(core: *const FfiCore, threshold_db: f32) -> u32 {
+    value_or(core, 0, |c| {
+        Ok(c.outputs_without_limiter(threshold_db)
+            .into_iter()
+            .fold(0u32, |m, o| m | 1u32.checked_shl(u32::from(o)).unwrap_or(0)))
+    })
+}
+
 /// Name wire channel `ch`. False for a null or non-UTF-8 name, or one the
 /// device does not take.
 #[unsafe(no_mangle)]
@@ -1056,6 +1086,11 @@ pub extern "C" fn dspi_compute_phase_curve(
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_q2a;
+
+// -- WP P1PR --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_p1pr;
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]

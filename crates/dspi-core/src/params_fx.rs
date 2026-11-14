@@ -598,6 +598,96 @@ impl DspiCore {
         )
     }
 
+    // -- WP P1PR --
+    /// Protect every output (PRO1 S2): every output's limiter on, each
+    /// stereo pair of outputs linked (outputs 2p and 2p+1 in link group p+1,
+    /// for the first four pairs below the PDM sub, which is the last output;
+    /// every other output unlinked), and every limiter at `ceiling_dbfs`.
+    /// -1 dBFS is the usual ceiling; the value is clamped to the limiter's
+    /// -30..0 dB as [`DspiCore::set_limiter_param`] clamps it. The release is
+    /// not changed (a pair adopts its lower output's). A write that would
+    /// change nothing is not sent.
+    ///
+    /// Undo: one undo group labelled "Protect all outputs". Switching a
+    /// limiter is audible (`limit.on`'s hazard in the registry), so no undo
+    /// switches one back off: the enable is written first and stands apart,
+    /// and one undo puts back the link groups, the thresholds and the
+    /// releases, leaving the limiters on.
+    ///
+    /// The ceiling is checked before anything is sent. A failure part way
+    /// leaves what was written.
+    ///
+    /// Errors: `InvalidArgument` (a NaN ceiling), `Disconnected`,
+    /// `ReadOnly`, `Unsupported` (no limiter), `Transfer`.
+    pub fn protect_all_outputs(&self, ceiling_dbfs: f32) -> Result<()> {
+        let all = limiter::LIMITER_ALL_OUTPUTS as u8;
+        let on = limiter::LIMITER_PARAM_ENABLED as u8;
+        let threshold = limiter::LIMITER_PARAM_THRESHOLD_DB as u8;
+        let link = limiter::LIMITER_PARAM_LINK_GROUP as u8;
+        let (_, ceiling) = limiter_quantize(threshold, ceiling_dbfs)?;
+        let (groups, all_on) = {
+            let mut inner = self.lock();
+            let l = limiters(&mut inner.state);
+            let all_on = l.enabled.iter().all(|&e| e);
+            (protect_groups(inner.state.num_output_channels), all_on)
+        };
+        self.begin_group(PROTECT_LABEL.into());
+        let r: Result<()> = (|| {
+            if !all_on {
+                self.set_limiter_param(all, on, 1.0)?;
+            }
+            for (o, g) in (0u8..).zip(groups) {
+                let now = self
+                    .lock()
+                    .state
+                    .limiter_link_group
+                    .get(usize::from(o))
+                    .copied();
+                if now != Some(g) {
+                    self.set_limiter_param(o, link, f32::from(g))?;
+                }
+            }
+            let at_ceiling = {
+                let mut inner = self.lock();
+                let l = limiters(&mut inner.state);
+                l.threshold.iter().all(|&t| t == ceiling) && l.len() > 0
+            };
+            if !at_ceiling {
+                self.set_limiter_param(all, threshold, ceiling)?;
+            }
+            Ok(())
+        })();
+        self.end_group();
+        r
+    }
+
+    // -- WP P1PR --
+    /// The outputs (0-based, ascending) that are on, have a gain above
+    /// `threshold_db` and no limiter on: PRO1 S2's warning "an output above
+    /// -10 dB gain has no limiter" (pass -10). Read from the mirror, nothing
+    /// sent; works on a read-only connection. Empty with no device, on
+    /// firmware without the output limiter, and for a NaN threshold.
+    pub fn outputs_without_limiter(&self, threshold_db: f32) -> Vec<u8> {
+        self.ensure_probed();
+        let mut inner = self.lock();
+        let carried = dspi_proto::wire_compat::features(inner.state.format_version);
+        if inner.conn.is_none()
+            || carried & dspi_proto::wire_compat::feat::LIMITER == 0
+            || inner.require_feature("output_limiter").is_err()
+        {
+            return Vec::new();
+        }
+        let s = &inner.state;
+        (0..s.num_output_channels)
+            .filter(|&o| {
+                let k = usize::from(o);
+                s.output_enabled.get(k).copied().unwrap_or(false)
+                    && s.output_gain_db.get(k).is_some_and(|&g| g > threshold_db)
+                    && !s.limiter_enabled.get(k).copied().unwrap_or(false)
+            })
+            .collect()
+    }
+
     /// Set upmixer parameter `id` (`UPMIX_PARAM_*`); RP2350 only. The value
     /// is clamped to the firmware's range; the enable and the modes are
     /// rounded (an out-of-range centre mode becomes adaptive, as the
@@ -734,6 +824,29 @@ impl DspiCore {
         self.ensure_probed();
         self.lock()
     }
+}
+
+// -- WP P1PR --
+/// The undo step's label of [`DspiCore::protect_all_outputs`].
+pub(crate) const PROTECT_LABEL: &str = "Protect all outputs";
+
+// -- WP P1PR --
+/// Each of `n` outputs' limiter link group when every output is protected:
+/// outputs 2p and 2p+1 in group p+1 while both are below the PDM sub (the
+/// last output) and p+1 is a group the firmware has (1..=4); 0 otherwise.
+/// Qt's `stereoPairGroups`, without a lone output in a group of its own.
+fn protect_groups(n: u8) -> Vec<u8> {
+    let pdm = n.saturating_sub(1);
+    (0..n)
+        .map(|o| {
+            let group = (o >> 1).saturating_add(1);
+            if (o | 1) < pdm && u16::from(group) <= limiter::LIMITER_LINK_GROUP_MAX {
+                group
+            } else {
+                0
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -1388,3 +1501,9 @@ mod tests_wp_c4 {
         ));
     }
 }
+
+// -- WP P1PR --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+#[path = "params_fx/tests_wp_p1pr.rs"]
+mod tests_wp_p1pr;

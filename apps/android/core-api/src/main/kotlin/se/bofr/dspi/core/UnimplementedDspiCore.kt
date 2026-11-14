@@ -336,6 +336,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun setInputPreamp(input: Int, db: Float): Unit = throw NotImplementedError("set_input_preamp")
 
+    override fun setInputPairPreamp(input: Int, db: Float): Unit = throw NotImplementedError("set_input_pair_preamp")
+
     override fun setBypass(enabled: Boolean): Unit = throw NotImplementedError("set_bypass")
 
     override fun setMasterVolume(db: Float): Unit = throw NotImplementedError("set_master_volume")
@@ -411,6 +413,10 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun setLimiterParam(output: Int, param: Int, value: Float): Unit = throw NotImplementedError("set_limiter_param")
 
     override fun fetchLimiterMeter(): List<Float> = throw NotImplementedError("fetch_limiter_meter")
+
+    override fun protectAllOutputs(ceilingDbfs: Float): Unit = throw NotImplementedError("protect_all_outputs")
+
+    override fun outputsWithoutLimiter(thresholdDb: Float): List<Int> = throw NotImplementedError("outputs_without_limiter")
 
     override fun setUpmixParam(id: Int, value: Float): Unit = throw NotImplementedError("set_upmix_param")
 

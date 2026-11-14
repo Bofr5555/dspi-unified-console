@@ -648,6 +648,17 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.filtersImport(text, wires)
     }
 
+    // -- WP P1PR --
+    override fun setInputPairPreamp(input: Int, db: Float) {
+        guard("setInputPairPreamp")
+        return inner.setInputPairPreamp(input, db)
+    }
+
+    override fun protectAllOutputs(ceilingDbfs: Float) {
+        guard("protectAllOutputs")
+        return inner.protectAllOutputs(ceilingDbfs)
+    }
+
     override fun csApply(op: String): String {
         if (!isCsRead(op)) guard("csApply")
         return inner.csApply(op)
@@ -785,7 +796,10 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "alinkSystemAlign",
             "alinkSystemRecall",
             // -- WP P1DF --
-            "configImportSelected"
+            "configImportSelected",
+            // -- WP P1PR --
+            "setInputPairPreamp",
+            "protectAllOutputs"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -1008,7 +1022,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // -- WP P1NT -- stateless text: the notice table.
             "noticeFor",
             "noticeForKey",
-            "noticeTexts"
+            "noticeTexts",
+            // -- WP P1PR -- the warning list, from the mirror: a read
+            "outputsWithoutLimiter"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

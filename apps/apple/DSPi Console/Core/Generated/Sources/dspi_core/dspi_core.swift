@@ -2925,6 +2925,15 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func outputLabels()  -> [OutputLabel]
     
     /**
+     * The outputs (0-based, ascending) that are on, have a gain above
+     * `threshold_db` and no limiter on: PRO1 S2's warning "an output above
+     * -10 dB gain has no limiter" (pass -10). Read from the mirror, nothing
+     * sent; works on a read-only connection. Empty with no device, on
+     * firmware without the output limiter, and for a NaN threshold.
+     */
+    func outputsWithoutLimiter(thresholdDb: Float)  -> Data
+    
+    /**
      * Compare the USB bus with the last poll and report arrivals and
      * departures (by serial) to the hotplug listener; reconnect the
      * selected device when it reappears, and close the open device when it
@@ -3006,6 +3015,30 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * source names after a lost packet).
      */
     func processNotifications()  -> NotifyResult
+    
+    /**
+     * Protect every output (PRO1 S2): every output's limiter on, each
+     * stereo pair of outputs linked (outputs 2p and 2p+1 in link group p+1,
+     * for the first four pairs below the PDM sub, which is the last output;
+     * every other output unlinked), and every limiter at `ceiling_dbfs`.
+     * -1 dBFS is the usual ceiling; the value is clamped to the limiter's
+     * -30..0 dB as [`DspiCore::set_limiter_param`] clamps it. The release is
+     * not changed (a pair adopts its lower output's). A write that would
+     * change nothing is not sent.
+     *
+     * Undo: one undo group labelled "Protect all outputs". Switching a
+     * limiter is audible (`limit.on`'s hazard in the registry), so no undo
+     * switches one back off: the enable is written first and stands apart,
+     * and one undo puts back the link groups, the thresholds and the
+     * releases, leaving the limiters on.
+     *
+     * The ceiling is checked before anything is sent. A failure part way
+     * leaves what was written.
+     *
+     * Errors: `InvalidArgument` (a NaN ceiling), `Disconnected`,
+     * `ReadOnly`, `Unsupported` (no limiter), `Transfer`.
+     */
+    func protectAllOutputs(ceilingDbfs: Float) throws 
     
     /**
      * One IN transfer: `opcode`, `value` as `wValue`, at most `len` bytes
@@ -3640,6 +3673,25 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * only) or a transfer error.
      */
     func setI2sRxPin(pair: UInt8, pin: UInt8) throws 
+    
+    /**
+     * Preamp of a linked input pair: `input` and its partner (`input ^ 1`,
+     * inputs 2p and 2p+1) both to `db`, shaped as
+     * [`DspiCore::set_input_preamp`] shapes it, in one undo group
+     * ([`DspiCore::begin_group`]): one undo step labelled "Input trim,
+     * linked pair". `input`, the side the user moved, is written first.
+     * The link itself is the client's (a document's `inputPairLinked`):
+     * call this while the pair is linked, `set_input_preamp` otherwise.
+     *
+     * Both inputs and the value are checked before anything is sent. A
+     * failure on the second write leaves the first one written (one undo
+     * step takes it back).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an input or its partner
+     * out of range, or a NaN; the connection and transfer errors of every
+     * setter.
+     */
+    func setInputPairPreamp(input: UInt8, db: Float) throws 
     
     /**
      * Preamp of one input (`REQ_SET_PREAMP_CH`), in dB, clamped to
@@ -6812,6 +6864,21 @@ open func outputLabels() -> [OutputLabel]  {
 }
     
     /**
+     * The outputs (0-based, ascending) that are on, have a gain above
+     * `threshold_db` and no limiter on: PRO1 S2's warning "an output above
+     * -10 dB gain has no limiter" (pass -10). Read from the mirror, nothing
+     * sent; works on a read-only connection. Empty with no device, on
+     * firmware without the output limiter, and for a NaN threshold.
+     */
+open func outputsWithoutLimiter(thresholdDb: Float) -> Data  {
+    return try!  FfiConverterData.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_outputs_without_limiter(self.uniffiClonePointer(),
+        FfiConverterFloat.lower(thresholdDb),$0
+    )
+})
+}
+    
+    /**
      * Compare the USB bus with the last poll and report arrivals and
      * departures (by serial) to the hotplug listener; reconnect the
      * selected device when it reappears, and close the open device when it
@@ -6916,6 +6983,35 @@ open func processNotifications() -> NotifyResult  {
     uniffi_dspi_core_fn_method_dspicore_process_notifications(self.uniffiClonePointer(),$0
     )
 })
+}
+    
+    /**
+     * Protect every output (PRO1 S2): every output's limiter on, each
+     * stereo pair of outputs linked (outputs 2p and 2p+1 in link group p+1,
+     * for the first four pairs below the PDM sub, which is the last output;
+     * every other output unlinked), and every limiter at `ceiling_dbfs`.
+     * -1 dBFS is the usual ceiling; the value is clamped to the limiter's
+     * -30..0 dB as [`DspiCore::set_limiter_param`] clamps it. The release is
+     * not changed (a pair adopts its lower output's). A write that would
+     * change nothing is not sent.
+     *
+     * Undo: one undo group labelled "Protect all outputs". Switching a
+     * limiter is audible (`limit.on`'s hazard in the registry), so no undo
+     * switches one back off: the enable is written first and stands apart,
+     * and one undo puts back the link groups, the thresholds and the
+     * releases, leaving the limiters on.
+     *
+     * The ceiling is checked before anything is sent. A failure part way
+     * leaves what was written.
+     *
+     * Errors: `InvalidArgument` (a NaN ceiling), `Disconnected`,
+     * `ReadOnly`, `Unsupported` (no limiter), `Transfer`.
+     */
+open func protectAllOutputs(ceilingDbfs: Float)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_protect_all_outputs(self.uniffiClonePointer(),
+        FfiConverterFloat.lower(ceilingDbfs),$0
+    )
+}
 }
     
     /**
@@ -7827,6 +7923,31 @@ open func setI2sRxPin(pair: UInt8, pin: UInt8)throws   {try rustCallWithError(Ff
     uniffi_dspi_core_fn_method_dspicore_set_i2s_rx_pin(self.uniffiClonePointer(),
         FfiConverterUInt8.lower(pair),
         FfiConverterUInt8.lower(pin),$0
+    )
+}
+}
+    
+    /**
+     * Preamp of a linked input pair: `input` and its partner (`input ^ 1`,
+     * inputs 2p and 2p+1) both to `db`, shaped as
+     * [`DspiCore::set_input_preamp`] shapes it, in one undo group
+     * ([`DspiCore::begin_group`]): one undo step labelled "Input trim,
+     * linked pair". `input`, the side the user moved, is written first.
+     * The link itself is the client's (a document's `inputPairLinked`):
+     * call this while the pair is linked, `set_input_preamp` otherwise.
+     *
+     * Both inputs and the value are checked before anything is sent. A
+     * failure on the second write leaves the first one written (one undo
+     * step takes it back).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an input or its partner
+     * out of range, or a NaN; the connection and transfer errors of every
+     * setter.
+     */
+open func setInputPairPreamp(input: UInt8, db: Float)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_set_input_pair_preamp(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(input),
+        FfiConverterFloat.lower(db),$0
     )
 }
 }
@@ -31338,6 +31459,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_output_labels() != 34681) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_outputs_without_limiter() != 24245) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_poll_hotplug() != 29460) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -31351,6 +31475,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_process_notifications() != 22812) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_protect_all_outputs() != 22643) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_raw_get() != 1394) {
@@ -31510,6 +31637,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_i2s_rx_pin() != 19823) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_set_input_pair_preamp() != 35944) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_input_preamp() != 39221) {

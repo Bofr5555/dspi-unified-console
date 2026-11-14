@@ -1256,6 +1256,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_output_cards(void*_Nonnull ptr, R
 RustBuffer uniffi_dspi_core_fn_method_dspicore_output_labels(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OUTPUTS_WITHOUT_LIMITER
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OUTPUTS_WITHOUT_LIMITER
+RustBuffer uniffi_dspi_core_fn_method_dspicore_outputs_without_limiter(void*_Nonnull ptr, float threshold_db, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_POLL_HOTPLUG
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_POLL_HOTPLUG
 void uniffi_dspi_core_fn_method_dspicore_poll_hotplug(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -1279,6 +1284,11 @@ int8_t uniffi_dspi_core_fn_method_dspicore_preset_dirty(void*_Nonnull ptr, RustC
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_PROCESS_NOTIFICATIONS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_PROCESS_NOTIFICATIONS
 RustBuffer uniffi_dspi_core_fn_method_dspicore_process_notifications(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_PROTECT_ALL_OUTPUTS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_PROTECT_ALL_OUTPUTS
+void uniffi_dspi_core_fn_method_dspicore_protect_all_outputs(void*_Nonnull ptr, float ceiling_dbfs, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RAW_GET
@@ -1544,6 +1554,11 @@ void uniffi_dspi_core_fn_method_dspicore_set_i2s_input_channels(void*_Nonnull pt
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_I2S_RX_PIN
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_I2S_RX_PIN
 void uniffi_dspi_core_fn_method_dspicore_set_i2s_rx_pin(void*_Nonnull ptr, uint8_t pair, uint8_t pin, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_INPUT_PAIR_PREAMP
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_INPUT_PAIR_PREAMP
+void uniffi_dspi_core_fn_method_dspicore_set_input_pair_preamp(void*_Nonnull ptr, uint8_t input, float db, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_INPUT_PREAMP
@@ -3645,6 +3660,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_output_labels(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OUTPUTS_WITHOUT_LIMITER
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OUTPUTS_WITHOUT_LIMITER
+uint16_t uniffi_dspi_core_checksum_method_dspicore_outputs_without_limiter(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_POLL_HOTPLUG
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_POLL_HOTPLUG
 uint16_t uniffi_dspi_core_checksum_method_dspicore_poll_hotplug(void
@@ -3672,6 +3693,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_preset_dirty(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_PROCESS_NOTIFICATIONS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_PROCESS_NOTIFICATIONS
 uint16_t uniffi_dspi_core_checksum_method_dspicore_process_notifications(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_PROTECT_ALL_OUTPUTS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_PROTECT_ALL_OUTPUTS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_protect_all_outputs(void
     
 );
 #endif
@@ -3990,6 +4017,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_set_i2s_input_channels(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_I2S_RX_PIN
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_I2S_RX_PIN
 uint16_t uniffi_dspi_core_checksum_method_dspicore_set_i2s_rx_pin(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_INPUT_PAIR_PREAMP
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_INPUT_PAIR_PREAMP
+uint16_t uniffi_dspi_core_checksum_method_dspicore_set_input_pair_preamp(void
     
 );
 #endif

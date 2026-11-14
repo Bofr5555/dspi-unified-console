@@ -149,6 +149,74 @@ pub fn limits(core: &DspiCore) -> Value {
     })
 }
 
+// -- WP P1PR --
+/// `protectAllOutputs`' parameters.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProtectParams {
+    /// The limiters' ceiling, dBFS; -1 when absent.
+    #[serde(default = "default_ceiling")]
+    pub ceiling_dbfs: f32,
+}
+
+fn default_ceiling() -> f32 {
+    -1.0
+}
+
+// -- WP P1PR --
+/// `protectAllOutputs`: every limiter on at the ceiling, stereo pairs linked,
+/// one undo step (`DspiCore::protect_all_outputs`). No parameters is a
+/// ceiling of -1 dBFS. Answers null.
+pub fn protect_all(core: &DspiCore, p: Option<ProtectParams>) -> Result<Value, CallError> {
+    core.protect_all_outputs(p.map_or_else(default_ceiling, |p| p.ceiling_dbfs))?;
+    Ok(Value::Null)
+}
+
+// -- WP P1PR --
+/// `outputsWithoutLimiter`' parameters.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WithoutLimiterParams {
+    /// The gain above which an output wants a limiter, dB; -10 when absent.
+    #[serde(default = "default_warn_db")]
+    pub threshold_db: f32,
+}
+
+fn default_warn_db() -> f32 {
+    -10.0
+}
+
+// -- WP P1PR --
+/// `outputsWithoutLimiter`: the outputs that are on, louder than the
+/// threshold and without a limiter (`DspiCore::outputs_without_limiter`),
+/// ascending. No parameters is a threshold of -10 dB.
+pub fn without_limiter(core: &DspiCore, p: Option<WithoutLimiterParams>) -> Value {
+    tidy(&core.outputs_without_limiter(p.map_or_else(default_warn_db, |p| p.threshold_db)))
+}
+
+// -- WP P1PR --
+/// `inputPairPreamp`' parameters.
+#[derive(Debug, Deserialize)]
+pub struct PairPreampParams {
+    /// The input moved; its partner is `input ^ 1`.
+    pub input: u8,
+    /// dB.
+    pub db: f32,
+}
+
+// -- WP P1PR --
+/// `inputPairPreamp`: both inputs of a linked pair, one undo step
+/// (`DspiCore::set_input_pair_preamp`). Answers null.
+pub fn input_pair_preamp(core: &DspiCore, p: PairPreampParams) -> Result<Value, CallError> {
+    core.set_input_pair_preamp(p.input, p.db)?;
+    Ok(Value::Null)
+}
+
+// -- WP P1PR --
+#[cfg(test)]
+#[path = "outputs/tests_wp_p1pr.rs"]
+mod tests_wp_p1pr;
+
 #[cfg(test)]
 mod tests_wb6c {
     use crate::calls::{call, session_new};
