@@ -671,7 +671,9 @@ The NSIS script and its test (`apps/desktop/packaging/windows/`) are kept. Behav
 - **Curve pills:** the coloured IN/OUT pill on each sidebar row toggles that channel's curve (M58).
 - **Version string:** About names the platform ("for Linux", "for Windows").
 - **Analyser following another console:** the analyser's status bar says it follows another console, with a "Take
-  control" link (M13).
+  control" link (M13). The last choice made wins, ordered by the device's event sequence: a choice made here drives
+  even if another console's earlier push is still unread, and a later push of theirs makes this console follow
+  (WP ANLAST; `rta_sharing_spec.md` 3.3a).
 - **Settings save failures** are named per setter (§8).
 - **Hidden-window shortcuts** only act while their window has focus (§1.2).
 

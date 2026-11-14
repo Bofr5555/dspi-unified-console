@@ -5,10 +5,25 @@
 //! drives it; every other console follows (`rta_sharing_spec.md` section 3,
 //! `SpectrumAnalyser.swift`, `case following(origin:)`). An `RTA_CONFIG` event
 //! from someone else, or on firmware without the event a readback that stops
-//! agreeing, moves a [`Sharing`] to following. The client then feeds the engine
+//! agreeing, moves a [`Sharing`] to following (but see "the last choice made
+//! wins" below). The client then feeds the engine
 //! the device's configuration instead of its own, and [`Sharing::tick`] drops
 //! the engine's push of it, so nothing is written over the other console.
 //! [`Sharing::take_control`], or the client's own choice changing, ends that.
+//!
+//! The last choice made wins (owner, 2026-11-14; WP ANLAST). Which push is
+//! later is the order the device applied them in, which is the order of the
+//! `RTA_CONFIG` events: the hub forwards every console's SET to the one device
+//! and relays each event to every session under one lock, so every console
+//! drains the same sequence. No clock is compared. A new choice of ours is
+//! therefore pending until its own echo comes through that sequence: another
+//! console's event drained before it was applied before ours, and does not make
+//! us follow even though it is drained after our choice. One drained after our
+//! echo does. Two consoles choosing at once thus agree on the winner: the one
+//! whose push the device applied last. (Before ANLAST any event drained after
+//! our choice made us follow, so a console could follow another straight after
+//! choosing while its own push was held back.) Without the event (older
+//! firmware) nothing is pending in effect: readbacks decide as before.
 //!
 //! This is the one home of these rules. `dspi-core` applies them too (WP CG19),
 //! but polls over DSPi Link with its lock released, so a change can overtake a
@@ -68,6 +83,22 @@ pub struct Sharing {
     /// Bumped by anything that changes ownership, so a readback taken before
     /// the change is not applied after it.
     epoch: u64,
+    // -- WP ANLAST --
+    /// A choice of ours whose echo has not come through the event sequence yet.
+    /// Never set while following.
+    pending: Option<Pending>,
+}
+
+// -- WP ANLAST --
+/// A choice of ours the device has not been seen to apply yet.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct Pending {
+    /// Our push of it went out.
+    pushed: bool,
+    /// The latest configuration another console pushed meanwhile. The device
+    /// applied it before ours, so it counts only if ours never is: our push
+    /// refused, or the choice released before it was pushed.
+    earlier: Option<Followed>,
 }
 
 // -- WP CG19 --
@@ -86,6 +117,9 @@ pub struct PollShare {
     pushed: bool,
     /// `absorb` was dropped instead of pushed.
     absorbed: bool,
+    // -- WP ANLAST --
+    /// What really went out, when a push did.
+    pushed_config: Option<RtaConfig>,
 }
 
 impl PollShare {
@@ -145,12 +179,45 @@ impl Sharing {
     }
 
     /// Stop following; the engine then wants the client's own configuration
-    /// and pushes it. While driving this only outdates a poll in flight.
+    /// and pushes it, which is a choice made now (pending until its echo).
+    /// While driving this only outdates a poll in flight.
     pub fn take_control(&mut self) {
         self.epoch = self.epoch.wrapping_add(1);
         if self.following.take().is_some() {
             self.agreed = false;
             self.absorb = None;
+            self.pending = Some(Pending::default()); // -- WP ANLAST --
+        }
+    }
+
+    // -- WP ANLAST --
+    /// Whether a choice of ours is waiting for its echo. While it waits, this
+    /// console drives: other consoles' events drained meanwhile are older.
+    pub fn pending(&self) -> bool {
+        self.pending.is_some()
+    }
+
+    // -- WP ANLAST --
+    /// Our pending choice will never be applied: follow whoever pushed last
+    /// meanwhile, if anyone did.
+    fn abandon_pending(&mut self) {
+        if let Some(earlier) = self.pending.take().and_then(|p| p.earlier) {
+            // A change of ownership: outdates a reading in flight.
+            self.epoch = self.epoch.wrapping_add(1);
+            self.following = Some(earlier);
+            self.agreed = false;
+            self.absorb = None;
+        }
+    }
+
+    // -- WP ANLAST --
+    /// The engine gave up on what we push (the device keeps refusing it). Call
+    /// after each poll with `RtaEngine::rejected`; [`Self::tick`] does. A
+    /// choice whose push went out and was refused is not applied, so another
+    /// console's push seen meanwhile drives after all.
+    pub fn engine_gave_up(&mut self, rejected: bool) {
+        if rejected && self.pending.is_some_and(|p| p.pushed) {
+            self.abandon_pending();
         }
     }
 
@@ -158,8 +225,16 @@ impl Sharing {
     /// asked for. A change takes the analyser back. The same thing asked for
     /// again, or nothing asked for, does not: hiding a display and showing it
     /// again is not a choice.
+    ///
+    /// A choice is pending until its echo (WP ANLAST). Released before its
+    /// push went out, it never reached the device, so another console's push
+    /// seen meanwhile is followed after all.
     pub fn judge_own(&mut self, own: Option<RtaConfig>) {
         let Some(mine) = own else {
+            // -- WP ANLAST --
+            if self.pending.is_some_and(|p| !p.pushed) {
+                self.abandon_pending();
+            }
             return;
         };
         if self.last_own != Some(mine) {
@@ -167,6 +242,7 @@ impl Sharing {
             self.agreed = false;
             self.absorb = None;
             self.last_own = Some(mine);
+            self.pending = Some(Pending::default()); // -- WP ANLAST --
         }
     }
 
@@ -228,10 +304,17 @@ impl Sharing {
         // later request follows a change made in the meantime.
         if let Some(mine) = self.last_own {
             if same_choice(&config, &mine) {
-                // Our echo, or someone else choosing exactly what we want.
+                // Our echo, or someone else choosing exactly what we want:
+                // from here on, the device applied ours (WP ANLAST).
+                self.pending = None;
                 self.holds_ours(mine);
             } else if !own {
-                self.following = Some(Followed { config, origin });
+                let theirs = Followed { config, origin };
+                match &mut self.pending {
+                    // -- WP ANLAST -- applied before our pending choice: older.
+                    Some(p) => p.earlier = Some(theirs),
+                    None => self.following = Some(theirs),
+                }
             }
             // An echo of ours that no longer matches is an older push,
             // superseded by one still in flight.
@@ -253,6 +336,7 @@ impl Sharing {
         let mut share = self.begin_poll();
         let report = engine.tick(&mut Held::new(t, &mut share), now, budget);
         self.finish_poll(&share, engine.caps());
+        self.engine_gave_up(engine.rejected()); // -- WP ANLAST --
         report
     }
 
@@ -274,6 +358,13 @@ impl Sharing {
     pub fn finish_poll(&mut self, share: &PollShare, caps: Option<&RtaCaps>) {
         if share.pushed {
             self.agreed = false;
+        }
+        // -- WP ANLAST -- our pending choice really went out.
+        if let (Some(p), Some(sent), Some(mine)) =
+            (&mut self.pending, share.pushed_config, self.last_own)
+            && same_choice(&sent, &mine)
+        {
+            p.pushed = true;
         }
         if share.absorbed && self.absorb == share.absorb {
             self.absorb = None;
@@ -299,6 +390,9 @@ impl Sharing {
             None => self.agreed,
         };
         if another_host && caps.is_some_and(|c| followable(&read, c)) {
+            // The device moved away from ours after holding it, or from the
+            // one followed: a push later than ours either way (WP ANLAST).
+            self.pending = None;
             self.following = Some(Followed {
                 config: read,
                 origin: 0,
@@ -356,6 +450,10 @@ impl Transport for Held<'_> {
         }
         let r = self.t.control_out(opcode, value, data);
         self.share.pushed |= r.is_ok();
+        // -- WP ANLAST --
+        if r.is_ok() {
+            self.share.pushed_config = RtaConfig::decode(data).ok();
+        }
         r
     }
 
@@ -517,6 +615,12 @@ mod tests_wp_tm5 {
             );
         }
 
+        // -- WP ANLAST --
+        /// Our own push of `mask` comes back through the event sequence.
+        fn echo(&mut self, mask: u16) {
+            assert!(self.note(&event(&config(mask), 7)));
+        }
+
         fn pushes(&self) -> Vec<RtaConfig> {
             self.log
                 .lock()
@@ -553,6 +657,7 @@ mod tests_wp_tm5 {
     fn wp_tm5_take_control_pushes_ours_again() {
         let mut r = Rig::new(0b01, vec![config(0b01)]);
         r.tick(0b01);
+        r.echo(0b01); // WP ANLAST: 9's push comes after ours
         r.note(&event(&config(0b10), 9));
         r.tick(0b01);
         r.sharing.take_control();
@@ -564,6 +669,8 @@ mod tests_wp_tm5 {
     #[test]
     fn wp_tm5_only_a_new_choice_takes_the_analyser_back() {
         let mut r = Rig::new(0b01, vec![config(0b01)]);
+        r.tick(0b01);
+        r.echo(0b01); // WP ANLAST: 9's push comes after ours
         r.note(&event(&config(0b10), 9));
         // Nothing asked for, and the same again: not a choice.
         r.sharing.judge_own(None);
@@ -581,6 +688,7 @@ mod tests_wp_tm5 {
     fn wp_tm5_someone_choosing_what_we_want_ends_following_without_a_push() {
         let mut r = Rig::new(0b01, vec![config(0b01)]);
         r.tick(0b01);
+        r.echo(0b01); // WP ANLAST: 9's push comes after ours
         r.note(&event(&config(0b10), 9));
         r.tick(0b01);
         // Their averaging differs: our choice all the same.
@@ -658,7 +766,10 @@ mod tests_wp_tm5 {
     #[test]
     fn wp_tm5_a_new_connection_forgets_the_others_and_keeps_our_choice() {
         let mut r = Rig::new(0b01, vec![config(0b01)]);
+        r.tick(0b01);
+        r.echo(0b01); // WP ANLAST: 9's push comes after ours
         r.note(&event(&config(0b10), 9));
+        assert!(r.sharing.following().is_some());
         r.sharing.reset();
         assert_eq!(r.sharing.following(), None);
         // Asking for the same on the new connection is not a new choice, and
@@ -696,10 +807,14 @@ mod tests_wp_cg19 {
         }
     }
 
-    /// Driving 0b01 with the device agreeing.
+    /// Driving 0b01 with the device agreeing. WP ANLAST: our push's echo came
+    /// through too, so the choice is no longer pending and another console's
+    /// event after this is a later push.
     fn agreed() -> Sharing {
         let mut s = Sharing::default();
         s.judge_own(Some(config(0b01)));
+        assert!(s.note_config(&config(0b01).encode(), true, 7, Some(&caps())));
+        assert!(!s.pending());
         let mut p = s.begin_poll();
         p.note_readback(config(0b01));
         s.finish_poll(&p, Some(&caps()));
@@ -827,6 +942,8 @@ mod tests_wp_cg19 {
         // A new choice, followed by someone choosing it, while the poll ran.
         let next = config(0b100);
         s.judge_own(Some(next));
+        // WP ANLAST: its echo, so 9's push after it is followed.
+        assert!(s.note_config(&next.encode(), true, 7, Some(&caps())));
         assert!(event(&mut s, 0b10, 9));
         assert!(event(&mut s, 0b100, 9));
         s.finish_poll(&p, Some(&caps()));
@@ -846,5 +963,317 @@ mod tests_wp_cg19 {
         p.note_readback(config(0b10));
         s.finish_poll(&p, None);
         assert_eq!(s.following(), None);
+    }
+}
+
+/// WP ANLAST: the last choice made wins, ordered by the device's event
+/// sequence (which the hub relays to every console in one order), not by when
+/// each console drains it. Before ANLAST, any event drained after our choice
+/// made us follow, even one for a push the device applied before ours.
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_anlast {
+    use super::*;
+
+    fn caps() -> RtaCaps {
+        RtaCaps {
+            input_channels: 2,
+            output_channels: 16,
+            order_min: 8,
+            order_max: 10,
+            ..RtaCaps::default()
+        }
+    }
+
+    fn config(mask: u16) -> RtaConfig {
+        RtaConfig {
+            tap: TAP_OUTPUT,
+            channel_mask: mask,
+            fft_order: 10,
+            avg_ms: 300,
+            peak_decay_db_s: 12,
+            flags: 0,
+        }
+    }
+
+    /// One poll whose push of `c` went out.
+    fn pushed(s: &mut Sharing, c: RtaConfig) {
+        let mut p = s.begin_poll();
+        assert!(!p.hold, "a pending choice is never held back");
+        p.pushed = true;
+        p.pushed_config = Some(c);
+        s.finish_poll(&p, Some(&caps()));
+    }
+
+    /// The device's event for `c`, as console `me` hears it, pushed by `by`.
+    fn heard(s: &mut Sharing, c: RtaConfig, by: u16, me: u16) {
+        assert!(s.note_config(&c.encode(), by == me, by, Some(&caps())));
+    }
+
+    /// Console B (session 9), driving 0b01 with its echo seen.
+    fn driving() -> Sharing {
+        let mut s = Sharing::default();
+        s.judge_own(Some(config(0b01)));
+        pushed(&mut s, config(0b01));
+        heard(&mut s, config(0b01), 9, 9);
+        assert!(!s.pending());
+        assert_eq!(s.following(), None);
+        s
+    }
+
+    #[test]
+    fn wp_anlast_a_choice_made_while_an_earlier_push_is_unread_drives() {
+        // The An34 race: A (session 3) pushed 0b10, and its event still waits
+        // in B's queue when B chooses 0b100.
+        let mut b = driving();
+        b.judge_own(Some(config(0b100)));
+        heard(&mut b, config(0b10), 3, 9);
+        // Old rule: B followed A here and its push was held back.
+        assert_eq!(b.following(), None, "A's push was applied before ours");
+        assert!(b.pending());
+        pushed(&mut b, config(0b100));
+        heard(&mut b, config(0b100), 9, 9);
+        assert!(!b.pending());
+        assert_eq!(b.following(), None, "B drives");
+    }
+
+    #[test]
+    fn wp_anlast_a_push_after_our_choice_is_followed() {
+        let mut b = driving();
+        b.judge_own(Some(config(0b100)));
+        pushed(&mut b, config(0b100));
+        heard(&mut b, config(0b100), 9, 9);
+        // A pushes after B's echo: later than B's choice on the device.
+        heard(&mut b, config(0b10), 3, 9);
+        let f = b.following().unwrap();
+        assert_eq!((f.origin, f.config.channel_mask), (3, 0b10));
+    }
+
+    #[test]
+    fn wp_anlast_take_control_is_a_choice_too() {
+        let mut b = driving();
+        heard(&mut b, config(0b10), 3, 9);
+        assert!(b.following().is_some());
+        b.take_control();
+        assert!(b.pending());
+        // A's next push was applied before ours: B still drives.
+        heard(&mut b, config(0b1000), 3, 9);
+        assert_eq!(b.following(), None);
+        pushed(&mut b, config(0b01));
+        heard(&mut b, config(0b01), 9, 9);
+        assert_eq!(b.following(), None);
+        // And one after it is followed.
+        heard(&mut b, config(0b10), 3, 9);
+        assert_eq!(b.following().unwrap().origin, 3);
+    }
+
+    #[test]
+    fn wp_anlast_a_choice_released_before_its_push_follows_the_push_seen_meanwhile() {
+        let mut b = driving();
+        b.judge_own(Some(config(0b100)));
+        heard(&mut b, config(0b10), 3, 9);
+        assert_eq!(b.following(), None);
+        // Nothing asked for any more: our choice never reached the device.
+        b.judge_own(None);
+        assert!(!b.pending());
+        assert_eq!(b.following().unwrap().config.channel_mask, 0b10);
+    }
+
+    #[test]
+    fn wp_anlast_a_released_choice_whose_push_went_out_waits_for_its_echo() {
+        let mut b = driving();
+        b.judge_own(Some(config(0b100)));
+        pushed(&mut b, config(0b100));
+        heard(&mut b, config(0b10), 3, 9);
+        b.judge_own(None);
+        assert_eq!(b.following(), None, "ours is on its way to the device");
+        heard(&mut b, config(0b100), 9, 9);
+        assert_eq!(b.following(), None);
+    }
+
+    #[test]
+    fn wp_anlast_a_refused_choice_follows_the_push_seen_meanwhile() {
+        let mut b = driving();
+        b.judge_own(Some(config(0b100)));
+        heard(&mut b, config(0b10), 3, 9);
+        // The engine's count from the previous choice decides nothing.
+        b.engine_gave_up(true);
+        assert!(b.pending());
+        pushed(&mut b, config(0b100));
+        b.engine_gave_up(false);
+        assert!(b.pending());
+        // The device keeps refusing ours: no echo will ever come.
+        b.engine_gave_up(true);
+        assert!(!b.pending());
+        assert_eq!(b.following().unwrap().origin, 3);
+    }
+
+    #[test]
+    fn wp_anlast_a_lost_echo_still_sees_a_later_push_by_readback() {
+        let mut b = driving();
+        b.judge_own(Some(config(0b100)));
+        pushed(&mut b, config(0b100));
+        // The echo is lost; the device is read to hold ours, then A's.
+        let mut p = b.begin_poll();
+        p.note_readback(config(0b100));
+        b.finish_poll(&p, Some(&caps()));
+        assert_eq!(b.following(), None);
+        let mut p = b.begin_poll();
+        p.note_readback(config(0b10));
+        b.finish_poll(&p, Some(&caps()));
+        assert!(!b.pending());
+        assert_eq!(b.following().unwrap().config.channel_mask, 0b10);
+        // A's next event updates what is followed.
+        heard(&mut b, config(0b1000), 3, 9);
+        assert_eq!(b.following().unwrap().origin, 3);
+    }
+
+    #[test]
+    fn wp_anlast_two_consoles_choosing_at_once_converge() {
+        for a_first in [true, false] {
+            let (mut a, mut b) = (Sharing::default(), Sharing::default());
+            a.judge_own(Some(config(0b01)));
+            b.judge_own(Some(config(0b10)));
+            pushed(&mut a, config(0b01));
+            pushed(&mut b, config(0b10));
+            // The device applies them in the hub's order; both hear that order.
+            let stream = if a_first {
+                [(config(0b01), 3), (config(0b10), 9)]
+            } else {
+                [(config(0b10), 9), (config(0b01), 3)]
+            };
+            for (c, by) in stream {
+                heard(&mut a, c, by, 3);
+                heard(&mut b, c, by, 9);
+            }
+            let (winner, loser) = if a_first { (&b, &a) } else { (&a, &b) };
+            assert_eq!(winner.following(), None, "{a_first}");
+            let f = loser.following().unwrap();
+            assert_eq!(f.config, stream[1].0, "{a_first}");
+            assert_eq!(f.origin, stream[1].1, "{a_first}");
+        }
+    }
+
+    /// A model of N consoles on one device: the device appends each push's
+    /// event to one sequence, every console drains it in that order at its own
+    /// pace, and chooses, pushes or drains in any interleaving.
+    struct World {
+        consoles: Vec<(u16, Sharing, Option<RtaConfig>, usize)>,
+        stream: Vec<(RtaConfig, u16)>,
+    }
+
+    impl World {
+        fn new(n: u16) -> Self {
+            Self {
+                consoles: (1..=n)
+                    .map(|id| (id, Sharing::default(), None, 0))
+                    .collect(),
+                stream: Vec::new(),
+            }
+        }
+
+        fn choose(&mut self, i: usize, mask: u16) {
+            let (_, s, own, _) = &mut self.consoles[i];
+            *own = Some(config(mask));
+            s.judge_own(*own);
+        }
+
+        /// The engine's push: only when not following and our choice is
+        /// pending unpushed (absorbed otherwise).
+        fn push(&mut self, i: usize) -> bool {
+            let (id, s, own, _) = &mut self.consoles[i];
+            let Some(c) = *own else { return false };
+            let due = s.following().is_none() && s.pending.is_some_and(|p| !p.pushed);
+            if due {
+                pushed(s, c);
+                self.stream.push((c, *id));
+            }
+            due
+        }
+
+        fn drain(&mut self, i: usize) -> bool {
+            let (id, s, _, at) = &mut self.consoles[i];
+            let Some(&(c, by)) = self.stream.get(*at) else {
+                return false;
+            };
+            *at += 1;
+            heard(s, c, by, *id);
+            true
+        }
+
+        fn settle(&mut self) {
+            loop {
+                let mut moved = false;
+                for i in 0..self.consoles.len() {
+                    while self.drain(i) {
+                        moved = true;
+                    }
+                    moved |= self.push(i);
+                }
+                if !moved {
+                    return;
+                }
+            }
+        }
+
+        /// Exactly the last pusher drives, and every other console follows it.
+        fn check(&self, seed: u64) {
+            let Some(&(last, by)) = self.stream.last() else {
+                return;
+            };
+            for (id, s, own, _) in &self.consoles {
+                if own.is_none() {
+                    // Never asked for anything: nothing to judge against.
+                    continue;
+                }
+                if *id == by {
+                    assert_eq!(s.following(), None, "seed {seed}: {id} drives");
+                } else {
+                    let f = s.following();
+                    assert_eq!(
+                        f.map(|f| (f.config, f.origin)),
+                        Some((last, by)),
+                        "seed {seed}: {id} follows {by}"
+                    );
+                }
+                assert!(!s.pending(), "seed {seed}: {id}");
+            }
+        }
+    }
+
+    #[test]
+    fn wp_anlast_any_interleaving_converges_on_the_last_push() {
+        for seed in 0..2000u64 {
+            let mut rng = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            let mut next = |n: u64| {
+                rng = rng
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                (rng >> 33) % n
+            };
+            let n = 2 + next(2) as usize;
+            let mut w = World::new(n as u16);
+            let mut mask = 0u16;
+            for _ in 0..(4 + next(20)) {
+                let i = next(n as u64) as usize;
+                match next(3) {
+                    0 => {
+                        // A unique mask per choice, so nobody chooses another's.
+                        mask += 1;
+                        w.choose(i, mask);
+                    }
+                    1 => {
+                        w.push(i);
+                    }
+                    _ => {
+                        w.drain(i);
+                    }
+                }
+            }
+            w.settle();
+            w.check(seed);
+        }
     }
 }
