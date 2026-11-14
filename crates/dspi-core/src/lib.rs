@@ -129,6 +129,8 @@ pub mod confirm;
 mod snapshot;
 // -- WP P1OF --
 pub mod offline;
+// -- WP P1SA --
+mod guarded;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -209,6 +211,10 @@ pub use confirm::{CONFIRM_TOKEN_TTL_MS, ConfirmOp};
 pub use snapshot::{SnapshotInfo, SnapshotRecall};
 // -- WP P1OF --
 pub use offline::{template_list, template_text};
+// -- WP P1SA --
+pub use guarded::{
+    APPLY_GUARD_DEFAULT_TIMEOUT_S, APPLY_GUARD_MAX_TIMEOUT_S, GuardPhase, GuardedApply,
+};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///
@@ -256,6 +262,9 @@ pub struct DspiCore {
     /// The folder the client named for snapshots (none on the web).
     #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), allow(dead_code))]
     pub(crate) snapshots: snapshot::StoreSlot,
+    // -- WP P1SA --
+    /// The guarded apply (`guarded.rs`). Taken before `inner`, never after.
+    pub(crate) guarded: guarded::GuardSlot,
 }
 
 // -- WP LK4 --
@@ -795,6 +804,8 @@ impl DspiCore {
             events,
             // -- WP P1SN --
             snapshots: snapshot::StoreSlot::default(),
+            // -- WP P1SA --
+            guarded: guarded::GuardSlot::default(),
         })
     }
 }

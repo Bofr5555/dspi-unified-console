@@ -2169,6 +2169,35 @@ impl DspiCore {
     }
 }
 
+// -- WP P1SA --
+/// What a guarded apply (`guarded.rs`) needs of this session's hub.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct GuardTarget {
+    /// The bound device's handle on the hub.
+    pub(crate) handle: u8,
+    /// This session's id on the hub (0 before the hub gave one).
+    pub(crate) session: u16,
+    /// The hub answers `apply.*` (its `hello` lists `apply_guard`).
+    pub(crate) has_guard: bool,
+}
+
+// -- WP P1SA --
+impl DspiCore {
+    /// The device bound on this session's live hub connection, for a guarded
+    /// apply; `None` with no live hub session or no bound device. No I/O.
+    pub(crate) fn link_guard_target(&self) -> Option<GuardTarget> {
+        let inner = self.lock();
+        let s = inner.link.as_ref()?;
+        let client = s.client.as_ref().filter(|c| !c.is_closed())?;
+        let bound = s.bound.as_ref()?;
+        Some(GuardTarget {
+            handle: bound.handle,
+            session: client.session_id().unwrap_or(0),
+            has_guard: client.hello().has_cap("apply_guard"),
+        })
+    }
+}
+
 fn map_error(e: LinkError) -> DspiError {
     let msg = e.to_string();
     let code: &str = match &e {
