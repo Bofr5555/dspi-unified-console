@@ -454,6 +454,12 @@ impl Session {
         }
     }
 
+    // -- WP TMCOREF2 --
+    /// The route's limits profile ([`crate::WriteRoute::limits_profile`]).
+    pub fn limits_profile(&mut self) -> Option<crate::limits::LimitsProfile> {
+        self.route.as_mut().and_then(|r| r.limits_profile())
+    }
+
     // -- WP TMCOREF --
     /// Unlock the route's installer lock with `pin` (or the recovery code):
     /// `None` without a route that has one; otherwise the words to show.

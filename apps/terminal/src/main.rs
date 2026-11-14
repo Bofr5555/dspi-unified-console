@@ -1468,7 +1468,7 @@ fn cmd_autoeq(target: &Target, args: &[&str], flags: &[&str]) -> u8 {
 /// rather than left over from before.
 fn autoeq_one_channel(target: &Target, entry: &dspi_session::autoeq::Entry, name: &str) -> u8 {
     // -- WP TMCORE -- the bands go through the console core
-    let mut session = match connect_written(target, &[]) {
+    let mut session = match connect_written_lazily(target, &[]) {
         Ok(s) => s,
         Err(c) => return c,
     };
@@ -1666,13 +1666,11 @@ fn cmd_ext(target: &Target, args: &[&str], json: bool, word: Option<&str>) -> u8
                 }),
                 // -- WP AUSB1 --
                 Do::UsbDirect => usb_direct_text(t, json),
-                Do::VregOp(op) => vreg_send(t, op, word, &mut prompt_overvolt_word).map(|()| {
-                    if json {
-                        "{\"ok\":true}".into()
-                    } else {
-                        format!("sent {op:?}; read `{COMMAND} ext vreg` to confirm")
-                    }
-                }),
+                // -- WP TMCOREF2 -- (re-review N5) never written here: every
+                // core-voltage request went to the core above (`core_route::vreg_op`)
+                Do::VregOp(_) => Err(ExtError::NotApplied(
+                    "core-voltage requests go through the console core".into(),
+                )),
             })
         })
         .unwrap_or_else(|e| Err(ExtError::Transport(e)));
@@ -1713,6 +1711,12 @@ fn cmd_ext(target: &Target, args: &[&str], json: bool, word: Option<&str>) -> u8
 /// One core-voltage request (WP CG14). With `--word`, that is all it gets: a
 /// script must not end up at a prompt. Without, a refusal for the word asks
 /// through `ask`, once. `--force` plays no part.
+///
+/// -- WP TMCOREF2 -- (re-review N5) test-only: it writes straight to a
+/// transport, past the console core's lock and history. The CLI's only
+/// core-voltage writer is `core_route::vreg_op`; this stays for the CG14
+/// tests of the word rule and cannot be reached from a command.
+#[cfg(test)]
 fn vreg_send(
     t: &mut dyn dspi_transport::Transport,
     op: dspi_session::ext::VregOp,
@@ -2057,7 +2061,22 @@ fn raw_out(target: &Target, args: &[&str], json: bool) -> u8 {
         Err(c) => return c,
     };
 
-    match t.control_out(opcode as u8, value as u16, &payload) {
+    // -- WP TMCOREF2 -- (N4) the PIN only when the lock refuses it
+    let mut sent = t
+        .transport
+        .control_out(opcode as u8, value as u16, &payload);
+    if let Err(e) = &sent {
+        match t.again(e) {
+            Ok(true) => {
+                sent = t
+                    .transport
+                    .control_out(opcode as u8, value as u16, &payload)
+            }
+            Ok(false) => {}
+            Err(c) => return c,
+        }
+    }
+    match sent {
         Ok(()) => {
             if json {
                 println!(
@@ -2104,7 +2123,16 @@ fn raw_war(target: &Target, args: &[&str], json: bool) -> u8 {
         Err(c) => return c,
     };
 
-    match t.control_in(opcode as u8, value, 1) {
+    // -- WP TMCOREF2 -- (N4) the PIN only when the lock refuses it
+    let mut sent = t.transport.control_in(opcode as u8, value, 1);
+    if let Err(e) = &sent {
+        match t.again(e) {
+            Ok(true) => sent = t.transport.control_in(opcode as u8, value, 1),
+            Ok(false) => {}
+            Err(c) => return c,
+        }
+    }
+    match sent {
         Ok(d) => {
             let status = d.first().copied().unwrap_or(0);
             if json {
@@ -2665,9 +2693,10 @@ fn connect(target: &Target) -> Result<Session, u8> {
 /// core, every write through it (`core_route`). A dangerous write asks on a
 /// terminal, and takes `--yes` in a script.
 fn connect_written(target: &Target, flags: &[&str]) -> Result<Session, u8> {
-    // -- WP TMCOREF -- (review tmcore F1) the installer's PIN, P1TM's way;
-    // every write of these commands needs it when locked, so a person at the
-    // terminal is asked up front
+    // -- WP TMCOREF -- (review tmcore F1) the installer's PIN, P1TM's way.
+    // -- WP TMCOREF2 -- (N4) up front only for the commands whose writes go
+    // past the route (the pair map, control surfaces) and are all outside the
+    // lock's scope: a wrong PIN there fails a write that would fail anyway
     let pins = core_route::PinSource::for_this_command()?;
     core_route::connect_routed(
         target,
@@ -2678,9 +2707,10 @@ fn connect_written(target: &Target, flags: &[&str]) -> Result<Session, u8> {
 }
 
 // -- WP TMCOREF --
-/// [`connect_written`] for `set`, `eq` and scripts: a person at the terminal
-/// is asked for the PIN only when a write meets the lock (volume, mute and a
-/// preset recall never ask).
+/// [`connect_written`] for `set`, `eq`, scripts, the imports and `autoeq
+/// apply CH`: the PIN (given or asked) is used only when a write meets the
+/// lock, so volume, mute and a preset recall never ask, and a stale
+/// `DSPI_INSTALLER_PIN` never refuses them or spends a try (WP TMCOREF2).
 fn connect_written_lazily(target: &Target, flags: &[&str]) -> Result<Session, u8> {
     let pins = core_route::PinSource::for_this_command()?;
     core_route::connect_routed(

@@ -2480,7 +2480,17 @@ impl Live {
                 }
                 // -- WP TMCORE -- one undo step for the whole import
                 session.begin_group("Import Device Configuration");
-                let report = dspi_session::preset_file::apply(session, &doc, options);
+                // -- WP TMCOREF2 -- held to the route's limits profile first
+                // (the console core's), as `uconsole import` holds it: a value
+                // outside it is written at the limit and the report says so
+                // ("Held to the limits profile: ...")
+                let profile = session.limits_profile();
+                let report = dspi_session::preset_file::apply_limited(
+                    session,
+                    &doc,
+                    options,
+                    profile.as_ref(),
+                );
                 session.end_group();
                 // The pair links are the app's, so the device apply leaves
                 // them here (PresetDocumentTransfer.swift:367-375).

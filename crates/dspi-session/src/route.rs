@@ -90,4 +90,12 @@ pub trait WriteRoute: Send {
     fn unlock(&mut self, _pin: &str) -> Option<Result<String, String>> {
         None
     }
+
+    // -- WP TMCOREF2 --
+    /// The limits profile the route holds writes to, for a whole-document
+    /// import to clamp to before it writes (`preset_file::apply_limited`), as
+    /// the route's own imports do. `None`: none, or the route keeps no profile.
+    fn limits_profile(&mut self) -> Option<crate::limits::LimitsProfile> {
+        None
+    }
 }
