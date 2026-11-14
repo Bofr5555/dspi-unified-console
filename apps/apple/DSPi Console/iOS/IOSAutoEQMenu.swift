@@ -11,6 +11,7 @@
 
 #if os(iOS)
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 import dspi_core
 
@@ -151,13 +152,29 @@ final class AutoEQRebuildSheet: IOSToolWindowController {
         rebuild.start(fetch: fetch) { [weak self] progress in
             self?.rebuild = nil
             self?.hide()
-            // After the sheet has gone, or UIKit will not present the alert.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            Self.whenSheetHasGone {
                 if progress.succeeded {
                     IOSAutoEQActions.showSuccess(AutoEQCoreRebuild.summary(progress))
                 } else {
                     IOSAutoEQActions.showError(AutoEQCoreRebuild.summary(progress))
                 }
+            }
+        }
+    }
+
+    /// -- WP SW18F -- Runs `body` once no sheet is up or on its way out (at
+    /// most ~6 s later).  An alert presented over the closing sheet went with
+    /// it, so a rebuild's result could vanish unseen.
+    static func whenSheetHasGone(tries: Int = 30, _ body: @escaping () -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            let top = UIApplication.shared.topViewController
+            let sheetUp = ToolSheetPresenter.shared.current != nil
+                || top?.presentingViewController != nil
+                || top?.isBeingDismissed == true
+            if sheetUp && tries > 0 {
+                whenSheetHasGone(tries: tries - 1, body)
+            } else {
+                body()
             }
         }
     }

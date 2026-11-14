@@ -100,7 +100,18 @@ final class PlatformAlert {
     func addButton(withTitle title: String) { buttons.append(title) }
 
     func present(_ completion: @escaping (Int) -> Void = { _ in }) {
+        present(completion, attempts: 25)
+    }
+
+    private func present(_ completion: @escaping (Int) -> Void, attempts: Int) {
         DispatchQueue.main.async {
+            // -- WP SW18F -- A sheet still on its way out cannot present, and
+            // UIKit drops the alert without a word (the AutoEQ rebuild's
+            // result, shown as its sheet closes): wait until it has gone.
+            if let top = UIApplication.shared.topViewController, top.isBeingDismissed, attempts > 0 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.present(completion, attempts: attempts - 1) }
+                return
+            }
             let controller = UIAlertController(title: self.messageText,
                                                message: self.informativeText.isEmpty ? nil : self.informativeText,
                                                preferredStyle: .alert)
