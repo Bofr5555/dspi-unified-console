@@ -1,14 +1,14 @@
 // G1 (owner decision): the bridge's last line of defence for read-only mode.
 package se.bofr.dspi.bridge
 
+import se.bofr.dspi.core.AlinkSceneRecall
+import se.bofr.dspi.core.AlinkSystemAlign
+import se.bofr.dspi.core.AlinkSystemEdits
 import se.bofr.dspi.core.DspiCoreApi
 import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.FilterParams
 import se.bofr.dspi.core.HistoryMove
 import se.bofr.dspi.core.I2cConfig
-import se.bofr.dspi.core.AlinkSceneRecall
-import se.bofr.dspi.core.AlinkSystemAlign
-import se.bofr.dspi.core.AlinkSystemEdits
 import se.bofr.dspi.core.SiggenConfig
 import se.bofr.dspi.core.UartConfig
 import se.bofr.dspi.core.VregDemoEvent

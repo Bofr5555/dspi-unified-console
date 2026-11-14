@@ -76,6 +76,20 @@ async function setMode(session: Locator, page: Page, mode: "Simple" | "Advanced"
   await expect(session.getByRole("button", { name: `Mode: ${mode}` })).toBeVisible();
 }
 
+/** -- WP AUSB1 -- the report's pictures: beside the Playwright output, in ausb1-shots/ (chromium only). */
+async function ausb1Shot(page: Page, name: string) {
+  const out = process.env.PW_OUTPUT_DIR;
+  if (!out || test.info().project.name !== "chromium") return;
+  const dir = `${out}/../ausb1-shots`;
+  mkdirSync(dir, { recursive: true });
+  for (const scheme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.waitForTimeout(150);
+    await page.screenshot({ path: `${dir}/${name}-${scheme}.png`, fullPage: true });
+  }
+  await page.emulateMedia({ colorScheme: null });
+}
+
 async function shot(page: Page, name: string) {
   const dir = process.env.SW3_SHOTS;
   if (!dir || test.info().project.name !== "chromium") return;
@@ -297,7 +311,10 @@ test.describe("SW3: an audio link installation on the hub", () => {
     // A scene for every unit: at once on P, through the sender on the others; never "on time on every unit".
     await session.getByLabel("Scenes", { exact: true }).getByRole("button", { name: "Recall Evening" }).click();
     const result = session.getByLabel("Scene result");
-    await expect(result).toContainText(/Evening recalled: applied now on Plain unit \(no audio link\); at audio link frame \d+ through the sender on the others\./);
+    // -- WP AUSB1 -- the demo's USB-direct units take it at a USB frame
+    await expect(result).toContainText(
+      /Evening recalled: at USB frame \d+ on Rear L\/R, Height; at audio link frame \d+ through the sender on the others; applied now on Plain unit \(no audio link\)\./,
+    );
     await expect(result).not.toContainText("on time on every unit");
     await expect(result.getByRole("list", { name: "Per unit" }).getByLabel("Result for Plain unit")).toContainText("Master volume -12.0 dB: Applied now");
     await shot(page, "hwlk1f-scene");
@@ -319,6 +336,57 @@ test.describe("SW3: an audio link installation on the hub", () => {
       "Plain unit (DEMO-PLAIN): its firmware has no audio link, so it cannot be a receiver on it.",
     );
     await shot(page, "hwlk1f-align-and-warning");
+  });
+
+  // -- WP AUSB1 -- the demo installation's USB-direct units (Rear L/R, Height) beside the audio link's
+  test("AUSB1: USB-direct units are shown with their state and statistics, take scenes at a USB frame, and their mode is set", async ({ page }) => {
+    test.setTimeout(90_000);
+    hub = await linkHub(["--open", "--forget-clients", "--with-plain-unit"]);
+    const session = await openUnit(page, hub, "DEMO-ALINK-A");
+    const system = session.getByRole("region", { name: "System" });
+    const main = system.getByRole("region", { name: "Room Main room" });
+    const rear = main.getByLabel("Unit Rear L/R");
+    await expect(rear).toContainText("Connected");
+    await expect(rear).toContainText("USB-direct: Phase-locked");
+    await expect(rear).toContainText(/host -11\.5 ppm · VCXO -11\.\d ppm · phase error [+-]\d\.\d\d samples · gaps 0, missed 0, late 0 samples/);
+    await expect(main.getByLabel("Unit Main left")).toContainText("Audio link: Locked");
+    const topo = system.getByRole("list", { name: "Topology" });
+    await expect(topo.getByLabel("USB-direct Height")).toContainText("Phase-locked");
+    await expect(system.getByRole("region", { name: "Room Bar" }).getByLabel("Unit Plain unit")).toContainText("No audio link (firmware)");
+    await ausb1Shot(page, "system-view-mixed");
+    // A scene for every unit: at a USB frame on the USB-direct units, at an audio link frame through the sender, at once on P.
+    const bar = session.getByLabel("Scenes", { exact: true });
+    await bar.getByRole("button", { name: "Recall Evening" }).click();
+    const result = session.getByLabel("Scene result");
+    await expect(result).toContainText(/at USB frame \d+ on Rear L\/R, Height; at audio link frame \d+ through the sender on the others; applied now on Plain unit \(no audio link\)/);
+    const perUnit = result.getByRole("list", { name: "Per unit" });
+    await expect(perUnit.getByLabel("Result for Rear L/R")).toContainText("Master volume -12.0 dB: Queued");
+    await expect(perUnit.getByLabel("Result for Sender")).toContainText("Scene Evening: Queued");
+    await ausb1Shot(page, "scene-mixed");
+    // The Installer's panel: the USB-direct units, their delay against the system delay, the start offset, the stats.
+    await setMode(session, page, "Installer");
+    const panel = system.getByRole("region", { name: "Clock and audio links" });
+    const usb = panel.getByRole("table", { name: "USB-direct units" });
+    await expect(usb.getByRole("row", { name: "USB-direct clock of Rear L/R" })).toContainText("170..399");
+    await expect(usb.getByRole("row", { name: "USB-direct clock of Rear L/R" })).toContainText("144 samples");
+    await expect(usb.getByRole("row", { name: "USB-direct clock of Height" })).toContainText("Phase-locked");
+    await expect(panel.getByRole("table", { name: "Units on the audio link" }).getByRole("row", { name: "Clock of Rear L/R" })).toHaveCount(0);
+    const stats = panel.getByRole("table", { name: "USB-direct stats" });
+    await expect(stats.getByRole("row", { name: "USB-direct stats of Height" })).toContainText("-11.5 ppm");
+    await expect(stats.getByRole("row", { name: "USB-direct stats of Height" })).toContainText("0 (last: none)");
+    // Height to rate lock: saved on the hub (by revision), written with the alignment.
+    await usb.getByLabel("USB-direct mode of Height").selectOption("rate_lock");
+    await panel.getByRole("button", { name: "Save" }).click();
+    await expect(panel.getByRole("group", { name: "Unsaved installation" })).toHaveCount(0);
+    const align = panel.getByRole("region", { name: "Alignment" });
+    await align.getByRole("button", { name: "Align audio link delays…", exact: true }).click();
+    await page.getByRole("dialog", { name: "Align audio link delays?" }).getByRole("button", { name: "Align" }).click();
+    const writes = align.getByRole("list", { name: "Alignment writes" });
+    await expect(writes.getByLabel("Result for Height")).toContainText("USB-direct mode and delay: Done");
+    await expect(writes.getByLabel("Result for Rear L/R")).toContainText("Delay OUT1: Done");
+    await expect(usb.getByRole("row", { name: "USB-direct clock of Height" })).toContainText("Rate-locked", { timeout: 10_000 });
+    await expect(main.getByLabel("Unit Height")).toContainText("USB-direct: Rate-locked", { timeout: 10_000 });
+    await ausb1Shot(page, "clock-and-audio-links-usb");
   });
 
   test("SW3: Save never overwrites a newer installation; the page says so and offers Reload", async ({ page, browser }) => {

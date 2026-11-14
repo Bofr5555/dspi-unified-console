@@ -8,7 +8,7 @@ import { useEffect, useState } from "preact/hooks";
 import type { ScreenProps } from "../../ui/screens";
 import { AlinkClock } from "./AlinkClock";
 import type { FeedState, SystemFeed } from "./feed";
-import { NO_ALINK, alinkRoleWord, lockWord, roomsView, slotWord, topology, type TopoNode, type UnitView } from "./model";
+import { NO_ALINK, NO_USB_DIRECT, alinkRoleWord, lockWord, roomsView, slotWord, topology, type TopoNode, type UnitView } from "./model";
 
 export function useFeed(feed: SystemFeed): FeedState {
   const [, bump] = useState(0);
@@ -113,8 +113,14 @@ function UnitRow(props: { u: UnitView; role?: string }) {
       <span class="sys-state">{u.connected ? "Connected" : "Offline"}</span>
       {props.role ? <span class="sys-state">{props.role}</span> : null}
       <span class={`sys-lock sys-lock-${u.lock.toLowerCase().replace(/\s+/g, "-")}`}>
-        {u.lock === "No audio link" || u.lock === NO_ALINK ? u.lock : `Audio link: ${u.lock}`}
+        {/* -- WP AUSB1 -- a USB-direct unit says so */}
+        {u.lock === "No audio link" || u.lock === NO_ALINK || u.lock === NO_USB_DIRECT
+          ? u.lock
+          : u.usb
+            ? `USB-direct: ${u.lock}`
+            : `Audio link: ${u.lock}`}
       </span>
+      {u.usb?.stats ? <span class="sys-usb-stats">{u.usb.stats}</span> : null}
       {u.alarms.length ? (
         <span class="sys-alarm-count" title={u.alarms.map((a) => a.message).join("\n")}>
           {u.alarms.length === 1 ? "1 alarm" : `${u.alarms.length} alarms`}
@@ -127,6 +133,7 @@ function UnitRow(props: { u: UnitView; role?: string }) {
 
 function kindWord(n: TopoNode): string {
   if (n.kind === "sender") return "Sender";
+  if (n.kind === "usb_direct") return "USB-direct"; // -- WP AUSB1 --
   if (n.kind === "fan_out") return "Fan-out";
   return n.hopDelayFrames !== null ? "Repeater" : "Unit";
 }
