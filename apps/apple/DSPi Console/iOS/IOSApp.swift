@@ -226,10 +226,6 @@ struct IOSRootView: View {
             Button("Spectrum Analyser") { spectrum.show(vm: vm) }
             Button("Filter Response") { graph.show(vm: vm) }
         }
-        // -- WP P1SW1 -- snapshots, A/B and the safe apply (a half-height sheet)
-        Section {
-            Button("Snapshots...") { SnapshotsSheet.show() }
-        }
         Section {
             Button("AutoEQ Profiles") { autoEQ.show() }
             Button("Stats for nerbs") { stats.show(transport: vm.transport) }
@@ -267,7 +263,9 @@ struct IOSRootView: View {
         Button("Export Filters...") { FileMenuActions.exportFilters() }
         Button("Import Device Configuration...") { FileMenuActions.importConfiguration() }
         Button("Export Device Configuration...") { FileMenuActions.exportConfiguration() }
-        // -- WP P1SW1 -- offline files and templates
+        // -- WP P1SW1 -- offline files and templates; the snapshots (a
+        // half-height sheet) here too, so the iPhone's Tools menu keeps its length
+        Button("Snapshots...") { SnapshotsSheet.show() }
         Button("Open File...") { OfflineFiles.openFile() }
         Button("Open Template...") { OfflineFiles.showTemplates() }
         Button("Save File...") { OfflineFiles.saveFile() }

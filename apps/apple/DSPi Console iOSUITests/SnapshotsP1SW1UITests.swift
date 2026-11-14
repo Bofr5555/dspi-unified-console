@@ -45,14 +45,15 @@ final class SnapshotsP1SW1UITests: XCTestCase {
         pause(2)
         keep(app, "ios-p1sw1-02-advanced-two-snapshots")
 
-        // Recall with rollback: the countdown bar over the console.
+        // Recall with rollback: the countdown bar over the console.  The
+        // row's own switch (a tap on the row's label does not toggle it).
         let rollback = app.switches["snapshotRollback"].firstMatch
-        if !rollback.isHittable { app.swipeUp() }
         XCTAssertTrue(rollback.waitForExistence(timeout: 5))
-        if (rollback.value as? String) != "1" { rollback.tap() }
-        if !recall.isHittable { app.swipeDown() }
-        XCTAssertTrue(app.buttons["Recall with rollback"].firstMatch.waitForExistence(timeout: 5))
-        app.buttons["Recall with rollback"].firstMatch.tap()
+        if "\(rollback.value ?? "")" != "1" { rollback.switches.firstMatch.tap() }
+        let withRollback = NSPredicate(format: "label == %@", "Recall with rollback")
+        expectation(for: withRollback, evaluatedWith: recall)
+        waitForExpectations(timeout: 5)
+        recall.tap()
         pause(1)
         app.buttons["Done"].firstMatch.tap()
 
