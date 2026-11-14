@@ -535,7 +535,7 @@ internal fun BodePlotView(bridge: DspiBridge, modifier: Modifier, channels: Set<
                 .background(Color.Black.copy(alpha = 0.35f))
                 .clickable { optionsOpen = true },
             contentAlignment = Alignment.Center
-        ) { Text("⚙", color = Color.White.copy(alpha = 0.8f), fontSize = 15.sp) }
+        ) { Text("⋮", color = Color.White.copy(alpha = 0.8f), fontSize = 15.sp) }
     }
     // The gear panel holds app preferences and the spectrum's channels: no device writes (G1)
     if (optionsOpen) {

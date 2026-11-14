@@ -22,7 +22,8 @@
 #                                     Rust, ktlint, module tests, assemble, in the
 #                                     Gradle container (apps/android/tools/ci.sh tests)
 #       android-contract              the Android contract matches crates/
-#                                     (gen_kotlin_contract.py --check)
+#                                     (gen_kotlin_contract.py --check), and no emoji
+#                                     in the app's strings (tools/check_glyphs.py)
 #       wasm                          dspi-proto for wasm32-unknown-unknown
 #       wasm-core                     dspi-session and dspi-core for wasm32-unknown-
 #                                     unknown, without `usb`, also with `link`; their
@@ -171,7 +172,9 @@ for s in "${steps[@]}"; do
       apps/android/tools/ci.sh tests ;;
     android-contract)
       # -- WP MR3 --
-      $RUN "cd apps/android && python3 tools/gen_kotlin_contract.py --check" ;;
+      $RUN "cd apps/android && python3 tools/gen_kotlin_contract.py --check"
+      # -- WP P1EFIX2 -- no emoji or pictographic glyphs in the app's strings
+      $RUN "cd apps/android && python3 tools/check_glyphs.py" ;;
     android)
       DSPI_PROFILE=cross $RUN "cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 --platform 26 build -p dspi-core --features link && cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 --platform 26 build -p dspi-ffi" ;;
     wasm) DSPI_PROFILE=cross $RUN "cargo build -p dspi-proto --target wasm32-unknown-unknown" ;;

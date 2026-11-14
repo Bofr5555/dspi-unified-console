@@ -78,10 +78,10 @@ enum class InstallIcon(val glyph: String) {
     DRIVE("▭"),
     DRIVE_CHECK("✓"),
     CYCLE("↻"),
-    SEAL("✔"),
+    SEAL("✓"),
     QUESTION("?"),
-    WARNING("⚠"),
-    LOCK("⚿")
+    WARNING("!"),
+    LOCK("#")
 }
 
 /** One centred state: icon or spinner, short title, one or two sentences. */

@@ -670,7 +670,7 @@ private fun TransportBar(state: TestSignalsUiState, actions: TestSignalsActions)
                 colors = ButtonDefaults.buttonColors(containerColor = MacColors.red, contentColor = Color.White)
             ) { Text("Stop") }
         } else {
-            Button(onClick = { actions.start() }, enabled = state.startBlocker == null && state.writable) { Text("▶  Start") }
+            Button(onClick = { actions.start() }, enabled = state.startBlocker == null && state.writable) { Text("Start") }
         }
     }
 }

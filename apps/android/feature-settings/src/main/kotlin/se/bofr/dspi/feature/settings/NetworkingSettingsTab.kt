@@ -84,7 +84,7 @@ fun NetworkingSettingsTab(controller: NetworkingController) = WritesExempt {
             SettingsSection("Other Hubs", footer = "Tap a hub to control its DSPi from here.") {
                 FormSwitchRow("Find hubs automatically", null, s.findAutomatically) { controller.setFindAutomatically(it) }
                 if (s.findAutomatically && s.browseError != null) {
-                    FormCaption("⚠ ${s.browseError}", MacColors.orange)
+                    FormCaption(s.browseError, MacColors.orange)
                 }
                 s.hubs.forEach { hub -> HubRow(hub, controller) }
                 if (s.hubs.isEmpty()) {

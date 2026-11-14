@@ -6,9 +6,7 @@ package se.bofr.dspi.feature.settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,7 +22,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import se.bofr.dspi.ui.DspiRoutes
 
 /** Brand colours of the links in the About table, by stable id, as on macOS. Words and URLs are the table's. */
@@ -81,8 +78,6 @@ private fun AboutPage(onOpenLicenses: () -> Unit, onNavigate: (String) -> Unit) 
         item {
             SettingsSection(null) {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("🔊", fontSize = 32.sp)
-                    Spacer(Modifier.width(14.dp))
                     Column {
                         Text(appName, style = MaterialTheme.typography.titleMedium)
                         Text(

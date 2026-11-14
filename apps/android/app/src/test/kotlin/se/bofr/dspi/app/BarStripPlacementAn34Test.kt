@@ -108,7 +108,7 @@ class BarStripPlacementAn34Test {
 
     /** The graph's gear, then its "RTA Bars" switch (the gear panel is a Dialog: its own root). */
     private fun toggleRtaBars() {
-        rule.onAllNodesWithText("⚙", useUnmergedTree = true)[0].performClick()
+        rule.onAllNodesWithText("⋮", useUnmergedTree = true)[0].performClick()
         settleUntil("the gear panel") {
             rule.onAllNodesWithText("RTA Bars", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         }

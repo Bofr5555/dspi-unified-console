@@ -106,7 +106,7 @@ fun GlobalSettingsTab(bridge: DspiBridge, coordinator: SettingsSaveCoordinator) 
                 val m = draft.dacHwMuteConfig
                 SettingsSection("External Mute Control") {
                     Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.Top) {
-                        Text("⚠", color = MacColors.orange)
+                        Text("!", color = MacColors.orange)
                         Spacer(Modifier.width(10.dp))
                         Column {
                             Text(

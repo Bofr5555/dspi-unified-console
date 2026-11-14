@@ -244,7 +244,7 @@ class DemoScreensAn28Test {
         assertEquals("the generator never starts by itself", 0, ffiCore.siggenGetStatus().state)
         rule.onAllNodesWithText("All")[0].performClick()
         settle()
-        rule.onNodeWithText("▶  Start").performClick()
+        rule.onNodeWithText("Start").performClick()
         settleUntil("playing") { ffiCore.siggenGetStatus().state != 0 }
         settleUntil("the Stop button") { onScreen("Stop") }
         rule.onNodeWithText("Stop").performClick()

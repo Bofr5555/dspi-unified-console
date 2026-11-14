@@ -138,7 +138,7 @@ internal fun UnsupportedNote(primary: String, secondary: String, modifier: Modif
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text("⚠", fontSize = 28.sp, color = secondaryColor())
+        Text("!", fontSize = 28.sp, color = secondaryColor())
         Text(primary, fontSize = 15.sp, color = secondaryColor(), textAlign = TextAlign.Center)
         Text(secondary, fontSize = 13.sp, color = secondaryColor(), textAlign = TextAlign.Center)
     }

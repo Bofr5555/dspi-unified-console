@@ -258,7 +258,7 @@ private fun BarStripOptions(single: Boolean, maxColumns: Int, chosen: Int, onCol
     var open by remember { mutableStateOf(false) }
     Box {
         Text(
-            "⚙",
+            "⋮",
             fontSize = 12.sp,
             color = if (open) MaterialTheme.colorScheme.onSurface else secondaryText(),
             modifier = Modifier
