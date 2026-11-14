@@ -269,14 +269,16 @@ open class FakeDspiCore(
             source = source,
             atMs = System.currentTimeMillis(),
             undoable = true,
-            label = null // -- WP P1UG --
+            label = if (source == HistorySource.LOCAL && groupDepth > 0) groupLabel else null // -- WP P1UG --, PAIRBANDF
         )
         journalEntries += e
         if (source == HistorySource.LOCAL) {
             // -- WP AN42 -- a drag's later writes join its step (the state before the drag stays)
-            val open = if (dragStepOpen) undoSteps.removeLastOrNull() else null
+            // -- WP PAIRBANDF -- and so do an undo group's
+            val open = if (dragStepOpen || groupStepOpen) undoSteps.removeLastOrNull() else null
             undoSteps += Step(e, open?.before ?: before, state)
             dragStepOpen = dragging
+            groupStepOpen = groupDepth > 0
             redoSteps.clear()
         }
     }
@@ -294,6 +296,8 @@ open class FakeDspiCore(
     private fun forgetHistory() {
         dragging = false // -- WP AN42 -- a drag ends with its connection
         dragStepOpen = false
+        groupDepth = 0 // -- WP PAIRBANDF -- a group ends with its connection
+        groupStepOpen = false
         journalEntries.clear()
         undoSteps.clear()
         redoSteps.clear()
@@ -317,12 +321,31 @@ open class FakeDspiCore(
         HistoryMove(step.entry, emptyList(), null)
     }
 
-    // -- WP P1UG -- the undo-group marks: the fake keeps one step per call
-    // and does not coalesce groups, so they do nothing here. (review p1a: the
-    // P1UG no-op `setDragging` was dropped in favour of AN42's model above.)
-    override fun beginGroup(label: String) {}
+    // -- WP PAIRBANDF -- (review pairband F3) the undo-group marks, as the
+    // core's in spirit: every write between the outermost begin and its end
+    // joins one step carrying the label; groups nest; a stray end does nothing.
+    // Not modelled: hazards standing apart, another writer, a re-read.
+    private var groupDepth = 0
+    private var groupLabel: String? = null
+    private var groupStepOpen = false
 
-    override fun endGroup() {}
+    @Synchronized
+    override fun beginGroup(label: String) {
+        if (!connected) return
+        if (groupDepth++ == 0) {
+            groupLabel = label.ifEmpty { null }
+            groupStepOpen = false
+        }
+    }
+
+    @Synchronized
+    override fun endGroup() {
+        if (groupDepth == 0) return
+        if (--groupDepth == 0) {
+            groupStepOpen = false
+            groupLabel = null
+        }
+    }
 
     // -- WP P1AN2 -- P1TK's token-taking forms: the fake mints any token and runs the plain call
     // (the core's own tests check the tokens), so the bridge's calls stay on the fake's record

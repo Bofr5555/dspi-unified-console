@@ -120,4 +120,33 @@ class PairBandWpPairbandTest {
         assertEquals("Paste EQ", (step as HistoryStep.Moved).move.entry?.label)
         until("one undo, every band of both sides back") { (0 until DspiConstants.BANDS_PER_CHANNEL).map { sides(it) } == before }
     }
+
+    // -- WP PAIRBANDF -- (review pairband F1) Bypass All on a linked pair: one step on the real core
+    @Test
+    fun pairbandfBypassAllOnALinkedPairIsOneUndo() = withDemo {
+        linkPairZero()
+        for (b in 0 until 3) onMain { bridge.setFilter(0, b, DspiConstants.FILTER_PEAKING, 400f + 300f * b, 2f, 1f) }
+        until("bands") { (0 until 3).all { sides(it).first.filterType == DspiConstants.FILTER_PEAKING && sides(it).second == sides(it).first } }
+        onMain { bridge.setAllBandsBypass(0, true, false) }
+        until("bypassed") { (0 until 3).all { sides(it).first.bypass && sides(it).second.bypass } }
+        assertEquals("Bypass All", core.history(1).first().label)
+        onMain { bridge.undo() }
+        until("one undo enables every band of both sides") { (0 until 3).none { sides(it).first.bypass || sides(it).second.bypass } }
+    }
+
+    // -- WP PAIRBANDF -- (review pairband F2) Link Inputs with a kept side: one step on the real core
+    @Test
+    fun pairbandfLinkInputsWithAKeptSideIsOneUndo() = withDemo {
+        onMain { bridge.setInputLinked(0, false, -1) }
+        until("unlinked") { !bridge.isInputLinked(0) }
+        for (b in 0 until 3) onMain { bridge.setFilter(0, b, DspiConstants.FILTER_PEAKING, 400f + 300f * b, 2f, 1f) }
+        until("bands") { (0 until 3).all { sides(it).first.filterType == DspiConstants.FILTER_PEAKING } }
+        val before = (0 until DspiConstants.BANDS_PER_CHANNEL).map { sides(it).second }
+        onMain { bridge.setInputLinked(0, true, keepCh = 0) }
+        until("copied") { (0 until 3).all { sides(it).second == sides(it).first } }
+        assertEquals("Link Inputs", core.history(1).first().label)
+        onMain { bridge.undo() }
+        until("one undo puts the copied side back") { (0 until DspiConstants.BANDS_PER_CHANNEL).map { sides(it).second } == before }
+    }
 }
+
