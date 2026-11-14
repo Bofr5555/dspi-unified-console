@@ -39,7 +39,7 @@ class ReadOnlyTest {
         val out = 2 // app id of output 1
         return listOf<Pair<String, suspend () -> Unit>>(
             // -- WP LKUI1 -- the hub's audio link installation (they throw once refused)
-            "alinkSystemSave" to { runCatching { b.alinkSystemSave(1, AlinkSystemEdits(false, null, emptyList(), emptyList())) } },
+            "alinkSystemSave" to { runCatching { b.alinkSystemSave(1, AlinkSystemEdits(false, null, emptyList(), emptyList(), emptyList())) } },
             "alinkSystemAlign" to { runCatching { b.alinkSystemAlign() } },
             "alinkSystemRecall" to { runCatching { b.alinkSystemRecall("evening") } },
             "setPreamp" to { b.setPreamp(-1f) },

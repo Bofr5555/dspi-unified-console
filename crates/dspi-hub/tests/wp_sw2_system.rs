@@ -159,6 +159,8 @@ fn unit(id: &str, upstream: &str) -> Unit {
         serial: format!("SW2-{id}"),
         room: Some("cinema".into()),
         upstream: upstream.into(),
+        transport: Default::default(),
+        usb_mode: None,
         output: None,
         repeater: false,
         hop_delay_frames: None,

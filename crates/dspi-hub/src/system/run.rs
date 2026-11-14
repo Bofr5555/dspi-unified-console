@@ -19,13 +19,22 @@ use dspi_proto::generated::ext as g;
 use dspi_proto::generated::opcodes as op;
 use serde::Serialize;
 
+use dspi_proto::ext::alink_usb::{
+    self as usb, AlinkUsbConfig, AlinkUsbDiag, AlinkUsbStatus, TimeBase,
+};
+
 use super::alarms::Alarm;
 use super::align::{self, Alignment, AlinkFirmware, Observed};
-use super::scene::{self, ScenePlan, SceneRefused, SenderSeen};
+use super::scene::{self, ScenePlan, SceneRefused, SenderSeen, UsbSeenNow};
 use super::{SystemShared, alarm_event};
 use crate::device::DeviceShared;
 use crate::hub::HubHandle;
 use crate::session::{Completion, INTERNAL_SESSION_ID, Role, SessionCtx};
+
+// -- WP AUSB1 --
+/// Why a USB-direct unit's op of a scene was not written: the audio link's part
+/// of the scene was refused (`system.scene.apply`'s `reason`).
+pub const USB_HELD_BACK: &str = "the audio link part was refused";
 
 /// How long one transfer may take, queue included.
 const TRANSFER_WAIT: Duration = Duration::from_secs(3);
@@ -471,6 +480,154 @@ fn observe(dev: &DeviceShared) -> Observed {
     o
 }
 
+// -- WP AUSB1 --
+/// Read one USB-direct unit: whether its firmware has the block (`EXT_LIST`,
+/// or a stalled `EXT_ALINK_USB`), then `EXT_ALINK_USB`, `_STATUS` and `_DIAG`.
+/// Nothing is written. The audio link's sub-commands are not read.
+fn observe_usb(dev: &DeviceShared) -> Observed {
+    let mut o = Observed {
+        online: true,
+        ..Observed::default()
+    };
+    match exec(
+        dev,
+        Dir::Get,
+        op::REQ_EXTENSION,
+        g::EXT_LIST,
+        Vec::new(),
+        EXT_LIST_LEN,
+    ) {
+        Ok(b) if !dspi_proto::ext::decode_list(&b).contains(&usb::EXT_ALINK_USB) => {
+            o.usb_direct = Some(AlinkFirmware::Absent);
+            return o;
+        }
+        Ok(_) => o.usb_direct = Some(AlinkFirmware::Present),
+        Err(_) => {}
+    }
+    let len = |n: usize| u16::try_from(n).unwrap_or(u16::MAX);
+    let config = match exec_told(
+        dev,
+        Dir::Get,
+        op::REQ_EXTENSION,
+        usb::EXT_ALINK_USB,
+        Vec::new(),
+        len(AlinkUsbConfig::SIZE),
+    ) {
+        Ok(b) => AlinkUsbConfig::decode(&b),
+        Err(Failed { stalled: true, .. }) => {
+            o.usb_direct = Some(AlinkFirmware::Absent);
+            return o;
+        }
+        Err(_) => None,
+    };
+    let status = get_ext(
+        dev,
+        usb::EXT_ALINK_USB_STATUS,
+        AlinkUsbStatus::SIZE,
+        AlinkUsbStatus::decode,
+    );
+    let diag = get_ext(
+        dev,
+        usb::EXT_ALINK_USB_DIAG,
+        AlinkUsbDiag::SIZE,
+        AlinkUsbDiag::decode,
+    );
+    if let (Some(c), Some(s)) = (config, status) {
+        o.usb_direct = Some(AlinkFirmware::Present);
+        o.usb = Some(usb_seen(&c, &s, diag.as_ref()));
+    }
+    o
+}
+
+// -- WP AUSB1 --
+/// The hub's record of a USB-direct unit's reads.
+fn usb_seen(c: &AlinkUsbConfig, s: &AlinkUsbStatus, d: Option<&AlinkUsbDiag>) -> align::UsbSeen {
+    let mut flags = Vec::new();
+    for (bit, word) in [
+        (usb::STATUS_D_BELOW_MIN, "d_below_min"),
+        (usb::STATUS_D_ABOVE_MAX, "d_above_max"),
+        (usb::STATUS_RATE_UNSUPPORTED, "rate_unsupported"),
+    ] {
+        if c.status_flags & bit != 0 {
+            flags.push(word.to_owned());
+        }
+    }
+    align::UsbSeen {
+        mode: c.usb_mode().as_str().into(),
+        d: c.d,
+        auto_reanchor: c.flags & usb::FLAG_AUTO_REANCHOR != 0,
+        config_flags: flags,
+        state: s.state.as_str().into(),
+        phase_state: s.phase_state,
+        rate_code: s.rate_code,
+        host_ppm: s.host_ppm,
+        vcxo_ppm: s.vcxo_ppm,
+        phase_error: s.phase_error,
+        bus_frame: s.bus_frame,
+        sample: s.sample,
+        d_min: s.d_min,
+        d_max: s.d_max,
+        fill: s.fill,
+        stream: s.flags & usb::USB_FLAG_STREAM != 0,
+        holdover: s.flags & usb::USB_FLAG_HOLDOVER != 0,
+        stream_start_bus_frame: s.stream_start_bus_frame(),
+        stream_shift: s.stream_shift,
+        gap_count: s.gap_count,
+        anchors: s.anchors,
+        reanchors: s.reanchors,
+        missed_samples: s.missed_samples,
+        late_samples: s.late_samples,
+        diag: d.map(|d| align::UsbDiagSeen {
+            last_cause: d.last_cause_name().map(str::to_owned),
+            ends: d.total_ends(),
+            holdovers: d.holdovers,
+            rides: d.rides,
+            suspends: d.suspends,
+            bus_resets: d.bus_resets,
+            unplugs: d.unplugs,
+            longest_ride_us: d.longest_ride_us,
+        }),
+    }
+}
+
+// -- WP AUSB1 --
+/// `EXT_ALINK_USB_STATUS` for a scene: the unit's S and samples per frame when
+/// it is phase-locked, and how long the read took.
+fn timed_usb(dev: &DeviceShared) -> (Option<UsbSeenNow>, Duration) {
+    let start = Instant::now();
+    let s = get_ext(
+        dev,
+        usb::EXT_ALINK_USB_STATUS,
+        AlinkUsbStatus::SIZE,
+        AlinkUsbStatus::decode,
+    );
+    let seen = s.filter(AlinkUsbStatus::phase_locked).and_then(|s| {
+        Some(UsbSeenNow {
+            sample: s.sample,
+            spf: s.spf()?,
+        })
+    });
+    (seen, start.elapsed())
+}
+
+// -- WP AUSB1 --
+/// What a USB-direct unit's queue said of `req` (at bus frame `bus`, sample 0)
+/// right after it was written: as [`apply_result`], its `last_frame` an S.
+fn usb_apply_result(seen: Option<ApplyStatus>, req: &ApplyRequest, bus: u16, spf: u16) -> String {
+    match seen {
+        Some(s)
+            if s.last_op == req.op && usb::bus_of_sample(s.last_frame, spf) == Some((bus, 0)) =>
+        {
+            match s.last_result.as_str() {
+                "refused" => "refused_at_apply".into(),
+                r => r.into(),
+            }
+        }
+        Some(_) => "queued".into(),
+        None => "queued_unverified".into(),
+    }
+}
+
 // -- WP HWLK1F --
 /// The units with the audio link a scene names, one write each for its first
 /// op on it: what the superframe path reaches without a write of its own.
@@ -631,9 +788,31 @@ impl HubHandle {
     /// is kept all the same. Blocks for the reads.
     pub fn system_alink_warnings(&self) -> Vec<String> {
         let (model, _) = self.system().model();
+        // -- WP AUSB1 -- a USB-direct unit is no unit on the audio link: its own warning
+        let usb = model
+            .units
+            .iter()
+            .filter(|u| u.usb_direct())
+            .filter(|u| match self.device_by_serial(&u.serial) {
+                Some(dev) => observe_usb(&dev).without_usb_direct(),
+                None => self
+                    .system()
+                    .last_observed(&u.serial)
+                    .is_some_and(|o| o.without_usb_direct()),
+            })
+            .map(|u| {
+                let name = if u.name.is_empty() { &u.id } else { &u.name };
+                format!(
+                    "{name} ({}): its firmware has no USB-direct block (extension 0x8010), so it \
+                     cannot be a USB-direct unit. It is not aligned and takes scenes at once.",
+                    u.serial
+                )
+            })
+            .collect::<Vec<_>>();
         model
             .units
             .iter()
+            .filter(|u| !u.usb_direct())
             .filter(|u| match self.device_by_serial(&u.serial) {
                 Some(dev) => probe_alink(&dev) == Some(AlinkFirmware::Absent),
                 None => self.system().last_seen_without_alink(&u.serial),
@@ -647,6 +826,7 @@ impl HubHandle {
                     if u.repeater { "repeater" } else { "receiver" }
                 )
             })
+            .chain(usb)
             .collect()
     }
 
@@ -688,9 +868,24 @@ impl HubHandle {
     pub fn system_status(&self) -> SystemStatus {
         let (model, revision) = self.system().model();
         let mut observed = BTreeMap::new();
+        // -- WP AUSB1 -- the model's USB-direct units are read as such
+        let usb_units: BTreeSet<String> = model
+            .units
+            .iter()
+            .filter(|u| u.usb_direct())
+            .map(|u| u.serial.clone())
+            .collect();
         for (serial, dev) in self.system_devices(&model) {
             let last = self.system().last_observed(&serial);
             let o = match &dev {
+                // -- WP AUSB1 --
+                Some(d) if usb_units.contains(&serial) => {
+                    let mut o = observe_usb(d);
+                    if o.usb_direct.is_none() {
+                        o.usb_direct = last.and_then(|l| l.usb_direct);
+                    }
+                    o
+                }
                 // -- fixup hwlk1f (F1) -- not told now: as last seen
                 Some(d) => {
                     let mut o = observe(d);
@@ -743,59 +938,103 @@ impl HubHandle {
                 let (Some(dev), true) = (&dev, plan.writable) else {
                     // -- WP HWLK1F -- and why, so a client can say what was not written
                     let seen = status.observed.get(&plan.serial);
+                    let usb_unit = plan.transport == "usb_direct";
                     let reason = if dev.is_none() || !seen.is_some_and(|o| o.online) {
                         "not connected"
-                    } else if seen.is_some_and(Observed::without_alink) {
+                    } else if usb_unit && seen.is_some_and(Observed::without_usb_direct) {
+                        // -- WP AUSB1 --
+                        "no USB-direct block (firmware)"
+                    } else if usb_unit && seen.is_some_and(|o| o.usb.is_none()) {
+                        "state unknown"
+                    } else if seen.is_some_and(Observed::without_alink) && !usb_unit {
                         "no audio link (firmware)"
-                    } else if seen.is_some_and(|o| o.d_local_min.is_none()) {
+                    } else if !usb_unit && seen.is_some_and(|o| o.d_local_min.is_none()) {
                         "limits unknown"
                     } else {
                         "out of range"
                     };
                     writes.push(WriteResult {
                         reason: Some(reason.into()),
-                        ..result("phase", "skipped".into())
+                        ..result(
+                            if usb_unit { "usb_direct" } else { "phase" },
+                            "skipped".into(),
+                        )
                     });
                     continue;
                 };
                 let dev = Arc::clone(dev);
-                if let Some(slots) = model
-                    .unit(&plan.unit)
-                    .and_then(|u| u.slots.as_ref())
-                    .and_then(|s| <[u8; 8]>::try_from(s.as_slice()).ok())
-                {
-                    let now = get_ext(
-                        &dev,
-                        alink::EXT_ALINK_SLOTS,
-                        AlinkSlots::SIZE,
-                        AlinkSlots::decode,
-                    );
-                    let r = if now == Some(AlinkSlots(slots)) {
+                // -- WP AUSB1 -- a USB-direct unit: its mode and D, then the outputs
+                if plan.transport == "usb_direct" {
+                    let seen = status
+                        .observed
+                        .get(&plan.serial)
+                        .and_then(|o| o.usb.as_ref());
+                    let mode = plan
+                        .usb_mode
+                        .as_deref()
+                        .and_then(usb::UsbMode::from_name)
+                        .map_or(usb::MODE_OFF, usb::UsbMode::raw);
+                    let want = AlinkUsbConfig {
+                        mode,
+                        flags: if seen.is_none_or(|s| s.auto_reanchor) {
+                            usb::FLAG_AUTO_REANCHOR
+                        } else {
+                            0
+                        },
+                        d: plan.usb_d.or(seen.map(|s| s.d)).unwrap_or(usb::DEFAULT_D),
+                        status_flags: 0,
+                        state: 0,
+                    };
+                    let unchanged = seen.is_some_and(|s| {
+                        usb::UsbMode::from_name(&s.mode).map(usb::UsbMode::raw) == Some(want.mode)
+                            && (s.d == want.d || want.mode != usb::MODE_PHASE_LOCK)
+                    });
+                    let r = if unchanged {
                         "unchanged".into()
                     } else {
-                        set_ext(&dev, alink::EXT_ALINK_SLOTS, slots.to_vec())
+                        set_ext(&dev, usb::EXT_ALINK_USB, want.encode().to_vec())
                             .map_or_else(status_name, |()| "ok".into())
                     };
-                    writes.push(result("slots", r));
-                }
-                let want = AlinkPhase {
-                    mode: alink::PHASE_MODE_LOCK,
-                    d_local: plan.d_local,
-                    hops_offset: plan.hops_offset,
-                    flags: 0,
-                    state: 0,
-                };
-                let seen = status.observed.get(&plan.serial).and_then(|o| o.phase);
-                let r = if seen.is_some_and(|(m, d, h, _)| {
-                    (m, d, h) == (want.mode, want.d_local, want.hops_offset)
-                }) {
-                    "unchanged".into()
+                    writes.push(result("usb_direct", r));
                 } else {
-                    self.system().expect_reanchor(&plan.serial);
-                    set_ext(&dev, alink::EXT_ALINK_PHASE, want.encode().to_vec())
-                        .map_or_else(status_name, |()| "ok".into())
-                };
-                writes.push(result("phase", r));
+                    if let Some(slots) = model
+                        .unit(&plan.unit)
+                        .and_then(|u| u.slots.as_ref())
+                        .and_then(|s| <[u8; 8]>::try_from(s.as_slice()).ok())
+                    {
+                        let now = get_ext(
+                            &dev,
+                            alink::EXT_ALINK_SLOTS,
+                            AlinkSlots::SIZE,
+                            AlinkSlots::decode,
+                        );
+                        let r = if now == Some(AlinkSlots(slots)) {
+                            "unchanged".into()
+                        } else {
+                            set_ext(&dev, alink::EXT_ALINK_SLOTS, slots.to_vec())
+                                .map_or_else(status_name, |()| "ok".into())
+                        };
+                        writes.push(result("slots", r));
+                    }
+                    let want = AlinkPhase {
+                        mode: alink::PHASE_MODE_LOCK,
+                        d_local: plan.d_local,
+                        hops_offset: plan.hops_offset,
+                        flags: 0,
+                        state: 0,
+                    };
+                    let seen = status.observed.get(&plan.serial).and_then(|o| o.phase);
+                    let r = if seen.is_some_and(|(m, d, h, _)| {
+                        (m, d, h) == (want.mode, want.d_local, want.hops_offset)
+                    }) {
+                        "unchanged".into()
+                    } else {
+                        self.system().expect_reanchor(&plan.serial);
+                        set_ext(&dev, alink::EXT_ALINK_PHASE, want.encode().to_vec())
+                            .map_or_else(status_name, |()| "ok".into())
+                    };
+                    writes.push(result("phase", r));
+                }
                 for (output, ms) in &plan.out_delays {
                     let what = format!("out_delay:{output}");
                     let now = exec(
@@ -977,6 +1216,8 @@ impl HubHandle {
         let mut offline = Vec::new();
         // -- fixup hwlk1f (F1) -- attached, with the alink (or not told), no frame read
         let mut no_frame: Vec<String> = Vec::new();
+        // -- WP AUSB1 -- phase-locked USB-direct units, at a bus frame; the others at once
+        let mut usb_now: BTreeMap<String, UsbSeenNow> = BTreeMap::new();
         for a in &scene.actions {
             for u in model.resolve_target(&a.target).unwrap_or_default() {
                 if rtts.contains_key(&u.serial) || offline.contains(&u.serial) {
@@ -984,12 +1225,26 @@ impl HubHandle {
                 }
                 let Some(dev) = self.device_by_serial(&u.serial) else {
                     // Offline: as it was last seen (kept across polls, fixup hwlk1f F4)
-                    if self.system().last_seen_without_alink(&u.serial) {
+                    if u.usb_direct() || self.system().last_seen_without_alink(&u.serial) {
                         no_alink.insert(u.serial.clone());
                     }
                     offline.push(u.serial.clone());
                     continue;
                 };
+                // -- WP AUSB1 --
+                if u.usb_direct() {
+                    let (seen, rtt) = timed_usb(&dev);
+                    rtts.insert(u.serial.clone(), rtt);
+                    match seen {
+                        Some(s) => {
+                            usb_now.insert(u.serial.clone(), s);
+                        }
+                        None => {
+                            no_alink.insert(u.serial.clone());
+                        }
+                    }
+                    continue;
+                }
                 let (frame, rtt) = timed_frame(&dev);
                 rtts.insert(u.serial.clone(), rtt);
                 match frame {
@@ -1013,7 +1268,7 @@ impl HubHandle {
         }
         let seen = sender.as_ref().map(|(s, _, _)| s);
         let model_lead = u64::from(model.apply_lead_frames);
-        let first = scene::plan_mixed(&model, id, &frames, seen, model_lead, &no_alink)?;
+        let first = scene::plan_usb(&model, id, &frames, seen, model_lead, &no_alink, &usb_now)?;
         // -- fixup sw2x (F2) -- each op is a write and a read of the queue.
         let estimate = first
             .ops
@@ -1029,10 +1284,17 @@ impl HubHandle {
             });
         let needed = frames_in(estimate);
         let plan = if needed > model_lead {
-            scene::plan_mixed(&model, id, &frames, seen, needed, &no_alink)?
+            scene::plan_usb(&model, id, &frames, seen, needed, &no_alink, &usb_now)?
         } else {
             first
         };
+        // -- WP AUSB1 --
+        let usb_units: BTreeSet<String> = model
+            .units
+            .iter()
+            .filter(|u| u.usb_direct())
+            .map(|u| u.serial.clone())
+            .collect();
         let mut writes = Vec::new();
         let sender_dev = sender.as_ref().map(|(_, d, _)| d);
         let mute_write = |muted: bool| {
@@ -1111,6 +1373,73 @@ impl HubHandle {
                 reason: None,
             });
         }
+        // -- WP AUSB1 -- the USB-direct units: one bus frame, sample 0, on each. When the
+        // audio link's part was refused whole (a sender holding a scene), they are held
+        // back too, so a room never plays half a scene.
+        let alink_refused = !plan.ops.is_empty()
+            && !writes.iter().any(|w| {
+                plan.ops.iter().any(|o| o.serial == w.serial)
+                    && matches!(
+                        w.result.as_str(),
+                        "ok" | "ok_unverified"
+                            | "queued"
+                            | "queued_unverified"
+                            | "applied"
+                            | "late"
+                    )
+            });
+        if let (Some(_), true) = (plan.usb_frame, alink_refused) {
+            for o in &plan.usb_ops {
+                writes.push(WriteResult {
+                    serial: o.serial.clone(),
+                    element: o.element.clone(),
+                    what: o.op.clone(),
+                    result: "skipped".into(),
+                    reason: Some(USB_HELD_BACK.into()),
+                });
+            }
+        }
+        if let Some(bus) = plan.usb_frame.filter(|_| !alink_refused) {
+            for o in &plan.usb_ops {
+                let spf = usb_now.get(&o.serial).map_or(48, |u| u.spf);
+                let req = usb::bus_target(bus, 0, spf).and_then(|t| o.request(t));
+                let (Some(req), Some(dev)) = (req, self.device_by_serial(&o.serial)) else {
+                    writes.push(WriteResult {
+                        serial: o.serial.clone(),
+                        element: o.element.clone(),
+                        what: o.op.clone(),
+                        result: "no_device".into(),
+                        reason: None,
+                    });
+                    continue;
+                };
+                let result = match set_ext(
+                    &dev,
+                    alink::EXT_APPLY_AT_FRAME,
+                    usb::encode_apply(&req, TimeBase::BusFrame).to_vec(),
+                ) {
+                    Err(s) => status_name(s),
+                    Ok(()) => usb_apply_result(
+                        get_ext(
+                            &dev,
+                            alink::EXT_APPLY_AT_FRAME,
+                            ApplyStatus::SIZE,
+                            ApplyStatus::decode,
+                        ),
+                        &req,
+                        bus,
+                        spf,
+                    ),
+                };
+                writes.push(WriteResult {
+                    serial: o.serial.clone(),
+                    element: o.element.clone(),
+                    what: o.op.clone(),
+                    result,
+                    reason: None,
+                });
+            }
+        }
         if !superframe && plan.system_mute == Some(false) {
             writes.push(mute_write(false));
         }
@@ -1167,12 +1496,18 @@ impl HubHandle {
                 Some(dev) => apply_direct(&dev, o, rate),
                 None => "no_device".into(),
             };
+            // -- WP AUSB1 -- a USB-direct unit that is not phase-locked, said as such
+            let reason = if usb_units.contains(&o.serial) {
+                "not phase-locked (USB-direct)"
+            } else {
+                "no audio link (firmware)"
+            };
             writes.push(WriteResult {
                 serial: o.serial.clone(),
                 element: o.element.clone(),
                 what: o.op.clone(),
                 result,
-                reason: Some("no audio link (firmware)".into()),
+                reason: Some(reason.into()),
             });
         }
         // A queued op was in its unit's queue before its frame: on time. One

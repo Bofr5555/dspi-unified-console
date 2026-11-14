@@ -44,6 +44,24 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun alinkSystemRecall(scene: String): AlinkSceneRecall = throw NotImplementedError("alink_system_recall")
 
+    override fun usbDirectSupported(): Boolean = throw NotImplementedError("usb_direct_supported")
+
+    override fun fetchAlinkUsb(): AlinkUsbConfig = throw NotImplementedError("fetch_alink_usb")
+
+    override fun setAlinkUsb(mode: Int, autoReanchor: Boolean, d: Int): Unit = throw NotImplementedError("set_alink_usb")
+
+    override fun fetchAlinkUsbStatus(): AlinkUsbStatus = throw NotImplementedError("fetch_alink_usb_status")
+
+    override fun fetchAlinkUsbDiag(): AlinkUsbDiag = throw NotImplementedError("fetch_alink_usb_diag")
+
+    override fun clearAlinkUsbDiag(): Unit = throw NotImplementedError("clear_alink_usb_diag")
+
+    override fun fetchFrameCounterTimeBase(): AlinkTimeBaseCounter = throw NotImplementedError("fetch_frame_counter_time_base")
+
+    override fun applyAtTimeBase(timeBase: Int, frame: Long, op: Int, arg: Int, value: Int): Unit = throw NotImplementedError("apply_at_time_base")
+
+    override fun openDemoUsbDirect(): Unit = throw NotImplementedError("open_demo_usb_direct")
+
     override fun fetchAll(): Unit = throw NotImplementedError("fetch_all")
 
     override fun refreshParams(): Unit = throw NotImplementedError("refresh_params")

@@ -88,6 +88,22 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.resetAlinkStats()
     }
 
+    // -- WP AUSB1 -- the USB-direct block's writes (mode and D, DIAG clear, apply on a time base)
+    override fun setAlinkUsb(mode: Int, autoReanchor: Boolean, d: Int) {
+        guard("setAlinkUsb")
+        return inner.setAlinkUsb(mode, autoReanchor, d)
+    }
+
+    override fun clearAlinkUsbDiag() {
+        guard("clearAlinkUsbDiag")
+        return inner.clearAlinkUsbDiag()
+    }
+
+    override fun applyAtTimeBase(timeBase: Int, frame: Long, op: Int, arg: Int, value: Int) {
+        guard("applyAtTimeBase")
+        return inner.applyAtTimeBase(timeBase, frame, op, arg, value)
+    }
+
     // -- WP LKUI1 -- the hub's audio link installation: saving the model, writing the
     // audio link delays and recalling a scene change devices (the hub judges the role too)
     override fun alinkSystemSave(revision: Long, edits: AlinkSystemEdits): Long {
@@ -752,6 +768,10 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "setAlinkPhase",
             "applyAtFrame",
             "resetAlinkStats",
+            // -- WP AUSB1 --
+            "setAlinkUsb",
+            "clearAlinkUsbDiag",
+            "applyAtTimeBase",
             // -- WP LKUI1 --
             "alinkSystemSave",
             "alinkSystemAlign",
@@ -893,6 +913,13 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "fetchAlinkFrameCounter",
             "fetchApplyAtFrameStatus",
             "openDemoAlink",
+            // -- WP AUSB1 -- the USB-direct block's reads, and the demo with it
+            "usbDirectSupported",
+            "fetchAlinkUsb",
+            "fetchAlinkUsbStatus",
+            "fetchAlinkUsbDiag",
+            "fetchFrameCounterTimeBase",
+            "openDemoUsbDirect",
             // -- WP CS1 -- the USB error counters (0xB2), a read
             "fetchUsbErrorStats",
             "uf2Inspect",

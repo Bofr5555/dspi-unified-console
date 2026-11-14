@@ -329,7 +329,12 @@ impl Store {
                     }
                     // -- WP SW1 -- the audio link's loss, lock, resync and
                     // apply results (0xE1/0xE2 behind their feature bits)
-                    Some(e @ (ExtEvent::AlinkState(_) | ExtEvent::ApplyResult(_))) => {
+                    // -- WP AUSB1 -- and USB-direct's 0xE3 (bit 4)
+                    Some(
+                        e @ (ExtEvent::AlinkState(_)
+                        | ExtEvent::ApplyResult(_)
+                        | ExtEvent::AlinkUsb(_)),
+                    ) => {
                         out.extend(alink_record(&e, t));
                         return;
                     }

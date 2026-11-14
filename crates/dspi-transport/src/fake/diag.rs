@@ -58,6 +58,8 @@ impl State {
             f |= dspi_proto::ext::alink::NOTIFY_FEAT_ALINK_STATE
                 | dspi_proto::ext::alink::NOTIFY_FEAT_APPLY_RESULT;
         }
+        // -- WP AUSB1 --
+        f |= self.alink_usb_features();
         f
     }
 

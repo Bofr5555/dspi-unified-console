@@ -1221,6 +1221,9 @@ pub enum ExtEvent {
     AlinkState(dspi_proto::ext::alink::AlinkStateEvent),
     /// An apply-at-frame op ran (0xE2, bit 3).
     ApplyResult(dspi_proto::ext::alink::ApplyResultEvent),
+    // -- WP AUSB1 --
+    /// A USB-direct state change, gap or re-anchor (0xE3, bit 4).
+    AlinkUsb(dspi_proto::ext::alink_usb::AlinkUsbEvent),
 }
 
 /// Decode a notification the session could not (`Event::Unknown { id,
@@ -1240,6 +1243,10 @@ pub fn decode_ext_event(notify_features: Option<u32>, id: u8, bytes: &[u8]) -> O
     use dspi_proto::ext::alink::{AlinkEvent, alink_event};
     if let Some(c) = dspi_proto::ext::clip_event(notify_features, id, bytes) {
         return Some(ExtEvent::Clip { mask: c.mask });
+    }
+    // -- WP AUSB1 --
+    if let Some(e) = dspi_proto::ext::alink_usb::alink_usb_event(notify_features, id, bytes) {
+        return Some(ExtEvent::AlinkUsb(e));
     }
     // -- WP SW1 --
     alink_event(notify_features, id, bytes).map(|e| match e {
@@ -1291,6 +1298,33 @@ pub fn alink_record(e: &ExtEvent, t: i64) -> Option<EventRecord> {
                 "apply",
                 format!("Apply at frame: {} {how}", a.op.as_str()),
                 a.frame_low,
+            )
+        }
+        // -- WP AUSB1 --
+        ExtEvent::AlinkUsb(u) => {
+            use dspi_proto::ext::alink_usb::{UsbEventReason as R, UsbState as S};
+            let (source, what) = match (u.reason, u.state) {
+                (R::SofLost, _) => ("lost", "lost its USB time base: anchoring again"),
+                (R::HostRange, S::Rejected) => ("lost", "rejected the host (beyond 295 ppm)"),
+                (R::HostRange, _) => ("locked", "host back in range"),
+                (R::Reanchor, _) => ("resync", "re-anchored (a short silence)"),
+                (R::Gap, _) => ("gap", "missed USB packets (a faded gap)"),
+                (R::Disabled, _) => ("off", "switched off"),
+                (R::Config, _) => ("config", "cannot phase-lock: running rate-locked"),
+                (R::Holdover, _) => ("holdover", "no SOF: holding its timeline"),
+                (R::Resumed, _) => ("locked", "SOF back: same timeline"),
+                (_, S::PhaseLocked) => ("locked", "phase-locked"),
+                (_, S::RateLocked) => ("locked", "rate-locked"),
+                (_, S::PullIn) => ("searching", "pulling in to the host"),
+                (_, S::Anchoring) => ("searching", "anchoring"),
+                (_, S::NoSof) => ("lost", "no SOF"),
+                (_, S::Off) => ("off", "off"),
+                (_, _) => ("unknown", "changed state"),
+            };
+            (
+                source,
+                format!("Audio link USB-direct {what}"),
+                u.sample_low,
             )
         }
         ExtEvent::Clip { .. } | ExtEvent::Reset { .. } => return None,

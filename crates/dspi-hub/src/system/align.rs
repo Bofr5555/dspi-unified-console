@@ -97,6 +97,108 @@ pub struct Observed {
     /// or the block stalls: a K340 on bofr-main 470a127, stock firmware), or
     /// `None` when that could not be told (offline, no answer).
     pub alink: Option<AlinkFirmware>,
+    // -- WP AUSB1 --
+    /// For a unit the model has as USB-direct: whether its firmware has the
+    /// USB-direct block (`EXT_LIST` names 0x8010), as [`Self::alink`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usb_direct: Option<AlinkFirmware>,
+    /// The USB-direct block as read.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usb: Option<UsbSeen>,
+}
+
+// -- WP AUSB1 --
+/// A USB-direct unit's `EXT_ALINK_USB`, `EXT_ALINK_USB_STATUS` and
+/// `EXT_ALINK_USB_DIAG` as the hub read them (`extension_channel_spec.md` 2.9).
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsbSeen {
+    /// `off`, `rate_lock` or `phase_lock`: the mode written.
+    pub mode: String,
+    /// D, samples.
+    pub d: u16,
+    /// A phase error beyond 2 samples re-anchors.
+    pub auto_reanchor: bool,
+    /// Why mode 2 runs as mode 1, if it does: `d_below_min`, `d_above_max`,
+    /// `rate_unsupported`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub config_flags: Vec<String>,
+    /// `off`, `no_sof`, `pull_in`, `rate_locked`, `anchoring`,
+    /// `phase_locked`, `rejected`.
+    pub state: String,
+    /// 0 free, 1 anchoring, 2 locked, 3 re-anchor pending.
+    pub phase_state: u8,
+    /// 0 = 44.1, 1 = 48, 2 = 96 kHz.
+    pub rate_code: u8,
+    /// The host's SOF rate against the unit's crystal, ppm.
+    pub host_ppm: f32,
+    /// The soft VCXO's correction, ppm.
+    pub vcxo_ppm: f32,
+    /// The phase error, samples.
+    pub phase_error: f32,
+    /// The bus frame at the read.
+    pub bus_frame: u16,
+    /// The USB sample index S at the read.
+    pub sample: u64,
+    /// The D range phase lock takes now.
+    pub d_min: u16,
+    /// Its top.
+    pub d_max: u16,
+    /// The output ring's fill, samples.
+    pub fill: u16,
+    /// A stream plays.
+    pub stream: bool,
+    /// No SOF for 50 ms: holding the timeline.
+    pub holdover: bool,
+    /// The bus frame the stream's content began in (2.9.3); none without one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream_start_bus_frame: Option<u16>,
+    /// Silence inserted minus late samples dropped since then.
+    pub stream_shift: i32,
+    /// Faded gaps since boot.
+    pub gap_count: u16,
+    /// Anchors since boot.
+    pub anchors: u32,
+    /// Re-anchors since boot.
+    pub reanchors: u32,
+    /// Silence inserted for missing packets, samples since boot.
+    pub missed_samples: u32,
+    /// Samples dropped as too late, since boot.
+    pub late_samples: u32,
+    /// `EXT_ALINK_USB_DIAG`, when it reads (layout version 1).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diag: Option<UsbDiagSeen>,
+}
+
+impl UsbSeen {
+    /// Phase-locked: scenes go at a bus frame, and the start offsets count.
+    pub fn phase_locked(&self) -> bool {
+        self.state == "phase_locked" && matches!(self.phase_state, 2 | 3)
+    }
+}
+
+// -- WP AUSB1 --
+/// `EXT_ALINK_USB_DIAG`'s counters as the hub shows them.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsbDiagSeen {
+    /// The latest timeline end's cause; none yet.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_cause: Option<String>,
+    /// Every timeline end since boot or a clear.
+    pub ends: u32,
+    /// SOF absences of 50 ms or more.
+    pub holdovers: u16,
+    /// Those ridden through.
+    pub rides: u16,
+    /// USB suspends.
+    pub suspends: u16,
+    /// USB bus resets.
+    pub bus_resets: u16,
+    /// Disconnects.
+    pub unplugs: u16,
+    /// The longest absence ridden through, µs.
+    pub longest_ride_us: u32,
 }
 
 // -- WP HWLK1F --
@@ -116,6 +218,12 @@ impl Observed {
     /// The firmware is known to have no audio link.
     pub fn without_alink(&self) -> bool {
         self.alink == Some(AlinkFirmware::Absent)
+    }
+
+    // -- WP AUSB1 --
+    /// The firmware is known to have no USB-direct block.
+    pub fn without_usb_direct(&self) -> bool {
+        self.usb_direct == Some(AlinkFirmware::Absent)
     }
 }
 
@@ -191,6 +299,20 @@ pub struct UnitPlan {
     pub clamped_outputs: Vec<u8>,
     /// Whether the plan may be written (in range, reachable).
     pub writable: bool,
+    // -- WP AUSB1 --
+    /// `alink` or `usb_direct`. A USB-direct unit's delay is `usb_d`, not
+    /// `d_local` and `hops_offset` (0 for it).
+    pub transport: String,
+    /// A USB-direct unit's D to write, samples (`EXT_ALINK_USB.d`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usb_d: Option<u16>,
+    /// The mode to write with it: the model's, else the unit's.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usb_mode: Option<String>,
+    /// How many samples earlier its stream's content plays than the latest
+    /// USB-direct unit's (2.9.3, U6): added to its outputs' delays.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_offset_samples: Option<i64>,
 }
 
 /// A finding: something the installer should look at.
@@ -257,7 +379,7 @@ fn stream_rate(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> u32 {
     for u in &model.units {
         if let Some(r) = obs
             .get(&u.serial)
-            .and_then(|o| o.rate_code)
+            .and_then(|o| o.rate_code.or_else(|| o.usb.as_ref().map(|s| s.rate_code)))
             .and_then(rate_of)
         {
             let n = counts.entry(r).or_default();
@@ -308,7 +430,11 @@ fn hop_delay(
 /// Distance delays by unit id, each cut to what a unit holds at `rate`; the
 /// cut ones are listed with their unit.
 #[allow(clippy::type_complexity)]
-fn out_delays(model: &SystemModel, rate: u32) -> BTreeMap<&str, (Vec<(u8, f32)>, Vec<u8>)> {
+fn out_delays<'a>(
+    model: &'a SystemModel,
+    rate: u32,
+    offsets: &BTreeMap<String, i64>,
+) -> BTreeMap<&'a str, (Vec<(u8, f32)>, Vec<u8>)> {
     let max_ms = f64::from(MAX_OUT_DELAY_SAMPLES) * 1000.0 / f64::from(rate.max(1));
     let mut furthest: BTreeMap<String, f32> = BTreeMap::new();
     let key = |u: &Unit| match &u.room {
@@ -326,12 +452,16 @@ fn out_delays(model: &SystemModel, rate: u32) -> BTreeMap<&str, (Vec<(u8, f32)>,
         .iter()
         .map(|u| {
             let far = furthest.get(&key(u)).copied().unwrap_or(0.0);
+            // -- WP AUSB1 -- a USB-direct stream that plays early waits this long more
+            let early_ms = offsets
+                .get(&u.id)
+                .map_or(0.0, |o| *o as f64 * 1000.0 / f64::from(rate.max(1)));
             let mut clamped = Vec::new();
             let delays = u
                 .speakers
                 .iter()
                 .map(|s| {
-                    let mut ms = f64::from(far - s.distance_m) / SPEED_OF_SOUND * 1000.0;
+                    let mut ms = f64::from(far - s.distance_m) / SPEED_OF_SOUND * 1000.0 + early_ms;
                     if ms > max_ms {
                         clamped.push(s.output);
                         // Rounded down, so the unit's cap is never reached.
@@ -347,6 +477,13 @@ fn out_delays(model: &SystemModel, rate: u32) -> BTreeMap<&str, (Vec<(u8, f32)>,
 }
 
 /// Compute the alignment. `obs` is keyed by serial.
+///
+/// -- WP AUSB1 -- A USB-direct unit (`transport: usb_direct`) has no path on
+/// the audio link: its effective delay `E_u = D + (L_max - L_u) + S_u` is the
+/// D it is given (`EXT_ALINK_USB.d`, samples, which are frames at the stream's
+/// rate), inside its `d_min..=d_max`, so D is one system delay for both. The
+/// start offsets of the USB-direct streams (2.9.3, U6) are equalised by
+/// delaying the earlier units' outputs.
 pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment {
     let rate = stream_rate(model, obs);
     let mut issues = Vec::new();
@@ -367,9 +504,74 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
         limits: Option<(u16, u16)>,
         // -- fixup hwlk1f (F4) -- an offline unit's facts are as last seen: not written
         online: bool,
+        // -- WP AUSB1 --
+        /// A USB-direct unit, and the mode it is to run.
+        usb: Option<String>,
+        /// Its firmware has the block and it was read.
+        usb_seen: bool,
     }
     let mut rows = Vec::new();
     for u in &model.units {
+        let o = obs.get(&u.serial);
+        // -- WP AUSB1 --
+        if u.usb_direct() {
+            let seen = o.and_then(|o| o.usb.as_ref());
+            let mode = u
+                .usb_mode
+                .clone()
+                .or_else(|| seen.map(|s| s.mode.clone()))
+                .unwrap_or_else(|| "off".into());
+            let phase = mode == "phase_lock";
+            let limits = seen.filter(|_| phase).map(|s| (s.d_min, s.d_max));
+            if !o.is_some_and(|o| o.online) {
+                issues.push(issue(
+                    Some(&u.id),
+                    "offline",
+                    format!("{}: not attached to the hub", u.id),
+                ));
+            } else if o.is_some_and(Observed::without_usb_direct) {
+                issues.push(issue(
+                    Some(&u.id),
+                    "no_usb_direct",
+                    format!(
+                        "{}: its firmware has no USB-direct block; it is not aligned and takes scenes at once",
+                        u.id
+                    ),
+                ));
+            } else if seen.is_none() {
+                issues.push(issue(
+                    Some(&u.id),
+                    "limits_unknown",
+                    format!("{}: its USB-direct state could not be read", u.id),
+                ));
+            } else if !phase {
+                issues.push(issue(
+                    Some(&u.id),
+                    "usb_not_phase_locked",
+                    format!(
+                        "{}: USB-direct {}: not aligned to the sample; scenes reach it at once",
+                        u.id,
+                        if mode == "rate_lock" {
+                            "rate lock only"
+                        } else {
+                            "off"
+                        }
+                    ),
+                ));
+            }
+            rows.push(Row {
+                unit: u,
+                hops: 0,
+                path: 0,
+                latency: us_to_frames(i64::from(u.latency()), rate),
+                lip: us_to_frames(i64::from(lip_us(u)), rate),
+                limits,
+                online: o.is_some_and(|o| o.online),
+                usb: Some(mode),
+                usb_seen: seen.is_some(),
+            });
+            continue;
+        }
         // The model is valid, so the path exists.
         let (sender, reemitters) = model.path_to(&u.id).unwrap_or_default();
         let path = reemitters
@@ -377,7 +579,6 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
             .map(|r| hop_delay(model, obs, r, &mut issues))
             .fold(0u32, u32::saturating_add);
         let hops = u8::try_from(reemitters.len()).unwrap_or(u8::MAX);
-        let o = obs.get(&u.serial);
         let limits = o.and_then(|o| Some((o.d_local_min?, o.d_local_max?)));
         if !o.is_some_and(|o| o.online) {
             issues.push(issue(
@@ -440,8 +641,22 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
             lip: us_to_frames(i64::from(lip_us(u)), rate),
             limits,
             online: o.is_some_and(|o| o.online),
+            usb: None,
+            usb_seen: false,
         });
     }
+    // -- WP AUSB1 -- one system delay for both transports: said, with what it leaves out
+    if rows.iter().any(|r| r.usb.is_some()) && rows.iter().any(|r| r.usb.is_none()) {
+        issues.push(issue(
+            None,
+            "mixed_time_bases",
+            "USB-direct units play D samples after a sample reaches them, audio link units D frames \
+             after the sender sends it; the sender's own USB latency is not counted, so check a \
+             mixed room with a test click and enter the measured latency"
+                .into(),
+        ));
+    }
+    let offsets = start_offsets(model, obs, &mut issues);
     let l_max = rows.iter().map(|r| r.latency).max().unwrap_or(0);
     // E_u = D - extra_u, with extra_u = path - (L_max - L) - lip.
     let extra = |r: &Row| {
@@ -475,7 +690,7 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
             format!("D = {d} frames is below what the units need ({n})"),
         ));
     }
-    let delays = out_delays(model, rate);
+    let delays = out_delays(model, rate, &offsets);
     for u in &model.units {
         if let Some((_, clamped)) = delays.get(u.id.as_str()).filter(|(_, c)| !c.is_empty()) {
             issues.push(issue(
@@ -493,6 +708,54 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
         .iter()
         .map(|r| {
             let effective = d.saturating_sub(extra(r));
+            let in_range = r
+                .limits
+                .is_some_and(|(min, max)| (i64::from(min)..=i64::from(max)).contains(&effective));
+            let out_delays = delays
+                .get(r.unit.id.as_str())
+                .map(|(d, _)| d.clone())
+                .unwrap_or_default();
+            let clamped_outputs = delays
+                .get(r.unit.id.as_str())
+                .map(|(_, c)| c.clone())
+                .unwrap_or_default();
+            // -- WP AUSB1 --
+            if let Some(mode) = &r.usb {
+                let phase = mode == "phase_lock";
+                if phase && r.limits.is_some() && !in_range {
+                    issues.push(issue(
+                        Some(&r.unit.id),
+                        "delay_out_of_range",
+                        format!(
+                            "{}: needs a USB-direct delay of {effective} samples, outside {:?}",
+                            r.unit.id, r.limits
+                        ),
+                    ));
+                }
+                let offset = offsets.get(&r.unit.id).copied();
+                return UnitPlan {
+                    unit: r.unit.id.clone(),
+                    serial: r.unit.serial.clone(),
+                    hops: 0,
+                    path_delay_frames: 0,
+                    latency_frames: r.latency,
+                    lip_sync_frames: r.lip,
+                    effective,
+                    d_local: 0,
+                    hops_offset: 0,
+                    out_delays,
+                    clamped_outputs,
+                    writable: r.online && r.usb_seen && (!phase || in_range),
+                    transport: "usb_direct".into(),
+                    usb_d: if phase {
+                        u16::try_from(effective).ok()
+                    } else {
+                        None
+                    },
+                    usb_mode: Some(mode.clone()),
+                    start_offset_samples: offset,
+                };
+            }
             let mut d_local = d.saturating_sub(i64::from(r.hops));
             let mut offset = effective.saturating_sub(d_local);
             let (min, max) = (
@@ -503,9 +766,6 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
                 offset = offset.clamp(min, max);
                 d_local = effective.saturating_sub(offset);
             }
-            let in_range = r
-                .limits
-                .is_some_and(|(min, max)| (i64::from(min)..=i64::from(max)).contains(&effective));
             let d_local_ok = u16::try_from(d_local).ok();
             if r.limits.is_some() && !in_range {
                 issues.push(issue(
@@ -527,15 +787,13 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
                 effective,
                 d_local: d_local_ok.unwrap_or(0),
                 hops_offset: i16::try_from(offset).unwrap_or(0),
-                out_delays: delays
-                    .get(r.unit.id.as_str())
-                    .map(|(d, _)| d.clone())
-                    .unwrap_or_default(),
-                clamped_outputs: delays
-                    .get(r.unit.id.as_str())
-                    .map(|(_, c)| c.clone())
-                    .unwrap_or_default(),
+                out_delays,
+                clamped_outputs,
                 writable: in_range && d_local_ok.is_some() && r.online,
+                transport: "alink".into(),
+                usb_d: None,
+                usb_mode: None,
+                start_offset_samples: None,
             }
         })
         .collect();
@@ -547,6 +805,91 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
         units,
         issues,
     }
+}
+
+// -- WP AUSB1 --
+/// The start offsets of the USB-direct streams (2.9.3, U6), by unit id: how
+/// many samples earlier each phase-locked unit's content plays than the
+/// latest one's, from each unit's stream start bus frame and `stream_shift`.
+/// Units online, phase-locked, with a stream on the timeline, at one rate;
+/// the others are left out (said when they would count).
+fn start_offsets(
+    model: &SystemModel,
+    obs: &BTreeMap<String, Observed>,
+    issues: &mut Vec<Issue>,
+) -> BTreeMap<String, i64> {
+    let mut starts = Vec::new();
+    let mut spf_seen = None;
+    for u in model.units.iter().filter(|u| u.usb_direct()) {
+        let Some(seen) = obs
+            .get(&u.serial)
+            .filter(|o| o.online)
+            .and_then(|o| o.usb.as_ref())
+            .filter(|s| s.phase_locked())
+        else {
+            continue;
+        };
+        let (Some(start), Some(spf)) = (
+            seen.stream_start_bus_frame,
+            dspi_proto::ext::alink_usb::samples_per_frame(seen.rate_code),
+        ) else {
+            issues.push(issue(
+                Some(&u.id),
+                "usb_no_stream",
+                format!(
+                    "{}: no stream on its timeline: its start offset is not known (0 assumed)",
+                    u.id
+                ),
+            ));
+            continue;
+        };
+        if spf_seen.is_some_and(|s| s != spf) {
+            continue;
+        }
+        spf_seen = Some(spf);
+        starts.push((u.id.clone(), (start, seen.stream_shift)));
+    }
+    let (Some(spf), Some((_, reference))) = (spf_seen, starts.first().cloned()) else {
+        return BTreeMap::new();
+    };
+    // How much earlier each plays than the reference; the latest needs nothing.
+    let lead: Vec<(String, i64)> = starts
+        .iter()
+        .map(|(id, s)| {
+            (
+                id.clone(),
+                dspi_proto::ext::alink_usb::content_lead(*s, reference, spf),
+            )
+        })
+        .collect();
+    let latest = lead.iter().map(|(_, l)| *l).min().unwrap_or(0);
+    let offsets: BTreeMap<String, i64> = lead
+        .into_iter()
+        .map(|(id, l)| (id, l.saturating_sub(latest)))
+        .collect();
+    if offsets.values().any(|o| *o != 0) {
+        issues.push(issue(
+            None,
+            "usb_start_offsets",
+            "USB-direct streams started apart: the earlier units' outputs are delayed to match. \
+             After a re-anchor, restart the streams and align again"
+                .into(),
+        ));
+    }
+    for (id, o) in &offsets {
+        let speakers = model.unit(id).is_some_and(|u| !u.speakers.is_empty());
+        if *o != 0 && !speakers {
+            issues.push(issue(
+                Some(id),
+                "start_offset_no_outputs",
+                format!(
+                    "{id}: its stream plays {o} samples early, but the model lists no speakers \
+                     to delay: add its outputs"
+                ),
+            ));
+        }
+    }
+    offsets
 }
 
 #[cfg(test)]
@@ -562,6 +905,8 @@ pub(crate) mod tests_wp_sw2 {
             serial: format!("S-{id}"),
             room: Some(room.into()),
             upstream: upstream.into(),
+            transport: Default::default(),
+            usb_mode: None,
             output: None,
             repeater: false,
             hop_delay_frames: None,

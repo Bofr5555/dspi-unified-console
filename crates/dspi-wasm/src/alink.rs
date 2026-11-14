@@ -50,6 +50,41 @@ pub struct ApplyParams {
     pub value: i16,
 }
 
+// -- WP AUSB1 --
+/// `setAlinkUsb`'s parameters.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsbParams {
+    /// 0 off, 1 rate lock, 2 phase lock.
+    pub mode: u8,
+    /// Re-anchor on a phase error beyond 2 samples (the default).
+    #[serde(default = "yes")]
+    pub auto_reanchor: bool,
+    /// D, samples.
+    pub d: u16,
+}
+
+fn yes() -> bool {
+    true
+}
+
+// -- WP AUSB1 --
+/// `applyAtTimeBase`'s parameters.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TimeBaseApplyParams {
+    /// 0 the alink frame, 1 the USB sample index, 2 a bus frame.
+    pub time_base: u8,
+    /// The frame, sample or bus-frame target.
+    pub frame: u64,
+    /// 0 cancel all .. 8 sync pulse.
+    pub op: u8,
+    #[serde(default)]
+    pub arg: u8,
+    #[serde(default)]
+    pub value: i16,
+}
+
 fn parse<T: DeserializeOwned>(params: Value, what: &str) -> Result<T, CallError> {
     serde_json::from_value(params)
         .map_err(|e| CallError::new("invalid", format!("bad parameters for {what}: {e}")))
@@ -83,6 +118,18 @@ pub fn dispatch(core: &DspiCore, method: &str, params: Value) -> Option<CallResu
             .and_then(|a| done(core.apply_at_frame(a.frame, a.op, a.arg, a.value))),
         "applyAtFrameStatus" => record(core.fetch_apply_at_frame_status()),
         "resetAlinkStats" => done(core.reset_alink_stats()),
+        // -- WP AUSB1 -- the USB-direct block (extension_channel_spec.md 2.9)
+        "usbDirectSupported" => record(core.usb_direct_supported()),
+        "alinkUsb" => record(core.fetch_alink_usb()),
+        "setAlinkUsb" => parse::<UsbParams>(params, method)
+            .and_then(|x| done(core.set_alink_usb(x.mode, x.auto_reanchor, x.d))),
+        "alinkUsbStatus" => record(core.fetch_alink_usb_status()),
+        "alinkUsbDiag" => record(core.fetch_alink_usb_diag()),
+        "clearAlinkUsbDiag" => done(core.clear_alink_usb_diag()),
+        "frameCounterTimeBase" => record(core.fetch_frame_counter_time_base()),
+        "applyAtTimeBase" => parse::<TimeBaseApplyParams>(params, method).and_then(|a| {
+            done(core.apply_at_time_base(a.time_base, a.frame, a.op, a.arg, a.value))
+        }),
         _ => return None,
     })
 }
@@ -142,6 +189,44 @@ mod tests_wp_sw1 {
         assert_eq!(bad["code"], "invalid", "{bad}");
         let bad = run(h, "setAlinkPhase", json!({ "mode": "x" }));
         assert_eq!(bad["code"], "invalid", "{bad}");
+    }
+
+    // -- WP AUSB1 --
+    #[test]
+    fn wp_ausb1_the_usb_direct_calls_on_the_usb_demo() {
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        ok(h, "open", json!({ "kind": "demo", "usbDirect": true }));
+        assert_eq!(ok(h, "usbDirectSupported", Value::Null), true);
+        assert_eq!(ok(h, "alinkUsb", Value::Null)["modeName"], "phase_lock");
+        let s = ok(h, "alinkUsbStatus", Value::Null);
+        assert_eq!(
+            (s["state"].as_str(), s["dMin"].as_u64()),
+            (Some("phase_locked"), Some(170))
+        );
+        ok(h, "setAlinkUsb", json!({ "mode": 2, "d": 240 }));
+        assert_eq!(ok(h, "alinkUsb", Value::Null)["d"], 240);
+        assert_eq!(
+            ok(h, "alinkUsbDiag", Value::Null)["ends"]
+                .as_array()
+                .map(Vec::len),
+            Some(9)
+        );
+        ok(h, "clearAlinkUsbDiag", Value::Null);
+        let f = ok(h, "frameCounterTimeBase", Value::Null);
+        assert_eq!(f["timeBase"], "usb_sample");
+        let bad = run(
+            h,
+            "applyAtTimeBase",
+            json!({ "timeBase": 2, "frame": 4096, "op": 1 }),
+        );
+        assert_eq!(bad["code"], "invalid", "{bad}");
+        let bad = run(h, "setAlinkUsb", json!({ "mode": 9, "d": 192 }));
+        assert_eq!(bad["code"], "invalid", "{bad}");
+        // The plain demo: unsupported, as the alink's calls.
+        ok(h, "open", json!({ "kind": "demo" }));
+        assert_eq!(ok(h, "usbDirectSupported", Value::Null), false);
+        assert_eq!(run(h, "alinkUsbStatus", Value::Null)["code"], "unsupported");
     }
 
     #[test]
