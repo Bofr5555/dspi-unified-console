@@ -4754,6 +4754,52 @@ uint32_t dspi_snapshot_capture_document(struct FfiCore *core,
                                         uint32_t len);
 
 /**
+ * Start an A/B compare of two snapshots in the store: `a_id` null or ""
+ * captures the open device as A, else snapshot `a_id` is recalled first;
+ * `b_id` is B. JSON: the compare `{ok, active, side, aName, bName, recall}`
+ * (`side` `"a"`/`"b"`, `recall` the recall made or null), or a failure.
+ */
+uint32_t dspi_ab_start(struct FfiCore *core,
+                       const char *a_id,
+                       const char *b_id,
+                       char *buf,
+                       uint32_t len);
+
+/**
+ * [`dspi_ab_start`] with snapshot documents' text: `a_doc` null or ""
+ * captures the open device as A.
+ */
+uint32_t dspi_ab_start_documents(struct FfiCore *core,
+                                 const char *a_doc,
+                                 const char *b_doc,
+                                 char *buf,
+                                 uint32_t len);
+
+/**
+ * Recall the other side of the running compare (a recall in the event
+ * log; ends the undo history; never guarded, no token). JSON: the compare
+ * on its new side, or a failure (`invalid` with no compare running).
+ */
+uint32_t dspi_ab_toggle(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * What differs from A to B: `dspi_config_diff`'s JSON for the pair, or a
+ * failure with no compare running.
+ */
+uint32_t dspi_ab_diff(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * End the compare on `side` (`"a"` or `"b"`), recalling it first when the
+ * device is on the other. JSON: the compare (`active` false), or a failure.
+ */
+uint32_t dspi_ab_keep(struct FfiCore *core, const char *side, char *buf, uint32_t len);
+
+/**
+ * The running compare, or `active: false` with none. JSON; never a failure.
+ */
+uint32_t dspi_ab_state(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * Recall a snapshot document's text on the open device: the reply of
  * `dspi_snapshot_recall`.
  */

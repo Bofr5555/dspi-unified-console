@@ -1,6 +1,9 @@
 // G1 (owner decision): the bridge's last line of defence for read-only mode.
 package se.bofr.dspi.bridge
 
+// -- WP P1AB --
+import se.bofr.dspi.core.AbCompare
+import se.bofr.dspi.core.AbSide
 import se.bofr.dspi.core.AlinkSceneRecall
 import se.bofr.dspi.core.AlinkSystemAlign
 import se.bofr.dspi.core.AlinkSystemEdits
@@ -702,6 +705,27 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.snapshotRecallDocument(text)
     }
 
+    // -- WP P1AB -- a start with A given, a toggle and a keep recall a snapshot
+    override fun abStart(aId: String, bId: String): AbCompare {
+        guard("abStart")
+        return inner.abStart(aId, bId)
+    }
+
+    override fun abStartDocuments(aText: String, bText: String): AbCompare {
+        guard("abStartDocuments")
+        return inner.abStartDocuments(aText, bText)
+    }
+
+    override fun abToggle(): AbCompare {
+        guard("abToggle")
+        return inner.abToggle()
+    }
+
+    override fun abKeep(side: AbSide): AbCompare {
+        guard("abKeep")
+        return inner.abKeep(side)
+    }
+
     override fun filtersImport(text: String, wires: List<Int>): String {
         guard("filtersImport")
         return inner.filtersImport(text, wires)
@@ -871,7 +895,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "coreVregManualSetConfirmed",
             // -- WP P1SN --
             "snapshotRecall",
-            "snapshotRecallDocument"
+            "snapshotRecallDocument",
+            // -- WP P1AB --
+            "abStart",
+            "abStartDocuments",
+            "abToggle",
+            "abKeep"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -919,6 +948,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "snapshotDelete",
             "snapshotExport",
             "snapshotImport",
+            // -- WP P1AB -- the diff of two documents and the compare's state: no I/O
+            "abDiff",
+            "abState",
             // -- WP P1OF -- a document opened offline is the demo device seeded
             // from it (as openDemo); saving and the templates write no device
             "openDocument",

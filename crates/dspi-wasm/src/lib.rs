@@ -65,6 +65,8 @@ pub mod outputs;
 pub mod presets;
 // -- WP P1SN --
 pub mod snapshots;
+// -- WP P1AB --
+pub mod ab;
 // -- WP SW3 --
 pub mod system;
 // -- WP WB4a --

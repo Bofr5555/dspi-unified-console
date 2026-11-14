@@ -1253,6 +1253,65 @@ public func FfiConverterTypeDeviceEvents_lower(_ value: DeviceEvents) -> UnsafeM
 public protocol DspiCoreProtocol: AnyObject, Sendable {
     
     /**
+     * What differs from A to B: [`crate::files::config_diff`]'s JSON for
+     * the pair (P1DF's rows, blocks and summary). No I/O.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with no compare running.
+     */
+    func abDiff() throws  -> String
+    
+    /**
+     * End the compare on `side`: recalled first when the device is on the
+     * other side (a recall, as a toggle is). Returns `active: false`,
+     * `side` the one kept, and the recall if one was made.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with no compare running; the
+     * recall's errors (the compare then runs on, unless the connection is
+     * gone).
+     */
+    func abKeep(side: AbSide) throws  -> AbCompare
+    
+    /**
+     * Start an A/B compare of two snapshots in the store (WP P1AB, PRO1
+     * W4). `a_id` "" captures the device's state as A (named "A", not
+     * filed); otherwise snapshot `a_id` is recalled first, so the device is
+     * on A. `b_id` is B. A compare already running is replaced.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id, a document
+     * that is not a snapshot, or A and B of different platforms or channel
+     * counts (nothing sent); [`DspiError::Disconnected`]; the capture's and
+     * the recall's errors; [`DspiError::Io`] for an unreadable store or no
+     * folder named; [`DspiError::Unsupported`] on the web (use
+     * [`DspiCore::ab_start_documents`]).
+     */
+    func abStart(aId: String, bId: String) throws  -> AbCompare
+    
+    /**
+     * [`DspiCore::ab_start`] with snapshot documents' text (the web, and a
+     * client's own store): `a_text` "" captures the device as A.
+     */
+    func abStartDocuments(aText: String, bText: String) throws  -> AbCompare
+    
+    /**
+     * The running compare, or `active: false` with none (a disconnect
+     * ends one). Never fails; no I/O.
+     */
+    func abState()  -> AbCompare
+    
+    /**
+     * Recall the other side: one bulk write (`0xA1`) plus the settings
+     * outside the image that differ, recorded in the event log as a recall.
+     * It ends the undo history; it is not an undo step. Never guarded and
+     * never token-gated. Returns the compare, on the new side, with the
+     * recall's changes.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with no compare running; the
+     * recall's errors. A lost connection ends the compare
+     * ([`DspiError::Disconnected`]); another refusal leaves it on its side.
+     */
+    func abToggle() throws  -> AbCompare
+    
+    /**
      * The unit's audio link as the connect probe found it, without
      * traffic: `None` when the device has no alink (stock firmware, the fork
      * without it, role 0, a protocol version this build does not speak, or
@@ -4639,6 +4698,100 @@ public convenience init() {
 
     
 
+    
+    /**
+     * What differs from A to B: [`crate::files::config_diff`]'s JSON for
+     * the pair (P1DF's rows, blocks and summary). No I/O.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with no compare running.
+     */
+open func abDiff()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_ab_diff(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * End the compare on `side`: recalled first when the device is on the
+     * other side (a recall, as a toggle is). Returns `active: false`,
+     * `side` the one kept, and the recall if one was made.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with no compare running; the
+     * recall's errors (the compare then runs on, unless the connection is
+     * gone).
+     */
+open func abKeep(side: AbSide)throws  -> AbCompare  {
+    return try  FfiConverterTypeAbCompare_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_ab_keep(self.uniffiClonePointer(),
+        FfiConverterTypeAbSide_lower(side),$0
+    )
+})
+}
+    
+    /**
+     * Start an A/B compare of two snapshots in the store (WP P1AB, PRO1
+     * W4). `a_id` "" captures the device's state as A (named "A", not
+     * filed); otherwise snapshot `a_id` is recalled first, so the device is
+     * on A. `b_id` is B. A compare already running is replaced.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id, a document
+     * that is not a snapshot, or A and B of different platforms or channel
+     * counts (nothing sent); [`DspiError::Disconnected`]; the capture's and
+     * the recall's errors; [`DspiError::Io`] for an unreadable store or no
+     * folder named; [`DspiError::Unsupported`] on the web (use
+     * [`DspiCore::ab_start_documents`]).
+     */
+open func abStart(aId: String, bId: String)throws  -> AbCompare  {
+    return try  FfiConverterTypeAbCompare_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_ab_start(self.uniffiClonePointer(),
+        FfiConverterString.lower(aId),
+        FfiConverterString.lower(bId),$0
+    )
+})
+}
+    
+    /**
+     * [`DspiCore::ab_start`] with snapshot documents' text (the web, and a
+     * client's own store): `a_text` "" captures the device as A.
+     */
+open func abStartDocuments(aText: String, bText: String)throws  -> AbCompare  {
+    return try  FfiConverterTypeAbCompare_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_ab_start_documents(self.uniffiClonePointer(),
+        FfiConverterString.lower(aText),
+        FfiConverterString.lower(bText),$0
+    )
+})
+}
+    
+    /**
+     * The running compare, or `active: false` with none (a disconnect
+     * ends one). Never fails; no I/O.
+     */
+open func abState() -> AbCompare  {
+    return try!  FfiConverterTypeAbCompare_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_ab_state(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Recall the other side: one bulk write (`0xA1`) plus the settings
+     * outside the image that differ, recorded in the event log as a recall.
+     * It ends the undo history; it is not an undo step. Never guarded and
+     * never token-gated. Returns the compare, on the new side, with the
+     * recall's changes.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with no compare running; the
+     * recall's errors. A lost connection ends the compare
+     * ([`DspiError::Disconnected`]); another refusal leaves it on its side.
+     */
+open func abToggle()throws  -> AbCompare  {
+    return try  FfiConverterTypeAbCompare_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_ab_toggle(self.uniffiClonePointer(),$0
+    )
+})
+}
     
     /**
      * The unit's audio link as the connect probe found it, without
@@ -11145,6 +11298,135 @@ public func FfiConverterTypeRtaListener_lower(_ value: RtaListener) -> UnsafeMut
 }
 
 
+
+
+/**
+ * Where a compare stands ([`DspiCore::ab_state`] and every A/B call).
+ */
+public struct AbCompare {
+    /**
+     * Whether a compare is running.
+     */
+    public var active: Bool
+    /**
+     * The side on the device: while a compare runs, the one last recalled;
+     * after [`DspiCore::ab_keep`], the one kept. `None` with no compare.
+     */
+    public var side: AbSide?
+    /**
+     * A's snapshot name ("" with no compare).
+     */
+    public var aName: String
+    /**
+     * B's snapshot name ("" with no compare).
+     */
+    public var bName: String
+    /**
+     * What this call recalled, if it recalled anything.
+     */
+    public var recall: SnapshotRecall?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Whether a compare is running.
+         */active: Bool, 
+        /**
+         * The side on the device: while a compare runs, the one last recalled;
+         * after [`DspiCore::ab_keep`], the one kept. `None` with no compare.
+         */side: AbSide?, 
+        /**
+         * A's snapshot name ("" with no compare).
+         */aName: String, 
+        /**
+         * B's snapshot name ("" with no compare).
+         */bName: String, 
+        /**
+         * What this call recalled, if it recalled anything.
+         */recall: SnapshotRecall?) {
+        self.active = active
+        self.side = side
+        self.aName = aName
+        self.bName = bName
+        self.recall = recall
+    }
+}
+
+#if compiler(>=6)
+extension AbCompare: Sendable {}
+#endif
+
+
+extension AbCompare: Equatable, Hashable {
+    public static func ==(lhs: AbCompare, rhs: AbCompare) -> Bool {
+        if lhs.active != rhs.active {
+            return false
+        }
+        if lhs.side != rhs.side {
+            return false
+        }
+        if lhs.aName != rhs.aName {
+            return false
+        }
+        if lhs.bName != rhs.bName {
+            return false
+        }
+        if lhs.recall != rhs.recall {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(active)
+        hasher.combine(side)
+        hasher.combine(aName)
+        hasher.combine(bName)
+        hasher.combine(recall)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAbCompare: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AbCompare {
+        return
+            try AbCompare(
+                active: FfiConverterBool.read(from: &buf), 
+                side: FfiConverterOptionTypeAbSide.read(from: &buf), 
+                aName: FfiConverterString.read(from: &buf), 
+                bName: FfiConverterString.read(from: &buf), 
+                recall: FfiConverterOptionTypeSnapshotRecall.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AbCompare, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.active, into: &buf)
+        FfiConverterOptionTypeAbSide.write(value.side, into: &buf)
+        FfiConverterString.write(value.aName, into: &buf)
+        FfiConverterString.write(value.bName, into: &buf)
+        FfiConverterOptionTypeSnapshotRecall.write(value.recall, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAbCompare_lift(_ buf: RustBuffer) throws -> AbCompare {
+    return try FfiConverterTypeAbCompare.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAbCompare_lower(_ value: AbCompare) -> RustBuffer {
+    return FfiConverterTypeAbCompare.lower(value)
+}
 
 
 /**
@@ -28274,6 +28556,85 @@ public func FfiConverterTypeVregChoice_lower(_ value: VregChoice) -> RustBuffer 
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * One side of a compare.
+ */
+
+public enum AbSide {
+    
+    /**
+     * The first snapshot (the captured state when none was given).
+     */
+    case a
+    /**
+     * The second snapshot.
+     */
+    case b
+}
+
+
+#if compiler(>=6)
+extension AbSide: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAbSide: FfiConverterRustBuffer {
+    typealias SwiftType = AbSide
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AbSide {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .a
+        
+        case 2: return .b
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AbSide, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .a:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .b:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAbSide_lift(_ buf: RustBuffer) throws -> AbSide {
+    return try FfiConverterTypeAbSide.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAbSide_lower(_ value: AbSide) -> RustBuffer {
+    return FfiConverterTypeAbSide.lower(value)
+}
+
+
+extension AbSide: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * An operation that takes a confirmation token.
  */
 
@@ -30497,6 +30858,54 @@ fileprivate struct FfiConverterOptionTypeRingHealth: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeSnapshotRecall: FfiConverterRustBuffer {
+    typealias SwiftType = SnapshotRecall?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeSnapshotRecall.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeSnapshotRecall.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeAbSide: FfiConverterRustBuffer {
+    typealias SwiftType = AbSide?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeAbSide.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeAbSide.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeParamValue: FfiConverterRustBuffer {
     typealias SwiftType = ParamValue?
 
@@ -32263,6 +32672,24 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_deviceevents_on_departed() != 29424) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_ab_diff() != 25258) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_ab_keep() != 13087) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_ab_start() != 31789) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_ab_start_documents() != 53767) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_ab_state() != 41482) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_ab_toggle() != 59578) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_alink_info() != 63997) {

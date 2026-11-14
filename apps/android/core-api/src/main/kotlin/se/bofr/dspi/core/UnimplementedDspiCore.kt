@@ -12,6 +12,18 @@ package se.bofr.dspi.core
 open class UnimplementedDspiCore : DspiCoreApi {
     override fun close() {}
 
+    override fun abStart(aId: String, bId: String): AbCompare = throw NotImplementedError("ab_start")
+
+    override fun abStartDocuments(aText: String, bText: String): AbCompare = throw NotImplementedError("ab_start_documents")
+
+    override fun abToggle(): AbCompare = throw NotImplementedError("ab_toggle")
+
+    override fun abDiff(): String = throw NotImplementedError("ab_diff")
+
+    override fun abKeep(side: AbSide): AbCompare = throw NotImplementedError("ab_keep")
+
+    override fun abState(): AbCompare = throw NotImplementedError("ab_state")
+
     override fun alinkInfo(): AlinkInfo? = throw NotImplementedError("alink_info")
 
     override fun fetchAlinkInfo(): AlinkInfo = throw NotImplementedError("fetch_alink_info")

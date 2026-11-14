@@ -68,6 +68,18 @@ class FfiDspiCore : DspiCoreApi {
         }
     }
 
+    override fun abStart(aId: String, bId: String): AbCompare = call { core.abStart(aId, bId).toDomain() }
+
+    override fun abStartDocuments(aText: String, bText: String): AbCompare = call { core.abStartDocuments(aText, bText).toDomain() }
+
+    override fun abToggle(): AbCompare = call { core.abToggle().toDomain() }
+
+    override fun abDiff(): String = call { core.abDiff() }
+
+    override fun abKeep(side: AbSide): AbCompare = call { core.abKeep(side.toFfi()).toDomain() }
+
+    override fun abState(): AbCompare = core.abState().toDomain()
+
     override fun alinkInfo(): AlinkInfo? = call { core.alinkInfo()?.let { it.toDomain() } }
 
     override fun fetchAlinkInfo(): AlinkInfo = call { core.fetchAlinkInfo().toDomain() }
@@ -2087,6 +2099,24 @@ internal fun CrossfeedPair.toFfi() =
         feedDb = feedDb,
     )
 
+internal fun se.bofr.dspi.ffi.uniffi.AbCompare.toDomain() =
+    AbCompare(
+        active = active,
+        side = side?.let { it.toDomain() },
+        aName = aName,
+        bName = bName,
+        recall = recall?.let { it.toDomain() },
+    )
+
+internal fun AbCompare.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AbCompare(
+        active = active,
+        side = side?.let { it.toFfi() },
+        aName = aName,
+        bName = bName,
+        recall = recall?.let { it.toFfi() },
+    )
+
 internal fun se.bofr.dspi.ffi.uniffi.AlinkInfo.toDomain() =
     AlinkInfo(
         role = role,
@@ -3217,6 +3247,18 @@ internal fun FillBand.toFfi(): se.bofr.dspi.ffi.uniffi.FillBand =
         FillBand.GOOD -> se.bofr.dspi.ffi.uniffi.FillBand.GOOD
         FillBand.WARN -> se.bofr.dspi.ffi.uniffi.FillBand.WARN
         FillBand.BAD -> se.bofr.dspi.ffi.uniffi.FillBand.BAD
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.AbSide.toDomain(): AbSide =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.AbSide.A -> AbSide.A
+        se.bofr.dspi.ffi.uniffi.AbSide.B -> AbSide.B
+    }
+
+internal fun AbSide.toFfi(): se.bofr.dspi.ffi.uniffi.AbSide =
+    when (this) {
+        AbSide.A -> se.bofr.dspi.ffi.uniffi.AbSide.A
+        AbSide.B -> se.bofr.dspi.ffi.uniffi.AbSide.B
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.ConfirmOp.toDomain(): ConfirmOp =
