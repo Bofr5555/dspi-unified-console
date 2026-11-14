@@ -1216,6 +1216,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_notify_tap_drain(void*_Nonnull pt
 void uniffi_dspi_core_fn_method_dspicore_notify_tap_set(void*_Nonnull ptr, int8_t enabled, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OFFLINE_DOCUMENT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OFFLINE_DOCUMENT
+RustBuffer uniffi_dspi_core_fn_method_dspicore_offline_document(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OPEN_DEMO
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OPEN_DEMO
 void uniffi_dspi_core_fn_method_dspicore_open_demo(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -1229,6 +1234,11 @@ void uniffi_dspi_core_fn_method_dspicore_open_demo_alink(void*_Nonnull ptr, Rust
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OPEN_DEMO_USB_DIRECT
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OPEN_DEMO_USB_DIRECT
 void uniffi_dspi_core_fn_method_dspicore_open_demo_usb_direct(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OPEN_DOCUMENT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OPEN_DOCUMENT
+RustBuffer uniffi_dspi_core_fn_method_dspicore_open_document(void*_Nonnull ptr, RustBuffer text, RustBuffer file_name, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OPEN_FD
@@ -1354,6 +1364,16 @@ void uniffi_dspi_core_fn_method_dspicore_rta_start(void*_Nonnull ptr, RustCallSt
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RTA_TAKE_CONTROL
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RTA_TAKE_CONTROL
 void uniffi_dspi_core_fn_method_dspicore_rta_take_control(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SAVE_AS_TEMPLATE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SAVE_AS_TEMPLATE
+RustBuffer uniffi_dspi_core_fn_method_dspicore_save_as_template(void*_Nonnull ptr, RustBuffer name, RustBuffer app_version, uint8_t links, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SAVE_DOCUMENT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SAVE_DOCUMENT
+RustBuffer uniffi_dspi_core_fn_method_dspicore_save_document(void*_Nonnull ptr, RustBuffer app_version, uint8_t links, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SAVE_MASTER_VOLUME
@@ -2196,6 +2216,16 @@ float uniffi_dspi_core_fn_func_quantize_delay(float ms, RustCallStatus *_Nonnull
 float uniffi_dspi_core_fn_func_quantize_gain(float db, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_TEMPLATE_LIST
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_TEMPLATE_LIST
+RustBuffer uniffi_dspi_core_fn_func_template_list(RustBuffer user_dir, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_TEMPLATE_TEXT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_TEMPLATE_TEXT
+RustBuffer uniffi_dspi_core_fn_func_template_text(RustBuffer id, RustBuffer user_dir, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_UF2_INSPECT
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_UF2_INSPECT
 RustBuffer uniffi_dspi_core_fn_func_uf2_inspect(RustBuffer image, RustCallStatus *_Nonnull out_status
@@ -2700,6 +2730,18 @@ uint16_t uniffi_dspi_core_checksum_func_quantize_delay(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_QUANTIZE_GAIN
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_QUANTIZE_GAIN
 uint16_t uniffi_dspi_core_checksum_func_quantize_gain(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_TEMPLATE_LIST
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_TEMPLATE_LIST
+uint16_t uniffi_dspi_core_checksum_func_template_list(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_TEMPLATE_TEXT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_TEMPLATE_TEXT
+uint16_t uniffi_dspi_core_checksum_func_template_text(void
     
 );
 #endif
@@ -3597,6 +3639,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_notify_tap_set(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OFFLINE_DOCUMENT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OFFLINE_DOCUMENT
+uint16_t uniffi_dspi_core_checksum_method_dspicore_offline_document(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OPEN_DEMO
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OPEN_DEMO
 uint16_t uniffi_dspi_core_checksum_method_dspicore_open_demo(void
@@ -3612,6 +3660,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_open_demo_alink(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OPEN_DEMO_USB_DIRECT
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OPEN_DEMO_USB_DIRECT
 uint16_t uniffi_dspi_core_checksum_method_dspicore_open_demo_usb_direct(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OPEN_DOCUMENT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OPEN_DOCUMENT
+uint16_t uniffi_dspi_core_checksum_method_dspicore_open_document(void
     
 );
 #endif
@@ -3762,6 +3816,18 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_rta_start(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_RTA_TAKE_CONTROL
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_RTA_TAKE_CONTROL
 uint16_t uniffi_dspi_core_checksum_method_dspicore_rta_take_control(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SAVE_AS_TEMPLATE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SAVE_AS_TEMPLATE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_save_as_template(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SAVE_DOCUMENT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SAVE_DOCUMENT
+uint16_t uniffi_dspi_core_checksum_method_dspicore_save_document(void
     
 );
 #endif

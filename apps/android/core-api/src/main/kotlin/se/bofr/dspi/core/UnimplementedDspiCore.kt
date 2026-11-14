@@ -322,6 +322,14 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun processNotifications(): NotifyResult = throw NotImplementedError("process_notifications")
 
+    override fun openDocument(text: String, fileName: String): String = throw NotImplementedError("open_document")
+
+    override fun offlineDocument(): String = throw NotImplementedError("offline_document")
+
+    override fun saveDocument(appVersion: String, links: Int): String = throw NotImplementedError("save_document")
+
+    override fun saveAsTemplate(name: String, appVersion: String, links: Int): String = throw NotImplementedError("save_as_template")
+
     override fun outputLabels(): List<OutputLabel> = throw NotImplementedError("output_labels")
 
     override fun outputCards(): List<OutputCard> = throw NotImplementedError("output_cards")
@@ -611,6 +619,10 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun noticeForKey(key: String, detail: String): Notice = throw NotImplementedError("notice_for_key")
 
     override fun noticeTexts(): List<Notice> = throw NotImplementedError("notice_texts")
+
+    override fun templateList(userDir: String): String = throw NotImplementedError("template_list")
+
+    override fun templateText(id: String, userDir: String): String = throw NotImplementedError("template_text")
 
     override fun outputLabelsFor(input: OutputLabelInput): List<OutputLabel> = throw NotImplementedError("output_labels_for")
 

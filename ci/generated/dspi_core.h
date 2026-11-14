@@ -5652,6 +5652,60 @@ uint32_t dspi_notice_for(const char *key, const char *detail, char *buf, uint32_
 uint32_t dspi_notice_texts(char *buf, uint32_t len);
 
 /**
+ * Open the `.dspipreset` document `doc` with no device, as the demo device
+ * seeded from it; `file_name` is what the client shows ("File: <name>"; null
+ * reads as empty). Replaces any open device; nothing touches USB. JSON
+ * `{ok, fileName, name, kind, platform, inputs, outputs, notes}`, or the
+ * failure (`invalid` for text that is no document).
+ */
+uint32_t dspi_open_document(struct FfiCore *core,
+                            const char *doc,
+                            const char *file_name,
+                            char *buf,
+                            uint32_t len);
+
+/**
+ * Whether the open connection is a document: JSON `{offline: true,
+ * fileName, name, kind, platform}` or `{offline: false}`. No I/O.
+ */
+uint32_t dspi_offline_document(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The open document as it now stands, of the kind it was opened as; the
+ * edits become the baseline. The document, or the failure (`invalid` when
+ * the connection is not a document).
+ */
+uint32_t dspi_save_document(struct FfiCore *core,
+                            const char *app_version,
+                            uint8_t links,
+                            char *buf,
+                            uint32_t len);
+
+/**
+ * The open device or document as a template named `name` (`meta.kind`
+ * "template"). The document, or the failure.
+ */
+uint32_t dspi_save_as_template(struct FfiCore *core,
+                               const char *name,
+                               const char *app_version,
+                               uint8_t links,
+                               char *buf,
+                               uint32_t len);
+
+/**
+ * The templates there are, shipped ones first, then those in `user_dir`
+ * (null or empty: none): a JSON array of `{id, name, builtin, platform,
+ * inputs, outputs, savedUtc, status}`. Never fails; 0 only for a panic.
+ */
+uint32_t dspi_template_list(const char *user_dir, char *buf, uint32_t len);
+
+/**
+ * Template `id`'s text (`builtin:<name>`, or a file name in `user_dir`), or
+ * the JSON failure. 0 only for a panic.
+ */
+uint32_t dspi_template_text(const char *id, const char *user_dir, char *buf, uint32_t len);
+
+/**
  * Start looking for hubs on the local network, replacing any browse running.
  * Returns at once; false only with a null handle, in a build without the
  * feature, or when a thread cannot start. A network failure shows in

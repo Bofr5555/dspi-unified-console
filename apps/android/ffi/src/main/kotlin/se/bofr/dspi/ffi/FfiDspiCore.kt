@@ -378,6 +378,14 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun processNotifications(): NotifyResult = core.processNotifications().toDomain()
 
+    override fun openDocument(text: String, fileName: String): String = call { core.openDocument(text, fileName) }
+
+    override fun offlineDocument(): String = core.offlineDocument()
+
+    override fun saveDocument(appVersion: String, links: Int): String = call { core.saveDocument(appVersion, links.toUByte()) }
+
+    override fun saveAsTemplate(name: String, appVersion: String, links: Int): String = call { core.saveAsTemplate(name, appVersion, links.toUByte()) }
+
     override fun outputLabels(): List<OutputLabel> = core.outputLabels().map { it.toDomain() }
 
     override fun outputCards(): List<OutputCard> = core.outputCards().map { it.toDomain() }
@@ -667,6 +675,10 @@ class FfiDspiCore : DspiCoreApi {
     override fun noticeForKey(key: String, detail: String): Notice = se.bofr.dspi.ffi.uniffi.noticeForKey(key, detail).toDomain()
 
     override fun noticeTexts(): List<Notice> = se.bofr.dspi.ffi.uniffi.noticeTexts().map { it.toDomain() }
+
+    override fun templateList(userDir: String): String = se.bofr.dspi.ffi.uniffi.templateList(userDir)
+
+    override fun templateText(id: String, userDir: String): String = call { se.bofr.dspi.ffi.uniffi.templateText(id, userDir) }
 
     override fun outputLabelsFor(input: OutputLabelInput): List<OutputLabel> = se.bofr.dspi.ffi.uniffi.outputLabelsFor(input.toFfi()).map { it.toDomain() }
 

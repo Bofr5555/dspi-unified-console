@@ -149,6 +149,9 @@ mod bulk_db;
 pub use bulk_db::{BulkDbDevice, BulkDbOptions, GainProbe};
 // -- WP CS1 --
 mod subharm;
+// -- WP P1OF --
+mod document;
+pub use document::DocumentSeed;
 
 use crate::{
     DeviceDescriptor, NotificationSource, Result, Transport, TransportCaps, TransportError,

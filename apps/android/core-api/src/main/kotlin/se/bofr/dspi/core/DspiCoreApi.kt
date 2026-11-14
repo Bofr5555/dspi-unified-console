@@ -1929,6 +1929,57 @@ interface DspiCoreApi : AutoCloseable {
     fun processNotifications(): NotifyResult
 
     /**
+     * Open the `.dspipreset` document `text` with no device, as the demo
+     * device seeded from it (PRO1 W7): the platform and channel counts its
+     * `meta` names (else the channels it lists), every setting it holds read
+     * as an import reads them, the rest the demo's. `file_name` is what the
+     * client shows ("File: <name>"); `meta.name`, else the file's name, names
+     * the running preset and the device. Replaces any open device; nothing
+     * touches USB. The settings are read (`fetch_all`) and are the baseline
+     * for unsaved changes; the undo history starts empty.
+     *
+     * Returns JSON `{ok: true, fileName, name, kind, platform, inputs,
+     * outputs, notes}`, `notes` what reading the document reported (values
+     * left alone or clamped, channels this shape lacks).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for text that is not a document
+     * this build reads (the reason as a sentence) or one naming no inputs or
+     * outputs; [`DspiError::Transfer`] if the device could not be laid out
+     * or read. On an error nothing is open.
+     */
+    @Throws(DspiException::class)
+    fun openDocument(text: String, fileName: String): String
+
+    /**
+     * Whether the open connection is a document ([`DspiCore::open_document`]),
+     * as JSON: `{offline: true, fileName, name, kind, platform}`, or
+     * `{offline: false}` for a device or none. No I/O.
+     */
+    fun offlineDocument(): String
+
+    /**
+     * The open document as it now stands, a `.dspipreset` document of the
+     * kind it was opened as, under its name (`config_export`'s rules;
+     * `links` as there). The edits are then the baseline: nothing is unsaved.
+     * The client writes the text to the file.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the connection is not a
+     * document (export the configuration instead); otherwise
+     * `config_export`'s.
+     */
+    @Throws(DspiException::class)
+    fun saveDocument(appVersion: String, links: Int): String
+
+    /**
+     * The open device or document as a template: a `.dspipreset` document
+     * with `meta.kind = "template"` named `name` (`config_export`'s rules;
+     * `links` as there). The client writes it to the user's template
+     * folder, where [`template_list`] finds it. Errors as `config_export`'s.
+     */
+    @Throws(DspiException::class)
+    fun saveAsTemplate(name: String, appVersion: String, links: Int): String
+
+    /**
      * Every output's label from the mirror, in output order: the user's name,
      * else "Out N · channel · band" from the routing and the filters. Call it
      * when the state changes, not per frame. Never fails.
@@ -3490,6 +3541,32 @@ interface DspiCoreApi : AutoCloseable {
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun noticeTexts(): List<Notice>
+
+    /**
+     * The templates there are, as a JSON array: the ones this build ships, then
+     * the `.dspipreset` files of kind template in `user_dir` ("" for none; none
+     * on the web), each `{id, name, builtin, platform, inputs, outputs,
+     * savedUtc, status}`. `id` is what [`template_text`] takes: `builtin:<name>`
+     * or the file's name. `status` is the template's own status line (a shipped
+     * template awaiting approval says so), else "". A file that cannot be read,
+     * is not a document or not a template is left out; listing never fails.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun templateList(userDir: String): String
+
+    /**
+     * The text of template `id` from [`template_list`]: a shipped one, or a file
+     * in `user_dir`, for [`DspiCore::open_document`] or an import.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an id that is no template (a
+     * user id must be a plain `.dspipreset` file name in `user_dir`) or a file
+     * over 4 MB; [`DspiError::Io`] when the file cannot be read.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    @Throws(DspiException::class)
+    fun templateText(id: String, userDir: String): String
 
     /**
      * Every output's label for the state `input`, in output order.

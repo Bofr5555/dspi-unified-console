@@ -1574,6 +1574,18 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1662,6 +1674,10 @@ fun uniffi_dspi_core_checksum_func_output_labels_for(
 fun uniffi_dspi_core_checksum_func_quantize_delay(
 ): Short
 fun uniffi_dspi_core_checksum_func_quantize_gain(
+): Short
+fun uniffi_dspi_core_checksum_func_template_list(
+): Short
+fun uniffi_dspi_core_checksum_func_template_text(
 ): Short
 fun uniffi_dspi_core_checksum_func_uf2_inspect(
 ): Short
@@ -1961,11 +1977,15 @@ fun uniffi_dspi_core_checksum_method_dspicore_notify_tap_drain(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_notify_tap_set(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_offline_document(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_open_demo(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_open_demo_alink(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_open_demo_usb_direct(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_open_document(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_open_fd(
 ): Short
@@ -2016,6 +2036,10 @@ fun uniffi_dspi_core_checksum_method_dspicore_rta_set_request(
 fun uniffi_dspi_core_checksum_method_dspicore_rta_start(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_rta_take_control(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_save_as_template(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_save_document(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_save_master_volume(
 ): Short
@@ -2617,12 +2641,16 @@ fun uniffi_dspi_core_fn_method_dspicore_notify_tap_drain(`ptr`: Pointer,uniffi_o
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_notify_tap_set(`ptr`: Pointer,`enabled`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_offline_document(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_open_demo(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_open_demo_alink(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_open_demo_usb_direct(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_open_document(`ptr`: Pointer,`text`: RustBuffer.ByValue,`fileName`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_open_fd(`ptr`: Pointer,`fd`: Int,`serial`: RustBuffer.ByValue,`vid`: Short,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_open_host(`ptr`: Pointer,`transport`: Pointer,`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -2673,6 +2701,10 @@ fun uniffi_dspi_core_fn_method_dspicore_rta_start(`ptr`: Pointer,uniffi_out_err:
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_rta_take_control(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_save_as_template(`ptr`: Pointer,`name`: RustBuffer.ByValue,`appVersion`: RustBuffer.ByValue,`links`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_save_document(`ptr`: Pointer,`appVersion`: RustBuffer.ByValue,`links`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_save_master_volume(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_save_output_config(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -3005,6 +3037,10 @@ fun uniffi_dspi_core_fn_func_quantize_delay(`ms`: Float,uniffi_out_err: UniffiRu
 ): Float
 fun uniffi_dspi_core_fn_func_quantize_gain(`db`: Float,uniffi_out_err: UniffiRustCallStatus, 
 ): Float
+fun uniffi_dspi_core_fn_func_template_list(`userDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_template_text(`id`: RustBuffer.ByValue,`userDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_uf2_inspect(`image`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun ffi_dspi_core_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -3242,6 +3278,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_quantize_gain() != 25180.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_template_list() != 58721.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_template_text() != 59334.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_uf2_inspect() != 30039.toShort()) {
@@ -3691,6 +3733,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_notify_tap_set() != 10210.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_offline_document() != 20879.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_open_demo() != 35962.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3698,6 +3743,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_open_demo_usb_direct() != 36241.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_open_document() != 10612.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_open_fd() != 57502.toShort()) {
@@ -3773,6 +3821,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_rta_take_control() != 33133.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_save_as_template() != 23052.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_save_document() != 12211.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_save_master_volume() != 17732.toShort()) {
@@ -7232,6 +7286,13 @@ public interface DspiCoreInterface {
     fun `notifyTapSet`(`enabled`: kotlin.Boolean)
     
     /**
+     * Whether the open connection is a document ([`DspiCore::open_document`]),
+     * as JSON: `{offline: true, fileName, name, kind, platform}`, or
+     * `{offline: false}` for a device or none. No I/O.
+     */
+    fun `offlineDocument`(): kotlin.String
+    
+    /**
      * Open the built-in demo device (`dspi_transport::FakeDevice::demo`):
      * a simulated RP2350 that answers reads and writes and notifies.
      * Replaces any open device.
@@ -7254,6 +7315,27 @@ public interface DspiCoreInterface {
      * hardware. Replaces any open device.
      */
     fun `openDemoUsbDirect`()
+    
+    /**
+     * Open the `.dspipreset` document `text` with no device, as the demo
+     * device seeded from it (PRO1 W7): the platform and channel counts its
+     * `meta` names (else the channels it lists), every setting it holds read
+     * as an import reads them, the rest the demo's. `file_name` is what the
+     * client shows ("File: <name>"); `meta.name`, else the file's name, names
+     * the running preset and the device. Replaces any open device; nothing
+     * touches USB. The settings are read (`fetch_all`) and are the baseline
+     * for unsaved changes; the undo history starts empty.
+     *
+     * Returns JSON `{ok: true, fileName, name, kind, platform, inputs,
+     * outputs, notes}`, `notes` what reading the document reported (values
+     * left alone or clamped, channels this shape lacks).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for text that is not a document
+     * this build reads (the reason as a sentence) or one naming no inputs or
+     * outputs; [`DspiError::Transfer`] if the device could not be laid out
+     * or read. On an error nothing is open.
+     */
+    fun `openDocument`(`text`: kotlin.String, `fileName`: kotlin.String): kotlin.String
     
     /**
      * Adopt a USB device the platform already opened: Android's
@@ -7559,6 +7641,26 @@ public interface DspiCoreInterface {
      * Wakes the worker at once; does nothing while already driving.
      */
     fun `rtaTakeControl`()
+    
+    /**
+     * The open device or document as a template: a `.dspipreset` document
+     * with `meta.kind = "template"` named `name` (`config_export`'s rules;
+     * `links` as there). The client writes it to the user's template
+     * folder, where [`template_list`] finds it. Errors as `config_export`'s.
+     */
+    fun `saveAsTemplate`(`name`: kotlin.String, `appVersion`: kotlin.String, `links`: kotlin.UByte): kotlin.String
+    
+    /**
+     * The open document as it now stands, a `.dspipreset` document of the
+     * kind it was opened as, under its name (`config_export`'s rules;
+     * `links` as there). The edits are then the baseline: nothing is unsaved.
+     * The client writes the text to the file.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the connection is not a
+     * document (export the configuration instead); otherwise
+     * `config_export`'s.
+     */
+    fun `saveDocument`(`appVersion`: kotlin.String, `links`: kotlin.UByte): kotlin.String
     
     /**
      * FLASH WRITE: store the live master volume for the independent mode
@@ -11818,6 +11920,23 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Whether the open connection is a document ([`DspiCore::open_document`]),
+     * as JSON: `{offline: true, fileName, name, kind, platform}`, or
+     * `{offline: false}` for a device or none. No I/O.
+     */override fun `offlineDocument`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_offline_document(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Open the built-in demo device (`dspi_transport::FakeDevice::demo`):
      * a simulated RP2350 that answers reads and writes and notifies.
      * Replaces any open device.
@@ -11868,6 +11987,38 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * Open the `.dspipreset` document `text` with no device, as the demo
+     * device seeded from it (PRO1 W7): the platform and channel counts its
+     * `meta` names (else the channels it lists), every setting it holds read
+     * as an import reads them, the rest the demo's. `file_name` is what the
+     * client shows ("File: <name>"); `meta.name`, else the file's name, names
+     * the running preset and the device. Replaces any open device; nothing
+     * touches USB. The settings are read (`fetch_all`) and are the baseline
+     * for unsaved changes; the undo history starts empty.
+     *
+     * Returns JSON `{ok: true, fileName, name, kind, platform, inputs,
+     * outputs, notes}`, `notes` what reading the document reported (values
+     * left alone or clamped, channels this shape lacks).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for text that is not a document
+     * this build reads (the reason as a sentence) or one naming no inputs or
+     * outputs; [`DspiError::Transfer`] if the device could not be laid out
+     * or read. On an error nothing is open.
+     */
+    @Throws(DspiException::class)override fun `openDocument`(`text`: kotlin.String, `fileName`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_open_document(
+        it, FfiConverterString.lower(`text`),FfiConverterString.lower(`fileName`),_status)
+}
+    }
+    )
+    }
     
 
     
@@ -12420,6 +12571,48 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * The open device or document as a template: a `.dspipreset` document
+     * with `meta.kind = "template"` named `name` (`config_export`'s rules;
+     * `links` as there). The client writes it to the user's template
+     * folder, where [`template_list`] finds it. Errors as `config_export`'s.
+     */
+    @Throws(DspiException::class)override fun `saveAsTemplate`(`name`: kotlin.String, `appVersion`: kotlin.String, `links`: kotlin.UByte): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_save_as_template(
+        it, FfiConverterString.lower(`name`),FfiConverterString.lower(`appVersion`),FfiConverterUByte.lower(`links`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The open document as it now stands, a `.dspipreset` document of the
+     * kind it was opened as, under its name (`config_export`'s rules;
+     * `links` as there). The edits are then the baseline: nothing is unsaved.
+     * The client writes the text to the file.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the connection is not a
+     * document (export the configuration instead); otherwise
+     * `config_export`'s.
+     */
+    @Throws(DspiException::class)override fun `saveDocument`(`appVersion`: kotlin.String, `links`: kotlin.UByte): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_save_document(
+        it, FfiConverterString.lower(`appVersion`),FfiConverterUByte.lower(`links`),_status)
+}
+    }
+    )
+    }
     
 
     
@@ -28404,6 +28597,42 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_quantize_gain(
         FfiConverterFloat.lower(`db`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The templates there are, as a JSON array: the ones this build ships, then
+         * the `.dspipreset` files of kind template in `user_dir` ("" for none; none
+         * on the web), each `{id, name, builtin, platform, inputs, outputs,
+         * savedUtc, status}`. `id` is what [`template_text`] takes: `builtin:<name>`
+         * or the file's name. `status` is the template's own status line (a shipped
+         * template awaiting approval says so), else "". A file that cannot be read,
+         * is not a document or not a template is left out; listing never fails.
+         */ fun `templateList`(`userDir`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_template_list(
+        FfiConverterString.lower(`userDir`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The text of template `id` from [`template_list`]: a shipped one, or a file
+         * in `user_dir`, for [`DspiCore::open_document`] or an import.
+         *
+         * Errors: [`DspiError::InvalidArgument`] for an id that is no template (a
+         * user id must be a plain `.dspipreset` file name in `user_dir`) or a file
+         * over 4 MB; [`DspiError::Io`] when the file cannot be read.
+         */
+    @Throws(DspiException::class) fun `templateText`(`id`: kotlin.String, `userDir`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_template_text(
+        FfiConverterString.lower(`id`),FfiConverterString.lower(`userDir`),_status)
 }
     )
     }

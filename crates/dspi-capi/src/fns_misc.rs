@@ -56,6 +56,8 @@ mod alink;
 mod alink_usb;
 // -- WP P1NT --
 mod notice_text;
+// -- WP P1OF --
+mod offline;
 
 // ── Replies ──────────────────────────────────────────────────────────
 

@@ -2854,6 +2854,13 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func notifyTapSet(enabled: Bool) 
     
     /**
+     * Whether the open connection is a document ([`DspiCore::open_document`]),
+     * as JSON: `{offline: true, fileName, name, kind, platform}`, or
+     * `{offline: false}` for a device or none. No I/O.
+     */
+    func offlineDocument()  -> String
+    
+    /**
      * Open the built-in demo device (`dspi_transport::FakeDevice::demo`):
      * a simulated RP2350 that answers reads and writes and notifies.
      * Replaces any open device.
@@ -2876,6 +2883,27 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * hardware. Replaces any open device.
      */
     func openDemoUsbDirect() throws 
+    
+    /**
+     * Open the `.dspipreset` document `text` with no device, as the demo
+     * device seeded from it (PRO1 W7): the platform and channel counts its
+     * `meta` names (else the channels it lists), every setting it holds read
+     * as an import reads them, the rest the demo's. `file_name` is what the
+     * client shows ("File: <name>"); `meta.name`, else the file's name, names
+     * the running preset and the device. Replaces any open device; nothing
+     * touches USB. The settings are read (`fetch_all`) and are the baseline
+     * for unsaved changes; the undo history starts empty.
+     *
+     * Returns JSON `{ok: true, fileName, name, kind, platform, inputs,
+     * outputs, notes}`, `notes` what reading the document reported (values
+     * left alone or clamped, channels this shape lacks).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for text that is not a document
+     * this build reads (the reason as a sentence) or one naming no inputs or
+     * outputs; [`DspiError::Transfer`] if the device could not be laid out
+     * or read. On an error nothing is open.
+     */
+    func openDocument(text: String, fileName: String) throws  -> String
     
     /**
      * Adopt a USB device the platform already opened: Android's
@@ -3181,6 +3209,26 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * Wakes the worker at once; does nothing while already driving.
      */
     func rtaTakeControl() 
+    
+    /**
+     * The open device or document as a template: a `.dspipreset` document
+     * with `meta.kind = "template"` named `name` (`config_export`'s rules;
+     * `links` as there). The client writes it to the user's template
+     * folder, where [`template_list`] finds it. Errors as `config_export`'s.
+     */
+    func saveAsTemplate(name: String, appVersion: String, links: UInt8) throws  -> String
+    
+    /**
+     * The open document as it now stands, a `.dspipreset` document of the
+     * kind it was opened as, under its name (`config_export`'s rules;
+     * `links` as there). The edits are then the baseline: nothing is unsaved.
+     * The client writes the text to the file.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the connection is not a
+     * document (export the configuration instead); otherwise
+     * `config_export`'s.
+     */
+    func saveDocument(appVersion: String, links: UInt8) throws  -> String
     
     /**
      * FLASH WRITE: store the live master volume for the independent mode
@@ -6701,6 +6749,18 @@ open func notifyTapSet(enabled: Bool)  {try! rustCall() {
 }
     
     /**
+     * Whether the open connection is a document ([`DspiCore::open_document`]),
+     * as JSON: `{offline: true, fileName, name, kind, platform}`, or
+     * `{offline: false}` for a device or none. No I/O.
+     */
+open func offlineDocument() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_offline_document(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
      * Open the built-in demo device (`dspi_transport::FakeDevice::demo`):
      * a simulated RP2350 that answers reads and writes and notifies.
      * Replaces any open device.
@@ -6734,6 +6794,34 @@ open func openDemoUsbDirect()throws   {try rustCallWithError(FfiConverterTypeDsp
     uniffi_dspi_core_fn_method_dspicore_open_demo_usb_direct(self.uniffiClonePointer(),$0
     )
 }
+}
+    
+    /**
+     * Open the `.dspipreset` document `text` with no device, as the demo
+     * device seeded from it (PRO1 W7): the platform and channel counts its
+     * `meta` names (else the channels it lists), every setting it holds read
+     * as an import reads them, the rest the demo's. `file_name` is what the
+     * client shows ("File: <name>"); `meta.name`, else the file's name, names
+     * the running preset and the device. Replaces any open device; nothing
+     * touches USB. The settings are read (`fetch_all`) and are the baseline
+     * for unsaved changes; the undo history starts empty.
+     *
+     * Returns JSON `{ok: true, fileName, name, kind, platform, inputs,
+     * outputs, notes}`, `notes` what reading the document reported (values
+     * left alone or clamped, channels this shape lacks).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for text that is not a document
+     * this build reads (the reason as a sentence) or one naming no inputs or
+     * outputs; [`DspiError::Transfer`] if the device could not be laid out
+     * or read. On an error nothing is open.
+     */
+open func openDocument(text: String, fileName: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_open_document(self.uniffiClonePointer(),
+        FfiConverterString.lower(text),
+        FfiConverterString.lower(fileName),$0
+    )
+})
 }
     
     /**
@@ -7165,6 +7253,41 @@ open func rtaTakeControl()  {try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_rta_take_control(self.uniffiClonePointer(),$0
     )
 }
+}
+    
+    /**
+     * The open device or document as a template: a `.dspipreset` document
+     * with `meta.kind = "template"` named `name` (`config_export`'s rules;
+     * `links` as there). The client writes it to the user's template
+     * folder, where [`template_list`] finds it. Errors as `config_export`'s.
+     */
+open func saveAsTemplate(name: String, appVersion: String, links: UInt8)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_save_as_template(self.uniffiClonePointer(),
+        FfiConverterString.lower(name),
+        FfiConverterString.lower(appVersion),
+        FfiConverterUInt8.lower(links),$0
+    )
+})
+}
+    
+    /**
+     * The open document as it now stands, a `.dspipreset` document of the
+     * kind it was opened as, under its name (`config_export`'s rules;
+     * `links` as there). The edits are then the baseline: nothing is unsaved.
+     * The client writes the text to the file.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the connection is not a
+     * document (export the configuration instead); otherwise
+     * `config_export`'s.
+     */
+open func saveDocument(appVersion: String, links: UInt8)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_save_document(self.uniffiClonePointer(),
+        FfiConverterString.lower(appVersion),
+        FfiConverterUInt8.lower(links),$0
+    )
+})
 }
     
     /**
@@ -30728,6 +30851,38 @@ public func quantizeGain(db: Float) -> Float  {
 })
 }
 /**
+ * The templates there are, as a JSON array: the ones this build ships, then
+ * the `.dspipreset` files of kind template in `user_dir` ("" for none; none
+ * on the web), each `{id, name, builtin, platform, inputs, outputs,
+ * savedUtc, status}`. `id` is what [`template_text`] takes: `builtin:<name>`
+ * or the file's name. `status` is the template's own status line (a shipped
+ * template awaiting approval says so), else "". A file that cannot be read,
+ * is not a document or not a template is left out; listing never fails.
+ */
+public func templateList(userDir: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_template_list(
+        FfiConverterString.lower(userDir),$0
+    )
+})
+}
+/**
+ * The text of template `id` from [`template_list`]: a shipped one, or a file
+ * in `user_dir`, for [`DspiCore::open_document`] or an import.
+ *
+ * Errors: [`DspiError::InvalidArgument`] for an id that is no template (a
+ * user id must be a plain `.dspipreset` file name in `user_dir`) or a file
+ * over 4 MB; [`DspiError::Io`] when the file cannot be read.
+ */
+public func templateText(id: String, userDir: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_func_template_text(
+        FfiConverterString.lower(id),
+        FfiConverterString.lower(userDir),$0
+    )
+})
+}
+/**
  * Check a UF2 image: block structure, magic numbers, family id, the flash
  * range it covers, and the DSPi version string inside it. Never panics; a
  * refused image comes back with `valid == false` and the reason in
@@ -30865,6 +31020,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_quantize_gain() != 25180) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_template_list() != 58721) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_template_text() != 59334) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_uf2_inspect() != 30039) {
@@ -31314,6 +31475,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_notify_tap_set() != 10210) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_offline_document() != 20879) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_open_demo() != 35962) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -31321,6 +31485,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_open_demo_usb_direct() != 36241) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_open_document() != 10612) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_open_fd() != 57502) {
@@ -31396,6 +31563,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_rta_take_control() != 33133) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_save_as_template() != 23052) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_save_document() != 12211) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_save_master_volume() != 17732) {

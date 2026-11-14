@@ -1931,6 +1931,31 @@ fn exportable(inner: &mut Inner) -> Result<(DspState, Option<[u8; 4]>)> {
     Ok((s.clone(), map))
 }
 
+// -- WP P1OF -- the offline session's way in (`offline.rs`)
+/// [`parse_config`] for `offline.rs`: the document, or a sentence for the user.
+pub(crate) fn parse_document(text: &str) -> std::result::Result<Value, String> {
+    parse_config(text)
+}
+
+/// [`base_for`] for `offline.rs`: a default state shaped as the device the
+/// document's `meta` names (platform, channel counts, wire format).
+pub(crate) fn document_shape(doc: &Value) -> DspState {
+    base_for(doc)
+}
+
+/// Every block of `doc` read onto `base`, as an import of it would be, and
+/// what reading it reported (channels missing, values left alone or clamped).
+pub(crate) fn document_onto(base: &DspState, doc: &Value) -> (DspState, Vec<String>) {
+    let built = build_selected(base, doc, Selection::all());
+    let notes = notes(&built);
+    (built.state, notes)
+}
+
+/// [`exportable`] for `offline.rs`.
+pub(crate) fn current_document(inner: &mut Inner) -> Result<(DspState, Option<[u8; 4]>)> {
+    exportable(inner)
+}
+
 /// Check a `.dspipreset` document and describe it, as JSON
 /// `{ok, error, name, platform, firmware, savedUtc}`. `ok` is false, with the
 /// reason in `error`, for text that is not a document this build reads: not

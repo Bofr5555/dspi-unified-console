@@ -57,6 +57,8 @@ pub mod guard;
 pub mod history;
 // -- WP WB4b --
 pub mod link;
+// -- WP P1OF --
+pub mod offline;
 // -- WP WB6c --
 pub mod outputs;
 // -- WP WB6a --

@@ -1275,6 +1275,25 @@ int16_t value);
 bool dspi_open_demo_usb_direct(struct FfiCore *core);
 uint32_t dspi_notice_for(const char *key, const char *detail, char *buf, uint32_t len);
 uint32_t dspi_notice_texts(char *buf, uint32_t len);
+uint32_t dspi_open_document(struct FfiCore *core,
+const char *doc,
+const char *file_name,
+char *buf,
+uint32_t len);
+uint32_t dspi_offline_document(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_save_document(struct FfiCore *core,
+const char *app_version,
+uint8_t links,
+char *buf,
+uint32_t len);
+uint32_t dspi_save_as_template(struct FfiCore *core,
+const char *name,
+const char *app_version,
+uint8_t links,
+char *buf,
+uint32_t len);
+uint32_t dspi_template_list(const char *user_dir, char *buf, uint32_t len);
+uint32_t dspi_template_text(const char *id, const char *user_dir, char *buf, uint32_t len);
 bool dspi_link_browse_start(struct FfiCore *core,
 void (*callback)(void *user_data),
 void *user_data,
