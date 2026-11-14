@@ -77,12 +77,12 @@ class DemoCoreAn28Test {
             "^(open|flash|scan|select|poll|enter|bootloader|linkConnect|linkPair|linkSelect|linkDevices|linkRetry|linkSetUrl|linkFetch)|InBootloader"
         )
         val guarded = setOf(
-            "openFd", "openDemo", "openDemoAlink", "scanDevices", "selectDevice", "pollHotplug", "enterBootloader", "bootloaderCounts",
+            "openFd", "openDemo", "openDemoAlink", "scanDevices", "selectDevice", "pollHotplug", "bootloaderCounts",
             "bootloaderDrives",
             "flashToDrive", "flashToDriveGuarded", "firmwareGuardBoardInBootloader", "linkConnect", "linkPair", "linkDevices",
             "linkSelectDevice", "linkRetryNow", "linkSetUrl", "linkFetchInfo",
             // -- WP P1AN1 -- P1OF's `open_document` and the alink USB-direct demo open only the core's fake device;
-            // P1TK's confirmed bootloader and flash calls are refused as their plain forms are
+            // P1TK's confirmed bootloader and flash calls are refused too (WP P1TZ: the bootloader's only form)
             "openDocument", "openDemoUsbDirect", "flashConfirmed", "enterBootloaderConfirmed"
         )
         assertEquals(guarded, names.filter { wayOut.containsMatchIn(it) }.toSet())
