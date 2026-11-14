@@ -427,6 +427,34 @@ codec for the summary. The Swift codec, capture and step-by-step apply stay for 
 bulk write (0xA3) into one `REQ_SET_ALL_PARAMS` for a `.fake` host, as it already did for the chunked read. Tests:
 `CoreDomainSW13Tests` (both bundles), with the DEBUG raw-opcode record and a lock-recording host.
 
+*As built (SW14).* -- WP SW14 -- With a core attached, every function in the table above returns before its raw
+request. **Meters:** `fetchStatus` is the core's `fetchStatus()` (peaks, CPU, the active input count); the clip latch
+is the core's `clip_hold`, which also clears the device's sticky flags when the hold ends, so no `CLEAR_CLIPS` goes
+from the Swift side unless `clearClips` (the core's) is called. `fetchSampleRate` is `fetchStat(STAT_SAMPLE_RATE)`.
+**Signal generator:** `fetchSiggen` is `siggenFetchCaps()` (answered from the connect probe) and `siggenGetConfig()`,
+`fetchSiggenStatus` `siggenGetStatus()`, `siggenSetConfig` a queued typed write, `siggenControl` `writeAndWait`
+(false on a refusal, as the stall was). Nothing reads or starts the generator by itself; the core journals
+`sig.config`/`sig.control` as history only, so Undo steps over them and never starts it. **Analyser:** the core's
+worker (`rtaStart`, called from `fetchCaps` at each connect) probes, pushes, polls, averages the bins and keeps the
+following state (CG5). `RtaEngine` hands it the views' request (`rtaSetRequest`: the newest view's tap, the union
+mask, the bins when a view draws them, the options, `watching` while a view is shown; mask 0 releases it), and on
+its `RtaListener` wake-up reads `rtaGetSnapshot`, `rtaGetOwnership` and `rtaGetCaps` on `coreQueue` (one read queued
+at a time) and converts them into the renderers' `RtaSnapshot` (dBFS back to the wire's level bytes; the core's
+stale channels are already at the floor, its bins already averaged and smoothed). `tick`, the `RTA_CONFIG` events
+and the engine's own push and readback do nothing through a core; Take control is `rtaTakeControl`. The Metal
+renderers are unchanged. `resetAveraging` (no caller) is deleted. **Stats:** each read of `StatsViewModel` is the
+core's: the counters `fetchStat(STAT_*)`, `fetchRingHealth`, `fetchStatsTick` (the buffer packet with the outputs'
+fill already on the ring's scale), `resetBufferStats`, `fetchSpdifRxStatus`/`fetchSpdifRxChannelStatus`/
+`fetchSpdifRxPin`, `fetchLgStatus`, `fetchAdatOutStatus` (gated on the `adat_output` feature, as SW11),
+`fetchInputLock(0)`; the identity comes from the core's state (platform, version, outputs, S/PDIF pin), the serial
+from the device the transport opened, the input-source support from `featurePresent`. **Monitor:**
+`InterruptMonitor`'s log, through a core, shows the core's lines (`monitorRead(afterId)`, read after each packet the
+tap delivers; ids carry on across a restart, so no line shows twice). Its typed hooks still read the tap (CG23) until
+SW-M4. New `CoreStateSource.perform(_:)`: a core call queued on `coreQueue` without a write's bookkeeping (the
+analyser's request and reads, the monitor log). Tests: `CoreDomainSW14Tests` (both bundles), with the DEBUG raw-opcode
+record. The wire tests (`RtaWireTests`, `RtaSharingTests`, `SiggenWireTests`, `LinkRtaArbitrationTests`) stay as the
+raw path's and the hub's; `SiggenHardwareDiagTests` is hardware-only.
+
 #### SW14 (24 functions)
 
 | Swift function | Wire use today | Core replacement | Core (Rust) | Binding line |

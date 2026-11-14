@@ -121,6 +121,12 @@ protocol CoreStateSource: AnyObject {
     /// (`csApply`): show `message`; `resync`: re-read the device too, as for
     /// a refused typed write.  Any thread.
     func postRefusal(_ message: String, resync: Bool)
+    // -- WP SW14 --
+    /// A core call queued on the core's queue behind the work sent before
+    /// it, with none of a write's bookkeeping (no write time, no state
+    /// publish, no refusal): the analyser's request, its reads, the monitor
+    /// log.  Never blocks; any thread.
+    func perform(_ body: @escaping (DspiCore) -> Void)
 }
 
 extension CoreStateSource {
@@ -143,6 +149,7 @@ extension CoreStateSource {
     func writeAndWait<T>(_ body: (DspiCore) throws -> T) -> Result<T, DspiError> { .failure(.Unsupported) }   // -- WP SW11 --
     func readAndPublish<T>(_ body: (DspiCore) throws -> T) -> Result<T, DspiError> { .failure(.Unsupported) }   // -- WP SW12 --
     func postRefusal(_ message: String, resync: Bool) { DeviceLock.notice.post(message) }   // -- WP SW12 --
+    func perform(_ body: @escaping (DspiCore) -> Void) {}   // -- WP SW14 --
 }
 
 /// What one `processNotifications` changed, and the core's state after it.

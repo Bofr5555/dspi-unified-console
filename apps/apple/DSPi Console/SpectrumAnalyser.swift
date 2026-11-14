@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import dspi_core   // -- WP SW14 -- the analyser through a core
 
 // MARK: - Wire structures
 //
@@ -429,6 +430,15 @@ struct RtaOptions: Equatable {
 /// Nothing is polled unless a view is actually watching, and dropping the last
 /// view stops the analyser on the device, which is the only way it costs
 /// nothing when nobody is looking.
+///
+/// -- WP SW14 -- Through a core (docs/SWIFT-SEAMS.md section 3, SW14), the
+/// core's analyser worker does the polling, the configuration push, the bin
+/// averaging and the following state (CG5): this engine hands it the views'
+/// request (`rtaSetRequest`), and on its wake-up (`RtaListener`) reads the
+/// snapshot, the ownership and the caps on the core's queue, and turns them
+/// into the same snapshot the Metal renderers draw.  `tick` and the
+/// configuration events then do nothing; the paths without a core (USB
+/// without -CoreTransport, MIDI, the Link client) poll as before.
 final class RtaEngine: ObservableObject {
 
     // MARK: Published state
@@ -527,8 +537,20 @@ final class RtaEngine: ObservableObject {
         return render.version
     }
 
+    // -- WP SW14 -- Through a core.
+    /// The core's analyser wakes this engine through it.
+    private let coreWake = CoreRtaWake()
+    /// The core whose listener is `coreWake` (lock).
+    private weak var listenedCore: CoreStateSource?
+    /// A read of the core's snapshot is queued (lock).
+    private var corePullQueued = false
+
+    /// The core this engine's device is driven through, if any.
+    private var core: CoreStateSource? { transport?.coreStateSource }
+
     init(transport: any DeviceTransport) {
         self.transport = transport
+        coreWake.engine = self
     }
 
     // MARK: Subscription
@@ -546,6 +568,7 @@ final class RtaEngine: ObservableObject {
     /// selecting another channel keeps the view primary, so the picture does
     /// not jump to whatever else happens to be on screen.
     func update(_ id: UUID, to request: RtaRequest) {
+        let core = self.core   // -- WP SW14 --
         lock.lock()
         let existing = requests[id]
         // A request that has not actually changed keeps its sequence number,
@@ -553,6 +576,13 @@ final class RtaEngine: ObservableObject {
         if existing?.request == request { lock.unlock(); return }
         requestSeq += 1
         requests[id] = (requestSeq, request)
+        // -- WP SW14 -- The core judges a changed request itself (it takes
+        // the analyser back only when what this console asks for changed).
+        if let core {
+            lock.unlock()
+            pushCoreRequest(core)
+            return
+        }
         // Only a change of what this console asks for takes the analyser
         // back.  Showing another display of the same selection (the graph,
         // the bars, the window) is not a choice, and must not blank the
@@ -575,6 +605,17 @@ final class RtaEngine: ObservableObject {
         // than pushing over another console.
         if empty { stateEpoch += 1 }
         lock.unlock()
+        // -- WP SW14 -- Through a core, what is still wanted (mask 0 when
+        // nobody watches: its worker stops the analyser on the device).
+        if let core = self.core {
+            pushCoreRequest(core)
+            guard empty else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, !self.isWatching else { return }
+                self.clearSnapshot()
+            }
+            return
+        }
         guard empty else { return }
         publishSharing()
         // Nobody is watching.  The device would auto-off five seconds from now
@@ -589,18 +630,6 @@ final class RtaEngine: ObservableObject {
                 guard let self, !self.isWatching else { return }
                 self.clearSnapshot()
             }
-        }
-    }
-
-    /// Clear the running averages (the device's bands and the bins here) and the
-    /// peak hold without disturbing the frame in flight.  Main thread only.
-    func resetAveraging() {
-        renderLock.lock()
-        binAverage.reset()
-        renderLock.unlock()
-        let transport = self.transport
-        DispatchQueue.global(qos: .utility).async {
-            _ = transport?.getControlRequest(request: REQ_RTA_CONTROL, value: RTA_CTL_RESET_AVG, index: 2, length: 1)
         }
     }
 
@@ -620,11 +649,18 @@ final class RtaEngine: ObservableObject {
         lock.unlock()
         if configRejected { configRejected = false }
         publishSharing()
+        if let core { pushCoreRequest(core) }   // -- WP SW14 --
     }
 
     /// Push our own configuration again after following someone else's: the
     /// graph options popover's Take control button.  Main thread only.
     func takeControl() {
+        // -- WP SW14 -- Through a core, its own: it pushes this console's
+        // request on its next poll.
+        if let core {
+            core.perform { $0.rtaTakeControl() }
+            return
+        }
         lock.lock()
         takeControlLocked()
         lock.unlock()
@@ -673,6 +709,8 @@ final class RtaEngine: ObservableObject {
     /// A NOTIFY_EVT_RTA_CONFIG from the device: the configuration it just
     /// applied and the session the hub attributes the SET to.  Main thread.
     func deviceAnnounced(_ config: RtaConfig, origin: LinkSessionID) {
+        // -- WP SW14 -- Through a core, the core reads the event (CG5).
+        guard core == nil else { return }
         let own = transport?.isOwnWrite(origin: origin) ?? false
         var clearRejected = false
         lock.lock()
@@ -755,6 +793,11 @@ final class RtaEngine: ObservableObject {
     ///
     /// Blocking; call off the main thread.
     func fetchCaps() {
+        // -- WP SW14 -- Through a core, its worker probes and polls.
+        if let core {
+            attachCore(core)
+            return
+        }
         guard let transport else { return }
         let generation = transport.generation
         guard let d = transport.getControlRequest(request: REQ_RTA_GET_CAPS, value: 0, index: 2,
@@ -834,6 +877,8 @@ final class RtaEngine: ObservableObject {
     /// has its own cadence in elapsed time, so a slower timer or a larger
     /// transform changes how often things are read but not what is read.
     func tick() {
+        // -- WP SW14 -- Through a core, its worker polls (and wakes us).
+        guard core == nil else { return }
         guard supported, let transport else { return }
 
         lock.lock()
@@ -1019,6 +1064,147 @@ final class RtaEngine: ObservableObject {
         }
     }
 
+    // MARK: Through a core (WP SW14)
+
+    /// Point the core's analyser at this engine and start its worker for the
+    /// open connection (a no-op when it already runs), then hand it the
+    /// views' request.  Any thread; never blocks.
+    private func attachCore(_ core: CoreStateSource) {
+        lock.lock()
+        let fresh = listenedCore !== core
+        if fresh { listenedCore = core }
+        lock.unlock()
+        let wake = coreWake
+        core.perform { c in
+            if fresh { c.rtaSetListener(listener: wake) }
+            c.rtaStart()
+        }
+        pushCoreRequest(core)
+        scheduleCorePull()
+    }
+
+    /// The views' request as the core takes it: the newest view's tap, the
+    /// channels (0 releases the analyser), the bins when a view draws them,
+    /// the options, and `watching` while any view is shown.  Any thread.
+    private func pushCoreRequest(_ core: CoreStateSource) {
+        lock.lock()
+        let own = ownConfigLocked()
+        let primary = requests.values.max(by: { $0.seq < $1.seq })?.request
+        let watching = !requests.isEmpty
+        let bins = requests.values.contains { $0.request.drawsBins }
+        let o = pollOptions
+        lock.unlock()
+        let request = dspi_core.RtaRequest(
+            tap: own?.tap ?? primary?.tap ?? RTA_TAP_OUTPUT, mask: own?.channelMask ?? 0, wantsBins: bins,
+            fftOrder: o.fftOrder, avgMs: o.avgMs, peakDecayDbS: o.peakDecayDBs, watching: watching)
+        core.perform { $0.rtaSetRequest(request: request) }
+    }
+
+    /// The core's worker has something new: read it on the core's queue,
+    /// at most one read queued at a time.  Any thread (the worker's).
+    fileprivate func coreWoke() { scheduleCorePull() }
+
+    private func scheduleCorePull() {
+        guard let core else { return }
+        lock.lock()
+        let queued = corePullQueued
+        corePullQueued = true
+        lock.unlock()
+        guard !queued else { return }
+        core.perform { [weak self] c in
+            guard let self else { return }
+            // Cleared first, so a wake-up while this reads queues another.
+            self.lock.lock(); self.corePullQueued = false; self.lock.unlock()
+            self.adoptCore(snapshot: c.rtaGetSnapshot(), ownership: c.rtaGetOwnership(), caps: c.rtaGetCaps())
+        }
+    }
+
+    /// On the core's queue: the core's picture to the render thread at once,
+    /// and the caps, the snapshot, the refusal and the sharing to main.
+    private func adoptCore(snapshot c: dspi_core.RtaSnapshot, ownership o: dspi_core.RtaOwnership,
+                           caps info: dspi_core.RtaCapsInfo) {
+        let s = Self.snapshot(fromCore: c)
+        let (newCaps, centres) = Self.caps(fromCore: info)
+        let isSupported = info.supported && !centres.isEmpty
+        let rejected = c.configRejected
+        lock.lock()
+        following = Self.following(fromCore: o)
+        lock.unlock()
+        renderLock.lock()
+        adoptRenderSnapshotLocked(s)
+        renderLock.unlock()
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            if isSupported != self.supported || newCaps != self.caps || centres != self.bandCentresHz {
+                self.caps = newCaps
+                self.bandCentresHz = centres
+                self.frameFeed.advance()
+                self.publishRenderConfiguration()
+                self.supported = isSupported
+                // As the raw probe: a size outside this device's range would
+                // be refused on every push.
+                var opts = self.options
+                if isSupported, opts.fftOrder < newCaps.fftOrderMin || opts.fftOrder > newCaps.fftOrderMax {
+                    opts.fftOrder = newCaps.fftOrderDefault
+                }
+                self.setOptions(opts)
+            }
+            self.replaceSnapshot(s)
+            if rejected != self.configRejected { self.configRejected = rejected }
+            self.publishSharing()
+        }
+    }
+
+    /// The core's snapshot as the renderers' (dBFS back to the wire's level
+    /// bytes, which the core's 0.5 dB steps hit exactly; its stale channels
+    /// already at the floor; its bins already averaged and smoothed).
+    static func snapshot(fromCore c: dspi_core.RtaSnapshot) -> RtaSnapshot {
+        let zero = Double(RTA_LEVEL_ZERO_DBFS)
+        func byte(_ db: Float) -> UInt8 { UInt8(clamping: Int((Double(db) / RTA_LEVEL_STEP_DB + zero).rounded())) }
+        func bands(_ dbs: [Float]) -> [UInt8] {
+            var out = dbs.prefix(RTA_MAX_BANDS).map(byte)
+            if out.count < RTA_MAX_BANDS { out += Array(repeating: 0, count: RTA_MAX_BANDS - out.count) }
+            return out
+        }
+        var s = RtaSnapshot()
+        s.tap = c.tap
+        for f in c.frames.prefix(Int(c.count)) {
+            s.frames[f.channel] = RtaBandFrame(channel: f.channel, seq: 0, nBands: f.nBands, ageMs: 0,
+                                               avg: bands(f.avgDb), peak: bands(f.peakDb))
+        }
+        let n = min(Int(c.binsCount), c.binsDb.count)
+        if n > 0 {
+            let levels = c.binsDb.prefix(n).map { Double($0) }
+            s.bins = RtaBinFrame(channel: c.binsChannel, seq: 0, fftOrder: c.fftOrder,
+                                 sampleRateHz: c.binsSampleRate, bins: c.binsDb.prefix(n).map(byte),
+                                 levelsDB: levels, smoothedLevelsDB: levels)
+        }
+        s.status = RtaStatus(
+            state: c.running ? RTA_STATE_CAPTURING : RTA_STATE_IDLE, tap: c.tap, channel: RTA_CH_NONE,
+            liveCount: c.liveCount, liveMask: c.liveMask, framesPerSecond: c.framesPerS,
+            busyUsPerSecond: c.busyUsPerS, lastFrameUs: c.lastFrameUs, idleMs: 0xFFFF,
+            sampleRateHz: c.sampleRate, firstBand: c.firstBand, bassBusyUsPerSecond: c.bassBusyUsPerS)
+        return s
+    }
+
+    /// The core's caps as the engine's, and the band centres (Hz).
+    static func caps(fromCore c: dspi_core.RtaCapsInfo) -> (RtaCaps, [Double]) {
+        guard c.supported, c.maxBands > 0 else { return (RtaCaps(), []) }
+        let caps = RtaCaps(
+            version: RTA_CFG_VERSION, inputChannels: c.inputChannels, outputChannels: c.outputChannels,
+            fftOrderMin: c.orderMin, fftOrderMax: c.orderMax, fftOrderDefault: c.orderDefault,
+            bassBands: c.bassBands, maxBands: c.maxBands, levelZero: RTA_LEVEL_ZERO_DBFS,
+            dynamicRangeDB: c.dynamicRangeDb, bassDynamicRangeDB: c.bassDynamicRangeDb)
+        return (caps, c.centres.prefix(Int(c.maxBands)).map { Double($0) })
+    }
+
+    /// The core's following state (CG5) as the engine's: the configuration
+    /// followed and who set it, nil while this console drives.
+    static func following(fromCore o: dspi_core.RtaOwnership) -> (config: RtaConfig, origin: LinkSessionID)? {
+        guard o.following else { return nil }
+        return (RtaConfig(tap: o.tap, channelMask: o.mask, fftOrder: o.fftOrder), LinkSessionID(o.origin))
+    }
+
     // MARK: Publishing
 
     /// Adopt a new snapshot.  Main thread only.
@@ -1179,4 +1365,12 @@ final class RtaEngine: ObservableObject {
     /// The lowest level the wire can express, which is also what an empty band
     /// and a silent channel both read.
     var floorDB: Double { levelDB(0) }
+}
+
+// -- WP SW14 --
+/// The core's analyser listener: called on its worker thread without the
+/// core's lock, it only queues a read on the core's queue.
+private final class CoreRtaWake: RtaListener, @unchecked Sendable {
+    weak var engine: RtaEngine?
+    func onFrame() { engine?.coreWoke() }
 }

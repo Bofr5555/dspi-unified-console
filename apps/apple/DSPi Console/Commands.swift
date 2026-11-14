@@ -177,6 +177,14 @@ extension DSPViewModel {
     }
 
     func fetchStatus() {
+        // -- WP SW14 -- Through a core, its meter read (`fetchStatus`): the
+        // same block, decoded by the core, with its clip hold, which also
+        // clears the device's sticky flags when the hold ends (so no
+        // CLEAR_CLIPS from here).
+        if let core = typedCore {
+            fetchStatusThroughCore(core)
+            return
+        }
         let numChannels = self.numChannels
         // V16 combined status (wValue=9): peaks[numCh] u16 + cpu0 + cpu1 +
         // clip_flags (u32) + active_input_channels (u8).
@@ -242,10 +250,49 @@ extension DSPViewModel {
         }
     }
 
+    // -- WP SW14 --
+    private func fetchStatusThroughCore(_ core: CoreStateSource) {
+        let generation = transport.generation
+        guard case .success(let r) = core.call({ try $0.fetchStatus() }) else { return }
+        let count = min(Int(r.numChannels), r.peaks.count, WIRE_MAX_CHANNELS)
+        let activeInputs = max(BASE_MATRIX_INPUTS, Int(r.activeInputChannels))
+        DispatchQueue.main.async {
+            guard self.transport.generation == generation else { return }
+            if self.activeInputChannels != activeInputs { self.activeInputChannels = activeInputs }
+            var s = self.meters.status
+            var fullPeaks = Array(repeating: Float(0), count: WIRE_MAX_CHANNELS)
+            for i in 0..<count { fullPeaks[i] = r.peaks[i] }
+            s.peaks = fullPeaks
+            s.cpu0 = Int(r.cpu0)
+            s.cpu1 = Int(r.cpu1)
+            s.clipFlags = r.clipFlags
+            // The core's clip hold is the latch: lit by a clip, dark again
+            // when its hold ends or after `clearClips`.
+            if r.clipHold & ~s.clipLatched != 0 { s.clipTimestamp = Date() }
+            s.clipLatched = r.clipHold
+            if r.clipHold == 0 { s.clipTimestamp = nil }
+            if s != self.meters.status { self.meters.status = s }
+        }
+        struct SampleRatePollState { static var decimator = 0 }
+        SampleRatePollState.decimator = (SampleRatePollState.decimator + 1) & 0x0F
+        if SampleRatePollState.decimator == 0 { fetchSampleRate() }
+    }
+
     func fetchSampleRate() {
+        // -- WP SW14 -- Through a core, its counter read.
+        if let core = typedCore {
+            guard case .success(let rate) = core.call({ try $0.fetchStat(which: DspiConstants.STAT_SAMPLE_RATE) })
+            else { return }
+            showSampleRate(rate)
+            return
+        }
         guard let data = transport.getControlRequest(request: REQ_GET_STATUS, value: 15, index: 0, length: 4),
               data.count >= 4 else { return }
         let rate = data.withUnsafeBytes { $0.load(as: UInt32.self) }
+        showSampleRate(rate)
+    }
+
+    private func showSampleRate(_ rate: UInt32) {
         DispatchQueue.main.async {
             // @Published fires on assignment, not on change; the rate repeats
             // on every poll, so only publish when it actually moves.
@@ -259,6 +306,11 @@ extension DSPViewModel {
     }
 
     func clearClips() {
+        // -- WP SW14 -- Through a core, its `clearClips` (the clip hold too).
+        if let core = typedCore {
+            core.perform { try? $0.clearClips() }
+            return
+        }
         _ = transport.getControlRequest(request: REQ_CLEAR_CLIPS, value: 0, index: 0, length: 2)
     }
 
@@ -4272,6 +4324,13 @@ extension DSPViewModel {
     /// (the authoritative parameter ranges/defaults, spec §3.4) plus the
     /// applied config and status, and seed the editing draft.
     func fetchSiggen() {
+        // -- WP SW14 -- Through a core, its caps (read once at its connect
+        // probe), the applied config and the status.  Reads only: nothing
+        // here can start the generator.
+        if let core = typedCore {
+            fetchSiggenThroughCore(core)
+            return
+        }
         guard let h = transport.getControlRequest(request: REQ_SIGGEN_GET_CAPS, value: SIGGEN_CAPS_HEADER, index: 2, length: 8),
               let caps = SiggenCapsHeader.fromData(h) else {
             DispatchQueue.main.async { self.siggenSupported = false }
@@ -4302,9 +4361,50 @@ extension DSPViewModel {
         fetchSiggenStatus()
     }
 
+    // -- WP SW14 --
+    private func fetchSiggenThroughCore(_ core: CoreStateSource) {
+        let generation = transport.generation
+        guard case .success(let caps) = core.call({ try $0.siggenFetchCaps() }), caps.supported else {
+            DispatchQueue.main.async {
+                guard self.transport.generation == generation else { return }
+                self.siggenSupported = false
+            }
+            return
+        }
+        let header = SiggenCapsHeader(core: caps)
+        // A type whose descriptor could not be read (id 0xFF) is left out,
+        // as the raw read leaves out one that stalls.
+        let descs = caps.types.prefix(Int(caps.typeCount)).filter { $0.id != 0xFF }.map(SiggenTypeDesc.init(core:))
+        let applied = try? core.call({ try $0.siggenGetConfig() }).get()
+        DispatchQueue.main.async {
+            guard self.transport.generation == generation else { return }
+            self.siggenSupported = true
+            self.siggenCaps = header
+            self.siggenTypeDescs = descs
+            if let cfg = applied, cfg.channelMask != 0 {
+                self.siggenDraft = SiggenConfig(core: cfg)
+            } else {
+                self.siggenDraft.channelMask &= header.validChannelMask
+                if self.siggenDraft.channelMask == 0 { self.siggenDraft.channelMask = 1 }
+            }
+        }
+        fetchSiggenStatus()
+    }
+
     /// Read the 16-byte live status (state, elapsed, cycles, sweep freq)
     /// into `siggenStatus`.  Cheap enough to poll while running.
     func fetchSiggenStatus() {
+        // -- WP SW14 -- Through a core, its status read.
+        if let core = typedCore {
+            let generation = transport.generation
+            guard case .success(let st) = core.call({ try $0.siggenGetStatus() }) else { return }
+            let status = SiggenStatus(core: st)
+            DispatchQueue.main.async {
+                guard self.transport.generation == generation else { return }
+                if self.siggenStatus != status { self.siggenStatus = status }
+            }
+            return
+        }
         guard let d = transport.getControlRequest(request: REQ_SIGGEN_GET_STATUS, value: 0, index: 2, length: 16),
               let st = SiggenStatus.fromData(d) else { return }
         DispatchQueue.main.async { self.siggenStatus = st }
@@ -4314,6 +4414,9 @@ extension DSPViewModel {
     /// is already running the firmware restarts it with a fade
     /// (stop_reason = RECONFIG), which is what makes live editing safe.
     func siggenSetConfig(_ cfg: SiggenConfig) {
+        // -- WP SW14 -- Through a core, its typed setter, queued in order
+        // with the writes before it (the core journals it as history only).
+        if typedWrite({ try $0.siggenSetConfig(config: cfg.core) }) { return }
         transport.sendControlRequest(request: REQ_SIGGEN_SET_CONFIG, value: 0, index: 2, data: cfg.toData())
     }
 
@@ -4323,6 +4426,13 @@ extension DSPViewModel {
     /// config).  Blocks; call off the main thread.
     @discardableResult
     func siggenControl(_ action: UInt16) -> Bool {
+        // -- WP SW14 -- Through a core, its typed action, behind the config
+        // queued before it; a refusal (an unknown action, START without a
+        // valid config) is false, as the stall was.
+        if let core = typedCore {
+            if case .success = core.writeAndWait({ try $0.siggenControl(action: action) }) { return true }
+            return false
+        }
         guard let d = transport.getControlRequest(request: REQ_SIGGEN_CONTROL, value: action, index: 2, length: 1),
               d.first == 1 else { return false }
         return true

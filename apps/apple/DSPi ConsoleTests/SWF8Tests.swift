@@ -57,7 +57,21 @@ final class SWF8Tests: XCTestCase {
         XCTAssertNil(settled, "nil at once: the list as delivered decides")
 
         // The edit still reaches the core through the normal drain.
-        XCTAssertTrue(spinUntil(5) { t.readState().outputDelayMs[0] == target }, "the drag reached the core")
+        // -- WP SW14 -- review sw13 F1: read the core off main.  A
+        // `readState()` from main waits for the core's queue, and with this
+        // host the job there may itself wait for main (its GET completes
+        // only on main) until the host's 15 s timeout: the flake.  Main keeps
+        // running its loop here, so every completion the host needs lands.
+        let reached = HeldFlag()
+        let stop = HeldFlag()
+        DispatchQueue.global().async {
+            while !stop.held {
+                if t.readState().outputDelayMs[0] == target { reached.held = true; return }
+                Thread.sleep(forTimeInterval: 0.02)
+            }
+        }
+        XCTAssertTrue(spinUntil(20) { reached.held }, "the drag reached the core")
+        stop.held = true
     }
 
     // MARK: - N2: the hop behind queued core work

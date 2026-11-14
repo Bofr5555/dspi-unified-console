@@ -10581,8 +10581,16 @@ struct FileMenuActions {
 
         // -- WP SW13 -- through a core, the core's document (PresetDocumentExport)
         PresetDocumentExport.make(from: vm, name: url.deletingPathExtension().lastPathComponent) { result in
+            // -- WP SW14 -- review sw13 N3: a document that could not be made
+            // (the core refused it) is not a file that failed to write.
+            let file: PresetDocumentExport.File
             do {
-                let file = try result.get()
+                file = try result.get()
+            } catch {
+                showError(configurationExportFailure(error))
+                return
+            }
+            do {
                 try file.data.write(to: url, options: .atomic)
                 showSuccess(configurationExportSummary(file.doc))   // -- WP SW17 -- shared with iOS
             } catch {
@@ -10761,6 +10769,13 @@ extension FileMenuActions {
         return nil
     }
 
+    /// -- WP SW14 -- review sw13 N3: why no document was made (through a
+    /// core: its `configExport` refused, or its file did not decode), as
+    /// opposed to a file that failed to write.
+    static func configurationExportFailure(_ error: Error) -> String {
+        "Could not export the configuration: \(PresetDocumentExport.failureReason(error))"
+    }
+
     static func configurationExportSummary(_ doc: PresetDocument) -> String {
         // Count the bands that actually do something, not the empty slots that
         // pad every bank out to its full width.
@@ -10813,7 +10828,8 @@ extension FileMenuActions {
             """]
 
         if !report.missingChannels.isEmpty {
-            lines.append("Not present on this device: \(report.missingChannels.joined(separator: ", "))")
+            let more = report.missingChannelsMore > 0 ? ", and \(report.missingChannelsMore) more" : ""   // -- WP SW14 --
+            lines.append("Not present on this device: \(report.missingChannels.joined(separator: ", "))\(more)")
         }
         for skipped in report.skipped {
             lines.append("Skipped: \(skipped)")
@@ -11351,7 +11367,7 @@ struct FileMenuActions {
             do {
                 file = try result.get()
             } catch {
-                showError("Failed to write file: \(error.localizedDescription)")
+                showError(configurationExportFailure(error))   // -- WP SW14 -- review sw13 N3
                 return
             }
             DocumentPicker.export(file.data, fileName: "\(configurationName).\(PresetDocument.fileExtension)") { outcome in

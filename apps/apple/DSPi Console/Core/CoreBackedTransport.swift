@@ -823,6 +823,11 @@ extension CoreBackedTransport: CoreStateSource, CoreStateSourceProviding {
         }
     }
 
+    // -- WP SW14 --
+    func perform(_ body: @escaping (DspiCore) -> Void) {
+        coreQueue.async { [weak self] in self?.onCore(body) }
+    }
+
     // -- WP SW12 -- On coreQueue: one state publish behind the work queued now.
     private func queuePublishAfterWrites() {
         guard !writePublishQueued else { return }
