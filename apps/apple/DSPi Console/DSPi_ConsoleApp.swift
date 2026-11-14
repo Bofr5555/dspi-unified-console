@@ -10592,19 +10592,19 @@ struct FileMenuActions {
                 if let parsed = parseDSPiFile(contents) {
                     showMultiChannelPicker(file: parsed)
                 } else {
-                    showError("Failed to parse DSPi Console filter file")
+                    showError(AppNotices.file("Not a DSPi Console filter file this version reads."))
                 }
             } else {
                 // REW format - parse and show single-channel picker
                 let parsed = parseREWFile(contents)
                 if parsed.filters.isEmpty {
-                    showError("No valid filters found in file")
+                    showError(AppNotices.file("No valid filters found in the file."))
                 } else {
                     showSingleChannelPicker(parsed)
                 }
             }
         } catch {
-            showError("Failed to read file: \(error.localizedDescription)")
+            showError(AppNotices.file(error))
         }
     }
 
@@ -10620,9 +10620,9 @@ struct FileMenuActions {
 
         do {
             try output.write(to: url, atomically: true, encoding: .utf8)
-            showSuccess("Filters exported successfully")
+            showSuccess("Filters exported")
         } catch {
-            showError("Failed to write file: \(error.localizedDescription)")
+            showError(AppNotices.file(error))
         }
     }
 
@@ -10650,14 +10650,14 @@ struct FileMenuActions {
             do {
                 file = try result.get()
             } catch {
-                showError(configurationExportFailure(error))
+                showError(configurationExportNotice(error))
                 return
             }
             do {
                 try file.data.write(to: url, options: .atomic)
                 showSuccess(configurationExportSummary(file.doc))   // -- WP SW17 -- shared with iOS
             } catch {
-                showError("Failed to write file: \(error.localizedDescription)")
+                showError(AppNotices.file(error))
             }
         }
     }
@@ -10665,7 +10665,7 @@ struct FileMenuActions {
     static func importConfiguration() {
         let vm = AppState.shared.viewModel
         guard vm.isDeviceConnected else {
-            showError("No device connected.")
+            showError(AppNotices.notConnected)
             return
         }
 
@@ -10683,7 +10683,7 @@ struct FileMenuActions {
             doc = try PresetDocumentFile.decode(data)
             text = String(data: data, encoding: .utf8)
         } catch {
-            showError(error.localizedDescription)
+            showError(AppNotices.configUnreadable(error))
             return
         }
 
@@ -10702,7 +10702,7 @@ struct FileMenuActions {
                                   progress: { progress.update($0) }) { report in
             progress.end()
             if report.lockedOut {
-                showError("The configuration was not applied: \(DeviceLock.lockedMessage).")
+                showError(AppNotices.locked("The configuration was not applied."))
             } else {
                 showImportResult(report)
             }
@@ -10744,16 +10744,9 @@ struct FileMenuActions {
         let text = configurationImportResultText(report)   // -- WP SW17 -- shared with iOS
         // Anything the device refused or couldn't do isn't a success, so don't
         // put a "Success" heading over it.
-        if report.isClean {
-            showSuccess(text)
-        } else {
-            let alert = NSAlert()
-            alert.messageText = "Import Device Configuration"
-            alert.informativeText = text
-            alert.alertStyle = .informational
-            alert.addButton(withTitle: "OK")
-            alert.runModal()
-        }
+        // -- WP P1SW3 -- on the notice host, never a modal
+        NoticeCenter.main.post(.report(report.isClean ? "Configuration imported" : "Import Device Configuration",
+                                       text, kind: report.isClean ? .info : .warning))
     }
 
     /// Persist the device's current live master volume to its independent
@@ -10763,7 +10756,7 @@ struct FileMenuActions {
     static func saveMasterVolume() {
         let vm = AppState.shared.viewModel
         guard vm.isDeviceConnected else {
-            showError("No device connected.")
+            showError(AppNotices.notConnected)
             return
         }
         let savedDB = vm.masterVolumeDB
@@ -10774,7 +10767,7 @@ struct FileMenuActions {
                     let display = savedDB <= -128 ? "−∞ dB (mute)" : String(format: "%.1f dB", savedDB)
                     showSuccess("Master volume saved (\(display)). It will be applied on next boot.")
                 } else {
-                    showError("Failed to save master volume — the device did not acknowledge the request.")
+                    showError(AppNotices.transfer("Master volume not saved: the device did not acknowledge the request."))
                 }
             }
         }
@@ -10789,7 +10782,7 @@ struct FileMenuActions {
     static func saveOutputConfig() {
         let vm = AppState.shared.viewModel
         guard vm.isDeviceConnected else {
-            showError("No device connected.")
+            showError(AppNotices.notConnected)
             return
         }
         DispatchQueue.global(qos: .userInitiated).async {
@@ -10799,9 +10792,9 @@ struct FileMenuActions {
                 case .success:
                     showSuccess("Output configuration saved. It will be applied on next boot.")
                 case .failure(.locked):
-                    showError("Failed to save output configuration: \(DeviceLock.lockedMessage).")
+                    showError(AppNotices.locked("Output configuration not saved."))
                 case .failure:
-                    showError("Failed to save output configuration. The device did not acknowledge the request.")
+                    showError(AppNotices.transfer("Output configuration not saved: the device did not acknowledge the request."))
                 }
             }
         }
@@ -10830,12 +10823,12 @@ extension FileMenuActions {
     }
 
     /// Why a configuration cannot be exported now, or nil when it can.
-    static func configurationExportRefusal(_ vm: DSPViewModel) -> String? {
-        guard vm.isDeviceConnected else { return "No device connected." }
+    static func configurationExportRefusal(_ vm: DSPViewModel) -> ConsoleNotice? {   // -- WP P1SW3 -- a core row
+        guard vm.isDeviceConnected else { return AppNotices.notConnected }
         // The document's channel ids depend on the platform (id 6 is S/PDIF 3 L
         // on RP2350 and PDM on RP2040), so a file written before the device has
         // identified itself could land on the wrong channels elsewhere.
-        guard !vm.platformName.isEmpty else { return "Still identifying the device. Try again in a moment." }
+        guard !vm.platformName.isEmpty else { return AppNotices.stillReading }
         return nil
     }
 
@@ -10844,6 +10837,12 @@ extension FileMenuActions {
     /// opposed to a file that failed to write.
     static func configurationExportFailure(_ error: Error) -> String {
         "Could not export the configuration: \(PresetDocumentExport.failureReason(error))"
+    }
+
+    /// -- WP P1SW3 -- the same as a notice: the core's row for its error,
+    /// with the sentence above as the detail.
+    static func configurationExportNotice(_ error: Error) -> ConsoleNotice {
+        .of(error, fallbackKey: "transfer", detail: configurationExportFailure(error))
     }
 
     static func configurationExportSummary(_ doc: PresetDocument) -> String {
@@ -11162,7 +11161,7 @@ extension FileMenuActions {
         guard let chosen = runChannelPicker(message: importPrompt(for: file),
                                             choices: channelChoices(for: file, vm: vm)) else { return }
         let report = applyDSPiFile(file, to: chosen, vm: vm)
-        showSuccess("Filters imported successfully" + report.notes)
+        showSuccess("Filters imported" + report.notes)
     }
 }
 #endif
@@ -11348,23 +11347,11 @@ extension FileMenuActions {
 extension FileMenuActions {
     // MARK: - Alerts
 
-    private static func showSuccess(_ message: String) {
-        let alert = NSAlert()
-        alert.messageText = "Success"
-        alert.informativeText = message
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
-    }
+    // -- WP P1SW3 -- notices on the main window's host (U5): a result line
+    // for a success, the core's row for a failure; never a modal.
+    private static func showSuccess(_ message: String) { NoticeCenter.main.post(.result(message)) }
 
-    private static func showError(_ message: String) {
-        let alert = NSAlert()
-        alert.messageText = "Error"
-        alert.informativeText = message
-        alert.alertStyle = .critical
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
-    }
+    private static func showError(_ notice: ConsoleNotice) { NoticeCenter.main.post(notice) }
 }
 #else
 // MARK: - File Menu Actions (iOS)
@@ -11381,7 +11368,7 @@ struct FileMenuActions {
             do {
                 contents = try String(contentsOf: url, encoding: .utf8)
             } catch {
-                showError("Failed to read file: \(error.localizedDescription)")
+                showError(AppNotices.file(error))
                 return
             }
             importFilters(contents, vm: vm)
@@ -11392,19 +11379,19 @@ struct FileMenuActions {
         if contents.hasPrefix("# DSPi Console") {
             // DSPi Console format - pick from the channels it carries
             guard let parsed = parseDSPiFile(contents, vm: vm) else {
-                showError("Failed to parse DSPi Console filter file")
+                showError(AppNotices.file("Not a DSPi Console filter file this version reads."))
                 return
             }
             FileImportSheets.chooseChannels(message: importPrompt(for: parsed),
                                             choices: channelChoices(for: parsed, vm: vm)) { chosen in
                 let report = applyDSPiFile(parsed, to: chosen, vm: vm)
-                showSuccess("Filters imported successfully" + report.notes)
+                showSuccess("Filters imported" + report.notes)
             }
         } else {
             // REW format - pick the channels to put its one band list on
             let parsed = parseREWFile(contents)
             guard !parsed.filters.isEmpty else {
-                showError("No valid filters found in file")
+                showError(AppNotices.file("No valid filters found in the file."))
                 return
             }
             FileImportSheets.chooseChannels(message: importPrompt(for: parsed),
@@ -11421,9 +11408,9 @@ struct FileMenuActions {
         let output = generateExportString()
         DocumentPicker.export(Data(output.utf8), fileName: "DSPi Filters.txt") { outcome in
             switch outcome {
-            case .saved:             showSuccess("Filters exported successfully")
+            case .saved:             showSuccess("Filters exported")
             case .cancelled:         break
-            case .failed(let error): showError("Failed to write file: \(error.localizedDescription)")
+            case .failed(let error): showError(AppNotices.file(error))
             }
         }
     }
@@ -11437,14 +11424,14 @@ struct FileMenuActions {
             do {
                 file = try result.get()
             } catch {
-                showError(configurationExportFailure(error))   // -- WP SW14 -- review sw13 N3
+                showError(configurationExportNotice(error))   // -- WP SW14 -- review sw13 N3
                 return
             }
             DocumentPicker.export(file.data, fileName: "\(configurationName).\(PresetDocument.fileExtension)") { outcome in
                 switch outcome {
                 case .saved:             showSuccess(configurationExportSummary(file.doc))
                 case .cancelled:         break
-                case .failed(let error): showError("Failed to write file: \(error.localizedDescription)")
+                case .failed(let error): showError(AppNotices.file(error))
                 }
             }
         }
@@ -11461,7 +11448,7 @@ struct FileMenuActions {
                 doc = try PresetDocumentFile.decode(data)
                 text = String(data: data, encoding: .utf8)
             } catch {
-                showError(error.localizedDescription)
+                showError(AppNotices.configUnreadable(error))
                 return
             }
             // -- WP P1SW1 -- through a core: the preview (as on the Mac)
@@ -11483,13 +11470,14 @@ struct FileMenuActions {
                                   progress: { progress.update($0) }) { report in
             progress.end {
                 if report.lockedOut {
-                    showError("The configuration was not applied: \(DeviceLock.lockedMessage).")
-                } else if report.isClean {
-                    showSuccess(configurationImportResultText(report))
+                    showError(AppNotices.locked("The configuration was not applied."))
                 } else {
                     // Anything the device refused or couldn't do isn't a
-                    // success, so no "Success" heading over it.
-                    show("Import Device Configuration", configurationImportResultText(report))
+                    // success: a warning that stays until it is read.
+                    // -- WP P1SW3 -- on the notice host, never a modal
+                    NoticeCenter.main.post(.report(report.isClean ? "Configuration imported" : "Import Device Configuration",
+                                                   configurationImportResultText(report),
+                                                   kind: report.isClean ? .info : .warning))
                 }
             }
         }
@@ -11498,9 +11486,9 @@ struct FileMenuActions {
     /// Why an import must not start, or nil.  A read-only connection (older
     /// or newer firmware, SW8) refuses every write, so the import is refused
     /// up front in the core's words (SWF4) instead of being reverted later.
-    static func importRefusal(_ vm: DSPViewModel, needsDevice: Bool) -> String? {
-        if needsDevice && !vm.isDeviceConnected { return "No device connected." }
-        if vm.deviceReadOnly { return DeviceLock.readOnlyMessage }
+    static func importRefusal(_ vm: DSPViewModel, needsDevice: Bool) -> ConsoleNotice? {   // -- WP P1SW3 -- a core row
+        if needsDevice && !vm.isDeviceConnected { return AppNotices.notConnected }
+        if vm.deviceReadOnly { return AppNotices.readOnly }
         return nil
     }
 
@@ -11516,18 +11504,10 @@ struct FileMenuActions {
         DispatchQueue.global(qos: .userInitiated).async { _ = vm.saveOutputConfig(confirmed: .saveOutputConfig()) }
     }
 
-    private static func showSuccess(_ message: String) { show("Success", message) }
+    // -- WP P1SW3 -- notices on the main window's host (U5), as on the Mac
+    private static func showSuccess(_ message: String) { NoticeCenter.main.post(.result(message)) }
 
-    private static func showError(_ message: String) { show("Error", message, style: .warning) }
-
-    private static func show(_ title: String, _ message: String, style: PlatformAlert.Style = .informational) {
-        let alert = PlatformAlert()
-        alert.messageText = title
-        alert.informativeText = message
-        alert.alertStyle = style
-        alert.addButton(withTitle: "OK")
-        alert.present()
-    }
+    private static func showError(_ notice: ConsoleNotice) { NoticeCenter.main.post(notice) }
 }
 #endif
 
@@ -11537,7 +11517,7 @@ struct ToolsMenuActions {
     static func commitParameters() {
         let vm = AppState.shared.viewModel
         guard vm.isDeviceConnected else {
-            showError("Not connected to device")
+            showError(AppNotices.notConnected)
             return
         }
 
@@ -11551,12 +11531,9 @@ struct ToolsMenuActions {
 
         if alert.runModal() == .alertFirstButtonReturn {
             let result = vm.savePreset(slot: slot, confirmed: .savePreset())
-            switch result {
-            case PRESET_OK:
-                showSuccess("Preset saved successfully")
-            default:
-                showError("Failed to save preset (\(presetFailureText(result)))")
-            }
+            // -- WP P1SW3 -- a result line or the core's row, not a modal
+            NoticeCenter.main.post(result == PRESET_OK ? .result("Preset saved")
+                                                       : AppNotices.preset(result, "Failed to save preset"))
         }
     }
 
@@ -11571,20 +11548,10 @@ struct ToolsMenuActions {
         if alert.runModal() == .alertFirstButtonReturn {
             let vm = AppState.shared.viewModel
             guard vm.isDeviceConnected else {
-                showError("Not connected to device")
+                showError(AppNotices.notConnected)
                 return
             }
-            let result = vm.loadParams()
-            switch result {
-            case FLASH_OK:
-                showSuccess("Parameters reverted successfully")
-            case FLASH_ERR_NO_DATA:
-                showInfo("No saved parameters found.\n\nThe device is using factory defaults.")
-            case FLASH_ERR_CRC:
-                showError("Saved data is corrupted")
-            default:
-                showError("Failed to load parameters")
-            }
+            NoticeCenter.main.post(AppNotices.revert(vm.loadParams()))   // -- WP P1SW3 --
         }
     }
 
@@ -11599,45 +11566,15 @@ struct ToolsMenuActions {
         if alert.runModal() == .alertFirstButtonReturn {
             let vm = AppState.shared.viewModel
             guard vm.isDeviceConnected else {
-                showError("Not connected to device")
+                showError(AppNotices.notConnected)
                 return
             }
-            let result = vm.factoryReset(confirmed: .factoryReset())
-            switch result {
-            case FLASH_OK:
-                showSuccess("Factory reset complete")
-            default:
-                showError("Failed to reset parameters")
-            }
+            NoticeCenter.main.post(AppNotices.factoryReset(vm.factoryReset(confirmed: .factoryReset())))   // -- WP P1SW3 --
         }
     }
 
-    private static func showSuccess(_ message: String) {
-        let alert = NSAlert()
-        alert.messageText = "Success"
-        alert.informativeText = message
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
-    }
-
-    private static func showError(_ message: String) {
-        let alert = NSAlert()
-        alert.messageText = "Error"
-        alert.informativeText = message
-        alert.alertStyle = .critical
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
-    }
-
-    private static func showInfo(_ message: String) {
-        let alert = NSAlert()
-        alert.messageText = "Information"
-        alert.informativeText = message
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
-    }
+    // -- WP P1SW3 -- the core's row on the main window's host, not a modal
+    private static func showError(_ notice: ConsoleNotice) { NoticeCenter.main.post(notice) }
 }
 #else
 // MARK: - Tools Menu Actions (iOS)
@@ -11647,17 +11584,15 @@ struct ToolsMenuActions {
     static func commitParameters() {
         let vm = AppState.shared.viewModel
         guard vm.isDeviceConnected else {
-            show("Error", "Not connected to device")
+            NoticeCenter.main.post(AppNotices.notConnected)   // -- WP P1SW3 --
             return
         }
         let slot = vm.activePresetSlot
         confirm("Save Preset", "Save current parameters to preset slot \(slot + 1)?", button: "Save") {
             let result = vm.savePreset(slot: slot, confirmed: .savePreset())
-            if result == PRESET_OK {
-                show("Success", "Preset saved successfully")
-            } else {
-                show("Error", "Failed to save preset (\(presetFailureText(result)))")
-            }
+            // -- WP P1SW3 -- a result line or the core's row, not a modal
+            NoticeCenter.main.post(result == PRESET_OK ? .result("Preset saved")
+                                                       : AppNotices.preset(result, "Failed to save preset"))
         }
     }
 
@@ -11665,13 +11600,8 @@ struct ToolsMenuActions {
         confirm("Revert to Saved", "Revert to last saved parameters?\n\nCurrent unsaved changes will be lost.",
                 button: "Revert") {
             let vm = AppState.shared.viewModel
-            guard vm.isDeviceConnected else { show("Error", "Not connected to device"); return }
-            switch vm.loadParams() {
-            case FLASH_OK:          show("Success", "Parameters reverted successfully")
-            case FLASH_ERR_NO_DATA: show("Information", "No saved parameters found.\n\nThe device is using factory defaults.")
-            case FLASH_ERR_CRC:     show("Error", "Saved data is corrupted")
-            default:                show("Error", "Failed to load parameters")
-            }
+            guard vm.isDeviceConnected else { NoticeCenter.main.post(AppNotices.notConnected); return }
+            NoticeCenter.main.post(AppNotices.revert(vm.loadParams()))   // -- WP P1SW3 --
         }
     }
 
@@ -11680,12 +11610,8 @@ struct ToolsMenuActions {
                 "Do you wish to clear all active parameters?\n\nThis will not overwrite your saved parameters unless you run 'Commit Parameters'.",
                 button: "Reset", critical: true) {
             let vm = AppState.shared.viewModel
-            guard vm.isDeviceConnected else { show("Error", "Not connected to device"); return }
-            if vm.factoryReset(confirmed: .factoryReset()) == FLASH_OK {
-                show("Success", "Factory reset complete")
-            } else {
-                show("Error", "Failed to reset parameters")
-            }
+            guard vm.isDeviceConnected else { NoticeCenter.main.post(AppNotices.notConnected); return }
+            NoticeCenter.main.post(AppNotices.factoryReset(vm.factoryReset(confirmed: .factoryReset())))   // -- WP P1SW3 --
         }
     }
 
@@ -11702,14 +11628,6 @@ struct ToolsMenuActions {
             guard response == 0 else { return }
             DispatchQueue.global(qos: .userInitiated).async(execute: action)
         }
-    }
-
-    private static func show(_ title: String, _ message: String) {
-        let alert = PlatformAlert()
-        alert.messageText = title
-        alert.informativeText = message
-        alert.addButton(withTitle: "OK")
-        alert.present()
     }
 }
 #endif
@@ -11747,9 +11665,9 @@ struct AutoEQMenuActions {
             // Reset to Built-in
             do {
                 try manager.resetToBuiltInDatabase()
-                showSuccess("Reset to built-in database.\nEntries: \(manager.entries.count)")
+                showSuccess("AutoEQ database reset to built-in: \(manager.entries.count) entries")
             } catch {
-                showError("Failed to reset: \(error.localizedDescription)")
+                showError(AppNotices.autoEQ(error))
             }
         default:
             break
@@ -11781,14 +11699,14 @@ struct AutoEQMenuActions {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                         rebuildWindowController?.close()
                         rebuildWindowController = nil
-                        showSuccess("Database rebuilt successfully!\nEntries: \(AutoEQManager.shared.entries.count)")
+                        showSuccess("AutoEQ database rebuilt: \(AutoEQManager.shared.entries.count) entries")
                     }
                 }
             } catch {
                 await MainActor.run {
                     rebuildWindowController?.close()
                     rebuildWindowController = nil
-                    showError("Rebuild failed: \(error.localizedDescription)")
+                    showError(AppNotices.autoEQ(error))
                 }
             }
         }
@@ -11805,29 +11723,16 @@ struct AutoEQMenuActions {
 
         do {
             try AutoEQManager.shared.updateDatabaseFromFile(url)
-            showSuccess("Database updated successfully.\nEntries: \(AutoEQManager.shared.entries.count)")
+            showSuccess("AutoEQ database updated: \(AutoEQManager.shared.entries.count) entries")
         } catch {
-            showError("Failed to import database: \(error.localizedDescription)")
+            showError(AppNotices.autoEQ(error))
         }
     }
 
-    private static func showSuccess(_ message: String) {
-        let alert = NSAlert()
-        alert.messageText = "Success"
-        alert.informativeText = message
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
-    }
+    // -- WP P1SW3 -- notices on the main window's host (U5), never a modal
+    private static func showSuccess(_ message: String) { NoticeCenter.main.post(.result(message)) }
 
-    private static func showError(_ message: String) {
-        let alert = NSAlert()
-        alert.messageText = "Error"
-        alert.informativeText = message
-        alert.alertStyle = .critical
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
-    }
+    private static func showError(_ notice: ConsoleNotice) { NoticeCenter.main.post(notice) }
 }
 
 // MARK: - AutoEQ Rebuild Progress Window

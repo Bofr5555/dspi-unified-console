@@ -271,6 +271,12 @@ extension DSPViewModel {
             if r.clipHold & ~s.clipLatched != 0 { s.clipTimestamp = Date() }
             s.clipLatched = r.clipHold
             if r.clipHold == 0 { s.clipTimestamp = nil }
+            // -- WP P1SW3 -- "stale since" (PRO1 S8): from the read the repeat is of
+            if r.stale {
+                if s.staleSince == nil { s.staleSince = Date().addingTimeInterval(-Double(r.ageMs) / 1000) }
+            } else if s.staleSince != nil {
+                s.staleSince = nil
+            }
             if s != self.meters.status { self.meters.status = s }
         }
         struct SampleRatePollState { static var decimator = 0 }

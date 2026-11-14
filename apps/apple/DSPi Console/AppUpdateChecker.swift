@@ -182,19 +182,16 @@ final class AppUpdateChecker: ObservableObject {
                 if let release = try await check() {
                     presentUpdate(release)
                 } else {
-                    let alert = NSAlert()
-                    alert.messageText = "uConsole for DSPi is up to date"
-                    alert.informativeText = "Version \(currentVersion?.description ?? GeneralSettingsTab.appVersion) is the newest version available."
-                    alert.runModal()
+                    // -- WP P1SW3 -- a result on the notice host, not a modal
+                    NoticeCenter.main.post(.report("uConsole for DSPi is up to date",
+                        "Version \(currentVersion?.description ?? GeneralSettingsTab.appVersion) is the newest version available."))
                 }
             } catch is FeedNotFound {
                 // -- WP REL013M -- a private repository: no dialog
             } catch {
-                let alert = NSAlert()
-                alert.alertStyle = .warning
-                alert.messageText = "Couldn't check for updates"
-                alert.informativeText = error.localizedDescription
-                alert.runModal()
+                // -- WP P1SW3 -- a warning on the notice host, not a modal (the
+                // app's own check: the core's table has no row for it)
+                NoticeCenter.main.post(.report("Couldn't check for updates", error.localizedDescription, kind: .warning))
             }
         }
     }

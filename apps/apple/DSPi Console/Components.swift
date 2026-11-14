@@ -484,10 +484,21 @@ struct CpuMeter: View {
 struct CpuSection: View {
     @ObservedObject var meters: DSPMeterModel
     var body: some View {
-        HStack {
-            CpuMeter(core: 0, load: meters.status.cpu0)
-            Spacer()
-            CpuMeter(core: 1, load: meters.status.cpu1)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                CpuMeter(core: 0, load: meters.status.cpu0)
+                Spacer()
+                CpuMeter(core: 1, load: meters.status.cpu1)
+            }
+            // -- WP P1SW3 -- the meters show an old reading: say since when
+            if meters.status.staleSince != nil {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Text(SystemStatus.staleLine(since: meters.status.staleSince, now: context.date))
+                        .font(.caption2)
+                        .foregroundColor(.orange)
+                        .accessibilityIdentifier("metersStale")
+                }
+            }
         }
     }
 }
@@ -960,6 +971,7 @@ struct ChannelSettingsView: View {
     @State private var gainDragMark = CoreDragMark()   // -- WP SW9 --
     @State private var delayDragMark = CoreDragMark()   // -- WP SW9 --
     @State private var showLimiterSettings = false
+    @Environment(\.readOnlyFloor) private var floor   // -- WP P1SW3 --
 
     /// Height of each icon's slot when mute shares the column with the
     /// limiter.  Also the click target, so it is kept generous.
@@ -976,12 +988,13 @@ struct ChannelSettingsView: View {
                 output: outputIndex,
                 isConnected: vm.isDeviceConnected,
                 onToggle: {
+                    guard floor.allows(.other) else { return }   // -- WP P1SW3 --
                     let on = outputIndex < vm.limiter.outputs.count && vm.limiter.outputs[outputIndex].enabled
                     // Part of the output configuration in independent mode.
                     SettingsSaveCoordinator.shared.beginOutputEdit()
                     vm.setLimiterEnabled(output: outputIndex, !on)
                 },
-                onSettings: { showLimiterSettings = true })
+                onSettings: { if floor.allows(.other) { showLimiterSettings = true } })   // -- WP P1SW3 --
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .popover(isPresented: $showLimiterSettings, arrowEdge: .bottom) {
@@ -1052,6 +1065,7 @@ struct ChannelSettingsView: View {
             .padding(.leading, 12)
             .padding(.trailing, 12)
             .fixedSize(horizontal: true, vertical: false)
+            .floorGated(.other)   // -- WP P1SW3 --
     }
 
     // GAIN — label + value on top row, slider full width below
@@ -1080,11 +1094,12 @@ struct ChannelSettingsView: View {
             }
             .onAppear { localGain = gainDB }
             .onChange(of: gainDB) { val in if !isDraggingGain { localGain = val } }
-            .onRightClick { localGain = 0; gainDB = 0 }
+            .onRightClick { guard floor.allows(.other) else { return }; localGain = 0; gainDB = 0 }   // -- WP P1SW3 --
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
+        .floorGated(.other)   // -- WP P1SW3 --
     }
 
     // DELAY — same layout as GAIN
@@ -1126,11 +1141,12 @@ struct ChannelSettingsView: View {
             }
             .onAppear { localDelay = delayMS }
             .onChange(of: delayMS) { val in if !isDraggingDelay { localDelay = val } }
-            .onRightClick { localDelay = 0; delayMS = 0 }
+            .onRightClick { guard floor.allows(.other) else { return }; localDelay = 0; delayMS = 0 }   // -- WP P1SW3 --
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
+        .floorGated(.other)   // -- WP P1SW3 --
     }
 
     // MUTE over the output limiter, so the limiter costs the page no
@@ -1159,6 +1175,7 @@ struct ChannelSettingsView: View {
             .frame(height: split ? iconSlot : nil)
             .frame(maxHeight: split ? nil : .infinity)
             .offset(y: split ? 1 : 0)
+            .floorGated(.mute)   // -- WP P1SW3 -- live under the installer's lock
 
             if split {
                 Spacer(minLength: 0)
@@ -1170,6 +1187,7 @@ struct ChannelSettingsView: View {
                 limiterCell
                     .frame(height: iconSlot)
                     .offset(y: -2)
+                    .floorGated(.other)   // -- WP P1SW3 --
                 Spacer(minLength: 0)
             }
         }
@@ -1867,6 +1885,7 @@ struct FilterListView: View {
                             liveReadouts: index < PeqLiveReadouts.bands ? liveReadouts : nil,
                             isBandActive: { bands.indices.contains($0) && bands[$0].type != .flat }
                         )
+                        .floorGated(.other)   // -- WP P1SW3 -- shown, not editable, on the floor
                     }
                 }
                 .background {
@@ -1959,6 +1978,7 @@ struct FilterListView: View {
                             }
                         )
                         .fixedSize()
+                        .floorGated(.other)   // -- WP P1SW3 --
                     }
                     Spacer(minLength: 0)
                     HStack(spacing: 8) {
@@ -1987,6 +2007,7 @@ struct FilterListView: View {
                                 },
                                 help: "Reset all bands"
                             )
+                            .floorGated(.other)   // -- WP P1SW3 -- (the tabs stay: reading)
                         }
                         if !tabs.isEmpty {
                             FilterListTabToggle(tabs: tabs)

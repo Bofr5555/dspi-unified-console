@@ -33,6 +33,23 @@ final class AutoEQMenuSW18UITests: XCTestCase {
         autoEQ.tap()
     }
 
+    // -- WP P1SW3 -- results and failures are notices on the main window's
+    // host now, not "Success" / "Error" alerts.
+
+    /// The notice host's title, if one shows within `timeout`, whose label
+    /// contains `text`.
+    private func notice(_ app: XCUIApplication, containing text: String, timeout: TimeInterval) -> XCUIElement? {
+        let title = app.staticTexts.matching(NSPredicate(format: "identifier == 'noticeTitle' AND label CONTAINS %@", text))
+            .firstMatch
+        return title.waitForExistence(timeout: timeout) ? title : nil
+    }
+
+    /// Put the notice on show away.
+    private func dismissNotice(_ app: XCUIApplication) {
+        let dismiss = app.buttons["noticeDismiss"].firstMatch
+        if dismiss.exists { dismiss.tap() }
+    }
+
     private func tapItem(_ name: String, in app: XCUIApplication) {
         let item = app.buttons[name].firstMatch
         XCTAssertTrue(item.waitForExistence(timeout: 5), "no \(name) item")
@@ -159,9 +176,9 @@ final class AutoEQMenuSW18UITests: XCTestCase {
         let has = reset.exists
         if has && resetIt {
             reset.tap()
-            let done = app.alerts["Success"]
-            XCTAssertTrue(done.waitForExistence(timeout: 10), "no confirmation of the reset")
-            done.buttons["OK"].tap()
+            XCTAssertNotNil(notice(app, containing: "reset to built-in", timeout: 10), "no notice of the reset")
+            XCTAssertFalse(app.alerts.firstMatch.exists, "a modal for a success")
+            dismissNotice(app)
         } else {
             dialog.buttons["Cancel"].tap()
         }
@@ -181,21 +198,23 @@ final class AutoEQMenuSW18UITests: XCTestCase {
         top.press(forDuration: 0.1, thenDragTo: top.withOffset(CGVector(dx: 0, dy: 700)))
         expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: sheet)
         waitForExpectations(timeout: 10)
-        XCTAssertFalse(app.alerts["Success"].waitForExistence(timeout: 12), "a swiped rebuild ran on and succeeded")
-        // The cancel is reported as such, if at all.
-        let error = app.alerts["Error"]
-        if error.exists {
-            XCTAssertTrue(error.staticTexts.matching(NSPredicate(format: "label CONTAINS 'cancelled'")).firstMatch.exists)
-            error.buttons["OK"].tap()
+        XCTAssertNil(notice(app, containing: "rebuilt", timeout: 12), "a swiped rebuild ran on and succeeded")
+        // The cancel is reported as such, if at all (a notice, never a modal).
+        XCTAssertFalse(app.alerts.firstMatch.exists)
+        let shown = app.staticTexts.matching(identifier: "noticeTitle").firstMatch
+        if shown.exists {
+            XCTAssertTrue(shown.label.contains("cancelled"), shown.label)
+            dismissNotice(app)
         }
         XCTAssertFalse(hasUserDatabase(app), "a swiped rebuild wrote the database")
 
         // Control: left alone, the scripted rebuild succeeds and writes.
         _ = startRebuild(app)
-        let success = app.alerts["Success"]
-        XCTAssertTrue(success.waitForExistence(timeout: 30), "the scripted rebuild did not finish")
-        XCTAssertTrue(success.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Entries: 1'")).firstMatch.exists)
-        success.buttons["OK"].tap()
+        let success = notice(app, containing: "rebuilt", timeout: 30)
+        XCTAssertNotNil(success, "the scripted rebuild did not finish")
+        XCTAssertTrue(success?.label.contains("Entries: 1") ?? false, success?.label ?? "")
+        XCTAssertFalse(app.alerts.firstMatch.exists, "a modal for a success")
+        dismissNotice(app)
         XCTAssertTrue(hasUserDatabase(app, resetIt: true), "the rebuild wrote no database")
     }
 }

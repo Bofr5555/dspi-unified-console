@@ -273,7 +273,7 @@ final class SW17FileTests: XCTestCase {
     /// No device: nothing to export.
     func testSW17ConfigurationExportNeedsADevice() {
         let vm = DSPViewModel(transport: FakeTransport(autoSelect: false))
-        XCTAssertEqual(FileMenuActions.configurationExportRefusal(vm), "No device connected.")
+        XCTAssertEqual(FileMenuActions.configurationExportRefusal(vm)?.key, "disconnected")   // -- WP P1SW3 -- the core's row
     }
 
     // MARK: - Read-only connections (iOS)
@@ -292,14 +292,14 @@ final class SW17FileTests: XCTestCase {
         XCTAssertTrue(spinUntil(30) { old.isDeviceConnected && old.fullReadGeneration == core.generation })
         settle()
         XCTAssertTrue(old.deviceReadOnly)
-        XCTAssertEqual(FileMenuActions.importRefusal(old, needsDevice: true), DeviceLock.readOnlyMessage)
-        XCTAssertEqual(FileMenuActions.importRefusal(old, needsDevice: false), DeviceLock.readOnlyMessage)
+        XCTAssertEqual(FileMenuActions.importRefusal(old, needsDevice: true)?.key, "read_only")   // -- WP P1SW3 --
+        XCTAssertEqual(FileMenuActions.importRefusal(old, needsDevice: false)?.key, "read_only")
         XCTAssertNil(FileMenuActions.configurationExportRefusal(old), "exporting reads only")
 
         let current = demoVM()
         XCTAssertNil(FileMenuActions.importRefusal(current, needsDevice: true))
         let none = DSPViewModel(transport: FakeTransport(autoSelect: false))
-        XCTAssertEqual(FileMenuActions.importRefusal(none, needsDevice: true), "No device connected.")
+        XCTAssertEqual(FileMenuActions.importRefusal(none, needsDevice: true)?.key, "disconnected")
         XCTAssertNil(FileMenuActions.importRefusal(none, needsDevice: false), "filters import into the view")
     }
 

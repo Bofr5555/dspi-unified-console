@@ -57,6 +57,8 @@ struct ContentView: View {
     #endif
     @ObservedObject var vm: DSPViewModel
     @ObservedObject private var settings = AppSettings.shared
+    // -- WP P1SW3 -- the installer's lock, for the read-only floor
+    @ObservedObject private var installer = CoreInstaller.shared
     @EnvironmentObject var matrixMixerController: MatrixMixerWindowController
     @EnvironmentObject var loudnessController: LoudnessWindowController
     @EnvironmentObject var crossfeedController: CrossfeedWindowController
@@ -104,6 +106,10 @@ struct ContentView: View {
         return [out.descriptor, vm.outputLabel(out.index).replacingOccurrences(of: " · ", with: ", "),
                 slot.isEmpty ? "" : "slot \(slot)"].filter { !$0.isEmpty }.joined(separator: ", ")
     }
+
+    /// -- WP P1SW3 -- What the window may change now: everything, or on
+    /// read-only firmware or under the installer's lock only what that allows.
+    private var floor: ReadOnlyFloor { ReadOnlyFloor.of(vm, installer: installer) }
 
     private var sidebarRowHeight: CGFloat {
         switch vm.numMatrixInputs {
@@ -174,7 +180,7 @@ struct ContentView: View {
     private func sourceContextMenu() -> NSMenu? {
         let source = vm.inputSource
         guard vm.inputSourceNamesSupported, vm.inputSourceNames.indices.contains(source),
-              !vm.deviceReadOnly else { return nil }   // -- WP SWF4 --
+              floor.allows(.other) else { return nil }   // -- WP SWF4 --, P1SW3
         let menu = NSMenu()
         menu.addItem(ClosureMenuItem(title: "Rename \u{201C}\(vm.inputSourceTitle(source))\u{201D}\u{2026}") {
             sourceRenameTarget = source
@@ -201,7 +207,7 @@ struct ContentView: View {
     }
 
     private func startRename(_ channelIdx: Int) {
-        guard !vm.deviceReadOnly else { return }   // -- WP SWF4 --
+        guard floor.allows(.other) else { return }   // -- WP SWF4 --, P1SW3
         if renamingChannel != nil { commitRename() }
         renameText = vm.channelNames[channelIdx]
         renamingChannel = channelIdx
@@ -234,20 +240,7 @@ struct ContentView: View {
             let status = vm.savePreset(slot: slot, confirmed: .savePreset())
             if status != PRESET_OK {
                 DispatchQueue.main.async {
-                    #if os(macOS)
-                    let alert = NSAlert()
-                    #else
-                    let alert = PlatformAlert()
-                    #endif
-                    alert.messageText = "Save Failed"
-                    alert.informativeText = "Failed to save preset (\(presetFailureText(status)))."
-                    alert.alertStyle = .warning
-                    alert.addButton(withTitle: "OK")
-                    #if os(macOS)
-                    alert.runModal()
-                    #else
-                    alert.present()
-                    #endif
+                    NoticeCenter.main.post(AppNotices.preset(status, "Failed to save preset"))   // -- WP P1SW3 -- was a modal
                 }
             }
         }
@@ -334,20 +327,7 @@ struct ContentView: View {
             guard vm.transport.generation == generation else { return }
             guard status == PRESET_OK else {
                 DispatchQueue.main.async {
-                    #if os(macOS)
-                    let alert = NSAlert()
-                    #else
-                    let alert = PlatformAlert()
-                    #endif
-                    alert.messageText = "Copy Failed"
-                    alert.informativeText = "Failed to copy preset (\(presetFailureText(status)))."
-                    alert.alertStyle = .warning
-                    alert.addButton(withTitle: "OK")
-                    #if os(macOS)
-                    alert.runModal()
-                    #else
-                    alert.present()
-                    #endif
+                    NoticeCenter.main.post(AppNotices.preset(status, "Failed to copy preset"))   // -- WP P1SW3 -- was a modal
                 }
                 return
             }
@@ -400,20 +380,7 @@ struct ContentView: View {
             }
             DispatchQueue.main.async {
                 if status != PRESET_OK {
-                    #if os(macOS)
-                    let errAlert = NSAlert()
-                    #else
-                    let errAlert = PlatformAlert()
-                    #endif
-                    errAlert.messageText = "Clear Failed"
-                    errAlert.informativeText = "Failed to clear preset (error \(status))."
-                    errAlert.alertStyle = .warning
-                    errAlert.addButton(withTitle: "OK")
-                    #if os(macOS)
-                    errAlert.runModal()
-                    #else
-                    errAlert.present()
-                    #endif
+                    NoticeCenter.main.post(AppNotices.preset(status, "Failed to clear preset"))   // -- WP P1SW3 -- was a modal
                 }
             }
         }
@@ -511,7 +478,7 @@ struct ContentView: View {
                             }
                             .contextMenu {
                                 Button("Rename") { startRename(ch) }
-                                    .disabled(vm.deviceReadOnly)   // -- WP SWF4 --
+                                    .disabled(!floor.allows(.other))   // -- WP SWF4 --, P1SW3: the floor
                                 Divider()
                                 Button("Copy Parameters") {
                                     vm.copyChannelParams(eqChannel: ch, name: vm.channelNames[ch])
@@ -519,7 +486,7 @@ struct ContentView: View {
                                 Button("Paste Parameters") {
                                     vm.pasteChannelParams(eqChannel: ch)
                                 }
-                                .disabled(vm.channelClipboard == nil || vm.deviceReadOnly)   // -- WP SWF4 --
+                                .disabled(vm.channelClipboard == nil || !floor.allows(.other))   // -- WP SWF4 --, P1SW3
                             }
                     }
                 }
@@ -556,11 +523,11 @@ struct ContentView: View {
                             .contextMenu {
                                 if vm.isDeviceConnected && vm.siggenSupported {
                                     Button("Identify") { vm.identifyOutput(out.index) }
-                                        .disabled(vm.deviceReadOnly)   // -- WP SWF4 --
+                                        .disabled(!floor.allows(.other))   // -- WP SWF4 --, P1SW3: the floor
                                     Divider()
                                 }
                                 Button("Rename") { startRename(eqCh) }
-                                    .disabled(vm.deviceReadOnly)   // -- WP SWF4 --
+                                    .disabled(!floor.allows(.other))   // -- WP SWF4 --, P1SW3: the floor
                                 Divider()
                                 Button("Copy Parameters") {
                                     vm.copyChannelParams(eqChannel: eqCh, name: vm.channelNames[eqCh])
@@ -568,7 +535,7 @@ struct ContentView: View {
                                 Button("Paste Parameters") {
                                     vm.pasteChannelParams(eqChannel: eqCh)
                                 }
-                                .disabled(vm.channelClipboard == nil || vm.deviceReadOnly)   // -- WP SWF4 --
+                                .disabled(vm.channelClipboard == nil || !floor.allows(.other))   // -- WP SWF4 --, P1SW3
                             }
                     }
                 }
@@ -614,7 +581,7 @@ struct ContentView: View {
                             tooltip: "Headphone Crossfeed",
                             action: { vm.setCrossfeed(!vm.crossfeedEnabled) }
                         )
-                        .disabled(vm.deviceReadOnly)   // -- WP SWF4 --
+                        .disabled(!floor.allows(.other))   // -- WP SWF4 --, P1SW3: the floor
                         .onRightClick { crossfeedController.show(vm: vm) }
 
                         SidebarIconButton(
@@ -623,7 +590,7 @@ struct ContentView: View {
                             tooltip: "Loudness Compensation",
                             action: { vm.setLoudness(!vm.loudnessEnabled) }
                         )
-                        .disabled(vm.deviceReadOnly)   // -- WP SWF4 --
+                        .disabled(!floor.allows(.other))   // -- WP SWF4 --, P1SW3: the floor
                         .onRightClick { loudnessController.show(vm: vm) }
 
                         SidebarIconButton(
@@ -632,7 +599,7 @@ struct ContentView: View {
                             tooltip: "Volume Leveller",
                             action: { vm.setLeveller(!vm.levellerEnabled) }
                         )
-                        .disabled(vm.deviceReadOnly)   // -- WP SWF4 --
+                        .disabled(!floor.allows(.other))   // -- WP SWF4 --, P1SW3: the floor
                         .onRightClick { levellerController.show(vm: vm) }
 
                         SidebarIconButton(
@@ -644,7 +611,7 @@ struct ContentView: View {
                             tooltip: "Psychoacoustic Bass",
                             action: { vm.setPsybass(!vm.psybassEnabled) }
                         )
-                        .disabled(vm.deviceReadOnly)   // -- WP SWF4 --
+                        .disabled(!floor.allows(.other))   // -- WP SWF4 --, P1SW3: the floor
                         .onRightClick { psybassController.show(vm: vm) }
 
                         SidebarIconButton(
@@ -681,7 +648,7 @@ struct ContentView: View {
                             tooltip: "Bypass Master EQ",
                             action: { vm.setBypass(!vm.bypass) }
                         )
-                        .disabled(vm.deviceReadOnly)   // -- WP SWF4 --
+                        .disabled(!floor.allows(.other))   // -- WP SWF4 --, P1SW3: the floor
                     }
                     .padding(.vertical, 8)
                     .onboardingAnchor("basics.tools")
@@ -725,20 +692,7 @@ struct ContentView: View {
 
                                         let showLoadFailed: (UInt8) -> Void = { status in
                                             vm.fetchPresetActive()
-                                            #if os(macOS)
-                                            let alert = NSAlert()
-                                            #else
-                                            let alert = PlatformAlert()
-                                            #endif
-                                            alert.messageText = "Load Failed"
-                                            alert.informativeText = presetLoadFailedText(status)   // -- WP SWF7 --
-                                            alert.alertStyle = .warning
-                                            alert.addButton(withTitle: "OK")
-                                            #if os(macOS)
-                                            alert.runModal()
-                                            #else
-                                            alert.present()
-                                            #endif
+                                            NoticeCenter.main.post(AppNotices.presetLoad(status))   // -- WP P1SW3 -- was a modal (SWF7)
                                         }
 
                                         presetSwitchInFlight = true
@@ -757,20 +711,7 @@ struct ContentView: View {
                                                     guard saveStatus == PRESET_OK else {
                                                         DispatchQueue.main.async {
                                                             vm.activePresetSlot = previousSlot
-                                                            #if os(macOS)
-                                                            let alert = NSAlert()
-                                                            #else
-                                                            let alert = PlatformAlert()
-                                                            #endif
-                                                            alert.messageText = "Save Failed"
-                                                            alert.informativeText = "Failed to save preset (\(presetFailureText(saveStatus))). Preset switch aborted."
-                                                            alert.alertStyle = .warning
-                                                            alert.addButton(withTitle: "OK")
-                                                            #if os(macOS)
-                                                            alert.runModal()
-                                                            #else
-                                                            alert.present()
-                                                            #endif
+                                                            NoticeCenter.main.post(AppNotices.preset(saveStatus, "Failed to save preset; the preset switch was stopped"))   // -- WP P1SW3 -- was a modal
                                                             presetSwitchInFlight = false
                                                         }
                                                         return
@@ -834,8 +775,10 @@ struct ContentView: View {
                             }
                             .fixedSize()
                             // -- WP SWF4 -- No preset load or save on read-only firmware.
-                            .opacity(vm.isDeviceConnected && !vm.deviceReadOnly ? 1.0 : 0.4)
-                            .allowsHitTesting(vm.isDeviceConnected && !presetSwitchInFlight && !vm.deviceReadOnly)
+                            // -- WP P1SW3 -- The floor: recall stays under the installer's lock.
+                            .opacity(vm.isDeviceConnected && floor.allows(.presetRecall) ? 1.0 : 0.4)
+                            .allowsHitTesting(vm.isDeviceConnected && !presetSwitchInFlight && floor.allows(.presetRecall))
+                            .floorHelp(!floor.allows(.presetRecall), floor.reason)
                         }
                         .onboardingAnchor("basics.presets")
                         .contextMenu {
@@ -878,7 +821,7 @@ struct ContentView: View {
                                 onClearAll: { showPresetClearAllConfirmation(vm: vm) }
                             )
                             .equatable()
-                            .disabled(vm.deviceReadOnly)   // -- WP SWF4 --
+                            .disabled(!floor.allows(.other))   // -- WP SWF4 --, P1SW3: the floor
                         }
 
                         // Input Source Picker (hidden if firmware doesn't support it)
@@ -907,8 +850,9 @@ struct ContentView: View {
                                         .allowsHitTesting(false)
                                 }
                                 .fixedSize()
-                                .opacity(vm.isDeviceConnected && !vm.deviceReadOnly ? 1.0 : 0.4)   // -- WP SWF4 --
-                                .allowsHitTesting(vm.isDeviceConnected && !vm.deviceReadOnly)
+                                .opacity(vm.isDeviceConnected && floor.allows(.other) ? 1.0 : 0.4)   // -- WP SWF4 --, P1SW3
+                                .allowsHitTesting(vm.isDeviceConnected && floor.allows(.other))
+                                .floorHelp(!floor.allows(.other), floor.reason)
                             }
                         }
 
@@ -1031,6 +975,9 @@ struct ContentView: View {
                             // table below rather than the raw source.
                             SpectrumBarStrip(vm: vm, engine: vm.rta)
                                 .padding(.horizontal)
+                                .floorGated(.analyser)   // -- WP P1SW3 --
+
+                            ReadOnlyFloorLine()   // -- WP P1SW3 --
 
                             InputChannelHeader(
                                 channel: ch,
@@ -1041,6 +988,7 @@ struct ContentView: View {
                                 }
                             )
                             .padding(.horizontal)
+                            .floorGated(.other)   // -- WP P1SW3 --
 
                             FilterListView(
                                 bands: vm.channelData[ch] ?? [],
@@ -1072,6 +1020,9 @@ struct ContentView: View {
                             // transmits.
                             SpectrumBarStrip(vm: vm, engine: vm.rta)
                                 .padding(.horizontal)
+                                .floorGated(.analyser)   // -- WP P1SW3 --
+
+                            ReadOnlyFloorLine()   // -- WP P1SW3 --
 
                             OutputChannelDetail(vm: vm, outputIndex: idx,
                                                 availableTypes: availableFilterTypes(vm: vm))
@@ -1083,7 +1034,15 @@ struct ContentView: View {
                         // and a legacy scroller steals ~15pt off the right edge,
                         // leaving the cards narrower than the graph above them.
                         ScrollView {
+                            // -- WP P1SW3 -- the page scrolls; its controls follow the floor
                             DashboardOverview(vm: vm)
+                                .floorGated(.other)
+                        }
+                        // -- WP P1SW3 -- the floor's line over the page: an inset, not a
+                        // second child of the scroll view, so the dashboard keeps its
+                        // one layout pass.
+                        .safeAreaInset(edge: .top, spacing: 0) {
+                            ReadOnlyFloorLine(verticalPadding: 4)
                         }
                         .scrollIndicators(.never)
                     }
@@ -1093,7 +1052,8 @@ struct ContentView: View {
                 // rather than growing the column.
                 .frame(maxHeight: .infinity)
                 // -- WP SW8 -- Firmware in another wire format: shown, not editable.
-                .disabled(vm.deviceReadOnly)
+                // -- WP P1SW3 -- Each part follows the read-only floor
+                // (`floorGated`), so what the lock allows stays live.
                 .consoleDetailFrame()
             }
             // `idealHeight` pins the column's *reported* height to a constant,
@@ -1143,10 +1103,13 @@ struct ContentView: View {
         // Revert), the A/B chip and the snapshots' notice line.
         .overlay(alignment: .bottom) {
             VStack(spacing: 0) {
+                NoticeHost(center: .main)   // -- WP P1SW3 -- the window's notices (U5)
                 SnapshotsOverlay(snaps: .shared)
                 UndoNotice(undo: vm.undo)
             }
         }
+        // -- WP P1SW3 -- the read-only floor for every control below
+        .environment(\.readOnlyFloor, floor)
         #if os(macOS)
         // -- WP P1SW2 -- the unlock prompt and the mode switch (iOS: IOSRootView)
         .installerPrompts()
@@ -1432,6 +1395,7 @@ struct OutputChannelDetail: View {
 struct UserVolumeSection: View {
     @ObservedObject var vm: DSPViewModel
     @ObservedObject private var settings = AppSettings.shared
+    @Environment(\.readOnlyFloor) private var floor   // -- WP P1SW3 --
 
     // Slider position is a "scalar" 0...1 mapped to dB over [minDB, 0]
     // via a square-root power taper: more travel is given to the loud
@@ -1486,8 +1450,8 @@ struct UserVolumeSection: View {
             .onChange(of: vm.userVolumeDB) { val in
                 if !isDragging { localScalar = Self.dbToScalar(val) }
             }
-            .onRightClick { guard !vm.deviceReadOnly else { return }; localScalar = 1; vm.setUserVolume(0) }
-            .disabled(vm.deviceReadOnly)   // -- WP SWF4 --
+            .onRightClick { guard floor.allows(.volume) else { return }; localScalar = 1; vm.setUserVolume(0) }
+            .floorGated(.volume)   // -- WP SWF4 --, P1SW3: live under the installer's lock
         }
     }
 }
@@ -1507,6 +1471,7 @@ struct UserVolumeSection: View {
 struct MasterModeSection: View {
     @ObservedObject var vm: DSPViewModel
     @ObservedObject private var settings = AppSettings.shared
+    @Environment(\.readOnlyFloor) private var floor   // -- WP P1SW3 --
 
     @State private var localDB: Float = 0
     @State private var isDragging = false
@@ -1549,8 +1514,8 @@ struct MasterModeSection: View {
             .onChange(of: vm.masterVolumeDB) { val in
                 if !isDragging { localDB = val }
             }
-            .onRightClick { guard !vm.deviceReadOnly else { return }; localDB = 0; vm.setMasterVolume(0) }
-            .disabled(vm.deviceReadOnly)   // -- WP SWF4 --
+            .onRightClick { guard floor.allows(.volume) else { return }; localDB = 0; vm.setMasterVolume(0) }
+            .floorGated(.volume)   // -- WP SWF4 --, P1SW3: live under the installer's lock
         }
     }
 }
