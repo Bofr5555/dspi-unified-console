@@ -3732,6 +3732,73 @@ data class RawNotification(
 )
 
 /**
+ * One snapshot in a list ([`DspiCore::snapshot_list`]).
+ */
+data class SnapshotInfo(
+    /**
+     * The store's id, for the other calls.
+     */
+    val id: String,
+    /**
+     * The user's name; any Unicode.
+     */
+    val name: String,
+    /**
+     * The user's note; any Unicode.
+     */
+    val note: String,
+    /**
+     * The serial of the device it was taken from.
+     */
+    val serial: String,
+    /**
+     * When it was taken, ms since the Unix epoch.
+     */
+    val savedMs: Long,
+    /**
+     * The platform it was taken on (`RP2040`, `RP2350`), "" when unknown.
+     */
+    val platform: String,
+    /**
+     * The device's input channels then, 0 when unknown.
+     */
+    val inputChannels: Int,
+    /**
+     * The device's output channels then, 0 when unknown.
+     */
+    val outputChannels: Int,
+    /**
+     * The wire format of its image, 0 when unknown.
+     */
+    val wireFormat: Int,
+)
+
+/**
+ * What a recall did ([`DspiCore::snapshot_recall`]).
+ */
+data class SnapshotRecall(
+    /**
+     * The snapshot's name.
+     */
+    val name: String,
+    /**
+     * Whether the snapshot's own image was written (false: a document
+     * without one, written through the import's path).
+     */
+    val image: Boolean,
+    /**
+     * What changed, in the unsaved-changes list's words, then the settings
+     * outside the image that were rewritten.
+     */
+    val changes: List<String>,
+    /**
+     * What was not written, and why (a feature this firmware lacks, a part
+     * the device refused, a value held to the device's range).
+     */
+    val notes: List<String>,
+)
+
+/**
  * A voltage the flow offers on the connected device.
  */
 data class VregChoice(

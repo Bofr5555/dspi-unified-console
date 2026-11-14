@@ -93,6 +93,8 @@ The DSP blocks have proper names, used as section and window titles and as the l
 | **Preset** | A stored set of settings in a slot (10 slots). Save, load, delete | | `preset.*` |
 | **Startup preset** | The preset that loads at power on | | `preset.startup` |
 | **Live** | A setting not yet saved: lost at power off unless a preset is saved | | |
+| **Snapshot** | A whole-device state kept by the app, not on the device: every live setting plus the device's name, the input sources' names, the output latency and the control surfaces. Capture, recall, rename, add a note, export, import. One word: not "scene" (the hub's, below) and not "preset" (a slot on the device) (OD-P1a, WP P1SN) | | |
+| **Recall** | Putting a snapshot back on the device as it was captured. The result is live, not saved to a preset slot, and ends the undo history | | |
 | **Sample rate** | The rate the device runs at when it is the clock master | Hz, 44100 to 96000 | `in.rate` |
 | **Clock master**, **clock slave** | Whether the device generates the I2S clock or follows it (firmware words) | | `in.i2s.clock` |
 | **Master clock** | MCLK for an external DAC, a multiple of the sample rate | 128x, 256x | `i2s.mck*` |
@@ -126,6 +128,7 @@ are `alink_*`, `fetch_alink_frame_counter` and `apply_at_frame`.*
 | **Re-anchor** | Restarting the outputs in step after a loss or a new audio link delay: a short silence (2 to 6 ms). Not "Resync" in text a user reads | | |
 | **Frame counter** | The link's running count of frames, the same on every device of one sender | frames | |
 | **Apply at frame** | A change (mute, unmute, preset, master volume, output delay, rate, test click) that every device makes at the same audio link frame | | |
+| **Scene** | A hub's audio link system change: mute, preset load, master volume or delay, made at one audio link frame across units. Not a snapshot, which is one device's whole state (OD-P1a) | | |
 
 ## 4. Units
 

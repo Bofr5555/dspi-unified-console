@@ -123,6 +123,8 @@ mod journal;
 mod diag;
 // -- WP P1NT --
 pub mod notice_text;
+// -- WP P1SN --
+mod snapshot;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -197,6 +199,8 @@ pub use diag::REMOVED as DIAG_REMOVED;
 pub use notice_text::{
     NOTICE_KEY_UNKNOWN, Notice, NoticeKind, notice_for, notice_for_key, notice_texts,
 };
+// -- WP P1SN --
+pub use snapshot::{SnapshotInfo, SnapshotRecall};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///
@@ -240,6 +244,10 @@ pub struct DspiCore {
     /// Its locks are taken with or without `inner`, never `inner` after.
     /// (Not "history": that is the undo journal's name.)
     pub(crate) events: Arc<events::Store>,
+    // -- WP P1SN --
+    /// The folder the client named for snapshots (none on the web).
+    #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), allow(dead_code))]
+    pub(crate) snapshots: snapshot::StoreSlot,
 }
 
 // -- WP LK4 --
@@ -767,6 +775,8 @@ impl DspiCore {
             probe_lock: Mutex::new(()),
             // -- WP P0M --
             events,
+            // -- WP P1SN --
+            snapshots: snapshot::StoreSlot::default(),
         })
     }
 }

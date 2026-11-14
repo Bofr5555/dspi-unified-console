@@ -4652,6 +4652,97 @@ uint32_t dspi_config_preview(struct FfiCore *core,
 uint32_t dspi_config_diff(const char *before, const char *after, char *buf, uint32_t len);
 
 /**
+ * Keep snapshots in files under `dir`, the app's own data folder (created if
+ * missing; "" forgets it). JSON `{ok}` or a failure.
+ */
+uint32_t dspi_snapshot_set_dir(struct FfiCore *core, const char *dir, char *buf, uint32_t len);
+
+/**
+ * Capture the open device as a new snapshot in the store, named `name`
+ * with `note` (null: ""). JSON: the snapshot `{ok, id, name, note, serial,
+ * savedMs, platform, inputChannels, outputChannels, wireFormat}`, or a
+ * failure.
+ */
+uint32_t dspi_snapshot_capture(struct FfiCore *core,
+                               const char *name,
+                               const char *note,
+                               char *buf,
+                               uint32_t len);
+
+/**
+ * The snapshots of device `serial` (null or "": the open device), oldest
+ * first: JSON `{ok, value: [snapshot, ...]}`. Never a failure.
+ */
+uint32_t dspi_snapshot_list(struct FfiCore *core, const char *serial, char *buf, uint32_t len);
+
+/**
+ * Recall snapshot `id` on the open device. JSON `{ok, name, image, changes,
+ * notes}` or a failure (nothing sent for a snapshot of another platform,
+ * channel count or wire format).
+ */
+uint32_t dspi_snapshot_recall(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+
+/**
+ * Rename snapshot `id`. JSON: the snapshot, or a failure.
+ */
+uint32_t dspi_snapshot_rename(struct FfiCore *core,
+                              const char *id,
+                              const char *name,
+                              char *buf,
+                              uint32_t len);
+
+/**
+ * Set snapshot `id`'s note. JSON: the snapshot, or a failure.
+ */
+uint32_t dspi_snapshot_set_note(struct FfiCore *core,
+                                const char *id,
+                                const char *note,
+                                char *buf,
+                                uint32_t len);
+
+/**
+ * Delete snapshot `id`. JSON `{ok}` or a failure.
+ */
+uint32_t dspi_snapshot_delete(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+
+/**
+ * Snapshot `id`'s document (`.dspipreset` text), or a JSON failure in its
+ * place (`{ok: false, ...}`; a document has no `ok`).
+ */
+uint32_t dspi_snapshot_export(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+
+/**
+ * File a `.dspipreset` document as a snapshot of the open device, named
+ * `name` (null or "": the document's) with `note` (null: ""). JSON: the
+ * snapshot, or a failure.
+ */
+uint32_t dspi_snapshot_import(struct FfiCore *core,
+                              const char *doc,
+                              const char *name,
+                              const char *note,
+                              char *buf,
+                              uint32_t len);
+
+/**
+ * The open device as a snapshot document, not filed (the web's way, and a
+ * client's own store): `.dspipreset` text, or a JSON failure in its place.
+ */
+uint32_t dspi_snapshot_capture_document(struct FfiCore *core,
+                                        const char *name,
+                                        const char *note,
+                                        char *buf,
+                                        uint32_t len);
+
+/**
+ * Recall a snapshot document's text on the open device: the reply of
+ * `dspi_snapshot_recall`.
+ */
+uint32_t dspi_snapshot_recall_document(struct FfiCore *core,
+                                       const char *doc,
+                                       char *buf,
+                                       uint32_t len);
+
+/**
  * The filters of the device's `inputs` inputs and every output as a filter
  * document, or a JSON failure.
  */

@@ -936,6 +936,186 @@ pub extern "C" fn dspi_config_diff(
     })
 }
 
+// -- WP P1SN -- snapshots (PRO1 W3)
+/// Keep snapshots in files under `dir`, the app's own data folder (created if
+/// missing; "" forgets it). JSON `{ok}` or a failure.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_snapshot_set_dir(
+    core: *mut FfiCore,
+    dir: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| {
+        done_reply(arg(dir, "dir").and_then(|d| c.snapshot_set_dir(d.to_owned())))
+    })
+}
+
+/// Capture the open device as a new snapshot in the store, named `name`
+/// with `note` (null: ""). JSON: the snapshot `{ok, id, name, note, serial,
+/// savedMs, platform, inputChannels, outputChannels, wireFormat}`, or a
+/// failure.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_snapshot_capture(
+    core: *mut FfiCore,
+    name: *const c_char,
+    note: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| {
+        json_reply(arg(name, "name").and_then(|n| {
+            let note = optional_text(note, "note")?.unwrap_or_default();
+            c.snapshot_capture(n.to_owned(), note)
+        }))
+    })
+}
+
+/// The snapshots of device `serial` (null or "": the open device), oldest
+/// first: JSON `{ok, value: [snapshot, ...]}`. Never a failure.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_snapshot_list(
+    core: *mut FfiCore,
+    serial: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| {
+        json_reply(optional_text(serial, "serial").map(|s| c.snapshot_list(s.unwrap_or_default())))
+    })
+}
+
+/// Recall snapshot `id` on the open device. JSON `{ok, name, image, changes,
+/// notes}` or a failure (nothing sent for a snapshot of another platform,
+/// channel count or wire format).
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_snapshot_recall(
+    core: *mut FfiCore,
+    id: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| {
+        json_reply(arg(id, "id").and_then(|i| c.snapshot_recall(i.to_owned())))
+    })
+}
+
+/// Rename snapshot `id`. JSON: the snapshot, or a failure.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_snapshot_rename(
+    core: *mut FfiCore,
+    id: *const c_char,
+    name: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| {
+        json_reply(
+            arg(id, "id")
+                .and_then(|i| Ok((i, arg(name, "name")?)))
+                .and_then(|(i, n)| c.snapshot_rename(i.to_owned(), n.to_owned())),
+        )
+    })
+}
+
+/// Set snapshot `id`'s note. JSON: the snapshot, or a failure.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_snapshot_set_note(
+    core: *mut FfiCore,
+    id: *const c_char,
+    note: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| {
+        json_reply(
+            arg(id, "id")
+                .and_then(|i| Ok((i, arg(note, "note")?)))
+                .and_then(|(i, n)| c.snapshot_set_note(i.to_owned(), n.to_owned())),
+        )
+    })
+}
+
+/// Delete snapshot `id`. JSON `{ok}` or a failure.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_snapshot_delete(
+    core: *mut FfiCore,
+    id: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| {
+        done_reply(arg(id, "id").and_then(|i| c.snapshot_delete(i.to_owned())))
+    })
+}
+
+/// Snapshot `id`'s document (`.dspipreset` text), or a JSON failure in its
+/// place (`{ok: false, ...}`; a document has no `ok`).
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_snapshot_export(
+    core: *mut FfiCore,
+    id: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| {
+        document_reply(arg(id, "id").and_then(|i| c.snapshot_export(i.to_owned())))
+    })
+}
+
+/// File a `.dspipreset` document as a snapshot of the open device, named
+/// `name` (null or "": the document's) with `note` (null: ""). JSON: the
+/// snapshot, or a failure.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_snapshot_import(
+    core: *mut FfiCore,
+    doc: *const c_char,
+    name: *const c_char,
+    note: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| {
+        json_reply(arg(doc, "doc").and_then(|d| {
+            let name = optional_text(name, "name")?.unwrap_or_default();
+            let note = optional_text(note, "note")?.unwrap_or_default();
+            c.snapshot_import(d.to_owned(), name, note)
+        }))
+    })
+}
+
+/// The open device as a snapshot document, not filed (the web's way, and a
+/// client's own store): `.dspipreset` text, or a JSON failure in its place.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_snapshot_capture_document(
+    core: *mut FfiCore,
+    name: *const c_char,
+    note: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| {
+        document_reply(arg(name, "name").and_then(|n| {
+            let note = optional_text(note, "note")?.unwrap_or_default();
+            c.snapshot_capture_document(n.to_owned(), note)
+        }))
+    })
+}
+
+/// Recall a snapshot document's text on the open device: the reply of
+/// `dspi_snapshot_recall`.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_snapshot_recall_document(
+    core: *mut FfiCore,
+    doc: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| {
+        json_reply(arg(doc, "doc").and_then(|d| c.snapshot_recall_document(d.to_owned())))
+    })
+}
+
 /// The filters of the device's `inputs` inputs and every output as a filter
 /// document, or a JSON failure.
 #[unsafe(no_mangle)]
@@ -1998,6 +2178,10 @@ mod tests_wp_qp16;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p1df;
+// -- WP P1SN --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_p1sn;
 // -- WP P1AFIX --
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]

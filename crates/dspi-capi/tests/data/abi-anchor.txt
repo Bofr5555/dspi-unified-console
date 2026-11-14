@@ -1044,6 +1044,41 @@ uint32_t eq_channels,
 char *buf,
 uint32_t len);
 uint32_t dspi_config_diff(const char *before, const char *after, char *buf, uint32_t len);
+uint32_t dspi_snapshot_set_dir(struct FfiCore *core, const char *dir, char *buf, uint32_t len);
+uint32_t dspi_snapshot_capture(struct FfiCore *core,
+const char *name,
+const char *note,
+char *buf,
+uint32_t len);
+uint32_t dspi_snapshot_list(struct FfiCore *core, const char *serial, char *buf, uint32_t len);
+uint32_t dspi_snapshot_recall(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+uint32_t dspi_snapshot_rename(struct FfiCore *core,
+const char *id,
+const char *name,
+char *buf,
+uint32_t len);
+uint32_t dspi_snapshot_set_note(struct FfiCore *core,
+const char *id,
+const char *note,
+char *buf,
+uint32_t len);
+uint32_t dspi_snapshot_delete(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+uint32_t dspi_snapshot_export(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+uint32_t dspi_snapshot_import(struct FfiCore *core,
+const char *doc,
+const char *name,
+const char *note,
+char *buf,
+uint32_t len);
+uint32_t dspi_snapshot_capture_document(struct FfiCore *core,
+const char *name,
+const char *note,
+char *buf,
+uint32_t len);
+uint32_t dspi_snapshot_recall_document(struct FfiCore *core,
+const char *doc,
+char *buf,
+uint32_t len);
 uint32_t dspi_filters_export(struct FfiCore *core, uint8_t inputs, char *buf, uint32_t len);
 uint32_t dspi_filters_inspect(struct FfiCore *core,
 const char *text,

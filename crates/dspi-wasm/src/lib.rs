@@ -61,6 +61,8 @@ pub mod link;
 pub mod outputs;
 // -- WP WB6a --
 pub mod presets;
+// -- WP P1SN --
+pub mod snapshots;
 // -- WP SW3 --
 pub mod system;
 // -- WP WB4a --

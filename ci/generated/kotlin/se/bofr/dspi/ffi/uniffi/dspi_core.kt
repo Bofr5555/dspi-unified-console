@@ -1574,6 +1574,28 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2200,6 +2222,28 @@ fun uniffi_dspi_core_checksum_method_dspicore_siggen_get_config(
 fun uniffi_dspi_core_checksum_method_dspicore_siggen_get_status(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_siggen_set_config(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_snapshot_capture(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_snapshot_capture_document(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_snapshot_delete(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_snapshot_export(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_snapshot_import(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_snapshot_list(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_snapshot_recall(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_snapshot_recall_document(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_snapshot_rename(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_snapshot_set_dir(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_snapshot_set_note(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_test_dac_mute(
 ): Short
@@ -2857,6 +2901,28 @@ fun uniffi_dspi_core_fn_method_dspicore_siggen_get_status(`ptr`: Pointer,uniffi_
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_siggen_set_config(`ptr`: Pointer,`config`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_snapshot_capture(`ptr`: Pointer,`name`: RustBuffer.ByValue,`note`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_snapshot_capture_document(`ptr`: Pointer,`name`: RustBuffer.ByValue,`note`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_snapshot_delete(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_snapshot_export(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_snapshot_import(`ptr`: Pointer,`text`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,`note`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_snapshot_list(`ptr`: Pointer,`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_snapshot_recall(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_snapshot_recall_document(`ptr`: Pointer,`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_snapshot_rename(`ptr`: Pointer,`id`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_snapshot_set_dir(`ptr`: Pointer,`dir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_snapshot_set_note(`ptr`: Pointer,`id`: RustBuffer.ByValue,`note`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_test_dac_mute(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_undo(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -4049,6 +4115,39 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_siggen_set_config() != 59149.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_capture() != 32693.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_capture_document() != 16773.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_delete() != 58898.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_export() != 23201.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_import() != 58149.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_list() != 29663.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_recall() != 16804.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_recall_document() != 8659.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_rename() != 7102.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_set_dir() != 26239.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_set_note() != 19310.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_test_dac_mute() != 36228.toShort()) {
@@ -8575,6 +8674,105 @@ public interface DspiCoreInterface {
      * [`DspiError::Disconnected`] or [`DspiError::Transfer`] otherwise.
      */
     fun `siggenSetConfig`(`config`: SiggenConfig)
+    
+    /**
+     * Capture the open device as a new snapshot in the store (see
+     * [`DspiCore::snapshot_capture_document`]). Errors as there, and
+     * [`DspiError::Io`] with no folder named or a failed write.
+     */
+    fun `snapshotCapture`(`name`: kotlin.String, `note`: kotlin.String): SnapshotInfo
+    
+    /**
+     * The open device's state as a snapshot document (`.dspipreset` text,
+     * `meta.kind = "snapshot"`), not filed: for the web, which keeps
+     * snapshots as downloads, and for a client's own store. `name` and
+     * `note` (any Unicode; cut to 200 and 4000 characters) go in with it.
+     * Reads the settings outside the image (the control surfaces' whole
+     * configuration among them); the image is the mirror.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::Transfer`] before
+     * the device's settings were read, or for a failed read;
+     * [`DspiError::Unsupported`] for firmware whose image this build cannot
+     * map.
+     */
+    fun `snapshotCaptureDocument`(`name`: kotlin.String, `note`: kotlin.String): kotlin.String
+    
+    /**
+     * Delete snapshot `id`. Errors as [`DspiCore::snapshot_rename`].
+     */
+    fun `snapshotDelete`(`id`: kotlin.String)
+    
+    /**
+     * Snapshot `id`'s document, to save as a file. Errors as
+     * [`DspiCore::snapshot_rename`].
+     */
+    fun `snapshotExport`(`id`: kotlin.String): kotlin.String
+    
+    /**
+     * File a `.dspipreset` document (a snapshot or any other kind) as a
+     * snapshot of the open device, named `name` ("" keeps the document's)
+     * with `note`. A document without an image is recalled through the
+     * import's path.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for text that is not a
+     * document this build reads; [`DspiError::Disconnected`] with no device
+     * and no serial in the document; [`DspiError::Io`].
+     */
+    fun `snapshotImport`(`text`: kotlin.String, `name`: kotlin.String, `note`: kotlin.String): SnapshotInfo
+    
+    /**
+     * The snapshots of device `serial` ("" the open device), oldest first.
+     * Never fails: no folder, no device or no snapshots is an empty list, and
+     * a damaged index is rebuilt from the documents.
+     */
+    fun `snapshotList`(`serial`: kotlin.String): List<SnapshotInfo>
+    
+    /**
+     * Recall snapshot `id` on the open device: the settings outside the
+     * image that differ (device and source names, output latency, control
+     * surfaces), then the image as one bulk write, under the device lock.
+     * The undo history before it ends; the event log records a recall with
+     * its changes. Live, not stored in a preset slot. Never guarded and
+     * never queued: on a lost connection it stops where it is.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id, a snapshot
+     * of another platform or channel count, or an image of another wire
+     * format this build cannot convert (nothing is sent);
+     * [`DspiError::Disconnected`], [`DspiError::ReadOnly`],
+     * [`DspiError::Locked`] and the transfer errors of a bulk write;
+     * [`DspiError::Io`] for an unreadable store.
+     */
+    fun `snapshotRecall`(`id`: kotlin.String): SnapshotRecall
+    
+    /**
+     * Recall a snapshot document's text (see
+     * [`DspiCore::snapshot_recall`]): for the web and for a document the
+     * client keeps itself.
+     */
+    fun `snapshotRecallDocument`(`text`: kotlin.String): SnapshotRecall
+    
+    /**
+     * Rename snapshot `id`; any Unicode, cut to 200 characters.
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id;
+     * [`DspiError::Io`].
+     */
+    fun `snapshotRename`(`id`: kotlin.String, `name`: kotlin.String): SnapshotInfo
+    
+    /**
+     * Keep snapshots in files under `dir`, the client's own data folder
+     * (created if missing): one folder per device serial, one document per
+     * snapshot and an index. "" forgets the folder.
+     *
+     * Errors: [`DspiError::Io`] when the folder cannot be created;
+     * [`DspiError::Unsupported`] on the web (no files there).
+     */
+    fun `snapshotSetDir`(`dir`: kotlin.String)
+    
+    /**
+     * Set snapshot `id`'s note; any Unicode, cut to 4000 characters.
+     * Errors as [`DspiCore::snapshot_rename`].
+     */
+    fun `snapshotSetNote`(`id`: kotlin.String, `note`: kotlin.String): SnapshotInfo
     
     /**
      * Pulse the mute output for about a second, so an installer can hear
@@ -14355,6 +14553,223 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * Capture the open device as a new snapshot in the store (see
+     * [`DspiCore::snapshot_capture_document`]). Errors as there, and
+     * [`DspiError::Io`] with no folder named or a failed write.
+     */
+    @Throws(DspiException::class)override fun `snapshotCapture`(`name`: kotlin.String, `note`: kotlin.String): SnapshotInfo {
+            return FfiConverterTypeSnapshotInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_snapshot_capture(
+        it, FfiConverterString.lower(`name`),FfiConverterString.lower(`note`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The open device's state as a snapshot document (`.dspipreset` text,
+     * `meta.kind = "snapshot"`), not filed: for the web, which keeps
+     * snapshots as downloads, and for a client's own store. `name` and
+     * `note` (any Unicode; cut to 200 and 4000 characters) go in with it.
+     * Reads the settings outside the image (the control surfaces' whole
+     * configuration among them); the image is the mirror.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::Transfer`] before
+     * the device's settings were read, or for a failed read;
+     * [`DspiError::Unsupported`] for firmware whose image this build cannot
+     * map.
+     */
+    @Throws(DspiException::class)override fun `snapshotCaptureDocument`(`name`: kotlin.String, `note`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_snapshot_capture_document(
+        it, FfiConverterString.lower(`name`),FfiConverterString.lower(`note`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Delete snapshot `id`. Errors as [`DspiCore::snapshot_rename`].
+     */
+    @Throws(DspiException::class)override fun `snapshotDelete`(`id`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_snapshot_delete(
+        it, FfiConverterString.lower(`id`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Snapshot `id`'s document, to save as a file. Errors as
+     * [`DspiCore::snapshot_rename`].
+     */
+    @Throws(DspiException::class)override fun `snapshotExport`(`id`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_snapshot_export(
+        it, FfiConverterString.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * File a `.dspipreset` document (a snapshot or any other kind) as a
+     * snapshot of the open device, named `name` ("" keeps the document's)
+     * with `note`. A document without an image is recalled through the
+     * import's path.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for text that is not a
+     * document this build reads; [`DspiError::Disconnected`] with no device
+     * and no serial in the document; [`DspiError::Io`].
+     */
+    @Throws(DspiException::class)override fun `snapshotImport`(`text`: kotlin.String, `name`: kotlin.String, `note`: kotlin.String): SnapshotInfo {
+            return FfiConverterTypeSnapshotInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_snapshot_import(
+        it, FfiConverterString.lower(`text`),FfiConverterString.lower(`name`),FfiConverterString.lower(`note`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The snapshots of device `serial` ("" the open device), oldest first.
+     * Never fails: no folder, no device or no snapshots is an empty list, and
+     * a damaged index is rebuilt from the documents.
+     */override fun `snapshotList`(`serial`: kotlin.String): List<SnapshotInfo> {
+            return FfiConverterSequenceTypeSnapshotInfo.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_snapshot_list(
+        it, FfiConverterString.lower(`serial`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Recall snapshot `id` on the open device: the settings outside the
+     * image that differ (device and source names, output latency, control
+     * surfaces), then the image as one bulk write, under the device lock.
+     * The undo history before it ends; the event log records a recall with
+     * its changes. Live, not stored in a preset slot. Never guarded and
+     * never queued: on a lost connection it stops where it is.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id, a snapshot
+     * of another platform or channel count, or an image of another wire
+     * format this build cannot convert (nothing is sent);
+     * [`DspiError::Disconnected`], [`DspiError::ReadOnly`],
+     * [`DspiError::Locked`] and the transfer errors of a bulk write;
+     * [`DspiError::Io`] for an unreadable store.
+     */
+    @Throws(DspiException::class)override fun `snapshotRecall`(`id`: kotlin.String): SnapshotRecall {
+            return FfiConverterTypeSnapshotRecall.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_snapshot_recall(
+        it, FfiConverterString.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Recall a snapshot document's text (see
+     * [`DspiCore::snapshot_recall`]): for the web and for a document the
+     * client keeps itself.
+     */
+    @Throws(DspiException::class)override fun `snapshotRecallDocument`(`text`: kotlin.String): SnapshotRecall {
+            return FfiConverterTypeSnapshotRecall.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_snapshot_recall_document(
+        it, FfiConverterString.lower(`text`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Rename snapshot `id`; any Unicode, cut to 200 characters.
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id;
+     * [`DspiError::Io`].
+     */
+    @Throws(DspiException::class)override fun `snapshotRename`(`id`: kotlin.String, `name`: kotlin.String): SnapshotInfo {
+            return FfiConverterTypeSnapshotInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_snapshot_rename(
+        it, FfiConverterString.lower(`id`),FfiConverterString.lower(`name`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Keep snapshots in files under `dir`, the client's own data folder
+     * (created if missing): one folder per device serial, one document per
+     * snapshot and an index. "" forgets the folder.
+     *
+     * Errors: [`DspiError::Io`] when the folder cannot be created;
+     * [`DspiError::Unsupported`] on the web (no files there).
+     */
+    @Throws(DspiException::class)override fun `snapshotSetDir`(`dir`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_snapshot_set_dir(
+        it, FfiConverterString.lower(`dir`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Set snapshot `id`'s note; any Unicode, cut to 4000 characters.
+     * Errors as [`DspiCore::snapshot_rename`].
+     */
+    @Throws(DspiException::class)override fun `snapshotSetNote`(`id`: kotlin.String, `note`: kotlin.String): SnapshotInfo {
+            return FfiConverterTypeSnapshotInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_snapshot_set_note(
+        it, FfiConverterString.lower(`id`),FfiConverterString.lower(`note`),_status)
+}
+    }
+    )
+    }
     
 
     
@@ -23958,6 +24373,154 @@ public object FfiConverterTypeSiggenTypeInfo: FfiConverterRustBuffer<SiggenTypeI
 
 
 /**
+ * One snapshot in a list ([`DspiCore::snapshot_list`]).
+ */
+data class SnapshotInfo (
+    /**
+     * The store's id, for the other calls.
+     */
+    var `id`: kotlin.String, 
+    /**
+     * The user's name; any Unicode.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * The user's note; any Unicode.
+     */
+    var `note`: kotlin.String, 
+    /**
+     * The serial of the device it was taken from.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * When it was taken, ms since the Unix epoch.
+     */
+    var `savedMs`: kotlin.Long, 
+    /**
+     * The platform it was taken on (`RP2040`, `RP2350`), "" when unknown.
+     */
+    var `platform`: kotlin.String, 
+    /**
+     * The device's input channels then, 0 when unknown.
+     */
+    var `inputChannels`: kotlin.UByte, 
+    /**
+     * The device's output channels then, 0 when unknown.
+     */
+    var `outputChannels`: kotlin.UByte, 
+    /**
+     * The wire format of its image, 0 when unknown.
+     */
+    var `wireFormat`: kotlin.UByte
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSnapshotInfo: FfiConverterRustBuffer<SnapshotInfo> {
+    override fun read(buf: ByteBuffer): SnapshotInfo {
+        return SnapshotInfo(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: SnapshotInfo) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`note`) +
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterLong.allocationSize(value.`savedMs`) +
+            FfiConverterString.allocationSize(value.`platform`) +
+            FfiConverterUByte.allocationSize(value.`inputChannels`) +
+            FfiConverterUByte.allocationSize(value.`outputChannels`) +
+            FfiConverterUByte.allocationSize(value.`wireFormat`)
+    )
+
+    override fun write(value: SnapshotInfo, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`note`, buf)
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterLong.write(value.`savedMs`, buf)
+            FfiConverterString.write(value.`platform`, buf)
+            FfiConverterUByte.write(value.`inputChannels`, buf)
+            FfiConverterUByte.write(value.`outputChannels`, buf)
+            FfiConverterUByte.write(value.`wireFormat`, buf)
+    }
+}
+
+
+
+/**
+ * What a recall did ([`DspiCore::snapshot_recall`]).
+ */
+data class SnapshotRecall (
+    /**
+     * The snapshot's name.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * Whether the snapshot's own image was written (false: a document
+     * without one, written through the import's path).
+     */
+    var `image`: kotlin.Boolean, 
+    /**
+     * What changed, in the unsaved-changes list's words, then the settings
+     * outside the image that were rewritten.
+     */
+    var `changes`: List<kotlin.String>, 
+    /**
+     * What was not written, and why (a feature this firmware lacks, a part
+     * the device refused, a value held to the device's range).
+     */
+    var `notes`: List<kotlin.String>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSnapshotRecall: FfiConverterRustBuffer<SnapshotRecall> {
+    override fun read(buf: ByteBuffer): SnapshotRecall {
+        return SnapshotRecall(
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: SnapshotRecall) = (
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterBoolean.allocationSize(value.`image`) +
+            FfiConverterSequenceString.allocationSize(value.`changes`) +
+            FfiConverterSequenceString.allocationSize(value.`notes`)
+    )
+
+    override fun write(value: SnapshotRecall, buf: ByteBuffer) {
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterBoolean.write(value.`image`, buf)
+            FfiConverterSequenceString.write(value.`changes`, buf)
+            FfiConverterSequenceString.write(value.`notes`, buf)
+    }
+}
+
+
+
+/**
  * Fill of one S/PDIF output's buffers.
  */
 data class SpdifBufferStats (
@@ -27716,6 +28279,34 @@ public object FfiConverterSequenceTypeSiggenTypeInfo: FfiConverterRustBuffer<Lis
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeSiggenTypeInfo.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeSnapshotInfo: FfiConverterRustBuffer<List<SnapshotInfo>> {
+    override fun read(buf: ByteBuffer): List<SnapshotInfo> {
+        val len = buf.getInt()
+        return List<SnapshotInfo>(len) {
+            FfiConverterTypeSnapshotInfo.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<SnapshotInfo>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeSnapshotInfo.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<SnapshotInfo>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeSnapshotInfo.write(it, buf)
         }
     }
 }
