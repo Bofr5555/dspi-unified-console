@@ -5566,7 +5566,8 @@ bool dspi_usb_direct_supported(struct FfiCore *core);
 
 /**
  * `EXT_ALINK_USB` in JSON (`mode`, `modeName`, `autoReanchor`, `d`,
- * `dBelowMin`, `dAboveMax`, `rateUnsupported`, `state`, `stateCode`), or a
+ * `dBelowMin`, `dAboveMax`, `rateUnsupported`, `onLockError`, `state`,
+ * `stateCode`), or a
  * failure (`unsupported` without the block).
  */
 uint32_t dspi_fetch_alink_usb(struct FfiCore *core, char *buf, uint32_t len);
@@ -5579,9 +5580,17 @@ uint32_t dspi_fetch_alink_usb(struct FfiCore *core, char *buf, uint32_t len);
 uint8_t dspi_set_alink_usb(struct FfiCore *core, uint8_t mode, bool auto_reanchor, uint16_t d);
 
 /**
+ * What mode 2 does in lock error (the fork's WP USB3b): `play_unaligned`
+ * false mutes, true plays unaligned. Only byte 4 changes: nothing
+ * re-anchors. `unsupported` when firmware before WP USB3b refuses
+ * `play_unaligned`. Returns a status byte, 0xFF on failure.
+ */
+uint8_t dspi_set_alink_usb_on_lock_error(struct FfiCore *core, bool play_unaligned);
+
+/**
  * `EXT_ALINK_USB_STATUS` in JSON (`state`, `stateCode`, `phaseState`,
  * `rateCode`, `rateHz`, `hwTimestamp`, `stream`, `nominalFeedback`,
- * `timeBase`, `holdover`, `hostPpm`, `vcxoPpm`, `phaseErrorSamples`,
+ * `timeBase`, `holdover`, `seeded`, `lockError`, `hostPpm`, `vcxoPpm`, `phaseErrorSamples`,
  * `sample`, `busFrame`, `dMin`, `dMax`, `fill`, `streamStartBusFrame`,
  * `streamAgeFrames`, `streamShift`, `gapCount`, `anchors`, `reanchors`,
  * `missedSamples`, `lateSamples`), or a failure.
@@ -5589,9 +5598,10 @@ uint8_t dspi_set_alink_usb(struct FfiCore *core, uint8_t mode, bool auto_reancho
 uint32_t dspi_fetch_alink_usb_status(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * `EXT_ALINK_USB_DIAG` in JSON (`lastCause`, `rides`, `holdovers`, `ends`
- * as `{cause, count}`, `suspends`, `resumes`, `busResets`, `unplugs`,
- * `lastFrames`, `lastUs`, `lastDevUs`, `longestRideUs`, `maxPassUs`,
+ * `EXT_ALINK_USB_DIAG` in JSON (`version`, `lastCause`, `rides`,
+ * `holdovers`, `ends` as `{cause, count}`, `suspends`, `resumes`,
+ * `busResets`, `unplugs`, `lastFrames`, `badSofReadings`, `lockErrors`,
+ * `lastUs`, `lastDevUs`, `longestRideUs`, `maxPassUs`,
  * `maxIsrQuietUs`, `maxIsrLateUs`, `holdoverUs`), or a failure.
  */
 uint32_t dspi_fetch_alink_usb_diag(struct FfiCore *core, char *buf, uint32_t len);

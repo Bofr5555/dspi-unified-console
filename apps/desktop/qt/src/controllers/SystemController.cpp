@@ -235,8 +235,17 @@ void SystemController::setLists(const QJsonObject &o) {
                                  { QStringLiteral("name"), u.value(QStringLiteral("name")) },
                                  { QStringLiteral("latencyUs"), u.value(QStringLiteral("latencyUs")) } });
     }
-    if (edit != m_editUnits) {
+    // -- WP AUSB2 -- the USB-direct units, for their Installer settings
+    QVariantList usb;
+    for (const QVariant &v : m_units) {
+        const QVariantMap u = v.toMap();
+        if (u.value(QStringLiteral("transport")).toString() != QLatin1String("usb_direct")) continue;
+        usb.append(QVariantMap{ { QStringLiteral("id"), u.value(QStringLiteral("id")) },
+                                { QStringLiteral("name"), u.value(QStringLiteral("name")) } });
+    }
+    if (edit != m_editUnits || usb != m_usbUnits) {
         m_editUnits = edit;
+        m_usbUnits = usb;
         emit editUnitsChanged();
     }
 }
@@ -320,6 +329,65 @@ bool SystemController::setUnitLatency(const QString &unitId, const QString &us) 
     return true;
 }
 
+// -- WP AUSB2 --
+static QVariantMap unitById(const QVariantList &units, const QString &id) {
+    for (const QVariant &u : units) {
+        const QVariantMap m = u.toMap();
+        if (m.value(QStringLiteral("id")).toString() == id) return m;
+    }
+    return QVariantMap();
+}
+
+QString SystemController::usbModeOf(const QString &unitId) const {
+    if (m_draftUsb.contains(unitId)) return m_draftUsb.value(unitId).value(QStringLiteral("mode")).toString();
+    return unitById(units(), unitId).value(QStringLiteral("usbModeWanted")).toString();
+}
+
+QString SystemController::onLockErrorOf(const QString &unitId) const {
+    const QString drafted = m_draftUsb.value(unitId).value(QStringLiteral("onLockError")).toString();
+    if (!drafted.isEmpty()) return drafted;
+    const QString wanted = unitById(units(), unitId).value(QStringLiteral("usbOnLockErrorWanted")).toString();
+    return wanted.isEmpty() ? QStringLiteral("mute") : wanted;
+}
+
+bool SystemController::keepUsbAligned() const {
+    return m_draftKeep.isValid() ? m_draftKeep.toBool() : m_view.value(QLatin1String("keepUsbAligned")).toBool();
+}
+
+bool SystemController::setUsbMode(const QString &unitId, const QString &mode) {
+    static const QStringList modes{ QString(), QStringLiteral("off"), QStringLiteral("rate_lock"), QStringLiteral("phase_lock") };
+    if (!mayEdit() || !modes.contains(mode)) return false;
+    if (!m_dirty) m_draftRevision = revision();
+    QVariantMap d = m_draftUsb.value(unitId);
+    d.insert(QStringLiteral("mode"), mode);
+    m_draftUsb.insert(unitId, d);
+    m_dirty = true;
+    emit draftChanged();
+    return true;
+}
+
+bool SystemController::setOnLockError(const QString &unitId, const QString &action) {
+    if (!mayEdit() || (action != QLatin1String("mute") && action != QLatin1String("play_unaligned"))) return false;
+    if (!m_dirty) m_draftRevision = revision();
+    QVariantMap d = m_draftUsb.value(unitId);
+    // The mode goes with it: the core's edit sets both (none: the unit's own)
+    if (!d.contains(QStringLiteral("mode"))) d.insert(QStringLiteral("mode"), usbModeOf(unitId));
+    d.insert(QStringLiteral("onLockError"), action);
+    m_draftUsb.insert(unitId, d);
+    m_dirty = true;
+    emit draftChanged();
+    return true;
+}
+
+bool SystemController::setKeepUsbAligned(bool on) {
+    if (!mayEdit()) return false;
+    if (!m_dirty) m_draftRevision = revision();
+    m_draftKeep = on;
+    m_dirty = true;
+    emit draftChanged();
+    return true;
+}
+
 QString SystemController::roomLipSyncText(const QString &roomId) const {
     if (m_draftRooms.contains(roomId)) {
         const QVariant v = m_draftRooms.value(roomId);
@@ -361,6 +429,17 @@ QByteArray SystemController::draftJson() const {
                                   { QStringLiteral("measuredLatencyUs"), it.value().isValid() ? QJsonValue(it.value().toLongLong()) : QJsonValue() } });
     edits.insert(QStringLiteral("rooms"), rooms);
     edits.insert(QStringLiteral("units"), units);
+    // -- WP AUSB2 --
+    QJsonArray usb;
+    for (auto it = m_draftUsb.cbegin(); it != m_draftUsb.cend(); ++it) {
+        const QString mode = it.value().value(QStringLiteral("mode")).toString();
+        const QString action = it.value().value(QStringLiteral("onLockError")).toString();
+        usb.append(QJsonObject{ { QStringLiteral("unitId"), it.key() },
+                                { QStringLiteral("mode"), mode.isEmpty() ? QJsonValue() : QJsonValue(mode) },
+                                { QStringLiteral("onLockError"), action.isEmpty() ? QJsonValue() : QJsonValue(action) } });
+    }
+    edits.insert(QStringLiteral("usbModes"), usb);
+    if (m_draftKeep.isValid()) edits.insert(QStringLiteral("keepUsbAligned"), m_draftKeep.toBool());
     return QJsonDocument(edits).toJson(QJsonDocument::Compact);
 }
 
@@ -392,6 +471,8 @@ void SystemController::clearDraft() {
     m_draftDelaySet = false;
     m_draftRooms.clear();
     m_draftUnits.clear();
+    m_draftUsb.clear();   // -- WP AUSB2 --
+    m_draftKeep = QVariant();
     m_draftAuto = systemDelayAuto();
     m_draftFrames = systemDelayFrames();
     emit draftChanged();

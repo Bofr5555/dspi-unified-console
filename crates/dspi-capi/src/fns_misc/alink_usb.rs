@@ -22,7 +22,8 @@ pub extern "C" fn dspi_usb_direct_supported(core: *mut FfiCore) -> bool {
 }
 
 /// `EXT_ALINK_USB` in JSON (`mode`, `modeName`, `autoReanchor`, `d`,
-/// `dBelowMin`, `dAboveMax`, `rateUnsupported`, `state`, `stateCode`), or a
+/// `dBelowMin`, `dAboveMax`, `rateUnsupported`, `onLockError`, `state`,
+/// `stateCode`), or a
 /// failure (`unsupported` without the block).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_alink_usb(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
@@ -42,9 +43,19 @@ pub extern "C" fn dspi_set_alink_usb(
     status(core, |c| c.set_alink_usb(mode, auto_reanchor, d))
 }
 
+// -- WP AUSB2 --
+/// What mode 2 does in lock error (the fork's WP USB3b): `play_unaligned`
+/// false mutes, true plays unaligned. Only byte 4 changes: nothing
+/// re-anchors. `unsupported` when firmware before WP USB3b refuses
+/// `play_unaligned`. Returns a status byte, 0xFF on failure.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_set_alink_usb_on_lock_error(core: *mut FfiCore, play_unaligned: bool) -> u8 {
+    status(core, |c| c.set_alink_usb_on_lock_error(play_unaligned))
+}
+
 /// `EXT_ALINK_USB_STATUS` in JSON (`state`, `stateCode`, `phaseState`,
 /// `rateCode`, `rateHz`, `hwTimestamp`, `stream`, `nominalFeedback`,
-/// `timeBase`, `holdover`, `hostPpm`, `vcxoPpm`, `phaseErrorSamples`,
+/// `timeBase`, `holdover`, `seeded`, `lockError`, `hostPpm`, `vcxoPpm`, `phaseErrorSamples`,
 /// `sample`, `busFrame`, `dMin`, `dMax`, `fill`, `streamStartBusFrame`,
 /// `streamAgeFrames`, `streamShift`, `gapCount`, `anchors`, `reanchors`,
 /// `missedSamples`, `lateSamples`), or a failure.
@@ -57,9 +68,10 @@ pub extern "C" fn dspi_fetch_alink_usb_status(
     text(core, buf, len, |c| json_reply(c.fetch_alink_usb_status()))
 }
 
-/// `EXT_ALINK_USB_DIAG` in JSON (`lastCause`, `rides`, `holdovers`, `ends`
-/// as `{cause, count}`, `suspends`, `resumes`, `busResets`, `unplugs`,
-/// `lastFrames`, `lastUs`, `lastDevUs`, `longestRideUs`, `maxPassUs`,
+/// `EXT_ALINK_USB_DIAG` in JSON (`version`, `lastCause`, `rides`,
+/// `holdovers`, `ends` as `{cause, count}`, `suspends`, `resumes`,
+/// `busResets`, `unplugs`, `lastFrames`, `badSofReadings`, `lockErrors`,
+/// `lastUs`, `lastDevUs`, `longestRideUs`, `maxPassUs`,
 /// `maxIsrQuietUs`, `maxIsrLateUs`, `holdoverUs`), or a failure.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_fetch_alink_usb_diag(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {

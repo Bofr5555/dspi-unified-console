@@ -221,6 +221,10 @@ struct Threads {
     supervisor: JoinHandle<()>,
     events: JoinHandle<()>,
     server: Option<Server>,
+    // -- WP AUSB2 --
+    /// The hub's own poll of the system model ([`system_poll_loop`]): its stop
+    /// and its thread. `None` if it could not start.
+    system_poll: Option<(Sender<()>, JoinHandle<()>)>,
 }
 
 /// A running hub. Stops when dropped.
@@ -337,12 +341,32 @@ impl Hub {
         if config.initial_scan {
             let _ = scanned_rx.recv_timeout(SCAN_NOW_TIMEOUT);
         }
+        // -- WP AUSB2 -- the system model's own poll (USB-direct units)
+        let system_poll = {
+            let handle = HubHandle {
+                inner: Arc::clone(&inner),
+            };
+            let (stop_tx, stop_rx) = mpsc::channel();
+            match thread::Builder::new()
+                .name("hub-system".into())
+                .spawn(move || system_poll_loop(&handle, &stop_rx))
+            {
+                Ok(t) => Some((stop_tx, t)),
+                Err(e) => {
+                    log::warn!(
+                        "hub: the system poll did not start ({e}): USB-direct units are read only when a client asks"
+                    );
+                    None
+                }
+            }
+        };
         let hub = Self {
             handle: HubHandle { inner },
             threads: Mutex::new(Some(Threads {
                 supervisor,
                 events,
                 server: None,
+                system_poll,
             })),
         };
         if let (Some(mut network), Some(auth)) = (network, auth) {
@@ -390,6 +414,11 @@ impl Hub {
         {
             let _state = guard(&inner.state);
             inner.stopping.store(true, Ordering::SeqCst);
+        }
+        // -- WP AUSB2 -- the system poll first: it writes as the hub's own session
+        if let Some((stop, thread)) = t.system_poll {
+            let _ = stop.send(());
+            let _ = thread.join();
         }
         // 1. Off the network: goodbye, no new connections. 2. Everyone gets their close.
         // 3. Connections go.
@@ -1029,6 +1058,8 @@ impl HubInner {
         // -- fixup sw2x (F5) -- a unit of the system model, new or back on another
         // handle: learn whether it sends 0xE1, without waiting.
         if self.system.watches(&serial) {
+            // -- WP AUSB2 -- maybe new firmware: what it refused no longer holds
+            self.system.attached(&serial);
             crate::system::learn_events(&self.system, &shared);
         }
         if let Some(name) = adopt {
@@ -1242,6 +1273,26 @@ fn supervisor_loop(
                 inner.reap();
                 next_scan = Instant::now().checked_add(interval).unwrap_or(next_scan);
             }
+        }
+    }
+}
+
+// -- WP AUSB2 -- (review fixm1 F2)
+/// The hub's own poll of the system model: every
+/// [`crate::system::SYSTEM_POLL`] (or as set), while the model has USB-direct
+/// units, [`HubHandle::system_poll_now`]. Ends when `stop` is sent or dropped.
+fn system_poll_loop(hub: &HubHandle, stop: &Receiver<()>) {
+    loop {
+        let (wait, _) = hub.system_poll_due();
+        match stop.recv_timeout(wait) {
+            Err(RecvTimeoutError::Timeout) => {}
+            Ok(()) | Err(RecvTimeoutError::Disconnected) => return,
+        }
+        if hub.is_stopped() {
+            return;
+        }
+        if hub.system_poll_due().1 {
+            hub.system_poll_now();
         }
     }
 }

@@ -389,6 +389,42 @@ test.describe("SW3: an audio link installation on the hub", () => {
     await ausb1Shot(page, "clock-and-audio-links-usb");
   });
 
+  // -- WP AUSB2 -- a USB-direct unit that can't lock: said, alarmed, and its action set by the Installer
+  test("AUSB2: a USB-direct unit that can't lock is shown with the hub's alarm, and the Installer sets what it does", async ({ page }) => {
+    test.setTimeout(90_000);
+    hub = await linkHub(["--open", "--forget-clients", "--with-usb-lock-error"]);
+    const session = await openUnit(page, hub, "DEMO-ALINK-A");
+    const system = session.getByRole("region", { name: "System" });
+    const main = system.getByRole("region", { name: "Room Main room" });
+    const rear = main.getByLabel("Unit Rear L/R");
+    await expect(rear).toContainText("USB-direct: Can't lock: muted");
+    await expect(rear).toContainText("can't lock: the host's rate is out of range");
+    await expect(rear).toContainText("lock errors 1");
+    const rail = session.getByRole("complementary", { name: "Status" });
+    const alarm = rail.getByRole("list", { name: "Alarm list" }).getByLabel("Alarm usb_lock_error on Rear L/R");
+    await expect(alarm).toContainText("USB-direct unit Rear L/R can't lock — muted (the host's rate is out of range)");
+    await expect(alarm).toHaveAttribute("data-state", "raised");
+    await ausb1Shot(page, "ausb2-lock-error-muted");
+    // The Installer: Rear L/R plays unaligned when it can't lock; saved on the hub, which writes it to the unit.
+    await setMode(session, page, "Installer");
+    const panel = system.getByRole("region", { name: "Clock and audio links" });
+    const usb = panel.getByRole("table", { name: "USB-direct units" });
+    const row = usb.getByRole("row", { name: "USB-direct clock of Rear L/R" });
+    await expect(row).toContainText("Can't lock: muted (the host's rate is out of range)");
+    await expect(row.getByLabel("When Rear L/R can't lock")).toHaveValue("mute");
+    await row.getByLabel("When Rear L/R can't lock").selectOption("play_unaligned");
+    await panel.getByRole("button", { name: "Save" }).click();
+    await expect(panel.getByRole("group", { name: "Unsaved installation" })).toHaveCount(0);
+    // The hub's own poll (every 5 s) writes it: the unit then plays unaligned, and the alarm says so.
+    await expect(row).toContainText("Can't lock: playing unaligned", { timeout: 20_000 });
+    await expect(row).not.toContainText("(unit: Mute)");
+    await expect(rear).toContainText("USB-direct: Can't lock: playing unaligned");
+    await expect(alarm).toContainText("USB-direct unit Rear L/R can't lock — playing unaligned");
+    const stats = panel.getByRole("table", { name: "USB-direct stats" });
+    await expect(stats.getByRole("row", { name: "USB-direct stats of Rear L/R" })).toContainText("Can't lock: playing unaligned");
+    await ausb1Shot(page, "ausb2-lock-error-playing");
+  });
+
   test("SW3: Save never overwrites a newer installation; the page says so and offers Reload", async ({ page, browser }) => {
     // -- fixup fs1 -- two hub sessions and two Installer dialogs: Firefox on a busy host needs more than 30 s
     test.setTimeout(60_000);

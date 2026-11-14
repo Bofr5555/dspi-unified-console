@@ -50,6 +50,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun setAlinkUsb(mode: Int, autoReanchor: Boolean, d: Int): Unit = throw NotImplementedError("set_alink_usb")
 
+    override fun setAlinkUsbOnLockError(playUnaligned: Boolean): Unit = throw NotImplementedError("set_alink_usb_on_lock_error")
+
     override fun fetchAlinkUsbStatus(): AlinkUsbStatus = throw NotImplementedError("fetch_alink_usb_status")
 
     override fun fetchAlinkUsbDiag(): AlinkUsbDiag = throw NotImplementedError("fetch_alink_usb_diag")

@@ -83,6 +83,8 @@ internal fun healthColor(c: DspiColors, health: String): Color = when (health) {
 
 private fun stateColor(c: DspiColors, u: AlinkSystemUnit): Color = when {
     !u.connected -> c.gray
+    // -- WP AUSB2 -- asked to be in step and cannot: muted or unaligned
+    u.usbLockError -> c.red
     // -- WP HWLK1F -- a firmware without the audio link: a fact, not a fault
     u.state == "no_alink" -> c.gray
     // -- WP AUSB1 -- USB-direct: no time base or the host out of range is a fault
@@ -249,6 +251,13 @@ private fun UnitRow(u: AlinkSystemUnit, c: DspiColors) {
                 else -> null
             }
             Text(listOfNotNull(delay, range, mode).joinToString(", "), style = DspiType.caption, color = c.label)
+            // -- WP AUSB2 -- the lock error's cause, and firmware that cannot play unaligned
+            if (u.usbLockError && u.usbLockErrorCause.isNotEmpty()) {
+                Text("Can't lock: ${u.usbLockErrorCause}", style = DspiType.caption, color = c.red)
+            }
+            if (u.usbPlayUnalignedUnsupported) {
+                Text("Its firmware cannot play unaligned: it mutes when it can't lock", style = DspiType.caption, color = c.orange)
+            }
             if (u.usbStats.isNotEmpty()) Text(u.usbStats, style = DspiType.caption, color = c.secondaryLabel)
         } else if (u.kind == "unit") {
             val delay = u.alinkDelayFrames?.let { "Audio link delay $it frames (${ms(u.alinkDelayMs)})" } ?: "Audio link delay –"
@@ -313,6 +322,40 @@ private fun AlinkClock(model: SystemScreenModel, s: SystemUiState) {
             enabled = editOn
         ) { t -> model.setUnitLatency(u.id, t) }
     }
+    // -- WP AUSB2 -- the USB-direct units' mode and lock-error action, and keeping them aligned
+    val usbUnits = view.units.filter { it.transport == "usb_direct" }
+    if (usbUnits.isNotEmpty()) {
+        Text("USB-direct units", style = DspiType.body, color = c.label, modifier = Modifier.semantics { heading() })
+        for (u in usbUnits) {
+            Choices(
+                label = "Mode, ${u.name}",
+                options = listOf(null to "Its own", "off" to "Off", "rate_lock" to "Rate lock", "phase_lock" to "Phase lock"),
+                selected = s.usbModeOf(u.id),
+                enabled = editOn
+            ) { model.setUsbMode(u.id, it) }
+            Choices(
+                label = "When it can't lock, ${u.name}",
+                options = listOf("mute" to "Mute", "play_unaligned" to "Play unaligned"),
+                selected = s.onLockErrorOf(u.id),
+                enabled = editOn
+            ) { model.setOnLockError(u.id, it ?: "mute") }
+        }
+        Text(
+            "When a phase-locked unit can't be in step (its host's rate out of range, a rate or delay that can't phase-lock), " +
+                "it stays muted, or plays unaligned.",
+            style = DspiType.caption2,
+            color = c.secondaryLabel
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(
+                checked = s.keepUsbAligned,
+                onCheckedChange = { model.setKeepUsbAligned(it) },
+                enabled = editOn,
+                modifier = Modifier.semantics { contentDescription = "Keep USB-direct units aligned" }
+            )
+            Text("Keep USB-direct units aligned", style = DspiType.body, color = c.label, modifier = Modifier.weight(1f))
+        }
+    }
     if (s.stale) {
         Text(
             "The installation changed on the hub while you edited it. Save is withdrawn: reload it and make your changes again.",
@@ -363,6 +406,28 @@ private fun FlowRowButtons(model: SystemScreenModel, s: SystemUiState, editOn: B
             },
             dismissButton = { TextButton(onClick = { askAlign = false }) { Text("Cancel") } }
         )
+    }
+}
+
+// -- WP AUSB2 --
+/** One setting of a few words: the chosen one filled, the others outlined. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun Choices(label: String, options: List<Pair<String?, String>>, selected: String?, enabled: Boolean, choose: (String?) -> Unit) {
+    val c = DspiTheme.colors
+    Column(Modifier.fillMaxWidth()) {
+        Text(label, style = DspiType.caption, color = c.secondaryLabel)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            for ((value, word) in options) {
+                val description = "$label: $word" + if (value == selected) ", chosen" else ""
+                val m = Modifier.heightIn(min = 48.dp).semantics { contentDescription = description }
+                if (value == selected) {
+                    Button(onClick = { choose(value) }, enabled = enabled, modifier = m) { Text(word) }
+                } else {
+                    OutlinedButton(onClick = { choose(value) }, enabled = enabled, modifier = m) { Text(word) }
+                }
+            }
+        }
     }
 }
 

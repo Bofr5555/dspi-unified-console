@@ -33,6 +33,8 @@ ToolWindow {
     }
     function stateColor(u) {
         if (!u.connected) return Theme.offline
+        // -- WP AUSB2 -- asked to be in step and cannot: muted or unaligned
+        if (u.usbLockError) return Theme.dangerText
         // -- WP HWLK1F -- a firmware without the audio link: a fact, not a fault
         if (u.state === "no_alink") return Theme.offline
         if (u.state === "holdover") return Theme.dangerText
@@ -278,7 +280,8 @@ ToolWindow {
                             // -- WP AUSB1 -- a USB-direct unit's statistics line below its name
                             property bool usb: modelData.transport === "usb_direct"
                             Layout.fillWidth: true
-                            implicitHeight: usb && modelData.usbStats ? Theme.rowHeight + 24 : Theme.rowHeight + 8
+                            implicitHeight: (usb && modelData.usbStats ? Theme.rowHeight + 24 : Theme.rowHeight + 8)
+                                            + (usb && (modelData.usbLockError || modelData.usbPlayUnalignedUnsupported) ? 16 : 0)
                             color: index % 2 ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.03) : "transparent"
                             Accessible.role: Accessible.Row
                             Accessible.name: [modelData.name, modelData.role, modelData.stateWord].join(", ")
@@ -296,6 +299,18 @@ ToolWindow {
                                         visible: text.length > 0
                                         text: [unitRow.modelData.room, unitRow.modelData.serial].filter(s => s && s.length).join(" · ")
                                         color: Theme.textMuted
+                                        font: Theme.fontCaption
+                                    }
+                                    // -- WP AUSB2 -- why it can't lock, or firmware that cannot play unaligned
+                                    Cell {
+                                        objectName: "SystemWindow.lockError." + unitRow.modelData.id
+                                        Layout.fillWidth: true
+                                        visible: unitRow.usb && text.length > 0
+                                        text: unitRow.modelData.usbLockError && unitRow.modelData.usbLockErrorCause
+                                              ? qsTr("Can't lock: %1").arg(unitRow.modelData.usbLockErrorCause)
+                                              : unitRow.modelData.usbPlayUnalignedUnsupported
+                                              ? qsTr("Its firmware cannot play unaligned: it mutes when it can't lock") : ""
+                                        color: unitRow.modelData.usbLockError ? Theme.dangerText : Theme.warning
                                         font: Theme.fontCaption
                                     }
                                     Cell {
@@ -489,6 +504,65 @@ ToolWindow {
                             color: Theme.textMuted
                         }
                     }
+                }
+            }
+            // -- WP AUSB2 -- the USB-direct units' mode and lock-error action, and
+            // keeping them aligned (Installer: Advanced, Admin)
+            GridLayout {
+                objectName: "SystemWindow.usbEditor"
+                Layout.fillWidth: true
+                visible: !window.simple && SystemController.usbUnits.length > 0
+                columns: 3
+                columnSpacing: Theme.spacing
+                rowSpacing: Theme.spacingSmall
+                Repeater {
+                    model: SystemController.usbUnits
+                    delegate: RowLayout {
+                        id: usbRow
+                        required property var modelData
+                        readonly property var modes: ["", "off", "rate_lock", "phase_lock"]
+                        readonly property var actions: ["mute", "play_unaligned"]
+                        Layout.columnSpan: 3
+                        spacing: Theme.spacing
+                        Text {
+                            Layout.preferredWidth: 220
+                            text: qsTr("USB-direct, %1").arg(usbRow.modelData.name)
+                            font: Theme.fontBody
+                            color: Theme.text
+                            elide: Text.ElideRight
+                        }
+                        AppComboBox {
+                            objectName: "SystemWindow.usbMode." + usbRow.modelData.id
+                            implicitWidth: 130
+                            label: qsTr("USB mode of %1").arg(usbRow.modelData.name)
+                            enabled: window.editable
+                            model: [qsTr("Its own"), qsTr("Off"), qsTr("Rate lock"), qsTr("Phase lock")]
+                            currentIndex: Math.max(0, usbRow.modes.indexOf(SystemController.usbModeOf(usbRow.modelData.id)))
+                            onActivated: i => SystemController.setUsbMode(usbRow.modelData.id, usbRow.modes[i])
+                        }
+                        AppComboBox {
+                            objectName: "SystemWindow.onLockError." + usbRow.modelData.id
+                            implicitWidth: 240
+                            label: qsTr("What %1 does when it can't lock").arg(usbRow.modelData.name)
+                            enabled: window.editable
+                            model: [qsTr("Mute when it can't lock"), qsTr("Play unaligned when it can't lock")]
+                            currentIndex: Math.max(0, usbRow.actions.indexOf(SystemController.onLockErrorOf(usbRow.modelData.id)))
+                            onActivated: i => SystemController.setOnLockError(usbRow.modelData.id, usbRow.actions[i])
+                            HoverHandler { id: lockHover }
+                            ToolTip.visible: lockHover.hovered
+                            ToolTip.text: qsTr("When a phase-locked unit can't be in step (its host's rate out of range, a rate or delay that can't phase-lock), it stays muted, or plays unaligned")
+                        }
+                    }
+                }
+                AppCheckBox {
+                    objectName: "SystemWindow.keepUsbAligned"
+                    Layout.columnSpan: 3
+                    text: qsTr("Keep USB-direct units aligned")
+                    checked: SystemController.keepUsbAligned
+                    enabled: window.editable
+                    onToggled: SystemController.setKeepUsbAligned(checked)
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("When a USB-direct stream's start moves, the hub writes their output delays again by itself")
                 }
             }
             Text {

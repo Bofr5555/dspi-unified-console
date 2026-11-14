@@ -654,6 +654,17 @@ impl crate::system::SystemStore for StoredSystem {
         s.store.set_system(model)?;
         s.save()
     }
+
+    // -- WP AUSB2 --
+    fn load_usb_offsets(&self) -> Option<BTreeMap<String, i64>> {
+        self.0.lock().store.system_usb_offsets().cloned()
+    }
+
+    fn save_usb_offsets(&self, offsets: &BTreeMap<String, i64>) -> Result<(), HubError> {
+        let mut s = self.0.lock();
+        s.store.set_system_usb_offsets(offsets);
+        s.save()
+    }
 }
 
 #[cfg(test)]

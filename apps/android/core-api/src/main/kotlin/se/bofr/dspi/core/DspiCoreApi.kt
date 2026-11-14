@@ -212,6 +212,8 @@ interface DspiCoreApi : AutoCloseable {
 
     /**
      * Write `EXT_ALINK_USB`: `mode` 0 off, 1 rate lock, 2 phase lock;
+     * -- WP AUSB2 -- the unit's lock-error action (byte 4) is read first and
+     * kept (mute when it cannot be read);
      * `auto_reanchor` (normally true); `d` samples from arrival to output,
      * the same on every unit that should play aligned (170-399 at 48 kHz,
      * 324-351 at 96 kHz in mode 2). Takes effect at once; a change of mode
@@ -229,14 +231,34 @@ interface DspiCoreApi : AutoCloseable {
     fun setAlinkUsb(mode: Int, autoReanchor: Boolean, d: Int)
 
     /**
+     * Set what the unit does in mode 2 when it cannot phase-lock (*lock
+     * error*: the host's rate out of range, a configuration that cannot
+     * phase-lock, a phase error pending; the fork's WP USB3b,
+     * `extension_channel_spec.md` 2.9.2): `play_unaligned` false mutes it
+     * (the default: it was asked to be in step), true lets it play
+     * unaligned. Writes `EXT_ALINK_USB` with its mode, flags and D as read,
+     * only byte 4 changed, so nothing re-anchors. The core never saves it
+     * (`REQ_SAVE_OUTPUT_CONFIG` stores it).
+     *
+     * Errors, with no traffic: `Disconnected`; `Unsupported` without the
+     * block; `ReadOnly`. `Transfer` when the setting cannot be read first.
+     * `Unsupported` when the unit refuses `play_unaligned` (firmware before
+     * WP USB3b, where the byte is reserved: the test for the setting);
+     * `Refused` for another refusal (mode 2 with D outside its limits now);
+     * `Denied`, `Locked` or `Transfer` from a hub.
+     */
+    @Throws(DspiException::class)
+    fun setAlinkUsbOnLockError(playUnaligned: Boolean)
+
+    /**
      * Read `EXT_ALINK_USB_STATUS`. Errors as [`DspiCore::fetch_alink_usb`].
      */
     @Throws(DspiException::class)
     fun fetchAlinkUsbStatus(): AlinkUsbStatus
 
     /**
-     * Read `EXT_ALINK_USB_DIAG` (layout version 1; another reads as
-     * `Transfer`). Errors as [`DspiCore::fetch_alink_usb`].
+     * Read `EXT_ALINK_USB_DIAG` (layout version 1 or 2 -- WP AUSB2 --;
+     * another reads as `Transfer`). Errors as [`DspiCore::fetch_alink_usb`].
      */
     @Throws(DspiException::class)
     fun fetchAlinkUsbDiag(): AlinkUsbDiag

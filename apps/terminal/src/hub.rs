@@ -151,6 +151,11 @@ struct RunOptions {
     /// `--with-plain-unit` (a test option, with `--demo --alink`): one
     /// more simulated DSPi, without the audio link, in the installation.
     with_plain_unit: bool,
+    // -- WP AUSB2 --
+    /// `--with-usb-lock-error` (a test option, with `--demo --alink`): the
+    /// USB-direct unit Rear L/R's host is out of range from the start, so it
+    /// is in lock error (muted, or unaligned as set).
+    with_usb_lock_error: bool,
 }
 
 /// One `uconsole hub` command.
@@ -275,6 +280,8 @@ OPTIONS:
                               installation on hardware (add them to the model)
     --with-plain-unit         test option, with --demo --alink: one more
                               simulated DSPi without the audio link (unit P)
+    --with-usb-lock-error     test option, with --demo --alink: the USB-direct
+                              unit Rear L/R can't lock (its host out of range)
     --loopback                listen on this machine only, and do not advertise
     --no-keep-awake           let the machine sleep while sharing
     --store <dir>             where the hub keeps its id, clients and device names
@@ -324,6 +331,7 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
     let mut alink = false;
     // -- WP HWLK1F --
     let (mut pair_admin, mut with_usb, mut with_plain_unit) = (false, false, false);
+    let mut with_usb_lock_error = false; // -- WP AUSB2 --
     let mut port_given = false;
     let mut words = Vec::new();
 
@@ -378,6 +386,7 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
             "--pair-admin" => pair_admin = true,
             "--with-usb" => with_usb = true,
             "--with-plain-unit" => with_plain_unit = true,
+            "--with-usb-lock-error" => with_usb_lock_error = true,
             f if f.starts_with('-') => return Err(usage(format!("`{f}` is not a hub option"))),
             word => words.push(word),
         }
@@ -396,6 +405,7 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 | "--pair-admin"
                 | "--with-usb"
                 | "--with-plain-unit"
+                | "--with-usb-lock-error"
         ) {
             run_only.push(flag);
         }
@@ -439,6 +449,7 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
             for (given, flag) in [
                 (with_usb, "--with-usb"),
                 (with_plain_unit, "--with-plain-unit"),
+                (with_usb_lock_error, "--with-usb-lock-error"),
             ] {
                 if given && !alink {
                     return Err(usage(format!(
@@ -475,6 +486,7 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 pair_admin,
                 with_usb,
                 with_plain_unit,
+                with_usb_lock_error,
             }));
         }
         ["help"] => return Ok(HubCommand::Help),
@@ -719,7 +731,11 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
     };
     // -- WP SW3 --
     if opts.alink {
-        demo_alink(&running.handle, opts.with_plain_unit)?;
+        demo_alink(
+            &running.handle,
+            opts.with_plain_unit,
+            opts.with_usb_lock_error,
+        )?;
         // -- WP HWLK1F --
         if opts.with_usb {
             running.handle.scan_now();
@@ -833,7 +849,7 @@ fn plain_unit_model() -> Value {
 // -- WP SW3 --
 /// Attach `--demo --alink`'s devices and give the hub their model, unless
 /// its store keeps one already (an installer's edits survive a restart).
-fn demo_alink(handle: &HubHandle, plain_unit: bool) -> Result<(), Failure> {
+fn demo_alink(handle: &HubHandle, plain_unit: bool, usb_lock_error: bool) -> Result<(), Failure> {
     for (serial, setup) in alink_rig() {
         handle
             .attach(
@@ -844,11 +860,14 @@ fn demo_alink(handle: &HubHandle, plain_unit: bool) -> Result<(), Failure> {
     }
     // -- WP AUSB1 -- the USB-direct units (`extension_channel_spec.md` 2.9)
     for (serial, setup) in usb_rig() {
+        let dev = FakeDevice::demo_usb_direct(setup).with_serial(serial);
+        // -- WP AUSB2 -- its host out of range: mode 2 in lock error
+        if usb_lock_error && serial == "DEMO-USB-REAR" {
+            dev.remote()
+                .usb_direct_sim(dspi_transport::fake::USB_SIM_HOST_RANGE);
+        }
         handle
-            .attach(
-                Box::new(FakeDevice::demo_usb_direct(setup).with_serial(serial)),
-                0,
-            )
+            .attach(Box::new(dev), 0)
             .map_err(|e| Failure::Failed(format!("{serial} did not attach: {e}")))?;
     }
     // -- WP HWLK1F -- a unit whose firmware has no audio link, as a K340 on 470a127
@@ -1521,6 +1540,7 @@ mod tests_wp_tm11 {
             pair_admin: false,
             with_usb: false,
             with_plain_unit: false,
+            with_usb_lock_error: false,
         }
     }
 
@@ -2192,6 +2212,7 @@ mod tests_wp_sw3 {
             pair_admin: false,
             with_usb: false,
             with_plain_unit: false,
+            with_usb_lock_error: false,
         }
     }
 }
@@ -2235,6 +2256,13 @@ mod tests_wp_hwlk1f {
         ));
         let o = run(&["--alink", "--with-usb", "--with-plain-unit"], true).unwrap();
         assert!(o.alink && o.with_usb && o.with_plain_unit && o.demo);
+        // -- WP AUSB2 --
+        let o = run(&["--alink", "--with-usb-lock-error"], true).unwrap();
+        assert!(o.alink && o.with_usb_lock_error && !o.with_plain_unit);
+        assert!(matches!(
+            run(&["--with-usb-lock-error"], true),
+            Err(Failure::Usage(_))
+        ));
         for f in ["--with-usb", "--with-plain-unit"] {
             assert!(matches!(run(&[f], true), Err(Failure::Usage(_))), "{f}");
             assert!(matches!(run(&[f], false), Err(Failure::Usage(_))), "{f}");
@@ -2273,6 +2301,7 @@ mod tests_wp_hwlk1f {
             pair_admin: false,
             with_usb: false,
             with_plain_unit: false,
+            with_usb_lock_error: false,
         }
     }
 

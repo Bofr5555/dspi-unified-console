@@ -165,9 +165,63 @@ pub struct UsbSeen {
     pub missed_samples: u32,
     /// Samples dropped as too late, since boot.
     pub late_samples: u32,
-    /// `EXT_ALINK_USB_DIAG`, when it reads (layout version 1).
+    /// `EXT_ALINK_USB_DIAG`, when it reads (layout version 1 or 2).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub diag: Option<UsbDiagSeen>,
+    // -- WP AUSB2 -- lock error (the fork's WP USB3b, 2.9.2)
+    /// What the unit does in lock error: `mute` or `play_unaligned`
+    /// (`EXT_ALINK_USB` byte 4; `mute` on firmware before WP USB3b).
+    pub on_lock_error: String,
+    /// In lock error now (STATUS flags bit 6): mode 2 that cannot be in step.
+    pub lock_error: bool,
+    /// Why, while it is: `host_rejected`, `config` or `pending`
+    /// ([`lock_error_cause`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lock_error_cause: Option<String>,
+    /// The unit refused "play unaligned" when the hub wrote it (firmware
+    /// before WP USB3b, where byte 4 is reserved): it mutes in lock error.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub play_unaligned_unsupported: bool,
+}
+
+// -- WP AUSB2 --
+/// Why a unit is in lock error (2.9.2), from its state: the host rejected
+/// (state 6), a phase error pending (phase state 3), else a configuration
+/// that cannot phase-lock (44.1 kHz, D outside its limits).
+pub fn lock_error_cause(state: &str, phase_state: u8) -> &'static str {
+    if state == "rejected" {
+        "host_rejected"
+    } else if phase_state == 3 {
+        "pending"
+    } else {
+        "config"
+    }
+}
+
+// -- WP AUSB2 --
+/// [`lock_error_cause`]'s words.
+pub fn lock_error_words(cause: &str) -> &'static str {
+    match cause {
+        "host_rejected" => "the host's rate is out of range",
+        "pending" => "a phase error is still being pulled in",
+        "config" => "its rate or D cannot phase-lock",
+        _ => "cause unknown",
+    }
+}
+
+// -- WP AUSB2 --
+/// The alarm's and the issue's sentence for unit `name` in lock error, doing
+/// `on_lock_error` (`mute` or `play_unaligned`), for `cause`.
+pub fn lock_error_message(name: &str, on_lock_error: &str, cause: Option<&str>) -> String {
+    let doing = if on_lock_error == "play_unaligned" {
+        "playing unaligned"
+    } else {
+        "muted"
+    };
+    format!(
+        "USB-direct unit {name} can't lock \u{2014} {doing} ({})",
+        lock_error_words(cause.unwrap_or(""))
+    )
 }
 
 impl UsbSeen {
@@ -199,6 +253,15 @@ pub struct UsbDiagSeen {
     pub unplugs: u16,
     /// The longest absence ridden through, µs.
     pub longest_ride_us: u32,
+    // -- WP AUSB2 -- layout 2 (the fork's WP USB3b); 0 from layout 1
+    /// The longest absence ridden through, ms.
+    pub longest_ride_ms: u32,
+    /// Entries into lock error.
+    pub lock_errors: u16,
+    /// RP2350 SOF timestamps the unit repaired.
+    pub bad_sof_readings: u16,
+    /// The layout read (1 or 2).
+    pub version: u8,
 }
 
 // -- WP HWLK1F --
@@ -325,7 +388,8 @@ pub struct Issue {
     /// `hop_delay_assumed`, `hops_mismatch`, `sender_mismatch`, `offline`,
     /// `d_too_small`; USB-direct (WP AUSB1, FIXM1): `mixed_time_bases`,
     /// `usb_no_stream`, `usb_start_offsets`, `start_offset_no_outputs`,
-    /// `usb_rate_differs`, `usb_start_offsets_changed`.
+    /// `usb_rate_differs`, `usb_start_offsets_changed`; WP AUSB2:
+    /// `usb_lock_error`, `usb_lock_error_unsupported`.
     pub code: String,
     /// For people.
     pub message: String,
@@ -546,6 +610,14 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
                     "limits_unknown",
                     format!("{}: its USB-direct state could not be read", u.id),
                 ));
+            } else if let Some(s) = seen.filter(|s| s.lock_error) {
+                // -- WP AUSB2 -- it was asked to be in step and cannot
+                let name = if u.name.is_empty() { &u.id } else { &u.name };
+                issues.push(issue(
+                    Some(&u.id),
+                    "usb_lock_error",
+                    lock_error_message(name, &s.on_lock_error, s.lock_error_cause.as_deref()),
+                ));
             } else if !phase {
                 issues.push(issue(
                     Some(&u.id),
@@ -558,6 +630,20 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
                         } else {
                             "off"
                         }
+                    ),
+                ));
+            }
+            // -- WP AUSB2 -- "play unaligned" asked of firmware that cannot
+            if u.on_lock_error == super::model::OnLockError::PlayUnaligned
+                && seen.is_some_and(|s| s.play_unaligned_unsupported)
+            {
+                let name = if u.name.is_empty() { &u.id } else { &u.name };
+                issues.push(issue(
+                    Some(&u.id),
+                    USB_LOCK_ERROR_UNSUPPORTED,
+                    format!(
+                        "{name}: its firmware cannot play unaligned in lock error, so it mutes \
+                         (update it, or set it to mute)"
                     ),
                 ));
             }
@@ -905,6 +991,11 @@ fn start_offsets(
     offsets
 }
 
+// -- WP AUSB2 --
+/// The issue raised when a unit refused "play unaligned" (firmware before
+/// the fork's WP USB3b).
+pub const USB_LOCK_ERROR_UNSUPPORTED: &str = "usb_lock_error_unsupported";
+
 // -- WP FIXM1 --
 /// The issue raised when USB-direct start offsets moved since the hub last
 /// wrote them ([`usb_offsets_moved`]).
@@ -966,6 +1057,7 @@ pub(crate) mod tests_wp_sw2 {
             upstream: upstream.into(),
             transport: Default::default(),
             usb_mode: None,
+            on_lock_error: Default::default(), // -- WP AUSB2 --
             output: None,
             repeater: false,
             hop_delay_frames: None,
@@ -1234,6 +1326,7 @@ mod tests_wp_fixm1 {
             upstream: String::new(),
             transport: UnitTransport::UsbDirect,
             usb_mode: Some("phase_lock".into()),
+            on_lock_error: Default::default(), // -- WP AUSB2 --
             output: None,
             repeater: false,
             hop_delay_frames: None,

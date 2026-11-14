@@ -99,6 +99,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.clearAlinkUsbDiag()
     }
 
+    // -- WP AUSB2 -- the lock-error action (EXT_ALINK_USB byte 4)
+    override fun setAlinkUsbOnLockError(playUnaligned: Boolean) {
+        guard("setAlinkUsbOnLockError")
+        return inner.setAlinkUsbOnLockError(playUnaligned)
+    }
+
     override fun applyAtTimeBase(timeBase: Int, frame: Long, op: Int, arg: Int, value: Int) {
         guard("applyAtTimeBase")
         return inner.applyAtTimeBase(timeBase, frame, op, arg, value)
@@ -772,6 +778,8 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "setAlinkUsb",
             "clearAlinkUsbDiag",
             "applyAtTimeBase",
+            // -- WP AUSB2 --
+            "setAlinkUsbOnLockError",
             // -- WP LKUI1 --
             "alinkSystemSave",
             "alinkSystemAlign",

@@ -210,6 +210,7 @@ An audio link installation of simulated devices, for testing (WP SW3, HWLK1F):
 ```sh
 uconsole --demo hub --alink            # a sender, a fan-out, four units, two USB-direct units and their model
   --with-plain-unit                   # test option: one more without the audio link (unit P)
+  --with-usb-lock-error               # test option: USB-direct Rear L/R can't lock (host out of range)
   --with-usb                          # test option: this machine's USB DSPis too, to test a
                                       # mixed installation on hardware (add them to the model)
 ```

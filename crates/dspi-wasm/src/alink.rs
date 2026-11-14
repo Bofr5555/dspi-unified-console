@@ -50,6 +50,15 @@ pub struct ApplyParams {
     pub value: i16,
 }
 
+// -- WP AUSB2 --
+/// `setAlinkUsbOnLockError`'s parameters.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LockErrorParams {
+    /// True: play unaligned in lock error; false: mute.
+    pub play_unaligned: bool,
+}
+
 // -- WP AUSB1 --
 /// `setAlinkUsb`'s parameters.
 #[derive(Debug, Deserialize)]
@@ -123,6 +132,9 @@ pub fn dispatch(core: &DspiCore, method: &str, params: Value) -> Option<CallResu
         "alinkUsb" => record(core.fetch_alink_usb()),
         "setAlinkUsb" => parse::<UsbParams>(params, method)
             .and_then(|x| done(core.set_alink_usb(x.mode, x.auto_reanchor, x.d))),
+        // -- WP AUSB2 --
+        "setAlinkUsbOnLockError" => parse::<LockErrorParams>(params, method)
+            .and_then(|x| done(core.set_alink_usb_on_lock_error(x.play_unaligned))),
         "alinkUsbStatus" => record(core.fetch_alink_usb_status()),
         "alinkUsbDiag" => record(core.fetch_alink_usb_diag()),
         "clearAlinkUsbDiag" => done(core.clear_alink_usb_diag()),
@@ -227,6 +239,28 @@ mod tests_wp_sw1 {
         ok(h, "open", json!({ "kind": "demo" }));
         assert_eq!(ok(h, "usbDirectSupported", Value::Null), false);
         assert_eq!(run(h, "alinkUsbStatus", Value::Null)["code"], "unsupported");
+    }
+
+    // -- WP AUSB2 --
+    #[test]
+    fn wp_ausb2_the_lock_error_action_on_the_usb_demo() {
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        ok(h, "open", json!({ "kind": "demo", "usbDirect": true }));
+        assert_eq!(ok(h, "alinkUsb", Value::Null)["onLockError"], "mute");
+        ok(
+            h,
+            "setAlinkUsbOnLockError",
+            json!({ "playUnaligned": true }),
+        );
+        assert_eq!(
+            ok(h, "alinkUsb", Value::Null)["onLockError"],
+            "play_unaligned"
+        );
+        assert_eq!(ok(h, "alinkUsbStatus", Value::Null)["lockError"], false);
+        assert_eq!(ok(h, "alinkUsbDiag", Value::Null)["version"], 2);
+        let bad = run(h, "setAlinkUsbOnLockError", json!({}));
+        assert_eq!(bad["code"], "invalid", "{bad}");
     }
 
     #[test]

@@ -142,7 +142,12 @@ fn wp_ausb1_the_config_refusals_and_a_mode_change() {
     assert!(refused(&mut d, &[3, 1, 192, 0, 0, 0, 0, 0]), "mode 3");
     assert!(refused(&mut d, &[2, 2, 192, 0, 0, 0, 0, 0]), "flag bit 1");
     assert!(refused(&mut d, &[2, 1, 0, 0, 0, 0, 0, 0]), "D 0");
-    assert!(refused(&mut d, &[2, 1, 192, 0, 1, 0, 0, 0]), "reserved");
+    // -- WP AUSB2 -- byte 4 is `on_lock_error` now (0 or 1); byte 5 stays reserved
+    assert!(
+        refused(&mut d, &[2, 1, 192, 0, 2, 0, 0, 0]),
+        "on_lock_error 2"
+    );
+    assert!(refused(&mut d, &[2, 1, 192, 0, 0, 1, 0, 0]), "reserved");
     assert!(
         refused(&mut d, &[2, 1, 0x90, 0x01, 0, 0, 0, 0]),
         "D 400 in mode 2"

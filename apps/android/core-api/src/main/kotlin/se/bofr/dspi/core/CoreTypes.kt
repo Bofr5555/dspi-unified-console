@@ -2479,9 +2479,35 @@ data class AlinkSystemUnit(
     val startOffsetSamples: Long?,
     /**
      * The statistics in one line, for a details row: host and VCXO ppm,
-     * phase error, gaps, missed and late samples, re-anchors, timeline ends.
+     * phase error, gaps, missed and late samples, re-anchors, timeline ends;
+     * -- WP AUSB2 -- lock errors, repaired SOF readings, the longest ride.
      */
     val usbStats: String,
+    /**
+     * The unit is in lock error: asked to phase-lock, it cannot be in step
+     * (its host out of range, a rate or D that cannot phase-lock, a phase
+     * error pending). [`Self::state_word`] then says what it does.
+     */
+    val usbLockError: Boolean,
+    /**
+     * Why, in words, while it is ("the host's rate is out of range"); "".
+     */
+    val usbLockErrorCause: String,
+    /**
+     * What the unit does in lock error now: `mute` or `play_unaligned`;
+     * none when not read.
+     */
+    val usbOnLockError: String?,
+    /**
+     * What the installation asks it to do (the hub writes it): `mute` (the
+     * default) or `play_unaligned`; "" for a unit that is not USB-direct.
+     */
+    val usbOnLockErrorWanted: String,
+    /**
+     * The unit refused "play unaligned" (firmware before the fork's WP
+     * USB3b): it mutes in lock error whatever is asked.
+     */
+    val usbPlayUnalignedUnsupported: Boolean,
 )
 
 /**
@@ -2754,6 +2780,11 @@ data class AlinkUnitUsbMode(
      * `off`, `rate_lock` or `phase_lock`; none: the unit's own is kept.
      */
     val mode: String?,
+    /**
+     * What it does in lock error: `mute` or `play_unaligned` (the hub writes
+     * it to the unit); none: unchanged.
+     */
+    val onLockError: String?,
 )
 
 /**
@@ -2878,6 +2909,12 @@ data class AlinkUsbConfig(
      */
     val rateUnsupported: Boolean,
     /**
+     * What mode 2 does in lock error (the fork's WP USB3b): `mute` (the
+     * default, and what firmware before WP USB3b reads as) or
+     * `play_unaligned`; `unknown` for another code.
+     */
+    val onLockError: String,
+    /**
      * The state, as [`AlinkUsbStatus::state`].
      */
     val state: String,
@@ -2933,6 +2970,16 @@ data class AlinkUsbStatus(
      * No SOF for over 50 ms: the time base is extrapolated.
      */
     val holdover: Boolean,
+    /**
+     * The VCXO started at the host rate the unit stored (WP USB3).
+     */
+    val seeded: Boolean,
+    /**
+     * Mode 2 cannot be in step (host rejected, a configuration that cannot
+     * phase-lock, or a phase error pending): the unit is muted or plays
+     * unaligned, as [`AlinkUsbConfig::on_lock_error`] says (WP USB3b).
+     */
+    val lockError: Boolean,
     /**
      * The host's SOF rate against the unit's crystal, ppm (+ = host fast).
      */
@@ -3021,6 +3068,11 @@ data class AlinkUsbEnd(
  */
 data class AlinkUsbDiag(
     /**
+     * The layout read: 1, or 2 since the fork's WP USB3b (with
+     * [`Self::bad_sof_readings`] and [`Self::lock_errors`]).
+     */
+    val version: Int,
+    /**
      * The latest end's cause ([`AlinkUsbEnd::cause`]); none yet.
      */
     val lastCause: String?,
@@ -3056,6 +3108,14 @@ data class AlinkUsbDiag(
      * The latest absence: frames counted on the bus.
      */
     val lastFrames: Long,
+    /**
+     * RP2350 SOF timestamps the unit repaired (layout 2; 0 in layout 1).
+     */
+    val badSofReadings: Int,
+    /**
+     * Entries into lock error (layout 2; 0 in layout 1).
+     */
+    val lockErrors: Int,
     /**
      * Its duration by the unit's clock, µs.
      */

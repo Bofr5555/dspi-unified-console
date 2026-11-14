@@ -1261,6 +1261,7 @@ bool dspi_open_demo_alink(struct FfiCore *core);
 bool dspi_usb_direct_supported(struct FfiCore *core);
 uint32_t dspi_fetch_alink_usb(struct FfiCore *core, char *buf, uint32_t len);
 uint8_t dspi_set_alink_usb(struct FfiCore *core, uint8_t mode, bool auto_reanchor, uint16_t d);
+uint8_t dspi_set_alink_usb_on_lock_error(struct FfiCore *core, bool play_unaligned);
 uint32_t dspi_fetch_alink_usb_status(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_fetch_alink_usb_diag(struct FfiCore *core, char *buf, uint32_t len);
 uint8_t dspi_clear_alink_usb_diag(struct FfiCore *core);

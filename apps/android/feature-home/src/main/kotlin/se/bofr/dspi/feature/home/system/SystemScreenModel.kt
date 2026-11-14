@@ -19,14 +19,24 @@ import se.bofr.dspi.core.AlinkSceneRecall
 import se.bofr.dspi.core.AlinkSystemEdits
 import se.bofr.dspi.core.AlinkSystemView
 import se.bofr.dspi.core.AlinkUnitLatency
+import se.bofr.dspi.core.AlinkUnitUsbMode
 import se.bofr.dspi.core.DspiException
 
 /** What the last recall did, in the core's words (or the hub's, for a refusal by role). */
 data class RecallLine(val name: String, val taken: Boolean, val message: String, val writes: List<String>)
 
 /**
+ * -- WP AUSB2 -- one USB-direct unit's Installer settings in a draft: its mode
+ * ([mode], null for the unit's own) and, when changed, its lock-error action
+ * ([onLockError], `mute` or `play_unaligned`).
+ */
+data class UsbDraft(val mode: String?, val onLockError: String? = null)
+
+/**
  * The Clock-and-audio-links edits not saved yet, made on [revision]. [rooms] and
- * [units] map an id to µs, or to null for "the model's own".
+ * [units] map an id to µs, or to null for "the model's own". -- WP AUSB2 --
+ * [usb] holds the USB-direct units' Installer settings by unit id, and
+ * [keepUsbAligned] "Keep USB-direct units aligned" when changed.
  */
 data class SystemDraft(
     val revision: Long = 0,
@@ -34,19 +44,20 @@ data class SystemDraft(
     val delayAuto: Boolean = true,
     val delayFrames: Long = 0,
     val rooms: Map<String, Long?> = emptyMap(),
-    val units: Map<String, Long?> = emptyMap()
+    val units: Map<String, Long?> = emptyMap(),
+    val usb: Map<String, UsbDraft> = emptyMap(),
+    val keepUsbAligned: Boolean? = null
 ) {
-    val dirty: Boolean get() = delaySet || rooms.isNotEmpty() || units.isNotEmpty()
+    val dirty: Boolean get() = delaySet || rooms.isNotEmpty() || units.isNotEmpty() || usb.isNotEmpty() || keepUsbAligned != null
 
     fun edits() = AlinkSystemEdits(
         setSystemDelay = delaySet,
         systemDelayFrames = if (delayAuto) null else delayFrames,
         rooms = rooms.map { (id, us) -> AlinkRoomLipSync(id, us) },
         units = units.map { (id, us) -> AlinkUnitLatency(id, us) },
-        // -- WP AUSB1 -- USB-direct modes are set in the web console's Installer mode
-        usbModes = emptyList(),
-        // -- WP FIXM1 -- so is "Keep USB-direct units aligned": left as it is
-        keepUsbAligned = null
+        // -- WP AUSB2 -- the USB-direct units' modes and lock-error actions (Installer)
+        usbModes = usb.map { (id, u) -> AlinkUnitUsbMode(id, u.mode, u.onLockError) },
+        keepUsbAligned = keepUsbAligned
     )
 }
 
@@ -75,6 +86,19 @@ data class SystemUiState(
     } else {
         view?.rooms?.firstOrNull { it.id == id }?.lipSyncUs?.toString().orEmpty()
     }
+
+    // -- WP AUSB2 --
+    /** The mode a USB-direct unit is to run, as drafted, else as the installation asks (null: its own). */
+    fun usbModeOf(id: String): String? = draft.usb[id]?.mode
+        ?: if (draft.usb.containsKey(id)) null else view?.units?.firstOrNull { it.id == id }?.usbModeWanted
+
+    /** What a USB-direct unit is to do in lock error, as drafted, else as the installation asks. */
+    fun onLockErrorOf(id: String): String = draft.usb[id]?.onLockError
+        ?: view?.units?.firstOrNull { it.id == id }?.usbOnLockErrorWanted?.ifEmpty { null }
+        ?: "mute"
+
+    /** "Keep USB-direct units aligned", as drafted, else as the installation has it. */
+    val keepUsbAligned: Boolean get() = draft.keepUsbAligned ?: (view?.keepUsbAligned == true)
 
     /** The draft's value for a unit's measured latency, as text ("" for none). */
     fun unitLatencyText(id: String): String = if (draft.units.containsKey(id)) {
@@ -188,6 +212,23 @@ class SystemScreenModel(private val bridge: DspiBridge, private val scope: Corou
         val us = parseUs(text) ?: return false
         return edit { it.copy(units = it.units + (id to us.value)) }
     }
+
+    // -- WP AUSB2 -- the USB-direct Installer settings (Admin)
+    /** A USB-direct unit's mode: `off`, `rate_lock`, `phase_lock`, or null for the unit's own. */
+    fun setUsbMode(id: String, mode: String?): Boolean {
+        val s = _state.value
+        val action = s.draft.usb[id]?.onLockError
+        return edit { it.copy(usb = it.usb + (id to UsbDraft(mode, action))) }
+    }
+
+    /** What a USB-direct unit does in lock error: `mute` or `play_unaligned`. */
+    fun setOnLockError(id: String, action: String): Boolean {
+        val s = _state.value
+        val mode = s.usbModeOf(id)
+        return edit { it.copy(usb = it.usb + (id to UsbDraft(mode, action))) }
+    }
+
+    fun setKeepUsbAligned(on: Boolean) = edit { it.copy(keepUsbAligned = on) }
 
     fun save() {
         val s = _state.value

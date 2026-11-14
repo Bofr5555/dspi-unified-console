@@ -44,6 +44,12 @@ import {
   usbAlignDue,
   withKeepUsbAligned,
   type UsbMode,
+  // -- WP AUSB2 --
+  ON_LOCK_ERROR,
+  lockErrorState,
+  lockErrorWords,
+  withOnLockError,
+  type OnLockError,
   type SystemModel,
   type WriteResult,
 } from "./model";
@@ -307,6 +313,9 @@ function UsbUnitsTable(props: { feed: SystemFeed; model: SystemModel; admin: boo
               <th>
                 <abbr title="EXT_ALINK_USB mode: off, rate lock (the host's SOF clock), phase lock (sample-aligned)">Mode</abbr>
               </th>
+              <th>
+                <abbr title="What a phase-locked unit does when it can't be in step (its host's rate out of range, a rate or D that can't phase-lock, a phase error pending): stay muted, or play unaligned (EXT_ALINK_USB byte 4)">When it can't lock</abbr>
+              </th>
               <th>State</th>
               <th>
                 <abbr title="D (EXT_ALINK_USB): samples from a USB sample's arrival to its output, the system delay plus this unit's terms">USB-direct delay</abbr>
@@ -353,7 +362,40 @@ function UsbUnitsTable(props: { feed: SystemFeed; model: SystemModel; admin: boo
                     )}
                     {seen && u.usbMode && seen.mode !== u.usbMode ? <span class="sys-diff"> (unit: {usbModeWord(seen.mode)})</span> : null}
                   </td>
-                  <td>{!o?.online ? "Offline" : o.usbDirect === "none" ? "No USB-direct (firmware)" : usbStateWord(seen?.state)}</td>
+                  {/* -- WP AUSB2 -- the lock-error action: the installation's, written by the hub */}
+                  <td>
+                    {props.admin ? (
+                      <select
+                        aria-label={`When ${name} can't lock`}
+                        value={u.onLockError ?? "mute"}
+                        onChange={(e) => props.onEdit(withOnLockError(model, u.id, (e.target as HTMLSelectElement).value as OnLockError))}
+                      >
+                        {ON_LOCK_ERROR.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span>{ON_LOCK_ERROR.find((m) => m.id === (u.onLockError ?? "mute"))?.label}</span>
+                    )}
+                    {seen?.onLockError && seen.onLockError !== (u.onLockError ?? "mute") ? (
+                      <span class="sys-diff"> (unit: {ON_LOCK_ERROR.find((m) => m.id === seen.onLockError)?.label ?? "unknown"})</span>
+                    ) : null}
+                  </td>
+                  <td>
+                    {!o?.online ? (
+                      "Offline"
+                    ) : o.usbDirect === "none" ? (
+                      "No USB-direct (firmware)"
+                    ) : seen?.lockError ? (
+                      <span class="sys-bad" title={lockErrorWords(seen.lockErrorCause)}>
+                        {lockErrorState(seen)} ({lockErrorWords(seen.lockErrorCause)})
+                      </span>
+                    ) : (
+                      usbStateWord(seen?.state)
+                    )}
+                  </td>
                   <td title={seen ? `Read from the unit: ${seen.d}` : undefined}>
                     {plan?.usbD != null ? `${framesMs(plan.usbD, rate).replace(/^(\d+)/, "$1 samples")}` : seen ? `${seen.d} samples` : "–"}
                     {seen && plan?.usbD != null && seen.d !== plan.usbD ? <span class="sys-diff"> (unit: {seen.d})</span> : null}
@@ -649,6 +691,9 @@ function StatsTable(props: { feed: SystemFeed }) {
                   <th>
                     <abbr title="USB suspends, bus resets and unplugs the unit counted">Bus events</abbr>
                   </th>
+                  <th>
+                    <abbr title="EXT_ALINK_USB_DIAG (layout 2): entries into lock error, SOF timestamps the unit repaired, the longest SOF absence ridden through">Lock errors</abbr>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -660,7 +705,7 @@ function StatsTable(props: { feed: SystemFeed }) {
                   return (
                     <tr key={u.id} aria-label={`USB-direct stats of ${name}`}>
                       <th scope="row">{name}</th>
-                      <td>{o?.online ? (s ? usbStateWord(s.state) : "–") : "offline"}</td>
+                      <td>{o?.online ? (s ? (s.lockError ? lockErrorState(s) : usbStateWord(s.state)) : "–") : "offline"}</td>
                       <td>{s ? rateOf(s.rateCode) : "–"}</td>
                       <td>{s ? `${s.hostPpm.toFixed(1)} ppm` : "–"}</td>
                       <td>{s ? `${s.vcxoPpm.toFixed(1)} ppm` : "–"}</td>
@@ -672,6 +717,12 @@ function StatsTable(props: { feed: SystemFeed }) {
                       <td>{d ? `${d.ends} (last: ${endWord(d.lastCause)})` : "–"}</td>
                       <td>{d ? `${d.holdovers} (ridden ${d.rides})` : "–"}</td>
                       <td>{d ? `suspends ${d.suspends}, resets ${d.busResets}, unplugs ${d.unplugs}` : "–"}</td>
+                      {/* -- WP AUSB2 -- */}
+                      <td>
+                        {d?.version === 2
+                          ? `${d.lockErrors ?? 0}${d.badSofReadings ? `, SOF repaired ${d.badSofReadings}` : ""}${d.longestRideMs ? `, longest ride ${d.longestRideMs} ms` : ""}`
+                          : "–"}
+                      </td>
                     </tr>
                   );
                 })}
