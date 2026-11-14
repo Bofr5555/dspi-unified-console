@@ -34,12 +34,81 @@ pub const OFFLINE_SERIAL: &str = "OFFLINE-DOCUMENT";
 /// The id prefix of a template this build ships.
 const BUILTIN: &str = "builtin:";
 
-/// The templates this build ships: id (after [`BUILTIN`]) and text. The
-/// K340's awaits the owner's approval (OD-P1h); its `meta.status` says so.
-const TEMPLATES: &[(&str, &str)] = &[(
-    "k340",
-    include_str!("../../../assets/templates/k340.dspipreset"),
-)];
+/// The templates this build ships: id (after [`BUILTIN`]) and text, in the
+/// order they are listed. Each one's `meta.status` says what it is.
+const TEMPLATES: &[(&str, &str)] = &[
+    // -- WP TPL1 -- the generic and build templates, written by the
+    // generator in `offline/tests_wp_tpl1.rs` (which also checks them).
+    (
+        "stereo-rp2350",
+        include_str!("../../../assets/templates/stereo-rp2350.dspipreset"),
+    ),
+    (
+        "stereo-sub-rp2350",
+        include_str!("../../../assets/templates/stereo-sub-rp2350.dspipreset"),
+    ),
+    (
+        "stereo-2sub-rp2350",
+        include_str!("../../../assets/templates/stereo-2sub-rp2350.dspipreset"),
+    ),
+    (
+        "2way-rp2350",
+        include_str!("../../../assets/templates/2way-rp2350.dspipreset"),
+    ),
+    (
+        "3way-rp2350",
+        include_str!("../../../assets/templates/3way-rp2350.dspipreset"),
+    ),
+    (
+        "headphones-rp2350",
+        include_str!("../../../assets/templates/headphones-rp2350.dspipreset"),
+    ),
+    (
+        "stereo-rp2040",
+        include_str!("../../../assets/templates/stereo-rp2040.dspipreset"),
+    ),
+    (
+        "stereo-sub-rp2040",
+        include_str!("../../../assets/templates/stereo-sub-rp2040.dspipreset"),
+    ),
+    (
+        "stereo-2sub-rp2040",
+        include_str!("../../../assets/templates/stereo-2sub-rp2040.dspipreset"),
+    ),
+    (
+        "2way-rp2040",
+        include_str!("../../../assets/templates/2way-rp2040.dspipreset"),
+    ),
+    (
+        "headphones-rp2040",
+        include_str!("../../../assets/templates/headphones-rp2040.dspipreset"),
+    ),
+    (
+        "build-pico2-pcm5102a-sub",
+        include_str!("../../../assets/templates/build-pico2-pcm5102a-sub.dspipreset"),
+    ),
+    (
+        "build-pico-pcm5102a-sub",
+        include_str!("../../../assets/templates/build-pico-pcm5102a-sub.dspipreset"),
+    ),
+    (
+        "build-pico2-2x-pcm5102a-2way",
+        include_str!("../../../assets/templates/build-pico2-2x-pcm5102a-2way.dspipreset"),
+    ),
+    (
+        "build-pico-2x-pcm5102a-2way",
+        include_str!("../../../assets/templates/build-pico-2x-pcm5102a-2way.dspipreset"),
+    ),
+    (
+        "build-pico2-pcm1808-pcm5102a",
+        include_str!("../../../assets/templates/build-pico2-pcm1808-pcm5102a.dspipreset"),
+    ),
+    // The owner's K340 (OD-P1h).
+    (
+        "k340",
+        include_str!("../../../assets/templates/k340.dspipreset"),
+    ),
+];
 
 /// The document an offline connection was opened from.
 #[derive(Debug, Clone, PartialEq)]
@@ -391,3 +460,7 @@ pub fn template_text(id: String, user_dir: String) -> Result<String> {
 
 #[cfg(test)]
 mod tests_wp_p1of;
+
+// -- WP TPL1 --
+#[cfg(test)]
+mod tests_wp_tpl1;

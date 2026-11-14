@@ -58,7 +58,7 @@ Dialog {
         }
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 200
+            Layout.preferredHeight: 320   // -- WP TPL1 -- many shipped templates
             radius: Theme.radiusSmall
             color: Theme.window
             border.color: Theme.separator
@@ -122,7 +122,9 @@ Dialog {
                             text: row.modelData.status || ""
                             font: Theme.fontSmall
                             color: Theme.warning
-                            elide: Text.ElideRight
+                            // -- WP TPL1 -- wrapped, not elided: a shipped template's
+                            // status line says what it is and what to check
+                            wrapMode: Text.Wrap
                         }
                     }
                     Accessible.role: Accessible.ListItem
