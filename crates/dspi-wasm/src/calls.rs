@@ -340,6 +340,13 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         // -- WP P1SN -- snapshots as documents (no files on the web)
         "snapshotCapture" => snapshots::capture(&core, params(req.params)?),
         "snapshotRecall" => snapshots::recall(&core, params(req.params)?),
+        // -- WP P1OF -- offline editing and templates (src/offline.rs)
+        "documentOpen" => document_open(h, &core, params(req.params)?),
+        "documentInfo" => crate::offline::info(&core),
+        "documentSave" => crate::offline::save(&core, params(req.params)?),
+        "templateSave" => crate::offline::save_template(&core, params(req.params)?),
+        "templateList" => crate::offline::list(),
+        "templateText" => crate::offline::text(params(req.params)?),
         // -- WP WB6b -- the EQ graph's curves, the core's maths (src/curves.rs)
         "curveGrid" => Ok(curves::grid()),
         "curves" => curves::curves(params(req.params)?),
@@ -483,6 +490,23 @@ enum Target {
     Usb(usb::UsbTarget),
     // -- WP WB4b --
     Hub(link::HubTarget),
+}
+
+// -- WP P1OF --
+/// `documentOpen`: the document as the session's device, replacing whatever it
+/// had open, as `open` does. The core reads it (`fetch_all`) itself. The reply
+/// is `open`'s snapshot with the core's description as `document`; `device.demo`
+/// is false, since it is the document, not the demo, that is open.
+fn document_open(h: u32, core: &DspiCore, p: crate::offline::OpenParams) -> CallResult {
+    let document = crate::offline::open(core, p)?;
+    set_demo(h, false);
+    usb::closed(h);
+    link::forget(h);
+    let mut snap = snapshot(core, false);
+    if let Some(m) = snap.as_object_mut() {
+        m.insert("document".into(), document);
+    }
+    Ok(snap)
 }
 
 /// The demo in an older wire format: the core reads it and refuses writes.

@@ -919,6 +919,14 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "snapshotDelete",
             "snapshotExport",
             "snapshotImport",
+            // -- WP P1OF -- a document opened offline is the demo device seeded
+            // from it (as openDemo); saving and the templates write no device
+            "openDocument",
+            "offlineDocument",
+            "saveDocument",
+            "saveAsTemplate",
+            "templateList",
+            "templateText",
             // -- WP P1AFIX -- the stored custom pair, from the mirror: a read
             "crossfeedCustomPair",
             "crossfeedPairMapValid",

@@ -701,6 +701,15 @@ impl Extras {
     }
 }
 
+// -- WP P1OF --
+impl Extras {
+    /// The device's name, as `REQ_SET_DEVICE_NAME` would store it (a document
+    /// opened offline names the device).
+    pub(super) fn set_device_name(&mut self, name: &[u8]) {
+        put_name(&mut self.device_name, name);
+    }
+}
+
 /// `stage_entry` (input_source_names.c:29-41): at most 31 bytes, a leading
 /// NUL clears, NUL padded.
 fn put_name(dst: &mut [u8; NAME_LEN], src: &[u8]) {

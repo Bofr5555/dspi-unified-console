@@ -127,6 +127,8 @@ pub mod notice_text;
 pub mod confirm;
 // -- WP P1SN --
 mod snapshot;
+// -- WP P1OF --
+pub mod offline;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -205,6 +207,8 @@ pub use notice_text::{
 pub use confirm::{CONFIRM_TOKEN_TTL_MS, ConfirmOp};
 // -- WP P1SN --
 pub use snapshot::{SnapshotInfo, SnapshotRecall};
+// -- WP P1OF --
+pub use offline::{template_list, template_text};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///
@@ -443,6 +447,10 @@ pub(crate) struct Connection {
     // -- WP FWX --
     /// Channels named by clip events since `take_clip_mask` (`ext_diag.rs`).
     pub(crate) clip_mask: u32,
+    // -- WP P1OF --
+    /// The document this connection was opened from (`offline.rs`); `None`
+    /// for a device.
+    pub(crate) document: Option<offline::Document>,
 }
 
 /// A remote device reached without the [`Inner`] lock (WP C15).
@@ -565,6 +573,8 @@ impl Connection {
             bulk_left_muted: false,
             // -- WP FWX --
             clip_mask: 0,
+            // -- WP P1OF --
+            document: None,
         }
     }
 
