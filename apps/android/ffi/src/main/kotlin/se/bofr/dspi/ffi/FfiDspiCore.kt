@@ -132,6 +132,10 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun openDemoUsbDirect() = call { core.openDemoUsbDirect() }
 
+    override fun autoeqPreview(profile: AutoEqProfile, left: Int, right: Int): AutoEqPreview = call { core.autoeqPreview(profile.toFfi(), left.toUByte(), right.toUByte()).toDomain() }
+
+    override fun autoeqApply(profile: AutoEqProfile, left: Int, right: Int): AutoEqApply = call { core.autoeqApply(profile.toFfi(), left.toUByte(), right.toUByte()).toDomain() }
+
     override fun confirmToken(op: ConfirmOp): String = core.confirmToken(op.toFfi())
 
     override fun requireConfirmation(on: Boolean) = core.requireConfirmation(on)
@@ -2861,6 +2865,96 @@ internal fun AutoEqRebuildProgress.toFfi() =
         failedProfiles = failedProfiles.toUInt(),
         failedListings = failedListings.toUInt(),
         skippedProfiles = skippedProfiles.toUInt(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AutoEqFilter.toDomain() =
+    AutoEqFilter(
+        kind = kind,
+        freq = freq,
+        q = q,
+        gainDb = gainDb,
+    )
+
+internal fun AutoEqFilter.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AutoEqFilter(
+        kind = kind,
+        freq = freq,
+        q = q,
+        gainDb = gainDb,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AutoEqProfile.toDomain() =
+    AutoEqProfile(
+        id = id,
+        name = name,
+        preampDb = preampDb,
+        filters = filters.map { it.toDomain() },
+    )
+
+internal fun AutoEqProfile.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AutoEqProfile(
+        id = id,
+        name = name,
+        preampDb = preampDb,
+        filters = filters.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AutoEqChannel.toDomain() =
+    AutoEqChannel(
+        channel = channel.toInt(),
+        isOutput = isOutput,
+        levelDb = levelDb,
+        bands = bands.map { it.toDomain() },
+        crossover = crossover.map { it.toDomain() },
+        curve = curve,
+    )
+
+internal fun AutoEqChannel.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AutoEqChannel(
+        channel = channel.toUByte(),
+        isOutput = isOutput,
+        levelDb = levelDb,
+        bands = bands.map { it.toFfi() },
+        crossover = crossover.map { it.toFfi() },
+        curve = curve,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AutoEqPreview.toDomain() =
+    AutoEqPreview(
+        profileId = profileId,
+        channels = channels.map { it.toDomain() },
+        levelTarget = levelTarget,
+        held = held,
+        unsupported = unsupported,
+        dropped = dropped.toLong(),
+        notes = notes,
+    )
+
+internal fun AutoEqPreview.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AutoEqPreview(
+        profileId = profileId,
+        channels = channels.map { it.toFfi() },
+        levelTarget = levelTarget,
+        held = held,
+        unsupported = unsupported,
+        dropped = dropped.toUInt(),
+        notes = notes,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AutoEqApply.toDomain() =
+    AutoEqApply(
+        preview = preview.toDomain(),
+        snapshotDocument = snapshotDocument,
+        snapshotId = snapshotId,
+        notes = notes,
+    )
+
+internal fun AutoEqApply.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AutoEqApply(
+        preview = preview.toFfi(),
+        snapshotDocument = snapshotDocument,
+        snapshotId = snapshotId,
+        notes = notes,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.IdentifyInfo.toDomain() =

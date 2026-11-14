@@ -71,6 +71,8 @@ pub mod snapshots;
 pub mod ab;
 // -- WP P1LM --
 pub mod limits;
+// -- WP P1AQ --
+pub mod autoeq;
 // -- WP SW3 --
 pub mod system;
 // -- WP WB4a --

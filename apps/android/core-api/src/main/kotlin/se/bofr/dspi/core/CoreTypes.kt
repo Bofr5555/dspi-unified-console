@@ -3328,6 +3328,146 @@ data class AutoEqRebuildProgress(
 )
 
 /**
+ * One filter of a profile, as the AutoEQ database has it.
+ */
+data class AutoEqFilter(
+    /**
+     * The database's shape name (`PK`, `LSC`, `HSC`, `peaking`, …).
+     */
+    val kind: String,
+    /**
+     * Centre or corner frequency in Hz.
+     */
+    val freq: Float,
+    /**
+     * Quality factor.
+     */
+    val q: Float,
+    /**
+     * Gain in dB.
+     */
+    val gainDb: Float,
+)
+
+/**
+ * A headphone profile to preview or apply: one entry of the AutoEQ
+ * database. A client that holds the database as JSON passes an entry
+ * through [`AutoEqProfile::from_entry_json`] (the C ABI and the web do).
+ */
+data class AutoEqProfile(
+    /**
+     * The database's id.
+     */
+    val id: String,
+    /**
+     * The name to show, used in the undo step's label and the snapshot's.
+     */
+    val name: String,
+    /**
+     * The trim the profile expects, almost always negative.
+     */
+    val preampDb: Float,
+    /**
+     * The filters, in the database's order: filter `i` goes to band `i`.
+     */
+    val filters: List<AutoEqFilter>,
+)
+
+/**
+ * One channel of a pair as a profile leaves it.
+ */
+data class AutoEqChannel(
+    /**
+     * The wire channel (inputs first, then outputs).
+     */
+    val channel: Int,
+    /**
+     * Whether it is an output.
+     */
+    val isOutput: Boolean,
+    /**
+     * Its level after the apply: the input's preamp, or the output's gain.
+     */
+    val levelDb: Float,
+    /**
+     * Its PEQ bank after the apply, every band.
+     */
+    val bands: List<FilterParams>,
+    /**
+     * Its crossover after the apply (changed only where the limits profile
+     * asks for a high-pass); empty on an input.
+     */
+    val crossover: List<FilterParams>,
+    /**
+     * Its response after the apply, PEQ and crossover, in dB at each
+     * [`crate::curve_freq`] point: the graph's preview curve.
+     */
+    val curve: List<Double>,
+)
+
+/**
+ * What a profile would do to a channel pair ([`DspiCore::autoeq_preview`]).
+ */
+data class AutoEqPreview(
+    /**
+     * The profile's id.
+     */
+    val profileId: String,
+    /**
+     * The two channels, in the order given.
+     */
+    val channels: List<AutoEqChannel>,
+    /**
+     * Where the profile's preamp goes: `input_preamp` or `output_gain`.
+     */
+    val levelTarget: String,
+    /**
+     * What the limits profile held, one row each ("eq.gain[4,0] 9 → 6
+     * dB"); empty with no profile or nothing past a limit.
+     */
+    val held: List<String>,
+    /**
+     * Filter shapes of the profile this build does not know, left flat.
+     */
+    val unsupported: List<String>,
+    /**
+     * Filters past the end of the bank, left out.
+     */
+    val dropped: Long,
+    /**
+     * The lines to show: what was held, dropped and left out, in words.
+     */
+    val notes: List<String>,
+)
+
+/**
+ * What [`DspiCore::autoeq_apply`] did.
+ */
+data class AutoEqApply(
+    /**
+     * What was written: the preview, as applied.
+     */
+    val preview: AutoEqPreview,
+    /**
+     * The snapshot of the state before, as a document
+     * (`meta.kind = "snapshot"`): [`DspiCore::snapshot_recall_document`]
+     * puts it back; it is the A of an A/B compare
+     * ([`DspiCore::ab_start_documents`]).
+     */
+    val snapshotDocument: String,
+    /**
+     * The same snapshot's id in the store, "" when no snapshot folder is
+     * named (the web) or it could not be filed (then a line in `notes`
+     * says why).
+     */
+    val snapshotId: String,
+    /**
+     * What to tell the person beyond the preview's notes.
+     */
+    val notes: List<String>,
+)
+
+/**
  * What `EXT_IDENTIFY` reports: the blink state and what the board is.
  */
 data class IdentifyInfo(

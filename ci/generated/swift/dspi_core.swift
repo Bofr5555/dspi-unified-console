@@ -1518,6 +1518,40 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func applyStatus()  -> GuardedApply
     
     /**
+     * Apply `profile` to wire channels `left` and `right` as
+     * [`DspiCore::autoeq_preview`] shows it. First the device's state is
+     * captured as a snapshot, returned as a document and filed in the
+     * snapshot store when a folder is named ([`DspiCore::snapshot_set_dir`]);
+     * then every write is one undo step labelled "AutoEQ: <name>": the
+     * level (inputs' preamp or outputs' gain), any crossover band the
+     * limits profile asks for, then every PEQ band of both channels.
+     * Values past the limits profile are held to it and reported
+     * ([`AutoEqPreview::held`]); nothing outside the pair changes.
+     *
+     * Errors: those of [`DspiCore::autoeq_preview`], then
+     * [`DspiError::ReadOnly`], all before anything is sent; those of the
+     * snapshot capture, before any write; then the errors of every setter
+     * ([`DspiError::LimitExceeded`] for a high-pass the limits profile
+     * cannot place, [`DspiError::Transfer`] and the rest). A failure part
+     * way leaves the writes made so far as the one undo step, and the
+     * snapshot filed (with a folder named).
+     */
+    func autoeqApply(profile: AutoEqProfile, left: UInt8, right: UInt8) throws  -> AutoEqApply
+    
+    /**
+     * What applying `profile` to wire channels `left` and `right` (two
+     * inputs or two outputs) would do: each channel's PEQ bank, level,
+     * crossover and response curve, what the limits profile would hold, and
+     * the lines to show. Reads the mirror only: nothing is sent.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`]
+     * for a channel out of range, the same channel twice, an input with an
+     * output, or a profile value no setter would take (a non-finite preamp,
+     * a known filter with a frequency or Q not above 0).
+     */
+    func autoeqPreview(profile: AutoEqProfile, left: UInt8, right: UInt8) throws  -> AutoEqPreview
+    
+    /**
      * Begin an undo group: everything written until the matching
      * [`DspiCore::end_group`] that undo can reverse is one undo step,
      * carrying `label` ([`HistoryEntry::label`]), as a drag is. Use it for
@@ -5246,6 +5280,56 @@ open func applyRevert()throws  -> GuardedApply  {
 open func applyStatus() -> GuardedApply  {
     return try!  FfiConverterTypeGuardedApply_lift(try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_apply_status(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Apply `profile` to wire channels `left` and `right` as
+     * [`DspiCore::autoeq_preview`] shows it. First the device's state is
+     * captured as a snapshot, returned as a document and filed in the
+     * snapshot store when a folder is named ([`DspiCore::snapshot_set_dir`]);
+     * then every write is one undo step labelled "AutoEQ: <name>": the
+     * level (inputs' preamp or outputs' gain), any crossover band the
+     * limits profile asks for, then every PEQ band of both channels.
+     * Values past the limits profile are held to it and reported
+     * ([`AutoEqPreview::held`]); nothing outside the pair changes.
+     *
+     * Errors: those of [`DspiCore::autoeq_preview`], then
+     * [`DspiError::ReadOnly`], all before anything is sent; those of the
+     * snapshot capture, before any write; then the errors of every setter
+     * ([`DspiError::LimitExceeded`] for a high-pass the limits profile
+     * cannot place, [`DspiError::Transfer`] and the rest). A failure part
+     * way leaves the writes made so far as the one undo step, and the
+     * snapshot filed (with a folder named).
+     */
+open func autoeqApply(profile: AutoEqProfile, left: UInt8, right: UInt8)throws  -> AutoEqApply  {
+    return try  FfiConverterTypeAutoEqApply_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_autoeq_apply(self.uniffiClonePointer(),
+        FfiConverterTypeAutoEqProfile_lower(profile),
+        FfiConverterUInt8.lower(left),
+        FfiConverterUInt8.lower(right),$0
+    )
+})
+}
+    
+    /**
+     * What applying `profile` to wire channels `left` and `right` (two
+     * inputs or two outputs) would do: each channel's PEQ bank, level,
+     * crossover and response curve, what the limits profile would hold, and
+     * the lines to show. Reads the mirror only: nothing is sent.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`]
+     * for a channel out of range, the same channel twice, an input with an
+     * output, or a profile value no setter would take (a non-finite preamp,
+     * a known filter with a frequency or Q not above 0).
+     */
+open func autoeqPreview(profile: AutoEqProfile, left: UInt8, right: UInt8)throws  -> AutoEqPreview  {
+    return try  FfiConverterTypeAutoEqPreview_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_autoeq_preview(self.uniffiClonePointer(),
+        FfiConverterTypeAutoEqProfile_lower(profile),
+        FfiConverterUInt8.lower(left),
+        FfiConverterUInt8.lower(right),$0
     )
 })
 }
@@ -16530,6 +16614,274 @@ public func FfiConverterTypeApplyAtFrameStatus_lower(_ value: ApplyAtFrameStatus
 
 
 /**
+ * What [`DspiCore::autoeq_apply`] did.
+ */
+public struct AutoEqApply {
+    /**
+     * What was written: the preview, as applied.
+     */
+    public var preview: AutoEqPreview
+    /**
+     * The snapshot of the state before, as a document
+     * (`meta.kind = "snapshot"`): [`DspiCore::snapshot_recall_document`]
+     * puts it back; it is the A of an A/B compare
+     * ([`DspiCore::ab_start_documents`]).
+     */
+    public var snapshotDocument: String
+    /**
+     * The same snapshot's id in the store, "" when no snapshot folder is
+     * named (the web) or it could not be filed (then a line in `notes`
+     * says why).
+     */
+    public var snapshotId: String
+    /**
+     * What to tell the person beyond the preview's notes.
+     */
+    public var notes: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * What was written: the preview, as applied.
+         */preview: AutoEqPreview, 
+        /**
+         * The snapshot of the state before, as a document
+         * (`meta.kind = "snapshot"`): [`DspiCore::snapshot_recall_document`]
+         * puts it back; it is the A of an A/B compare
+         * ([`DspiCore::ab_start_documents`]).
+         */snapshotDocument: String, 
+        /**
+         * The same snapshot's id in the store, "" when no snapshot folder is
+         * named (the web) or it could not be filed (then a line in `notes`
+         * says why).
+         */snapshotId: String, 
+        /**
+         * What to tell the person beyond the preview's notes.
+         */notes: [String]) {
+        self.preview = preview
+        self.snapshotDocument = snapshotDocument
+        self.snapshotId = snapshotId
+        self.notes = notes
+    }
+}
+
+#if compiler(>=6)
+extension AutoEqApply: Sendable {}
+#endif
+
+
+extension AutoEqApply: Equatable, Hashable {
+    public static func ==(lhs: AutoEqApply, rhs: AutoEqApply) -> Bool {
+        if lhs.preview != rhs.preview {
+            return false
+        }
+        if lhs.snapshotDocument != rhs.snapshotDocument {
+            return false
+        }
+        if lhs.snapshotId != rhs.snapshotId {
+            return false
+        }
+        if lhs.notes != rhs.notes {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(preview)
+        hasher.combine(snapshotDocument)
+        hasher.combine(snapshotId)
+        hasher.combine(notes)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAutoEqApply: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AutoEqApply {
+        return
+            try AutoEqApply(
+                preview: FfiConverterTypeAutoEqPreview.read(from: &buf), 
+                snapshotDocument: FfiConverterString.read(from: &buf), 
+                snapshotId: FfiConverterString.read(from: &buf), 
+                notes: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AutoEqApply, into buf: inout [UInt8]) {
+        FfiConverterTypeAutoEqPreview.write(value.preview, into: &buf)
+        FfiConverterString.write(value.snapshotDocument, into: &buf)
+        FfiConverterString.write(value.snapshotId, into: &buf)
+        FfiConverterSequenceString.write(value.notes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAutoEqApply_lift(_ buf: RustBuffer) throws -> AutoEqApply {
+    return try FfiConverterTypeAutoEqApply.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAutoEqApply_lower(_ value: AutoEqApply) -> RustBuffer {
+    return FfiConverterTypeAutoEqApply.lower(value)
+}
+
+
+/**
+ * One channel of a pair as a profile leaves it.
+ */
+public struct AutoEqChannel {
+    /**
+     * The wire channel (inputs first, then outputs).
+     */
+    public var channel: UInt8
+    /**
+     * Whether it is an output.
+     */
+    public var isOutput: Bool
+    /**
+     * Its level after the apply: the input's preamp, or the output's gain.
+     */
+    public var levelDb: Float
+    /**
+     * Its PEQ bank after the apply, every band.
+     */
+    public var bands: [FilterParams]
+    /**
+     * Its crossover after the apply (changed only where the limits profile
+     * asks for a high-pass); empty on an input.
+     */
+    public var crossover: [FilterParams]
+    /**
+     * Its response after the apply, PEQ and crossover, in dB at each
+     * [`crate::curve_freq`] point: the graph's preview curve.
+     */
+    public var curve: [Double]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The wire channel (inputs first, then outputs).
+         */channel: UInt8, 
+        /**
+         * Whether it is an output.
+         */isOutput: Bool, 
+        /**
+         * Its level after the apply: the input's preamp, or the output's gain.
+         */levelDb: Float, 
+        /**
+         * Its PEQ bank after the apply, every band.
+         */bands: [FilterParams], 
+        /**
+         * Its crossover after the apply (changed only where the limits profile
+         * asks for a high-pass); empty on an input.
+         */crossover: [FilterParams], 
+        /**
+         * Its response after the apply, PEQ and crossover, in dB at each
+         * [`crate::curve_freq`] point: the graph's preview curve.
+         */curve: [Double]) {
+        self.channel = channel
+        self.isOutput = isOutput
+        self.levelDb = levelDb
+        self.bands = bands
+        self.crossover = crossover
+        self.curve = curve
+    }
+}
+
+#if compiler(>=6)
+extension AutoEqChannel: Sendable {}
+#endif
+
+
+extension AutoEqChannel: Equatable, Hashable {
+    public static func ==(lhs: AutoEqChannel, rhs: AutoEqChannel) -> Bool {
+        if lhs.channel != rhs.channel {
+            return false
+        }
+        if lhs.isOutput != rhs.isOutput {
+            return false
+        }
+        if lhs.levelDb != rhs.levelDb {
+            return false
+        }
+        if lhs.bands != rhs.bands {
+            return false
+        }
+        if lhs.crossover != rhs.crossover {
+            return false
+        }
+        if lhs.curve != rhs.curve {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(channel)
+        hasher.combine(isOutput)
+        hasher.combine(levelDb)
+        hasher.combine(bands)
+        hasher.combine(crossover)
+        hasher.combine(curve)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAutoEqChannel: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AutoEqChannel {
+        return
+            try AutoEqChannel(
+                channel: FfiConverterUInt8.read(from: &buf), 
+                isOutput: FfiConverterBool.read(from: &buf), 
+                levelDb: FfiConverterFloat.read(from: &buf), 
+                bands: FfiConverterSequenceTypeFilterParams.read(from: &buf), 
+                crossover: FfiConverterSequenceTypeFilterParams.read(from: &buf), 
+                curve: FfiConverterSequenceDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AutoEqChannel, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.channel, into: &buf)
+        FfiConverterBool.write(value.isOutput, into: &buf)
+        FfiConverterFloat.write(value.levelDb, into: &buf)
+        FfiConverterSequenceTypeFilterParams.write(value.bands, into: &buf)
+        FfiConverterSequenceTypeFilterParams.write(value.crossover, into: &buf)
+        FfiConverterSequenceDouble.write(value.curve, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAutoEqChannel_lift(_ buf: RustBuffer) throws -> AutoEqChannel {
+    return try FfiConverterTypeAutoEqChannel.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAutoEqChannel_lower(_ value: AutoEqChannel) -> RustBuffer {
+    return FfiConverterTypeAutoEqChannel.lower(value)
+}
+
+
+/**
  * What the "Update Database" dialog shows about the database in place.
  */
 public struct AutoEqDatabaseInfo {
@@ -16883,6 +17235,391 @@ public func FfiConverterTypeAutoEqFetchResponse_lift(_ buf: RustBuffer) throws -
 #endif
 public func FfiConverterTypeAutoEqFetchResponse_lower(_ value: AutoEqFetchResponse) -> RustBuffer {
     return FfiConverterTypeAutoEqFetchResponse.lower(value)
+}
+
+
+/**
+ * One filter of a profile, as the AutoEQ database has it.
+ */
+public struct AutoEqFilter {
+    /**
+     * The database's shape name (`PK`, `LSC`, `HSC`, `peaking`, …).
+     */
+    public var kind: String
+    /**
+     * Centre or corner frequency in Hz.
+     */
+    public var freq: Float
+    /**
+     * Quality factor.
+     */
+    public var q: Float
+    /**
+     * Gain in dB.
+     */
+    public var gainDb: Float
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The database's shape name (`PK`, `LSC`, `HSC`, `peaking`, …).
+         */kind: String, 
+        /**
+         * Centre or corner frequency in Hz.
+         */freq: Float, 
+        /**
+         * Quality factor.
+         */q: Float, 
+        /**
+         * Gain in dB.
+         */gainDb: Float) {
+        self.kind = kind
+        self.freq = freq
+        self.q = q
+        self.gainDb = gainDb
+    }
+}
+
+#if compiler(>=6)
+extension AutoEqFilter: Sendable {}
+#endif
+
+
+extension AutoEqFilter: Equatable, Hashable {
+    public static func ==(lhs: AutoEqFilter, rhs: AutoEqFilter) -> Bool {
+        if lhs.kind != rhs.kind {
+            return false
+        }
+        if lhs.freq != rhs.freq {
+            return false
+        }
+        if lhs.q != rhs.q {
+            return false
+        }
+        if lhs.gainDb != rhs.gainDb {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(kind)
+        hasher.combine(freq)
+        hasher.combine(q)
+        hasher.combine(gainDb)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAutoEqFilter: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AutoEqFilter {
+        return
+            try AutoEqFilter(
+                kind: FfiConverterString.read(from: &buf), 
+                freq: FfiConverterFloat.read(from: &buf), 
+                q: FfiConverterFloat.read(from: &buf), 
+                gainDb: FfiConverterFloat.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AutoEqFilter, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.kind, into: &buf)
+        FfiConverterFloat.write(value.freq, into: &buf)
+        FfiConverterFloat.write(value.q, into: &buf)
+        FfiConverterFloat.write(value.gainDb, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAutoEqFilter_lift(_ buf: RustBuffer) throws -> AutoEqFilter {
+    return try FfiConverterTypeAutoEqFilter.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAutoEqFilter_lower(_ value: AutoEqFilter) -> RustBuffer {
+    return FfiConverterTypeAutoEqFilter.lower(value)
+}
+
+
+/**
+ * What a profile would do to a channel pair ([`DspiCore::autoeq_preview`]).
+ */
+public struct AutoEqPreview {
+    /**
+     * The profile's id.
+     */
+    public var profileId: String
+    /**
+     * The two channels, in the order given.
+     */
+    public var channels: [AutoEqChannel]
+    /**
+     * Where the profile's preamp goes: `input_preamp` or `output_gain`.
+     */
+    public var levelTarget: String
+    /**
+     * What the limits profile held, one row each ("eq.gain[4,0] 9 → 6
+     * dB"); empty with no profile or nothing past a limit.
+     */
+    public var held: [String]
+    /**
+     * Filter shapes of the profile this build does not know, left flat.
+     */
+    public var unsupported: [String]
+    /**
+     * Filters past the end of the bank, left out.
+     */
+    public var dropped: UInt32
+    /**
+     * The lines to show: what was held, dropped and left out, in words.
+     */
+    public var notes: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The profile's id.
+         */profileId: String, 
+        /**
+         * The two channels, in the order given.
+         */channels: [AutoEqChannel], 
+        /**
+         * Where the profile's preamp goes: `input_preamp` or `output_gain`.
+         */levelTarget: String, 
+        /**
+         * What the limits profile held, one row each ("eq.gain[4,0] 9 → 6
+         * dB"); empty with no profile or nothing past a limit.
+         */held: [String], 
+        /**
+         * Filter shapes of the profile this build does not know, left flat.
+         */unsupported: [String], 
+        /**
+         * Filters past the end of the bank, left out.
+         */dropped: UInt32, 
+        /**
+         * The lines to show: what was held, dropped and left out, in words.
+         */notes: [String]) {
+        self.profileId = profileId
+        self.channels = channels
+        self.levelTarget = levelTarget
+        self.held = held
+        self.unsupported = unsupported
+        self.dropped = dropped
+        self.notes = notes
+    }
+}
+
+#if compiler(>=6)
+extension AutoEqPreview: Sendable {}
+#endif
+
+
+extension AutoEqPreview: Equatable, Hashable {
+    public static func ==(lhs: AutoEqPreview, rhs: AutoEqPreview) -> Bool {
+        if lhs.profileId != rhs.profileId {
+            return false
+        }
+        if lhs.channels != rhs.channels {
+            return false
+        }
+        if lhs.levelTarget != rhs.levelTarget {
+            return false
+        }
+        if lhs.held != rhs.held {
+            return false
+        }
+        if lhs.unsupported != rhs.unsupported {
+            return false
+        }
+        if lhs.dropped != rhs.dropped {
+            return false
+        }
+        if lhs.notes != rhs.notes {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(profileId)
+        hasher.combine(channels)
+        hasher.combine(levelTarget)
+        hasher.combine(held)
+        hasher.combine(unsupported)
+        hasher.combine(dropped)
+        hasher.combine(notes)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAutoEqPreview: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AutoEqPreview {
+        return
+            try AutoEqPreview(
+                profileId: FfiConverterString.read(from: &buf), 
+                channels: FfiConverterSequenceTypeAutoEqChannel.read(from: &buf), 
+                levelTarget: FfiConverterString.read(from: &buf), 
+                held: FfiConverterSequenceString.read(from: &buf), 
+                unsupported: FfiConverterSequenceString.read(from: &buf), 
+                dropped: FfiConverterUInt32.read(from: &buf), 
+                notes: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AutoEqPreview, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.profileId, into: &buf)
+        FfiConverterSequenceTypeAutoEqChannel.write(value.channels, into: &buf)
+        FfiConverterString.write(value.levelTarget, into: &buf)
+        FfiConverterSequenceString.write(value.held, into: &buf)
+        FfiConverterSequenceString.write(value.unsupported, into: &buf)
+        FfiConverterUInt32.write(value.dropped, into: &buf)
+        FfiConverterSequenceString.write(value.notes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAutoEqPreview_lift(_ buf: RustBuffer) throws -> AutoEqPreview {
+    return try FfiConverterTypeAutoEqPreview.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAutoEqPreview_lower(_ value: AutoEqPreview) -> RustBuffer {
+    return FfiConverterTypeAutoEqPreview.lower(value)
+}
+
+
+/**
+ * A headphone profile to preview or apply: one entry of the AutoEQ
+ * database. A client that holds the database as JSON passes an entry
+ * through [`AutoEqProfile::from_entry_json`] (the C ABI and the web do).
+ */
+public struct AutoEqProfile {
+    /**
+     * The database's id.
+     */
+    public var id: String
+    /**
+     * The name to show, used in the undo step's label and the snapshot's.
+     */
+    public var name: String
+    /**
+     * The trim the profile expects, almost always negative.
+     */
+    public var preampDb: Float
+    /**
+     * The filters, in the database's order: filter `i` goes to band `i`.
+     */
+    public var filters: [AutoEqFilter]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The database's id.
+         */id: String, 
+        /**
+         * The name to show, used in the undo step's label and the snapshot's.
+         */name: String, 
+        /**
+         * The trim the profile expects, almost always negative.
+         */preampDb: Float, 
+        /**
+         * The filters, in the database's order: filter `i` goes to band `i`.
+         */filters: [AutoEqFilter]) {
+        self.id = id
+        self.name = name
+        self.preampDb = preampDb
+        self.filters = filters
+    }
+}
+
+#if compiler(>=6)
+extension AutoEqProfile: Sendable {}
+#endif
+
+
+extension AutoEqProfile: Equatable, Hashable {
+    public static func ==(lhs: AutoEqProfile, rhs: AutoEqProfile) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.preampDb != rhs.preampDb {
+            return false
+        }
+        if lhs.filters != rhs.filters {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(name)
+        hasher.combine(preampDb)
+        hasher.combine(filters)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAutoEqProfile: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AutoEqProfile {
+        return
+            try AutoEqProfile(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                preampDb: FfiConverterFloat.read(from: &buf), 
+                filters: FfiConverterSequenceTypeAutoEqFilter.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AutoEqProfile, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterFloat.write(value.preampDb, into: &buf)
+        FfiConverterSequenceTypeAutoEqFilter.write(value.filters, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAutoEqProfile_lift(_ buf: RustBuffer) throws -> AutoEqProfile {
+    return try FfiConverterTypeAutoEqProfile.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAutoEqProfile_lower(_ value: AutoEqProfile) -> RustBuffer {
+    return FfiConverterTypeAutoEqProfile.lower(value)
 }
 
 
@@ -32290,6 +33027,56 @@ fileprivate struct FfiConverterSequenceTypeAlinkUsbEnd: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeAutoEqChannel: FfiConverterRustBuffer {
+    typealias SwiftType = [AutoEqChannel]
+
+    public static func write(_ value: [AutoEqChannel], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeAutoEqChannel.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [AutoEqChannel] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [AutoEqChannel]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeAutoEqChannel.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeAutoEqFilter: FfiConverterRustBuffer {
+    typealias SwiftType = [AutoEqFilter]
+
+    public static func write(_ value: [AutoEqFilter], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeAutoEqFilter.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [AutoEqFilter] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [AutoEqFilter]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeAutoEqFilter.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeBootloaderDrive: FfiConverterRustBuffer {
     typealias SwiftType = [BootloaderDrive]
 
@@ -33727,6 +34514,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_apply_status() != 7134) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_autoeq_apply() != 11307) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_autoeq_preview() != 45251) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_begin_group() != 15128) {

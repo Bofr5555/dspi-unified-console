@@ -5473,6 +5473,39 @@ void dspi_autoeq_rebuild_cancel(struct AutoEqRebuildHandle *handle);
 void dspi_autoeq_rebuild_free(struct AutoEqRebuildHandle *handle);
 
 /**
+ * What a profile would do to wire channels `left` and `right` (two inputs or
+ * two outputs). `profile`: one entry of the AutoEQ database as JSON (`{id,
+ * manufacturer, model, preamp, filters: [{type, freq, q, gain}]}`). JSON
+ * `{ok, profileId, channels: [{channel, isOutput, levelDb, bands, crossover,
+ * curve}], levelTarget, held, unsupported, dropped, notes}` (`curve` at the
+ * `dspi_curve_freq` points), or a failure. Sends nothing, so it may be called
+ * again with a larger buffer.
+ */
+uint32_t dspi_autoeq_preview(struct FfiCore *core,
+                             const char *profile,
+                             uint8_t left,
+                             uint8_t right,
+                             char *buf,
+                             uint32_t len);
+
+/**
+ * Apply a profile to wire channels `left` and `right` as `dspi_autoeq_preview`
+ * shows it: the state before is captured as a snapshot and filed in the store
+ * (`dspi_snapshot_set_dir`; `dspi_snapshot_export` gives its document), then
+ * the writes are one undo step, held to the limits profile. The device changes
+ * on every call, whatever the buffer, so the reply is short: JSON `{ok,
+ * snapshotId, profileId, levelTarget, held, unsupported, dropped, notes}`
+ * (`snapshotId` "" with no folder named), or a failure. `buf` needs
+ * [`AUTOEQ_REPLY_MIN`] bytes.
+ */
+uint32_t dspi_autoeq_apply(struct FfiCore *core,
+                           const char *profile,
+                           uint8_t left,
+                           uint8_t right,
+                           char *buf,
+                           uint32_t len);
+
+/**
  * What to tell the user about a Link phase, in JSON: {ok, key, phase, text,
  * actionKey, action}, or {ok:false, code:"invalid", error} for a `phase` that is
  * no phase. `phase` is the name `dspi_link_status` reports. `pin_source` is its

@@ -409,6 +409,73 @@ pub extern "C" fn dspi_autoeq_rebuild_free(handle: *mut AutoEqRebuildHandle) {
     });
 }
 
+// -- WP P1AQ -- AutoEQ preview and apply to any channel pair (PRO1 T6)
+
+/// The profile and pair arguments, as the core takes them.
+fn pair_args(profile: *const c_char) -> Result<dspi_core::AutoEqProfile> {
+    super::arg(profile, "profile").and_then(dspi_core::AutoEqProfile::from_entry_json)
+}
+
+/// What a profile would do to wire channels `left` and `right` (two inputs or
+/// two outputs). `profile`: one entry of the AutoEQ database as JSON (`{id,
+/// manufacturer, model, preamp, filters: [{type, freq, q, gain}]}`). JSON
+/// `{ok, profileId, channels: [{channel, isOutput, levelDb, bands, crossover,
+/// curve}], levelTarget, held, unsupported, dropped, notes}` (`curve` at the
+/// `dspi_curve_freq` points), or a failure. Sends nothing, so it may be called
+/// again with a larger buffer.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_autoeq_preview(
+    core: *mut crate::FfiCore,
+    profile: *const c_char,
+    left: u8,
+    right: u8,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    super::text(core, buf, len, |c| {
+        json_reply(pair_args(profile).and_then(|p| c.autoeq_preview(p, left, right)))
+    })
+}
+
+/// Apply a profile to wire channels `left` and `right` as `dspi_autoeq_preview`
+/// shows it: the state before is captured as a snapshot and filed in the store
+/// (`dspi_snapshot_set_dir`; `dspi_snapshot_export` gives its document), then
+/// the writes are one undo step, held to the limits profile. The device changes
+/// on every call, whatever the buffer, so the reply is short: JSON `{ok,
+/// snapshotId, profileId, levelTarget, held, unsupported, dropped, notes}`
+/// (`snapshotId` "" with no folder named), or a failure. `buf` needs
+/// [`AUTOEQ_REPLY_MIN`] bytes.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_autoeq_apply(
+    core: *mut crate::FfiCore,
+    profile: *const c_char,
+    left: u8,
+    right: u8,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    super::text(core, buf, len, |c| {
+        match pair_args(profile).and_then(|p| c.autoeq_apply(p, left, right)) {
+            Ok(done) => {
+                let mut notes = done.preview.notes;
+                notes.extend(done.notes);
+                serde_json::json!({
+                    "ok": true,
+                    "snapshotId": done.snapshot_id,
+                    "profileId": done.preview.profile_id,
+                    "levelTarget": done.preview.level_target,
+                    "held": done.preview.held,
+                    "unsupported": done.preview.unsupported,
+                    "dropped": done.preview.dropped,
+                    "notes": notes,
+                })
+                .to_string()
+            }
+            Err(e) => json_reply::<()>(Err(e)),
+        }
+    })
+}
+
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_cg6 {
@@ -812,5 +879,66 @@ mod tests_wp_cg6 {
         ] {
             assert!(header.contains(name), "{name} is not in the header");
         }
+    }
+}
+
+// -- WP P1AQ --
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests_wp_p1aq {
+    use std::ffi::CString;
+    use std::ptr::null;
+
+    use serde_json::Value;
+
+    use super::*;
+    use crate::fns_device::{dspi_core_free, dspi_core_new};
+
+    fn reply(f: impl Fn(*mut c_char, u32) -> u32) -> Value {
+        let mut buf = vec![0u8; 1 << 20];
+        let n = f(buf.as_mut_ptr().cast(), buf.len() as u32);
+        assert!(n > 0 && (n as usize) <= buf.len(), "{n}");
+        let text = std::ffi::CStr::from_bytes_until_nul(&buf).unwrap();
+        serde_json::from_str(text.to_str().unwrap()).unwrap()
+    }
+
+    #[test]
+    fn wp_p1aq_preview_and_apply_through_c() {
+        let core = dspi_core_new();
+        assert!(super::super::dspi_open_demo(core));
+        let profile = CString::new(
+            r#"{"id":"o/Sony A","manufacturer":"Sony","model":"A","preamp":-4,
+                "filters":[{"type":"PK","freq":105,"q":0.7,"gain":3}]}"#,
+        )
+        .unwrap();
+        let pv = reply(|b, l| dspi_autoeq_preview(core, profile.as_ptr(), 0, 1, b, l));
+        assert_eq!(pv["ok"], true, "{pv}");
+        assert_eq!(pv["levelTarget"], "input_preamp");
+        assert_eq!(pv["channels"][0]["bands"][0]["gain"], 3.0, "{pv}");
+
+        let mut small = vec![0u8; AUTOEQ_REPLY_MIN as usize];
+        let n = dspi_autoeq_apply(
+            core,
+            profile.as_ptr(),
+            0,
+            1,
+            small.as_mut_ptr().cast(),
+            AUTOEQ_REPLY_MIN,
+        );
+        assert!(n > 0 && n <= AUTOEQ_REPLY_MIN, "a short reply: {n}");
+        let text = std::ffi::CStr::from_bytes_until_nul(&small).unwrap();
+        let done: Value = serde_json::from_str(text.to_str().unwrap()).unwrap();
+        assert_eq!(done["ok"], true, "{done}");
+        assert_eq!(done["snapshotId"], "");
+        // SAFETY: as above.
+        let preamp = unsafe { (*core).core.get_state().input_preamp_db[1] };
+        assert_eq!(preamp, -4.0);
+
+        let bad = reply(|b, l| dspi_autoeq_apply(core, profile.as_ptr(), 0, 0, b, l));
+        assert_eq!(bad["ok"], false);
+        assert_eq!(bad["code"], "invalid", "{bad}");
+        let none = reply(|b, l| dspi_autoeq_preview(core, null(), 0, 1, b, l));
+        assert_eq!(none["code"], "invalid", "{none}");
+        dspi_core_free(core);
     }
 }

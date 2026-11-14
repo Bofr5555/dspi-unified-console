@@ -355,6 +355,9 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         "limitsProfile" => Ok(limits::profile(&core)),
         "limitsClear" => limits::clear(&core),
         "limitsStatus" => Ok(limits::status(&core)),
+        // -- WP P1AQ -- AutoEQ preview and apply to a channel pair (src/autoeq.rs)
+        "autoeqPreview" => crate::autoeq::preview(&core, params(req.params)?),
+        "autoeqApply" => crate::autoeq::apply(&core, params(req.params)?),
         // -- WP P1SA -- safe apply with rollback (src/guarded.rs)
         "applyGuardedImport" => crate::guarded::import(&core, params(req.params)?),
         "applyGuardedSnapshot" => crate::guarded::snapshot(&core, params(req.params)?),
