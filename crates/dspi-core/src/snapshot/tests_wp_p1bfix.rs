@@ -112,7 +112,12 @@ fn wp_p1bfix_recall_document_refuses_a_plain_document() {
     let preset = preset.to_string();
 
     core.set_output_gain(0, -3.0).unwrap();
-    let r = j(&core.config_import(template.clone(), IMPORT_VOLUMES | IMPORT_HARDWARE));
+    let r = j(&core.config_import_confirmed(
+        template.clone(),
+        IMPORT_VOLUMES | IMPORT_HARDWARE,
+        u32::MAX,
+        None,
+    ));
     assert_eq!(r["noticeKey"], "confirmation_required", "{r}");
 
     let n_out = outs.load(Ordering::SeqCst);

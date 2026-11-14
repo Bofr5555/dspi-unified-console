@@ -220,11 +220,11 @@ final class InstallerP1SW2Tests: XCTestCase, CoreDomainTesting {
 
     func testP1SW2TokensAreRequiredAndTheAppsGatedCallsCarryOne() {
         let (_, t, vm) = demoVM()
-        // P1TZ: required by every core from the start (no switch); the plain save below is refused.
-        if case .failure(let e) = t.call({ try $0.savePreset(slot: 2) }) {
+        // P1TZ: required by every core from the start (no switch); a save without a token is refused.
+        if case .failure(let e) = t.call({ try $0.savePresetConfirmed(slot: 2, token: nil) }) {
             if case .ConfirmationRequired = e {} else { XCTFail("refused for the token: \(e)") }
         } else {
-            XCTFail("a plain save without a token is refused")
+            XCTFail("a save without a token is refused")
         }
         XCTAssertEqual(vm.savePreset(slot: 2, confirmed: .savePreset()), PRESET_OK, "the app's save mints its token")
         XCTAssertEqual(vm.copyPreset(from: 2, to: 3, confirmed: .copyPreset()), PRESET_OK)

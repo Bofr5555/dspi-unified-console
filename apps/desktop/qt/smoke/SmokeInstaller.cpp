@@ -165,7 +165,11 @@ static void installerSection(SmokeDriver &d) {
     // ---- Tokens are required by every core (P1TK, P1TZ), and the app's dangerous calls carry them ----
     const int slot = device->presets()->activeSlot();
     d.check("p1qt2: a preset save without a token is refused, nothing written",
-            slot >= 0 && onWorker<int>(d, [slot](FfiCore *c) { return int(dspi_save_preset(c, uint8_t(slot))); }) != PRESET_OK);
+            slot >= 0 && onWorker<bool>(d, [slot](FfiCore *c) {
+                char buf[512] = {};
+                dspi_save_preset_confirmed(c, uint8_t(slot), nullptr, buf, sizeof buf);
+                return QByteArray(buf).contains("\"confirmation_required\"");
+            }));
     QSignalSpy presetFailed(sidebar, &SidebarController::presetFailed);
     sidebar->savePreset();
     d.waitFor(5000, [&] { return !sidebar->presetBusy(); });

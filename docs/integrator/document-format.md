@@ -29,7 +29,7 @@ and the full key list in [`docs/terminal/preset-format.md`](../terminal/preset-f
 |---|---|---|
 | Export | `config_export(name, app_version, links)` | `uconsole export FILE.dspipreset` |
 | Describe before applying | `config_inspect(text)` | `uconsole import FILE --dry-run` |
-| Apply | `config_import(text, options)` | `uconsole import FILE [--volume] [--hardware]` |
+| Apply | `config_import_confirmed(text, options, eq_channels, token)` (a token is required, WP P1TZ) | `uconsole import FILE [--volume] [--hardware] [--yes]` |
 | Diff two documents (P1DF) | `config_diff(before, after)` | `uconsole diff A.dspipreset B.dspipreset [--json]` |
 | Diff a document against the device | `config_preview(text, options, eq_channels)` | `uconsole diff FILE`, `uconsole import FILE --preview [--only ...]` |
 | Apply some blocks (P1DF) | `config_import_confirmed(text, IMPORT_BY_BLOCK \| blocks, eq_channels, token)` | `uconsole import FILE --only eq,crossover,routing,outputs,limiters,effects,volumes,hardware,names [--yes]` |
@@ -42,8 +42,8 @@ A one-shot `uconsole` command is one session of the core. With `--json` each of
 these prints the core's own record or reply (`SnapshotInfo`, `AbCompare`,
 `GuardedApply`, the diff's `{rows, blocks, summary, notes}`). Exit codes: 0
 done (a guard kept), 1 usage, 2 no device, 3 refused (not confirmed, a lock or a
-limit, a guard reverted), 4 transport. A by-block import is a gated call
-(P1TK): on a terminal it asks, in a script it needs `--yes`, which mints the
+limit, a guard reverted), 4 transport. An import is a gated call
+(P1TK; always, P1TZ): on a terminal it asks, in a script it needs `--yes`, which mints the
 confirmation token; a guarded import needs none.
 
 **The guard's default (WP P1EFIX).** Over DSPi Link (`--link`) a snapshot recall

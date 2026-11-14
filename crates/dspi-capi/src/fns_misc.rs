@@ -283,28 +283,6 @@ pub extern "C" fn dspi_set_output_config_mode(core: *mut FfiCore, mode: u8) -> b
     flag(core, |c| c.set_output_config_mode(mode))
 }
 
-/// Store the output configuration in flash. Returns the device's status,
-/// 0xFF when it could not be asked.
-///
-/// Always refused since WP P1TZ (OD-P1f; tokens are required, with no
-/// switch): nothing is sent and the failure is returned. Use
-/// `dspi_save_output_config_confirmed` with a token from `dspi_confirm_token`.
-#[unsafe(no_mangle)]
-pub extern "C" fn dspi_save_output_config(core: *mut FfiCore) -> u8 {
-    status(core, DspiCore::save_output_config)
-}
-
-/// Reboot the device into its USB bootloader. No answer comes back, so true
-/// means only that the request went out.
-///
-/// Always refused since WP P1TZ (OD-P1f; tokens are required, with no
-/// switch): nothing is sent and the failure is returned. Use
-/// `dspi_enter_bootloader_confirmed` with a token from `dspi_confirm_token`.
-#[unsafe(no_mangle)]
-pub extern "C" fn dspi_enter_bootloader(core: *mut FfiCore) -> bool {
-    flag(core, DspiCore::enter_bootloader)
-}
-
 /// Hold the device for this console (DSPi Link; at once elsewhere) for up to
 /// `timeout_ms`, giving `reason` to the others. JSON `{ok}` or a failure
 /// (`locked` when another console holds it). Returns the bytes needed; 0 for
@@ -897,52 +875,7 @@ pub extern "C" fn dspi_config_inspect(text: *const c_char, buf: *mut c_char, len
     })
 }
 
-/// Apply a configuration document to the device. `options`: bit 0 the
-/// volumes too, bit 1 the hardware configuration too. JSON reply; the device
-/// has changed whatever the buffer.
-///
-/// Always refused since WP P1TZ (OD-P1f; tokens are required, with no
-/// switch): nothing is sent and the failure is returned. Use
-/// `dspi_config_import_confirmed` with a token from `dspi_confirm_token`.
-#[unsafe(no_mangle)]
-pub extern "C" fn dspi_config_import(
-    core: *mut FfiCore,
-    text: *const c_char,
-    options: u32,
-    buf: *mut c_char,
-    len: u32,
-) -> u32 {
-    self::text(core, buf, len, |c| match arg(text, "text") {
-        Ok(doc) => c.config_import(doc.to_owned(), options),
-        Err(e) => json_reply::<()>(Err(e)),
-    })
-}
-
 // -- WP P1DF --
-/// Apply a configuration document by block: `options` as
-/// `dspi_config_import`'s, or with `DSPI_IMPORT_BY_BLOCK` the
-/// `DSPI_IMPORT_*` block bits; `eq_channels` the wire channels whose EQ is
-/// applied (bit k: channel k; all bits: every one). JSON reply; the device
-/// has changed whatever the buffer.
-///
-/// Always refused since WP P1TZ (OD-P1f; tokens are required, with no
-/// switch): nothing is sent and the failure is returned. Use
-/// `dspi_config_import_confirmed` with a token from `dspi_confirm_token`.
-#[unsafe(no_mangle)]
-pub extern "C" fn dspi_config_import_selected(
-    core: *mut FfiCore,
-    text: *const c_char,
-    options: u32,
-    eq_channels: u32,
-    buf: *mut c_char,
-    len: u32,
-) -> u32 {
-    self::text(core, buf, len, |c| match arg(text, "text") {
-        Ok(doc) => c.config_import_selected(doc.to_owned(), options, eq_channels),
-        Err(e) => json_reply::<()>(Err(e)),
-    })
-}
-
 /// What `dspi_config_import_selected` with the same arguments would change
 /// on the device, without writing: JSON rows `{block, section, item,
 /// before, after}`, counts per block and a summary. No I/O.
@@ -1828,40 +1761,10 @@ pub extern "C" fn dspi_core_vreg_cal_keep(core: *mut FfiCore, soak_s: u32) -> u8
     status(core, |c| c.core_vreg_cal_keep(soak_s))
 }
 
-/// Store the passed trial's voltage; `typed` as for the start. Returns a
-/// status byte.
-///
-/// Always refused since WP P1TZ (OD-P1f; tokens are required, with no
-/// switch): nothing is sent and the failure is returned. Use
-/// `dspi_core_vreg_cal_commit_confirmed` with a token from `dspi_confirm_token`.
-#[unsafe(no_mangle)]
-pub extern "C" fn dspi_core_vreg_cal_commit(core: *mut FfiCore, typed: *const c_char) -> u8 {
-    status(core, |c| {
-        c.core_vreg_cal_commit(optional_text(typed, "typed")?)
-    })
-}
-
 /// End the running trial. Returns a status byte.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_vreg_trial_end(core: *mut FfiCore) -> u8 {
     status(core, DspiCore::core_vreg_trial_end)
-}
-
-/// Store VREG code `value` directly (0: the build's default); `typed` as for
-/// the start. Returns a status byte.
-///
-/// Always refused since WP P1TZ (OD-P1f; tokens are required, with no
-/// switch): nothing is sent and the failure is returned. Use
-/// `dspi_core_vreg_manual_set_confirmed` with a token from `dspi_confirm_token`.
-#[unsafe(no_mangle)]
-pub extern "C" fn dspi_core_vreg_manual_set(
-    core: *mut FfiCore,
-    value: u8,
-    typed: *const c_char,
-) -> u8 {
-    status(core, |c| {
-        c.core_vreg_manual_set(value, optional_text(typed, "typed")?)
-    })
 }
 
 /// Try VREG code `value` until the next reboot; `typed` as for the start.
@@ -2083,9 +1986,9 @@ struct WriteRequest {
 /// out; an action's value is `"trigger"`). The reply is `{ok, value}` with
 /// the value read back, or a failure; the write has happened whatever the
 /// buffer, so do not call again for a short one. The gated paths
-/// (`preset.save`, `preset.delete`, `dev.save`, `dev.save.io`) take a token
-/// and are always refused here (`confirmation_required`, WP P1TZ): use their
-/// `_confirmed` functions.
+/// (`preset.save`, `preset.delete`, `dev.save`, `dev.save.io`) need a token
+/// and are always refused here (`confirmation_required`, nothing sent; WP
+/// P1TZ): use their `_confirmed` functions.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_write_param(
     core: *mut FfiCore,

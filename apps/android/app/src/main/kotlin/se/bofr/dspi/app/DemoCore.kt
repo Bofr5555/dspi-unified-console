@@ -37,8 +37,8 @@ internal class DemoCore(private val core: DspiCoreApi) : DspiCoreApi by core {
 
     override fun pollHotplug() = Unit
 
-    // A real board in BOOTSEL is a drive like any other; the demo device has no bootloader.
-    override fun enterBootloader(): Unit = throw DspiException.Unsupported()
+    // A real board in BOOTSEL is a drive like any other; the demo device has no bootloader
+    // (enterBootloaderConfirmed below; WP P1TZ retired the form without a token).
 
     override fun bootloaderCounts() = BootloaderCounts(0, 0)
 

@@ -5,7 +5,7 @@
 //! - **The configuration document** (`.dspipreset`, JSON, schema 1): the whole
 //!   device. [`DspiCore::config_export`] writes it from the mirror,
 //!   [`config_inspect`] describes one before it is applied, and
-//!   [`DspiCore::config_import`] applies it as one bulk write. The format is the
+//!   [`DspiCore::config_import_confirmed`] applies it as one bulk write. The format is the
 //!   macOS Console's (`PresetDocument.swift`) and the Terminal's
 //!   (`dspi_session::preset_file`), written down in
 //!   `docs/terminal/preset-format.md`.
@@ -2149,10 +2149,12 @@ impl DspiCore {
         Ok(self.with_limits_meta(text))
     }
 
+    // -- WP P1TK -- (WP P1TZ: the only form; config_import and
+    // config_import_selected are retired) -- WP P1DF -- -- WP P1AFIX --
     /// Apply a `.dspipreset` document to the device as one bulk write, under
-    /// the device lock. `options`: [`IMPORT_VOLUMES`] also applies the master
-    /// and user volume, [`IMPORT_HARDWARE`] the hardware I/O and the
-    /// limiters. The crossfeed pair map goes over the extension channel when
+    /// the device lock, with a confirmation token. `options`:
+    /// [`IMPORT_VOLUMES`] also applies the master and user volume,
+    /// [`IMPORT_HARDWARE`] the hardware I/O and the limiters. The crossfeed pair map goes over the extension channel when
     /// the device has one.
     ///
     /// Every setting the document holds no readable value for keeps the
@@ -2175,35 +2177,24 @@ impl DspiCore {
     /// the device could not be written (disconnected, read-only firmware,
     /// another console's lock, a failed transfer); the mirror then stays as
     /// it was.
-    pub fn config_import(&self, text: String, options: u32) -> String {
-        self.config_import_selected(text, options, u32::MAX)
-    }
-
-    // -- WP P1DF --
-    /// [`DspiCore::config_import`] with the EQ narrowed to the wire channels
-    /// in `eq_channels` (bit k: channel k; `u32::MAX` every one). `options`
-    /// as there: with [`IMPORT_BY_BLOCK`] each `IMPORT_*` block bit says
-    /// whether its block is applied (EQ, crossover, routing and matrix,
+    ///
+    /// The EQ is narrowed to the wire channels in `eq_channels` (bit k:
+    /// channel k; `u32::MAX` every one). With [`IMPORT_BY_BLOCK`] in
+    /// `options` each `IMPORT_*` block bit says whether its block is applied (EQ, crossover, routing and matrix,
     /// outputs, limiters, effects, volume levels, hardware I/O, names), and
     /// a block left out keeps the device's values; without it the old two
-    /// bits keep their meaning. The reply is `config_import`'s, plus
-    /// `blocks`: the block bits applied.
+    /// bits keep their meaning. The reply also carries `blocks`: the block
+    /// bits applied.
     ///
     /// With [`IMPORT_BY_BLOCK`] and no block bit nothing is chosen: the
     /// reply is a refusal (`noticeKey` `config.nothing_selected`) and nothing
     /// is written, journalled or logged; the undo history stays as it was.
-    // -- WP P1AFIX -- (review p1a F4) the refusal of an empty selection
-    pub fn config_import_selected(&self, text: String, options: u32, eq_channels: u32) -> String {
-        self.config_import_with(text, options, eq_channels, None)
-    }
-
-    // -- WP P1TK --
-    /// [`DspiCore::config_import_selected`] with a confirmation token
-    /// ([`crate::confirm`], [`crate::ConfirmOp::ConfigImport`]). Without a
-    /// good one while tokens are required, or with a bad one at any time, the
-    /// reply is a refusal (`noticeKey` `confirmation_required`) and nothing is
-    /// written. A text that is not a document, or an empty selection, is
-    /// refused first and leaves the token unspent.
+    ///
+    /// The token ([`crate::confirm`], [`crate::ConfirmOp::ConfigImport`];
+    /// required since WP P1TZ): without a good one the reply is a refusal
+    /// (`noticeKey` `confirmation_required`) and nothing is written. A text
+    /// that is not a document, or an empty selection, is refused first and
+    /// leaves the token unspent. There is no form without a token.
     pub fn config_import_confirmed(
         &self,
         text: String,
@@ -2215,7 +2206,7 @@ impl DspiCore {
     }
 
     /// What importing `text` with `options` and `eq_channels` (as
-    /// [`DspiCore::config_import_selected`] takes them) would change on the
+    /// [`DspiCore::config_import_confirmed`] takes them) would change on the
     /// device, without writing anything: the preview shown before an import
     /// (PRO1 W5). No I/O.
     ///
@@ -2252,7 +2243,7 @@ impl DspiCore {
 
 impl DspiCore {
     // -- WP P1TK --
-    /// The body of `config_import_selected` and its `_confirmed` form.
+    /// The body of [`DspiCore::config_import_confirmed`].
     fn config_import_with(
         &self,
         text: String,

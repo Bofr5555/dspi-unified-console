@@ -1064,9 +1064,9 @@ interface DspiCoreApi : AutoCloseable {
 
     /**
      * Apply a `.dspipreset` document to the device as one bulk write, under
-     * the device lock. `options`: [`IMPORT_VOLUMES`] also applies the master
-     * and user volume, [`IMPORT_HARDWARE`] the hardware I/O and the
-     * limiters. The crossfeed pair map goes over the extension channel when
+     * the device lock, with a confirmation token. `options`:
+     * [`IMPORT_VOLUMES`] also applies the master and user volume,
+     * [`IMPORT_HARDWARE`] the hardware I/O and the limiters. The crossfeed pair map goes over the extension channel when
      * the device has one.
      *
      * Every setting the document holds no readable value for keeps the
@@ -1089,24 +1089,30 @@ interface DspiCoreApi : AutoCloseable {
      * the device could not be written (disconnected, read-only firmware,
      * another console's lock, a failed transfer); the mirror then stays as
      * it was.
-     */
-    fun configImport(text: String, options: Long): String
-
-    fun configImportSelected(text: String, options: Long, eqChannels: Long): String
-
-    /**
-     * [`DspiCore::config_import_selected`] with a confirmation token
-     * ([`crate::confirm`], [`crate::ConfirmOp::ConfigImport`]). Without a
-     * good one while tokens are required, or with a bad one at any time, the
-     * reply is a refusal (`noticeKey` `confirmation_required`) and nothing is
-     * written. A text that is not a document, or an empty selection, is
-     * refused first and leaves the token unspent.
+     *
+     * The EQ is narrowed to the wire channels in `eq_channels` (bit k:
+     * channel k; `u32::MAX` every one). With [`IMPORT_BY_BLOCK`] in
+     * `options` each `IMPORT_*` block bit says whether its block is applied (EQ, crossover, routing and matrix,
+     * outputs, limiters, effects, volume levels, hardware I/O, names), and
+     * a block left out keeps the device's values; without it the old two
+     * bits keep their meaning. The reply also carries `blocks`: the block
+     * bits applied.
+     *
+     * With [`IMPORT_BY_BLOCK`] and no block bit nothing is chosen: the
+     * reply is a refusal (`noticeKey` `config.nothing_selected`) and nothing
+     * is written, journalled or logged; the undo history stays as it was.
+     *
+     * The token ([`crate::confirm`], [`crate::ConfirmOp::ConfigImport`];
+     * required since WP P1TZ): without a good one the reply is a refusal
+     * (`noticeKey` `confirmation_required`) and nothing is written. A text
+     * that is not a document, or an empty selection, is refused first and
+     * leaves the token unspent. There is no form without a token.
      */
     fun configImportConfirmed(text: String, options: Long, eqChannels: Long, token: String?): String
 
     /**
      * What importing `text` with `options` and `eq_channels` (as
-     * [`DspiCore::config_import_selected`] takes them) would change on the
+     * [`DspiCore::config_import_confirmed`] takes them) would change on the
      * device, without writing anything: the preview shown before an import
      * (PRO1 W5). No I/O.
      *
@@ -1197,7 +1203,7 @@ interface DspiCoreApi : AutoCloseable {
     /**
      * Import `text` (a `.dspipreset` document) with a way back: capture a
      * snapshot, apply the blocks `options` and `eq_channels` choose (as
-     * [`DspiCore::config_import_selected`] takes them), then wait
+     * [`DspiCore::config_import_confirmed`] takes them), then wait
      * `timeout_s` seconds (0: 30, at most 590) for
      * [`DspiCore::apply_confirm`]. A timeout, [`DspiCore::apply_revert`] or a
      * failed import puts the snapshot back; over DSPi Link the hub guards it
@@ -1317,7 +1323,7 @@ interface DspiCoreApi : AutoCloseable {
 
     /**
      * Where the physical I/O configuration is stored: 0 = independently of
-     * the presets (saved with [`DspiCore::save_output_config`]), 1 = with
+     * the presets (saved with [`DspiCore::save_output_config_confirmed`]), 1 = with
      * each preset. A device-global flash write the firmware runs later.
      * Sets `DspState.output_config_mode`.
      *
@@ -1338,20 +1344,17 @@ interface DspiCoreApi : AutoCloseable {
      * Errors: [`DspiError::Refused`] with a `PRESET_*` status;
      * [`DspiError::Locked`] (Link); [`DspiError::ReadOnly`],
      * [`DspiError::Disconnected`] or a transfer error.
-     */
-    @Throws(DspiException::class)
-    fun saveOutputConfig()
-
-    /**
-     * [`DspiCore::save_output_config`] with a confirmation token
-     * ([`crate::confirm`]), as [`DspiCore::save_preset_confirmed`].
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
     @Throws(DspiException::class)
     fun saveOutputConfigConfirmed(token: String?)
 
     /**
      * On the demo device only, for clients' tests: how
-     * [`save_output_config`](Self::save_output_config) answers from now on. 0 goes
+     * [`save_output_config`](Self::save_output_config_confirmed) answers from now on. 0 goes
      * through, 0xFF stalls, another byte is that status. `Unsupported`, with no
      * traffic, on anything but a simulated device.
      */
@@ -1720,18 +1723,13 @@ interface DspiCoreApi : AutoCloseable {
      * Errors: [`DspiError::Locked`] / [`DspiError::Denied`] when the Link
      * hub refuses its lock; [`DspiError::Disconnected`] when the connection
      * changed while the hub was asked;
-     * [`DspiError::ConfirmationRequired`] without a good token (always,
-     * WP P1TZ), also with no device open: the
-     * gate runs first, so that case is no longer the plain `Ok` (accepted
-     * in review p1b).
-     */
-    @Throws(DspiException::class)
-    fun enterBootloader()
-
-    /**
-     * [`DspiCore::enter_bootloader`] with a confirmation token
-     * ([`crate::confirm`]), as [`DspiCore::save_preset_confirmed`]. With no
-     * device open a token is still checked, and nothing is sent.
+     * [`DspiError::ConfirmationRequired`] without a good token, also with no
+     * device open: the gate runs first, so that case is no longer the plain
+     * `Ok` (accepted in review p1b).
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ); with no device open a token is still checked, and nothing is
+     * sent. There is no form without a token.
      */
     @Throws(DspiException::class)
     fun enterBootloaderConfirmed(token: String?)
@@ -3163,14 +3161,10 @@ interface DspiCoreApi : AutoCloseable {
      * status; [`DspiError::Transfer`] when the save was not confirmed;
      * [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
      * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`].
-     */
-    @Throws(DspiException::class)
-    fun savePreset(slot: Int)
-
-    /**
-     * [`DspiCore::save_preset`] with a confirmation token ([`crate::confirm`]):
-     * [`DspiError::ConfirmationRequired`], with nothing sent, without a good
-     * one while tokens are required, or with a bad one at any time.
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
     @Throws(DspiException::class)
     fun savePresetConfirmed(slot: Int, token: String?)
@@ -3185,7 +3179,7 @@ interface DspiCoreApi : AutoCloseable {
      * load, and stays as it was otherwise. A load that is never confirmed
      * (an empty slot changes nothing) still re-reads and succeeds.
      *
-     * Errors: as [`DspiCore::save_preset`], and the re-read's.
+     * Errors: as [`DspiCore::save_preset_confirmed`], and the re-read's.
      */
     @Throws(DspiException::class)
     fun loadPreset(slot: Int)
@@ -3201,14 +3195,11 @@ interface DspiCoreApi : AutoCloseable {
      *
      * Errors: the first failing save's (`Refused` with its `PRESET_*`
      * status); [`DspiError::Transfer`] when `dest`'s save was not
-     * confirmed; otherwise as [`DspiCore::save_preset`].
-     */
-    @Throws(DspiException::class)
-    fun copyPreset(source: Int, dest: Int)
-
-    /**
-     * [`DspiCore::copy_preset`] with a confirmation token, as
-     * [`DspiCore::save_preset_confirmed`].
+     * confirmed; otherwise as [`DspiCore::save_preset_confirmed`].
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
     @Throws(DspiException::class)
     fun copyPresetConfirmed(source: Int, dest: Int, token: String?)
@@ -3221,14 +3212,11 @@ interface DspiCoreApi : AutoCloseable {
      * the image is read again and becomes the baseline. A deletion that is
      * never confirmed leaves the slot and its name in the mirror and fails.
      *
-     * Errors: as [`DspiCore::save_preset`].
-     */
-    @Throws(DspiException::class)
-    fun deletePreset(slot: Int)
-
-    /**
-     * [`DspiCore::delete_preset`] with a confirmation token, as
-     * [`DspiCore::save_preset_confirmed`].
+     * Errors: as [`DspiCore::save_preset_confirmed`].
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
     @Throws(DspiException::class)
     fun deletePresetConfirmed(slot: Int, token: String?)
@@ -3283,13 +3271,10 @@ interface DspiCoreApi : AutoCloseable {
      * [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
      * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; a transfer
      * error.
-     */
-    @Throws(DspiException::class)
-    fun saveParams()
-
-    /**
-     * [`DspiCore::save_params`] with a confirmation token, as
-     * [`DspiCore::save_preset_confirmed`].
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
     @Throws(DspiException::class)
     fun saveParamsConfirmed(token: String?)
@@ -3316,13 +3301,10 @@ interface DspiCoreApi : AutoCloseable {
      * [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
      * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; a transfer
      * error, of the reset or the re-read.
-     */
-    @Throws(DspiException::class)
-    fun factoryReset()
-
-    /**
-     * [`DspiCore::factory_reset`] with a confirmation token, as
-     * [`DspiCore::save_preset_confirmed`].
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
     @Throws(DspiException::class)
     fun factoryResetConfirmed(token: String?)
@@ -3900,16 +3882,12 @@ interface DspiCoreApi : AutoCloseable {
      * `VerifyFailed`. `typed` is the word when the view's `commit_needs_word`
      * says so, even if it was typed for the trial. A refusal leaves the flow in
      * `Passed`, with the trial running. Errors as for starting.
-     */
-    @Throws(DspiException::class)
-    fun coreVregCalCommit(typed: String?)
-
-    /**
-     * [`DspiCore::core_vreg_cal_commit`] with a confirmation token
-     * ([`crate::confirm`], [`crate::ConfirmOp::VregSave`]): refused with
-     * [`DspiError::ConfirmationRequired`], with no write and noted in the
-     * view, as [`DspiCore::save_preset_confirmed`] is. The word stays as it
-     * is, beside the token.
+     *
+     * Takes a confirmation token ([`crate::confirm`],
+     * [`crate::ConfirmOp::VregSave`], WP P1TK; required since WP P1TZ):
+     * without a good one, [`DspiError::ConfirmationRequired`] with no write,
+     * noted in the view. The word stays as it is, beside the token. There is
+     * no form without a token.
      */
     @Throws(DspiException::class)
     fun coreVregCalCommitConfirmed(typed: String?, token: String?)
@@ -3928,13 +3906,10 @@ interface DspiCoreApi : AutoCloseable {
      * Manual `SET` from the Advanced page. `value` 0 is the reset to the
      * build default; anything else has the flow's limits and confirmation.
      * Read back by later polls, as a commit. Errors as for starting.
-     */
-    @Throws(DspiException::class)
-    fun coreVregManualSet(value: Int, typed: String?)
-
-    /**
-     * [`DspiCore::core_vreg_manual_set`] with a confirmation token, as
-     * [`DspiCore::core_vreg_cal_commit_confirmed`].
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
     @Throws(DspiException::class)
     fun coreVregManualSetConfirmed(value: Int, typed: String?, token: String?)

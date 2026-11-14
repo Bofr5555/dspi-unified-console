@@ -66,17 +66,28 @@ Release notes of earlier versions: `CHANGELOG-0.13.0.md`.
   terms; it names the source archive published with each release instead of a repository
   link, and credits the firmware's third-party parts, Noto Sans Mono and AutoEq.
 
-### Integrators (behaviour change of the C ABI and the bindings)
+### Integrators (breaking change of the C ABI and the bindings)
 <!-- -- WP P1TZ -- -->
 - Confirmation tokens are always required (OD-P1f). Every dangerous operation (preset
   save, copy and delete, parameter save, factory reset, output configuration save,
-  bootloader, configuration import, stored core voltage, firmware install) is refused
-  with `confirmation_required`, and nothing is sent, unless its `_confirmed` call is given
-  a token minted with `confirm_token` (C: `dspi_confirm_token`) after the person
-  confirmed. The plain calls (`dspi_save_preset`, `dspi_config_import`, `save_preset`,
-  `write_param("preset.save")`, ...) are always refused so.
-- The switch is gone: C `dspi_require_confirmation` and `dspi_confirmation_required`,
-  UniFFI `require_confirmation` and `confirmation_required`, and the web Worker's
-  `requireConfirmation` and `confirmationRequired` are removed. To migrate, mint a token
-  per operation and call the `_confirmed` form: [docs/integrator/README.md](docs/integrator/README.md#confirmation-tokens).
-  Every client in this project already does.
+  bootloader, configuration import, stored core voltage, firmware install) takes a token
+  minted with `confirm_token` (C: `dspi_confirm_token`) after the person confirmed, through
+  its `_confirmed` call; without a good one it is refused with `confirmation_required` and
+  nothing is sent.
+- Removed: the calls without a token. C: `dspi_save_preset`, `dspi_copy_preset`,
+  `dspi_delete_preset`, `dspi_save_params`, `dspi_factory_reset`, `dspi_save_output_config`,
+  `dspi_enter_bootloader`, `dspi_config_import`, `dspi_config_import_selected`,
+  `dspi_core_vreg_cal_commit`, `dspi_core_vreg_manual_set`. UniFFI (Kotlin, Swift):
+  `save_preset`, `copy_preset`, `delete_preset`, `save_params`, `factory_reset`,
+  `save_output_config`, `enter_bootloader`, `config_import`, `config_import_selected`,
+  `core_vreg_cal_commit`, `core_vreg_manual_set`. Use the `_confirmed` form of each (an
+  import: `config_import_confirmed(text, options, eq_channels, token)`, `eq_channels`
+  all bits for every channel).
+- Removed: the switch. C `dspi_require_confirmation` and `dspi_confirmation_required`,
+  UniFFI `require_confirmation` and `confirmation_required`, the web Worker's
+  `requireConfirmation` and `confirmationRequired`.
+- `write_param` (C `dspi_write_param`) refuses the gated paths `preset.save`,
+  `preset.delete`, `dev.save` and `dev.save.io` with `confirmation_required`;
+  `write_param_confirmed` takes them with a token.
+- Migration: [docs/integrator/README.md](docs/integrator/README.md#confirmation-tokens).
+  Every client in this project already uses the `_confirmed` forms.

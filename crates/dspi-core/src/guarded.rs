@@ -380,7 +380,7 @@ enum HubView {
 impl DspiCore {
     /// Import `text` (a `.dspipreset` document) with a way back: capture a
     /// snapshot, apply the blocks `options` and `eq_channels` choose (as
-    /// [`DspiCore::config_import_selected`] takes them), then wait
+    /// [`DspiCore::config_import_confirmed`] takes them), then wait
     /// `timeout_s` seconds (0: 30, at most 590) for
     /// [`DspiCore::apply_confirm`]. A timeout, [`DspiCore::apply_revert`] or a
     /// failed import puts the snapshot back; over DSPi Link the hub guards it

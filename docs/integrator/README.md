@@ -61,13 +61,17 @@ mint a token for it and pass it to the operation's `_confirmed` call:
 C: `dspi_confirm_token(core, "<key>", buf, len)` and the `dspi_*_confirmed` functions
 (`ci/generated/dspi_core.h`); Kotlin and Swift: `confirmToken(op)` and the
 `*Confirmed` methods; the web Worker: `confirmToken {op}` and a `token` field on
-`write`, `presetCopy` and `factoryReset`. A token is for one operation, used once,
-valid for 10 s and only on the connection it was minted on. Without a good token the
-call is refused with `confirmation_required` (the notice row of that name) and nothing
-is sent; the plain calls, and `write_param` on `preset.save`, `preset.delete`,
-`dev.save` and `dev.save.io`, are always refused so. There is no switch to turn this
-off. A token is a discipline, not a security boundary: over DSPi Link the hub's roles
-stay the boundary. Snapshot recall, A/B and a guarded apply take no token.
+`write`, `presetCopy`, `factoryReset` and `configImport`. A token is for one operation,
+used once, valid for 10 s and only on the connection it was minted on. Without a good
+token the call is refused with `confirmation_required` (the notice row of that name)
+and nothing is sent. The `_confirmed` calls are the only forms: the calls without a
+token (`save_preset`, `config_import`, `config_import_selected`, ...; C `dspi_save_preset`,
+...) are removed (WP P1TZ). `write_param` keeps the gated registry paths (`preset.save`,
+`preset.delete`, `dev.save`, `dev.save.io`) and refuses them with
+`confirmation_required`; `write_param_confirmed` (and the Worker's `write` with
+`token`) takes them. There is no switch to turn tokens off. A token is a discipline,
+not a security boundary: over DSPi Link the hub's roles stay the boundary.
+Snapshot recall, A/B and a guarded apply take no token.
 
 ## To write
 

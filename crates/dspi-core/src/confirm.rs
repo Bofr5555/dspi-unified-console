@@ -17,9 +17,10 @@
 //!
 //! Tokens are always required (-- WP P1TZ --, OD-P1f): a gated call without a
 //! good token is refused with [`DspiError::ConfirmationRequired`] before
-//! anything is sent. There is no switch to turn this off; the plain calls
-//! (`save_preset`, `write_param("preset.save")`, ...) are the gated calls with
-//! no token, so they are refused too. Only this crate's own tests can lift the
+//! anything is sent. There is no switch to turn this off, and the `_confirmed`
+//! calls are the only forms (the ones without a token are retired);
+//! `write_param` refuses the gated registry paths (`preset.save`, ...) the same
+//! way, as it takes no token. Only this crate's own tests can lift the
 //! requirement on one core (`confirmation_opt_out_for_tests`); every other
 //! test mints a token, as a client does.
 //!

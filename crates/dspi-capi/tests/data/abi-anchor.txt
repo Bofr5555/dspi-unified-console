@@ -928,17 +928,12 @@ bool dspi_set_subharm_solo(struct FfiCore *core, bool solo);
 bool dspi_fetch_subharm_headroom(struct FfiCore *core, float *out_db);
 bool dspi_fetch_subharm_meter(struct FfiCore *core, float *out);
 bool dspi_set_tube_param(struct FfiCore *core, uint8_t idx, float value);
-uint8_t dspi_save_preset(struct FfiCore *core, uint8_t slot);
 uint8_t dspi_load_preset(struct FfiCore *core, uint8_t slot);
-uint8_t dspi_copy_preset(struct FfiCore *core, uint8_t source, uint8_t dest);
-uint8_t dspi_delete_preset(struct FfiCore *core, uint8_t slot);
 bool dspi_set_preset_name(struct FfiCore *core, uint8_t slot, const char *name);
 bool dspi_get_preset_name(struct FfiCore *core, uint8_t slot, char *out_buf, uint32_t buf_len);
 bool dspi_get_preset_directory(struct FfiCore *core, struct PresetDirectory *out_dir);
 bool dspi_set_preset_startup(struct FfiCore *core, uint8_t mode, uint8_t default_slot);
-uint8_t dspi_save_params(struct FfiCore *core);
 uint8_t dspi_load_params(struct FfiCore *core);
-uint8_t dspi_factory_reset(struct FfiCore *core);
 void dspi_capture_baseline(struct FfiCore *core);
 bool dspi_preset_dirty(struct FfiCore *core);
 uint32_t dspi_preset_changes(struct FfiCore *core, char *buf, uint32_t len);
@@ -953,8 +948,6 @@ double *out_phases);
 uint8_t dspi_set_output_pin(struct FfiCore *core, uint8_t slot, uint8_t pin);
 uint8_t dspi_fetch_output_pin(struct FfiCore *core, uint8_t slot);
 bool dspi_set_output_config_mode(struct FfiCore *core, uint8_t mode);
-uint8_t dspi_save_output_config(struct FfiCore *core);
-bool dspi_enter_bootloader(struct FfiCore *core);
 uint32_t dspi_device_lock_acquire(struct FfiCore *core,
 const char *reason,
 uint32_t timeout_ms,
@@ -1037,17 +1030,6 @@ uint8_t links,
 char *buf,
 uint32_t len);
 uint32_t dspi_config_inspect(const char *text, char *buf, uint32_t len);
-uint32_t dspi_config_import(struct FfiCore *core,
-const char *text,
-uint32_t options,
-char *buf,
-uint32_t len);
-uint32_t dspi_config_import_selected(struct FfiCore *core,
-const char *text,
-uint32_t options,
-uint32_t eq_channels,
-char *buf,
-uint32_t len);
 uint32_t dspi_config_preview(struct FfiCore *core,
 const char *text,
 uint32_t options,
@@ -1179,9 +1161,7 @@ uint8_t target,
 uint32_t soak_s,
 const char *typed);
 uint8_t dspi_core_vreg_cal_keep(struct FfiCore *core, uint32_t soak_s);
-uint8_t dspi_core_vreg_cal_commit(struct FfiCore *core, const char *typed);
 uint8_t dspi_core_vreg_trial_end(struct FfiCore *core);
-uint8_t dspi_core_vreg_manual_set(struct FfiCore *core, uint8_t value, const char *typed);
 uint8_t dspi_core_vreg_manual_trial(struct FfiCore *core, uint8_t value, const char *typed);
 uint8_t dspi_core_vreg_manual_auto(struct FfiCore *core, bool on);
 uint8_t dspi_core_vreg_manual_clear(struct FfiCore *core);

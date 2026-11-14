@@ -48,9 +48,8 @@ fn wp_cg11_a_whole_flow_through_c() {
     // Saving asks again, though the word was typed for the trial.
     let v = view(h, dspi_core_vreg_cal_poll);
     assert_eq!(v["commitNeedsWord"], true);
-    // -- WP P1TZ -- the plain status call is refused (no token), and with a
-    // token the word is still asked for.
-    assert_eq!(dspi_core_vreg_cal_commit(h, phrase.as_ptr()), 0xFF);
+    // -- WP P1TZ -- the commit takes a token; with one the word is still
+    // asked for.
     let r = with_token_for_test(h, "vreg_save", |t, b, l| {
         dspi_core_vreg_cal_commit_confirmed(h, ptr::null(), t, b, l)
     });
@@ -99,9 +98,18 @@ fn wp_cg11_null_handles_and_no_device_fail_quietly() {
     assert_eq!(dspi_core_vreg_cal_close(n), 0xFF);
     assert_eq!(dspi_core_vreg_cal_start(n, 0x0D, 1800, ptr::null()), 0xFF);
     assert_eq!(dspi_core_vreg_cal_keep(n, 1800), 0xFF);
-    assert_eq!(dspi_core_vreg_cal_commit(n, ptr::null()), 0xFF);
     assert_eq!(dspi_core_vreg_trial_end(n), 0xFF);
-    assert_eq!(dspi_core_vreg_manual_set(n, 0, ptr::null()), 0xFF);
+    // -- WP P1TZ -- the commit and the SET take a token (`_confirmed`); a
+    // null handle gives no reply.
+    let mut b = [0 as c_char; 8];
+    assert_eq!(
+        dspi_core_vreg_cal_commit_confirmed(n, ptr::null(), ptr::null(), b.as_mut_ptr(), 8),
+        0
+    );
+    assert_eq!(
+        dspi_core_vreg_manual_set_confirmed(n, 0, ptr::null(), ptr::null(), b.as_mut_ptr(), 8),
+        0
+    );
     assert_eq!(dspi_core_vreg_manual_trial(n, 0x0D, ptr::null()), 0xFF);
     assert_eq!(dspi_core_vreg_manual_auto(n, true), 0xFF);
     assert_eq!(dspi_core_vreg_manual_clear(n), 0xFF);
@@ -125,9 +133,9 @@ fn wp_cg11_the_functions_are_exported() {
         "dspi_core_vreg_cal_close",
         "dspi_core_vreg_cal_start",
         "dspi_core_vreg_cal_keep",
-        "dspi_core_vreg_cal_commit",
+        "dspi_core_vreg_cal_commit_confirmed", // -- WP P1TZ --
         "dspi_core_vreg_trial_end",
-        "dspi_core_vreg_manual_set",
+        "dspi_core_vreg_manual_set_confirmed", // -- WP P1TZ --
         "dspi_core_vreg_manual_trial",
         "dspi_core_vreg_manual_auto",
         "dspi_core_vreg_manual_clear",

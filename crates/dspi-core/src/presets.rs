@@ -173,6 +173,7 @@ impl DeviceLock {
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
+    // -- WP P1TK --
     /// Save the live state to `slot` (0..10) and wait until the device has
     /// written it (it names the slot active). Runs under the device lock.
     /// The slot becomes the active one and the live state its baseline.
@@ -185,14 +186,10 @@ impl DspiCore {
     /// status; [`DspiError::Transfer`] when the save was not confirmed;
     /// [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
     /// [`DspiError::ReadOnly`]; [`DspiError::Disconnected`].
-    pub fn save_preset(&self, slot: u8) -> Result<()> {
-        self.save_preset_with(slot, None)
-    }
-
-    // -- WP P1TK --
-    /// [`DspiCore::save_preset`] with a confirmation token ([`crate::confirm`]):
-    /// [`DspiError::ConfirmationRequired`], with nothing sent, without a good
-    /// one while tokens are required, or with a bad one at any time.
+    ///
+    /// Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+    /// WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+    /// without a good one. There is no form without a token.
     pub fn save_preset_confirmed(&self, slot: u8, token: Option<String>) -> Result<()> {
         self.save_preset_with(slot, token.as_deref())
     }
@@ -206,7 +203,7 @@ impl DspiCore {
     /// load, and stays as it was otherwise. A load that is never confirmed
     /// (an empty slot changes nothing) still re-reads and succeeds.
     ///
-    /// Errors: as [`DspiCore::save_preset`], and the re-read's.
+    /// Errors: as [`DspiCore::save_preset_confirmed`], and the re-read's.
     pub fn load_preset(&self, slot: u8) -> Result<()> {
         let _lock = crate::limits::LockScope::allow(); // -- WP P1LK -- allowed while locked
         slot_in_range(slot)?;
@@ -246,6 +243,7 @@ impl DspiCore {
         Ok(())
     }
 
+    // -- WP P1TK --
     /// Copy the live state to `dest` and save it to `source` again, so
     /// `source` stays the active preset (the Mac console's "Copy to"). Each
     /// save waits for the device; one device lock covers both.
@@ -256,18 +254,16 @@ impl DspiCore {
     ///
     /// Errors: the first failing save's (`Refused` with its `PRESET_*`
     /// status); [`DspiError::Transfer`] when `dest`'s save was not
-    /// confirmed; otherwise as [`DspiCore::save_preset`].
-    pub fn copy_preset(&self, source: u8, dest: u8) -> Result<()> {
-        self.copy_preset_with(source, dest, None)
-    }
-
-    // -- WP P1TK --
-    /// [`DspiCore::copy_preset`] with a confirmation token, as
-    /// [`DspiCore::save_preset_confirmed`].
+    /// confirmed; otherwise as [`DspiCore::save_preset_confirmed`].
+    ///
+    /// Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+    /// WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+    /// without a good one. There is no form without a token.
     pub fn copy_preset_confirmed(&self, source: u8, dest: u8, token: Option<String>) -> Result<()> {
         self.copy_preset_with(source, dest, token.as_deref())
     }
 
+    // -- WP P1TK --
     /// Delete preset `slot` and wait until the directory no longer holds
     /// it; its name goes with it. Runs under the device lock.
     ///
@@ -275,14 +271,11 @@ impl DspiCore {
     /// the image is read again and becomes the baseline. A deletion that is
     /// never confirmed leaves the slot and its name in the mirror and fails.
     ///
-    /// Errors: as [`DspiCore::save_preset`].
-    pub fn delete_preset(&self, slot: u8) -> Result<()> {
-        self.delete_preset_with(slot, None)
-    }
-
-    // -- WP P1TK --
-    /// [`DspiCore::delete_preset`] with a confirmation token, as
-    /// [`DspiCore::save_preset_confirmed`].
+    /// Errors: as [`DspiCore::save_preset_confirmed`].
+    ///
+    /// Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+    /// WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+    /// without a good one. There is no form without a token.
     pub fn delete_preset_confirmed(&self, slot: u8, token: Option<String>) -> Result<()> {
         self.delete_preset_with(slot, token.as_deref())
     }
@@ -370,6 +363,7 @@ impl DspiCore {
         Ok(())
     }
 
+    // -- WP P1TK --
     /// Save the live state to the active slot (`REQ_SAVE_PARAMS`), under the
     /// device lock; the live state becomes the baseline.
     ///
@@ -377,13 +371,10 @@ impl DspiCore {
     /// [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
     /// [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; a transfer
     /// error.
-    pub fn save_params(&self) -> Result<()> {
-        self.save_params_with(None)
-    }
-
-    // -- WP P1TK --
-    /// [`DspiCore::save_params`] with a confirmation token, as
-    /// [`DspiCore::save_preset_confirmed`].
+    ///
+    /// Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+    /// WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+    /// without a good one. There is no form without a token.
     pub fn save_params_confirmed(&self, token: Option<String>) -> Result<()> {
         self.save_params_with(token.as_deref())
     }
@@ -408,6 +399,7 @@ impl DspiCore {
         })
     }
 
+    // -- WP P1TK --
     /// Restore the factory defaults on the live state (stored presets stay),
     /// give the device [`FACTORY_RESET_SETTLE`] to apply them (it defers the
     /// reset to its main loop), then read everything again as
@@ -418,13 +410,10 @@ impl DspiCore {
     /// [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
     /// [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; a transfer
     /// error, of the reset or the re-read.
-    pub fn factory_reset(&self) -> Result<()> {
-        self.factory_reset_with(None)
-    }
-
-    // -- WP P1TK --
-    /// [`DspiCore::factory_reset`] with a confirmation token, as
-    /// [`DspiCore::save_preset_confirmed`].
+    ///
+    /// Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+    /// WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+    /// without a good one. There is no form without a token.
     pub fn factory_reset_confirmed(&self, token: Option<String>) -> Result<()> {
         self.factory_reset_with(token.as_deref())
     }
@@ -515,7 +504,7 @@ impl DspiCore {
 
 impl DspiCore {
     // -- WP P1TK --
-    /// The body of [`DspiCore::save_preset`] and its `_confirmed` form (WP P1TK).
+    /// The body of [`DspiCore::save_preset_confirmed`] (WP P1TK).
     pub(crate) fn save_preset_with(&self, slot: u8, token: Option<&str>) -> Result<()> {
         slot_in_range(slot)?;
         let ticket = self.confirm_gate(ConfirmOp::SavePreset, token)?;
@@ -533,7 +522,7 @@ impl DspiCore {
         })
     }
 
-    /// The body of [`DspiCore::copy_preset`] and its `_confirmed` form (WP P1TK).
+    /// The body of [`DspiCore::copy_preset_confirmed`] (WP P1TK).
     pub(crate) fn copy_preset_with(&self, source: u8, dest: u8, token: Option<&str>) -> Result<()> {
         slot_in_range(source)?;
         slot_in_range(dest)?;
@@ -557,7 +546,7 @@ impl DspiCore {
         })
     }
 
-    /// The body of [`DspiCore::delete_preset`] and its `_confirmed` form (WP P1TK).
+    /// The body of [`DspiCore::delete_preset_confirmed`] (WP P1TK).
     pub(crate) fn delete_preset_with(&self, slot: u8, token: Option<&str>) -> Result<()> {
         slot_in_range(slot)?;
         let ticket = self.confirm_gate(ConfirmOp::DeletePreset, token)?;
@@ -587,7 +576,7 @@ impl DspiCore {
         })
     }
 
-    /// The body of [`DspiCore::save_params`] and its `_confirmed` form (WP P1TK).
+    /// The body of [`DspiCore::save_params_confirmed`] (WP P1TK).
     pub(crate) fn save_params_with(&self, token: Option<&str>) -> Result<()> {
         let ticket = self.confirm_gate(ConfirmOp::SaveParams, token)?;
         self.with_device_lock(SAVE_PARAMS_REASON, |inner| {
@@ -603,7 +592,7 @@ impl DspiCore {
         })
     }
 
-    /// The body of [`DspiCore::factory_reset`] and its `_confirmed` form (WP P1TK).
+    /// The body of [`DspiCore::factory_reset_confirmed`] (WP P1TK).
     pub(crate) fn factory_reset_with(&self, token: Option<&str>) -> Result<()> {
         let ticket = self.confirm_gate(ConfirmOp::FactoryReset, token)?;
         let lock = self.acquire_device_lock(RESET_REASON)?;

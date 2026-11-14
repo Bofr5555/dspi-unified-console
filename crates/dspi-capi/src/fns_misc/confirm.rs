@@ -4,15 +4,14 @@
 //! `dspi_confirm_token` mints a single-use token for one operation, valid for
 //! 10 s on the open connection; the `_confirmed` functions take it. Tokens
 //! are always required (WP P1TZ, OD-P1f): a call without a good token, a null
-//! one included, and the plain functions (`dspi_save_preset`,
-//! `dspi_config_import`, ...), are refused before anything is sent:
-//! `{"ok": false, "code": "confirmation_required", "error", "noticeKey":
-//! "confirmation_required"}` (a status function answers its failure status).
-//! There is no switch: `dspi_require_confirmation` and
-//! `dspi_confirmation_required` are gone. Each `_confirmed` call has happened (and spent its
-//! token) whatever the buffer, so do not call again for a short one: its reply
-//! is `{"ok": true}` or a failure of a few hundred bytes, except the import's,
-//! which is `dspi_config_import_selected`'s.
+//! one included, is refused before anything is sent: `{"ok": false, "code":
+//! "confirmation_required", "error", "noticeKey": "confirmation_required"}`.
+//! The forms without a token (`dspi_save_preset`, `dspi_config_import`, ...)
+//! and the switch (`dspi_require_confirmation`, `dspi_confirmation_required`)
+//! are removed; `dspi_write_param` refuses the gated paths. Each `_confirmed`
+//! call has happened (and spent its token) whatever the buffer, so do not call
+//! again for a short one: its reply is `{"ok": true}` or a failure of a few
+//! hundred bytes, except the import's (the document's report).
 //!
 //! Operations, by key: `save_preset`, `copy_preset`, `delete_preset`,
 //! `save_params`, `factory_reset`, `save_output_config`, `enter_bootloader`,
@@ -54,11 +53,12 @@ fn confirmed(
 /// `delete_preset`, `save_params`, `factory_reset`, `save_output_config`,
 /// `enter_bootloader`, `config_import`, `vreg_save`, `firmware_flash`) is
 /// refused with code `confirmation_required` and nothing sent unless its
-/// `_confirmed` function gets a good token from here. The plain functions
-/// (`dspi_save_preset`, `dspi_copy_preset`, `dspi_delete_preset`,
-/// `dspi_config_import`, `dspi_config_import_selected`,
-/// `dspi_core_vreg_cal_commit`, `dspi_core_vreg_manual_set`) are always
-/// refused so; there is no switch to turn this off.
+/// `_confirmed` function gets a good token from here. The functions without
+/// a token (`dspi_save_preset`, `dspi_copy_preset`, `dspi_delete_preset`,
+/// `dspi_save_params`, `dspi_factory_reset`, `dspi_save_output_config`,
+/// `dspi_enter_bootloader`, `dspi_config_import`,
+/// `dspi_config_import_selected`, `dspi_core_vreg_cal_commit`,
+/// `dspi_core_vreg_manual_set`) are removed; there is no switch.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_confirm_token(
     core: *mut FfiCore,
@@ -76,7 +76,10 @@ pub extern "C" fn dspi_confirm_token(
     })
 }
 
-/// `dspi_save_preset` with a token. JSON reply.
+/// Save the live state to preset `slot`. With a token from `dspi_confirm_token` (required; WP P1TZ
+/// retired the form without one). JSON reply: `{"ok": true}`, or a
+/// failure: `code` `refused` with the device's status in `error`,
+/// `confirmation_required` without a good token (nothing sent), ...
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_save_preset_confirmed(
     core: *mut FfiCore,
@@ -90,7 +93,10 @@ pub extern "C" fn dspi_save_preset_confirmed(
     })
 }
 
-/// `dspi_copy_preset` with a token. JSON reply.
+/// Copy preset `source` to `dest`. With a token from `dspi_confirm_token` (required; WP P1TZ
+/// retired the form without one). JSON reply: `{"ok": true}`, or a
+/// failure: `code` `refused` with the device's status in `error`,
+/// `confirmation_required` without a good token (nothing sent), ...
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_copy_preset_confirmed(
     core: *mut FfiCore,
@@ -105,7 +111,10 @@ pub extern "C" fn dspi_copy_preset_confirmed(
     })
 }
 
-/// `dspi_delete_preset` with a token. JSON reply.
+/// Delete preset `slot`. With a token from `dspi_confirm_token` (required; WP P1TZ
+/// retired the form without one). JSON reply: `{"ok": true}`, or a
+/// failure: `code` `refused` with the device's status in `error`,
+/// `confirmation_required` without a good token (nothing sent), ...
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_delete_preset_confirmed(
     core: *mut FfiCore,
@@ -119,7 +128,10 @@ pub extern "C" fn dspi_delete_preset_confirmed(
     })
 }
 
-/// `dspi_save_params` with a token. JSON reply.
+/// Save the live parameters to flash. With a token from `dspi_confirm_token` (required; WP P1TZ
+/// retired the form without one). JSON reply: `{"ok": true}`, or a
+/// failure: `code` `refused` with the device's status in `error`,
+/// `confirmation_required` without a good token (nothing sent), ...
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_save_params_confirmed(
     core: *mut FfiCore,
@@ -130,7 +142,10 @@ pub extern "C" fn dspi_save_params_confirmed(
     confirmed(core, token, buf, len, |c, t| c.save_params_confirmed(t))
 }
 
-/// `dspi_factory_reset` with a token. JSON reply.
+/// Restore the factory defaults, writing flash, and read the device again. With a token from `dspi_confirm_token` (required; WP P1TZ
+/// retired the form without one). JSON reply: `{"ok": true}`, or a
+/// failure: `code` `refused` with the device's status in `error`,
+/// `confirmation_required` without a good token (nothing sent), ...
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_factory_reset_confirmed(
     core: *mut FfiCore,
@@ -141,7 +156,10 @@ pub extern "C" fn dspi_factory_reset_confirmed(
     confirmed(core, token, buf, len, |c, t| c.factory_reset_confirmed(t))
 }
 
-/// `dspi_save_output_config` with a token. JSON reply.
+/// Store the output configuration in flash. With a token from `dspi_confirm_token` (required; WP P1TZ
+/// retired the form without one). JSON reply: `{"ok": true}`, or a
+/// failure: `code` `refused` with the device's status in `error`,
+/// `confirmation_required` without a good token (nothing sent), ...
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_save_output_config_confirmed(
     core: *mut FfiCore,
@@ -154,7 +172,11 @@ pub extern "C" fn dspi_save_output_config_confirmed(
     })
 }
 
-/// `dspi_enter_bootloader` with a token. JSON reply.
+/// Reboot the device into its USB bootloader; `{"ok": true}` means only
+/// that the request went out (no answer comes back). With a token from `dspi_confirm_token` (required; WP P1TZ
+/// retired the form without one). JSON reply: `{"ok": true}`, or a
+/// failure: `code` `refused` with the device's status in `error`,
+/// `confirmation_required` without a good token (nothing sent), ...
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_enter_bootloader_confirmed(
     core: *mut FfiCore,
@@ -167,7 +189,13 @@ pub extern "C" fn dspi_enter_bootloader_confirmed(
     })
 }
 
-/// `dspi_config_import_selected` with a token: its JSON reply, or a refusal
+/// Apply a configuration document to the device. `options`: bit 0 the
+/// volumes too, bit 1 the hardware configuration too, or with
+/// `DSPI_IMPORT_BY_BLOCK` the `DSPI_IMPORT_*` block bits; `eq_channels` the
+/// wire channels whose EQ is applied (bit k: channel k; all bits: every one).
+/// With a token from `dspi_confirm_token` (required; WP P1TZ retired
+/// `dspi_config_import` and `dspi_config_import_selected`). JSON reply; the
+/// device has changed whatever the buffer. Without a good token: a refusal
 /// with `noticeKey` `confirmation_required` and nothing written.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_config_import_confirmed(
@@ -187,7 +215,10 @@ pub extern "C" fn dspi_config_import_confirmed(
     })
 }
 
-/// `dspi_core_vreg_cal_commit` with a token. JSON reply.
+/// Store the passed trial's voltage; `typed` as for the start. With a token from `dspi_confirm_token` (required; WP P1TZ
+/// retired the form without one). JSON reply: `{"ok": true}`, or a
+/// failure: `code` `refused` with the device's status in `error`,
+/// `confirmation_required` without a good token (nothing sent), ...
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_vreg_cal_commit_confirmed(
     core: *mut FfiCore,
@@ -201,7 +232,11 @@ pub extern "C" fn dspi_core_vreg_cal_commit_confirmed(
     })
 }
 
-/// `dspi_core_vreg_manual_set` with a token. JSON reply.
+/// Store VREG code `value` directly (0: the build's default); `typed` as
+/// for the start. With a token from `dspi_confirm_token` (required; WP P1TZ
+/// retired the form without one). JSON reply: `{"ok": true}`, or a
+/// failure: `code` `refused` with the device's status in `error`,
+/// `confirmation_required` without a good token (nothing sent), ...
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_vreg_manual_set_confirmed(
     core: *mut FfiCore,

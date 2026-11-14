@@ -381,7 +381,7 @@ impl DspiCore {
     }
 
     /// Where the physical I/O configuration is stored: 0 = independently of
-    /// the presets (saved with [`DspiCore::save_output_config`]), 1 = with
+    /// the presets (saved with [`DspiCore::save_output_config_confirmed`]), 1 = with
     /// each preset. A device-global flash write the firmware runs later.
     /// Sets `DspState.output_config_mode`.
     ///
@@ -404,6 +404,7 @@ impl DspiCore {
         )
     }
 
+    // -- WP P1TK --
     /// FLASH WRITE: persist the live physical I/O configuration (the
     /// independent mode's explicit save). The firmware writes it later in
     /// its main loop. Runs under the DSPi Link device lock: the deferred
@@ -413,20 +414,17 @@ impl DspiCore {
     /// Errors: [`DspiError::Refused`] with a `PRESET_*` status;
     /// [`DspiError::Locked`] (Link); [`DspiError::ReadOnly`],
     /// [`DspiError::Disconnected`] or a transfer error.
-    pub fn save_output_config(&self) -> Result<()> {
-        self.save_output_config_with(None)
-    }
-
-    // -- WP P1TK --
-    /// [`DspiCore::save_output_config`] with a confirmation token
-    /// ([`crate::confirm`]), as [`DspiCore::save_preset_confirmed`].
+    ///
+    /// Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+    /// WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+    /// without a good one. There is no form without a token.
     pub fn save_output_config_confirmed(&self, token: Option<String>) -> Result<()> {
         self.save_output_config_with(token.as_deref())
     }
 
     // -- WP QD31 --
     /// On the demo device only, for clients' tests: how
-    /// [`save_output_config`](Self::save_output_config) answers from now on. 0 goes
+    /// [`save_output_config`](Self::save_output_config_confirmed) answers from now on. 0 goes
     /// through, 0xFF stalls, another byte is that status. `Unsupported`, with no
     /// traffic, on anything but a simulated device.
     pub fn demo_output_save_status(&self, status: u8) -> Result<()> {
@@ -1035,6 +1033,7 @@ impl DspiCore {
 
     // ── Bootloader, Core 1 ────────────────────────────────────────────
 
+    // -- WP P1TK --
     /// Reboots the device into its USB bootloader (it disappears). Ok
     /// whatever the transfer gives, as in the old core: the device drops off
     /// the bus (also Ok without a device, unless tokens are required: see
@@ -1062,18 +1061,13 @@ impl DspiCore {
     /// Errors: [`DspiError::Locked`] / [`DspiError::Denied`] when the Link
     /// hub refuses its lock; [`DspiError::Disconnected`] when the connection
     /// changed while the hub was asked;
-    /// [`DspiError::ConfirmationRequired`] without a good token (always,
-    /// WP P1TZ), also with no device open: the
-    /// gate runs first, so that case is no longer the plain `Ok` (accepted
-    /// in review p1b).
-    pub fn enter_bootloader(&self) -> Result<()> {
-        self.enter_bootloader_with(None)
-    }
-
-    // -- WP P1TK --
-    /// [`DspiCore::enter_bootloader`] with a confirmation token
-    /// ([`crate::confirm`]), as [`DspiCore::save_preset_confirmed`]. With no
-    /// device open a token is still checked, and nothing is sent.
+    /// [`DspiError::ConfirmationRequired`] without a good token, also with no
+    /// device open: the gate runs first, so that case is no longer the plain
+    /// `Ok` (accepted in review p1b).
+    ///
+    /// Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+    /// WP P1TZ); with no device open a token is still checked, and nothing is
+    /// sent. There is no form without a token.
     pub fn enter_bootloader_confirmed(&self, token: Option<String>) -> Result<()> {
         self.enter_bootloader_with(token.as_deref())
     }

@@ -48,7 +48,6 @@ class DemoCoreAn28Test {
         val board = FirmwareGuardBoard(1200, FirmwareGuardBoardSource.values().first())
         val refused = listOf<() -> Unit>(
             { core.openFd(3, "E6614103", 0x2E8B) },
-            { core.enterBootloader() },
             { core.flashToDrive(listOf(0), drive) },
             { core.flashToDriveGuarded(listOf(0), drive, board, "yes") },
             { core.flashConfirmed(listOf(0), drive, board, "yes", null) }, // -- WP P1AN1 --

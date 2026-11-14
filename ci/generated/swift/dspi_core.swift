@@ -1467,7 +1467,7 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     /**
      * Import `text` (a `.dspipreset` document) with a way back: capture a
      * snapshot, apply the blocks `options` and `eq_channels` choose (as
-     * [`DspiCore::config_import_selected`] takes them), then wait
+     * [`DspiCore::config_import_confirmed`] takes them), then wait
      * `timeout_s` seconds (0: 30, at most 590) for
      * [`DspiCore::apply_confirm`]. A timeout, [`DspiCore::apply_revert`] or a
      * failed import puts the snapshot back; over DSPi Link the hub guards it
@@ -1692,9 +1692,9 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     
     /**
      * Apply a `.dspipreset` document to the device as one bulk write, under
-     * the device lock. `options`: [`IMPORT_VOLUMES`] also applies the master
-     * and user volume, [`IMPORT_HARDWARE`] the hardware I/O and the
-     * limiters. The crossfeed pair map goes over the extension channel when
+     * the device lock, with a confirmation token. `options`:
+     * [`IMPORT_VOLUMES`] also applies the master and user volume,
+     * [`IMPORT_HARDWARE`] the hardware I/O and the limiters. The crossfeed pair map goes over the extension channel when
      * the device has one.
      *
      * Every setting the document holds no readable value for keeps the
@@ -1717,38 +1717,30 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * the device could not be written (disconnected, read-only firmware,
      * another console's lock, a failed transfer); the mirror then stays as
      * it was.
-     */
-    func configImport(text: String, options: UInt32)  -> String
-    
-    /**
-     * [`DspiCore::config_import_selected`] with a confirmation token
-     * ([`crate::confirm`], [`crate::ConfirmOp::ConfigImport`]). Without a
-     * good one while tokens are required, or with a bad one at any time, the
-     * reply is a refusal (`noticeKey` `confirmation_required`) and nothing is
-     * written. A text that is not a document, or an empty selection, is
-     * refused first and leaves the token unspent.
-     */
-    func configImportConfirmed(text: String, options: UInt32, eqChannels: UInt32, token: String?)  -> String
-    
-    /**
-     * [`DspiCore::config_import`] with the EQ narrowed to the wire channels
-     * in `eq_channels` (bit k: channel k; `u32::MAX` every one). `options`
-     * as there: with [`IMPORT_BY_BLOCK`] each `IMPORT_*` block bit says
-     * whether its block is applied (EQ, crossover, routing and matrix,
+     *
+     * The EQ is narrowed to the wire channels in `eq_channels` (bit k:
+     * channel k; `u32::MAX` every one). With [`IMPORT_BY_BLOCK`] in
+     * `options` each `IMPORT_*` block bit says whether its block is applied (EQ, crossover, routing and matrix,
      * outputs, limiters, effects, volume levels, hardware I/O, names), and
      * a block left out keeps the device's values; without it the old two
-     * bits keep their meaning. The reply is `config_import`'s, plus
-     * `blocks`: the block bits applied.
+     * bits keep their meaning. The reply also carries `blocks`: the block
+     * bits applied.
      *
      * With [`IMPORT_BY_BLOCK`] and no block bit nothing is chosen: the
      * reply is a refusal (`noticeKey` `config.nothing_selected`) and nothing
      * is written, journalled or logged; the undo history stays as it was.
+     *
+     * The token ([`crate::confirm`], [`crate::ConfirmOp::ConfigImport`];
+     * required since WP P1TZ): without a good one the reply is a refusal
+     * (`noticeKey` `confirmation_required`) and nothing is written. A text
+     * that is not a document, or an empty selection, is refused first and
+     * leaves the token unspent. There is no form without a token.
      */
-    func configImportSelected(text: String, options: UInt32, eqChannels: UInt32)  -> String
+    func configImportConfirmed(text: String, options: UInt32, eqChannels: UInt32, token: String?)  -> String
     
     /**
      * What importing `text` with `options` and `eq_channels` (as
-     * [`DspiCore::config_import_selected`] takes them) would change on the
+     * [`DspiCore::config_import_confirmed`] takes them) would change on the
      * device, without writing anything: the preview shown before an import
      * (PRO1 W5). No I/O.
      *
@@ -1783,13 +1775,11 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      *
      * Errors: the first failing save's (`Refused` with its `PRESET_*`
      * status); [`DspiError::Transfer`] when `dest`'s save was not
-     * confirmed; otherwise as [`DspiCore::save_preset`].
-     */
-    func copyPreset(source: UInt8, dest: UInt8) throws 
-    
-    /**
-     * [`DspiCore::copy_preset`] with a confirmation token, as
-     * [`DspiCore::save_preset_confirmed`].
+     * confirmed; otherwise as [`DspiCore::save_preset_confirmed`].
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
     func copyPresetConfirmed(source: UInt8, dest: UInt8, token: String?) throws 
     
@@ -1816,15 +1806,12 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * `VerifyFailed`. `typed` is the word when the view's `commit_needs_word`
      * says so, even if it was typed for the trial. A refusal leaves the flow in
      * `Passed`, with the trial running. Errors as for starting.
-     */
-    func coreVregCalCommit(typed: String?) throws 
-    
-    /**
-     * [`DspiCore::core_vreg_cal_commit`] with a confirmation token
-     * ([`crate::confirm`], [`crate::ConfirmOp::VregSave`]): refused with
-     * [`DspiError::ConfirmationRequired`], with no write and noted in the
-     * view, as [`DspiCore::save_preset_confirmed`] is. The word stays as it
-     * is, beside the token.
+     *
+     * Takes a confirmation token ([`crate::confirm`],
+     * [`crate::ConfirmOp::VregSave`], WP P1TK; required since WP P1TZ):
+     * without a good one, [`DspiError::ConfirmationRequired`] with no write,
+     * noted in the view. The word stays as it is, beside the token. There is
+     * no form without a token.
      */
     func coreVregCalCommitConfirmed(typed: String?, token: String?) throws 
     
@@ -1899,12 +1886,10 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * Manual `SET` from the Advanced page. `value` 0 is the reset to the
      * build default; anything else has the flow's limits and confirmation.
      * Read back by later polls, as a commit. Errors as for starting.
-     */
-    func coreVregManualSet(value: UInt8, typed: String?) throws 
-    
-    /**
-     * [`DspiCore::core_vreg_manual_set`] with a confirmation token, as
-     * [`DspiCore::core_vreg_cal_commit_confirmed`].
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
     func coreVregManualSetConfirmed(value: UInt8, typed: String?, token: String?) throws 
     
@@ -2095,13 +2080,11 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * the image is read again and becomes the baseline. A deletion that is
      * never confirmed leaves the slot and its name in the mirror and fails.
      *
-     * Errors: as [`DspiCore::save_preset`].
-     */
-    func deletePreset(slot: UInt8) throws 
-    
-    /**
-     * [`DspiCore::delete_preset`] with a confirmation token, as
-     * [`DspiCore::save_preset_confirmed`].
+     * Errors: as [`DspiCore::save_preset_confirmed`].
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
     func deletePresetConfirmed(slot: UInt8, token: String?) throws 
     
@@ -2125,7 +2108,7 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     
     /**
      * On the demo device only, for clients' tests: how
-     * [`save_output_config`](Self::save_output_config) answers from now on. 0 goes
+     * [`save_output_config`](Self::save_output_config_confirmed) answers from now on. 0 goes
      * through, 0xFF stalls, another byte is that status. `Unsupported`, with no
      * traffic, on anything but a simulated device.
      */
@@ -2231,17 +2214,13 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * Errors: [`DspiError::Locked`] / [`DspiError::Denied`] when the Link
      * hub refuses its lock; [`DspiError::Disconnected`] when the connection
      * changed while the hub was asked;
-     * [`DspiError::ConfirmationRequired`] without a good token (always,
-     * WP P1TZ), also with no device open: the
-     * gate runs first, so that case is no longer the plain `Ok` (accepted
-     * in review p1b).
-     */
-    func enterBootloader() throws 
-    
-    /**
-     * [`DspiCore::enter_bootloader`] with a confirmation token
-     * ([`crate::confirm`]), as [`DspiCore::save_preset_confirmed`]. With no
-     * device open a token is still checked, and nothing is sent.
+     * [`DspiError::ConfirmationRequired`] without a good token, also with no
+     * device open: the gate runs first, so that case is no longer the plain
+     * `Ok` (accepted in review p1b).
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ); with no device open a token is still checked, and nothing is
+     * sent. There is no form without a token.
      */
     func enterBootloaderConfirmed(token: String?) throws 
     
@@ -2301,12 +2280,10 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
      * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; a transfer
      * error, of the reset or the re-read.
-     */
-    func factoryReset() throws 
-    
-    /**
-     * [`DspiCore::factory_reset`] with a confirmation token, as
-     * [`DspiCore::save_preset_confirmed`].
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
     func factoryResetConfirmed(token: String?) throws 
     
@@ -3290,7 +3267,7 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * load, and stays as it was otherwise. A load that is never confirmed
      * (an empty slot changes nothing) still re-reads and succeeds.
      *
-     * Errors: as [`DspiCore::save_preset`], and the re-read's.
+     * Errors: as [`DspiCore::save_preset_confirmed`], and the re-read's.
      */
     func loadPreset(slot: UInt8) throws 
     
@@ -3806,12 +3783,10 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * Errors: [`DspiError::Refused`] with a `PRESET_*` status;
      * [`DspiError::Locked`] (Link); [`DspiError::ReadOnly`],
      * [`DspiError::Disconnected`] or a transfer error.
-     */
-    func saveOutputConfig() throws 
-    
-    /**
-     * [`DspiCore::save_output_config`] with a confirmation token
-     * ([`crate::confirm`]), as [`DspiCore::save_preset_confirmed`].
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
     func saveOutputConfigConfirmed(token: String?) throws 
     
@@ -3823,12 +3798,10 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
      * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; a transfer
      * error.
-     */
-    func saveParams() throws 
-    
-    /**
-     * [`DspiCore::save_params`] with a confirmation token, as
-     * [`DspiCore::save_preset_confirmed`].
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
     func saveParamsConfirmed(token: String?) throws 
     
@@ -3845,13 +3818,10 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * status; [`DspiError::Transfer`] when the save was not confirmed;
      * [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
      * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`].
-     */
-    func savePreset(slot: UInt8) throws 
-    
-    /**
-     * [`DspiCore::save_preset`] with a confirmation token ([`crate::confirm`]):
-     * [`DspiError::ConfirmationRequired`], with nothing sent, without a good
-     * one while tokens are required, or with a bad one at any time.
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
     func savePresetConfirmed(slot: UInt8, token: String?) throws 
     
@@ -4573,7 +4543,7 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     
     /**
      * Where the physical I/O configuration is stored: 0 = independently of
-     * the presets (saved with [`DspiCore::save_output_config`]), 1 = with
+     * the presets (saved with [`DspiCore::save_output_config_confirmed`]), 1 = with
      * each preset. A device-global flash write the firmware runs later.
      * Sets `DspState.output_config_mode`.
      *
@@ -5047,6 +5017,12 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * [`DspiError::ReadOnly`]; then the setter's own errors
      * ([`DspiError::Refused`] with a status byte, [`DspiError::Locked`],
      * [`DspiError::Transfer`], ...).
+     *
+     * The gated paths (`preset.save`, `preset.delete`, `dev.save`,
+     * `dev.save.io`) need a confirmation token, which this call does not
+     * take: they are refused with [`DspiError::ConfirmationRequired`] and
+     * nothing is sent (WP P1TZ); [`DspiCore::write_param_confirmed`] takes
+     * them with a token.
      */
     func writeParam(path: String, indices: Data, value: ParamValue) throws  -> ParamValue
     
@@ -5442,7 +5418,7 @@ open func applyGuardDefault() -> Bool  {
     /**
      * Import `text` (a `.dspipreset` document) with a way back: capture a
      * snapshot, apply the blocks `options` and `eq_channels` choose (as
-     * [`DspiCore::config_import_selected`] takes them), then wait
+     * [`DspiCore::config_import_confirmed`] takes them), then wait
      * `timeout_s` seconds (0: 30, at most 590) for
      * [`DspiCore::apply_confirm`]. A timeout, [`DspiCore::apply_revert`] or a
      * failed import puts the snapshot back; over DSPi Link the hub guards it
@@ -5779,9 +5755,9 @@ open func configExport(name: String, appVersion: String, links: UInt8)throws  ->
     
     /**
      * Apply a `.dspipreset` document to the device as one bulk write, under
-     * the device lock. `options`: [`IMPORT_VOLUMES`] also applies the master
-     * and user volume, [`IMPORT_HARDWARE`] the hardware I/O and the
-     * limiters. The crossfeed pair map goes over the extension channel when
+     * the device lock, with a confirmation token. `options`:
+     * [`IMPORT_VOLUMES`] also applies the master and user volume,
+     * [`IMPORT_HARDWARE`] the hardware I/O and the limiters. The crossfeed pair map goes over the extension channel when
      * the device has one.
      *
      * Every setting the document holds no readable value for keeps the
@@ -5804,23 +5780,24 @@ open func configExport(name: String, appVersion: String, links: UInt8)throws  ->
      * the device could not be written (disconnected, read-only firmware,
      * another console's lock, a failed transfer); the mirror then stays as
      * it was.
-     */
-open func configImport(text: String, options: UInt32) -> String  {
-    return try!  FfiConverterString.lift(try! rustCall() {
-    uniffi_dspi_core_fn_method_dspicore_config_import(self.uniffiClonePointer(),
-        FfiConverterString.lower(text),
-        FfiConverterUInt32.lower(options),$0
-    )
-})
-}
-    
-    /**
-     * [`DspiCore::config_import_selected`] with a confirmation token
-     * ([`crate::confirm`], [`crate::ConfirmOp::ConfigImport`]). Without a
-     * good one while tokens are required, or with a bad one at any time, the
-     * reply is a refusal (`noticeKey` `confirmation_required`) and nothing is
-     * written. A text that is not a document, or an empty selection, is
-     * refused first and leaves the token unspent.
+     *
+     * The EQ is narrowed to the wire channels in `eq_channels` (bit k:
+     * channel k; `u32::MAX` every one). With [`IMPORT_BY_BLOCK`] in
+     * `options` each `IMPORT_*` block bit says whether its block is applied (EQ, crossover, routing and matrix,
+     * outputs, limiters, effects, volume levels, hardware I/O, names), and
+     * a block left out keeps the device's values; without it the old two
+     * bits keep their meaning. The reply also carries `blocks`: the block
+     * bits applied.
+     *
+     * With [`IMPORT_BY_BLOCK`] and no block bit nothing is chosen: the
+     * reply is a refusal (`noticeKey` `config.nothing_selected`) and nothing
+     * is written, journalled or logged; the undo history stays as it was.
+     *
+     * The token ([`crate::confirm`], [`crate::ConfirmOp::ConfigImport`];
+     * required since WP P1TZ): without a good one the reply is a refusal
+     * (`noticeKey` `confirmation_required`) and nothing is written. A text
+     * that is not a document, or an empty selection, is refused first and
+     * leaves the token unspent. There is no form without a token.
      */
 open func configImportConfirmed(text: String, options: UInt32, eqChannels: UInt32, token: String?) -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
@@ -5834,32 +5811,8 @@ open func configImportConfirmed(text: String, options: UInt32, eqChannels: UInt3
 }
     
     /**
-     * [`DspiCore::config_import`] with the EQ narrowed to the wire channels
-     * in `eq_channels` (bit k: channel k; `u32::MAX` every one). `options`
-     * as there: with [`IMPORT_BY_BLOCK`] each `IMPORT_*` block bit says
-     * whether its block is applied (EQ, crossover, routing and matrix,
-     * outputs, limiters, effects, volume levels, hardware I/O, names), and
-     * a block left out keeps the device's values; without it the old two
-     * bits keep their meaning. The reply is `config_import`'s, plus
-     * `blocks`: the block bits applied.
-     *
-     * With [`IMPORT_BY_BLOCK`] and no block bit nothing is chosen: the
-     * reply is a refusal (`noticeKey` `config.nothing_selected`) and nothing
-     * is written, journalled or logged; the undo history stays as it was.
-     */
-open func configImportSelected(text: String, options: UInt32, eqChannels: UInt32) -> String  {
-    return try!  FfiConverterString.lift(try! rustCall() {
-    uniffi_dspi_core_fn_method_dspicore_config_import_selected(self.uniffiClonePointer(),
-        FfiConverterString.lower(text),
-        FfiConverterUInt32.lower(options),
-        FfiConverterUInt32.lower(eqChannels),$0
-    )
-})
-}
-    
-    /**
      * What importing `text` with `options` and `eq_channels` (as
-     * [`DspiCore::config_import_selected`] takes them) would change on the
+     * [`DspiCore::config_import_confirmed`] takes them) would change on the
      * device, without writing anything: the preview shown before an import
      * (PRO1 W5). No I/O.
      *
@@ -5913,19 +5866,11 @@ open func connectionGeneration() -> UInt64  {
      *
      * Errors: the first failing save's (`Refused` with its `PRESET_*`
      * status); [`DspiError::Transfer`] when `dest`'s save was not
-     * confirmed; otherwise as [`DspiCore::save_preset`].
-     */
-open func copyPreset(source: UInt8, dest: UInt8)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
-    uniffi_dspi_core_fn_method_dspicore_copy_preset(self.uniffiClonePointer(),
-        FfiConverterUInt8.lower(source),
-        FfiConverterUInt8.lower(dest),$0
-    )
-}
-}
-    
-    /**
-     * [`DspiCore::copy_preset`] with a confirmation token, as
-     * [`DspiCore::save_preset_confirmed`].
+     * confirmed; otherwise as [`DspiCore::save_preset_confirmed`].
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
 open func copyPresetConfirmed(source: UInt8, dest: UInt8, token: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_copy_preset_confirmed(self.uniffiClonePointer(),
@@ -5969,20 +5914,12 @@ open func coreVregCalClose()throws   {try rustCallWithError(FfiConverterTypeDspi
      * `VerifyFailed`. `typed` is the word when the view's `commit_needs_word`
      * says so, even if it was typed for the trial. A refusal leaves the flow in
      * `Passed`, with the trial running. Errors as for starting.
-     */
-open func coreVregCalCommit(typed: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
-    uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_commit(self.uniffiClonePointer(),
-        FfiConverterOptionString.lower(typed),$0
-    )
-}
-}
-    
-    /**
-     * [`DspiCore::core_vreg_cal_commit`] with a confirmation token
-     * ([`crate::confirm`], [`crate::ConfirmOp::VregSave`]): refused with
-     * [`DspiError::ConfirmationRequired`], with no write and noted in the
-     * view, as [`DspiCore::save_preset_confirmed`] is. The word stays as it
-     * is, beside the token.
+     *
+     * Takes a confirmation token ([`crate::confirm`],
+     * [`crate::ConfirmOp::VregSave`], WP P1TK; required since WP P1TZ):
+     * without a good one, [`DspiError::ConfirmationRequired`] with no write,
+     * noted in the view. The word stays as it is, beside the token. There is
+     * no form without a token.
      */
 open func coreVregCalCommitConfirmed(typed: String?, token: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_commit_confirmed(self.uniffiClonePointer(),
@@ -6104,18 +6041,10 @@ open func coreVregManualClear()throws   {try rustCallWithError(FfiConverterTypeD
      * Manual `SET` from the Advanced page. `value` 0 is the reset to the
      * build default; anything else has the flow's limits and confirmation.
      * Read back by later polls, as a commit. Errors as for starting.
-     */
-open func coreVregManualSet(value: UInt8, typed: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
-    uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_set(self.uniffiClonePointer(),
-        FfiConverterUInt8.lower(value),
-        FfiConverterOptionString.lower(typed),$0
-    )
-}
-}
-    
-    /**
-     * [`DspiCore::core_vreg_manual_set`] with a confirmation token, as
-     * [`DspiCore::core_vreg_cal_commit_confirmed`].
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
 open func coreVregManualSetConfirmed(value: UInt8, typed: String?, token: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_set_confirmed(self.uniffiClonePointer(),
@@ -6403,18 +6332,11 @@ open func csStatusText(code: UInt8) -> String  {
      * the image is read again and becomes the baseline. A deletion that is
      * never confirmed leaves the slot and its name in the mirror and fails.
      *
-     * Errors: as [`DspiCore::save_preset`].
-     */
-open func deletePreset(slot: UInt8)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
-    uniffi_dspi_core_fn_method_dspicore_delete_preset(self.uniffiClonePointer(),
-        FfiConverterUInt8.lower(slot),$0
-    )
-}
-}
-    
-    /**
-     * [`DspiCore::delete_preset`] with a confirmation token, as
-     * [`DspiCore::save_preset_confirmed`].
+     * Errors: as [`DspiCore::save_preset_confirmed`].
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
 open func deletePresetConfirmed(slot: UInt8, token: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_delete_preset_confirmed(self.uniffiClonePointer(),
@@ -6456,7 +6378,7 @@ open func demoLatencyTiming(mode: UInt8, reads: UInt8, blackout: UInt8)throws   
     
     /**
      * On the demo device only, for clients' tests: how
-     * [`save_output_config`](Self::save_output_config) answers from now on. 0 goes
+     * [`save_output_config`](Self::save_output_config_confirmed) answers from now on. 0 goes
      * through, 0xFF stalls, another byte is that status. `Unsupported`, with no
      * traffic, on anything but a simulated device.
      */
@@ -6603,21 +6525,13 @@ open func endGroup()  {try! rustCall() {
      * Errors: [`DspiError::Locked`] / [`DspiError::Denied`] when the Link
      * hub refuses its lock; [`DspiError::Disconnected`] when the connection
      * changed while the hub was asked;
-     * [`DspiError::ConfirmationRequired`] without a good token (always,
-     * WP P1TZ), also with no device open: the
-     * gate runs first, so that case is no longer the plain `Ok` (accepted
-     * in review p1b).
-     */
-open func enterBootloader()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
-    uniffi_dspi_core_fn_method_dspicore_enter_bootloader(self.uniffiClonePointer(),$0
-    )
-}
-}
-    
-    /**
-     * [`DspiCore::enter_bootloader`] with a confirmation token
-     * ([`crate::confirm`]), as [`DspiCore::save_preset_confirmed`]. With no
-     * device open a token is still checked, and nothing is sent.
+     * [`DspiError::ConfirmationRequired`] without a good token, also with no
+     * device open: the gate runs first, so that case is no longer the plain
+     * `Ok` (accepted in review p1b).
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ); with no device open a token is still checked, and nothing is
+     * sent. There is no form without a token.
      */
 open func enterBootloaderConfirmed(token: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_enter_bootloader_confirmed(self.uniffiClonePointer(),
@@ -6711,16 +6625,10 @@ open func extStatus()throws  -> ExtStatus  {
      * [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
      * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; a transfer
      * error, of the reset or the re-read.
-     */
-open func factoryReset()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
-    uniffi_dspi_core_fn_method_dspicore_factory_reset(self.uniffiClonePointer(),$0
-    )
-}
-}
-    
-    /**
-     * [`DspiCore::factory_reset`] with a confirmation token, as
-     * [`DspiCore::save_preset_confirmed`].
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
 open func factoryResetConfirmed(token: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_factory_reset_confirmed(self.uniffiClonePointer(),
@@ -8178,7 +8086,7 @@ open func loadParams()throws   {try rustCallWithError(FfiConverterTypeDspiError_
      * load, and stays as it was otherwise. A load that is never confirmed
      * (an empty slot changes nothing) still re-reads and succeeds.
      *
-     * Errors: as [`DspiCore::save_preset`], and the re-read's.
+     * Errors: as [`DspiCore::save_preset_confirmed`], and the re-read's.
      */
 open func loadPreset(slot: UInt8)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_load_preset(self.uniffiClonePointer(),
@@ -8926,16 +8834,10 @@ open func saveMasterVolume()throws   {try rustCallWithError(FfiConverterTypeDspi
      * Errors: [`DspiError::Refused`] with a `PRESET_*` status;
      * [`DspiError::Locked`] (Link); [`DspiError::ReadOnly`],
      * [`DspiError::Disconnected`] or a transfer error.
-     */
-open func saveOutputConfig()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
-    uniffi_dspi_core_fn_method_dspicore_save_output_config(self.uniffiClonePointer(),$0
-    )
-}
-}
-    
-    /**
-     * [`DspiCore::save_output_config`] with a confirmation token
-     * ([`crate::confirm`]), as [`DspiCore::save_preset_confirmed`].
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
 open func saveOutputConfigConfirmed(token: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_save_output_config_confirmed(self.uniffiClonePointer(),
@@ -8952,16 +8854,10 @@ open func saveOutputConfigConfirmed(token: String?)throws   {try rustCallWithErr
      * [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
      * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; a transfer
      * error.
-     */
-open func saveParams()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
-    uniffi_dspi_core_fn_method_dspicore_save_params(self.uniffiClonePointer(),$0
-    )
-}
-}
-    
-    /**
-     * [`DspiCore::save_params`] with a confirmation token, as
-     * [`DspiCore::save_preset_confirmed`].
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
 open func saveParamsConfirmed(token: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_save_params_confirmed(self.uniffiClonePointer(),
@@ -8983,18 +8879,10 @@ open func saveParamsConfirmed(token: String?)throws   {try rustCallWithError(Ffi
      * status; [`DspiError::Transfer`] when the save was not confirmed;
      * [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
      * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`].
-     */
-open func savePreset(slot: UInt8)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
-    uniffi_dspi_core_fn_method_dspicore_save_preset(self.uniffiClonePointer(),
-        FfiConverterUInt8.lower(slot),$0
-    )
-}
-}
-    
-    /**
-     * [`DspiCore::save_preset`] with a confirmation token ([`crate::confirm`]):
-     * [`DspiError::ConfirmationRequired`], with nothing sent, without a good
-     * one while tokens are required, or with a bad one at any time.
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
 open func savePresetConfirmed(slot: UInt8, token: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_save_preset_confirmed(self.uniffiClonePointer(),
@@ -10074,7 +9962,7 @@ open func setNotifyListener(listener: NotifyListener?)  {try! rustCall() {
     
     /**
      * Where the physical I/O configuration is stored: 0 = independently of
-     * the presets (saved with [`DspiCore::save_output_config`]), 1 = with
+     * the presets (saved with [`DspiCore::save_output_config_confirmed`]), 1 = with
      * each preset. A device-global flash write the firmware runs later.
      * Sets `DspState.output_config_mode`.
      *
@@ -10792,6 +10680,12 @@ open func wireFeatures() -> UInt32  {
      * [`DspiError::ReadOnly`]; then the setter's own errors
      * ([`DspiError::Refused`] with a status byte, [`DspiError::Locked`],
      * [`DspiError::Transfer`], ...).
+     *
+     * The gated paths (`preset.save`, `preset.delete`, `dev.save`,
+     * `dev.save.io`) need a confirmation token, which this call does not
+     * take: they are refused with [`DspiError::ConfirmationRequired`] and
+     * nothing is sent (WP P1TZ); [`DspiCore::write_param_confirmed`] takes
+     * them with a token.
      */
 open func writeParam(path: String, indices: Data, value: ParamValue)throws  -> ParamValue  {
     return try  FfiConverterTypeParamValue_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
@@ -37792,7 +37686,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_apply_guard_default() != 61033) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_apply_guarded_import() != 8099) {
+    if (uniffi_dspi_core_checksum_method_dspicore_apply_guarded_import() != 58930) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_apply_guarded_snapshot() != 60494) {
@@ -37849,16 +37743,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_config_export() != 55997) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_config_import() != 20391) {
+    if (uniffi_dspi_core_checksum_method_dspicore_config_import_confirmed() != 7666) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_config_import_confirmed() != 34044) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_dspi_core_checksum_method_dspicore_config_import_selected() != 35048) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_dspi_core_checksum_method_dspicore_config_preview() != 60996) {
+    if (uniffi_dspi_core_checksum_method_dspicore_config_preview() != 21109) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_confirm_token() != 3433) {
@@ -37867,10 +37755,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_connection_generation() != 50111) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_copy_preset() != 9367) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_dspi_core_checksum_method_dspicore_copy_preset_confirmed() != 33372) {
+    if (uniffi_dspi_core_checksum_method_dspicore_copy_preset_confirmed() != 9061) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_core1_conflict_reason() != 6255) {
@@ -37879,10 +37764,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_close() != 22148) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_commit() != 44738) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_commit_confirmed() != 11396) {
+    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_commit_confirmed() != 43163) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_keep() != 33548) {
@@ -37909,10 +37791,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_clear() != 10120) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_set() != 2842) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_set_confirmed() != 3178) {
+    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_set_confirmed() != 564) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_trial() != 30445) {
@@ -37960,10 +37839,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_cs_status_text() != 13025) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_delete_preset() != 218) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_dspi_core_checksum_method_dspicore_delete_preset_confirmed() != 41129) {
+    if (uniffi_dspi_core_checksum_method_dspicore_delete_preset_confirmed() != 24725) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_demo_latency_sets() != 20471) {
@@ -37972,7 +37848,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_demo_latency_timing() != 50542) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_demo_output_save_status() != 4211) {
+    if (uniffi_dspi_core_checksum_method_dspicore_demo_output_save_status() != 64154) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_demo_rename_elsewhere() != 20262) {
@@ -37996,10 +37872,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_end_group() != 28189) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_enter_bootloader() != 22183) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_dspi_core_checksum_method_dspicore_enter_bootloader_confirmed() != 11255) {
+    if (uniffi_dspi_core_checksum_method_dspicore_enter_bootloader_confirmed() != 51251) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_event_log_devices() != 55922) {
@@ -38017,10 +37890,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_ext_status() != 10163) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_factory_reset() != 27488) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_dspi_core_checksum_method_dspicore_factory_reset_confirmed() != 21942) {
+    if (uniffi_dspi_core_checksum_method_dspicore_factory_reset_confirmed() != 19300) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_feature_present() != 18345) {
@@ -38287,7 +38157,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_load_params() != 46764) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_load_preset() != 4331) {
+    if (uniffi_dspi_core_checksum_method_dspicore_load_preset() != 13181) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_max_delay_ms() != 14810) {
@@ -38422,22 +38292,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_save_master_volume() != 17732) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_save_output_config() != 27456) {
+    if (uniffi_dspi_core_checksum_method_dspicore_save_output_config_confirmed() != 65103) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_save_output_config_confirmed() != 26787) {
+    if (uniffi_dspi_core_checksum_method_dspicore_save_params_confirmed() != 27661) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_save_params() != 8876) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_dspi_core_checksum_method_dspicore_save_params_confirmed() != 27808) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_dspi_core_checksum_method_dspicore_save_preset() != 49987) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_dspi_core_checksum_method_dspicore_save_preset_confirmed() != 24345) {
+    if (uniffi_dspi_core_checksum_method_dspicore_save_preset_confirmed() != 50993) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_scan_devices() != 33045) {
@@ -38632,7 +38493,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_set_notify_listener() != 43429) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_set_output_config_mode() != 52088) {
+    if (uniffi_dspi_core_checksum_method_dspicore_set_output_config_mode() != 31970) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_output_delay() != 49897) {
@@ -38761,7 +38622,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_wire_features() != 30561) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_write_param() != 35371) {
+    if (uniffi_dspi_core_checksum_method_dspicore_write_param() != 19910) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_hosttransport_control_in() != 18930) {

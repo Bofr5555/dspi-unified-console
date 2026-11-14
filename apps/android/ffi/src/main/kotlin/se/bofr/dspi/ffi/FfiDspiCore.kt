@@ -243,10 +243,6 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun configExport(name: String, appVersion: String, links: Int): String = call { core.configExport(name, appVersion, links.toUByte()) }
 
-    override fun configImport(text: String, options: Long): String = core.configImport(text, options.toUInt())
-
-    override fun configImportSelected(text: String, options: Long, eqChannels: Long): String = core.configImportSelected(text, options.toUInt(), eqChannels.toUInt())
-
     override fun configImportConfirmed(text: String, options: Long, eqChannels: Long, token: String?): String = core.configImportConfirmed(text, options.toUInt(), eqChannels.toUInt(), token)
 
     override fun configPreview(text: String, options: Long, eqChannels: Long): String = core.configPreview(text, options.toUInt(), eqChannels.toUInt())
@@ -286,8 +282,6 @@ class FfiDspiCore : DspiCoreApi {
     override fun fetchOutputPin(slot: Int): Int = call { core.fetchOutputPin(slot.toUByte()).toInt() }
 
     override fun setOutputConfigMode(mode: Int) = call { core.setOutputConfigMode(mode.toUByte()) }
-
-    override fun saveOutputConfig() = call { core.saveOutputConfig() }
 
     override fun saveOutputConfigConfirmed(token: String?) = call { core.saveOutputConfigConfirmed(token) }
 
@@ -348,8 +342,6 @@ class FfiDspiCore : DspiCoreApi {
     override fun setUart(config: UartConfig) = call { core.setUart(config.toFfi()) }
 
     override fun setI2c(config: I2cConfig) = call { core.setI2c(config.toFfi()) }
-
-    override fun enterBootloader() = call { core.enterBootloader() }
 
     override fun enterBootloaderConfirmed(token: String?) = call { core.enterBootloaderConfirmed(token) }
 
@@ -599,17 +591,11 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun setTubeParam(idx: Int, value: Float) = call { core.setTubeParam(idx.toUByte(), value) }
 
-    override fun savePreset(slot: Int) = call { core.savePreset(slot.toUByte()) }
-
     override fun savePresetConfirmed(slot: Int, token: String?) = call { core.savePresetConfirmed(slot.toUByte(), token) }
 
     override fun loadPreset(slot: Int) = call { core.loadPreset(slot.toUByte()) }
 
-    override fun copyPreset(source: Int, dest: Int) = call { core.copyPreset(source.toUByte(), dest.toUByte()) }
-
     override fun copyPresetConfirmed(source: Int, dest: Int, token: String?) = call { core.copyPresetConfirmed(source.toUByte(), dest.toUByte(), token) }
-
-    override fun deletePreset(slot: Int) = call { core.deletePreset(slot.toUByte()) }
 
     override fun deletePresetConfirmed(slot: Int, token: String?) = call { core.deletePresetConfirmed(slot.toUByte(), token) }
 
@@ -621,13 +607,9 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun setPresetStartup(mode: Int, defaultSlot: Int) = call { core.setPresetStartup(mode.toUByte(), defaultSlot.toUByte()) }
 
-    override fun saveParams() = call { core.saveParams() }
-
     override fun saveParamsConfirmed(token: String?) = call { core.saveParamsConfirmed(token) }
 
     override fun loadParams() = call { core.loadParams() }
-
-    override fun factoryReset() = call { core.factoryReset() }
 
     override fun factoryResetConfirmed(token: String?) = call { core.factoryResetConfirmed(token) }
 
@@ -729,13 +711,9 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun coreVregCalKeep(soakS: Long) = call { core.coreVregCalKeep(soakS.toUInt()) }
 
-    override fun coreVregCalCommit(typed: String?) = call { core.coreVregCalCommit(typed) }
-
     override fun coreVregCalCommitConfirmed(typed: String?, token: String?) = call { core.coreVregCalCommitConfirmed(typed, token) }
 
     override fun coreVregTrialEnd() = call { core.coreVregTrialEnd() }
-
-    override fun coreVregManualSet(value: Int, typed: String?) = call { core.coreVregManualSet(value.toUByte(), typed) }
 
     override fun coreVregManualSetConfirmed(value: Int, typed: String?, token: String?) = call { core.coreVregManualSetConfirmed(value.toUByte(), typed, token) }
 

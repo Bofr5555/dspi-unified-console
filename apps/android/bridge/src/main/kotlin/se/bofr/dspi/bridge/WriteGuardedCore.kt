@@ -152,19 +152,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.coreVregCalStart(target, soakS, typed)
     }
 
-    override fun coreVregCalCommit(typed: String?) {
-        guard("coreVregCalCommit")
-        return inner.coreVregCalCommit(typed)
-    }
-
     override fun coreVregTrialEnd() {
         guard("coreVregTrialEnd")
         return inner.coreVregTrialEnd()
-    }
-
-    override fun coreVregManualSet(value: Int, typed: String?) {
-        guard("coreVregManualSet")
-        return inner.coreVregManualSet(value, typed)
     }
 
     override fun coreVregManualTrial(value: Int, typed: String?) {
@@ -445,34 +435,14 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.setOutputConfigMode(mode)
     }
 
-    override fun saveOutputConfig() {
-        guard("saveOutputConfig")
-        return inner.saveOutputConfig()
-    }
-
     override fun setChannelName(ch: Int, name: String) {
         guard("setChannelName")
         return inner.setChannelName(ch, name)
     }
 
-    override fun savePreset(slot: Int) {
-        guard("savePreset")
-        return inner.savePreset(slot)
-    }
-
     override fun loadPreset(slot: Int) {
         guard("loadPreset")
         return inner.loadPreset(slot)
-    }
-
-    override fun copyPreset(source: Int, dest: Int) {
-        guard("copyPreset")
-        return inner.copyPreset(source, dest)
-    }
-
-    override fun deletePreset(slot: Int) {
-        guard("deletePreset")
-        return inner.deletePreset(slot)
     }
 
     override fun setPresetName(slot: Int, name: String) {
@@ -485,19 +455,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.setPresetStartup(mode, defaultSlot)
     }
 
-    override fun saveParams() {
-        guard("saveParams")
-        return inner.saveParams()
-    }
-
     override fun loadParams() {
         guard("loadParams")
         return inner.loadParams()
-    }
-
-    override fun factoryReset() {
-        guard("factoryReset")
-        return inner.factoryReset()
     }
 
     // -- WP AN6 -- Meter housekeeping, which the core allows on a read-only connection: the status
@@ -649,19 +609,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.resetBufferStats()
     }
 
-    override fun configImport(text: String, options: Long): String {
-        guard("configImport")
-        return inner.configImport(text, options)
-    }
-
-    // -- WP P1DF --
-    override fun configImportSelected(text: String, options: Long, eqChannels: Long): String {
-        guard("configImportSelected")
-        return inner.configImportSelected(text, options, eqChannels)
-    }
-
     // -- WP P1TK -- the confirmed forms of the gated writes (the token is the
-    // core's; this layer's read-only rule is the same as for the plain calls)
+    // core's; this layer's read-only rule is the same as for the other writes; WP P1TZ retired the
+    // forms without a token)
     override fun savePresetConfirmed(slot: Int, token: String?) {
         guard("savePresetConfirmed")
         return inner.savePresetConfirmed(slot, token)
@@ -858,17 +808,11 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "setLimiterParam",
             "setOutputPin",
             "setOutputConfigMode",
-            "saveOutputConfig",
             "setChannelName",
-            "savePreset",
             "loadPreset",
-            "copyPreset",
-            "deletePreset",
             "setPresetName",
             "setPresetStartup",
-            "saveParams",
             "loadParams",
-            "factoryReset",
             "setUpmixParam",
             "setSubharmParam",
             "setSubharmSolo",
@@ -898,7 +842,6 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "siggenSetConfig",
             "siggenControl",
             "resetBufferStats",
-            "configImport",
             "filtersImport",
             "csApply",
             // -- WP AN1 --
@@ -912,9 +855,7 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "redo",
             // Review w1d (CG11, CG14): the calibration flow's device writes
             "coreVregCalStart",
-            "coreVregCalCommit",
             "coreVregTrialEnd",
-            "coreVregManualSet",
             "coreVregManualTrial",
             "coreVregManualAuto",
             "coreVregManualClear",
@@ -945,8 +886,7 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "alinkSystemRecall",
             // -- WP P1DCFIX --
             "alinkSystemSaveReport",
-            // -- WP P1DF --
-            "configImportSelected",
+            // -- WP P1DF -- (configImportSelected retired by WP P1TZ)
             // -- WP P1PR --
             "setInputPairPreamp",
             "protectAllOutputs",
@@ -1068,7 +1008,6 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "csSnapshot",
             "curveFreq",
             "disconnect",
-            "enterBootloader",
             "fetchAdatOutStatus",
             "fetchAll",
             "fetchBufferStats",

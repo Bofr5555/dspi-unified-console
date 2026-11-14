@@ -56,7 +56,6 @@ fn wp_q2b_a_null_handle_gives_the_failure_value() {
     for v in [
         dspi_set_output_pin(n, 0, 0),
         dspi_fetch_output_pin(n, 0),
-        dspi_save_output_config(n),
         dspi_set_output_type(n, 0, 0),
         dspi_set_i2s_bck_pin(n, 0, 0),
         dspi_set_i2s_clock_pin_mode(n, 0),
@@ -80,7 +79,6 @@ fn wp_q2b_a_null_handle_gives_the_failure_value() {
     }
     for v in [
         dspi_set_output_config_mode(n, 0),
-        dspi_enter_bootloader(n),
         dspi_set_hotplug_callback(n, None, null_mut()),
         dspi_set_input_rate(n, 0),
         dspi_set_i2s_clock_mode(n, 0),
@@ -107,7 +105,9 @@ fn wp_q2b_a_null_handle_gives_the_failure_value() {
         dspi_cs_apply(n, null(), t, 16),
         dspi_cs_pin_uses(n, p, p, 1),
         dspi_config_export(n, null(), null(), 0, t, 16),
-        dspi_config_import(n, null(), 0, t, 16),
+        // -- WP P1TZ -- the import, the output-config save and the bootloader
+        // take a token now (their `_confirmed` forms: tests_wp_p1tk)
+        dspi_config_import_confirmed(n, null(), 0, u32::MAX, null(), t, 16),
         dspi_filters_export(n, 0, t, 16),
         dspi_filters_inspect(n, null(), 0, t, 16),
         dspi_filters_import(n, null(), null(), 0, t, 16),
@@ -192,7 +192,7 @@ fn wp_q2b_invalid_utf8_is_refused_not_a_panic() {
         false
     );
     assert_eq!(
-        read_json(|b, l| dspi_config_import(h, bad, 0, b, l))["ok"],
+        read_json(|b, l| dspi_config_import_confirmed(h, bad, 0, u32::MAX, null(), b, l))["ok"],
         false
     );
     free(h);
@@ -383,8 +383,9 @@ fn wp_q2b_files_round_trip_on_the_demo_device() {
     let info = read_json(|b, l| dspi_config_inspect(doc.as_ptr(), b, l));
     assert_eq!(info["ok"], true);
     assert_eq!(info["name"], "Q2b");
-    // -- WP P1TZ -- the plain import is refused; with a token it applies.
-    let refused = read_json(|b, l| dspi_config_import(h, doc.as_ptr(), 0, b, l));
+    // -- WP P1TZ -- without a token the import is refused; with one it applies.
+    let refused =
+        read_json(|b, l| dspi_config_import_confirmed(h, doc.as_ptr(), 0, u32::MAX, null(), b, l));
     assert_eq!(refused["noticeKey"], "confirmation_required", "{refused}");
     let applied = with_token_for_test(h, "config_import", |t, b, l| {
         dspi_config_import_confirmed(h, doc.as_ptr(), 0, u32::MAX, t, b, l)
@@ -782,8 +783,8 @@ const OLD_FUNCTIONS: &[&str] = &[
     "dspi_set_output_pin",
     "dspi_fetch_output_pin",
     "dspi_set_output_config_mode",
-    "dspi_save_output_config",
-    "dspi_enter_bootloader",
+    // -- WP P1TZ -- dspi_save_output_config, dspi_enter_bootloader and
+    // dspi_config_import are retired (their `_confirmed` forms take a token)
     "dspi_fetch_core1_mode",
     "dspi_check_core1_conflict",
     "dspi_set_hotplug_callback",
@@ -838,7 +839,6 @@ const OLD_FUNCTIONS: &[&str] = &[
     "dspi_monitor_clear",
     "dspi_config_export",
     "dspi_config_inspect",
-    "dspi_config_import",
     "dspi_filters_export",
     "dspi_filters_inspect",
     "dspi_filters_import",

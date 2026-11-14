@@ -173,11 +173,11 @@ class InstallerWpP1an2Test {
 
     @Test
     fun p1an2TokensAreRequiredAndAConfirmedSavePasses() = withDemo {
-        // -- WP P1TZ -- required by every core: no switch, and the plain save below is refused
+        // -- WP P1TZ -- required by every core: no switch, and a save without a token is refused
         val token = onMain { bridge.dangerousOps.confirm(DangerousOp.SAVE_PRESET) }
         assertEquals(PresetStatus.OK, onMain { bridge.savePreset(token, 3) })
         try {
-            core.savePreset(3)
+            core.savePresetConfirmed(3, null)
             fail("a save without a token is refused")
         } catch (e: DspiException.ConfirmationRequired) {
             assertEquals("missing", e.code)

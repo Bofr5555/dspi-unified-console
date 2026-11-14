@@ -4,7 +4,7 @@
 //! The Qt app does the drive work in C++ today (`FirmwareUpdater.cpp`) and the
 //! Android app in Kotlin; this gives every core-based app (Qt, Terminal,
 //! later iOS for the check only) one implementation. Entering the bootloader
-//! is `DspiCore::enter_bootloader` (WP C6).
+//! is `DspiCore::enter_bootloader_confirmed` (WP C6).
 //!
 //! # What makes a UF2 acceptable
 //!

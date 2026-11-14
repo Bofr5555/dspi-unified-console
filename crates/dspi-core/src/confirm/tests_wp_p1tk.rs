@@ -173,7 +173,7 @@ fn wp_p1tk_the_bootloader_is_gated() {
     let p = rig();
     let before = p.traffic();
     assert_eq!(
-        code_of(p.core.enter_bootloader()),
+        code_of(p.core.enter_bootloader_confirmed(None)),
         Err(refusal::MISSING.into())
     );
     let wrong = p.core.confirm_token(ConfirmOp::FactoryReset);
@@ -191,24 +191,38 @@ fn wp_p1tk_the_bootloader_is_gated() {
     );
 }
 
-/// On by default (-- WP P1TZ --, OD-P1f): a fresh core refuses every plain
-/// gated call with nothing sent; a token that is given is checked; the
-/// test-only opt-out lifts it.
+/// On by default (-- WP P1TZ --, OD-P1f): a fresh core refuses every gated
+/// call without a token, and every gated `write_param` path, with nothing
+/// sent; a token that is given is checked; the test-only opt-out lifts it.
 #[test]
 fn wp_p1tz_required_by_default_and_a_given_token_is_checked() {
     let p = rig();
     assert!(p.core.confirmation_required_for_tests());
     let before = p.traffic();
     for r in [
-        p.core.save_preset(1),
-        p.core.save_params(),
-        p.core.save_output_config(),
-        p.core.factory_reset(),
-        p.core.delete_preset(1),
-        p.core.copy_preset(1, 2),
-        p.core.enter_bootloader(),
+        p.core.save_preset_confirmed(1, None),
+        p.core.save_params_confirmed(None),
+        p.core.save_output_config_confirmed(None),
+        p.core.factory_reset_confirmed(None),
+        p.core.delete_preset_confirmed(1, None),
+        p.core.copy_preset_confirmed(1, 2, None),
+        p.core.enter_bootloader_confirmed(None),
     ] {
         assert_eq!(code_of(r), Err(refusal::MISSING.into()));
+    }
+    // The gated registry paths stay in the registry and are refused the same
+    // way through write_param, which takes no token.
+    for (path, indices) in [
+        ("preset.save", vec![1]),
+        ("preset.delete", vec![1]),
+        ("dev.save", vec![]),
+        ("dev.save.io", vec![]),
+    ] {
+        let r = p
+            .core
+            .write_param(path.into(), indices, crate::ParamValue::Trigger)
+            .map(|_| ());
+        assert_eq!(code_of(r), Err(refusal::MISSING.into()), "{path}");
     }
     assert_eq!(p.traffic(), before, "nothing sent");
     assert_eq!(
@@ -221,9 +235,9 @@ fn wp_p1tz_required_by_default_and_a_given_token_is_checked() {
     assert!(DspiCore::new().confirmation_required_for_tests());
     // The test-only opt-out, and back.
     p.core.confirmation_opt_out_for_tests(true);
-    p.core.save_preset(1).unwrap();
+    p.core.save_preset_confirmed(1, None).unwrap();
     p.core.confirmation_opt_out_for_tests(false);
-    assert!(p.core.save_preset(1).is_err());
+    assert!(p.core.save_preset_confirmed(1, None).is_err());
 }
 
 /// A token is for the connection it was minted on: a disconnect and a
