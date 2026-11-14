@@ -1,0 +1,52 @@
+# WP SCOPE1: PicoSDK (ps2000a driver) + Python for tools/alink-scope.
+#
+# Base: Ubuntu 24.04 LTS (a distribution Pico's Linux packages support), pinned by digest.
+# Pico packages: Pico Technology's official apt repository (labs.picotech.com, as on
+# picotech.com/downloads/linux), its signing key checked against the pinned fingerprint
+# before apt trusts it; apt then verifies every package against the signed Release file.
+# Python wrapper: Pico's official github.com/picotech/picosdk-python-wrappers at a pinned
+# commit (git verifies the commit hash). numpy from Ubuntu.
+#
+# The image has no device access of its own: scope.sh passes the scope's USB node in
+# only for `scope.sh run --go`. Build: tools/alink-scope/scope.sh build
+FROM docker.io/library/ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852
+
+ARG PICO_KEY_FPR=890F18B4718E3B4232EFD453CA45CA6D34435CAA
+ARG PICO_REPO=https://labs.picotech.com/picoscope7/debian/
+ARG LIBPS2000A_VERSION=2.2.159-5r6606
+ARG WRAPPERS_COMMIT=e7ba3e8a63edce7eba0181ae9bdd35e731d7322f
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl gnupg git \
+      python3 python3-numpy python3-setuptools python3-pip libusb-1.0-0 \
+ && rm -rf /var/lib/apt/lists/*
+
+# Pico's key: refuse anything but the pinned fingerprint.
+RUN set -eu; \
+    curl -fsSL https://labs.picotech.com/Release.gpg.key -o /tmp/pico.key; \
+    fpr=$(gpg --show-keys --with-colons /tmp/pico.key | awk -F: '$1=="fpr"{print $10; exit}'); \
+    [ "$fpr" = "$PICO_KEY_FPR" ] || { echo "Pico key fingerprint $fpr != $PICO_KEY_FPR" >&2; exit 1; }; \
+    gpg --dearmor < /tmp/pico.key > /usr/share/keyrings/picotech-archive-keyring.gpg; \
+    rm /tmp/pico.key; \
+    echo "deb [signed-by=/usr/share/keyrings/picotech-archive-keyring.gpg] $PICO_REPO picoscope main" \
+      > /etc/apt/sources.list.d/picoscope7.list
+
+# The ps2000a driver (PicoScope 2000A/2000B incl. MSO models) and what it depends on.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends "libps2000a=$LIBPS2000A_VERSION" \
+ && rm -rf /var/lib/apt/lists/* \
+ && ls /opt/picoscope/lib/libps2000a.so* \
+ && { [ -f /etc/ld.so.conf.d/picoscope.conf ] || echo /opt/picoscope/lib > /etc/ld.so.conf.d/picoscope.conf; } \
+ && ldconfig && ldconfig -p | grep -q libps2000a
+
+# picosdk-python-wrappers at the pinned commit (its setup.py checks that a driver loads).
+RUN set -eu; mkdir /opt/picosdk-python-wrappers; cd /opt/picosdk-python-wrappers; \
+    git init -q; git remote add origin https://github.com/picotech/picosdk-python-wrappers; \
+    git fetch -q --depth 1 origin "$WRAPPERS_COMMIT"; git checkout -q FETCH_HEAD; \
+    [ "$(git rev-parse HEAD)" = "$WRAPPERS_COMMIT" ]; \
+    pip3 install --no-deps --no-build-isolation --break-system-packages . ; \
+    python3 -c 'import picosdk.ps2000a as m; print("picosdk ps2000a wrapper loads", m.ps2000a)'
+
+WORKDIR /work
+ENTRYPOINT []
