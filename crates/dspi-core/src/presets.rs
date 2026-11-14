@@ -239,6 +239,9 @@ impl DspiCore {
             &format!("Recalled preset {}", u16::from(slot).saturating_add(1)),
             lines,
         );
+        // -- WP P1LM -- the slot's stored values, read back, held to the
+        // limits profile (OD-P1j); reported in `limits_status`
+        self.limits_after_load();
         Ok(())
     }
 

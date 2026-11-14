@@ -187,6 +187,8 @@ pub(crate) mod link {
             DspiError::OvervoltWordRequired { .. } => "overvolt_word",
             // -- WP P1TK --
             DspiError::ConfirmationRequired { .. } => "confirmation_required",
+            // -- WP P1LM --
+            DspiError::LimitExceeded { .. } => "limit_exceeded",
         }
     }
 

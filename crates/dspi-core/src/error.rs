@@ -123,6 +123,17 @@ pub enum DspiError {
         /// Which operation and why, for a log or a detail line.
         msg: String,
     },
+    // -- WP P1LM --
+    /// The write would cross a limit of the device's limits profile
+    /// (`crate::limits`): nothing was sent. `code`: `out_gain`, `eq_boost`,
+    /// `highpass`, `delay`, `limiter` or `master_volume`.
+    #[error("{msg}")]
+    LimitExceeded {
+        /// Which limit, as above.
+        code: String,
+        /// What and why, for a log or a detail line.
+        msg: String,
+    },
 }
 
 // -- WP P1NT --
@@ -146,6 +157,8 @@ impl DspiError {
             Self::OvervoltWordRequired { .. } => "overvolt_word",
             // -- WP P1TK --
             Self::ConfirmationRequired { .. } => "confirmation_required",
+            // -- WP P1LM --
+            Self::LimitExceeded { .. } => "limit_exceeded",
         }
     }
 
@@ -174,7 +187,8 @@ impl DspiError {
             | Self::AutoEq { msg, .. }
             | Self::FirmwareGuardBlocked { msg }
             | Self::OvervoltWordRequired { msg }
-            | Self::ConfirmationRequired { msg, .. } => msg.clone(),
+            | Self::ConfirmationRequired { msg, .. }
+            | Self::LimitExceeded { msg, .. } => msg.clone(),
             Self::Refused { status } => format!("status {status}"),
             Self::Disconnected
             | Self::Unsupported

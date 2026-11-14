@@ -1899,6 +1899,8 @@ fn write_error(e: &DspiError) -> String {
         DspiError::Denied => "This console's role on the hub does not allow changes.".into(),
         // -- WP P1TK --
         DspiError::ConfirmationRequired { msg, .. } => msg.clone(),
+        // -- WP P1LM --
+        DspiError::LimitExceeded { msg, .. } => msg.clone(),
         other => format!("The device could not be written: {other}."),
     }
 }
@@ -2123,7 +2125,9 @@ impl DspiCore {
     pub fn config_export(&self, name: String, app_version: String, links: u8) -> Result<String> {
         self.ensure_probed();
         let (state, map) = exportable(&mut self.lock())?;
-        Ok(export_config(&state, &name, &app_version, links, map))
+        let text = export_config(&state, &name, &app_version, links, map);
+        // -- WP P1LM -- the device's limits profile in `meta.limits` (never a PIN)
+        Ok(self.with_limits_meta(text))
     }
 
     /// Apply a `.dspipreset` document to the device as one bulk write, under
@@ -2339,6 +2343,9 @@ impl DspiCore {
     ) -> Result<(Built, DspState, bool)> {
         let before = inner.state.clone();
         let mut built = build_selected(&before, doc, sel);
+        // -- WP P1LM -- held to the device's limits profile, and said so
+        let held = crate::limits::hold(inner, &mut built.state);
+        built.warnings.extend(crate::limits::held_line(&held));
         let has_map = inner.conn()?.ext.pair_map.is_some();
         if !has_map && let Some(map) = built.pair_map {
             built.state.crossfeed_pair_map = before.crossfeed_pair_map.clone();

@@ -893,6 +893,10 @@ pub struct ApplyReport {
     pub out_of_range: Vec<OutOfRange>,
     /// Other values the device or the registry refused, one line each.
     pub refused: Vec<String>,
+    // -- WP P1LM --
+    /// Values held to the device's limits profile ([`apply_limited`]), one
+    /// row each in [`OutOfRange::line`]'s words.
+    pub limited: Vec<String>,
 }
 
 // -- WP P0U fixup --
@@ -956,6 +960,7 @@ impl ApplyReport {
             && self.shortened.is_none()
             && self.out_of_range.is_empty()
             && self.refused.is_empty()
+            && self.limited.is_empty() // -- WP P1LM --
     }
 
     /// The result report, worded as the Console words it.
@@ -1020,6 +1025,13 @@ impl ApplyReport {
             lines.push(format!(
                 "Not a number, left as they are: {}",
                 skipped.join(", ")
+            ));
+        }
+        // -- WP P1LM --
+        if !self.limited.is_empty() {
+            lines.push(format!(
+                "Held to the limits profile: {}",
+                self.limited.join(", ")
             ));
         }
         for refused in &self.refused {
@@ -1279,6 +1291,146 @@ pub fn apply(session: &mut Session, doc: &PresetDocument, options: ApplyOptions)
     }
 
     report
+}
+
+// -- WP P1LM --
+/// [`apply`] held to a limits profile (`crate::limits`, PRO1 S1): every value
+/// the document holds past a limit of `profile` is written at the limit
+/// instead, and named in [`ApplyReport::limited`] (as delays shortened to the
+/// line are). With `None`, exactly [`apply`].
+pub fn apply_limited(
+    session: &mut Session,
+    doc: &PresetDocument,
+    options: ApplyOptions,
+    profile: Option<&crate::limits::LimitsProfile>,
+) -> ApplyReport {
+    let Some(profile) = profile else {
+        return apply(session, doc, options);
+    };
+    let caps = session.capabilities().clone();
+    let mut held = doc.clone();
+    let rows = hold_document(profile, &mut held, caps.num_inputs, caps.num_outputs);
+    let mut report = apply(session, &held, options);
+    report.limited = rows;
+    report
+}
+
+// -- WP P1LM --
+/// Hold `doc`'s values to `profile` for a device with `num_inputs` and
+/// `num_outputs`: output gains and delays, limiters, EQ boosts, the master
+/// volume, and an output's existing high-pass raised to its corner. The
+/// rows, one per value held. A high-pass the document lacks is not made
+/// here (the core's bulk path adds one); that output is named instead.
+pub fn hold_document(
+    profile: &crate::limits::LimitsProfile,
+    doc: &mut PresetDocument,
+    num_inputs: u8,
+    num_outputs: u8,
+) -> Vec<String> {
+    use crate::limits::highpass_slope;
+    let mut rows: Vec<String> = Vec::new();
+    fn line(path: String, value: f32, applied: f32) -> String {
+        OutOfRange {
+            path,
+            value: f64::from(value),
+            applied: Some(f64::from(applied)),
+        }
+        .line()
+    }
+    let legacy = legacy_numbering(doc, num_inputs);
+    let mut no_highpass = Vec::new();
+    for c in &mut doc.channels {
+        let place = c.placement(legacy).filter(|r| match *r {
+            ChannelRef::Input(i) => i < num_inputs,
+            ChannelRef::Output(o) => o < num_outputs,
+        });
+        let ch = match place {
+            Some(ChannelRef::Input(i)) => i,
+            Some(ChannelRef::Output(o)) => num_inputs.saturating_add(o),
+            None => continue,
+        };
+        for (b, band) in c.eq.iter_mut().enumerate() {
+            let t = u8::try_from(band.r#type).unwrap_or(0);
+            let to = profile.clamp_boost(t, band.gain);
+            if to != band.gain {
+                rows.push(line(format!("eq.gain[{ch},{b}]"), band.gain, to));
+                band.gain = to;
+            }
+        }
+        let Some(ChannelRef::Output(o)) = place else {
+            continue;
+        };
+        if let Some(g) = c.gain_db {
+            let to = profile.clamp_output_gain(o, g);
+            if to != g {
+                rows.push(line(format!("out.gain[{o}]"), g, to));
+                c.gain_db = Some(to);
+            }
+        }
+        for d in [&mut c.output_delay_ms, &mut c.delay_ms] {
+            if let Some(v) = *d {
+                let to = profile.clamp_delay(o, v);
+                if to != v {
+                    rows.push(line(format!("out.delay[{o}]"), v, to));
+                    *d = Some(to);
+                }
+            }
+        }
+        if let Some(lim) = profile.output(o) {
+            if let Some(ceiling) = lim.limiter_ceiling_db {
+                let l = c.limiter.get_or_insert_with(LimiterBlock::default);
+                if l.enabled != Some(true) {
+                    rows.push(format!("limit.on[{o}] off → on"));
+                    l.enabled = Some(true);
+                }
+                if let Some(t) = l.threshold_db.filter(|t| *t > ceiling) {
+                    rows.push(line(format!("limit.threshold[{o}]"), t, ceiling));
+                    l.threshold_db = Some(ceiling);
+                } else if l.threshold_db.is_none() {
+                    l.threshold_db = Some(ceiling);
+                }
+            }
+            if let Some(min_hz) = lim.highpass_min_hz {
+                let slope = lim.highpass_min_slope_db.unwrap_or(6);
+                let steep = |b: &BandBlock| {
+                    u8::try_from(b.r#type)
+                        .ok()
+                        .and_then(highpass_slope)
+                        .is_some_and(|s| s >= slope)
+                };
+                let kept =
+                    c.eq.iter()
+                        .chain(&c.crossover)
+                        .any(|b| !b.bypass && steep(b) && b.freq_hz >= min_hz);
+                if !kept {
+                    match c
+                        .eq
+                        .iter_mut()
+                        .chain(c.crossover.iter_mut())
+                        .find(|b| !b.bypass && steep(b))
+                    {
+                        Some(b) => {
+                            rows.push(line(format!("highpass[{o}]"), b.freq_hz, min_hz));
+                            b.freq_hz = min_hz;
+                        }
+                        None => no_highpass.push(format!(
+                            "output {}: the document has no high-pass to hold",
+                            u16::from(o).saturating_add(1)
+                        )),
+                    }
+                }
+            }
+        }
+    }
+    if let Some(m) = doc.global.master_volume_db {
+        let to = profile.clamp_master_volume(m);
+        if to != m && m > -128.0 {
+            rows.push(line("vol.master".into(), m, to));
+            doc.global.master_volume_db = Some(to);
+        }
+    }
+    rows.extend(no_highpass);
+    rows
 }
 
 /// The warning a document from older firmware deserves. Exports made from such

@@ -3512,6 +3512,59 @@ data class HistoryMove(
 )
 
 /**
+ * The open device's limits ([`DspiCore::limits_status`]).
+ */
+data class LimitsStatus(
+    /**
+     * A profile is in force for the open device.
+     */
+    val active: Boolean,
+    /**
+     * The open device's serial ("" with none).
+     */
+    val serial: String,
+    /**
+     * How the profile was found: `none`, `ok`, `fell_back` (the profile
+     * file is missing or unreadable; the last good copy is in force) or
+     * `unreadable` (no good copy: running unlimited).
+     */
+    val state: String,
+    /**
+     * The standing notice's key (`limits.fell_back`, `limits.unreadable`;
+     * `crate::notice_text`), "" when there is none to show.
+     */
+    val noticeKey: String,
+    /**
+     * Why, for the notice's detail line.
+     */
+    val detail: String,
+    /**
+     * What the last clamp held (an import, a recall, a profile applied, a
+     * slot load), one row each, in the import's words.
+     */
+    val lastHeld: List<String>,
+)
+
+/**
+ * What applying a profile did ([`DspiCore::limits_apply_profile`]).
+ */
+data class LimitsApply(
+    /**
+     * The report: "Held to the limits profile: ..." when the device was
+     * outside a narrowed limit, nothing otherwise.
+     */
+    val lines: List<String>,
+    /**
+     * What moved, one row each.
+     */
+    val held: List<String>,
+    /**
+     * Writes that failed, and why (the profile is kept all the same).
+     */
+    val notes: List<String>,
+)
+
+/**
  * What to tell the user about a [`LinkPhase`].
  */
 data class LinkPhaseText(

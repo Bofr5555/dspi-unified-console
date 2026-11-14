@@ -366,6 +366,16 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun history(n: Long): List<HistoryEntry> = core.history(n.toUInt()).map { it.toDomain() }
 
+    override fun limitsSetDir(dir: String) = call { core.limitsSetDir(dir) }
+
+    override fun limitsProfileDocument(): String = core.limitsProfileDocument()
+
+    override fun limitsApplyProfile(document: String): LimitsApply = call { core.limitsApplyProfile(document).toDomain() }
+
+    override fun limitsClear() = call { core.limitsClear() }
+
+    override fun limitsStatus(): LimitsStatus = core.limitsStatus().toDomain()
+
     override fun linkConnect(url: String, clientName: String, appVersion: String, token: String, expectedHubId: String): LinkHello = call { core.linkConnect(url, clientName, appVersion, token, expectedHubId).toDomain() }
 
     override fun linkPair(pin: String): String = call { core.linkPair(pin) }
@@ -767,6 +777,7 @@ internal fun FfiException.toDomain(): DspiException =
         is FfiException.FirmwareGuardBlocked -> DspiException.FirmwareGuardBlocked(msg)
         is FfiException.OvervoltWordRequired -> DspiException.OvervoltWordRequired(msg)
         is FfiException.ConfirmationRequired -> DspiException.ConfirmationRequired(code, msg)
+        is FfiException.LimitExceeded -> DspiException.LimitExceeded(code, msg)
     }
 
 internal fun DspiException.toFfi(): FfiException =
@@ -785,6 +796,7 @@ internal fun DspiException.toFfi(): FfiException =
         is DspiException.FirmwareGuardBlocked -> FfiException.FirmwareGuardBlocked(msg)
         is DspiException.OvervoltWordRequired -> FfiException.OvervoltWordRequired(msg)
         is DspiException.ConfirmationRequired -> FfiException.ConfirmationRequired(code, msg)
+        is DspiException.LimitExceeded -> FfiException.LimitExceeded(code, msg)
     }
 
 // ── Record mapping (UniFFI <-> domain) ──
@@ -2921,6 +2933,40 @@ internal fun HistoryMove.toFfi() =
         entry = entry?.let { it.toFfi() },
         skipped = skipped.map { it.toFfi() },
         note = note,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.LimitsStatus.toDomain() =
+    LimitsStatus(
+        active = active,
+        serial = serial,
+        state = state,
+        noticeKey = noticeKey,
+        detail = detail,
+        lastHeld = lastHeld,
+    )
+
+internal fun LimitsStatus.toFfi() =
+    se.bofr.dspi.ffi.uniffi.LimitsStatus(
+        active = active,
+        serial = serial,
+        state = state,
+        noticeKey = noticeKey,
+        detail = detail,
+        lastHeld = lastHeld,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.LimitsApply.toDomain() =
+    LimitsApply(
+        lines = lines,
+        held = held,
+        notes = notes,
+    )
+
+internal fun LimitsApply.toFfi() =
+    se.bofr.dspi.ffi.uniffi.LimitsApply(
+        lines = lines,
+        held = held,
+        notes = notes,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.LinkPhaseText.toDomain() =

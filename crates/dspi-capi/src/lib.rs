@@ -160,6 +160,8 @@ mod tests {
             "src/fns_misc/notice_text.rs",
             // -- WP P1TK --
             "src/fns_misc/confirm.rs",
+            // -- WP P1LM --
+            "src/fns_misc/limits.rs",
             // -- WP P1OF --
             "src/fns_misc/offline.rs",
             "src/fns_browse.rs",

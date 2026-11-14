@@ -704,9 +704,11 @@ dependencies = [
  "dspi-cmd",
  "dspi-proto",
  "dspi-transport",
+ "getrandom 0.4.3",
  "proptest",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
 ]
 

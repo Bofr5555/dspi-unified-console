@@ -5888,6 +5888,40 @@ uint32_t dspi_flash_confirmed(struct FfiCore *core,
                               uint32_t len);
 
 /**
+ * Keep limits profiles in files under `dir`, the app's own data folder, one
+ * subfolder per serial ("" forgets the folder). JSON `{ok}` or a failure.
+ */
+uint32_t dspi_limits_set_dir(struct FfiCore *core, const char *dir, char *buf, uint32_t len);
+
+/**
+ * The open device's limits profile as a document (`meta.kind = "limits"`;
+ * never a PIN), "" when it has none. The text itself.
+ */
+uint32_t dspi_limits_profile_document(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Set the open device's limits profile from `doc` (a limits document, or
+ * any document with `meta.limits`), keep it, and hold the device to it at
+ * once. JSON `{ok, lines, held, notes}`, or a failure (`invalid` for a
+ * document with no readable profile, `io` when its file could not be
+ * written).
+ */
+uint32_t dspi_limits_apply_profile(struct FfiCore *core, const char *doc, char *buf, uint32_t len);
+
+/**
+ * Remove the open device's limits profile (and its files). JSON `{ok}` or
+ * a failure.
+ */
+uint32_t dspi_limits_clear(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The open device's limits: JSON `{ok, active, serial, state, noticeKey,
+ * detail, lastHeld}` (`state`: `none`, `ok`, `fell_back`, `unreadable`;
+ * `noticeKey` "" or the standing notice, through `dspi_notice_for_key`).
+ */
+uint32_t dspi_limits_status(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * Open the `.dspipreset` document `doc` with no device, as the demo device
  * seeded from it; `file_name` is what the client shows ("File: <name>"; null
  * reads as empty). Replaces any open device; nothing touches USB. JSON

@@ -1813,6 +1813,56 @@ interface DspiCoreApi : AutoCloseable {
     fun history(n: Long): List<HistoryEntry>
 
     /**
+     * Keep limits profiles (and their PIN hashes) in files under `dir`, the
+     * app's own data folder, one subfolder per device serial (created when
+     * first written; "" forgets the folder). A profile set before a folder
+     * was named is kept for this core's lifetime only.
+     *
+     * Errors: [`DspiError::Unsupported`] on the web (no files: use
+     * [`DspiCore::limits_apply_profile`] with the document the page keeps).
+     */
+    @Throws(DspiException::class)
+    fun limitsSetDir(dir: String)
+
+    /**
+     * The open device's profile as a document (`meta.kind = "limits"`;
+     * never a PIN), "" when it has none.
+     */
+    fun limitsProfileDocument(): String
+
+    /**
+     * Set the open device's profile from `document` (a limits document, or
+     * any document carrying `meta.limits`), keep it (files when a folder is
+     * named), and hold the device to it at once: a value outside a narrowed
+     * limit is written to the limit (journalled, one undo group), and
+     * reported. The profile's serial is the open device's.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::InvalidArgument`] for a document with no readable
+     * profile; [`DspiError::Io`] when the file could not be written
+     * (nothing changed).
+     */
+    @Throws(DspiException::class)
+    fun limitsApplyProfile(document: String): LimitsApply
+
+    /**
+     * Remove the open device's profile (its files too): the device runs as
+     * it does with none. The PIN, if one is set, stays (P1LK).
+     *
+     * Errors: [`DspiError::Disconnected`] with no device; [`DspiError::Io`]
+     * when a file could not be removed.
+     */
+    @Throws(DspiException::class)
+    fun limitsClear()
+
+    /**
+     * The open device's limits: whether a profile is in force, how it was
+     * found, the standing notice when its file is unreadable, and what the
+     * last clamp held. Reads the profile's file once per device.
+     */
+    fun limitsStatus(): LimitsStatus
+
+    /**
      * Open a DSPi Link session to `url` (`link_ws_url`), replacing any
      * previous one. `token` = the token stored for this hub's id ("" =
      * none). `expected_hub_id` = that id. With it, a token goes out only after

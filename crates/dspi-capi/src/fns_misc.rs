@@ -58,6 +58,8 @@ mod alink_usb;
 mod notice_text;
 // -- WP P1TK --
 mod confirm;
+// -- WP P1LM --
+mod limits;
 // -- WP P1OF --
 mod offline;
 
@@ -81,6 +83,8 @@ fn error_code(e: &DspiError) -> &'static str {
         DspiError::OvervoltWordRequired { .. } => "overvolt_word",
         // -- WP P1TK --
         DspiError::ConfirmationRequired { .. } => "confirmation_required",
+        // -- WP P1LM --
+        DspiError::LimitExceeded { .. } => "limit_exceeded",
     }
 }
 

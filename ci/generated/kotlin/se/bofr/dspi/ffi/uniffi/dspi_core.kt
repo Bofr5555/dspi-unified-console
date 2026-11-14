@@ -1642,6 +1642,16 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2020,6 +2030,16 @@ fun uniffi_dspi_core_checksum_method_dspicore_identify(
 fun uniffi_dspi_core_checksum_method_dspicore_inaccessible_devices(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_is_connected(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_limits_apply_profile(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_limits_clear(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_limits_profile_document(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_limits_set_dir(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_limits_status(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_link_close(
 ): Short
@@ -2741,6 +2761,16 @@ fun uniffi_dspi_core_fn_method_dspicore_inaccessible_devices(`ptr`: Pointer,unif
 ): Int
 fun uniffi_dspi_core_fn_method_dspicore_is_connected(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
+fun uniffi_dspi_core_fn_method_dspicore_limits_apply_profile(`ptr`: Pointer,`document`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_limits_clear(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_limits_profile_document(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_limits_set_dir(`ptr`: Pointer,`dir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_limits_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_link_close(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_link_connect(`ptr`: Pointer,`url`: RustBuffer.ByValue,`clientName`: RustBuffer.ByValue,`appVersion`: RustBuffer.ByValue,`token`: RustBuffer.ByValue,`expectedHubId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -3881,6 +3911,21 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_is_connected() != 6017.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_limits_apply_profile() != 36615.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_limits_clear() != 26237.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_limits_profile_document() != 12621.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_limits_set_dir() != 22784.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_limits_status() != 25922.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_link_close() != 64450.toShort()) {
@@ -7444,6 +7489,53 @@ public interface DspiCoreInterface {
      * then fails with [`DspiError::Disconnected`].
      */
     fun `isConnected`(): kotlin.Boolean
+    
+    /**
+     * Set the open device's profile from `document` (a limits document, or
+     * any document carrying `meta.limits`), keep it (files when a folder is
+     * named), and hold the device to it at once: a value outside a narrowed
+     * limit is written to the limit (journalled, one undo group), and
+     * reported. The profile's serial is the open device's.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::InvalidArgument`] for a document with no readable
+     * profile; [`DspiError::Io`] when the file could not be written
+     * (nothing changed).
+     */
+    fun `limitsApplyProfile`(`document`: kotlin.String): LimitsApply
+    
+    /**
+     * Remove the open device's profile (its files too): the device runs as
+     * it does with none. The PIN, if one is set, stays (P1LK).
+     *
+     * Errors: [`DspiError::Disconnected`] with no device; [`DspiError::Io`]
+     * when a file could not be removed.
+     */
+    fun `limitsClear`()
+    
+    /**
+     * The open device's profile as a document (`meta.kind = "limits"`;
+     * never a PIN), "" when it has none.
+     */
+    fun `limitsProfileDocument`(): kotlin.String
+    
+    /**
+     * Keep limits profiles (and their PIN hashes) in files under `dir`, the
+     * app's own data folder, one subfolder per device serial (created when
+     * first written; "" forgets the folder). A profile set before a folder
+     * was named is kept for this core's lifetime only.
+     *
+     * Errors: [`DspiError::Unsupported`] on the web (no files: use
+     * [`DspiCore::limits_apply_profile`] with the document the page keeps).
+     */
+    fun `limitsSetDir`(`dir`: kotlin.String)
+    
+    /**
+     * The open device's limits: whether a profile is in force, how it was
+     * found, the standing notice when its file is unreadable, and what the
+     * last clamp held. Reads the profile's file once per device.
+     */
+    fun `limitsStatus`(): LimitsStatus
     
     /**
      * Close the Link session (normal close) and drop a device bound to it,
@@ -12281,6 +12373,104 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_is_connected(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Set the open device's profile from `document` (a limits document, or
+     * any document carrying `meta.limits`), keep it (files when a folder is
+     * named), and hold the device to it at once: a value outside a narrowed
+     * limit is written to the limit (journalled, one undo group), and
+     * reported. The profile's serial is the open device's.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::InvalidArgument`] for a document with no readable
+     * profile; [`DspiError::Io`] when the file could not be written
+     * (nothing changed).
+     */
+    @Throws(DspiException::class)override fun `limitsApplyProfile`(`document`: kotlin.String): LimitsApply {
+            return FfiConverterTypeLimitsApply.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_limits_apply_profile(
+        it, FfiConverterString.lower(`document`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Remove the open device's profile (its files too): the device runs as
+     * it does with none. The PIN, if one is set, stays (P1LK).
+     *
+     * Errors: [`DspiError::Disconnected`] with no device; [`DspiError::Io`]
+     * when a file could not be removed.
+     */
+    @Throws(DspiException::class)override fun `limitsClear`()
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_limits_clear(
+        it, _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * The open device's profile as a document (`meta.kind = "limits"`;
+     * never a PIN), "" when it has none.
+     */override fun `limitsProfileDocument`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_limits_profile_document(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Keep limits profiles (and their PIN hashes) in files under `dir`, the
+     * app's own data folder, one subfolder per device serial (created when
+     * first written; "" forgets the folder). A profile set before a folder
+     * was named is kept for this core's lifetime only.
+     *
+     * Errors: [`DspiError::Unsupported`] on the web (no files: use
+     * [`DspiCore::limits_apply_profile`] with the document the page keeps).
+     */
+    @Throws(DspiException::class)override fun `limitsSetDir`(`dir`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_limits_set_dir(
+        it, FfiConverterString.lower(`dir`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * The open device's limits: whether a profile is in force, how it was
+     * found, the standing notice when its file is unreadable, and what the
+     * last clamp held. Reads the profile's file once per device.
+     */override fun `limitsStatus`(): LimitsStatus {
+            return FfiConverterTypeLimitsStatus.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_limits_status(
         it, _status)
 }
     }
@@ -22816,6 +23006,128 @@ public object FfiConverterTypeLgStatus: FfiConverterRustBuffer<LgStatus> {
 
 
 /**
+ * What applying a profile did ([`DspiCore::limits_apply_profile`]).
+ */
+data class LimitsApply (
+    /**
+     * The report: "Held to the limits profile: ..." when the device was
+     * outside a narrowed limit, nothing otherwise.
+     */
+    var `lines`: List<kotlin.String>, 
+    /**
+     * What moved, one row each.
+     */
+    var `held`: List<kotlin.String>, 
+    /**
+     * Writes that failed, and why (the profile is kept all the same).
+     */
+    var `notes`: List<kotlin.String>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLimitsApply: FfiConverterRustBuffer<LimitsApply> {
+    override fun read(buf: ByteBuffer): LimitsApply {
+        return LimitsApply(
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LimitsApply) = (
+            FfiConverterSequenceString.allocationSize(value.`lines`) +
+            FfiConverterSequenceString.allocationSize(value.`held`) +
+            FfiConverterSequenceString.allocationSize(value.`notes`)
+    )
+
+    override fun write(value: LimitsApply, buf: ByteBuffer) {
+            FfiConverterSequenceString.write(value.`lines`, buf)
+            FfiConverterSequenceString.write(value.`held`, buf)
+            FfiConverterSequenceString.write(value.`notes`, buf)
+    }
+}
+
+
+
+/**
+ * The open device's limits ([`DspiCore::limits_status`]).
+ */
+data class LimitsStatus (
+    /**
+     * A profile is in force for the open device.
+     */
+    var `active`: kotlin.Boolean, 
+    /**
+     * The open device's serial ("" with none).
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * How the profile was found: `none`, `ok`, `fell_back` (the profile
+     * file is missing or unreadable; the last good copy is in force) or
+     * `unreadable` (no good copy: running unlimited).
+     */
+    var `state`: kotlin.String, 
+    /**
+     * The standing notice's key (`limits.fell_back`, `limits.unreadable`;
+     * `crate::notice_text`), "" when there is none to show.
+     */
+    var `noticeKey`: kotlin.String, 
+    /**
+     * Why, for the notice's detail line.
+     */
+    var `detail`: kotlin.String, 
+    /**
+     * What the last clamp held (an import, a recall, a profile applied, a
+     * slot load), one row each, in the import's words.
+     */
+    var `lastHeld`: List<kotlin.String>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLimitsStatus: FfiConverterRustBuffer<LimitsStatus> {
+    override fun read(buf: ByteBuffer): LimitsStatus {
+        return LimitsStatus(
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LimitsStatus) = (
+            FfiConverterBoolean.allocationSize(value.`active`) +
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterString.allocationSize(value.`state`) +
+            FfiConverterString.allocationSize(value.`noticeKey`) +
+            FfiConverterString.allocationSize(value.`detail`) +
+            FfiConverterSequenceString.allocationSize(value.`lastHeld`)
+    )
+
+    override fun write(value: LimitsStatus, buf: ByteBuffer) {
+            FfiConverterBoolean.write(value.`active`, buf)
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterString.write(value.`state`, buf)
+            FfiConverterString.write(value.`noticeKey`, buf)
+            FfiConverterString.write(value.`detail`, buf)
+            FfiConverterSequenceString.write(value.`lastHeld`, buf)
+    }
+}
+
+
+
+/**
  * A hub address.
  */
 data class LinkAddress (
@@ -26546,6 +26858,27 @@ sealed class DspiException: kotlin.Exception() {
             get() = "code=${ `code` }, msg=${ `msg` }"
     }
     
+    /**
+     * The write would cross a limit of the device's limits profile
+     * (`crate::limits`): nothing was sent. `code`: `out_gain`, `eq_boost`,
+     * `highpass`, `delay`, `limiter` or `master_volume`.
+     */
+    class LimitExceeded(
+        
+        /**
+         * Which limit, as above.
+         */
+        val `code`: kotlin.String, 
+        
+        /**
+         * What and why, for a log or a detail line.
+         */
+        val `msg`: kotlin.String
+        ) : DspiException() {
+        override val message
+            get() = "code=${ `code` }, msg=${ `msg` }"
+    }
+    
 
     companion object ErrorHandler : UniffiRustCallStatusErrorHandler<DspiException> {
         override fun lift(error_buf: RustBuffer.ByValue): DspiException = FfiConverterTypeDspiError.lift(error_buf)
@@ -26595,6 +26928,10 @@ public object FfiConverterTypeDspiError : FfiConverterRustBuffer<DspiException> 
                 FfiConverterString.read(buf),
                 )
             14 -> DspiException.ConfirmationRequired(
+                FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
+                )
+            15 -> DspiException.LimitExceeded(
                 FfiConverterString.read(buf),
                 FfiConverterString.read(buf),
                 )
@@ -26673,6 +27010,12 @@ public object FfiConverterTypeDspiError : FfiConverterRustBuffer<DspiException> 
                 + FfiConverterString.allocationSize(value.`code`)
                 + FfiConverterString.allocationSize(value.`msg`)
             )
+            is DspiException.LimitExceeded -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`code`)
+                + FfiConverterString.allocationSize(value.`msg`)
+            )
         }
     }
 
@@ -26743,6 +27086,12 @@ public object FfiConverterTypeDspiError : FfiConverterRustBuffer<DspiException> 
             }
             is DspiException.ConfirmationRequired -> {
                 buf.putInt(14)
+                FfiConverterString.write(value.`code`, buf)
+                FfiConverterString.write(value.`msg`, buf)
+                Unit
+            }
+            is DspiException.LimitExceeded -> {
+                buf.putInt(15)
                 FfiConverterString.write(value.`code`, buf)
                 FfiConverterString.write(value.`msg`, buf)
                 Unit
