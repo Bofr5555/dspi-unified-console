@@ -639,6 +639,10 @@ impl DspiCore {
                 c.caps.kind == TransportKind::Link,
             )
         };
+        // -- WP P1EFIX2 -- (review p1efix F3) the before-image holds what the
+        // device holds now: a change queued before the apply is applied first,
+        // so Revert puts it back, not the mirror's older value
+        self.settle_notifications();
         let before = self.snapshot_capture_document(BEFORE_NAME.into(), label.clone())?;
         let hub = if link { self.hub_begin(timeout)? } else { None };
         let start = now();

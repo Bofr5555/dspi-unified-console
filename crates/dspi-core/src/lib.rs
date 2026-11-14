@@ -432,6 +432,11 @@ pub(crate) struct Connection {
     /// The next `process_notifications` reports a full refresh: the core read
     /// the device again by itself (a Link re-attach, WP C15).
     pub(crate) announce_refresh: bool,
+    // -- WP P1EFIX2 --
+    /// What a settle before a whole image consumed (`notify.rs`,
+    /// `settle_notifications`): its flags and channels, ORed into the next
+    /// `process_notifications` result so nothing it took is lost to the client.
+    pub(crate) settled: NotifyResult,
     // -- WP CG13 --
     /// The user's input source names, "" for unnamed: read by `fetch_all`,
     /// kept current by `NOTIFY_EVT_INPUT_SOURCE_NAME` and
@@ -587,6 +592,7 @@ impl Connection {
             side: None,
             refresh_pending: None,
             announce_refresh: false,
+            settled: NotifyResult::default(), // -- WP P1EFIX2 --
             // -- WP CG13 --
             source_names: info::SourceNames::default(),
             source_names_stale: false,
