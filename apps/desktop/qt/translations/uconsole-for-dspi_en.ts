@@ -9628,7 +9628,15 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>%1 smp</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>+%1 frames</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1–%2 smp</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
