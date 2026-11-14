@@ -321,11 +321,23 @@ private fun TemplateChooser(list: List<TemplateEntry>, onChoose: (TemplateEntry)
                         val detail = listOf(if (t.builtin) "built in" else "yours", t.platform, t.status).filter {
                             it.isNotEmpty()
                         }.joinToString(" · ")
-                        MenuRow(t.name.ifEmpty { t.id }, detail = detail) { onChoose(t) }
+                        TemplateRow(t.name.ifEmpty { t.id }, detail) { onChoose(t) } // -- WP TPL1 --
                     }
                 }
                 TextButton(onClick = onClose, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Cancel") }
             }
+        }
+    }
+}
+
+// -- WP TPL1 --
+/** A template in [TemplateChooser]: its name, and under it the detail (built in or yours, platform, its status line) wrapped. */
+@Composable
+private fun TemplateRow(title: String, detail: String, onClick: () -> Unit) {
+    Column(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp)) {
+        Text(title, color = MaterialTheme.colorScheme.onSurface)
+        if (detail.isNotEmpty()) {
+            Text(detail, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         }
     }
 }

@@ -557,13 +557,17 @@ static void offlineSection(SmokeDriver &d) {
     d.check("p1qt1-offline: the K340 template is shipped", !k340.isEmpty());
     QObject *templates = files->host()->findChild<QObject *>(QStringLiteral("TemplatePicker"));
     d.check("p1qt1-offline: its picker opens", d.waitFor(3000, [&] { return opened(templates); }));
-    // -- WP P1DCFIX -- F3: the picker shows the core's status line (the K340 template's draft notice)
+    // -- WP P1DCFIX -- F3: the picker shows the core's status line
+    // -- WP TPL1 -- on the first row (the K340 one is now further down the
+    // list, past the generic templates, where no delegate need exist)
     {
-        const QString status = k340.value(QStringLiteral("status")).toString();
+        Q_UNUSED(k340Row);
+        const QVariantList all = picker.isEmpty() ? QVariantList() : picker.first().value(0).toList();
+        const QString status = all.isEmpty() ? QString() : all.first().toMap().value(QStringLiteral("status")).toString();
         QQuickItem *line = nullptr;
-        d.waitFor(3000, [&] { return (line = inPopup(d, templates, QStringLiteral("TemplatePicker.status.%1").arg(k340Row))) != nullptr; });
-        d.check("p1dcfix: the K340 template's status line is shown",
-                status.startsWith(QLatin1String("Draft")) && line && line->isVisible() && line->property("text").toString() == status);
+        d.waitFor(3000, [&] { return (line = inPopup(d, templates, QStringLiteral("TemplatePicker.status.0"))) != nullptr; });
+        d.check("p1dcfix: a shipped template's status line is shown",
+                !status.isEmpty() && line && line->isVisible() && line->property("text").toString() == status);
     }
     shootBoth(d, d.mainWindow(), QStringLiteral("template-picker"));
     QMetaObject::invokeMethod(templates, "close");
