@@ -6506,8 +6506,11 @@ struct ControlSurfacesSettingsTab: View {
                 return
             }
             // The learn window is 10 s; poll the result a little past that.
+            // -- WP SW12 -- fixup sw12 N1: until the lock's own window ends
+            // (15 s), so giving up never leaves the lock held with no learn
+            // shown (through a core the lock ends with that window).
             var result: CsIrLearnResult? = nil
-            for _ in 0..<115 {
+            for _ in 0..<Int(DSPViewModel.irLearnLockTimeout * 10) {
                 Thread.sleep(forTimeInterval: 0.1)
                 if let r = vm.csIrLearnRead(), r.state != CS_IR_LEARN_STATE_ARMED {
                     result = r
@@ -6541,7 +6544,7 @@ struct ControlSurfacesSettingsTab: View {
         endLearn()
         learnMessage = nil
         subMessages[sub] = ("Learn cancelled.", false)
-        DispatchQueue.global(qos: .userInitiated).async { vm.csIrLearnCancel() }
+        vm.csIrLearnCancelInOrder()   // -- WP SW12 -- fixup sw12 N2: ahead of a re-arm
     }
 
     /// Clear the armed learn and release its claim.  Idempotent, so the paths

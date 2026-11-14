@@ -31,6 +31,12 @@ final class CoreDomainSW10Tests: XCTestCase, CoreDomainTesting {
 
     func testSW10UndoAndRedoACrossfeedEdit() {
         let (_, _, vm) = demoVM()
+        // -- WP SW12 -- fixup sw12 F1: since P1XF the core shows a named
+        // preset's feed while one is chosen, so a custom feed edit shows only
+        // under Custom (3), as the view's sliders are only enabled there.
+        vm.setCrossfeedPreset(3)
+        XCTAssertTrue(spinUntil(5) { vm.crossfeed.preset == 3 }, "Custom chosen")
+        settle()
         let feed = vm.crossfeed.feed
         let to = other(feed, Float(8), 12)
         vm.setCrossfeedFeed(to)

@@ -363,6 +363,21 @@ through a core the probe is the core's.
 | `Commands.swift:3552` `csIrLearnRead` | CS_IR_LEARN/CS_IR_LEARN_READ | csApply({"op":"learnRead"}) (NOTIFY_IR_LEARN says when) | `cs.rs:692` | `1527` |
 | `Commands.swift:3562` `csIrLearnEnd` | releaseDeviceLock | lock release only: **gap → CG24** | — | — |
 
+**As built (WP SW12).** With a core attached every function above goes to the core and returns before its raw
+request. `fetchControlSurfaces` is `csFetch()` then `csSnapshot()`; the per-record `fetch*` show the core's copy
+(no I/O); `fetchCsStatus`, `fetchCsExtStatus` (the sequencer poll), `fetchCsDisplayStatus` and `fetchCsAuxValues`
+are the core's `refreshStatus`, `displayStatus` and `auxRead`. Writes are `csApply` through `writeAndWait` (behind
+the queued writes; the journal is published), reads through `call`; after each, the snapshot is decoded into the
+Swift models (`Core/CoreControlSurfaces.swift`: `CsCoreSnapshot`, `CsCoreJSON`) and applied on main
+(`applyCsSnapshot`, changed fields only). `pollCsDeferred` has no core path: the core waits for the deferred apply.
+The split macro setters (`setCsMacroStep`, `setCsMacroHeader`) write the whole macro over the core's copy; the
+aux setters go on the write lane (`cs.aux.<slot>`, `cs.aux.level.<slot>`) and show the device's values again only
+on a refusal. IR learn: `learnArm` takes CG24's lock in the core (a refused lock is `.locked`, matched on the
+core's `Locked` wording), `learnRead`/`learnCancel` end it; `csIrLearnEnd` has nothing to release through a core.
+`csDirty` is the snapshot's `dirty` (the core's clean-copy rule). The `onCsAux` push stays on the raw notification
+tap (it sends nothing). The editing rules (`csDescribe`, `csEdit`, `csNewBinding`) are not used yet: the tab's own
+rules stay. Tests: `CoreDomainSW12Tests` (both bundles), with the DEBUG raw-opcode record.
+
 #### SW13 (23 functions)
 
 | Swift function | Wire use today | Core replacement | Core (Rust) | Binding line |

@@ -1723,8 +1723,8 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * `learnArm` holds the device lock for the 15 s learn window (WP CG24),
      * so another DSPi Link session gets `locked` meanwhile (and a refused
      * lock is `{ok: false}` with nothing sent). A `learnRead` whose `state`
-     * is no longer ARMED, a failed `learnRead`, `learnCancel`, the window's
-     * end or the connection's close releases it;
+     * is no longer ARMED, `learnCancel`, the window's end or the
+     * connection's close releases it (a failed `learnRead` does not);
      * [`DspiCore::device_lock_release`] does not. Inside a lock taken with
      * [`DspiCore::device_lock_acquire`] a learn takes no lock of its own and
      * lasts only as long as that one.
@@ -4895,8 +4895,8 @@ open func crossfeedCustomPair()throws  -> CrossfeedPair  {
      * `learnArm` holds the device lock for the 15 s learn window (WP CG24),
      * so another DSPi Link session gets `locked` meanwhile (and a refused
      * lock is `{ok: false}` with nothing sent). A `learnRead` whose `state`
-     * is no longer ARMED, a failed `learnRead`, `learnCancel`, the window's
-     * end or the connection's close releases it;
+     * is no longer ARMED, `learnCancel`, the window's end or the
+     * connection's close releases it (a failed `learnRead` does not);
      * [`DspiCore::device_lock_release`] does not. Inside a lock taken with
      * [`DspiCore::device_lock_acquire`] a learn takes no lock of its own and
      * lasts only as long as that one.
@@ -28900,7 +28900,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_crossfeed_custom_pair() != 61764) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_cs_apply() != 37925) {
+    if (uniffi_dspi_core_checksum_method_dspicore_cs_apply() != 18665) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_cs_demo_busy() != 31960) {

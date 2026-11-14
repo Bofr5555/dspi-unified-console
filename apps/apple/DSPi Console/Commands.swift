@@ -2265,7 +2265,7 @@ extension DSPViewModel {
 
     func fetchOutputPin(output: Int) {
         if let core = typedCore {   // -- WP SW11 -- its re-read, into the mirror shown
-            _ = core.writeAndWait { _ = try $0.fetchOutputPin(slot: UInt8(output)) }
+            _ = core.readAndPublish { _ = try $0.fetchOutputPin(slot: UInt8(output)) }
             return
         }
         if let d = transport.getControlRequest(request: REQ_GET_OUTPUT_PIN, value: UInt16(output), index: 2, length: 1) {
@@ -2347,7 +2347,7 @@ extension DSPViewModel {
     /// its full re-read: it has no per-slot read, its mirror is published.
     func refreshOutputSlotTypes() {
         if let core = typedCore {
-            _ = core.writeAndWait { try $0.refreshParams() }
+            _ = core.readAndPublish { try $0.refreshParams() }
             return
         }
         for slot in 0..<numOutputSlots { fetchOutputSlotType(slot: slot) }
@@ -2988,7 +2988,7 @@ extension DSPViewModel {
     /// Reads a single S/PDIF input's GPIO pin (default index 0 = input 1).
     func fetchSpdifRxPin(index: Int = 0) {
         if let core = typedCore {   // -- WP SW11 -- its re-read, into the mirror shown
-            _ = core.writeAndWait { _ = try $0.fetchSpdifRxPin(index: UInt8(index)) }
+            _ = core.readAndPublish { _ = try $0.fetchSpdifRxPin(index: UInt8(index)) }
             return
         }
         if let data = transport.getControlRequest(request: REQ_GET_SPDIF_RX_PIN, value: UInt16(index), index: 2, length: 1),
@@ -3476,6 +3476,73 @@ extension DSPViewModel {
 
     // MARK: - Control Surfaces
 
+    // -- WP SW12 -- The control surfaces through the core (SWIFT-SEAMS section
+    // 3, "SW12"): the core keeps the configuration and performs every
+    // operation (`csApply`, cs.rs); after each, its snapshot is shown
+    // (`applyCsSnapshot`), so the Swift models and views stay as they are.
+    // Without a core (USB without the flag, MIDI, a Link client) the raw
+    // requests below run as before.
+
+    /// One `csApply` operation on the core, then its snapshot shown.  A
+    /// write queues behind the writes sent before it and publishes the
+    /// journal (the core records every `cs.*` operation and Undo steps over
+    /// it: the editor's own Revert is the way back); a read does neither.
+    /// Blocking: call off the main thread.
+    @discardableResult
+    private func csCoreOp(_ core: CoreStateSource, _ op: [String: Any], write: Bool) -> CsCoreReply {
+        let text = CsCoreJSON.text(op)
+        let body: (DspiCore) -> (String, String) = { ($0.csApply(op: text), $0.csSnapshot()) }
+        let r = write ? core.writeAndWait(body) : core.call(body)
+        guard case .success(let (text, snapshot)) = r else { return CsCoreReply("{}") }
+        var reply = CsCoreReply(text)
+        reply.snapshot = CsCoreSnapshot(snapshot)
+        publishCsSnapshot(reply.snapshot ?? CsCoreSnapshot())
+        // -- WP SW12 -- fixup sw12 F2: a write the core refused before the
+        // device answered (read-only, locked, denied, unsupported, transfer)
+        // says why, as a typed write's refusal does (`writeRefused`).
+        if write, let refusal = reply.refusal { core.postRefusal(refusal.message, resync: refusal.resync) }
+        return reply
+    }
+
+    /// The core's last read, shown: no device I/O.  Blocking (the core's
+    /// queue): call off the main thread.
+    @discardableResult
+    private func csShowSnapshot(_ core: CoreStateSource) -> CsCoreSnapshot {
+        let s = (try? core.call { $0.csSnapshot() }.get()).map(CsCoreSnapshot.init) ?? CsCoreSnapshot()
+        publishCsSnapshot(s)
+        return s
+    }
+
+    private func publishCsSnapshot(_ s: CsCoreSnapshot) {
+        DispatchQueue.main.async { self.applyCsSnapshot(s) }
+    }
+
+    /// Main thread: the core's snapshot into the published control-surface
+    /// state, only what changed (a view holding the rest does not redraw).
+    func applyCsSnapshot(_ s: CsCoreSnapshot) {
+        func set<T: Equatable>(_ kp: ReferenceWritableKeyPath<DSPViewModel, T>, _ v: T) {
+            if self[keyPath: kp] != v { self[keyPath: kp] = v }
+        }
+        set(\.controlSurfacesSupported, s.supported)
+        guard s.supported else { return }
+        set(\.csCaps, s.caps)
+        set(\.csNounDescs, s.nouns)
+        set(\.csStatus, s.status)
+        set(\.csBindings, s.bindings)
+        set(\.csNames, s.names)
+        set(\.csIrCommands, s.ir)
+        set(\.csGroups, s.groups)
+        set(\.csMacros, s.macros)
+        set(\.csExtStatus, s.ext)
+        set(\.csDisplayCfg, s.displayCfg)
+        set(\.csDisplayPages, s.displayPages)
+        set(\.csDisplayStatus, s.displayStatus)
+        set(\.csDisplayMaxPages, s.displayMaxPages)
+        set(\.csDisplayModelCount, s.displayModelCount)
+        set(\.csAuxState, s.auxState)
+        set(\.csAuxLevel, s.auxLevel)
+    }
+
     /// Enumerate Control Surfaces capabilities + live state at connect.  The
     /// caps header (REQ_GET_CS_CAPS, wValue=0xFFFF) doubles as the feature
     /// probe: older firmware STALLs it and the Settings page hides itself.  On
@@ -3483,6 +3550,11 @@ extension DSPViewModel {
     /// bindings, and the status packet, so the picker UI is built entirely from
     /// device-served tables (spec §4/§8.1).
     func fetchControlSurfaces() {
+        if let core = typedCore {   // -- WP SW12 -- csFetch, then the snapshot
+            let r = core.call { c -> String in try c.csFetch(); return c.csSnapshot() }
+            publishCsSnapshot((try? r.get()).map(CsCoreSnapshot.init) ?? CsCoreSnapshot())
+            return
+        }
         // Ask for more than the largest known header: the type table grows as
         // component types are added (40 bytes at caps v3-v9, 44 at v10 with
         // CS_TYPE_DISPLAY), and a request pinned to one version silently
@@ -3551,6 +3623,7 @@ extension DSPViewModel {
 
     /// Read the live 24-byte binding for one slot into `csBindings[slot]`.
     func fetchCsBinding(slot: Int) {
+        if let core = typedCore { csShowSnapshot(core); return }   // -- WP SW12 -- the core's copy
         guard slot >= 0, slot < CS_MAX_BINDINGS,
               let d = transport.getControlRequest(request: REQ_GET_CS_BINDING, value: UInt16(slot), index: 2, length: 24),
               let bind = CsBinding.fromData(d) else { return }
@@ -3563,6 +3636,7 @@ extension DSPViewModel {
     /// (spec §3.4).  Synchronous read of the directory RAM cache; always 32
     /// bytes, NUL-terminated.  Empty when the slot is unnamed.
     func fetchCsName(slot: Int) {
+        if let core = typedCore { csShowSnapshot(core); return }   // -- WP SW12 -- the core's copy
         guard slot >= 0, slot < CS_MAX_BINDINGS,
               let d = transport.getControlRequest(request: REQ_GET_CS_NAME, value: UInt16(slot), index: 2, length: UInt16(CS_NAME_LEN)) else { return }
         let name = String(decoding: d.prefix { $0 != 0 }, as: UTF8.self)
@@ -3573,6 +3647,7 @@ extension DSPViewModel {
 
     /// Read one live 16-byte IR command sub-slot into `csIrCommands[sub]`.
     func fetchCsIrCommand(sub: Int) {
+        if let core = typedCore { csShowSnapshot(core); return }   // -- WP SW12 -- the core's copy
         guard sub >= 0, sub < CS_MAX_IR_COMMANDS,
               let d = transport.getControlRequest(request: REQ_GET_CS_IR_CMD, value: UInt16(sub), index: 2, length: 16),
               let cmd = IrCommand.fromData(d) else { return }
@@ -3586,6 +3661,7 @@ extension DSPViewModel {
     /// ask for the v6 length; older firmware short-reads and CsStatusPacket
     /// parses whichever layout comes back.
     func fetchCsStatus() {
+        if let core = typedCore { csCoreOp(core, ["op": "refreshStatus"], write: false); return }   // -- WP SW12 --
         guard let d = transport.getControlRequest(request: REQ_GET_CS_STATUS, value: 0, index: 2, length: CS_STATUS_LEN),
               let st = CsStatusPacket.fromData(d) else { return }
         DispatchQueue.main.async { self.csStatus = st }
@@ -3623,6 +3699,10 @@ extension DSPViewModel {
     /// readback failed).  USB-only; must be called off the main thread (blocks).
     @discardableResult
     func setCsBinding(slot: Int, binding: CsBinding) -> UInt8 {
+        if let core = typedCore {   // -- WP SW12 -- the core waits for the deferred apply and re-reads
+            return csCoreOp(core, ["op": "binding", "index": slot, "binding": CsCoreJSON.binding(binding)],
+                            write: true).statusByte
+        }
         transport.sendControlRequest(request: REQ_SET_CS_BINDING, value: UInt16(slot), index: 2, data: binding.toData())
         let result = pollCsDeferred(expectedSlot: UInt8(slot))
         fetchCsBinding(slot: slot)
@@ -3641,6 +3721,9 @@ extension DSPViewModel {
     /// must be called off the main thread (blocks on the poll).
     @discardableResult
     func setCsName(slot: Int, name: String) -> UInt8 {
+        if let core = typedCore {   // -- WP SW12 --
+            return csCoreOp(core, ["op": "name", "index": slot, "name": CsCoreJSON.name(name)], write: true).statusByte
+        }
         // Truncate to 31 characters + implicit NUL (the firmware truncates too).
         var bytes = Array(name.utf8.prefix(CS_NAME_LEN - 1))
         if bytes.isEmpty { bytes = [0] }   // empty payload is INVALID_VALUE; one NUL clears
@@ -3657,6 +3740,9 @@ extension DSPViewModel {
     /// status code.  USB-only; must be called off the main thread (blocks).
     @discardableResult
     func setCsIrCommand(sub: Int, command: IrCommand) -> UInt8 {
+        if let core = typedCore {   // -- WP SW12 --
+            return csCoreOp(core, ["op": "ir", "index": sub, "command": CsCoreJSON.ir(command)], write: true).statusByte
+        }
         transport.sendControlRequest(request: REQ_SET_CS_IR_CMD, value: UInt16(sub), index: 2, data: command.toData())
         let result = pollCsDeferred(expectedSlot: CS_LAST_SLOT_IR_FLAG | UInt8(sub))
         fetchCsIrCommand(sub: sub)
@@ -3670,6 +3756,9 @@ extension DSPViewModel {
     /// code.  USB-only; must be called off the main thread (blocks).
     @discardableResult
     func csSave() -> UInt8 {
+        if let core = typedCore {   // -- WP SW12 -- the core re-reads all and rebases its clean copy
+            return csCoreOp(core, ["op": "save"], write: true).statusByte
+        }
         _ = transport.getControlRequest(request: REQ_CS_SAVE, value: 0, index: 2, length: 1)
         let result = pollCsDeferred(expectedSlot: CS_LAST_SLOT_SAVE)
         fetchCsStatus()
@@ -3693,6 +3782,9 @@ extension DSPViewModel {
     /// must be called off the main thread (blocks).
     @discardableResult
     func csRevert() -> UInt8 {
+        if let core = typedCore {   // -- WP SW12 -- the core re-reads all and rebases its clean copy
+            return csCoreOp(core, ["op": "revert"], write: true).statusByte
+        }
         _ = transport.getControlRequest(request: REQ_CS_REVERT, value: 0, index: 2, length: 1)
         let result = pollCsDeferred(expectedSlot: CS_LAST_SLOT_SAVE)
         for slot in 0..<CS_MAX_BINDINGS {
@@ -3735,6 +3827,7 @@ extension DSPViewModel {
     /// Slots that are not an up aux output read zero (aux spec 3.3).  A
     /// pre-v18 device STALLs and the arrays keep their zeros.
     func fetchCsAuxValues() {
+        if let core = typedCore { csCoreOp(core, ["op": "auxRead"], write: false); return }   // -- WP SW12 --
         guard let d = transport.getControlRequest(request: REQ_GET_CS_AUX_STATE, value: CS_AUX_STATE_ALL, index: 2, length: 48),
               d.count >= 48 else { return }
         let b = d.startIndex
@@ -3756,6 +3849,10 @@ extension DSPViewModel {
         guard slot >= 0, slot < CS_MAX_BINDINGS else { return }
         self.csAuxState[slot] = on
         guard csAuxSupported else { return }
+        if let core = typedCore {   // -- WP SW12 -- queued; a refusal puts the device's value back
+            csQueuedWrite(core, lane: "cs.aux.\(slot)", ["op": "auxState", "index": slot, "on": on])
+            return
+        }
         transport.sendControlRequest(request: REQ_SET_CS_AUX_STATE, value: UInt16(slot), index: 2,
                                data: Data([on ? 1 : 0]))
     }
@@ -3767,14 +3864,36 @@ extension DSPViewModel {
         let q8 = UInt16(min(Float(CS_AUX_LEVEL_MAX_Q8), max(0, (percent * 256).rounded())))
         self.csAuxLevel[slot] = q8
         guard csAuxSupported else { return }
+        if let core = typedCore {   // -- WP SW12 -- a drag's newest level replaces one still queued
+            csQueuedWrite(core, lane: "cs.aux.level.\(slot)",
+                       ["op": "auxLevel", "index": slot, "percent": Double(q8) / 256])
+            return
+        }
         transport.sendControlRequest(request: REQ_SET_CS_AUX_LEVEL, value: UInt16(slot), index: 2,
                                data: Data([UInt8(q8 & 0xFF), UInt8(q8 >> 8)]))
+    }
+
+    /// -- WP SW12 -- A control-surface write queued on the core's queue
+    /// (main thread: it does not wait); `lane`: a newer value for the same
+    /// key replaces one still queued (an aux level drag).  The value shown is
+    /// the one sent; when the core or the device refuses it, the device's
+    /// values are shown again (an applied one changes nothing, so a drag never
+    /// jumps back), and a refusal before the device says why (fixup sw12 F2).
+    private func csQueuedWrite(_ core: CoreStateSource, lane: String?, _ op: [String: Any]) {
+        let text = CsCoreJSON.text(op)
+        core.write(lane: lane) { [weak self, weak core] c in
+            let reply = CsCoreReply(c.csApply(op: text))
+            guard !reply.ok else { return }
+            self?.publishCsSnapshot(CsCoreSnapshot(c.csSnapshot()))
+            if let refusal = reply.refusal { core?.postRefusal(refusal.message, resync: refusal.resync) }
+        }
     }
 
     // MARK: - Control Surfaces: target groups and macros (caps v9)
 
     /// Read one live 40-byte group record into `csGroups[index]`.
     func fetchCsGroup(_ index: Int) {
+        if let core = typedCore { csShowSnapshot(core); return }   // -- WP SW12 -- the core's copy
         guard index >= 0, index < CS_MAX_GROUPS,
               let d = transport.getControlRequest(request: REQ_GET_CS_GROUP, value: UInt16(index), index: 2, length: CS_GROUP_LEN),
               let group = CsGroup.fromData(d) else { return }
@@ -3787,6 +3906,7 @@ extension DSPViewModel {
     /// `csMacros[index]`.  The GET returns the whole record even though a SET
     /// has to be split into a header plus one write per step.
     func fetchCsMacro(_ index: Int) {
+        if let core = typedCore { csShowSnapshot(core); return }   // -- WP SW12 -- the core's copy
         guard index >= 0, index < CS_MAX_MACROS,
               let d = transport.getControlRequest(request: REQ_GET_CS_MACRO, value: UInt16(index), index: 2, length: CS_MACRO_LEN),
               let macro = CsMacro.fromData(d) else { return }
@@ -3802,6 +3922,11 @@ extension DSPViewModel {
     /// @Published copy it just scheduled onto the main thread.
     @discardableResult
     func fetchCsExtStatus() -> CsExtStatusPacket? {
+        if let core = typedCore {   // -- WP SW12 -- the sequencer's live state: the core re-reads the status
+            let r = csCoreOp(core, ["op": "refreshStatus"], write: false)
+            guard r.ok else { return nil }
+            return r.snapshot?.ext   // fixup sw12 N3: one round trip
+        }
         guard let d = transport.getControlRequest(request: REQ_GET_CS_EXT_STATUS, value: 0, index: 2, length: CS_EXT_STATUS_LEN),
               let st = CsExtStatusPacket.fromData(d) else { return nil }
         DispatchQueue.main.async { self.csExtStatus = st }
@@ -3816,6 +3941,9 @@ extension DSPViewModel {
     /// Returns the status code.  USB-only; must be called off the main thread.
     @discardableResult
     func setCsGroup(_ index: Int, group: CsGroup) -> UInt8 {
+        if let core = typedCore {   // -- WP SW12 -- the core re-reads the group, the bindings and the status
+            return csCoreOp(core, ["op": "group", "index": index, "group": CsCoreJSON.group(group)], write: true).statusByte
+        }
         transport.sendControlRequest(request: REQ_SET_CS_GROUP, value: UInt16(index), index: 2, data: group.toData())
         let result = pollCsDeferred(expectedSlot: CS_LAST_SLOT_GROUP_FLAG | UInt8(index))
         fetchCsGroup(index)
@@ -3830,6 +3958,18 @@ extension DSPViewModel {
     /// `lastSlot == 0x60 | macro`, the same tag as the header SET.
     @discardableResult
     func setCsMacroStep(macro: Int, step: Int, value: CsMacroStep) -> UInt8 {
+        if let core = typedCore {   // -- WP SW12 -- the core writes a whole macro: this one with the step changed
+            guard step >= 0, step < CS_MAX_MACRO_STEPS else { return CS_STATUS_INVALID_MACRO }
+            let macros = csShowSnapshot(core).macros
+            guard macros.indices.contains(macro) else { return CS_STATUS_INVALID_MACRO }
+            var m = macros[macro]
+            // fixup sw12 N4: the step count stays the header's.  A slot past
+            // it is not run (dead data) and the core keeps such slots clear,
+            // so there is nothing to write for one.
+            guard step < Int(m.stepCount) else { return PIN_CONFIG_SUCCESS }
+            m.steps[step] = value
+            return csCoreOp(core, ["op": "macro", "index": macro, "macro": CsCoreJSON.macro(m)], write: true).statusByte
+        }
         let wValue = UInt16(step << 8) | UInt16(macro)
         transport.sendControlRequest(request: REQ_SET_CS_MACRO_STEP, value: wValue, index: 2, data: value.toData())
         return pollCsDeferred(expectedSlot: CS_LAST_SLOT_MACRO_FLAG | UInt8(macro))
@@ -3838,6 +3978,14 @@ extension DSPViewModel {
     /// Apply one macro's name and step count (the 36-byte header).
     @discardableResult
     func setCsMacroHeader(_ index: Int, macro: CsMacro) -> UInt8 {
+        if let core = typedCore {   // -- WP SW12 -- the name and step count over the core's steps
+            let macros = csShowSnapshot(core).macros
+            guard macros.indices.contains(index) else { return CS_STATUS_INVALID_MACRO }
+            var m = macros[index]
+            m.name = macro.name
+            m.stepCount = min(macro.stepCount, UInt8(CS_MAX_MACRO_STEPS))
+            return csCoreOp(core, ["op": "macro", "index": index, "macro": CsCoreJSON.macro(m)], write: true).statusByte
+        }
         transport.sendControlRequest(request: REQ_SET_CS_MACRO, value: UInt16(index), index: 2, data: macro.headerData())
         return pollCsDeferred(expectedSlot: CS_LAST_SLOT_MACRO_FLAG | UInt8(index))
     }
@@ -3849,6 +3997,9 @@ extension DSPViewModel {
     /// success.  USB-only; must be called off the main thread (blocks).
     @discardableResult
     func setCsMacro(_ index: Int, macro: CsMacro) -> UInt8 {
+        if let core = typedCore {   // -- WP SW12 -- steps, then the header, under the device lock: the core's one op
+            return csCoreOp(core, ["op": "macro", "index": index, "macro": CsCoreJSON.macro(macro)], write: true).statusByte
+        }
         var worst: UInt8 = PIN_CONFIG_SUCCESS
         for (s, step) in macro.steps.enumerated() where s < CS_MAX_MACRO_STEPS {
             let r = setCsMacroStep(macro: index, step: s, value: step)
@@ -3868,6 +4019,11 @@ extension DSPViewModel {
     /// while another macro runs cancels that one at its current step boundary.
     @discardableResult
     func csMacroFire(_ index: UInt16) -> UInt8 {
+        if let core = typedCore {   // -- WP SW12 -- the core re-reads the status (and the sequencer) after it
+            let op: [String: Any] = index == CS_MACRO_FIRE_CANCEL ? ["op": "macroCancel"] : ["op": "macroFire", "index": index]
+            let r = csCoreOp(core, op, write: true)
+            return r.ok || r.status != nil ? r.statusByte : CS_STATUS_INVALID_MACRO
+        }
         let r = transport.getControlRequest(request: REQ_CS_MACRO_FIRE, value: index, index: 2, length: 1)
         fetchCsExtStatus()
         return r?.first ?? CS_STATUS_INVALID_MACRO
@@ -3880,6 +4036,7 @@ extension DSPViewModel {
     /// header followed by the 12-byte config.
     @discardableResult
     func fetchCsDisplayCfg() -> UInt8 {
+        if let core = typedCore { return csShowSnapshot(core).displayMaxPages }   // -- WP SW12 -- the core's copy
         guard let d = transport.getControlRequest(request: REQ_GET_CS_DISPLAY_CFG, value: 0, index: 2,
                                             length: CS_DISPLAY_CFG_GET_LEN),
               d.count >= Int(CS_DISPLAY_CFG_GET_LEN),
@@ -3896,6 +4053,7 @@ extension DSPViewModel {
 
     /// Read one 4-byte page record into `csDisplayPages[index]`.
     func fetchCsDisplayPage(_ index: Int) {
+        if let core = typedCore { csShowSnapshot(core); return }   // -- WP SW12 -- the core's copy
         guard index >= 0, index < CS_MAX_DISPLAY_PAGES,
               let d = transport.getControlRequest(request: REQ_GET_CS_DISPLAY_PAGE, value: UInt16(index),
                                             index: 2, length: CS_DISPLAY_PAGE_LEN),
@@ -3909,6 +4067,11 @@ extension DSPViewModel {
     /// and the running I2C abort count.
     @discardableResult
     func fetchCsDisplayStatus() -> CsDisplayStatus? {
+        if let core = typedCore {   // -- WP SW12 -- the panel's live state, read by the core
+            let r = csCoreOp(core, ["op": "displayStatus"], write: false)
+            guard r.ok else { return nil }
+            return r.snapshot?.displayStatus   // fixup sw12 N3: one round trip
+        }
         guard let d = transport.getControlRequest(request: REQ_GET_CS_DISPLAY_STATUS, value: 0, index: 2,
                                             length: CS_DISPLAY_STATUS_LEN),
               let st = CsDisplayStatus.fromData(d) else { return nil }
@@ -3932,6 +4095,12 @@ extension DSPViewModel {
     /// The write itself.  Assumes the caller already holds `displaySetQueue`;
     /// `setCsDisplayCfg` takes it, and `queueDisplayCfg` runs on it.
     private func performDisplayCfgSet(_ cfg: CsDisplayCfg) -> UInt8 {
+        if let core = typedCore {   // -- WP SW12 -- the core re-reads the display and the status
+            let result = csCoreOp(core, ["op": "displayConfig", "config": CsCoreJSON.displayConfig(cfg)],
+                                  write: true).statusByte
+            DispatchQueue.main.async { self.csDisplayLastStatus = result }
+            return result
+        }
         transport.sendControlRequest(request: REQ_SET_CS_DISPLAY_CFG, value: 0, index: 2, data: cfg.toData())
         let result = pollCsDeferred(expectedSlot: CS_LAST_SLOT_DISPLAY_FLAG)
         fetchCsDisplayCfg()
@@ -3980,6 +4149,12 @@ extension DSPViewModel {
     }
 
     private func performDisplayPageSet(_ index: Int, page: CsDisplayPage) -> UInt8 {
+        if let core = typedCore {   // -- WP SW12 --
+            let result = csCoreOp(core, ["op": "displayPage", "index": index, "page": CsCoreJSON.page(page)],
+                                  write: true).statusByte
+            DispatchQueue.main.async { self.csDisplayLastStatus = result }
+            return result
+        }
         transport.sendControlRequest(request: REQ_SET_CS_DISPLAY_PAGE, value: UInt16(index), index: 2,
                                data: page.toData())
         let result = pollCsDeferred(expectedSlot: CS_LAST_SLOT_DISPLAY_FLAG | UInt8(index))
@@ -3999,6 +4174,13 @@ extension DSPViewModel {
     /// that ends the learn, by cancel, or by `csIrLearnEnd`.
     @discardableResult
     func csIrLearnArm() -> CsIrLearnArmResult {
+        if let core = typedCore {   // -- WP SW12 -- CG24: the core holds the device lock for the learn
+            // window and ends it on a final read, a cancel, the window's end or
+            // the device's going.  A refused lock sends nothing.
+            let r = csCoreOp(core, ["op": "learnArm"], write: true)
+            if r.ok { return .armed }
+            return r.isLocked ? .locked : .noReceiver
+        }
         guard transport.acquireDeviceLock(reason: "Learning an IR code", timeout: Self.irLearnLockTimeout) else {
             return .locked
         }
@@ -4014,7 +4196,20 @@ extension DSPViewModel {
     static let irLearnLockTimeout: TimeInterval = 15
 
     /// Cancel an armed IR learn (REQ_CS_IR_LEARN wValue=0); state returns to idle.
+    /// -- WP SW12 -- fixup sw12 N2: Cancel from the main thread, in order.
+    /// Through a core the cancel is queued on the core's queue at once, so an
+    /// arm issued after it runs after it (it cannot end the new window);
+    /// without a core it runs off main as before.
+    func csIrLearnCancelInOrder() {
+        if let core = typedCore {
+            csQueuedWrite(core, lane: nil, ["op": "learnCancel"])
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async { self.csIrLearnCancel() }
+    }
+
     func csIrLearnCancel() {
+        if let core = typedCore { csCoreOp(core, ["op": "learnCancel"], write: true); return }   // -- WP SW12 -- ends the core's window
         defer { csIrLearnEnd() }
         _ = transport.getControlRequest(request: REQ_CS_IR_LEARN, value: CS_IR_LEARN_CANCEL, index: 2, length: 1)
     }
@@ -4024,6 +4219,13 @@ extension DSPViewModel {
     /// USB-only; safe to poll while armed.  A result that is no longer armed
     /// ends the learn and releases its lock.
     func csIrLearnRead() -> CsIrLearnResult? {
+        if let core = typedCore {   // -- WP SW12 -- a result no longer armed ends the core's window
+            let r = csCoreOp(core, ["op": "learnRead"], write: false)
+            guard r.ok else { return nil }
+            return CsIrLearnResult(state: (r.fields["state"] as? NSNumber)?.uint8Value ?? 0,
+                                   proto: (r.fields["protocol"] as? NSNumber)?.uint8Value ?? 0,
+                                   code: (r.fields["code"] as? NSNumber)?.uint32Value ?? 0)
+        }
         guard let d = transport.getControlRequest(request: REQ_CS_IR_LEARN, value: CS_IR_LEARN_READ, index: 2, length: 8) else { return nil }
         let result = CsIrLearnResult.fromData(d)
         if let r = result, r.state != CS_IR_LEARN_STATE_ARMED { csIrLearnEnd() }
@@ -4034,6 +4236,8 @@ extension DSPViewModel {
     /// closed, the device switched, or polling gave up).  Idempotent, so it
     /// never drops a lock a later flow of this session took.
     func csIrLearnEnd() {
+        // -- WP SW12 -- Through a core the arm sets no flag here: the core's
+        // learn window ends on its own exits (CG24), so this returns at once.
         guard irLearnLock.take() else { return }
         transport.releaseDeviceLock()
     }
@@ -5048,7 +5252,7 @@ extension DSPViewModel {
 
     func fetchChannelName(channel: Int) {
         if let core = typedCore {   // -- WP SW11 -- its re-read, into the mirror shown
-            _ = core.writeAndWait { _ = try $0.getChannelName(ch: Self.wire(channel)) }
+            _ = core.readAndPublish { _ = try $0.getChannelName(ch: Self.wire(channel)) }
             return
         }
         guard let data = transport.getControlRequest(request: REQ_GET_CHANNEL_NAME, value: UInt16(channel), index: 2, length: 32) else { return }

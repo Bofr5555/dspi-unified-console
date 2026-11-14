@@ -785,21 +785,49 @@ extension CoreBackedTransport: CoreStateSource, CoreStateSourceProviding {
                 result = .success(try self.onCore(body))
             } catch {
                 let failure = error as? DspiError ?? .Transfer(msg: String(describing: error))
-                switch failure {
-                case .Locked: DeviceLock.notice.post()
-                case .ReadOnly: RefusedWrite.handleReadOnly(fanout: self.fanout)
-                case .Denied: RefusedWrite.handle(.denied, fanout: self.fanout)
-                case .InvalidArgument(let msg): RefusedWrite.handleInvalid(msg, fanout: self.fanout)
-                default: break
-                }
+                // -- WP SW12 -- review sw11 N1: as `runWrite`, a failed write
+                // drops every queued lane value and is put back with the
+                // core's wording (fixup sw10 F2's cases included).
+                self.stateLock.lock(); self.laneWrites.removeAll(); self.laneJobs.removeAll(); self.stateLock.unlock()
+                self.writeRefused(failure, typed: true)
                 result = .failure(failure)
             }
-            if !self.writePublishQueued {
-                self.writePublishQueued = true
-                self.coreQueue.async { [weak self] in self?.publishAfterWrites() }
-            }
+            self.queuePublishAfterWrites()
             return result
         }
+    }
+
+    // -- WP SW12 -- review sw11 N2: a typed re-read (no write), behind the
+    // writes queued before it, then the state published as after a write. It
+    // stamps no write time (the unsaved-changes settle does not wait for it)
+    // and posts no refusal.
+    func readAndPublish<T>(_ body: (DspiCore) throws -> T) -> Result<T, DspiError> {
+        onCoreSync {
+            let result: Result<T, DspiError>
+            do {
+                result = .success(try self.onCore(body))
+            } catch {
+                result = .failure(error as? DspiError ?? .Transfer(msg: String(describing: error)))
+            }
+            self.queuePublishAfterWrites()
+            return result
+        }
+    }
+
+    // -- WP SW12 -- fixup sw12 F2: as `writeRefused` shows a refusal.
+    func postRefusal(_ message: String, resync: Bool) {
+        if resync {
+            RefusedWrite.handleInvalid(message, fanout: fanout)
+        } else {
+            DeviceLock.notice.post(message)
+        }
+    }
+
+    // -- WP SW12 -- On coreQueue: one state publish behind the work queued now.
+    private func queuePublishAfterWrites() {
+        guard !writePublishQueued else { return }
+        writePublishQueued = true
+        coreQueue.async { [weak self] in self?.publishAfterWrites() }
     }
 
     func call<T>(_ body: (DspiCore) throws -> T) -> Result<T, DspiError> {
