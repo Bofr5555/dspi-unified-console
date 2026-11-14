@@ -446,7 +446,9 @@ class ReadOnlyTest {
                 // the PIN, the lock and clearing a profile change nothing on the device (PASS_THROUGH)
                 "installer.setFolder", "installer.refresh", "installer.unlock", "installer.lockNow", "installer.setPin",
                 "installer.clearPin", "installer.clearLimits", "installer.manifest", "installer.resolve", "installer.noticeText",
-                "installer.notice", "installer.outputsWithoutLimiter", "installer.autoeqPreview"
+                "installer.notice", "installer.outputsWithoutLimiter", "installer.autoeqPreview",
+                // -- WP P1EFIX -- stateless: the limits editor's range table
+                "installer.fieldRanges"
             )
     }
 }

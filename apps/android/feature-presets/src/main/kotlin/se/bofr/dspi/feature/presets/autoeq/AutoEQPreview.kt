@@ -92,7 +92,7 @@ internal fun AutoEQPreviewPanel(
             Text("Apply to", style = MaterialTheme.typography.bodySmall)
             var open by remember { mutableStateOf(false) }
             Box {
-                TextButton(onClick = { open = true }, Modifier.testTag(AUTOEQ_PAIR_TAG)) { Text("${pair.label} ▾") }
+                TextButton(onClick = { open = true }, Modifier.testTag(AUTOEQ_PAIR_TAG)) { Text(pair.label) }
                 DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
                     pairs.forEach { p ->
                         DropdownMenuItem(text = { Text(p.label) }, onClick = {

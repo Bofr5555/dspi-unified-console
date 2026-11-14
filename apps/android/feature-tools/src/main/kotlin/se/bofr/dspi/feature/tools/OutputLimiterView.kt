@@ -190,7 +190,7 @@ private fun LimiterSettings(
         LaunchedEffect(revision) { unprotected = bridge.installer.outputsWithoutLimiter() }
         if (unprotected.isNotEmpty()) {
             Caption(
-                "⚠ " + unprotected.joinToString(", ") { "OUT${it + 1}" } +
+                unprotected.joinToString(", ") { "OUT${it + 1}" } +
                     (if (unprotected.size == 1) " is" else " are") +
                     " above ${Installer.UNPROTECTED_GAIN_DB.toInt()} dB gain with no limiter.",
                 color = MacColors.orange

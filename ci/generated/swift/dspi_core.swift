@@ -22637,8 +22637,9 @@ public struct HistoryMove {
     /**
      * Why a value was left alone, in words, when another writer changed it
      * since (only where the core leaves such a change alone): nothing moved,
-     * or, for a drag's step of several values, the others did. `None`
-     * otherwise.
+     * or, for a drag's step of several values, the others did. After an
+     * undo of "Protect all outputs" it also says the limiters stay on
+     * ([`PROTECT_UNDONE_NOTE`], WP P1EFIX). `None` otherwise.
      */
     public var note: String?
 
@@ -22660,8 +22661,9 @@ public struct HistoryMove {
         /**
          * Why a value was left alone, in words, when another writer changed it
          * since (only where the core leaves such a change alone): nothing moved,
-         * or, for a drag's step of several values, the others did. `None`
-         * otherwise.
+         * or, for a drag's step of several values, the others did. After an
+         * undo of "Protect all outputs" it also says the limiters stay on
+         * ([`PROTECT_UNDONE_NOTE`], WP P1EFIX). `None` otherwise.
          */note: String?) {
         self.entry = entry
         self.skipped = skipped
@@ -23357,6 +23359,152 @@ public func FfiConverterTypeLgStatus_lift(_ buf: RustBuffer) throws -> LgStatus 
 #endif
 public func FfiConverterTypeLgStatus_lower(_ value: LgStatus) -> RustBuffer {
     return FfiConverterTypeLgStatus.lower(value)
+}
+
+
+/**
+ * One limits field's range, for a client's limits editor
+ * ([`limits_field_ranges`]).
+ */
+public struct LimitFieldRange {
+    /**
+     * The profile document's field: `maxGainDb`, `limiterCeilingDb`,
+     * `highpassMinHz`, `highpassMinSlopeDb`, `delayMinMs`, `delayMaxMs`
+     * (each output's), `maxPeqBoostDb`, `masterVolumeMaxDb` (the device's).
+     */
+    public var key: String
+    /**
+     * A field of each output's limits.
+     */
+    public var perOutput: Bool
+    /**
+     * `dB`, `dBFS`, `Hz`, `dB/oct` or `ms`.
+     */
+    public var unit: String
+    /**
+     * The lowest value the profile keeps.
+     */
+    public var min: Float
+    /**
+     * The highest value the profile keeps.
+     */
+    public var max: Float
+    /**
+     * The editor's step.
+     */
+    public var step: Float
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The profile document's field: `maxGainDb`, `limiterCeilingDb`,
+         * `highpassMinHz`, `highpassMinSlopeDb`, `delayMinMs`, `delayMaxMs`
+         * (each output's), `maxPeqBoostDb`, `masterVolumeMaxDb` (the device's).
+         */key: String, 
+        /**
+         * A field of each output's limits.
+         */perOutput: Bool, 
+        /**
+         * `dB`, `dBFS`, `Hz`, `dB/oct` or `ms`.
+         */unit: String, 
+        /**
+         * The lowest value the profile keeps.
+         */min: Float, 
+        /**
+         * The highest value the profile keeps.
+         */max: Float, 
+        /**
+         * The editor's step.
+         */step: Float) {
+        self.key = key
+        self.perOutput = perOutput
+        self.unit = unit
+        self.min = min
+        self.max = max
+        self.step = step
+    }
+}
+
+#if compiler(>=6)
+extension LimitFieldRange: Sendable {}
+#endif
+
+
+extension LimitFieldRange: Equatable, Hashable {
+    public static func ==(lhs: LimitFieldRange, rhs: LimitFieldRange) -> Bool {
+        if lhs.key != rhs.key {
+            return false
+        }
+        if lhs.perOutput != rhs.perOutput {
+            return false
+        }
+        if lhs.unit != rhs.unit {
+            return false
+        }
+        if lhs.min != rhs.min {
+            return false
+        }
+        if lhs.max != rhs.max {
+            return false
+        }
+        if lhs.step != rhs.step {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(key)
+        hasher.combine(perOutput)
+        hasher.combine(unit)
+        hasher.combine(min)
+        hasher.combine(max)
+        hasher.combine(step)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLimitFieldRange: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LimitFieldRange {
+        return
+            try LimitFieldRange(
+                key: FfiConverterString.read(from: &buf), 
+                perOutput: FfiConverterBool.read(from: &buf), 
+                unit: FfiConverterString.read(from: &buf), 
+                min: FfiConverterFloat.read(from: &buf), 
+                max: FfiConverterFloat.read(from: &buf), 
+                step: FfiConverterFloat.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LimitFieldRange, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.key, into: &buf)
+        FfiConverterBool.write(value.perOutput, into: &buf)
+        FfiConverterString.write(value.unit, into: &buf)
+        FfiConverterFloat.write(value.min, into: &buf)
+        FfiConverterFloat.write(value.max, into: &buf)
+        FfiConverterFloat.write(value.step, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLimitFieldRange_lift(_ buf: RustBuffer) throws -> LimitFieldRange {
+    return try FfiConverterTypeLimitFieldRange.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLimitFieldRange_lower(_ value: LimitFieldRange) -> RustBuffer {
+    return FfiConverterTypeLimitFieldRange.lower(value)
 }
 
 
@@ -34950,6 +35098,31 @@ fileprivate struct FfiConverterSequenceTypeHistoryEntry: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeLimitFieldRange: FfiConverterRustBuffer {
+    typealias SwiftType = [LimitFieldRange]
+
+    public static func write(_ value: [LimitFieldRange], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLimitFieldRange.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LimitFieldRange] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LimitFieldRange]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeLimitFieldRange.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeLinkDenied: FfiConverterRustBuffer {
     typealias SwiftType = [LinkDenied]
 
@@ -35868,6 +36041,19 @@ public func flashToDriveGuarded(image: Data, drive: BootloaderDrive, board: Firm
 }
 }
 /**
+ * Every limits field's range, in the order an editor shows them (each
+ * output's fields, then the device's): the one table every client's limits
+ * editor uses (review p1e-a F7). A profile is held to the same ranges when
+ * applied, so a value outside one is clamped, not refused. The delay's
+ * ceiling is the schema's; the device's own line is shorter (21 or 42 ms).
+ */
+public func limitsFieldRanges() -> [LimitFieldRange]  {
+    return try!  FfiConverterSequenceTypeLimitFieldRange.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_limits_field_ranges($0
+    )
+})
+}
+/**
  * `GET /dspi/v1/info` (spec 3.2). Blocks up to a few seconds.
  *
  * Errors: [`DspiError::Link`] with `io` or `protocol`.
@@ -36162,6 +36348,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_flash_to_drive_guarded() != 25249) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_limits_field_ranges() != 1854) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_link_fetch_info() != 23971) {

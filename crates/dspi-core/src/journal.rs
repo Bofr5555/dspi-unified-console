@@ -980,6 +980,12 @@ impl From<&JournalEntry> for HistoryEntry {
     }
 }
 
+// -- WP P1EFIX --
+/// [`HistoryMove::note`] after undoing [`DspiCore::protect_all_outputs`]: the
+/// thresholds, releases and links go back, the limiters stay on.
+pub const PROTECT_UNDONE_NOTE: &str =
+    "The limiters stay on: undo puts back their settings but never switches a limiter off.";
+
 /// What [`DspiCore::undo`] or [`DspiCore::redo`] did.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
@@ -997,8 +1003,9 @@ pub struct HistoryMove {
     pub skipped: Vec<HistoryEntry>,
     /// Why a value was left alone, in words, when another writer changed it
     /// since (only where the core leaves such a change alone): nothing moved,
-    /// or, for a drag's step of several values, the others did. `None`
-    /// otherwise.
+    /// or, for a drag's step of several values, the others did. After an
+    /// undo of "Protect all outputs" it also says the limiters stay on
+    /// ([`PROTECT_UNDONE_NOTE`], WP P1EFIX). `None` otherwise.
     pub note: Option<String>,
 }
 
@@ -1221,6 +1228,16 @@ impl DspiCore {
         }
         let moved = HistoryEntry::from(&entry);
         self.with_session(generation, |s| s.finish_undo(entry));
+        // -- WP P1EFIX -- undoing "Protect all outputs" never switches a
+        // limiter off (`limit.on` is audible): say so in every client
+        let note = if moved.label.as_deref() == Some(crate::params_fx::PROTECT_LABEL) {
+            Some(match note {
+                Some(n) => format!("{n} {PROTECT_UNDONE_NOTE}"),
+                None => PROTECT_UNDONE_NOTE.to_owned(),
+            })
+        } else {
+            note
+        };
         Ok(HistoryMove {
             entry: Some(moved),
             skipped,

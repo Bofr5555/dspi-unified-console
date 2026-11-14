@@ -673,6 +673,50 @@ pub struct LimitsApply {
     pub notes: Vec<String>,
 }
 
+// -- WP P1EFIX --
+/// One limits field's range, for a client's limits editor
+/// ([`limits_field_ranges`]).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LimitFieldRange {
+    /// The profile document's field: `maxGainDb`, `limiterCeilingDb`,
+    /// `highpassMinHz`, `highpassMinSlopeDb`, `delayMinMs`, `delayMaxMs`
+    /// (each output's), `maxPeqBoostDb`, `masterVolumeMaxDb` (the device's).
+    pub key: String,
+    /// A field of each output's limits.
+    pub per_output: bool,
+    /// `dB`, `dBFS`, `Hz`, `dB/oct` or `ms`.
+    pub unit: String,
+    /// The lowest value the profile keeps.
+    pub min: f32,
+    /// The highest value the profile keeps.
+    pub max: f32,
+    /// The editor's step.
+    pub step: f32,
+}
+
+// -- WP P1EFIX --
+/// Every limits field's range, in the order an editor shows them (each
+/// output's fields, then the device's): the one table every client's limits
+/// editor uses (review p1e-a F7). A profile is held to the same ranges when
+/// applied, so a value outside one is clamped, not refused. The delay's
+/// ceiling is the schema's; the device's own line is shorter (21 or 42 ms).
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+pub fn limits_field_ranges() -> Vec<LimitFieldRange> {
+    dspi_session::limits::field_ranges()
+        .into_iter()
+        .map(|r| LimitFieldRange {
+            key: r.key.into(),
+            per_output: r.per_output,
+            unit: r.unit.into(),
+            min: r.min,
+            max: r.max,
+            step: r.step,
+        })
+        .collect()
+}
+
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
     /// Keep limits profiles (and their PIN hashes) in files under `dir`, the
@@ -1007,6 +1051,8 @@ pub use lock::{
     HELD_BY_CONSOLE, HELD_BY_HUB, InstallerPin, LOCK_FIRST_WAIT_MS, LOCK_FREE_TRIES,
     LOCK_HUB_NOTICE, LOCK_MAX_WAIT_MS, LOCK_SCOPE_NOTICE, LOCKED_USER_WRITES, LockState,
 };
+// -- WP P1EFIX --
+pub use lock::LOCK_BANNER_NOTICE;
 pub(crate) use lock::{LockScope, lock_check};
 
 #[cfg(test)]

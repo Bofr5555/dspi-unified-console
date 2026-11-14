@@ -25,6 +25,7 @@ import { download } from "../snapshots/model";
 import {
   OUTPUT_FIELDS,
   STORAGE_CHOICES,
+  fieldRange,
   limitText,
   limitValue,
   lockLine,
@@ -188,22 +189,26 @@ function LimitsPanel(props: { session: Session; s: DspState; serial: string; dis
   const outputs = Array.from({ length: s.numOutputChannels }, (_, o) => o);
   const names = new Map(outputRows({ ...s, outputEnabled: s.outputEnabled.map(() => true) }, props.labels).map((r) => [r.index, `${r.descriptor} ${r.name}`]));
   const forOutput = (o: number) => profile.outputs?.find((x) => x.output === o);
-  const field = (label: string, value: number | undefined, min: number, max: number, step: number, onSet: (v: number | undefined) => void) => (
-    <label class="limit-field">
-      <span>{label}</span>
-      <input
-        type="number"
-        inputMode="decimal"
-        min={min}
-        max={max}
-        step={step}
-        placeholder="none"
-        value={limitText(value)}
-        disabled={disabled}
-        onChange={(e) => onSet(limitValue((e.target as HTMLInputElement).value, min, max))}
-      />
-    </label>
-  );
+  // -- WP P1EFIX -- each field's range and unit from the core's one table (`fieldRange`)
+  const field = (label: string, key: string, value: number | undefined, onSet: (v: number | undefined) => void) => {
+    const r = fieldRange(key);
+    return (
+      <label class="limit-field" key={key}>
+        <span>{r ? `${label} (${r.unit})` : label}</span>
+        <input
+          type="number"
+          inputMode="decimal"
+          min={r?.min}
+          max={r?.max}
+          step={r?.step ?? "any"}
+          placeholder="none"
+          value={limitText(value)}
+          disabled={disabled}
+          onChange={(e) => onSet(limitValue((e.target as HTMLInputElement).value, r))}
+        />
+      </label>
+    );
+  };
 
   return (
     <section class="card installer-limits" aria-label="Limits">
@@ -229,15 +234,15 @@ function LimitsPanel(props: { session: Session; s: DspState; serial: string; dis
         </div>
       ) : null}
       <div class="limits-device">
-        {field("Highest PEQ boost (dB)", profile.maxPeqBoostDb, 0, 20, 0.5, (v) => void apply(withField(profile, "maxPeqBoostDb", v)))}
-        {field("Highest master volume (dB)", profile.masterVolumeMaxDb, -127, 0, 0.5, (v) => void apply(withField(profile, "masterVolumeMaxDb", v)))}
+        {field("Highest PEQ boost", "maxPeqBoostDb", profile.maxPeqBoostDb, (v) => void apply(withField(profile, "maxPeqBoostDb", v)))}
+        {field("Highest master volume", "masterVolumeMaxDb", profile.masterVolumeMaxDb, (v) => void apply(withField(profile, "masterVolumeMaxDb", v)))}
       </div>
       <div class="limits-outputs">
         {outputs.map((o) => (
           <fieldset key={o} class="limits-output" disabled={disabled}>
             <legend>{names.get(o) ?? `OUT${o + 1}`}</legend>
             {OUTPUT_FIELDS.map((f) =>
-              field(`${f.label} (${f.unit})`, forOutput(o)?.[f.key], f.min, f.max, f.step, (v) => void apply(withOutputLimit(profile, o, f.key, v))),
+              field(f.label, f.key, forOutput(o)?.[f.key], (v) => void apply(withOutputLimit(profile, o, f.key, v))),
             )}
           </fieldset>
         ))}

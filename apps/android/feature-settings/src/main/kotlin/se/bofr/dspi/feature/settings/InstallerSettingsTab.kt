@@ -45,6 +45,7 @@ import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.bridge.Installer
 import se.bofr.dspi.bridge.LimitsDraft
 import se.bofr.dspi.bridge.OutputLimits
+import se.bofr.dspi.core.LimitFieldRange
 import se.bofr.dspi.core.LimitsStatus
 import se.bofr.dspi.core.LockState
 import se.bofr.dspi.core.ModeScreen
@@ -86,6 +87,12 @@ class InstallerPageModel(private val bridge: DspiBridge, private val scope: Coro
     var limitsScopeWords = ""
         private set
 
+    // -- WP P1EFIX -- the editor's ranges: the core's one table (review p1e-a F7)
+    private val _ranges = MutableStateFlow<Map<String, LimitFieldRange>>(emptyMap())
+
+    /** Every limits field's range by field key (`maxGainDb`, ...), from the core; empty until read. */
+    val ranges: StateFlow<Map<String, LimitFieldRange>> = _ranges.asStateFlow()
+
     /** The S2 warning: outputs above -10 dB gain without a limiter. */
     private val _unprotected = MutableStateFlow<List<Int>>(emptyList())
     val unprotected: StateFlow<List<Int>> = _unprotected.asStateFlow()
@@ -96,6 +103,7 @@ class InstallerPageModel(private val bridge: DspiBridge, private val scope: Coro
             _screens.value = installer.manifest()?.screens.orEmpty()
             recoveryWords = installer.notice(RECOVERY_KEY)?.let { "${it.reason} ${it.action}" }.orEmpty()
             limitsScopeWords = installer.notice(LIMITS_SCOPE_KEY)?.reason.orEmpty()
+            _ranges.value = installer.fieldRanges() // -- WP P1EFIX --
             _unprotected.value = installer.outputsWithoutLimiter()
         }
     }
@@ -191,6 +199,13 @@ class InstallerPageModel(private val bridge: DspiBridge, private val scope: Coro
             else -> words.ifEmpty { s.detail }
         }
 
+        // -- WP P1EFIX --
+        /** [v] kept within the core's [range] (null: as typed; the core clamps all the same). */
+        fun inRange(v: Float?, range: LimitFieldRange?): Float? = if (v == null || range == null) v else v.coerceIn(range.min, range.max)
+
+        /** The field's range in words: "-60 to 20 dB". */
+        fun rangeLine(r: LimitFieldRange): String = "${formatLimit(r.min)} to ${formatLimit(r.max)} ${r.unit}"
+
         /** "OUT3, OUT4 have no limiter…" for [outs] (0-based), "" none. */
         fun unprotectedLine(outs: List<Int>): String = if (outs.isEmpty()) {
             ""
@@ -285,19 +300,33 @@ internal fun InstallerSettingsTab(bridge: DspiBridge, lockedUser: Boolean) {
         item {
             SettingsSection("Limits", footer = model.limitsScopeWords.ifEmpty { null }) {
                 FormCaption(InstallerPageModel.limitsLine(limits, ""))
-                LimitField("Master volume, at most (dB)", draft.masterVolumeMaxDb) { model.apply(draft.copy(masterVolumeMaxDb = it)) }
-                LimitField("EQ boost, at most (dB)", draft.maxPeqBoostDb) { model.apply(draft.copy(maxPeqBoostDb = it)) }
+                val ranges by model.ranges.collectAsState() // -- WP P1EFIX --
+                LimitField("Master volume, at most (dB)", draft.masterVolumeMaxDb, ranges["masterVolumeMaxDb"]) {
+                    model.apply(draft.copy(masterVolumeMaxDb = it))
+                }
+                LimitField("EQ boost, at most (dB)", draft.maxPeqBoostDb, ranges["maxPeqBoostDb"]) {
+                    model.apply(draft.copy(maxPeqBoostDb = it))
+                }
                 var out by remember { mutableStateOf(0) }
                 val n = state.numOutputChannels.coerceAtLeast(1)
                 ChoiceRow("Output", null, (0 until n).map { it to "OUT${it + 1}" }, out.coerceIn(0, n - 1)) { out = it }
                 val o = draft.output(out)
                 fun put(row: OutputLimits) = model.apply(draft.withOutput(row))
-                LimitField("Gain, at most (dB)", o.maxGainDb, key = "g$out") { put(o.copy(maxGainDb = it)) }
-                LimitField("Limiter ceiling (dBFS)", o.limiterCeilingDb, key = "l$out") { put(o.copy(limiterCeilingDb = it)) }
-                LimitField("Delay, at least (ms)", o.delayMinMs, key = "d$out") { put(o.copy(delayMinMs = it)) }
-                LimitField("Delay, at most (ms)", o.delayMaxMs, key = "D$out") { put(o.copy(delayMaxMs = it)) }
-                LimitField("High-pass, at least (Hz)", o.highpassMinHz, key = "h$out") { put(o.copy(highpassMinHz = it)) }
-                LimitField("High-pass slope, at least (dB/oct)", o.highpassMinSlopeDb?.toFloat(), key = "s$out") {
+                LimitField("Gain, at most (dB)", o.maxGainDb, ranges["maxGainDb"], key = "g$out") { put(o.copy(maxGainDb = it)) }
+                LimitField("Limiter ceiling (dBFS)", o.limiterCeilingDb, ranges["limiterCeilingDb"], key = "l$out") {
+                    put(o.copy(limiterCeilingDb = it))
+                }
+                LimitField("Delay, at least (ms)", o.delayMinMs, ranges["delayMinMs"], key = "d$out") { put(o.copy(delayMinMs = it)) }
+                LimitField("Delay, at most (ms)", o.delayMaxMs, ranges["delayMaxMs"], key = "D$out") { put(o.copy(delayMaxMs = it)) }
+                LimitField("High-pass, at least (Hz)", o.highpassMinHz, ranges["highpassMinHz"], key = "h$out") {
+                    put(o.copy(highpassMinHz = it))
+                }
+                LimitField(
+                    "High-pass slope, at least (dB/oct)",
+                    o.highpassMinSlopeDb?.toFloat(),
+                    ranges["highpassMinSlopeDb"],
+                    key = "s$out"
+                ) {
                     put(o.copy(highpassMinSlopeDb = it?.toInt()))
                 }
                 TextLimitField("Installer's note", draft.note) { model.apply(draft.copy(note = it)) }
@@ -362,7 +391,7 @@ private fun PinEntry(pinSet: Boolean, enabled: Boolean, onSet: (String, String) 
 
 /** A number limit: empty limits nothing. Applied on Done or when the field loses focus, if it changed. */
 @Composable
-private fun LimitField(label: String, value: Float?, key: String = label, onCommit: (Float?) -> Unit) {
+private fun LimitField(label: String, value: Float?, range: LimitFieldRange?, key: String = label, onCommit: (Float?) -> Unit) {
     val shown = value?.let { formatLimit(it) }.orEmpty()
     var text by remember(key, shown) { mutableStateOf(shown) }
     fun commit() {
@@ -372,12 +401,14 @@ private fun LimitField(label: String, value: Float?, key: String = label, onComm
             text = shown
             return
         }
-        onCommit(v)
+        // -- WP P1EFIX -- kept in the core's range, as every client's editor (the core clamps anyway)
+        onCommit(InstallerPageModel.inRange(v, range))
     }
     OutlinedTextField(
         text,
         { text = it },
         label = { Text(label) },
+        supportingText = range?.let { r -> { Text(InstallerPageModel.rangeLine(r)) } },
         singleLine = true,
         enabled = writeEnabled(true),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),

@@ -298,7 +298,8 @@ pub(crate) fn cmd_import(target: &Target, flags: &[&str], json: bool) -> u8 {
         }
     };
     // -- WP P1TM --
-    let (core_plan, flags) = match take_core_import(&flags) {
+    let all_flags = flags.clone();
+    let (core_plan, flags) = match take_core_import(&all_flags, false) {
         Ok(p) => p,
         Err(e) => return usage_error(&e),
     };
@@ -315,6 +316,16 @@ pub(crate) fn cmd_import(target: &Target, flags: &[&str], json: bool) -> u8 {
         }
     };
     let kind = import_kind(path, chosen, &text);
+    // -- WP P1EFIX -- a whole-device document over DSPi Link is guarded by
+    // default (`--no-guard` opts out): the same flags, read with that default
+    let core_plan = if kind == DocumentKind::Preset && crate::pro::over_dlink(target) {
+        match take_core_import(&all_flags, true) {
+            Ok((plan, _)) => plan,
+            Err(e) => return usage_error(&e),
+        }
+    } else {
+        core_plan
+    };
     // -- WP P1TM -- by block, previewed, confirmed or guarded: the core's.
     if let Some(plan) = core_plan {
         if kind != DocumentKind::Preset {
@@ -343,15 +354,21 @@ pub(crate) fn cmd_import(target: &Target, flags: &[&str], json: bool) -> u8 {
 }
 
 // -- WP P1TM --
-/// Take `--only BLOCKS`, `--guard SECONDS`, `--preview` and `--yes` out of
-/// an import's flags: with any of them the import runs on the core
-/// (`pro::import`), by block. `--dry-run` there is `--preview`; without
+/// Take `--only BLOCKS`, `--guard SECONDS`, `--no-guard`, `--preview` and
+/// `--yes` out of an import's flags: with any of them the import runs on the
+/// core (`pro::import`), by block. `--dry-run` there is `--preview`; without
 /// `--only`, `--volume` and `--hardware` choose those blocks as before.
+///
+/// -- WP P1EFIX -- Over DSPi Link (`over_dlink`) an import is guarded by
+/// default (`pro::guard_choice`), so it runs on the core too; `--no-guard`
+/// opts out. A preview writes nothing and takes no guard.
 fn take_core_import<'a>(
     flags: &[&'a str],
+    over_dlink: bool,
 ) -> Result<(Option<crate::pro::CoreImport>, Vec<&'a str>), String> {
     let mut only = None;
-    let mut guard = None;
+    let mut guard_text = None;
+    let mut no_guard = false;
     let mut preview = false;
     let mut yes = false;
     let mut rest = Vec::with_capacity(flags.len());
@@ -369,18 +386,21 @@ fn take_core_import<'a>(
                 if name == "--only" {
                     only = Some(crate::pro::blocks(v)?);
                 } else {
-                    guard = Some(crate::pro::guard_seconds(v)?);
+                    guard_text = Some(v);
                 }
             }
+            "--no-guard" => no_guard = true,
             "--preview" => preview = true,
             "--yes" => yes = true,
             _ => rest.push(f),
         }
     }
+    let dry_run = preview || rest.contains(&"--dry-run");
+    let guard = crate::pro::guard_choice(guard_text, no_guard, over_dlink && !dry_run)?;
     if only.is_none() && guard.is_none() && !preview && !yes {
         return Ok((None, rest));
     }
-    let preview = preview || rest.contains(&"--dry-run");
+    let preview = dry_run;
     let blocks = only.unwrap_or_else(|| {
         crate::pro::default_blocks(rest.contains(&"--volume"), rest.contains(&"--hardware"))
     });
@@ -1508,17 +1528,20 @@ mod tests_wp_tm4 {
     #[test]
     fn wp_p1tm_by_block_import_flags_choose_the_cores_path() {
         use dspi_core::consts::*;
-        let (plan, rest) = take_core_import(&["import", "a.dspipreset", "--json"]).unwrap();
+        let (plan, rest) = take_core_import(&["import", "a.dspipreset", "--json"], false).unwrap();
         assert!(plan.is_none());
         assert_eq!(rest, ["import", "a.dspipreset", "--json"]);
 
-        let (plan, rest) = take_core_import(&[
-            "import",
-            "--only",
-            "eq,routing",
-            "a.dspipreset",
-            "--guard=30",
-        ])
+        let (plan, rest) = take_core_import(
+            &[
+                "import",
+                "--only",
+                "eq,routing",
+                "a.dspipreset",
+                "--guard=30",
+            ],
+            false,
+        )
         .unwrap();
         let plan = plan.unwrap();
         assert_eq!(plan.blocks, IMPORT_EQ | IMPORT_ROUTING);
@@ -1528,14 +1551,42 @@ mod tests_wp_tm4 {
 
         // --yes alone: the old blocks, --volume chosen; --dry-run previews.
         let (plan, _) =
-            take_core_import(&["import", "a", "--yes", "--volume", "--dry-run"]).unwrap();
+            take_core_import(&["import", "a", "--yes", "--volume", "--dry-run"], false).unwrap();
         let plan = plan.unwrap();
         assert!(plan.yes && plan.preview);
         assert_eq!(plan.blocks & IMPORT_VOLUMES, IMPORT_VOLUMES);
         assert_eq!(plan.blocks & IMPORT_HARDWARE, 0);
 
-        assert!(take_core_import(&["import", "a", "--only", "bass"]).is_err());
-        assert!(take_core_import(&["import", "a", "--guard", "2"]).is_err());
-        assert!(take_core_import(&["import", "a", "--guard"]).is_err());
+        assert!(take_core_import(&["import", "a", "--only", "bass"], false).is_err());
+        assert!(take_core_import(&["import", "a", "--guard", "2"], false).is_err());
+        assert!(take_core_import(&["import", "a", "--guard"], false).is_err());
+    }
+
+    // -- WP P1EFIX -- (owner 2026-11-14) over DSPi Link an import is guarded by default
+    #[test]
+    fn wp_p1efix_an_import_over_dspi_link_is_guarded_by_default() {
+        // Locally: the plain path, as before.
+        let (plan, _) = take_core_import(&["import", "a.dspipreset"], false).unwrap();
+        assert!(plan.is_none());
+        // Over DSPi Link: the core's path, guarded for the default time.
+        let (plan, rest) = take_core_import(&["import", "a.dspipreset"], true).unwrap();
+        assert_eq!(plan.unwrap().guard, Some(crate::pro::GUARD_DEFAULT_S));
+        assert_eq!(rest, ["import", "a.dspipreset"]);
+        // --no-guard opts out: the plain path again.
+        let (plan, rest) =
+            take_core_import(&["import", "a.dspipreset", "--no-guard"], true).unwrap();
+        assert!(plan.is_none());
+        assert_eq!(rest, ["import", "a.dspipreset"], "--no-guard is taken out");
+        // --guard sets the time; with --no-guard it is refused.
+        let (plan, _) = take_core_import(&["import", "a", "--guard", "60"], true).unwrap();
+        assert_eq!(plan.unwrap().guard, Some(60));
+        assert!(take_core_import(&["import", "a", "--guard", "60", "--no-guard"], true).is_err());
+        // A preview writes nothing: no guard.
+        let (plan, _) = take_core_import(&["import", "a", "--preview"], true).unwrap();
+        let plan = plan.unwrap();
+        assert!(plan.preview && plan.guard.is_none());
+        // --no-guard locally changes nothing.
+        let (plan, _) = take_core_import(&["import", "a", "--no-guard"], false).unwrap();
+        assert!(plan.is_none());
     }
 }

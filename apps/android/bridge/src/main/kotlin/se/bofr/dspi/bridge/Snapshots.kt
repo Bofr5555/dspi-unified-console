@@ -132,7 +132,7 @@ interface Snapshots {
     suspend fun countdownWords(): String = COUNTDOWN_WORDS
 
     // -- WP P1AN2 -- over DSPi Link the hub's timer is the backstop (P1HA)
-    /** The sentence after the countdown when the hub holds the guard: the core's `guard.hub_backstop`, or its English words. */
+    /** The sentence after the countdown when the hub holds the guard: the reason of the core's `guard.hub_backstop`, or its English words. */
     suspend fun backstopWords(): String = HUB_BACKSTOP_WORDS
 
     companion object {
@@ -450,7 +450,8 @@ internal class SnapshotsImpl(private val bridge: DspiBridgeImpl) : Snapshots {
     override suspend fun backstopWords(): String = bridge.onFfi {
         runCatching { core.noticeForKey(Snapshots.HUB_BACKSTOP_NOTICE_KEY, "") }.getOrNull()
             ?.takeIf { it.key == Snapshots.HUB_BACKSTOP_NOTICE_KEY }
-            ?.let { "${it.title} ${it.reason}".trim() }
+            // -- WP P1EFIX -- (review p1e-a F1) the reason alone, as the web and Qt
+            ?.reason?.trim()
             ?.takeIf { it.isNotEmpty() }
             ?: Snapshots.HUB_BACKSTOP_WORDS
     }

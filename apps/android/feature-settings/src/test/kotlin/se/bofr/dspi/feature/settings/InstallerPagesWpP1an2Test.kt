@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import se.bofr.dspi.core.LimitFieldRange
 import se.bofr.dspi.core.LockState
 import se.bofr.dspi.fake.demoDspState
 
@@ -58,5 +59,17 @@ class InstallerPagesWpP1an2Test {
         val s = demoDspState().copy(presetStartupMode = GlobalSettingsDraft.STARTUP_SPECIFIED, presetDefaultSlot = 4, activePresetSlot = 1)
         assertEquals(4, PowerOn.startupSlot(s))
         assertEquals(1, PowerOn.startupSlot(s.copy(presetStartupMode = GlobalSettingsDraft.STARTUP_LAST_ACTIVE)))
+    }
+
+    // -- WP P1EFIX --
+    @Test
+    fun wpP1efixAFieldIsKeptInTheCoresRange() {
+        val gain = LimitFieldRange("maxGainDb", true, "dB", -60f, 20f, 0.5f)
+        assertEquals(20f, InstallerPageModel.inRange(25f, gain))
+        assertEquals(-60f, InstallerPageModel.inRange(-99f, gain))
+        assertEquals(3f, InstallerPageModel.inRange(3f, gain))
+        assertEquals(null, InstallerPageModel.inRange(null, gain))
+        assertEquals(500f, InstallerPageModel.inRange(500f, null))
+        assertEquals("-60 to 20 dB", InstallerPageModel.rangeLine(gain))
     }
 }

@@ -1409,6 +1409,7 @@ uint32_t dspi_limits_profile_document(struct FfiCore *core, char *buf, uint32_t 
 uint32_t dspi_limits_apply_profile(struct FfiCore *core, const char *doc, char *buf, uint32_t len);
 uint32_t dspi_limits_clear(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_limits_status(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_limits_field_ranges(char *buf, uint32_t len);
 uint32_t dspi_mode_manifest(char *buf, uint32_t len);
 uint32_t dspi_mode_resolve(struct FfiCore *core,
 const char *platform,

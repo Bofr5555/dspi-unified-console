@@ -4357,6 +4357,14 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ========================================================================
+sha2 0.11.1 — MIT OR Apache-2.0
+https://github.com/RustCrypto/hashes
+
+[LICENSE-APACHE: same text as block-buffer 0.12.1/LICENSE-APACHE]
+
+[LICENSE-MIT: same text as sha1 0.11.0/LICENSE-MIT]
+
+========================================================================
 siphasher 0.3.11 — MIT/Apache-2.0
 https://github.com/jedisct1/rust-siphash
 

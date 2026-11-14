@@ -310,7 +310,11 @@ final class CoreSnapshots: ObservableObject {
     }
 
     /// The hub's backstop, said once over DSPi Link (`guard.hub_backstop`).
-    static var hubBackstop: String { wordsFor(key: hubBackstopKey, fallback: fallbackHubBackstop) }
+    // -- WP P1EFIX -- the row's reason alone, as the web, Qt and Android (review p1e-a F1)
+    static var hubBackstop: String {
+        let n = noticeForKey(key: hubBackstopKey, detail: "")
+        return n.key == hubBackstopKey && !n.reason.isEmpty ? n.reason : fallbackHubBackstop
+    }
 
     /// The countdown's line for `remainingMs`: the whole seconds left.
     static func countdownLine(_ words: String, remainingMs: UInt32) -> String {
@@ -336,10 +340,14 @@ final class CoreSnapshots: ObservableObject {
         }
     }
 
-    /// Revert is offered: while waiting, and after a lost USB connection
-    /// (over a hub the hub reverts and says so).
-    var canRevert: Bool {
-        guardState.phase == .waiting || (guardState.phase == .lost && !guardState.hub)
+    /// Revert is offered: while waiting, and after a lost guard until the
+    /// user acts, over a hub too (the core asks the hub how it ended; as Qt,
+    /// and the P1-E decision; WP P1EFIX, review p1e-b F2).
+    var canRevert: Bool { Self.offersRevert(guardState) }
+
+    /// Whether the bar offers Revert for `g` (hub or not).
+    static func offersRevert(_ g: GuardedApply) -> Bool {
+        g.phase == .waiting || g.phase == .lost
     }
 
     // MARK: Connection

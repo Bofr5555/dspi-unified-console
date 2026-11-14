@@ -89,4 +89,21 @@ mod tests_wp_p1lm {
         let bad = run(h, "limitsApply", json!({ "text": "{" }));
         assert_eq!(bad["code"], "invalid", "{bad}");
     }
+
+    // -- WP P1EFIX -- the limits editor's one range table
+    #[test]
+    fn wp_p1efix_the_range_table_on_the_web() {
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        let r = run(h, "limitsFieldRanges", Value::Null);
+        assert_eq!(r["ok"], true, "{r}");
+        let rows = r["value"].as_array().unwrap();
+        assert_eq!(rows.len(), dspi_core::limits_field_ranges().len());
+        let master = rows
+            .iter()
+            .find(|x| x["key"] == "masterVolumeMaxDb")
+            .unwrap();
+        assert_eq!(master["perOutput"], false, "{master}");
+        assert_eq!(master["min"], -128.0, "{master}");
+    }
 }

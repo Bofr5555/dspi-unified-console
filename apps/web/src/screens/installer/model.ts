@@ -8,7 +8,9 @@
 //   from the profile, never written as 0.
 // - The PIN is never here: the web keeps none (the hub keeps a managed device's lock).
 
+import type { LimitFieldRangeRecord } from "../../core/protocol";
 import type { KeyValueStore } from "../../fleet/local";
+import { noticeRow } from "../../ui/texts";
 
 /** One output's limits (`dspi_session::limits::OutputLimits`). */
 export interface OutputLimits {
@@ -33,18 +35,46 @@ export interface LimitsProfile {
   contact?: string;
 }
 
-/** The fields of an output's limits, in the order the page shows them, with their words. */
-export const OUTPUT_FIELDS: { key: Exclude<keyof OutputLimits, "output">; label: string; unit: string; min: number; max: number; step: number }[] = [
-  { key: "maxGainDb", label: "Highest gain", unit: "dB", min: -60, max: 20, step: 0.5 },
-  { key: "limiterCeilingDb", label: "Limiter on, ceiling at most", unit: "dBFS", min: -30, max: 0, step: 0.5 },
-  { key: "highpassMinHz", label: "High-pass at least", unit: "Hz", min: 10, max: 20000, step: 1 },
-  { key: "highpassMinSlopeDb", label: "High-pass slope at least", unit: "dB/oct", min: 6, max: 48, step: 6 },
-  { key: "delayMinMs", label: "Shortest delay", unit: "ms", min: 0, max: 85, step: 0.1 },
-  { key: "delayMaxMs", label: "Longest delay", unit: "ms", min: 0, max: 85, step: 0.1 },
+/** The fields of an output's limits, in the order the page shows them, with their words. Their ranges and units are the core's ([fieldRange]). */
+export const OUTPUT_FIELDS: { key: Exclude<keyof OutputLimits, "output">; label: string }[] = [
+  { key: "maxGainDb", label: "Highest gain" },
+  { key: "limiterCeilingDb", label: "Limiter on, ceiling at most" },
+  { key: "highpassMinHz", label: "High-pass at least" },
+  { key: "highpassMinSlopeDb", label: "High-pass slope at least" },
+  { key: "delayMinMs", label: "Shortest delay" },
+  { key: "delayMaxMs", label: "Longest delay" },
 ];
 
-/** The highest output gain any profile allows: the registry's (`out.gain`, -60 to +20 dB). */
-export const OUTPUT_GAIN_CEILING_DB = 20;
+// -- WP P1EFIX -- one range table for every client's limits editor: the core's
+// (`limitsFieldRanges`, review p1e-a F7), read once like the notice table; no copy here.
+let ranges: Map<string, LimitFieldRangeRecord> | null = null;
+let loadingRanges: Promise<void> | null = null;
+
+/** Read the core's range table, once per page; a failure leaves it unread (asked again next time). */
+export function loadFieldRanges(core: { call(method: "limitsFieldRanges", params: undefined): Promise<LimitFieldRangeRecord[]> }): Promise<void> {
+  if (ranges) return Promise.resolve();
+  loadingRanges ??= core.call("limitsFieldRanges", undefined).then(
+    (list) => {
+      if (Array.isArray(list)) ranges = new Map(list.map((r) => [r.key, r]));
+      else loadingRanges = null;
+    },
+    () => {
+      loadingRanges = null;
+    },
+  );
+  return loadingRanges;
+}
+
+/** The range of the profile's field `key`, or null before the table is read (the core clamps all the same). */
+export function fieldRange(key: string): LimitFieldRangeRecord | null {
+  return ranges?.get(key) ?? null;
+}
+
+/** Tests only: forget the table. */
+export function resetFieldRanges(): void {
+  ranges = null;
+  loadingRanges = null;
+}
 
 /** The profile in `text`: a limits document, or one carrying it in `meta.limits`. Null when there is none. */
 export function parseProfile(text: string): LimitsProfile | null {
@@ -105,8 +135,10 @@ export function withField<K extends "maxPeqBoostDb" | "masterVolumeMaxDb" | "not
   return tidyProfile(next);
 }
 
-/** A number field's text as a limit: "" (or junk) is no limit; a number is kept within `min`..`max`. */
-export function limitValue(text: string, min: number, max: number): number | undefined {
+/** A number field's text as a limit: "" (or junk) is no limit; a number is kept within `range` (none: as typed). */
+export function limitValue(text: string, range: { min: number; max: number } | null): number | undefined {
+  const min = range?.min ?? -Infinity;
+  const max = range?.max ?? Infinity;
   const t = text.trim().replace(",", ".");
   if (!t) return undefined;
   const v = Number(t);
@@ -171,11 +203,21 @@ export const STORAGE_CHOICES = [
 
 // ---------------------------------------------------------------- the lock (S4)
 
+// -- WP P1EFIX --
+/** The core's notice row for the locked-user banner (`installer_lock.banner`); its reason is the line. */
+export const LOCK_BANNER_KEY = "installer_lock.banner";
+
+/** The locked-user banner's line: the core's row (read with the notice table), or its title before the table is read. */
+export function bannerLine(): string {
+  return noticeRow(LOCK_BANNER_KEY)?.reason || "Locked by the installer";
+}
+
 /** The lock in one line, for the Installer page and the locked front page. */
 export function lockLine(lock: { pinSet: boolean; heldBy: string; locked: boolean; unlocked: boolean; covers: string[] } | null | undefined): string {
   if (!lock || !lock.pinSet) return "No installer PIN is set: nothing is locked.";
   const where = lock.heldBy === "hub" ? "the hub" : "this console";
   if (lock.unlocked) return `Unlocked on ${where} for this session.`;
-  if (lock.locked) return `Locked by the installer on ${where}: volume, mute and presets only.`;
+  // -- WP P1EFIX -- the locked-user line is the core's row, the same in every client
+  if (lock.locked) return bannerLine();
   return lock.covers.length ? `Locked on ${where}.` : `An installer PIN is set on ${where}; the lock covers nothing yet.`;
 }

@@ -225,6 +225,12 @@ impl<'a> Args<'a> {
         Ok(out)
     }
 
+    // -- WP P1EFIX --
+    /// Whether the switch `name` was given.
+    pub(crate) fn has(&self, name: &str) -> bool {
+        self.switches.contains(&name)
+    }
+
     pub(crate) fn value(&self, name: &str) -> Option<&'a str> {
         self.values
             .iter()
@@ -253,6 +259,34 @@ pub(crate) fn guard_seconds(value: &str) -> Result<u32, String> {
         ));
     }
     Ok(s)
+}
+
+// -- WP P1EFIX -- (owner 2026-11-14) guarded by default over DSPi Link
+/// The timeout a guarded path takes when `--guard` gives none: the core's
+/// default, 30 s.
+pub(crate) const GUARD_DEFAULT_S: u32 = 30;
+
+/// Whether the command reaches its device through a DSPi Link hub
+/// (`--link`), where a recall or an import is guarded by default.
+pub(crate) fn over_dlink(target: &Target) -> bool {
+    matches!(target, Target::Link(_))
+}
+
+/// The guard a recall or an import runs, in seconds (`None`: unguarded):
+/// `--guard SECONDS` as given; `--no-guard` none; otherwise
+/// [`GUARD_DEFAULT_S`] over DSPi Link and none locally (USB, MIDI, the
+/// demo), as before. `--guard` with `--no-guard` is a usage error.
+pub(crate) fn guard_choice(
+    guard: Option<&str>,
+    no_guard: bool,
+    over_dlink: bool,
+) -> Result<Option<u32>, String> {
+    match (guard, no_guard) {
+        (Some(_), true) => Err("--guard and --no-guard cannot both be given".into()),
+        (Some(v), false) => guard_seconds(v).map(Some),
+        (None, true) => Ok(None),
+        (None, false) => Ok(over_dlink.then_some(GUARD_DEFAULT_S)),
+    }
 }
 
 /// A file's text, or standard input's for `-`.
@@ -319,6 +353,74 @@ pub(crate) fn ask(question: &str) -> Option<String> {
         Ok(0) | Err(_) => None,
         Ok(_) => Some(line.trim().to_owned()),
     }
+}
+
+// -- WP P1EFIX -- (review p1e-b F3)
+/// A secret line (the installer PIN) from a person at the terminal, after
+/// `question` on standard error, with nothing echoed as it is typed:
+/// crossterm's raw mode, put back on every path. Backspace takes back a
+/// character; Enter ends it; Ctrl+C, Ctrl+D or Esc gives `None`, as does no
+/// terminal or a terminal that refuses raw mode.
+pub(crate) fn ask_secret(question: &str) -> Option<String> {
+    if !interactive() {
+        return None;
+    }
+    eprint!("{question}");
+    let _ = std::io::stderr().flush();
+    let line = read_secret();
+    eprintln!();
+    line
+}
+
+/// Raw mode on for as long as it lives.
+struct RawMode;
+
+impl RawMode {
+    fn on() -> Option<Self> {
+        crossterm::terminal::enable_raw_mode()
+            .ok()
+            .map(|()| RawMode)
+    }
+}
+
+impl Drop for RawMode {
+    fn drop(&mut self) {
+        let _ = crossterm::terminal::disable_raw_mode();
+    }
+}
+
+fn read_secret() -> Option<String> {
+    use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, read};
+    let _raw = RawMode::on()?;
+    let mut keys = Vec::new();
+    loop {
+        let Ok(Event::Key(k)) = read() else { continue };
+        if k.kind == KeyEventKind::Release {
+            continue;
+        }
+        let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
+        match k.code {
+            KeyCode::Enter => break,
+            KeyCode::Char('c' | 'd') if ctrl => return None,
+            KeyCode::Esc => return None,
+            code => keys = secret_edit(keys, code),
+        }
+    }
+    Some(keys.into_iter().collect::<String>().trim().to_owned())
+}
+
+/// One key's edit of the secret typed so far: a character joins it,
+/// Backspace takes the last back, anything else changes nothing.
+fn secret_edit(mut keys: Vec<char>, code: crossterm::event::KeyCode) -> Vec<char> {
+    use crossterm::event::KeyCode;
+    match code {
+        KeyCode::Char(c) => keys.push(c),
+        KeyCode::Backspace => {
+            keys.pop();
+        }
+        _ => {}
+    }
+    keys
 }
 
 /// A yes to `question`, or `--yes`.
@@ -886,6 +988,49 @@ pub(crate) mod tests {
         assert_eq!(a.switches, ["--yes"]);
         assert!(Args::parse(&["--gaurd", "3"], &["--guard"], &[]).is_err());
         assert!(Args::parse(&["--guard"], &["--guard"], &[]).is_err());
+    }
+
+    #[test]
+    fn wp_p1efix_guarded_by_default_over_dspi_link_only() {
+        // Over DSPi Link: guarded by default, --no-guard opts out, --guard sets the time.
+        assert_eq!(guard_choice(None, false, true), Ok(Some(GUARD_DEFAULT_S)));
+        assert_eq!(guard_choice(None, true, true), Ok(None));
+        assert_eq!(guard_choice(Some("60"), false, true), Ok(Some(60)));
+        // Locally (USB, MIDI, the demo): unguarded unless asked, as before.
+        assert_eq!(guard_choice(None, false, false), Ok(None));
+        assert_eq!(guard_choice(None, true, false), Ok(None));
+        assert_eq!(guard_choice(Some("10"), false, false), Ok(Some(10)));
+        // Both at once, or a bad time: refused.
+        assert!(guard_choice(Some("30"), true, true).is_err());
+        assert!(guard_choice(Some("2"), false, true).is_err());
+        let link = Target::Link(dspi_tui::shell::connect::LinkTarget::parse("127.0.0.1").unwrap());
+        assert!(over_dlink(&link));
+        assert!(!over_dlink(&Target::Demo));
+        assert!(!over_dlink(&Target::Usb { serial: None }));
+        let a = Args::parse(
+            &["recall", "1", "--no-guard"],
+            &["--guard"],
+            &["--no-guard"],
+        )
+        .unwrap();
+        assert!(a.has("--no-guard") && !a.has("--guard"));
+    }
+
+    #[test]
+    fn wp_p1efix_a_secret_line_takes_back_with_backspace() {
+        use crossterm::event::KeyCode;
+        let keys = [
+            KeyCode::Char('1'),
+            KeyCode::Char('2'),
+            KeyCode::Backspace,
+            KeyCode::Char('4'),
+            KeyCode::Left,
+        ]
+        .into_iter()
+        .fold(Vec::new(), secret_edit);
+        assert_eq!(keys.into_iter().collect::<String>(), "14");
+        // No terminal in a test: nothing is asked, nothing read.
+        assert_eq!(ask_secret("PIN: "), None);
     }
 
     #[test]

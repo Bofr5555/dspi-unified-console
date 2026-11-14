@@ -40,6 +40,9 @@ log.workspace = true
 signal-hook = "0.3"
 # The hub's default store, in the user's local data directory. As dspi-tui's.
 dirs = "6"
+# -- WP P1EFIX -- the installer PIN is read without echo (raw mode). Already in
+# the graph through dspi-tui (same version): no new crate.
+crossterm = "0.28"
 
 # -- WP TM11 -- `uconsole hub` keeps the machine awake on Windows.
 [target.'cfg(windows)'.dependencies]

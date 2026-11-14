@@ -3746,8 +3746,9 @@ data class HistoryMove(
     /**
      * Why a value was left alone, in words, when another writer changed it
      * since (only where the core leaves such a change alone): nothing moved,
-     * or, for a drag's step of several values, the others did. `None`
-     * otherwise.
+     * or, for a drag's step of several values, the others did. After an
+     * undo of "Protect all outputs" it also says the limiters stay on
+     * ([`PROTECT_UNDONE_NOTE`], WP P1EFIX). `None` otherwise.
      */
     val note: String?,
 )
@@ -3803,6 +3804,39 @@ data class LimitsApply(
      * Writes that failed, and why (the profile is kept all the same).
      */
     val notes: List<String>,
+)
+
+/**
+ * One limits field's range, for a client's limits editor
+ * ([`limits_field_ranges`]).
+ */
+data class LimitFieldRange(
+    /**
+     * The profile document's field: `maxGainDb`, `limiterCeilingDb`,
+     * `highpassMinHz`, `highpassMinSlopeDb`, `delayMinMs`, `delayMaxMs`
+     * (each output's), `maxPeqBoostDb`, `masterVolumeMaxDb` (the device's).
+     */
+    val key: String,
+    /**
+     * A field of each output's limits.
+     */
+    val perOutput: Boolean,
+    /**
+     * `dB`, `dBFS`, `Hz`, `dB/oct` or `ms`.
+     */
+    val unit: String,
+    /**
+     * The lowest value the profile keeps.
+     */
+    val min: Float,
+    /**
+     * The highest value the profile keeps.
+     */
+    val max: Float,
+    /**
+     * The editor's step.
+     */
+    val step: Float,
 )
 
 /**

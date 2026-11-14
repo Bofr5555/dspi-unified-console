@@ -192,6 +192,29 @@ final class SnapshotsP1SW1Tests: XCTestCase, CoreDomainTesting {
         XCTAssertTrue(spinUntil(10) { !snaps.compare.active }, "a revert ends the compare")
     }
 
+    /// WP P1EFIX (review p1e-b F2): Revert stays offered after a lost guard
+    /// over a hub too, as in Qt; never once the guard has ended.
+    func testP1EFIXRevertStaysAfterALostGuardOverAHub() {
+        func g(_ phase: GuardPhase, hub: Bool) -> GuardedApply {
+            GuardedApply(id: 7, phase: phase, label: "", hub: hub, timeoutMs: 30_000, remainingMs: 0,
+                         reason: "", message: "", changes: [], notes: [])
+        }
+        XCTAssertTrue(CoreSnapshots.offersRevert(g(.lost, hub: true)), "over a hub")
+        XCTAssertTrue(CoreSnapshots.offersRevert(g(.lost, hub: false)))
+        XCTAssertTrue(CoreSnapshots.offersRevert(g(.waiting, hub: true)))
+        XCTAssertFalse(CoreSnapshots.offersRevert(g(.idle, hub: true)))
+        XCTAssertFalse(CoreSnapshots.offersRevert(g(.kept, hub: true)))
+        XCTAssertFalse(CoreSnapshots.offersRevert(g(.reverted, hub: false)))
+        // The hub's backstop: the core row's reason alone, as every client.
+        XCTAssertEqual(CoreSnapshots.hubBackstop, "The hub puts them back too if this console goes away.")
+    }
+
+    /// The compare ends on B: B's volume shows.  WP P1EFIX (review p1e-b F1):
+    /// this flaked when the keep came within the transport's 30 ms drain of
+    /// the last volume write; the echo of that write was applied after B's
+    /// image.  The core now settles the queue before an image (its test
+    /// `wp_p1efix_keep_b_with_the_queue_drained_late_shows_b`), so the wait
+    /// below no longer races it.
     func testP1SW1CompareKeepEndsIt() throws {
         let (_, t, vm, snaps) = setUpSnapshots()
         let v0 = vm.masterVolumeDB
@@ -227,8 +250,23 @@ final class SnapshotsP1SW1Tests: XCTestCase, CoreDomainTesting {
         XCTAssertFalse(model.selected.contains(.volumes), "volume levels are opt-in")
         XCTAssertFalse(model.selected.contains(.hardware), "hardware I/O is opt-in")
         XCTAssertFalse(model.withRollback)
+        // Only the (opt-in) volume differs: nothing chosen, Import off until a block is
+        XCTAssertEqual(model.canApply, !model.selected.isEmpty)
+
+        // -- WP P1EFIX -- (review p1e-b F5) a preview that failed: Import off,
+        // and nothing is sent even if asked
+        let failed = ImportPreviewModel(text: "not a document", name: "bad", intro: "",
+                                        diff: SnapshotDiff.parse("{\"ok\":false,\"error\":\"unreadable\"}"),
+                                        guardDefault: false)
+        XCTAssertFalse(failed.diff.ok)
+        XCTAssertFalse(failed.selected.isEmpty, "blocks are chosen by default")
+        XCTAssertFalse(failed.canApply, "Import is off")
+        var refused: Bool?
+        ImportPreview.apply(failed, vm: vm, snaps: snaps) { refused = $0 }
+        XCTAssertEqual(refused, false, "nothing sent")
 
         model.selected = Set(ImportBlock.allCases)
+        XCTAssertTrue(model.canApply)
         var applied: Bool?
         ImportPreview.apply(model, vm: vm, snaps: snaps) { applied = $0 }
         XCTAssertTrue(spinUntil(10) { applied != nil })

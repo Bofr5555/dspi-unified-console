@@ -150,6 +150,12 @@ one that brings it closer passes, so it can be put right a step at a time.
 | `limits_profile_document() -> String` ("" with none) | `dspi_limits_profile_document` | `limitsProfile -> {text}` |
 | `limits_clear()` | `dspi_limits_clear` | `limitsClear` |
 | `limits_status() -> LimitsStatus {active, serial, state, noticeKey, detail, lastHeld}` | `dspi_limits_status` | `limitsStatus` |
+| `limits_field_ranges() -> [LimitFieldRange {key, perOutput, unit, min, max, step}]` (free function, WP P1EFIX) | `dspi_limits_field_ranges` (no core handle) | `limitsFieldRanges` |
+
+Every client's limits editor takes each field's range, step and unit from
+`limits_field_ranges` (one table, no copies in the clients); a profile is held to the
+same ranges when applied. The delay's ceiling there is the schema's (85 ms); the
+device's own line is shorter (21 or 42 ms) and is checked by the core on each write.
 
 The notices (`notice_for_key`): `limit_exceeded`, `limits.fell_back`,
 `limits.unreadable`, `limits.scope`.

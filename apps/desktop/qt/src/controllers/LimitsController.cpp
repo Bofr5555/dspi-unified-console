@@ -75,6 +75,15 @@ LimitsController::LimitsController(const AppContext &ctx, QObject *parent) : QOb
         dspi_require_confirmation(c, true);
     });
     connect(ctx.device, &DeviceModel::snapshotApplied, this, &LimitsController::onSnapshot);
+    // -- WP P1EFIX -- the editor's ranges: the core's table, no copy here. The
+    // call takes no core handle and does not block (stateless text).
+    const QJsonArray rows = object(readSized([](char *b, uint32_t n) { return dspi_limits_field_ranges(b, n); }, 4096))
+                                .value(QLatin1String("value"))
+                                .toArray();
+    for (const QJsonValue &row : rows) {
+        const QJsonObject r = row.toObject();
+        m_ranges.insert(r.value(QLatin1String("key")).toString(), r.toVariantMap());
+    }
 }
 
 LimitsController *LimitsController::create(QQmlEngine *, QJSEngine *) {

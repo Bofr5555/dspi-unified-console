@@ -588,3 +588,52 @@ fn wp_p1afix_config_refusals_carry_a_notice_key() {
         NOTICE_CONFIG_NOTHING_SELECTED
     );
 }
+
+// -- WP P1EFIX -- (coordinator round 2) the F1 rule for imports: the echo of
+// this console's own earlier write, still queued when a whole-device
+// document is imported (plain or guarded), must not land after the import
+// and put the old value back in the mirror.
+#[test]
+fn wp_p1efix_an_import_with_the_queue_drained_late_keeps_the_documents_values() {
+    let all = IMPORT_BY_BLOCK | IMPORT_ALL_BLOCKS;
+    for guarded in [false, true] {
+        let core = DspiCore::new();
+        core.open_demo().unwrap();
+        let _ = core.process_notifications();
+        let v0 = core.get_state().master_volume_db;
+        core.set_master_volume(v0 - 3.0).unwrap();
+        let _ = core.process_notifications();
+        let doc = core
+            .config_export("P1EFIX".into(), "test".into(), 0)
+            .unwrap();
+        core.set_master_volume(v0).unwrap();
+        // No drain here: the echo of v0 is still queued.
+        if guarded {
+            let g = core.apply_guarded_import(doc, all, u32::MAX, 30).unwrap();
+            assert_eq!(g.phase, crate::GuardPhase::Waiting, "{g:?}");
+        } else {
+            let reply: Value = serde_json::from_str(&core.config_import(doc, all)).unwrap();
+            assert_eq!(reply["ok"], true, "{reply}");
+        }
+        assert_eq!(
+            core.get_state().master_volume_db,
+            v0 - 3.0,
+            "guarded {guarded}"
+        );
+        let _ = core.process_notifications();
+        assert_eq!(
+            core.get_state().master_volume_db,
+            v0 - 3.0,
+            "guarded {guarded}: the late drain keeps the document's volume"
+        );
+        core.refresh_params().unwrap();
+        assert_eq!(
+            core.get_state().master_volume_db,
+            v0 - 3.0,
+            "the device holds it"
+        );
+        if guarded {
+            core.apply_confirm().unwrap();
+        }
+    }
+}

@@ -213,6 +213,9 @@ class InstallerWpP1an2Test {
         assertTrue(onMain { bridge.installer.outputsWithoutLimiter() }.isEmpty())
         val step = onMain { bridge.undo() }
         assertEquals("Protect all outputs", (step as HistoryStep.Moved).move.entry?.label)
+        // -- WP P1EFIX -- the core's note, shown in the snackbar: the limiters stay on
+        assertTrue(historyMessage(false, step)!!.contains("The limiters stay on"))
+        assertTrue((0 until bridge.numOutputChannels).all { bridge.limiterEnabled(it) })
         until("one undo") {
             (0 until bridge.numOutputChannels).map { bridge.limiterLinkGroup(it) to bridge.limiterThreshold(it) } == before
         }
@@ -243,5 +246,19 @@ class InstallerWpP1an2Test {
         assertEquals("inputs untouched", inBefore, bridge.filterType(0, 0) to bridge.filterFreq(0, 0))
         onMain { bridge.undo() }
         until("one undo") { (bridge.filterType(outApp, 0) to bridge.filterFreq(outApp, 0)) == outBefore }
+    }
+
+    // -- WP P1EFIX -- the limits editor's ranges are the core's one table; the banner and backstop rows
+    @Test
+    fun p1efixRangesBannerAndBackstopAreTheCoresRows() = withDemo {
+        val r = onMain { bridge.installer.fieldRanges() }
+        assertEquals(8, r.size)
+        assertEquals(20f, r["maxGainDb"]?.max)
+        assertEquals(-128f, r["masterVolumeMaxDb"]?.min)
+        assertEquals("ms", r["delayMaxMs"]?.unit)
+        val banner = onMain { bridge.installer.notice(LOCK_BANNER_NOTICE_KEY) }
+        assertEquals("Locked by the installer: only volume, mute and presets can be changed.", banner?.reason)
+        // review p1e-a F1: the backstop is the row's reason alone, as the web and Qt
+        assertEquals("The hub puts them back too if this console goes away.", onMain { bridge.snapshots.backstopWords() })
     }
 }

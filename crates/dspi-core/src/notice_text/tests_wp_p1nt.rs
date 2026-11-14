@@ -293,3 +293,16 @@ fn wp_p1wb2_the_hub_backstop_has_its_row() {
         "The hub puts them back too if this console goes away."
     );
 }
+
+/// WP P1EFIX: the locked-user banner's one line, the same in every client.
+#[test]
+fn wp_p1efix_the_locked_user_banner_has_its_row() {
+    let n = notice_for_key(crate::limits::LOCK_BANNER_NOTICE.into(), String::new());
+    assert_eq!(n.key, "installer_lock.banner");
+    assert_eq!(n.kind, NoticeKind::Info);
+    assert_eq!(
+        n.reason,
+        "Locked by the installer: only volume, mute and presets can be changed."
+    );
+    assert!(!n.reason.contains('\u{1F512}'), "no glyphs");
+}
