@@ -897,8 +897,11 @@ final class HostBridge: HostTransport, @unchecked Sendable {
     static let vendorInterface: UInt16 = EXT_WINDEX
 
     private static let getAllParamsChunk: UInt8 = 0xA2
+    private static let setAllParamsChunk: UInt8 = 0xA3   // -- WP SW13 --
     private let cacheLock = NSLock()
     private var bulkCache: Data?
+    /// -- WP SW13 -- The chunks of a bulk write to a fake, until the image is whole.
+    private var bulkWrite: Data?
 
     init(_ transport: any DeviceTransport, kind: CoreBackedTransport.HostKind) {
         self.transport = transport
@@ -922,7 +925,7 @@ final class HostBridge: HostTransport, @unchecked Sendable {
     }
 
     func resetBulkCache() {
-        cacheLock.lock(); bulkCache = nil; cacheLock.unlock()
+        cacheLock.lock(); bulkCache = nil; bulkWrite = nil; cacheLock.unlock()
     }
 
     func controlIn(opcode: UInt8, value: UInt16, len: UInt16) throws -> Data {
@@ -955,7 +958,33 @@ final class HostBridge: HostTransport, @unchecked Sendable {
 
     func controlOut(opcode: UInt8, value: UInt16, data: Data) throws {
         guard transport.isConnected else { throw DspiError.Disconnected }
+        if hostKind == .fake && opcode == HostBridge.setAllParamsChunk {   // -- WP SW13 --
+            return try bulkWriteChunk(offset: Int(value), data: data)
+        }
         transport.sendControlRequest(request: opcode, value: value, index: HostBridge.vendorInterface, data: data)
+    }
+
+    /// -- WP SW13 -- `FakeTransport` takes a bulk image only whole, as one
+    /// `REQ_SET_ALL_PARAMS`, and the core writes a fake link as it writes
+    /// USB, in chunks: gather them in order, and send the image once it is
+    /// whole (the firmware applies it once its last byte lands).
+    private func bulkWriteChunk(offset: Int, data: Data) throws {
+        cacheLock.lock()
+        if offset == 0 { bulkWrite = Data() }
+        guard var image = bulkWrite, image.count == offset else {
+            bulkWrite = nil
+            cacheLock.unlock()
+            throw DspiError.Refused(status: LinkStatus.error.rawValue)
+        }
+        image.append(data)
+        let whole = image.count >= Int(BULK_PARAMS_SIZE)
+        bulkWrite = whole ? nil : image
+        if whole { bulkCache = nil }
+        cacheLock.unlock()
+        if whole {
+            transport.sendControlRequest(request: REQ_SET_ALL_PARAMS, value: 0, index: HostBridge.vendorInterface,
+                                         data: image)
+        }
     }
 
     func lock(reason: String, timeoutMs: UInt32) throws {

@@ -10579,16 +10579,16 @@ struct FileMenuActions {
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
-        let doc = PresetDocument.capture(from: vm,
-                                         name: url.deletingPathExtension().lastPathComponent)
-        do {
-            try PresetDocumentFile.encode(doc).write(to: url, options: .atomic)
-        } catch {
-            showError("Failed to write file: \(error.localizedDescription)")
-            return
+        // -- WP SW13 -- through a core, the core's document (PresetDocumentExport)
+        PresetDocumentExport.make(from: vm, name: url.deletingPathExtension().lastPathComponent) { result in
+            do {
+                let file = try result.get()
+                try file.data.write(to: url, options: .atomic)
+                showSuccess(configurationExportSummary(file.doc))   // -- WP SW17 -- shared with iOS
+            } catch {
+                showError("Failed to write file: \(error.localizedDescription)")
+            }
         }
-
-        showSuccess(configurationExportSummary(doc))   // -- WP SW17 -- shared with iOS
     }
 
     static func importConfiguration() {
@@ -10606,8 +10606,11 @@ struct FileMenuActions {
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         let doc: PresetDocument
+        let text: String?   // -- WP SW13 -- the file as read, for the core's import
         do {
-            doc = try PresetDocumentFile.decode(try Data(contentsOf: url))
+            let data = try Data(contentsOf: url)
+            doc = try PresetDocumentFile.decode(data)
+            text = String(data: data, encoding: .utf8)
         } catch {
             showError(error.localizedDescription)
             return
@@ -10617,7 +10620,7 @@ struct FileMenuActions {
 
         let progress = ConfigurationProgressSheet()
         progress.begin()
-        PresetDocumentApply.apply(doc, to: vm, options: options,
+        PresetDocumentApply.apply(doc, to: vm, text: text, options: options,
                                   progress: { progress.update($0) }) { report in
             progress.end()
             if report.lockedOut {
@@ -10801,6 +10804,9 @@ extension FileMenuActions {
     }
 
     static func configurationImportResultText(_ report: PresetApplyReport) -> String {
+        // -- WP SW13 -- through a core, its report as it wrote it (the same
+        // sentences, and what it left alone, shortened or clamped)
+        if let lines = report.coreLines { return lines.joined(separator: "\n\n") }
         var lines = ["""
             Applied \(report.channelsApplied) channels, \(report.bandsApplied) EQ bands, \
             \(report.crossoverBandsApplied) crossover bands, \(report.crosspointsApplied) crosspoints.
@@ -11339,19 +11345,21 @@ struct FileMenuActions {
     static func exportConfiguration() {
         let vm = AppState.shared.viewModel
         if let refusal = configurationExportRefusal(vm) { return showError(refusal) }
-        let doc = PresetDocument.capture(from: vm, name: configurationName)
-        let data: Data
-        do {
-            data = try PresetDocumentFile.encode(doc)
-        } catch {
-            showError("Failed to write file: \(error.localizedDescription)")
-            return
-        }
-        DocumentPicker.export(data, fileName: "\(configurationName).\(PresetDocument.fileExtension)") { outcome in
-            switch outcome {
-            case .saved:             showSuccess(configurationExportSummary(doc))
-            case .cancelled:         break
-            case .failed(let error): showError("Failed to write file: \(error.localizedDescription)")
+        // -- WP SW13 -- through a core, the core's document (PresetDocumentExport)
+        PresetDocumentExport.make(from: vm, name: configurationName) { result in
+            let file: PresetDocumentExport.File
+            do {
+                file = try result.get()
+            } catch {
+                showError("Failed to write file: \(error.localizedDescription)")
+                return
+            }
+            DocumentPicker.export(file.data, fileName: "\(configurationName).\(PresetDocument.fileExtension)") { outcome in
+                switch outcome {
+                case .saved:             showSuccess(configurationExportSummary(file.doc))
+                case .cancelled:         break
+                case .failed(let error): showError("Failed to write file: \(error.localizedDescription)")
+                }
             }
         }
     }
@@ -11361,22 +11369,26 @@ struct FileMenuActions {
         if let refusal = importRefusal(vm, needsDevice: true) { return showError(refusal) }
         DocumentPicker.importFile(types: configurationTypes) { url in
             let doc: PresetDocument
+            let text: String?   // -- WP SW13 -- the file as read, for the core's import
             do {
-                doc = try PresetDocumentFile.decode(try Data(contentsOf: url))
+                let data = try Data(contentsOf: url)
+                doc = try PresetDocumentFile.decode(data)
+                text = String(data: data, encoding: .utf8)
             } catch {
                 showError(error.localizedDescription)
                 return
             }
             FileImportSheets.askImportOptions(prompt: configurationImportPrompt(doc, vm: vm)) { options in
-                applyConfiguration(doc, options: options, vm: vm)
+                applyConfiguration(doc, text: text, options: options, vm: vm)
             }
         }
     }
 
-    private static func applyConfiguration(_ doc: PresetDocument, options: PresetApplyOptions, vm: DSPViewModel) {
+    private static func applyConfiguration(_ doc: PresetDocument, text: String?, options: PresetApplyOptions,
+                                           vm: DSPViewModel) {
         let progress = FileImportSheets.ProgressSheet()
         progress.begin()
-        PresetDocumentApply.apply(doc, to: vm, options: options,
+        PresetDocumentApply.apply(doc, to: vm, text: text, options: options,
                                   progress: { progress.update($0) }) { report in
             progress.end {
                 if report.lockedOut {

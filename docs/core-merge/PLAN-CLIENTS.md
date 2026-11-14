@@ -290,8 +290,8 @@ last-wave WPs while workers would otherwise sit idle (WB2 and WB5 now).
 | SW9 | Volume, EQ, crossover, outputs, matrix | DONE | d1b1918a (review sw9 + fixup) | Typed setters and the write lane; Undo works on this domain through the core (PARITY section 4). Cut from wp/SWMAC1 |
 | SW10 | Effects | DONE | merged 2026-11-13 (review sw10 + fixup) | Loudness to upmixer on the typed setters and SW9's lane; Undo works on each effect through the core (PARITY section 4). Cut from wp/SW9 |
 | SW11 | Pins, I2S, ADAT, inputs, names | DONE | 44196ca0 (review sw11) | Typed API through a core (status setters wait for the device's answer: `writeAndWait`); stream and name events on the core's flags; Undo follows the registry (PARITY section 4). Cut from wp/SW10, main merged at 1c87fcee |
-| SW12 | Control surfaces | IN REVIEW | wp/SW12 | `csFetch`/`csSnapshot`/`csApply` through a core, the snapshot into the Swift models; IR learn holds CG24's lock in the core; CS edits recorded, Undo steps over them (PARITY section 4). Review sw11's N1-N3 fixed. Cut from main 44196ca0 |
-| SW13 | Presets | TODO |  | OD3 decided (Swift); after SW9 |
+| SW12 | Control surfaces | DONE | a95b9cdf (review sw12 + fixup) | `csFetch`/`csSnapshot`/`csApply` through a core, the snapshot into the Swift models; IR learn holds CG24's lock in the core; CS edits recorded, Undo steps over them (PARITY section 4). Review sw11's N1-N3 fixed. Cut from main 44196ca0 |
+| SW13 | Presets | IN REVIEW | wp/SW13 | Presets, the directory, both persistence modes, the flash saves and the factory reset on the core's typed calls (the core takes the device lock and waits); `.dspipreset` export is `configExport`, import `configImport` with the file's text; preset edits recorded, Undo steps over them, a load, an import and a reset end the history (PARITY section 4). Cut from main a95b9cdf |
 | SW14 | Analyser, Stats, signal generator | TODO |  | OD3 decided (Swift); after SW9 |
 | SW15 | Simulator and relay test | TODO |  | [HW] after SW5, SW6, SW14 |
 | SW16 | Real iPhone or iPad | TODO |  | [HW][OWNER]: no device yet |
@@ -1206,8 +1206,8 @@ Then one WP per domain. Each **owns** its `Commands.swift` sections and wire use
 | SW9 [IN REVIEW wp/SW9] | Volume, EQ, crossover, outputs, matrix, slider fast path | 2–2.5 |
 | SW10 [IN REVIEW wp/SW10] | Effects (loudness to upmixer) | 1.5–2 |
 | SW11 [DONE 44196ca0] | Pins, I2S, ADAT, inputs, UART/I2C, names. Also needs CG25 | 2 |
-| SW12 [IN REVIEW wp/SW12] | Control surfaces. Also needs CG24 | 2–2.5 |
-| SW13 [TODO] | Presets, `PresetDocument`, `PresetSnapshot` | 2–2.5 |
+| SW12 [DONE a95b9cdf] | Control surfaces. Also needs CG24 | 2–2.5 |
+| SW13 [IN REVIEW wp/SW13] | Presets, `PresetDocument`, `PresetSnapshot` | 2–2.5 |
 | SW14 [TODO] | Analyser (following state), Stats, signal generator, monitor | 2–2.5 |
 
 **SW15: Simulator and relay test.** [TODO] Size 1. **[HW][COORD]**. **SW16: Real iPhone or iPad.** [TODO] Size 0.5. **[HW][OWNER]**: no device has ever run this app. **Owns:** `docs/SWIFT-HW.md`. **Done when:** USB-C MIDI, Link, background and return pass. **Deps:** SW5, SW6, SW14.

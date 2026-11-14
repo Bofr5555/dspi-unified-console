@@ -763,6 +763,19 @@ extension CoreMirror {
             (0..<vm.presetNames.count).map { s.presetOccupied & (1 << UInt16($0)) != 0 ? (s.presetNames[safe: $0] ?? "") : "" }
         }
         whole("active_preset_slot", \.activePresetSlot, \.$activePresetSlot) { s, _ in Int(s.activePresetSlot) }
+        // -- WP SW13 -- The rest of the directory: what loads at boot and the
+        // two persistence modes (1 is "with preset"; anything else reads as
+        // independent, as the raw directory read did).
+        whole("preset_startup_mode", \.presetStartupMode, \.$presetStartupMode) { s, _ in Int(s.presetStartupMode) }
+        whole("preset_default_slot", \.presetDefaultSlot, \.$presetDefaultSlot) { s, _ in Int(s.presetDefaultSlot) }
+        whole("output_config_mode", \.presetOutputConfigMode, \.$presetOutputConfigMode) { s, _ in
+            Int(s.outputConfigMode) == OUTPUT_CONFIG_MODE_WITH_PRESET ? OUTPUT_CONFIG_MODE_WITH_PRESET
+                                                                       : OUTPUT_CONFIG_MODE_INDEPENDENT
+        }
+        whole("master_volume_mode", \.presetMasterVolumeMode, \.$presetMasterVolumeMode) { s, _ in
+            Int(s.masterVolumeMode) == MASTER_VOLUME_MODE_WITH_PRESET ? MASTER_VOLUME_MODE_WITH_PRESET
+                                                                       : MASTER_VOLUME_MODE_INDEPENDENT
+        }
         return f
     }
 
@@ -865,6 +878,23 @@ extension DSPViewModel {
                 self.coreFetchTail(changes, from: source)
             }
             return PRESET_OK
+        }
+    }
+
+    // -- WP SW13 --
+    /// After a core call that read the device again (a factory reset, the
+    /// deletion of the active preset, a configuration import): the core's
+    /// state and unsaved-changes list into the view model, as after a fetch.
+    /// Blocking: off the main thread.
+    func applyCoreReread(_ source: CoreStateSource) {
+        let generation = transport.generation
+        let state = source.readState()
+        let changes = source.readPresetChanges()
+        guard CoreMirror.decoded(state) else { return }
+        DispatchQueue.main.async {
+            guard self.transport.generation == generation else { return }
+            self.applyCoreState(state, force: true)
+            self.coreFetchTail(changes, from: source)
         }
     }
 
