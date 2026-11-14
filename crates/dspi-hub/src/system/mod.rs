@@ -130,6 +130,9 @@ pub(crate) struct SystemShared {
     /// and scene ops: the hub's poll, an alignment and a scene take turns. A
     /// leaf beside `state`, never taken while `state` is held.
     unit_locks: Mutex<BTreeMap<String, Arc<Mutex<()>>>>,
+    /// Bumped by every alignment that writes: a poll whose reads came before
+    /// one does not write from them.
+    aligns: AtomicU64,
 }
 
 impl std::fmt::Debug for SystemShared {
@@ -195,7 +198,20 @@ impl SystemShared {
             saving: Mutex::new(()),
             poll_ms: AtomicU64::new(u64::try_from(SYSTEM_POLL.as_millis()).unwrap_or(u64::MAX)),
             unit_locks: Mutex::new(BTreeMap::new()),
+            aligns: AtomicU64::new(0),
         }
+    }
+
+    // -- fixup ausb2 (F6) --
+    /// Alignments written so far in this run.
+    pub(crate) fn align_generation(&self) -> u64 {
+        self.aligns.load(Ordering::SeqCst)
+    }
+
+    // -- fixup ausb2 (F6) --
+    /// An alignment is writing.
+    pub(crate) fn bump_align_generation(&self) {
+        self.aligns.fetch_add(1, Ordering::SeqCst);
     }
 
     // -- fixup ausb2 (F6) --

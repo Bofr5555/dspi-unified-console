@@ -1082,7 +1082,7 @@ impl HubHandle {
     /// client's status never writes: "Keep USB-direct units aligned" and the
     /// lock-error action run from the hub's own poll ([`Self::system_poll_now`]).
     pub fn system_status(&self) -> SystemStatus {
-        self.system_status_watching(false)
+        self.system_status_watching(None)
     }
 
     // -- WP AUSB2 -- (review fixm1 F2)
@@ -1096,9 +1096,12 @@ impl HubHandle {
     /// tried again at most every [`super::alarms::REALIGN_RETRY_S`]). Blocks
     /// for the transfers.
     pub fn system_poll_now(&self) -> SystemStatus {
-        let status = self.system_status_watching(true);
+        // -- fixup ausb2 (F6) -- an alignment from now on makes this poll's reads
+        // stale: its writes are then left to the next poll
+        let seen_gen = self.system().align_generation();
+        let status = self.system_status_watching(Some(seen_gen));
         let (model, _) = self.system().model();
-        self.sync_lock_errors(&model, &status);
+        self.sync_lock_errors(&model, &status, seen_gen);
         status
     }
 
@@ -1131,6 +1134,7 @@ impl HubHandle {
         &self,
         model: &super::model::SystemModel,
         status: &SystemStatus,
+        seen_gen: u64,
     ) -> Vec<WriteResult> {
         let mut writes = Vec::new();
         for u in model.units.iter().filter(|u| u.usb_direct()) {
@@ -1142,7 +1146,7 @@ impl HubHandle {
             else {
                 continue;
             };
-            if let Some(w) = self.sync_lock_error(u, seen) {
+            if let Some(w) = self.sync_lock_error(u, seen, seen_gen) {
                 writes.push(w);
             }
         }
@@ -1159,6 +1163,7 @@ impl HubHandle {
         &self,
         u: &super::model::Unit,
         seen: &align::UsbSeen,
+        seen_gen: u64,
     ) -> Option<WriteResult> {
         let mode = usb::UsbMode::from_name(&seen.mode)?;
         if seen.on_lock_error == self.lock_error_to_write(u, seen).1 {
@@ -1172,6 +1177,11 @@ impl HubHandle {
         // -- fixup ausb2 (F6) -- one writer per unit
         let lock = self.system().unit_lock(&u.serial);
         let _one = super::guard(&lock);
+        // An alignment came between the read and now: its settings stand.
+        if self.system().align_generation() != seen_gen {
+            self.system().retry_done(&key);
+            return None;
+        }
         let w = self.write_usb_settings(u, &dev, seen, mode.raw(), seen.d);
         let lock_result = w.lock?;
         if lock_result == "ok" {
@@ -1339,7 +1349,7 @@ impl HubHandle {
 
     /// [`Self::system_status`]; `keep` lets "Keep USB-direct units aligned"
     /// write (-- WP AUSB2 -- the hub's own poll only).
-    fn system_status_watching(&self, keep: bool) -> SystemStatus {
+    fn system_status_watching(&self, keep: Option<u64>) -> SystemStatus {
         let (model, revision) = self.system().model();
         let mut observed = BTreeMap::new();
         // -- WP AUSB1 -- the model's USB-direct units are read as such
@@ -1400,9 +1410,9 @@ impl HubHandle {
         // -- WP FIXM1 -- (review ausb1 F3) the start offsets as written, or not
         let offsets = align::usb_offsets(&alignment);
         let mut moved = self.system().usb_offsets_moved(&offsets);
-        if !moved.is_empty() && keep && model.keep_usb_aligned {
-            moved = self.realign_usb(&model, &alignment, &offsets, &moved);
-        } else if moved.is_empty() && keep {
+        if let (false, Some(seen_gen), true) = (moved.is_empty(), keep, model.keep_usb_aligned) {
+            moved = self.realign_usb(&model, &alignment, &offsets, &moved, seen_gen);
+        } else if moved.is_empty() && keep.is_some() {
             // -- WP AUSB2 -- nothing moved (any more): no failure stands
             for a in &self.system().usb_realign_failed(None) {
                 self.inner.relay.broadcast_event(&alarm_event(a));
@@ -1432,7 +1442,7 @@ impl HubHandle {
     /// speakers' `out.delay`. A value the unit already has is not written again,
     /// so an unchanged phase does not re-anchor. Blocks for the transfers.
     pub fn system_align(&self, apply: bool) -> AlignReport {
-        let status = self.system_status_watching(false);
+        let status = self.system_status_watching(None);
         let mut alignment = status.alignment;
         let mut writes = Vec::new();
         if apply {
@@ -1454,6 +1464,8 @@ impl HubHandle {
                 .map(|serial| self.system().unit_lock(serial))
                 .collect();
             let _held: Vec<_> = unit_locks.iter().map(|l| super::guard(l)).collect();
+            // A poll that read before this now leaves these units alone.
+            self.system().bump_align_generation();
             for plan in &alignment.units {
                 let dev = self.device_by_serial(&plan.serial);
                 let result = |what: &str, result: String| WriteResult {
@@ -1582,7 +1594,7 @@ impl HubHandle {
             // USB-direct units' delays from those, so "Align again" does not follow.
             if !reanchored.is_empty() {
                 wait_placed(&reanchored);
-                let fresh = self.system_status_watching(false).alignment;
+                let fresh = self.system_status_watching(None).alignment;
                 usb_plans = usb_plans
                     .into_iter()
                     .map(|(old, dev)| {
@@ -1623,6 +1635,8 @@ impl HubHandle {
                     .issues
                     .push(align::usb_offsets_changed_issue(&names));
             }
+            // -- fixup ausb2 (F6) -- and a poll that read while it wrote, too
+            self.system().bump_align_generation();
         }
         AlignReport {
             alignment,
@@ -1643,6 +1657,7 @@ impl HubHandle {
         alignment: &Alignment,
         offsets: &BTreeMap<String, i64>,
         moved: &[String],
+        seen_gen: u64,
     ) -> Vec<String> {
         let mut done = Vec::new();
         let mut failed = Vec::new();
@@ -1681,6 +1696,13 @@ impl HubHandle {
             // -- fixup ausb2 (F6) --
             let lock = self.system().unit_lock(&plan.serial);
             let one = super::guard(&lock);
+            if self.system().align_generation() != seen_gen {
+                // An alignment wrote it meanwhile, from fresher reads.
+                drop(one);
+                self.system().retry_done(&key);
+                held = true;
+                continue;
+            }
             let writes = write_out_delays(&dev, plan);
             drop(one);
             if writes.iter().all(|w| delay_written(&w.result)) {
