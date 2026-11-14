@@ -1674,7 +1674,12 @@ impl Connection {
             "auth.pair" => self.on_auth_pair(id, message),
             _ => match self.live_session() {
                 Some(session) => {
-                    match crate::lock::handle_message(&self.shared.hub, &session, &value) {
+                    // -- WP P1HA -- `apply.*` after the lock's messages
+                    let answer = crate::lock::handle_message(&self.shared.hub, &session, &value)
+                        .or_else(|| {
+                            crate::apply_guard::handle_message(&self.shared.hub, &session, &value)
+                        });
+                    match answer {
                         Some(answer) => self.reply(answer),
                         None => self.on_request(t, id, message, &session),
                     }
@@ -2253,6 +2258,8 @@ impl Shared {
     /// The hub's `hello` (spec 7.2). `fw_install` is not in `caps`: HUB.md section 8.
     fn hello(&self) -> String {
         let mut caps = vec!["cmd", "notify", "poll", "snapshot", "lock", "rename"];
+        // -- WP P1HA --
+        caps.push(crate::apply_guard::CAP);
         if self.web {
             caps.push("web");
         }
