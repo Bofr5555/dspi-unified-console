@@ -69,14 +69,13 @@ thread_local! {
 }
 
 /// Run `f` with no limit judged on this thread: a revert of a guarded apply
-/// (P1SA) restores a state captured before, past any limit set since.
-#[cfg_attr(
-    not(test),
-    allow(
-        dead_code,
-        reason = "P1SA's revert (guarded.rs, wave P1-C, built in parallel) is its caller"
-    )
-)]
+/// (P1SA's `recall_before`) restores a state captured before, past any limit
+/// set since.
+///
+/// The exemption is **thread-local** (a depth counter on this thread): only
+/// writes `f` makes on the calling thread pass. That is right for P1SA's
+/// revert, which recalls on the caller's thread; a future revert that hops
+/// threads must be judged again (WP P1CFIX).
 pub(crate) fn unlimited<T>(f: impl FnOnce() -> T) -> T {
     struct Depth;
     impl Drop for Depth {
@@ -132,12 +131,7 @@ impl Limits {
     fn load(&self, serial: &str) -> Current {
         #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
         if let Some(store) = self.store() {
-            let l = store.load(serial);
-            return Current {
-                serial: serial.to_owned(),
-                profile: l.profile.filter(worth),
-                state: l.state,
-            };
+            return load_files(&store, serial);
         }
         let profile = self.memory.iter().find(|p| p.serial == serial).cloned();
         Current {
@@ -152,6 +146,18 @@ impl Limits {
     }
 }
 
+/// `serial`'s profile as its files hold it (file I/O: never under the
+/// `Inner` lock but as a last resort, see [`Inner::limits_profile`]).
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+fn load_files(store: &shared::LimitsStore, serial: &str) -> Current {
+    let l = store.load(serial);
+    Current {
+        serial: serial.to_owned(),
+        profile: l.profile.filter(worth),
+        state: l.state,
+    }
+}
+
 /// A profile worth keeping: one that limits a value, or carries a note,
 /// a contact or a locked page.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
@@ -162,6 +168,13 @@ fn worth(p: &LimitsProfile) -> bool {
 impl Inner {
     /// The open device's profile, loaded once per serial; `None` with no
     /// profile, no device, or inside [`unlimited`].
+    ///
+    /// The files are read with the lock released by
+    /// [`DspiCore::limits_preload`] when a device is installed and when the
+    /// folder is named (WP P1CFIX, N1). The load here is the last resort for
+    /// a device installed some other way (a test's `attach`) or a race with
+    /// a preload: it fails closed rather than judge a write without the
+    /// profile.
     pub(crate) fn limits_profile(&mut self) -> Option<&LimitsProfile> {
         if suspended() || !self.limits.has_any() {
             return None;
@@ -279,7 +292,12 @@ pub(crate) fn check_limiters(inner: &mut Inner, next: &DspState) -> Result<()> {
         return Ok(());
     };
     let p = p.clone();
-    let s = &inner.state;
+    judge_limiters(&p, &inner.state, next)
+}
+
+// -- WP P1CFIX -- F5 (split from `check_limiters`)
+/// [`check_limiters`] for a write that takes `s` to `next` under `p`.
+pub(crate) fn judge_limiters(p: &LimitsProfile, s: &DspState, next: &DspState) -> Result<()> {
     for o in 0..s.num_output_channels {
         let k = usize::from(o);
         let at = |st: &DspState| {
@@ -524,6 +542,95 @@ pub(crate) fn hold(inner: &mut Inner, s: &mut DspState) -> Vec<String> {
     rows
 }
 
+// -- WP P1CFIX -- F5
+/// The open device's profile (a copy), if one is in force.
+pub(crate) fn profile(inner: &mut Inner) -> Option<LimitsProfile> {
+    inner.limits_profile().cloned()
+}
+
+// -- WP P1CFIX -- F5
+/// A limiter threshold of `output` moved from `asked` to `applied` because
+/// the profile's ceiling is lower: the report's row.
+pub(crate) fn ceiling_row(output: u8, asked: f32, applied: f32) -> String {
+    row(format!("limit.threshold[{output}]"), asked, applied)
+}
+
+// -- WP P1CFIX -- F5
+/// Keep `rows` as what the last clamp held ([`DspiCore::limits_status`]).
+pub(crate) fn note_held(inner: &mut Inner, rows: &[String]) {
+    if !rows.is_empty() {
+        inner.limits.last_held = rows.to_vec();
+    }
+}
+
+// -- WP P1CFIX -- F3
+/// `stored` (an A/B side's settings) as a recall would hold it to the open
+/// device's profile; `None` with no profile, inside [`unlimited`], or when
+/// the profile holds nothing of it.
+pub(crate) fn held_side(inner: &mut Inner, stored: &DspState) -> Option<DspState> {
+    let p = inner.limits_profile()?.clone();
+    let mut held = stored.clone();
+    (!hold_state(&p, &mut held).is_empty()).then_some(held)
+}
+
+// -- WP P1CFIX -- F3
+/// Put back into `now` (the device as an A/B toggle leaves a side) the
+/// stored value of every value the hold moved (`stored` differs from
+/// `held`) and that still stands where the hold put it: the side keeps the
+/// value above the limit, so the compare still shows it and every recall of
+/// the side reports the hold again. A value edited since the hold is the
+/// user's edit and stays.
+pub(crate) fn keep_held(stored: &DspState, held: &DspState, now: &mut DspState) {
+    fn keep<T: PartialEq + Clone>(stored: &[T], held: &[T], now: &mut [T]) {
+        for ((s, h), n) in stored.iter().zip(held).zip(now.iter_mut()) {
+            if s != h && n == h {
+                n.clone_from(s);
+            }
+        }
+    }
+    fn keep_banks(
+        stored: &[Vec<FilterParams>],
+        held: &[Vec<FilterParams>],
+        now: &mut [Vec<FilterParams>],
+    ) {
+        for ((s, h), n) in stored.iter().zip(held).zip(now.iter_mut()) {
+            keep(s, h, n);
+        }
+    }
+    keep(
+        &stored.output_gain_db,
+        &held.output_gain_db,
+        &mut now.output_gain_db,
+    );
+    keep(
+        &stored.output_delay_ms,
+        &held.output_delay_ms,
+        &mut now.output_delay_ms,
+    );
+    keep(
+        &stored.channel_delays,
+        &held.channel_delays,
+        &mut now.channel_delays,
+    );
+    keep(
+        &stored.limiter_enabled,
+        &held.limiter_enabled,
+        &mut now.limiter_enabled,
+    );
+    keep(
+        &stored.limiter_threshold_db,
+        &held.limiter_threshold_db,
+        &mut now.limiter_threshold_db,
+    );
+    keep_banks(&stored.filters, &held.filters, &mut now.filters);
+    keep_banks(&stored.xover, &held.xover, &mut now.xover);
+    if stored.master_volume_db != held.master_volume_db
+        && now.master_volume_db == held.master_volume_db
+    {
+        now.master_volume_db = stored.master_volume_db;
+    }
+}
+
 // ── The bindings' view ──────────────────────────────────────────────────
 
 /// The open device's limits ([`DspiCore::limits_status`]).
@@ -575,9 +682,12 @@ impl DspiCore {
     pub fn limits_set_dir(&self, dir: String) -> Result<()> {
         #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
         {
-            let mut inner = self.lock();
-            inner.limits.dir = (!dir.trim().is_empty()).then(|| dir.into());
-            inner.limits.current = None;
+            {
+                let mut inner = self.lock();
+                inner.limits.dir = (!dir.trim().is_empty()).then(|| dir.into());
+                inner.limits.current = None;
+            }
+            self.limits_preload(); // -- WP P1CFIX -- N1
             Ok(())
         }
         #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
@@ -791,6 +901,47 @@ impl DspiCore {
         let _ = self.limits_enforce();
     }
 
+    // -- WP P1CFIX -- N1
+    /// Read the open device's profile files with the core lock released, and
+    /// keep what they hold for that serial (unless a profile was set or
+    /// loaded meanwhile). Nothing on the web (no files), with no folder, no
+    /// device, or a profile already loaded for it.
+    pub(crate) fn limits_preload(&self) {
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        {
+            let (dir, serial) = {
+                let inner = self.lock();
+                let Some(dir) = inner.limits.dir.clone() else {
+                    return;
+                };
+                let Some(serial) = inner.conn.as_ref().map(|c| c.serial.clone()) else {
+                    return;
+                };
+                if inner
+                    .limits
+                    .current
+                    .as_ref()
+                    .is_some_and(|c| c.serial == serial)
+                {
+                    return;
+                }
+                (dir, serial)
+            };
+            let loaded = load_files(&shared::LimitsStore::new(dir.clone()), &serial);
+            let mut inner = self.lock();
+            let same_dir = inner.limits.dir.as_ref() == Some(&dir);
+            let same_device = inner.conn.as_ref().is_some_and(|c| c.serial == serial);
+            let unloaded = !inner
+                .limits
+                .current
+                .as_ref()
+                .is_some_and(|c| c.serial == serial);
+            if same_dir && same_device && unloaded {
+                inner.limits.current = Some(loaded);
+            }
+        }
+    }
+
     /// `text`, an export, with the open device's profile in `meta.limits`
     /// (never a PIN); unchanged with no profile.
     pub(crate) fn with_limits_meta(&self, text: String) -> String {
@@ -808,3 +959,8 @@ impl DspiCore {
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p1lm;
+
+// -- WP P1CFIX --
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests_wp_p1cfix;

@@ -25,6 +25,13 @@
 //!   handle) nothing is written and the outcome is `not_written` (`no_device`).
 //! - **Never replayed.** One write; a failed one is reported (`revert_failed`), not
 //!   repeated. A revert queued past [`REVERT_WAIT`] does not run late.
+//! - **The settings outside the image** (WP P1CFIX, F6): `apply.begin` also captures
+//!   the device and source names, the output latency and the control-surface
+//!   configuration, and the revert writes back what differs, before the image
+//!   (`apply_extras.rs`), under the same rules: one write each, past any lock (the
+//!   router's revert window), only to the captured serial. `apply.begin` answers and
+//!   the outcome carries `captured` (the parts held), the outcome `restored` (the
+//!   parts written back) and `notes` (what was not, and why).
 //! - **Timer.** Due guards are reverted on the hub's `hub-system` thread (AUSB2's poll
 //!   loop, `hub.rs`), woken when a guard is begun or ends early, so no thread is added.
 //!   Without that thread (it could not start) they are reverted on the next `apply.*`
@@ -49,6 +56,7 @@ use dspi_proto::generated::opcodes as op;
 use serde::Serialize;
 use serde_json::{Value, json};
 
+use crate::apply_extras::{Extras, GuardTransport};
 use crate::hub::HubHandle;
 use crate::registry::DeviceState;
 use crate::router::MAX_PAYLOAD;
@@ -125,6 +133,18 @@ pub struct Outcome {
     /// For [`EndReason::TakenOver`]: the session that took the lock.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub taken_by: Option<SessionId>,
+    // -- WP P1CFIX -- F6
+    /// The parts outside the image the guard held (`device_name`, `source_names`,
+    /// `output_latency`, `control_surfaces`); empty when it ended without a revert.
+    /// Always present from this hub on, so a client tells it from an older hub's
+    /// image-only revert.
+    pub captured: Vec<String>,
+    /// Of those, the parts the revert wrote back (they differed).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub restored: Vec<String>,
+    /// What the revert could not write back outside the image, and why.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
 }
 
 /// A live guard.
@@ -135,6 +155,8 @@ struct Guard {
     handle: u8,
     session: SessionId,
     image: Vec<u8>,
+    /// -- WP P1CFIX -- F6: the settings outside the image.
+    extras: Extras,
     deadline: Instant,
     /// Set when it must end before its deadline (cancel, session closed, stop).
     ending: Option<EndReason>,
@@ -150,6 +172,30 @@ impl Guard {
         }
         self.ending
             .or_else(|| (now >= self.deadline).then_some(EndReason::Timeout))
+    }
+}
+
+/// A guard taken for reverting: what the revert writes, and why.
+#[derive(Debug)]
+struct Due {
+    serial: String,
+    id: u64,
+    handle: u8,
+    image: Vec<u8>,
+    extras: Extras,
+    why: EndReason,
+}
+
+impl Due {
+    fn of(g: &Guard, why: EndReason) -> Self {
+        Self {
+            serial: g.serial.clone(),
+            id: g.id,
+            handle: g.handle,
+            image: g.image.clone(),
+            extras: g.extras.clone(),
+            why,
+        }
     }
 }
 
@@ -207,14 +253,14 @@ impl ApplyGuards {
     }
 
     /// Take every due guard for reverting: marked, still in the table.
-    fn take_due(&self, now: Instant) -> Vec<(String, u64, u8, Vec<u8>, EndReason)> {
+    fn take_due(&self, now: Instant) -> Vec<Due> {
         let mut st = guard(&self.state);
         st.guards
             .values_mut()
             .filter_map(|g| {
                 let why = g.due(now)?;
                 g.reverting = true;
-                Some((g.serial.clone(), g.id, g.handle, g.image.clone(), why))
+                Some(Due::of(g, why))
             })
             .collect()
     }
@@ -290,6 +336,9 @@ pub struct Begun {
     pub serial: String,
     /// The timeout granted.
     pub timeout: Duration,
+    // -- WP P1CFIX -- F6
+    /// The parts outside the image held for the revert.
+    pub captured: Vec<String>,
 }
 
 fn unix_now() -> u64 {
@@ -400,6 +449,13 @@ impl HubHandle {
                 ));
             }
         };
+        // -- WP P1CFIX -- F6: the settings outside the image, as this session too.
+        let extras = Extras::capture(&mut GuardTransport::new(
+            std::sync::Arc::clone(&dev),
+            session.ctx(),
+            CAPTURE_WAIT,
+        ));
+        let captured = extras.captured();
         let timeout = timeout.clamp(MIN_TIMEOUT, MAX_TIMEOUT);
         let now = Instant::now();
         let begun = {
@@ -417,6 +473,7 @@ impl HubHandle {
                     handle,
                     session: session.id(),
                     image,
+                    extras,
                     deadline: now.checked_add(timeout).unwrap_or(now),
                     ending: None,
                     reverting: false,
@@ -426,6 +483,7 @@ impl HubHandle {
                 guard: id,
                 serial,
                 timeout,
+                captured,
             }
         };
         self.apply_guards().wake();
@@ -486,6 +544,9 @@ impl HubHandle {
                 status: None,
                 at: unix_now(),
                 taken_by: None,
+                captured: Vec::new(),
+                restored: Vec::new(),
+                notes: Vec::new(),
             }
         };
         self.apply_end(&outcome);
@@ -504,7 +565,7 @@ impl HubHandle {
             match serial.map(|s| st.guards.get_mut(&s)) {
                 Ok(Some(g)) => {
                     g.reverting = true;
-                    Ok((g.serial.clone(), g.id, g.handle, g.image.clone()))
+                    Ok(Due::of(g, EndReason::Cancelled))
                 }
                 Ok(None) => Err(ApplyRefused::NoGuard(
                     "no guarded apply is running on this device",
@@ -512,14 +573,14 @@ impl HubHandle {
                 Err(e) => Err(e),
             }
         };
-        let (serial, id, handle, image) = match taken {
+        let due = match taken {
             Ok(t) => t,
             Err(e) => {
                 self.apply_kick();
                 return Err(e);
             }
         };
-        Ok(self.apply_revert(serial, id, handle, &image, EndReason::Cancelled))
+        Ok(self.apply_revert(due))
     }
 
     /// `apply.status`: the running guard on the device at `handle`, and the last
@@ -597,6 +658,9 @@ impl HubHandle {
                     status: None,
                     at: unix_now(),
                     taken_by: Some(by),
+                    captured: Vec::new(),
+                    restored: Vec::new(),
+                    notes: Vec::new(),
                 },
                 None => return,
             }
@@ -642,24 +706,38 @@ impl HubHandle {
 
     /// Revert every due guard. Blocks for the writes: the `hub-system` thread.
     pub(crate) fn apply_run_due(&self) {
-        for (serial, id, handle, image, why) in self.apply_guards().take_due(Instant::now()) {
-            self.apply_revert(serial, id, handle, &image, why);
+        for due in self.apply_guards().take_due(Instant::now()) {
+            self.apply_revert(due);
         }
     }
 
-    /// Write `image` back to the online device with `serial`, as the hub, past any
-    /// lock; end the guard and tell everyone.
-    fn apply_revert(
-        &self,
-        serial: String,
-        id: u64,
-        handle: u8,
-        image: &[u8],
-        why: EndReason,
-    ) -> Outcome {
+    /// Write the settings outside the image, then the image, back to the online
+    /// device with the guard's serial, as the hub, past any lock; end the guard and
+    /// tell everyone.
+    fn apply_revert(&self, due: Due) -> Outcome {
+        let Due {
+            serial,
+            id,
+            handle,
+            image,
+            extras,
+            why,
+        } = due;
+        let captured = extras.captured();
+        let mut restored = crate::apply_extras::Restored::default();
         let (result, status) = match self.device_by_serial(&serial) {
             None => (EndResult::NotWritten, Some(status_name(status::NO_DEVICE))),
             Some(dev) => {
+                // -- WP P1CFIX -- F6: the settings outside the image first (the
+                // image last, as a client's recall), past any lock.
+                {
+                    let _window = RevertWindow::open(&dev);
+                    restored = extras.restore(&mut GuardTransport::new(
+                        std::sync::Arc::clone(&dev),
+                        internal(),
+                        REVERT_WAIT,
+                    ));
+                }
                 let req = CmdRequest {
                     tag: 0,
                     handle: dev.handle,
@@ -668,7 +746,7 @@ impl HubHandle {
                     w_value: 0,
                     w_index: dspi_proto::VENDOR_INTERFACE,
                     w_length: u16::try_from(image.len()).unwrap_or(u16::MAX),
-                    payload: image.to_vec(),
+                    payload: image,
                 };
                 dev.router.pass_revert();
                 match exec(&dev, internal(), req, REVERT_WAIT) {
@@ -689,6 +767,9 @@ impl HubHandle {
             status,
             at: unix_now(),
             taken_by: None,
+            captured,
+            restored: restored.parts,
+            notes: restored.notes,
         };
         if result != EndResult::Reverted {
             log::warn!(
@@ -711,6 +792,23 @@ impl HubHandle {
             map.extend(body);
         }
         self.inner.relay.broadcast_event(&event.to_string());
+    }
+}
+
+// -- WP P1CFIX -- F6
+/// The router's revert window, open while it lives (closed on every way out).
+struct RevertWindow<'d>(&'d crate::device::DeviceShared);
+
+impl<'d> RevertWindow<'d> {
+    fn open(dev: &'d crate::device::DeviceShared) -> Self {
+        dev.router.revert_window(true);
+        Self(dev)
+    }
+}
+
+impl Drop for RevertWindow<'_> {
+    fn drop(&mut self) {
+        self.0.router.revert_window(false);
     }
 }
 
@@ -772,6 +870,7 @@ pub fn handle_message(hub: &HubHandle, session: &Session, msg: &Value) -> Option
                     "guard": b.guard,
                     "serial": b.serial,
                     "timeout_ms": u64::try_from(b.timeout.as_millis()).unwrap_or(u64::MAX),
+                    "captured": b.captured, // -- WP P1CFIX -- F6
                 })
                 .to_string(),
                 Err(e) => refused(e),
@@ -809,6 +908,7 @@ mod tests_wp_p1ha {
             handle: 1,
             session: 2,
             image: vec![1, 2, 3],
+            extras: Extras::default(),
             deadline,
             ending: None,
             reverting: false,
@@ -840,7 +940,7 @@ mod tests_wp_p1ha {
         assert_eq!(gs.next_due(), Some(t0));
         let due = gs.take_due(t0);
         assert_eq!(due.len(), 1);
-        assert_eq!(due[0].0, "S1");
+        assert_eq!(due[0].serial, "S1");
         assert!(gs.take_due(t0).is_empty());
         assert_eq!(gs.next_due(), Some(t0 + Duration::from_secs(60)));
     }
@@ -859,6 +959,9 @@ mod tests_wp_p1ha {
             status: None,
             at: 0,
             taken_by: None,
+            captured: Vec::new(),
+            restored: Vec::new(),
+            notes: Vec::new(),
         };
         gs.finish(&o(6, "S1".into()));
         assert!(

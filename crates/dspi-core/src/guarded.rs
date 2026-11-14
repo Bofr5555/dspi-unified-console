@@ -15,7 +15,9 @@
 //!   [`DspiCore::apply_guard_begin`] and the Keep (output enables, a
 //!   control-surface edit, a hardware change).
 //!
-//! An A/B toggle is never guarded (owner, OD-P1g). Nothing here asks for a
+//! An A/B toggle is never guarded (owner, OD-P1g), and is refused while a
+//! guard waits; a guard that ends other than kept ends a running compare
+//! (WP P1CFIX, F4). Nothing here asks for a
 //! confirmation token: a guarded apply has its own way back (P1TK); the import
 //! mints and spends its own.
 //!
@@ -27,7 +29,9 @@
 //! keeps polling reverts by itself at its own deadline (every part of the
 //! snapshot), then ends the hub's guard with `apply.cancel` (the hub writes
 //! the same image again: the end everyone hears is "reverted"). A client that
-//! vanishes is reverted by the hub, image only.
+//! vanishes is reverted by the hub: the image, and (WP P1CFIX, F6) the device
+//! and source names, output latency and control surfaces it captured at
+//! `apply.begin`; not an output configuration kept apart from presets.
 //!
 //! **A lost connection** (the lost-Link rule: nothing is replayed, a revert is
 //! never queued):
@@ -166,9 +170,17 @@ struct Running {
     hub: Option<HubGuard>,
     /// The connection was lost; the hub is asked how it ended.
     lost: bool,
+    // -- WP P1CFIX -- N3
+    /// While lost: the hub session and connection on which the hub could not
+    /// be asked. The poll asks again only on another one (no I/O meanwhile).
+    unreachable_on: Option<LostKey>,
     changes: Vec<String>,
     notes: Vec<String>,
 }
+
+// -- WP P1CFIX -- N3
+/// The hub session (if live) and the connection's generation (if open).
+type LostKey = (Option<u16>, Option<u64>);
 
 /// What a guard lost without the hub's guard captured: Revert recalls it
 /// once the same device is open again.
@@ -485,6 +497,11 @@ impl DspiCore {
             return self.apply_status();
         };
         if r.lost {
+            // -- WP P1CFIX -- N3: no I/O while the hub stays unreachable on
+            // the same session and connection; ask again after a reconnect.
+            if r.unreachable_on.is_some_and(|k| k == self.lost_key()) {
+                return self.apply_status();
+            }
             return self.resolve_lost(r);
         }
         if self.connection_changed(&r) {
@@ -613,6 +630,7 @@ impl DspiCore {
                 timeout,
                 hub,
                 lost: false,
+                unreachable_on: None,
                 changes: Vec::new(),
                 notes: Vec::new(),
             });
@@ -667,6 +685,14 @@ impl DspiCore {
         (inner.state.clone(), names)
     }
 
+    // -- WP P1CFIX -- N3
+    /// Where a lost guard would ask the hub from: the live hub session and
+    /// the open connection. No I/O.
+    fn lost_key(&self) -> LostKey {
+        let generation = self.lock().conn.as_ref().map(|c| c.generation);
+        (self.hub_session(), generation)
+    }
+
     /// Whether the connection the guard was begun on is gone (closed, or
     /// another one, or another device), or, over Link, our hub session.
     fn connection_changed(&self, r: &Running) -> bool {
@@ -693,6 +719,11 @@ impl DspiCore {
         message: &str,
         notes: Vec<String>,
     ) -> GuardedApply {
+        // -- WP P1CFIX -- F4: anything but Keep leaves the device where no A/B
+        // side was captured (or unknown): the compare ends.
+        if phase != GuardPhase::Kept {
+            self.ab_end();
+        }
         let mut all = r.notes;
         all.extend(notes);
         let end = GuardedApply {
@@ -719,6 +750,7 @@ impl DspiCore {
     /// Without: nothing can be written; keep the snapshot for Revert.
     fn on_lost(&self, r: Running) -> GuardedApply {
         if r.hub.is_some() {
+            self.ab_end(); // -- WP P1CFIX -- F4
             if let Some(x) = lock(&self.guarded.state).running.as_mut() {
                 x.lost = true;
             }
@@ -808,11 +840,15 @@ impl DspiCore {
 
     /// Every revert's one write path: recall the snapshot taken before.
     ///
-    /// HOOK (P1LM): reverts are never refused by a limit (PLAN-CLIENTS 5.9).
-    /// When P1LM's `crate::limits::unlimited(|| …)` is on main, this recall
-    /// runs inside it; nothing else in this module needs to change.
+    /// Reverts are never refused or held by a limit (PLAN-CLIENTS 5.9): the
+    /// recall runs inside [`crate::limits::unlimited`], so a profile set
+    /// during the countdown neither refuses nor clamps the state from before
+    /// (WP P1CFIX, F1). `unlimited` is **thread-local**: the whole recall
+    /// runs here, on the caller's thread (Revert, Keep past the deadline, the
+    /// poll's timeout, a lost USB guard's Revert). A revert that ever hands
+    /// its writes to another thread must carry the exemption there itself.
     fn recall_before(&self, text: String) -> Result<crate::SnapshotRecall> {
-        self.snapshot_recall_document(text)
+        crate::limits::unlimited(|| self.snapshot_recall_document(text))
     }
 
     /// Revert a guard whose USB connection was lost, on the same device now
@@ -843,6 +879,7 @@ impl DspiCore {
                 ..last
             },
         };
+        self.ab_end(); // -- WP P1CFIX -- F4
         let mut st = lock(&self.guarded.state);
         if end.phase == GuardPhase::Reverted {
             st.orphan = None;
@@ -871,7 +908,17 @@ impl DspiCore {
                 }
                 self.apply_status()
             }
-            HubView::Ending | HubView::Unreachable => self.apply_status(),
+            HubView::Ending => self.apply_status(),
+            HubView::Unreachable => {
+                // -- WP P1CFIX -- N3
+                let key = self.lost_key();
+                if let Some(x) = lock(&self.guarded.state).running.as_mut()
+                    && x.id == r.id
+                {
+                    x.unreachable_on = Some(key);
+                }
+                self.apply_status()
+            }
             HubView::Unknown => self.finish(
                 r,
                 GuardPhase::Lost,
@@ -949,11 +996,9 @@ impl DspiCore {
         };
         let mut notes = Vec::new();
         if phase == GuardPhase::Reverted {
-            notes.push(
-                "The hub puts back the device's image only: device and source names, output \
-                 latency and control surfaces stay as they were."
-                    .to_owned(),
-            );
+            // -- WP P1CFIX -- F6: what the hub put back besides the image.
+            let separate = self.lock().state.output_config_mode == 0;
+            notes.extend(hub_revert_notes(o, separate));
             self.events.applied(
                 EventKind::Recall,
                 None,
@@ -963,6 +1008,65 @@ impl DspiCore {
         }
         self.finish(r, phase, reason, &message, notes)
     }
+}
+
+// -- WP P1CFIX -- F6
+/// What a hub's revert put back besides the image, from its outcome
+/// (`captured`, `notes`), in plain words; an older hub (no `captured`) puts
+/// back the image only. `separate`: the device keeps its output
+/// configuration apart from presets, which no hub revert puts back.
+fn hub_revert_notes(o: &Value, separate: bool) -> Vec<String> {
+    const PARTS: [(&str, &str); 4] = [
+        ("device_name", "the device name"),
+        ("source_names", "the input source names"),
+        ("output_latency", "the output latency"),
+        ("control_surfaces", "the control surfaces"),
+    ];
+    let list = |k: &str| {
+        o.get(k).and_then(Value::as_array).map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
+    };
+    let Some(captured) = list("captured") else {
+        return vec![
+            "The hub puts back the device's image only: device and source names, output \
+             latency and control surfaces stay as they were."
+                .to_owned(),
+        ];
+    };
+    let words = |held: bool| {
+        PARTS
+            .iter()
+            .filter(|(k, _)| captured.iter().any(|c| c == k) == held)
+            .map(|(_, w)| *w)
+            .collect::<Vec<_>>()
+    };
+    let mut notes = Vec::new();
+    let (held, missing) = (words(true), words(false));
+    if !missing.is_empty() {
+        notes.push(format!(
+            "The hub put back the device's image{}; {} could not be read when the apply \
+             began and stay as they were.",
+            if held.is_empty() {
+                String::new()
+            } else {
+                format!(" and {}", held.join(", "))
+            },
+            missing.join(", ")
+        ));
+    }
+    if separate {
+        notes.push(
+            "The hub does not put back an output configuration kept apart from presets \
+             (pins and limiters): check them."
+                .to_owned(),
+        );
+    }
+    notes.extend(list("notes").unwrap_or_default());
+    notes
 }
 
 // ─── The hub's side ─────────────────────────────────────────────────────
@@ -1059,3 +1163,13 @@ impl DspiCore {
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p1sa;
+
+// -- WP P1CFIX --
+#[cfg(test)]
+#[allow(
+    clippy::arithmetic_side_effects,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::needless_range_loop
+)]
+mod tests_wp_p1cfix;

@@ -3338,8 +3338,18 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * The ceiling is checked before anything is sent. A failure part way
      * leaves what was written.
      *
+     * Under a limits profile (WP P1CFIX, F5) an output whose profile ceiling
+     * is lower takes that ceiling instead (a linked pair, its lower one), and
+     * each such output is reported in [`DspiCore::limits_status`]'s
+     * `last_held` ("limit.threshold[3] -1 → -3 dB"). Every write is judged
+     * against the profile before the first is sent, so the call is never
+     * refused half-way (when the pairs change, every threshold goes to the
+     * lowest target first, then the pairs are linked, then each output or
+     * pair is set to its own).
+     *
      * Errors: `InvalidArgument` (a NaN ceiling), `Disconnected`,
-     * `ReadOnly`, `Unsupported` (no limiter), `Transfer`.
+     * `ReadOnly`, `Unsupported` (no limiter), `Transfer`; `LimitExceeded`,
+     * with nothing sent, should the profile still refuse one of the writes.
      */
     func protectAllOutputs(ceilingDbfs: Float) throws 
     
@@ -7958,8 +7968,18 @@ open func processNotifications() -> NotifyResult  {
      * The ceiling is checked before anything is sent. A failure part way
      * leaves what was written.
      *
+     * Under a limits profile (WP P1CFIX, F5) an output whose profile ceiling
+     * is lower takes that ceiling instead (a linked pair, its lower one), and
+     * each such output is reported in [`DspiCore::limits_status`]'s
+     * `last_held` ("limit.threshold[3] -1 → -3 dB"). Every write is judged
+     * against the profile before the first is sent, so the call is never
+     * refused half-way (when the pairs change, every threshold goes to the
+     * lowest target first, then the pairs are linked, then each output or
+     * pair is set to its own).
+     *
      * Errors: `InvalidArgument` (a NaN ceiling), `Disconnected`,
-     * `ReadOnly`, `Unsupported` (no limiter), `Transfer`.
+     * `ReadOnly`, `Unsupported` (no limiter), `Transfer`; `LimitExceeded`,
+     * with nothing sent, should the profile still refuse one of the writes.
      */
 open func protectAllOutputs(ceilingDbfs: Float)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_protect_all_outputs(self.uniffiClonePointer(),
@@ -34207,7 +34227,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_process_notifications() != 22812) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_protect_all_outputs() != 22643) {
+    if (uniffi_dspi_core_checksum_method_dspicore_protect_all_outputs() != 26211) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_raw_get() != 1394) {

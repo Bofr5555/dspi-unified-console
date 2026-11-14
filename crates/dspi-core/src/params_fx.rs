@@ -22,6 +22,7 @@ use dspi_proto::generated::opcodes as op;
 use dspi_proto::generated::{limiter, ranges as rg, subharm, tube, upmix};
 use dspi_proto::registry::{Kind, by_path};
 use dspi_proto::value::Value;
+use dspi_session::limits::LimitsProfile; // -- WP P1CFIX -- F5
 
 use crate::consts::*;
 use crate::records::*;
@@ -636,46 +637,36 @@ impl DspiCore {
     /// The ceiling is checked before anything is sent. A failure part way
     /// leaves what was written.
     ///
+    /// Under a limits profile (WP P1CFIX, F5) an output whose profile ceiling
+    /// is lower takes that ceiling instead (a linked pair, its lower one), and
+    /// each such output is reported in [`DspiCore::limits_status`]'s
+    /// `last_held` ("limit.threshold[3] -1 → -3 dB"). Every write is judged
+    /// against the profile before the first is sent, so the call is never
+    /// refused half-way (when the pairs change, every threshold goes to the
+    /// lowest target first, then the pairs are linked, then each output or
+    /// pair is set to its own).
+    ///
     /// Errors: `InvalidArgument` (a NaN ceiling), `Disconnected`,
-    /// `ReadOnly`, `Unsupported` (no limiter), `Transfer`.
+    /// `ReadOnly`, `Unsupported` (no limiter), `Transfer`; `LimitExceeded`,
+    /// with nothing sent, should the profile still refuse one of the writes.
     pub fn protect_all_outputs(&self, ceiling_dbfs: f32) -> Result<()> {
-        let all = limiter::LIMITER_ALL_OUTPUTS as u8;
-        let on = limiter::LIMITER_PARAM_ENABLED as u8;
         let threshold = limiter::LIMITER_PARAM_THRESHOLD_DB as u8;
-        let link = limiter::LIMITER_PARAM_LINK_GROUP as u8;
         let (_, ceiling) = limiter_quantize(threshold, ceiling_dbfs)?;
-        let (groups, all_on) = {
+        let (plan, rows) = {
             let mut inner = self.lock();
-            let l = limiters(&mut inner.state);
-            let all_on = l.enabled.iter().all(|&e| e);
-            (protect_groups(inner.state.num_output_channels), all_on)
+            let profile = crate::limits::profile(&mut inner);
+            let (targets, rows) = protect_targets(&inner.state, ceiling, profile.as_ref())?;
+            let plan = protect_plan(&inner.state, &targets, profile.as_ref())?;
+            (plan, rows)
         };
+        if plan.is_empty() {
+            return Ok(());
+        }
+        crate::limits::note_held(&mut self.lock(), &rows);
         self.begin_group(PROTECT_LABEL.into());
-        let r: Result<()> = (|| {
-            if !all_on {
-                self.set_limiter_param(all, on, 1.0)?;
-            }
-            for (o, g) in (0u8..).zip(groups) {
-                let now = self
-                    .lock()
-                    .state
-                    .limiter_link_group
-                    .get(usize::from(o))
-                    .copied();
-                if now != Some(g) {
-                    self.set_limiter_param(o, link, f32::from(g))?;
-                }
-            }
-            let at_ceiling = {
-                let mut inner = self.lock();
-                let l = limiters(&mut inner.state);
-                l.threshold.iter().all(|&t| t == ceiling) && l.len() > 0
-            };
-            if !at_ceiling {
-                self.set_limiter_param(all, threshold, ceiling)?;
-            }
-            Ok(())
-        })();
+        let r: Result<()> = plan
+            .iter()
+            .try_for_each(|&(o, param, v)| self.set_limiter_param(o, param, v));
         self.end_group();
         r
     }
@@ -848,6 +839,111 @@ impl DspiCore {
 // -- WP P1PR --
 /// The undo step's label of [`DspiCore::protect_all_outputs`].
 pub(crate) const PROTECT_LABEL: &str = "Protect all outputs";
+
+// -- WP P1CFIX -- F5
+/// Each output's threshold for "protect all" at `ceiling`: the ceiling, or a
+/// lower profile ceiling; a linked pair (by [`protect_groups`]) shares its
+/// lower one. The rows report every output taken below `ceiling`.
+fn protect_targets(
+    s: &DspState,
+    ceiling: f32,
+    profile: Option<&LimitsProfile>,
+) -> Result<(Vec<f32>, Vec<String>)> {
+    let threshold = limiter::LIMITER_PARAM_THRESHOLD_DB as u8;
+    let n = s.num_output_channels;
+    let groups = protect_groups(n);
+    let mut targets = Vec::with_capacity(usize::from(n));
+    for o in 0..n {
+        let own = profile
+            .and_then(|p| p.output(o))
+            .and_then(|l| l.limiter_ceiling_db);
+        let t = match own {
+            Some(pc) => limiter_quantize(threshold, pc)?.1.min(ceiling),
+            None => ceiling,
+        };
+        targets.push(t);
+    }
+    let shared: Vec<f32> = groups
+        .iter()
+        .zip(&targets)
+        .map(|(&g, &t)| {
+            if g == 0 {
+                return t;
+            }
+            groups
+                .iter()
+                .zip(&targets)
+                .filter(|(h, _)| **h == g)
+                .map(|(_, &u)| u)
+                .fold(t, f32::min)
+        })
+        .collect();
+    let rows = (0u8..)
+        .zip(&shared)
+        .filter(|(_, t)| **t < ceiling)
+        .map(|(o, &t)| crate::limits::ceiling_row(o, ceiling, t))
+        .collect();
+    Ok((shared, rows))
+}
+
+// -- WP P1CFIX -- F5
+/// The limiter writes "protect all" makes, in order, each one that changes
+/// something: every limiter on (apart, for the undo), every threshold to the
+/// lowest target when the link groups change, the pairs linked, then each
+/// output set to its target (a write moves its pair, which shares it). Simulated on a copy of the mirror and judged
+/// against `profile` write by write, so a refusal comes before anything is
+/// sent.
+fn protect_plan(
+    s: &DspState,
+    targets: &[f32],
+    profile: Option<&LimitsProfile>,
+) -> Result<Vec<(u8, u8, f32)>> {
+    let all = limiter::LIMITER_ALL_OUTPUTS as u8;
+    let on = limiter::LIMITER_PARAM_ENABLED as u8;
+    let threshold = limiter::LIMITER_PARAM_THRESHOLD_DB as u8;
+    let link = limiter::LIMITER_PARAM_LINK_GROUP as u8;
+    let mut sim = s.clone();
+    let mut plan = Vec::new();
+    let mut step = |sim: &mut DspState, o: u8, param: u8, v: f32| -> Result<()> {
+        let mut next = sim.clone();
+        limiters(&mut next).set(o, param, v);
+        let moved = next.limiter_enabled != sim.limiter_enabled
+            || next.limiter_threshold_db != sim.limiter_threshold_db
+            || next.limiter_release_ms != sim.limiter_release_ms
+            || next.limiter_link_group != sim.limiter_link_group;
+        if !moved {
+            return Ok(());
+        }
+        if let Some(p) = profile {
+            crate::limits::judge_limiters(p, sim, &next)?;
+        }
+        plan.push((o, param, v));
+        *sim = next;
+        Ok(())
+    };
+    step(&mut sim, all, on, 1.0)?;
+    let groups = protect_groups(s.num_output_channels);
+    let relink = (0..usize::from(s.num_output_channels))
+        .any(|k| s.limiter_link_group.get(k) != groups.get(k));
+    // Joining a group adopts its settings: with every threshold at the
+    // lowest target first, no join can take an output above its own.
+    if relink && let Some(low) = targets.iter().copied().reduce(f32::min) {
+        step(&mut sim, all, threshold, low)?;
+    }
+    for (o, g) in (0u8..).zip(groups) {
+        step(&mut sim, o, link, f32::from(g))?;
+    }
+    for (o, &t) in (0u8..).zip(targets) {
+        step(&mut sim, o, threshold, t)?;
+    }
+    Ok(plan)
+}
+
+// -- WP P1CFIX -- the protect-all pairs, for the fixup's tests elsewhere.
+#[cfg(test)]
+pub(crate) fn protect_groups_for_tests(n: u8) -> Vec<u8> {
+    protect_groups(n)
+}
 
 // -- WP P1PR --
 /// Each of `n` outputs' limiter link group when every output is protected:

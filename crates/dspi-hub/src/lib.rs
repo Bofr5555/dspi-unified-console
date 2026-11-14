@@ -31,6 +31,8 @@ pub mod advertise;
 #[cfg(feature = "app")]
 pub mod app;
 pub mod apply_guard;
+// -- WP P1CFIX -- F6: the settings outside the image a guarded apply's revert puts back
+pub mod apply_extras;
 pub mod auth;
 // -- WP BULKFIX --
 mod bulk_gain;

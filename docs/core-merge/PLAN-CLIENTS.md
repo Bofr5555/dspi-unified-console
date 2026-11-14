@@ -1674,6 +1674,10 @@ File…, Save as Template…); `MenuTable.qml`/`Menus.qml` entries (this wave's 
 between A and B; the import dialog shows P1DF's diff and block choices before applying, with "Apply with rollback" and a countdown
 bar (Keep, Revert); Open File… opens a document offline with a "File:" badge in the status bar. **Done when:** smoke sections for
 each on the demo device, both schemes; no new modal for a success. **Deps:** P1SN, P1AB, P1DF, P1SA, P1OF. **Clients:** Qt.
+-- fixup p1cfix (OD-P1g) -- A plain snapshot recall over DSPi Link is guarded too: when `apply_guard_default()` is true
+(Link to a hub with `apply_guard`), recall through `apply_guarded_snapshot`/`apply_guarded_snapshot_document`, not
+`snapshot_recall`, which the core never guards by itself; on USB it stays the user's choice. While a guard waits, the A/B calls
+are refused ("finish the safe apply first: Keep or Revert"): disable the toggle during the countdown; a revert ends the compare.
 -- fixup hwlk1f (owner) -- Also: the System window shows `system.set`'s `warnings` after Save (a unit without the audio link;
 `link_system_save` returns only the revision today, so this needs the save's answer through the core).
 
@@ -1693,6 +1697,10 @@ through browser download and upload; the A/B toggle in the scene bar; Ctrl/Cmd k
 sideways scroll. **Done when:** unit and e2e tests (Chromium, Firefox, narrow) on the demo device; wasm exports listed. **Deps:**
 P1SN, P1AB, P1DF, P1SA, P1OF; **WB6k** (files and AutoEQ slice) for the import path, or this WP builds the import part of WB6k's
 scope and WB6k drops it. **Clients:** web.
+-- fixup p1cfix (OD-P1g) -- A plain snapshot recall over DSPi Link is guarded too: when `apply_guard_default()` is true
+(Link to a hub with `apply_guard`), recall through `apply_guarded_snapshot`/`apply_guarded_snapshot_document`, not
+`snapshot_recall`, which the core never guards by itself; on USB it stays the user's choice. While a guard waits, the A/B calls
+are refused ("finish the safe apply first: Keep or Revert"): disable the toggle during the countdown; a revert ends the compare.
 
 **P1WB2: Web: Installer, lock, power-on, stale, notices, tokens, AutoEQ preview, groups.** [TODO] Size 3. Wave P1-E. **Owns:**
 new `apps/web/src/screens/installer/`, the mode switch onto P1LK's manifest (`screens/system/model.ts`), the `FleetBackend` pinned
@@ -1709,6 +1717,10 @@ P1PR, P1AQ, P1NT, P1TK, P1UG, P1WB1; WB6i (settings) for the power-on fields, or
 no visible layout growth. **Done when:** view-model and Robolectric tests, shots into `work/wp-P1AN1/shots/`; Gradle through the
 slot. **Deps:** P1SN, P1AB, P1DF, P1SA, P1OF; **AN42** (undo, in progress) merged first, since both touch the app bar. **Clients:**
 Android.
+-- fixup p1cfix (OD-P1g) -- A plain snapshot recall over DSPi Link is guarded too: when `apply_guard_default()` is true
+(Link to a hub with `apply_guard`), recall through `apply_guarded_snapshot`/`apply_guarded_snapshot_document`, not
+`snapshot_recall`, which the core never guards by itself; on USB it stays the user's choice. While a guard waits, the A/B calls
+are refused ("finish the safe apply first: Keep or Revert"): disable the toggle during the countdown; a revert ends the compare.
 -- fixup hwlk1f (owner) -- Also: the System screen shows `system.set`'s `warnings` after Save (a unit without the audio link;
 `link_system_save` returns only the revision today, so this needs the save's answer through the core).
 
@@ -1724,6 +1736,10 @@ P1LM, P1LK, P1PR, P1AQ, P1NT, P1TK, P1UG, P1AN1. **Clients:** Android.
 macOS and iOS (iOS: sheets at half height, Simple first). **Done when:** macOS and iOS test bundles on the VM. **Deps:** P1SN,
 P1AB, P1DF, P1SA, P1OF; **the SW chain SW11–SW14** (the domains on the core's setters, so a recall and a revert show everywhere),
 SW17 (done). **Clients:** Swift.
+-- fixup p1cfix (OD-P1g) -- A plain snapshot recall over DSPi Link is guarded too: when `apply_guard_default()` is true
+(Link to a hub with `apply_guard`), recall through `apply_guarded_snapshot`/`apply_guarded_snapshot_document`, not
+`snapshot_recall`, which the core never guards by itself; on USB it stays the user's choice. While a guard waits, the A/B calls
+are refused ("finish the safe apply first: Keep or Revert"): disable the toggle during the countdown; a revert ends the compare.
 
 **P1SW2: Swift: Installer, lock, mode switch, power-on, tokens, AutoEQ preview, groups.** [TODO] Size 2.5. Wave P1-F (VM).
 **Owns:** new Installer and power-on views, the mode switch, the confirmation dialogs (tokens), the AutoEQ window (SW18's), the

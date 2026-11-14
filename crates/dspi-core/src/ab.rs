@@ -20,7 +20,11 @@
 //!
 //! A compare belongs to the connection it began on: a disconnect, a lost
 //! device or a new connection ends it, and nothing is replayed; the next
-//! call sees no compare. Edits made while on one side are kept: a toggle
+//! call sees no compare. While a guarded apply (P1SA) waits for Keep or
+//! Revert, [`DspiCore::ab_start`], [`DspiCore::ab_toggle`] and
+//! [`DspiCore::ab_keep`] are refused ("finish the safe apply first"); a
+//! guard that ends other than kept (reverted, failed, lost) ends the compare
+//! (WP P1CFIX, F4). Edits made while on one side are kept: a toggle
 //! first captures the side it leaves (reads only, no event), so tweaking B,
 //! flipping to A and back finds B with the tweak. [`DspiCore::ab_diff`]
 //! compares the sides as last left.
@@ -29,6 +33,7 @@ use std::sync::Mutex;
 
 use serde_json::Value;
 
+use crate::records::DspState;
 use crate::snapshot::SnapshotRecall;
 use crate::{DspiCore, DspiError, Result};
 
@@ -181,6 +186,12 @@ fn invalid(msg: impl Into<String>) -> DspiError {
 /// The refusal of an A/B call with no compare running.
 pub(crate) const NO_COMPARE: &str = "no A/B compare is running";
 
+// -- WP P1CFIX -- F4
+/// The refusal of an A/B call while a guarded apply waits for Keep or Revert
+/// (P1SA): a toggle then would capture the guarded change into a side, and
+/// bring it back after the guard reverted it.
+pub(crate) const GUARD_WAITING: &str = "finish the safe apply first: Keep or Revert";
+
 /// What a snapshot document says about itself, checked before anything is
 /// sent: `(name, platform, inputs, outputs)`.
 fn described(text: &str, side: AbSide) -> Result<(String, String, Option<u64>, Option<u64>)> {
@@ -213,6 +224,23 @@ fn described(text: &str, side: AbSide) -> Result<(String, String, Option<u64>, O
 }
 
 impl DspiCore {
+    // -- WP P1CFIX -- F4
+    /// Refuse an A/B call while a guarded apply waits (nothing sent).
+    fn ab_guard_free(&self) -> Result<()> {
+        if self.apply_status().phase == crate::GuardPhase::Waiting {
+            return Err(invalid(GUARD_WAITING));
+        }
+        Ok(())
+    }
+
+    // -- WP P1CFIX -- F4
+    /// End a running compare with nothing sent: a guarded apply's revert (or
+    /// its lost connection) has put the device somewhere neither side was
+    /// captured from.
+    pub(crate) fn ab_end(&self) {
+        *self.ab.slot() = None;
+    }
+
     /// The open connection's generation.
     fn ab_generation(&self) -> Result<u64> {
         self.lock()
@@ -263,11 +291,22 @@ impl DspiCore {
 
     /// Capture the device as the side `c` is on, so edits made there are
     /// kept (P1AB round 2): reads only, no event, no write.
+    ///
+    /// Under a limits profile (WP P1CFIX, F3) the side keeps its stored value
+    /// for every value its recall had to hold and that has not been edited
+    /// since: only unheld values are re-captured, so the compare still shows
+    /// the value above the limit and every recall of the side reports the
+    /// hold again.
     fn ab_recapture(&self, c: &mut Compare) -> Result<()> {
         let side = c.side;
         let name = c.name(side).to_owned();
+        let held = self.ab_held(c.text(side));
         let text = self
-            .snapshot_capture_document(name, CAPTURED_NOTE.into())
+            .snapshot_capture_document_adjusted(name, CAPTURED_NOTE.into(), &|now| {
+                if let Some((stored, held)) = &held {
+                    crate::limits::keep_held(stored, held, now);
+                }
+            })
             .map_err(|e| self.ab_failed(c, e))?;
         *c.text_mut(side) = text.clone();
         if let Some(now) = self.ab.slot().as_mut().filter(|n| n.epoch == c.epoch) {
@@ -276,8 +315,21 @@ impl DspiCore {
         Ok(())
     }
 
+    // -- WP P1CFIX -- F3
+    /// A side's stored settings and what its recall held them to, when the
+    /// open device's profile holds any of them; `None` otherwise (no profile,
+    /// a document that cannot be read). No I/O.
+    fn ab_held(&self, text: &str) -> Option<(DspState, DspState)> {
+        let doc = crate::files::parse_config(text).ok()?;
+        let mut inner = self.lock();
+        let stored = crate::snapshot::state_of_document(&inner.state, &doc)?;
+        let held = crate::limits::held_side(&mut inner, &stored)?;
+        Some((stored, held))
+    }
+
     /// Start a compare of `a` and `b` (documents; `a` `None`: capture it).
     fn ab_begin(&self, a: Option<String>, b: String) -> Result<AbCompare> {
+        self.ab_guard_free()?; // -- WP P1CFIX -- F4
         let generation = self.ab_generation()?;
         // A compare already running is replaced, whatever comes of this one.
         *self.ab.slot() = None;
@@ -339,6 +391,7 @@ impl DspiCore {
     /// folder named; [`DspiError::Unsupported`] on the web (use
     /// [`DspiCore::ab_start_documents`]).
     pub fn ab_start(&self, a_id: String, b_id: String) -> Result<AbCompare> {
+        self.ab_guard_free()?; // -- WP P1CFIX -- F4
         let b = self.snapshot_export(b_id)?;
         let a = if a_id.is_empty() {
             None
@@ -367,6 +420,7 @@ impl DspiCore {
     /// recall's errors. A lost connection ends the compare
     /// ([`DspiError::Disconnected`]); another refusal leaves it on its side.
     pub fn ab_toggle(&self) -> Result<AbCompare> {
+        self.ab_guard_free()?; // -- WP P1CFIX -- F4
         let mut c = self.ab_current().ok_or_else(|| invalid(NO_COMPARE))?;
         let to = c.side.other();
         // -- WP P1AB round 2 -- the side left keeps its edits
@@ -395,6 +449,7 @@ impl DspiCore {
     /// recall's errors (the compare then runs on, unless the connection is
     /// gone).
     pub fn ab_keep(&self, side: AbSide) -> Result<AbCompare> {
+        self.ab_guard_free()?; // -- WP P1CFIX -- F4
         let c = self.ab_current().ok_or_else(|| invalid(NO_COMPARE))?;
         let recall = if c.side == side {
             None

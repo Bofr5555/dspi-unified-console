@@ -271,6 +271,7 @@ impl DspiCore {
             (inner.conn.replace(conn), worker)
         };
         drop(self.set_meter_path(None)); // -- WP LK2 --
+        self.limits_preload(); // -- WP P1CFIX -- N1: the profile's files, unlocked
         // -- WP P0M --
         if let Some(conn) = &displaced {
             self.events.disconnected(&conn.serial, "replaced");

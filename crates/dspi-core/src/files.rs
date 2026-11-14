@@ -1049,6 +1049,13 @@ fn build_config(base: &DspState, doc: &Value, options: u32) -> Built {
 
 // -- WP P1DF --
 /// [`build_config`] for the blocks of `sel`.
+// -- WP P1CFIX -- F3
+/// Every block of `doc` built onto `base`, as the import of a whole document
+/// builds it, with nothing sent (an A/B side's settings, to compare).
+pub(crate) fn built_whole(base: &DspState, doc: &Value) -> DspState {
+    build_selected(base, doc, Selection::all()).state
+}
+
 fn build_selected(base: &DspState, doc: &Value, sel: Selection) -> Built {
     let empty = Map::new();
     let mut im = Importer {

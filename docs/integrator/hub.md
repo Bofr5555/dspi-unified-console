@@ -85,17 +85,31 @@ answer carries `"v": 1`. A client checks the cap before sending them; other hubs
 
 | Message | Role | What |
 |---|---|---|
-| `apply.begin {id, handle, timeout_ms?}` | control, admin | reads the device's whole image (`0xA0`, in the device's order behind what this client queued) and starts the guard. `timeout_ms` defaults to 30 000 and is clamped to 1 000 to 600 000. Answer `ok {guard, serial, timeout_ms}` |
+| `apply.begin {id, handle, timeout_ms?}` | control, admin | reads the device's whole image (`0xA0`, in the device's order behind what this client queued) and starts the guard; then the settings outside the image (below). `timeout_ms` defaults to 30 000 and is clamped to 1 000 to 600 000. Answer `ok {guard, serial, timeout_ms, captured}` |
 | `apply.confirm {id, handle}` | control, admin | keeps the change. Only the session that began it, and only before the timeout. Answer `ok {guard, serial, handle, reason: "confirmed", result: "kept", at}` |
 | `apply.cancel {id, handle}` | control, admin | writes the image back now and answers with the outcome, as `apply.ended` below |
 | `apply.status {id, handle}` | every role | `ok {active, last}`: the running guard (`guard`, `serial`, `session`, `remaining_ms`, `reverting`) or `null`, and the last outcome on that device or `null` |
 
 Every end is also sent to every session as
-`apply.ended {v, guard, serial, handle, reason, result, status?, taken_by?, at}`:
+`apply.ended {v, guard, serial, handle, reason, result, status?, taken_by?, at, captured, restored?, notes?}`:
 `reason` is `confirmed`, `timeout`, `session_closed`, `cancelled`,
 `hub_stopping` or `taken_over`; `result` is `kept`, `reverted`, `revert_failed`
 (with the Link `status`; it is not tried again) or `not_written` (no device with
 that serial was online: nothing was written).
+
+The settings outside the image <!-- WP P1CFIX -->: `apply.begin` also reads the
+device name, the input source names, the output latency and the control-surface
+configuration (groups, macros, IR commands, bindings and their names, the
+display configuration and pages), as the beginning client, and lists what it
+holds in `captured` (`device_name`, `source_names`, `output_latency`,
+`control_surfaces`; a part the firmware lacks is left out). A write back first
+writes each held part that differs from the device then, in the order a
+snapshot recall does, then the image; `restored` lists the parts written and
+`notes` what was refused. One write each, never repeated; the same lock and
+serial rules as the image. An output configuration kept apart from presets
+(pins and limiters, `output_config_mode` independent) is not put back. An
+outcome without `captured` comes from an older hub, which writes back the
+image only.
 
 - One guard per device: a second `apply.begin` is `busy`. Another session's
   confirm or cancel is `denied`; a confirm after the timeout is `conflict`.

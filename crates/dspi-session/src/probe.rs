@@ -1040,7 +1040,16 @@ fn cs_caps_from(header: Result<Vec<u8>>) -> Option<ControlSurfaceCaps> {
     })
 }
 
-#[cfg(test)]
+// -- WP P1CFIX -- F6
+/// The control-surface caps alone, without a probe: the header (wValue
+/// 0xFFFF), then, at caps v10 and later, the display limits. `None` on a
+/// device without control surfaces. The hub's guarded apply sizes its
+/// capture of the configuration by it.
+pub fn read_cs_caps(t: &mut dyn Transport) -> Option<ControlSurfaceCaps> {
+    let header = t.control_in(op::REQ_GET_CS_CAPS, 0xFFFF, 4);
+    cs_caps_after(t, header)
+}
+
 fn cs_caps_after(t: &mut dyn Transport, header: Result<Vec<u8>>) -> Option<ControlSurfaceCaps> {
     let header = header.and_then(|_| t.control_in_upto(op::REQ_GET_CS_CAPS, 0xFFFF, CS_CAPS_MAX));
     let mut c = cs_caps_from(header)?;

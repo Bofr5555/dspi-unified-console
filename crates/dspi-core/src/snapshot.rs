@@ -536,9 +536,52 @@ impl DspiCore {
     }
 }
 
+// -- WP P1CFIX -- F3
+/// The settings a snapshot document `doc` would recall, built onto `base`
+/// (the mirror): its image decoded, or, without one, its blocks as the
+/// import builds them. `None` for a damaged image.
+pub(crate) fn state_of_document(base: &DspState, doc: &Value) -> Option<DspState> {
+    let plan = Plan::of(doc).ok()?;
+    match plan.image {
+        Some(image) => {
+            let mut s = base.clone();
+            state::decode_bulk(&image, &mut s).ok()?;
+            Some(s)
+        }
+        None => Some(crate::files::built_whole(base, doc)),
+    }
+}
+
 impl DspiCore {
+    // -- WP P1CFIX -- F3
+    /// [`DspiCore::snapshot_capture_document`] with `adjust` applied to the
+    /// mirror's copy before it is written into the document (the image and
+    /// the blocks alike); the device and the mirror are untouched.
+    pub(crate) fn snapshot_capture_document_adjusted(
+        &self,
+        name: String,
+        note: String,
+        adjust: &dyn Fn(&mut DspState),
+    ) -> Result<String> {
+        let (doc, _) = self.capture_value_adjusted(&name, &note, adjust)?;
+        serde_json::to_string_pretty(&doc).map_err(|e| DspiError::Io {
+            msg: format!("the snapshot could not be written: {e}"),
+        })
+    }
+
     /// The snapshot document of the open device, and its serial.
     fn capture_value(&self, name: &str, note: &str) -> Result<(Value, String)> {
+        self.capture_value_adjusted(name, note, &|_| {})
+    }
+
+    /// [`DspiCore::capture_value`], the exported settings passed through
+    /// `adjust` first (WP P1CFIX, F3).
+    fn capture_value_adjusted(
+        &self,
+        name: &str,
+        note: &str,
+        adjust: &dyn Fn(&mut DspState),
+    ) -> Result<(Value, String)> {
         self.ensure_probed();
         // The settings outside the image first: each read takes the lock.
         let latency = match self.fetch_output_latency() {
@@ -577,8 +620,9 @@ impl DspiCore {
         let conn = inner.conn()?;
         let serial = conn.serial.clone();
         let exact = conn.wire == Some(WireRead::Exact);
-        let (s, map) = crate::files::exportable(&mut inner)?;
+        let (mut s, map) = crate::files::exportable(&mut inner)?;
         drop(inner);
+        adjust(&mut s); // -- WP P1CFIX -- F3
         let name = cut(name, MAX_NAME_CHARS);
         let text = crate::files::export_document(
             &s,

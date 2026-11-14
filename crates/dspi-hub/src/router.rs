@@ -111,6 +111,10 @@ struct State {
     /// The hub's next own bulk write is a guarded apply's revert: it passes the lock
     /// ([`Router::pass_revert`]).
     revert_pass: bool,
+    // -- WP P1CFIX -- F6
+    /// The hub is writing a guarded apply's settings outside the image back: its
+    /// own commands pass the lock until it closes ([`Router::revert_window`]).
+    revert_window: bool,
 }
 
 /// One device's router.
@@ -260,8 +264,8 @@ impl Router {
         let mut st = self.lock();
         // -- WP P1HA -- taken by the hub's next bulk write, whatever its fate
         let revert = s.id == INTERNAL_SESSION_ID
-            && is_bulk_write(req.b_request)
-            && std::mem::take(&mut st.revert_pass);
+            && (st.revert_window // -- WP P1CFIX -- F6
+                || (is_bulk_write(req.b_request) && std::mem::take(&mut st.revert_pass)));
         if st.shut {
             return Err(status::NO_DEVICE);
         }
@@ -483,6 +487,15 @@ impl Router {
     /// of the hub's writes a bulk image.
     pub fn pass_revert(&self) {
         self.lock().revert_pass = true;
+    }
+
+    // -- WP P1CFIX -- F6
+    /// Open (or close) the window in which every command of the hub's own
+    /// ([`INTERNAL_SESSION_ID`]) passes any session's lock: a guarded apply's revert
+    /// writing back the settings outside the image (`apply_extras.rs`), never refused
+    /// by a lock like its bulk write. Closed again before the bulk write.
+    pub fn revert_window(&self, open: bool) {
+        self.lock().revert_window = open;
     }
 
     /// Release the device lock if `session` holds it.

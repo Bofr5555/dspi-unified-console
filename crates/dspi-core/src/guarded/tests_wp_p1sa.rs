@@ -269,7 +269,16 @@ fn wp_p1sa_confirm_keeps() {
         s.changes
     );
     assert_eq!(core.get_state().input_preamp_db[0], -6.0);
-    assert_eq!(core.apply_status(), s);
+    // -- WP P1CFIX -- the countdown moves between the two reads (a flake)
+    let st = core.apply_status();
+    assert_eq!(
+        GuardedApply {
+            remaining_ms: s.remaining_ms,
+            ..st.clone()
+        },
+        s
+    );
+    assert!(st.remaining_ms <= s.remaining_ms);
 
     let k = core.apply_confirm().unwrap();
     assert_eq!(

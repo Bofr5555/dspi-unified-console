@@ -60,6 +60,10 @@ const NOT_EXPORTED: &[&str] = &[
     // -- WP FWX -- The clip events' hand-off to WP P0M's clip hold and history
     // (ext_diag.rs), Rust-only until a client needs it.
     "take_clip_mask",
+    // -- WP P1CFIX -- F7: P1TK's `write_param` with a token (confirm.rs, the
+    // non-exported `impl`), for the web binding's `write`; the UniFFI clients
+    // call the gated typed calls with their token.
+    "write_param_confirmed",
 ];
 
 /// `crates/dspi-core/src/link.rs`, exported by WP C15.
