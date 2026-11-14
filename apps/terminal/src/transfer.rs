@@ -461,7 +461,8 @@ fn import_preset(target: &Target, text: &str, path: &str, flags: &[&str], json: 
         }
     }
 
-    let mut session = match connect(target) {
+    // -- WP TMCORE -- the writes go through the console core
+    let mut session = match crate::connect_written(target, flags) {
         Ok(s) => s,
         Err(c) => return c,
     };
@@ -475,7 +476,10 @@ fn import_preset(target: &Target, text: &str, path: &str, flags: &[&str], json: 
     // -- WP P1TM -- held to this console's limits profile for the device
     // (P1LM's `apply_limited`), as the core holds its own imports.
     let profile = crate::pro::console_limits(&mut session);
+    // -- WP TMCORE -- one undo step
+    session.begin_group("Import Device Configuration");
     let report = preset_file::apply_limited(&mut session, &doc, options, profile.as_ref());
+    session.end_group();
 
     // The pair links are the interface's, not the device's, and a one-shot
     // command has nowhere to keep them. Better said than silently lost.
@@ -488,7 +492,7 @@ fn import_preset(target: &Target, text: &str, path: &str, flags: &[&str], json: 
         say(
             false,
             &json!({
-                "ok": true, "path": path, "format": "preset", "dryRun": session.dry_run,
+                "ok": report.refused.is_empty(), "path": path, "format": "preset", "dryRun": session.dry_run,
                 "channels": report.channels_applied, "bands": report.bands_applied,
                 "crossoverBands": report.crossover_bands_applied,
                 "crosspoints": report.crosspoints_applied,
@@ -507,7 +511,13 @@ fn import_preset(target: &Target, text: &str, path: &str, flags: &[&str], json: 
             say(false, line);
         }
     }
-    exit::OK
+    // -- WP TMCOREF -- (review tmcore F3) a refused write is a refusal; the
+    // lines above name each one ("Not applied: ...")
+    if report.refused.is_empty() {
+        exit::OK
+    } else {
+        exit::REJECTED
+    }
 }
 
 /// Apply a filter bank, band by band through the ordinary write path, so every
@@ -520,31 +530,42 @@ fn import_filters(
     flags: &[&str],
     json: bool,
 ) -> u8 {
-    let mut session = match connect(target) {
+    // -- WP TMCORE -- the writes go through the console core
+    let mut session = match crate::connect_written(target, flags) {
         Ok(s) => s,
         Err(c) => return c,
     };
     session.dry_run = flags.contains(&"--dry-run");
+    session.begin_group("Import Filters"); // -- WP TMCORE -- one undo step
     let (report, mapped, skipped) =
         apply_filters(&mut session, doc, flags.contains(&"--map-legacy"));
+    session.end_group();
     let caps = session.capabilities();
     let legacy_hint = !flags.contains(&"--map-legacy")
         && skipped
             .iter()
             .any(|s| crate::legacy_channel(&s.to_ascii_lowercase(), caps).is_some());
 
+    // -- WP TMCOREF -- (review tmcore F3) a refused write (the lock, a limit,
+    // the device) is a refusal: exit 3, `ok: false`, each one named
+    let code = if report.refused > 0 {
+        exit::REJECTED
+    } else {
+        exit::OK
+    };
     if json {
         say(
             false,
             &json!({
-                "ok": true, "path": path, "format": "filters", "dryRun": session.dry_run,
+                "ok": report.refused == 0, "path": path, "format": "filters", "dryRun": session.dry_run,
                 "bands": report.bands_applied, "crossoverBands": report.crossover_bands_applied,
                 "preamps": report.preamps_applied, "refused": report.refused,
+                "refusals": report.refusals,
                 "dropped": report.dropped, "mapped": mapped, "skipped": skipped,
             })
             .to_string(),
         );
-        return exit::OK;
+        return code;
     }
     say(
         false,
@@ -567,7 +588,11 @@ fn import_filters(
         ),
     );
     if report.refused > 0 {
-        say(false, &format!("Refused by the device: {}", report.refused));
+        // -- WP TMCOREF -- what refused each one, not only how many
+        say(false, &format!("Not applied: {} writes", report.refused));
+        for why in &report.refusals {
+            say(false, &format!("  {why}"));
+        }
     }
     if report.dropped > 0 {
         say(
@@ -594,7 +619,7 @@ fn import_filters(
             );
         }
     }
-    exit::OK
+    code
 }
 
 /// Place each section on a channel and apply it. Returns the report, the older
@@ -701,7 +726,8 @@ fn cs_import(target: &Target, path: &str, flags: &[&str], json: bool) -> u8 {
         Ok(d) => d,
         Err(e) => return usage_error(&e.to_string()),
     };
-    let mut session = match connect(target) {
+    // -- WP TMCORE -- the writes go through the console core
+    let mut session = match crate::connect_written(target, flags) {
         Ok(s) => s,
         Err(c) => return c,
     };

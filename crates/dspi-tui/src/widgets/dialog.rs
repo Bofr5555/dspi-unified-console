@@ -83,6 +83,9 @@ pub struct Dialog {
     pub default: usize,
     /// A critical dialog draws its border in `danger`.
     pub critical: bool,
+    // -- WP TMCOREF --
+    /// A text field whose value is never drawn (the installer's PIN).
+    pub secret: bool,
 }
 
 impl Dialog {
@@ -99,6 +102,7 @@ impl Dialog {
             focus: 0,
             default: 0,
             critical: false,
+            secret: false,
         }
     }
 
@@ -119,6 +123,21 @@ impl Dialog {
             focus: 0,
             default: 0,
             critical: false,
+            secret: false,
+        }
+    }
+
+    // -- WP TMCOREF --
+    /// [`Dialog::text`] for a secret: what is typed is never drawn, only that
+    /// something was.
+    pub fn secret(
+        title: impl Into<String>,
+        body: impl Into<String>,
+        placeholder: impl Into<String>,
+    ) -> Self {
+        Self {
+            secret: true,
+            ..Self::text(title, body, String::new(), placeholder)
         }
     }
 
@@ -140,6 +159,7 @@ impl Dialog {
             focus: 0,
             default: 0,
             critical: false,
+            secret: false,
         }
     }
 
@@ -157,6 +177,7 @@ impl Dialog {
             focus: 0,
             default: 0,
             critical: false,
+            secret: false,
         }
     }
 
@@ -172,6 +193,7 @@ impl Dialog {
             focus: 0,
             default: 0,
             critical: false,
+            secret: false,
         }
     }
 
@@ -184,6 +206,7 @@ impl Dialog {
             focus: 0,
             default: 0,
             critical: false,
+            secret: false,
         }
     }
 
@@ -418,6 +441,9 @@ impl Dialog {
                 if y < bottom {
                     let shown = if value.is_empty() {
                         (placeholder.clone(), t.label())
+                    } else if self.secret {
+                        // -- WP TMCOREF -- never the secret, nor its length
+                        ("(typed, not shown)".to_string(), t.value())
                     } else {
                         (value.clone(), t.value())
                     };

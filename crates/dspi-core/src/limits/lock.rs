@@ -676,6 +676,29 @@ pub(crate) fn lock_check(inner: &mut Inner) -> Result<()> {
     ))
 }
 
+// -- WP TMCOREF -- (review tmcore F2)
+/// [`lock_check`] for a request that a read-only connection may still send
+/// (the bootloader, so an old firmware can be updated) and so does not go
+/// through `writable_conn`; it also refuses while the hub holds the device's
+/// lock and this session is not unlocked, since the hub cannot be relied on
+/// to answer a request that reboots the device.
+pub(crate) fn lock_check_any(inner: &mut Inner) -> Result<()> {
+    lock_check(inner)?;
+    if exempt() || super::suspended() {
+        return Ok(());
+    }
+    let Some(serial) = inner.conn.as_ref().map(|c| c.serial.clone()) else {
+        return Ok(());
+    };
+    match inner.hub_lock(&serial) {
+        Some(h) if h.locked && !h.unlocked => Err(lock_error(
+            "hub",
+            "The hub has locked this DSPi: only volume, mute and presets can be changed.",
+        )),
+        _ => Ok(()),
+    }
+}
+
 /// Refuse an installer action (the profile, the PIN, what the lock covers)
 /// while a PIN is set and this console is not unlocked for the open device.
 pub(crate) fn installer_gate(inner: &mut Inner) -> Result<()> {

@@ -173,9 +173,25 @@ The Terminal keeps profiles in `<local data dir>/uconsole/limits` (on Linux
 need it: on a terminal they ask; in a script, `DSPI_INSTALLER_PIN=... uconsole
 limits set FILE`, or `--installer-pin -` with the PIN as a line of standard input.
 A wrong PIN exits 3, a missing one 1. A plain `uconsole import` (the session path)
-is held to the same profile (`preset_file::apply_limited`). Not yet: the
-Terminal's single writes (`uconsole set`, scripts, its interface) write through
-`dspi-session` and are not checked against the profile or the lock.
+is held to the same profile (`preset_file::apply_limited`) before it is written.
+
+Every other write of the Terminal goes through the core too (WP TMCORE):
+`uconsole set`, `uconsole eq`, `undo`/`redo`, scripts of them (`-f`, standard
+input), `uconsole raw out`/`war`, `ext xfeed-map`, `cs import`, `autoeq apply <id> CH`
+and the interface (the TUI). Its session runs on the core's link, and its writes
+are the core's typed setters, so a value outside the profile is refused before
+anything is sent, in the core's words (`limit_exceeded`), with exit code 3:
+
+```sh
+$ uconsole set out.gain 0 6
+uconsole: output 1 gain 6 dB is above the limit of 0 dB
+      Choose a value within the limits, or ask the installer to change them.
+$ echo $?
+3
+```
+
+A `--dry-run` writes nothing and is not judged. Over DSPi Link the hub judges the
+same write against its own profile as well.
 
 ```sh
 uconsole limits set k340-site.limits.dspipreset

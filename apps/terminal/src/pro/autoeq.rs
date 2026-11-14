@@ -16,7 +16,7 @@ use dspi_proto::channel::ChannelMap;
 use dspi_session::autoeq::Entry;
 use dspi_tui::shell::connect::{Target, printable};
 
-use super::{Stores, fail, open, usage};
+use super::{Stores, fail, usage};
 use crate::exit;
 
 /// What `autoeq preview|apply` was asked.
@@ -31,7 +31,8 @@ pub(crate) struct Request<'a> {
 }
 
 pub(crate) fn cmd(target: &Target, entry: &Entry, req: Request<'_>, json: bool) -> u8 {
-    let opened = match open(target, &Stores::default_dirs()) {
+    // -- WP TMCOREF -- an apply writes: the installer's PIN when locked
+    let opened = match super::open_writing(target, &Stores::default_dirs(), !req.preview) {
         Ok(o) => o,
         Err(c) => return c,
     };

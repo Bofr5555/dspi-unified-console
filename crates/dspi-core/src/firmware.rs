@@ -620,6 +620,9 @@ impl DspiCore {
         typed_confirmation: String,
         token: Option<String>,
     ) -> Result<()> {
+        // -- WP TMCOREF -- (review tmcore F2) with the device still open, the
+        // installer lock holds a firmware write too (before the token is spent)
+        crate::limits::lock_check_any(&mut self.lock())?;
         // Nothing to re-check later: the write is to the drive, not the device.
         let _ticket = self.confirm_gate(crate::ConfirmOp::FirmwareFlash, token.as_deref())?;
         crate::flash_to_drive_guarded(image, drive, board, typed_confirmation)

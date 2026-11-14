@@ -52,6 +52,8 @@ pub mod vreg_calibrate;
 // -- WP CG14 --
 pub mod overvolt;
 pub mod write;
+// -- WP TMCORE --
+pub mod route;
 
 // -- WP P0W --
 pub use history::{Change, ChangeSource};
@@ -62,6 +64,8 @@ pub use readout::Readout;
 pub use state::{Applied, DeviceState, PresetSnapshot};
 #[cfg(feature = "undo")]
 pub use undo::Undone;
+// -- WP TMCORE --
+pub use route::{RouteFailure, RoutedStep, WriteRoute};
 pub use write::{
     Core1Conflict, Crosspoint, EnableOutcome, JournalEntry, Outcome, OutputStrip, Session,
     WriteError,
