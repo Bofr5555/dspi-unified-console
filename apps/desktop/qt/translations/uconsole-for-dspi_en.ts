@@ -4428,6 +4428,14 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>The hub&apos;s copy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This console&apos;s copy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Unlock on the hub</source>
         <translation type="unfinished"></translation>
     </message>
@@ -4445,6 +4453,10 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
     <message>
         <source>Limits</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Limits narrow what this DSPi may be set to from any console on the hub. A change applies at once; settings already outside a new limit are brought inside it, and what changed is shown.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4524,6 +4536,10 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>The Hub&apos;s Installer PIN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No PIN is set: nothing is locked and nothing asks for one. Set a PIN to lock this console&apos;s settings for everyday use; volume, mute and presets stay open.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -4580,7 +4596,43 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Pinned Modes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A pinned mode is the one every console with that role on the hub shows; none leaves the choice to each console.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Admin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Control</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Viewer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Simple</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Advanced</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Remove the installer PIN?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing will be locked on the hub for this DSPi any more, and the recovery code stops working. The limits stay.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
