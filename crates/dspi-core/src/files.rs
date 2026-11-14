@@ -1333,6 +1333,16 @@ impl<'d> Importer<'d> {
             .filter(|f| if f.key == "bypass" { eq } else { routing })
             .collect();
         self.fields(g, "global", &keys);
+        // -- WP TPL1F -- the input source and LG Sound Sync are the device's
+        // input side, as the hardware I/O is the board's: a document without
+        // the key (a generic template) leaves it alone without naming it, as
+        // an absent `io` key. A key present but unreadable is still named.
+        for k in ["inputSource", "lgSoundSyncEnabled"] {
+            if g.is_none_or(|g| !g.contains_key(k)) {
+                let name = format!("global.{k}");
+                self.out.left_alone.retain(|x| *x != name);
+            }
+        }
         if self.sel.has(IMPORT_VOLUMES) {
             self.fields(g, "global", &volume_fields());
         }

@@ -1,0 +1,2582 @@
+{
+  "channels": [
+    {
+      "channelId": 0,
+      "crossover": [],
+      "delayMs": 0.0,
+      "enabled": true,
+      "eq": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "eqChannel": 0,
+      "gainDb": 0.0,
+      "inputIndex": 0,
+      "isOutput": false,
+      "muted": false,
+      "name": "USB 1"
+    },
+    {
+      "channelId": 1,
+      "crossover": [],
+      "delayMs": 0.0,
+      "enabled": true,
+      "eq": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "eqChannel": 1,
+      "gainDb": 0.0,
+      "inputIndex": 1,
+      "isOutput": false,
+      "muted": false,
+      "name": "USB 2"
+    },
+    {
+      "channelId": 11,
+      "crossover": [],
+      "delayMs": 0.0,
+      "enabled": true,
+      "eq": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "eqChannel": 2,
+      "gainDb": 0.0,
+      "inputIndex": 2,
+      "isOutput": false,
+      "muted": false,
+      "name": "USB 3"
+    },
+    {
+      "channelId": 12,
+      "crossover": [],
+      "delayMs": 0.0,
+      "enabled": true,
+      "eq": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "eqChannel": 3,
+      "gainDb": 0.0,
+      "inputIndex": 3,
+      "isOutput": false,
+      "muted": false,
+      "name": "USB 4"
+    },
+    {
+      "channelId": 13,
+      "crossover": [],
+      "delayMs": 0.0,
+      "enabled": true,
+      "eq": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "eqChannel": 4,
+      "gainDb": 0.0,
+      "inputIndex": 4,
+      "isOutput": false,
+      "muted": false,
+      "name": "USB 5"
+    },
+    {
+      "channelId": 14,
+      "crossover": [],
+      "delayMs": 0.0,
+      "enabled": true,
+      "eq": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "eqChannel": 5,
+      "gainDb": 0.0,
+      "inputIndex": 5,
+      "isOutput": false,
+      "muted": false,
+      "name": "USB 6"
+    },
+    {
+      "channelId": 15,
+      "crossover": [],
+      "delayMs": 0.0,
+      "enabled": true,
+      "eq": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "eqChannel": 6,
+      "gainDb": 0.0,
+      "inputIndex": 6,
+      "isOutput": false,
+      "muted": false,
+      "name": "USB 7"
+    },
+    {
+      "channelId": 16,
+      "crossover": [],
+      "delayMs": 0.0,
+      "enabled": true,
+      "eq": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "eqChannel": 7,
+      "gainDb": 0.0,
+      "inputIndex": 7,
+      "isOutput": false,
+      "muted": false,
+      "name": "USB 8"
+    },
+    {
+      "channelId": 2,
+      "crossover": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "delayMs": 0.0,
+      "enabled": true,
+      "eq": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "eqChannel": 8,
+      "gainDb": 0.0,
+      "isOutput": true,
+      "limiter": {
+        "enabled": false,
+        "linkGroup": 0,
+        "releaseMs": 100.0,
+        "thresholdDb": -1.0
+      },
+      "muted": false,
+      "name": "Left",
+      "outputDelayMs": 0.0,
+      "outputIndex": 0
+    },
+    {
+      "channelId": 3,
+      "crossover": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "delayMs": 0.0,
+      "enabled": true,
+      "eq": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "eqChannel": 9,
+      "gainDb": 0.0,
+      "isOutput": true,
+      "limiter": {
+        "enabled": false,
+        "linkGroup": 0,
+        "releaseMs": 100.0,
+        "thresholdDb": -1.0
+      },
+      "muted": false,
+      "name": "Right",
+      "outputDelayMs": 0.0,
+      "outputIndex": 1
+    },
+    {
+      "channelId": 4,
+      "crossover": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "delayMs": 0.0,
+      "enabled": false,
+      "eq": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "eqChannel": 10,
+      "gainDb": 0.0,
+      "isOutput": true,
+      "limiter": {
+        "enabled": false,
+        "linkGroup": 0,
+        "releaseMs": 100.0,
+        "thresholdDb": -1.0
+      },
+      "muted": false,
+      "name": "Out 3",
+      "outputDelayMs": 0.0,
+      "outputIndex": 2
+    },
+    {
+      "channelId": 5,
+      "crossover": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "delayMs": 0.0,
+      "enabled": false,
+      "eq": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "eqChannel": 11,
+      "gainDb": 0.0,
+      "isOutput": true,
+      "limiter": {
+        "enabled": false,
+        "linkGroup": 0,
+        "releaseMs": 100.0,
+        "thresholdDb": -1.0
+      },
+      "muted": false,
+      "name": "Out 4",
+      "outputDelayMs": 0.0,
+      "outputIndex": 3
+    },
+    {
+      "channelId": 6,
+      "crossover": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "delayMs": 0.0,
+      "enabled": false,
+      "eq": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "eqChannel": 12,
+      "gainDb": 0.0,
+      "isOutput": true,
+      "limiter": {
+        "enabled": false,
+        "linkGroup": 0,
+        "releaseMs": 100.0,
+        "thresholdDb": -1.0
+      },
+      "muted": false,
+      "name": "Out 5",
+      "outputDelayMs": 0.0,
+      "outputIndex": 4
+    },
+    {
+      "channelId": 7,
+      "crossover": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "delayMs": 0.0,
+      "enabled": false,
+      "eq": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "eqChannel": 13,
+      "gainDb": 0.0,
+      "isOutput": true,
+      "limiter": {
+        "enabled": false,
+        "linkGroup": 0,
+        "releaseMs": 100.0,
+        "thresholdDb": -1.0
+      },
+      "muted": false,
+      "name": "Out 6",
+      "outputDelayMs": 0.0,
+      "outputIndex": 5
+    },
+    {
+      "channelId": 8,
+      "crossover": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "delayMs": 0.0,
+      "enabled": false,
+      "eq": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "eqChannel": 14,
+      "gainDb": 0.0,
+      "isOutput": true,
+      "limiter": {
+        "enabled": false,
+        "linkGroup": 0,
+        "releaseMs": 100.0,
+        "thresholdDb": -1.0
+      },
+      "muted": false,
+      "name": "Out 7",
+      "outputDelayMs": 0.0,
+      "outputIndex": 6
+    },
+    {
+      "channelId": 9,
+      "crossover": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "delayMs": 0.0,
+      "enabled": false,
+      "eq": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "eqChannel": 15,
+      "gainDb": 0.0,
+      "isOutput": true,
+      "limiter": {
+        "enabled": false,
+        "linkGroup": 0,
+        "releaseMs": 100.0,
+        "thresholdDb": -1.0
+      },
+      "muted": false,
+      "name": "Out 8",
+      "outputDelayMs": 0.0,
+      "outputIndex": 7
+    },
+    {
+      "channelId": 10,
+      "crossover": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "delayMs": 0.0,
+      "enabled": false,
+      "eq": [
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        },
+        {
+          "bypass": false,
+          "freqHz": 1000.0,
+          "gain": 0.0,
+          "q": 0.7070000171661377,
+          "qp": 0.7070000171661377,
+          "type": 0
+        }
+      ],
+      "eqChannel": 16,
+      "gainDb": 0.0,
+      "isOutput": true,
+      "limiter": {
+        "enabled": false,
+        "linkGroup": 0,
+        "releaseMs": 100.0,
+        "thresholdDb": -1.0
+      },
+      "muted": false,
+      "name": "Out 9",
+      "outputDelayMs": 0.0,
+      "outputIndex": 8
+    }
+  ],
+  "crossfeed": {
+    "enabled": false,
+    "feedDb": 4.5,
+    "freqHz": 700.0,
+    "itd": true,
+    "outputPairMask": 1,
+    "preset": 0
+  },
+  "global": {
+    "bypass": false,
+    "inputPairLinked": [
+      false,
+      false,
+      false,
+      false
+    ],
+    "inputPreampsDb": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "masterVolumeDb": 0.0,
+    "userVolumeDb": -20.0
+  },
+  "leveller": {
+    "amountPct": 50.0,
+    "applyMask": 255,
+    "detectorMask": 255,
+    "enabled": false,
+    "gateDb": -96.0,
+    "lookahead": true,
+    "maxGainDb": 15.0,
+    "speed": 0
+  },
+  "loudness": {
+    "enabled": false,
+    "intensityPct": 100.0,
+    "outputMask": 65535,
+    "refSpl": 87.0
+  },
+  "matrix": [
+    {
+      "enabled": true,
+      "gainDb": 0.0,
+      "input": 0,
+      "invert": false,
+      "output": 0
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 0,
+      "invert": false,
+      "output": 1
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 0,
+      "invert": false,
+      "output": 2
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 0,
+      "invert": false,
+      "output": 3
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 0,
+      "invert": false,
+      "output": 4
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 0,
+      "invert": false,
+      "output": 5
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 0,
+      "invert": false,
+      "output": 6
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 0,
+      "invert": false,
+      "output": 7
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 0,
+      "invert": false,
+      "output": 8
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 1,
+      "invert": false,
+      "output": 0
+    },
+    {
+      "enabled": true,
+      "gainDb": 0.0,
+      "input": 1,
+      "invert": false,
+      "output": 1
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 1,
+      "invert": false,
+      "output": 2
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 1,
+      "invert": false,
+      "output": 3
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 1,
+      "invert": false,
+      "output": 4
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 1,
+      "invert": false,
+      "output": 5
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 1,
+      "invert": false,
+      "output": 6
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 1,
+      "invert": false,
+      "output": 7
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 1,
+      "invert": false,
+      "output": 8
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 2,
+      "invert": false,
+      "output": 0
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 2,
+      "invert": false,
+      "output": 1
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 2,
+      "invert": false,
+      "output": 2
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 2,
+      "invert": false,
+      "output": 3
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 2,
+      "invert": false,
+      "output": 4
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 2,
+      "invert": false,
+      "output": 5
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 2,
+      "invert": false,
+      "output": 6
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 2,
+      "invert": false,
+      "output": 7
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 2,
+      "invert": false,
+      "output": 8
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 3,
+      "invert": false,
+      "output": 0
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 3,
+      "invert": false,
+      "output": 1
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 3,
+      "invert": false,
+      "output": 2
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 3,
+      "invert": false,
+      "output": 3
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 3,
+      "invert": false,
+      "output": 4
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 3,
+      "invert": false,
+      "output": 5
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 3,
+      "invert": false,
+      "output": 6
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 3,
+      "invert": false,
+      "output": 7
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 3,
+      "invert": false,
+      "output": 8
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 4,
+      "invert": false,
+      "output": 0
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 4,
+      "invert": false,
+      "output": 1
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 4,
+      "invert": false,
+      "output": 2
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 4,
+      "invert": false,
+      "output": 3
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 4,
+      "invert": false,
+      "output": 4
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 4,
+      "invert": false,
+      "output": 5
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 4,
+      "invert": false,
+      "output": 6
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 4,
+      "invert": false,
+      "output": 7
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 4,
+      "invert": false,
+      "output": 8
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 5,
+      "invert": false,
+      "output": 0
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 5,
+      "invert": false,
+      "output": 1
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 5,
+      "invert": false,
+      "output": 2
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 5,
+      "invert": false,
+      "output": 3
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 5,
+      "invert": false,
+      "output": 4
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 5,
+      "invert": false,
+      "output": 5
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 5,
+      "invert": false,
+      "output": 6
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 5,
+      "invert": false,
+      "output": 7
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 5,
+      "invert": false,
+      "output": 8
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 6,
+      "invert": false,
+      "output": 0
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 6,
+      "invert": false,
+      "output": 1
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 6,
+      "invert": false,
+      "output": 2
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 6,
+      "invert": false,
+      "output": 3
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 6,
+      "invert": false,
+      "output": 4
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 6,
+      "invert": false,
+      "output": 5
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 6,
+      "invert": false,
+      "output": 6
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 6,
+      "invert": false,
+      "output": 7
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 6,
+      "invert": false,
+      "output": 8
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 7,
+      "invert": false,
+      "output": 0
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 7,
+      "invert": false,
+      "output": 1
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 7,
+      "invert": false,
+      "output": 2
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 7,
+      "invert": false,
+      "output": 3
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 7,
+      "invert": false,
+      "output": 4
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 7,
+      "invert": false,
+      "output": 5
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 7,
+      "invert": false,
+      "output": 6
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 7,
+      "invert": false,
+      "output": 7
+    },
+    {
+      "enabled": false,
+      "gainDb": 0.0,
+      "input": 7,
+      "invert": false,
+      "output": 8
+    }
+  ],
+  "meta": {
+    "appVersion": "dspi-core shipped template (WP TPL1)",
+    "firmwareVersion": "1.1.6",
+    "inputChannelCount": 8,
+    "kind": "template",
+    "masterVolumeMode": 0,
+    "name": "Stereo, full range (RP2350)",
+    "outputChannelCount": 9,
+    "outputConfigMode": 1,
+    "platform": "RP2350",
+    "savedUtc": "2026-11-14T00:00:00Z",
+    "status": "Generic starting point for any RP2350 board, input and hardware I/O left alone: L and R full range on outputs 1-2. Check levels, polarity, delays and crossover points for your drivers; user volume starts at -20 dB.",
+    "wireFormatVersion": 32
+  },
+  "psybass": {
+    "characterPct": 50.0,
+    "cutoffHz": 80.0,
+    "driveDb": 6.0,
+    "enabled": false,
+    "harmonicsDb": 0.0,
+    "originalDb": 0.0,
+    "outputMask": 65535
+  },
+  "schemaVersion": 1,
+  "subharm": {
+    "boostDb": 0.0,
+    "ceilingDb": 0.0,
+    "enabled": false,
+    "highDb": 0.0,
+    "linkPairs": true,
+    "lowDb": 0.0,
+    "outputMask": 65535,
+    "selectDepthPct": 100.0,
+    "selectHoldMs": 150.0,
+    "selectMode": 0,
+    "topDb": -30.0
+  },
+  "tube": {
+    "asymDb": 3.0,
+    "biasPct": 10.0,
+    "driveDb": -12.0,
+    "enabled": false,
+    "hardnessPct": 40.0,
+    "mixPct": 100.0,
+    "outputMask": 65535,
+    "rectifier": 1,
+    "sagPct": 15.0,
+    "trimDb": 0.0,
+    "tubeType": 1,
+    "xfmrDamping": 2.0,
+    "xfmrEnabled": true,
+    "xfmrResHz": 95.0
+  },
+  "upmix": {
+    "attackMs": 10.0,
+    "centerMode": 1,
+    "centerWidthPct": 25.0,
+    "decorrPct": 90.0,
+    "detectorHpfHz": 200.0,
+    "enabled": false,
+    "presenceDb": 0.0,
+    "releaseMs": 100.0,
+    "strengthPct": 100.0,
+    "surroundDelayMs": 12.0,
+    "surroundHpfHz": 300.0,
+    "surroundLpfHz": 7000.0,
+    "surroundMode": 2,
+    "thresholdPct": 30.0
+  }
+}
