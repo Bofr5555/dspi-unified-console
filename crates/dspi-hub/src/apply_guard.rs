@@ -14,6 +14,12 @@
 //!   bulk write. It is **never refused by a lock** (owner, OD-P1g; PLAN-CLIENTS 5.9's
 //!   "reverts are never refused"): [`crate::router::Router::pass_revert`] lets exactly
 //!   that one write past a client's lock. P1HL's limits must leave it alone too.
+//! - **A lock taken by another session ends the guard, without a revert** (WP P1BFIX,
+//!   F2): the new lock holder is in charge of the device, so the guard's image is not
+//!   written over its work. The end is `taken_over`, result `kept`, and names the
+//!   session that took the lock (`taken_by`). Both ways to the lock end it: a client's
+//!   `lock.acquire` and the hub app's own (`LocalTransport`). A revert already being
+//!   written when the lock is taken still ends as it would have.
 //! - **Never on another board.** The revert goes to the online device with the
 //!   captured serial. If none is online (unplugged, or another board now at the
 //!   handle) nothing is written and the outcome is `not_written` (`no_device`).
@@ -79,6 +85,9 @@ pub enum EndReason {
     Cancelled,
     /// The hub stopped (sharing turned off).
     HubStopping,
+    /// Another session took the device's lock: it is in charge now, and nothing
+    /// was written back (WP P1BFIX, F2).
+    TakenOver,
 }
 
 /// What became of the device.
@@ -113,6 +122,9 @@ pub struct Outcome {
     pub status: Option<String>,
     /// Unix seconds.
     pub at: u64,
+    /// For [`EndReason::TakenOver`]: the session that took the lock.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub taken_by: Option<SessionId>,
 }
 
 /// A live guard.
@@ -473,6 +485,7 @@ impl HubHandle {
                 result: EndResult::Kept,
                 status: None,
                 at: unix_now(),
+                taken_by: None,
             }
         };
         self.apply_end(&outcome);
@@ -560,6 +573,43 @@ impl HubHandle {
         }
     }
 
+    // -- WP P1BFIX -- F2
+    /// Session `by` took the lock of the device with `serial`: a guard of another
+    /// session running there ends now as [`EndReason::TakenOver`], kept, nothing
+    /// written back, and `apply.ended` says so to everyone (the guard's owner too).
+    /// A guard already being written back is left to end as it does. Never blocks on
+    /// a device: for the lock's callers, a connection's reader or the hub app.
+    pub(crate) fn apply_lock_taken(&self, serial: &str, by: SessionId) {
+        let outcome = {
+            let mut st = guard(&self.apply_guards().state);
+            // Taken out under the lock, so no revert can start on it after this.
+            let take = st
+                .guards
+                .get(serial)
+                .is_some_and(|g| g.session != by && !g.reverting);
+            match take.then(|| st.guards.remove(serial)).flatten() {
+                Some(g) => Outcome {
+                    guard: g.id,
+                    serial: g.serial.clone(),
+                    handle: g.handle,
+                    reason: EndReason::TakenOver,
+                    result: EndResult::Kept,
+                    status: None,
+                    at: unix_now(),
+                    taken_by: Some(by),
+                },
+                None => return,
+            }
+        };
+        log::info!(
+            "hub: guarded apply {} on {serial} ended: session {by} took the lock",
+            outcome.guard
+        );
+        self.apply_end(&outcome);
+        // Its deadline is gone: the thread looks again.
+        self.apply_guards().wake();
+    }
+
     /// The hub is stopping: every guard reverts now, on this thread.
     pub(crate) fn apply_stop(&self) {
         {
@@ -638,6 +688,7 @@ impl HubHandle {
             result,
             status,
             at: unix_now(),
+            taken_by: None,
         };
         if result != EndResult::Reverted {
             log::warn!(
@@ -807,6 +858,7 @@ mod tests_wp_p1ha {
             result: EndResult::Reverted,
             status: None,
             at: 0,
+            taken_by: None,
         };
         gs.finish(&o(6, "S1".into()));
         assert!(

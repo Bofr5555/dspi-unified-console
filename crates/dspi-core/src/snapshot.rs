@@ -28,9 +28,15 @@
 //! stops the recall where it is; nothing is queued or replayed. A snapshot
 //! from another platform or channel count is refused with the reason; an image
 //! of another wire format is read through `wire_compat` and refused unless a
-//! forward map exists (FW9: none does yet). A document with no image (an
-//! imported preset document) is recalled through the import's own path,
-//! every block.
+//! forward map exists (FW9: none does yet). A snapshot with no image (taken
+//! from firmware whose image this build reads only through `wire_compat`) is
+//! recalled through the import's own path, every block.
+//!
+//! Only snapshots are recalled or filed: a document whose `meta.kind` is not
+//! `"snapshot"`, or that has no `snapshot` block (a preset, a template), is
+//! refused with the reason, by the recall, the document recall and the store's
+//! import alike. Such a document is imported with `config_import`, which asks
+//! for its confirmation token (P1TK); a recall asks for none (WP P1BFIX, F1).
 //!
 //! The store is files (`dspi_session::snapshot_store`), in the folder the
 //! client names with [`DspiCore::snapshot_set_dir`]; the web, which has no
@@ -173,11 +179,36 @@ fn invalid(msg: impl Into<String>) -> DspiError {
     DspiError::InvalidArgument { msg: msg.into() }
 }
 
+// -- WP P1BFIX -- F1
+/// The refusal of a document that is not a snapshot (see the module
+/// documentation): recalling it would be an import without the import's
+/// confirmation token.
+pub(crate) const NOT_A_SNAPSHOT: &str = "not a snapshot — import it instead";
+
+/// Refuse a document that is not a snapshot: `meta.kind` other than
+/// `"snapshot"`, or no `snapshot` block.
+fn check_snapshot(doc: &Value) -> Result<()> {
+    let kind = at(doc, &["meta", "kind"]).as_str().unwrap_or_default();
+    let block = doc.get(BLOCK).is_some_and(Value::is_object);
+    if kind == MetaKind::Snapshot.word() && block {
+        return Ok(());
+    }
+    let what = match kind {
+        "" => "a document without a kind".to_owned(),
+        k if k == MetaKind::Snapshot.word() => "a snapshot without its snapshot block".to_owned(),
+        k => format!("a {k} document"),
+    };
+    Err(invalid(format!("{NOT_A_SNAPSHOT} ({what})")))
+}
+
 /// A store error as the API's.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 fn io_error(e: std::io::Error) -> DspiError {
     if e.kind() == std::io::ErrorKind::NotFound {
         invalid(format!("snapshot not found ({e})"))
+    } else if e.kind() == std::io::ErrorKind::InvalidInput {
+        // -- WP P1BFIX -- F3: an id two devices' folders hold.
+        invalid(e.to_string())
     } else {
         DspiError::Io {
             msg: format!("the snapshot store: {e}"),
@@ -248,6 +279,15 @@ impl Plan {
                 .and_then(|n| u8::try_from(n).ok()),
             control_surface: get("controlSurface").and_then(Value::as_object).cloned(),
         })
+    }
+}
+
+/// How the event log names a recall of `plan`.
+fn recall_name(plan: &Plan) -> String {
+    if plan.name.is_empty() {
+        "a snapshot".to_string()
+    } else {
+        format!("snapshot \"{}\"", plan.name)
     }
 }
 
@@ -394,9 +434,13 @@ impl DspiCore {
 
     /// Recall a snapshot document's text (see
     /// [`DspiCore::snapshot_recall`]): for the web and for a document the
-    /// client keeps itself.
+    /// client keeps itself. Only a snapshot (`meta.kind = "snapshot"` with a
+    /// `snapshot` block): any other document is refused with
+    /// [`DspiError::InvalidArgument`] ("not a snapshot — import it instead"),
+    /// nothing sent; it goes through `config_import` and its token.
     pub fn snapshot_recall_document(&self, text: String) -> Result<SnapshotRecall> {
         let doc = crate::files::parse_config(&text).map_err(invalid)?;
+        check_snapshot(&doc)?; // -- WP P1BFIX -- F1
         self.recall_value(&doc)
     }
 
@@ -431,12 +475,17 @@ impl DspiCore {
     /// its changes. Live, not stored in a preset slot. Never guarded and
     /// never queued: on a lost connection it stops where it is.
     ///
-    /// Errors: [`DspiError::InvalidArgument`] for an unknown id, a snapshot
-    /// of another platform or channel count, or an image of another wire
-    /// format this build cannot convert (nothing is sent);
+    /// Errors: [`DspiError::InvalidArgument`] for an unknown id, a document
+    /// that is not a snapshot, a snapshot of another platform or channel
+    /// count, or an image of another wire format this build cannot convert
+    /// (nothing is sent);
     /// [`DspiError::Disconnected`], [`DspiError::ReadOnly`],
     /// [`DspiError::Locked`] and the transfer errors of a bulk write;
-    /// [`DspiError::Io`] for an unreadable store.
+    /// [`DspiError::Io`] for an unreadable store. When the image fails after
+    /// settings outside it were written, the error's words (and a Recall
+    /// event) say what was written and what was not; a hub's refusal of the
+    /// image then comes as [`DspiError::Link`] with code `locked` or
+    /// `denied`.
     pub fn snapshot_recall(&self, id: String) -> Result<SnapshotRecall> {
         let text = self.read_store(&id)?;
         self.snapshot_recall_document(text)
@@ -466,13 +515,16 @@ impl DspiCore {
         self.read_store(&id)
     }
 
-    /// File a `.dspipreset` document (a snapshot or any other kind) as a
-    /// snapshot of the open device, named `name` ("" keeps the document's)
-    /// with `note`. A document without an image is recalled through the
-    /// import's path.
+    /// File a snapshot document (`meta.kind = "snapshot"` with a `snapshot`
+    /// block, e.g. one exported from another console) in the store, under the
+    /// open device's serial (else the document's), named `name` ("" keeps the
+    /// document's) with `note`. A snapshot without an image is recalled
+    /// through the import's path.
     ///
     /// Errors: [`DspiError::InvalidArgument`] for text that is not a
-    /// document this build reads; [`DspiError::Disconnected`] with no device
+    /// document this build reads, or a document that is not a snapshot
+    /// ("not a snapshot — import it instead": a preset or template goes
+    /// through `config_import`); [`DspiError::Disconnected`] with no device
     /// and no serial in the document; [`DspiError::Io`].
     pub fn snapshot_import(
         &self,
@@ -615,7 +667,55 @@ impl DspiCore {
         self.recall_surfaces(plan, &mut extra, &mut notes)?;
 
         let with_image = image.is_some();
-        let (before, after, separate) = {
+        // -- WP P1BFIX -- F4: a failed last write leaves the parts before it
+        // written; say which, in the event log and the error.
+        let (before, after, separate) = match self.recall_whole(doc, image, generation, &mut notes)
+        {
+            Ok(w) => w,
+            Err(e) => return Err(self.partial_recall(plan, with_image, &extra, e)),
+        };
+        // The output configuration kept apart from presets goes one by one.
+        let after = if separate && crate::files::io_changed(&before, &after) {
+            notes.extend(self.push_output_config_lines(&before, &after));
+            self.lock().state.clone()
+        } else {
+            after
+        };
+        let sources = self
+            .lock()
+            .conn
+            .as_ref()
+            .map(|c| c.source_names.to_vec())
+            .unwrap_or_default();
+        let mut changes = crate::presets::changes(&before, &after, &sources);
+        changes.extend(extra);
+        let name = recall_name(plan);
+        self.events.applied(
+            EventKind::Recall,
+            None,
+            &format!("Recalled {name}"),
+            changes.clone(),
+        );
+        Ok(SnapshotRecall {
+            name: plan.name.clone(),
+            image: with_image,
+            changes,
+            notes,
+        })
+    }
+
+    /// The recall's last write: the image as one bulk write, or, for a
+    /// snapshot without one, every block through the import's path. The
+    /// state before and after, and whether the output configuration is kept
+    /// apart from presets.
+    fn recall_whole(
+        &self,
+        doc: &Value,
+        image: Option<Vec<u8>>,
+        generation: u64,
+        notes: &mut Vec<String>,
+    ) -> Result<(DspState, DspState, bool)> {
+        Ok({
             let mut guard = self.lock();
             let inner = &mut *guard;
             if inner.conn.as_ref().map(|c| c.generation) != Some(generation) {
@@ -656,39 +756,71 @@ impl DspiCore {
                     }
                 },
             }
-        };
-        // The output configuration kept apart from presets goes one by one.
-        let after = if separate && crate::files::io_changed(&before, &after) {
-            notes.extend(self.push_output_config_lines(&before, &after));
-            self.lock().state.clone()
-        } else {
-            after
-        };
-        let sources = self
-            .lock()
-            .conn
-            .as_ref()
-            .map(|c| c.source_names.to_vec())
-            .unwrap_or_default();
-        let mut changes = crate::presets::changes(&before, &after, &sources);
-        changes.extend(extra);
-        let name = if plan.name.is_empty() {
-            "a snapshot".to_string()
-        } else {
-            format!("snapshot \"{}\"", plan.name)
-        };
-        self.events.applied(
-            EventKind::Recall,
-            None,
-            &format!("Recalled {name}"),
-            changes.clone(),
-        );
-        Ok(SnapshotRecall {
-            name: plan.name.clone(),
-            image: with_image,
-            changes,
-            notes,
         })
+    }
+
+    // -- WP P1BFIX -- F4
+    /// A recall whose last write (the image, or the blocks of a snapshot
+    /// without one) failed after the settings outside it were written: one
+    /// Recall event naming what was written (`written`, in the
+    /// unsaved-changes list's words) and what was not, and `e` carrying the
+    /// same words. The variant stays where it carries words (`Transfer`,
+    /// `Link`, `Io`, `InvalidArgument`); a hub's `Locked` or `Denied` becomes
+    /// `Link` with that code, a device's `Refused` a `Transfer`, so the words
+    /// reach the caller; `Disconnected` stays as it is (the event has them).
+    fn partial_recall(
+        &self,
+        plan: &Plan,
+        with_image: bool,
+        written: &[String],
+        e: DspiError,
+    ) -> DspiError {
+        let name = recall_name(plan);
+        let not = if with_image {
+            "its image (every setting in it) was not written"
+        } else {
+            "its settings were not written"
+        };
+        let did = if written.is_empty() {
+            "nothing else was changed".to_owned()
+        } else {
+            format!("written before it: {}", written.join("; "))
+        };
+        let tail = format!("{name}: {not} ({e}); {did}");
+        let what = format!("partly recalled {tail}");
+        let mut r = dspi_session::events::EventRecord::new(
+            EventKind::Recall,
+            crate::events::now_ms(),
+            format!("Partly recalled {tail}"),
+        );
+        r.lines = written.to_vec();
+        r.count = u32::try_from(written.len()).unwrap_or(u32::MAX).max(1);
+        self.events.record_all(vec![r]);
+        match e {
+            DspiError::Transfer { msg } => DspiError::Transfer {
+                msg: format!("{msg}; {what}"),
+            },
+            DspiError::Io { msg } => DspiError::Io {
+                msg: format!("{msg}; {what}"),
+            },
+            DspiError::InvalidArgument { msg } => DspiError::InvalidArgument {
+                msg: format!("{msg}; {what}"),
+            },
+            DspiError::Link { code, msg } => DspiError::Link {
+                code,
+                msg: format!("{msg}; {what}"),
+            },
+            DspiError::Locked => DspiError::Link {
+                code: "locked".into(),
+                msg: what,
+            },
+            DspiError::Denied => DspiError::Link {
+                code: "denied".into(),
+                msg: what,
+            },
+            DspiError::Refused { .. } => DspiError::Transfer { msg: what },
+            other => other,
+        }
     }
 
     /// Note `e` for `what`, or stop the recall on a connection error.
@@ -961,6 +1093,7 @@ impl DspiCore {
     fn import_into_store(&self, text: &str, name: &str, note: &str) -> Result<SnapshotInfo> {
         let store = self.store()?;
         let mut doc = crate::files::parse_config(text).map_err(invalid)?;
+        check_snapshot(&doc)?; // -- WP P1BFIX -- F1
         let open = self.lock().conn.as_ref().map(|c| c.serial.clone());
         let serial = open
             .or_else(|| {
@@ -1028,3 +1161,8 @@ impl DspiCore {
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p1sn;
+
+// -- WP P1BFIX --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_p1bfix;

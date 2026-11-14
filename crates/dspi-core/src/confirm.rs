@@ -36,7 +36,6 @@
     clippy::arithmetic_side_effects
 )]
 
-use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use dspi_transport::clock::{self, Instant};
@@ -143,9 +142,12 @@ pub mod refusal {
 pub(crate) struct Place {
     /// The open connection's generation.
     generation: Option<u64>,
-    /// With no connection: the next generation to be handed out, so a device
-    /// opened and closed again meanwhile is noticed.
-    next: u64,
+    /// With no connection: the generation of the last connection this core
+    /// opened (0: none yet), so a device opened and closed again meanwhile in
+    /// this core is noticed. Its own core's, never the process-wide counter:
+    /// another core in the process connecting does not end the token
+    /// (-- WP P1BFIX -- F5).
+    last: u64,
 }
 
 impl Place {
@@ -153,9 +155,9 @@ impl Place {
         let generation = inner.conn.as_ref().map(|c| c.generation);
         Self {
             generation,
-            next: match generation {
+            last: match generation {
                 Some(_) => 0,
-                None => crate::NEXT_GENERATION.load(Ordering::Relaxed),
+                None => inner.confirm.last_generation,
             },
         }
     }
@@ -175,6 +177,8 @@ pub(crate) struct Confirm {
     required: bool,
     minted: Vec<Minted>,
     count: u64,
+    /// The generation of the last connection this core opened (-- WP P1BFIX --).
+    last_generation: u64,
 }
 
 /// What a gate let through: the connection the call must still be on.
@@ -218,6 +222,11 @@ fn mix(mut z: u64) -> u64 {
 }
 
 impl Confirm {
+    /// This core opened the connection of `generation` (-- WP P1BFIX -- F5).
+    pub(crate) fn connected(&mut self, generation: u64) {
+        self.last_generation = generation;
+    }
+
     fn forget_old(&mut self, now: Instant) {
         self.minted.retain(|m| {
             now.checked_duration_since(m.at)

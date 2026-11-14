@@ -1021,7 +1021,8 @@ impl DspiCore {
 
     /// Reboots the device into its USB bootloader (it disappears). Ok
     /// whatever the transfer gives, as in the old core: the device drops off
-    /// the bus (also Ok without a device). Allowed on a read-only
+    /// the bus (also Ok without a device, unless tokens are required: see
+    /// Errors). Allowed on a read-only
     /// connection, so a firmware too old or too new for this build can be
     /// updated.
     ///
@@ -1044,7 +1045,11 @@ impl DspiCore {
     ///
     /// Errors: [`DspiError::Locked`] / [`DspiError::Denied`] when the Link
     /// hub refuses its lock; [`DspiError::Disconnected`] when the connection
-    /// changed while the hub was asked.
+    /// changed while the hub was asked;
+    /// [`DspiError::ConfirmationRequired`] while tokens are required
+    /// ([`DspiCore::require_confirmation`]), also with no device open: the
+    /// gate runs first, so that case is no longer the plain `Ok` (accepted
+    /// in review p1b).
     pub fn enter_bootloader(&self) -> Result<()> {
         self.enter_bootloader_with(None)
     }

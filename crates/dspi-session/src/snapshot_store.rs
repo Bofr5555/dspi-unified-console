@@ -10,7 +10,10 @@
 //!   letters, digits, `-` and `_`, else `x-<the serial's UTF-8 bytes in hex>`);
 //! - one document per snapshot, `<id>.dspipreset`, the id made here from the
 //!   capture time (ASCII digits and `-`, never a name: a name may hold any
-//!   Unicode, a file name may not);
+//!   Unicode, a file name may not), unique in the whole store, not only in its
+//!   serial's folder, since the calls that take an id look in every folder; an
+//!   id two folders hold (copied in by hand) is refused, never guessed
+//!   (WP P1BFIX, F3);
 //! - an index, `index.json`, `{version, snapshots: [{id, name, note, serial,
 //!   savedMs, platform, inputChannels, outputChannels, wireFormat}]}`, so a
 //!   list reads one file.
@@ -285,8 +288,9 @@ mod files {
         }
 
         /// File `doc` as a new snapshot of `serial` taken at `saved_ms`:
-        /// an id is made, and `meta.kind` and the `snapshot` block's `id`,
-        /// `serial` and `savedMs` are set in `doc` before it is written.
+        /// an id no folder of the store holds is made, and `meta.kind` and the
+        /// `snapshot` block's `id`, `serial` and `savedMs` are set in `doc`
+        /// before it is written.
         ///
         /// Errors: the folder or a file could not be written.
         pub fn save(
@@ -297,7 +301,11 @@ mod files {
         ) -> io::Result<SnapshotEntry> {
             let dir = self.dir(serial);
             create_dir(&dir)?;
-            let taken = Self::files(&dir);
+            // -- WP P1BFIX -- F3: free in every serial's folder.
+            let mut taken = Self::files(&dir);
+            for other in self.serials() {
+                taken.extend(Self::files(&self.dir(&other)));
+            }
             let listed = self.list(serial);
             let id = (0..u32::MAX)
                 .map(|n| id_for(saved_ms, n))
@@ -388,21 +396,38 @@ mod files {
             out
         }
 
-        /// The serial whose folder holds snapshot `id`, if any.
-        fn locate(&self, id: &str) -> Option<String> {
+        /// The serial whose folder holds snapshot `id`.
+        ///
+        /// Errors: `NotFound` for an id no folder holds; `InvalidInput` for
+        /// one more than one folder holds (copied in by hand: this store makes
+        /// ids unique across folders), so no call acts on another serial's
+        /// snapshot by accident (-- WP P1BFIX -- F3).
+        fn locate(&self, id: &str) -> io::Result<String> {
             if !valid_id(id) {
-                return None;
+                return Err(not_found(id));
             }
-            self.serials()
+            let mut holders = self
+                .serials()
                 .into_iter()
-                .find(|s| Self::doc_path(&self.dir(s), id).is_file())
+                .filter(|s| Self::doc_path(&self.dir(s), id).is_file());
+            let serial = holders.next().ok_or_else(|| not_found(id))?;
+            if let Some(other) = holders.next() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "snapshot {id} is held for more than one device \
+                         ({serial}, {other}): remove one of the copies"
+                    ),
+                ));
+            }
+            Ok(serial)
         }
 
         /// Snapshot `id`'s entry and document text.
         ///
         /// Errors: `NotFound` for an id no folder holds; the read's error.
         pub fn read(&self, id: &str) -> io::Result<(SnapshotEntry, String)> {
-            let serial = self.locate(id).ok_or_else(|| not_found(id))?;
+            let serial = self.locate(id)?;
             let text = fs::read_to_string(Self::doc_path(&self.dir(&serial), id))?;
             let entry = self
                 .list(&serial)
@@ -425,7 +450,7 @@ mod files {
             f: impl FnOnce(&mut serde_json::Map<String, Value>),
             g: impl FnOnce(&mut SnapshotEntry),
         ) -> io::Result<SnapshotEntry> {
-            let serial = self.locate(id).ok_or_else(|| not_found(id))?;
+            let serial = self.locate(id)?;
             let dir = self.dir(&serial);
             let path = Self::doc_path(&dir, id);
             let mut doc: Value = serde_json::from_str(&fs::read_to_string(&path)?)
@@ -485,7 +510,7 @@ mod files {
         /// Delete snapshot `id`: its document, then its entry.
         /// Errors: `NotFound`; the removal's error.
         pub fn delete(&self, id: &str) -> io::Result<()> {
-            let serial = self.locate(id).ok_or_else(|| not_found(id))?;
+            let serial = self.locate(id)?;
             let dir = self.dir(&serial);
             fs::remove_file(Self::doc_path(&dir, id))?;
             // Listing rewrites the index without it.

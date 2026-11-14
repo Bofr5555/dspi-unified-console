@@ -422,24 +422,40 @@ fn wp_p1sn_the_store_through_the_api() {
         Err(DspiError::InvalidArgument { .. })
     ));
 
-    // Import: a document of another console, recalled through the import.
+    // Import: a plain document of another console is not a snapshot
+    // (WP P1BFIX, F1: it goes through `config_import` and its token).
     const MAC: &str = include_str!("../../../../tests/fixtures/preset/mac-swift-v32.dspipreset");
+    let refused = core.snapshot_import(MAC.into(), "From the Mac".into(), "imported".into());
+    assert!(
+        matches!(&refused, Err(DspiError::InvalidArgument { msg }) if msg.contains(NOT_A_SNAPSHOT)),
+        "{refused:?}"
+    );
+    // A snapshot without an image (another wire format's) is filed, and
+    // recalled through the import's path.
+    let mut bare = json_of(
+        &core
+            .snapshot_capture_document("bare".into(), String::new())
+            .unwrap(),
+    );
+    bare["snapshot"].as_object_mut().unwrap().remove("image");
+    let bare = bare.to_string();
     let imp = core
-        .snapshot_import(MAC.into(), "From the Mac".into(), "imported".into())
+        .snapshot_import(bare.clone(), "Without image".into(), "imported".into())
         .unwrap();
     assert_eq!(
         (imp.name.as_str(), imp.note.as_str()),
-        ("From the Mac", "imported")
+        ("Without image", "imported")
     );
     assert_eq!(
         json_of(&core.snapshot_export(imp.id.clone()).unwrap())["meta"]["kind"],
         "snapshot"
     );
+    core.set_input_preamp(1, -4.0).unwrap();
     let rec = core.snapshot_recall(imp.id.clone()).unwrap();
     assert!(!rec.image);
     assert!(!rec.changes.is_empty());
     let every = crate::consts::IMPORT_BY_BLOCK | crate::consts::IMPORT_ALL_BLOCKS;
-    let left = json_of(&core.config_preview(MAC.into(), every, u32::MAX));
+    let left = json_of(&core.config_preview(bare, every, u32::MAX));
     assert_eq!(left["count"], 0, "{left}");
     assert!(matches!(
         core.snapshot_import("not json".into(), String::new(), String::new()),

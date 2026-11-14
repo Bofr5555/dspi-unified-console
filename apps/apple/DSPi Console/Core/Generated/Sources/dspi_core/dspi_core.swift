@@ -2014,7 +2014,8 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     /**
      * Reboots the device into its USB bootloader (it disappears). Ok
      * whatever the transfer gives, as in the old core: the device drops off
-     * the bus (also Ok without a device). Allowed on a read-only
+     * the bus (also Ok without a device, unless tokens are required: see
+     * Errors). Allowed on a read-only
      * connection, so a firmware too old or too new for this build can be
      * updated.
      *
@@ -2037,7 +2038,11 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      *
      * Errors: [`DspiError::Locked`] / [`DspiError::Denied`] when the Link
      * hub refuses its lock; [`DspiError::Disconnected`] when the connection
-     * changed while the hub was asked.
+     * changed while the hub was asked;
+     * [`DspiError::ConfirmationRequired`] while tokens are required
+     * ([`DspiCore::require_confirmation`]), also with no device open: the
+     * gate runs first, so that case is no longer the plain `Ok` (accepted
+     * in review p1b).
      */
     func enterBootloader() throws 
     
@@ -4432,13 +4437,16 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func snapshotExport(id: String) throws  -> String
     
     /**
-     * File a `.dspipreset` document (a snapshot or any other kind) as a
-     * snapshot of the open device, named `name` ("" keeps the document's)
-     * with `note`. A document without an image is recalled through the
-     * import's path.
+     * File a snapshot document (`meta.kind = "snapshot"` with a `snapshot`
+     * block, e.g. one exported from another console) in the store, under the
+     * open device's serial (else the document's), named `name` ("" keeps the
+     * document's) with `note`. A snapshot without an image is recalled
+     * through the import's path.
      *
      * Errors: [`DspiError::InvalidArgument`] for text that is not a
-     * document this build reads; [`DspiError::Disconnected`] with no device
+     * document this build reads, or a document that is not a snapshot
+     * ("not a snapshot — import it instead": a preset or template goes
+     * through `config_import`); [`DspiError::Disconnected`] with no device
      * and no serial in the document; [`DspiError::Io`].
      */
     func snapshotImport(text: String, name: String, note: String) throws  -> SnapshotInfo
@@ -4458,19 +4466,27 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * its changes. Live, not stored in a preset slot. Never guarded and
      * never queued: on a lost connection it stops where it is.
      *
-     * Errors: [`DspiError::InvalidArgument`] for an unknown id, a snapshot
-     * of another platform or channel count, or an image of another wire
-     * format this build cannot convert (nothing is sent);
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id, a document
+     * that is not a snapshot, a snapshot of another platform or channel
+     * count, or an image of another wire format this build cannot convert
+     * (nothing is sent);
      * [`DspiError::Disconnected`], [`DspiError::ReadOnly`],
      * [`DspiError::Locked`] and the transfer errors of a bulk write;
-     * [`DspiError::Io`] for an unreadable store.
+     * [`DspiError::Io`] for an unreadable store. When the image fails after
+     * settings outside it were written, the error's words (and a Recall
+     * event) say what was written and what was not; a hub's refusal of the
+     * image then comes as [`DspiError::Link`] with code `locked` or
+     * `denied`.
      */
     func snapshotRecall(id: String) throws  -> SnapshotRecall
     
     /**
      * Recall a snapshot document's text (see
      * [`DspiCore::snapshot_recall`]): for the web and for a document the
-     * client keeps itself.
+     * client keeps itself. Only a snapshot (`meta.kind = "snapshot"` with a
+     * `snapshot` block): any other document is refused with
+     * [`DspiError::InvalidArgument`] ("not a snapshot — import it instead"),
+     * nothing sent; it goes through `config_import` and its token.
      */
     func snapshotRecallDocument(text: String) throws  -> SnapshotRecall
     
@@ -5781,7 +5797,8 @@ open func endGroup()  {try! rustCall() {
     /**
      * Reboots the device into its USB bootloader (it disappears). Ok
      * whatever the transfer gives, as in the old core: the device drops off
-     * the bus (also Ok without a device). Allowed on a read-only
+     * the bus (also Ok without a device, unless tokens are required: see
+     * Errors). Allowed on a read-only
      * connection, so a firmware too old or too new for this build can be
      * updated.
      *
@@ -5804,7 +5821,11 @@ open func endGroup()  {try! rustCall() {
      *
      * Errors: [`DspiError::Locked`] / [`DspiError::Denied`] when the Link
      * hub refuses its lock; [`DspiError::Disconnected`] when the connection
-     * changed while the hub was asked.
+     * changed while the hub was asked;
+     * [`DspiError::ConfirmationRequired`] while tokens are required
+     * ([`DspiCore::require_confirmation`]), also with no device open: the
+     * gate runs first, so that case is no longer the plain `Ok` (accepted
+     * in review p1b).
      */
 open func enterBootloader()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_enter_bootloader(self.uniffiClonePointer(),$0
@@ -9370,13 +9391,16 @@ open func snapshotExport(id: String)throws  -> String  {
 }
     
     /**
-     * File a `.dspipreset` document (a snapshot or any other kind) as a
-     * snapshot of the open device, named `name` ("" keeps the document's)
-     * with `note`. A document without an image is recalled through the
-     * import's path.
+     * File a snapshot document (`meta.kind = "snapshot"` with a `snapshot`
+     * block, e.g. one exported from another console) in the store, under the
+     * open device's serial (else the document's), named `name` ("" keeps the
+     * document's) with `note`. A snapshot without an image is recalled
+     * through the import's path.
      *
      * Errors: [`DspiError::InvalidArgument`] for text that is not a
-     * document this build reads; [`DspiError::Disconnected`] with no device
+     * document this build reads, or a document that is not a snapshot
+     * ("not a snapshot — import it instead": a preset or template goes
+     * through `config_import`); [`DspiError::Disconnected`] with no device
      * and no serial in the document; [`DspiError::Io`].
      */
 open func snapshotImport(text: String, name: String, note: String)throws  -> SnapshotInfo  {
@@ -9410,12 +9434,17 @@ open func snapshotList(serial: String) -> [SnapshotInfo]  {
      * its changes. Live, not stored in a preset slot. Never guarded and
      * never queued: on a lost connection it stops where it is.
      *
-     * Errors: [`DspiError::InvalidArgument`] for an unknown id, a snapshot
-     * of another platform or channel count, or an image of another wire
-     * format this build cannot convert (nothing is sent);
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id, a document
+     * that is not a snapshot, a snapshot of another platform or channel
+     * count, or an image of another wire format this build cannot convert
+     * (nothing is sent);
      * [`DspiError::Disconnected`], [`DspiError::ReadOnly`],
      * [`DspiError::Locked`] and the transfer errors of a bulk write;
-     * [`DspiError::Io`] for an unreadable store.
+     * [`DspiError::Io`] for an unreadable store. When the image fails after
+     * settings outside it were written, the error's words (and a Recall
+     * event) say what was written and what was not; a hub's refusal of the
+     * image then comes as [`DspiError::Link`] with code `locked` or
+     * `denied`.
      */
 open func snapshotRecall(id: String)throws  -> SnapshotRecall  {
     return try  FfiConverterTypeSnapshotRecall_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
@@ -9428,7 +9457,10 @@ open func snapshotRecall(id: String)throws  -> SnapshotRecall  {
     /**
      * Recall a snapshot document's text (see
      * [`DspiCore::snapshot_recall`]): for the web and for a document the
-     * client keeps itself.
+     * client keeps itself. Only a snapshot (`meta.kind = "snapshot"` with a
+     * `snapshot` block): any other document is refused with
+     * [`DspiError::InvalidArgument`] ("not a snapshot — import it instead"),
+     * nothing sent; it goes through `config_import` and its token.
      */
 open func snapshotRecallDocument(text: String)throws  -> SnapshotRecall  {
     return try  FfiConverterTypeSnapshotRecall_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
@@ -32440,7 +32472,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_end_group() != 28189) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_enter_bootloader() != 19680) {
+    if (uniffi_dspi_core_checksum_method_dspicore_enter_bootloader() != 58644) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_enter_bootloader_confirmed() != 11255) {
@@ -33097,16 +33129,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_snapshot_export() != 23201) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_snapshot_import() != 58149) {
+    if (uniffi_dspi_core_checksum_method_dspicore_snapshot_import() != 50448) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_snapshot_list() != 29663) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_snapshot_recall() != 16804) {
+    if (uniffi_dspi_core_checksum_method_dspicore_snapshot_recall() != 16323) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_snapshot_recall_document() != 8659) {
+    if (uniffi_dspi_core_checksum_method_dspicore_snapshot_recall_document() != 64174) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_snapshot_rename() != 7102) {

@@ -807,7 +807,9 @@ impl DspiCore {
     #[cfg(test)]
     pub(crate) fn attach(&self, transport: Box<dyn Transport>, serial: String, vid: u16) {
         let mut inner = self.lock();
-        inner.conn = Some(Connection::new(transport, serial.clone(), vid));
+        let conn = Connection::new(transport, serial.clone(), vid);
+        inner.confirm.connected(conn.generation); // -- WP P1BFIX -- F5
+        inner.conn = Some(conn);
         inner.selected = Some(serial);
     }
 

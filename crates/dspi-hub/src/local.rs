@@ -6,8 +6,8 @@
 //! real, so the core's echo rule applies unchanged: a change is ours iff the hub's
 //! `origin` is our id (`dspi_transport::is_own_write`). See HUB.md section 4.
 
-use std::sync::Arc;
 use std::sync::mpsc;
+use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 
 use dspi_link::frames::{CmdRequest, CmdResponse};
@@ -21,6 +21,7 @@ use dspi_transport::{
 };
 
 use crate::device::DeviceShared;
+use crate::hub::{HubHandle, HubInner};
 use crate::relay::Relay;
 use crate::session::{Completion, LOCAL_SESSION_ID, NO_ORIGIN, Outbound, Outbox, Pop, Session};
 
@@ -61,6 +62,9 @@ pub struct LocalTransport {
     descriptor: DeviceDescriptor,
     locked: bool,
     answer_timeout: Duration,
+    /// The hub, to end another session's guarded apply when this takes the lock
+    /// (-- WP P1BFIX -- F2). Weak: a transport never keeps a stopped hub alive.
+    hub: Weak<HubInner>,
 }
 
 impl LocalTransport {
@@ -87,7 +91,15 @@ impl LocalTransport {
             descriptor,
             locked: false,
             answer_timeout: ANSWER_TIMEOUT,
+            hub: Weak::new(),
         }
+    }
+
+    // -- WP P1BFIX -- F2
+    /// The hub this transport's device is on.
+    pub(crate) fn with_hub(mut self, hub: Weak<HubInner>) -> Self {
+        self.hub = hub;
+        self
     }
 
     /// Wait this long for an answer instead of the standard 10 s.
@@ -216,6 +228,10 @@ impl Transport for LocalTransport {
             return Err(TransportError::Locked);
         }
         self.locked = true;
+        // -- WP P1BFIX -- F2: another session's guarded apply here ends, kept.
+        if let Some(inner) = self.hub.upgrade() {
+            HubHandle { inner }.apply_lock_taken(&self.descriptor.serial, id);
+        }
         Ok(())
     }
 

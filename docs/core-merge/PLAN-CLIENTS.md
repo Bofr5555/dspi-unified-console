@@ -1521,7 +1521,8 @@ a Snapshots window or page in each client (first P1 WP).
 `assets/templates/` (with a K340 template); binding wiring (shared). **Implements:** W7. `open_document(text)` opens a demo device
 seeded from a document (platform and channel count from its `meta`), so every screen edits it; `save_document()` exports it;
 "Save as template" writes `meta.kind = "template"`; templates listed from `assets/templates/` and the user's folder; a session
-on a document says so (`DeviceInfo` marks it, the clients show "File: <name>" in place of a serial). Nothing touches USB. **Done
+on a document says so (`DeviceInfo` marks it, the clients show "File: <name>" in place of a serial; as built, the mark is
+`offline_document()` (its JSON) and the serial `OFFLINE-DOCUMENT`, not a `DeviceInfo` field: review p1b F7). Nothing touches USB. **Done
 when:** tests: open the Mac fixture, edit EQ, save, diff the saved file against the original (P1DF) shows exactly the edit; a
 K340 template opens with 4 outputs and the K340 pair map; a document for another platform opens that platform's demo; undo works
 on an offline session. **Deps:** P1DF. **Clients:** "Open File…" and "Save as Template…" in each client (first P1 WP).

@@ -654,6 +654,8 @@ impl HubHandle {
             .router
             .lock_grant(session.id(), timeout, Instant::now())
             .ok_or(LockRefusal::Locked)?;
+        // -- WP P1BFIX -- F2: another session's guarded apply there ends, kept.
+        self.apply_lock_taken(&device.serial(), session.id());
         self.inner.sync_locks();
         Ok(granted)
     }
@@ -705,7 +707,8 @@ impl HubHandle {
             Arc::clone(&inner.relay),
             subscriber,
             outbox,
-        ))
+        )
+        .with_hub(Arc::downgrade(inner)))
     }
 }
 

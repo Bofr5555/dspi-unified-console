@@ -2,7 +2,8 @@
 //! hub's own `hub-system` thread as the timer: confirm in time keeps the change; a
 //! timeout reverts; a dropped client reverts; a replugged different serial is not
 //! written; a second begin is refused; a Viewer is refused. Also: the revert passes
-//! another session's lock, is attributed to the hub, and `apply.cancel` and a late
+//! a lock (the guard's own session's; another session's lock ends the guard, WP
+//! P1BFIX), is attributed to the hub, and `apply.cancel` and a late
 //! confirm behave.
 #![allow(clippy::arithmetic_side_effects, clippy::unwrap_used)]
 
@@ -352,28 +353,32 @@ fn wp_p1ha_a_viewer_is_refused() {
     assert_eq!(wire.bulk_writes(), 0);
 }
 
+/// The revert passes a lock: since WP P1BFIX (review p1b F2) another session's
+/// lock ends the guard without a revert (`wp_p1bfix_takeover.rs`), so the lock a
+/// revert meets is the guard's own session's.
 #[test]
-fn wp_p1ha_the_revert_passes_another_sessions_lock() {
+fn wp_p1ha_the_revert_passes_a_lock() {
     let hub = hub();
     let (handle, wire) = plug(&hub, "P1HA-G");
     let c = Client::open(&hub, handle, Role::Control);
-    let holder = Client::open(&hub, handle, Role::Admin);
+    let other = Client::open(&hub, handle, Role::Admin);
     let before = c.volume();
     assert!(ok(&c.begin(1_000)));
-    assert_eq!(c.set_volume(before - 6.0), status::OK);
     let locked = lock::handle_message(
-        &holder.hub,
-        &holder.session,
+        &c.hub,
+        &c.session,
         &json!({"t": "lock.acquire", "id": 1, "handle": handle, "timeout_ms": 10_000}),
     )
     .unwrap();
     assert!(locked.contains("\"ok\""), "{locked}");
-    let (ended, _) = holder.ended();
+    assert_eq!(c.set_volume(before - 6.0), status::OK);
+    let (ended, _) = other.ended();
     assert_eq!(ended["result"], "reverted", "{ended}");
+    assert_eq!(ended["reason"], "timeout", "its own lock does not end it");
     assert_eq!(wire.bulk_writes(), 1);
-    assert_eq!(holder.volume(), before);
-    // The pass was for that one write: the client is still locked out.
-    assert_eq!(c.set_volume(before - 3.0), status::LOCKED);
+    assert_eq!(c.volume(), before);
+    // The pass was for that one write: the others are still locked out.
+    assert_eq!(other.set_volume(before - 3.0), status::LOCKED);
 }
 
 #[test]

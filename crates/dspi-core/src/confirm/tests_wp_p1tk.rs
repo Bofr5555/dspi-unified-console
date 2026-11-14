@@ -374,3 +374,43 @@ fn wp_p1tk_the_refusal_has_a_notice() {
     assert_eq!(n.detail, e.to_string());
     assert!(n.detail.contains("factory_reset"), "{}", n.detail);
 }
+
+/// WP P1BFIX (review p1b F5): a token minted with no device is tied to its
+/// own core: another core in the process opening a device (the web's two
+/// sessions, tests) does not end it, while this core opening and closing one
+/// still does.
+#[test]
+fn wp_p1bfix_a_no_device_token_is_its_own_cores() {
+    let a = DspiCore::new();
+    a.require_confirmation(true);
+    let drive = || crate::BootloaderDrive {
+        path: "/nonexistent/p1bfix-drive".into(),
+        platform: 1,
+        info: String::new(),
+    };
+    let flash = |t: Option<String>| {
+        code_of(a.flash_confirmed(
+            vec![0; 16],
+            drive(),
+            crate::firmware_guard_board_in_bootloader(),
+            String::new(),
+            t,
+        ))
+    };
+    let t = a.confirm_token(ConfirmOp::FirmwareFlash);
+    let stale = a.confirm_token(ConfirmOp::FirmwareFlash);
+    let b = DspiCore::new();
+    b.open_demo().unwrap();
+    b.disconnect();
+    b.open_demo().unwrap();
+    // Let through: the image is refused next, before any drive is touched.
+    let r = flash(Some(t));
+    assert!(
+        r.as_ref()
+            .is_err_and(|e| e.starts_with("other: InvalidArgument")),
+        "{r:?}"
+    );
+    a.open_demo().unwrap();
+    a.disconnect();
+    assert_eq!(flash(Some(stale)), Err(refusal::CONNECTION_CHANGED.into()));
+}

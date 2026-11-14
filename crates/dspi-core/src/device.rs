@@ -267,6 +267,7 @@ impl DspiCore {
             inner.selected = (vid != 0).then_some(serial);
             inner.cs = crate::cs::CsState::default();
             let worker = rta::take_worker(&mut inner);
+            inner.confirm.connected(conn.generation); // -- WP P1BFIX -- F5
             (inner.conn.replace(conn), worker)
         };
         drop(self.set_meter_path(None)); // -- WP LK2 --

@@ -91,18 +91,29 @@ answer carries `"v": 1`. A client checks the cap before sending them; other hubs
 | `apply.status {id, handle}` | every role | `ok {active, last}`: the running guard (`guard`, `serial`, `session`, `remaining_ms`, `reverting`) or `null`, and the last outcome on that device or `null` |
 
 Every end is also sent to every session as
-`apply.ended {v, guard, serial, handle, reason, result, status?, at}`:
-`reason` is `confirmed`, `timeout`, `session_closed`, `cancelled` or
-`hub_stopping`; `result` is `kept`, `reverted`, `revert_failed` (with the Link
-`status`; it is not tried again) or `not_written` (no device with that serial
-was online: nothing was written).
+`apply.ended {v, guard, serial, handle, reason, result, status?, taken_by?, at}`:
+`reason` is `confirmed`, `timeout`, `session_closed`, `cancelled`,
+`hub_stopping` or `taken_over`; `result` is `kept`, `reverted`, `revert_failed`
+(with the Link `status`; it is not tried again) or `not_written` (no device with
+that serial was online: nothing was written).
 
 - One guard per device: a second `apply.begin` is `busy`. Another session's
   confirm or cancel is `denied`; a confirm after the timeout is `conflict`.
+- Another session taking the device's lock (`lock.acquire`, or the hub app's
+  own) ends the guard at once **without** a write back: the lock holder is in
+  charge now. The end is `reason: "taken_over"`, `result: "kept"`, with
+  `taken_by` the session that took the lock; the guard's own client hears it as
+  `apply.ended` like everyone. The guard's own session renewing its lock does
+  not end it. <!-- WP P1BFIX -->
 - The write back is the hub's own (`0xA1`, origin the hub's session) and is
-  never refused by another session's lock. It only ever goes to the board with
-  the serial the guard was begun on: after a replug of another board nothing is
-  written.
+  never refused by another session's lock (one already held when the deadline
+  passes, e.g. one taken while the write back was starting). It only ever goes
+  to the board with the serial the guard was begun on: after a replug of another
+  board nothing is written.
+- The guard does not narrow what a role may send: a Control client can write the
+  whole image (`0xA1`, class `control` in the policy) itself today, so a snapshot
+  recall by a Control client over Link writes its image; P1HL narrows that.
+  <!-- WP P1BFIX -->
 - Stopping the hub (sharing off) reverts every running guard first.
 
 Reference: `crates/dspi-hub/src/apply_guard.rs`.
