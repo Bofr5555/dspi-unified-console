@@ -92,14 +92,14 @@ extension URLSessionAutoEqFetch {
 
 #if DEBUG
 /// One source (oratory1990) with one headphone ("SW18 Test Phone"), every
-/// other address a 404, each answer after 0.4 s: a rebuild that succeeds in a
+/// other address a 404, each answer after 1.5 s: a rebuild that succeeds in some
 /// few seconds unless it is cancelled.
 final class SlowScriptedAutoEqFetch: AutoEqFetch, @unchecked Sendable {
     private let api = "https://api.github.com/repos/jaakkopasanen/AutoEq/contents/results/"
     private let raw = "https://raw.githubusercontent.com/jaakkopasanen/AutoEq/master/results/"
 
     func get(request: AutoEqFetchRequest) throws -> AutoEqFetchResponse {
-        Thread.sleep(forTimeInterval: 0.4)
+        Thread.sleep(forTimeInterval: 1.5)
         func answer(_ status: UInt16, _ body: String = "") -> AutoEqFetchResponse {
             AutoEqFetchResponse(status: status, body: Data(body.utf8), retryAfterS: nil,
                                 rateLimitRemaining: nil, rateLimitReset: nil)
