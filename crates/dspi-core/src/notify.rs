@@ -205,25 +205,26 @@ impl DspiCore {
 // -- WP P1EFIX -- (review p1e-b F1, the Swift test's real cause)
 impl DspiCore {
     /// Apply what the device has already said before a whole image is
-    /// written (a snapshot recall, an A/B toggle or keep): a notification
+    /// written (a snapshot recall, an A/B toggle or keep, a whole-device
+    /// import, guarded or not): a notification
     /// queued before the image, such as the echo of this console's own
     /// earlier write, would otherwise be applied after it and put an older
     /// value back in the mirror while the device holds the image's. What it
     /// changed is announced at the next [`DspiCore::process_notifications`]
-    /// (as a re-read is), and its event-log records are kept.
+    /// (as a re-read is), and its event-log records are kept. It is the whole
+    /// of `process_notifications`, the re-read included: applying the patches
+    /// without the re-read they asked for left a stale value in the mirror
+    /// (`wp_p1lk_locked_allows_volume_mute_preset_and_refuses_the_rest`).
     pub(crate) fn settle_notifications(&self) {
-        let mut result = NotifyResult::default();
-        let mut records = Vec::new();
+        // The whole of process_notifications, the re-read it may need
+        // included: a patch the device cannot be trusted on is put right by
+        // that re-read, never left in the mirror.
+        let r = self.process_notifications_at(Instant::now());
+        if r.flags != 0
+            && let Some(conn) = self.lock().conn.as_mut()
         {
-            let mut guard = self.lock();
-            let follow = apply_queued(&mut guard, &mut result, &mut records);
-            if (result.flags != 0 || follow.refresh)
-                && let Some(conn) = guard.conn.as_mut()
-            {
-                conn.announce_refresh = true;
-            }
+            conn.announce_refresh = true;
         }
-        self.events.record_all(records);
     }
 }
 

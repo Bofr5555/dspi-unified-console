@@ -165,7 +165,14 @@ mod tests_wp_p1of {
         dspi_core_free(h);
 
         let list = json(&read(|b, l| dspi_template_list(null(), b, l)));
-        assert_eq!(list[0]["id"], "builtin:k340");
+        // -- WP P1EFIX -- since TPL1 the generic templates come first; K340 is listed
+        assert!(
+            list.as_array()
+                .unwrap()
+                .iter()
+                .any(|t| t["id"] == "builtin:k340"),
+            "{list}"
+        );
         let id = CString::new("builtin:k340").unwrap();
         let k340 = read(|b, l| dspi_template_text(id.as_ptr(), null(), b, l));
         assert_eq!(json(&k340)["meta"]["kind"], "template");
