@@ -1502,18 +1502,20 @@ class DspiBridgeImpl(
         fire("setAllBandsBypass", Emit.CURVES) {
             val s = core.getState()
             val n = if (crossover) MAX_XOVER_BANDS else BANDS_PER_CHANNEL
-            for (b in 0 until n) {
-                val f = if (crossover) s.xover[w][b] else s.filters[w][b]
-                if (f.filterType == FILTER_FLAT || f.bypass == bypass) continue
-                if (crossover) {
-                    core.setBandBypass(w, XOVER_BAND_BASE + b, bypass)
-                } else {
-                    for ((app, tw) in t) {
-                        core.setBandBypass(tw, b, bypass)
-                        markDirty(app)
+            // -- WP PAIRBANDF -- (review pairband F1) one undo step, as Qt's; a linked pair through the pair call
+            val input = if (crossover) -1 else pairInput(t)
+            grouped(if (bypass) BYPASS_ALL_LABEL else ENABLE_ALL_LABEL) {
+                for (b in 0 until n) {
+                    val f = if (crossover) s.xover[w][b] else s.filters[w][b]
+                    if (f.filterType == FILTER_FLAT || f.bypass == bypass) continue
+                    when {
+                        crossover -> core.setBandBypass(w, XOVER_BAND_BASE + b, bypass)
+                        input >= 0 -> core.setInputPairBandBypass(input, b, bypass)
+                        else -> for ((_, tw) in t) core.setBandBypass(tw, b, bypass)
                     }
                 }
             }
+            if (!crossover) for ((app, _) in t) markDirty(app)
             markDirty(ch)
         }
     }
@@ -2765,8 +2767,11 @@ class DspiBridgeImpl(
         val wt = m.wire(to)
         if (wf < 0 || wt < 0) return
         val s = core.getState()
-        for (band in 0 until BANDS_PER_CHANNEL) core.setFilter(wt, band, s.filters[wf][band])
-        core.setInputPreamp(m.inputOf(to), s.inputPreampDb[m.inputOf(from)])
+        // -- WP PAIRBANDF -- (review pairband F2) the copy is one undo step, as Qt's Link Inputs
+        grouped(LINK_INPUTS_LABEL) {
+            for (band in 0 until BANDS_PER_CHANNEL) core.setFilter(wt, band, s.filters[wf][band])
+            core.setInputPreamp(m.inputOf(to), s.inputPreampDb[m.inputOf(from)])
+        }
         markDirty(to)
     }
 
@@ -2896,6 +2901,11 @@ class DspiBridgeImpl(
         // -- WP PAIRBAND -- the core's label for a linked pair's band (set_input_pair_filter)
         const val PAIR_BAND_LABEL = "EQ band, linked pair"
         const val PASTE_LABEL = "Paste EQ"
+
+        // -- WP PAIRBANDF -- Qt's labels (P1QT2)
+        const val BYPASS_ALL_LABEL = "Bypass All"
+        const val ENABLE_ALL_LABEL = "Enable All"
+        const val LINK_INPUTS_LABEL = "Link Inputs"
         const val CLEAR_ALL_LABEL = "Clear All"
         const val DIRECT_ROUTING_LABEL = "Direct routing"
         const val CLEAR_ROUTING_LABEL = "Clear routing"
