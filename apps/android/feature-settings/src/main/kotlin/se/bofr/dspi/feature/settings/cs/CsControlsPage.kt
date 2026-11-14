@@ -19,8 +19,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.feature.settings.CsBinding
 import se.bofr.dspi.feature.settings.CsModel
@@ -33,6 +31,7 @@ import se.bofr.dspi.feature.settings.SettingsSection
 import se.bofr.dspi.feature.settings.StatusLine
 import se.bofr.dspi.ui.MacColors
 import se.bofr.dspi.ui.json.Json
+import se.bofr.dspi.ui.onMainThread
 import se.bofr.dspi.ui.writeEnabled
 
 /** Where the Control Surfaces stack is: the list, Add, or one slot's editor. */
@@ -188,8 +187,11 @@ private fun CsAddPage(bridge: DspiBridge, cs: CsModel, onCancel: () -> Unit, onA
         // An empty slot's Component row lists what may go in it (IR and display once each)
         val r = CsRules.parseDescription(bridge.cs.describe(CsRules.KIND_BINDING, slot, draftOf(CsBinding())))
         val row = r.value?.rows?.firstOrNull { it.id == "type" } as? CsRow.Pick
-        types = row?.options?.filter { it.value != CsModel.TYPE_NONE && !it.disabled }
-        error = r.error
+        // -- WP FLAKE2 -- the write on the main thread (onMainThread)
+        onMainThread {
+            types = row?.options?.filter { it.value != CsModel.TYPE_NONE && !it.disabled }
+            error = r.error
+        }
     }
     SettingsForm {
         if (error != null) item { Box(Modifier.testTag("cs.error")) { StatusLine(error, true) } }
@@ -243,7 +245,8 @@ internal fun csSummaries(bridge: DspiBridge, cs: CsModel): Map<Int, String> {
  * thread, was not always seen: the list kept its fallback lines (AN9's flaky test).
  */
 internal suspend fun <K, V> publishOnMain(out: MutableMap<K, V>, next: Map<K, V>) {
-    withContext(Dispatchers.Main.immediate) {
+    // -- WP FLAKE2 -- the shared helper
+    onMainThread {
         out.keys.retainAll(next.keys)
         out.putAll(next)
     }

@@ -77,6 +77,7 @@ import se.bofr.dspi.ui.ChannelPalette
 import se.bofr.dspi.ui.MacColors
 import se.bofr.dspi.ui.SectionLabel
 import se.bofr.dspi.ui.WhileVisible
+import se.bofr.dspi.ui.onMainThread
 import se.bofr.dspi.ui.writeEnabled
 
 /** What System Statistics shows apart from the 60 ms buffer fills. */
@@ -180,12 +181,21 @@ fun StatsView(bridge: DspiBridge, modifier: Modifier = Modifier) {
         i2s = null
         if (!visible || serial.isEmpty()) return@LaunchedEffect
         while (true) {
-            spdifRx = bridge.fetchSpdifRxStatus()
-            spdifCs = if (spdifRx?.let { spdifRxIsLocked(it.state) } == true) bridge.fetchSpdifChannelStatus() else null
-            spdifPin = if (spdifRx != null) bridge.fetchActiveSpdifRxPin() else null
-            lg = bridge.fetchLgStatus()
-            adat = bridge.fetchAdatOutStatus()?.takeIf { bridge.platformName == "RP2350" }
-            i2s = bridge.fetchInputLock(0)?.takeIf { it.clockMode == I2S_CLOCK_MODE_SLAVE }
+            val rx = bridge.fetchSpdifRxStatus()
+            val cs = if (rx?.let { spdifRxIsLocked(it.state) } == true) bridge.fetchSpdifChannelStatus() else null
+            val pin = if (rx != null) bridge.fetchActiveSpdifRxPin() else null
+            val lgNow = bridge.fetchLgStatus()
+            val adatNow = bridge.fetchAdatOutStatus()?.takeIf { bridge.platformName == "RP2350" }
+            val i2sNow = bridge.fetchInputLock(0)?.takeIf { it.clockMode == I2S_CLOCK_MODE_SLAVE }
+            // -- WP FLAKE2 -- the write on the main thread (onMainThread)
+            onMainThread {
+                spdifRx = rx
+                spdifCs = cs
+                spdifPin = pin
+                lg = lgNow
+                adat = adatNow
+                i2s = i2sNow
+            }
             delay(2000)
         }
     }

@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -148,8 +149,16 @@ class SnapshotsWpP1dcfixTest {
             }
         }
         pumpUntil("rows") { textShown("Warm") && textShown("Rollback time: 45 s") }
+        // -- WP FLAKE2 -- the view's own load (LaunchedEffect: model.load()) holds the model busy and
+        // Recall off; the rows are already there from before, so a click while it ran went nowhere
+        val recall = snapshotRecallTag(m.items.value.single().id)
+        pumpUntil("recall on") {
+            !m.busy.value &&
+                rule.onAllNodes(hasTestTag(recall)).fetchSemanticsNodes().singleOrNull()
+                    ?.config?.contains(SemanticsProperties.Disabled) == false
+        }
         rule.runOnUiThread { m.setSafeRecall(true) }
-        rule.onNodeWithTag(snapshotRecallTag(m.items.value.single().id)).performClick()
+        rule.onNodeWithTag(recall).performClick()
         pumpUntil("bar") { shown(SAFE_APPLY_BAR_TAG) && bridge.snapshots.guard.value.phase == GuardPhase.WAITING }
         assertEquals(45_000L, bridge.snapshots.guard.value.timeoutMs)
         assertTrue(textShown("Keep these settings? They go back in "))

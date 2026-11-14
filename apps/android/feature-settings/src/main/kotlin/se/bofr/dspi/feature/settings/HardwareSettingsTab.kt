@@ -28,6 +28,7 @@ import se.bofr.dspi.feature.settings.OutputConfigSnapshot.Companion.OUTPUT_TYPE_
 import se.bofr.dspi.feature.settings.OutputConfigSnapshot.Companion.OUTPUT_TYPE_SPDIF
 import se.bofr.dspi.feature.settings.OutputConfigSnapshot.Companion.PIN_UNSET
 import se.bofr.dspi.ui.MacColors
+import se.bofr.dspi.ui.onMainThread
 import se.bofr.dspi.ui.writeEnabled
 
 /** Which hardware page (macOS `HardwareSettingsTab.Page`). */
@@ -47,7 +48,8 @@ fun HardwareSettingsTab(page: HardwarePage, bridge: DspiBridge, coordinator: Set
     if (page == HardwarePage.I2S) {
         LaunchedEffect(connected) {
             while (connected) {
-                sampleRateHz = bridge.fetchInputRate()
+                val rate = bridge.fetchInputRate()
+                onMainThread { sampleRateHz = rate } // -- WP FLAKE2 -- the write on the main thread (onMainThread)
                 delay(2000)
             }
         }
@@ -442,7 +444,10 @@ private fun LockStatusRow(bridge: DspiBridge, which: Int, adat: Boolean) {
     var lock by remember { mutableStateOf<InputLockStatus?>(null) }
     LaunchedEffect(which) {
         while (true) {
-            if (bridge.status.value.connected) lock = bridge.fetchInputLock(which)
+            if (bridge.status.value.connected) {
+                val l = bridge.fetchInputLock(which)
+                onMainThread { lock = l } // -- WP FLAKE2 -- the write on the main thread (onMainThread)
+            }
             delay(1000)
         }
     }

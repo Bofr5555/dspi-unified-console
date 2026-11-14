@@ -78,6 +78,7 @@ import se.bofr.dspi.ui.SegmentedPicker
 import se.bofr.dspi.ui.SwitchRow
 import se.bofr.dspi.ui.ToolHeader
 import se.bofr.dspi.ui.ValueFormat
+import se.bofr.dspi.ui.onMainThread
 import se.bofr.dspi.ui.rememberWhileVisible
 import se.bofr.dspi.ui.writeEnabled
 
@@ -131,7 +132,10 @@ fun SubharmonicSynthView(bridge: DspiBridge, modifier: Modifier = Modifier) {
     val committed = remember(revision) { bridge.state.value.subharm }
     var headroomDB by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(supported, connected, committed) {
-        if (supported && connected) headroomDB = bridge.fetchSubharmHeadroom() ?: 0f
+        if (supported && connected) {
+            val h = bridge.fetchSubharmHeadroom() ?: 0f
+            onMainThread { headroomDB = h } // -- WP FLAKE2 -- the write on the main thread (onMainThread)
+        }
     }
     // The live sub meter, 10 Hz while something can be metered.
     var meter by remember { mutableStateOf(emptyList<Float>()) }
@@ -139,7 +143,8 @@ fun SubharmonicSynthView(bridge: DspiBridge, modifier: Modifier = Modifier) {
     LaunchedEffect(extended, connected, subharm.enabled, visible) {
         meter = emptyList()
         while (isActive && extended && connected && subharm.enabled && visible) {
-            meter = bridge.fetchSubharmMeter()
+            val m = bridge.fetchSubharmMeter()
+            onMainThread { meter = m } // -- WP FLAKE2 -- the write on the main thread (onMainThread)
             delay(100)
         }
         meter = emptyList()

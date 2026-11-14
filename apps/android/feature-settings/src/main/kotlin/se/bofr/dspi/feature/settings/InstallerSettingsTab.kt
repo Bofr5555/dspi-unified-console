@@ -56,6 +56,7 @@ import se.bofr.dspi.core.LockState
 import se.bofr.dspi.core.ModeScreen
 import se.bofr.dspi.core.Notice
 import se.bofr.dspi.ui.alert.LocalNoticeLine
+import se.bofr.dspi.ui.onMainThread
 import se.bofr.dspi.ui.writeEnabled
 
 /** Test tags. */
@@ -352,8 +353,9 @@ internal fun InstallerSettingsTab(bridge: DspiBridge, lockedUser: Boolean) {
     // The one line the unlock dialog shows too: the lock is on this console (or the hub), the DSPi itself is open
     var scopeLine by remember { mutableStateOf("") }
     LaunchedEffect(lock?.scopeNoticeKey, lock?.pinSet) {
-        scopeLine =
+        val line =
             lock?.takeIf { it.pinSet }?.scopeNoticeKey?.takeIf { it.isNotEmpty() }?.let { bridge.installer.notice(it)?.reason }.orEmpty()
+        onMainThread { scopeLine = line } // -- WP FLAKE2 -- the write on the main thread (onMainThread)
     }
 
     SettingsForm {

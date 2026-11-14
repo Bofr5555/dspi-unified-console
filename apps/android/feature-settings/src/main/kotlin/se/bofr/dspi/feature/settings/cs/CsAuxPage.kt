@@ -36,6 +36,7 @@ import se.bofr.dspi.feature.settings.SettingsForm
 import se.bofr.dspi.feature.settings.SettingsSaveCoordinator
 import se.bofr.dspi.feature.settings.SettingsSection
 import se.bofr.dspi.feature.settings.StatusLine
+import se.bofr.dspi.ui.onMainThread
 import se.bofr.dspi.ui.writeEnabled
 
 /** Where the aux stack is: the list, Add Output, or one output's page (survives rotation). */
@@ -168,8 +169,11 @@ private fun CsAuxAddPage(bridge: DspiBridge, cs: CsModel, onCancel: () -> Unit, 
         val probe = draftOf(CsBinding(type = CsModel.TYPE_AUX_OUT))
         val r = CsRules.parseDescription(bridge.cs.describe(CsRules.KIND_BINDING, slot, probe))
         val row = r.value?.rows?.firstOrNull { it.id == "type" } as? CsRow.Pick
-        types = row?.options?.filter { CsModel.isAuxType(it.value) && !it.disabled }
-        error = r.error
+        // -- WP FLAKE2 -- the write on the main thread (onMainThread)
+        onMainThread {
+            types = row?.options?.filter { CsModel.isAuxType(it.value) && !it.disabled }
+            error = r.error
+        }
     }
     SettingsForm {
         if (error != null) item { Box(Modifier.testTag("cs.error")) { StatusLine(error, true) } }
