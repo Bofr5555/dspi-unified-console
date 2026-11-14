@@ -125,7 +125,15 @@ mod tests_wp_p1of {
         let t: Value = serde_json::from_str(r["value"]["text"].as_str().unwrap()).unwrap();
         assert_eq!(t["meta"]["kind"], "template");
         let r = run(h, "templateList", Value::Null);
-        assert_eq!(r["value"][0]["id"], "builtin:k340");
+        // -- WP P1EFIX -- since TPL1 the generic templates come first; K340 is listed
+        assert!(
+            r["value"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|t| t["id"] == "builtin:k340"),
+            "{r}"
+        );
         let r = run(h, "templateText", json!({ "id": "builtin:k340" }));
         assert!(
             r["value"]["text"]
