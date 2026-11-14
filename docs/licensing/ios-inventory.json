@@ -1,5 +1,5 @@
 {
- "repo_commit": "3939c3de",
+ "repo_commit": "788579e6",
  "rust": {
   "authors": [
    "Weeb Labs",
@@ -468,7 +468,7 @@
    "Weeb Labs",
    "owner (bofr)"
   ],
-  "commit": "3939c3de975d4123e97b4830853599fff3efff88",
+  "commit": "788579e6b3655768dc282ba3d94dfc2cd547a9ef",
   "files": [
    "DSPi Console iOS/Info.plist",
    "DSPi Console/AboutLicence.swift",
@@ -497,6 +497,7 @@
    "DSPi Console/Core/CoreControlSurfaces.swift",
    "DSPi Console/Core/CoreDiagnostics.swift",
    "DSPi Console/Core/CoreMirror.swift",
+   "DSPi Console/Core/CoreSnapshots.swift",
    "DSPi Console/Core/CoreUndo.swift",
    "DSPi Console/Core/OutputLabels.swift",
    "DSPi Console/CoreVoltageStatusView.swift",
@@ -574,6 +575,8 @@
    "DSPi Console/RtaMetalCurves.swift",
    "DSPi Console/RtaMetalSurface.swift",
    "DSPi Console/RtaRenderCache.swift",
+   "DSPi Console/Snapshots/SnapshotsFiles.swift",
+   "DSPi Console/Snapshots/SnapshotsView.swift",
    "DSPi Console/SpectrumAnalyser.swift",
    "DSPi Console/SpectrumAnalyserView.swift",
    "DSPi Console/StatsView.swift",
