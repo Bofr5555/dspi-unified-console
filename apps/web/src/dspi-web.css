@@ -765,3 +765,9 @@
 .dspi-web .open-files { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 0.75rem; margin-bottom: 1rem; }
 .dspi-web .open-files h2 { margin-top: 0; }
 .dspi-web .open-files ul { list-style: none; margin: 0; padding: 0; }
+/* -- WP P1WB1 -- seven tabs do not fit one line at 375 px: they wrap there, nothing past the page's edge */
+@media (max-width: 560px) {
+  .dspi-web .screen-tabs { flex-wrap: wrap; overflow-x: visible; }
+  /* whole pixels per row, so the screens below keep their sub-pixel layout when the rows wrap */
+  .dspi-web .screen-tabs > button { line-height: 20px; padding-top: 5px; padding-bottom: 5px; }
+}
