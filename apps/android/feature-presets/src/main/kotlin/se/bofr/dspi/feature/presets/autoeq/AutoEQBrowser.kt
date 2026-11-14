@@ -81,7 +81,7 @@ fun AutoEQBrowser(
             if (filteredEntries.isEmpty()) {
                 val text =
                     when {
-                        errorMessage != null -> errorMessage
+                        errorMessage != null -> errorMessage.orEmpty()
                         searchText.isEmpty() || !loaded -> "Loading headphone database..."
                         else -> "No headphones found matching \"$searchText\""
                     }
