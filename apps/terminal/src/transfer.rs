@@ -462,7 +462,7 @@ fn import_preset(target: &Target, text: &str, path: &str, flags: &[&str], json: 
     }
 
     // -- WP TMCORE -- the writes go through the console core
-    let mut session = match crate::connect_written(target, flags) {
+    let mut session = match crate::connect_written_lazily(target, flags) {
         Ok(s) => s,
         Err(c) => return c,
     };
@@ -531,7 +531,7 @@ fn import_filters(
     json: bool,
 ) -> u8 {
     // -- WP TMCORE -- the writes go through the console core
-    let mut session = match crate::connect_written(target, flags) {
+    let mut session = match crate::connect_written_lazily(target, flags) {
         Ok(s) => s,
         Err(c) => return c,
     };
@@ -590,8 +590,10 @@ fn import_filters(
     if report.refused > 0 {
         // -- WP TMCOREF -- what refused each one, not only how many
         say(false, &format!("Not applied: {} writes", report.refused));
-        for why in &report.refusals {
-            say(false, &format!("  {why}"));
+        // -- WP TMCOREF2 -- on a terminal the first few and a count; `--json`
+        // lists every one
+        for line in refusal_lines(&report.refusals) {
+            say(false, &line);
         }
     }
     if report.dropped > 0 {
@@ -620,6 +622,26 @@ fn import_filters(
         }
     }
     code
+}
+
+// -- WP TMCOREF2 --
+/// How many refused writes a filter import names on a terminal.
+const REFUSALS_SHOWN: usize = 5;
+
+// -- WP TMCOREF2 --
+/// The refused writes as a terminal shows them: the first
+/// [`REFUSALS_SHOWN`], then "and N more" (`--json` has them all).
+fn refusal_lines(refusals: &[String]) -> Vec<String> {
+    let mut lines: Vec<String> = refusals
+        .iter()
+        .take(REFUSALS_SHOWN)
+        .map(|r| format!("  {r}"))
+        .collect();
+    let more = refusals.len().saturating_sub(REFUSALS_SHOWN);
+    if more > 0 {
+        lines.push(format!("  and {more} more (--json lists every one)"));
+    }
+    lines
 }
 
 /// Place each section on a channel and apply it. Returns the report, the older
@@ -1614,5 +1636,26 @@ mod tests_wp_tm4 {
         // --no-guard locally changes nothing.
         let (plan, _) = take_core_import(&["import", "a", "--no-guard"], false).unwrap();
         assert!(plan.is_none());
+    }
+}
+
+// -- WP TMCOREF2 --
+#[cfg(test)]
+mod tests_wp_tmcoref2 {
+    use super::*;
+
+    /// A locked filter import on a terminal: the first few, then a count.
+    #[test]
+    fn wp_tmcoref2_a_long_refusal_list_is_cut_on_a_terminal() {
+        let many: Vec<String> = (0..214).map(|i| format!("eq [{i}] (locked)")).collect();
+        let lines = refusal_lines(&many);
+        assert_eq!(lines.len(), REFUSALS_SHOWN + 1);
+        assert_eq!(lines[0], "  eq [0] (locked)");
+        assert_eq!(
+            lines[REFUSALS_SHOWN],
+            "  and 209 more (--json lists every one)"
+        );
+        let few: Vec<String> = (0..3).map(|i| format!("pre [{i}]")).collect();
+        assert_eq!(refusal_lines(&few).len(), 3);
     }
 }

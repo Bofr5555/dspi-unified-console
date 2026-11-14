@@ -557,19 +557,56 @@ pub(crate) fn connect_routed(
 ) -> Result<Session, u8> {
     let opened = open_core(target, &Stores::default_dirs(), &crate::prompt_pin)
         .map_err(OpenFailure::report)?;
-    unlock_up_front(&opened.handle.core, &pins, prompt)?;
+    // -- WP TMCOREF2 -- (re-review N4) without `prompt`, every PIN (given or
+    // asked) waits for the first write the lock refuses: a stale
+    // DSPI_INSTALLER_PIN never refuses a volume write or spends a try
+    if prompt {
+        unlock_up_front(&opened.handle.core, &pins, true)?;
+    }
     session_on(&opened, confirm, pins)
 }
 
 /// Open `target` on a core and give `uconsole raw` its transport: every
 /// transfer the core's; a locked device is unlocked first as for
 /// [`connect_routed`] with `prompt`.
-pub(crate) fn raw_transport(target: &Target) -> Result<Box<dyn Transport>, u8> {
+pub(crate) fn raw_transport(target: &Target) -> Result<RawLink, u8> {
     let pins = PinSource::for_this_command()?;
     let opened = open_core(target, &Stores::default_dirs(), &crate::prompt_pin)
         .map_err(OpenFailure::report)?;
-    unlock_up_front(&opened.handle.core, &pins, true)?;
-    Ok(Box::new(CoreTransport::new(opened.handle)))
+    Ok(RawLink {
+        transport: Box::new(CoreTransport::new(Arc::clone(&opened.handle))),
+        handle: opened.handle,
+        pins,
+    })
+}
+
+// -- WP TMCOREF2 -- (re-review N4)
+/// `uconsole raw`'s link on the core, with the PIN kept for later: a raw
+/// transfer may be one the lock allows (a volume, the analyser), so the PIN
+/// is only used when the lock refuses it ([`RawLink::again`]).
+pub(crate) struct RawLink {
+    pub transport: Box<dyn Transport>,
+    handle: Arc<CoreHandle>,
+    pins: PinSource,
+}
+
+impl RawLink {
+    /// After `e`: when the lock refused it and a PIN can be had (given, or
+    /// asked at the terminal), unlock; `Ok(true)` means send it again.
+    pub(crate) fn again(&self, e: &TransportError) -> Result<bool, u8> {
+        if raw_lock_action(e, &self.pins).is_none() {
+            return Ok(false);
+        }
+        let can = matches!(
+            self.pins,
+            PinSource::Ask | PinSource::Given(_) | PinSource::Env(_)
+        );
+        if !can {
+            return Ok(false);
+        }
+        unlock_up_front(&self.handle.core, &self.pins, true)?;
+        Ok(!self.handle.core.installer_lock_state().locked)
+    }
 }
 
 // -- WP TMCOREF -- (review tmcore F4)
@@ -844,9 +881,17 @@ impl CoreRoute {
     ) -> Result<T, WriteError> {
         let first = f(self.core());
         match first {
-            Err(e) if is_lock(&e) && self.pins == PinSource::Ask && !self.asked => {
+            // -- WP TMCOREF2 -- (N4) a given PIN is deferred here too
+            Err(e)
+                if is_lock(&e)
+                    && matches!(
+                        self.pins,
+                        PinSource::Ask | PinSource::Given(_) | PinSource::Env(_)
+                    )
+                    && !self.asked =>
+            {
                 self.asked = true;
-                if unlock_up_front(self.core(), &PinSource::Ask, true).is_ok()
+                if unlock_up_front(self.core(), &self.pins, true).is_ok()
                     && !self.core().installer_lock_state().locked
                 {
                     return f(self.core()).map_err(|e| routed(e, &self.pins));
@@ -1013,6 +1058,16 @@ impl WriteRoute for CoreRoute {
 
     fn end_group(&mut self) {
         self.core().end_group();
+    }
+
+    // -- WP TMCOREF2 -- the core's profile for the device, for the
+    // interface's whole-document import (held, as `uconsole import` holds it)
+    fn limits_profile(&mut self) -> Option<dspi_session::limits::LimitsProfile> {
+        let doc = self.core().limits_profile_document();
+        if doc.is_empty() {
+            return None;
+        }
+        dspi_session::limits::from_document(&doc).ok()
     }
 
     // -- WP TMCOREF -- (review tmcore F1) the interface's unlock prompt
@@ -1555,5 +1610,67 @@ mod tests_wp_tmcore {
             Err(crate::exit::REJECTED)
         );
         assert_eq!(asked, 1);
+    }
+
+    // ─── WP TMCOREF2 ────────────────────────────────────────────────────
+
+    /// Re-review N4: a PIN given up front waits for the first write the lock
+    /// refuses: a stale one never refuses volume or mute, nor spends a try.
+    #[test]
+    fn wp_tmcoref2_a_given_pin_waits_for_the_lock() {
+        let dir = scratch("tmcoref2_defer");
+        let o = locked(&dir);
+        let tries = |o: &OpenedCore| o.handle.core.installer_lock_state().wrong_tries;
+        let mut s = session_on(&o, Confirm::Refuse, PinSource::Env("1234-no".into())).unwrap();
+        assert!(s.write("vol.master", &[], Value::Float(-11.0)).is_ok());
+        assert!(s.write("out.mute", &[0], Value::Bool(true)).is_ok());
+        assert_eq!(tries(&o), 0, "no try spent on writes the lock allows");
+        // A locked write tries it, once, and is refused.
+        let e = s.write("out.gain", &[0], Value::Float(-3.0)).unwrap_err();
+        assert_eq!(crate::write_exit(&e), crate::exit::REJECTED);
+        assert_eq!(tries(&o), 1);
+        assert!(s.write("out.gain", &[0], Value::Float(-3.0)).is_err());
+        assert_eq!(tries(&o), 1, "tried once a command");
+        // The right one, deferred the same way: unlocked at the locked write.
+        let mut s = session_on(&o, Confirm::Refuse, PinSource::Given(PIN.into())).unwrap();
+        assert!(s.write("vol.master", &[], Value::Float(-12.0)).is_ok());
+        assert!(o.handle.core.installer_lock_state().locked, "not used yet");
+        assert!(s.write("out.gain", &[0], Value::Float(-3.0)).is_ok());
+        assert!((gain(&o, 0) + 3.0).abs() < 0.05);
+    }
+
+    /// The interface's Import Device Configuration is held to the core's
+    /// profile, as `uconsole import` is, and says so.
+    #[test]
+    fn wp_tmcoref2_the_interface_import_is_held_to_the_profile() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let dir = scratch("tmcoref2_import");
+        let o = opened(&dir);
+        let core = &o.handle.core;
+        core.set_output_gain(0, 6.0).unwrap();
+        let doc = core.config_export("held".into(), "t".into(), 0).unwrap();
+        let file = dir.join("held.dspipreset");
+        std::fs::write(&file, doc).unwrap();
+        core.limits_apply_profile(profile(0.0, false)).unwrap();
+        assert!(gain(&o, 0) <= 0.05);
+        let mut c = connected_on(&o).unwrap();
+        let theme = dspi_tui::Theme::console(
+            dspi_tui::theme::ColorDepth::TrueColor,
+            dspi_tui::theme::Glyphs::Braille,
+        );
+        let mut live = dspi_tui::live::Live::new(
+            c.state,
+            theme,
+            dspi_tui::perf::Performance::default(),
+            Box::new(dspi_tui::live::ConsoleScreens::with_config_path(
+                dir.join("config.toml"),
+            )),
+        );
+        let s = &mut c.session;
+        live.run_command(s, &format!("import-config {}", file.display()));
+        live.handle_key(s, KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        let frame = dspi_tui::render_frame(160, 50, |area, buf| live.draw(area, buf));
+        assert!(frame.contains("Held to the limits profile"), "{frame}");
+        assert!(gain(&o, 0) <= 0.05, "held at the limit: {}", gain(&o, 0));
     }
 }
