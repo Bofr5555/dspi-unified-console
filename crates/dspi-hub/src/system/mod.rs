@@ -20,6 +20,8 @@ pub mod scene;
 
 pub(crate) use run::learn_events;
 pub use run::{AlignReport, SceneReport, SystemRefused, SystemStatus, WriteResult};
+// -- WP AUSB1 --
+pub use run::USB_HELD_BACK;
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};

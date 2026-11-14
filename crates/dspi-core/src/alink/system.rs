@@ -101,6 +101,49 @@ pub struct AlinkSystemUnit {
     pub measured_latency_us: Option<i64>,
     /// Its alarms still on.
     pub alarms: u32,
+    // -- WP AUSB1 -- USB-direct units (`extension_channel_spec.md` 2.9)
+    /// How the programme reaches it: `alink` (senders and fan-outs too) or
+    /// `usb_direct`.
+    pub transport: String,
+    /// A USB-direct unit's mode as the unit runs it: `off`, `rate_lock`,
+    /// `phase_lock`.
+    pub usb_mode: Option<String>,
+    /// The mode the installation asks for, when it names one.
+    pub usb_mode_wanted: Option<String>,
+    /// The delay D the alignment asks for, samples; else the unit's own.
+    pub usb_delay_samples: Option<u32>,
+    /// [`Self::usb_delay_samples`] in ms at the system's rate.
+    pub usb_delay_ms: Option<f64>,
+    /// The D the unit has now, samples.
+    pub unit_usb_delay_samples: Option<u32>,
+    /// The shortest D phase lock takes now, samples.
+    pub usb_delay_min: Option<u32>,
+    /// The longest.
+    pub usb_delay_max: Option<u32>,
+    /// The host's SOF rate against the unit's crystal, ppm.
+    pub host_ppm: Option<f32>,
+    /// The unit's soft VCXO correction, ppm.
+    pub vcxo_ppm: Option<f32>,
+    /// The phase error, samples.
+    pub phase_error_samples: Option<f32>,
+    /// Faded gaps since boot.
+    pub gaps: Option<u32>,
+    /// Silence inserted for missing packets, samples since boot.
+    pub missed_samples: Option<u32>,
+    /// Samples dropped as too late, since boot.
+    pub late_samples: Option<u32>,
+    /// Re-anchors since boot.
+    pub reanchors: Option<u32>,
+    /// Timeline ends counted by the unit's diagnostics, and the latest cause.
+    pub timeline_ends: Option<u32>,
+    /// The latest cause in words ("SOF lost", "bus reset"...); "" for none.
+    pub last_end: String,
+    /// How many samples earlier its stream plays than the latest unit's (the
+    /// alignment delays its outputs by that).
+    pub start_offset_samples: Option<i64>,
+    /// The statistics in one line, for a details row: host and VCXO ppm,
+    /// phase error, gaps, missed and late samples, re-anchors, timeline ends.
+    pub usb_stats: String,
 }
 
 /// A room, with its lip-sync offset.
@@ -197,7 +240,13 @@ pub struct AlinkSystemView {
     pub pending: u32,
     /// Units the model has, but those whose firmware has no audio link
     /// (WP HWLK1F): "N of M locked" counts the units that can lock.
+    /// -- WP AUSB1 -- USB-direct units are counted apart.
     pub unit_count: u32,
+    /// USB-direct units in the model (WP AUSB1).
+    pub usb_unit_count: u32,
+    /// Those locked as asked: phase-locked (rate-locked when the mode asks
+    /// only that).
+    pub usb_locked: u32,
     /// One line for a status indicator: "Audio link: 4 of 4 locked".
     pub summary: String,
     /// The summary's meaning for its colour: `ok`, `warning`, `problem`, or
@@ -245,6 +294,22 @@ pub struct AlinkSystemEdits {
     pub rooms: Vec<AlinkRoomLipSync>,
     /// Units' measured latencies.
     pub units: Vec<AlinkUnitLatency>,
+    // -- WP AUSB1 --
+    /// USB-direct units' modes (Installer).
+    pub usb_modes: Vec<AlinkUnitUsbMode>,
+}
+
+// -- WP AUSB1 --
+/// One USB-direct unit's mode to set ("Clock and audio links", Installer):
+/// written with the audio link delays.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct AlinkUnitUsbMode {
+    /// The unit's id.
+    pub unit_id: String,
+    /// `off`, `rate_lock` or `phase_lock`; none: the unit's own is kept.
+    pub mode: Option<String>,
 }
 
 /// One write's outcome on one device.
@@ -607,6 +672,8 @@ fn taken(result: &str) -> bool {
 fn what_word(what: &str) -> String {
     match what {
         "phase" => "Audio link delay".to_owned(),
+        // -- WP AUSB1 --
+        "usb_direct" => "USB-direct mode and delay".to_owned(),
         "slots" => "Audio link slots".to_owned(),
         "mute" => "Mute".to_owned(),
         "unmute" => "Unmute".to_owned(),
@@ -759,6 +826,7 @@ pub(crate) fn build_view(
             latency_us: e.get("latencyUs").and_then(Value::as_i64).unwrap_or(0),
             measured_latency_us: e.get("measuredLatencyUs").and_then(Value::as_i64),
             alarms: alarms_for(id),
+            transport: "alink".into(),
             ..AlinkSystemUnit::default()
         }
     };
@@ -770,8 +838,27 @@ pub(crate) fn build_view(
     }
     let (mut locked, mut holdover, mut pending, mut count) = (0u32, 0u32, 0u32, 0u32);
     let mut without = 0u32;
+    // -- WP AUSB1 --
+    let (mut usb_count, mut usb_locked, mut usb_trouble) = (0u32, 0u32, 0u32);
     for u in list(model, "units") {
         let mut row = base(u, "unit");
+        // -- WP AUSB1 -- a USB-direct unit: its own state, delay and statistics
+        if str_at(u, &["transport"]) == "usb_direct" {
+            let plan = plan_of(&row.id);
+            usb_row(&mut row, u, observed(str_at(u, &["serial"])), plan, rate);
+            usb_count = usb_count.saturating_add(1);
+            if usb_locked_as_asked(&row) {
+                usb_locked = usb_locked.saturating_add(1);
+            }
+            if matches!(row.state.as_str(), "no_sof" | "rejected") {
+                usb_trouble = usb_trouble.saturating_add(1);
+            }
+            if row.pending {
+                pending = pending.saturating_add(1);
+            }
+            units.push(row);
+            continue;
+        }
         // -- WP HWLK1F -- no audio link delay, nothing pending, not counted among those that lock
         if row.state == "no_alink" {
             without = without.saturating_add(1);
@@ -839,6 +926,9 @@ pub(crate) fn build_view(
             holdover,
             pending,
             without,
+            usb_count,
+            usb_locked,
+            usb_trouble,
         },
         &units,
     );
@@ -890,6 +980,8 @@ pub(crate) fn build_view(
         holdover,
         pending,
         unit_count: count,
+        usb_unit_count: usb_count,
+        usb_locked,
         summary,
         health: health.to_owned(),
         issues: list(at(status, &["alignment"]).unwrap_or(&Value::Null), "issues")
@@ -898,6 +990,156 @@ pub(crate) fn build_view(
             .filter(|m| !m.is_empty())
             .collect(),
         stale: false,
+    }
+}
+
+// -- WP AUSB1 --
+/// A USB-direct state in words.
+fn usb_state_word(state: &str) -> &'static str {
+    match state {
+        "phase_locked" => "Phase-locked (USB)",
+        "rate_locked" => "Rate-locked (USB)",
+        "pull_in" => "Pulling in (USB)",
+        "anchoring" => "Anchoring (USB)",
+        "no_sof" => "No USB time base",
+        "rejected" => "Host out of range (USB)",
+        "usb_off" => "USB-direct off",
+        "no_usb_direct" => "No USB-direct (firmware)",
+        "offline" => "Not connected",
+        _ => "Unknown",
+    }
+}
+
+// -- WP AUSB1 --
+/// A timeline end's cause in words.
+fn end_word(cause: &str) -> &'static str {
+    match cause {
+        "sof_lost" => "SOF lost",
+        "long_gap" => "a gap over 1 s",
+        "discontinuity" => "a SOF discontinuity",
+        "host_rejected" => "host out of range",
+        "rate_or_config" => "rate or configuration",
+        "reanchor_phase_error" => "re-anchor (phase error)",
+        "reanchor_output_reset" => "re-anchor (output reset)",
+        "reanchor_other" => "re-anchor",
+        "stop" => "switched off",
+        _ => "unknown",
+    }
+}
+
+// -- WP AUSB1 --
+/// Locked as the unit's mode asks: phase-locked, or rate-locked when the mode
+/// is rate lock.
+fn usb_locked_as_asked(row: &AlinkSystemUnit) -> bool {
+    match row.usb_mode.as_deref() {
+        Some("rate_lock") => matches!(row.state.as_str(), "rate_locked" | "phase_locked"),
+        _ => row.state == "phase_locked",
+    }
+}
+
+// -- WP AUSB1 --
+/// Fill in a USB-direct unit's row: `u` the model's unit, `o` what the hub
+/// read (`observed[serial]`), `plan` its line of the alignment.
+fn usb_row(
+    row: &mut AlinkSystemUnit,
+    u: &Value,
+    o: Option<&Value>,
+    plan: Option<&Value>,
+    rate: u32,
+) {
+    row.transport = "usb_direct".into();
+    row.role = "USB-direct".into();
+    let wanted = str_at(u, &["usbMode"]);
+    row.usb_mode_wanted = (!wanted.is_empty()).then(|| wanted.to_owned());
+    let seen = o.and_then(|o| o.get("usb")).filter(|v| v.is_object());
+    let no_block = o.map(|o| str_at(o, &["usbDirect"])) == Some("none");
+    let state = if !row.connected {
+        "offline"
+    } else if no_block {
+        "no_usb_direct"
+    } else {
+        match seen.map(|s| str_at(s, &["state"])).unwrap_or("") {
+            s @ ("phase_locked" | "rate_locked" | "pull_in" | "anchoring" | "no_sof"
+            | "rejected") => s,
+            "off" => "usb_off",
+            _ => "unknown",
+        }
+    };
+    row.state = state.into();
+    row.state_word = usb_state_word(state).into();
+    row.phase_error_frames = None;
+    let f32_of = |k: &str| {
+        seen.and_then(|s| s.get(k))
+            .and_then(Value::as_f64)
+            .map(|f| f as f32)
+    };
+    let u32_at = |k: &str| u32_of(seen.and_then(|s| s.get(k)));
+    let mode = seen.map(|s| str_at(s, &["mode"])).filter(|m| !m.is_empty());
+    row.usb_mode = mode.map(str::to_owned);
+    row.unit_usb_delay_samples = u32_at("d");
+    row.usb_delay_min = u32_at("dMin");
+    row.usb_delay_max = u32_at("dMax");
+    row.host_ppm = f32_of("hostPpm");
+    row.vcxo_ppm = f32_of("vcxoPpm");
+    row.phase_error_samples = f32_of("phaseError").filter(|_| state == "phase_locked");
+    row.gaps = u32_at("gapCount");
+    row.missed_samples = u32_at("missedSamples");
+    row.late_samples = u32_at("lateSamples");
+    row.reanchors = u32_at("reanchors");
+    let diag = seen.and_then(|s| s.get("diag")).filter(|d| d.is_object());
+    row.timeline_ends = diag.and_then(|d| u32_of(d.get("ends")));
+    row.last_end = diag
+        .map(|d| str_at(d, &["lastCause"]))
+        .filter(|c| !c.is_empty())
+        .map(|c| end_word(c).to_owned())
+        .unwrap_or_default();
+    let planned = plan.and_then(|p| u32_of(p.get("usbD")));
+    let planned_mode = plan
+        .map(|p| str_at(p, &["usbMode"]))
+        .filter(|m| !m.is_empty());
+    let writable = plan
+        .and_then(|p| p.get("writable"))
+        .and_then(Value::as_bool)
+        != Some(false);
+    row.start_offset_samples = plan
+        .and_then(|p| p.get("startOffsetSamples"))
+        .and_then(Value::as_i64);
+    row.usb_delay_samples = planned.or(row.unit_usb_delay_samples);
+    row.usb_delay_ms = row.usb_delay_samples.map(|f| frames_ms(f, rate));
+    row.pending = row.connected
+        && writable
+        && seen.is_some()
+        && ((planned.is_some() && planned != row.unit_usb_delay_samples)
+            || (planned_mode.is_some() && planned_mode != mode));
+    if seen.is_some() {
+        let mut parts = Vec::new();
+        if let Some(h) = row.host_ppm {
+            parts.push(format!("host {h:+.1} ppm"));
+        }
+        if let Some(v) = row.vcxo_ppm {
+            parts.push(format!("VCXO {v:+.1} ppm"));
+        }
+        if let Some(e) = row.phase_error_samples {
+            parts.push(format!("phase error {e:+.2} samples"));
+        }
+        parts.push(format!(
+            "gaps {}, missed {}, late {} samples",
+            row.gaps.unwrap_or(0),
+            row.missed_samples.unwrap_or(0),
+            row.late_samples.unwrap_or(0)
+        ));
+        parts.push(format!("re-anchors {}", row.reanchors.unwrap_or(0)));
+        if let Some(n) = row.timeline_ends {
+            if row.last_end.is_empty() {
+                parts.push(format!("timeline ends {n}"));
+            } else {
+                parts.push(format!("timeline ends {n} (last: {})", row.last_end));
+            }
+        }
+        if let Some(o) = row.start_offset_samples.filter(|o| *o != 0) {
+            parts.push(format!("stream {o} samples early"));
+        }
+        row.usb_stats = parts.join(" · ");
     }
 }
 
@@ -911,6 +1153,13 @@ struct Counts {
     // -- WP HWLK1F --
     /// Units whose firmware has no audio link.
     without: u32,
+    // -- WP AUSB1 --
+    /// USB-direct units.
+    usb_count: u32,
+    /// Those locked as their mode asks.
+    usb_locked: u32,
+    /// Those without SOF or with the host out of range.
+    usb_trouble: u32,
 }
 
 /// The status line and its meaning.
@@ -921,6 +1170,9 @@ fn summary(installed: bool, c: Counts, units: &[AlinkSystemUnit]) -> (String, &'
         holdover,
         pending,
         without,
+        usb_count,
+        usb_locked,
+        usb_trouble,
     } = c;
     if !installed {
         return ("No audio link installation on this hub".into(), "none");
@@ -929,7 +1181,16 @@ fn summary(installed: bool, c: Counts, units: &[AlinkSystemUnit]) -> (String, &'
         .iter()
         .filter(|u| u.kind == "unit" && !u.connected)
         .count();
-    let mut line = format!("Audio link: {locked} of {count} locked");
+    // -- WP AUSB1 -- USB-direct units after the audio link's, or alone
+    let mut line = if count == 0 && without == 0 && usb_count > 0 {
+        format!("Audio link USB-direct: {usb_locked} of {usb_count} locked")
+    } else {
+        let mut l = format!("Audio link: {locked} of {count} locked");
+        if usb_count > 0 {
+            l.push_str(&format!(", USB-direct {usb_locked} of {usb_count} locked"));
+        }
+        l
+    };
     // -- WP HWLK1F --
     if without > 0 {
         line.push_str(&format!(", {without} without the audio link (firmware)"));
@@ -943,9 +1204,9 @@ fn summary(installed: bool, c: Counts, units: &[AlinkSystemUnit]) -> (String, &'
     if pending > 0 {
         line.push_str(&format!(", audio link delay to write on {pending}"));
     }
-    let health = if holdover > 0 || offline > 0 {
+    let health = if holdover > 0 || offline > 0 || usb_trouble > 0 {
         "problem"
-    } else if locked < count || pending > 0 || without > 0 {
+    } else if locked < count || pending > 0 || without > 0 || usb_locked < usb_count {
         "warning"
     } else {
         "ok"
@@ -997,6 +1258,33 @@ pub(crate) fn apply_edits(model: &mut Value, edits: &AlinkSystemEdits) -> Result
             u.measured_latency_us.map_or(Value::Null, Value::from),
         );
     }
+    // -- WP AUSB1 --
+    for u in &edits.usb_modes {
+        if let Some(m) = u.mode.as_deref()
+            && !matches!(m, "off" | "rate_lock" | "phase_lock")
+        {
+            return Err(DspiError::InvalidArgument {
+                msg: format!("USB-direct mode {m:?}: off, rate_lock or phase_lock"),
+            });
+        }
+        let unit = m
+            .get_mut("units")
+            .and_then(Value::as_array_mut)
+            .and_then(|units| units.iter_mut().find(|x| str_at(x, &["id"]) == u.unit_id))
+            .and_then(Value::as_object_mut)
+            .filter(|x| x.get("transport").and_then(Value::as_str) == Some("usb_direct"))
+            .ok_or_else(|| DspiError::InvalidArgument {
+                msg: format!("no USB-direct unit {}", u.unit_id),
+            })?;
+        match &u.mode {
+            Some(mode) => {
+                unit.insert("usbMode".into(), Value::from(mode.as_str()));
+            }
+            None => {
+                unit.remove("usbMode");
+            }
+        }
+    }
     Ok(())
 }
 
@@ -1029,8 +1317,13 @@ pub(crate) fn recall_outcome(
     // -- WP HWLK1F -- not a unit's own result, which the hub gives a reason (applied
     // now without the audio link, not connected): it keeps its op
     if path == "superframe" {
+        // -- WP AUSB1 -- a USB-direct unit's own write keeps its op too
+        let usb: Vec<&str> = list(plan, "usbOps")
+            .iter()
+            .map(|o| str_at(o, &["serial"]))
+            .collect();
         for (w, raw) in writes.iter_mut().zip(list(report, "writes")) {
-            if str_at(raw, &["reason"]).is_empty() {
+            if str_at(raw, &["reason"]).is_empty() && !usb.contains(&str_at(raw, &["serial"])) {
                 w.what = format!("Scene {name}");
             }
         }
@@ -1162,12 +1455,21 @@ struct RecallParts {
     frame_ok: bool,
     /// Any write went at the frame.
     at_frame: bool,
+    // -- WP AUSB1 --
+    /// USB-direct units that took it at the bus frame.
+    usb_at: Vec<String>,
+    /// The bus frame.
+    usb_frame: Option<u64>,
+    /// USB-direct units that are not phase-locked and took it at once.
+    now_usb: Vec<String>,
 }
 
 impl RecallParts {
     /// Nothing to say beyond the frame and "on time".
     fn is_plain(&self) -> bool {
         self.now.is_empty()
+            && self.usb_at.is_empty()
+            && self.now_usb.is_empty()
             && self.now_failed.is_empty()
             && self.no_frame.is_empty()
             && self.absent.is_empty()
@@ -1176,23 +1478,60 @@ impl RecallParts {
 
     fn sentence(&self, name: &str, path: &str, frame: u64, plan: &Value) -> String {
         let mut parts = Vec::new();
-        if !self.now.is_empty() {
+        // -- WP AUSB1 -- with USB-direct units: at the USB frame, at the audio
+        // link frame, applied now, in that order
+        let usb = !self.usb_at.is_empty();
+        if usb {
+            parts.push(format!(
+                "at USB frame {} on {}",
+                self.usb_frame.unwrap_or(0),
+                self.usb_at.join(", ")
+            ));
+            if self.at_frame {
+                let path_word = if path == "superframe" {
+                    "through the sender"
+                } else {
+                    "to each unit"
+                };
+                parts.push(format!(
+                    "at audio link frame {frame} {path_word} on the others"
+                ));
+            }
+        }
+        let now: Vec<String> = self
+            .now
+            .iter()
+            .map(|n| format!("{n} (no audio link)"))
+            .chain(
+                self.now_usb
+                    .iter()
+                    .map(|n| format!("{n} (USB-direct, not phase-locked)")),
+            )
+            .collect();
+        if usb {
+            if !now.is_empty() {
+                parts.push(format!("applied now on {}", now.join(", ")));
+            }
+        } else if !self.now_usb.is_empty() {
+            parts.push(format!("applied now on {}", now.join(", ")));
+        } else if !self.now.is_empty() {
             parts.push(format!(
                 "applied now on {} (no audio link)",
                 self.now.join(", ")
             ));
         }
-        if self.at_frame {
+        if self.at_frame && !usb {
             let path_word = if path == "superframe" {
                 "through the sender"
             } else {
                 "to each unit"
             };
-            let whom = if self.now.is_empty() && self.now_failed.is_empty() {
-                ""
-            } else {
-                " on the others"
-            };
+            let whom =
+                if self.now.is_empty() && self.now_usb.is_empty() && self.now_failed.is_empty() {
+                    ""
+                } else {
+                    " on the others"
+                };
             parts.push(format!("at audio link frame {frame} {path_word}{whom}"));
         }
         if !self.now_failed.is_empty() {
@@ -1220,7 +1559,7 @@ impl RecallParts {
             None => {}
         }
         m.push('.');
-        if self.at_frame && !self.frame_ok {
+        if (self.at_frame || usb) && !self.frame_ok {
             m.push_str(" Not every unit at the frame on time.");
         }
         m
@@ -1238,12 +1577,48 @@ fn recall_parts(report: &Value, model: &Value) -> RecallParts {
             v.push(n);
         }
     };
+    // -- WP AUSB1 -- the writes to USB-direct units at the bus frame
+    let plan = report.get("plan").unwrap_or(&Value::Null);
+    p.usb_frame = plan.get("usbFrame").and_then(Value::as_u64);
+    let usb_serials: Vec<&str> = list(plan, "usbOps")
+        .iter()
+        .map(|o| str_at(o, &["serial"]))
+        .collect();
     for w in list(report, "writes") {
         let result = str_at(w, &["result"]);
         let element = str_at(w, &["element"]);
         let unit = element_name(model, element);
-        let direct = str_at(w, &["reason"]) == "no audio link (firmware)";
+        let reason = str_at(w, &["reason"]);
+        let direct = matches!(
+            reason,
+            "no audio link (firmware)" | "not phase-locked (USB-direct)"
+        );
+        // -- WP AUSB1 --
+        if reason.is_empty() && usb_serials.contains(&str_at(w, &["serial"])) {
+            match result {
+                "no_device" => push(&mut p.absent, unit),
+                r => {
+                    if !matches!(r, "queued" | "applied" | "ok" | "ok_unverified") {
+                        p.frame_ok = false;
+                    }
+                    if taken(r) {
+                        push(&mut p.usb_at, unit);
+                    } else {
+                        push(&mut p.now_failed, format!("{unit} ({})", result_word(r)));
+                    }
+                }
+            }
+            continue;
+        }
         match result {
+            // -- WP AUSB1 -- held back with a refused audio link part: nothing changed there
+            _ if reason == "the audio link part was refused" => push(
+                &mut p.now_failed,
+                format!("{unit} (held back with the audio link)"),
+            ),
+            "applied_now" if reason == "not phase-locked (USB-direct)" => {
+                push(&mut p.now_usb, unit)
+            }
             "applied_now" => push(&mut p.now, unit),
             _ if direct => push(
                 &mut p.now_failed,

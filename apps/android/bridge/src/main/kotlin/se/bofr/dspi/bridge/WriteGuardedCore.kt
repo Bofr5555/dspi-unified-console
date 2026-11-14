@@ -1,14 +1,14 @@
 // G1 (owner decision): the bridge's last line of defence for read-only mode.
 package se.bofr.dspi.bridge
 
+import se.bofr.dspi.core.AlinkSceneRecall
+import se.bofr.dspi.core.AlinkSystemAlign
+import se.bofr.dspi.core.AlinkSystemEdits
 import se.bofr.dspi.core.DspiCoreApi
 import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.FilterParams
 import se.bofr.dspi.core.HistoryMove
 import se.bofr.dspi.core.I2cConfig
-import se.bofr.dspi.core.AlinkSceneRecall
-import se.bofr.dspi.core.AlinkSystemAlign
-import se.bofr.dspi.core.AlinkSystemEdits
 import se.bofr.dspi.core.SiggenConfig
 import se.bofr.dspi.core.UartConfig
 import se.bofr.dspi.core.VregDemoEvent
@@ -86,6 +86,22 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
     override fun resetAlinkStats() {
         guard("resetAlinkStats")
         return inner.resetAlinkStats()
+    }
+
+    // -- WP AUSB1 -- the USB-direct block's writes (mode and D, DIAG clear, apply on a time base)
+    override fun setAlinkUsb(mode: Int, autoReanchor: Boolean, d: Int) {
+        guard("setAlinkUsb")
+        return inner.setAlinkUsb(mode, autoReanchor, d)
+    }
+
+    override fun clearAlinkUsbDiag() {
+        guard("clearAlinkUsbDiag")
+        return inner.clearAlinkUsbDiag()
+    }
+
+    override fun applyAtTimeBase(timeBase: Int, frame: Long, op: Int, arg: Int, value: Int) {
+        guard("applyAtTimeBase")
+        return inner.applyAtTimeBase(timeBase, frame, op, arg, value)
     }
 
     // -- WP LKUI1 -- the hub's audio link installation: saving the model, writing the
@@ -752,6 +768,10 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "setAlinkPhase",
             "applyAtFrame",
             "resetAlinkStats",
+            // -- WP AUSB1 --
+            "setAlinkUsb",
+            "clearAlinkUsbDiag",
+            "applyAtTimeBase",
             // -- WP LKUI1 --
             "alinkSystemSave",
             "alinkSystemAlign",
@@ -893,6 +913,13 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "fetchAlinkFrameCounter",
             "fetchApplyAtFrameStatus",
             "openDemoAlink",
+            // -- WP AUSB1 -- the USB-direct block's reads, and the demo with it
+            "usbDirectSupported",
+            "fetchAlinkUsb",
+            "fetchAlinkUsbStatus",
+            "fetchAlinkUsbDiag",
+            "fetchFrameCounterTimeBase",
+            "openDemoUsbDirect",
             // -- WP CS1 -- the USB error counters (0xB2), a read
             "fetchUsbErrorStats",
             "uf2Inspect",

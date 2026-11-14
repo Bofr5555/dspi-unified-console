@@ -52,6 +52,8 @@ mod diag;
 mod ext_diag;
 // -- WP SW1 --
 mod alink;
+// -- WP AUSB1 --
+mod alink_usb;
 // -- WP P1NT --
 mod notice_text;
 

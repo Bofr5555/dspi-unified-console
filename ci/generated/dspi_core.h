@@ -5559,6 +5559,73 @@ uint8_t dspi_reset_alink_stats(struct FfiCore *core);
 bool dspi_open_demo_alink(struct FfiCore *core);
 
 /**
+ * Whether the unit has the USB-direct block, as the connect probe found it
+ * (no traffic). False without one or without a device.
+ */
+bool dspi_usb_direct_supported(struct FfiCore *core);
+
+/**
+ * `EXT_ALINK_USB` in JSON (`mode`, `modeName`, `autoReanchor`, `d`,
+ * `dBelowMin`, `dAboveMax`, `rateUnsupported`, `state`, `stateCode`), or a
+ * failure (`unsupported` without the block).
+ */
+uint32_t dspi_fetch_alink_usb(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Write `EXT_ALINK_USB`: `mode` 0 off, 1 rate lock, 2 phase lock;
+ * `auto_reanchor`; `d` samples (170-399 at 48 kHz in mode 2). A change
+ * re-anchors. Returns a status byte, 0xFF on failure.
+ */
+uint8_t dspi_set_alink_usb(struct FfiCore *core, uint8_t mode, bool auto_reanchor, uint16_t d);
+
+/**
+ * `EXT_ALINK_USB_STATUS` in JSON (`state`, `stateCode`, `phaseState`,
+ * `rateCode`, `rateHz`, `hwTimestamp`, `stream`, `nominalFeedback`,
+ * `timeBase`, `holdover`, `hostPpm`, `vcxoPpm`, `phaseErrorSamples`,
+ * `sample`, `busFrame`, `dMin`, `dMax`, `fill`, `streamStartBusFrame`,
+ * `streamAgeFrames`, `streamShift`, `gapCount`, `anchors`, `reanchors`,
+ * `missedSamples`, `lateSamples`), or a failure.
+ */
+uint32_t dspi_fetch_alink_usb_status(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * `EXT_ALINK_USB_DIAG` in JSON (`lastCause`, `rides`, `holdovers`, `ends`
+ * as `{cause, count}`, `suspends`, `resumes`, `busResets`, `unplugs`,
+ * `lastFrames`, `lastUs`, `lastDevUs`, `longestRideUs`, `maxPassUs`,
+ * `maxIsrQuietUs`, `maxIsrLateUs`, `holdoverUs`), or a failure.
+ */
+uint32_t dspi_fetch_alink_usb_diag(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Clear `EXT_ALINK_USB_DIAG`. Returns a status byte, 0xFF on failure.
+ */
+uint8_t dspi_clear_alink_usb_diag(struct FfiCore *core);
+
+/**
+ * `EXT_FRAME_COUNTER` with its time base in JSON (`frame`, `timeUs`,
+ * `outputFrames`, `timeBase`, `timeBaseCode`, `busFrame`), or a failure.
+ */
+uint32_t dspi_fetch_frame_counter_time_base(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Queue `op` with `arg` and `value` on time base `time_base` (0 the alink
+ * frame, 1 the USB sample index, 2 a bus frame in bits 0-10 and the sample in
+ * bits 16-23) at `frame`. Returns a status byte, 0xFF on failure.
+ */
+uint8_t dspi_apply_at_time_base(struct FfiCore *core,
+                                uint8_t time_base,
+                                uint64_t frame,
+                                uint8_t op,
+                                uint8_t arg,
+                                int16_t value);
+
+/**
+ * Open the demo device as an alink USB-direct unit, in place of any open
+ * device.
+ */
+bool dspi_open_demo_usb_direct(struct FfiCore *core);
+
+/**
  * The notice for a key, in JSON: {ok, key, kind, title, reason, action, detail}.
  * `key` is a failure reply's `noticeKey`; `detail` (null reads as empty) is put in
  * `detail`, normally that reply's `error`. `kind` is `info`, `warning` or `error`.

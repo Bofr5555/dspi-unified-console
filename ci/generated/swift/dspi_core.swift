@@ -1352,6 +1352,23 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func applyAtFrame(frame: UInt64, op: UInt8, arg: UInt8, value: Int16) throws 
     
     /**
+     * `EXT_APPLY_AT_FRAME` on time base `time_base`: [`TIME_BASE_ALINK`]
+     * (`frame` an alink frame, as [`DspiCore::apply_at_frame`]),
+     * [`TIME_BASE_USB_SAMPLE`] (`frame` the unit's USB sample index S) or
+     * [`TIME_BASE_BUS_FRAME`] (`frame` a bus frame 0-2047 in bits 0-10 and
+     * the sample in it in bits 16-23: the same 8 bytes address the same
+     * instant on every unit of one host, up to 1.98 s ahead). Ops and their
+     * arguments are [`DspiCore::apply_at_frame`]'s.
+     *
+     * Errors, with no traffic: `Unsupported` for time base 0 without the
+     * alink, 1 or 2 without the USB-direct block; `InvalidArgument` for
+     * another time base, a bad bus-frame form, or an op or argument out of
+     * range; `ReadOnly`, `Disconnected`. `Refused` when the unit stalls (not
+     * phase-locked on the USB time base, a full queue).
+     */
+    func applyAtTimeBase(timeBase: UInt8, frame: UInt64, op: UInt8, arg: UInt8, value: Int16) throws 
+    
+    /**
      * Begin an undo group: everything written until the matching
      * [`DspiCore::end_group`] that undo can reverse is one undo step,
      * carrying `label` ([`HistoryEntry::label`]), as a drag is. Use it for
@@ -1428,6 +1445,11 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * transfer error from the read.
      */
     func checkCore1Conflict(output: UInt8) throws  -> Bool
+    
+    /**
+     * Clear `EXT_ALINK_USB_DIAG`. Errors as [`DspiCore::set_alink_usb`].
+     */
+    func clearAlinkUsbDiag() throws 
     
     /**
      * Clear the device's sticky clip flags (`REQ_CLEAR_CLIPS`, which reads
@@ -2086,6 +2108,27 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func fetchAlinkStatus() throws  -> AlinkStatus
     
     /**
+     * Read `EXT_ALINK_USB`: the mode, automatic re-anchor, D, why mode 2
+     * runs as mode 1, and the state.
+     *
+     * `Unsupported`, with no traffic, without the block; also when the read
+     * stalls or a DSPi Link hub refuses it. `Disconnected` without a device;
+     * `Transfer` for a short or failed read.
+     */
+    func fetchAlinkUsb() throws  -> AlinkUsbConfig
+    
+    /**
+     * Read `EXT_ALINK_USB_DIAG` (layout version 1; another reads as
+     * `Transfer`). Errors as [`DspiCore::fetch_alink_usb`].
+     */
+    func fetchAlinkUsbDiag() throws  -> AlinkUsbDiag
+    
+    /**
+     * Read `EXT_ALINK_USB_STATUS`. Errors as [`DspiCore::fetch_alink_usb`].
+     */
+    func fetchAlinkUsbStatus() throws  -> AlinkUsbStatus
+    
+    /**
      * Identify the firmware and read every parameter into the mirror.
      *
      * Reads `REQ_GET_PLATFORM`, then the bulk image in whatever wire format
@@ -2215,6 +2258,14 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * unchanged on error.
      */
     func fetchDacMute() throws 
+    
+    /**
+     * Read `EXT_FRAME_COUNTER` with its time base: the alink's frame, or the
+     * USB sample index and bus frame on a USB-direct unit not in mode 0.
+     * `Unsupported`, with no traffic, on a unit with neither the alink nor
+     * the USB-direct block; otherwise errors as [`DspiCore::fetch_alink_usb`].
+     */
+    func fetchFrameCounterTimeBase() throws  -> AlinkTimeBaseCounter
     
     /**
      * Read `EXT_IDENTIFY`: the blink time left and the board description.
@@ -2819,6 +2870,14 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func openDemoAlink() throws 
     
     /**
+     * Open the demo device as an alink USB-direct unit (the fake device's
+     * model, `extension_channel_spec.md` 2.9: phase-locked at 48 kHz with D
+     * 192, its host 11.5 ppm slow, a stream playing), for clients without
+     * hardware. Replaces any open device.
+     */
+    func openDemoUsbDirect() throws 
+    
+    /**
      * Adopt a USB device the platform already opened: Android's
      * `UsbDeviceConnection.getFileDescriptor()`. The core `dup(2)`s the fd
      * and owns the duplicate, so the app keeps (and later closes) its own;
@@ -3277,6 +3336,21 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * `Denied`, `Locked` or `Transfer` from the alink.
      */
     func setAlinkSlots(slots: Data) throws 
+    
+    /**
+     * Write `EXT_ALINK_USB`: `mode` 0 off, 1 rate lock, 2 phase lock;
+     * `auto_reanchor` (normally true); `d` samples from arrival to output,
+     * the same on every unit that should play aligned (170-399 at 48 kHz,
+     * 324-351 at 96 kHz in mode 2). Takes effect at once; a change of mode
+     * or D while phase-locked re-anchors (about D + 20 ms of silence). Saved
+     * with the output configuration.
+     *
+     * Errors, with no traffic: `Disconnected`; `Unsupported` without the
+     * block; `InvalidArgument` for a mode above 2 or D 0; `ReadOnly`. From the
+     * device: `Refused` when it stalls (mode 2 with D outside its limits now);
+     * `Denied`, `Locked` or `Transfer` from a hub.
+     */
+    func setAlinkUsb(mode: UInt8, autoReanchor: Bool, d: UInt16) throws 
     
     /**
      * Bypass (`true`) or re-enable one band of wire channel `ch`, keeping
@@ -4118,6 +4192,12 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func undo() throws  -> HistoryMove
     
     /**
+     * Whether the unit has the alink's USB-direct block, as the connect
+     * probe found it, without traffic. `Disconnected` without a device.
+     */
+    func usbDirectSupported() throws  -> Bool
+    
+    /**
      * The `wire_compat::feat` bits the connected firmware's wire format carries:
      * every known bit on V32 and newer, none with no device or below V16.
      */
@@ -4354,6 +4434,32 @@ open func applyAtFrame(frame: UInt64, op: UInt8, arg: UInt8, value: Int16)throws
 }
     
     /**
+     * `EXT_APPLY_AT_FRAME` on time base `time_base`: [`TIME_BASE_ALINK`]
+     * (`frame` an alink frame, as [`DspiCore::apply_at_frame`]),
+     * [`TIME_BASE_USB_SAMPLE`] (`frame` the unit's USB sample index S) or
+     * [`TIME_BASE_BUS_FRAME`] (`frame` a bus frame 0-2047 in bits 0-10 and
+     * the sample in it in bits 16-23: the same 8 bytes address the same
+     * instant on every unit of one host, up to 1.98 s ahead). Ops and their
+     * arguments are [`DspiCore::apply_at_frame`]'s.
+     *
+     * Errors, with no traffic: `Unsupported` for time base 0 without the
+     * alink, 1 or 2 without the USB-direct block; `InvalidArgument` for
+     * another time base, a bad bus-frame form, or an op or argument out of
+     * range; `ReadOnly`, `Disconnected`. `Refused` when the unit stalls (not
+     * phase-locked on the USB time base, a full queue).
+     */
+open func applyAtTimeBase(timeBase: UInt8, frame: UInt64, op: UInt8, arg: UInt8, value: Int16)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_apply_at_time_base(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(timeBase),
+        FfiConverterUInt64.lower(frame),
+        FfiConverterUInt8.lower(op),
+        FfiConverterUInt8.lower(arg),
+        FfiConverterInt16.lower(value),$0
+    )
+}
+}
+    
+    /**
      * Begin an undo group: everything written until the matching
      * [`DspiCore::end_group`] that undo can reverse is one undo step,
      * carrying `label` ([`HistoryEntry::label`]), as a drag is. Use it for
@@ -4465,6 +4571,15 @@ open func checkCore1Conflict(output: UInt8)throws  -> Bool  {
         FfiConverterUInt8.lower(output),$0
     )
 })
+}
+    
+    /**
+     * Clear `EXT_ALINK_USB_DIAG`. Errors as [`DspiCore::set_alink_usb`].
+     */
+open func clearAlinkUsbDiag()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_clear_alink_usb_diag(self.uniffiClonePointer(),$0
+    )
+}
 }
     
     /**
@@ -5457,6 +5572,42 @@ open func fetchAlinkStatus()throws  -> AlinkStatus  {
 }
     
     /**
+     * Read `EXT_ALINK_USB`: the mode, automatic re-anchor, D, why mode 2
+     * runs as mode 1, and the state.
+     *
+     * `Unsupported`, with no traffic, without the block; also when the read
+     * stalls or a DSPi Link hub refuses it. `Disconnected` without a device;
+     * `Transfer` for a short or failed read.
+     */
+open func fetchAlinkUsb()throws  -> AlinkUsbConfig  {
+    return try  FfiConverterTypeAlinkUsbConfig_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_fetch_alink_usb(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Read `EXT_ALINK_USB_DIAG` (layout version 1; another reads as
+     * `Transfer`). Errors as [`DspiCore::fetch_alink_usb`].
+     */
+open func fetchAlinkUsbDiag()throws  -> AlinkUsbDiag  {
+    return try  FfiConverterTypeAlinkUsbDiag_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_fetch_alink_usb_diag(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Read `EXT_ALINK_USB_STATUS`. Errors as [`DspiCore::fetch_alink_usb`].
+     */
+open func fetchAlinkUsbStatus()throws  -> AlinkUsbStatus  {
+    return try  FfiConverterTypeAlinkUsbStatus_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_fetch_alink_usb_status(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
      * Identify the firmware and read every parameter into the mirror.
      *
      * Reads `REQ_GET_PLATFORM`, then the bulk image in whatever wire format
@@ -5627,6 +5778,19 @@ open func fetchDacMute()throws   {try rustCallWithError(FfiConverterTypeDspiErro
     uniffi_dspi_core_fn_method_dspicore_fetch_dac_mute(self.uniffiClonePointer(),$0
     )
 }
+}
+    
+    /**
+     * Read `EXT_FRAME_COUNTER` with its time base: the alink's frame, or the
+     * USB sample index and bus frame on a USB-direct unit not in mode 0.
+     * `Unsupported`, with no traffic, on a unit with neither the alink nor
+     * the USB-direct block; otherwise errors as [`DspiCore::fetch_alink_usb`].
+     */
+open func fetchFrameCounterTimeBase()throws  -> AlinkTimeBaseCounter  {
+    return try  FfiConverterTypeAlinkTimeBaseCounter_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_fetch_frame_counter_time_base(self.uniffiClonePointer(),$0
+    )
+})
 }
     
     /**
@@ -6530,6 +6694,18 @@ open func openDemoAlink()throws   {try rustCallWithError(FfiConverterTypeDspiErr
 }
     
     /**
+     * Open the demo device as an alink USB-direct unit (the fake device's
+     * model, `extension_channel_spec.md` 2.9: phase-locked at 48 kHz with D
+     * 192, its host 11.5 ppm slow, a stream playing), for clients without
+     * hardware. Replaces any open device.
+     */
+open func openDemoUsbDirect()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_open_demo_usb_direct(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+    /**
      * Adopt a USB device the platform already opened: Android's
      * `UsbDeviceConnection.getFileDescriptor()`. The core `dup(2)`s the fd
      * and owns the duplicate, so the app keeps (and later closes) its own;
@@ -7175,6 +7351,28 @@ open func setAlinkPhase(mode: UInt8, dLocal: UInt16, hopsOffset: Int16)throws   
 open func setAlinkSlots(slots: Data)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_set_alink_slots(self.uniffiClonePointer(),
         FfiConverterData.lower(slots),$0
+    )
+}
+}
+    
+    /**
+     * Write `EXT_ALINK_USB`: `mode` 0 off, 1 rate lock, 2 phase lock;
+     * `auto_reanchor` (normally true); `d` samples from arrival to output,
+     * the same on every unit that should play aligned (170-399 at 48 kHz,
+     * 324-351 at 96 kHz in mode 2). Takes effect at once; a change of mode
+     * or D while phase-locked re-anchors (about D + 20 ms of silence). Saved
+     * with the output configuration.
+     *
+     * Errors, with no traffic: `Disconnected`; `Unsupported` without the
+     * block; `InvalidArgument` for a mode above 2 or D 0; `ReadOnly`. From the
+     * device: `Refused` when it stalls (mode 2 with D outside its limits now);
+     * `Denied`, `Locked` or `Transfer` from a hub.
+     */
+open func setAlinkUsb(mode: UInt8, autoReanchor: Bool, d: UInt16)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_set_alink_usb(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(mode),
+        FfiConverterBool.lower(autoReanchor),
+        FfiConverterUInt16.lower(d),$0
     )
 }
 }
@@ -8446,6 +8644,17 @@ open func testDacMute()throws   {try rustCallWithError(FfiConverterTypeDspiError
 open func undo()throws  -> HistoryMove  {
     return try  FfiConverterTypeHistoryMove_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_undo(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Whether the unit has the alink's USB-direct block, as the connect
+     * probe found it, without traffic. `Disconnected` without a device.
+     */
+open func usbDirectSupported()throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_usb_direct_supported(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -11524,6 +11733,10 @@ public struct AlinkSystemEdits {
      * Units' measured latencies.
      */
     public var units: [AlinkUnitLatency]
+    /**
+     * USB-direct units' modes (Installer).
+     */
+    public var usbModes: [AlinkUnitUsbMode]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -11539,11 +11752,15 @@ public struct AlinkSystemEdits {
          */rooms: [AlinkRoomLipSync], 
         /**
          * Units' measured latencies.
-         */units: [AlinkUnitLatency]) {
+         */units: [AlinkUnitLatency], 
+        /**
+         * USB-direct units' modes (Installer).
+         */usbModes: [AlinkUnitUsbMode]) {
         self.setSystemDelay = setSystemDelay
         self.systemDelayFrames = systemDelayFrames
         self.rooms = rooms
         self.units = units
+        self.usbModes = usbModes
     }
 }
 
@@ -11566,6 +11783,9 @@ extension AlinkSystemEdits: Equatable, Hashable {
         if lhs.units != rhs.units {
             return false
         }
+        if lhs.usbModes != rhs.usbModes {
+            return false
+        }
         return true
     }
 
@@ -11574,6 +11794,7 @@ extension AlinkSystemEdits: Equatable, Hashable {
         hasher.combine(systemDelayFrames)
         hasher.combine(rooms)
         hasher.combine(units)
+        hasher.combine(usbModes)
     }
 }
 
@@ -11589,7 +11810,8 @@ public struct FfiConverterTypeAlinkSystemEdits: FfiConverterRustBuffer {
                 setSystemDelay: FfiConverterBool.read(from: &buf), 
                 systemDelayFrames: FfiConverterOptionUInt32.read(from: &buf), 
                 rooms: FfiConverterSequenceTypeAlinkRoomLipSync.read(from: &buf), 
-                units: FfiConverterSequenceTypeAlinkUnitLatency.read(from: &buf)
+                units: FfiConverterSequenceTypeAlinkUnitLatency.read(from: &buf), 
+                usbModes: FfiConverterSequenceTypeAlinkUnitUsbMode.read(from: &buf)
         )
     }
 
@@ -11598,6 +11820,7 @@ public struct FfiConverterTypeAlinkSystemEdits: FfiConverterRustBuffer {
         FfiConverterOptionUInt32.write(value.systemDelayFrames, into: &buf)
         FfiConverterSequenceTypeAlinkRoomLipSync.write(value.rooms, into: &buf)
         FfiConverterSequenceTypeAlinkUnitLatency.write(value.units, into: &buf)
+        FfiConverterSequenceTypeAlinkUnitUsbMode.write(value.usbModes, into: &buf)
     }
 }
 
@@ -11920,6 +12143,86 @@ public struct AlinkSystemUnit {
      * Its alarms still on.
      */
     public var alarms: UInt32
+    /**
+     * How the programme reaches it: `alink` (senders and fan-outs too) or
+     * `usb_direct`.
+     */
+    public var transport: String
+    /**
+     * A USB-direct unit's mode as the unit runs it: `off`, `rate_lock`,
+     * `phase_lock`.
+     */
+    public var usbMode: String?
+    /**
+     * The mode the installation asks for, when it names one.
+     */
+    public var usbModeWanted: String?
+    /**
+     * The delay D the alignment asks for, samples; else the unit's own.
+     */
+    public var usbDelaySamples: UInt32?
+    /**
+     * [`Self::usb_delay_samples`] in ms at the system's rate.
+     */
+    public var usbDelayMs: Double?
+    /**
+     * The D the unit has now, samples.
+     */
+    public var unitUsbDelaySamples: UInt32?
+    /**
+     * The shortest D phase lock takes now, samples.
+     */
+    public var usbDelayMin: UInt32?
+    /**
+     * The longest.
+     */
+    public var usbDelayMax: UInt32?
+    /**
+     * The host's SOF rate against the unit's crystal, ppm.
+     */
+    public var hostPpm: Float?
+    /**
+     * The unit's soft VCXO correction, ppm.
+     */
+    public var vcxoPpm: Float?
+    /**
+     * The phase error, samples.
+     */
+    public var phaseErrorSamples: Float?
+    /**
+     * Faded gaps since boot.
+     */
+    public var gaps: UInt32?
+    /**
+     * Silence inserted for missing packets, samples since boot.
+     */
+    public var missedSamples: UInt32?
+    /**
+     * Samples dropped as too late, since boot.
+     */
+    public var lateSamples: UInt32?
+    /**
+     * Re-anchors since boot.
+     */
+    public var reanchors: UInt32?
+    /**
+     * Timeline ends counted by the unit's diagnostics, and the latest cause.
+     */
+    public var timelineEnds: UInt32?
+    /**
+     * The latest cause in words ("SOF lost", "bus reset"...); "" for none.
+     */
+    public var lastEnd: String
+    /**
+     * How many samples earlier its stream plays than the latest unit's (the
+     * alignment delays its outputs by that).
+     */
+    public var startOffsetSamples: Int64?
+    /**
+     * The statistics in one line, for a details row: host and VCXO ppm,
+     * phase error, gaps, missed and late samples, re-anchors, timeline ends.
+     */
+    public var usbStats: String
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -11999,7 +12302,68 @@ public struct AlinkSystemUnit {
          */measuredLatencyUs: Int64?, 
         /**
          * Its alarms still on.
-         */alarms: UInt32) {
+         */alarms: UInt32, 
+        /**
+         * How the programme reaches it: `alink` (senders and fan-outs too) or
+         * `usb_direct`.
+         */transport: String, 
+        /**
+         * A USB-direct unit's mode as the unit runs it: `off`, `rate_lock`,
+         * `phase_lock`.
+         */usbMode: String?, 
+        /**
+         * The mode the installation asks for, when it names one.
+         */usbModeWanted: String?, 
+        /**
+         * The delay D the alignment asks for, samples; else the unit's own.
+         */usbDelaySamples: UInt32?, 
+        /**
+         * [`Self::usb_delay_samples`] in ms at the system's rate.
+         */usbDelayMs: Double?, 
+        /**
+         * The D the unit has now, samples.
+         */unitUsbDelaySamples: UInt32?, 
+        /**
+         * The shortest D phase lock takes now, samples.
+         */usbDelayMin: UInt32?, 
+        /**
+         * The longest.
+         */usbDelayMax: UInt32?, 
+        /**
+         * The host's SOF rate against the unit's crystal, ppm.
+         */hostPpm: Float?, 
+        /**
+         * The unit's soft VCXO correction, ppm.
+         */vcxoPpm: Float?, 
+        /**
+         * The phase error, samples.
+         */phaseErrorSamples: Float?, 
+        /**
+         * Faded gaps since boot.
+         */gaps: UInt32?, 
+        /**
+         * Silence inserted for missing packets, samples since boot.
+         */missedSamples: UInt32?, 
+        /**
+         * Samples dropped as too late, since boot.
+         */lateSamples: UInt32?, 
+        /**
+         * Re-anchors since boot.
+         */reanchors: UInt32?, 
+        /**
+         * Timeline ends counted by the unit's diagnostics, and the latest cause.
+         */timelineEnds: UInt32?, 
+        /**
+         * The latest cause in words ("SOF lost", "bus reset"...); "" for none.
+         */lastEnd: String, 
+        /**
+         * How many samples earlier its stream plays than the latest unit's (the
+         * alignment delays its outputs by that).
+         */startOffsetSamples: Int64?, 
+        /**
+         * The statistics in one line, for a details row: host and VCXO ppm,
+         * phase error, gaps, missed and late samples, re-anchors, timeline ends.
+         */usbStats: String) {
         self.id = id
         self.name = name
         self.serial = serial
@@ -12023,6 +12387,25 @@ public struct AlinkSystemUnit {
         self.latencyUs = latencyUs
         self.measuredLatencyUs = measuredLatencyUs
         self.alarms = alarms
+        self.transport = transport
+        self.usbMode = usbMode
+        self.usbModeWanted = usbModeWanted
+        self.usbDelaySamples = usbDelaySamples
+        self.usbDelayMs = usbDelayMs
+        self.unitUsbDelaySamples = unitUsbDelaySamples
+        self.usbDelayMin = usbDelayMin
+        self.usbDelayMax = usbDelayMax
+        self.hostPpm = hostPpm
+        self.vcxoPpm = vcxoPpm
+        self.phaseErrorSamples = phaseErrorSamples
+        self.gaps = gaps
+        self.missedSamples = missedSamples
+        self.lateSamples = lateSamples
+        self.reanchors = reanchors
+        self.timelineEnds = timelineEnds
+        self.lastEnd = lastEnd
+        self.startOffsetSamples = startOffsetSamples
+        self.usbStats = usbStats
     }
 }
 
@@ -12102,6 +12485,63 @@ extension AlinkSystemUnit: Equatable, Hashable {
         if lhs.alarms != rhs.alarms {
             return false
         }
+        if lhs.transport != rhs.transport {
+            return false
+        }
+        if lhs.usbMode != rhs.usbMode {
+            return false
+        }
+        if lhs.usbModeWanted != rhs.usbModeWanted {
+            return false
+        }
+        if lhs.usbDelaySamples != rhs.usbDelaySamples {
+            return false
+        }
+        if lhs.usbDelayMs != rhs.usbDelayMs {
+            return false
+        }
+        if lhs.unitUsbDelaySamples != rhs.unitUsbDelaySamples {
+            return false
+        }
+        if lhs.usbDelayMin != rhs.usbDelayMin {
+            return false
+        }
+        if lhs.usbDelayMax != rhs.usbDelayMax {
+            return false
+        }
+        if lhs.hostPpm != rhs.hostPpm {
+            return false
+        }
+        if lhs.vcxoPpm != rhs.vcxoPpm {
+            return false
+        }
+        if lhs.phaseErrorSamples != rhs.phaseErrorSamples {
+            return false
+        }
+        if lhs.gaps != rhs.gaps {
+            return false
+        }
+        if lhs.missedSamples != rhs.missedSamples {
+            return false
+        }
+        if lhs.lateSamples != rhs.lateSamples {
+            return false
+        }
+        if lhs.reanchors != rhs.reanchors {
+            return false
+        }
+        if lhs.timelineEnds != rhs.timelineEnds {
+            return false
+        }
+        if lhs.lastEnd != rhs.lastEnd {
+            return false
+        }
+        if lhs.startOffsetSamples != rhs.startOffsetSamples {
+            return false
+        }
+        if lhs.usbStats != rhs.usbStats {
+            return false
+        }
         return true
     }
 
@@ -12129,6 +12569,25 @@ extension AlinkSystemUnit: Equatable, Hashable {
         hasher.combine(latencyUs)
         hasher.combine(measuredLatencyUs)
         hasher.combine(alarms)
+        hasher.combine(transport)
+        hasher.combine(usbMode)
+        hasher.combine(usbModeWanted)
+        hasher.combine(usbDelaySamples)
+        hasher.combine(usbDelayMs)
+        hasher.combine(unitUsbDelaySamples)
+        hasher.combine(usbDelayMin)
+        hasher.combine(usbDelayMax)
+        hasher.combine(hostPpm)
+        hasher.combine(vcxoPpm)
+        hasher.combine(phaseErrorSamples)
+        hasher.combine(gaps)
+        hasher.combine(missedSamples)
+        hasher.combine(lateSamples)
+        hasher.combine(reanchors)
+        hasher.combine(timelineEnds)
+        hasher.combine(lastEnd)
+        hasher.combine(startOffsetSamples)
+        hasher.combine(usbStats)
     }
 }
 
@@ -12163,7 +12622,26 @@ public struct FfiConverterTypeAlinkSystemUnit: FfiConverterRustBuffer {
                 hopDelayFrames: FfiConverterOptionUInt32.read(from: &buf), 
                 latencyUs: FfiConverterInt64.read(from: &buf), 
                 measuredLatencyUs: FfiConverterOptionInt64.read(from: &buf), 
-                alarms: FfiConverterUInt32.read(from: &buf)
+                alarms: FfiConverterUInt32.read(from: &buf), 
+                transport: FfiConverterString.read(from: &buf), 
+                usbMode: FfiConverterOptionString.read(from: &buf), 
+                usbModeWanted: FfiConverterOptionString.read(from: &buf), 
+                usbDelaySamples: FfiConverterOptionUInt32.read(from: &buf), 
+                usbDelayMs: FfiConverterOptionDouble.read(from: &buf), 
+                unitUsbDelaySamples: FfiConverterOptionUInt32.read(from: &buf), 
+                usbDelayMin: FfiConverterOptionUInt32.read(from: &buf), 
+                usbDelayMax: FfiConverterOptionUInt32.read(from: &buf), 
+                hostPpm: FfiConverterOptionFloat.read(from: &buf), 
+                vcxoPpm: FfiConverterOptionFloat.read(from: &buf), 
+                phaseErrorSamples: FfiConverterOptionFloat.read(from: &buf), 
+                gaps: FfiConverterOptionUInt32.read(from: &buf), 
+                missedSamples: FfiConverterOptionUInt32.read(from: &buf), 
+                lateSamples: FfiConverterOptionUInt32.read(from: &buf), 
+                reanchors: FfiConverterOptionUInt32.read(from: &buf), 
+                timelineEnds: FfiConverterOptionUInt32.read(from: &buf), 
+                lastEnd: FfiConverterString.read(from: &buf), 
+                startOffsetSamples: FfiConverterOptionInt64.read(from: &buf), 
+                usbStats: FfiConverterString.read(from: &buf)
         )
     }
 
@@ -12191,6 +12669,25 @@ public struct FfiConverterTypeAlinkSystemUnit: FfiConverterRustBuffer {
         FfiConverterInt64.write(value.latencyUs, into: &buf)
         FfiConverterOptionInt64.write(value.measuredLatencyUs, into: &buf)
         FfiConverterUInt32.write(value.alarms, into: &buf)
+        FfiConverterString.write(value.transport, into: &buf)
+        FfiConverterOptionString.write(value.usbMode, into: &buf)
+        FfiConverterOptionString.write(value.usbModeWanted, into: &buf)
+        FfiConverterOptionUInt32.write(value.usbDelaySamples, into: &buf)
+        FfiConverterOptionDouble.write(value.usbDelayMs, into: &buf)
+        FfiConverterOptionUInt32.write(value.unitUsbDelaySamples, into: &buf)
+        FfiConverterOptionUInt32.write(value.usbDelayMin, into: &buf)
+        FfiConverterOptionUInt32.write(value.usbDelayMax, into: &buf)
+        FfiConverterOptionFloat.write(value.hostPpm, into: &buf)
+        FfiConverterOptionFloat.write(value.vcxoPpm, into: &buf)
+        FfiConverterOptionFloat.write(value.phaseErrorSamples, into: &buf)
+        FfiConverterOptionUInt32.write(value.gaps, into: &buf)
+        FfiConverterOptionUInt32.write(value.missedSamples, into: &buf)
+        FfiConverterOptionUInt32.write(value.lateSamples, into: &buf)
+        FfiConverterOptionUInt32.write(value.reanchors, into: &buf)
+        FfiConverterOptionUInt32.write(value.timelineEnds, into: &buf)
+        FfiConverterString.write(value.lastEnd, into: &buf)
+        FfiConverterOptionInt64.write(value.startOffsetSamples, into: &buf)
+        FfiConverterString.write(value.usbStats, into: &buf)
     }
 }
 
@@ -12302,8 +12799,18 @@ public struct AlinkSystemView {
     /**
      * Units the model has, but those whose firmware has no audio link
      * (WP HWLK1F): "N of M locked" counts the units that can lock.
+     * -- WP AUSB1 -- USB-direct units are counted apart.
      */
     public var unitCount: UInt32
+    /**
+     * USB-direct units in the model (WP AUSB1).
+     */
+    public var usbUnitCount: UInt32
+    /**
+     * Those locked as asked: phase-locked (rate-locked when the mode asks
+     * only that).
+     */
+    public var usbLocked: UInt32
     /**
      * One line for a status indicator: "Audio link: 4 of 4 locked".
      */
@@ -12393,7 +12900,15 @@ public struct AlinkSystemView {
         /**
          * Units the model has, but those whose firmware has no audio link
          * (WP HWLK1F): "N of M locked" counts the units that can lock.
+         * -- WP AUSB1 -- USB-direct units are counted apart.
          */unitCount: UInt32, 
+        /**
+         * USB-direct units in the model (WP AUSB1).
+         */usbUnitCount: UInt32, 
+        /**
+         * Those locked as asked: phase-locked (rate-locked when the mode asks
+         * only that).
+         */usbLocked: UInt32, 
         /**
          * One line for a status indicator: "Audio link: 4 of 4 locked".
          */summary: String, 
@@ -12430,6 +12945,8 @@ public struct AlinkSystemView {
         self.holdover = holdover
         self.pending = pending
         self.unitCount = unitCount
+        self.usbUnitCount = usbUnitCount
+        self.usbLocked = usbLocked
         self.summary = summary
         self.health = health
         self.issues = issues
@@ -12510,6 +13027,12 @@ extension AlinkSystemView: Equatable, Hashable {
         if lhs.unitCount != rhs.unitCount {
             return false
         }
+        if lhs.usbUnitCount != rhs.usbUnitCount {
+            return false
+        }
+        if lhs.usbLocked != rhs.usbLocked {
+            return false
+        }
         if lhs.summary != rhs.summary {
             return false
         }
@@ -12548,6 +13071,8 @@ extension AlinkSystemView: Equatable, Hashable {
         hasher.combine(holdover)
         hasher.combine(pending)
         hasher.combine(unitCount)
+        hasher.combine(usbUnitCount)
+        hasher.combine(usbLocked)
         hasher.combine(summary)
         hasher.combine(health)
         hasher.combine(issues)
@@ -12586,6 +13111,8 @@ public struct FfiConverterTypeAlinkSystemView: FfiConverterRustBuffer {
                 holdover: FfiConverterUInt32.read(from: &buf), 
                 pending: FfiConverterUInt32.read(from: &buf), 
                 unitCount: FfiConverterUInt32.read(from: &buf), 
+                usbUnitCount: FfiConverterUInt32.read(from: &buf), 
+                usbLocked: FfiConverterUInt32.read(from: &buf), 
                 summary: FfiConverterString.read(from: &buf), 
                 health: FfiConverterString.read(from: &buf), 
                 issues: FfiConverterSequenceString.read(from: &buf), 
@@ -12616,6 +13143,8 @@ public struct FfiConverterTypeAlinkSystemView: FfiConverterRustBuffer {
         FfiConverterUInt32.write(value.holdover, into: &buf)
         FfiConverterUInt32.write(value.pending, into: &buf)
         FfiConverterUInt32.write(value.unitCount, into: &buf)
+        FfiConverterUInt32.write(value.usbUnitCount, into: &buf)
+        FfiConverterUInt32.write(value.usbLocked, into: &buf)
         FfiConverterString.write(value.summary, into: &buf)
         FfiConverterString.write(value.health, into: &buf)
         FfiConverterSequenceString.write(value.issues, into: &buf)
@@ -12767,6 +13296,149 @@ public func FfiConverterTypeAlinkSystemWrite_lower(_ value: AlinkSystemWrite) ->
 
 
 /**
+ * What `EXT_FRAME_COUNTER` reports, with its time base.
+ */
+public struct AlinkTimeBaseCounter {
+    /**
+     * The alink frame F (time base `alink`) or the USB sample S
+     * (`usb_sample`); 0 with none.
+     */
+    public var frame: UInt64
+    /**
+     * The unit's clock at the read, µs (wraps).
+     */
+    public var timeUs: UInt32
+    /**
+     * Output samples played, low 32 bits.
+     */
+    public var outputFrames: UInt32
+    /**
+     * `alink`, `usb_sample` or `none`.
+     */
+    public var timeBase: String
+    /**
+     * Its code (0, 1, 0xFF).
+     */
+    public var timeBaseCode: UInt8
+    /**
+     * The bus frame of the latest SOF (time base `usb_sample` only).
+     */
+    public var busFrame: UInt16
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The alink frame F (time base `alink`) or the USB sample S
+         * (`usb_sample`); 0 with none.
+         */frame: UInt64, 
+        /**
+         * The unit's clock at the read, µs (wraps).
+         */timeUs: UInt32, 
+        /**
+         * Output samples played, low 32 bits.
+         */outputFrames: UInt32, 
+        /**
+         * `alink`, `usb_sample` or `none`.
+         */timeBase: String, 
+        /**
+         * Its code (0, 1, 0xFF).
+         */timeBaseCode: UInt8, 
+        /**
+         * The bus frame of the latest SOF (time base `usb_sample` only).
+         */busFrame: UInt16) {
+        self.frame = frame
+        self.timeUs = timeUs
+        self.outputFrames = outputFrames
+        self.timeBase = timeBase
+        self.timeBaseCode = timeBaseCode
+        self.busFrame = busFrame
+    }
+}
+
+#if compiler(>=6)
+extension AlinkTimeBaseCounter: Sendable {}
+#endif
+
+
+extension AlinkTimeBaseCounter: Equatable, Hashable {
+    public static func ==(lhs: AlinkTimeBaseCounter, rhs: AlinkTimeBaseCounter) -> Bool {
+        if lhs.frame != rhs.frame {
+            return false
+        }
+        if lhs.timeUs != rhs.timeUs {
+            return false
+        }
+        if lhs.outputFrames != rhs.outputFrames {
+            return false
+        }
+        if lhs.timeBase != rhs.timeBase {
+            return false
+        }
+        if lhs.timeBaseCode != rhs.timeBaseCode {
+            return false
+        }
+        if lhs.busFrame != rhs.busFrame {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(frame)
+        hasher.combine(timeUs)
+        hasher.combine(outputFrames)
+        hasher.combine(timeBase)
+        hasher.combine(timeBaseCode)
+        hasher.combine(busFrame)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAlinkTimeBaseCounter: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AlinkTimeBaseCounter {
+        return
+            try AlinkTimeBaseCounter(
+                frame: FfiConverterUInt64.read(from: &buf), 
+                timeUs: FfiConverterUInt32.read(from: &buf), 
+                outputFrames: FfiConverterUInt32.read(from: &buf), 
+                timeBase: FfiConverterString.read(from: &buf), 
+                timeBaseCode: FfiConverterUInt8.read(from: &buf), 
+                busFrame: FfiConverterUInt16.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AlinkTimeBaseCounter, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.frame, into: &buf)
+        FfiConverterUInt32.write(value.timeUs, into: &buf)
+        FfiConverterUInt32.write(value.outputFrames, into: &buf)
+        FfiConverterString.write(value.timeBase, into: &buf)
+        FfiConverterUInt8.write(value.timeBaseCode, into: &buf)
+        FfiConverterUInt16.write(value.busFrame, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAlinkTimeBaseCounter_lift(_ buf: RustBuffer) throws -> AlinkTimeBaseCounter {
+    return try FfiConverterTypeAlinkTimeBaseCounter.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAlinkTimeBaseCounter_lower(_ value: AlinkTimeBaseCounter) -> RustBuffer {
+    return FfiConverterTypeAlinkTimeBaseCounter.lower(value)
+}
+
+
+/**
  * One unit's measured latency to set.
  */
 public struct AlinkUnitLatency {
@@ -12848,6 +13520,1074 @@ public func FfiConverterTypeAlinkUnitLatency_lift(_ buf: RustBuffer) throws -> A
 #endif
 public func FfiConverterTypeAlinkUnitLatency_lower(_ value: AlinkUnitLatency) -> RustBuffer {
     return FfiConverterTypeAlinkUnitLatency.lower(value)
+}
+
+
+/**
+ * One USB-direct unit's mode to set ("Clock and audio links", Installer):
+ * written with the audio link delays.
+ */
+public struct AlinkUnitUsbMode {
+    /**
+     * The unit's id.
+     */
+    public var unitId: String
+    /**
+     * `off`, `rate_lock` or `phase_lock`; none: the unit's own is kept.
+     */
+    public var mode: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The unit's id.
+         */unitId: String, 
+        /**
+         * `off`, `rate_lock` or `phase_lock`; none: the unit's own is kept.
+         */mode: String?) {
+        self.unitId = unitId
+        self.mode = mode
+    }
+}
+
+#if compiler(>=6)
+extension AlinkUnitUsbMode: Sendable {}
+#endif
+
+
+extension AlinkUnitUsbMode: Equatable, Hashable {
+    public static func ==(lhs: AlinkUnitUsbMode, rhs: AlinkUnitUsbMode) -> Bool {
+        if lhs.unitId != rhs.unitId {
+            return false
+        }
+        if lhs.mode != rhs.mode {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(unitId)
+        hasher.combine(mode)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAlinkUnitUsbMode: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AlinkUnitUsbMode {
+        return
+            try AlinkUnitUsbMode(
+                unitId: FfiConverterString.read(from: &buf), 
+                mode: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AlinkUnitUsbMode, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.unitId, into: &buf)
+        FfiConverterOptionString.write(value.mode, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAlinkUnitUsbMode_lift(_ buf: RustBuffer) throws -> AlinkUnitUsbMode {
+    return try FfiConverterTypeAlinkUnitUsbMode.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAlinkUnitUsbMode_lower(_ value: AlinkUnitUsbMode) -> RustBuffer {
+    return FfiConverterTypeAlinkUnitUsbMode.lower(value)
+}
+
+
+/**
+ * What `EXT_ALINK_USB` reports.
+ */
+public struct AlinkUsbConfig {
+    /**
+     * 0 off, 1 rate lock, 2 phase lock.
+     */
+    public var mode: UInt8
+    /**
+     * `off`, `rate_lock`, `phase_lock` or `unknown`.
+     */
+    public var modeName: String
+    /**
+     * A phase error beyond 2 samples re-anchors (else it is pulled in while
+     * playing).
+     */
+    public var autoReanchor: Bool
+    /**
+     * Samples from a USB sample's arrival to its output.
+     */
+    public var d: UInt16
+    /**
+     * Mode 2 with D below the unit's minimum now: it runs as mode 1.
+     */
+    public var dBelowMin: Bool
+    /**
+     * Mode 2 with D above its maximum: it runs as mode 1.
+     */
+    public var dAboveMax: Bool
+    /**
+     * Mode 2 at 44.1 kHz: it runs as mode 1.
+     */
+    public var rateUnsupported: Bool
+    /**
+     * The state, as [`AlinkUsbStatus::state`].
+     */
+    public var state: String
+    /**
+     * Its code.
+     */
+    public var stateCode: UInt8
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * 0 off, 1 rate lock, 2 phase lock.
+         */mode: UInt8, 
+        /**
+         * `off`, `rate_lock`, `phase_lock` or `unknown`.
+         */modeName: String, 
+        /**
+         * A phase error beyond 2 samples re-anchors (else it is pulled in while
+         * playing).
+         */autoReanchor: Bool, 
+        /**
+         * Samples from a USB sample's arrival to its output.
+         */d: UInt16, 
+        /**
+         * Mode 2 with D below the unit's minimum now: it runs as mode 1.
+         */dBelowMin: Bool, 
+        /**
+         * Mode 2 with D above its maximum: it runs as mode 1.
+         */dAboveMax: Bool, 
+        /**
+         * Mode 2 at 44.1 kHz: it runs as mode 1.
+         */rateUnsupported: Bool, 
+        /**
+         * The state, as [`AlinkUsbStatus::state`].
+         */state: String, 
+        /**
+         * Its code.
+         */stateCode: UInt8) {
+        self.mode = mode
+        self.modeName = modeName
+        self.autoReanchor = autoReanchor
+        self.d = d
+        self.dBelowMin = dBelowMin
+        self.dAboveMax = dAboveMax
+        self.rateUnsupported = rateUnsupported
+        self.state = state
+        self.stateCode = stateCode
+    }
+}
+
+#if compiler(>=6)
+extension AlinkUsbConfig: Sendable {}
+#endif
+
+
+extension AlinkUsbConfig: Equatable, Hashable {
+    public static func ==(lhs: AlinkUsbConfig, rhs: AlinkUsbConfig) -> Bool {
+        if lhs.mode != rhs.mode {
+            return false
+        }
+        if lhs.modeName != rhs.modeName {
+            return false
+        }
+        if lhs.autoReanchor != rhs.autoReanchor {
+            return false
+        }
+        if lhs.d != rhs.d {
+            return false
+        }
+        if lhs.dBelowMin != rhs.dBelowMin {
+            return false
+        }
+        if lhs.dAboveMax != rhs.dAboveMax {
+            return false
+        }
+        if lhs.rateUnsupported != rhs.rateUnsupported {
+            return false
+        }
+        if lhs.state != rhs.state {
+            return false
+        }
+        if lhs.stateCode != rhs.stateCode {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(mode)
+        hasher.combine(modeName)
+        hasher.combine(autoReanchor)
+        hasher.combine(d)
+        hasher.combine(dBelowMin)
+        hasher.combine(dAboveMax)
+        hasher.combine(rateUnsupported)
+        hasher.combine(state)
+        hasher.combine(stateCode)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAlinkUsbConfig: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AlinkUsbConfig {
+        return
+            try AlinkUsbConfig(
+                mode: FfiConverterUInt8.read(from: &buf), 
+                modeName: FfiConverterString.read(from: &buf), 
+                autoReanchor: FfiConverterBool.read(from: &buf), 
+                d: FfiConverterUInt16.read(from: &buf), 
+                dBelowMin: FfiConverterBool.read(from: &buf), 
+                dAboveMax: FfiConverterBool.read(from: &buf), 
+                rateUnsupported: FfiConverterBool.read(from: &buf), 
+                state: FfiConverterString.read(from: &buf), 
+                stateCode: FfiConverterUInt8.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AlinkUsbConfig, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.mode, into: &buf)
+        FfiConverterString.write(value.modeName, into: &buf)
+        FfiConverterBool.write(value.autoReanchor, into: &buf)
+        FfiConverterUInt16.write(value.d, into: &buf)
+        FfiConverterBool.write(value.dBelowMin, into: &buf)
+        FfiConverterBool.write(value.dAboveMax, into: &buf)
+        FfiConverterBool.write(value.rateUnsupported, into: &buf)
+        FfiConverterString.write(value.state, into: &buf)
+        FfiConverterUInt8.write(value.stateCode, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAlinkUsbConfig_lift(_ buf: RustBuffer) throws -> AlinkUsbConfig {
+    return try FfiConverterTypeAlinkUsbConfig.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAlinkUsbConfig_lower(_ value: AlinkUsbConfig) -> RustBuffer {
+    return FfiConverterTypeAlinkUsbConfig.lower(value)
+}
+
+
+/**
+ * What `EXT_ALINK_USB_DIAG` reports: why a unit lost its timeline.
+ */
+public struct AlinkUsbDiag {
+    /**
+     * The latest end's cause ([`AlinkUsbEnd::cause`]); none yet.
+     */
+    public var lastCause: String?
+    /**
+     * SOF absences ridden through.
+     */
+    public var rides: UInt16
+    /**
+     * SOF absences of 50 ms or more.
+     */
+    public var holdovers: UInt16
+    /**
+     * Timeline ends by cause, in the firmware's order.
+     */
+    public var ends: [AlinkUsbEnd]
+    /**
+     * USB suspends.
+     */
+    public var suspends: UInt16
+    /**
+     * USB resumes.
+     */
+    public var resumes: UInt16
+    /**
+     * USB bus resets.
+     */
+    public var busResets: UInt16
+    /**
+     * Disconnects.
+     */
+    public var unplugs: UInt16
+    /**
+     * The latest absence: frames counted on the bus.
+     */
+    public var lastFrames: UInt32
+    /**
+     * Its duration by the unit's clock, µs.
+     */
+    public var lastUs: UInt32
+    /**
+     * Clock minus frames at the host rate, µs.
+     */
+    public var lastDevUs: Int32
+    /**
+     * The longest absence ridden through, µs.
+     */
+    public var longestRideUs: UInt32
+    /**
+     * The longest main-loop pass, µs.
+     */
+    public var maxPassUs: UInt32
+    /**
+     * The longest time without a SOF interrupt, µs.
+     */
+    public var maxIsrQuietUs: UInt32
+    /**
+     * The latest SOF interrupt after its SOF, µs.
+     */
+    public var maxIsrLateUs: UInt32
+    /**
+     * The running holdover's age, µs.
+     */
+    public var holdoverUs: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The latest end's cause ([`AlinkUsbEnd::cause`]); none yet.
+         */lastCause: String?, 
+        /**
+         * SOF absences ridden through.
+         */rides: UInt16, 
+        /**
+         * SOF absences of 50 ms or more.
+         */holdovers: UInt16, 
+        /**
+         * Timeline ends by cause, in the firmware's order.
+         */ends: [AlinkUsbEnd], 
+        /**
+         * USB suspends.
+         */suspends: UInt16, 
+        /**
+         * USB resumes.
+         */resumes: UInt16, 
+        /**
+         * USB bus resets.
+         */busResets: UInt16, 
+        /**
+         * Disconnects.
+         */unplugs: UInt16, 
+        /**
+         * The latest absence: frames counted on the bus.
+         */lastFrames: UInt32, 
+        /**
+         * Its duration by the unit's clock, µs.
+         */lastUs: UInt32, 
+        /**
+         * Clock minus frames at the host rate, µs.
+         */lastDevUs: Int32, 
+        /**
+         * The longest absence ridden through, µs.
+         */longestRideUs: UInt32, 
+        /**
+         * The longest main-loop pass, µs.
+         */maxPassUs: UInt32, 
+        /**
+         * The longest time without a SOF interrupt, µs.
+         */maxIsrQuietUs: UInt32, 
+        /**
+         * The latest SOF interrupt after its SOF, µs.
+         */maxIsrLateUs: UInt32, 
+        /**
+         * The running holdover's age, µs.
+         */holdoverUs: UInt32) {
+        self.lastCause = lastCause
+        self.rides = rides
+        self.holdovers = holdovers
+        self.ends = ends
+        self.suspends = suspends
+        self.resumes = resumes
+        self.busResets = busResets
+        self.unplugs = unplugs
+        self.lastFrames = lastFrames
+        self.lastUs = lastUs
+        self.lastDevUs = lastDevUs
+        self.longestRideUs = longestRideUs
+        self.maxPassUs = maxPassUs
+        self.maxIsrQuietUs = maxIsrQuietUs
+        self.maxIsrLateUs = maxIsrLateUs
+        self.holdoverUs = holdoverUs
+    }
+}
+
+#if compiler(>=6)
+extension AlinkUsbDiag: Sendable {}
+#endif
+
+
+extension AlinkUsbDiag: Equatable, Hashable {
+    public static func ==(lhs: AlinkUsbDiag, rhs: AlinkUsbDiag) -> Bool {
+        if lhs.lastCause != rhs.lastCause {
+            return false
+        }
+        if lhs.rides != rhs.rides {
+            return false
+        }
+        if lhs.holdovers != rhs.holdovers {
+            return false
+        }
+        if lhs.ends != rhs.ends {
+            return false
+        }
+        if lhs.suspends != rhs.suspends {
+            return false
+        }
+        if lhs.resumes != rhs.resumes {
+            return false
+        }
+        if lhs.busResets != rhs.busResets {
+            return false
+        }
+        if lhs.unplugs != rhs.unplugs {
+            return false
+        }
+        if lhs.lastFrames != rhs.lastFrames {
+            return false
+        }
+        if lhs.lastUs != rhs.lastUs {
+            return false
+        }
+        if lhs.lastDevUs != rhs.lastDevUs {
+            return false
+        }
+        if lhs.longestRideUs != rhs.longestRideUs {
+            return false
+        }
+        if lhs.maxPassUs != rhs.maxPassUs {
+            return false
+        }
+        if lhs.maxIsrQuietUs != rhs.maxIsrQuietUs {
+            return false
+        }
+        if lhs.maxIsrLateUs != rhs.maxIsrLateUs {
+            return false
+        }
+        if lhs.holdoverUs != rhs.holdoverUs {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(lastCause)
+        hasher.combine(rides)
+        hasher.combine(holdovers)
+        hasher.combine(ends)
+        hasher.combine(suspends)
+        hasher.combine(resumes)
+        hasher.combine(busResets)
+        hasher.combine(unplugs)
+        hasher.combine(lastFrames)
+        hasher.combine(lastUs)
+        hasher.combine(lastDevUs)
+        hasher.combine(longestRideUs)
+        hasher.combine(maxPassUs)
+        hasher.combine(maxIsrQuietUs)
+        hasher.combine(maxIsrLateUs)
+        hasher.combine(holdoverUs)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAlinkUsbDiag: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AlinkUsbDiag {
+        return
+            try AlinkUsbDiag(
+                lastCause: FfiConverterOptionString.read(from: &buf), 
+                rides: FfiConverterUInt16.read(from: &buf), 
+                holdovers: FfiConverterUInt16.read(from: &buf), 
+                ends: FfiConverterSequenceTypeAlinkUsbEnd.read(from: &buf), 
+                suspends: FfiConverterUInt16.read(from: &buf), 
+                resumes: FfiConverterUInt16.read(from: &buf), 
+                busResets: FfiConverterUInt16.read(from: &buf), 
+                unplugs: FfiConverterUInt16.read(from: &buf), 
+                lastFrames: FfiConverterUInt32.read(from: &buf), 
+                lastUs: FfiConverterUInt32.read(from: &buf), 
+                lastDevUs: FfiConverterInt32.read(from: &buf), 
+                longestRideUs: FfiConverterUInt32.read(from: &buf), 
+                maxPassUs: FfiConverterUInt32.read(from: &buf), 
+                maxIsrQuietUs: FfiConverterUInt32.read(from: &buf), 
+                maxIsrLateUs: FfiConverterUInt32.read(from: &buf), 
+                holdoverUs: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AlinkUsbDiag, into buf: inout [UInt8]) {
+        FfiConverterOptionString.write(value.lastCause, into: &buf)
+        FfiConverterUInt16.write(value.rides, into: &buf)
+        FfiConverterUInt16.write(value.holdovers, into: &buf)
+        FfiConverterSequenceTypeAlinkUsbEnd.write(value.ends, into: &buf)
+        FfiConverterUInt16.write(value.suspends, into: &buf)
+        FfiConverterUInt16.write(value.resumes, into: &buf)
+        FfiConverterUInt16.write(value.busResets, into: &buf)
+        FfiConverterUInt16.write(value.unplugs, into: &buf)
+        FfiConverterUInt32.write(value.lastFrames, into: &buf)
+        FfiConverterUInt32.write(value.lastUs, into: &buf)
+        FfiConverterInt32.write(value.lastDevUs, into: &buf)
+        FfiConverterUInt32.write(value.longestRideUs, into: &buf)
+        FfiConverterUInt32.write(value.maxPassUs, into: &buf)
+        FfiConverterUInt32.write(value.maxIsrQuietUs, into: &buf)
+        FfiConverterUInt32.write(value.maxIsrLateUs, into: &buf)
+        FfiConverterUInt32.write(value.holdoverUs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAlinkUsbDiag_lift(_ buf: RustBuffer) throws -> AlinkUsbDiag {
+    return try FfiConverterTypeAlinkUsbDiag.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAlinkUsbDiag_lower(_ value: AlinkUsbDiag) -> RustBuffer {
+    return FfiConverterTypeAlinkUsbDiag.lower(value)
+}
+
+
+/**
+ * One cause of timeline ends with its count (`EXT_ALINK_USB_DIAG`).
+ */
+public struct AlinkUsbEnd {
+    /**
+     * `sof_lost`, `long_gap`, `discontinuity`, `host_rejected`,
+     * `rate_or_config`, `reanchor_phase_error`, `reanchor_output_reset`,
+     * `reanchor_other`, `stop`.
+     */
+    public var cause: String
+    /**
+     * How often.
+     */
+    public var count: UInt16
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `sof_lost`, `long_gap`, `discontinuity`, `host_rejected`,
+         * `rate_or_config`, `reanchor_phase_error`, `reanchor_output_reset`,
+         * `reanchor_other`, `stop`.
+         */cause: String, 
+        /**
+         * How often.
+         */count: UInt16) {
+        self.cause = cause
+        self.count = count
+    }
+}
+
+#if compiler(>=6)
+extension AlinkUsbEnd: Sendable {}
+#endif
+
+
+extension AlinkUsbEnd: Equatable, Hashable {
+    public static func ==(lhs: AlinkUsbEnd, rhs: AlinkUsbEnd) -> Bool {
+        if lhs.cause != rhs.cause {
+            return false
+        }
+        if lhs.count != rhs.count {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(cause)
+        hasher.combine(count)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAlinkUsbEnd: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AlinkUsbEnd {
+        return
+            try AlinkUsbEnd(
+                cause: FfiConverterString.read(from: &buf), 
+                count: FfiConverterUInt16.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AlinkUsbEnd, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.cause, into: &buf)
+        FfiConverterUInt16.write(value.count, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAlinkUsbEnd_lift(_ buf: RustBuffer) throws -> AlinkUsbEnd {
+    return try FfiConverterTypeAlinkUsbEnd.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAlinkUsbEnd_lower(_ value: AlinkUsbEnd) -> RustBuffer {
+    return FfiConverterTypeAlinkUsbEnd.lower(value)
+}
+
+
+/**
+ * What `EXT_ALINK_USB_STATUS` reports.
+ */
+public struct AlinkUsbStatus {
+    /**
+     * `off` (mode 0, or the source is not USB), `no_sof`, `pull_in`,
+     * `rate_locked`, `anchoring`, `phase_locked`, `rejected` (the host is
+     * beyond 295 ppm) or `unknown`.
+     */
+    public var state: String
+    /**
+     * Its code.
+     */
+    public var stateCode: UInt8
+    /**
+     * 0 free, 1 anchoring, 2 locked, 3 re-anchor pending.
+     */
+    public var phaseState: UInt8
+    /**
+     * 0 = 44.1, 1 = 48, 2 = 96 kHz, 0xFF other.
+     */
+    public var rateCode: UInt8
+    /**
+     * The rate, Hz; 0 when unknown.
+     */
+    public var rateHz: UInt32
+    /**
+     * RP2350 hardware SOF timestamps.
+     */
+    public var hwTimestamp: Bool
+    /**
+     * The host plays a stream to the unit.
+     */
+    public var stream: Bool
+    /**
+     * The host follows the SOF-locked clock.
+     */
+    public var nominalFeedback: Bool
+    /**
+     * A usable time base.
+     */
+    public var timeBase: Bool
+    /**
+     * No SOF for over 50 ms: the time base is extrapolated.
+     */
+    public var holdover: Bool
+    /**
+     * The host's SOF rate against the unit's crystal, ppm (+ = host fast).
+     */
+    public var hostPpm: Float
+    /**
+     * The soft VCXO's correction, ppm.
+     */
+    public var vcxoPpm: Float
+    /**
+     * The phase error, samples (phase-locked only).
+     */
+    public var phaseErrorSamples: Float
+    /**
+     * The USB sample index S arriving now; 0 without a time base.
+     */
+    public var sample: UInt64
+    /**
+     * Its bus frame (0-2047).
+     */
+    public var busFrame: UInt16
+    /**
+     * The smallest D phase lock takes now.
+     */
+    public var dMin: UInt16
+    /**
+     * The largest.
+     */
+    public var dMax: UInt16
+    /**
+     * The output ring's fill, samples.
+     */
+    public var fill: UInt16
+    /**
+     * The bus frame the current stream's content began in (2.9.3); none
+     * without a stream on the timeline.
+     */
+    public var streamStartBusFrame: UInt16?
+    /**
+     * Frames since then.
+     */
+    public var streamAgeFrames: UInt32
+    /**
+     * Silence inserted minus late samples dropped since then.
+     */
+    public var streamShift: Int32
+    /**
+     * Faded gaps since boot (wraps at 65536).
+     */
+    public var gapCount: UInt16
+    /**
+     * Anchors since boot.
+     */
+    public var anchors: UInt32
+    /**
+     * Re-anchors since boot.
+     */
+    public var reanchors: UInt32
+    /**
+     * Silence inserted for missing packets, samples since boot.
+     */
+    public var missedSamples: UInt32
+    /**
+     * Samples dropped because their packet came too late, since boot.
+     */
+    public var lateSamples: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `off` (mode 0, or the source is not USB), `no_sof`, `pull_in`,
+         * `rate_locked`, `anchoring`, `phase_locked`, `rejected` (the host is
+         * beyond 295 ppm) or `unknown`.
+         */state: String, 
+        /**
+         * Its code.
+         */stateCode: UInt8, 
+        /**
+         * 0 free, 1 anchoring, 2 locked, 3 re-anchor pending.
+         */phaseState: UInt8, 
+        /**
+         * 0 = 44.1, 1 = 48, 2 = 96 kHz, 0xFF other.
+         */rateCode: UInt8, 
+        /**
+         * The rate, Hz; 0 when unknown.
+         */rateHz: UInt32, 
+        /**
+         * RP2350 hardware SOF timestamps.
+         */hwTimestamp: Bool, 
+        /**
+         * The host plays a stream to the unit.
+         */stream: Bool, 
+        /**
+         * The host follows the SOF-locked clock.
+         */nominalFeedback: Bool, 
+        /**
+         * A usable time base.
+         */timeBase: Bool, 
+        /**
+         * No SOF for over 50 ms: the time base is extrapolated.
+         */holdover: Bool, 
+        /**
+         * The host's SOF rate against the unit's crystal, ppm (+ = host fast).
+         */hostPpm: Float, 
+        /**
+         * The soft VCXO's correction, ppm.
+         */vcxoPpm: Float, 
+        /**
+         * The phase error, samples (phase-locked only).
+         */phaseErrorSamples: Float, 
+        /**
+         * The USB sample index S arriving now; 0 without a time base.
+         */sample: UInt64, 
+        /**
+         * Its bus frame (0-2047).
+         */busFrame: UInt16, 
+        /**
+         * The smallest D phase lock takes now.
+         */dMin: UInt16, 
+        /**
+         * The largest.
+         */dMax: UInt16, 
+        /**
+         * The output ring's fill, samples.
+         */fill: UInt16, 
+        /**
+         * The bus frame the current stream's content began in (2.9.3); none
+         * without a stream on the timeline.
+         */streamStartBusFrame: UInt16?, 
+        /**
+         * Frames since then.
+         */streamAgeFrames: UInt32, 
+        /**
+         * Silence inserted minus late samples dropped since then.
+         */streamShift: Int32, 
+        /**
+         * Faded gaps since boot (wraps at 65536).
+         */gapCount: UInt16, 
+        /**
+         * Anchors since boot.
+         */anchors: UInt32, 
+        /**
+         * Re-anchors since boot.
+         */reanchors: UInt32, 
+        /**
+         * Silence inserted for missing packets, samples since boot.
+         */missedSamples: UInt32, 
+        /**
+         * Samples dropped because their packet came too late, since boot.
+         */lateSamples: UInt32) {
+        self.state = state
+        self.stateCode = stateCode
+        self.phaseState = phaseState
+        self.rateCode = rateCode
+        self.rateHz = rateHz
+        self.hwTimestamp = hwTimestamp
+        self.stream = stream
+        self.nominalFeedback = nominalFeedback
+        self.timeBase = timeBase
+        self.holdover = holdover
+        self.hostPpm = hostPpm
+        self.vcxoPpm = vcxoPpm
+        self.phaseErrorSamples = phaseErrorSamples
+        self.sample = sample
+        self.busFrame = busFrame
+        self.dMin = dMin
+        self.dMax = dMax
+        self.fill = fill
+        self.streamStartBusFrame = streamStartBusFrame
+        self.streamAgeFrames = streamAgeFrames
+        self.streamShift = streamShift
+        self.gapCount = gapCount
+        self.anchors = anchors
+        self.reanchors = reanchors
+        self.missedSamples = missedSamples
+        self.lateSamples = lateSamples
+    }
+}
+
+#if compiler(>=6)
+extension AlinkUsbStatus: Sendable {}
+#endif
+
+
+extension AlinkUsbStatus: Equatable, Hashable {
+    public static func ==(lhs: AlinkUsbStatus, rhs: AlinkUsbStatus) -> Bool {
+        if lhs.state != rhs.state {
+            return false
+        }
+        if lhs.stateCode != rhs.stateCode {
+            return false
+        }
+        if lhs.phaseState != rhs.phaseState {
+            return false
+        }
+        if lhs.rateCode != rhs.rateCode {
+            return false
+        }
+        if lhs.rateHz != rhs.rateHz {
+            return false
+        }
+        if lhs.hwTimestamp != rhs.hwTimestamp {
+            return false
+        }
+        if lhs.stream != rhs.stream {
+            return false
+        }
+        if lhs.nominalFeedback != rhs.nominalFeedback {
+            return false
+        }
+        if lhs.timeBase != rhs.timeBase {
+            return false
+        }
+        if lhs.holdover != rhs.holdover {
+            return false
+        }
+        if lhs.hostPpm != rhs.hostPpm {
+            return false
+        }
+        if lhs.vcxoPpm != rhs.vcxoPpm {
+            return false
+        }
+        if lhs.phaseErrorSamples != rhs.phaseErrorSamples {
+            return false
+        }
+        if lhs.sample != rhs.sample {
+            return false
+        }
+        if lhs.busFrame != rhs.busFrame {
+            return false
+        }
+        if lhs.dMin != rhs.dMin {
+            return false
+        }
+        if lhs.dMax != rhs.dMax {
+            return false
+        }
+        if lhs.fill != rhs.fill {
+            return false
+        }
+        if lhs.streamStartBusFrame != rhs.streamStartBusFrame {
+            return false
+        }
+        if lhs.streamAgeFrames != rhs.streamAgeFrames {
+            return false
+        }
+        if lhs.streamShift != rhs.streamShift {
+            return false
+        }
+        if lhs.gapCount != rhs.gapCount {
+            return false
+        }
+        if lhs.anchors != rhs.anchors {
+            return false
+        }
+        if lhs.reanchors != rhs.reanchors {
+            return false
+        }
+        if lhs.missedSamples != rhs.missedSamples {
+            return false
+        }
+        if lhs.lateSamples != rhs.lateSamples {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(state)
+        hasher.combine(stateCode)
+        hasher.combine(phaseState)
+        hasher.combine(rateCode)
+        hasher.combine(rateHz)
+        hasher.combine(hwTimestamp)
+        hasher.combine(stream)
+        hasher.combine(nominalFeedback)
+        hasher.combine(timeBase)
+        hasher.combine(holdover)
+        hasher.combine(hostPpm)
+        hasher.combine(vcxoPpm)
+        hasher.combine(phaseErrorSamples)
+        hasher.combine(sample)
+        hasher.combine(busFrame)
+        hasher.combine(dMin)
+        hasher.combine(dMax)
+        hasher.combine(fill)
+        hasher.combine(streamStartBusFrame)
+        hasher.combine(streamAgeFrames)
+        hasher.combine(streamShift)
+        hasher.combine(gapCount)
+        hasher.combine(anchors)
+        hasher.combine(reanchors)
+        hasher.combine(missedSamples)
+        hasher.combine(lateSamples)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAlinkUsbStatus: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AlinkUsbStatus {
+        return
+            try AlinkUsbStatus(
+                state: FfiConverterString.read(from: &buf), 
+                stateCode: FfiConverterUInt8.read(from: &buf), 
+                phaseState: FfiConverterUInt8.read(from: &buf), 
+                rateCode: FfiConverterUInt8.read(from: &buf), 
+                rateHz: FfiConverterUInt32.read(from: &buf), 
+                hwTimestamp: FfiConverterBool.read(from: &buf), 
+                stream: FfiConverterBool.read(from: &buf), 
+                nominalFeedback: FfiConverterBool.read(from: &buf), 
+                timeBase: FfiConverterBool.read(from: &buf), 
+                holdover: FfiConverterBool.read(from: &buf), 
+                hostPpm: FfiConverterFloat.read(from: &buf), 
+                vcxoPpm: FfiConverterFloat.read(from: &buf), 
+                phaseErrorSamples: FfiConverterFloat.read(from: &buf), 
+                sample: FfiConverterUInt64.read(from: &buf), 
+                busFrame: FfiConverterUInt16.read(from: &buf), 
+                dMin: FfiConverterUInt16.read(from: &buf), 
+                dMax: FfiConverterUInt16.read(from: &buf), 
+                fill: FfiConverterUInt16.read(from: &buf), 
+                streamStartBusFrame: FfiConverterOptionUInt16.read(from: &buf), 
+                streamAgeFrames: FfiConverterUInt32.read(from: &buf), 
+                streamShift: FfiConverterInt32.read(from: &buf), 
+                gapCount: FfiConverterUInt16.read(from: &buf), 
+                anchors: FfiConverterUInt32.read(from: &buf), 
+                reanchors: FfiConverterUInt32.read(from: &buf), 
+                missedSamples: FfiConverterUInt32.read(from: &buf), 
+                lateSamples: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AlinkUsbStatus, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.state, into: &buf)
+        FfiConverterUInt8.write(value.stateCode, into: &buf)
+        FfiConverterUInt8.write(value.phaseState, into: &buf)
+        FfiConverterUInt8.write(value.rateCode, into: &buf)
+        FfiConverterUInt32.write(value.rateHz, into: &buf)
+        FfiConverterBool.write(value.hwTimestamp, into: &buf)
+        FfiConverterBool.write(value.stream, into: &buf)
+        FfiConverterBool.write(value.nominalFeedback, into: &buf)
+        FfiConverterBool.write(value.timeBase, into: &buf)
+        FfiConverterBool.write(value.holdover, into: &buf)
+        FfiConverterFloat.write(value.hostPpm, into: &buf)
+        FfiConverterFloat.write(value.vcxoPpm, into: &buf)
+        FfiConverterFloat.write(value.phaseErrorSamples, into: &buf)
+        FfiConverterUInt64.write(value.sample, into: &buf)
+        FfiConverterUInt16.write(value.busFrame, into: &buf)
+        FfiConverterUInt16.write(value.dMin, into: &buf)
+        FfiConverterUInt16.write(value.dMax, into: &buf)
+        FfiConverterUInt16.write(value.fill, into: &buf)
+        FfiConverterOptionUInt16.write(value.streamStartBusFrame, into: &buf)
+        FfiConverterUInt32.write(value.streamAgeFrames, into: &buf)
+        FfiConverterInt32.write(value.streamShift, into: &buf)
+        FfiConverterUInt16.write(value.gapCount, into: &buf)
+        FfiConverterUInt32.write(value.anchors, into: &buf)
+        FfiConverterUInt32.write(value.reanchors, into: &buf)
+        FfiConverterUInt32.write(value.missedSamples, into: &buf)
+        FfiConverterUInt32.write(value.lateSamples, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAlinkUsbStatus_lift(_ buf: RustBuffer) throws -> AlinkUsbStatus {
+    return try FfiConverterTypeAlinkUsbStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAlinkUsbStatus_lower(_ value: AlinkUsbStatus) -> RustBuffer {
+    return FfiConverterTypeAlinkUsbStatus.lower(value)
 }
 
 
@@ -27479,6 +29219,56 @@ fileprivate struct FfiConverterSequenceTypeAlinkUnitLatency: FfiConverterRustBuf
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeAlinkUnitUsbMode: FfiConverterRustBuffer {
+    typealias SwiftType = [AlinkUnitUsbMode]
+
+    public static func write(_ value: [AlinkUnitUsbMode], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeAlinkUnitUsbMode.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [AlinkUnitUsbMode] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [AlinkUnitUsbMode]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeAlinkUnitUsbMode.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeAlinkUsbEnd: FfiConverterRustBuffer {
+    typealias SwiftType = [AlinkUsbEnd]
+
+    public static func write(_ value: [AlinkUsbEnd], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeAlinkUsbEnd.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [AlinkUsbEnd] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [AlinkUsbEnd]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeAlinkUsbEnd.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeBootloaderDrive: FfiConverterRustBuffer {
     typealias SwiftType = [BootloaderDrive]
 
@@ -28807,6 +30597,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_apply_at_frame() != 9986) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_apply_at_time_base() != 14078) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_begin_group() != 15128) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -28826,6 +30619,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_check_core1_conflict() != 29922) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_clear_alink_usb_diag() != 55031) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_clear_clips() != 25742) {
@@ -29008,6 +30804,15 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_alink_status() != 48493) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_alink_usb() != 17817) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_alink_usb_diag() != 26442) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_alink_usb_status() != 59602) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_all() != 41865) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -29033,6 +30838,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_dac_mute() != 15871) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_frame_counter_time_base() != 56407) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_identify() != 43866) {
@@ -29203,6 +31011,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_open_demo_alink() != 47520) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_open_demo_usb_direct() != 36241) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_open_fd() != 57502) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -29315,6 +31126,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_alink_slots() != 51727) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_set_alink_usb() != 2052) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_band_bypass() != 64308) {
@@ -29552,6 +31366,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_undo() != 33738) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_usb_direct_supported() != 35088) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_wire_features() != 30561) {

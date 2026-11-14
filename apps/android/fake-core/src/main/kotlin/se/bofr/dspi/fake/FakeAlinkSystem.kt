@@ -5,7 +5,6 @@
 // that holds one scene at a time.
 package se.bofr.dspi.fake
 
-import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.AlinkSceneRecall
 import se.bofr.dspi.core.AlinkSystemAlign
 import se.bofr.dspi.core.AlinkSystemEdits
@@ -14,6 +13,7 @@ import se.bofr.dspi.core.AlinkSystemScene
 import se.bofr.dspi.core.AlinkSystemUnit
 import se.bofr.dspi.core.AlinkSystemView
 import se.bofr.dspi.core.AlinkSystemWrite
+import se.bofr.dspi.core.DspiException
 
 class FakeAlinkSystem {
     private companion object {
@@ -40,6 +40,13 @@ class FakeAlinkSystem {
      * unit, P in the bar, whose firmware has no audio link, as the core shows it.
      */
     @Volatile var plainUnit = false
+
+    /**
+     * -- WP AUSB1 -- the demo hub's two USB-direct units (R "Rear L/R", H "Height"),
+     * phase-locked, as the core shows them: D 192 until aligned to the system delay
+     * plus the room's latency term, Height's stream 3 bus frames behind.
+     */
+    @Volatile var usbDirect = false
 
     /** The sender holds a scene for this frame (the next superframe scene is refused). */
     @Volatile var heldFrame: Long? = null
@@ -116,11 +123,42 @@ class FakeAlinkSystem {
                 measuredLatencyUs = latency[id]
             )
         }
+        // -- WP AUSB1 -- the USB-direct units: their own state, D and statistics
+        if (usbDirect) {
+            for ((id, name, offset) in listOf(Triple("R", "Rear L/R", 144L), Triple("H", "Height", 0L))) {
+                val planned = d + 6
+                val pending = !aligned
+                rows += unit(id, name, "DEMO-USB-$id", "unit", "USB-direct", "Main room", "phase_locked", "Phase-locked (USB)").copy(
+                    pending = pending,
+                    transport = "usb_direct",
+                    usbMode = "phase_lock",
+                    usbModeWanted = "phase_lock",
+                    usbDelaySamples = planned,
+                    usbDelayMs = ms(planned),
+                    unitUsbDelaySamples = if (pending) 192L else planned,
+                    usbDelayMin = 170L,
+                    usbDelayMax = 399L,
+                    hostPpm = -11.5f,
+                    vcxoPpm = -11.48f,
+                    phaseErrorSamples = 0.05f,
+                    gaps = 0,
+                    missedSamples = 0,
+                    lateSamples = 0,
+                    reanchors = 0,
+                    timelineEnds = 0,
+                    startOffsetSamples = offset,
+                    usbStats = "host -11.5 ppm · VCXO -11.5 ppm · phase error +0.05 samples · gaps 0, missed 0, late 0 samples · " +
+                        "re-anchors 0 · timeline ends 0" + if (offset > 0) " · stream $offset samples early" else ""
+                )
+            }
+        }
         // -- WP HWLK1F -- said as such, no audio link delay, not counted among the units that lock
         if (plainUnit) {
             rows += unit("P", "Plain unit", "DEMO-PLAIN", "unit", "No audio link", "Bar", "no_alink", "No audio link (firmware)")
         }
-        val plain = if (plainUnit) ", 1 without the audio link (firmware)" else ""
+        val plain = (if (usbDirect) ", USB-direct 2 of 2 locked" else "") +
+            if (plainUnit) ", 1 without the audio link (firmware)" else ""
+        val pendingAll = pendingUnits + if (usbDirect && !aligned) 2 else 0
         val admin = role == "admin"
         val control = admin || role == "control"
         return AlinkSystemView(
@@ -144,10 +182,12 @@ class FakeAlinkSystem {
             pendingApplyFrame = heldFrame,
             locked = 4,
             holdover = 0,
-            pending = pendingUnits,
+            pending = pendingAll,
             unitCount = 4,
-            summary = "Audio link: 4 of 4 locked" + plain + if (pendingUnits > 0) ", audio link delay to write on $pendingUnits" else "",
-            health = if (pendingUnits > 0 || plainUnit) "warning" else "ok",
+            usbUnitCount = if (usbDirect) 2 else 0,
+            usbLocked = if (usbDirect) 2 else 0,
+            summary = "Audio link: 4 of 4 locked" + plain + if (pendingAll > 0) ", audio link delay to write on $pendingAll" else "",
+            health = if (pendingAll > 0 || plainUnit) "warning" else "ok",
             issues = emptyList(),
             stale = false
         )
@@ -156,7 +196,9 @@ class FakeAlinkSystem {
     private fun unit(id: String, name: String, serial: String, kind: String, role: String, room: String, state: String, word: String) =
         AlinkSystemUnit(
             id, name, serial, kind, role, room, true, state, word, false, null, null, null, null, null, null, null, null,
-            null, null, 0, null, 0
+            null, null, 0, null, 0,
+            // -- WP AUSB1 -- transport and the USB-direct fields
+            "alink", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, "", null, ""
         )
 
     @Synchronized fun save(revision: Long, edits: AlinkSystemEdits): Long {
@@ -170,6 +212,10 @@ class FakeAlinkSystem {
             )
         }
         if (edits.setSystemDelay) systemDelay = edits.systemDelayFrames
+        // -- WP AUSB1 -- only the demo's USB-direct units take a mode
+        for (m in edits.usbModes) {
+            if (!usbDirect || m.unitId !in setOf("R", "H")) throw DspiException.InvalidArgument("no USB-direct unit ${m.unitId}")
+        }
         for (r in edits.rooms) lipSync[r.roomId] = r.lipSyncUs
         for (u in edits.units) latency[u.unitId] = u.measuredLatencyUs
         this.revision++
@@ -180,7 +226,12 @@ class FakeAlinkSystem {
         session()
         if (role != "admin") throw denied("admin")
         aligned = true
-        val written = units.map { AlinkSystemWrite(it.second, "Audio link delay", "ok", "Done", "ok") }
+        val written = units.map { AlinkSystemWrite(it.second, "Audio link delay", "ok", "Done", "ok") } +
+            if (usbDirect) {
+                listOf("Rear L/R", "Height").map { AlinkSystemWrite(it, "USB-direct mode and delay", "ok", "Done", "ok") }
+            } else {
+                emptyList()
+            }
         if (plainUnit) {
             return AlinkSystemAlign(
                 true,
@@ -215,6 +266,21 @@ class FakeAlinkSystem {
             )
         }
         heldFrame = frame + 4_800
+        // -- WP AUSB1 -- a scene for every unit: at a USB frame on the USB-direct units
+        if (usbDirect && s.id != "click") {
+            val bus = (frame / 48 + 100) % 2048
+            return AlinkSceneRecall(
+                s.id, s.name, true, frame + 4_800, 100.0, !plainUnit, null,
+                "${s.name} recalled: at USB frame $bus on Rear L/R, Height; at audio link frame ${frame + 4_800} " +
+                    "through the sender on the others" + (if (plainUnit) "; applied now on Plain unit (no audio link)" else "") +
+                    (if (s.systemMute == true) "; system mute on" else "") + ".",
+                listOf(
+                    AlinkSystemWrite("Sender", "Scene ${s.name}", "queued", "Queued", "ok"),
+                    AlinkSystemWrite("Rear L/R", "Master volume", "queued", "Queued", "ok"),
+                    AlinkSystemWrite("Height", "Master volume", "queued", "Queued", "ok")
+                )
+            )
+        }
         // -- WP HWLK1F -- a scene for every unit: at once on P, never "on time" then
         if (plainUnit && s.id != "click") {
             return AlinkSceneRecall(

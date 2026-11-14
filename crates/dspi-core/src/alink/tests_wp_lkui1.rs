@@ -191,6 +191,7 @@ fn wp_lkui1_edits_change_only_what_was_edited() {
             unit_id: "A".into(),
             measured_latency_us: Some(80),
         }],
+        usb_modes: Vec::new(), // -- WP AUSB1 --
     };
     apply_edits(&mut m, &edits).unwrap();
     assert_eq!(m["dFrames"], 200);

@@ -85,6 +85,11 @@ private fun stateColor(c: DspiColors, u: AlinkSystemUnit): Color = when {
     !u.connected -> c.gray
     // -- WP HWLK1F -- a firmware without the audio link: a fact, not a fault
     u.state == "no_alink" -> c.gray
+    // -- WP AUSB1 -- USB-direct: no time base or the host out of range is a fault
+    u.state == "no_usb_direct" -> c.gray
+    u.state == "no_sof" || u.state == "rejected" -> c.red
+    u.state == "pull_in" || u.state == "anchoring" || u.state == "usb_off" -> c.orange
+    u.state == "rate_locked" && u.usbModeWanted != "rate_lock" -> c.orange
     u.state == "holdover" -> c.red
     u.state == "searching" || u.state == "off" || u.state == "unknown" -> c.orange
     else -> c.green
@@ -233,7 +238,19 @@ private fun UnitRow(u: AlinkSystemUnit, c: DspiColors) {
             style = DspiType.caption,
             color = if (u.pending) c.orange else c.secondaryLabel
         )
-        if (u.kind == "unit") {
+        if (u.transport == "usb_direct") {
+            // -- WP AUSB1 -- the USB-direct D, its range, and the statistics line
+            val delay = u.usbDelaySamples?.let { "USB-direct delay $it samples (${ms(u.usbDelayMs)})" } ?: "USB-direct delay –"
+            val range = if (u.usbDelayMin != null && u.usbDelayMax != null) "range ${u.usbDelayMin}–${u.usbDelayMax}" else null
+            val mode = when (u.usbMode) {
+                "phase_lock" -> "phase lock"
+                "rate_lock" -> "rate lock"
+                "off" -> "off"
+                else -> null
+            }
+            Text(listOfNotNull(delay, range, mode).joinToString(", "), style = DspiType.caption, color = c.label)
+            if (u.usbStats.isNotEmpty()) Text(u.usbStats, style = DspiType.caption, color = c.secondaryLabel)
+        } else if (u.kind == "unit") {
             val delay = u.alinkDelayFrames?.let { "Audio link delay $it frames (${ms(u.alinkDelayMs)})" } ?: "Audio link delay –"
             val range = if (u.alinkDelayMin != null && u.alinkDelayMax != null) "range ${u.alinkDelayMin}–${u.alinkDelayMax}" else null
             Text(listOfNotNull(delay, range).joinToString(", "), style = DspiType.caption, color = c.label)

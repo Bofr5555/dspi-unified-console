@@ -63,6 +63,54 @@ export interface Unit {
   latencyUs?: number;
   measuredLatencyUs?: number | null;
   speakers?: Speaker[];
+  /** -- WP AUSB1 -- `usb_direct`: fed by USB from the host, locked to its Start of Frame. Absent: the audio link. */
+  transport?: "alink" | "usb_direct";
+  /** -- WP AUSB1 -- a USB-direct unit's mode, written with the alignment; absent: the unit's own. */
+  usbMode?: UsbMode | null;
+}
+/** -- WP AUSB1 -- a USB-direct unit's mode (`EXT_ALINK_USB.mode`). */
+export type UsbMode = "off" | "rate_lock" | "phase_lock";
+export const USB_MODES: { id: UsbMode; label: string }[] = [
+  { id: "off", label: "Off" },
+  { id: "rate_lock", label: "Rate lock" },
+  { id: "phase_lock", label: "Phase lock" },
+];
+/** -- WP AUSB1 -- what the hub read of a USB-direct unit (`EXT_ALINK_USB`, `_STATUS`, `_DIAG`). */
+export interface UsbSeen {
+  mode: UsbMode | "unknown";
+  d: number;
+  autoReanchor: boolean;
+  configFlags?: string[];
+  state: string;
+  phaseState: number;
+  rateCode: number;
+  hostPpm: number;
+  vcxoPpm: number;
+  phaseError: number;
+  busFrame: number;
+  sample: number;
+  dMin: number;
+  dMax: number;
+  fill: number;
+  stream: boolean;
+  holdover: boolean;
+  streamStartBusFrame?: number | null;
+  streamShift: number;
+  gapCount: number;
+  anchors: number;
+  reanchors: number;
+  missedSamples: number;
+  lateSamples: number;
+  diag?: {
+    lastCause?: string | null;
+    ends: number;
+    holdovers: number;
+    rides: number;
+    suspends: number;
+    busResets: number;
+    unplugs: number;
+    longestRideUs: number;
+  } | null;
 }
 export interface SceneAction {
   target: string;
@@ -121,6 +169,9 @@ export interface Observed {
    * block, or it stalls), `present`, or null when that could not be told.
    */
   alink?: "present" | "none" | null;
+  /** -- WP AUSB1 -- a USB-direct unit: whether its firmware has the block, and what was read. */
+  usbDirect?: "present" | "none" | null;
+  usb?: UsbSeen | null;
 }
 export interface AlinkStats {
   lineClass: number;
@@ -152,6 +203,11 @@ export interface UnitPlan {
   outDelays: [number, number][];
   clampedOutputs?: number[];
   writable: boolean;
+  /** -- WP AUSB1 -- `alink` or `usb_direct`; a USB-direct unit's D (samples), mode and start offset. */
+  transport?: "alink" | "usb_direct";
+  usbD?: number | null;
+  usbMode?: UsbMode | null;
+  startOffsetSamples?: number | null;
 }
 export interface Issue {
   subject?: string | null;
@@ -217,6 +273,10 @@ export interface ScenePlan {
   direct?: PlannedOp[];
   /** -- WP HWLK1F -- ops on units with the alink that no frame could be read for: not written. */
   unscheduled?: PlannedOp[];
+  /** -- WP AUSB1 -- the bus frame the USB-direct units' ops act on, the ops, the lead in samples. */
+  usbFrame?: number | null;
+  usbOps?: PlannedOp[];
+  usbLeadSamples?: number | null;
 }
 export interface SceneReport {
   plan: ScenePlan;
@@ -442,7 +502,99 @@ export function opWord(op: string, arg = 0, value = 0): string {
 
 /** The path a scene took. */
 export function pathWord(path: string): string {
+  if (path === "usb_frame") return "at a USB frame"; // -- WP AUSB1 --
   return path === "superframe" ? "through the sender" : path === "per_unit" ? "to each unit" : "system mute only";
+}
+
+// -- WP AUSB1 -- USB-direct units
+
+/** A USB-direct unit. */
+export function isUsbDirect(u: Unit): boolean {
+  return u.transport === "usb_direct";
+}
+
+/** A USB-direct unit has no audio link firmware block: said so, never "Unknown". */
+export const NO_USB_DIRECT = "No USB-direct (firmware)";
+
+/** A USB-direct state (`EXT_ALINK_USB_STATUS.state`) in words. */
+export function usbStateWord(state: string | null | undefined): string {
+  switch (state) {
+    case "phase_locked":
+      return "Phase-locked";
+    case "rate_locked":
+      return "Rate-locked";
+    case "pull_in":
+      return "Pulling in";
+    case "anchoring":
+      return "Anchoring";
+    case "no_sof":
+      return "No USB time base";
+    case "rejected":
+      return "Host out of range";
+    case "off":
+      return "Off";
+    default:
+      return "Unknown";
+  }
+}
+
+/** A USB-direct mode in words. */
+export function usbModeWord(mode: string | null | undefined): string {
+  return USB_MODES.find((m) => m.id === mode)?.label ?? "Unknown";
+}
+
+/** A USB-direct unit's lock as the System view says it. */
+export function usbLock(o: Observed | undefined): string {
+  if (!o?.online) return "Unknown";
+  if (o.usbDirect === "none") return NO_USB_DIRECT;
+  return usbStateWord(o.usb?.state);
+}
+
+/** A timeline end's cause in words (`EXT_ALINK_USB_DIAG`). */
+export function endWord(cause: string | null | undefined): string {
+  switch (cause) {
+    case "sof_lost":
+      return "SOF lost";
+    case "long_gap":
+      return "a gap over 1 s";
+    case "discontinuity":
+      return "a SOF discontinuity";
+    case "host_rejected":
+      return "host out of range";
+    case "rate_or_config":
+      return "rate or configuration";
+    case "reanchor_phase_error":
+      return "re-anchor (phase error)";
+    case "reanchor_output_reset":
+      return "re-anchor (output reset)";
+    case "reanchor_other":
+      return "re-anchor";
+    case "stop":
+      return "switched off";
+    default:
+      return "none";
+  }
+}
+
+/** A USB-direct unit's statistics in one line: host and VCXO ppm, phase error, gaps, missed and late samples. */
+export function usbStats(u: UsbSeen): string {
+  const sign = (v: number, d: number) => `${v >= 0 ? "+" : ""}${v.toFixed(d)}`;
+  const parts = [`host ${sign(u.hostPpm, 1)} ppm`, `VCXO ${sign(u.vcxoPpm, 1)} ppm`];
+  if (u.state === "phase_locked") parts.push(`phase error ${sign(u.phaseError, 2)} samples`);
+  parts.push(`gaps ${u.gapCount}, missed ${u.missedSamples}, late ${u.lateSamples} samples`);
+  return parts.join(" · ");
+}
+
+/** `model` with USB-direct unit `unitId`'s mode (null: the unit's own is kept). */
+export function withUsbMode(model: SystemModel, unitId: string, mode: UsbMode | null): SystemModel {
+  return {
+    ...model,
+    units: model.units.map((u) => {
+      if (u.id !== unitId) return u;
+      const { usbMode: _m, ...rest } = u;
+      return mode ? { ...rest, usbMode: mode } : rest;
+    }),
+  };
 }
 
 // ---------------------------------------------------------------- the installation
@@ -456,6 +608,8 @@ export interface UnitView {
   lock: string;
   alarms: Alarm[];
   slots: number[];
+  /** -- WP AUSB1 -- a USB-direct unit: its statistics line ("" until read). */
+  usb?: { stats: string };
 }
 
 /** Alarms still on (raised or acknowledged) for `subject`. */
@@ -465,6 +619,19 @@ export function activeAlarms(alarms: Alarm[], subject?: string): Alarm[] {
 
 export function unitView(u: Unit, status: SystemStatus | null): UnitView {
   const o = status?.observed[u.serial];
+  // -- WP AUSB1 --
+  if (isUsbDirect(u)) {
+    return {
+      id: u.id,
+      name: u.name || u.id,
+      serial: u.serial,
+      connected: !!o?.online,
+      lock: usbLock(o),
+      alarms: activeAlarms(status?.alarms ?? [], u.id),
+      slots: [],
+      usb: { stats: o?.usb ? usbStats(o.usb) : "" },
+    };
+  }
   return {
     id: u.id,
     name: u.name || u.id,
@@ -499,7 +666,8 @@ export function roomsView(model: SystemModel, status: SystemStatus | null): { id
 export interface TopoNode {
   id: string;
   name: string;
-  kind: "sender" | "fan_out" | "unit";
+  /** -- WP AUSB1 -- `usb_direct`: a unit fed by USB, beside the audio link's tree. */
+  kind: "sender" | "fan_out" | "unit" | "usb_direct";
   serial: string;
   /** The output of its upstream it hangs on, when the model says. */
   output: number | null;
@@ -542,11 +710,12 @@ export function topology(model: SystemModel, status: SystemStatus | null): TopoN
   for (const u of model.units) {
     const v = unitView(u, status);
     const o = obs(u.serial);
+    const usb = isUsbDirect(u);
     nodes.set(u.id, {
-      id: u.id, name: v.name, kind: "unit", serial: u.serial, output: u.output ?? null,
+      id: u.id, name: v.name, kind: usb ? "usb_direct" : "unit", serial: u.serial, output: u.output ?? null,
       connected: v.connected, lock: v.lock,
-      hopDelayFrames: u.repeater ? (o?.hopDelayFrames ?? u.hopDelayFrames ?? null) : null,
-      slots: v.slots, alarms: v.alarms.length, children: [], upstream: u.upstream,
+      hopDelayFrames: u.repeater && !usb ? (o?.hopDelayFrames ?? u.hopDelayFrames ?? null) : null,
+      slots: usb ? null : v.slots, alarms: v.alarms.length, children: [], upstream: usb ? null : u.upstream,
     });
   }
   const roots: TopoNode[] = [];
@@ -566,7 +735,7 @@ export function topology(model: SystemModel, status: SystemStatus | null): TopoN
 export function senderChannels(model: SystemModel): number[] {
   const used = new Set<number>();
   for (const s of model.sources) for (const c of s.channels) used.add(c);
-  for (const u of model.units) for (const c of unitSlots(u)) if (c !== SILENT) used.add(c);
+  for (const u of model.units) if (!isUsbDirect(u)) for (const c of unitSlots(u)) if (c !== SILENT) used.add(c);
   const max = Math.max(7, ...used);
   return Array.from({ length: Math.min(64, max + 1) }, (_, i) => i);
 }
@@ -687,6 +856,7 @@ export function sceneTaken(report: SceneReport): boolean {
 export function writeWhat(what: string): string {
   if (what === "phase") return "Audio link delay";
   if (what === "slots") return "Audio link slots";
+  if (what === "usb_direct") return "USB-direct mode and delay"; // -- WP AUSB1 --
   const out = /^out_delay:(\d+)$/.exec(what);
   if (out) return `Delay OUT${Number(out[1]) + 1}`;
   return what;

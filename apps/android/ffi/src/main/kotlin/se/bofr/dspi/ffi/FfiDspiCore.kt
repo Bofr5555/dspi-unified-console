@@ -100,6 +100,24 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun alinkSystemRecall(scene: String): AlinkSceneRecall = call { core.alinkSystemRecall(scene).toDomain() }
 
+    override fun usbDirectSupported(): Boolean = call { core.usbDirectSupported() }
+
+    override fun fetchAlinkUsb(): AlinkUsbConfig = call { core.fetchAlinkUsb().toDomain() }
+
+    override fun setAlinkUsb(mode: Int, autoReanchor: Boolean, d: Int) = call { core.setAlinkUsb(mode.toUByte(), autoReanchor, d.toUShort()) }
+
+    override fun fetchAlinkUsbStatus(): AlinkUsbStatus = call { core.fetchAlinkUsbStatus().toDomain() }
+
+    override fun fetchAlinkUsbDiag(): AlinkUsbDiag = call { core.fetchAlinkUsbDiag().toDomain() }
+
+    override fun clearAlinkUsbDiag() = call { core.clearAlinkUsbDiag() }
+
+    override fun fetchFrameCounterTimeBase(): AlinkTimeBaseCounter = call { core.fetchFrameCounterTimeBase().toDomain() }
+
+    override fun applyAtTimeBase(timeBase: Int, frame: Long, op: Int, arg: Int, value: Int) = call { core.applyAtTimeBase(timeBase.toUByte(), frame.toULong(), op.toUByte(), arg.toUByte(), value.toShort()) }
+
+    override fun openDemoUsbDirect() = call { core.openDemoUsbDirect() }
+
     override fun fetchAll() = call { core.fetchAll() }
 
     override fun refreshParams() = call { core.refreshParams() }
@@ -2158,6 +2176,25 @@ internal fun se.bofr.dspi.ffi.uniffi.AlinkSystemUnit.toDomain() =
         latencyUs = latencyUs,
         measuredLatencyUs = measuredLatencyUs,
         alarms = alarms.toLong(),
+        transport = transport,
+        usbMode = usbMode,
+        usbModeWanted = usbModeWanted,
+        usbDelaySamples = usbDelaySamples?.let { it.toLong() },
+        usbDelayMs = usbDelayMs,
+        unitUsbDelaySamples = unitUsbDelaySamples?.let { it.toLong() },
+        usbDelayMin = usbDelayMin?.let { it.toLong() },
+        usbDelayMax = usbDelayMax?.let { it.toLong() },
+        hostPpm = hostPpm,
+        vcxoPpm = vcxoPpm,
+        phaseErrorSamples = phaseErrorSamples,
+        gaps = gaps?.let { it.toLong() },
+        missedSamples = missedSamples?.let { it.toLong() },
+        lateSamples = lateSamples?.let { it.toLong() },
+        reanchors = reanchors?.let { it.toLong() },
+        timelineEnds = timelineEnds?.let { it.toLong() },
+        lastEnd = lastEnd,
+        startOffsetSamples = startOffsetSamples,
+        usbStats = usbStats,
     )
 
 internal fun AlinkSystemUnit.toFfi() =
@@ -2185,6 +2222,25 @@ internal fun AlinkSystemUnit.toFfi() =
         latencyUs = latencyUs,
         measuredLatencyUs = measuredLatencyUs,
         alarms = alarms.toUInt(),
+        transport = transport,
+        usbMode = usbMode,
+        usbModeWanted = usbModeWanted,
+        usbDelaySamples = usbDelaySamples?.let { it.toUInt() },
+        usbDelayMs = usbDelayMs,
+        unitUsbDelaySamples = unitUsbDelaySamples?.let { it.toUInt() },
+        usbDelayMin = usbDelayMin?.let { it.toUInt() },
+        usbDelayMax = usbDelayMax?.let { it.toUInt() },
+        hostPpm = hostPpm,
+        vcxoPpm = vcxoPpm,
+        phaseErrorSamples = phaseErrorSamples,
+        gaps = gaps?.let { it.toUInt() },
+        missedSamples = missedSamples?.let { it.toUInt() },
+        lateSamples = lateSamples?.let { it.toUInt() },
+        reanchors = reanchors?.let { it.toUInt() },
+        timelineEnds = timelineEnds?.let { it.toUInt() },
+        lastEnd = lastEnd,
+        startOffsetSamples = startOffsetSamples,
+        usbStats = usbStats,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.AlinkSystemRoom.toDomain() =
@@ -2257,6 +2313,8 @@ internal fun se.bofr.dspi.ffi.uniffi.AlinkSystemView.toDomain() =
         holdover = holdover.toLong(),
         pending = pending.toLong(),
         unitCount = unitCount.toLong(),
+        usbUnitCount = usbUnitCount.toLong(),
+        usbLocked = usbLocked.toLong(),
         summary = summary,
         health = health,
         issues = issues,
@@ -2287,6 +2345,8 @@ internal fun AlinkSystemView.toFfi() =
         holdover = holdover.toUInt(),
         pending = pending.toUInt(),
         unitCount = unitCount.toUInt(),
+        usbUnitCount = usbUnitCount.toUInt(),
+        usbLocked = usbLocked.toUInt(),
         summary = summary,
         health = health,
         issues = issues,
@@ -2323,6 +2383,7 @@ internal fun se.bofr.dspi.ffi.uniffi.AlinkSystemEdits.toDomain() =
         systemDelayFrames = systemDelayFrames?.let { it.toLong() },
         rooms = rooms.map { it.toDomain() },
         units = units.map { it.toDomain() },
+        usbModes = usbModes.map { it.toDomain() },
     )
 
 internal fun AlinkSystemEdits.toFfi() =
@@ -2331,6 +2392,19 @@ internal fun AlinkSystemEdits.toFfi() =
         systemDelayFrames = systemDelayFrames?.let { it.toUInt() },
         rooms = rooms.map { it.toFfi() },
         units = units.map { it.toFfi() },
+        usbModes = usbModes.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AlinkUnitUsbMode.toDomain() =
+    AlinkUnitUsbMode(
+        unitId = unitId,
+        mode = mode,
+    )
+
+internal fun AlinkUnitUsbMode.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AlinkUnitUsbMode(
+        unitId = unitId,
+        mode = mode,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.AlinkSystemWrite.toDomain() =
@@ -2389,6 +2463,164 @@ internal fun AlinkSystemAlign.toFfi() =
         applied = applied,
         message = message,
         writes = writes.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AlinkUsbConfig.toDomain() =
+    AlinkUsbConfig(
+        mode = mode.toInt(),
+        modeName = modeName,
+        autoReanchor = autoReanchor,
+        d = d.toInt(),
+        dBelowMin = dBelowMin,
+        dAboveMax = dAboveMax,
+        rateUnsupported = rateUnsupported,
+        state = state,
+        stateCode = stateCode.toInt(),
+    )
+
+internal fun AlinkUsbConfig.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AlinkUsbConfig(
+        mode = mode.toUByte(),
+        modeName = modeName,
+        autoReanchor = autoReanchor,
+        d = d.toUShort(),
+        dBelowMin = dBelowMin,
+        dAboveMax = dAboveMax,
+        rateUnsupported = rateUnsupported,
+        state = state,
+        stateCode = stateCode.toUByte(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AlinkUsbStatus.toDomain() =
+    AlinkUsbStatus(
+        state = state,
+        stateCode = stateCode.toInt(),
+        phaseState = phaseState.toInt(),
+        rateCode = rateCode.toInt(),
+        rateHz = rateHz.toLong(),
+        hwTimestamp = hwTimestamp,
+        stream = stream,
+        nominalFeedback = nominalFeedback,
+        timeBase = timeBase,
+        holdover = holdover,
+        hostPpm = hostPpm,
+        vcxoPpm = vcxoPpm,
+        phaseErrorSamples = phaseErrorSamples,
+        sample = sample.toLong(),
+        busFrame = busFrame.toInt(),
+        dMin = dMin.toInt(),
+        dMax = dMax.toInt(),
+        fill = fill.toInt(),
+        streamStartBusFrame = streamStartBusFrame?.let { it.toInt() },
+        streamAgeFrames = streamAgeFrames.toLong(),
+        streamShift = streamShift,
+        gapCount = gapCount.toInt(),
+        anchors = anchors.toLong(),
+        reanchors = reanchors.toLong(),
+        missedSamples = missedSamples.toLong(),
+        lateSamples = lateSamples.toLong(),
+    )
+
+internal fun AlinkUsbStatus.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AlinkUsbStatus(
+        state = state,
+        stateCode = stateCode.toUByte(),
+        phaseState = phaseState.toUByte(),
+        rateCode = rateCode.toUByte(),
+        rateHz = rateHz.toUInt(),
+        hwTimestamp = hwTimestamp,
+        stream = stream,
+        nominalFeedback = nominalFeedback,
+        timeBase = timeBase,
+        holdover = holdover,
+        hostPpm = hostPpm,
+        vcxoPpm = vcxoPpm,
+        phaseErrorSamples = phaseErrorSamples,
+        sample = sample.toULong(),
+        busFrame = busFrame.toUShort(),
+        dMin = dMin.toUShort(),
+        dMax = dMax.toUShort(),
+        fill = fill.toUShort(),
+        streamStartBusFrame = streamStartBusFrame?.let { it.toUShort() },
+        streamAgeFrames = streamAgeFrames.toUInt(),
+        streamShift = streamShift,
+        gapCount = gapCount.toUShort(),
+        anchors = anchors.toUInt(),
+        reanchors = reanchors.toUInt(),
+        missedSamples = missedSamples.toUInt(),
+        lateSamples = lateSamples.toUInt(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AlinkUsbEnd.toDomain() =
+    AlinkUsbEnd(
+        cause = cause,
+        count = count.toInt(),
+    )
+
+internal fun AlinkUsbEnd.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AlinkUsbEnd(
+        cause = cause,
+        count = count.toUShort(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AlinkUsbDiag.toDomain() =
+    AlinkUsbDiag(
+        lastCause = lastCause,
+        rides = rides.toInt(),
+        holdovers = holdovers.toInt(),
+        ends = ends.map { it.toDomain() },
+        suspends = suspends.toInt(),
+        resumes = resumes.toInt(),
+        busResets = busResets.toInt(),
+        unplugs = unplugs.toInt(),
+        lastFrames = lastFrames.toLong(),
+        lastUs = lastUs.toLong(),
+        lastDevUs = lastDevUs,
+        longestRideUs = longestRideUs.toLong(),
+        maxPassUs = maxPassUs.toLong(),
+        maxIsrQuietUs = maxIsrQuietUs.toLong(),
+        maxIsrLateUs = maxIsrLateUs.toLong(),
+        holdoverUs = holdoverUs.toLong(),
+    )
+
+internal fun AlinkUsbDiag.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AlinkUsbDiag(
+        lastCause = lastCause,
+        rides = rides.toUShort(),
+        holdovers = holdovers.toUShort(),
+        ends = ends.map { it.toFfi() },
+        suspends = suspends.toUShort(),
+        resumes = resumes.toUShort(),
+        busResets = busResets.toUShort(),
+        unplugs = unplugs.toUShort(),
+        lastFrames = lastFrames.toUInt(),
+        lastUs = lastUs.toUInt(),
+        lastDevUs = lastDevUs,
+        longestRideUs = longestRideUs.toUInt(),
+        maxPassUs = maxPassUs.toUInt(),
+        maxIsrQuietUs = maxIsrQuietUs.toUInt(),
+        maxIsrLateUs = maxIsrLateUs.toUInt(),
+        holdoverUs = holdoverUs.toUInt(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.AlinkTimeBaseCounter.toDomain() =
+    AlinkTimeBaseCounter(
+        frame = frame.toLong(),
+        timeUs = timeUs.toLong(),
+        outputFrames = outputFrames.toLong(),
+        timeBase = timeBase,
+        timeBaseCode = timeBaseCode.toInt(),
+        busFrame = busFrame.toInt(),
+    )
+
+internal fun AlinkTimeBaseCounter.toFfi() =
+    se.bofr.dspi.ffi.uniffi.AlinkTimeBaseCounter(
+        frame = frame.toULong(),
+        timeUs = timeUs.toUInt(),
+        outputFrames = outputFrames.toUInt(),
+        timeBase = timeBase,
+        timeBaseCode = timeBaseCode.toUByte(),
+        busFrame = busFrame.toUShort(),
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.AutoEqFetchRequest.toDomain() =

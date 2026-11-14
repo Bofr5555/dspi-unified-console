@@ -120,6 +120,12 @@ pub(crate) const ALINK_PHASE: &str = "ext.alink.phase";
 pub(crate) const ALINK_APPLY: &str = "ext.alink.apply";
 /// The counters cleared (`reset_alink_stats`). An action.
 pub(crate) const ALINK_STATS_RESET: &str = "ext.alink.stats_reset";
+// -- WP AUSB1 -- the USB-direct block's writes (`alink_usb.rs`)
+/// The USB-direct mode and D, `[mode, flags, d LE]` (`set_alink_usb`):
+/// recorded, never undone (it re-anchors).
+pub(crate) const ALINK_USB: &str = "ext.alink.usb";
+/// The USB-direct diagnostics cleared (`clear_alink_usb_diag`). An action.
+pub(crate) const ALINK_USB_DIAG_CLEAR: &str = "ext.alink.usb.diag_clear";
 
 /// The first crossover band on the wire (`XOVER_BAND_BASE`, 20).
 const XOVER_BASE: u8 = {
@@ -145,6 +151,9 @@ const OWN_PATHS: &[(&str, Hazard)] = &[
     (ALINK_PHASE, Hazard::Audible),
     (ALINK_APPLY, Hazard::Irreversible),
     (ALINK_STATS_RESET, Hazard::Irreversible),
+    // -- WP AUSB1 -- a USB-direct mode or D change re-anchors; a clear is an action
+    (ALINK_USB, Hazard::Audible),
+    (ALINK_USB_DIAG_CLEAR, Hazard::Irreversible),
 ];
 
 /// The hazard of a journal path: the registry's, or one of [`OWN_PATHS`].

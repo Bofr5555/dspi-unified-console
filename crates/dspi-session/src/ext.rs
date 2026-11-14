@@ -287,6 +287,87 @@ pub fn reset_alink_stats(t: &mut dyn Transport) -> Result<()> {
     write(t, alink::EXT_ALINK_STATS_RESET, &alink::ALINK_STATS_RESET)
 }
 
+// ------------------------------------------------------------ USB-direct
+// -- WP AUSB1 -- the alink's USB-direct block (extension_channel_spec.md 2.9)
+
+pub use dspi_proto::ext::alink_usb::{
+    self, AlinkUsbConfig, AlinkUsbDiag, AlinkUsbEvent, AlinkUsbStatus, FrameCounterTb, TimeBase,
+    UsbEventReason, UsbMode, UsbState, alink_usb_event,
+};
+
+/// `EXT_ALINK_USB` IN: mode, flags, D, and (IN only) why mode 2 runs as mode
+/// 1 and the state.
+pub fn read_alink_usb(t: &mut dyn Transport) -> Result<AlinkUsbConfig> {
+    read_alink(
+        t,
+        alink_usb::EXT_ALINK_USB,
+        AlinkUsbConfig::SIZE,
+        AlinkUsbConfig::decode,
+    )
+}
+
+/// `EXT_ALINK_USB` OUT (the IN-only bytes are sent as 0). Takes effect at
+/// once; a change of mode or D while the timeline runs re-anchors.
+/// [`ExtError::Refused`] when the device stalls (2.9.2's refusals: mode 2 with
+/// D outside `d_min..d_max`, a bad flag).
+pub fn write_alink_usb(t: &mut dyn Transport, config: AlinkUsbConfig) -> Result<()> {
+    write(t, alink_usb::EXT_ALINK_USB, &config.encode())
+}
+
+/// `EXT_ALINK_USB_STATUS` IN.
+pub fn read_alink_usb_status(t: &mut dyn Transport) -> Result<AlinkUsbStatus> {
+    read_alink(
+        t,
+        alink_usb::EXT_ALINK_USB_STATUS,
+        AlinkUsbStatus::SIZE,
+        AlinkUsbStatus::decode,
+    )
+}
+
+/// `EXT_ALINK_USB_DIAG` IN; a layout other than version 1 reads as a short
+/// read (it is not this build's to parse).
+pub fn read_alink_usb_diag(t: &mut dyn Transport) -> Result<AlinkUsbDiag> {
+    read_alink(
+        t,
+        alink_usb::EXT_ALINK_USB_DIAG,
+        AlinkUsbDiag::SIZE,
+        AlinkUsbDiag::decode,
+    )
+}
+
+/// `EXT_ALINK_USB_DIAG` OUT 1: clear every field.
+pub fn clear_alink_usb_diag(t: &mut dyn Transport) -> Result<()> {
+    write(t, alink_usb::EXT_ALINK_USB_DIAG, &alink_usb::DIAG_CLEAR)
+}
+
+/// `EXT_FRAME_COUNTER` IN with its time base: 20 bytes asked, 16 accepted
+/// (firmware before the USB time base: the alink's frame).
+pub fn read_frame_counter_tb(t: &mut dyn Transport) -> Result<FrameCounterTb> {
+    let id = alink::EXT_FRAME_COUNTER;
+    let len = u16::try_from(FrameCounterTb::SIZE).unwrap_or(u16::MAX);
+    let b = t
+        .control_in_upto(op::REQ_EXTENSION, id, len)
+        .map_err(|e| match e {
+            TransportError::Stalled { .. } => ExtError::Unsupported { id },
+            e => ExtError::Transport(e),
+        })?;
+    FrameCounterTb::decode(&b).ok_or(ExtError::Transport(TransportError::ShortRead {
+        opcode: op::REQ_EXTENSION,
+        wanted: FrameCounter::SIZE,
+        got: b.len(),
+    }))
+}
+
+/// `EXT_APPLY_AT_FRAME` OUT on time base `tb` (byte 12): the alink's frame,
+/// the USB sample index or a bus-frame target.
+pub fn apply_at_frame_tb(t: &mut dyn Transport, req: ApplyRequest, tb: TimeBase) -> Result<()> {
+    write(
+        t,
+        alink::EXT_APPLY_AT_FRAME,
+        &alink_usb::encode_apply(&req, tb),
+    )
+}
+
 fn hex(b: &[u8]) -> String {
     b.iter()
         .map(|x| format!("{x:02x}"))

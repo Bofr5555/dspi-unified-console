@@ -10,6 +10,9 @@
 // that writes is offered. -- WP HWLK1F -- Then a hub with a unit whose firmware has
 // no audio link (`--with-plain-unit`): said so, left out of the locked count, a
 // scene applied at once on it, skipped by the alignment with the reason.
+// -- WP AUSB1 -- The demo installation's two USB-direct units (Rear L/R, Height):
+// phase-locked, their delay in samples and range, the statistics line, counted
+// apart in the summary, and a recall at a USB frame on them.
 // Screenshots in <out>/lkui1/, dark and light.
 #include "SmokeDriver.h"
 
@@ -184,10 +187,19 @@ void alinkSystemSection(SmokeDriver &d) {
     d.check("lkui1: on the hub, DEMO-ALINK-A bound", settled() && bind(QStringLiteral("DEMO-ALINK-A")));
     d.check("lkui1: the installation is read", d.waitFor(15000, [&] { return sys->available() && sys->installed(); }));
     d.check("lkui1: Admin on an open hub", sys->role() == QLatin1String("admin") && sys->mayEdit() && sys->mayRecall());
-    int units = 0, locked = 0;
+    int units = 0, locked = 0, usbUnits = 0, usbLocked = 0;
     for (const QVariant &v : sys->units()) {
         const QVariantMap u = v.toMap();
         if (u.value(QStringLiteral("kind")).toString() != QLatin1String("unit")) continue;
+        // -- WP AUSB1 -- the two USB-direct units, counted apart
+        if (u.value(QStringLiteral("transport")).toString() == QLatin1String("usb_direct")) {
+            ++usbUnits;
+            usbLocked += u.value(QStringLiteral("stateWord")).toString() == QLatin1String("Phase-locked (USB)")
+                         && u.value(QStringLiteral("usbDelaySamples")).toInt() >= u.value(QStringLiteral("usbDelayMin")).toInt()
+                         && u.value(QStringLiteral("usbDelayMin")).toInt() == 170
+                         && u.value(QStringLiteral("usbStats")).toString().startsWith(QLatin1String("host -11.5 ppm"));
+            continue;
+        }
         ++units;
         locked += u.value(QStringLiteral("stateWord")).toString() == QLatin1String("Locked")
                   && u.value(QStringLiteral("alinkDelayFrames")).toInt() > 0
@@ -196,6 +208,9 @@ void alinkSystemSection(SmokeDriver &d) {
     std::printf("smoke: lkui1: %s\n", qPrintable(sys->summary()));
     d.check("lkui1: four units, all locked with an audio link delay and its range", units == 4 && locked == 4);
     d.check("lkui1: the summary says so", sys->summary().startsWith(QLatin1String("Audio link: 4 of 4 locked")));
+    d.check("ausb1: two USB-direct units, phase-locked, with their delay, range and statistics", usbUnits == 2 && usbLocked == 2);
+    d.check("ausb1: the summary counts them apart",
+            sys->summary().startsWith(QLatin1String("Audio link: 4 of 4 locked, USB-direct 2 of 2 locked")));
     QQuickItem *strip = d.item(QStringLiteral("SystemStatusStrip"));
     d.check("lkui1: the status line under the menu bar", strip && d.waitFor(3000, [&] { return strip->isVisible(); })
                                                             && strip->property("shownName").toString().startsWith(QLatin1String("Audio link:")));
@@ -211,6 +226,14 @@ void alinkSystemSection(SmokeDriver &d) {
     const auto rowA = [&] { return in(QStringLiteral("SystemWindow.unit.A")); };
     d.check("lkui1: a unit row shows its name and lock",
             rowA() && rowA()->property("shownName").toString() == QLatin1String("Main left, Locked"));
+    // -- WP AUSB1 --
+    const auto rowR = [&] { return in(QStringLiteral("SystemWindow.unit.R")); };
+    const auto statsR = [&] { return in(QStringLiteral("SystemWindow.usbStats.R")); };
+    const auto delayR = [&] { return in(QStringLiteral("SystemWindow.delay.R")); };
+    d.check("ausb1: a USB-direct row shows its state, its delay in samples and its statistics",
+            rowR() && rowR()->property("shownName").toString() == QLatin1String("Rear L/R, Phase-locked (USB)") && statsR()
+                && statsR()->isVisible() && statsR()->property("text").toString().contains(QLatin1String("stream 144 samples early"))
+                && delayR() && delayR()->property("text").toString().contains(QLatin1String(" smp")));
 
     // -- fixup lk1 -- the device held read only (G1, as a mismatched firmware): Admin on
     // the hub, yet no System write is offered, and none is sent if asked
@@ -248,9 +271,12 @@ void alinkSystemSection(SmokeDriver &d) {
     const auto result = [&] { return in(QStringLiteral("SystemWindow.recallResult")); };
     d.check("lkui1: the scene bar", evening() && closed() && result());
     d.check("lkui1: recall Evening", click(evening()) && d.waitFor(15000, [&] { return !sys->busy() && !sys->lastRecall().isEmpty(); }));
+    // -- WP AUSB1 -- at a USB frame on the USB-direct units, through the sender on the others
     d.check("lkui1: Evening recalled through the sender",
             sys->lastRecall().value(QStringLiteral("taken")).toBool() && sys->recalledScene() == QLatin1String("Evening")
-                && result() && result()->property("text").toString().startsWith(QLatin1String("Evening recalled through the sender")));
+                && result() && result()->property("text").toString().startsWith(QLatin1String("Evening recalled: at USB frame "))
+                && result()->property("text").toString().contains(QLatin1String(" on Rear L/R, Height; at audio link frame "))
+                && result()->property("text").toString().endsWith(QLatin1String(" through the sender on the others.")));
     d.check("lkui1: recall Closed at once", click(closed()) && d.waitFor(15000, [&] {
         return !sys->busy() && sys->lastRecall().value(QStringLiteral("name")).toString() == QLatin1String("Closed");
     }));
@@ -385,7 +411,8 @@ void alinkSystemSection(SmokeDriver &d) {
                 && plain.value(QStringLiteral("connected")).toBool());
     std::printf("smoke: hwlk1f: %s\n", qPrintable(sys->summary()));
     d.check("hwlk1f: and left out of N of M locked",
-            sys->summary().startsWith(QLatin1String("Audio link: 4 of 4 locked, 1 without the audio link (firmware)")));
+            sys->summary().startsWith(
+                QLatin1String("Audio link: 4 of 4 locked, USB-direct 2 of 2 locked, 1 without the audio link (firmware)")));
     shell->trigger(QStringLiteral("window.system"));
     d.waitFor(3000, [&] { return window->isVisible(); });
     d.spin(400);
@@ -398,8 +425,9 @@ void alinkSystemSection(SmokeDriver &d) {
     std::printf("smoke: hwlk1f: %s\n", qPrintable(mixedRecall));
     d.check("hwlk1f: Evening applied now on P, at the frame on the others, not 'on time on every unit'",
             sys->lastRecall().value(QStringLiteral("taken")).toBool() && !sys->lastRecall().value(QStringLiteral("onTime")).toBool()
-                && mixedRecall.startsWith(QLatin1String("Evening recalled: applied now on Plain unit (no audio link); at audio link frame "))
-                && mixedRecall.endsWith(QLatin1String(" through the sender on the others.")));
+                && mixedRecall.startsWith(QLatin1String("Evening recalled: at USB frame "))
+                && mixedRecall.contains(QLatin1String(" through the sender on the others; "))
+                && mixedRecall.endsWith(QLatin1String("; applied now on Plain unit (no audio link).")));
     sys->align();
     d.check("hwlk1f: align says P was skipped and why", d.waitFor(20000, [&] {
         return !sys->busy() && sys->actionMessage().contains(QLatin1String("skipped on Plain unit (no audio link (firmware))"));

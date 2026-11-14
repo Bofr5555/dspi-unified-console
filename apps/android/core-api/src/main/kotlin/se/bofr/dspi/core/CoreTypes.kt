@@ -2402,6 +2402,86 @@ data class AlinkSystemUnit(
      * Its alarms still on.
      */
     val alarms: Long,
+    /**
+     * How the programme reaches it: `alink` (senders and fan-outs too) or
+     * `usb_direct`.
+     */
+    val transport: String,
+    /**
+     * A USB-direct unit's mode as the unit runs it: `off`, `rate_lock`,
+     * `phase_lock`.
+     */
+    val usbMode: String?,
+    /**
+     * The mode the installation asks for, when it names one.
+     */
+    val usbModeWanted: String?,
+    /**
+     * The delay D the alignment asks for, samples; else the unit's own.
+     */
+    val usbDelaySamples: Long?,
+    /**
+     * [`Self::usb_delay_samples`] in ms at the system's rate.
+     */
+    val usbDelayMs: Double?,
+    /**
+     * The D the unit has now, samples.
+     */
+    val unitUsbDelaySamples: Long?,
+    /**
+     * The shortest D phase lock takes now, samples.
+     */
+    val usbDelayMin: Long?,
+    /**
+     * The longest.
+     */
+    val usbDelayMax: Long?,
+    /**
+     * The host's SOF rate against the unit's crystal, ppm.
+     */
+    val hostPpm: Float?,
+    /**
+     * The unit's soft VCXO correction, ppm.
+     */
+    val vcxoPpm: Float?,
+    /**
+     * The phase error, samples.
+     */
+    val phaseErrorSamples: Float?,
+    /**
+     * Faded gaps since boot.
+     */
+    val gaps: Long?,
+    /**
+     * Silence inserted for missing packets, samples since boot.
+     */
+    val missedSamples: Long?,
+    /**
+     * Samples dropped as too late, since boot.
+     */
+    val lateSamples: Long?,
+    /**
+     * Re-anchors since boot.
+     */
+    val reanchors: Long?,
+    /**
+     * Timeline ends counted by the unit's diagnostics, and the latest cause.
+     */
+    val timelineEnds: Long?,
+    /**
+     * The latest cause in words ("SOF lost", "bus reset"...); "" for none.
+     */
+    val lastEnd: String,
+    /**
+     * How many samples earlier its stream plays than the latest unit's (the
+     * alignment delays its outputs by that).
+     */
+    val startOffsetSamples: Long?,
+    /**
+     * The statistics in one line, for a details row: host and VCXO ppm,
+     * phase error, gaps, missed and late samples, re-anchors, timeline ends.
+     */
+    val usbStats: String,
 )
 
 /**
@@ -2559,8 +2639,18 @@ data class AlinkSystemView(
     /**
      * Units the model has, but those whose firmware has no audio link
      * (WP HWLK1F): "N of M locked" counts the units that can lock.
+     * -- WP AUSB1 -- USB-direct units are counted apart.
      */
     val unitCount: Long,
+    /**
+     * USB-direct units in the model (WP AUSB1).
+     */
+    val usbUnitCount: Long,
+    /**
+     * Those locked as asked: phase-locked (rate-locked when the mode asks
+     * only that).
+     */
+    val usbLocked: Long,
     /**
      * One line for a status indicator: "Audio link: 4 of 4 locked".
      */
@@ -2629,6 +2719,25 @@ data class AlinkSystemEdits(
      * Units' measured latencies.
      */
     val units: List<AlinkUnitLatency>,
+    /**
+     * USB-direct units' modes (Installer).
+     */
+    val usbModes: List<AlinkUnitUsbMode>,
+)
+
+/**
+ * One USB-direct unit's mode to set ("Clock and audio links", Installer):
+ * written with the audio link delays.
+ */
+data class AlinkUnitUsbMode(
+    /**
+     * The unit's id.
+     */
+    val unitId: String,
+    /**
+     * `off`, `rate_lock` or `phase_lock`; none: the unit's own is kept.
+     */
+    val mode: String?,
 )
 
 /**
@@ -2717,6 +2826,279 @@ data class AlinkSystemAlign(
      * Each write's result.
      */
     val writes: List<AlinkSystemWrite>,
+)
+
+/**
+ * What `EXT_ALINK_USB` reports.
+ */
+data class AlinkUsbConfig(
+    /**
+     * 0 off, 1 rate lock, 2 phase lock.
+     */
+    val mode: Int,
+    /**
+     * `off`, `rate_lock`, `phase_lock` or `unknown`.
+     */
+    val modeName: String,
+    /**
+     * A phase error beyond 2 samples re-anchors (else it is pulled in while
+     * playing).
+     */
+    val autoReanchor: Boolean,
+    /**
+     * Samples from a USB sample's arrival to its output.
+     */
+    val d: Int,
+    /**
+     * Mode 2 with D below the unit's minimum now: it runs as mode 1.
+     */
+    val dBelowMin: Boolean,
+    /**
+     * Mode 2 with D above its maximum: it runs as mode 1.
+     */
+    val dAboveMax: Boolean,
+    /**
+     * Mode 2 at 44.1 kHz: it runs as mode 1.
+     */
+    val rateUnsupported: Boolean,
+    /**
+     * The state, as [`AlinkUsbStatus::state`].
+     */
+    val state: String,
+    /**
+     * Its code.
+     */
+    val stateCode: Int,
+)
+
+/**
+ * What `EXT_ALINK_USB_STATUS` reports.
+ */
+data class AlinkUsbStatus(
+    /**
+     * `off` (mode 0, or the source is not USB), `no_sof`, `pull_in`,
+     * `rate_locked`, `anchoring`, `phase_locked`, `rejected` (the host is
+     * beyond 295 ppm) or `unknown`.
+     */
+    val state: String,
+    /**
+     * Its code.
+     */
+    val stateCode: Int,
+    /**
+     * 0 free, 1 anchoring, 2 locked, 3 re-anchor pending.
+     */
+    val phaseState: Int,
+    /**
+     * 0 = 44.1, 1 = 48, 2 = 96 kHz, 0xFF other.
+     */
+    val rateCode: Int,
+    /**
+     * The rate, Hz; 0 when unknown.
+     */
+    val rateHz: Long,
+    /**
+     * RP2350 hardware SOF timestamps.
+     */
+    val hwTimestamp: Boolean,
+    /**
+     * The host plays a stream to the unit.
+     */
+    val stream: Boolean,
+    /**
+     * The host follows the SOF-locked clock.
+     */
+    val nominalFeedback: Boolean,
+    /**
+     * A usable time base.
+     */
+    val timeBase: Boolean,
+    /**
+     * No SOF for over 50 ms: the time base is extrapolated.
+     */
+    val holdover: Boolean,
+    /**
+     * The host's SOF rate against the unit's crystal, ppm (+ = host fast).
+     */
+    val hostPpm: Float,
+    /**
+     * The soft VCXO's correction, ppm.
+     */
+    val vcxoPpm: Float,
+    /**
+     * The phase error, samples (phase-locked only).
+     */
+    val phaseErrorSamples: Float,
+    /**
+     * The USB sample index S arriving now; 0 without a time base.
+     */
+    val sample: Long,
+    /**
+     * Its bus frame (0-2047).
+     */
+    val busFrame: Int,
+    /**
+     * The smallest D phase lock takes now.
+     */
+    val dMin: Int,
+    /**
+     * The largest.
+     */
+    val dMax: Int,
+    /**
+     * The output ring's fill, samples.
+     */
+    val fill: Int,
+    /**
+     * The bus frame the current stream's content began in (2.9.3); none
+     * without a stream on the timeline.
+     */
+    val streamStartBusFrame: Int?,
+    /**
+     * Frames since then.
+     */
+    val streamAgeFrames: Long,
+    /**
+     * Silence inserted minus late samples dropped since then.
+     */
+    val streamShift: Int,
+    /**
+     * Faded gaps since boot (wraps at 65536).
+     */
+    val gapCount: Int,
+    /**
+     * Anchors since boot.
+     */
+    val anchors: Long,
+    /**
+     * Re-anchors since boot.
+     */
+    val reanchors: Long,
+    /**
+     * Silence inserted for missing packets, samples since boot.
+     */
+    val missedSamples: Long,
+    /**
+     * Samples dropped because their packet came too late, since boot.
+     */
+    val lateSamples: Long,
+)
+
+/**
+ * One cause of timeline ends with its count (`EXT_ALINK_USB_DIAG`).
+ */
+data class AlinkUsbEnd(
+    /**
+     * `sof_lost`, `long_gap`, `discontinuity`, `host_rejected`,
+     * `rate_or_config`, `reanchor_phase_error`, `reanchor_output_reset`,
+     * `reanchor_other`, `stop`.
+     */
+    val cause: String,
+    /**
+     * How often.
+     */
+    val count: Int,
+)
+
+/**
+ * What `EXT_ALINK_USB_DIAG` reports: why a unit lost its timeline.
+ */
+data class AlinkUsbDiag(
+    /**
+     * The latest end's cause ([`AlinkUsbEnd::cause`]); none yet.
+     */
+    val lastCause: String?,
+    /**
+     * SOF absences ridden through.
+     */
+    val rides: Int,
+    /**
+     * SOF absences of 50 ms or more.
+     */
+    val holdovers: Int,
+    /**
+     * Timeline ends by cause, in the firmware's order.
+     */
+    val ends: List<AlinkUsbEnd>,
+    /**
+     * USB suspends.
+     */
+    val suspends: Int,
+    /**
+     * USB resumes.
+     */
+    val resumes: Int,
+    /**
+     * USB bus resets.
+     */
+    val busResets: Int,
+    /**
+     * Disconnects.
+     */
+    val unplugs: Int,
+    /**
+     * The latest absence: frames counted on the bus.
+     */
+    val lastFrames: Long,
+    /**
+     * Its duration by the unit's clock, µs.
+     */
+    val lastUs: Long,
+    /**
+     * Clock minus frames at the host rate, µs.
+     */
+    val lastDevUs: Int,
+    /**
+     * The longest absence ridden through, µs.
+     */
+    val longestRideUs: Long,
+    /**
+     * The longest main-loop pass, µs.
+     */
+    val maxPassUs: Long,
+    /**
+     * The longest time without a SOF interrupt, µs.
+     */
+    val maxIsrQuietUs: Long,
+    /**
+     * The latest SOF interrupt after its SOF, µs.
+     */
+    val maxIsrLateUs: Long,
+    /**
+     * The running holdover's age, µs.
+     */
+    val holdoverUs: Long,
+)
+
+/**
+ * What `EXT_FRAME_COUNTER` reports, with its time base.
+ */
+data class AlinkTimeBaseCounter(
+    /**
+     * The alink frame F (time base `alink`) or the USB sample S
+     * (`usb_sample`); 0 with none.
+     */
+    val frame: Long,
+    /**
+     * The unit's clock at the read, µs (wraps).
+     */
+    val timeUs: Long,
+    /**
+     * Output samples played, low 32 bits.
+     */
+    val outputFrames: Long,
+    /**
+     * `alink`, `usb_sample` or `none`.
+     */
+    val timeBase: String,
+    /**
+     * Its code (0, 1, 0xFF).
+     */
+    val timeBaseCode: Int,
+    /**
+     * The bus frame of the latest SOF (time base `usb_sample` only).
+     */
+    val busFrame: Int,
 )
 
 /**

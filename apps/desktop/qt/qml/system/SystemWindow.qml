@@ -37,6 +37,11 @@ ToolWindow {
         if (u.state === "no_alink") return Theme.offline
         if (u.state === "holdover") return Theme.dangerText
         if (u.state === "searching" || u.state === "off" || u.state === "unknown") return Theme.warning
+        // -- WP AUSB1 -- USB-direct: no time base or the host out of range is a fault
+        if (u.state === "no_usb_direct") return Theme.offline
+        if (u.state === "no_sof" || u.state === "rejected") return Theme.dangerText
+        if (u.state === "pull_in" || u.state === "anchoring" || u.state === "usb_off") return Theme.warning
+        if (u.state === "rate_locked" && u.usbModeWanted !== "rate_lock") return Theme.warning
         return Theme.success
     }
     function frames(v) { return v === undefined || v === null ? "–" : String(v) }
@@ -270,8 +275,10 @@ ToolWindow {
                             required property int index
                             objectName: "SystemWindow.unit." + modelData.id
                             property string shownName: modelData.name + ", " + modelData.stateWord
+                            // -- WP AUSB1 -- a USB-direct unit's statistics line below its name
+                            property bool usb: modelData.transport === "usb_direct"
                             Layout.fillWidth: true
-                            implicitHeight: Theme.rowHeight + 8
+                            implicitHeight: usb && modelData.usbStats ? Theme.rowHeight + 24 : Theme.rowHeight + 8
                             color: index % 2 ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.03) : "transparent"
                             Accessible.role: Accessible.Row
                             Accessible.name: [modelData.name, modelData.role, modelData.stateWord].join(", ")
@@ -288,6 +295,14 @@ ToolWindow {
                                         Layout.fillWidth: true
                                         visible: text.length > 0
                                         text: [unitRow.modelData.room, unitRow.modelData.serial].filter(s => s && s.length).join(" · ")
+                                        color: Theme.textMuted
+                                        font: Theme.fontCaption
+                                    }
+                                    Cell {
+                                        objectName: "SystemWindow.usbStats." + unitRow.modelData.id
+                                        Layout.fillWidth: true
+                                        visible: unitRow.usb && text.length > 0
+                                        text: unitRow.modelData.usbStats || ""
                                         color: Theme.textMuted
                                         font: Theme.fontCaption
                                     }
@@ -315,21 +330,30 @@ ToolWindow {
                                     }
                                 }
                                 Cell {
+                                    objectName: "SystemWindow.delay." + unitRow.modelData.id
                                     cellWidth: 120
-                                    text: unitRow.modelData.kind === "unit"
+                                    text: unitRow.usb
+                                          ? qsTr("%1 smp").arg(window.frames(unitRow.modelData.usbDelaySamples)) + "  " + window.ms(unitRow.modelData.usbDelayMs)
+                                          : unitRow.modelData.kind === "unit"
                                           ? window.frames(unitRow.modelData.alinkDelayFrames) + "  " + window.ms(unitRow.modelData.alinkDelayMs)
                                           : unitRow.modelData.hopDelayFrames !== undefined && unitRow.modelData.hopDelayFrames !== null
                                             ? qsTr("+%1 frames").arg(unitRow.modelData.hopDelayFrames) : "–"
                                 }
                                 Cell {
                                     cellWidth: 100
-                                    text: unitRow.modelData.alinkDelayMin !== undefined && unitRow.modelData.alinkDelayMin !== null
+                                    text: unitRow.usb
+                                          ? (unitRow.modelData.usbDelayMin !== undefined && unitRow.modelData.usbDelayMin !== null
+                                             ? qsTr("%1–%2 smp").arg(unitRow.modelData.usbDelayMin).arg(unitRow.modelData.usbDelayMax) : "–")
+                                          : unitRow.modelData.alinkDelayMin !== undefined && unitRow.modelData.alinkDelayMin !== null
                                           ? unitRow.modelData.alinkDelayMin + "–" + unitRow.modelData.alinkDelayMax : "–"
                                 }
-                                Cell { cellWidth: 70; text: window.frames(unitRow.modelData.hopOffset) }
+                                Cell { cellWidth: 70; text: unitRow.usb ? "–" : window.frames(unitRow.modelData.hopOffset) }
                                 Cell {
                                     cellWidth: 80
-                                    text: unitRow.modelData.phaseErrorFrames !== undefined && unitRow.modelData.phaseErrorFrames !== null
+                                    text: unitRow.usb
+                                          ? (unitRow.modelData.phaseErrorSamples !== undefined && unitRow.modelData.phaseErrorSamples !== null
+                                             ? qsTr("%1 smp").arg(Number(unitRow.modelData.phaseErrorSamples).toFixed(2)) : "–")
+                                          : unitRow.modelData.phaseErrorFrames !== undefined && unitRow.modelData.phaseErrorFrames !== null
                                           ? Number(unitRow.modelData.phaseErrorFrames).toFixed(2) : "–"
                                 }
                             }

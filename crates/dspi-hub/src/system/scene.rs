@@ -110,6 +110,48 @@ pub struct ScenePlan {
     /// theirs reports a frame and no sender is reachable. Not written.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub unscheduled: Vec<PlannedOp>,
+    // -- WP AUSB1 --
+    /// The bus frame the USB-direct units' ops act on (`EXT_APPLY_AT_FRAME`
+    /// time base 2, sample 0 of that frame): the same instant on every unit of
+    /// the host.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usb_frame: Option<u16>,
+    /// The writes to phase-locked USB-direct units, at [`Self::usb_frame`].
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub usb_ops: Vec<PlannedOp>,
+    /// The lead the bus frame was chosen with, samples.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usb_lead_samples: Option<u64>,
+}
+
+// -- WP AUSB1 --
+/// A phase-locked USB-direct unit as read for a scene: its sample index S
+/// now and its samples per bus frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UsbSeenNow {
+    /// S at the read.
+    pub sample: u64,
+    /// Samples per bus frame (48 or 96).
+    pub spf: u16,
+}
+
+/// The longest lead a bus-frame target takes: 2048 frames less the 64 that
+/// count as past, and a margin of 64 for the reads (1.92 s).
+pub const USB_MAX_LEAD_FRAMES: u64 = 2048 - 64 - 64;
+
+// -- WP AUSB1 --
+/// The bus frame `lead` samples after the newest S of `usb` (rounded up to a
+/// frame boundary; the lead cut to [`USB_MAX_LEAD_FRAMES`]), and the lead used.
+pub fn usb_target(usb: &[UsbSeenNow], lead: u64) -> Option<(u16, u64)> {
+    let newest = usb.iter().max_by_key(|u| u.sample)?;
+    let spf = u64::from(newest.spf);
+    let lead = lead.min(USB_MAX_LEAD_FRAMES.saturating_mul(spf));
+    let target = newest
+        .sample
+        .checked_add(lead)?
+        .checked_next_multiple_of(spf)?;
+    let (bus, _) = dspi_proto::ext::alink_usb::bus_of_sample(target, newest.spf)?;
+    Some((bus, lead))
 }
 
 /// Why a scene cannot be planned.
@@ -176,9 +218,9 @@ pub fn plan_mixed(
         let [action] = scene.actions.as_slice() else {
             return false;
         };
+        // -- WP AUSB1 -- every unit on the audio link: USB-direct ones have no path
         let every = model
-            .units
-            .iter()
+            .alink_units()
             .all(|u| model.path_to(&u.id).is_some_and(|(from, _)| from == s.id));
         // -- WP HWLK1F -- every unit with the alink: the others take it at once
         let covers = model.resolve_target(&action.target).is_some_and(|t| {
@@ -201,6 +243,9 @@ pub fn plan_mixed(
             system_flags: None,
             direct,
             unscheduled: Vec::new(),
+            usb_frame: None,
+            usb_ops: Vec::new(),
+            usb_lead_samples: None,
         });
     }
     let round = |f: u64| f.checked_next_multiple_of(SUPERFRAME_FRAMES);
@@ -231,6 +276,9 @@ pub fn plan_mixed(
                 .collect(),
             direct,
             unscheduled: Vec::new(),
+            usb_frame: None,
+            usb_ops: Vec::new(),
+            usb_lead_samples: None,
         });
     }
     let frame = base.and_then(|b| b.checked_add(lead)).and_then(round);
@@ -249,6 +297,9 @@ pub fn plan_mixed(
             system_flags: None,
             direct,
             unscheduled: ops,
+            usb_frame: None,
+            usb_ops: Vec::new(),
+            usb_lead_samples: None,
         });
     };
     Ok(ScenePlan {
@@ -261,7 +312,50 @@ pub fn plan_mixed(
         system_flags: None,
         direct,
         unscheduled: Vec::new(),
+        usb_frame: None,
+        usb_ops: Vec::new(),
+        usb_lead_samples: None,
     })
+}
+
+// -- WP AUSB1 --
+/// [`plan_mixed`] for an installation with USB-direct units: those in `usb`
+/// (phase-locked, read now) take their ops at one bus frame
+/// ([`ScenePlan::usb_frame`], [`ScenePlan::usb_ops`]); the other USB-direct
+/// units must be in `no_alink` and take theirs at once
+/// ([`ScenePlan::direct`]). The audio link's units are planned as
+/// [`plan_mixed`] does.
+pub fn plan_usb(
+    model: &SystemModel,
+    scene_id: &str,
+    frames: &BTreeMap<String, u64>,
+    sender: Option<&SenderSeen>,
+    lead: u64,
+    no_alink: &BTreeSet<String>,
+    usb: &BTreeMap<String, UsbSeenNow>,
+) -> Result<ScenePlan, SceneRefused> {
+    let mut aside = no_alink.clone();
+    aside.extend(usb.keys().cloned());
+    let mut plan = plan_mixed(model, scene_id, frames, sender, lead, &aside)?;
+    let (usb_ops, direct): (Vec<_>, Vec<_>) = std::mem::take(&mut plan.direct)
+        .into_iter()
+        .partition(|o| usb.contains_key(&o.serial));
+    plan.direct = direct;
+    if usb_ops.is_empty() {
+        return Ok(plan);
+    }
+    let seen: Vec<UsbSeenNow> = usb_ops
+        .iter()
+        .filter_map(|o| usb.get(&o.serial).copied())
+        .collect();
+    let (bus, lead) = usb_target(&seen, lead).ok_or(SceneRefused::NoFrame)?;
+    plan.usb_frame = Some(bus);
+    plan.usb_lead_samples = Some(lead);
+    plan.usb_ops = usb_ops;
+    if plan.ops.is_empty() && plan.direct.is_empty() {
+        plan.path = "usb_frame".into();
+    }
+    Ok(plan)
 }
 
 #[cfg(test)]

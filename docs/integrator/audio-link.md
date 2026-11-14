@@ -276,6 +276,80 @@ Example model (one sender, a fan-out, two units in one room):
 Field names are camelCase; an unknown field is refused. Ids are unique across
 the whole model and may not contain `:`.
 
+## USB-direct units (WP AUSB1)
+
+A home-theatre install can feed a few speakers per DSPi straight from a central
+computer over (active) USB cables, with no audio link cable: the firmware's
+USB-direct block (DSPi-bofr `extension_channel_spec.md` 2.9, bofr-main ebdf538:
+`EXT_ALINK_USB` 0x8010, `_STATUS` 0x8011, `_DIAG` 0x8012, the USB time base of
+0x8005/0x8006, event 0xE3). A unit locks its clock to the host's Start of Frame
+(mode 1, rate lock) and, in mode 2 (phase lock), plays every USB sample D samples
+after it arrived, so every unit of one host plays sample-aligned.
+
+- **The model.** A unit with `"transport": "usb_direct"` has no `upstream`,
+  `slots`, `hopDelayFrames` or `repeater`; `"usbMode"` (`off`, `rate_lock`,
+  `phase_lock`) is the mode the alignment writes, absent: the unit's own is kept.
+  The Installer's "Clock and audio links" panel sets it (web), saved with
+  `system.set` by revision like every other edit. A unit's transport is the
+  model's; whether its firmware has the block is read (`observed[serial].usbDirect`
+  `present`/`none`, issue `no_usb_direct`, a warning on `system.set`).
+- **What the hub reads** for such a unit: `EXT_LIST`, `EXT_ALINK_USB`, `_STATUS` and
+  `_DIAG` (not the audio link's commands), in `observed[serial].usb`: the mode and
+  D, the state (`off`, `no_sof`, `pull_in`, `rate_locked`, `anchoring`,
+  `phase_locked`, `rejected`), host and VCXO ppm, the phase error in samples, the
+  bus frame, `dMin..dMax`, the stream's start bus frame and shift, gaps, missed and
+  late samples, anchors and re-anchors, and DIAG's timeline ends (with the latest
+  cause), holdovers and rides, suspends, bus resets and unplugs.
+- **One system delay.** A USB-direct unit's `E_u = D + (L_max − L_u) + S_u`, in
+  samples at the stream's rate (the same number as audio link frames), is the D
+  written to it, inside its `d_min..d_max` (170..399 at 48 kHz); an automatic D is
+  the smallest every unit of both kinds takes. A mixed installation gets the issue
+  `mixed_time_bases`: an audio link unit plays D frames after the sender sends a
+  frame, a USB-direct unit D samples after a sample reaches it, and the sender's
+  own USB latency is not counted, so check a mixed room with a test click and
+  enter the measured latency.
+- **Start offsets (2.9.3, U6).** A host opens its streams one after the other, so
+  the same content can sit in different bus frames. From each phase-locked unit's
+  stream start bus frame and `stream_shift` the hub works out how many samples
+  each unit's content plays earlier than the latest one's
+  (`alignment.units[].startOffsetSamples`, issue `usb_start_offsets`) and adds that
+  to its speakers' output delays (a unit with an offset and no speakers in the
+  model gets `start_offset_no_outputs`). After a re-anchor the figures describe the
+  stream as placed anew: restart the streams and align again.
+- **Writing.** `system.align` with `apply` writes `EXT_ALINK_USB` (`what:
+  "usb_direct"`: the mode, automatic re-anchor as the unit has it, and D in phase
+  lock) when it differs, then the output delays; skipped with `no USB-direct block
+  (firmware)`, `state unknown`, `not connected` or `out of range`.
+- **Scenes.** The phase-locked USB-direct units take a scene's ops at one bus frame
+  (`EXT_APPLY_AT_FRAME` time base 2, sample 0 of that frame: the same 8 bytes mean
+  the same instant on every unit of the host), the newest S read plus the lead,
+  at most 1.92 s ahead (`plan.usbFrame`, `plan.usbOps`, `plan.usbLeadSamples`);
+  path `usb_frame` when nothing else is scheduled. A USB-direct unit that is not
+  phase-locked takes its ops at once with its own commands (reason `not
+  phase-locked (USB-direct)`). When the audio link's part is refused whole (a
+  sender holding a scene), the USB-direct ops are held back too (`skipped`, reason
+  `the audio link part was refused`), so no room plays half a scene. The recall
+  says each part: "Evening recalled: at USB frame 1234 on Rear L/R, Height; at
+  audio link frame 1000032 through the sender on the others; applied now on Plain
+  unit (no audio link)."
+- **Clients.** The core's view rows carry `transport`, the USB mode (as run and as
+  asked), D and its range, host and VCXO ppm, the phase error, gaps, missed and late
+  samples, re-anchors, timeline ends and the latest cause, the start offset, and one
+  `usbStats` line; the summary counts them apart ("Audio link: 4 of 4 locked,
+  USB-direct 2 of 2 locked"). The web shows them in the System view (rooms and the
+  topology, beside the audio link's tree), the Installer's tables "USB-direct units"
+  and "USB-direct stats", and the alignment's plan; Qt and Android in their System
+  screens. `uconsole ext usb-direct` (text or `--json`) reads one unit directly. The
+  demo: `uconsole --demo hub --alink` adds "Rear L/R" and "Height" (fake units
+  phase-locked at 48 kHz, the host 11.5 ppm slow, Height's stream 3 frames late);
+  the core's `open_demo_usb_direct` (wasm `open` `{"kind": "demo", "usbDirect":
+  true}`) opens one on its own.
+- **Not done.** All USB-direct units of a hub are taken to be on one USB host
+  (one SOF): units on two host controllers count different bus frames, and the hub
+  does not tell them apart yet. Qt and Android show the units but set no mode
+  (the web's Installer does; the core's `alink_system_save` takes `usbModes`).
+  No alarm is raised for a USB-direct unit yet (the event log has 0xE3).
+
 ## Where it is kept
 
 In the hub's store, `hub-store.json`, under `system`, beside the paired clients

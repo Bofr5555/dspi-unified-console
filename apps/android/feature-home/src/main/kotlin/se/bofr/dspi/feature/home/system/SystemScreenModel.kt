@@ -14,12 +14,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import se.bofr.dspi.bridge.DspiBridge
-import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.AlinkRoomLipSync
 import se.bofr.dspi.core.AlinkSceneRecall
 import se.bofr.dspi.core.AlinkSystemEdits
 import se.bofr.dspi.core.AlinkSystemView
 import se.bofr.dspi.core.AlinkUnitLatency
+import se.bofr.dspi.core.DspiException
 
 /** What the last recall did, in the core's words (or the hub's, for a refusal by role). */
 data class RecallLine(val name: String, val taken: Boolean, val message: String, val writes: List<String>)
@@ -42,7 +42,9 @@ data class SystemDraft(
         setSystemDelay = delaySet,
         systemDelayFrames = if (delayAuto) null else delayFrames,
         rooms = rooms.map { (id, us) -> AlinkRoomLipSync(id, us) },
-        units = units.map { (id, us) -> AlinkUnitLatency(id, us) }
+        units = units.map { (id, us) -> AlinkUnitLatency(id, us) },
+        // -- WP AUSB1 -- USB-direct modes are set in the web console's Installer mode
+        usbModes = emptyList()
     )
 }
 

@@ -536,6 +536,11 @@ void uniffi_dspi_core_fn_method_dspicore_apply_all_params(void*_Nonnull ptr, Rus
 void uniffi_dspi_core_fn_method_dspicore_apply_at_frame(void*_Nonnull ptr, uint64_t frame, uint8_t op, uint8_t arg, int16_t value, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_APPLY_AT_TIME_BASE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_APPLY_AT_TIME_BASE
+void uniffi_dspi_core_fn_method_dspicore_apply_at_time_base(void*_Nonnull ptr, uint8_t time_base, uint64_t frame, uint8_t op, uint8_t arg, int16_t value, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_BEGIN_GROUP
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_BEGIN_GROUP
 void uniffi_dspi_core_fn_method_dspicore_begin_group(void*_Nonnull ptr, RustBuffer label, RustCallStatus *_Nonnull out_status
@@ -569,6 +574,11 @@ void uniffi_dspi_core_fn_method_dspicore_capture_baseline(void*_Nonnull ptr, Rus
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CHECK_CORE1_CONFLICT
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CHECK_CORE1_CONFLICT
 int8_t uniffi_dspi_core_fn_method_dspicore_check_core1_conflict(void*_Nonnull ptr, uint8_t output, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CLEAR_ALINK_USB_DIAG
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CLEAR_ALINK_USB_DIAG
+void uniffi_dspi_core_fn_method_dspicore_clear_alink_usb_diag(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CLEAR_CLIPS
@@ -871,6 +881,21 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_alink_slots(void*_Nonnull p
 RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_alink_status(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_ALINK_USB
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_ALINK_USB
+RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_alink_usb(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_ALINK_USB_DIAG
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_ALINK_USB_DIAG
+RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_alink_usb_diag(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_ALINK_USB_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_ALINK_USB_STATUS
+RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_alink_usb_status(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_ALL
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_ALL
 void uniffi_dspi_core_fn_method_dspicore_fetch_all(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -914,6 +939,11 @@ void uniffi_dspi_core_fn_method_dspicore_fetch_ctrl_ifaces(void*_Nonnull ptr, Ru
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_DAC_MUTE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_DAC_MUTE
 void uniffi_dspi_core_fn_method_dspicore_fetch_dac_mute(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_FRAME_COUNTER_TIME_BASE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_FRAME_COUNTER_TIME_BASE
+RustBuffer uniffi_dspi_core_fn_method_dspicore_fetch_frame_counter_time_base(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FETCH_IDENTIFY
@@ -1196,6 +1226,11 @@ void uniffi_dspi_core_fn_method_dspicore_open_demo(void*_Nonnull ptr, RustCallSt
 void uniffi_dspi_core_fn_method_dspicore_open_demo_alink(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OPEN_DEMO_USB_DIRECT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OPEN_DEMO_USB_DIRECT
+void uniffi_dspi_core_fn_method_dspicore_open_demo_usb_direct(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OPEN_FD
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OPEN_FD
 void uniffi_dspi_core_fn_method_dspicore_open_fd(void*_Nonnull ptr, int32_t fd, RustBuffer serial, uint16_t vid, RustCallStatus *_Nonnull out_status
@@ -1384,6 +1419,11 @@ void uniffi_dspi_core_fn_method_dspicore_set_alink_phase(void*_Nonnull ptr, uint
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_ALINK_SLOTS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_ALINK_SLOTS
 void uniffi_dspi_core_fn_method_dspicore_set_alink_slots(void*_Nonnull ptr, RustBuffer slots, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_ALINK_USB
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_ALINK_USB
+void uniffi_dspi_core_fn_method_dspicore_set_alink_usb(void*_Nonnull ptr, uint8_t mode, int8_t auto_reanchor, uint16_t d, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_BAND_BYPASS
@@ -1779,6 +1819,11 @@ void uniffi_dspi_core_fn_method_dspicore_test_dac_mute(void*_Nonnull ptr, RustCa
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_UNDO
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_UNDO
 RustBuffer uniffi_dspi_core_fn_method_dspicore_undo(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_USB_DIRECT_SUPPORTED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_USB_DIRECT_SUPPORTED
+int8_t uniffi_dspi_core_fn_method_dspicore_usb_direct_supported(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_WIRE_FEATURES
@@ -2731,6 +2776,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_apply_at_frame(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_APPLY_AT_TIME_BASE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_APPLY_AT_TIME_BASE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_apply_at_time_base(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_BEGIN_GROUP
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_BEGIN_GROUP
 uint16_t uniffi_dspi_core_checksum_method_dspicore_begin_group(void
@@ -2770,6 +2821,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_capture_baseline(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CHECK_CORE1_CONFLICT
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CHECK_CORE1_CONFLICT
 uint16_t uniffi_dspi_core_checksum_method_dspicore_check_core1_conflict(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CLEAR_ALINK_USB_DIAG
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CLEAR_ALINK_USB_DIAG
+uint16_t uniffi_dspi_core_checksum_method_dspicore_clear_alink_usb_diag(void
     
 );
 #endif
@@ -3133,6 +3190,24 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_alink_status(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_ALINK_USB
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_ALINK_USB
+uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_alink_usb(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_ALINK_USB_DIAG
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_ALINK_USB_DIAG
+uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_alink_usb_diag(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_ALINK_USB_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_ALINK_USB_STATUS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_alink_usb_status(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_ALL
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_ALL
 uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_all(void
@@ -3184,6 +3259,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_ctrl_ifaces(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_DAC_MUTE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_DAC_MUTE
 uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_dac_mute(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_FRAME_COUNTER_TIME_BASE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FETCH_FRAME_COUNTER_TIME_BASE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_fetch_frame_counter_time_base(void
     
 );
 #endif
@@ -3523,6 +3604,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_open_demo_alink(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OPEN_DEMO_USB_DIRECT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OPEN_DEMO_USB_DIRECT
+uint16_t uniffi_dspi_core_checksum_method_dspicore_open_demo_usb_direct(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OPEN_FD
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OPEN_FD
 uint16_t uniffi_dspi_core_checksum_method_dspicore_open_fd(void
@@ -3748,6 +3835,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_set_alink_phase(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_ALINK_SLOTS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_ALINK_SLOTS
 uint16_t uniffi_dspi_core_checksum_method_dspicore_set_alink_slots(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_ALINK_USB
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_ALINK_USB
+uint16_t uniffi_dspi_core_checksum_method_dspicore_set_alink_usb(void
     
 );
 #endif
@@ -4222,6 +4315,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_test_dac_mute(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_UNDO
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_UNDO
 uint16_t uniffi_dspi_core_checksum_method_dspicore_undo(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_USB_DIRECT_SUPPORTED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_USB_DIRECT_SUPPORTED
+uint16_t uniffi_dspi_core_checksum_method_dspicore_usb_direct_supported(void
     
 );
 #endif

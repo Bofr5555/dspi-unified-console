@@ -17,7 +17,14 @@
 /** Where a session's device is. A fleet server may add its own kinds later. */
 export type DeviceTarget =
   /** The core's own demo device; `readOnly` opens it as older firmware, which the core only reads. */
-  | { kind: "demo"; readOnly?: boolean; /** -- WP SW1 -- the demo as a unit receiving the audio link */ alink?: boolean }
+  | {
+      kind: "demo";
+      readOnly?: boolean;
+      /** -- WP SW1 -- the demo as a unit receiving the audio link */
+      alink?: boolean;
+      /** -- WP AUSB1 -- the demo as an alink USB-direct unit */
+      usbDirect?: boolean;
+    }
   /**
    * A DSPi on USB (WebUSB, WB4a): the serial the page's picker or
    * `getDevices()` gave. The Worker claims that device and completes the target
@@ -617,6 +624,65 @@ export interface AlinkMethods {
   applyAtFrame: { params: { frame: number; op: number; arg?: number; value?: number }; result: null };
   applyAtFrameStatus: { params: undefined; result: ApplyAtFrameStatus };
   resetAlinkStats: { params: undefined; result: null };
+  // -- WP AUSB1 -- the USB-direct block (extension_channel_spec.md 2.9): `unsupported` without it
+  /** No traffic. */
+  usbDirectSupported: { params: undefined; result: boolean };
+  alinkUsb: { params: undefined; result: AlinkUsbConfig };
+  /** `mode` 0 off, 1 rate lock, 2 phase lock; `d` samples (170..399 at 48 kHz in mode 2). */
+  setAlinkUsb: { params: { mode: number; d: number; autoReanchor?: boolean }; result: null };
+  alinkUsbStatus: { params: undefined; result: AlinkUsbStatus };
+  alinkUsbDiag: { params: undefined; result: Record<string, unknown> };
+  clearAlinkUsbDiag: { params: undefined; result: null };
+  frameCounterTimeBase: {
+    params: undefined;
+    result: { frame: number; timeUs: number; outputFrames: number; timeBase: string; timeBaseCode: number; busFrame: number };
+  };
+  /** `timeBase` 0 alink frame, 1 USB sample index, 2 bus frame (bits 0-10) and sample (bits 16-23). */
+  applyAtTimeBase: { params: { timeBase: number; frame: number; op: number; arg?: number; value?: number }; result: null };
+}
+
+// -- WP AUSB1 --
+/** `EXT_ALINK_USB` (2.9.2). */
+export interface AlinkUsbConfig {
+  mode: number;
+  modeName: "off" | "rate_lock" | "phase_lock" | "unknown";
+  autoReanchor: boolean;
+  d: number;
+  dBelowMin: boolean;
+  dAboveMax: boolean;
+  rateUnsupported: boolean;
+  state: string;
+  stateCode: number;
+}
+
+/** `EXT_ALINK_USB_STATUS` (2.9.3). */
+export interface AlinkUsbStatus {
+  state: string;
+  stateCode: number;
+  phaseState: number;
+  rateCode: number;
+  rateHz: number;
+  hwTimestamp: boolean;
+  stream: boolean;
+  nominalFeedback: boolean;
+  timeBase: boolean;
+  holdover: boolean;
+  hostPpm: number;
+  vcxoPpm: number;
+  phaseErrorSamples: number;
+  sample: number;
+  busFrame: number;
+  dMin: number;
+  dMax: number;
+  fill: number;
+  streamStartBusFrame: number | null;
+  streamAgeFrames: number;
+  streamShift: number;
+  gapCount: number;
+  anchors: number;
+  reanchors: number;
+  missedSamples: number;
+  lateSamples: number;
 }
 
 export type Method = keyof CoreMethods;
