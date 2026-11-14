@@ -372,12 +372,7 @@ impl DspiCore {
         let label = doc_name(&doc, "a document");
         self.guard_begin(label, timeout_s, move |core| {
             let token = core.confirm_token(crate::ConfirmOp::ConfigImport);
-            import_result(&core.config_import_confirmed(
-                text,
-                options,
-                eq_channels,
-                Some(token),
-            ))
+            import_result(&core.config_import_confirmed(text, options, eq_channels, Some(token)))
         })
     }
 
@@ -575,14 +570,18 @@ impl DspiCore {
         apply: impl FnOnce(&Self) -> Result<Vec<String>>,
     ) -> Result<GuardedApply> {
         let _op = lock(&self.guarded.op);
-        // A guard still waiting, or lost and not yet settled, holds the slot.
+        // A guard still waiting, or lost over Link and not yet settled, holds
+        // the slot. One past its deadline that no poll has seen reverts first;
+        // one whose connection went is lost first.
         if let Some(r) = self.running() {
-            let left = if r.lost {
-                self.resolve_lost(r)
-            } else {
-                self.apply_status()
-            };
-            if matches!(left.phase, GuardPhase::Waiting | GuardPhase::Lost) {
+            if r.lost {
+                self.resolve_lost(r);
+            } else if self.connection_changed(&r) {
+                self.on_lost(r);
+            } else if now() >= r.deadline {
+                self.revert_now(r, "timeout");
+            }
+            if self.running().is_some() {
                 return Err(invalid(BUSY));
             }
         }
@@ -814,7 +813,9 @@ impl DspiCore {
         let (before, last) = {
             let st = lock(&self.guarded.state);
             match (&st.orphan, open) {
-                (Some(o), Some(serial)) if o.serial == serial => (o.before.clone(), st.last.clone()),
+                (Some(o), Some(serial)) if o.serial == serial => {
+                    (o.before.clone(), st.last.clone())
+                }
                 _ => return Err(invalid(NOTHING_WAITING)),
             }
         };
@@ -887,7 +888,12 @@ impl DspiCore {
 
     /// End as the hub's outcome says (`apply.ended`'s fields).
     fn finish_from_hub(&self, r: Running, o: &Value) -> GuardedApply {
-        let word = |k: &str| o.get(k).and_then(Value::as_str).unwrap_or_default().to_owned();
+        let word = |k: &str| {
+            o.get(k)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned()
+        };
         let (hub_reason, result) = (word("reason"), word("result"));
         let reason = match hub_reason.as_str() {
             "session_closed" => "connection_lost",
@@ -926,7 +932,9 @@ impl DspiCore {
                 let status = word("status");
                 (
                     GuardPhase::RevertFailed,
-                    format!("{why}: the hub could not put the settings from before back ({status})."),
+                    format!(
+                        "{why}: the hub could not put the settings from before back ({status})."
+                    ),
                 )
             }
         };
@@ -964,7 +972,8 @@ impl DspiCore {
         };
         let mut f = serde_json::Map::new();
         f.insert("handle".into(), t.handle.into());
-        let hub_ms = u64::try_from(timeout.saturating_add(HUB_MARGIN).as_millis()).unwrap_or(u64::MAX);
+        let hub_ms =
+            u64::try_from(timeout.saturating_add(HUB_MARGIN).as_millis()).unwrap_or(u64::MAX);
         f.insert("timeout_ms".into(), hub_ms.into());
         let reply = self.link_hub_request("apply.begin", f)?;
         let guard = reply

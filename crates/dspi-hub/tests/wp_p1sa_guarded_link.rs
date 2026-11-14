@@ -195,7 +195,10 @@ fn wp_p1sa_link_confirm_keeps() {
     let applied = r.remote.image();
     assert_ne!(applied, before);
     let k = core.apply_confirm().unwrap();
-    assert_eq!((k.phase, k.reason.as_str()), (GuardPhase::Kept, "confirmed"));
+    assert_eq!(
+        (k.phase, k.reason.as_str()),
+        (GuardPhase::Kept, "confirmed")
+    );
     let st = hub_status(&core);
     assert_eq!(st["active"], Value::Null, "{st}");
     assert_eq!(st["last"]["reason"], "confirmed");

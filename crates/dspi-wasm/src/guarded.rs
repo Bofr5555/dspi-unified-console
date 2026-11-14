@@ -149,7 +149,10 @@ mod tests_wp_p1sa {
 
         let i = run(h, "applyGuardedImport", json!({ "text": text }));
         assert_eq!(i["value"]["phase"], "waiting", "{i}");
-        assert_eq!(run(h, "applyRevert", json!({}))["value"]["phase"], "reverted");
+        assert_eq!(
+            run(h, "applyRevert", json!({}))["value"]["phase"],
+            "reverted"
+        );
         assert_eq!(
             run(h, "applyGuardedImport", json!({ "text": "{" }))["code"],
             "invalid"

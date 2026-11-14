@@ -33,9 +33,11 @@ pub extern "C" fn dspi_apply_guarded_import(
     len: u32,
 ) -> u32 {
     text(core, buf, len, |c| {
-        json_reply(arg(doc, "doc").and_then(|d| {
-            c.apply_guarded_import(d.to_owned(), options, eq_channels, timeout_s)
-        }))
+        json_reply(
+            arg(doc, "doc").and_then(|d| {
+                c.apply_guarded_import(d.to_owned(), options, eq_channels, timeout_s)
+            }),
+        )
     })
 }
 

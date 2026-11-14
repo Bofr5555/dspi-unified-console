@@ -31,7 +31,10 @@ fn wp_p1sa_guarded_apply_through_the_c_abi() {
     assert!(!dspi_apply_guard_default(h));
     assert!(!dspi_apply_guard_default(std::ptr::null_mut()));
     let idle = read_json(|b, l| dspi_apply_status(h, b, l));
-    assert_eq!((idle["ok"].clone(), idle["phase"].clone()), (json!(true), json!("idle")));
+    assert_eq!(
+        (idle["ok"].clone(), idle["phase"].clone()),
+        (json!(true), json!("idle"))
+    );
 
     // A document with another preamp; the device left as it was.
     let back = core
@@ -54,24 +57,40 @@ fn wp_p1sa_guarded_apply_through_the_c_abi() {
     assert!(!s["changes"].as_array().unwrap().is_empty(), "{s}");
     assert_eq!(core.get_state().input_preamp_db[0], -6.0);
     let k = read_json(|b, l| dspi_apply_confirm(h, b, l));
-    assert_eq!((k["phase"].clone(), k["reason"].clone()), (json!("kept"), json!("confirmed")));
+    assert_eq!(
+        (k["phase"].clone(), k["reason"].clone()),
+        (json!("kept"), json!("confirmed"))
+    );
     let again = read_json(|b, l| dspi_apply_confirm(h, b, l));
-    assert_eq!((again["ok"].clone(), again["code"].clone()), (json!(false), json!("invalid")));
+    assert_eq!(
+        (again["ok"].clone(), again["code"].clone()),
+        (json!(false), json!("invalid"))
+    );
 
     // A flow, then Revert.
     let label = CString::new("Flow").unwrap();
     let s = read_json(|b, l| dspi_apply_guard_begin(h, label.as_ptr(), 10, b, l));
-    assert_eq!((s["phase"].clone(), s["timeoutMs"].clone()), (json!("waiting"), json!(10_000)));
+    assert_eq!(
+        (s["phase"].clone(), s["timeoutMs"].clone()),
+        (json!("waiting"), json!(10_000))
+    );
     core.set_input_preamp(0, -3.0).unwrap();
     let r = read_json(|b, l| dspi_apply_revert(h, b, l));
-    assert_eq!((r["phase"].clone(), r["reason"].clone()), (json!("reverted"), json!("reverted")));
+    assert_eq!(
+        (r["phase"].clone(), r["reason"].clone()),
+        (json!("reverted"), json!("reverted"))
+    );
     assert_eq!(core.get_state().input_preamp_db[0], -6.0);
     let p = read_json(|b, l| dspi_apply_poll(h, b, l));
     assert_eq!(p, r);
 
     // Not a snapshot: refused, nothing waits.
     let r = read_json(|b, l| dspi_apply_guarded_snapshot_document(h, doc.as_ptr(), 0, b, l));
-    assert_eq!((r["ok"].clone(), r["code"].clone()), (json!(false), json!("invalid")), "{r}");
+    assert_eq!(
+        (r["ok"].clone(), r["code"].clone()),
+        (json!(false), json!("invalid")),
+        "{r}"
+    );
     let id = CString::new("nope").unwrap();
     let r = read_json(|b, l| dspi_apply_guarded_snapshot(h, id.as_ptr(), 0, b, l));
     assert_eq!(r["ok"], false, "{r}");

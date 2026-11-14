@@ -22,8 +22,8 @@ use dspi_transport::{
 use serde_json::{Value, json};
 
 use super::*;
-use crate::records::{DspState, FilterParams};
 use crate::consts::{IMPORT_ALL_BLOCKS, IMPORT_BY_BLOCK, IMPORT_LIMITERS};
+use crate::records::{DspState, FilterParams};
 
 /// No budget: every OUT transfer goes through.
 const UNLIMITED: usize = usize::MAX;
@@ -272,7 +272,10 @@ fn wp_p1sa_confirm_keeps() {
     assert_eq!(core.apply_status(), s);
 
     let k = core.apply_confirm().unwrap();
-    assert_eq!((k.phase, k.reason.as_str()), (GuardPhase::Kept, "confirmed"));
+    assert_eq!(
+        (k.phase, k.reason.as_str()),
+        (GuardPhase::Kept, "confirmed")
+    );
     assert_eq!(k.remaining_ms, 0);
     let sent = r.sent();
     after(60);
@@ -349,14 +352,28 @@ fn wp_p1sa_revert_busy_and_a_late_keep() {
     );
     assert_eq!(r.sent(), sent, "a refused begin sends nothing");
     let end = core.apply_revert().unwrap();
-    assert_eq!((end.phase, end.reason.as_str()), (GuardPhase::Reverted, "reverted"));
+    assert_eq!(
+        (end.phase, end.reason.as_str()),
+        (GuardPhase::Reverted, "reverted")
+    );
     assert_eq!(whole(&r), before);
+
+    // A begin past an unpolled deadline reverts the old one first.
+    core.apply_guarded_snapshot(snap.id.clone(), 30).unwrap();
+    after(31);
+    let s = core.apply_guard_begin("next".into(), 30).unwrap();
+    assert_eq!(s.label, "next");
+    assert_eq!(whole(&r), before);
+    core.apply_confirm().unwrap();
 
     // A Keep after the timeout reverts instead.
     core.apply_guarded_snapshot(snap.id, 30).unwrap();
     after(31);
     let late = core.apply_confirm().unwrap();
-    assert_eq!((late.phase, late.reason.as_str()), (GuardPhase::Reverted, "timeout"));
+    assert_eq!(
+        (late.phase, late.reason.as_str()),
+        (GuardPhase::Reverted, "timeout")
+    );
     assert_eq!(whole(&r), before);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -411,7 +428,9 @@ fn wp_p1sa_a_failed_import_reverts_at_once() {
     let before = whole(&r);
     // The import's bulk write is refused; the revert's goes through.
     r.refuse_next(1);
-    let e = core.apply_guarded_import(doc, ALL, u32::MAX, 30).unwrap_err();
+    let e = core
+        .apply_guarded_import(doc, ALL, u32::MAX, 30)
+        .unwrap_err();
     assert!(matches!(e, DspiError::Transfer { .. }), "{e:?}");
     let s = core.apply_status();
     assert_eq!(
@@ -447,7 +466,9 @@ fn wp_p1sa_s7_an_import_hardware_part_cut_part_way() {
         core.set_limiter_param(out, e, 1.0).unwrap();
         core.set_limiter_param(out, t, -12.0).unwrap();
     }
-    let doc = core.config_export("Lim".into(), "wp-p1sa".into(), 0).unwrap();
+    let doc = core
+        .config_export("Lim".into(), "wp-p1sa".into(), 0)
+        .unwrap();
     core.snapshot_recall_document(back).unwrap();
     let before = whole(&r);
     let opts = IMPORT_BY_BLOCK | IMPORT_LIMITERS;
@@ -551,7 +572,7 @@ fn wp_p1sa_a_lost_usb_connection_writes_nothing() {
     core.apply_guard_begin("x".into(), 30).unwrap();
     core.disconnect();
     assert_eq!(core.apply_poll().phase, GuardPhase::Lost);
-    assert_eq!(core.apply_revert().unwrap_err().to_string().is_empty(), false);
+    assert!(core.apply_revert().is_err(), "another device's connection");
 }
 
 /// The guard's default: off the hub, the user's choice.
