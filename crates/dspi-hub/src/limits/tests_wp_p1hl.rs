@@ -459,7 +459,7 @@ fn wp_p1hl_refusals_carry_the_notice_key() {
     assert_eq!(p["refused"], "limit_exceeded");
     assert_eq!(p["limit"], "out_gain");
     for (r, key) in [
-        (Refusal::Locked, "locked"),
+        (Refusal::Locked, "installer_lock"),
         (Refusal::Image, "image_refused"),
         (Refusal::Unknown, "limits_unknown"),
     ] {

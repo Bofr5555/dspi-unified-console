@@ -168,7 +168,7 @@ PIN change, `limits.held {v, serial, handle, rows}` after the hub held a device,
   Admin-only there. An Admin's image is accepted and then held.
 - **The lock.** A device is locked when a PIN is set and its profile names what
   the lock covers (`lockedPages`). A Control client of a locked device may change
-  the volume, the mute and the preset only (`"refused": "locked"` otherwise)
+  the volume, the mute and the preset only (`"refused": "installer_lock"` otherwise)
   until it unlocks; reads stay open. Unlocking lasts for the session.
 - **Held after the fact.** When the whole state changes in a way no write could be
   judged for (a preset loaded by anyone, a scene's preset load, an Admin's image,
@@ -178,7 +178,9 @@ PIN change, `limits.held {v, serial, handle, rows}` after the hub held a device,
 - **The hub's own writes** obey it: a system scene whose op crosses a unit's limit
   is refused before anything is sent (`system.scene` answers `denied` naming the
   unit and `limit_exceeded`); keep-aligned and direct scene writes are judged like
-  a client's. A guarded apply's revert is never refused, and never held.
+  a client's. A guarded apply's revert is never refused, and its own change is
+  never held (told by its origin, the hub's session); anyone else's slot load or
+  image right after it is.
 - **The console the hub runs in** is not judged by the hub: its own core keeps its
   own copy of the profile.
 - **The PIN** is kept only as a salted, slow hash (PBKDF2-HMAC-SHA256, a random

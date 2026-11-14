@@ -286,10 +286,13 @@ fn wp_p1hl_a_locked_devices_control_clients_get_only_the_locks_scope() {
         status::OK
     );
     // Anything else is refused, within the limits or not.
-    assert_eq!(refusal(&control.set_gain(0, 1.0))["refused"], "locked");
+    assert_eq!(
+        refusal(&control.set_gain(0, 1.0))["refused"],
+        "installer_lock"
+    );
     assert_eq!(
         refusal(&control.set_f32(op::REQ_SET_OUTPUT_DELAY, 0, 1.0))["refused"],
-        "locked"
+        "installer_lock"
     );
     // Reads stay open.
     let _ = control.gain(0);
@@ -307,14 +310,20 @@ fn wp_p1hl_a_locked_devices_control_clients_get_only_the_locks_scope() {
         "unlocked is still within the limits"
     );
     let other = Client::open(&hub, handle, Role::Control);
-    assert_eq!(refusal(&other.set_gain(0, 1.0))["refused"], "locked");
+    assert_eq!(
+        refusal(&other.set_gain(0, 1.0))["refused"],
+        "installer_lock"
+    );
     // An Admin needs no PIN.
     assert_eq!(admin.set_gain(0, 2.0).status, status::OK);
     // Locking again.
     assert!(ok(
         &control.msg(json!({"t": "limits.lock", "id": 6, "handle": handle}))
     ));
-    assert_eq!(refusal(&control.set_gain(0, 1.0))["refused"], "locked");
+    assert_eq!(
+        refusal(&control.set_gain(0, 1.0))["refused"],
+        "installer_lock"
+    );
     // A locked device refuses a Control client's image too.
     let img = admin.image();
     let r = control.command(Dir::Set, op::REQ_SET_ALL_PARAMS, 0, 0, img);
@@ -459,6 +468,47 @@ fn wp_p1hl_the_hubs_revert_passes_a_limit_set_during_its_countdown() {
     assert_eq!(admin.gain(0), 6.0);
     std::thread::sleep(Duration::from_millis(800));
     assert_eq!(admin.gain(0), 6.0, "the revert is never held");
+}
+
+/// Coordinator, round 2: only the revert's own change is exempt (by origin), so a
+/// Control client's slot load right after a revert is still held.
+#[test]
+fn wp_p1hl_a_slot_load_right_after_a_revert_is_held() {
+    let hub = hub();
+    let handle = plug(&hub, "P1HL-R");
+    let admin = Client::open(&hub, handle, Role::Admin);
+    let control = Client::open(&hub, handle, Role::Control);
+    // Slot 1 holds output 1 at +10 dB; the device plays +6 dB.
+    assert_eq!(admin.set_gain(0, 10.0).status, status::OK);
+    let saved = admin.command(Dir::Get, op::REQ_PRESET_SAVE, 1, 1, Vec::new());
+    assert_eq!(saved.status, status::OK);
+    assert_eq!(admin.set_gain(0, 6.0).status, status::OK);
+    let begun = apply_guard::handle_message(
+        &admin.hub,
+        &admin.session,
+        &json!({"t": "apply.begin", "id": 1, "handle": handle, "timeout_ms": 1000}),
+    )
+    .unwrap();
+    assert!(begun.contains("\"ok\""), "{begun}");
+    assert!(ok(&admin.set_profile(gain_profile())));
+    assert_eq!(admin.gain(0), 3.0, "held at once");
+    let ended = control.event("apply.ended");
+    assert_eq!(ended["result"], "reverted", "{ended}");
+    let reverted_at = Instant::now();
+    assert_eq!(admin.gain(0), 6.0, "the revert's own change is not held");
+    let loaded = control.command(Dir::Get, op::REQ_PRESET_LOAD, 1, 1, Vec::new());
+    assert_eq!(loaded.status, status::OK);
+    assert!(reverted_at.elapsed() < Duration::from_secs(1), "within 1 s");
+    let held = control.event("limits.held");
+    assert!(
+        held["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r.as_str().unwrap().starts_with("out.gain[0] 10 → 3")),
+        "{held}"
+    );
+    assert_eq!(admin.gain(0), 3.0);
 }
 
 // ── Scenes (OD-P1l) ──────────────────────────────────────────────────────────

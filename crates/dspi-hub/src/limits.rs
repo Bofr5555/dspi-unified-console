@@ -39,7 +39,9 @@
 //!   without the audio link) are judged like a client's.
 //! - **Reverts are never refused:** a guarded apply's revert (P1HA, the hub's own
 //!   `0xA1`) and its write-back (`GUARD_SESSION_ID`) pass, and the hold leaves
-//!   what a revert restored alone.
+//!   exactly the revert's own changes alone, by their origin (the hub's session
+//!   attributed the revert's `BULK_INVALIDATED`): anyone else's slot load or
+//!   image right after a revert is still held.
 //! - **The app's own session** (the console this hub runs in) is not judged here:
 //!   its core keeps its own copy of the profile and judges itself (P1LM).
 //!
@@ -113,9 +115,6 @@ const IMAGE_WAIT: Duration = Duration::from_secs(2);
 const HOLD_DELAY: Duration = Duration::from_millis(150);
 /// How long the hold's read and each of its writes may take, queue included.
 const HOLD_WAIT: Duration = Duration::from_secs(5);
-/// After the hub's own revert, how long a whole-state change is taken for the
-/// revert's (never held).
-const REVERT_QUIET: Duration = Duration::from_secs(3);
 /// Rows of the last hold kept per device.
 const MAX_ROWS: usize = 64;
 /// Devices whose profile a hub keeps.
@@ -162,8 +161,6 @@ struct State {
     tries: BTreeMap<String, PinTries>,
     /// Devices to hold, and when.
     due: BTreeMap<String, Instant>,
-    /// When the hub last wrote a revert to each device.
-    reverted: BTreeMap<String, Instant>,
     /// The last hold's rows, by serial.
     held: BTreeMap<String, Vec<String>>,
 }
@@ -444,6 +441,13 @@ impl HubLimits {
         self.wake()
     }
 
+    /// The hub's revert is about to write `serial`'s captured state: a hold due
+    /// for the state it replaces is dropped (the revert's own change is never
+    /// held: its origin is the hub's session, [`note_packet`]).
+    fn revert_begins(&self, serial: &str) {
+        guard(&self.state).due.remove(serial);
+    }
+
     /// When the `hub-system` thread must hold a device next.
     pub(crate) fn next_due(&self) -> Option<Instant> {
         guard(&self.state).due.values().min().copied()
@@ -461,20 +465,6 @@ impl HubLimits {
             st.due.remove(s);
         }
         due
-    }
-
-    /// The hub wrote (or is writing) a revert to `serial`.
-    fn note_revert(&self, serial: &str, now: Instant) {
-        let mut st = guard(&self.state);
-        st.reverted.insert(serial.to_owned(), now);
-        st.due.remove(serial);
-    }
-
-    fn quiet(&self, serial: &str, now: Instant) -> bool {
-        guard(&self.state)
-            .reverted
-            .get(serial)
-            .is_some_and(|at| now.saturating_duration_since(*at) < REVERT_QUIET)
     }
 
     fn keep_held(&self, serial: &str, rows: &[String]) {
@@ -632,8 +622,9 @@ pub enum Refusal {
 
 impl Refusal {
     /// The `DENIED` answer's payload: `{"refused", "limit"?, "msg"}`. `refused` is
-    /// the core's notice key for a limit (`limit_exceeded`), `locked`,
-    /// `image_refused` or `limits_unknown`.
+    /// a notice key: `limit_exceeded` (P1NT's), `installer_lock` (P1LK's; not
+    /// `locked`, which is another console's device lock), `image_refused` or
+    /// `limits_unknown` (`dspi_transport::HUB_REFUSALS`).
     pub fn payload(&self) -> Vec<u8> {
         let v = match self {
             Refusal::Limit(v) => json!({
@@ -642,7 +633,7 @@ impl Refusal {
                 "msg": v.msg,
             }),
             Refusal::Locked => json!({
-                "refused": "locked",
+                "refused": "installer_lock",
                 "msg": "this device is locked by its installer: volume, mute and presets only",
             }),
             Refusal::Image => json!({
@@ -858,8 +849,9 @@ pub(crate) fn admit(
     let serial = dev.serial();
     let internal = ctx.id == INTERNAL_SESSION_ID;
     if internal && is_bulk_write(req) {
-        // Nothing else of the hub's writes an image: a guarded apply's revert.
-        limits.note_revert(&serial, Instant::now());
+        // Nothing else of the hub's writes an image: a guarded apply's revert. A
+        // hold still due is for a state the revert writes over: it goes.
+        limits.revert_begins(&serial);
         return Ok(());
     }
     let d = limits.device(&serial);
@@ -913,12 +905,8 @@ pub(crate) fn note_packet(dev: &DeviceShared, origin: SessionId, packet: &[u8]) 
         return;
     };
     let serial = dev.serial();
-    let now = Instant::now();
-    if limits.quiet(&serial, now) {
-        return;
-    }
     if limits.profile(&serial).is_some_and(|p| p.limits_values()) {
-        limits.hold_soon(&serial, now);
+        limits.hold_soon(&serial, Instant::now());
     }
 }
 

@@ -743,6 +743,7 @@ dependencies = [
  "midir",
  "nusb",
  "proptest",
+ "serde_json",
  "thiserror",
 ]
 
