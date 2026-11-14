@@ -1888,6 +1888,21 @@ impl HubHandle {
         let (model, _) = self.system().model();
         let scene = model.scene(id).ok_or(SceneRefused::NoScene)?.clone();
         self.authorize(role, &scene)?;
+        // -- WP P1HL -- (OD-P1l) each unit's limits profile and lock, before anything is sent
+        let reached: Vec<Vec<String>> = scene
+            .actions
+            .iter()
+            .map(|a| {
+                model
+                    .resolve_target(&a.target)
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|u| u.serial.clone())
+                    .collect()
+            })
+            .collect();
+        crate::limits::judge_scene(&self.inner.limits, &scene, &reached, role)
+            .map_err(SystemRefused::Denied)?;
         let mut frames = BTreeMap::new();
         let mut rtts: BTreeMap<String, Duration> = BTreeMap::new();
         // -- WP HWLK1F -- units whose firmware has no audio link: their ops go at once

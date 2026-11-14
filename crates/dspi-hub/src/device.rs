@@ -108,6 +108,11 @@ impl DeviceShared {
         done: Completion,
         deadline: Option<Instant>,
     ) {
+        // -- WP P1HL -- the device's limits profile and lock, before the queue
+        if let Err((refused, why)) = crate::limits::admit(self, self.router.policy(), &ctx, &req) {
+            done.answer(refused, why);
+            return;
+        }
         if let Err(refused) = self.router.admit(&ctx, &req, Instant::now()) {
             done.answer(refused, Vec::new());
             return;
@@ -639,6 +644,8 @@ fn ingest(packet: &[u8], kind: TransportKind, shared: &DeviceShared, relay: &Rel
     if shared.snapshot.note_packet(packet) {
         shared.queue_snapshot_read();
     }
+    // -- WP P1HL -- a whole-state change is held to the limits profile soon
+    crate::limits::note_packet(shared, origin, packet);
     // -- fixup sw2x (F5) -- the system model follows units by serial.
     relay.tap_packet(packet, || shared.serial());
     relay.publish_notify(shared.handle, origin, packet);

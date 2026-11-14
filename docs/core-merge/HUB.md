@@ -80,6 +80,7 @@ result wait, or a listener call.
 | L3 | `Relay::subscribers` | who follows what | Pushes to outboxes under it, since a push cannot block |
 | L4 | `Outbox::state` | one consumer's queue | Leaf. Nothing blocks under it |
 | leaf | `HubInner::listener`, `Hub::threads` | | `threads` is held across a whole `stop`, but no hub thread takes it |
+| leaf | `HubLimits::state` (P1HL) | limits profiles, PIN hashes, unlocks, holds due | Taken on submit (before L2) and by the device's reader; nothing is taken under it. Its `saving` sits above L1b: a save copies under `state`, then writes through `AuthStore` with `state` released. The PIN's slow hash runs with it released <!-- WP P1HL --> |
 
 **The one cross-crate rule: no hub thread ever calls `DspiCore`.** The core waits on the
 hub with `Inner` held; the reverse edge is what would deadlock. The core calls the hub

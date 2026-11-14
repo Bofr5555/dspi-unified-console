@@ -1678,6 +1678,10 @@ impl Connection {
                     let answer = crate::lock::handle_message(&self.shared.hub, &session, &value)
                         .or_else(|| {
                             crate::apply_guard::handle_message(&self.shared.hub, &session, &value)
+                        })
+                        // -- WP P1HL -- `limits.*` and `mode.*`
+                        .or_else(|| {
+                            crate::limits::handle_message(&self.shared.hub, &session, &value)
                         });
                     match answer {
                         Some(answer) => self.reply(answer),
@@ -2260,6 +2264,8 @@ impl Shared {
         let mut caps = vec!["cmd", "notify", "poll", "snapshot", "lock", "rename"];
         // -- WP P1HA --
         caps.push(crate::apply_guard::CAP);
+        // -- WP P1HL --
+        caps.push(crate::limits::CAP);
         if self.web {
             caps.push("web");
         }

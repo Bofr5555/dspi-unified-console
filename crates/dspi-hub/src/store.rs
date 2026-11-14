@@ -69,6 +69,43 @@ struct FileData {
     // dropped alone ([`usb_offsets`]), never the store.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     system_usb_offsets: Option<serde_json::Value>,
+    // -- WP P1HL -- limits profiles and installer PIN hashes by serial, and the
+    // modes pinned per role. Kept as JSON, read leniently ([`limits_of`]): one bad
+    // entry is dropped alone, never the store. `device_pins` holds only salted,
+    // slow hashes, and a diagnostics bundle removes it (its key says `pin`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    device_limits: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    device_pins: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    role_modes: Option<serde_json::Value>,
+}
+
+// -- WP P1HL --
+/// The entries of a JSON map that read as `T`; anything else is dropped, with a
+/// warning naming `what`.
+fn entries_of<T: serde::de::DeserializeOwned>(
+    v: Option<&serde_json::Value>,
+    what: &str,
+) -> BTreeMap<String, T> {
+    let Some(v) = v else {
+        return BTreeMap::new();
+    };
+    let Some(m) = v.as_object() else {
+        log::warn!("hub store: {what} is not a map; ignored");
+        return BTreeMap::new();
+    };
+    let kept: BTreeMap<String, T> = m
+        .iter()
+        .filter_map(|(k, v)| Some((k.clone(), serde_json::from_value(v.clone()).ok()?)))
+        .collect();
+    if kept.len() != m.len() {
+        log::warn!(
+            "hub store: {} {what} entries unreadable; dropped",
+            m.len().saturating_sub(kept.len())
+        );
+    }
+    kept
 }
 
 // -- fixup ausb2 (F3) --
@@ -107,6 +144,17 @@ pub struct HubStore {
     system: Option<serde_json::Value>,
     // -- WP AUSB2 --
     system_usb_offsets: Option<BTreeMap<String, i64>>,
+    // -- WP P1HL --
+    limits: StoredLimitsJson,
+}
+
+// -- WP P1HL --
+/// [`FileData`]'s limits fields, as kept.
+#[derive(Debug, Clone, Default)]
+struct StoredLimitsJson {
+    device_limits: Option<serde_json::Value>,
+    device_pins: Option<serde_json::Value>,
+    role_modes: Option<serde_json::Value>,
 }
 
 fn io_error(what: &str, path: &Path, e: &io::Error) -> HubError {
@@ -236,6 +284,8 @@ impl HubStore {
                 // -- WP SW2 --
                 system: None,
                 system_usb_offsets: None,
+                // -- WP P1HL --
+                limits: StoredLimitsJson::default(),
             };
             // Now, so the id is the same at the next start even with nothing paired.
             store.save()?;
@@ -259,6 +309,12 @@ impl HubStore {
             // -- WP SW2 --
             system: data.system,
             system_usb_offsets: usb_offsets(data.system_usb_offsets),
+            // -- WP P1HL --
+            limits: StoredLimitsJson {
+                device_limits: data.device_limits,
+                device_pins: data.device_pins,
+                role_modes: data.role_modes,
+            },
         })
     }
 
@@ -289,6 +345,12 @@ impl HubStore {
             // -- WP SW2 --
             system: data.system,
             system_usb_offsets: usb_offsets(data.system_usb_offsets),
+            // -- WP P1HL --
+            limits: StoredLimitsJson {
+                device_limits: data.device_limits,
+                device_pins: data.device_pins,
+                role_modes: data.role_modes,
+            },
         }))
     }
 
@@ -318,6 +380,10 @@ impl HubStore {
                 .system_usb_offsets
                 .as_ref()
                 .and_then(|m| serde_json::to_value(m).ok()),
+            // -- WP P1HL --
+            device_limits: self.limits.device_limits.clone(),
+            device_pins: self.limits.device_pins.clone(),
+            role_modes: self.limits.role_modes.clone(),
         };
         let bytes = serde_json::to_vec_pretty(&data)
             .map_err(|e| HubError::Io(format!("cannot encode the hub store: {e}")))?;
@@ -402,6 +468,38 @@ impl HubStore {
             .map_err(|e| HubError::Io(format!("cannot encode the system model: {e}")))?;
         self.system = Some(value);
         Ok(())
+    }
+
+    // -- WP P1HL --
+    /// The limits profiles, PIN hashes and pinned modes kept: each entry that
+    /// reads; one that does not is dropped alone, never the store.
+    pub fn limits(&self) -> crate::limits::StoredLimits {
+        let modes: BTreeMap<String, String> =
+            entries_of(self.limits.role_modes.as_ref(), "role_modes");
+        crate::limits::StoredLimits {
+            profiles: entries_of(self.limits.device_limits.as_ref(), "device_limits"),
+            pins: entries_of(self.limits.device_pins.as_ref(), "device_pins"),
+            modes: modes
+                .into_iter()
+                .filter(|(r, m)| {
+                    parse_role(r).is_some() && crate::limits::MODES.contains(&m.as_str())
+                })
+                .collect(),
+        }
+    }
+
+    // -- WP P1HL --
+    /// Replace them, for [`Self::save`].
+    pub fn set_limits(&mut self, data: &crate::limits::StoredLimits) {
+        let map = |v: serde_json::Result<serde_json::Value>| {
+            v.ok()
+                .filter(|v| v.as_object().is_some_and(|m| !m.is_empty()))
+        };
+        self.limits = StoredLimitsJson {
+            device_limits: map(serde_json::to_value(&data.profiles)),
+            device_pins: map(serde_json::to_value(&data.pins)),
+            role_modes: map(serde_json::to_value(&data.modes)),
+        };
     }
 
     pub(crate) fn access(&self) -> Option<&str> {

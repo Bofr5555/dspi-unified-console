@@ -127,10 +127,67 @@ image only.
 - The guard does not narrow what a role may send: a Control client can write the
   whole image (`0xA1`, class `control` in the policy) itself today, so a snapshot
   recall by a Control client over Link writes its image; P1HL narrows that.
+  On a device with a limits profile or a lock only an Admin may (see Limits and
+  the installer lock). <!-- WP P1HL -->
   <!-- WP P1BFIX -->
 - Stopping the hub (sharing off) reverts every running guard first.
 
 Reference: `crates/dspi-hub/src/apply_guard.rs`.
+
+## Limits and the installer lock
+
+<!-- WP P1HL -->
+The hub keeps a limits profile per device (by serial) and the installer PIN
+beside it, and judges every network client's write against them: the same
+check the consoles run on USB ([limits-profiles.md](limits-profiles.md)).
+Additive to Link 1.2: a hub that has it lists `limits` in `hello.caps`, and every
+answer carries `"v": 1`. With no profile a device behaves as before.
+
+| Message | Role | What |
+|---|---|---|
+| `limits.get {id, handle}` | every role | `ok {serial, handle, profile, pin_set, locked, unlocked, held}`: the profile (as the `limits` block of a limits document) or `null`; whether a PIN is set; whether the device is locked, and whether it is unlocked for this session; the rows the hub last held |
+| `limits.set {id, handle, profile}` | admin | sets the profile (a limits document, a document carrying one in `meta.limits`, or the profile object); `null` clears it. Its `serial` is the device's. A device outside the new profile is held at once: `ok {serial, held}` |
+| `limits.pin {id, handle, pin}` | admin | sets the PIN (4 to 64 characters), or clears it with `null`, which removes the lock |
+| `limits.unlock {id, handle, pin}` | control, admin | unlocks the device for this session (an Admin needs no PIN). A wrong PIN is `bad_pin`; after 5 in a row unlocking is refused for 30 s (`retry_later`, `retry_in_ms`) |
+| `limits.lock {id, handle}` | control, admin | locks the device again for this session |
+| `mode.pinned {id, handle?}` | every role | `ok {role, mode, locked?}`: the mode the hub pins for this session's role (`simple`, `advanced`, `installer`) or `null` (the user's choice), and with a handle whether that device is locked for this session |
+| `mode.pin {id, role, mode}` | admin | pins a role's mode, or unpins it with `null` |
+
+Events to every session: `limits.changed {v, serial, handle}` after a profile or
+PIN change, `limits.held {v, serial, handle, rows}` after the hub held a device,
+`mode.changed {v, role, mode}`.
+
+- **A write outside a limit** (output gain, output or channel delay, master
+  volume, a PEQ boost, the high-pass an output must keep, a limiter that must
+  stay on below a ceiling) is refused before it reaches the device: `DENIED`
+  with a JSON payload `{"refused": "limit_exceeded", "limit", "msg"}`, from
+  Admin and Control alike. Muting is always allowed.
+- **Bulk images** (`0xA1`, `0xA3`) from a Control client are refused while the
+  device has a profile or a lock (`"refused": "image_refused"`): an import, a
+  snapshot recall, an A/B toggle or a guarded apply that writes an image is
+  Admin-only there. An Admin's image is accepted and then held.
+- **The lock.** A device is locked when a PIN is set and its profile names what
+  the lock covers (`lockedPages`). A Control client of a locked device may change
+  the volume, the mute and the preset only (`"refused": "locked"` otherwise)
+  until it unlocks; reads stay open. Unlocking lasts for the session.
+- **Held after the fact.** When the whole state changes in a way no write could be
+  judged for (a preset loaded by anyone, a scene's preset load, an Admin's image,
+  a factory reset), the hub reads the device back, writes every value outside the
+  profile to the limit (a high-pass raised or added, a limiter switched on) and
+  sends `limits.held`. The hold passes a session's device lock, as a revert does.
+- **The hub's own writes** obey it: a system scene whose op crosses a unit's limit
+  is refused before anything is sent (`system.scene` answers `denied` naming the
+  unit and `limit_exceeded`); keep-aligned and direct scene writes are judged like
+  a client's. A guarded apply's revert is never refused, and never held.
+- **The console the hub runs in** is not judged by the hub: its own core keeps its
+  own copy of the profile.
+- **The PIN** is kept only as a salted, slow hash (PBKDF2-HMAC-SHA256, a random
+  salt with the serial) under `device_pins` in `hub-store.json`; no message
+  answers it, and a diagnostics bundle removes it. Profiles are under
+  `device_limits`, pinned modes under `role_modes`. Like the consoles' PIN it is a
+  UI lock: whoever has the device on USB can change it with any tool.
+
+Reference: `crates/dspi-hub/src/limits.rs`.
 
 ## Network and firewall
 
@@ -154,6 +211,7 @@ cross routers).
 
 `hub-store.json` in the store folder (`--store`; default the user's local data
 folder, `uconsole/hub`): the hub id, its name, the access mode, the paired
-clients (name, role, times, token hash) and device names. One hub per store.
+clients (name, role, times, token hash) and device names; limits profiles,
+PIN hashes and pinned modes (P1HL). One hub per store.
 A diagnostics bundle includes it with the token hashes removed
 ([diagnostics.md](diagnostics.md)).

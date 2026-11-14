@@ -183,6 +183,39 @@ pub fn apply_guard_allows(role: Role, message: &str) -> bool {
     }
 }
 
+// -- WP P1HL --
+/// Whether this role may send this `limits.*` or `mode.*` message (`limits.rs`):
+/// reading a device's limits and lock, and the mode pinned for one's own role, is
+/// every role's; unlocking and locking again is Admin's and Control's (a Viewer
+/// changes nothing to unlock for); setting a profile, a PIN or a role's mode is
+/// Admin's (PLAN-CLIENTS 5.9, P1HL). Anything else: false.
+pub fn limits_allows(role: Role, message: &str) -> bool {
+    match message {
+        "limits.get" | "mode.pinned" => true,
+        "limits.unlock" | "limits.lock" => role != Role::Viewer,
+        "limits.set" | "limits.pin" | "mode.pin" => role == Role::Admin,
+        _ => false,
+    }
+}
+
+// -- WP P1HL --
+/// Whether a command is within a locked device's scope for a Control client
+/// (`docs/UI-MODES.md` section 3: volume, mute and preset; OD-P1i): the master and
+/// the user volume, the user and an output's mute, a preset load. Reads are never
+/// judged by the lock; any other change is outside it.
+pub fn in_lock_scope(code: u8, dir: Dir) -> bool {
+    matches!(
+        (code, dir),
+        (
+            op::REQ_SET_MASTER_VOLUME
+                | op::REQ_SET_USER_VOLUME
+                | op::REQ_SET_USER_MUTE
+                | op::REQ_SET_OUTPUT_MUTE,
+            Dir::Set
+        ) | (op::REQ_PRESET_LOAD, Dir::Get)
+    )
+}
+
 /// `None`: this command is no `EXT_CORE_VREG` write. Otherwise the request it
 /// carries, `Some(None)` if it is not one the rule can judge: a wrong length or an
 /// op it does not know. The firmware refuses those (`ext_handle_set`,
@@ -410,6 +443,58 @@ mod tests_wp_p1ha {
         for role in [Role::Admin, Role::Control, Role::Viewer] {
             assert!(apply_guard_allows(role, "apply.status"));
             assert!(!apply_guard_allows(role, "apply.other"));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests_wp_p1hl {
+    use super::*;
+
+    #[test]
+    fn wp_p1hl_limits_messages_by_role() {
+        for role in [Role::Admin, Role::Control, Role::Viewer] {
+            assert!(limits_allows(role, "limits.get"));
+            assert!(limits_allows(role, "mode.pinned"));
+            assert!(!limits_allows(role, "limits.other"));
+        }
+        for t in ["limits.unlock", "limits.lock"] {
+            assert!(limits_allows(Role::Admin, t));
+            assert!(limits_allows(Role::Control, t));
+            assert!(!limits_allows(Role::Viewer, t));
+        }
+        for t in ["limits.set", "limits.pin", "mode.pin"] {
+            assert!(limits_allows(Role::Admin, t));
+            assert!(!limits_allows(Role::Control, t));
+            assert!(!limits_allows(Role::Viewer, t));
+        }
+    }
+
+    /// Volume, mute and preset, every one a command a Control client may send at
+    /// all; nothing else that changes the device.
+    #[test]
+    fn wp_p1hl_the_lock_scope_is_volume_mute_and_preset() {
+        let p = Policy::embedded();
+        let inside = [
+            (op::REQ_SET_MASTER_VOLUME, Dir::Set),
+            (op::REQ_SET_USER_VOLUME, Dir::Set),
+            (op::REQ_SET_USER_MUTE, Dir::Set),
+            (op::REQ_SET_OUTPUT_MUTE, Dir::Set),
+            (op::REQ_PRESET_LOAD, Dir::Get),
+        ];
+        for (code, dir) in inside {
+            assert!(in_lock_scope(code, dir), "{code:#04x}");
+            assert!(p.allows(Role::Control, code, dir), "{code:#04x}");
+        }
+        for (code, dir) in [
+            (op::REQ_SET_OUTPUT_GAIN, Dir::Set),
+            (op::REQ_SET_EQ_PARAM, Dir::Set),
+            (op::REQ_SET_ALL_PARAMS, Dir::Set),
+            (op::REQ_RTA_CONTROL, Dir::Get),
+            (op::REQ_PRESET_SAVE, Dir::Get),
+            (op::REQ_SET_MASTER_VOLUME, Dir::Get),
+        ] {
+            assert!(!in_lock_scope(code, dir), "{code:#04x}");
         }
     }
 }
