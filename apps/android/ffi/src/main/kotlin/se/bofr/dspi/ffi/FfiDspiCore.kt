@@ -132,9 +132,9 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun openDemoUsbDirect() = call { core.openDemoUsbDirect() }
 
-    override fun autoeqPreview(profile: AutoEqProfile, left: Int, right: Int): AutoEqPreview = call { core.autoeqPreview(profile.toFfi(), left.toUByte(), right.toUByte()).toDomain() }
+    override fun autoeqPreview(profile: AutoEqProfile, left: Int, right: Int, applyLevel: Boolean?): AutoEqPreview = call { core.autoeqPreview(profile.toFfi(), left.toUByte(), right.toUByte(), applyLevel).toDomain() }
 
-    override fun autoeqApply(profile: AutoEqProfile, left: Int, right: Int): AutoEqApply = call { core.autoeqApply(profile.toFfi(), left.toUByte(), right.toUByte()).toDomain() }
+    override fun autoeqApply(profile: AutoEqProfile, left: Int, right: Int, applyLevel: Boolean?): AutoEqApply = call { core.autoeqApply(profile.toFfi(), left.toUByte(), right.toUByte(), applyLevel).toDomain() }
 
     override fun confirmToken(op: ConfirmOp): String = core.confirmToken(op.toFfi())
 
@@ -2924,6 +2924,7 @@ internal fun se.bofr.dspi.ffi.uniffi.AutoEqPreview.toDomain() =
         profileId = profileId,
         channels = channels.map { it.toDomain() },
         levelTarget = levelTarget,
+        suggestedTrimDb = suggestedTrimDb,
         held = held,
         unsupported = unsupported,
         dropped = dropped.toLong(),
@@ -2935,6 +2936,7 @@ internal fun AutoEqPreview.toFfi() =
         profileId = profileId,
         channels = channels.map { it.toFfi() },
         levelTarget = levelTarget,
+        suggestedTrimDb = suggestedTrimDb,
         held = held,
         unsupported = unsupported,
         dropped = dropped.toUInt(),

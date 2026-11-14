@@ -731,9 +731,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
     }
 
     // -- WP P1AQ -- an AutoEQ apply writes both channels of the pair
-    override fun autoeqApply(profile: AutoEqProfile, left: Int, right: Int): AutoEqApply {
+    override fun autoeqApply(profile: AutoEqProfile, left: Int, right: Int, applyLevel: Boolean?): AutoEqApply {
         guard("autoeqApply")
-        return inner.autoeqApply(profile, left, right)
+        return inner.autoeqApply(profile, left, right, applyLevel)
     }
 
     // -- WP P1LM -- applying a profile holds the device to it (writes)

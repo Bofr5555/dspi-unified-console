@@ -618,12 +618,12 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_apply_status(void*_Nonnull ptr, R
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_AUTOEQ_APPLY
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_AUTOEQ_APPLY
-RustBuffer uniffi_dspi_core_fn_method_dspicore_autoeq_apply(void*_Nonnull ptr, RustBuffer profile, uint8_t left, uint8_t right, RustCallStatus *_Nonnull out_status
+RustBuffer uniffi_dspi_core_fn_method_dspicore_autoeq_apply(void*_Nonnull ptr, RustBuffer profile, uint8_t left, uint8_t right, RustBuffer apply_level, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_AUTOEQ_PREVIEW
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_AUTOEQ_PREVIEW
-RustBuffer uniffi_dspi_core_fn_method_dspicore_autoeq_preview(void*_Nonnull ptr, RustBuffer profile, uint8_t left, uint8_t right, RustCallStatus *_Nonnull out_status
+RustBuffer uniffi_dspi_core_fn_method_dspicore_autoeq_preview(void*_Nonnull ptr, RustBuffer profile, uint8_t left, uint8_t right, RustBuffer apply_level, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_BEGIN_GROUP

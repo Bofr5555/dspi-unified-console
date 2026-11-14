@@ -2601,9 +2601,9 @@ fun uniffi_dspi_core_fn_method_dspicore_apply_revert(`ptr`: Pointer,uniffi_out_e
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_apply_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-fun uniffi_dspi_core_fn_method_dspicore_autoeq_apply(`ptr`: Pointer,`profile`: RustBuffer.ByValue,`left`: Byte,`right`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+fun uniffi_dspi_core_fn_method_dspicore_autoeq_apply(`ptr`: Pointer,`profile`: RustBuffer.ByValue,`left`: Byte,`right`: Byte,`applyLevel`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-fun uniffi_dspi_core_fn_method_dspicore_autoeq_preview(`ptr`: Pointer,`profile`: RustBuffer.ByValue,`left`: Byte,`right`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+fun uniffi_dspi_core_fn_method_dspicore_autoeq_preview(`ptr`: Pointer,`profile`: RustBuffer.ByValue,`left`: Byte,`right`: Byte,`applyLevel`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_begin_group(`ptr`: Pointer,`label`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -3673,10 +3673,10 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_apply_status() != 7134.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_autoeq_apply() != 11307.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_autoeq_apply() != 54054.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_autoeq_preview() != 45251.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_autoeq_preview() != 56047.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_begin_group() != 15128.toShort()) {
@@ -6405,7 +6405,8 @@ public interface DspiCoreInterface {
      * captured as a snapshot, returned as a document and filed in the
      * snapshot store when a folder is named ([`DspiCore::snapshot_set_dir`]);
      * then every write is one undo step labelled "AutoEQ: <name>": the
-     * level (inputs' preamp or outputs' gain), any crossover band the
+     * level when applied (`apply_level` as for the preview: inputs' preamp
+     * by default, outputs' gain only when asked), any crossover band the
      * limits profile asks for, then every PEQ band of both channels.
      * Values past the limits profile are held to it and reported
      * ([`AutoEqPreview::held`]); nothing outside the pair changes.
@@ -6418,7 +6419,7 @@ public interface DspiCoreInterface {
      * way leaves the writes made so far as the one undo step, and the
      * snapshot filed (with a folder named).
      */
-    fun `autoeqApply`(`profile`: AutoEqProfile, `left`: kotlin.UByte, `right`: kotlin.UByte): AutoEqApply
+    fun `autoeqApply`(`profile`: AutoEqProfile, `left`: kotlin.UByte, `right`: kotlin.UByte, `applyLevel`: kotlin.Boolean?): AutoEqApply
     
     /**
      * What applying `profile` to wire channels `left` and `right` (two
@@ -6426,12 +6427,18 @@ public interface DspiCoreInterface {
      * crossover and response curve, what the limits profile would hold, and
      * the lines to show. Reads the mirror only: nothing is sent.
      *
+     * `apply_level`: whether the profile's preamp is written; `None` is the
+     * default: yes on inputs (their preamp), no on outputs (their
+     * calibrated gain is kept and the preamp only suggested,
+     * [`AutoEqPreview::suggested_trim_db`]). `Some(true)` on outputs writes
+     * it as their gain.
+     *
      * Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`]
      * for a channel out of range, the same channel twice, an input with an
      * output, or a profile value no setter would take (a non-finite preamp,
      * a known filter with a frequency or Q not above 0).
      */
-    fun `autoeqPreview`(`profile`: AutoEqProfile, `left`: kotlin.UByte, `right`: kotlin.UByte): AutoEqPreview
+    fun `autoeqPreview`(`profile`: AutoEqProfile, `left`: kotlin.UByte, `right`: kotlin.UByte, `applyLevel`: kotlin.Boolean?): AutoEqPreview
     
     /**
      * Begin an undo group: everything written until the matching
@@ -10312,7 +10319,8 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * captured as a snapshot, returned as a document and filed in the
      * snapshot store when a folder is named ([`DspiCore::snapshot_set_dir`]);
      * then every write is one undo step labelled "AutoEQ: <name>": the
-     * level (inputs' preamp or outputs' gain), any crossover band the
+     * level when applied (`apply_level` as for the preview: inputs' preamp
+     * by default, outputs' gain only when asked), any crossover band the
      * limits profile asks for, then every PEQ band of both channels.
      * Values past the limits profile are held to it and reported
      * ([`AutoEqPreview::held`]); nothing outside the pair changes.
@@ -10325,12 +10333,12 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * way leaves the writes made so far as the one undo step, and the
      * snapshot filed (with a folder named).
      */
-    @Throws(DspiException::class)override fun `autoeqApply`(`profile`: AutoEqProfile, `left`: kotlin.UByte, `right`: kotlin.UByte): AutoEqApply {
+    @Throws(DspiException::class)override fun `autoeqApply`(`profile`: AutoEqProfile, `left`: kotlin.UByte, `right`: kotlin.UByte, `applyLevel`: kotlin.Boolean?): AutoEqApply {
             return FfiConverterTypeAutoEqApply.lift(
     callWithPointer {
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_autoeq_apply(
-        it, FfiConverterTypeAutoEqProfile.lower(`profile`),FfiConverterUByte.lower(`left`),FfiConverterUByte.lower(`right`),_status)
+        it, FfiConverterTypeAutoEqProfile.lower(`profile`),FfiConverterUByte.lower(`left`),FfiConverterUByte.lower(`right`),FfiConverterOptionalBoolean.lower(`applyLevel`),_status)
 }
     }
     )
@@ -10344,17 +10352,23 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * crossover and response curve, what the limits profile would hold, and
      * the lines to show. Reads the mirror only: nothing is sent.
      *
+     * `apply_level`: whether the profile's preamp is written; `None` is the
+     * default: yes on inputs (their preamp), no on outputs (their
+     * calibrated gain is kept and the preamp only suggested,
+     * [`AutoEqPreview::suggested_trim_db`]). `Some(true)` on outputs writes
+     * it as their gain.
+     *
      * Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`]
      * for a channel out of range, the same channel twice, an input with an
      * output, or a profile value no setter would take (a non-finite preamp,
      * a known filter with a frequency or Q not above 0).
      */
-    @Throws(DspiException::class)override fun `autoeqPreview`(`profile`: AutoEqProfile, `left`: kotlin.UByte, `right`: kotlin.UByte): AutoEqPreview {
+    @Throws(DspiException::class)override fun `autoeqPreview`(`profile`: AutoEqProfile, `left`: kotlin.UByte, `right`: kotlin.UByte, `applyLevel`: kotlin.Boolean?): AutoEqPreview {
             return FfiConverterTypeAutoEqPreview.lift(
     callWithPointer {
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_autoeq_preview(
-        it, FfiConverterTypeAutoEqProfile.lower(`profile`),FfiConverterUByte.lower(`left`),FfiConverterUByte.lower(`right`),_status)
+        it, FfiConverterTypeAutoEqProfile.lower(`profile`),FfiConverterUByte.lower(`left`),FfiConverterUByte.lower(`right`),FfiConverterOptionalBoolean.lower(`applyLevel`),_status)
 }
     }
     )
@@ -21217,7 +21231,8 @@ data class AutoEqChannel (
      */
     var `isOutput`: kotlin.Boolean, 
     /**
-     * Its level after the apply: the input's preamp, or the output's gain.
+     * Its level after the apply: the input's preamp, or the output's gain
+     * (unchanged when the level is not applied).
      */
     var `levelDb`: kotlin.Float, 
     /**
@@ -21517,9 +21532,15 @@ data class AutoEqPreview (
      */
     var `channels`: List<AutoEqChannel>, 
     /**
-     * Where the profile's preamp goes: `input_preamp` or `output_gain`.
+     * Where the profile's preamp goes: `input_preamp`, `output_gain`, or
+     * `none` when it is not written (an output pair by default).
      */
     var `levelTarget`: kotlin.String, 
+    /**
+     * The profile's preamp in dB: the trim it expects. With `level_target`
+     * `none`, the level to lower by hand if the correction clips.
+     */
+    var `suggestedTrimDb`: kotlin.Float, 
     /**
      * What the limits profile held, one row each ("eq.gain[4,0] 9 → 6
      * dB"); empty with no profile or nothing past a limit.
@@ -21551,6 +21572,7 @@ public object FfiConverterTypeAutoEqPreview: FfiConverterRustBuffer<AutoEqPrevie
             FfiConverterString.read(buf),
             FfiConverterSequenceTypeAutoEqChannel.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterFloat.read(buf),
             FfiConverterSequenceString.read(buf),
             FfiConverterSequenceString.read(buf),
             FfiConverterUInt.read(buf),
@@ -21562,6 +21584,7 @@ public object FfiConverterTypeAutoEqPreview: FfiConverterRustBuffer<AutoEqPrevie
             FfiConverterString.allocationSize(value.`profileId`) +
             FfiConverterSequenceTypeAutoEqChannel.allocationSize(value.`channels`) +
             FfiConverterString.allocationSize(value.`levelTarget`) +
+            FfiConverterFloat.allocationSize(value.`suggestedTrimDb`) +
             FfiConverterSequenceString.allocationSize(value.`held`) +
             FfiConverterSequenceString.allocationSize(value.`unsupported`) +
             FfiConverterUInt.allocationSize(value.`dropped`) +
@@ -21572,6 +21595,7 @@ public object FfiConverterTypeAutoEqPreview: FfiConverterRustBuffer<AutoEqPrevie
             FfiConverterString.write(value.`profileId`, buf)
             FfiConverterSequenceTypeAutoEqChannel.write(value.`channels`, buf)
             FfiConverterString.write(value.`levelTarget`, buf)
+            FfiConverterFloat.write(value.`suggestedTrimDb`, buf)
             FfiConverterSequenceString.write(value.`held`, buf)
             FfiConverterSequenceString.write(value.`unsupported`, buf)
             FfiConverterUInt.write(value.`dropped`, buf)

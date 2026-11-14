@@ -1265,12 +1265,14 @@ uint32_t dspi_autoeq_preview(struct FfiCore *core,
 const char *profile,
 uint8_t left,
 uint8_t right,
+int8_t apply_level,
 char *buf,
 uint32_t len);
 uint32_t dspi_autoeq_apply(struct FfiCore *core,
 const char *profile,
 uint8_t left,
 uint8_t right,
+int8_t apply_level,
 char *buf,
 uint32_t len);
 uint32_t dspi_link_phase_text(const char *phase, const char *pin_source, char *buf, uint32_t len);

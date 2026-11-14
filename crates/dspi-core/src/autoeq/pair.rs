@@ -17,8 +17,10 @@
 //!
 //! Any pair works: two inputs or two outputs, by wire channel (inputs first,
 //! then outputs). On inputs the profile's preamp is the inputs' preamp
-//! (per input, as the Mac sets it); on outputs it is the outputs' gain,
-//! the only level an output has. Every band of the bank is written: the
+//! (per input, as the Mac sets it). On outputs the calibrated output gain
+//! is left alone by default: the preamp is reported as a suggested trim
+//! (`level_target` `none`), and written as the outputs' gain only when the
+//! caller asks (`apply_level`). Every band of the bank is written: the
 //! profile's bands first, every other band flat, so nothing stale stays
 //! underneath the correction.
 
@@ -35,6 +37,9 @@ pub const AUTOEQ_GROUP_LABEL: &str = "AutoEQ";
 pub const AUTOEQ_LEVEL_INPUT_PREAMP: &str = "input_preamp";
 /// Where the profile's preamp goes on outputs ([`AutoEqPreview::level_target`]).
 pub const AUTOEQ_LEVEL_OUTPUT_GAIN: &str = "output_gain";
+/// The profile's preamp is not written, only suggested
+/// ([`AutoEqPreview::level_target`], [`AutoEqPreview::suggested_trim_db`]).
+pub const AUTOEQ_LEVEL_NONE: &str = "none";
 
 /// The lowest preamp and output gain the setters allow.
 const LEVEL_MIN_DB: f32 = -60.0;
@@ -158,7 +163,8 @@ pub struct AutoEqChannel {
     pub channel: u8,
     /// Whether it is an output.
     pub is_output: bool,
-    /// Its level after the apply: the input's preamp, or the output's gain.
+    /// Its level after the apply: the input's preamp, or the output's gain
+    /// (unchanged when the level is not applied).
     pub level_db: f32,
     /// Its PEQ bank after the apply, every band.
     pub bands: Vec<FilterParams>,
@@ -179,8 +185,12 @@ pub struct AutoEqPreview {
     pub profile_id: String,
     /// The two channels, in the order given.
     pub channels: Vec<AutoEqChannel>,
-    /// Where the profile's preamp goes: `input_preamp` or `output_gain`.
+    /// Where the profile's preamp goes: `input_preamp`, `output_gain`, or
+    /// `none` when it is not written (an output pair by default).
     pub level_target: String,
+    /// The profile's preamp in dB: the trim it expects. With `level_target`
+    /// `none`, the level to lower by hand if the correction clips.
+    pub suggested_trim_db: f32,
     /// What the limits profile held, one row each ("eq.gain[4,0] 9 → 6
     /// dB"); empty with no profile or nothing past a limit.
     pub held: Vec<String>,
@@ -280,13 +290,22 @@ struct Plan {
     held: Vec<String>,
     /// Whether the pair are outputs.
     outputs: bool,
+    /// Whether the profile's preamp is written.
+    apply_level: bool,
 }
 
-fn plan(inner: &mut Inner, profile: &AutoEqProfile, left: u8, right: u8) -> Result<Plan> {
+fn plan(
+    inner: &mut Inner,
+    profile: &AutoEqProfile,
+    left: u8,
+    right: u8,
+    apply_level: Option<bool>,
+) -> Result<Plan> {
     inner.conn()?;
     check_profile(profile)?;
     let s = inner.state.clone();
     let outputs = check_pair(&s, left, right)?;
+    let apply_level = apply_level.unwrap_or(!outputs);
     let entry = profile.entry();
     let pair = [left, right];
 
@@ -330,13 +349,13 @@ fn plan(inner: &mut Inner, profile: &AutoEqProfile, left: u8, right: u8) -> Resu
             }
         }
         dropped = dropped.max(planned.dropped);
-        if outputs {
+        if apply_level && outputs {
             let o = usize::from(ch.saturating_sub(s.num_input_channels));
             let v = quantize_gain(profile.preamp_db.clamp(LEVEL_MIN_DB, OUTPUT_GAIN_MAX_DB));
             if let Some(g) = target.output_gain_db.get_mut(o) {
                 *g = v;
             }
-        } else {
+        } else if apply_level {
             let v = quantize_gain(profile.preamp_db.clamp(LEVEL_MIN_DB, platform_max));
             if let Some(g) = target.input_preamp_db.get_mut(c) {
                 *g = v;
@@ -365,7 +384,7 @@ fn plan(inner: &mut Inner, profile: &AutoEqProfile, left: u8, right: u8) -> Resu
             if let (Some(t), Some(h)) = (target.xover.get_mut(c), all.xover.get(c)) {
                 t.clone_from(h);
             }
-            if outputs {
+            if outputs && apply_level {
                 let o = usize::from(ch.saturating_sub(s.num_input_channels));
                 if let (Some(t), Some(h)) =
                     (target.output_gain_db.get_mut(o), all.output_gain_db.get(o))
@@ -419,16 +438,26 @@ fn plan(inner: &mut Inner, profile: &AutoEqProfile, left: u8, right: u8) -> Resu
             unsupported.join(", ")
         ));
     }
+    if !apply_level {
+        notes.push(format!(
+            "The profile's preamp of {} dB is not applied; the {} level is kept. Lower it by that much if the correction clips",
+            profile.preamp_db,
+            if outputs { "outputs'" } else { "inputs'" }
+        ));
+    }
     Ok(Plan {
         preview: AutoEqPreview {
             profile_id: profile.id.clone(),
             channels,
-            level_target: if outputs {
+            level_target: if !apply_level {
+                AUTOEQ_LEVEL_NONE
+            } else if outputs {
                 AUTOEQ_LEVEL_OUTPUT_GAIN
             } else {
                 AUTOEQ_LEVEL_INPUT_PREAMP
             }
             .to_owned(),
+            suggested_trim_db: profile.preamp_db,
             held: held.clone(),
             unsupported,
             dropped: u32::try_from(dropped).unwrap_or(u32::MAX),
@@ -437,17 +466,8 @@ fn plan(inner: &mut Inner, profile: &AutoEqProfile, left: u8, right: u8) -> Resu
         target,
         held,
         outputs,
+        apply_level,
     })
-}
-
-/// Whether a failed filing is only "no folder named" (the web, or a client
-/// that keeps no store): then the document alone is the snapshot, no note.
-fn no_store(e: &DspiError) -> bool {
-    match e {
-        DspiError::Unsupported => true,
-        DspiError::Io { msg } => msg.contains("no folder has been named"),
-        _ => false,
-    }
 }
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
@@ -456,6 +476,12 @@ impl DspiCore {
     /// inputs or two outputs) would do: each channel's PEQ bank, level,
     /// crossover and response curve, what the limits profile would hold, and
     /// the lines to show. Reads the mirror only: nothing is sent.
+    ///
+    /// `apply_level`: whether the profile's preamp is written; `None` is the
+    /// default: yes on inputs (their preamp), no on outputs (their
+    /// calibrated gain is kept and the preamp only suggested,
+    /// [`AutoEqPreview::suggested_trim_db`]). `Some(true)` on outputs writes
+    /// it as their gain.
     ///
     /// Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`]
     /// for a channel out of range, the same channel twice, an input with an
@@ -466,9 +492,10 @@ impl DspiCore {
         profile: AutoEqProfile,
         left: u8,
         right: u8,
+        apply_level: Option<bool>,
     ) -> Result<AutoEqPreview> {
         let mut inner = self.lock();
-        plan(&mut inner, &profile, left, right).map(|p| p.preview)
+        plan(&mut inner, &profile, left, right, apply_level).map(|p| p.preview)
     }
 
     /// Apply `profile` to wire channels `left` and `right` as
@@ -476,7 +503,8 @@ impl DspiCore {
     /// captured as a snapshot, returned as a document and filed in the
     /// snapshot store when a folder is named ([`DspiCore::snapshot_set_dir`]);
     /// then every write is one undo step labelled "AutoEQ: <name>": the
-    /// level (inputs' preamp or outputs' gain), any crossover band the
+    /// level when applied (`apply_level` as for the preview: inputs' preamp
+    /// by default, outputs' gain only when asked), any crossover band the
     /// limits profile asks for, then every PEQ band of both channels.
     /// Values past the limits profile are held to it and reported
     /// ([`AutoEqPreview::held`]); nothing outside the pair changes.
@@ -488,30 +516,39 @@ impl DspiCore {
     /// cannot place, [`DspiError::Transfer`] and the rest). A failure part
     /// way leaves the writes made so far as the one undo step, and the
     /// snapshot filed (with a folder named).
-    pub fn autoeq_apply(&self, profile: AutoEqProfile, left: u8, right: u8) -> Result<AutoEqApply> {
+    pub fn autoeq_apply(
+        &self,
+        profile: AutoEqProfile,
+        left: u8,
+        right: u8,
+        apply_level: Option<bool>,
+    ) -> Result<AutoEqApply> {
         // Every check before anything is sent.
         {
             let mut inner = self.writing()?;
-            plan(&mut inner, &profile, left, right)?;
+            plan(&mut inner, &profile, left, right, apply_level)?;
         }
         let name = format!("Before {}", profile.label());
         let note = format!("Captured before AutoEQ was applied to channels {left} and {right}");
         let snapshot_document = self.snapshot_capture_document(name.clone(), note.clone())?;
         let mut notes = Vec::new();
-        let snapshot_id = match self.snapshot_import(snapshot_document.clone(), name, note) {
-            Ok(info) => info.id,
-            Err(e) if no_store(&e) => String::new(),
-            Err(e) => {
-                notes.push(format!("The snapshot before could not be filed: {e}"));
-                String::new()
+        let snapshot_id = if self.snapshot_dir_named() {
+            match self.snapshot_import(snapshot_document.clone(), name, note) {
+                Ok(info) => info.id,
+                Err(e) => {
+                    notes.push(format!("The snapshot before could not be filed: {e}"));
+                    String::new()
+                }
             }
+        } else {
+            String::new()
         };
 
         // Planned again: the capture let go of the lock, and the plan is
         // taken from the mirror as it is now.
         let plan = {
             let mut inner = self.writing()?;
-            plan(&mut inner, &profile, left, right)?
+            plan(&mut inner, &profile, left, right, apply_level)?
         };
         self.begin_group(profile.label());
         let written = self.write_plan(&plan, [left, right]);
@@ -534,7 +571,7 @@ impl DspiCore {
     fn write_plan(&self, plan: &Plan, pair: [u8; 2]) -> Result<()> {
         let t = &plan.target;
         let now = self.get_state();
-        for ch in pair {
+        for ch in pair.into_iter().filter(|_| plan.apply_level) {
             let c = usize::from(ch);
             if plan.outputs {
                 let o = ch.saturating_sub(t.num_input_channels);

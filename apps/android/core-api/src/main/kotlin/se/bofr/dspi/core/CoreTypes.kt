@@ -3386,7 +3386,8 @@ data class AutoEqChannel(
      */
     val isOutput: Boolean,
     /**
-     * Its level after the apply: the input's preamp, or the output's gain.
+     * Its level after the apply: the input's preamp, or the output's gain
+     * (unchanged when the level is not applied).
      */
     val levelDb: Float,
     /**
@@ -3418,9 +3419,15 @@ data class AutoEqPreview(
      */
     val channels: List<AutoEqChannel>,
     /**
-     * Where the profile's preamp goes: `input_preamp` or `output_gain`.
+     * Where the profile's preamp goes: `input_preamp`, `output_gain`, or
+     * `none` when it is not written (an output pair by default).
      */
     val levelTarget: String,
+    /**
+     * The profile's preamp in dB: the trim it expects. With `level_target`
+     * `none`, the level to lower by hand if the correction clips.
+     */
+    val suggestedTrimDb: Float,
     /**
      * What the limits profile held, one row each ("eq.gain[4,0] 9 → 6
      * dB"); empty with no profile or nothing past a limit.

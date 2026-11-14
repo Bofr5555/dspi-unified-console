@@ -384,13 +384,19 @@ interface DspiCoreApi : AutoCloseable {
      * crossover and response curve, what the limits profile would hold, and
      * the lines to show. Reads the mirror only: nothing is sent.
      *
+     * `apply_level`: whether the profile's preamp is written; `None` is the
+     * default: yes on inputs (their preamp), no on outputs (their
+     * calibrated gain is kept and the preamp only suggested,
+     * [`AutoEqPreview::suggested_trim_db`]). `Some(true)` on outputs writes
+     * it as their gain.
+     *
      * Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`]
      * for a channel out of range, the same channel twice, an input with an
      * output, or a profile value no setter would take (a non-finite preamp,
      * a known filter with a frequency or Q not above 0).
      */
     @Throws(DspiException::class)
-    fun autoeqPreview(profile: AutoEqProfile, left: Int, right: Int): AutoEqPreview
+    fun autoeqPreview(profile: AutoEqProfile, left: Int, right: Int, applyLevel: Boolean?): AutoEqPreview
 
     /**
      * Apply `profile` to wire channels `left` and `right` as
@@ -398,7 +404,8 @@ interface DspiCoreApi : AutoCloseable {
      * captured as a snapshot, returned as a document and filed in the
      * snapshot store when a folder is named ([`DspiCore::snapshot_set_dir`]);
      * then every write is one undo step labelled "AutoEQ: <name>": the
-     * level (inputs' preamp or outputs' gain), any crossover band the
+     * level when applied (`apply_level` as for the preview: inputs' preamp
+     * by default, outputs' gain only when asked), any crossover band the
      * limits profile asks for, then every PEQ band of both channels.
      * Values past the limits profile are held to it and reported
      * ([`AutoEqPreview::held`]); nothing outside the pair changes.
@@ -412,7 +419,7 @@ interface DspiCoreApi : AutoCloseable {
      * snapshot filed (with a folder named).
      */
     @Throws(DspiException::class)
-    fun autoeqApply(profile: AutoEqProfile, left: Int, right: Int): AutoEqApply
+    fun autoeqApply(profile: AutoEqProfile, left: Int, right: Int, applyLevel: Boolean?): AutoEqApply
 
     /**
      * A single-use token for `op`, valid for 10 s on the current connection:

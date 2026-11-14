@@ -146,12 +146,14 @@ fn wp_p1aq_preview_writes_nothing() {
     let (a, b) = (r.out(2), r.out(3));
     let before = r.core.get_state();
     let sent = r.sent();
-    let pv = r.core.autoeq_preview(profile(5.0), a, b).unwrap();
+    let pv = r.core.autoeq_preview(profile(5.0), a, b, None).unwrap();
     assert_eq!(r.sent(), sent, "a preview makes no transfer at all");
     assert_eq!(r.core.get_state(), before);
 
     assert_eq!(pv.profile_id, "oratory1990/harman/Test HP");
-    assert_eq!(pv.level_target, AUTOEQ_LEVEL_OUTPUT_GAIN);
+    // An output pair keeps its calibrated gain by default.
+    assert_eq!(pv.level_target, AUTOEQ_LEVEL_NONE);
+    assert_eq!(pv.suggested_trim_db, -6.5);
     assert_eq!(pv.channels.len(), 2);
     assert_eq!(
         pv.channels.iter().map(|c| c.channel).collect::<Vec<_>>(),
@@ -159,7 +161,8 @@ fn wp_p1aq_preview_writes_nothing() {
     );
     for c in &pv.channels {
         assert!(c.is_output);
-        assert_eq!(c.level_db, -6.5);
+        let o = usize::from(c.channel - before.num_input_channels);
+        assert_eq!(c.level_db, before.output_gain_db[o]);
         assert_eq!(c.bands.len(), before.filters[usize::from(a)].len());
         assert_eq!(c.bands[0].filter_type, FilterType::LowShelf.to_raw());
         assert_eq!(c.bands[0].gain, 5.0);
@@ -172,11 +175,15 @@ fn wp_p1aq_preview_writes_nothing() {
         let min = c.curve.iter().copied().fold(f64::MAX, f64::min);
         assert!(min < -2.0, "the cut shows: {min}");
     }
-    assert!(pv.held.is_empty() && pv.notes.is_empty(), "{pv:?}");
+    assert!(pv.held.is_empty(), "{pv:?}");
+    assert_eq!(pv.notes.len(), 1, "{pv:?}");
+    assert!(pv.notes[0].contains("-6.5 dB is not applied"), "{pv:?}");
 
     // Inputs: the preamp is the inputs' preamp.
-    let pv = r.core.autoeq_preview(profile(5.0), 0, 1).unwrap();
+    let pv = r.core.autoeq_preview(profile(5.0), 0, 1, None).unwrap();
     assert_eq!(pv.level_target, AUTOEQ_LEVEL_INPUT_PREAMP);
+    assert!(pv.notes.is_empty(), "{pv:?}");
+    assert!(pv.channels.iter().all(|c| c.level_db == -6.5));
     assert!(
         pv.channels
             .iter()
@@ -190,8 +197,8 @@ fn wp_p1aq_apply_to_outputs_3_and_4_changes_only_them() {
     let r = rig();
     let (a, b) = (r.out(2), r.out(3));
     let before = r.core.get_state();
-    let pv = r.core.autoeq_preview(profile(5.0), a, b).unwrap();
-    let done = r.core.autoeq_apply(profile(5.0), a, b).unwrap();
+    let pv = r.core.autoeq_preview(profile(5.0), a, b, None).unwrap();
+    let done = r.core.autoeq_apply(profile(5.0), a, b, None).unwrap();
     assert_eq!(done.preview, pv, "the apply is the preview");
     let after = r.core.get_state();
     assert_eq!(typed(&after), typed(&expected(&before, &pv)));
@@ -216,7 +223,7 @@ fn wp_p1aq_apply_to_outputs_3_and_4_changes_only_them() {
 fn wp_p1aq_any_pair_inputs_too() {
     let r = rig();
     let before = r.core.get_state();
-    let done = r.core.autoeq_apply(profile(3.0), 1, 0).unwrap();
+    let done = r.core.autoeq_apply(profile(3.0), 1, 0, None).unwrap();
     let after = r.core.get_state();
     assert_eq!(typed(&after), typed(&expected(&before, &done.preview)));
     assert_eq!(after.input_preamp_db[0], -6.5);
@@ -242,7 +249,12 @@ fn wp_p1aq_a_boost_above_a_limit_is_clamped_and_reported() {
     let applied = r.core.limits_apply_profile(limits.to_document()).unwrap();
     assert_eq!(applied.held, ["out.gain[2] 0 → -10 dB"], "{applied:?}");
 
-    let pv = r.core.autoeq_preview(profile(9.0), a, b).unwrap();
+    // The outputs' gain written, as asked, so its limit is judged too.
+    let pv = r
+        .core
+        .autoeq_preview(profile(9.0), a, b, Some(true))
+        .unwrap();
+    assert_eq!(pv.level_target, AUTOEQ_LEVEL_OUTPUT_GAIN);
     for c in &pv.channels {
         assert_eq!(c.bands[0].gain, 6.0, "the boost held: {c:?}");
         assert_eq!(c.bands[2].gain, 4.0, "under the limit, as given");
@@ -263,7 +275,7 @@ fn wp_p1aq_a_boost_above_a_limit_is_clamped_and_reported() {
         "{pv:?}"
     );
 
-    let done = r.core.autoeq_apply(profile(9.0), a, b).unwrap();
+    let done = r.core.autoeq_apply(profile(9.0), a, b, Some(true)).unwrap();
     assert_eq!(done.preview.held, pv.held);
     let s = r.core.get_state();
     assert_eq!(s.filters[usize::from(a)][0].gain, 6.0);
@@ -299,7 +311,7 @@ fn wp_p1aq_a_highpass_the_limits_ask_for_moves_to_the_crossover() {
     let applied = r.core.limits_apply_profile(limits.to_document()).unwrap();
     assert!(applied.held.is_empty(), "{applied:?}");
 
-    let done = r.core.autoeq_apply(profile(5.0), a, b).unwrap();
+    let done = r.core.autoeq_apply(profile(5.0), a, b, None).unwrap();
     assert_eq!(done.preview.held.len(), 1, "{done:?}");
     assert!(
         done.preview.held[0].starts_with("output 3: a 12 dB/oct high-pass at 1500 Hz"),
@@ -337,7 +349,7 @@ fn wp_p1aq_the_snapshot_recalls_the_state_before() {
     let before = r.core.get_state();
 
     // No folder: the document alone.
-    let done = r.core.autoeq_apply(profile(5.0), a, b).unwrap();
+    let done = r.core.autoeq_apply(profile(5.0), a, b, None).unwrap();
     assert_eq!(done.snapshot_id, "");
     assert!(done.notes.is_empty(), "{done:?}");
     assert!(done.snapshot_document.contains("\"snapshot\""));
@@ -355,7 +367,7 @@ fn wp_p1aq_the_snapshot_recalls_the_state_before() {
     r.core
         .snapshot_set_dir(dir.to_string_lossy().into_owned())
         .unwrap();
-    let done = r.core.autoeq_apply(profile(5.0), 0, 1).unwrap();
+    let done = r.core.autoeq_apply(profile(5.0), 0, 1, None).unwrap();
     assert_ne!(done.snapshot_id, "");
     let listed = r.core.snapshot_list(String::new());
     let info = listed.iter().find(|s| s.id == done.snapshot_id).unwrap();
@@ -378,16 +390,16 @@ fn wp_p1aq_refusals_send_nothing() {
         ..profile(3.0)
     };
     let refused = [
-        r.core.autoeq_apply(profile(3.0), 0, 0),
-        r.core.autoeq_apply(profile(3.0), 1, out0),
-        r.core.autoeq_apply(profile(3.0), out0, n),
-        r.core.autoeq_apply(bad_q.clone(), 0, 1),
+        r.core.autoeq_apply(profile(3.0), 0, 0, None),
+        r.core.autoeq_apply(profile(3.0), 1, out0, None),
+        r.core.autoeq_apply(profile(3.0), out0, n, None),
+        r.core.autoeq_apply(bad_q.clone(), 0, 1, None),
     ];
     for e in refused {
         assert!(matches!(e, Err(DspiError::InvalidArgument { .. })), "{e:?}");
     }
     assert!(matches!(
-        r.core.autoeq_preview(bad_q, 0, 1),
+        r.core.autoeq_preview(bad_q, 0, 1, None),
         Err(DspiError::InvalidArgument { .. })
     ));
     assert_eq!(r.sent(), sent, "nothing reached the device");
@@ -398,7 +410,7 @@ fn wp_p1aq_refusals_send_nothing() {
         filters: vec![filter("XYZ", 0.0, 0.0, 0.0), filter("PK", 500.0, 1.0, 2.0)],
         ..profile(3.0)
     };
-    let pv = r.core.autoeq_preview(odd, 0, 1).unwrap();
+    let pv = r.core.autoeq_preview(odd, 0, 1, None).unwrap();
     assert_eq!(pv.unsupported, ["XYZ"]);
     assert_eq!(pv.channels[0].bands[0].filter_type, 0);
     assert_eq!(pv.channels[0].bands[1].gain, 2.0);
@@ -406,11 +418,11 @@ fn wp_p1aq_refusals_send_nothing() {
 
     r.core.disconnect();
     assert_eq!(
-        r.core.autoeq_preview(profile(3.0), 0, 1).unwrap_err(),
+        r.core.autoeq_preview(profile(3.0), 0, 1, None).unwrap_err(),
         DspiError::Disconnected
     );
     assert_eq!(
-        r.core.autoeq_apply(profile(3.0), 0, 1).unwrap_err(),
+        r.core.autoeq_apply(profile(3.0), 0, 1, None).unwrap_err(),
         DspiError::Disconnected
     );
 }
@@ -429,4 +441,42 @@ fn wp_p1aq_a_profile_from_the_databases_json() {
         AutoEqProfile::from_entry_json("[1]"),
         Err(DspiError::InvalidArgument { .. })
     ));
+}
+
+/// The level: an output pair's calibrated gain is kept unless asked (and
+/// then it is one of the group's writes); an input pair's preamp is written
+/// unless asked not to.
+#[test]
+fn wp_p1aq_the_outputs_gain_is_kept_unless_asked() {
+    let r = rig();
+    let (a, b) = (r.out(2), r.out(3));
+    r.core.set_output_gain(2, 3.0).unwrap();
+    r.core.set_output_gain(3, -2.0).unwrap();
+    let done = r.core.autoeq_apply(profile(5.0), a, b, None).unwrap();
+    assert_eq!(done.preview.level_target, AUTOEQ_LEVEL_NONE);
+    assert_eq!(done.preview.suggested_trim_db, -6.5);
+    let s = r.core.get_state();
+    assert_eq!(s.output_gain_db[2], 3.0, "the calibration stays");
+    assert_eq!(s.output_gain_db[3], -2.0);
+    assert!(
+        r.core
+            .history(u32::MAX)
+            .iter()
+            .filter(|h| h.label.is_some())
+            .all(|h| h.path != "out.gain"),
+        "no gain write in the group"
+    );
+
+    let done = r.core.autoeq_apply(profile(5.0), a, b, Some(true)).unwrap();
+    assert_eq!(done.preview.level_target, AUTOEQ_LEVEL_OUTPUT_GAIN);
+    let s = r.core.get_state();
+    assert_eq!((s.output_gain_db[2], s.output_gain_db[3]), (-6.5, -6.5));
+
+    let before = r.core.get_state().input_preamp_db;
+    let done = r
+        .core
+        .autoeq_apply(profile(5.0), 0, 1, Some(false))
+        .unwrap();
+    assert_eq!(done.preview.level_target, AUTOEQ_LEVEL_NONE);
+    assert_eq!(r.core.get_state().input_preamp_db, before);
 }

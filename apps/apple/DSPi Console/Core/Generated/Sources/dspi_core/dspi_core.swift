@@ -1523,7 +1523,8 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * captured as a snapshot, returned as a document and filed in the
      * snapshot store when a folder is named ([`DspiCore::snapshot_set_dir`]);
      * then every write is one undo step labelled "AutoEQ: <name>": the
-     * level (inputs' preamp or outputs' gain), any crossover band the
+     * level when applied (`apply_level` as for the preview: inputs' preamp
+     * by default, outputs' gain only when asked), any crossover band the
      * limits profile asks for, then every PEQ band of both channels.
      * Values past the limits profile are held to it and reported
      * ([`AutoEqPreview::held`]); nothing outside the pair changes.
@@ -1536,7 +1537,7 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * way leaves the writes made so far as the one undo step, and the
      * snapshot filed (with a folder named).
      */
-    func autoeqApply(profile: AutoEqProfile, left: UInt8, right: UInt8) throws  -> AutoEqApply
+    func autoeqApply(profile: AutoEqProfile, left: UInt8, right: UInt8, applyLevel: Bool?) throws  -> AutoEqApply
     
     /**
      * What applying `profile` to wire channels `left` and `right` (two
@@ -1544,12 +1545,18 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * crossover and response curve, what the limits profile would hold, and
      * the lines to show. Reads the mirror only: nothing is sent.
      *
+     * `apply_level`: whether the profile's preamp is written; `None` is the
+     * default: yes on inputs (their preamp), no on outputs (their
+     * calibrated gain is kept and the preamp only suggested,
+     * [`AutoEqPreview::suggested_trim_db`]). `Some(true)` on outputs writes
+     * it as their gain.
+     *
      * Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`]
      * for a channel out of range, the same channel twice, an input with an
      * output, or a profile value no setter would take (a non-finite preamp,
      * a known filter with a frequency or Q not above 0).
      */
-    func autoeqPreview(profile: AutoEqProfile, left: UInt8, right: UInt8) throws  -> AutoEqPreview
+    func autoeqPreview(profile: AutoEqProfile, left: UInt8, right: UInt8, applyLevel: Bool?) throws  -> AutoEqPreview
     
     /**
      * Begin an undo group: everything written until the matching
@@ -5290,7 +5297,8 @@ open func applyStatus() -> GuardedApply  {
      * captured as a snapshot, returned as a document and filed in the
      * snapshot store when a folder is named ([`DspiCore::snapshot_set_dir`]);
      * then every write is one undo step labelled "AutoEQ: <name>": the
-     * level (inputs' preamp or outputs' gain), any crossover band the
+     * level when applied (`apply_level` as for the preview: inputs' preamp
+     * by default, outputs' gain only when asked), any crossover band the
      * limits profile asks for, then every PEQ band of both channels.
      * Values past the limits profile are held to it and reported
      * ([`AutoEqPreview::held`]); nothing outside the pair changes.
@@ -5303,12 +5311,13 @@ open func applyStatus() -> GuardedApply  {
      * way leaves the writes made so far as the one undo step, and the
      * snapshot filed (with a folder named).
      */
-open func autoeqApply(profile: AutoEqProfile, left: UInt8, right: UInt8)throws  -> AutoEqApply  {
+open func autoeqApply(profile: AutoEqProfile, left: UInt8, right: UInt8, applyLevel: Bool?)throws  -> AutoEqApply  {
     return try  FfiConverterTypeAutoEqApply_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_autoeq_apply(self.uniffiClonePointer(),
         FfiConverterTypeAutoEqProfile_lower(profile),
         FfiConverterUInt8.lower(left),
-        FfiConverterUInt8.lower(right),$0
+        FfiConverterUInt8.lower(right),
+        FfiConverterOptionBool.lower(applyLevel),$0
     )
 })
 }
@@ -5319,17 +5328,24 @@ open func autoeqApply(profile: AutoEqProfile, left: UInt8, right: UInt8)throws  
      * crossover and response curve, what the limits profile would hold, and
      * the lines to show. Reads the mirror only: nothing is sent.
      *
+     * `apply_level`: whether the profile's preamp is written; `None` is the
+     * default: yes on inputs (their preamp), no on outputs (their
+     * calibrated gain is kept and the preamp only suggested,
+     * [`AutoEqPreview::suggested_trim_db`]). `Some(true)` on outputs writes
+     * it as their gain.
+     *
      * Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`]
      * for a channel out of range, the same channel twice, an input with an
      * output, or a profile value no setter would take (a non-finite preamp,
      * a known filter with a frequency or Q not above 0).
      */
-open func autoeqPreview(profile: AutoEqProfile, left: UInt8, right: UInt8)throws  -> AutoEqPreview  {
+open func autoeqPreview(profile: AutoEqProfile, left: UInt8, right: UInt8, applyLevel: Bool?)throws  -> AutoEqPreview  {
     return try  FfiConverterTypeAutoEqPreview_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_autoeq_preview(self.uniffiClonePointer(),
         FfiConverterTypeAutoEqProfile_lower(profile),
         FfiConverterUInt8.lower(left),
-        FfiConverterUInt8.lower(right),$0
+        FfiConverterUInt8.lower(right),
+        FfiConverterOptionBool.lower(applyLevel),$0
     )
 })
 }
@@ -16749,7 +16765,8 @@ public struct AutoEqChannel {
      */
     public var isOutput: Bool
     /**
-     * Its level after the apply: the input's preamp, or the output's gain.
+     * Its level after the apply: the input's preamp, or the output's gain
+     * (unchanged when the level is not applied).
      */
     public var levelDb: Float
     /**
@@ -16777,7 +16794,8 @@ public struct AutoEqChannel {
          * Whether it is an output.
          */isOutput: Bool, 
         /**
-         * Its level after the apply: the input's preamp, or the output's gain.
+         * Its level after the apply: the input's preamp, or the output's gain
+         * (unchanged when the level is not applied).
          */levelDb: Float, 
         /**
          * Its PEQ bank after the apply, every band.
@@ -17364,9 +17382,15 @@ public struct AutoEqPreview {
      */
     public var channels: [AutoEqChannel]
     /**
-     * Where the profile's preamp goes: `input_preamp` or `output_gain`.
+     * Where the profile's preamp goes: `input_preamp`, `output_gain`, or
+     * `none` when it is not written (an output pair by default).
      */
     public var levelTarget: String
+    /**
+     * The profile's preamp in dB: the trim it expects. With `level_target`
+     * `none`, the level to lower by hand if the correction clips.
+     */
+    public var suggestedTrimDb: Float
     /**
      * What the limits profile held, one row each ("eq.gain[4,0] 9 → 6
      * dB"); empty with no profile or nothing past a limit.
@@ -17395,8 +17419,13 @@ public struct AutoEqPreview {
          * The two channels, in the order given.
          */channels: [AutoEqChannel], 
         /**
-         * Where the profile's preamp goes: `input_preamp` or `output_gain`.
+         * Where the profile's preamp goes: `input_preamp`, `output_gain`, or
+         * `none` when it is not written (an output pair by default).
          */levelTarget: String, 
+        /**
+         * The profile's preamp in dB: the trim it expects. With `level_target`
+         * `none`, the level to lower by hand if the correction clips.
+         */suggestedTrimDb: Float, 
         /**
          * What the limits profile held, one row each ("eq.gain[4,0] 9 → 6
          * dB"); empty with no profile or nothing past a limit.
@@ -17413,6 +17442,7 @@ public struct AutoEqPreview {
         self.profileId = profileId
         self.channels = channels
         self.levelTarget = levelTarget
+        self.suggestedTrimDb = suggestedTrimDb
         self.held = held
         self.unsupported = unsupported
         self.dropped = dropped
@@ -17436,6 +17466,9 @@ extension AutoEqPreview: Equatable, Hashable {
         if lhs.levelTarget != rhs.levelTarget {
             return false
         }
+        if lhs.suggestedTrimDb != rhs.suggestedTrimDb {
+            return false
+        }
         if lhs.held != rhs.held {
             return false
         }
@@ -17455,6 +17488,7 @@ extension AutoEqPreview: Equatable, Hashable {
         hasher.combine(profileId)
         hasher.combine(channels)
         hasher.combine(levelTarget)
+        hasher.combine(suggestedTrimDb)
         hasher.combine(held)
         hasher.combine(unsupported)
         hasher.combine(dropped)
@@ -17474,6 +17508,7 @@ public struct FfiConverterTypeAutoEqPreview: FfiConverterRustBuffer {
                 profileId: FfiConverterString.read(from: &buf), 
                 channels: FfiConverterSequenceTypeAutoEqChannel.read(from: &buf), 
                 levelTarget: FfiConverterString.read(from: &buf), 
+                suggestedTrimDb: FfiConverterFloat.read(from: &buf), 
                 held: FfiConverterSequenceString.read(from: &buf), 
                 unsupported: FfiConverterSequenceString.read(from: &buf), 
                 dropped: FfiConverterUInt32.read(from: &buf), 
@@ -17485,6 +17520,7 @@ public struct FfiConverterTypeAutoEqPreview: FfiConverterRustBuffer {
         FfiConverterString.write(value.profileId, into: &buf)
         FfiConverterSequenceTypeAutoEqChannel.write(value.channels, into: &buf)
         FfiConverterString.write(value.levelTarget, into: &buf)
+        FfiConverterFloat.write(value.suggestedTrimDb, into: &buf)
         FfiConverterSequenceString.write(value.held, into: &buf)
         FfiConverterSequenceString.write(value.unsupported, into: &buf)
         FfiConverterUInt32.write(value.dropped, into: &buf)
@@ -34516,10 +34552,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_apply_status() != 7134) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_autoeq_apply() != 11307) {
+    if (uniffi_dspi_core_checksum_method_dspicore_autoeq_apply() != 54054) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_autoeq_preview() != 45251) {
+    if (uniffi_dspi_core_checksum_method_dspicore_autoeq_preview() != 56047) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_begin_group() != 15128) {

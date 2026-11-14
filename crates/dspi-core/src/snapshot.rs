@@ -1074,6 +1074,17 @@ impl DspiCore {
         })
     }
 
+    // -- WP P1AQ --
+    /// Whether a folder is named for snapshots ([`DspiCore::snapshot_set_dir`]).
+    /// Read-only; no file is touched.
+    pub(crate) fn snapshot_dir_named(&self) -> bool {
+        self.snapshots
+            .0
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .is_some()
+    }
+
     fn set_store_dir(&self, dir: String) -> Result<()> {
         let dir = (!dir.is_empty()).then(|| PathBuf::from(dir));
         if let Some(d) = &dir {
@@ -1177,6 +1188,11 @@ impl DspiCore {
 /// The web has no files: the document calls are its store.
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 impl DspiCore {
+    // -- WP P1AQ --
+    /// No folder is ever named on the web.
+    pub(crate) fn snapshot_dir_named(&self) -> bool {
+        false
+    }
     fn set_store_dir(&self, _dir: String) -> Result<()> {
         Err(DspiError::Unsupported)
     }
