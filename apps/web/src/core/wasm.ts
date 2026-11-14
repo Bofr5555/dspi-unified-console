@@ -249,6 +249,9 @@ export class WasmCore implements CoreImpl {
       this.open = true;
       this.lostSent = false;
       this.schedulePoll(POLL_MS);
+      // -- WP FLAKE1 -- a DSPi opened over Link is bound now: say so at once, not at the next
+      // Link turn (up to LINK_MAX_MS later), so "choose a DSPi" does not stay over the open device
+      this.scheduleLink(0);
     } else if (method === "close") {
       this.open = false;
       this.stopTimers();

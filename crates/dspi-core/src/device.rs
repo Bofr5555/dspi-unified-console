@@ -1390,3 +1390,27 @@ mod tests_wp_qp11 {
         assert!(!core.feature_present(""));
     }
 }
+
+// -- WP FLAKE1 --
+#[cfg(test)]
+impl DspiCore {
+    /// [`DspiCore::open_demo`] with its notifications read on each drain
+    /// (`Notifications::caller_driven` over the demo's own endpoint) instead
+    /// of on a reader thread: what the demo has sent is then in the core's
+    /// queue as soon as the write that sent it returns, however late a loaded
+    /// host would have scheduled the thread. For tests whose subject is what
+    /// a drain, or a settle, sees.
+    pub(crate) fn open_demo_read_on_drain(&self) -> Result<()> {
+        let demo = FakeDevice::demo();
+        let serial = demo.descriptor().serial.clone();
+        let source = demo.notifications();
+        self.attach_probed(Box::new(demo), serial, 0)?;
+        // What the thread read during the open is applied first; the thread
+        // then stops (dropping its reader joins it) before anything is written.
+        let _ = self.process_notifications();
+        if let Some(conn) = self.lock().conn.as_mut() {
+            conn.notifications = Some(dspi_session::Notifications::caller_driven(source));
+        }
+        Ok(())
+    }
+}

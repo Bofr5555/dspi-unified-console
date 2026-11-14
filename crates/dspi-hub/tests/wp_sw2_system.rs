@@ -37,6 +37,10 @@ struct Logged {
     /// -- fixup sw2x -- each alink write takes this long (a busy worker, a
     /// Link-bridged unit); reads stay quick, so the hub's estimate misses it.
     slow_writes: Duration,
+    /// -- WP FLAKE1 -- an apply-at-frame write waits until the unit's frame
+    /// counter is past the frame it names, then goes: it lands late whatever
+    /// the hub estimated, and however fast or slow the host runs.
+    after_its_frame: bool,
 }
 
 impl Transport for Logged {
@@ -49,6 +53,25 @@ impl Transport for Logged {
     fn control_out(&mut self, o: u8, v: u16, d: &[u8]) -> dspi_transport::Result<()> {
         if o == op::REQ_EXTENSION && v & 0xFF00 == 0x8000 {
             std::thread::sleep(self.slow_writes);
+        }
+        // -- WP FLAKE1 --
+        if self.after_its_frame
+            && o == op::REQ_EXTENSION
+            && v == alink::EXT_APPLY_AT_FRAME
+            && let Some(req) = ApplyRequest::decode(d)
+        {
+            let start = Instant::now();
+            while start.elapsed() < WAIT {
+                let now = self
+                    .inner
+                    .control_in(op::REQ_EXTENSION, alink::EXT_FRAME_COUNTER, 16)
+                    .ok()
+                    .and_then(|b| alink::FrameCounter::decode(&b));
+                if now.is_some_and(|c| c.frame > req.frame) {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(1));
+            }
         }
         let r = self.inner.control_out(o, v, d);
         if o == op::REQ_EXTENSION && v & 0xFF00 == 0x8000 && r.is_ok() {
@@ -84,6 +107,22 @@ fn attach(hub: &Hub, serial: &str, setup: AlinkSetup) -> Fake {
 }
 
 fn attach_slow(hub: &Hub, serial: &str, setup: AlinkSetup, slow_writes: Duration) -> Fake {
+    attach_logged(hub, serial, setup, slow_writes, false)
+}
+
+// -- WP FLAKE1 --
+/// A unit whose apply-at-frame writes land after their frame (see `Logged`).
+fn attach_late(hub: &Hub, serial: &str, setup: AlinkSetup) -> Fake {
+    attach_logged(hub, serial, setup, Duration::ZERO, true)
+}
+
+fn attach_logged(
+    hub: &Hub,
+    serial: &str,
+    setup: AlinkSetup,
+    slow_writes: Duration,
+    after_its_frame: bool,
+) -> Fake {
     let dev = FakeDevice::demo_alink_as(setup).with_serial(serial);
     let remote = dev.remote();
     let writes = Writes::default();
@@ -92,6 +131,7 @@ fn attach_slow(hub: &Hub, serial: &str, setup: AlinkSetup, slow_writes: Duration
             inner: dev,
             writes: Arc::clone(&writes),
             slow_writes,
+            after_its_frame,
         }),
         0,
     )
@@ -837,14 +877,10 @@ fn wp_sw2x_late_applies_are_reported_late() {
     let hub = hub();
     let _fakes: Vec<Fake> = ["A", "B", "C", "D"]
         .iter()
-        .map(|id| {
-            attach_slow(
-                &hub,
-                &format!("SW2-{id}"),
-                receiver(0),
-                Duration::from_millis(100),
-            )
-        })
+        // -- WP FLAKE1 -- each write lands after its frame by construction: 100 ms
+        // writes against the hub's estimate missed only while the host was fast
+        // enough that the reads timed short.
+        .map(|id| attach_late(&hub, &format!("SW2-{id}"), receiver(0)))
         .collect();
     let mut m = model();
     m.units = ["A", "B", "C", "D"].iter().map(|u| unit(u, "tx")).collect();
@@ -872,8 +908,7 @@ fn wp_sw2x_late_applies_are_reported_late() {
     }];
     hub.system_set_model(m).unwrap();
     let r = hub.system_apply_scene("two", Role::Admin).unwrap();
-    // 8 writes of 100 ms are 800 ms; the estimate (10 ms a write at least, 50 ms
-    // of margin, at 96 kHz) covers about 420 ms of a 48 kHz counter.
+    // Every write waited for its frame to pass: the units say "late".
     let late = r.writes.iter().filter(|w| w.result == "late").count();
     assert!(late > 0, "{:?}", r.writes);
     assert!(
