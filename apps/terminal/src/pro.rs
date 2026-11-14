@@ -117,15 +117,55 @@ pub(crate) fn open(target: &Target, stores: &Stores) -> Result<Opened, u8> {
     })
 }
 
+// -- WP TMCOREF -- (review tmcore F1)
+/// [`open`] for a command that writes to the device: a locked device is
+/// unlocked first with the PIN given (`DSPI_INSTALLER_PIN`, `--installer-pin
+/// -`), or, with `prompt`, asked for at the terminal (no echo).
+pub(crate) fn open_writing(target: &Target, stores: &Stores, prompt: bool) -> Result<Opened, u8> {
+    let pins = crate::core_route::PinSource::for_this_command()?;
+    let opened = open(target, stores)?;
+    crate::core_route::unlock_up_front(&opened.core, &pins, prompt)?;
+    Ok(opened)
+}
+
 /// Say why a core call failed, in the notice table's words where it has a
 /// row of its own, and the exit code a script branches on.
 pub(crate) fn fail(e: &DspiError) -> u8 {
+    // -- WP TMCOREF -- the lock's refusal: its banner, and the way this
+    // Terminal takes the PIN
+    if let DspiError::InstallerLock { code, .. } = e
+        && (code == "locked" || code == "hub")
+    {
+        eprintln!(
+            "{COMMAND}: {}",
+            dspi_core::notice_for_key(dspi_core::LOCK_BANNER_NOTICE.into(), String::new()).reason
+        );
+        eprintln!(
+            "      {}",
+            crate::core_route::PinSource::action_for_this_command()
+        );
+        return error_exit(e);
+    }
     eprintln!("{COMMAND}: {e}");
     let notice = dspi_core::notice_for(e.clone());
     if explained(&notice.key) && !notice.action.is_empty() {
         eprintln!("      {}", notice.action);
     }
     error_exit(e)
+}
+
+// -- WP TMCOREF -- (review tmcore F3)
+/// [`fail`], and with `--json` the refusal as `{ok: false, error, noticeKey}`
+/// on standard output.
+pub(crate) fn fail_json(e: &DspiError, json: bool) -> u8 {
+    if json {
+        let n = dspi_core::notice_for(e.clone());
+        println!(
+            "{}",
+            json!({ "ok": false, "error": e.to_string(), "noticeKey": n.key })
+        );
+    }
+    fail(e)
 }
 
 /// The notices whose action line adds to the error's own words.
@@ -747,7 +787,8 @@ pub(crate) fn default_blocks(volume: bool, hardware: bool) -> u32 {
 /// Import a whole-device document through the core: by block, with a
 /// preview, a confirmation, and a way back when guarded.
 pub(crate) fn import(target: &Target, text: String, plan: &CoreImport, json: bool) -> u8 {
-    let opened = match open(target, &Stores::default_dirs()) {
+    // -- WP TMCOREF -- a write: the installer's PIN when locked
+    let opened = match open_writing(target, &Stores::default_dirs(), !plan.preview) {
         Ok(o) => o,
         Err(c) => return c,
     };
@@ -790,16 +831,23 @@ pub(crate) fn import_on(
         // A guarded apply has its own way back: no token (P1TK).
         return match core.apply_guarded_import(text, options, u32::MAX, secs) {
             Ok(g) => guarded(core, g, json),
-            Err(e) => fail(&e),
+            Err(e) => fail_json(&e, json), // -- WP TMCOREF --
         };
     }
     if let Err(c) = confirmed(plan.yes, "Apply these changes to the device?") {
         return c;
     }
     let token = core.confirm_token(dspi_core::ConfirmOp::ConfigImport);
-    let done = match reply(&core.config_import_confirmed(text, options, u32::MAX, Some(token))) {
+    let answer = core.config_import_confirmed(text, options, u32::MAX, Some(token));
+    let done = match reply(&answer) {
         Ok(v) => v,
-        Err(c) => return c,
+        Err(c) => {
+            // -- WP TMCOREF -- the core's refusal, `ok: false`, on stdout too
+            if json {
+                println!("{answer}");
+            }
+            return c;
+        }
     };
     if json {
         println!("{done}");

@@ -16,7 +16,7 @@ use dspi_tui::shell::connect::{Target, printable};
 use serde_json::{Value, json};
 
 use super::{
-    Args, Stores, fail, guard_choice, guard_on_stdin, interactive, open, over_dlink, print_diff,
+    Args, Stores, fail, guard_choice, guard_on_stdin, interactive, over_dlink, print_diff,
     read_text, reply, stdin_answers, usage, write_text,
 };
 use crate::exit;
@@ -29,7 +29,7 @@ const SNAPSHOT_USAGE: &str = "snapshot takes save NAME [--note TEXT], list, reca
 pub(crate) fn cmd_snapshot(target: &Target, flags: &[&str], json: bool) -> u8 {
     let args = match Args::parse(
         flags.get(1..).unwrap_or_default(),
-        &["--note", "--name", "--guard"],
+        &["--note", "--name", "--guard", crate::core_route::PIN_FLAG],
         &["--no-guard"],
     ) {
         Ok(a) => a,
@@ -52,7 +52,8 @@ pub(crate) fn cmd_snapshot(target: &Target, flags: &[&str], json: bool) -> u8 {
         },
         _ => None,
     };
-    let opened = match open(target, &Stores::default_dirs()) {
+    // -- WP TMCOREF -- a recall writes: the installer's PIN when locked
+    let opened = match super::open_writing(target, &Stores::default_dirs(), verb == "recall") {
         Ok(o) => o,
         Err(c) => return c,
     };
@@ -314,7 +315,11 @@ const AB_USAGE: &str = "ab takes [A] B (snapshots; with only B, the device now i
 
 /// `uconsole ab [A] B [--keep a|b]`.
 pub(crate) fn cmd_ab(target: &Target, flags: &[&str], json: bool) -> u8 {
-    let args = match Args::parse(flags.get(1..).unwrap_or_default(), &["--keep"], &[]) {
+    let args = match Args::parse(
+        flags.get(1..).unwrap_or_default(),
+        &["--keep", crate::core_route::PIN_FLAG],
+        &[],
+    ) {
         Ok(a) => a,
         Err(e) => return usage(&e),
     };
@@ -328,7 +333,8 @@ pub(crate) fn cmd_ab(target: &Target, flags: &[&str], json: bool) -> u8 {
         Some(Some(side)) => Some(side),
         None => None,
     };
-    let opened = match open(target, &Stores::default_dirs()) {
+    // -- WP TMCOREF -- the toggle writes: the installer's PIN when locked
+    let opened = match super::open_writing(target, &Stores::default_dirs(), true) {
         Ok(o) => o,
         Err(c) => return c,
     };

@@ -1053,7 +1053,7 @@ pub use lock::{
 };
 // -- WP P1EFIX --
 pub use lock::LOCK_BANNER_NOTICE;
-pub(crate) use lock::{LockScope, lock_check};
+pub(crate) use lock::{LockScope, lock_check, lock_check_any}; // -- WP TMCOREF -- lock_check_any
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]

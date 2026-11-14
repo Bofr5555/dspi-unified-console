@@ -190,6 +190,10 @@ impl DspiCore {
 
     /// The body of `enter_bootloader` and its `_confirmed` form.
     fn enter_bootloader_with(&self, token: Option<&str>) -> Result<()> {
+        // -- WP TMCOREF -- (review tmcore F2) the installer lock holds it, in
+        // every client; checked before the token is spent. A read-only
+        // connection may still send it (§1.2), so not `writable_conn`.
+        crate::limits::lock_check_any(&mut self.lock())?;
         let ticket = self.confirm_gate(ConfirmOp::EnterBootloader, token)?;
         // -- WP CG24 --
         if self.lock().conn.is_none() {
@@ -203,14 +207,26 @@ impl DspiCore {
                 // -- WP P0W -- before the request: the device leaves with it
                 journal(&mut guard, "dev.bootloader", &[], Value::Trigger);
             }
+            // -- WP TMCOREF -- a refusal (a hub's `DENIED`) is an answer: the
+            // device did not reboot; anything else is expected while it does
+            let mut refused = None;
             if current
                 && let Some(conn) = guard.conn.as_mut()
                 && let Err(e) = conn.get_upto(op::REQ_ENTER_BOOTLOADER, 0, 1)
             {
-                log::debug!("enter_bootloader: {e} (expected while the device reboots)");
+                if matches!(e, DspiError::Denied | DspiError::InstallerLock { .. }) {
+                    refused = Some(e);
+                } else {
+                    log::debug!("enter_bootloader: {e} (expected while the device reboots)");
+                }
             }
-            current
+            (current, refused)
         };
+        let (current, refused) = current;
+        if let Some(e) = refused {
+            self.release_device_lock(lock);
+            return Err(e);
+        }
         if !current {
             self.release_device_lock(lock);
             return Err(DspiError::Disconnected);

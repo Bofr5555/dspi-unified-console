@@ -492,7 +492,7 @@ fn import_preset(target: &Target, text: &str, path: &str, flags: &[&str], json: 
         say(
             false,
             &json!({
-                "ok": true, "path": path, "format": "preset", "dryRun": session.dry_run,
+                "ok": report.refused.is_empty(), "path": path, "format": "preset", "dryRun": session.dry_run,
                 "channels": report.channels_applied, "bands": report.bands_applied,
                 "crossoverBands": report.crossover_bands_applied,
                 "crosspoints": report.crosspoints_applied,
@@ -511,7 +511,13 @@ fn import_preset(target: &Target, text: &str, path: &str, flags: &[&str], json: 
             say(false, line);
         }
     }
-    exit::OK
+    // -- WP TMCOREF -- (review tmcore F3) a refused write is a refusal; the
+    // lines above name each one ("Not applied: ...")
+    if report.refused.is_empty() {
+        exit::OK
+    } else {
+        exit::REJECTED
+    }
 }
 
 /// Apply a filter bank, band by band through the ordinary write path, so every
@@ -540,18 +546,26 @@ fn import_filters(
             .iter()
             .any(|s| crate::legacy_channel(&s.to_ascii_lowercase(), caps).is_some());
 
+    // -- WP TMCOREF -- (review tmcore F3) a refused write (the lock, a limit,
+    // the device) is a refusal: exit 3, `ok: false`, each one named
+    let code = if report.refused > 0 {
+        exit::REJECTED
+    } else {
+        exit::OK
+    };
     if json {
         say(
             false,
             &json!({
-                "ok": true, "path": path, "format": "filters", "dryRun": session.dry_run,
+                "ok": report.refused == 0, "path": path, "format": "filters", "dryRun": session.dry_run,
                 "bands": report.bands_applied, "crossoverBands": report.crossover_bands_applied,
                 "preamps": report.preamps_applied, "refused": report.refused,
+                "refusals": report.refusals,
                 "dropped": report.dropped, "mapped": mapped, "skipped": skipped,
             })
             .to_string(),
         );
-        return exit::OK;
+        return code;
     }
     say(
         false,
@@ -574,7 +588,11 @@ fn import_filters(
         ),
     );
     if report.refused > 0 {
-        say(false, &format!("Refused by the device: {}", report.refused));
+        // -- WP TMCOREF -- what refused each one, not only how many
+        say(false, &format!("Not applied: {} writes", report.refused));
+        for why in &report.refusals {
+            say(false, &format!("  {why}"));
+        }
     }
     if report.dropped > 0 {
         say(
@@ -601,7 +619,7 @@ fn import_filters(
             );
         }
     }
-    exit::OK
+    code
 }
 
 /// Place each section on a channel and apply it. Returns the report, the older

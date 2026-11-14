@@ -254,6 +254,8 @@ pub const APP_VERBS: &[(&str, &str)] = &[
     ("clear-favourites", "AutoEQ: clear favourites"),
     ("tube", "Tube Modeller"),
     ("subharm", "Subharmonic Synthesizer"),
+    // -- WP TMCOREF --
+    ("unlock", "Unlock with the installer's PIN"),
 ];
 
 /// The sub meter's poll period: the Console's 10 Hz
@@ -524,6 +526,9 @@ enum AppDialog {
     /// The `Copy to...` submenu, with the slot each row stands for.
     PresetCopyTo(Vec<u8>),
     PresetRename(u8),
+    // -- WP TMCOREF --
+    /// The installer's PIN, to unlock the installer lock.
+    Unlock,
     PresetClear(u8),
     PresetClearAll,
     /// The Console's Core 1 collision prompt; `index` is the output to enable
@@ -840,7 +845,7 @@ impl Live {
     /// Open `target` now, as a device switch does.
     fn open_target(&self, target: &Target) -> Result<connect::Connected, connect::OpenError> {
         match &self.opener {
-            Some(open) => open(target),
+            Some(open) => open(target, &connect::no_prompt),
             None => target.connect(&connect::no_prompt),
         }
     }
@@ -1209,7 +1214,7 @@ impl Live {
                 true
             }
             Err(e) => {
-                self.note(e.to_string());
+                self.note_write_error(session, &e); // -- WP TMCOREF --
                 false
             }
         }
@@ -1640,7 +1645,7 @@ impl Live {
                         self.echo(dspi_cmd::format(&cmd, &self.ctx));
                         self.refresh(session);
                     }
-                    Err(e) => self.note(e.to_string()),
+                    Err(e) => self.note_write_error(session, &e), // -- WP TMCOREF --
                 }
             }
             dspi_cmd::Command::Verb { name, .. } => match name.as_str() {
@@ -1690,6 +1695,8 @@ impl Live {
                 }
                 Err(m) => self.note(m),
             },
+            // -- WP TMCOREF --
+            "unlock" => self.ask_unlock(session),
             "device" => self.open_device_picker(),
             "subharm" => self.open_tool(Tool::Subharm),
             "autoeq" => match args.first().copied() {
@@ -2307,6 +2314,44 @@ impl Live {
         self.shell.open_settings(screen);
     }
 
+    // -- WP TMCOREF -- (review tmcore F1)
+    /// Ask for the installer's PIN (never drawn), when the session's route
+    /// has a lock to open.
+    fn ask_unlock(&mut self, session: &Session) {
+        if !session.is_routed() {
+            self.note("Nothing here is locked by an installer.");
+            return;
+        }
+        self.dialog = Some((
+            AppDialog::Unlock,
+            Dialog::secret(
+                "Unlock",
+                "The installer's PIN or recovery code. It unlocks this DSPi here until the \
+                 connection ends.",
+                "PIN",
+            ),
+        ));
+    }
+
+    // -- WP TMCOREF --
+    /// Say why a write failed, with the route's action line; a write the
+    /// installer lock refused offers the unlock prompt.
+    fn note_write_error(&mut self, session: &Session, e: &dspi_session::WriteError) {
+        match e {
+            dspi_session::WriteError::Routed { action, kind, .. } => {
+                if action.is_empty() {
+                    self.note(e.to_string());
+                } else {
+                    self.note(format!("{e} {action}"));
+                }
+                if *kind == dspi_session::RouteFailure::Locked && self.dialog.is_none() {
+                    self.ask_unlock(session);
+                }
+            }
+            _ => self.note(e.to_string()),
+        }
+    }
+
     fn finish_dialog(&mut self, session: &mut Session, kind: AppDialog, outcome: DialogOutcome) {
         self.flush_writes(session, true);
         match (kind, outcome) {
@@ -2329,6 +2374,12 @@ impl Live {
             (AppDialog::Unsaved { then }, DialogOutcome::Button(1)) => {
                 self.run_pending(session, then)
             }
+            // -- WP TMCOREF --
+            (AppDialog::Unlock, DialogOutcome::Text(pin)) => match session.unlock(&pin) {
+                Some(Ok(m)) => self.note(m),
+                Some(Err(m)) => self.note(m),
+                None => self.note("Nothing here is locked by an installer."),
+            },
             (AppDialog::Rename { channel }, DialogOutcome::Text(name)) => {
                 self.set(session, "ch.name", &[channel as u8], Value::Text(name));
                 // The detail region names the channel in its title, so it has

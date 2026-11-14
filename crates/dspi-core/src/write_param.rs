@@ -543,7 +543,13 @@ impl DspiCore {
     /// An effects parameter through its `set_*_param`, read back from the
     /// effect's table in the mirror.
     fn write_fx(&self, fx: Fx, id: u8, output: u8, v: &Value, k: Kind) -> Answer {
-        let x = num(v)?;
+        // -- WP TMCOREF -- a bit-mask parameter (`sub.mask`, `tube.mask`) comes
+        // as the registry's kind, a mask; it fits an f32 exactly (16 bits)
+        #[allow(clippy::cast_precision_loss)]
+        let x = match v {
+            Value::Mask(m) if *m <= 0x00FF_FFFF => *m as f32,
+            v => num(v)?,
+        };
         match fx {
             Fx::Psybass => self.set_psybass_param(id, x)?,
             Fx::Upmix => self.set_upmix_param(id, x)?,
@@ -1099,6 +1105,18 @@ mod tests_wp_cg32 {
             ParamValue::Choice(2),
         ] {
             assert_eq!(ParamValue::from(Value::from(v.clone())), v);
+        }
+    }
+
+    // -- WP TMCOREF --
+    /// A bit-mask effect parameter takes its registry kind, a mask (a
+    /// `.dspipreset` import through the Terminal's routed session sends it so).
+    #[test]
+    fn wp_tmcoref_a_mask_effect_parameter_takes_a_mask() {
+        let core = demo();
+        for path in ["sub.mask", "tube.mask"] {
+            let back = put(&core, path, &[], ParamValue::Mask(0b11)).unwrap();
+            assert_eq!(back, ParamValue::Mask(0b11), "{path}");
         }
     }
 }

@@ -1868,8 +1868,19 @@ fn apply_band(
         gain_db: b.gain,
         qp: Some(b.qp),
     };
+    // -- WP TMCOREF -- (review tmcore F3) a refused band is named with why
+    let at = format!("eq [{channel}, band {}]", u16::from(band) + 1);
     match session.write_band(&packet) {
-        Ok(Outcome::Rejected { .. }) | Err(_) => None,
+        Ok(Outcome::Rejected { .. }) => {
+            report
+                .refused
+                .push(format!("{at} (the device kept another value)"));
+            None
+        }
+        Err(e) => {
+            report.refused.push(format!("{at} ({e})"));
+            None
+        }
         Ok(_) => Some(()),
     }
 }
@@ -3680,6 +3691,9 @@ pub struct FilterReport {
     pub refused: usize,
     /// Bands past what this device has, and crossover bands on an input.
     pub dropped: usize,
+    // -- WP TMCOREF --
+    /// Each refused write, with its reason (`refused` counts them).
+    pub refusals: Vec<String>,
 }
 
 /// Apply one channel's filters to unified channel `channel`, through the
@@ -3695,18 +3709,25 @@ pub fn apply_filter_channel(
     if let Some(db) = filters.preamp_db {
         if is_output {
             report.dropped += 1;
-        } else if session.write("pre", &[channel], Value::Float(db)).is_ok() {
-            report.preamps_applied += 1;
         } else {
-            report.refused += 1;
+            match session.write("pre", &[channel], Value::Float(db)) {
+                Ok(_) => report.preamps_applied += 1,
+                Err(e) => {
+                    report.refused += 1;
+                    // -- WP TMCOREF -- the reason, not only the count
+                    report.refusals.push(format!("pre [{channel}] ({e})"));
+                }
+            }
         }
     }
     // A filter import counts a refused band in `refused`; the band's NaN fields
     // need no second report there.
+    // -- WP TMCOREF -- each band's refusal keeps its reason
+    let mut why = ApplyReport::default();
     for (i, b) in filters.peq.iter().enumerate() {
         if i >= caps.max_bands as usize {
             report.dropped += 1;
-        } else if apply_band(session, &mut ApplyReport::default(), channel, i as u8, b).is_some() {
+        } else if apply_band(session, &mut why, channel, i as u8, b).is_some() {
             report.bands_applied += 1;
         } else {
             report.refused += 1;
@@ -3717,7 +3738,7 @@ pub fn apply_filter_channel(
             report.dropped += 1;
         } else if apply_band(
             session,
-            &mut ApplyReport::default(),
+            &mut why,
             channel,
             CROSSOVER_FIRST_BAND + i as u8,
             b,
@@ -3729,9 +3750,22 @@ pub fn apply_filter_channel(
             report.refused += 1;
         }
     }
+    report.refusals.append(&mut why.refused);
 }
 
 // ------------------------------------------------------------ control surfaces
+
+// -- WP TMCOREF --
+/// Whether a control-surface write was refused by the link before it was sent
+/// (`DENIED`: the console core's installer lock, a hub's role or lock).
+fn refused_by_link(e: &ApplyError) -> bool {
+    use crate::surfaces::SurfaceError as S;
+    use dspi_transport::TransportError as T;
+    matches!(
+        e,
+        ApplyError::Transport(T::Denied(_)) | ApplyError::Surfaces(S::Transport(T::Denied(_)))
+    )
+}
 
 /// `kind` of a [`ControlSurfaceDocument`].
 pub const CS_DOCUMENT_KIND: &str = "dspi-control-surfaces";
@@ -4240,6 +4274,13 @@ pub fn apply_control_surfaces(
                     .refused
                     .push(format!("{what}: {}", explain_status(status)));
                 Some(false)
+            }
+            // -- WP TMCOREF -- refused before it was sent (the installer
+            // lock, a hub's role): a refusal, not a failed link; nothing more
+            // will pass, so the import stops here too
+            Err(e) if refused_by_link(&e) => {
+                report.refused.push(format!("{what}: {e}"));
+                None
             }
             Err(e) => {
                 report.failed = Some(format!("{what}: {e}"));

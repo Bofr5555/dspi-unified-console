@@ -141,6 +141,8 @@ fn main() -> ExitCode {
 
     // Where the device is comes off first, so the rest reads the same on every
     // link: `uconsole --demo dump` and `uconsole dump --demo` are one command.
+    // -- WP TMCOREF -- the writing commands find `--installer-pin` here
+    let _ = core_route::COMMAND_FLAGS.set(args.clone());
     let (target, flags) = match parse_target(&flags) {
         Ok(parsed) => parsed,
         Err(e) => {
@@ -1588,8 +1590,24 @@ fn cmd_ext(target: &Target, args: &[&str], json: bool, word: Option<&str>) -> u8
         }
     };
 
+    // -- WP TMCOREF -- (review tmcore F4) a core-voltage request goes through
+    // the core's typed `core_vreg_op`: the installer lock and the history
+    // apply; the word rule (CG14) is the same function's
+    if let Do::VregOp(op) = action {
+        return match core_route::vreg_op(target, op, word, &mut prompt_overvolt_word) {
+            Ok(()) => {
+                if json {
+                    println!("{{\"ok\":true}}");
+                } else {
+                    println!("sent {op:?}; read `{COMMAND} ext vreg` to confirm");
+                }
+                exit::OK
+            }
+            Err(c) => c,
+        };
+    }
     // -- WP TMCORE -- the pair map is written through the console core (its
-    // lock); the voltage keeps its own path and word (CG14)
+    // lock)
     let opened = if matches!(action, Do::MapWrite(_)) {
         connect_written(target, &[])
     } else {
@@ -1673,7 +1691,11 @@ fn cmd_ext(target: &Target, args: &[&str], json: bool, word: Option<&str>) -> u8
             eprintln!("{COMMAND}: {e}");
             exit::USAGE
         }
-        Err(ExtError::Transport(e)) => fail(e),
+        Err(ExtError::Transport(e)) => {
+            let code = fail(e.clone());
+            say_raw_lock(&e); // -- WP TMCOREF --
+            code
+        }
     }
 }
 
@@ -2043,6 +2065,7 @@ fn raw_out(target: &Target, args: &[&str], json: bool) -> u8 {
         }
         Err(e) => {
             eprintln!("{COMMAND}: {e}");
+            say_raw_lock(&e); // -- WP TMCOREF --
             transfer_exit(&e)
         }
     }
@@ -2095,6 +2118,7 @@ fn raw_war(target: &Target, args: &[&str], json: bool) -> u8 {
         }
         Err(e) => {
             eprintln!("{COMMAND}: {e}");
+            say_raw_lock(&e); // -- WP TMCOREF --
             transfer_exit(&e)
         }
     }
@@ -2167,7 +2191,7 @@ fn cmd_completions(args: &[&str]) -> u8 {
 fn cmd_run(target: &Target, flags: &[&str], json: bool) -> u8 {
     let args = positional_all(flags);
     // -- WP TMCORE -- the write goes through the console core
-    let mut s = match connect_written(target, flags) {
+    let mut s = match connect_written_lazily(target, flags) {
         Ok(s) => s,
         Err(c) => return c,
     };
@@ -2202,6 +2226,11 @@ fn force(flags: &[&str]) -> bool {
 /// which is the point: a hundred `eq` lines against a fresh connection each
 /// time would spend all of its time probing.
 fn cmd_script(target: &Target, path: Option<&str>, flags: &[&str], json: bool) -> u8 {
+    // -- WP TMCOREF -- `--installer-pin -`: the PIN is standard input's first
+    // line, read before a script on standard input is
+    if let Err(c) = core_route::PinSource::for_this_command() {
+        return c;
+    }
     let text = match path {
         Some(p) => match std::fs::read_to_string(p) {
             Ok(t) => t,
@@ -2226,7 +2255,7 @@ fn cmd_script(target: &Target, path: Option<&str>, flags: &[&str], json: bool) -
     }
 
     // -- WP TMCORE -- every line's write goes through the console core
-    let mut s = match connect_written(target, flags) {
+    let mut s = match connect_written_lazily(target, flags) {
         Ok(s) => s,
         Err(c) => return c,
     };
@@ -2582,7 +2611,7 @@ fn positional_all(flags: &[&str]) -> Vec<String> {
             skip = false;
             continue;
         }
-        if *f == "--device" || *f == "--word" {
+        if *f == "--device" || *f == "--word" || *f == core_route::PIN_FLAG {
             skip = true;
             continue;
         }
@@ -2603,7 +2632,7 @@ fn positional<'a>(flags: &'a [&'a str]) -> Vec<&'a str> {
             skip = false;
             continue;
         }
-        if *f == "--device" || *f == "--word" {
+        if *f == "--device" || *f == "--word" || *f == core_route::PIN_FLAG {
             skip = true;
             continue;
         }
@@ -2625,13 +2654,48 @@ fn connect(target: &Target) -> Result<Session, u8> {
 /// core, every write through it (`core_route`). A dangerous write asks on a
 /// terminal, and takes `--yes` in a script.
 fn connect_written(target: &Target, flags: &[&str]) -> Result<Session, u8> {
-    core_route::connect_routed(target, core_route::Confirm::for_command(yes(flags)))
+    // -- WP TMCOREF -- (review tmcore F1) the installer's PIN, P1TM's way;
+    // every write of these commands needs it when locked, so a person at the
+    // terminal is asked up front
+    let pins = core_route::PinSource::for_this_command()?;
+    core_route::connect_routed(
+        target,
+        core_route::Confirm::for_command(yes(flags)),
+        pins,
+        true,
+    )
+}
+
+// -- WP TMCOREF --
+/// [`connect_written`] for `set`, `eq` and scripts: a person at the terminal
+/// is asked for the PIN only when a write meets the lock (volume, mute and a
+/// preset recall never ask).
+fn connect_written_lazily(target: &Target, flags: &[&str]) -> Result<Session, u8> {
+    let pins = core_route::PinSource::for_this_command()?;
+    core_route::connect_routed(
+        target,
+        core_route::Confirm::for_command(yes(flags)),
+        pins,
+        false,
+    )
 }
 
 // -- WP TMCORE --
 /// `--yes`: the dangerous writes of this command are confirmed.
 fn yes(flags: &[&str]) -> bool {
     flags.contains(&"--yes")
+}
+
+// -- WP TMCOREF --
+/// After a transfer the core's lock refused on the raw path: how to give the
+/// installer's PIN.
+fn say_raw_lock(e: &TransportError) {
+    if let Some(action) = core_route::PinSource::for_this_command()
+        .ok()
+        .and_then(|p| core_route::raw_lock_action(e, &p))
+    {
+        eprintln!("      {action}");
+    }
 }
 
 // -- WP TMCORE --
@@ -2666,7 +2730,9 @@ fn write_exit(e: &dspi_session::WriteError) -> u8 {
         // -- WP TMCORE -- the console core's refusal or failure
         W::Routed { kind, .. } => match kind {
             dspi_session::RouteFailure::Input => exit::USAGE,
-            dspi_session::RouteFailure::Refused => exit::REJECTED,
+            dspi_session::RouteFailure::Refused | dspi_session::RouteFailure::Locked => {
+                exit::REJECTED
+            }
             dspi_session::RouteFailure::NoDevice => exit::NO_DEVICE,
             dspi_session::RouteFailure::Transport => exit::TRANSPORT,
         },

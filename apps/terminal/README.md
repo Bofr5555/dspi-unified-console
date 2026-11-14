@@ -148,7 +148,7 @@ uconsole -f evening.dspi              # a script, one command per line
 
 uconsole autoeq search hd600          # headphone corrections
 uconsole autoeq rebuild --yes         # download the profiles from GitHub again
-uconsole undo                         # put back what the last change replaced
+uconsole -f tune.dspi                 # a script; `undo` in it steps back one of its own changes
 uconsole raw 0x87 41                  # any opcode, hex-dumped
 uconsole completions zsh              # shell completion
 ```
@@ -172,8 +172,66 @@ past this. Success means the board came back running the image's version.
 
 Every command takes `--json` for machine-readable output, `--dry-run` to change
 nothing, `--quiet`, and `--device <serial>` to pick a unit. Exit codes
-distinguish bad input (1) from no device (2) from a write the device refused
-(3) from a transport failure (4). `uconsole --help` lists every command and option.
+distinguish bad input (1) from no device (2) from a refused write (3) from a
+transport failure (4). `uconsole --help` lists every command and option.
+
+Exit code 3 means nothing (or not everything) was written, and trying again
+unchanged will not help:
+
+- the device kept another value, or refused the request;
+- the write is outside this console's limits profile (`uconsole limits`), in the
+  core's words;
+- the installer lock refused it ("Locked by the installer: ..."); give the
+  installer's PIN, below;
+- a dangerous write was not confirmed (see `--yes`);
+- an import, `import` of filters or `cs import` had writes refused: `--json` says
+  `"ok": false`, and each refused write is named with its reason.
+
+**Every write goes through the console core.** `set`, `eq`, `undo`/`redo`,
+scripts, `raw out`/`war`, `ext xfeed-map`, `ext vreg`, the imports, `cs import`,
+`autoeq apply` and the interface (the TUI) all write through it, as the other
+consoles do, so the limits profile, the installer lock and the confirmation tokens
+apply to them.
+
+**Dangerous writes need `--yes` in a script.** A preset save or delete
+(`preset.save`, `preset.delete`), `dev.save`, `dev.save.io`, a factory reset
+(`dev.reset`) and the bootloader (`dev.bootloader`) ask y/N on a terminal. In a
+script add `--yes`; without it they exit 3 and nothing is sent.
+
+**The installer's PIN.** While this console's (or the hub's) installer lock is
+on, only volume, mute and a preset recall are written. With the PIN, every
+writing command goes through: `DSPI_INSTALLER_PIN=... uconsole set ...`, or
+`--installer-pin -` with the PIN as a line of standard input (for a script on
+standard input, its first line), or the prompt on a terminal (nothing is echoed).
+A PIN is never taken on the command line. The unlock lasts for that one command.
+In the interface, `:unlock` (or the prompt a locked write offers) unlocks it until
+the connection ends.
+
+**`set --json`'s `outcome`.** The object is still `{path, value, outcome}`. For a
+number, `outcome` is now `Confirmed(<the value the core holds>)`, after its clamp
+and its rounding (`Confirmed(Float(-2.0))` for `-2.03`), where it used to be the
+device's read-back. An action is `Triggered`, a dry run `Accepted`, and a toggle
+or choice that did not take is still `Rejected` with exit code 3.
+
+**`undo` in a one-shot command.** Each `uconsole` command is its own process with
+a fresh history, so `uconsole undo` on its own has nothing to undo and says so.
+`undo` and `redo` in a script step back through that script's own changes; the
+interface keeps the history for as long as it is open, and there a compound edit
+(a linked pair, Clear All, an import) is one undo step.
+
+#### Moving scripts to this version
+
+- A script line that saves or deletes a preset, saves (`dev.save`,
+  `dev.save.io`), resets or enters the bootloader: add `--yes` to the command.
+- A device with this console's installer PIN set and a lock on: give the PIN with
+  `DSPI_INSTALLER_PIN` or `--installer-pin -`, or the writes outside volume, mute
+  and presets exit 3.
+- A script that read `set --json`'s `outcome` as the device's read-back: it is now
+  the core's value after its clamp and rounding. Read the value back with
+  `uconsole get` if the device's own word is wanted.
+- An import that had writes refused used to exit 0; it now exits 3 with
+  `"ok": false`.
+- `ext vreg set` below the build default is refused (the core's range).
 
 ### Other ways to reach a device
 

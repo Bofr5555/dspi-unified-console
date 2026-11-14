@@ -110,7 +110,7 @@ The integrator documents are in [`docs/integrator/`](docs/integrator/)
 | Confirmation tokens | Dangerous calls (preset save, copy, delete, factory reset, import, firmware writes) run only with a token their confirmation minted | ✓ | ✓ | ✓ | ✓ for the import | ✓ (`--yes` mints it) |
 | Offline documents and templates | Open a `.dspipreset` with no device and edit it as one; generic templates (stereo, crossovers and the like) and build templates ship with the app, and your own can be saved | ✓ | ✓ | ✓ | ✓ | `open` (templates: not yet) |
 | Document diff and partial import | What a file would change, block by block, and an import of the chosen blocks (volume levels and hardware off unless chosen) | ✓ | ✓ | ✓ | ✓ | `diff`, `import --only`, `--preview` |
-| Undo groups | Compound edits (Clear All, a linked pair's preamp, Direct 1:1, Protect all outputs) are one undo step. Undoing Protect all leaves the limiters on, and every client says so | ✓ | ✓ | ✓ | not yet | ✓ (the TUI's compound edits, imports, `autoeq apply`) |
+| Undo groups | Compound edits (Clear All, a linked pair's preamp, Direct 1:1, Protect all outputs) are one undo step. Undoing Protect all leaves the limiters on, and every client says so | ✓ | ✓ | ✓ | not yet | ✓ in the TUI (compound edits, imports); a one-shot command is its own process, so `uconsole undo` has nothing to undo |
 | AutoEQ preview | A headphone profile's curve before it is applied, outputs' gain untouched by default, the suggested trim shown | ✓ | ✓ | ✓ | not yet | `autoeq preview`, `autoeq apply` |
 
 **Terminal commands** (`uconsole --help` lists them all; each one-shot command is one
