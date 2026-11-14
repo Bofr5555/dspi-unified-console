@@ -145,6 +145,10 @@ uconsole import - --dry-run --json < room.dspipreset
 uconsole cs export surfaces.json      # control-surface configuration
 uconsole cs import surfaces.json --save
 uconsole -f evening.dspi              # a script, one command per line
+uconsole usb-direct generate cinema.json --out usb-direct-cinema
+                                      # a USB-direct home theatre's PipeWire files,
+                                      # unit scripts and hub model (WP AUSB3; files only;
+                                      # docs/integrator/usb-direct-home-theater.md)
 
 uconsole autoeq search hd600          # headphone corrections
 uconsole autoeq rebuild --yes         # download the profiles from GitHub again

@@ -290,6 +290,10 @@ USB-direct block (DSPi-bofr `extension_channel_spec.md` 2.9, bofr-main ebdf538:
 (mode 1, rate lock) and, in mode 2 (phase lock), plays every USB sample D samples
 after it arrived, so every unit of one host plays sample-aligned.
 
+-- WP AUSB3 -- Setting one up (cables, hubs, isolators, the computer's PipeWire
+configuration, which `uconsole usb-direct generate` writes together with a model
+for the hub): [usb-direct-home-theater.md](usb-direct-home-theater.md).
+
 - **The model.** A unit with `"transport": "usb_direct"` has no `upstream`,
   `slots`, `hopDelayFrames` or `repeater`; `"usbMode"` (`off`, `rate_lock`,
   `phase_lock`) is the mode the alignment writes, absent: the unit's own is kept.
