@@ -139,6 +139,10 @@ QVariantMap HistoryController::describe(const QJsonObject &entry) {
     }
     QString title = labelOf(path);
     if (!where.isEmpty()) title += QStringLiteral(", ") + where.join(QStringLiteral(", "));
+    // -- WP P1QT2 -- the group it was part of (P1UG: Clear All, Direct 1:1, AutoEQ, ...)
+    const QString label = entry.value(QLatin1String("label")).toString();
+    //: A change made as part of a group: %1 the group ("Clear All"), %2 the change
+    if (!label.isEmpty()) title = QCoreApplication::translate("HistoryController", "%1: %2").arg(label, title);
     const QString before = valueText(entry.value(QLatin1String("before")), path);
     const QString after = valueText(entry.value(QLatin1String("after")), path);
     QString detail;

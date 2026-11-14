@@ -4,6 +4,7 @@
 #include <QAbstractListModel>
 #include <QByteArray>
 #include <QHash>
+#include <QJsonObject>
 #include <QObject>
 #include <QStringList>
 #include <QThreadPool>
@@ -35,6 +36,7 @@ struct AutoEqProfile {
     QString formFactor;   // "over-ear", "in-ear", "earbud"
     float preamp = 0;
     QVector<Band> bands;
+    QByteArray entry;   // -- WP P1QT2 -- the database's entry as JSON, for the core's preview and apply
     QString displayName() const;
 };
 
@@ -106,6 +108,15 @@ class AutoEqController : public QObject {
     Q_PROPERTY(double rebuildFraction READ rebuildFraction NOTIFY rebuildMoved)
     Q_PROPERTY(QString rebuildLine READ rebuildLine NOTIFY rebuildMoved)
     Q_PROPERTY(bool rebuildFinished READ rebuildFinished NOTIFY rebuildMoved)
+    // -- WP P1QT2 -- The channel pair a profile goes to (P1AQ: any pair):
+    // [{ title, left, right, outputs }] by wire channel (inputs first, then
+    // outputs), and the chosen one's index (inputs 1 and 2 first)
+    Q_PROPERTY(QVariantList pairs READ pairs NOTIFY pairsChanged)
+    Q_PROPERTY(int pair READ pair WRITE setPair NOTIFY pairsChanged)
+    // -- WP P1QT2 -- What the chosen profile would do to the pair, before Apply
+    // (dspi_autoeq_preview; nothing is sent): { profileId, curves: [{points,
+    // color}], gridDb, gridY, levelText, notes } or {} with none
+    Q_PROPERTY(QVariantMap preview READ preview NOTIFY previewChanged)
 public:
     AutoEqController(const AppContext &ctx, QObject *parent = nullptr);
     ~AutoEqController() override;
@@ -130,8 +141,17 @@ public:
     Q_INVOKABLE bool isFavourite(const QString &id) const;
     Q_INVOKABLE void flipFavourite(const QString &id);
     Q_INVOKABLE void forgetFavourites();
-    // The profile's preamp and bands on inputs 1 and 2, the rest of their bands flat
+    // The profile's preamp and bands on the chosen pair, the rest of their
+    // bands flat (-- WP P1QT2 -- the core's autoeq_apply: the state before
+    // kept as a snapshot, one undo step, held to the limits profile)
     Q_INVOKABLE void apply(const QString &id);
+    // -- WP P1QT2 --
+    QVariantList pairs() const;
+    int pair() const { return m_pair; }
+    void setPair(int index);
+    QVariantMap preview() const { return m_preview; }
+    // Asks the core what `id` would do to the chosen pair ("" clears it)
+    Q_INVOKABLE void requestPreview(const QString &id);
 
     // Update Database...: the dialog's text
     Q_INVOKABLE QString updateQuestionText() const;
@@ -166,6 +186,8 @@ signals:
     void canApplyChanged();
     void fileBusyChanged();
     void rebuildMoved();
+    void pairsChanged();     // -- WP P1QT2 --
+    void previewChanged();   // -- WP P1QT2 --
     // The Update Database dialog: the host shows it
     void updateRequested();
     // An alert after an update: `error` gives it the error look
@@ -185,6 +207,7 @@ private:
     void pollRebuild();
     void endRebuild(bool succeeded, const QString &status);
     void freeRebuild();
+    static QVariantMap previewView(const QJsonObject &reply);   // -- WP P1QT2 --
 
     AppContext m_ctx;
     AutoEqProfileModel *m_model;
@@ -203,6 +226,11 @@ private:
     double m_rebuildFraction = 0;
     QString m_rebuildLine;
     bool m_lastCanApply = false;
+    int m_pair = 0;              // -- WP P1QT2 --
+    QVariantMap m_preview;       // -- WP P1QT2 --
+    QString m_previewId;         // -- WP P1QT2 --
+    quint64 m_previewSeq = 0;    // -- WP P1QT2 --
+    QVariantList m_pairsShown;   // -- WP P1QT2 --
 };
 
 #endif // AUTOEQCONTROLLER_H

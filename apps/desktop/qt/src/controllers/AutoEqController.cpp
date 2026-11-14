@@ -2,11 +2,20 @@
 // a profile, and updating the database (rebuild, import, reset)
 #include "AutoEqController.h"
 
+#include "Core.h"             // -- WP P1QT2 --
+#include "CoreWorker.h"       // -- WP P1QT2 --
+#include "NoticeCenter.h"     // -- WP P1QT2 --
+#include "Snapshot.h"         // -- WP P1QT2 --
+#include "ToolsController.h"  // -- WP P1QT2 --
+
 #include "DeviceModel.h"
 #include "FilesController.h"
 #include "Shell.h"
 
 #include <QCoreApplication>
+#include <algorithm>
+#include <cmath>
+#include <memory>
 #include <QDateTime>
 #include <QDir>
 #include <QEventLoop>
@@ -28,8 +37,6 @@ static const Registrar::Window autoEqWindow("autoeq.browse", "AutoEqWindow");
 
 namespace {
 const char kFavorites[] = "autoeq/favorites";
-// The input pair a profile goes to (the Mac's master left and right)
-constexpr int kProfileChannels[] = { 0, 1 };
 // How long the finished rebuild stays on screen before its alert
 constexpr int kDoneShownMs = 1500;
 constexpr int kPollMs = 100;
@@ -181,6 +188,13 @@ AutoEqController::AutoEqController(const AppContext &ctx, QObject *parent)
     ctx.shell->addHandler(QStringLiteral("autoeq.clearFavorites"), this, [this] { forgetFavourites(); });
     ctx.shell->addHandler(QStringLiteral("autoeq.updateDatabase"), this, [this] { emit updateRequested(); });
     connect(ctx.device, &DeviceModel::snapshotApplied, this, [this] {
+        // -- WP P1QT2 -- the pairs follow the device (channel counts, names)
+        const QVariantList shown = pairs();
+        if (shown != m_pairsShown) {
+            m_pairsShown = shown;
+            if (m_pair >= shown.size()) m_pair = 0;
+            emit pairsChanged();
+        }
         if (canApply() == m_lastCanApply) return;
         m_lastCanApply = canApply();
         emit canApplyChanged();
@@ -239,6 +253,7 @@ AutoEqController::Loaded AutoEqController::load(const QString &path) {
         p.source = e.value(QLatin1String("source")).toString();
         p.formFactor = e.value(QLatin1String("formFactor")).toString();
         p.preamp = float(e.value(QLatin1String("preamp")).toDouble());
+        p.entry = QJsonDocument(e).toJson(QJsonDocument::Compact);   // -- WP P1QT2 --
         for (const QJsonValue &b : e.value(QLatin1String("filters")).toArray()) {
             const QJsonObject o = b.toObject();
             p.bands.append({ filterType(o.value(QLatin1String("type")).toString()),
@@ -326,26 +341,155 @@ void AutoEqController::forgetFavourites() { setFavouriteIds({}); }
 void AutoEqController::apply(const QString &id) {
     const auto it = m_byId.constFind(id);
     if (!m_profiles || it == m_byId.cend() || !canApply()) return;
-    const AutoEqProfile p = m_profiles->at(*it);
-    m_ctx.device->write(QStringLiteral("autoeq apply"), [p](FfiCore *c) {
-        bool ok = true;
-        for (const int ch : kProfileChannels) {
-            // Per input, not the global preamp, which trims every input
-            ok = dspi_set_input_preamp(c, uint8_t(ch), p.preamp) && ok;
-            for (int band = 0; band < BANDS_PER_CHANNEL; ++band) {
-                FilterParams f{};
-                if (band < p.bands.size()) {
-                    const AutoEqProfile::Band &b = p.bands.at(band);
-                    f = { b.type, false, b.freq, b.q, b.gain, 0.0f };
-                } else {
-                    // The bands past the profile go flat, so nothing stale stays
-                    f = { FILTER_FLAT, false, 1000.0f, 0.707f, 0.0f, 0.0f };
-                }
-                ok = dspi_set_filter(c, uint8_t(ch), uint8_t(band), f) && ok;
+    // -- WP P1QT2 -- the core's apply (P1AQ) on the chosen pair: the state
+    // before kept as a snapshot, one undo step, held to the limits profile.
+    // The outputs' gain is left alone by default; the trim is suggested.
+    const QVariantMap chosen = pairs().value(m_pair).toMap();
+    if (chosen.isEmpty()) return;
+    const QByteArray entry = m_profiles->at(*it).entry;
+    const auto left = uint8_t(chosen.value(QStringLiteral("left")).toInt());
+    const auto right = uint8_t(chosen.value(QStringLiteral("right")).toInt());
+    auto reply = std::make_shared<QJsonObject>();
+    m_ctx.device->write(
+        QStringLiteral("autoeq apply"),
+        [entry, left, right, reply](FfiCore *c) {
+            QByteArray buf(64 * 1024, '\0');
+            const uint32_t need = dspi_autoeq_apply(c, entry.constData(), left, right, -1, buf.data(), uint32_t(buf.size()));
+            if (need > 0 && need <= uint32_t(buf.size())) buf.truncate(int(need) - 1);
+            else buf.clear();
+            *reply = QJsonDocument::fromJson(buf).object();
+            return reply->value(QLatin1String("ok")).toBool();
+        },
+        [this, reply](bool) {
+            NoticeCenter *notices = Registrar::instance<NoticeCenter>();
+            if (!notices) return;
+            if (!reply->value(QLatin1String("ok")).toBool()) {
+                const QString key = reply->value(QLatin1String("noticeKey")).toString();
+                if (!key.isEmpty()) notices->postKey(key, reply->value(QLatin1String("error")).toString());
+                return;
             }
+            // What the core held or could not do, and the trim it suggests (its
+            // notes say so on outputs): a notice, never a modal
+            QStringList lines;
+            for (const char *f : { "held", "notes" })
+                for (const QJsonValue &v : reply->value(QLatin1String(f)).toArray())
+                    if (v.isString()) lines << v.toString();
+            lines.removeAll(QString());
+            if (!lines.isEmpty()) notices->post(lines.join(QLatin1Char('\n')));
+        });
+}
+
+// -- WP P1QT2 -- The pairs a profile can go to, by wire channel
+QVariantList AutoEqController::pairs() const {
+    QVariantList out;
+    const DspState *s = m_ctx.device->state();
+    if (!s) return out;
+    const int inputs = std::clamp(int(s->num_input_channels), 0, MAX_INPUTS);
+    const int outputs = m_ctx.device->numOutputs();
+    for (int i = 0; i + 1 < inputs; i += 2)
+        //: AutoEQ's channel pair: %1 and %2 are input numbers
+        out << QVariantMap{ { QStringLiteral("title"), tr("Inputs %1 and %2").arg(i + 1).arg(i + 2) },
+                            { QStringLiteral("left"), i }, { QStringLiteral("right"), i + 1 },
+                            { QStringLiteral("outputs"), false } };
+    const ToolsController *tools = Registrar::instance<ToolsController>();
+    for (int o = 0; o + 1 < outputs; o += 2) {
+        const QString a = tools ? tools->outputName(o) : QString::number(o + 1);
+        const QString b = tools ? tools->outputName(o + 1) : QString::number(o + 2);
+        //: AutoEQ's channel pair: %1 and %2 are output names
+        out << QVariantMap{ { QStringLiteral("title"), tr("Outputs: %1 and %2").arg(a, b) },
+                            { QStringLiteral("left"), inputs + o }, { QStringLiteral("right"), inputs + o + 1 },
+                            { QStringLiteral("outputs"), true } };
+    }
+    return out;
+}
+
+void AutoEqController::setPair(int index) {
+    if (index == m_pair || index < 0) return;
+    m_pair = index;
+    emit pairsChanged();
+    requestPreview(m_previewId);
+}
+
+void AutoEqController::requestPreview(const QString &id) {
+    m_previewId = id;
+    const quint64 seq = ++m_previewSeq;
+    const auto it = m_byId.constFind(id);
+    const QVariantMap chosen = pairs().value(m_pair).toMap();
+    if (id.isEmpty() || !m_profiles || it == m_byId.cend() || chosen.isEmpty() || !m_ctx.device->connected()) {
+        if (m_preview.isEmpty()) return;
+        m_preview.clear();
+        emit previewChanged();
+        return;
+    }
+    const QByteArray entry = m_profiles->at(*it).entry;
+    const auto left = uint8_t(chosen.value(QStringLiteral("left")).toInt());
+    const auto right = uint8_t(chosen.value(QStringLiteral("right")).toInt());
+    // Sends nothing: from the mirror alone, on the worker
+    m_ctx.core->worker()->call(
+        this,
+        [entry, left, right](FfiCore *c) {
+            return readSized([&](char *b, uint32_t n) { return dspi_autoeq_preview(c, entry.constData(), left, right, -1, b, n); }, 64 * 1024);
+        },
+        [this, seq, id](const QByteArray &bytes) {
+            if (seq != m_previewSeq) return;
+            m_preview = previewView(QJsonDocument::fromJson(bytes).object());
+            if (!m_preview.isEmpty()) m_preview.insert(QStringLiteral("profileId"), id);
+            emit previewChanged();
+        });
+}
+
+// The preview's curves for EffectGraph: x by log frequency from 20 Hz, y in
+// a range that holds them; the level line; the core's notes
+QVariantMap AutoEqController::previewView(const QJsonObject &o) {
+    if (!o.value(QLatin1String("ok")).toBool()) return {};
+    const QJsonArray channels = o.value(QLatin1String("channels")).toArray();
+    double lo = -12, hi = 12;
+    for (const QJsonValue &ch : channels)
+        for (const QJsonValue &v : ch.toObject().value(QLatin1String("curve")).toArray()) {
+            lo = std::min(lo, v.toDouble() - 3);
+            hi = std::max(hi, v.toDouble() + 3);
         }
-        return ok;
-    });
+    lo = std::max(lo, -40.0);
+    hi = std::min(hi, 40.0);
+    const double span = hi - lo;
+    auto yOf = [&](double db) { return std::clamp((db - lo) / span, 0.0, 1.0); };
+    auto xOf = [](double hz) { return (std::log10(hz) - std::log10(20.0)) / (std::log10(20000.0) - std::log10(20.0)); };
+    QVariantList curves;
+    for (int c = 0; c < channels.size() && c < 2; ++c) {
+        const QJsonArray curve = channels.at(c).toObject().value(QLatin1String("curve")).toArray();
+        // The second channel only when it differs from the first
+        if (c == 1 && curve == channels.at(0).toObject().value(QLatin1String("curve")).toArray()) break;
+        QVariantList pts;
+        const int n = int(curve.size());
+        for (int i = 0; i < n; ++i) {
+            // The core's points: MAGNITUDE_POINTS from 10 Hz to 20 kHz, log spaced
+            const double hz = std::pow(10.0, std::log10(10.0) + double(i) / std::max(1, n - 1) * (std::log10(20000.0) - std::log10(10.0)));
+            if (hz < 20.0) continue;
+            pts << xOf(hz) << yOf(curve.at(i).toDouble());
+        }
+        curves << QVariantMap{ { QStringLiteral("points"), pts }, { QStringLiteral("index"), c } };
+    }
+    QVariantList gridDb, gridY;
+    const double step = span > 40 ? 10 : 6;
+    for (double v = std::ceil(lo / step) * step; v <= hi; v += step) {
+        gridDb << int(v);
+        gridY << yOf(v);
+    }
+    QStringList notes;
+    for (const char *f : { "held", "notes" })
+        for (const QJsonValue &v : o.value(QLatin1String(f)).toArray())
+            if (v.isString()) notes << v.toString();
+    const QString target = o.value(QLatin1String("levelTarget")).toString();
+    const double level = channels.isEmpty() ? 0 : channels.at(0).toObject().value(QLatin1String("levelDb")).toDouble();
+    QString levelText;
+    if (target == QLatin1String("input_preamp"))
+        //: AutoEQ preview: %1 the inputs' preamp in dB
+        levelText = tr("Preamp on both inputs: %1 dB").arg(level, 0, 'f', 1);
+    else if (target == QLatin1String("output_gain"))
+        levelText = tr("Gain on both outputs: %1 dB").arg(level, 0, 'f', 1);
+    // `none` (outputs): the core's notes say the gain is kept and the trim it suggests
+    return { { QStringLiteral("curves"), curves }, { QStringLiteral("gridDb"), gridDb }, { QStringLiteral("gridY"), gridY },
+             { QStringLiteral("levelText"), levelText }, { QStringLiteral("notes"), notes.join(QLatin1Char('\n')) } };
 }
 
 // ---- Updating the database -------------------------------------------------------

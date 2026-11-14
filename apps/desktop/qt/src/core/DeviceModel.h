@@ -147,6 +147,10 @@ signals:
     // dspi_take_failure gives them; "dropped" when another device had opened
     // since the write was asked for, so it was not sent)
     void writeFinished(const QString &what, bool ok, const QString &code, const QString &message);
+    // -- WP P1QT2 -- A write the core refused, with the notice key of its
+    // reason (P1NT's table: `limit_exceeded`, `installer_lock.locked`, ...),
+    // so NoticeCenter can show it in the core's words
+    void writeRefused(const QString &what, const QString &noticeKey, const QString &message);
 
 private:
     struct PendingWrite;

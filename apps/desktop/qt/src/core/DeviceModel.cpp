@@ -293,6 +293,10 @@ void DeviceModel::post(const QString &what, std::function<bool(FfiCore *)> sette
             // -- WP QP16 --
             emit writeFinished(what, r.ok, r.ok ? QString() : reason->value(QStringLiteral("code")).toString(),
                                r.ok ? QString() : reason->value(QStringLiteral("error")).toString());
+            // -- WP P1QT2 --
+            if (!r.ok && reason->contains(QStringLiteral("noticeKey")))
+                emit writeRefused(what, reason->value(QStringLiteral("noticeKey")).toString(),
+                                  reason->value(QStringLiteral("error")).toString());
             for (const std::function<void(bool)> &d : pending->done) d(r.ok);
             track(-1);
         });

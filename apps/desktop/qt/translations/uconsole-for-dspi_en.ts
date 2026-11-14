@@ -222,6 +222,25 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Inputs %1 and %2</source>
+        <extracomment>AutoEQ&apos;s channel pair: %1 and %2 are input numbers</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Outputs: %1 and %2</source>
+        <extracomment>AutoEQ&apos;s channel pair: %1 and %2 are output names</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Preamp on both inputs: %1 dB</source>
+        <extracomment>AutoEQ preview: %1 the inputs&apos; preamp in dB</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gain on both outputs: %1 dB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Entries: %1</source>
         <translation type="unfinished"></translation>
     </message>
@@ -367,6 +386,22 @@ Choose an update method:</source>
     <message>
         <source>No headphones found matching &quot;%1&quot;</source>
         <extracomment>%1 is the search text</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply to</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The profile&apos;s response on the chosen channels</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Preview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select a headphone to see what it would do</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -561,6 +596,22 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     </message>
     <message>
         <source>Bessel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bypass All</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enable All</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clear All</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Link Inputs</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2174,7 +2225,7 @@ Do you wish to proceed?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Every band in this list will be reset to its default (flat) state. This cannot be undone.</source>
+        <source>Every band in this list will be reset to its default (flat) state. Edit &gt; Undo puts them back.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3784,6 +3835,11 @@ Groups are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>%1: %2</source>
+        <extracomment>A change made as part of a group: %1 the group (&quot;Clear All&quot;), %2 the change</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Stepped over a change that cannot be undone: %1</source>
         <extracomment>%1 names a change that cannot be undone (a preset load, an output switched on)</extracomment>
         <translation type="unfinished"></translation>
@@ -4362,6 +4418,181 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
 </context>
 <context>
+    <name>InstallerPage</name>
+    <message>
+        <source>Installer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connect a DSPi to set its limits and the installer&apos;s PIN.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unlock on the hub</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unlock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Installer PIN or recovery code</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>PIN or recovery code</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Limits</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Limits narrow what this DSPi may be set to from this console. A change applies at once; settings already outside a new limit are brought inside it, and what changed is shown.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Master volume at most</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>EQ boost at most, every band</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Protect all outputs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Every limiter on at -1 dBFS, the stereo pairs linked</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove All Limits</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Gain at most</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Limiter on, ceiling at most</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>High-pass kept, at or above</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>High-pass slope at least</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delay at least</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delay at most</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Installer&apos;s note</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shown to the people who use this system while it is locked.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Note</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>What this system is set up for</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Contact</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>How to reach the installer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Installer PIN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No PIN is set: nothing is locked and nothing asks for one. Set a PIN to lock this console&apos;s settings for everyday use; volume, mute and presets stay open.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>New PIN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>New PIN (4 to 64 characters)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>New PIN again</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The same again</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Set PIN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep the recovery code</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recovery code</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>I Have Written It Down</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unlocked with the recovery code. Set a new PIN: remove this one, then set another.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lock the settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>When locked, only volume, mute and presets can be changed on this console.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lock Now</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove PIN…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove the installer PIN?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing will be locked on this console any more, and the recovery code stops working. The limits stay.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove PIN</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>InterfacesPage</name>
     <message>
         <source>UART</source>
@@ -4736,6 +4967,25 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
 </context>
 <context>
+    <name>LimitsController</name>
+    <message>
+        <source>Out %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Limits profile</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>That did not work.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The two PINs are not the same.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>LinkBanner</name>
     <message>
         <source>Disconnect</source>
@@ -4849,6 +5099,26 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
     <message>
         <source>Apply</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>LockBanner</name>
+    <message>
+        <source>Locked by the installer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: only volume, mute and presets can be changed.</source>
+        <extracomment>The locked-user banner: %1 the lock&apos;s title (&quot;Locked by the installer&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Installer: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unlock…</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -5057,6 +5327,14 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Enable output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Direct 1:1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clear Routing</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -5928,6 +6206,14 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Change</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>NoticeCenter</name>
+    <message>
+        <source>%1: %2</source>
+        <extracomment>A notice from the core&apos;s table: %1 its title, %2 its reason</extracomment>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -7039,6 +7325,10 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>The hub puts them back too if this console goes away.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Time left: %1 s</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7698,6 +7988,46 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>DSPi Link</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Installer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Limits</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Installer PIN</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unlock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recovery code</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Maximum gain</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Limiter ceiling</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Master volume</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Installer&apos;s note</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -10437,6 +10767,11 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>No limiter on %1, above %2 dB of gain.</source>
+        <extracomment>PRO1 S2&apos;s warning row; %1 the outputs (&quot;Out 1, Out 2&quot;), %2 the gain (-10)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Not linked.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -10915,6 +11250,33 @@ This wiring is a board-level setting: it is stored on the device, survives prese
     </message>
     <message>
         <source>Try Again</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>UnlockDialog</name>
+    <message>
+        <source>Unlock on the hub</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unlock this console</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Installer PIN or recovery code</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>PIN or recovery code</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unlock</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

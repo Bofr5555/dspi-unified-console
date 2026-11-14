@@ -296,7 +296,8 @@ void ChannelController::writeBand(int channel, int band, bool crossover, const F
     ++m_revision;
     emit changed();
     const auto ch = uint8_t(channel), b = uint8_t(band);
-    const QString what = QStringLiteral("%1 band %2 %3").arg(crossover ? QStringLiteral("crossover") : QStringLiteral("filter")).arg(channel).arg(band);
+    const QString what = QStringLiteral("%1 band %2 %3").arg(crossover ? QStringLiteral("crossover") : QStringLiteral("filter")).arg(channel).arg(band)
+                         + m_groupTag;   // -- WP P1QT2 --
     apply(
         what,
         [ch, b, crossover, p](FfiCore *c) { return crossover ? dspi_set_crossover(c, ch, b, p) : dspi_set_filter(c, ch, b, p); },
@@ -398,16 +399,42 @@ void ChannelController::setCrossoverOrder(int channel, int band, int order) {
 void ChannelController::setAllBypassed(int channel, bool crossover, bool bypass) {
     if (!bypassSupported()) return;
     const int n = crossover ? XoBands : PeqBands;
-    for (int b = 0; b < n; ++b) {
-        const FilterParams p = current(channel, b, crossover);
-        if (p.filter_type == FILTER_FLAT || p.bypass == bypass) continue;
-        setBandBypass(channel, b, crossover, bypass);
-    }
+    // -- WP P1QT2 -- one undo step (P1UG)
+    grouped(bypass ? tr("Bypass All") : tr("Enable All"), [&] {
+        for (int b = 0; b < n; ++b) {
+            const FilterParams p = current(channel, b, crossover);
+            if (p.filter_type == FILTER_FLAT || p.bypass == bypass) continue;
+            setBandBypass(channel, b, crossover, bypass);
+        }
+    });
 }
 
 void ChannelController::clearBands(int channel, bool crossover) {
     const int n = crossover ? XoBands : PeqBands;
-    for (int b = 0; b < n; ++b) writeBand(channel, b, crossover, flatBand());
+    // -- WP P1QT2 -- Clear All is one undo step (P1UG)
+    grouped(tr("Clear All"), [&] {
+        for (int b = 0; b < n; ++b) writeBand(channel, b, crossover, flatBand());
+    });
+}
+
+// -- WP P1QT2 --
+void ChannelController::grouped(const QString &label, const std::function<void()> &writes) {
+    if (!writable() || !m_groupTag.isEmpty()) {   // no device, or nested: the outer group holds them
+        writes();
+        return;
+    }
+    const QByteArray l = label.toUtf8();
+    m_groupTag = QStringLiteral(" #group%1").arg(++m_groupSeq);
+    apply(QStringLiteral("undo group begin") + m_groupTag, [l](FfiCore *c) {
+        dspi_undo_group_begin(c, l.constData());
+        return true;
+    });
+    writes();
+    apply(QStringLiteral("undo group end") + m_groupTag, [](FfiCore *c) {
+        dspi_undo_group_end(c);
+        return true;
+    });
+    m_groupTag.clear();
 }
 
 // ---- Inputs ----------------------------------------------------------------
@@ -420,12 +447,15 @@ double ChannelController::preamp(int input) const {
 void ChannelController::setPreamp(int input, double db) {
     if (!writable() || input < 0 || input >= numInputs() || !std::isfinite(db)) return;
     const float v = float(qBound(-60.0, db, m_preampMaxDb));
-    // One write per channel of a linked pair, never the all-inputs preamp
-    for (int ch : { input, linkedPartner(input) }) {
-        if (ch < 0) continue;
-        const auto in = uint8_t(ch);
-        apply(QStringLiteral("input preamp %1").arg(ch), [in, v](FfiCore *c) { return dspi_set_input_preamp(c, in, v); });
+    // -- WP P1QT2 -- A linked pair is one write and one undo step (the core's
+    // pair setter, P1UG); never the all-inputs preamp
+    if (linkedPartner(input) >= 0) {
+        const auto in = uint8_t(input & ~1);
+        apply(QStringLiteral("input preamp pair %1").arg(input / 2), [in, v](FfiCore *c) { return dspi_set_input_pair_preamp(c, in, v); });
+        return;
     }
+    const auto in = uint8_t(input);
+    apply(QStringLiteral("input preamp %1").arg(input), [in, v](FfiCore *c) { return dspi_set_input_preamp(c, in, v); });
 }
 
 bool ChannelController::pairAvailable(int input) const {
@@ -469,13 +499,16 @@ void ChannelController::linkPair(int input, int keep) {
     if (!pairAvailable(input)) return;
     const int other = keep == input ? (input ^ 1) : keep == (input ^ 1) ? input : -1;
     if (other >= 0) {
-        // One-way copies, made before the link bit is set so nothing mirrors back
-        for (int b = 0; b < PeqBands; ++b) writeBand(other, b, false, current(keep, b, false));
-        if (writable()) {
-            const float v = float(preamp(keep));
-            const auto in = uint8_t(other);
-            apply(QStringLiteral("input preamp %1").arg(other), [in, v](FfiCore *c) { return dspi_set_input_preamp(c, in, v); });
-        }
+        // One-way copies, made before the link bit is set so nothing mirrors back;
+        // -- WP P1QT2 -- one undo step (P1UG)
+        grouped(tr("Link Inputs"), [&] {
+            for (int b = 0; b < PeqBands; ++b) writeBand(other, b, false, current(keep, b, false));
+            if (writable()) {
+                const float v = float(preamp(keep));
+                const auto in = uint8_t(other);
+                apply(QStringLiteral("input preamp %1").arg(other) + m_groupTag, [in, v](FfiCore *c) { return dspi_set_input_preamp(c, in, v); });
+            }
+        });
     }
     m_linkedPairs |= 1 << (input / 2);
     storeLinks();
@@ -484,9 +517,12 @@ void ChannelController::linkPair(int input, int keep) {
 }
 
 void ChannelController::clearInputPeq(int input) {
-    clearBands(input, false);
-    const int partner = linkedPartner(input);
-    if (partner >= 0) clearBands(partner, false);
+    // -- WP P1QT2 -- both halves of a linked pair in one undo step (P1UG)
+    grouped(tr("Clear All"), [&] {
+        clearBands(input, false);
+        const int partner = linkedPartner(input);
+        if (partner >= 0) clearBands(partner, false);
+    });
 }
 
 // Kept per device under inputLinks/<serial> (behaviour.md §21), one bit per

@@ -7,6 +7,7 @@
 #include "SmokeDriver.h"
 
 #include "ChannelController.h"
+#include "Confirm.h"   // -- WP P1QT2 --
 #include "Core.h"
 #include "CoreWorker.h"
 #include "DeviceModel.h"
@@ -418,7 +419,7 @@ static void filesSection(SmokeDriver &d) {
     if (device->state()->output_gain_db[0] != gain) {
         device->write(QStringLiteral("qp15 gain"), [gain](FfiCore *c) { return dspi_set_output_gain(c, 0, gain); });
         const int slot = device->presets()->activeSlot();
-        if (slot >= 0) device->write(QStringLiteral("preset save"), [slot](FfiCore *c) { return dspi_save_preset(c, uint8_t(slot)) == PRESET_OK; });
+        if (slot >= 0) device->write(QStringLiteral("preset save"), [slot](FfiCore *c) { return Confirm::savePreset(c, uint8_t(slot)) == PRESET_OK; });   // -- WP P1QT2 -- tokens are on
         d.waitIdle();
     }
     d.check(QStringLiteral("qp15: the demo is back as it was"), device->state()->output_gain_db[0] == gain);
