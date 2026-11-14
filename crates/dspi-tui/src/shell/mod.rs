@@ -1001,11 +1001,13 @@ impl Shell {
         // names the firmware, and no screen can scroll it away.
         // -- WP TM8 -- A lost link matters more: nothing can be written at all.
         let banner = self.banner(state).map(|b| format!(" {b}"));
-        let mut left = banner.clone().unwrap_or_else(|| {
-            format!(
+        let mut left = banner.clone().unwrap_or_else(|| match &m.document {
+            // -- WP P1TM -- an offline session names its file, not a serial
+            Some(file) => format!(" DSPi  {} · File: {file}", m.platform),
+            None => format!(
                 " DSPi  {} · fw {} · {}",
                 m.platform, m.firmware, m.serial_short
-            )
+            ),
         });
         let dot = match (m.connected, t.glyphs) {
             (true, Glyphs::Ascii) => "*",
@@ -2059,5 +2061,18 @@ mod tests {
         let f = frame(&mut s, &mut term);
         assert!(f.contains("OUT5") && !f.contains("OUT9"), "{f}");
         assert!(f.contains("RP2040"));
+    }
+
+    // -- WP P1TM --
+    #[test]
+    fn wp_p1tm_an_offline_session_shows_its_file_not_a_serial() {
+        let (mut s, mut term) = shell(120, 30);
+        let f = frame(&mut s, &mut term);
+        assert!(f.contains("A1B2C3D4") && !f.contains("File:"), "{f}");
+        s.model.document = Some("Living room.dspipreset".into());
+        let f = frame(&mut s, &mut term);
+        let title = f.lines().next().unwrap_or_default();
+        assert!(title.contains("File: Living room.dspipreset"), "{f}");
+        assert!(!title.contains("A1B2C3D4"), "{f}");
     }
 }

@@ -124,6 +124,41 @@ fn seed_for(doc: &Value, name: String) -> Result<(DocumentSeed, Vec<String>)> {
     Ok((seed, notes))
 }
 
+// -- WP P1TM --
+/// A document opened offline for a client that drives the device itself
+/// rather than through a [`DspiCore`] (the Terminal's interface, on
+/// `dspi-session`): the demo device [`DspiCore::open_document`] would open,
+/// with the same seed, serial ([`OFFLINE_SERIAL`]) and name.
+pub struct OfflineDevice {
+    /// The seeded demo device. Nothing in it touches USB.
+    pub device: FakeDevice,
+    /// `meta.name`, else the file's name without its extension.
+    pub name: String,
+    /// `meta.kind`, to write the document back as the same kind.
+    pub kind: MetaKind,
+    /// What reading the document reported (values left alone or clamped).
+    pub notes: Vec<String>,
+}
+
+// -- WP P1TM --
+/// [`DspiCore::open_document`]'s device, for a client without a core
+/// connection. Errors as there, before anything is opened.
+pub fn document_device(text: &str, file_name: &str) -> Result<OfflineDevice> {
+    let doc = files::parse_document(text).map_err(|msg| DspiError::InvalidArgument { msg })?;
+    let name = match meta_str(&doc, "name") {
+        "" => stem(file_name).to_string(),
+        n => n.to_string(),
+    };
+    let kind = files::doc_kind(&doc);
+    let (seed, notes) = seed_for(&doc, name.clone())?;
+    Ok(OfflineDevice {
+        device: FakeDevice::from_document(seed).with_serial(OFFLINE_SERIAL),
+        name,
+        kind,
+        notes,
+    })
+}
+
 fn transfer(e: impl std::fmt::Display) -> DspiError {
     DspiError::Transfer {
         msg: format!("the document could not be laid out as a device: {e}"),

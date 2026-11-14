@@ -30,6 +30,30 @@ and the full key list in [`docs/terminal/preset-format.md`](../terminal/preset-f
 | Export | `config_export(name, app_version, links)` | `uconsole export FILE.dspipreset` |
 | Describe before applying | `config_inspect(text)` | `uconsole import FILE --dry-run` |
 | Apply | `config_import(text, options)` | `uconsole import FILE [--volume] [--hardware]` |
+| Diff two documents (P1DF) | `config_diff(before, after)` | `uconsole diff A.dspipreset B.dspipreset [--json]` |
+| Diff a document against the device | `config_preview(text, options, eq_channels)` | `uconsole diff FILE`, `uconsole import FILE --preview [--only ...]` |
+| Apply some blocks (P1DF) | `config_import_confirmed(text, IMPORT_BY_BLOCK \| blocks, eq_channels, token)` | `uconsole import FILE --only eq,crossover,routing,outputs,limiters,effects,volumes,hardware,names [--yes]` |
+| Apply with a way back (P1SA) | `apply_guarded_import(text, options, eq_channels, timeout_s)`, then `apply_confirm`/`apply_revert`, `apply_poll` | `uconsole import FILE --guard 30 [--only ...]`: answer `keep` or `revert`; no answer goes back |
+| Snapshots (P1SN) | `snapshot_capture`, `snapshot_list`, `snapshot_recall`, `snapshot_export`, `snapshot_import`, `snapshot_delete` | `uconsole snapshot save NAME [--note T]`, `list`, `recall N [--guard S]`, `diff N [M]`, `export N FILE`, `import FILE`, `delete N` |
+| A/B (P1AB) | `ab_start`, `ab_toggle`, `ab_diff`, `ab_keep` | `uconsole ab [A] B` (`t`, `d`, `a`, `b`, `q` on standard input), `--keep a\|b` |
+| Edit a file with no device (P1OF) | `open_document(text, file_name)`, `save_document` | `uconsole open FILE` (the interface, "File:" in its title; asks to save); `--json` describes it |
+
+A one-shot `uconsole` command is one session of the core. With `--json` each of
+these prints the core's own record or reply (`SnapshotInfo`, `AbCompare`,
+`GuardedApply`, the diff's `{rows, blocks, summary, notes}`). Exit codes: 0
+done (a guard kept), 1 usage, 2 no device, 3 refused (not confirmed, a lock or a
+limit, a guard reverted), 4 transport. A by-block import is a gated call
+(P1TK): on a terminal it asks, in a script it needs `--yes`, which mints the
+confirmation token; a guarded import needs none.
+
+```sh
+# Prepare at the desk, apply on site with a way back
+uconsole open site.dspipreset                 # edit offline, save
+uconsole snapshot save "Before site.dspipreset"
+uconsole diff site.dspipreset                 # what it would change here
+uconsole import site.dspipreset --only eq,crossover,outputs --guard 60   # type keep, or it goes back
+uconsole ab "Before site.dspipreset" 2 --keep b
+```
 
 ## Filter files: EQ and crossovers
 

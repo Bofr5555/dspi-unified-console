@@ -154,6 +154,28 @@ one that brings it closer passes, so it can be put right a step at a time.
 The notices (`notice_for_key`): `limit_exceeded`, `limits.fell_back`,
 `limits.unreadable`, `limits.scope`.
 
+### From a script: `uconsole limits` (WP P1TM)
+
+| Command | Core call |
+|---|---|
+| `uconsole limits show [--json]` | `limits_status()`, `limits_profile_document()` (`--json`: `{status, profile}`) |
+| `uconsole limits set FILE` | `limits_apply_profile(text)`; prints the rows held at once |
+| `uconsole limits clear` | `limits_clear()` |
+
+The Terminal keeps profiles in `<local data dir>/uconsole/limits` (on Linux
+`~/.local/share/uconsole/limits`). With an installer PIN set, `set` and `clear`
+need it: on a terminal they ask; in a script, `DSPI_INSTALLER_PIN=... uconsole
+limits set FILE`, or `--installer-pin -` with the PIN as a line of standard input.
+A wrong PIN exits 3, a missing one 1. A plain `uconsole import` (the session path)
+is held to the same profile (`preset_file::apply_limited`). Not yet: the
+Terminal's single writes (`uconsole set`, scripts, its interface) write through
+`dspi-session` and are not checked against the profile or the lock.
+
+```sh
+uconsole limits set k340-site.limits.dspipreset
+uconsole limits show --json | jq .status.active
+```
+
 The shared code is `dspi_session::limits` (the profile, its document, the
 plain-value checks, the files and the PIN's hash), used by the core and the
 hub; the Terminal's own import path is `preset_file::apply_limited`.
