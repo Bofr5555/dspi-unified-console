@@ -2930,6 +2930,76 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func hostNotify(packet: Data, origin: UInt16?) 
     
     /**
+     * The hub's admin events since the last call, oldest first (at most
+     * 32 are kept), for a binding that polls instead of a listener (the
+     * web). No I/O.
+     */
+    func hubAdminEvents()  -> [HubAdminEvent]
+    
+    /**
+     * Remove the hub's limits profile for the open device (nothing on the
+     * device changes; with it goes what the lock covers). Admin of the hub
+     * only. Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_limits_set`].
+     */
+    func hubLimitsClear() throws  -> HubAdminState
+    
+    /**
+     * The hub's limits profile, PIN state and pinned modes for the open
+     * device (`limits.get`, `mode.pinned`). Every role may read them. Slow
+     * (two round trips): off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `no_limits` when the device is not
+     * reached through a hub that keeps limits (notice `dlink.no_limits`), or
+     * the hub's failure; [`DspiError::Disconnected`].
+     */
+    func hubLimitsGet() throws  -> HubAdminState
+    
+    /**
+     * Set the hub's limits profile for the open device: `document` is a
+     * limits document (or one carrying `meta.limits`). The hub holds the
+     * device to it at once and says what it held. Admin of the hub only.
+     * The lock is read again. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a document that is not a
+     * limits profile; [`DspiError::Denied`] below Admin; as
+     * [`DspiCore::hub_limits_get`].
+     */
+    func hubLimitsSet(document: String) throws  -> HubLimitsSet
+    
+    /**
+     * Pin `role`'s mode on the hub (`viewer`, `control`, `admin`; `mode`
+     * one of the manifest's modes, "" to unpin). Hub-wide: every console of
+     * that role shows it. Admin of the hub only. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown role or mode; as
+     * [`DspiCore::hub_limits_set`].
+     */
+    func hubModePin(role: String, mode: String) throws  -> HubAdminState
+    
+    /**
+     * Remove the hub's installer PIN for the open device (and its recovery
+     * code): the hub's lock is off. Admin of the hub only. Slow: off the UI
+     * thread.
+     *
+     * Errors: as [`DspiCore::hub_limits_set`].
+     */
+    func hubPinClear() throws  -> HubAdminState
+    
+    /**
+     * Set (or change) the hub's installer PIN for the open device: the hub
+     * keeps only its salted, slow hash, and makes a recovery code shown this
+     * once. Every console's unlock of the device ends. Admin of the hub only
+     * (an Admin needs no PIN). Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a PIN of fewer than 4 or
+     * more than 64 characters, or with a space at either end; as
+     * [`DspiCore::hub_limits_set`].
+     */
+    func hubPinSet(pin: String) throws  -> HubPinSet
+    
+    /**
      * `EXT_IDENTIFY`: blink the device's LED for `seconds` (0 stops it; over
      * 120 the firmware shortens to 120) and, with `tone_output`, play its
      * quiet identify tone ([`IDENTIFY_TONE_DBFS`], 400 ms) on that output.
@@ -3018,6 +3088,15 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * could not be written; [`DspiError::Unsupported`] on the web.
      */
     func installerPinSet(pin: String) throws  -> InstallerPin
+    
+    /**
+     * Which copy of the limits, the installer PIN and the pinned modes the
+     * Installer page edits for the open device: the hub's when the device
+     * is reached through a hub that keeps them (editable by an Admin of the
+     * hub only), this console's own when it is connected directly (USB,
+     * MIDI, the demo), none otherwise. No I/O.
+     */
+    func installerTarget()  -> InstallerTarget
     
     /**
      * Unlock the open device on this console for this session with the
@@ -4125,6 +4204,12 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * listeners from inside the callback.
      */
     func setHotplugCallback(listener: DeviceEvents?) 
+    
+    /**
+     * Register (`Some`) or clear (`None`) the listener for the hub's admin
+     * events ([`HubAdminListener`]).
+     */
+    func setHubAdminListener(listener: HubAdminListener?) 
     
     /**
      * Send an I2C target control-interface config (pins, 7-bit address).
@@ -7540,6 +7625,115 @@ open func hostNotify(packet: Data, origin: UInt16?)  {try! rustCall() {
 }
     
     /**
+     * The hub's admin events since the last call, oldest first (at most
+     * 32 are kept), for a binding that polls instead of a listener (the
+     * web). No I/O.
+     */
+open func hubAdminEvents() -> [HubAdminEvent]  {
+    return try!  FfiConverterSequenceTypeHubAdminEvent.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_hub_admin_events(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Remove the hub's limits profile for the open device (nothing on the
+     * device changes; with it goes what the lock covers). Admin of the hub
+     * only. Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_limits_set`].
+     */
+open func hubLimitsClear()throws  -> HubAdminState  {
+    return try  FfiConverterTypeHubAdminState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_limits_clear(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * The hub's limits profile, PIN state and pinned modes for the open
+     * device (`limits.get`, `mode.pinned`). Every role may read them. Slow
+     * (two round trips): off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `no_limits` when the device is not
+     * reached through a hub that keeps limits (notice `dlink.no_limits`), or
+     * the hub's failure; [`DspiError::Disconnected`].
+     */
+open func hubLimitsGet()throws  -> HubAdminState  {
+    return try  FfiConverterTypeHubAdminState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_limits_get(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Set the hub's limits profile for the open device: `document` is a
+     * limits document (or one carrying `meta.limits`). The hub holds the
+     * device to it at once and says what it held. Admin of the hub only.
+     * The lock is read again. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a document that is not a
+     * limits profile; [`DspiError::Denied`] below Admin; as
+     * [`DspiCore::hub_limits_get`].
+     */
+open func hubLimitsSet(document: String)throws  -> HubLimitsSet  {
+    return try  FfiConverterTypeHubLimitsSet_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_limits_set(self.uniffiClonePointer(),
+        FfiConverterString.lower(document),$0
+    )
+})
+}
+    
+    /**
+     * Pin `role`'s mode on the hub (`viewer`, `control`, `admin`; `mode`
+     * one of the manifest's modes, "" to unpin). Hub-wide: every console of
+     * that role shows it. Admin of the hub only. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown role or mode; as
+     * [`DspiCore::hub_limits_set`].
+     */
+open func hubModePin(role: String, mode: String)throws  -> HubAdminState  {
+    return try  FfiConverterTypeHubAdminState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_mode_pin(self.uniffiClonePointer(),
+        FfiConverterString.lower(role),
+        FfiConverterString.lower(mode),$0
+    )
+})
+}
+    
+    /**
+     * Remove the hub's installer PIN for the open device (and its recovery
+     * code): the hub's lock is off. Admin of the hub only. Slow: off the UI
+     * thread.
+     *
+     * Errors: as [`DspiCore::hub_limits_set`].
+     */
+open func hubPinClear()throws  -> HubAdminState  {
+    return try  FfiConverterTypeHubAdminState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_pin_clear(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Set (or change) the hub's installer PIN for the open device: the hub
+     * keeps only its salted, slow hash, and makes a recovery code shown this
+     * once. Every console's unlock of the device ends. Admin of the hub only
+     * (an Admin needs no PIN). Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a PIN of fewer than 4 or
+     * more than 64 characters, or with a space at either end; as
+     * [`DspiCore::hub_limits_set`].
+     */
+open func hubPinSet(pin: String)throws  -> HubPinSet  {
+    return try  FfiConverterTypeHubPinSet_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_pin_set(self.uniffiClonePointer(),
+        FfiConverterString.lower(pin),$0
+    )
+})
+}
+    
+    /**
      * `EXT_IDENTIFY`: blink the device's LED for `seconds` (0 stops it; over
      * 120 the firmware shortens to 120) and, with `tone_output`, play its
      * quiet identify tone ([`IDENTIFY_TONE_DBFS`], 400 ms) on that output.
@@ -7668,6 +7862,20 @@ open func installerPinSet(pin: String)throws  -> InstallerPin  {
     return try  FfiConverterTypeInstallerPin_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_installer_pin_set(self.uniffiClonePointer(),
         FfiConverterString.lower(pin),$0
+    )
+})
+}
+    
+    /**
+     * Which copy of the limits, the installer PIN and the pinned modes the
+     * Installer page edits for the open device: the hub's when the device
+     * is reached through a hub that keeps them (editable by an Admin of the
+     * hub only), this console's own when it is connected directly (USB,
+     * MIDI, the demo), none otherwise. No I/O.
+     */
+open func installerTarget() -> InstallerTarget  {
+    return try!  FfiConverterTypeInstallerTarget_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_installer_target(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -9282,6 +9490,17 @@ open func setFilter(ch: UInt8, band: UInt8, params: FilterParams)throws   {try r
 open func setHotplugCallback(listener: DeviceEvents?)  {try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_set_hotplug_callback(self.uniffiClonePointer(),
         FfiConverterOptionTypeDeviceEvents.lower(listener),$0
+    )
+}
+}
+    
+    /**
+     * Register (`Some`) or clear (`None`) the listener for the hub's admin
+     * events ([`HubAdminListener`]).
+     */
+open func setHubAdminListener(listener: HubAdminListener?)  {try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_set_hub_admin_listener(self.uniffiClonePointer(),
+        FfiConverterOptionTypeHubAdminListener.lower(listener),$0
     )
 }
 }
@@ -10992,6 +11211,199 @@ public func FfiConverterTypeHostTransport_lift(_ pointer: UnsafeMutableRawPointe
 #endif
 public func FfiConverterTypeHostTransport_lower(_ value: HostTransport) -> UnsafeMutableRawPointer {
     return FfiConverterTypeHostTransport.lower(value)
+}
+
+
+
+
+
+
+/**
+ * The hub's admin events reach the app here (WP HUBADMIN): set with
+ * [`DspiCore::set_hub_admin_listener`].
+ */
+public protocol HubAdminListener: AnyObject, Sendable {
+    
+    /**
+     * The hub's limits, lock or pinned modes changed; `event.lock` is the
+     * open device's lock as read just now. Called on the Link session's
+     * supervisor, no core lock held: re-read the Installer page (off the UI
+     * thread) and return.
+     */
+    func onHubAdminEvent(event: HubAdminEvent) 
+    
+}
+/**
+ * The hub's admin events reach the app here (WP HUBADMIN): set with
+ * [`DspiCore::set_hub_admin_listener`].
+ */
+open class HubAdminListenerImpl: HubAdminListener, @unchecked Sendable {
+    fileprivate let pointer: UnsafeMutableRawPointer!
+
+    /// Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoPointer {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+        self.pointer = pointer
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noPointer: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing [Pointer] the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noPointer: NoPointer) {
+        self.pointer = nil
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiClonePointer() -> UnsafeMutableRawPointer {
+        return try! rustCall { uniffi_dspi_core_fn_clone_hubadminlistener(self.pointer, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        guard let pointer = pointer else {
+            return
+        }
+
+        try! rustCall { uniffi_dspi_core_fn_free_hubadminlistener(pointer, $0) }
+    }
+
+    
+
+    
+    /**
+     * The hub's limits, lock or pinned modes changed; `event.lock` is the
+     * open device's lock as read just now. Called on the Link session's
+     * supervisor, no core lock held: re-read the Installer page (off the UI
+     * thread) and return.
+     */
+open func onHubAdminEvent(event: HubAdminEvent)  {try! rustCall() {
+    uniffi_dspi_core_fn_method_hubadminlistener_on_hub_admin_event(self.uniffiClonePointer(),
+        FfiConverterTypeHubAdminEvent_lower(event),$0
+    )
+}
+}
+    
+
+}
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceHubAdminListener {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // This creates 1-element array, since this seems to be the only way to construct a const
+    // pointer that we can pass to the Rust code.
+    static let vtable: [UniffiVTableCallbackInterfaceHubAdminListener] = [UniffiVTableCallbackInterfaceHubAdminListener(
+        onHubAdminEvent: { (
+            uniffiHandle: UInt64,
+            event: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeHubAdminListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onHubAdminEvent(
+                     event: try FfiConverterTypeHubAdminEvent_lift(event)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            let result = try? FfiConverterTypeHubAdminListener.handleMap.remove(handle: uniffiHandle)
+            if result == nil {
+                print("Uniffi callback interface HubAdminListener: handle missing in uniffiFree")
+            }
+        }
+    )]
+}
+
+private func uniffiCallbackInitHubAdminListener() {
+    uniffi_dspi_core_fn_init_callback_vtable_hubadminlistener(UniffiCallbackInterfaceHubAdminListener.vtable)
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubAdminListener: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<HubAdminListener>()
+
+    typealias FfiType = UnsafeMutableRawPointer
+    typealias SwiftType = HubAdminListener
+
+    public static func lift(_ pointer: UnsafeMutableRawPointer) throws -> HubAdminListener {
+        return HubAdminListenerImpl(unsafeFromRawPointer: pointer)
+    }
+
+    public static func lower(_ value: HubAdminListener) -> UnsafeMutableRawPointer {
+        guard let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: handleMap.insert(obj: value))) else {
+            fatalError("Cast to UnsafeMutableRawPointer failed")
+        }
+        return ptr
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubAdminListener {
+        let v: UInt64 = try readInt(&buf)
+        // The Rust code won't compile if a pointer won't fit in a UInt64.
+        // We have to go via `UInt` because that's the thing that's the size of a pointer.
+        let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
+        if (ptr == nil) {
+            throw UniffiInternalError.unexpectedNullPointer
+        }
+        return try lift(ptr!)
+    }
+
+    public static func write(_ value: HubAdminListener, into buf: inout [UInt8]) {
+        // This fiddling is because `Int` is the thing that's the same size as a pointer.
+        // The Rust code won't compile if a pointer won't fit in a `UInt64`.
+        writeInt(&buf, UInt64(bitPattern: Int64(Int(bitPattern: lower(value)))))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubAdminListener_lift(_ pointer: UnsafeMutableRawPointer) throws -> HubAdminListener {
+    return try FfiConverterTypeHubAdminListener.lift(pointer)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubAdminListener_lower(_ value: HubAdminListener) -> UnsafeMutableRawPointer {
+    return FfiConverterTypeHubAdminListener.lower(value)
 }
 
 
@@ -22736,6 +23148,626 @@ public func FfiConverterTypeHistoryMove_lower(_ value: HistoryMove) -> RustBuffe
 
 
 /**
+ * One of the hub's admin events, after the core read its lock again.
+ */
+public struct HubAdminEvent {
+    /**
+     * `limits.changed` (profile or PIN), `limits.held` (the hub held the
+     * device to its profile) or `mode.changed` (a role's pinned mode).
+     */
+    public var kind: String
+    /**
+     * The device it concerns ("" for `mode.changed`, which is hub-wide).
+     */
+    public var serial: String
+    /**
+     * `limits.held`'s rows.
+     */
+    public var rows: [String]
+    /**
+     * `mode.changed`'s role.
+     */
+    public var role: String
+    /**
+     * `mode.changed`'s mode ("" unpinned).
+     */
+    public var mode: String
+    /**
+     * The open device's lock after the refresh.
+     */
+    public var lock: LockState
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `limits.changed` (profile or PIN), `limits.held` (the hub held the
+         * device to its profile) or `mode.changed` (a role's pinned mode).
+         */kind: String, 
+        /**
+         * The device it concerns ("" for `mode.changed`, which is hub-wide).
+         */serial: String, 
+        /**
+         * `limits.held`'s rows.
+         */rows: [String], 
+        /**
+         * `mode.changed`'s role.
+         */role: String, 
+        /**
+         * `mode.changed`'s mode ("" unpinned).
+         */mode: String, 
+        /**
+         * The open device's lock after the refresh.
+         */lock: LockState) {
+        self.kind = kind
+        self.serial = serial
+        self.rows = rows
+        self.role = role
+        self.mode = mode
+        self.lock = lock
+    }
+}
+
+#if compiler(>=6)
+extension HubAdminEvent: Sendable {}
+#endif
+
+
+extension HubAdminEvent: Equatable, Hashable {
+    public static func ==(lhs: HubAdminEvent, rhs: HubAdminEvent) -> Bool {
+        if lhs.kind != rhs.kind {
+            return false
+        }
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.rows != rhs.rows {
+            return false
+        }
+        if lhs.role != rhs.role {
+            return false
+        }
+        if lhs.mode != rhs.mode {
+            return false
+        }
+        if lhs.lock != rhs.lock {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(kind)
+        hasher.combine(serial)
+        hasher.combine(rows)
+        hasher.combine(role)
+        hasher.combine(mode)
+        hasher.combine(lock)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubAdminEvent: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubAdminEvent {
+        return
+            try HubAdminEvent(
+                kind: FfiConverterString.read(from: &buf), 
+                serial: FfiConverterString.read(from: &buf), 
+                rows: FfiConverterSequenceString.read(from: &buf), 
+                role: FfiConverterString.read(from: &buf), 
+                mode: FfiConverterString.read(from: &buf), 
+                lock: FfiConverterTypeLockState.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubAdminEvent, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.kind, into: &buf)
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterSequenceString.write(value.rows, into: &buf)
+        FfiConverterString.write(value.role, into: &buf)
+        FfiConverterString.write(value.mode, into: &buf)
+        FfiConverterTypeLockState.write(value.lock, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubAdminEvent_lift(_ buf: RustBuffer) throws -> HubAdminEvent {
+    return try FfiConverterTypeHubAdminEvent.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubAdminEvent_lower(_ value: HubAdminEvent) -> RustBuffer {
+    return FfiConverterTypeHubAdminEvent.lower(value)
+}
+
+
+/**
+ * The hub's limits, PIN and pinned modes for the open device
+ * ([`DspiCore::hub_limits_get`]).
+ */
+public struct HubAdminState {
+    /**
+     * The device's serial.
+     */
+    public var serial: String
+    /**
+     * This console's role on the hub.
+     */
+    public var role: String
+    /**
+     * This console may change the hub's copy (it is an Admin of the hub).
+     */
+    public var canEdit: Bool
+    /**
+     * The hub's profile as a limits document (the `.dspipreset` family,
+     * `meta.kind` `limits`); "" when the hub has none for the device.
+     */
+    public var profileDocument: String
+    /**
+     * A PIN is set on the hub for the device.
+     */
+    public var pinSet: Bool
+    /**
+     * The hub's lock is on (a PIN set and the profile's `lockedPages`
+     * non-empty).
+     */
+    public var locked: Bool
+    /**
+     * The lock does not hold for this console (unlocked, or an Admin).
+     */
+    public var unlocked: Bool
+    /**
+     * What the hub last held the device to (its words).
+     */
+    public var held: [String]
+    /**
+     * Wrong PINs since the last good one (counted per device on the hub).
+     */
+    public var wrongTries: UInt32
+    /**
+     * The hub's refusal window left, ms; 0: none.
+     */
+    public var retryAfterMs: UInt64
+    /**
+     * The pinned mode of every role (an Admin sees all three), or only this
+     * console's role's.
+     */
+    public var pinnedModes: [HubModePin]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The device's serial.
+         */serial: String, 
+        /**
+         * This console's role on the hub.
+         */role: String, 
+        /**
+         * This console may change the hub's copy (it is an Admin of the hub).
+         */canEdit: Bool, 
+        /**
+         * The hub's profile as a limits document (the `.dspipreset` family,
+         * `meta.kind` `limits`); "" when the hub has none for the device.
+         */profileDocument: String, 
+        /**
+         * A PIN is set on the hub for the device.
+         */pinSet: Bool, 
+        /**
+         * The hub's lock is on (a PIN set and the profile's `lockedPages`
+         * non-empty).
+         */locked: Bool, 
+        /**
+         * The lock does not hold for this console (unlocked, or an Admin).
+         */unlocked: Bool, 
+        /**
+         * What the hub last held the device to (its words).
+         */held: [String], 
+        /**
+         * Wrong PINs since the last good one (counted per device on the hub).
+         */wrongTries: UInt32, 
+        /**
+         * The hub's refusal window left, ms; 0: none.
+         */retryAfterMs: UInt64, 
+        /**
+         * The pinned mode of every role (an Admin sees all three), or only this
+         * console's role's.
+         */pinnedModes: [HubModePin]) {
+        self.serial = serial
+        self.role = role
+        self.canEdit = canEdit
+        self.profileDocument = profileDocument
+        self.pinSet = pinSet
+        self.locked = locked
+        self.unlocked = unlocked
+        self.held = held
+        self.wrongTries = wrongTries
+        self.retryAfterMs = retryAfterMs
+        self.pinnedModes = pinnedModes
+    }
+}
+
+#if compiler(>=6)
+extension HubAdminState: Sendable {}
+#endif
+
+
+extension HubAdminState: Equatable, Hashable {
+    public static func ==(lhs: HubAdminState, rhs: HubAdminState) -> Bool {
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.role != rhs.role {
+            return false
+        }
+        if lhs.canEdit != rhs.canEdit {
+            return false
+        }
+        if lhs.profileDocument != rhs.profileDocument {
+            return false
+        }
+        if lhs.pinSet != rhs.pinSet {
+            return false
+        }
+        if lhs.locked != rhs.locked {
+            return false
+        }
+        if lhs.unlocked != rhs.unlocked {
+            return false
+        }
+        if lhs.held != rhs.held {
+            return false
+        }
+        if lhs.wrongTries != rhs.wrongTries {
+            return false
+        }
+        if lhs.retryAfterMs != rhs.retryAfterMs {
+            return false
+        }
+        if lhs.pinnedModes != rhs.pinnedModes {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(serial)
+        hasher.combine(role)
+        hasher.combine(canEdit)
+        hasher.combine(profileDocument)
+        hasher.combine(pinSet)
+        hasher.combine(locked)
+        hasher.combine(unlocked)
+        hasher.combine(held)
+        hasher.combine(wrongTries)
+        hasher.combine(retryAfterMs)
+        hasher.combine(pinnedModes)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubAdminState: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubAdminState {
+        return
+            try HubAdminState(
+                serial: FfiConverterString.read(from: &buf), 
+                role: FfiConverterString.read(from: &buf), 
+                canEdit: FfiConverterBool.read(from: &buf), 
+                profileDocument: FfiConverterString.read(from: &buf), 
+                pinSet: FfiConverterBool.read(from: &buf), 
+                locked: FfiConverterBool.read(from: &buf), 
+                unlocked: FfiConverterBool.read(from: &buf), 
+                held: FfiConverterSequenceString.read(from: &buf), 
+                wrongTries: FfiConverterUInt32.read(from: &buf), 
+                retryAfterMs: FfiConverterUInt64.read(from: &buf), 
+                pinnedModes: FfiConverterSequenceTypeHubModePin.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubAdminState, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterString.write(value.role, into: &buf)
+        FfiConverterBool.write(value.canEdit, into: &buf)
+        FfiConverterString.write(value.profileDocument, into: &buf)
+        FfiConverterBool.write(value.pinSet, into: &buf)
+        FfiConverterBool.write(value.locked, into: &buf)
+        FfiConverterBool.write(value.unlocked, into: &buf)
+        FfiConverterSequenceString.write(value.held, into: &buf)
+        FfiConverterUInt32.write(value.wrongTries, into: &buf)
+        FfiConverterUInt64.write(value.retryAfterMs, into: &buf)
+        FfiConverterSequenceTypeHubModePin.write(value.pinnedModes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubAdminState_lift(_ buf: RustBuffer) throws -> HubAdminState {
+    return try FfiConverterTypeHubAdminState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubAdminState_lower(_ value: HubAdminState) -> RustBuffer {
+    return FfiConverterTypeHubAdminState.lower(value)
+}
+
+
+/**
+ * A profile set on the hub ([`DspiCore::hub_limits_set`]).
+ */
+public struct HubLimitsSet {
+    /**
+     * What the hub held the device to at once (its words), as `limits.held`.
+     */
+    public var held: [String]
+    /**
+     * The hub's state after the change.
+     */
+    public var state: HubAdminState
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * What the hub held the device to at once (its words), as `limits.held`.
+         */held: [String], 
+        /**
+         * The hub's state after the change.
+         */state: HubAdminState) {
+        self.held = held
+        self.state = state
+    }
+}
+
+#if compiler(>=6)
+extension HubLimitsSet: Sendable {}
+#endif
+
+
+extension HubLimitsSet: Equatable, Hashable {
+    public static func ==(lhs: HubLimitsSet, rhs: HubLimitsSet) -> Bool {
+        if lhs.held != rhs.held {
+            return false
+        }
+        if lhs.state != rhs.state {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(held)
+        hasher.combine(state)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubLimitsSet: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubLimitsSet {
+        return
+            try HubLimitsSet(
+                held: FfiConverterSequenceString.read(from: &buf), 
+                state: FfiConverterTypeHubAdminState.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubLimitsSet, into buf: inout [UInt8]) {
+        FfiConverterSequenceString.write(value.held, into: &buf)
+        FfiConverterTypeHubAdminState.write(value.state, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubLimitsSet_lift(_ buf: RustBuffer) throws -> HubLimitsSet {
+    return try FfiConverterTypeHubLimitsSet.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubLimitsSet_lower(_ value: HubLimitsSet) -> RustBuffer {
+    return FfiConverterTypeHubLimitsSet.lower(value)
+}
+
+
+/**
+ * A role's pinned mode on the hub.
+ */
+public struct HubModePin {
+    /**
+     * `viewer`, `control` or `admin`.
+     */
+    public var role: String
+    /**
+     * `simple`, `advanced` or `installer`; "" for the user's choice.
+     */
+    public var mode: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `viewer`, `control` or `admin`.
+         */role: String, 
+        /**
+         * `simple`, `advanced` or `installer`; "" for the user's choice.
+         */mode: String) {
+        self.role = role
+        self.mode = mode
+    }
+}
+
+#if compiler(>=6)
+extension HubModePin: Sendable {}
+#endif
+
+
+extension HubModePin: Equatable, Hashable {
+    public static func ==(lhs: HubModePin, rhs: HubModePin) -> Bool {
+        if lhs.role != rhs.role {
+            return false
+        }
+        if lhs.mode != rhs.mode {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(role)
+        hasher.combine(mode)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubModePin: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubModePin {
+        return
+            try HubModePin(
+                role: FfiConverterString.read(from: &buf), 
+                mode: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubModePin, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.role, into: &buf)
+        FfiConverterString.write(value.mode, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubModePin_lift(_ buf: RustBuffer) throws -> HubModePin {
+    return try FfiConverterTypeHubModePin.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubModePin_lower(_ value: HubModePin) -> RustBuffer {
+    return FfiConverterTypeHubModePin.lower(value)
+}
+
+
+/**
+ * A PIN set on the hub ([`DspiCore::hub_pin_set`]).
+ */
+public struct HubPinSet {
+    /**
+     * The recovery code (`XXXXX-XXXXX-XXXXX-XXXXX`): unlocks the device on
+     * the hub in place of the PIN. Shown this once, never kept but as a
+     * hash on the hub (notice [`NOTICE_HUB_RECOVERY`]).
+     */
+    public var recoveryCode: String
+    /**
+     * The hub's state after the change.
+     */
+    public var state: HubAdminState
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The recovery code (`XXXXX-XXXXX-XXXXX-XXXXX`): unlocks the device on
+         * the hub in place of the PIN. Shown this once, never kept but as a
+         * hash on the hub (notice [`NOTICE_HUB_RECOVERY`]).
+         */recoveryCode: String, 
+        /**
+         * The hub's state after the change.
+         */state: HubAdminState) {
+        self.recoveryCode = recoveryCode
+        self.state = state
+    }
+}
+
+#if compiler(>=6)
+extension HubPinSet: Sendable {}
+#endif
+
+
+extension HubPinSet: Equatable, Hashable {
+    public static func ==(lhs: HubPinSet, rhs: HubPinSet) -> Bool {
+        if lhs.recoveryCode != rhs.recoveryCode {
+            return false
+        }
+        if lhs.state != rhs.state {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(recoveryCode)
+        hasher.combine(state)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubPinSet: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubPinSet {
+        return
+            try HubPinSet(
+                recoveryCode: FfiConverterString.read(from: &buf), 
+                state: FfiConverterTypeHubAdminState.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubPinSet, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.recoveryCode, into: &buf)
+        FfiConverterTypeHubAdminState.write(value.state, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubPinSet_lift(_ buf: RustBuffer) throws -> HubPinSet {
+    return try FfiConverterTypeHubPinSet.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubPinSet_lower(_ value: HubPinSet) -> RustBuffer {
+    return FfiConverterTypeHubPinSet.lower(value)
+}
+
+
+/**
  * Settings of the I2C control interface.
  */
 public struct I2cConfig {
@@ -23246,6 +24278,160 @@ public func FfiConverterTypeInstallerPin_lift(_ buf: RustBuffer) throws -> Insta
 #endif
 public func FfiConverterTypeInstallerPin_lower(_ value: InstallerPin) -> RustBuffer {
     return FfiConverterTypeInstallerPin.lower(value)
+}
+
+
+/**
+ * Which copy of the limits, the installer PIN and the pinned modes the
+ * Installer page edits ([`DspiCore::installer_target`]).
+ */
+public struct InstallerTarget {
+    /**
+     * [`COPY_HUB`], [`COPY_CONSOLE`] or [`COPY_NONE`].
+     */
+    public var copy: String
+    /**
+     * The page may change that copy: always for this console's own (its PIN
+     * prompt is [`LockState::installer_open`]'s), for the hub's only as an
+     * Admin of the hub.
+     */
+    public var editable: Bool
+    /**
+     * The open device's serial ("" with none).
+     */
+    public var serial: String
+    /**
+     * This console's role on the hub (`viewer`, `control`, `admin`): the
+     * one the hub last answered [`DspiCore::hub_limits_get`] with, else the
+     * session's; "" off a hub, or while the hub session is down.
+     */
+    public var role: String
+    /**
+     * The notice row that says which copy is edited: [`NOTICE_HUB_COPY`],
+     * [`NOTICE_CONSOLE_COPY`], [`NOTICE_NO_LIMITS`], or `disconnected`.
+     */
+    public var noticeKey: String
+    /**
+     * Why the page is read-only, as a notice row ([`NOTICE_HUB_ROLE`],
+     * [`NOTICE_NO_LIMITS`], `disconnected`); "" when it is editable.
+     */
+    public var readOnlyKey: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * [`COPY_HUB`], [`COPY_CONSOLE`] or [`COPY_NONE`].
+         */copy: String, 
+        /**
+         * The page may change that copy: always for this console's own (its PIN
+         * prompt is [`LockState::installer_open`]'s), for the hub's only as an
+         * Admin of the hub.
+         */editable: Bool, 
+        /**
+         * The open device's serial ("" with none).
+         */serial: String, 
+        /**
+         * This console's role on the hub (`viewer`, `control`, `admin`): the
+         * one the hub last answered [`DspiCore::hub_limits_get`] with, else the
+         * session's; "" off a hub, or while the hub session is down.
+         */role: String, 
+        /**
+         * The notice row that says which copy is edited: [`NOTICE_HUB_COPY`],
+         * [`NOTICE_CONSOLE_COPY`], [`NOTICE_NO_LIMITS`], or `disconnected`.
+         */noticeKey: String, 
+        /**
+         * Why the page is read-only, as a notice row ([`NOTICE_HUB_ROLE`],
+         * [`NOTICE_NO_LIMITS`], `disconnected`); "" when it is editable.
+         */readOnlyKey: String) {
+        self.copy = copy
+        self.editable = editable
+        self.serial = serial
+        self.role = role
+        self.noticeKey = noticeKey
+        self.readOnlyKey = readOnlyKey
+    }
+}
+
+#if compiler(>=6)
+extension InstallerTarget: Sendable {}
+#endif
+
+
+extension InstallerTarget: Equatable, Hashable {
+    public static func ==(lhs: InstallerTarget, rhs: InstallerTarget) -> Bool {
+        if lhs.copy != rhs.copy {
+            return false
+        }
+        if lhs.editable != rhs.editable {
+            return false
+        }
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.role != rhs.role {
+            return false
+        }
+        if lhs.noticeKey != rhs.noticeKey {
+            return false
+        }
+        if lhs.readOnlyKey != rhs.readOnlyKey {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(copy)
+        hasher.combine(editable)
+        hasher.combine(serial)
+        hasher.combine(role)
+        hasher.combine(noticeKey)
+        hasher.combine(readOnlyKey)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeInstallerTarget: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> InstallerTarget {
+        return
+            try InstallerTarget(
+                copy: FfiConverterString.read(from: &buf), 
+                editable: FfiConverterBool.read(from: &buf), 
+                serial: FfiConverterString.read(from: &buf), 
+                role: FfiConverterString.read(from: &buf), 
+                noticeKey: FfiConverterString.read(from: &buf), 
+                readOnlyKey: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: InstallerTarget, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.copy, into: &buf)
+        FfiConverterBool.write(value.editable, into: &buf)
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterString.write(value.role, into: &buf)
+        FfiConverterString.write(value.noticeKey, into: &buf)
+        FfiConverterString.write(value.readOnlyKey, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstallerTarget_lift(_ buf: RustBuffer) throws -> InstallerTarget {
+    return try FfiConverterTypeInstallerTarget.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstallerTarget_lower(_ value: InstallerTarget) -> RustBuffer {
+    return FfiConverterTypeInstallerTarget.lower(value)
 }
 
 
@@ -34235,6 +35421,30 @@ fileprivate struct FfiConverterOptionTypeDeviceEvents: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeHubAdminListener: FfiConverterRustBuffer {
+    typealias SwiftType = HubAdminListener?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHubAdminListener.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHubAdminListener.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeLinkListener: FfiConverterRustBuffer {
     typealias SwiftType = LinkListener?
 
@@ -35090,6 +36300,56 @@ fileprivate struct FfiConverterSequenceTypeHistoryEntry: FfiConverterRustBuffer 
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeHistoryEntry.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHubAdminEvent: FfiConverterRustBuffer {
+    typealias SwiftType = [HubAdminEvent]
+
+    public static func write(_ value: [HubAdminEvent], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHubAdminEvent.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HubAdminEvent] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HubAdminEvent]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHubAdminEvent.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHubModePin: FfiConverterRustBuffer {
+    typealias SwiftType = [HubModePin]
+
+    public static func write(_ value: [HubModePin], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHubModePin.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HubModePin] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HubModePin]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHubModePin.read(from: &buf))
         }
         return seq
     }
@@ -36878,6 +38138,27 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_host_notify() != 19114) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_admin_events() != 40604) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_limits_clear() != 57758) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_limits_get() != 55493) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_limits_set() != 29899) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_mode_pin() != 57304) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_pin_clear() != 63217) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_pin_set() != 62268) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_identify() != 26030) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -36900,6 +38181,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_installer_pin_set() != 15081) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_installer_target() != 45550) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_installer_unlock() != 2337) {
@@ -37190,6 +38474,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_set_hotplug_callback() != 10655) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_set_hub_admin_listener() != 10270) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_set_i2c() != 62416) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -37436,6 +38723,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_hosttransport_unlock() != 61429) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_hubadminlistener_on_hub_admin_event() != 29874) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_linklistener_on_link_devices_changed() != 16214) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -37473,6 +38763,7 @@ private let initializationResult: InitializationResult = {
     uniffiCallbackInitAutoEqFetch()
     uniffiCallbackInitDeviceEvents()
     uniffiCallbackInitHostTransport()
+    uniffiCallbackInitHubAdminListener()
     uniffiCallbackInitLinkListener()
     uniffiCallbackInitMidiSender()
     uniffiCallbackInitNotifyListener()

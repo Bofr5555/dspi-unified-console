@@ -68,6 +68,8 @@ mod modes;
 mod offline;
 // -- WP P1SA --
 mod guarded;
+// -- WP HUBADMIN --
+mod hub_admin;
 
 // ── Replies ──────────────────────────────────────────────────────────
 

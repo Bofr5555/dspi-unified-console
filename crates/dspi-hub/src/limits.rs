@@ -142,6 +142,10 @@ pub struct StoredLimits {
     /// The wrong-PIN count and refusal window, by serial: a restart keeps
     /// them (the window's end on the wall clock).
     pub tries: BTreeMap<String, shared::StoredTries>,
+    // -- WP HUBADMIN --
+    /// The recovery codes' hashes, by serial (OD-P1c: made when an Admin sets
+    /// the PIN, shown that once). Never a code.
+    pub recovery: BTreeMap<String, PinRecord>,
 }
 
 /// Where [`StoredLimits`] persists (`auth::StoredLimitsFile`, the hub's store).
@@ -255,6 +259,9 @@ impl HubLimits {
             .filter(|(s, _)| stored.pins.contains_key(s))
             .map(|(s, t)| (s, PinTries::from_stored(t, now, wall)))
             .collect();
+        // -- WP HUBADMIN -- a code without its PIN unlocks nothing: dropped
+        let pins = stored.pins.clone();
+        stored.recovery.retain(|s, _| pins.contains_key(s));
         let stored = StoredLimits {
             profiles: stored
                 .profiles
@@ -378,12 +385,38 @@ impl HubLimits {
     /// Set (`Some`) or clear `serial`'s PIN: only its salted, slow hash is kept.
     /// Clearing it removes the lock and every session's unlock.
     pub fn set_pin(&self, serial: &str, pin: Option<&str>) -> Result<(), PinRefused> {
+        self.set_pin_with_recovery(serial, pin).map(|_| ())
+    }
+
+    // -- WP HUBADMIN --
+    /// [`Self::set_pin`], and with a new PIN a new recovery code (OD-P1c):
+    /// returned this once, kept only as a salted, slow hash, and good for
+    /// [`Self::unlock`] in place of the PIN until the PIN is set or cleared
+    /// again. `None` when the PIN was cleared.
+    pub fn set_pin_with_recovery(
+        &self,
+        serial: &str,
+        pin: Option<&str>,
+    ) -> Result<Option<String>, PinRefused> {
+        let mut code = None;
         let record = match pin {
             Some(pin) => {
                 if !PIN_LEN.contains(&pin.chars().count()) {
                     return Err(PinRefused::BadPin);
                 }
                 let salt: [u8; 16] = crate::store::random_bytes().map_err(PinRefused::Store)?;
+                let code_salt: [u8; 16] =
+                    crate::store::random_bytes().map_err(PinRefused::Store)?;
+                let code_bytes: [u8; shared::RECOVERY_CODE_CHARS] =
+                    crate::store::random_bytes().map_err(PinRefused::Store)?;
+                let text = shared::recovery_code_from(&code_bytes);
+                let code_rec = PinRecord::make(
+                    serial,
+                    &shared::normalise_recovery_code(&text),
+                    &code_salt,
+                    shared::PIN_ITERATIONS,
+                );
+                code = Some((text, code_rec));
                 Some(PinRecord::make(serial, pin, &salt, shared::PIN_ITERATIONS))
             }
             None => None,
@@ -403,10 +436,16 @@ impl HubLimits {
                     st.stored.pins.remove(serial);
                 }
             }
+            // -- WP HUBADMIN -- the code goes with the PIN it was made for
+            match &code {
+                Some((_, rec)) => st.stored.recovery.insert(serial.to_owned(), rec.clone()),
+                None => st.stored.recovery.remove(serial),
+            };
             st.unlocked.remove(serial);
             st.tries.remove(serial);
         }
-        self.save().map_err(PinRefused::Store)
+        self.save().map_err(PinRefused::Store)?;
+        Ok(code.map(|(text, _)| text))
     }
 
     /// Unlock `serial` for `session` with `pin`, at `now`. The core's rule
@@ -437,13 +476,20 @@ impl HubLimits {
                 return Err(PinRefused::Later(left));
             }
             t.count(now);
-            record
+            // -- WP HUBADMIN -- and the recovery code, checked the same way
+            (record, st.stored.recovery.get(serial).cloned())
         };
+        let (record, recovery) = record;
         // Kept before the hash: a restart mid-guess keeps the count.
         let _ = self.save();
         // The slow hash, with the lock released.
         if !record.matches(serial, pin) {
-            return Err(PinRefused::Wrong);
+            let code = shared::normalise_recovery_code(pin);
+            let by_code = code.len() == shared::RECOVERY_CODE_CHARS
+                && recovery.is_some_and(|r| r.matches(serial, &code));
+            if !by_code {
+                return Err(PinRefused::Wrong);
+            }
         }
         {
             let mut st = guard(&self.state);
@@ -488,6 +534,20 @@ impl HubLimits {
             .modes
             .get(crate::store::role_name(role))
             .cloned()
+    }
+
+    // -- WP HUBADMIN --
+    /// The mode pinned for each role (`viewer`, `control`, `admin`), `None` for
+    /// the user's choice: what an Admin's Installer page shows.
+    pub fn pinned_modes(&self) -> Vec<(&'static str, Option<String>)> {
+        let st = guard(&self.state);
+        [Role::Viewer, Role::Control, Role::Admin]
+            .into_iter()
+            .map(|r| {
+                let name = crate::store::role_name(r);
+                (name, st.stored.modes.get(name).cloned())
+            })
+            .collect()
     }
 
     /// Pin (`Some`) or unpin `role`'s mode. `false`: not a mode.
@@ -1636,10 +1696,15 @@ pub fn handle_message(hub: &HubHandle, session: &Session, msg: &Value) -> Option
                     ));
                 }
             };
-            match l.set_pin(&serial, pin) {
-                Ok(()) => {
+            // -- WP HUBADMIN -- a new PIN's recovery code, in this reply only
+            match l.set_pin_with_recovery(&serial, pin) {
+                Ok(code) => {
                     hub.limits_changed(&serial, handle);
-                    ok(id, json!({"serial": serial, "pin_set": pin.is_some()}))
+                    let mut body = json!({"serial": serial, "pin_set": pin.is_some()});
+                    if let (Some(code), Some(map)) = (code, body.as_object_mut()) {
+                        map.insert("recovery_code".into(), code.into());
+                    }
+                    ok(id, body)
                 }
                 Err(e) => err(Some(id), e.code(), &e.msg()),
             }
@@ -1716,6 +1781,17 @@ fn mode_message(hub: &HubHandle, session: &Session, id: &Value, t: &str, msg: &V
         "role": crate::store::role_name(role),
         "mode": l.pinned_mode(role),
     });
+    // -- WP HUBADMIN -- an Admin sees every role's pin (its Installer page)
+    if role == Role::Admin
+        && let Some(map) = body.as_object_mut()
+    {
+        let pins: serde_json::Map<String, Value> = l
+            .pinned_modes()
+            .into_iter()
+            .map(|(r, m)| (r.to_owned(), m.map_or(Value::Null, Value::from)))
+            .collect();
+        map.insert("pins".into(), Value::Object(pins));
+    }
     let handle = msg
         .get("handle")
         .and_then(Value::as_u64)

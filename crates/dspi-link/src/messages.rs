@@ -297,9 +297,12 @@ pub enum Inbound {
         slot: Option<u8>,
         code: Option<String>,
     },
-    /// Any other event (fw.progress, hub.config.changed, ...): ignored by this client.
+    /// Any other event (fw.progress, hub.config.changed, ...): ignored by this client,
+    /// but handed whole to the session's listener ([`crate::client::LinkEvents::hub_event`]).
     Other {
         t: String,
+        // -- WP HUBADMIN -- the message as it came, for the listener
+        body: Value,
     },
 }
 
@@ -318,7 +321,7 @@ impl fmt::Debug for Inbound {
             Inbound::PollError { handle, slot, code } => {
                 f.debug_struct("PollError").field("handle", handle).field("slot", slot).field("code", code).finish()
             }
-            Inbound::Other { t } => f.debug_struct("Other").field("t", t).finish(),
+            Inbound::Other { t, .. } => f.debug_struct("Other").field("t", t).finish_non_exhaustive(),
         }
     }
 }
@@ -372,7 +375,7 @@ impl Inbound {
                 slot: v.get("slot").and_then(Value::as_u64).map(|s| s as u8),
                 code: v.get("code").and_then(Value::as_str).map(str::to_owned),
             },
-            _ => Inbound::Other { t },
+            _ => Inbound::Other { t, body: v },
         })
     }
 }
@@ -420,5 +423,26 @@ pub mod out {
 
     pub fn lock_release(id: u64, handle: u8) -> String {
         json!({"t": "lock.release", "id": id, "handle": handle}).to_string()
+    }
+}
+
+// -- WP HUBADMIN --
+#[cfg(test)]
+mod tests_wp_hubadmin {
+    use super::*;
+
+    /// An event this client does not handle keeps its body, for the session's
+    /// listener (`LinkEvents::hub_event`), and the body never reaches a log.
+    #[test]
+    fn wp_hubadmin_other_events_keep_their_body() {
+        let text = r#"{"t":"limits.held","v":1,"serial":"S1","handle":2,"rows":["a"]}"#;
+        let Ok(Inbound::Other { t, body }) = Inbound::parse(text) else {
+            panic!("not Other");
+        };
+        assert_eq!(t, "limits.held");
+        assert_eq!(body["rows"][0], "a");
+        assert_eq!(body["serial"], "S1");
+        let shown = format!("{:?}", Inbound::parse(text).unwrap());
+        assert!(!shown.contains("rows"), "{shown}");
     }
 }

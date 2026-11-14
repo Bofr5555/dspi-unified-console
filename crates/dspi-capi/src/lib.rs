@@ -168,6 +168,8 @@ mod tests {
             "src/fns_misc/offline.rs",
             // -- WP P1SA --
             "src/fns_misc/guarded.rs",
+            // -- WP HUBADMIN --
+            "src/fns_misc/hub_admin.rs",
             "src/fns_browse.rs",
             "src/fns_link.rs",
             "src/fns_hub.rs",

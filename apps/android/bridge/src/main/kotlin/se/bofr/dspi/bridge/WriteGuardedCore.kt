@@ -15,6 +15,7 @@ import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.FilterParams
 import se.bofr.dspi.core.GuardedApply
 import se.bofr.dspi.core.HistoryMove
+import se.bofr.dspi.core.HubLimitsSet
 import se.bofr.dspi.core.I2cConfig
 import se.bofr.dspi.core.LimitsApply
 import se.bofr.dspi.core.LockState
@@ -757,6 +758,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.installerLockCover(pages)
     }
 
+    // -- WP HUBADMIN -- the hub holds the device to a new profile at once (writes)
+    override fun hubLimitsSet(document: String): HubLimitsSet {
+        guard("hubLimitsSet")
+        return inner.hubLimitsSet(document)
+    }
+
     // -- WP P1SA -- a guarded import or recall writes the device
     override fun applyGuardedImport(text: String, options: Long, eqChannels: Long, timeoutS: Long): GuardedApply {
         guard("applyGuardedImport")
@@ -954,6 +961,8 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "limitsApplyProfile",
             // -- WP P1LK --
             "installerLockCover",
+            // -- WP HUBADMIN --
+            "hubLimitsSet",
             // -- WP P1SA --
             "applyGuardedImport",
             "applyGuardedSnapshot",
@@ -1248,7 +1257,19 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "installerPinClear",
             // -- WP P1DKFIX -- the hub's lock, read (`limits.get`,
             // `mode.pinned`): hub messages, nothing written to the device
-            "installerLockRefresh"
+            "installerLockRefresh",
+            // -- WP HUBADMIN -- the hub's admin API: which copy the page edits
+            // (no I/O), reads, and hub messages that write nothing to the
+            // device (clearing a profile changes nothing on it; the PIN and
+            // the pinned modes are the hub's); the hub's role check gates them
+            "installerTarget",
+            "hubLimitsGet",
+            "hubLimitsClear",
+            "hubPinSet",
+            "hubPinClear",
+            "hubModePin",
+            "hubAdminEvents",
+            "setHubAdminListener"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

@@ -65,3 +65,13 @@ fun interface AutoEqFetch {
     @Throws(DspiException::class)
     fun get(request: AutoEqFetchRequest): AutoEqFetchResponse
 }
+
+// -- WP HUBADMIN --
+/**
+ * The hub's `limits.changed`, `limits.held` and `mode.changed`
+ * ([DspiCoreApi.setHubAdminListener]), each after the core read the lock again
+ * ([HubAdminEvent.lock]). Runs on a core thread: schedule work only.
+ */
+fun interface HubAdminListener {
+    fun onHubAdminEvent(event: HubAdminEvent)
+}

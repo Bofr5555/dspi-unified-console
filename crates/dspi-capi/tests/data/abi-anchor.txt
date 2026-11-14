@@ -1473,6 +1473,23 @@ uint32_t dspi_apply_revert(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_apply_poll(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_apply_status(struct FfiCore *core, char *buf, uint32_t len);
 bool dspi_apply_guard_default(struct FfiCore *core);
+uint32_t dspi_installer_target(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_hub_limits_get(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_hub_limits_set(struct FfiCore *core, const char *document, char *buf, uint32_t len);
+uint32_t dspi_hub_limits_clear(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_hub_pin_set(struct FfiCore *core, const char *pin, char *buf, uint32_t len);
+uint32_t dspi_hub_pin_clear(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_hub_mode_pin(struct FfiCore *core,
+const char *role,
+const char *mode,
+char *buf,
+uint32_t len);
+uint32_t dspi_hub_admin_events(struct FfiCore *core, char *buf, uint32_t len);
+bool dspi_hub_admin_set_listener(struct FfiCore *core,
+void (*callback)(const char *kind,
+const char *event_json,
+void *user_data),
+void *user_data);
 bool dspi_link_browse_start(struct FfiCore *core,
 void (*callback)(void *user_data),
 void *user_data,

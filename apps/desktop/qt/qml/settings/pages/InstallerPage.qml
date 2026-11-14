@@ -13,6 +13,9 @@ SettingsPage {
     objectName: "InstallerPage"
     readonly property bool open: LimitsController.installerOpen
     readonly property var limits: LimitsController.limits
+    // -- WP HUBADMIN -- the copy edited may be changed here (the hub's: by an Admin of the hub)
+    readonly property bool canEdit: LimitsController.editable && !LimitsController.busy
+    readonly property bool hubCopy: LimitsController.copy === "hub"
 
     // Nothing open: say so
     SettingsGroup {
@@ -25,6 +28,41 @@ SettingsPage {
             font: Theme.fontBody
             color: Theme.textMuted
             wrapMode: Text.Wrap
+        }
+    }
+
+    // -- WP HUBADMIN -- Which copy is edited, and why it is read-only
+    SettingsGroup {
+        objectName: "Installer.copyGroup"
+        visible: DeviceModel.connected && LimitsController.copyText.length > 0
+        title: page.hubCopy ? qsTr("The hub's copy") : qsTr("This console's copy")
+        iconName: page.hubCopy ? "network" : "monitor"
+        Text {
+            objectName: "Installer.copyNotice"
+            Layout.fillWidth: true
+            text: LimitsController.copyText
+            font: Theme.fontBody
+            color: Theme.text
+            wrapMode: Text.Wrap
+        }
+        RowLayout {
+            objectName: "Installer.readOnly"
+            Layout.fillWidth: true
+            visible: LimitsController.readOnlyText.length > 0
+            spacing: Theme.spacingSmall
+            Icon {
+                name: "triangle-alert"
+                size: 14
+                color: Theme.warning
+            }
+            Text {
+                objectName: "Installer.readOnlyText"
+                Layout.fillWidth: true
+                text: LimitsController.readOnlyText
+                font: Theme.fontSmall
+                color: Theme.text
+                wrapMode: Text.Wrap
+            }
         }
     }
 
@@ -84,11 +122,14 @@ SettingsPage {
         visible: DeviceModel.connected && page.open
         title: qsTr("Limits")
         iconName: "gauge"
-        footer: NoticeCenter.line("limits.scope")
+        // -- WP HUBADMIN -- the hub's limits hold for every console on it
+        footer: page.hubCopy ? "" : NoticeCenter.line("limits.scope")
 
         Text {
             Layout.fillWidth: true
-            text: qsTr("Limits narrow what this DSPi may be set to from this console. A change applies at once; settings already outside a new limit are brought inside it, and what changed is shown.")
+            text: page.hubCopy
+                  ? qsTr("Limits narrow what this DSPi may be set to from any console on the hub. A change applies at once; settings already outside a new limit are brought inside it, and what changed is shown.")
+                  : qsTr("Limits narrow what this DSPi may be set to from this console. A change applies at once; settings already outside a new limit are brought inside it, and what changed is shown.")
             font: Theme.fontBody
             color: Theme.text
             wrapMode: Text.Wrap
@@ -116,7 +157,7 @@ SettingsPage {
             title: qsTr("Master volume at most")
             value: page.limits.masterVolumeMaxDb
             key: "masterVolumeMaxDb"; decimals: 1; defaultValue: -10
-            enabled: !LimitsController.busy
+            enabled: page.canEdit
             onEdited: v => LimitsController.setLimit("masterVolumeMaxDb", v)
         }
         LimitField {
@@ -124,7 +165,7 @@ SettingsPage {
             title: qsTr("EQ boost at most, every band")
             value: page.limits.maxPeqBoostDb
             key: "maxPeqBoostDb"; decimals: 1; defaultValue: 6
-            enabled: !LimitsController.busy
+            enabled: page.canEdit
             onEdited: v => LimitsController.setLimit("maxPeqBoostDb", v)
         }
         // PRO1 S2: an output above -10 dB of gain with no limiter
@@ -159,7 +200,7 @@ SettingsPage {
             AppButton {
                 objectName: "Installer.clearLimits"
                 text: qsTr("Remove All Limits")
-                enabled: LimitsController.active && !LimitsController.busy
+                enabled: LimitsController.active && page.canEdit
                 onClicked: LimitsController.clearLimits()
             }
         }
@@ -181,7 +222,7 @@ SettingsPage {
                 title: qsTr("Gain at most")
                 value: outGroup.modelData.maxGainDb
                 key: "maxGainDb"; decimals: 1; defaultValue: 0
-                enabled: !LimitsController.busy
+                enabled: page.canEdit
                 onEdited: v => LimitsController.setOutputLimit(outGroup.output, "maxGainDb", v)
             }
             LimitField {
@@ -189,7 +230,7 @@ SettingsPage {
                 title: qsTr("Limiter on, ceiling at most")
                 value: outGroup.modelData.limiterCeilingDb
                 key: "limiterCeilingDb"; decimals: 1; defaultValue: -1
-                enabled: !LimitsController.busy
+                enabled: page.canEdit
                 onEdited: v => LimitsController.setOutputLimit(outGroup.output, "limiterCeilingDb", v)
             }
             LimitField {
@@ -197,7 +238,7 @@ SettingsPage {
                 title: qsTr("High-pass kept, at or above")
                 value: outGroup.modelData.highpassMinHz
                 key: "highpassMinHz"; decimals: 0; defaultValue: 80
-                enabled: !LimitsController.busy
+                enabled: page.canEdit
                 onEdited: v => LimitsController.setOutputLimit(outGroup.output, "highpassMinHz", v)
             }
             LimitField {
@@ -206,7 +247,7 @@ SettingsPage {
                 title: qsTr("High-pass slope at least")
                 value: outGroup.modelData.highpassMinSlopeDb
                 key: "highpassMinSlopeDb"; decimals: 0; defaultValue: 12
-                enabled: !LimitsController.busy
+                enabled: page.canEdit
                 onEdited: v => LimitsController.setOutputLimit(outGroup.output, "highpassMinSlopeDb", v)
             }
             LimitField {
@@ -214,7 +255,7 @@ SettingsPage {
                 title: qsTr("Delay at least")
                 value: outGroup.modelData.delayMinMs
                 key: "delayMinMs"; decimals: 2; defaultValue: 0
-                enabled: !LimitsController.busy
+                enabled: page.canEdit
                 onEdited: v => LimitsController.setOutputLimit(outGroup.output, "delayMinMs", v)
             }
             LimitField {
@@ -222,7 +263,7 @@ SettingsPage {
                 title: qsTr("Delay at most")
                 value: outGroup.modelData.delayMaxMs
                 key: "delayMaxMs"; decimals: 2; defaultValue: 10
-                enabled: !LimitsController.busy
+                enabled: page.canEdit
                 onEdited: v => LimitsController.setOutputLimit(outGroup.output, "delayMaxMs", v)
             }
         }
@@ -241,7 +282,7 @@ SettingsPage {
             label: qsTr("Note")
             placeholderText: qsTr("What this system is set up for")
             text: page.limits.note || ""
-            enabled: !LimitsController.busy
+            enabled: page.canEdit
             onCommitted: t => LimitsController.setText("note", t)
         }
         BorderedField {
@@ -250,7 +291,7 @@ SettingsPage {
             label: qsTr("Contact")
             placeholderText: qsTr("How to reach the installer")
             text: page.limits.contact || ""
-            enabled: !LimitsController.busy
+            enabled: page.canEdit
             onCommitted: t => LimitsController.setText("contact", t)
         }
     }
@@ -258,10 +299,11 @@ SettingsPage {
     // ---- The PIN and the lock -----------------------------------------------------
     SettingsGroup {
         objectName: "Installer.pinGroup"
-        visible: DeviceModel.connected && page.open && !LimitsController.heldByHub
-        title: qsTr("Installer PIN")
+        // -- WP HUBADMIN -- the hub's copy: its PIN is edited here
+        visible: DeviceModel.connected && page.open && (page.hubCopy || !LimitsController.heldByHub)
+        title: page.hubCopy ? qsTr("The Hub's Installer PIN") : qsTr("Installer PIN")
         iconName: "key-round"
-        footer: NoticeCenter.sentence("installer_lock.scope")
+        footer: page.hubCopy ? "" : NoticeCenter.sentence("installer_lock.scope")
 
         // No PIN: set one (nothing is locked until it covers the settings)
         Text {
@@ -284,6 +326,7 @@ SettingsPage {
                 placeholderText: qsTr("New PIN (4 to 64 characters)")
                 echoMode: TextInput.Password
                 maximumLength: 64
+                enabled: page.canEdit
             }
             BorderedField {
                 id: repeatPin
@@ -293,6 +336,7 @@ SettingsPage {
                 placeholderText: qsTr("The same again")
                 echoMode: TextInput.Password
                 maximumLength: 64
+                enabled: page.canEdit
                 onAccepted: setPinButton.clicked()
             }
             AppButton {
@@ -300,7 +344,7 @@ SettingsPage {
                 objectName: "Installer.setPin"
                 text: qsTr("Set PIN")
                 primary: true
-                enabled: newPin.text.length >= 4 && repeatPin.text.length > 0 && !LimitsController.busy
+                enabled: newPin.text.length >= 4 && repeatPin.text.length > 0 && page.canEdit
                 onClicked: {
                     LimitsController.setPin(newPin.text, repeatPin.text)
                     newPin.text = ""
@@ -317,7 +361,8 @@ SettingsPage {
             spacing: Theme.spacingSmall
             Text {
                 Layout.fillWidth: true
-                text: NoticeCenter.line("installer_lock.recovery", qsTr("Keep the recovery code"))
+                objectName: "Installer.recoveryNotice"
+                text: NoticeCenter.line(LimitsController.recoveryKey, qsTr("Keep the recovery code"))
                 font: Theme.fontBody
                 color: Theme.text
                 wrapMode: Text.Wrap
@@ -344,7 +389,7 @@ SettingsPage {
             }
             Text {
                 Layout.fillWidth: true
-                text: NoticeCenter.row("installer_lock.recovery").action || ""
+                text: NoticeCenter.row(LimitsController.recoveryKey).action || ""
                 visible: text.length > 0
                 font: Theme.fontSmall
                 color: Theme.textMuted
@@ -370,7 +415,7 @@ SettingsPage {
             title: qsTr("Lock the settings")
             caption: qsTr("When locked, only volume, mute and presets can be changed on this console.")
             checked: LimitsController.covers
-            enabled: !LimitsController.busy
+            enabled: page.canEdit
             onToggled: on => LimitsController.setCovers(on)
         }
         RowLayout {
@@ -389,7 +434,7 @@ SettingsPage {
                 objectName: "Installer.clearPin"
                 text: qsTr("Remove PIN…")
                 destructive: true
-                enabled: !LimitsController.busy
+                enabled: page.canEdit
                 onClicked: removeQuestion.open()
             }
         }
@@ -407,7 +452,7 @@ SettingsPage {
     // The hub holds the lock: its PIN is set on the hub
     SettingsGroup {
         objectName: "Installer.hubGroup"
-        visible: DeviceModel.connected && page.open && LimitsController.heldByHub
+        visible: DeviceModel.connected && page.open && LimitsController.heldByHub && !page.hubCopy
         title: qsTr("Installer PIN")
         iconName: "network"
         Text {
@@ -426,12 +471,36 @@ SettingsPage {
         }
     }
 
+    // -- WP HUBADMIN -- The hub's pinned mode per role (an Admin sees all three)
+    SettingsGroup {
+        objectName: "Installer.modePins"
+        visible: DeviceModel.connected && page.open && page.hubCopy && LimitsController.modePins.length > 0
+        title: qsTr("Pinned Modes")
+        iconName: "layout-grid"
+        footer: qsTr("A pinned mode is the one every console with that role on the hub shows; none leaves the choice to each console.")
+        Repeater {
+            model: LimitsController.modePins
+            delegate: SettingsPickerRow {
+                required property var modelData
+                objectName: "Installer.modePin." + modelData.role
+                inline: true
+                enabled: page.canEdit
+                label: modelData.role === "admin" ? qsTr("Admin") : modelData.role === "control" ? qsTr("Control") : qsTr("Viewer")
+                values: ["", "simple", "advanced", "installer"]
+                texts: [qsTr("None"), qsTr("Simple"), qsTr("Advanced"), qsTr("Installer")]
+                value: modelData.mode
+                onChosen: v => LimitsController.setModePin(modelData.role, v)
+            }
+        }
+    }
+
     QuestionDialog {
         id: removeQuestion
         objectName: "Installer.removeQuestion"
         parent: Overlay.overlay
         title: qsTr("Remove the installer PIN?")
-        text: qsTr("Nothing will be locked on this console any more, and the recovery code stops working. The limits stay.")
+        text: page.hubCopy ? qsTr("Nothing will be locked on the hub for this DSPi any more, and the recovery code stops working. The limits stay.")
+                           : qsTr("Nothing will be locked on this console any more, and the recovery code stops working. The limits stay.")
         acceptText: qsTr("Remove PIN")
         destructive: true
         onAnswered: answer => { if (answer === "accept") LimitsController.clearPin() }

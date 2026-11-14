@@ -2066,6 +2066,120 @@ mod tests_wp_tm11 {
             assert!(!command(&running, "quit", false));
         }
     }
+
+    // -- WP HUBADMIN --
+    /// `uconsole --link … limits get|set|clear`, `lock set-pin|clear-pin` and
+    /// `mode pin` change the HUB's copy, as an Admin of the hub only.
+    mod hubadmin {
+        use super::*;
+        use crate::core_route;
+        use crate::pro::Stores;
+        use crate::pro::installer::{self as inst, Pins};
+
+        fn pins(new: Option<&'static str>) -> Pins<'static> {
+            Pins {
+                current: Box::new(|| None),
+                new: Box::new(move || Ok(new.map(str::to_owned))),
+            }
+        }
+
+        fn doc(max_gain_db: f32) -> String {
+            dspi_session::limits::LimitsProfile {
+                outputs: vec![dspi_session::limits::OutputLimits {
+                    output: 0,
+                    max_gain_db: Some(max_gain_db),
+                    ..Default::default()
+                }],
+                locked_pages: vec!["eq".into()],
+                ..Default::default()
+            }
+            .to_document()
+        }
+
+        #[test]
+        fn wp_hubadmin_the_terminal_edits_the_hubs_copy_as_an_admin() {
+            let store = scratch("hubadmin");
+            let running = start(&demo_options(&store), false).unwrap();
+            let port = running.control.port();
+            let pin = pin_of(&running);
+            let stores = Stores::under(&store.join("console"));
+            let open = |t: &Target| {
+                core_route::open_core(t, &stores, &no_prompt)
+                    .expect("the hub's device opens on a core")
+            };
+
+            // Paired with the hub's PIN: Control, read-only here.
+            let o = open(&client(port, Some(&pin), &store));
+            let core = std::sync::Arc::clone(&o.handle.core);
+            assert_eq!(core.link_hub_role(), "control");
+            let t = inst::hub_copy(&core).expect("the hub's copy");
+            assert!(!t.editable);
+            assert_eq!(inst::hub_limits_show(&core, true), crate::exit::OK);
+            assert_eq!(
+                inst::hub_limits_set(&core, &t, doc(3.0), false),
+                crate::exit::REJECTED
+            );
+            assert_eq!(
+                inst::hub_pin_set(&core, &t, &mut pins(Some("4711-door")), false),
+                crate::exit::REJECTED
+            );
+            assert_eq!(
+                inst::mode_on(&core, Some(("control".into(), "simple".into())), false),
+                crate::exit::REJECTED
+            );
+            assert!(!core.hub_limits_get().unwrap().pin_set, "nothing sent");
+
+            // Made an Admin on the hub's machine, live: the next command
+            // reads the role again, and the change goes.
+            let cid = running.control.auth().clients()[0].cid;
+            assert!(command(&running, &format!("role {cid} admin"), false));
+            assert_eq!(
+                inst::hub_limits_set(&core, &t, doc(3.0), false),
+                crate::exit::OK
+            );
+            let st = core.hub_limits_get().unwrap();
+            assert!(st.can_edit && !st.profile_document.is_empty(), "{st:?}");
+            assert!(
+                !core.limits_status().active,
+                "the console's own copy untouched"
+            );
+            // A new PIN: from DSPI_NEW_INSTALLER_PIN, --new-pin - or the
+            // prompt, never the command line; no current PIN for an Admin.
+            assert_eq!(
+                inst::hub_pin_set(&core, &t, &mut pins(Some("4711-door")), true),
+                crate::exit::OK
+            );
+            assert!(core.hub_limits_get().unwrap().pin_set);
+            assert_eq!(
+                inst::hub_pin_set(&core, &t, &mut pins(None), false),
+                crate::exit::USAGE
+            );
+            assert_eq!(
+                inst::mode_on(&core, Some(("control".into(), "simple".into())), false),
+                crate::exit::OK
+            );
+            assert!(
+                core.hub_limits_get()
+                    .unwrap()
+                    .pinned_modes
+                    .iter()
+                    .any(|p| p.role == "control" && p.mode == "simple")
+            );
+            assert_eq!(
+                inst::mode_on(&core, Some(("control".into(), "none".into())), false),
+                crate::exit::OK
+            );
+            assert_eq!(
+                inst::mode_on(&core, Some(("guest".into(), "simple".into())), false),
+                crate::exit::USAGE
+            );
+            assert_eq!(inst::hub_pin_clear(&core, &t, false), crate::exit::OK);
+            assert_eq!(inst::hub_limits_clear(&core, &t, false), crate::exit::OK);
+            let st = core.hub_limits_get().unwrap();
+            assert!(!st.pin_set && st.profile_document.is_empty(), "{st:?}");
+            assert!(!command(&running, "quit", false));
+        }
+    }
 }
 
 #[cfg(test)]

@@ -104,9 +104,8 @@ pub const LOCK_BANNER_NOTICE: &str = "installer_lock.banner";
 const PIN_MIN_CHARS: usize = 4;
 const PIN_MAX_CHARS: usize = 64;
 
-/// The recovery code's alphabet (no I, O, 0 or 1) and length.
-const CODE_ALPHABET: &[u8; 32] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-const CODE_CHARS: usize = 20;
+/// The recovery code's length (-- WP HUBADMIN -- the shared rule's).
+const CODE_CHARS: usize = dspi_session::limits::RECOVERY_CODE_CHARS;
 
 thread_local! {
     /// Depth of [`LockScope`] on this thread.
@@ -714,30 +713,17 @@ pub(crate) fn installer_gate(inner: &mut Inner) -> Result<()> {
 
 /// `code` as it is compared: letters and digits only, upper case.
 fn normalise_code(code: &str) -> String {
-    code.chars()
-        .filter(char::is_ascii_alphanumeric)
-        .map(|c| c.to_ascii_uppercase())
-        .collect()
+    // -- WP HUBADMIN -- one rule with the hub's codes
+    dspi_session::limits::normalise_recovery_code(code)
 }
 
 /// A recovery code from `CODE_CHARS` random bytes, in groups of five.
 fn code_from(bytes: &[u8]) -> String {
-    let chars: Vec<char> = bytes
-        .iter()
-        .take(CODE_CHARS)
-        .map(|b| {
-            let i = usize::from(*b & 0x1F); // 32 letters: unbiased
-            CODE_ALPHABET.get(i).map_or('A', |c| char::from(*c))
-        })
-        .collect();
-    chars
-        .chunks(5)
-        .map(|c| c.iter().collect::<String>())
-        .collect::<Vec<_>>()
-        .join("-")
+    // -- WP HUBADMIN -- one rule with the hub's codes
+    dspi_session::limits::recovery_code_from(bytes)
 }
 
-fn check_pin_text(pin: &str) -> Result<()> {
+pub(crate) fn check_pin_text(pin: &str) -> Result<()> {
     let n = pin.chars().count();
     if pin.trim() != pin || !(PIN_MIN_CHARS..=PIN_MAX_CHARS).contains(&n) {
         return Err(DspiError::InvalidArgument {

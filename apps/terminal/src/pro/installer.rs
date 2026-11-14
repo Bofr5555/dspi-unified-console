@@ -8,6 +8,13 @@
 //! script it takes `DSPI_INSTALLER_PIN`, or `--installer-pin -` with the PIN
 //! as a line of standard input. The recovery code works wherever the PIN
 //! does. The lock is on this console, not on the DSPi (OD-P1d).
+//!
+//! -- WP HUBADMIN -- Over DSPi Link (`--link`) to a hub that keeps limits, the
+//! hub's copy is the one: `limits get|set|clear` and `lock set-pin|clear-pin`
+//! change the HUB's profile and PIN (Admin of the hub only; an Admin needs no
+//! installer PIN), and `mode pin ROLE MODE` pins a role's mode on the hub.
+//! Below Admin they show it and refuse a change, in the notice's words. The
+//! console's own copy is changed only for a directly connected DSPi.
 #![warn(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -16,7 +23,8 @@
 )]
 
 use dspi_cmd::COMMAND;
-use dspi_core::{DspiCore, LockState};
+use dspi_core::hub_admin::{COPY_HUB, NOTICE_HUB_RECOVERY};
+use dspi_core::{DspiCore, HubAdminState, InstallerTarget, LockState};
 use dspi_tui::shell::connect::{Target, printable};
 use serde_json::{Value, json};
 
@@ -167,7 +175,7 @@ pub(crate) fn ensure_unlocked(core: &DspiCore, pins: &mut Pins<'_>) -> Result<Lo
 
 // ─── limits ─────────────────────────────────────────────────────────────
 
-const LIMITS_USAGE: &str = "limits takes show, set FILE or clear";
+const LIMITS_USAGE: &str = "limits takes show (or get), set FILE or clear";
 
 /// `uconsole limits {show,set FILE,clear}`.
 pub(crate) fn cmd_limits(target: &Target, flags: &[&str], json: bool) -> u8 {
@@ -180,7 +188,7 @@ pub(crate) fn cmd_limits(target: &Target, flags: &[&str], json: bool) -> u8 {
         Err(e) => return usage(&e),
     };
     let profile = match args.pos.as_slice() {
-        ["show"] | [] | ["clear"] => None,
+        ["show" | "get"] | [] | ["clear"] => None,
         ["set", file] => match read_text(file) {
             Ok(t) => Some(t),
             Err(c) => return c,
@@ -195,6 +203,14 @@ pub(crate) fn cmd_limits(target: &Target, flags: &[&str], json: bool) -> u8 {
         Err(c) => return c,
     };
     let mut pins = Pins::from_args(&args, &opened.serial);
+    // -- WP HUBADMIN -- a hub's device: the hub's copy
+    if let Some(t) = hub_copy(&opened.core) {
+        return match (args.pos.first().copied(), profile) {
+            (Some("set"), Some(text)) => hub_limits_set(&opened.core, &t, text, json),
+            (Some("clear"), _) => hub_limits_clear(&opened.core, &t, json),
+            _ => hub_limits_show(&opened.core, json),
+        };
+    }
     match (args.pos.first().copied(), profile) {
         (Some("set"), Some(text)) => limits_set(&opened.core, text, &mut pins, json),
         (Some("clear"), _) => limits_clear(&opened.core, &mut pins, json),
@@ -351,6 +367,14 @@ pub(crate) fn cmd_lock(target: &Target, flags: &[&str], json: bool) -> u8 {
         Err(c) => return c,
     };
     let mut pins = Pins::from_args(&args, &opened.serial);
+    // -- WP HUBADMIN -- a hub's device: its PIN is the hub's
+    if let Some(t) = hub_copy(&opened.core) {
+        match verb {
+            "set-pin" => return hub_pin_set(&opened.core, &t, &mut pins, json),
+            "clear-pin" => return hub_pin_clear(&opened.core, &t, json),
+            _ => {}
+        }
+    }
     lock_on(&opened.core, verb, &mut pins, json)
 }
 
@@ -474,6 +498,260 @@ fn clear_pin(core: &DspiCore, pins: &mut Pins<'_>, json: bool) -> u8 {
                 print_lock(&st, true);
             } else {
                 println!("Installer PIN cleared: nothing is locked on this console.");
+            }
+            exit::OK
+        }
+        Err(e) => fail(&e),
+    }
+}
+
+// ─── the hub's copy (WP HUBADMIN) ───────────────────────────────────────
+
+/// The Installer target when the open device's copy is the hub's.
+pub(crate) fn hub_copy(core: &DspiCore) -> Option<InstallerTarget> {
+    let t = core.installer_target();
+    (t.copy == COPY_HUB).then_some(t)
+}
+
+/// Below Admin (or a session that is down): say why, before anything is sent.
+fn hub_writable(t: &InstallerTarget) -> Result<(), u8> {
+    if t.read_only_key.is_empty() {
+        return Ok(());
+    }
+    eprintln!("{COMMAND}: {}", notice(&t.read_only_key));
+    Err(if t.read_only_key == "disconnected" {
+        exit::NO_DEVICE
+    } else {
+        exit::REJECTED
+    })
+}
+
+/// The hub's state for a hub command: re-read once, so a role given on the
+/// hub's machine since this session paired is the one judged.
+fn hub_target(core: &DspiCore, t: &InstallerTarget) -> Result<InstallerTarget, u8> {
+    if !t.read_only_key.is_empty() && t.read_only_key != "disconnected" {
+        core.hub_limits_get().map_err(|e| fail(&e))?;
+        return Ok(core.installer_target());
+    }
+    Ok(t.clone())
+}
+
+fn print_hub(st: &HubAdminState) {
+    let who = if st.can_edit {
+        "an Admin: you may change it"
+    } else {
+        "read-only for this console's role"
+    };
+    println!(
+        "The hub's copy for {} ({}; role {}):",
+        printable(&st.serial),
+        who,
+        printable(&st.role)
+    );
+    println!(
+        "  Installer PIN on the hub: {}",
+        if !st.pin_set {
+            "none"
+        } else if st.locked {
+            "set, locked"
+        } else {
+            "set"
+        }
+    );
+    if st.wrong_tries > 0 {
+        println!("  Wrong PINs since the last good one: {}", st.wrong_tries);
+    }
+    if st.retry_after_ms > 0 {
+        println!("  Next try in {} s", st.retry_after_ms.div_ceil(1000));
+    }
+    for p in &st.pinned_modes {
+        let mode = if p.mode.is_empty() {
+            "the user's choice"
+        } else {
+            p.mode.as_str()
+        };
+        println!("  Mode for {}: {}", printable(&p.role), printable(mode));
+    }
+    for held in &st.held {
+        println!("  Last held: {}", printable(held));
+    }
+}
+
+pub(crate) fn hub_limits_show(core: &DspiCore, json: bool) -> u8 {
+    let st = match core.hub_limits_get() {
+        Ok(st) => st,
+        Err(e) => return fail(&e),
+    };
+    if json {
+        let profile: Value = serde_json::from_str(&st.profile_document).unwrap_or(Value::Null);
+        println!(
+            "{}",
+            json!({ "copy": COPY_HUB, "hub": st, "target": core.installer_target(), "profile": profile })
+        );
+        return exit::OK;
+    }
+    println!("{}", notice(dspi_core::hub_admin::NOTICE_HUB_COPY));
+    print_hub(&st);
+    if st.profile_document.is_empty() {
+        println!("No limits profile for this device on the hub.");
+    } else {
+        println!("{}", printable(&st.profile_document));
+    }
+    if !st.can_edit {
+        println!("{}", notice(dspi_core::hub_admin::NOTICE_HUB_ROLE));
+    }
+    exit::OK
+}
+
+pub(crate) fn hub_limits_set(core: &DspiCore, t: &InstallerTarget, text: String, json: bool) -> u8 {
+    if let Err(c) = hub_target(core, t).and_then(|t| hub_writable(&t)) {
+        return c;
+    }
+    match core.hub_limits_set(text) {
+        Ok(set) => {
+            if json {
+                println!("{}", serde_json::to_string(&set).unwrap_or_default());
+                return exit::OK;
+            }
+            println!("Limits profile set on the hub.");
+            for line in &set.held {
+                println!("  Held: {}", printable(line));
+            }
+            exit::OK
+        }
+        Err(e) => fail(&e),
+    }
+}
+
+pub(crate) fn hub_limits_clear(core: &DspiCore, t: &InstallerTarget, json: bool) -> u8 {
+    if let Err(c) = hub_target(core, t).and_then(|t| hub_writable(&t)) {
+        return c;
+    }
+    match core.hub_limits_clear() {
+        Ok(st) => {
+            if json {
+                println!("{}", serde_json::to_string(&st).unwrap_or_default());
+            } else {
+                println!(
+                    "Limits profile removed on the hub: this device runs without the hub's limits."
+                );
+            }
+            exit::OK
+        }
+        Err(e) => fail(&e),
+    }
+}
+
+pub(crate) fn hub_pin_set(
+    core: &DspiCore,
+    t: &InstallerTarget,
+    pins: &mut Pins<'_>,
+    json: bool,
+) -> u8 {
+    if let Err(c) = hub_target(core, t).and_then(|t| hub_writable(&t)) {
+        return c;
+    }
+    // An Admin needs no installer PIN: only the new one is asked.
+    let pin = match (pins.new)() {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            return usage(&format!(
+                "set-pin needs the new PIN: on a terminal it asks twice; in a script, set \
+                 {NEW_PIN_ENV} or pass --new-pin - with the PIN on standard input"
+            ));
+        }
+        Err(e) => return usage(&e),
+    };
+    match core.hub_pin_set(pin) {
+        Ok(set) => {
+            if json {
+                println!("{}", serde_json::to_string(&set).unwrap_or_default());
+                return exit::OK;
+            }
+            println!("Installer PIN set for this DSPi on the hub.");
+            println!("{}", notice(NOTICE_HUB_RECOVERY));
+            println!("  Recovery code: {}", set.recovery_code);
+            exit::OK
+        }
+        Err(e) => fail(&e),
+    }
+}
+
+pub(crate) fn hub_pin_clear(core: &DspiCore, t: &InstallerTarget, json: bool) -> u8 {
+    if let Err(c) = hub_target(core, t).and_then(|t| hub_writable(&t)) {
+        return c;
+    }
+    match core.hub_pin_clear() {
+        Ok(st) => {
+            if json {
+                println!("{}", serde_json::to_string(&st).unwrap_or_default());
+            } else {
+                println!("Installer PIN cleared on the hub: the hub's lock is off.");
+            }
+            exit::OK
+        }
+        Err(e) => fail(&e),
+    }
+}
+
+// ─── mode (WP HUBADMIN) ─────────────────────────────────────────────────
+
+const MODE_USAGE: &str = "mode takes status, or pin ROLE MODE (ROLE viewer, control or \
+                          admin; MODE simple, advanced, installer or none)";
+
+/// `uconsole --link … mode {status,pin ROLE MODE}`: the hub's pinned modes.
+pub(crate) fn cmd_mode(target: &Target, flags: &[&str], json: bool) -> u8 {
+    let args = match Args::parse(flags.get(1..).unwrap_or_default(), &[], &[]) {
+        Ok(a) => a,
+        Err(e) => return usage(&e),
+    };
+    let pin = match args.pos.as_slice() {
+        [] | ["status"] => None,
+        ["pin", role, mode] => Some(((*role).to_owned(), (*mode).to_owned())),
+        ["pin", role] => Some(((*role).to_owned(), "none".to_owned())),
+        _ => return usage(MODE_USAGE),
+    };
+    let opened = match open(target, &Stores::default_dirs()) {
+        Ok(o) => o,
+        Err(c) => return c,
+    };
+    mode_on(&opened.core, pin, json)
+}
+
+pub(crate) fn mode_on(core: &DspiCore, pin: Option<(String, String)>, json: bool) -> u8 {
+    let Some(t) = hub_copy(core) else {
+        eprintln!(
+            "{COMMAND}: {}",
+            notice(dspi_core::hub_admin::NOTICE_NO_LIMITS)
+        );
+        return exit::REJECTED;
+    };
+    let st = match pin {
+        None => core.hub_limits_get(),
+        Some((role, mode)) => {
+            if let Err(c) = hub_target(core, &t).and_then(|t| hub_writable(&t)) {
+                return c;
+            }
+            let mode = if mode == "none" { String::new() } else { mode };
+            core.hub_mode_pin(role, mode)
+        }
+    };
+    match st {
+        Ok(st) => {
+            if json {
+                println!(
+                    "{}",
+                    json!({ "role": st.role, "pinnedModes": st.pinned_modes })
+                );
+            } else {
+                for p in &st.pinned_modes {
+                    let mode = if p.mode.is_empty() {
+                        "the user's choice"
+                    } else {
+                        p.mode.as_str()
+                    };
+                    println!("Mode for {}: {}", printable(&p.role), printable(mode));
+                }
             }
             exit::OK
         }

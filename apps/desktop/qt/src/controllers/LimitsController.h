@@ -79,6 +79,22 @@ class LimitsController : public QObject {
     Q_PROPERTY(QString recoveryCode READ recoveryCode NOTIFY lockChanged)
     // The last PIN call's refusal, in the core's words ("" with none)
     Q_PROPERTY(QString pinError READ pinError NOTIFY lockChanged)
+
+    // -- WP HUBADMIN -- Which copy the page edits (`dspi_installer_target`):
+    // `console` (this console's own: USB, MIDI, the demo), `hub` (the hub's,
+    // over DSPi Link: the `dspi_hub_*` calls) or `none`
+    Q_PROPERTY(QString copy READ copy NOTIFY changed)
+    // The page may change that copy (the hub's: an Admin of the hub only)
+    Q_PROPERTY(bool editable READ editable NOTIFY changed)
+    // The notice row that says which copy is edited, in one line
+    Q_PROPERTY(QString copyText READ copyText NOTIFY changed)
+    // Why the page is read-only, in one line ("" when editable)
+    Q_PROPERTY(QString readOnlyText READ readOnlyText NOTIFY changed)
+    // The hub's pinned mode per role: [{ role, mode }] (mode "" = none); [] off a hub
+    Q_PROPERTY(QVariantList modePins READ modePins NOTIFY changed)
+    // The notice row that goes with the recovery code on show
+    // (`installer_lock.recovery`, or `installer_lock.hub_recovery` for the hub's)
+    Q_PROPERTY(QString recoveryKey READ recoveryKey NOTIFY lockChanged)
 public:
     // A PIN's length (the core's rule, installer-lock.md)
     static constexpr int kPinMin = 4;
@@ -89,7 +105,8 @@ public:
 
     bool connected() const;
     bool busy() const { return m_busy > 0; }
-    bool active() const { return m_status.value(QLatin1String("active")).toBool(); }
+    // -- WP HUBADMIN -- the hub's copy: its profile and its PIN
+    bool active() const;
     QString profileState() const;
     QString standingNotice() const;
     QVariantList outputs() const;
@@ -97,7 +114,7 @@ public:
     QStringList lastHeld() const;
     QVariantMap ranges() const { return m_ranges; }
     QVariantMap lock() const { return m_lock.toVariantMap(); }
-    bool pinSet() const { return m_lock.value(QLatin1String("pinSet")).toBool(); }
+    bool pinSet() const;
     bool locked() const { return m_lock.value(QLatin1String("locked")).toBool(); }
     bool installerOpen() const;
     bool covers() const;
@@ -105,6 +122,15 @@ public:
     QString scopeText() const;
     QString recoveryCode() const { return m_recoveryCode; }
     QString pinError() const { return m_pinError; }
+    // -- WP HUBADMIN --
+    ~LimitsController() override;
+    QString copy() const;
+    bool hubCopy() const { return copy() == QLatin1String("hub"); }
+    bool editable() const;
+    QString copyText() const;
+    QString readOnlyText() const;
+    QVariantList modePins() const;
+    QString recoveryKey() const;
 
     // One limit of output `output` (a field of `outputs`'s rows); NaN clears it
     Q_INVOKABLE void setOutputLimit(int output, const QString &field, double value);
@@ -127,6 +153,9 @@ public:
     Q_INVOKABLE void dismissRecovery();
     // Reads the profile and the lock again (on the worker)
     Q_INVOKABLE void refresh();
+    // -- WP HUBADMIN -- Pins `role`'s mode on the hub (`viewer`, `control`,
+    // `admin`; mode `simple`, `advanced`, `installer`, or "" for none)
+    Q_INVOKABLE void setModePin(const QString &role, const QString &mode);
 
 signals:
     void changed();
@@ -139,8 +168,14 @@ private:
     struct Read {
         QJsonObject status, lock, doc;
         QStringList screens;
+        // -- WP HUBADMIN -- the target, and the hub's state when it is the hub's copy
+        QJsonObject target, hub;
+        bool hubRead = false;
     };
-    static Read readAll(FfiCore *c, bool hub);
+    // -- WP HUBADMIN -- `hubState`: the hub's copy asked of the hub (a round
+    // trip: on a new connection, a refresh, after a call or an event; not on
+    // every snapshot)
+    static Read readAll(FfiCore *c, bool hub, bool hubState = true);
     void apply(const Read &r);
     void onSnapshot();
     void track(int delta);
@@ -150,6 +185,12 @@ private:
     void pinCall(std::function<QByteArray(FfiCore *)> call, std::function<void(const QJsonObject &)> then = {});
     void setPinError(const QJsonObject &reply);
     void postHeld(const QJsonObject &reply);
+    // -- WP HUBADMIN -- A call on the worker, then a read; a refusal as a
+    // notice (or, `asPinError`, as the page's PIN line)
+    void adminCall(std::function<QByteArray(FfiCore *)> call, std::function<void(const QJsonObject &)> then, bool asPinError);
+    // The hub's admin events, on a core thread: re-read on the GUI thread's say
+    static void hubEventThunk(const char *kind, const char *eventJson, void *self);
+    void onHubEvent(const QJsonObject &event);
 
     AppContext m_ctx;
     int m_busy = 0;
@@ -162,6 +203,10 @@ private:
     QString m_recoveryCode;
     QString m_pinError;
     QVariantMap m_ranges; // -- WP P1EFIX --
+    // -- WP HUBADMIN --
+    QJsonObject m_target, m_hub;
+    bool m_hubRecovery = false;   // the recovery code on show is the hub's
+    bool m_hubDue = false;        // a new connection: its first read asks the hub
 };
 
 #endif // LIMITSCONTROLLER_H

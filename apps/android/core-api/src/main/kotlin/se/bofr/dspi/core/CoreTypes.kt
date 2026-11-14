@@ -3675,6 +3675,172 @@ data class GuardedApply(
 )
 
 /**
+ * Which copy of the limits, the installer PIN and the pinned modes the
+ * Installer page edits ([`DspiCore::installer_target`]).
+ */
+data class InstallerTarget(
+    /**
+     * [`COPY_HUB`], [`COPY_CONSOLE`] or [`COPY_NONE`].
+     */
+    val copy: String,
+    /**
+     * The page may change that copy: always for this console's own (its PIN
+     * prompt is [`LockState::installer_open`]'s), for the hub's only as an
+     * Admin of the hub.
+     */
+    val editable: Boolean,
+    /**
+     * The open device's serial ("" with none).
+     */
+    val serial: String,
+    /**
+     * This console's role on the hub (`viewer`, `control`, `admin`): the
+     * one the hub last answered [`DspiCore::hub_limits_get`] with, else the
+     * session's; "" off a hub, or while the hub session is down.
+     */
+    val role: String,
+    /**
+     * The notice row that says which copy is edited: [`NOTICE_HUB_COPY`],
+     * [`NOTICE_CONSOLE_COPY`], [`NOTICE_NO_LIMITS`], or `disconnected`.
+     */
+    val noticeKey: String,
+    /**
+     * Why the page is read-only, as a notice row ([`NOTICE_HUB_ROLE`],
+     * [`NOTICE_NO_LIMITS`], `disconnected`); "" when it is editable.
+     */
+    val readOnlyKey: String,
+)
+
+/**
+ * A role's pinned mode on the hub.
+ */
+data class HubModePin(
+    /**
+     * `viewer`, `control` or `admin`.
+     */
+    val role: String,
+    /**
+     * `simple`, `advanced` or `installer`; "" for the user's choice.
+     */
+    val mode: String,
+)
+
+/**
+ * The hub's limits, PIN and pinned modes for the open device
+ * ([`DspiCore::hub_limits_get`]).
+ */
+data class HubAdminState(
+    /**
+     * The device's serial.
+     */
+    val serial: String,
+    /**
+     * This console's role on the hub.
+     */
+    val role: String,
+    /**
+     * This console may change the hub's copy (it is an Admin of the hub).
+     */
+    val canEdit: Boolean,
+    /**
+     * The hub's profile as a limits document (the `.dspipreset` family,
+     * `meta.kind` `limits`); "" when the hub has none for the device.
+     */
+    val profileDocument: String,
+    /**
+     * A PIN is set on the hub for the device.
+     */
+    val pinSet: Boolean,
+    /**
+     * The hub's lock is on (a PIN set and the profile's `lockedPages`
+     * non-empty).
+     */
+    val locked: Boolean,
+    /**
+     * The lock does not hold for this console (unlocked, or an Admin).
+     */
+    val unlocked: Boolean,
+    /**
+     * What the hub last held the device to (its words).
+     */
+    val held: List<String>,
+    /**
+     * Wrong PINs since the last good one (counted per device on the hub).
+     */
+    val wrongTries: Long,
+    /**
+     * The hub's refusal window left, ms; 0: none.
+     */
+    val retryAfterMs: Long,
+    /**
+     * The pinned mode of every role (an Admin sees all three), or only this
+     * console's role's.
+     */
+    val pinnedModes: List<HubModePin>,
+)
+
+/**
+ * A profile set on the hub ([`DspiCore::hub_limits_set`]).
+ */
+data class HubLimitsSet(
+    /**
+     * What the hub held the device to at once (its words), as `limits.held`.
+     */
+    val held: List<String>,
+    /**
+     * The hub's state after the change.
+     */
+    val state: HubAdminState,
+)
+
+/**
+ * A PIN set on the hub ([`DspiCore::hub_pin_set`]).
+ */
+data class HubPinSet(
+    /**
+     * The recovery code (`XXXXX-XXXXX-XXXXX-XXXXX`): unlocks the device on
+     * the hub in place of the PIN. Shown this once, never kept but as a
+     * hash on the hub (notice [`NOTICE_HUB_RECOVERY`]).
+     */
+    val recoveryCode: String,
+    /**
+     * The hub's state after the change.
+     */
+    val state: HubAdminState,
+)
+
+/**
+ * One of the hub's admin events, after the core read its lock again.
+ */
+data class HubAdminEvent(
+    /**
+     * `limits.changed` (profile or PIN), `limits.held` (the hub held the
+     * device to its profile) or `mode.changed` (a role's pinned mode).
+     */
+    val kind: String,
+    /**
+     * The device it concerns ("" for `mode.changed`, which is hub-wide).
+     */
+    val serial: String,
+    /**
+     * `limits.held`'s rows.
+     */
+    val rows: List<String>,
+    /**
+     * `mode.changed`'s role.
+     */
+    val role: String,
+    /**
+     * `mode.changed`'s mode ("" unpinned).
+     */
+    val mode: String,
+    /**
+     * The open device's lock after the refresh.
+     */
+    val lock: LockState,
+)
+
+/**
  * One change in the history ([`DspiCore::history`]).
  */
 data class HistoryEntry(
