@@ -2266,6 +2266,8 @@ impl DspiCore {
             Err(e) => return device_refusal(&e),
         };
         self.ensure_probed();
+        // -- WP P1EFIX -- as a recall: no echo queued before the import lands after it
+        self.settle_notifications();
         match self.import_document(&doc, sel, &ticket) {
             Ok(reply) => reply.to_string(),
             Err(e) => device_refusal(&e),
