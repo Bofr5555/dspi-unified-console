@@ -3940,6 +3940,54 @@ enum class FillBand {
 }
 
 /**
+ * An operation that takes a confirmation token.
+ */
+enum class ConfirmOp {
+    /**
+     * Save the live state to a preset slot ([`DspiCore::save_preset_confirmed`]).
+     */
+    SAVE_PRESET,
+    /**
+     * Copy a preset ([`DspiCore::copy_preset_confirmed`]).
+     */
+    COPY_PRESET,
+    /**
+     * Delete a preset ([`DspiCore::delete_preset_confirmed`]).
+     */
+    DELETE_PRESET,
+    /**
+     * Save the live state to the active slot ([`DspiCore::save_params_confirmed`]).
+     */
+    SAVE_PARAMS,
+    /**
+     * Factory reset ([`DspiCore::factory_reset_confirmed`]).
+     */
+    FACTORY_RESET,
+    /**
+     * Save the output configuration ([`DspiCore::save_output_config_confirmed`]).
+     */
+    SAVE_OUTPUT_CONFIG,
+    /**
+     * Restart into the bootloader ([`DspiCore::enter_bootloader_confirmed`]).
+     */
+    ENTER_BOOTLOADER,
+    /**
+     * Import a configuration document ([`DspiCore::config_import_confirmed`]).
+     */
+    CONFIG_IMPORT,
+    /**
+     * Store a core voltage ([`DspiCore::core_vreg_cal_commit_confirmed`],
+     * [`DspiCore::core_vreg_manual_set_confirmed`]).
+     */
+    VREG_SAVE,
+    /**
+     * Write a firmware image to the bootloader drive
+     * ([`DspiCore::flash_confirmed`]).
+     */
+    FIRMWARE_FLASH,
+}
+
+/**
  * Where a [`FirmwareGuardBoard`]'s voltage came from.
  */
 enum class FirmwareGuardBoardSource {

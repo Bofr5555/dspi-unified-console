@@ -1278,6 +1278,69 @@ int16_t value);
 bool dspi_open_demo_usb_direct(struct FfiCore *core);
 uint32_t dspi_notice_for(const char *key, const char *detail, char *buf, uint32_t len);
 uint32_t dspi_notice_texts(char *buf, uint32_t len);
+uint32_t dspi_confirm_token(struct FfiCore *core, const char *op, char *buf, uint32_t len);
+void dspi_require_confirmation(struct FfiCore *core, bool on);
+bool dspi_confirmation_required(struct FfiCore *core);
+uint32_t dspi_save_preset_confirmed(struct FfiCore *core,
+uint8_t slot,
+const char *token,
+char *buf,
+uint32_t len);
+uint32_t dspi_copy_preset_confirmed(struct FfiCore *core,
+uint8_t source,
+uint8_t dest,
+const char *token,
+char *buf,
+uint32_t len);
+uint32_t dspi_delete_preset_confirmed(struct FfiCore *core,
+uint8_t slot,
+const char *token,
+char *buf,
+uint32_t len);
+uint32_t dspi_save_params_confirmed(struct FfiCore *core,
+const char *token,
+char *buf,
+uint32_t len);
+uint32_t dspi_factory_reset_confirmed(struct FfiCore *core,
+const char *token,
+char *buf,
+uint32_t len);
+uint32_t dspi_save_output_config_confirmed(struct FfiCore *core,
+const char *token,
+char *buf,
+uint32_t len);
+uint32_t dspi_enter_bootloader_confirmed(struct FfiCore *core,
+const char *token,
+char *buf,
+uint32_t len);
+uint32_t dspi_config_import_confirmed(struct FfiCore *core,
+const char *text,
+uint32_t options,
+uint32_t eq_channels,
+const char *token,
+char *buf,
+uint32_t len);
+uint32_t dspi_core_vreg_cal_commit_confirmed(struct FfiCore *core,
+const char *typed,
+const char *token,
+char *buf,
+uint32_t len);
+uint32_t dspi_core_vreg_manual_set_confirmed(struct FfiCore *core,
+uint8_t value,
+const char *typed,
+const char *token,
+char *buf,
+uint32_t len);
+uint32_t dspi_flash_confirmed(struct FfiCore *core,
+const uint8_t *image,
+uint32_t image_len,
+const char *drive_path,
+int8_t platform,
+uint16_t board_required_mv,
+const char *typed,
+const char *token,
+char *buf,
+uint32_t len);
 bool dspi_link_browse_start(struct FfiCore *core,
 void (*callback)(void *user_data),
 void *user_data,

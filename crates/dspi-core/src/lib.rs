@@ -123,6 +123,8 @@ mod journal;
 mod diag;
 // -- WP P1NT --
 pub mod notice_text;
+// -- WP P1TK --
+pub mod confirm;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -197,6 +199,8 @@ pub use diag::REMOVED as DIAG_REMOVED;
 pub use notice_text::{
     NOTICE_KEY_UNKNOWN, Notice, NoticeKind, notice_for, notice_for_key, notice_texts,
 };
+// -- WP P1TK --
+pub use confirm::{CONFIRM_TOKEN_TTL_MS, ConfirmOp};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///
@@ -329,6 +333,9 @@ pub(crate) struct Inner {
     /// its connection (a disconnect, another device opened, a re-attach), so
     /// a stale mark never joins a later write ([`Inner::dragging`]).
     pub(crate) dragging: Option<u64>,
+    // -- WP P1TK --
+    /// Confirmation tokens and whether gated calls need one (`confirm.rs`).
+    pub(crate) confirm: confirm::Confirm,
 }
 
 /// An open device.
@@ -666,7 +673,8 @@ impl Inner {
             events: Arc::default(),
             // -- WP P0W --
             history_seen: None,
-            dragging: None, // -- WP QTGAP1 --
+            dragging: None,                       // -- WP QTGAP1 --
+            confirm: confirm::Confirm::default(), // -- WP P1TK --
         }
     }
 

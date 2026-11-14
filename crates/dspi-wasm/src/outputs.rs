@@ -109,6 +109,7 @@ pub fn crosspoint(core: &DspiCore, p: CrosspointParams) -> Result<Value, CallErr
         path: "mix".into(),
         indices: vec![p.input, p.output],
         value: ParamValue::Bytes(packet.encode().to_vec()),
+        token: None, // -- WP P1TK --
     };
     let back = match write::write(core, &w)? {
         ParamValue::Bytes(b) => MatrixRoutePacket::decode(&b)

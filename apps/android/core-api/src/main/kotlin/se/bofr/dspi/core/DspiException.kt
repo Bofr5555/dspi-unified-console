@@ -68,6 +68,14 @@ sealed class DspiException(message: String) : Exception(message) {
      */
     class OvervoltWordRequired(val msg: String) : DspiException(msg)
 
+    /**
+     * WP P1TK: a dangerous call was not let through: confirmation tokens are
+     * required and none was given, or the one given is not good for it. Nothing
+     * was sent. [code]: `missing`, `unknown`, `used`, `wrong_op`, `expired` or
+     * `connection_changed`.
+     */
+    class ConfirmationRequired(val code: String, val msg: String) : DspiException(msg)
+
     companion object {
         /** macOS `DeviceLock.lockedMessage`. */
         const val LOCKED_MESSAGE = "Another console is applying changes"

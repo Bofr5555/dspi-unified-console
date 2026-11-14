@@ -111,6 +111,18 @@ pub enum DspiError {
         /// Which voltage, and what to type.
         msg: String,
     },
+    // -- WP P1TK --
+    /// A dangerous call (`crate::confirm`) was not let through: tokens are
+    /// required and none was given, or the one given is not good for it.
+    /// Nothing was sent. `code`: `missing`, `unknown`, `used`, `wrong_op`,
+    /// `expired` or `connection_changed` (`crate::confirm::refusal`).
+    #[error("{msg}")]
+    ConfirmationRequired {
+        /// Why, as above.
+        code: String,
+        /// Which operation and why, for a log or a detail line.
+        msg: String,
+    },
 }
 
 // -- WP P1NT --
@@ -132,6 +144,8 @@ impl DspiError {
             Self::AutoEq { .. } => "autoeq",
             Self::FirmwareGuardBlocked { .. } => "firmware_guard",
             Self::OvervoltWordRequired { .. } => "overvolt_word",
+            // -- WP P1TK --
+            Self::ConfirmationRequired { .. } => "confirmation_required",
         }
     }
 
@@ -159,7 +173,8 @@ impl DspiError {
             | Self::Io { msg }
             | Self::AutoEq { msg, .. }
             | Self::FirmwareGuardBlocked { msg }
-            | Self::OvervoltWordRequired { msg } => msg.clone(),
+            | Self::OvervoltWordRequired { msg }
+            | Self::ConfirmationRequired { msg, .. } => msg.clone(),
             Self::Refused { status } => format!("status {status}"),
             Self::Disconnected
             | Self::Unsupported

@@ -643,6 +643,53 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.configImportSelected(text, options, eqChannels)
     }
 
+    // -- WP P1TK -- the confirmed forms of the gated writes (the token is the
+    // core's; this layer's read-only rule is the same as for the plain calls)
+    override fun savePresetConfirmed(slot: Int, token: String?) {
+        guard("savePresetConfirmed")
+        return inner.savePresetConfirmed(slot, token)
+    }
+
+    override fun copyPresetConfirmed(source: Int, dest: Int, token: String?) {
+        guard("copyPresetConfirmed")
+        return inner.copyPresetConfirmed(source, dest, token)
+    }
+
+    override fun deletePresetConfirmed(slot: Int, token: String?) {
+        guard("deletePresetConfirmed")
+        return inner.deletePresetConfirmed(slot, token)
+    }
+
+    override fun saveParamsConfirmed(token: String?) {
+        guard("saveParamsConfirmed")
+        return inner.saveParamsConfirmed(token)
+    }
+
+    override fun factoryResetConfirmed(token: String?) {
+        guard("factoryResetConfirmed")
+        return inner.factoryResetConfirmed(token)
+    }
+
+    override fun saveOutputConfigConfirmed(token: String?) {
+        guard("saveOutputConfigConfirmed")
+        return inner.saveOutputConfigConfirmed(token)
+    }
+
+    override fun configImportConfirmed(text: String, options: Long, eqChannels: Long, token: String?): String {
+        guard("configImportConfirmed")
+        return inner.configImportConfirmed(text, options, eqChannels, token)
+    }
+
+    override fun coreVregCalCommitConfirmed(typed: String?, token: String?) {
+        guard("coreVregCalCommitConfirmed")
+        return inner.coreVregCalCommitConfirmed(typed, token)
+    }
+
+    override fun coreVregManualSetConfirmed(value: Int, typed: String?, token: String?) {
+        guard("coreVregManualSetConfirmed")
+        return inner.coreVregManualSetConfirmed(value, typed, token)
+    }
+
     override fun filtersImport(text: String, wires: List<Int>): String {
         guard("filtersImport")
         return inner.filtersImport(text, wires)
@@ -799,7 +846,17 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "configImportSelected",
             // -- WP P1PR --
             "setInputPairPreamp",
-            "protectAllOutputs"
+            "protectAllOutputs",
+            // -- WP P1TK --
+            "savePresetConfirmed",
+            "copyPresetConfirmed",
+            "deletePresetConfirmed",
+            "saveParamsConfirmed",
+            "factoryResetConfirmed",
+            "saveOutputConfigConfirmed",
+            "configImportConfirmed",
+            "coreVregCalCommitConfirmed",
+            "coreVregManualSetConfirmed"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -1024,7 +1081,15 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "noticeForKey",
             "noticeTexts",
             // -- WP P1PR -- the warning list, from the mirror: a read
-            "outputsWithoutLimiter"
+            "outputsWithoutLimiter",
+            // -- WP P1TK -- confirmation tokens: local state, nothing sent; and
+            // the firmware-update path's confirmed forms (as enterBootloader
+            // and flashToDriveGuarded)
+            "confirmToken",
+            "requireConfirmation",
+            "confirmationRequired",
+            "enterBootloaderConfirmed",
+            "flashConfirmed"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

@@ -185,6 +185,8 @@ pub(crate) mod link {
             DspiError::FirmwareGuardBlocked { .. } => "firmware_guard",
             // -- WP CG14 --
             DspiError::OvervoltWordRequired { .. } => "overvolt_word",
+            // -- WP P1TK --
+            DspiError::ConfirmationRequired { .. } => "confirmation_required",
         }
     }
 

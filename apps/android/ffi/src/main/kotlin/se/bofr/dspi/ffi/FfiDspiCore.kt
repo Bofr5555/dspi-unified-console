@@ -120,6 +120,12 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun openDemoUsbDirect() = call { core.openDemoUsbDirect() }
 
+    override fun confirmToken(op: ConfirmOp): String = core.confirmToken(op.toFfi())
+
+    override fun requireConfirmation(on: Boolean) = core.requireConfirmation(on)
+
+    override fun confirmationRequired(): Boolean = core.confirmationRequired()
+
     override fun fetchAll() = call { core.fetchAll() }
 
     override fun refreshParams() = call { core.refreshParams() }
@@ -222,6 +228,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun configImportSelected(text: String, options: Long, eqChannels: Long): String = core.configImportSelected(text, options.toUInt(), eqChannels.toUInt())
 
+    override fun configImportConfirmed(text: String, options: Long, eqChannels: Long, token: String?): String = core.configImportConfirmed(text, options.toUInt(), eqChannels.toUInt(), token)
+
     override fun configPreview(text: String, options: Long, eqChannels: Long): String = core.configPreview(text, options.toUInt(), eqChannels.toUInt())
 
     override fun filtersExport(inputs: Int): String = call { core.filtersExport(inputs.toUByte()) }
@@ -232,6 +240,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun firmwareVersionMatches(version: String): Boolean = call { core.firmwareVersionMatches(version) }
 
+    override fun flashConfirmed(image: List<Int>, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String, token: String?) = call { core.flashConfirmed(ByteArray(image.size) { image[it].toByte() }, drive.toFfi(), board.toFfi(), typedConfirmation, token) }
+
     override fun firmwareGuardBoard(): FirmwareGuardBoard = core.firmwareGuardBoard().toDomain()
 
     override fun setOutputPin(slot: Int, pin: Int) = call { core.setOutputPin(slot.toUByte(), pin.toUByte()) }
@@ -241,6 +251,8 @@ class FfiDspiCore : DspiCoreApi {
     override fun setOutputConfigMode(mode: Int) = call { core.setOutputConfigMode(mode.toUByte()) }
 
     override fun saveOutputConfig() = call { core.saveOutputConfig() }
+
+    override fun saveOutputConfigConfirmed(token: String?) = call { core.saveOutputConfigConfirmed(token) }
 
     override fun demoOutputSaveStatus(status: Int) = call { core.demoOutputSaveStatus(status.toUByte()) }
 
@@ -301,6 +313,8 @@ class FfiDspiCore : DspiCoreApi {
     override fun setI2c(config: I2cConfig) = call { core.setI2c(config.toFfi()) }
 
     override fun enterBootloader() = call { core.enterBootloader() }
+
+    override fun enterBootloaderConfirmed(token: String?) = call { core.enterBootloaderConfirmed(token) }
 
     override fun fetchCore1Mode(): Int = call { core.fetchCore1Mode().toInt() }
 
@@ -490,11 +504,17 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun savePreset(slot: Int) = call { core.savePreset(slot.toUByte()) }
 
+    override fun savePresetConfirmed(slot: Int, token: String?) = call { core.savePresetConfirmed(slot.toUByte(), token) }
+
     override fun loadPreset(slot: Int) = call { core.loadPreset(slot.toUByte()) }
 
     override fun copyPreset(source: Int, dest: Int) = call { core.copyPreset(source.toUByte(), dest.toUByte()) }
 
+    override fun copyPresetConfirmed(source: Int, dest: Int, token: String?) = call { core.copyPresetConfirmed(source.toUByte(), dest.toUByte(), token) }
+
     override fun deletePreset(slot: Int) = call { core.deletePreset(slot.toUByte()) }
+
+    override fun deletePresetConfirmed(slot: Int, token: String?) = call { core.deletePresetConfirmed(slot.toUByte(), token) }
 
     override fun setPresetName(slot: Int, name: String) = call { core.setPresetName(slot.toUByte(), name) }
 
@@ -506,9 +526,13 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun saveParams() = call { core.saveParams() }
 
+    override fun saveParamsConfirmed(token: String?) = call { core.saveParamsConfirmed(token) }
+
     override fun loadParams() = call { core.loadParams() }
 
     override fun factoryReset() = call { core.factoryReset() }
+
+    override fun factoryResetConfirmed(token: String?) = call { core.factoryResetConfirmed(token) }
 
     override fun captureBaseline() = core.captureBaseline()
 
@@ -588,9 +612,13 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun coreVregCalCommit(typed: String?) = call { core.coreVregCalCommit(typed) }
 
+    override fun coreVregCalCommitConfirmed(typed: String?, token: String?) = call { core.coreVregCalCommitConfirmed(typed, token) }
+
     override fun coreVregTrialEnd() = call { core.coreVregTrialEnd() }
 
     override fun coreVregManualSet(value: Int, typed: String?) = call { core.coreVregManualSet(value.toUByte(), typed) }
+
+    override fun coreVregManualSetConfirmed(value: Int, typed: String?, token: String?) = call { core.coreVregManualSetConfirmed(value.toUByte(), typed, token) }
 
     override fun coreVregManualTrial(value: Int, typed: String?) = call { core.coreVregManualTrial(value.toUByte(), typed) }
 
@@ -704,6 +732,7 @@ internal fun FfiException.toDomain(): DspiException =
         is FfiException.AutoEq -> DspiException.AutoEq(code, msg, retryAfterS?.let { it.toLong() })
         is FfiException.FirmwareGuardBlocked -> DspiException.FirmwareGuardBlocked(msg)
         is FfiException.OvervoltWordRequired -> DspiException.OvervoltWordRequired(msg)
+        is FfiException.ConfirmationRequired -> DspiException.ConfirmationRequired(code, msg)
     }
 
 internal fun DspiException.toFfi(): FfiException =
@@ -721,6 +750,7 @@ internal fun DspiException.toFfi(): FfiException =
         is DspiException.AutoEq -> FfiException.AutoEq(code, msg, retryAfterS?.let { it.toUInt() })
         is DspiException.FirmwareGuardBlocked -> FfiException.FirmwareGuardBlocked(msg)
         is DspiException.OvervoltWordRequired -> FfiException.OvervoltWordRequired(msg)
+        is DspiException.ConfirmationRequired -> FfiException.ConfirmationRequired(code, msg)
     }
 
 // ── Record mapping (UniFFI <-> domain) ──
@@ -3111,6 +3141,34 @@ internal fun FillBand.toFfi(): se.bofr.dspi.ffi.uniffi.FillBand =
         FillBand.GOOD -> se.bofr.dspi.ffi.uniffi.FillBand.GOOD
         FillBand.WARN -> se.bofr.dspi.ffi.uniffi.FillBand.WARN
         FillBand.BAD -> se.bofr.dspi.ffi.uniffi.FillBand.BAD
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.ConfirmOp.toDomain(): ConfirmOp =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.ConfirmOp.SAVE_PRESET -> ConfirmOp.SAVE_PRESET
+        se.bofr.dspi.ffi.uniffi.ConfirmOp.COPY_PRESET -> ConfirmOp.COPY_PRESET
+        se.bofr.dspi.ffi.uniffi.ConfirmOp.DELETE_PRESET -> ConfirmOp.DELETE_PRESET
+        se.bofr.dspi.ffi.uniffi.ConfirmOp.SAVE_PARAMS -> ConfirmOp.SAVE_PARAMS
+        se.bofr.dspi.ffi.uniffi.ConfirmOp.FACTORY_RESET -> ConfirmOp.FACTORY_RESET
+        se.bofr.dspi.ffi.uniffi.ConfirmOp.SAVE_OUTPUT_CONFIG -> ConfirmOp.SAVE_OUTPUT_CONFIG
+        se.bofr.dspi.ffi.uniffi.ConfirmOp.ENTER_BOOTLOADER -> ConfirmOp.ENTER_BOOTLOADER
+        se.bofr.dspi.ffi.uniffi.ConfirmOp.CONFIG_IMPORT -> ConfirmOp.CONFIG_IMPORT
+        se.bofr.dspi.ffi.uniffi.ConfirmOp.VREG_SAVE -> ConfirmOp.VREG_SAVE
+        se.bofr.dspi.ffi.uniffi.ConfirmOp.FIRMWARE_FLASH -> ConfirmOp.FIRMWARE_FLASH
+    }
+
+internal fun ConfirmOp.toFfi(): se.bofr.dspi.ffi.uniffi.ConfirmOp =
+    when (this) {
+        ConfirmOp.SAVE_PRESET -> se.bofr.dspi.ffi.uniffi.ConfirmOp.SAVE_PRESET
+        ConfirmOp.COPY_PRESET -> se.bofr.dspi.ffi.uniffi.ConfirmOp.COPY_PRESET
+        ConfirmOp.DELETE_PRESET -> se.bofr.dspi.ffi.uniffi.ConfirmOp.DELETE_PRESET
+        ConfirmOp.SAVE_PARAMS -> se.bofr.dspi.ffi.uniffi.ConfirmOp.SAVE_PARAMS
+        ConfirmOp.FACTORY_RESET -> se.bofr.dspi.ffi.uniffi.ConfirmOp.FACTORY_RESET
+        ConfirmOp.SAVE_OUTPUT_CONFIG -> se.bofr.dspi.ffi.uniffi.ConfirmOp.SAVE_OUTPUT_CONFIG
+        ConfirmOp.ENTER_BOOTLOADER -> se.bofr.dspi.ffi.uniffi.ConfirmOp.ENTER_BOOTLOADER
+        ConfirmOp.CONFIG_IMPORT -> se.bofr.dspi.ffi.uniffi.ConfirmOp.CONFIG_IMPORT
+        ConfirmOp.VREG_SAVE -> se.bofr.dspi.ffi.uniffi.ConfirmOp.VREG_SAVE
+        ConfirmOp.FIRMWARE_FLASH -> se.bofr.dspi.ffi.uniffi.ConfirmOp.FIRMWARE_FLASH
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.FirmwareGuardBoardSource.toDomain(): FirmwareGuardBoardSource =

@@ -5672,6 +5672,131 @@ uint32_t dspi_notice_for(const char *key, const char *detail, char *buf, uint32_
 uint32_t dspi_notice_texts(char *buf, uint32_t len);
 
 /**
+ * Mint a token for the operation `op` (a key above) once the user has
+ * confirmed it. JSON `{ok, value: <token>}`, or `invalid` for an operation
+ * the core does not have. Each call mints a new token. No I/O.
+ */
+uint32_t dspi_confirm_token(struct FfiCore *core, const char *op, char *buf, uint32_t len);
+
+/**
+ * Refuse the gated calls without a good token from now on (`on`), or not.
+ * Off by default.
+ */
+void dspi_require_confirmation(struct FfiCore *core, bool on);
+
+/**
+ * Whether the gated calls need a token. False for a null handle.
+ */
+bool dspi_confirmation_required(struct FfiCore *core);
+
+/**
+ * `dspi_save_preset` with a token. JSON reply.
+ */
+uint32_t dspi_save_preset_confirmed(struct FfiCore *core,
+                                    uint8_t slot,
+                                    const char *token,
+                                    char *buf,
+                                    uint32_t len);
+
+/**
+ * `dspi_copy_preset` with a token. JSON reply.
+ */
+uint32_t dspi_copy_preset_confirmed(struct FfiCore *core,
+                                    uint8_t source,
+                                    uint8_t dest,
+                                    const char *token,
+                                    char *buf,
+                                    uint32_t len);
+
+/**
+ * `dspi_delete_preset` with a token. JSON reply.
+ */
+uint32_t dspi_delete_preset_confirmed(struct FfiCore *core,
+                                      uint8_t slot,
+                                      const char *token,
+                                      char *buf,
+                                      uint32_t len);
+
+/**
+ * `dspi_save_params` with a token. JSON reply.
+ */
+uint32_t dspi_save_params_confirmed(struct FfiCore *core,
+                                    const char *token,
+                                    char *buf,
+                                    uint32_t len);
+
+/**
+ * `dspi_factory_reset` with a token. JSON reply.
+ */
+uint32_t dspi_factory_reset_confirmed(struct FfiCore *core,
+                                      const char *token,
+                                      char *buf,
+                                      uint32_t len);
+
+/**
+ * `dspi_save_output_config` with a token. JSON reply.
+ */
+uint32_t dspi_save_output_config_confirmed(struct FfiCore *core,
+                                           const char *token,
+                                           char *buf,
+                                           uint32_t len);
+
+/**
+ * `dspi_enter_bootloader` with a token. JSON reply.
+ */
+uint32_t dspi_enter_bootloader_confirmed(struct FfiCore *core,
+                                         const char *token,
+                                         char *buf,
+                                         uint32_t len);
+
+/**
+ * `dspi_config_import_selected` with a token: its JSON reply, or a refusal
+ * with `noticeKey` `confirmation_required` and nothing written.
+ */
+uint32_t dspi_config_import_confirmed(struct FfiCore *core,
+                                      const char *text,
+                                      uint32_t options,
+                                      uint32_t eq_channels,
+                                      const char *token,
+                                      char *buf,
+                                      uint32_t len);
+
+/**
+ * `dspi_core_vreg_cal_commit` with a token. JSON reply.
+ */
+uint32_t dspi_core_vreg_cal_commit_confirmed(struct FfiCore *core,
+                                             const char *typed,
+                                             const char *token,
+                                             char *buf,
+                                             uint32_t len);
+
+/**
+ * `dspi_core_vreg_manual_set` with a token. JSON reply.
+ */
+uint32_t dspi_core_vreg_manual_set_confirmed(struct FfiCore *core,
+                                             uint8_t value,
+                                             const char *typed,
+                                             const char *token,
+                                             char *buf,
+                                             uint32_t len);
+
+/**
+ * `dspi_flash_to_drive_guarded` with a token minted while the board waits
+ * in its bootloader (`firmware_flash`). JSON reply; nothing reaches the
+ * drive on a refusal.
+ */
+uint32_t dspi_flash_confirmed(struct FfiCore *core,
+                              const uint8_t *image,
+                              uint32_t image_len,
+                              const char *drive_path,
+                              int8_t platform,
+                              uint16_t board_required_mv,
+                              const char *typed,
+                              const char *token,
+                              char *buf,
+                              uint32_t len);
+
+/**
  * Start looking for hubs on the local network, replacing any browse running.
  * Returns at once; false only with a null handle, in a build without the
  * feature, or when a thread cannot start. A network failure shows in

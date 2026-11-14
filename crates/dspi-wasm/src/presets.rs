@@ -38,12 +38,16 @@ pub fn changes(core: &DspiCore) -> Result<Value, CallError> {
 pub struct CopyParams {
     pub source: u8,
     pub dest: u8,
+    // -- WP P1TK --
+    /// A confirmation token for `copy_preset` (`confirmToken`).
+    #[serde(default)]
+    pub token: Option<String>,
 }
 
 /// `presetCopy`: the live state into `dest`, `source` kept active
 /// (`DspiCore::copy_preset`). Writes flash twice.
 pub fn copy(core: &DspiCore, p: CopyParams) -> Result<Value, CallError> {
-    core.copy_preset(p.source, p.dest)?;
+    core.copy_preset_confirmed(p.source, p.dest, p.token)?; // -- WP P1TK --
     Ok(Value::Null)
 }
 
@@ -55,9 +59,18 @@ pub fn revert(core: &DspiCore) -> Result<Value, CallError> {
 
 /// `factoryReset`: the factory defaults, after the user confirmed it
 /// (`DspiCore::factory_reset`). Stored presets are kept.
-pub fn factory_reset(core: &DspiCore) -> Result<Value, CallError> {
-    core.factory_reset()?;
+pub fn factory_reset(core: &DspiCore, p: TokenParams) -> Result<Value, CallError> {
+    core.factory_reset_confirmed(p.token)?; // -- WP P1TK --
     Ok(Value::Null)
+}
+
+// -- WP P1TK --
+/// The parameters of a call that only takes a confirmation token: none at
+/// all, or `{token}` (`confirmToken`).
+#[derive(Debug, Default, Deserialize)]
+pub struct TokenParams {
+    #[serde(default)]
+    pub token: Option<String>,
 }
 
 // -- WP P1DF --

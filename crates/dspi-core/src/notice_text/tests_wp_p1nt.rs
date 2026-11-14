@@ -54,6 +54,11 @@ fn samples() -> Vec<DspiError> {
         },
         DspiError::FirmwareGuardBlocked { msg: msg() },
         DspiError::OvervoltWordRequired { msg: msg() },
+        // -- WP P1TK --
+        DspiError::ConfirmationRequired {
+            code: "missing".into(),
+            msg: msg(),
+        },
     ]
 }
 

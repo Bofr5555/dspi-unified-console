@@ -26,6 +26,11 @@ pub struct WriteParams {
     #[serde(default)]
     pub indices: Vec<u8>,
     pub value: ParamValue,
+    // -- WP P1TK --
+    /// A confirmation token (`confirmToken`) for a gated path (`preset.save`,
+    /// `preset.delete`, `dev.save`, `dev.save.io`).
+    #[serde(default)]
+    pub token: Option<String>,
 }
 
 fn float(v: &ParamValue) -> f32 {
@@ -158,21 +163,27 @@ pub fn write(core: &DspiCore, p: &WriteParams) -> Result<ParamValue, CallError> 
         return Err(CallError::new("refused", why));
     }
     // The read-back is the core's: the mirror once its setter is done.
-    core.write_param(p.path.clone(), p.indices.clone(), p.value.clone())
-        .map_err(|e| {
-            // -- WP CG36 -- a delay past the platform's line is out of
-            // range, in the core's words (which name the limit).
-            // -- WP CG37 -- or below 0, on the value the core checks.
-            let ms = dspi_core::quantize_delay(float(&p.value));
-            let past_line = matches!(d.path, "out.delay" | "ch.delay")
-                && !(0.0..=core.max_delay_ms()).contains(&ms);
-            match e {
-                dspi_core::DspiError::InvalidArgument { msg } if past_line => {
-                    CallError::new("out_of_range", msg)
-                }
-                e => CallError::from(e),
+    // -- WP P1TK -- with the token, if any (`DspiCore::write_param_confirmed`)
+    core.write_param_confirmed(
+        p.path.clone(),
+        p.indices.clone(),
+        p.value.clone(),
+        p.token.clone(),
+    )
+    .map_err(|e| {
+        // -- WP CG36 -- a delay past the platform's line is out of
+        // range, in the core's words (which name the limit).
+        // -- WP CG37 -- or below 0, on the value the core checks.
+        let ms = dspi_core::quantize_delay(float(&p.value));
+        let past_line = matches!(d.path, "out.delay" | "ch.delay")
+            && !(0.0..=core.max_delay_ms()).contains(&ms);
+        match e {
+            dspi_core::DspiError::InvalidArgument { msg } if past_line => {
+                CallError::new("out_of_range", msg)
             }
-        })
+            e => CallError::from(e),
+        }
+    })
 }
 
 // -- WP CG36 --
@@ -286,6 +297,7 @@ mod tests {
                 path: path.into(),
                 indices: indices.to_vec(),
                 value,
+                token: None, // -- WP P1TK --
             },
         )
     }

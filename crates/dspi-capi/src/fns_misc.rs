@@ -18,8 +18,8 @@
 //! `{"ok": false, "code": <kind>, "error": <sentence>}`. The kinds:
 //! `disconnected`, `transfer`, `refused`, `invalid`, `unsupported`,
 //! `read_only`, `locked`, `denied`, `link`, `io`, `autoeq`, `firmware_guard`,
-//! `overvolt_word`. A document export replies the document itself, or that
-//! failure.
+//! `overvolt_word`, `confirmation_required` (WP P1TK). A document export
+//! replies the document itself, or that failure.
 //! -- WP P1NT -- A failure also carries `noticeKey`, its notice's stable key:
 //! `dspi_notice_for` gives the words to show.
 
@@ -56,6 +56,8 @@ mod alink;
 mod alink_usb;
 // -- WP P1NT --
 mod notice_text;
+// -- WP P1TK --
+mod confirm;
 
 // ── Replies ──────────────────────────────────────────────────────────
 
@@ -75,6 +77,8 @@ fn error_code(e: &DspiError) -> &'static str {
         DspiError::AutoEq { .. } => "autoeq",
         DspiError::FirmwareGuardBlocked { .. } => "firmware_guard",
         DspiError::OvervoltWordRequired { .. } => "overvolt_word",
+        // -- WP P1TK --
+        DspiError::ConfirmationRequired { .. } => "confirmation_required",
     }
 }
 

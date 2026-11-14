@@ -40,6 +40,7 @@ use dspi_proto::generated::opcodes as op;
 use dspi_proto::value::Value;
 use dspi_transport::TransportError;
 
+use crate::confirm::ConfirmOp; // -- WP P1TK --
 use crate::consts::FW_BETA_EARLY;
 use crate::error::status;
 use crate::journal::journal;
@@ -171,6 +172,53 @@ pub(crate) fn version_matches(s: &DspState, version: &str) -> bool {
 type Journal<'a> = (&'static str, &'a [u8]);
 
 impl DspiCore {
+    // -- WP P1TK --
+    /// The body of `save_output_config` and its `_confirmed` form.
+    pub(crate) fn save_output_config_with(&self, token: Option<&str>) -> Result<()> {
+        let ticket = self.confirm_gate(ConfirmOp::SaveOutputConfig, token)?;
+        self.with_device_lock("Saving output configuration", |inner| {
+            ticket.still_on(inner)?;
+            status(
+                inner
+                    .writable_conn()?
+                    .set_as_read(op::REQ_SAVE_OUTPUT_CONFIG, 0)?,
+            )?;
+            journal(inner, "dev.save.io", &[], Value::Trigger);
+            Ok(())
+        })
+    }
+
+    /// The body of `enter_bootloader` and its `_confirmed` form.
+    fn enter_bootloader_with(&self, token: Option<&str>) -> Result<()> {
+        let ticket = self.confirm_gate(ConfirmOp::EnterBootloader, token)?;
+        // -- WP CG24 --
+        if self.lock().conn.is_none() {
+            return Ok(());
+        }
+        let lock = self.take_device_lock(BOOTLOADER_REASON, BOOTLOADER_HOLD, false)?;
+        let current = {
+            let mut guard = self.lock();
+            let current = lock.is_current(&guard) && ticket.still_on(&guard).is_ok();
+            if current {
+                // -- WP P0W -- before the request: the device leaves with it
+                journal(&mut guard, "dev.bootloader", &[], Value::Trigger);
+            }
+            if current
+                && let Some(conn) = guard.conn.as_mut()
+                && let Err(e) = conn.get_upto(op::REQ_ENTER_BOOTLOADER, 0, 1)
+            {
+                log::debug!("enter_bootloader: {e} (expected while the device reboots)");
+            }
+            current
+        };
+        if !current {
+            self.release_device_lock(lock);
+            return Err(DspiError::Disconnected);
+        }
+        self.hold_device_lock(lock, BOOTLOADER_HOLD, Holder::Bootloader);
+        Ok(())
+    }
+
     /// A write-as-read setter: send `opcode` with `value`, map the status
     /// byte, and on success apply `update` to the mirror and `bulk_raw`.
     fn set_with_status(
@@ -350,15 +398,14 @@ impl DspiCore {
     /// [`DspiError::Locked`] (Link); [`DspiError::ReadOnly`],
     /// [`DspiError::Disconnected`] or a transfer error.
     pub fn save_output_config(&self) -> Result<()> {
-        self.with_device_lock("Saving output configuration", |inner| {
-            status(
-                inner
-                    .writable_conn()?
-                    .set_as_read(op::REQ_SAVE_OUTPUT_CONFIG, 0)?,
-            )?;
-            journal(inner, "dev.save.io", &[], Value::Trigger);
-            Ok(())
-        })
+        self.save_output_config_with(None)
+    }
+
+    // -- WP P1TK --
+    /// [`DspiCore::save_output_config`] with a confirmation token
+    /// ([`crate::confirm`]), as [`DspiCore::save_preset_confirmed`].
+    pub fn save_output_config_confirmed(&self, token: Option<String>) -> Result<()> {
+        self.save_output_config_with(token.as_deref())
     }
 
     // -- WP QD31 --
@@ -999,32 +1046,15 @@ impl DspiCore {
     /// hub refuses its lock; [`DspiError::Disconnected`] when the connection
     /// changed while the hub was asked.
     pub fn enter_bootloader(&self) -> Result<()> {
-        // -- WP CG24 --
-        if self.lock().conn.is_none() {
-            return Ok(());
-        }
-        let lock = self.take_device_lock(BOOTLOADER_REASON, BOOTLOADER_HOLD, false)?;
-        let current = {
-            let mut guard = self.lock();
-            let current = lock.is_current(&guard);
-            if current {
-                // -- WP P0W -- before the request: the device leaves with it
-                journal(&mut guard, "dev.bootloader", &[], Value::Trigger);
-            }
-            if current
-                && let Some(conn) = guard.conn.as_mut()
-                && let Err(e) = conn.get_upto(op::REQ_ENTER_BOOTLOADER, 0, 1)
-            {
-                log::debug!("enter_bootloader: {e} (expected while the device reboots)");
-            }
-            current
-        };
-        if !current {
-            self.release_device_lock(lock);
-            return Err(DspiError::Disconnected);
-        }
-        self.hold_device_lock(lock, BOOTLOADER_HOLD, Holder::Bootloader);
-        Ok(())
+        self.enter_bootloader_with(None)
+    }
+
+    // -- WP P1TK --
+    /// [`DspiCore::enter_bootloader`] with a confirmation token
+    /// ([`crate::confirm`]), as [`DspiCore::save_preset_confirmed`]. With no
+    /// device open a token is still checked, and nothing is sent.
+    pub fn enter_bootloader_confirmed(&self, token: Option<String>) -> Result<()> {
+        self.enter_bootloader_with(token.as_deref())
     }
 
     /// 0 idle, 1 PDM, 2 EQ worker. Also stored in `DspState.core1_mode`.

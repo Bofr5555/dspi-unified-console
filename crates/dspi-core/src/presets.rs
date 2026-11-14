@@ -49,6 +49,7 @@ use dspi_proto::FilterType;
 use dspi_proto::generated::{self as g, opcodes as op, status as st};
 use dspi_transport::clock::{self, Instant};
 
+use crate::confirm::ConfirmOp; // -- WP P1TK --
 use crate::consts::{
     BANDS_PER_CHANNEL, CHANNEL_NAME_LEN, CROSSFEED_MAP_PAIRS, FLASH_ERR_CRC, FLASH_ERR_WRITE,
     MAX_PRESETS, MAX_XOVER_BANDS, SUBHARM_PARAM_BOOST, SUBHARM_PARAM_CEILING, SUBHARM_PARAM_DEPTH,
@@ -185,18 +186,15 @@ impl DspiCore {
     /// [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
     /// [`DspiError::ReadOnly`]; [`DspiError::Disconnected`].
     pub fn save_preset(&self, slot: u8) -> Result<()> {
-        slot_in_range(slot)?;
-        self.with_device_lock(SAVE_REASON, |inner| {
-            let confirmed = save_to_slot(inner, slot)?;
-            refresh_directory(inner);
-            if !confirmed {
-                return Err(unconfirmed("save to", slot));
-            }
-            mark_saved(&mut inner.state, slot);
-            capture_baseline_locked(inner);
-            journal(inner, "preset.save", &[slot], Value::Trigger); // -- WP P0W --
-            Ok(())
-        })
+        self.save_preset_with(slot, None)
+    }
+
+    // -- WP P1TK --
+    /// [`DspiCore::save_preset`] with a confirmation token ([`crate::confirm`]):
+    /// [`DspiError::ConfirmationRequired`], with nothing sent, without a good
+    /// one while tokens are required, or with a bad one at any time.
+    pub fn save_preset_confirmed(&self, slot: u8, token: Option<String>) -> Result<()> {
+        self.save_preset_with(slot, token.as_deref())
     }
 
     /// Load preset `slot`, wait until the device runs it, then read the
@@ -256,24 +254,14 @@ impl DspiCore {
     /// status); [`DspiError::Transfer`] when `dest`'s save was not
     /// confirmed; otherwise as [`DspiCore::save_preset`].
     pub fn copy_preset(&self, source: u8, dest: u8) -> Result<()> {
-        slot_in_range(source)?;
-        slot_in_range(dest)?;
-        self.with_device_lock(COPY_REASON, |inner| {
-            if !save_to_slot(inner, dest)? {
-                refresh_directory(inner);
-                return Err(unconfirmed("copy to", dest));
-            }
-            mark_saved(&mut inner.state, dest);
-            let back = save_to_slot(inner, source)?;
-            refresh_directory(inner);
-            if back {
-                mark_saved(&mut inner.state, source);
-            } else {
-                log::warn!("the device did not confirm saving preset {source} again");
-            }
-            capture_baseline_locked(inner);
-            Ok(())
-        })
+        self.copy_preset_with(source, dest, None)
+    }
+
+    // -- WP P1TK --
+    /// [`DspiCore::copy_preset`] with a confirmation token, as
+    /// [`DspiCore::save_preset_confirmed`].
+    pub fn copy_preset_confirmed(&self, source: u8, dest: u8, token: Option<String>) -> Result<()> {
+        self.copy_preset_with(source, dest, token.as_deref())
     }
 
     /// Delete preset `slot` and wait until the directory no longer holds
@@ -285,30 +273,14 @@ impl DspiCore {
     ///
     /// Errors: as [`DspiCore::save_preset`].
     pub fn delete_preset(&self, slot: u8) -> Result<()> {
-        slot_in_range(slot)?;
-        self.with_device_lock(DELETE_REASON, |inner| {
-            let was_active = inner.state.active_preset_slot == slot;
-            let confirmed = {
-                let mut w = inner.writable_conn()?;
-                w.conn().fresh_image = false;
-                status(w.set_as_read(op::REQ_PRESET_DELETE, u16::from(slot))?)?;
-                wait_for(w.conn(), |c| slot_cleared(c, slot))?
-            };
-            if !confirmed {
-                return Err(unconfirmed("delete", slot));
-            }
-            journal(inner, "preset.delete", &[slot], Value::Trigger); // -- WP P0W --
-            inner.state.preset_occupied &= !bit(slot);
-            if let Some(name) = inner.state.preset_names.get_mut(usize::from(slot)) {
-                name.clear();
-            }
-            refresh_directory(inner);
-            if was_active {
-                connect::refresh_params_locked(inner)?;
-                capture_baseline_locked(inner);
-            }
-            Ok(())
-        })
+        self.delete_preset_with(slot, None)
+    }
+
+    // -- WP P1TK --
+    /// [`DspiCore::delete_preset`] with a confirmation token, as
+    /// [`DspiCore::save_preset_confirmed`].
+    pub fn delete_preset_confirmed(&self, slot: u8, token: Option<String>) -> Result<()> {
+        self.delete_preset_with(slot, token.as_deref())
     }
 
     /// Name preset `slot`: at most 31 bytes of `name` (cut at a character
@@ -402,16 +374,14 @@ impl DspiCore {
     /// [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; a transfer
     /// error.
     pub fn save_params(&self) -> Result<()> {
-        self.with_device_lock(SAVE_PARAMS_REASON, |inner| {
-            status(inner.writable_conn()?.set_as_read(op::REQ_SAVE_PARAMS, 0)?)?;
-            journal(inner, "dev.save", &[], Value::Trigger); // -- WP P0W --
-            let active = inner.state.active_preset_slot;
-            if !refresh_directory(inner) {
-                mark_saved(&mut inner.state, active);
-            }
-            capture_baseline_locked(inner);
-            Ok(())
-        })
+        self.save_params_with(None)
+    }
+
+    // -- WP P1TK --
+    /// [`DspiCore::save_params`] with a confirmation token, as
+    /// [`DspiCore::save_preset_confirmed`].
+    pub fn save_params_confirmed(&self, token: Option<String>) -> Result<()> {
+        self.save_params_with(token.as_deref())
     }
 
     /// Revert to saved: load the active slot again ([`DspiCore::load_preset`],
@@ -445,31 +415,14 @@ impl DspiCore {
     /// [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; a transfer
     /// error, of the reset or the re-read.
     pub fn factory_reset(&self) -> Result<()> {
-        let lock = self.acquire_device_lock(RESET_REASON)?;
-        let sent = {
-            let mut guard = self.lock();
-            if lock.is_current(&guard) {
-                guard
-                    .writable_conn()
-                    .and_then(|mut w| {
-                        w.conn().fresh_image = false;
-                        status(w.set_as_read(op::REQ_FACTORY_RESET, 0)?)
-                    })
-                    // -- WP P0W -- the history before a reset is gone with the state
-                    .map(|()| journal(&mut guard, "dev.reset", &[], Value::Trigger))
-            } else {
-                Err(DspiError::Disconnected)
-            }
-        };
-        let result = sent.and_then(|()| {
-            clock::sleep(FACTORY_RESET_SETTLE);
-            self.fetch_all()?;
-            // -- WP SWAPFIX -- the re-read keeps a baseline; the reset's is new
-            self.capture_baseline();
-            Ok(())
-        });
-        self.release_device_lock(lock);
-        result
+        self.factory_reset_with(None)
+    }
+
+    // -- WP P1TK --
+    /// [`DspiCore::factory_reset`] with a confirmation token, as
+    /// [`DspiCore::save_preset_confirmed`].
+    pub fn factory_reset_confirmed(&self, token: Option<String>) -> Result<()> {
+        self.factory_reset_with(token.as_deref())
     }
 
     /// Take the live state as what the active preset holds: from now on
@@ -557,6 +510,126 @@ impl DspiCore {
 }
 
 impl DspiCore {
+    // -- WP P1TK --
+    /// The body of [`DspiCore::save_preset`] and its `_confirmed` form (WP P1TK).
+    pub(crate) fn save_preset_with(&self, slot: u8, token: Option<&str>) -> Result<()> {
+        slot_in_range(slot)?;
+        let ticket = self.confirm_gate(ConfirmOp::SavePreset, token)?;
+        self.with_device_lock(SAVE_REASON, |inner| {
+            ticket.still_on(inner)?;
+            let confirmed = save_to_slot(inner, slot)?;
+            refresh_directory(inner);
+            if !confirmed {
+                return Err(unconfirmed("save to", slot));
+            }
+            mark_saved(&mut inner.state, slot);
+            capture_baseline_locked(inner);
+            journal(inner, "preset.save", &[slot], Value::Trigger); // -- WP P0W --
+            Ok(())
+        })
+    }
+
+    /// The body of [`DspiCore::copy_preset`] and its `_confirmed` form (WP P1TK).
+    pub(crate) fn copy_preset_with(&self, source: u8, dest: u8, token: Option<&str>) -> Result<()> {
+        slot_in_range(source)?;
+        slot_in_range(dest)?;
+        let ticket = self.confirm_gate(ConfirmOp::CopyPreset, token)?;
+        self.with_device_lock(COPY_REASON, |inner| {
+            ticket.still_on(inner)?;
+            if !save_to_slot(inner, dest)? {
+                refresh_directory(inner);
+                return Err(unconfirmed("copy to", dest));
+            }
+            mark_saved(&mut inner.state, dest);
+            let back = save_to_slot(inner, source)?;
+            refresh_directory(inner);
+            if back {
+                mark_saved(&mut inner.state, source);
+            } else {
+                log::warn!("the device did not confirm saving preset {source} again");
+            }
+            capture_baseline_locked(inner);
+            Ok(())
+        })
+    }
+
+    /// The body of [`DspiCore::delete_preset`] and its `_confirmed` form (WP P1TK).
+    pub(crate) fn delete_preset_with(&self, slot: u8, token: Option<&str>) -> Result<()> {
+        slot_in_range(slot)?;
+        let ticket = self.confirm_gate(ConfirmOp::DeletePreset, token)?;
+        self.with_device_lock(DELETE_REASON, |inner| {
+            ticket.still_on(inner)?;
+            let was_active = inner.state.active_preset_slot == slot;
+            let confirmed = {
+                let mut w = inner.writable_conn()?;
+                w.conn().fresh_image = false;
+                status(w.set_as_read(op::REQ_PRESET_DELETE, u16::from(slot))?)?;
+                wait_for(w.conn(), |c| slot_cleared(c, slot))?
+            };
+            if !confirmed {
+                return Err(unconfirmed("delete", slot));
+            }
+            journal(inner, "preset.delete", &[slot], Value::Trigger); // -- WP P0W --
+            inner.state.preset_occupied &= !bit(slot);
+            if let Some(name) = inner.state.preset_names.get_mut(usize::from(slot)) {
+                name.clear();
+            }
+            refresh_directory(inner);
+            if was_active {
+                connect::refresh_params_locked(inner)?;
+                capture_baseline_locked(inner);
+            }
+            Ok(())
+        })
+    }
+
+    /// The body of [`DspiCore::save_params`] and its `_confirmed` form (WP P1TK).
+    pub(crate) fn save_params_with(&self, token: Option<&str>) -> Result<()> {
+        let ticket = self.confirm_gate(ConfirmOp::SaveParams, token)?;
+        self.with_device_lock(SAVE_PARAMS_REASON, |inner| {
+            ticket.still_on(inner)?;
+            status(inner.writable_conn()?.set_as_read(op::REQ_SAVE_PARAMS, 0)?)?;
+            journal(inner, "dev.save", &[], Value::Trigger); // -- WP P0W --
+            let active = inner.state.active_preset_slot;
+            if !refresh_directory(inner) {
+                mark_saved(&mut inner.state, active);
+            }
+            capture_baseline_locked(inner);
+            Ok(())
+        })
+    }
+
+    /// The body of [`DspiCore::factory_reset`] and its `_confirmed` form (WP P1TK).
+    pub(crate) fn factory_reset_with(&self, token: Option<&str>) -> Result<()> {
+        let ticket = self.confirm_gate(ConfirmOp::FactoryReset, token)?;
+        let lock = self.acquire_device_lock(RESET_REASON)?;
+        let sent = {
+            let mut guard = self.lock();
+            if lock.is_current(&guard) {
+                ticket
+                    .still_on(&guard)
+                    .and_then(|()| guard.writable_conn())
+                    .and_then(|mut w| {
+                        w.conn().fresh_image = false;
+                        status(w.set_as_read(op::REQ_FACTORY_RESET, 0)?)
+                    })
+                    // -- WP P0W -- the history before a reset is gone with the state
+                    .map(|()| journal(&mut guard, "dev.reset", &[], Value::Trigger))
+            } else {
+                Err(DspiError::Disconnected)
+            }
+        };
+        let result = sent.and_then(|()| {
+            clock::sleep(FACTORY_RESET_SETTLE);
+            self.fetch_all()?;
+            // -- WP SWAPFIX -- the re-read keeps a baseline; the reset's is new
+            self.capture_baseline();
+            Ok(())
+        });
+        self.release_device_lock(lock);
+        result
+    }
+
     /// Run `f` with the core lock held, inside the device lock (`reason`
     /// tells other sessions why). `f` runs only if the connection is still
     /// the one locked; the lock goes back whatever `f` returns.
