@@ -3886,6 +3886,12 @@ bool dspi_set_preamp(struct FfiCore *core, float db);
 bool dspi_set_input_preamp(struct FfiCore *core, uint8_t input, float db);
 
 /**
+ * Set the preamp of a linked input pair (`input` and `input ^ 1`), in dB:
+ * one undo step (`DspiCore::set_input_pair_preamp`).
+ */
+bool dspi_set_input_pair_preamp(struct FfiCore *core, uint8_t input, float db);
+
+/**
  * Bypass all processing, or stop.
  */
 bool dspi_set_bypass(struct FfiCore *core, bool enabled);
@@ -4075,6 +4081,20 @@ bool dspi_set_limiter_param(struct FfiCore *core, uint8_t output, uint8_t param,
  * The limiters' gain reduction, in dB, into `out_gr`: `MAX_OUTPUTS` floats.
  */
 bool dspi_fetch_limiter_meter(struct FfiCore *core, float *out_gr);
+
+/**
+ * Protect every output: stereo pairs linked, every limiter on at
+ * `ceiling_dbfs` (-1 is the usual ceiling), one undo step
+ * (`DspiCore::protect_all_outputs`).
+ */
+bool dspi_protect_all_outputs(struct FfiCore *core, float ceiling_dbfs);
+
+/**
+ * The outputs that are on, above `threshold_db` of gain and without a
+ * limiter, as a mask (bit k = output k; `DspiCore::outputs_without_limiter`,
+ * pass -10 for the warning). 0 for a null handle or none.
+ */
+uint32_t dspi_outputs_without_limiter(const struct FfiCore *core, float threshold_db);
 
 /**
  * Name wire channel `ch`. False for a null or non-UTF-8 name, or one the

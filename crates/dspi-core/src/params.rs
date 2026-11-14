@@ -239,6 +239,38 @@ impl DspiCore {
         Ok(())
     }
 
+    // -- WP P1PR --
+    /// Preamp of a linked input pair: `input` and its partner (`input ^ 1`,
+    /// inputs 2p and 2p+1) both to `db`, shaped as
+    /// [`DspiCore::set_input_preamp`] shapes it, in one undo group
+    /// ([`DspiCore::begin_group`]): one undo step labelled "Input trim,
+    /// linked pair". `input`, the side the user moved, is written first.
+    /// The link itself is the client's (a document's `inputPairLinked`):
+    /// call this while the pair is linked, `set_input_preamp` otherwise.
+    ///
+    /// Both inputs and the value are checked before anything is sent. A
+    /// failure on the second write leaves the first one written (one undo
+    /// step takes it back).
+    ///
+    /// Errors: [`DspiError::InvalidArgument`] for an input or its partner
+    /// out of range, or a NaN; the connection and transfer errors of every
+    /// setter.
+    pub fn set_input_pair_preamp(&self, input: u8, db: f32) -> Result<()> {
+        let partner = input ^ 1;
+        {
+            let inner = self.lock();
+            input_index(&inner.state, input)?;
+            input_index(&inner.state, partner)?;
+            preamp_db(&inner, db)?;
+        }
+        self.begin_group(PAIR_PREAMP_LABEL.into());
+        let r = self
+            .set_input_preamp(input, db)
+            .and_then(|()| self.set_input_preamp(partner, db));
+        self.end_group();
+        r
+    }
+
     /// Bypass the whole EQ (`true`) or run it.
     ///
     /// Errors: the connection and transfer errors of every setter.
@@ -1957,3 +1989,7 @@ mod tests_wp_cg37 {
 #[allow(clippy::arithmetic_side_effects)]
 #[path = "params/tests_wp_p1xf.rs"]
 mod tests_wp_p1xf;
+
+// -- WP P1PR --
+/// The undo step's label of [`DspiCore::set_input_pair_preamp`].
+pub(crate) const PAIR_PREAMP_LABEL: &str = "Input trim, linked pair";

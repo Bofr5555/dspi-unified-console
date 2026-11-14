@@ -392,6 +392,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun setInputPreamp(input: Int, db: Float) = call { core.setInputPreamp(input.toUByte(), db) }
 
+    override fun setInputPairPreamp(input: Int, db: Float) = call { core.setInputPairPreamp(input.toUByte(), db) }
+
     override fun setBypass(enabled: Boolean) = call { core.setBypass(enabled) }
 
     override fun setMasterVolume(db: Float) = call { core.setMasterVolume(db) }
@@ -467,6 +469,10 @@ class FfiDspiCore : DspiCoreApi {
     override fun setLimiterParam(output: Int, param: Int, value: Float) = call { core.setLimiterParam(output.toUByte(), param.toUByte(), value) }
 
     override fun fetchLimiterMeter(): List<Float> = call { core.fetchLimiterMeter() }
+
+    override fun protectAllOutputs(ceilingDbfs: Float) = call { core.protectAllOutputs(ceilingDbfs) }
+
+    override fun outputsWithoutLimiter(thresholdDb: Float): List<Int> = core.outputsWithoutLimiter(thresholdDb).map { it.toInt() and 0xFF }
 
     override fun setUpmixParam(id: Int, value: Float) = call { core.setUpmixParam(id.toUByte(), value) }
 

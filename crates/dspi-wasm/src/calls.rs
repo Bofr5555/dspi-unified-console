@@ -344,6 +344,10 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
             need_open(&core)?;
             Ok(outputs::limits(&core))
         }
+        // -- WP P1PR -- protect all outputs, the warning list, a linked pair's preamp
+        "protectAllOutputs" => outputs::protect_all(&core, params(req.params)?),
+        "outputsWithoutLimiter" => Ok(outputs::without_limiter(&core, params(req.params)?)),
+        "inputPairPreamp" => outputs::input_pair_preamp(&core, params(req.params)?),
         "close" => {
             core.disconnect();
             set_demo(h, false);
