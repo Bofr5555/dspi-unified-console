@@ -81,7 +81,7 @@ fun AutoEQBrowser(
             if (filteredEntries.isEmpty()) {
                 val text =
                     when {
-                        errorMessage != null -> "⚠ $errorMessage"
+                        errorMessage != null -> errorMessage.orEmpty()
                         searchText.isEmpty() || !loaded -> "Loading headphone database..."
                         else -> "No headphones found matching \"$searchText\""
                     }
@@ -152,7 +152,7 @@ fun HeadphoneRow(entry: HeadphoneEntry, isSelected: Boolean, isFavorite: Boolean
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(if (entry.formFactor == "over-ear") "🎧" else "◖", modifier = Modifier.width(30.dp), color = fg)
+        Text(if (entry.formFactor == "over-ear") "○" else "◖", modifier = Modifier.width(30.dp), color = fg)
         Column(Modifier.weight(1f)) {
             Text(entry.displayName, color = fg)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -170,7 +170,7 @@ fun HeadphoneRow(entry: HeadphoneEntry, isSelected: Boolean, isFavorite: Boolean
         }
         Spacer(Modifier.width(4.dp))
         TextButton(onClick = onToggleFavorite) {
-            Text(if (isFavorite) "♥" else "♡", color = if (isFavorite) Color(0xFFFF3B30) else secondary)
+            Text(if (isFavorite) "◆" else "◇", color = if (isFavorite) Color(0xFFFF3B30) else secondary)
         }
     }
 }

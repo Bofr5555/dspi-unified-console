@@ -220,7 +220,7 @@ internal fun RowDivider() =
 internal fun StatusLine(message: String?, isError: Boolean) {
     if (message.isNullOrEmpty()) return
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(if (isError) "⚠" else "✓", color = if (isError) MacColors.orange else MacColors.green, fontSize = 13.sp)
+        Text(if (isError) "!" else "✓", color = if (isError) MacColors.orange else MacColors.green, fontSize = 13.sp)
         Spacer(Modifier.width(6.dp))
         Text(
             message,

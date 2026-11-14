@@ -289,7 +289,7 @@ private fun ApplyRow(
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
             if (status != null && !dirty) {
-                Text(if (status.second) "⚠ " else "✓ ", color = if (status.second) MacColors.orange else MacColors.green)
+                Text(if (status.second) "! " else "✓ ", color = if (status.second) MacColors.orange else MacColors.green)
                 Text(
                     status.first,
                     style = MaterialTheme.typography.bodySmall,

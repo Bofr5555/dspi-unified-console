@@ -338,6 +338,9 @@ impl DspiCore {
         let a = match a {
             Some(a) => a,
             None => {
+                // -- WP P1EFIX2 -- (review p1efix F3) A is the device now,
+                // what was queued before the compare included
+                self.settle_notifications();
                 self.snapshot_capture_document(CAPTURED_A_NAME.into(), CAPTURED_A_NOTE.into())?
             }
         };

@@ -174,6 +174,12 @@ impl DspiCore {
             {
                 result.flags |= NOTIFY_STATE | NOTIFY_CURVES | NOTIFY_REFRESHED;
             }
+            // -- WP P1EFIX2 -- what a settle consumed since the last call
+            if let Some(conn) = guard.conn.as_mut() {
+                let settled = std::mem::take(&mut conn.settled);
+                result.flags |= settled.flags;
+                result.filter_channels |= settled.filter_channels;
+            }
             // -- WP P0W --
             let mark = crate::journal::history_mark(&mut guard);
             if mark != guard.history_seen {
@@ -210,8 +216,8 @@ impl DspiCore {
     /// queued before the image, such as the echo of this console's own
     /// earlier write, would otherwise be applied after it and put an older
     /// value back in the mirror while the device holds the image's. What it
-    /// changed is announced at the next [`DspiCore::process_notifications`]
-    /// (as a re-read is), and its event-log records are kept. It is the whole
+    /// reported (every flag and channel) is reported again by the next
+    /// [`DspiCore::process_notifications`], and its event-log records are kept. It is the whole
     /// of `process_notifications`, the re-read included: applying the patches
     /// without the re-read they asked for left a stale value in the mirror
     /// (`wp_p1lk_locked_allows_volume_mute_preset_and_refuses_the_rest`).
@@ -220,10 +226,15 @@ impl DspiCore {
         // included: a patch the device cannot be trusted on is put right by
         // that re-read, never left in the mirror.
         let r = self.process_notifications_at(Instant::now());
-        if r.flags != 0
+        // -- WP P1EFIX2 -- (review p1efix F1) kept as it was, every flag and
+        // channel, for the next call: a settle that only saw the history move
+        // claims no refresh, and a NAMES, SIGGEN, CS_AUX, IR_LEARN, STREAMS,
+        // INPUT_FORMAT, PRESET or STALE it took still reaches the client
+        if r != NotifyResult::default()
             && let Some(conn) = self.lock().conn.as_mut()
         {
-            conn.announce_refresh = true;
+            conn.settled.flags |= r.flags;
+            conn.settled.filter_channels |= r.filter_channels;
         }
     }
 }
@@ -1663,3 +1674,8 @@ mod tests_wp_cg31;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 mod tests_wp_cg33;
+
+// -- WP P1EFIX2 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_wp_p1efix2;

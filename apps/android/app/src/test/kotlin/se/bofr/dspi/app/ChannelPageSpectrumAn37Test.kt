@@ -135,7 +135,7 @@ class ChannelPageSpectrumAn37Test {
         settleUntil("the page starts on its own channel") { stripCell(input, usb1) && overlay(input, usb1) }
 
         // The review's scenario: in the gear, check USB 2 and uncheck USB 1
-        rule.onAllNodesWithText("⚙", useUnmergedTree = true)[0].performClick()
+        rule.onAllNodesWithText("⋮", useUnmergedTree = true)[0].performClick()
         settleUntil("the gear panel") { inGear("SPECTRUM") }
         clickInGear(bridge.channelName(1))
         clickInGear(bridge.channelName(0))
