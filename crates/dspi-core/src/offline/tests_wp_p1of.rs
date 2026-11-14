@@ -253,8 +253,8 @@ fn wp_p1of_k340_template_opens_with_4_outputs_and_the_k340_pair_map() {
         doc["meta"]["status"]
             .as_str()
             .unwrap()
-            .contains("awaiting the owner's approval"),
-        "OD-P1h: the owner approves the file"
+            .contains("Approved by the owner"),
+        "OD-P1h: the owner approved the file"
     );
     let (core, reply) = opened(&text, "k340.dspipreset");
     assert_eq!(reply["kind"], "template");
@@ -463,6 +463,8 @@ fn wp_p1of_write_k340_template() {
                 }
             }
         }
+        // Owner 2026-11-14: the template starts at a low, safe user volume.
+        inner.state.user_volume_db = -20.0;
     }
     let text = core
         .save_as_template(
@@ -476,9 +478,9 @@ fn wp_p1of_write_k340_template() {
     let start = text.find(key).unwrap() + key.len();
     let end = start + text[start..].find('"').unwrap();
     let saved = std::env::var("DSPI_P1OF_K340_SAVED").unwrap_or_else(|_| text[start..end].into());
-    let status = "Draft: awaiting the owner's approval (OD-P1h). From the owner's K340 \
+    let status = "Approved by the owner 2026-11-14 (OD-P1h). From the owner's K340 \
                   (backup after-hour3, 2026-11-14): routing, crossfeed pair map, crossover, \
-                  names and hardware I/O; no room EQ.";
+                  names and hardware I/O; no room EQ; user volume starts at -20 dB.";
     let mut text = format!(
         "{}{saved}\",\n    \"{STATUS_KEY}\": {}{}",
         &text[..start],

@@ -1994,7 +1994,7 @@
     "inputSource": 0,
     "lgSoundSyncEnabled": true,
     "masterVolumeDb": 0.0,
-    "userVolumeDb": -23.0
+    "userVolumeDb": -20.0
   },
   "io": {
     "adatEnabled": false,
@@ -2578,7 +2578,7 @@
     "outputConfigMode": 1,
     "platform": "RP2350",
     "savedUtc": "2026-11-14T03:49:56Z",
-    "status": "Draft: awaiting the owner's approval (OD-P1h). From the owner's K340 (backup after-hour3, 2026-11-14): routing, crossfeed pair map, crossover, names and hardware I/O; no room EQ.",
+    "status": "Approved by the owner 2026-11-14 (OD-P1h). From the owner's K340 (backup after-hour3, 2026-11-14): routing, crossfeed pair map, crossover, names and hardware I/O; no room EQ; user volume starts at -20 dB.",
     "wireFormatVersion": 32
   },
   "psybass": {
