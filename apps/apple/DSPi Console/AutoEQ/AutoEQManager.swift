@@ -101,10 +101,16 @@ class AutoEQManager: ObservableObject {
         ("Headphone.com Legacy", "headphone.com", 4)
     ]
 
-    init() {
+    // -- WP SW18 -- `supportDirectory` lets a test keep its user database
+    // apart from the app's; the app passes nothing.
+    init(supportDirectory: URL? = nil) {
         // Setup Application Support directory for user updates
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        appSupportDirectory = appSupport.appendingPathComponent(AppIdentity.supportFolder(legacy: "com.weeblabs.DSPi-Console"), isDirectory: true)
+        if let supportDirectory {
+            appSupportDirectory = supportDirectory
+        } else {
+            let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            appSupportDirectory = appSupport.appendingPathComponent(AppIdentity.supportFolder(legacy: "com.weeblabs.DSPi-Console"), isDirectory: true)
+        }
         userDatabaseURL = appSupportDirectory.appendingPathComponent("autoeq_database.json")
 
         // Create directory if needed
@@ -336,6 +342,18 @@ class AutoEQManager: ObservableObject {
 
     var hasUserDatabase: Bool {
         FileManager.default.fileExists(atPath: userDatabaseURL.path)
+    }
+
+    // -- WP SW18 -- For the core's AutoEQ upkeep (CG6, AutoEQCoreUpdate.swift):
+    // the file it writes, and a re-read once it has.
+    var userDatabasePath: String { userDatabaseURL.path }
+
+    /// Reads the database again (the user's copy if there is one, else the
+    /// bundled one) and the favourites against it.  Main thread.
+    func reloadDatabase() {
+        errorMessage = nil
+        loadDatabase()
+        loadFavorites()
     }
 
     // MARK: - Rebuild Database from GitHub

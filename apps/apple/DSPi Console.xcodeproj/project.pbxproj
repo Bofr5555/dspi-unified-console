@@ -79,6 +79,8 @@
 				PeqGraphRenderer.swift,
 				PeqGraphShaders.swift,
 				Core/Generated,
+				"Firmware/DSPi-RP2040-v1.1.6.uf2",
+				"Firmware/DSPi-RP2350-v1.1.6.uf2",
 			);
 			target = 1A1A00000000000000000001 /* DSPi Console iOS */;
 		};
