@@ -2031,7 +2031,8 @@ mod tests_wp_tm11 {
             let lock = o.handle.core.installer_lock_state();
             assert_eq!(lock.held_by, "hub", "{lock:?}");
             assert!(lock.locked, "{lock:?}");
-            let mut s = core_route::session_on(&o, Confirm::Refuse).unwrap();
+            let mut s =
+                core_route::session_on(&o, Confirm::Refuse, core_route::PinSource::Nobody).unwrap();
             let e = s.write("out.gain", &[0], Value::Float(-1.0)).unwrap_err();
             let banner =
                 dspi_core::notice_for_key(dspi_core::LOCK_BANNER_NOTICE.into(), String::new())
@@ -2040,12 +2041,28 @@ mod tests_wp_tm11 {
             assert!(matches!(
                 e,
                 WriteError::Routed {
-                    kind: RouteFailure::Refused,
+                    kind: RouteFailure::Locked,
                     ..
                 }
             ));
             // Inside the lock's scope, the write goes.
             assert!(s.write("vol.master", &[], Value::Float(-10.0)).is_ok());
+            // -- WP TMCOREF -- (F2) the bootloader is held by the hub's lock too
+            let mut sure =
+                core_route::session_on(&o, Confirm::Given, core_route::PinSource::Nobody).unwrap();
+            let e = sure
+                .write("dev.bootloader", &[], Value::Trigger)
+                .unwrap_err();
+            assert_eq!(crate::write_exit(&e), crate::exit::REJECTED, "{e}");
+            // -- WP TMCOREF -- (F1) the hub's PIN, given as a script gives it,
+            // unlocks it for this command
+            core_route::unlock_up_front(
+                &o.handle.core,
+                &core_route::PinSource::Env("4711-door".into()),
+                true,
+            )
+            .unwrap();
+            assert!(s.write("out.gain", &[0], Value::Float(-1.0)).is_ok());
             assert!(!command(&running, "quit", false));
         }
     }

@@ -20,6 +20,9 @@
 //!
 //! A route's refusal is [`WriteError::Routed`](crate::WriteError::Routed),
 //! in the route's own words.
+//!
+//! [`Session::send`](crate::Session::send) (the fast path) is not routed: a
+//! routed session's writes must go through `write`.
 
 use dspi_proto::value::{EqParamPacket, Value};
 
@@ -41,9 +44,14 @@ pub enum RouteFailure {
     /// The request itself is wrong (an argument out of range, a feature the
     /// device lacks).
     Input,
-    /// Refused before anything was sent: a limit, the lock, a missing
-    /// confirmation, the hub's role.
+    /// Refused before anything was sent: a limit, a missing confirmation,
+    /// the hub's role.
     Refused,
+    // -- WP TMCOREF --
+    /// Refused before anything was sent by the installer lock (this
+    /// console's or the hub's): [`crate::Session::unlock`] with the
+    /// installer's PIN opens it.
+    Locked,
     /// No device.
     NoDevice,
     /// The link or the device failed.
@@ -74,4 +82,12 @@ pub trait WriteRoute: Send {
 
     /// End the group [`WriteRoute::begin_group`] began.
     fn end_group(&mut self);
+
+    // -- WP TMCOREF --
+    /// Unlock the installer lock with `pin` (or the recovery code). `None`
+    /// when this route has no lock to open; otherwise what to tell the user,
+    /// or why it stayed locked.
+    fn unlock(&mut self, _pin: &str) -> Option<Result<String, String>> {
+        None
+    }
 }

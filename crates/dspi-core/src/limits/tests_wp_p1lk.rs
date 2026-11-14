@@ -393,3 +393,54 @@ fn wp_p1lk_a_guarded_revert_passes_the_lock() {
     let r = unlimited(|| core.set_output_gain(1, 2.0));
     assert!(r.is_ok(), "{r:?}");
 }
+
+// -- WP TMCOREF -- (review tmcore F2)
+/// The bootloader is an installer's action: refused while locked, before the
+/// token is spent; the same token goes through once unlocked.
+#[test]
+fn wp_tmcoref_the_bootloader_is_held_by_the_lock() {
+    let core = demo();
+    core.require_confirmation(true);
+    locked(&core);
+    let token = core.confirm_token(crate::ConfirmOp::EnterBootloader);
+    let e = core
+        .enter_bootloader_confirmed(Some(token.clone()))
+        .unwrap_err();
+    assert_eq!(code_of(&e), "locked", "{e:?}");
+    assert!(core.is_connected(), "nothing was sent");
+    core.installer_unlock(PIN.into()).unwrap();
+    core.enter_bootloader_confirmed(Some(token)).unwrap();
+}
+
+// -- WP TMCOREF -- (review tmcore F2)
+/// A firmware write with the device still open is held the same way; once
+/// unlocked it goes on to its own checks (here the image is refused).
+#[test]
+fn wp_tmcoref_a_firmware_write_is_held_by_the_lock() {
+    let core = demo();
+    core.require_confirmation(true);
+    locked(&core);
+    let drive = || crate::BootloaderDrive {
+        path: "/nonexistent/tmcoref-drive".into(),
+        platform: 1,
+        info: String::new(),
+    };
+    let flash = |core: &DspiCore| {
+        let token = core.confirm_token(crate::ConfirmOp::FirmwareFlash);
+        core.flash_confirmed(
+            vec![0; 16],
+            drive(),
+            crate::firmware_guard_board_in_bootloader(),
+            String::new(),
+            Some(token),
+        )
+    };
+    let e = flash(&core).unwrap_err();
+    assert_eq!(code_of(&e), "locked", "{e:?}");
+    core.installer_unlock(PIN.into()).unwrap();
+    let e = flash(&core).unwrap_err();
+    assert!(
+        !matches!(e, DspiError::InstallerLock { .. }),
+        "past the lock: {e:?}"
+    );
+}

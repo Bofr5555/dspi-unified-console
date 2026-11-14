@@ -454,6 +454,13 @@ impl Session {
         }
     }
 
+    // -- WP TMCOREF --
+    /// Unlock the route's installer lock with `pin` (or the recovery code):
+    /// `None` without a route that has one; otherwise the words to show.
+    pub fn unlock(&mut self, pin: &str) -> Option<Result<String, String>> {
+        self.route.as_mut().and_then(|r| r.unlock(pin))
+    }
+
     // -- WP TMCORE --
     /// The route's undo or redo, when there is a route.
     pub(crate) fn routed_step(

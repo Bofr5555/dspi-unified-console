@@ -52,6 +52,13 @@ impl Session {
     ///   [`WriteError::PlatformRange`];
     /// - [`WriteError::Transport`] when a transfer fails, including a reply
     ///   shorter than asked for.
+    ///
+    /// -- WP TMCOREF -- **Not routed.** A session with a
+    /// [`crate::WriteRoute`] ([`Session::set_route`]) still sends this
+    /// straight to its transport: past the route's limits profile, its undo
+    /// history and its confirmation tokens (the transport's own checks, such
+    /// as the console core's installer lock, still apply). Do not use it for
+    /// writes on a routed session; use [`Session::write`].
     pub fn send(&mut self, path: &str, indices: &[u8], value: Value) -> Result<(), WriteError> {
         let d = by_path(path).ok_or_else(|| WriteError::UnknownParam(path.into()))?;
         let set = d

@@ -1112,7 +1112,9 @@ type Opener = dyn Fn() -> Result<Connected, OpenError> + Send + Sync;
 // -- WP TMCORE --
 /// Opens a target for the interface, in place of [`Target::connect`]: the
 /// Terminal's opener puts the device on a console core first.
-pub type TargetOpener = dyn Fn(&Target) -> Result<Connected, OpenError> + Send + Sync;
+/// -- WP TMCOREF -- with the prompt to warn on (a reconnect's collects them).
+pub type TargetOpener =
+    dyn Fn(&Target, PinPrompt<'_>) -> Result<Connected, OpenError> + Send + Sync;
 
 /// One attempt; a hub found at another address is dialled there.
 type Dialer = dyn Fn(Option<&BrowsedHub>) -> Result<Connected, OpenError> + Send + Sync;
@@ -1198,9 +1200,15 @@ impl Reconnector {
             _ => None,
         };
         let warnings = Arc::new(Mutex::new(Vec::new()));
-        let dial = move |moved: Option<&BrowsedHub>| match (&target, moved) {
-            (Target::Link(l), Some(hub)) => open(&Target::Link(l.at(hub))),
-            _ => open(&target),
+        // -- WP TMCOREF -- (review tmcore N3) the attempt's warnings are kept,
+        // as `new` keeps them
+        let sink = Arc::clone(&warnings);
+        let dial = move |moved: Option<&BrowsedHub>| {
+            let prompt = Collect(Arc::clone(&sink));
+            match (&target, moved) {
+                (Target::Link(l), Some(hub)) => open(&Target::Link(l.at(hub)), &prompt),
+                _ => open(&target, &prompt),
+            }
         };
         Self {
             warnings,
