@@ -1,5 +1,5 @@
 {
- "repo_commit": "0531b960",
+ "repo_commit": "6aa28dbd",
  "rust": {
   "authors": [
    "Weeb Labs",
@@ -468,7 +468,7 @@
    "Weeb Labs",
    "owner (bofr)"
   ],
-  "commit": "0531b960964f75bcf26ba9dfcc3cfbc5208b2b88",
+  "commit": "6aa28dbd268527213657fa64945469eaa60871ec",
   "files": [
    "DSPi Console iOS/Info.plist",
    "DSPi Console/AboutLicence.swift",
@@ -485,6 +485,7 @@
    "DSPi Console/Assets.xcassets/AppIcon.appiconset/icon_ios_1024.png",
    "DSPi Console/Assets.xcassets/Contents.json",
    "DSPi Console/AutoEQ/AutoEQBrowser.swift",
+   "DSPi Console/AutoEQ/AutoEQCoreUpdate.swift",
    "DSPi Console/AutoEQ/AutoEQManager.swift",
    "DSPi Console/AutoEQ/autoeq_database.json",
    "DSPi Console/BootloaderLocator.swift",
@@ -514,8 +515,6 @@
    "DSPi Console/ExtensionChannel.swift",
    "DSPi Console/ExtensionCommands.swift",
    "DSPi Console/FilterFile.swift",
-   "DSPi Console/Firmware/DSPi-RP2040-v1.1.6.uf2",
-   "DSPi Console/Firmware/DSPi-RP2350-v1.1.6.uf2",
    "DSPi Console/FirmwareInstallUI.swift",
    "DSPi Console/FirmwareInstaller.swift",
    "DSPi Console/FirmwareUpdateView.swift",
@@ -594,6 +593,7 @@
    "DSPi Console/Web/index.html",
    "DSPi Console/iOS/DocumentPicker.swift",
    "DSPi Console/iOS/IOSApp.swift",
+   "DSPi Console/iOS/IOSAutoEQMenu.swift",
    "DSPi Console/iOS/IOSLinkPairing.swift",
    "DSPi Console/iOS/PeqTouchEditor.swift",
    "DSPi Console/iOS/iOSCompat.swift"
