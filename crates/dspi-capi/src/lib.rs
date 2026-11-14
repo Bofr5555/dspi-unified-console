@@ -162,6 +162,8 @@ mod tests {
             "src/fns_misc/confirm.rs",
             // -- WP P1OF --
             "src/fns_misc/offline.rs",
+            // -- WP P1SA --
+            "src/fns_misc/guarded.rs",
             "src/fns_browse.rs",
             "src/fns_link.rs",
             "src/fns_hub.rs",
