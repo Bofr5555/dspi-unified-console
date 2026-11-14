@@ -134,3 +134,26 @@ from Settings > Installer (OD-P1e).
 recovered, note, contact, scopeNoticeKey, detail, heldBy, hubPinnedMode`. Errors: `DspiError::InstallerLock { code, msg }` with `code`
 `locked`, `pin_required`, `wrong_pin`, `wait` or `no_pin`; C and the web reply `"code": "installer_lock"` and the
 notice key `installer_lock.<code>`.
+
+## From a script: `uconsole lock` (WP P1TM)
+
+| Command | Core call |
+|---|---|
+| `uconsole lock [status] [--json]` | `installer_lock_state()` (`--json`: the `LockState`) |
+| `uconsole lock unlock` | `installer_unlock(pin)`: checks the PIN or the recovery code |
+| `uconsole lock set-pin` | `installer_pin_set(pin)`; prints the recovery code once, with `installer_lock.recovery` |
+| `uconsole lock clear-pin` | `installer_pin_clear()` |
+
+One command is one session of the core, so an unlock lasts for that command:
+`limits set`, `limits clear`, `lock set-pin` and `lock clear-pin` ask for the PIN
+themselves when one is set (no PIN set: nothing asks). The PIN comes from the
+terminal, `DSPI_INSTALLER_PIN`, or `--installer-pin -` (a line of standard
+input); a new PIN from two prompts, `DSPI_NEW_INSTALLER_PIN` or `--new-pin -`
+(the next line). Exit codes: 0 done, 1 no PIN to be had, 3 a wrong PIN or the
+refusal window (`retryAfterMs`). The Terminal's own folder is
+`<local data dir>/uconsole/limits`, so a PIN set there locks that console only.
+
+```sh
+printf '%s\n%s\n' "$OLD" "$NEW" | uconsole lock set-pin --installer-pin - --new-pin -
+DSPI_INSTALLER_PIN="$OLD" uconsole lock clear-pin
+```

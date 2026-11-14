@@ -297,6 +297,11 @@ pub(crate) fn cmd_import(target: &Target, flags: &[&str], json: bool) -> u8 {
             return exit::USAGE;
         }
     };
+    // -- WP P1TM --
+    let (core_plan, flags) = match take_core_import(&flags) {
+        Ok(p) => p,
+        Err(e) => return usage_error(&e),
+    };
     let args = positional(&flags);
     let Some(&path) = args.first() else {
         eprintln!("{COMMAND}: import needs a file name, or - for standard input");
@@ -309,7 +314,17 @@ pub(crate) fn cmd_import(target: &Target, flags: &[&str], json: bool) -> u8 {
             return exit::USAGE;
         }
     };
-    match import_kind(path, chosen, &text) {
+    let kind = import_kind(path, chosen, &text);
+    // -- WP P1TM -- by block, previewed, confirmed or guarded: the core's.
+    if let Some(plan) = core_plan {
+        if kind != DocumentKind::Preset {
+            return usage_error(
+                "--only, --guard, --preview and --yes take a whole-device document (.dspipreset)",
+            );
+        }
+        return crate::pro::import(target, text, &plan, json);
+    }
+    match kind {
         DocumentKind::Preset => import_preset(target, &text, path, &flags, json),
         DocumentKind::FilterText => match filterfile::parse(&text) {
             Ok(f) => import_filters(target, &FilterDocument::from_text(&f), path, &flags, json),
@@ -325,6 +340,57 @@ pub(crate) fn cmd_import(target: &Target, flags: &[&str], json: bool) -> u8 {
             " cs import` applies those, since they move pins"
         )),
     }
+}
+
+// -- WP P1TM --
+/// Take `--only BLOCKS`, `--guard SECONDS`, `--preview` and `--yes` out of
+/// an import's flags: with any of them the import runs on the core
+/// (`pro::import`), by block. `--dry-run` there is `--preview`; without
+/// `--only`, `--volume` and `--hardware` choose those blocks as before.
+fn take_core_import<'a>(
+    flags: &[&'a str],
+) -> Result<(Option<crate::pro::CoreImport>, Vec<&'a str>), String> {
+    let mut only = None;
+    let mut guard = None;
+    let mut preview = false;
+    let mut yes = false;
+    let mut rest = Vec::with_capacity(flags.len());
+    let mut it = flags.iter().copied();
+    while let Some(f) = it.next() {
+        let (name, inline) = match f.split_once('=') {
+            Some((n, v)) if n == "--only" || n == "--guard" => (n, Some(v)),
+            _ => (f, None),
+        };
+        match name {
+            "--only" | "--guard" => {
+                let v = inline
+                    .or_else(|| it.next())
+                    .ok_or_else(|| format!("{name} needs a value"))?;
+                if name == "--only" {
+                    only = Some(crate::pro::blocks(v)?);
+                } else {
+                    guard = Some(crate::pro::guard_seconds(v)?);
+                }
+            }
+            "--preview" => preview = true,
+            "--yes" => yes = true,
+            _ => rest.push(f),
+        }
+    }
+    if only.is_none() && guard.is_none() && !preview && !yes {
+        return Ok((None, rest));
+    }
+    let preview = preview || rest.contains(&"--dry-run");
+    let blocks = only.unwrap_or_else(|| {
+        crate::pro::default_blocks(rest.contains(&"--volume"), rest.contains(&"--hardware"))
+    });
+    let plan = crate::pro::CoreImport {
+        blocks,
+        guard,
+        preview,
+        yes,
+    };
+    Ok((Some(plan), rest))
 }
 
 fn usage_error(e: &str) -> u8 {
@@ -386,7 +452,10 @@ fn import_preset(target: &Target, text: &str, path: &str, flags: &[&str], json: 
         volume_levels: flags.contains(&"--volume"),
         hardware_io: flags.contains(&"--hardware"),
     };
-    let report = preset_file::apply(&mut session, &doc, options);
+    // -- WP P1TM -- held to this console's limits profile for the device
+    // (P1LM's `apply_limited`), as the core holds its own imports.
+    let profile = crate::pro::console_limits(&mut session);
+    let report = preset_file::apply_limited(&mut session, &doc, options, profile.as_ref());
 
     // The pair links are the interface's, not the device's, and a one-shot
     // command has nowhere to keep them. Better said than silently lost.
@@ -406,6 +475,8 @@ fn import_preset(target: &Target, text: &str, path: &str, flags: &[&str], json: 
                 "missing": report.missing_channels, "skipped": report.skipped,
                 // -- WP TM21 --
                 "leftAlone": report.left_alone, "warnings": report.warnings,
+                // -- WP P1TM --
+                "limited": report.limited,
                 "clean": report.is_clean(), "lines": lines,
             })
             .to_string(),
@@ -1431,5 +1502,40 @@ mod tests_wp_tm4 {
         let (_, (_, fields)) = export_text(&mut session, "x.dspipreset", Format::Preset).unwrap();
         assert_eq!(fields["read_only"], json!(false));
         assert!(fields.get("warning").is_none());
+    }
+
+    // -- WP P1TM --
+    #[test]
+    fn wp_p1tm_by_block_import_flags_choose_the_cores_path() {
+        use dspi_core::consts::*;
+        let (plan, rest) = take_core_import(&["import", "a.dspipreset", "--json"]).unwrap();
+        assert!(plan.is_none());
+        assert_eq!(rest, ["import", "a.dspipreset", "--json"]);
+
+        let (plan, rest) = take_core_import(&[
+            "import",
+            "--only",
+            "eq,routing",
+            "a.dspipreset",
+            "--guard=30",
+        ])
+        .unwrap();
+        let plan = plan.unwrap();
+        assert_eq!(plan.blocks, IMPORT_EQ | IMPORT_ROUTING);
+        assert_eq!(plan.guard, Some(30));
+        assert!(!plan.preview && !plan.yes);
+        assert_eq!(rest, ["import", "a.dspipreset"]);
+
+        // --yes alone: the old blocks, --volume chosen; --dry-run previews.
+        let (plan, _) =
+            take_core_import(&["import", "a", "--yes", "--volume", "--dry-run"]).unwrap();
+        let plan = plan.unwrap();
+        assert!(plan.yes && plan.preview);
+        assert_eq!(plan.blocks & IMPORT_VOLUMES, IMPORT_VOLUMES);
+        assert_eq!(plan.blocks & IMPORT_HARDWARE, 0);
+
+        assert!(take_core_import(&["import", "a", "--only", "bass"]).is_err());
+        assert!(take_core_import(&["import", "a", "--guard", "2"]).is_err());
+        assert!(take_core_import(&["import", "a", "--guard"]).is_err());
     }
 }

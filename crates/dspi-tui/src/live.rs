@@ -2696,6 +2696,15 @@ impl Live {
         self.offline = false;
     }
 
+    // -- WP P1TM --
+    /// The session edits a document offline (`uconsole open FILE`): the
+    /// title says "File: <name>" and the link reads `file`. No reconnect:
+    /// there is no device to come back.
+    pub fn set_document(&mut self, name: &str) {
+        self.shell.model.document = Some(connect::printable(name));
+        self.shell.model.via = "file".into();
+    }
+
     /// Bring a lost device back, once one has been lost. Never blocks: the
     /// open runs on the reconnector's thread.
     pub fn advance_reconnect(&mut self, session: &mut Session) {
