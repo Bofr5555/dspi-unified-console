@@ -225,10 +225,12 @@ const TWEETER_TRIM_DB: f32 = -6.0;
 const SUB_XOVER_HZ: f32 = 80.0;
 const SUBSONIC_HZ: f32 = 20.0;
 const TWO_WAY_HZ: f32 = 2000.0;
-const TWO_WAY_GUARD_HZ: f32 = 1000.0;
+// -- WP TPL1F -- two octaves under the crossover (review F2): 14 degrees
+// of phase there, a sum dip of about 0.1 dB (one octave cost about 0.8 dB).
+const TWO_WAY_GUARD_HZ: f32 = 500.0;
 const THREE_WAY_LOW_HZ: f32 = 300.0;
 const THREE_WAY_HIGH_HZ: f32 = 3000.0;
-const THREE_WAY_GUARD_HZ: f32 = 1500.0;
+const THREE_WAY_GUARD_HZ: f32 = 750.0;
 
 // ── Building one ──────────────────────────────────────────────────────
 
@@ -420,8 +422,14 @@ fn reset(s: &mut DspState, sp: &Spec) {
             _ => format!("USB {}", i + 1),
         };
     }
+    // -- WP TPL1F -- a generic template's unused outputs are named neutrally
+    // (review F3): the device's slot types are not known. A build's are its
+    // own, so they keep the firmware's slot names.
     for o in 0..n_out {
-        s.channel_names[n_in + o] = slot_name(o, n_out, &s.output_types);
+        s.channel_names[n_in + o] = match sp.build {
+            Generic => format!("Out {}", o + 1),
+            _ => slot_name(o, n_out, &s.output_types),
+        };
     }
 }
 
@@ -529,10 +537,10 @@ fn status(sp: &Spec) -> String {
         Sub22 => "outputs 1-2 high-passed at 80 Hz (LR4); subs on outputs 3-4, low-passed at \
                   80 Hz (LR4) from L+R at -6.1 dB each, 20 Hz subsonic, 0 ms delay"
             .to_string(),
-        TwoWay => "LR4 at 2 kHz; tweeters on outputs 1-2 at -6 dB with a 1 kHz 12 dB/oct guard \
+        TwoWay => "LR4 at 2 kHz; tweeters on outputs 1-2 at -6 dB with a 500 Hz 12 dB/oct guard \
                    high-pass, woofers on 3-4"
             .to_string(),
-        ThreeWay => "LR4 at 300 Hz and 3 kHz; tweeters on outputs 1-2 at -6 dB with a 1.5 kHz \
+        ThreeWay => "LR4 at 300 Hz and 3 kHz; tweeters on outputs 1-2 at -6 dB with a 750 Hz \
                      12 dB/oct guard high-pass, woofers on 3-4, mids on 5-6"
             .to_string(),
         Headphones => "outputs 1-2 with crossfeed on (Default: 700 Hz, 4.5 dB, ITD)".to_string(),
@@ -543,7 +551,8 @@ fn status(sp: &Spec) -> String {
     };
     match sp.build {
         Generic => format!(
-            "Generic starting point for any {} board, hardware I/O left alone: {what}. {CHECK}",
+            "Generic starting point for any {} board, input and hardware I/O left alone: {what}. \
+             {CHECK}",
             Platform::from_id(u8::from(sp.plat == Rp2350)).name()
         ),
         Pcm5102aSub => format!(
@@ -591,6 +600,14 @@ fn finish(text: &str, sp: &Spec) -> String {
     doc["meta"][STATUS_KEY] = status(sp).into();
     if let Some(cf) = doc["crossfeed"].as_object_mut() {
         cf.remove("pairMap");
+    }
+    // -- WP TPL1F -- the input side is the device's (review F1): no LG Sound
+    // Sync, and an input source only where the build wires one.
+    if let Some(g) = doc["global"].as_object_mut() {
+        g.remove("lgSoundSyncEnabled");
+        if sp.build != Pcm1808Pcm5102a {
+            g.remove("inputSource");
+        }
     }
     let keys = build_io_keys(sp.build);
     let obj = doc.as_object_mut().unwrap();
@@ -665,14 +682,21 @@ fn opened(sp: &Spec) -> (Arc<DspiCore>, Value) {
 }
 
 /// A document saved from a template's session, for a diff with the
-/// template: without the hardware I/O a generic template leaves alone (a
-/// session holds the demo's).
+/// template: without the hardware I/O and input side the template leaves
+/// alone (a session holds the demo's).
 fn as_shipped(saved: &str, sp: &Spec) -> String {
     let mut doc = parse(saved);
     if sp.build == Generic
         && let Some(obj) = doc.as_object_mut()
     {
         obj.remove("io");
+    }
+    // -- WP TPL1F -- nor the input side a template leaves alone.
+    if let Some(g) = doc["global"].as_object_mut() {
+        g.remove("lgSoundSyncEnabled");
+        if sp.build != Pcm1808Pcm5102a {
+            g.remove("inputSource");
+        }
     }
     doc.to_string()
 }
@@ -849,7 +873,7 @@ fn want(topo: Topo, outs: usize) -> Vec<(usize, Want)> {
             (3, sub("Sub 2")),
         ],
         TwoWay => {
-            let tw = vec![(Lr, 4, true, 2000.0), (Bw, 2, true, 1000.0)];
+            let tw = vec![(Lr, 4, true, 2000.0), (Bw, 2, true, 500.0)];
             let wf = vec![(Lr, 4, false, 2000.0)];
             vec![
                 (0, ("Tweeter L", -6.0, tw.clone(), vec![(0, 0.0)])),
@@ -859,7 +883,7 @@ fn want(topo: Topo, outs: usize) -> Vec<(usize, Want)> {
             ]
         }
         ThreeWay => {
-            let tw = vec![(Lr, 4, true, 3000.0), (Bw, 2, true, 1500.0)];
+            let tw = vec![(Lr, 4, true, 3000.0), (Bw, 2, true, 750.0)];
             let wf = vec![(Lr, 4, false, 300.0)];
             let mid = vec![(Lr, 4, true, 300.0), (Lr, 4, false, 3000.0)];
             vec![
@@ -929,6 +953,132 @@ fn chain_db(bank: &[FilterParams], hz: f64) -> f64 {
         .sum()
 }
 
+// -- WP TPL1F --
+/// An output's crossover slots at `hz` as a complex gain (re, im): each
+/// section's H(z) = (b0 + b1 z^-1 + b2 z^-2) / (1 + a1 z^-1 + a2 z^-2) at
+/// z = e^jw, the firmware's 48 kHz.
+fn chain_complex(bank: &[FilterParams], hz: f64) -> (f64, f64) {
+    let w = 2.0 * std::f64::consts::PI * hz / dspi_proto::dsp::SAMPLE_RATE;
+    let mut acc = (1.0f64, 0.0f64);
+    for b in bank.iter().filter(|b| b.filter_type != 0) {
+        for c in xover::sections(b.filter_type, b.freq) {
+            let num = (
+                c.b0 + c.b1 * w.cos() + c.b2 * (2.0 * w).cos(),
+                -(c.b1 * w.sin() + c.b2 * (2.0 * w).sin()),
+            );
+            let den = (
+                1.0 + c.a1 * w.cos() + c.a2 * (2.0 * w).cos(),
+                -(c.a1 * w.sin() + c.a2 * (2.0 * w).sin()),
+            );
+            let d = den.0 * den.0 + den.1 * den.1;
+            let h = (
+                (num.0 * den.0 + num.1 * den.1) / d,
+                (num.1 * den.0 - num.0 * den.1) / d,
+            );
+            acc = (acc.0 * h.0 - acc.1 * h.1, acc.0 * h.1 + acc.1 * h.0);
+        }
+    }
+    acc
+}
+
+/// The acoustic sum of `banks` at `hz` (trims at 0 dB, ideal drivers), dB.
+fn sum_db(banks: &[&[FilterParams]], hz: f64) -> f64 {
+    let (re, im) = banks
+        .iter()
+        .map(|b| chain_complex(b, hz))
+        .fold((0.0, 0.0), |a, h| (a.0 + h.0, a.1 + h.1));
+    10.0 * (re * re + im * im).log10()
+}
+
+/// The lowest of [`sum_db`] from `lo` to `hi` Hz (1/48 octave steps), and
+/// where.
+fn worst_sum(banks: &[&[FilterParams]], lo: f64, hi: f64) -> (f64, f64) {
+    let mut worst = (f64::MAX, lo);
+    let mut hz = lo;
+    while hz <= hi {
+        let db = sum_db(banks, hz);
+        if db < worst.0 {
+            worst = (db, hz);
+        }
+        hz *= 2f64.powf(1.0 / 48.0);
+    }
+    worst
+}
+
+#[test]
+fn wp_tpl1f_the_lr4_pairs_sum_flat_with_the_guard_and_subsonic_filters() {
+    for sp in SPECS {
+        let (core, _) = opened(sp);
+        let s = core.get_state();
+        let n_in = usize::from(s.num_input_channels);
+        let bank = |name: &str| {
+            let o = (0..usize::from(s.num_output_channels))
+                .find(|&o| s.output_enabled[o] && s.channel_names[n_in + o] == name)
+                .unwrap_or_else(|| panic!("{}: no {name}", sp.id));
+            s.xover[n_in + o].clone()
+        };
+        let report = |what: &str, at_fc: f64, worst: (f64, f64), limit: f64| {
+            eprintln!(
+                "{}: {what}: sum {at_fc:+.3} dB at the crossover, worst {:+.3} dB at {:.0} Hz",
+                sp.id, worst.0, worst.1
+            );
+            assert!(at_fc.abs() < limit && worst.0 > -limit, "{} {what}", sp.id);
+        };
+        match sp.topo {
+            Sub21 | Sub22 => {
+                let sub = bank(if sp.topo == Sub21 { "Sub" } else { "Sub 1" });
+                let main = bank("Left");
+                let b: [&[FilterParams]; 2] = [&sub, &main];
+                report(
+                    "mains + sub",
+                    sum_db(&b, 80.0),
+                    worst_sum(&b, 60.0, 300.0),
+                    0.25,
+                );
+            }
+            TwoWay => {
+                let (tw, wf) = (bank("Tweeter L"), bank("Woofer L"));
+                let b: [&[FilterParams]; 2] = [&tw, &wf];
+                let plain_tw = [tw[0]];
+                let plain: [&[FilterParams]; 2] = [&plain_tw, &wf];
+                eprintln!(
+                    "{}: tweeter + woofer without the guard: {:+.3} dB at the crossover",
+                    sp.id,
+                    sum_db(&plain, 2000.0)
+                );
+                report(
+                    "tweeter + woofer",
+                    sum_db(&b, 2000.0),
+                    worst_sum(&b, 250.0, 16000.0),
+                    0.25,
+                );
+            }
+            ThreeWay => {
+                let (tw, wf, mid) = (bank("Tweeter L"), bank("Woofer L"), bank("Mid L"));
+                let b: [&[FilterParams]; 3] = [&tw, &wf, &mid];
+                report(
+                    "3-way at 3 kHz",
+                    sum_db(&b, 3000.0),
+                    worst_sum(&b, 1000.0, 16000.0),
+                    0.25,
+                );
+                // Around 300 Hz a 3-way LR4 sum is not flat even unguarded
+                // (the mid's 3 kHz low pass shifts the phase there); hold it
+                // to what the plain LR4 network gives.
+                let plain_tw = [tw[0]];
+                let plain: [&[FilterParams]; 3] = [&plain_tw, &wf, &mid];
+                let (g, p) = (sum_db(&b, 300.0), sum_db(&plain, 300.0));
+                eprintln!(
+                    "{}: 3-way at 300 Hz: {g:+.3} dB (plain LR4 {p:+.3} dB)",
+                    sp.id
+                );
+                assert!((g - p).abs() < 0.1, "{}", sp.id);
+            }
+            Stereo | Headphones => {}
+        }
+    }
+}
+
 #[test]
 fn wp_tpl1_crossover_responses_meet_at_the_claimed_points() {
     for sp in SPECS {
@@ -962,11 +1112,13 @@ fn wp_tpl1_crossover_responses_meet_at_the_claimed_points() {
                 let tw = bank("Tweeter L");
                 let wf = bank("Woofer L");
                 near(chain_db(&wf, 2000.0), -6.02, "woofer at 2 kHz");
-                // The guard high-pass costs well under 0.5 dB at the
-                // crossover, and adds 12 dB/oct below it.
+                // The guard high-pass costs under 0.1 dB of the tweeter's
+                // own level at the crossover (its phase is checked in
+                // wp_tpl1f_the_lr4_pairs_sum_flat_...), and adds 12 dB/oct
+                // below it.
                 let lr_only = one(&tw[0], 2000.0);
                 near(lr_only, -6.02, "tweeter LR4 at 2 kHz");
-                assert!((chain_db(&tw, 2000.0) - lr_only).abs() < 0.5, "{}", sp.id);
+                assert!((chain_db(&tw, 2000.0) - lr_only).abs() < 0.1, "{}", sp.id);
                 assert!(chain_db(&tw, 500.0) < -50.0, "{}: tweeter at 500 Hz", sp.id);
             }
             ThreeWay => {
@@ -978,7 +1130,7 @@ fn wp_tpl1_crossover_responses_meet_at_the_claimed_points() {
                 near(chain_db(&mid, 3000.0), -6.02, "mid at 3 kHz");
                 let lr_only = one(&tw[0], 3000.0);
                 near(lr_only, -6.02, "tweeter LR4 at 3 kHz");
-                assert!((chain_db(&tw, 3000.0) - lr_only).abs() < 0.5, "{}", sp.id);
+                assert!((chain_db(&tw, 3000.0) - lr_only).abs() < 0.1, "{}", sp.id);
                 assert!(chain_db(&tw, 750.0) < -50.0, "{}: tweeter at 750 Hz", sp.id);
                 // The mid's band centre is nearly flat.
                 assert!(chain_db(&mid, 950.0) > -0.5, "{}: mid at 950 Hz", sp.id);
@@ -1012,7 +1164,9 @@ fn wp_tpl1_safety_no_clipping_sums_every_tweeter_high_passed_and_core1_free() {
                     .filter(|b| xover::meta(b.filter_type).is_some_and(|m| m.high_pass))
                     .collect();
                 assert!(hp.len() >= 2, "{tag}: a crossover and a guard high-pass");
-                assert!(hp.iter().all(|b| b.freq >= 1000.0), "{tag}");
+                // The guard two octaves under the crossover at the lowest.
+                let xo = hp.iter().map(|b| b.freq).fold(0.0f32, f32::max);
+                assert!(hp.iter().all(|b| b.freq >= xo / 4.0), "{tag}");
                 assert!(s.output_gain_db[o] < 0.0, "{tag}: starts trimmed down");
             }
         }
@@ -1065,7 +1219,7 @@ fn wp_tpl1_builds_carry_their_hardware_io() {
             assert_eq!(s.channel_names[..2], ["I2S L", "I2S R"]);
         } else {
             assert_eq!(io["mckEnabled"], false, "{}", sp.id);
-            assert_eq!(doc["global"]["inputSource"], 0, "{}", sp.id);
+            assert!(doc["global"].get("inputSource").is_none(), "{}", sp.id);
         }
     }
 }
@@ -1100,4 +1254,81 @@ fn wp_tpl1_listed_with_name_platform_and_status() {
             shipped(sp.id)
         );
     }
+}
+
+// -- WP TPL1F -- review F1 (the probe's idea, review/tpl1
+// `tests/review_tpl1_probe.rs`): a generic template leaves the device's
+// input side alone.
+#[test]
+fn wp_tpl1f_a_generic_import_keeps_the_input_source_and_sound_sync() {
+    for sp in SPECS.iter().filter(|s| s.plat == Rp2350) {
+        let doc = parse(shipped(sp.id));
+        assert!(
+            doc["global"].get("lgSoundSyncEnabled").is_none(),
+            "{}",
+            sp.id
+        );
+        assert_eq!(
+            doc["global"].get("inputSource").is_some(),
+            sp.build == Pcm1808Pcm5102a,
+            "{}",
+            sp.id
+        );
+        if sp.build != Generic {
+            continue;
+        }
+        for opts in [0, IMPORT_VOLUMES | IMPORT_HARDWARE] {
+            let core = DspiCore::new();
+            core.open_transport(
+                Box::new(FakeDevice::new(Capture::demo(), FakeOptions::default())),
+                "demo".into(),
+                0,
+            )
+            .unwrap();
+            core.fetch_all().unwrap();
+            // A device listening over S/PDIF, Sound Sync off.
+            core.set_input_source(InputSource::Spdif.to_raw()).unwrap();
+            core.set_lg_sound_sync(false).unwrap();
+            let reply = parse(&core.config_import(shipped(sp.id).into(), opts));
+            assert_eq!(reply["ok"], true, "{}: {reply:#}", sp.id);
+            assert_eq!(reply["clean"], true, "{}: {reply:#}", sp.id);
+            let left: Vec<&str> = reply["leftAlone"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(Value::as_str)
+                .collect();
+            assert!(left.is_empty(), "{}: {left:?}", sp.id);
+            let s = core.get_state();
+            assert_eq!(
+                s.input_source,
+                InputSource::Spdif.to_raw(),
+                "{} {opts}",
+                sp.id
+            );
+            assert!(!s.lg_sound_sync_enabled, "{} {opts}", sp.id);
+            // The template's own settings did land.
+            assert_eq!(s.user_volume_db == USER_VOLUME_DB, opts != 0, "{}", sp.id);
+            assert!(s.output_enabled[0] && s.output_enabled[1], "{}", sp.id);
+        }
+    }
+}
+
+// -- WP TPL1F -- the core rule: only an absent key is silent; a present
+// but unreadable one is still named.
+#[test]
+fn wp_tpl1f_an_unreadable_input_source_is_still_named() {
+    let mut doc = parse(shipped("stereo-rp2350"));
+    doc["global"]["inputSource"] = "spdif".into();
+    let core = DspiCore::new();
+    core.open_transport(
+        Box::new(FakeDevice::new(Capture::demo(), FakeOptions::default())),
+        "demo".into(),
+        0,
+    )
+    .unwrap();
+    core.fetch_all().unwrap();
+    let reply = parse(&core.config_import(doc.to_string(), 0));
+    assert_eq!(reply["ok"], true, "{reply:#}");
+    assert_eq!(reply["clean"], false, "{reply:#}");
 }

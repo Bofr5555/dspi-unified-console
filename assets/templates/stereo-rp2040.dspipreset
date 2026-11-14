@@ -586,7 +586,7 @@
         "thresholdDb": -1.0
       },
       "muted": false,
-      "name": "SPDIF 2 L",
+      "name": "Out 3",
       "outputDelayMs": 0.0,
       "outputIndex": 2
     },
@@ -720,7 +720,7 @@
         "thresholdDb": -1.0
       },
       "muted": false,
-      "name": "SPDIF 2 R",
+      "name": "Out 4",
       "outputDelayMs": 0.0,
       "outputIndex": 3
     },
@@ -854,7 +854,7 @@
         "thresholdDb": -1.0
       },
       "muted": false,
-      "name": "PDM",
+      "name": "Out 5",
       "outputDelayMs": 0.0,
       "outputIndex": 4
     }
@@ -879,8 +879,6 @@
       0.0,
       0.0
     ],
-    "inputSource": 0,
-    "lgSoundSyncEnabled": true,
     "masterVolumeDb": 0.0,
     "userVolumeDb": -20.0
   },
@@ -983,7 +981,7 @@
     "outputConfigMode": 1,
     "platform": "RP2040",
     "savedUtc": "2026-11-14T00:00:00Z",
-    "status": "Generic starting point for any RP2040 board, hardware I/O left alone: L and R full range on outputs 1-2. Check levels, polarity, delays and crossover points for your drivers; user volume starts at -20 dB.",
+    "status": "Generic starting point for any RP2040 board, input and hardware I/O left alone: L and R full range on outputs 1-2. Check levels, polarity, delays and crossover points for your drivers; user volume starts at -20 dB.",
     "wireFormatVersion": 32
   },
   "psybass": {

@@ -201,7 +201,7 @@
         },
         {
           "bypass": false,
-          "freqHz": 1000.0,
+          "freqHz": 500.0,
           "gain": 0.0,
           "q": 0.7070000171661377,
           "qp": 0.7070000171661377,
@@ -335,7 +335,7 @@
         },
         {
           "bypass": false,
-          "freqHz": 1000.0,
+          "freqHz": 500.0,
           "gain": 0.0,
           "q": 0.7070000171661377,
           "qp": 0.7070000171661377,
@@ -879,8 +879,6 @@
       0.0,
       0.0
     ],
-    "inputSource": 0,
-    "lgSoundSyncEnabled": true,
     "masterVolumeDb": 0.0,
     "userVolumeDb": -20.0
   },
@@ -996,7 +994,7 @@
     "outputConfigMode": 1,
     "platform": "RP2040",
     "savedUtc": "2026-11-14T00:00:00Z",
-    "status": "Starting point for a Pico with two PCM5102A on slots 1-2 (I2S data GPIO 6 and 7, BCK 14, LRCK 15, no MCK): LR4 at 2 kHz; tweeters on outputs 1-2 at -6 dB with a 1 kHz 12 dB/oct guard high-pass, woofers on 3-4. Check levels, polarity, delays and crossover points for your drivers; user volume starts at -20 dB.",
+    "status": "Starting point for a Pico with two PCM5102A on slots 1-2 (I2S data GPIO 6 and 7, BCK 14, LRCK 15, no MCK): LR4 at 2 kHz; tweeters on outputs 1-2 at -6 dB with a 500 Hz 12 dB/oct guard high-pass, woofers on 3-4. Check levels, polarity, delays and crossover points for your drivers; user volume starts at -20 dB.",
     "wireFormatVersion": 32
   },
   "psybass": {
