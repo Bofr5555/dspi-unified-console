@@ -56,6 +56,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun alinkSystemRecall(scene: String): AlinkSceneRecall = throw NotImplementedError("alink_system_recall")
 
+    override fun alinkSystemSaveReport(revision: Long, edits: AlinkSystemEdits): AlinkSystemSaved = throw NotImplementedError("alink_system_save_report")
+
     override fun usbDirectSupported(): Boolean = throw NotImplementedError("usb_direct_supported")
 
     override fun fetchAlinkUsb(): AlinkUsbConfig = throw NotImplementedError("fetch_alink_usb")

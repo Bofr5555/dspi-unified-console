@@ -162,6 +162,65 @@ test.describe("one device: the core's demo", () => {
   });
 });
 
+// -- WP P1WB1 -- snapshots, the A/B toggle in the scene bar, a safe apply's countdown, the import
+// preview, an offline file
+test.describe("snapshots and files on the core's demo", () => {
+  test("snapshots, A/B, safe apply, import preview, an offline file", async ({ page }) => {
+    const mac = new URL("../../../../tests/fixtures/preset/mac-swift-v32.dspipreset", import.meta.url).pathname;
+    const session = await openDemo(page);
+    await tab(session, "Snapshots").click();
+    const screen = session.getByRole("region", { name: "Snapshots" });
+    const capture = async (name: string, note: string) => {
+      await screen.getByLabel("Name").fill(name);
+      await screen.getByLabel("Note").fill(note);
+      await Promise.all([page.waitForEvent("download"), screen.getByRole("button", { name: "Capture" }).click()]);
+    };
+    await capture("Evening", "Warm, -3 dB on the tops");
+    const gain = session.getByRole("region", { name: "Outputs" });
+    await tab(session, "Main").click();
+    await gain.getByRole("slider").first().fill("-4");
+    await gain.getByRole("slider").first().dispatchEvent("change");
+    await tab(session, "Snapshots").click();
+    await capture("Bright", "Output 1 at -4 dB");
+    await expect(screen.getByRole("list", { name: "Held snapshots" }).getByRole("listitem")).toHaveCount(2);
+    await shot(page, "demo-snapshots");
+    const row = (n: string) => screen.getByRole("list", { name: "Held snapshots" }).getByRole("listitem", { name: n });
+    await row("Evening").getByRole("button", { name: "Compare" }).click();
+    const bar = session.getByRole("group", { name: "A/B compare" });
+    await bar.getByRole("button", { name: /switch/ }).click();
+    await expect(bar).toContainText("Now B");
+    const compare = screen.getByRole("region", { name: "A/B compare" });
+    await compare.getByRole("button", { name: "Show Differences" }).click();
+    await expect(compare.getByRole("table", { name: "From A to B" })).toBeVisible();
+    await shot(page, "demo-ab");
+    await shot(page, "demo-ab-bar", { of: bar });
+    await bar.getByRole("button", { name: "Keep A" }).click();
+    await expect(bar).toHaveCount(0);
+    await row("Bright").getByRole("button", { name: "Recall with Rollback" }).click();
+    const dialog = page.getByRole("dialog", { name: "Recall Snapshot" });
+    const guard = session.getByRole("alert", { name: "Safe apply" });
+    // Asked first when the settings are unsaved.
+    await expect(dialog.or(guard)).toBeVisible();
+    if (await dialog.isVisible()) await dialog.getByRole("button", { name: "Recall" }).click();
+    await expect(guard).toContainText("They go back in");
+    await shot(page, "demo-safe-apply", { full: false });
+    await guard.getByRole("button", { name: "Revert" }).click();
+    await expect(guard).toHaveCount(0);
+    await tab(session, "Files").click();
+    await session.getByRole("region", { name: "Files" }).getByLabel("Configuration file to import").setInputFiles(mac);
+    const preview = session.getByRole("region", { name: "Import preview" });
+    await preview.getByRole("group", { name: "What to import" }).getByRole("checkbox", { name: /^EQ/ }).uncheck();
+    await expect(preview.getByRole("table", { name: "What the import changes" })).toBeVisible();
+    await shot(page, "demo-import-preview");
+    await preview.getByRole("button", { name: "Cancel" }).click();
+    await page.getByRole("region", { name: "Files" }).first().getByLabel("File to open").setInputFiles(mac);
+    const doc = page.getByRole("article").last();
+    await expect(page.locator(".device-meta").filter({ hasText: "File: mac-swift-v32.dspipreset" })).toBeVisible();
+    await expect(doc).toBeVisible();
+    await shot(page, "offline-file");
+  });
+});
+
 test.describe("an audio link installation on the hub", () => {
   test.skip(!process.env.DSPI_TERM, "no uconsole binary (set DSPI_TERM)");
   let hub: OwnHub | undefined;

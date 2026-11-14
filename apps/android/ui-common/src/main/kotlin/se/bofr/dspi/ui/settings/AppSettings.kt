@@ -85,7 +85,14 @@ data class AppSettings(
      */
     val onboardingSetupDone: Boolean = false,
     /** The release whose notes were last shown (macOS "whatsNew.lastShownVersion"); "" = never. */
-    val whatsNewLastShownVersion: String = ""
+    val whatsNewLastShownVersion: String = "",
+    // -- WP P1DCFIX --
+    /**
+     * The safe apply's timeout, seconds (Keep or the settings from before come
+     * back): [SAFE_APPLY_TIMEOUT_DEFAULT_S], adjustable in Advanced within
+     * [SAFE_APPLY_TIMEOUT_MIN_S]..[SAFE_APPLY_TIMEOUT_MAX_S] ([safeApplyTimeout]).
+     */
+    val safeApplyTimeoutS: Int = SAFE_APPLY_TIMEOUT_DEFAULT_S
 ) {
     /** The smoothing amount the views use (the old Light setting when on). */
     val rtaSmoothing: Double get() = if (rtaSmoothingOn) RTA_SMOOTHING_AMOUNT else 0.0
@@ -126,6 +133,14 @@ data class AppSettings(
         const val GRAPH_HEIGHT_MIN = 200.0
         const val GRAPH_HEIGHT_MAX = 350.0
         val MIN_FREQS = listOf(10.0, 15.0, 20.0, 50.0, 100.0)
+
+        // -- WP P1DCFIX -- the safe apply's timeout, as the web's and Qt's (the core's default 30 s)
+        const val SAFE_APPLY_TIMEOUT_DEFAULT_S = 30
+        const val SAFE_APPLY_TIMEOUT_MIN_S = 5
+        const val SAFE_APPLY_TIMEOUT_MAX_S = 300
+
+        /** [s] within the allowed range (a stored value from elsewhere never leaves it). */
+        fun safeApplyTimeout(s: Int): Int = s.coerceIn(SAFE_APPLY_TIMEOUT_MIN_S, SAFE_APPLY_TIMEOUT_MAX_S)
         val MAX_FREQS = listOf(5000.0, 10000.0, 20000.0)
     }
 }

@@ -107,6 +107,8 @@ pub use alink_system::{
 };
 // -- WP AUSB1 --
 pub use alink_system::AlinkUnitUsbMode;
+// -- WP P1QT1 --
+pub use alink_system::AlinkSystemSaved;
 use dspi_session::ext_state::ExtState;
 
 /// The role asked for when pairing, as the macOS Console does.

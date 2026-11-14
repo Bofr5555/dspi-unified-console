@@ -458,36 +458,9 @@ impl DspiCore {
     /// again), `denied` for another role, `bad_request` for values the hub
     /// refuses, with its words; [`DspiError::Disconnected`] with no session.
     pub fn alink_system_save(&self, revision: u64, edits: AlinkSystemEdits) -> Result<u64> {
-        let client = self.hub_client()?;
-        let cached = self
-            .system_cache(|c| c.model.clone())
-            .filter(|(r, _)| *r == revision);
-        let mut model = match cached {
-            Some((_, m)) => m,
-            None => {
-                let got = request(&client, "system.get", Map::new()).map_err(map_error)?;
-                let now = got.get("revision").and_then(Value::as_u64).unwrap_or(0);
-                if now != revision {
-                    return Err(conflict(now));
-                }
-                got.get("model").cloned().unwrap_or(Value::Null)
-            }
-        };
-        apply_edits(&mut model, &edits)?;
-        let mut fields = Map::new();
-        fields.insert("model".into(), model);
-        fields.insert("revision".into(), revision.into());
-        let saved = request(&client, "system.set", fields);
-        // Whatever the answer, the next view reads the model again.
-        self.system_cache(|c| c.model = None);
-        match saved {
-            Ok(v) => Ok(v
-                .get("revision")
-                .and_then(Value::as_u64)
-                .unwrap_or(revision)),
-            Err(LinkError::Rejected { code, .. }) if code == "conflict" => Err(conflict(revision)),
-            Err(e) => Err(map_error(e)),
-        }
+        // -- WP P1QT1 -- the body is alink_system_save_report's, which keeps the warnings too
+        self.alink_system_save_report(revision, edits)
+            .map(|saved| saved.revision)
     }
 
     /// Write the audio link delays and hop offsets the system delay asks for to
@@ -1878,5 +1851,77 @@ pub(crate) fn align_outcome(report: &Value, model: &Value) -> AlinkSystemAlign {
         applied,
         message,
         writes,
+    }
+}
+
+// -- WP P1QT1 -- `system.set`'s whole answer for the C ABI (HWLK1F's note: the
+// System window shows the hub's warnings after Save).
+// -- WP P1DCFIX -- and over UniFFI, for Android's System screen.
+
+/// What saving the "Clock and audio links" edits did.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlinkSystemSaved {
+    /// The model's new revision.
+    pub revision: u64,
+    /// The hub's warnings about the model it kept (a unit whose firmware has
+    /// no audio link, or no USB-direct block): one sentence each, the hub's
+    /// words. Empty when there are none.
+    pub warnings: Vec<String>,
+}
+
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl DspiCore {
+    /// [`DspiCore::alink_system_save`] with the hub's whole answer: the new
+    /// revision and the warnings `system.set` gave about the model it kept.
+    /// Errors as there.
+    pub fn alink_system_save_report(
+        &self,
+        revision: u64,
+        edits: AlinkSystemEdits,
+    ) -> Result<AlinkSystemSaved> {
+        let client = self.hub_client()?;
+        let cached = self
+            .system_cache(|c| c.model.clone())
+            .filter(|(r, _)| *r == revision);
+        let mut model = match cached {
+            Some((_, m)) => m,
+            None => {
+                let got = request(&client, "system.get", Map::new()).map_err(map_error)?;
+                let now = got.get("revision").and_then(Value::as_u64).unwrap_or(0);
+                if now != revision {
+                    return Err(conflict(now));
+                }
+                got.get("model").cloned().unwrap_or(Value::Null)
+            }
+        };
+        apply_edits(&mut model, &edits)?;
+        let mut fields = Map::new();
+        fields.insert("model".into(), model);
+        fields.insert("revision".into(), revision.into());
+        let saved = request(&client, "system.set", fields);
+        // Whatever the answer, the next view reads the model again.
+        self.system_cache(|c| c.model = None);
+        match saved {
+            Ok(v) => Ok(AlinkSystemSaved {
+                revision: v
+                    .get("revision")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(revision),
+                warnings: v
+                    .get("warnings")
+                    .and_then(Value::as_array)
+                    .map(|w| {
+                        w.iter()
+                            .filter_map(Value::as_str)
+                            .map(str::to_owned)
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            }),
+            Err(LinkError::Rejected { code, .. }) if code == "conflict" => Err(conflict(revision)),
+            Err(e) => Err(map_error(e)),
+        }
     }
 }

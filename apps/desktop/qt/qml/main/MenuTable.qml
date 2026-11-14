@@ -23,6 +23,12 @@ QtObject {
                 { separator: true },
                 { id: "file.importConfiguration", text: qsTr("Import Device Configuration…") },
                 { id: "file.exportConfiguration", text: qsTr("Export Device Configuration…") },
+                // -- WP P1QT1 -- offline documents and templates (FilesController, P1OF)
+                { separator: true },
+                { id: "file.openFile", text: qsTr("Open File…"), shortcut: "Ctrl+O" },
+                { id: "file.newFromTemplate", text: qsTr("New from Template…") },
+                { id: "file.saveFile", text: qsTr("Save File"), enabled: () => FilesController.offline },
+                { id: "file.saveAsTemplate", text: qsTr("Save as Template…") },
                 { separator: true },
                 { id: "file.saveMasterVolume", text: qsTr("Save Master Volume") },
                 { id: "file.saveOutputConfiguration", text: qsTr("Save Output Configuration") },
@@ -65,6 +71,11 @@ QtObject {
                 },
                 { id: "device.mute", text: qsTr("Mute"), shortcut: "Ctrl+M" },
                 { id: "device.bypass", text: qsTr("Bypass Master EQ"), shortcut: "Ctrl+B" },
+                // -- WP P1QT1 -- snapshots and the A/B key (SnapshotsController)
+                { separator: true },
+                { id: "device.snapshots", text: qsTr("Snapshots…") },
+                // -- WP P1DCFIX -- a bare B (never while typing or while a dialog asks)
+                { id: "device.abToggle", text: qsTr("Toggle A/B"), shortcut: "B", enabled: () => SnapshotsController.canToggle },
                 { separator: true },
                 { id: "device.firmwareUpdate", text: qsTr("Firmware Update…"), platformHidden: "STM32H723" },
                 { separator: true },

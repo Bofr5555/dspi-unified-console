@@ -51,6 +51,23 @@ class PresetsViewModel(
         }
     }
 
+    // -- WP P1AN1 --
+    /** Open File…: read the picked document and hand it, with its name, to the app's [opener]. */
+    fun openDocument(picked: Deferred<Uri?>, opener: DocumentOpener?) {
+        val ctx = app ?: return
+        viewModelScope.launch {
+            val uri = awaitPick(picked) ?: return@launch
+            val text =
+                try {
+                    PresetFiles.readText(ctx, uri)
+                } catch (e: Exception) {
+                    files.readFailed(e)
+                    return@launch
+                }
+            files.openDocument(text, PresetFiles.displayName(ctx, uri) ?: PresetDocumentFiles.DEFAULT_CONFIGURATION_FILE_NAME, opener)
+        }
+    }
+
     /** A save picker was started; [produce] the document for the picked Uri, write it, then [done]. */
     fun exportTo(picked: Deferred<Uri?>, produce: suspend (Uri) -> String?, done: (String) -> Unit) {
         val ctx = app ?: return

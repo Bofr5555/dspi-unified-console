@@ -26,7 +26,9 @@ export function StatusRail(props: {
   const mayAck = mayWrite(st.role, "ack") && !props.feed.readOnly;
   const alarms = hub ? railAlarms(st.status?.alarms ?? []) : [];
   const on = alarms.filter((a) => a.state !== "cleared");
-  const where = props.session.source.kind === "hub" ? `hub ${ss.hubName || ""}`.trim() : props.session.source.kind === "usb" ? "USB" : "the demo";
+  const kind = props.session.source.kind;
+  // -- WP P1WB1 -- a document opened with no device
+  const where = kind === "hub" ? `hub ${ss.hubName || ""}`.trim() : kind === "usb" ? "USB" : kind === "document" ? "a file" : "the demo";
   const mode = MODES.find((m) => m.id === props.mode)!;
   return (
     <aside class="sys-rail" aria-label="Status">

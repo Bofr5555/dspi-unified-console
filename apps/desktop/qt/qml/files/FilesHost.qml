@@ -20,13 +20,18 @@ Item {
     ImportConfig {
         id: config
     }
+    // -- WP P1QT1 --
+    TemplatePicker {
+        id: templates
+    }
     ImportProgress {
         visible: FilesController.importing
     }
     Connections {
         target: FilesController
         function onFiltersPicker(prompt, channels) { filters.ask(prompt, channels) }
-        function onConfigurationOptions(prompt) { config.ask(prompt) }
+        function onConfigurationOptions(prompt, preview, guardDefault) { config.ask(prompt, preview, guardDefault) }   // -- WP P1QT1 --
+        function onTemplatesPicker(list) { templates.ask(list) }   // -- WP P1QT1 --
         function onNotice(title, text, error) { notice.show(title, text, error) }
         // -- WP QPI2 --
         function onDeviceQuestion(op, title, text, acceptText, destructive) {

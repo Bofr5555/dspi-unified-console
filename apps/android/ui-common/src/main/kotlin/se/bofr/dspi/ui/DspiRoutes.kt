@@ -38,6 +38,10 @@ object DspiRoutes {
     /** :feature-presets — presets, unsaved changes, import/export, AutoEQ. */
     const val PRESETS = "presets"
 
+    // -- WP P1AN1 --
+    /** :feature-presets — Snapshots: capture, recall, A/B, safe apply. */
+    const val SNAPSHOTS = "snapshots"
+
     /** :feature-settings — SettingsView and its tabs. */
     const val SETTINGS = "settings"
 

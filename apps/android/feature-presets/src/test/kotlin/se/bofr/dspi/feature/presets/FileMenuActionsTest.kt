@@ -16,7 +16,7 @@ import se.bofr.dspi.ui.alert.AlertResponse
 class FileMenuActionsTest {
     @Test
     fun configurationRoundTrip() = runTest {
-        val core = presetFake()
+        val core = BlockImportFake() // -- WP P1AN1 -- with the per-block import
         val b = attached(core)
         val host = AlertHost()
         val f = FileMenuActions(b, this, host)
@@ -28,17 +28,19 @@ class FileMenuActionsTest {
         assertTrue(host.alert.value!!.informativeText.startsWith("Configuration exported.\n\n"))
         host.press("OK")
 
+        // -- WP P1AN1 -- the import opens the preview (blocks, rollback) instead of the two-checkbox alert
         f.importConfiguration(text)
-        val ask = host.alert.value!!
-        assertEquals("Import Device Configuration", ask.messageText)
-        assertTrue(ask.informativeText.endsWith("EQ, crossover, delays, gains, routing and the DSP features are always applied."))
-        assertEquals(listOf(FileMenuActions.VOLUMES, FileMenuActions.HARDWARE), ask.checkboxes.map { it.key })
-        assertFalse(ask.checkboxes.any { it.checked })
-        host.press("Import", AlertResponse(checked = setOf(FileMenuActions.VOLUMES)))
+        runCurrent()
+        assertNull(host.alert.value)
+        assertTrue(f.preview.value!!.selected.isNotEmpty())
+        f.setBlock(ImportBlock.VOLUMES, true)
+        f.applyPreview()
         runCurrent()
         assertNull(host.progress.value)
         assertTrue(core.presetCalls().any { it.startsWith("configImport") })
-        assertTrue(host.alert.value!!.messageText in setOf("Success", "Import Device Configuration"))
+        // -- WP P1DCFIX -- (F5) a clean import is the page's notice line, no success modal
+        val noticed = f.notice.value.isNotEmpty() && host.alert.value == null
+        assertTrue(noticed || host.alert.value?.messageText == "Import Device Configuration")
     }
 
     @Test

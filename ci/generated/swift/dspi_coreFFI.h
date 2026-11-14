@@ -551,6 +551,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_alink_system_recall(void*_Nonnull
 uint64_t uniffi_dspi_core_fn_method_dspicore_alink_system_save(void*_Nonnull ptr, uint64_t revision, RustBuffer edits, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_ALINK_SYSTEM_SAVE_REPORT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_ALINK_SYSTEM_SAVE_REPORT
+RustBuffer uniffi_dspi_core_fn_method_dspicore_alink_system_save_report(void*_Nonnull ptr, uint64_t revision, RustBuffer edits, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_ALINK_SYSTEM_VIEW
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_ALINK_SYSTEM_VIEW
 RustBuffer uniffi_dspi_core_fn_method_dspicore_alink_system_view(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -3150,6 +3155,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_alink_system_recall(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_ALINK_SYSTEM_SAVE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_ALINK_SYSTEM_SAVE
 uint16_t uniffi_dspi_core_checksum_method_dspicore_alink_system_save(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_ALINK_SYSTEM_SAVE_REPORT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_ALINK_SYSTEM_SAVE_REPORT
+uint16_t uniffi_dspi_core_checksum_method_dspicore_alink_system_save_report(void
     
 );
 #endif

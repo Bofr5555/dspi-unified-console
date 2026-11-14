@@ -8,7 +8,12 @@
 package se.bofr.dspi.feature.presets
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import se.bofr.dspi.bridge.DangerousOp
 import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.ui.alert.AlertButton
@@ -16,6 +21,7 @@ import se.bofr.dspi.ui.alert.AlertButtonRole
 import se.bofr.dspi.ui.alert.AlertCheckbox
 import se.bofr.dspi.ui.alert.AlertHost
 import se.bofr.dspi.ui.alert.AlertStyle
+import se.bofr.dspi.ui.alert.AlertTextField
 import se.bofr.dspi.ui.alert.ConsoleAlert
 import se.bofr.dspi.ui.json.Json
 import se.bofr.dspi.ui.json.bool
@@ -68,10 +74,32 @@ class FileMenuActions(private val bridge: DspiBridge, private val scope: Corouti
         return true
     }
 
+    // -- WP P1DCFIX -- (F5) a success is one line on the page, never a modal (U5)
+    private val _notice = MutableStateFlow("")
+
+    /** The last file action's outcome in one line ("" none): the page shows it, no alert. */
+    val notice: StateFlow<String> = _notice.asStateFlow()
+
+    fun clearNotice() {
+        _notice.value = ""
+    }
+
     /**
-     * A configuration file was picked: inspect it, ask what to bring in
-     * (`askImportOptions`), then apply it (GATED CONFIG_IMPORT, token minted in
-     * the Import button's handler) and report (`showImportResult`).
+     * The safe apply's timeout for a guarded import, seconds (0 = the core's
+     * 30 s); the page sets it from the app's setting.
+     */
+    var guardTimeoutS: Long = 0
+
+    // -- WP P1AN1 -- the import preview (PRO1 W5, W8, W6): what would change, block by block, then apply, with a way back
+    private val _preview = MutableStateFlow<ImportPreview?>(null)
+
+    /** The import preview while it is open; the screen draws it ([ImportPreviewDialog]). */
+    val preview: StateFlow<ImportPreview?> = _preview.asStateFlow()
+
+    /**
+     * A configuration file was picked: inspect it, then open the preview: the
+     * core's diff of the file against the device, the blocks to bring in, and
+     * "Apply with rollback" (on by default over DSPi Link, OD-P1g).
      */
     fun importConfiguration(text: String) {
         val info = Json.parseObject(bridge.configFiles.inspectConfiguration(text))
@@ -79,40 +107,69 @@ class FileMenuActions(private val bridge: DspiBridge, private val scope: Corouti
             host.showError(info?.str("error")?.ifEmpty { null } ?: "The file could not be read.")
             return
         }
-        val informative =
+        val intro =
             PresetDocumentFiles.importOptionsText(
                 platform = info.str("platform").orEmpty(),
                 firmware = info.str("firmware").orEmpty(),
                 savedUtc = info.str("savedUtc").orEmpty(),
                 connectedPlatform = bridge.platformName
-            )
-        host.show(
-            ConsoleAlert(
-                "Import Device Configuration",
-                informative,
-                AlertStyle.INFORMATIONAL,
-                listOf(
-                    AlertButton("Import", AlertButtonRole.DEFAULT) { r ->
-                        applyConfiguration(
-                            text,
-                            VOLUMES in r.checked,
-                            HARDWARE in r.checked
-                        )
-                    },
-                    AlertButton("Cancel", AlertButtonRole.CANCEL)
-                ),
-                checkboxes =
-                listOf(
-                    AlertCheckbox(VOLUMES, "Volume levels (master and listening volume)"),
-                    AlertCheckbox(HARDWARE, "Hardware I/O (GPIO pins, clocks, ADAT, inputs, output limiters)")
+            ).substringBefore("\n\nEQ, crossover").trim()
+        scope.launch {
+            val diff = DocDiff.parse(bridge.snapshots.importPreview(text, ImportBlock.ALL_BITS))
+            val guardDefault = bridge.snapshots.guardDefault()
+            _preview.value =
+                ImportPreview(
+                    text = text,
+                    name = info.str("name").orEmpty(),
+                    intro = intro,
+                    diff = diff,
+                    selected = ImportBlock.defaults(diff),
+                    guarded = guardDefault,
+                    guardDefault = guardDefault
                 )
-            )
-        )
+        }
     }
 
-    private fun applyConfiguration(text: String, volumes: Boolean, hardware: Boolean) {
+    fun setBlock(block: ImportBlock, on: Boolean) {
+        _preview.value = _preview.value?.let { p -> p.copy(selected = if (on) p.selected + block else p.selected - block) }
+    }
+
+    fun setGuarded(on: Boolean) {
+        // -- WP P1DCFIX -- (F4) fixed on where the core guards by default (a hub with the guard)
+        _preview.value = _preview.value?.let { it.copy(guarded = on || it.guardDefault) }
+    }
+
+    fun cancelPreview() {
+        _preview.value = null
+    }
+
+    /**
+     * Import the chosen blocks. With rollback: a guarded apply (no token; the
+     * countdown bar asks Keep or Revert). Without: GATED CONFIG_IMPORT, the
+     * token minted here, the Import button's handler; the report as before.
+     */
+    fun applyPreview() {
+        val p = _preview.value ?: return
+        if (p.selected.isEmpty()) return
+        _preview.value = null
         if (!bridge.connected) {
             host.showError("No device connected.")
+            return
+        }
+        val options = ImportBlock.bits(p.selected)
+        _notice.value = ""
+        // -- WP P1DCFIX -- (F4) never unguarded over a hub with the guard
+        if (p.guarded || p.guardDefault) {
+            scope.launchDeviceSequence {
+                host.beginProgress("Importing configuration…")
+                val r =
+                    try {
+                        bridge.snapshots.importGuarded(p.text, options, timeoutS = guardTimeoutS)
+                    } finally {
+                        host.endProgress()
+                    }
+                r.exceptionOrNull()?.let { host.showError(it.message ?: "The configuration was not applied.") }
+            }
             return
         }
         val token = bridge.dangerousOps.confirm(DangerousOp.CONFIG_IMPORT)
@@ -120,28 +177,117 @@ class FileMenuActions(private val bridge: DspiBridge, private val scope: Corouti
             host.beginProgress("Importing configuration…")
             val result =
                 try {
-                    Json.parseObject(bridge.configFiles.importConfiguration(token, text, volumes, hardware))
+                    Json.parseObject(bridge.snapshots.importSelected(token, p.text, options))
                 } finally {
                     host.endProgress()
                 }
-            if (result?.bool("ok") != true) {
-                host.showError(result?.str("error")?.ifEmpty { null } ?: "The configuration was not applied.")
-                return@launchDeviceSequence
-            }
-            val message = result.list("lines").orEmpty().filterIsInstance<String>().joinToString("\n\n")
-            // Anything the device refused or couldn't do isn't a success: no "Success" heading over it.
-            if (result.bool("clean") != false) {
-                host.showSuccess(message)
-            } else {
-                host.show(
-                    ConsoleAlert(
-                        "Import Device Configuration",
-                        message,
-                        AlertStyle.INFORMATIONAL,
-                        listOf(AlertButton("OK", AlertButtonRole.DEFAULT))
-                    )
+            report(result)
+        }
+    }
+
+    private fun report(result: Map<String, Any?>?) {
+        if (result?.bool("ok") != true) {
+            host.showError(result?.str("error")?.ifEmpty { null } ?: "The configuration was not applied.")
+            return
+        }
+        val message = result.list("lines").orEmpty().filterIsInstance<String>().joinToString("\n\n")
+        // Anything the device refused or couldn't do isn't a success: no "Success" heading over it.
+        if (result.bool("clean") != false) {
+            // -- WP P1DCFIX -- (F5) the notice line, no success modal
+            _notice.value = message.replace("\n\n", " ").ifEmpty { "Configuration imported." }
+        } else {
+            host.show(
+                ConsoleAlert(
+                    "Import Device Configuration",
+                    message,
+                    AlertStyle.INFORMATIONAL,
+                    listOf(AlertButton("OK", AlertButtonRole.DEFAULT))
                 )
+            )
+        }
+    }
+
+    // ═══ Offline files (-- WP P1AN1 --, P1OF) ════════════════════════════
+
+    /** A document was picked for Open File…: checked here, then opened by the app on a session of its own. */
+    fun openDocument(text: String, fileName: String, opener: DocumentOpener?) {
+        if (opener == null) {
+            host.showError("Opening a file is not available here.")
+            return
+        }
+        val info = Json.parseObject(bridge.configFiles.inspectConfiguration(text))
+        if (info?.bool("ok") != true) {
+            host.showError(info?.str("error")?.ifEmpty { null } ?: "The file could not be read.")
+            return
+        }
+        opener.open(text, fileName)
+    }
+
+    /** The templates: the shipped ones, then [userDir]'s (`template_list`). Reads files on the bridge's FFI thread (F8). */
+    suspend fun templates(userDir: String): List<TemplateEntry> = OfflineFiles.parseTemplates(bridge.snapshots.templates(userDir))
+
+    private val _templateChoice = MutableStateFlow<List<TemplateEntry>?>(null)
+
+    /** The template list while Open Template… is open. */
+    val templateChoice: StateFlow<List<TemplateEntry>?> = _templateChoice.asStateFlow()
+
+    fun showTemplates(userDir: String) {
+        scope.launch { _templateChoice.value = templates(userDir) }
+    }
+
+    fun closeTemplates() {
+        _templateChoice.value = null
+    }
+
+    /** Open template [t] offline, as a document named after it. */
+    fun openTemplate(t: TemplateEntry, userDir: String, opener: DocumentOpener?) {
+        _templateChoice.value = null
+        // -- WP P1DCFIX -- (F8) the file is read off the UI thread
+        scope.launch {
+            bridge.snapshots.templateText(t.id, userDir)
+                .onSuccess { openDocument(it, OfflineFiles.templateFileName(t.name), opener) }
+                .onFailure { host.showError(it.message ?: "The template could not be read.") }
+        }
+    }
+
+    /** The open document as it now stands, for Save File…; null after an alert. */
+    suspend fun savedDocument(): String? = bridge.snapshots.saveDocument().onFailure {
+        host.showError(
+            it.message ?: "The file could not be saved."
+        )
+    }.getOrNull()
+
+    /** "Save as Template…": the name asked for, then the template filed in [userDir]. */
+    fun askSaveTemplate(userDir: java.io.File) {
+        host.show(
+            ConsoleAlert(
+                "Save as Template",
+                "The settings as they are now, as a starting point for other systems.",
+                AlertStyle.INFORMATIONAL,
+                listOf(
+                    AlertButton("Save", AlertButtonRole.DEFAULT) { r -> saveTemplate(r.text.trim().ifEmpty { "Template" }, userDir) },
+                    AlertButton("Cancel", AlertButtonRole.CANCEL)
+                ),
+                textField = AlertTextField("Name", bridge.snapshots.offline.value?.name ?: "", TEMPLATE_NAME_MAX)
+            )
+        )
+    }
+
+    private fun saveTemplate(name: String, userDir: java.io.File) {
+        scope.launch {
+            val text =
+                bridge.snapshots.saveAsTemplate(name).onFailure { host.showError(it.message ?: "The template was not saved.") }.getOrNull()
+                    ?: return@launch
+            try {
+                withContext(Dispatchers.IO) {
+                    userDir.mkdirs()
+                    java.io.File(userDir, OfflineFiles.templateFileName(name)).writeText(text)
+                }
+            } catch (e: Exception) {
+                writeFailed(e)
+                return@launch
             }
+            _notice.value = "Template \"$name\" saved. Open it from Open Template…." // -- WP P1DCFIX -- (F5)
         }
     }
 
@@ -217,9 +363,21 @@ class FileMenuActions(private val bridge: DspiBridge, private val scope: Corouti
     fun readFailed(error: Throwable) = host.showError("Failed to read file: ${error.message ?: error.javaClass.simpleName}")
 
     fun writeFailed(error: Throwable) = host.showError("Failed to write file: ${error.message ?: error.javaClass.simpleName}")
+}
 
-    companion object {
-        const val VOLUMES = "volumes"
-        const val HARDWARE = "hardware"
-    }
+/** A template's name, as long as a snapshot's. */
+internal const val TEMPLATE_NAME_MAX = 200
+
+/** The import preview's state (WP P1AN1). [guardDefault]: the core guards here by default (DSPi Link). */
+data class ImportPreview(
+    val text: String,
+    val name: String,
+    val intro: String,
+    val diff: DocDiff,
+    val selected: Set<ImportBlock>,
+    val guarded: Boolean,
+    val guardDefault: Boolean
+) {
+    /** The rows of the chosen blocks: what Apply changes. */
+    val chosenRows: List<DiffRow> get() = diff.rows.filter { r -> selected.any { it.key == r.block } }
 }

@@ -67,6 +67,12 @@ use crate::{DspiCore, DspiError, Result};
 /// The timeout a guarded apply takes when the caller gives 0 (owner, OD-P1g).
 pub const APPLY_GUARD_DEFAULT_TIMEOUT_S: u32 = 30;
 
+// -- WP P1DCFIX --
+/// The notice (P1NT's table) for the countdown while a guard waits: its title
+/// and reason are the sentence every client shows, with `{s}` the whole
+/// seconds left ([`GuardedApply::message`] is empty while waiting).
+pub const NOTICE_GUARD_WAITING: &str = "guard.waiting";
+
 /// The longest timeout granted, in seconds; a longer one is shortened to it.
 /// The hub's deadline is [`HUB_MARGIN`] later, inside its 600 s.
 pub const APPLY_GUARD_MAX_TIMEOUT_S: u32 = 590;

@@ -230,6 +230,8 @@ pub use modes::{
 pub use guarded::{
     APPLY_GUARD_DEFAULT_TIMEOUT_S, APPLY_GUARD_MAX_TIMEOUT_S, GuardPhase, GuardedApply,
 };
+// -- WP P1DCFIX -- the countdown's notice key
+pub use guarded::NOTICE_GUARD_WAITING;
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///

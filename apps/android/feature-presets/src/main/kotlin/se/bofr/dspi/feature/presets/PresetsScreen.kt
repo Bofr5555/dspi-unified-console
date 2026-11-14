@@ -40,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -56,7 +57,12 @@ import se.bofr.dspi.feature.presets.autoeq.FavoriteProfile
 import se.bofr.dspi.ui.DspiRoutes
 import se.bofr.dspi.ui.alert.AlertHost
 import se.bofr.dspi.ui.alert.ConsoleAlertHost
+import se.bofr.dspi.ui.settings.AppSettings
+import se.bofr.dspi.ui.settings.LocalAppSettings
 import se.bofr.dspi.ui.writesAllowed
+
+/** Test tag of the page's notice line (a file action's outcome). -- WP P1DCFIX -- */
+const val PRESETS_NOTICE_TAG = "presets-notice"
 
 /** The menu-action objects of one Presets screen, sharing one alert slot. */
 class PresetsController(val bridge: DspiBridge, scope: CoroutineScope, val autoEQ: AutoEQManager, io: CoroutineDispatcher) {
@@ -74,7 +80,12 @@ class PresetFileRequests(
     val importConfiguration: () -> Unit = {},
     val exportConfiguration: () -> Unit = {},
     val shareConfiguration: () -> Unit = {},
-    val importAutoEQDatabase: () -> Unit = {}
+    val importAutoEQDatabase: () -> Unit = {},
+    // -- WP P1AN1 -- offline files and snapshots
+    val openFile: () -> Unit = {},
+    val openTemplate: () -> Unit = {},
+    val saveFile: () -> Unit = {},
+    val saveTemplate: () -> Unit = {}
 )
 
 /**
@@ -92,8 +103,9 @@ fun PresetsScreen(bridge: DspiBridge, onNavigate: (String) -> Unit, onBack: () -
     val host = controller.host
 
     // The pickers start from this screen's Activity; the ViewModel awaits the pick.
+    val opener = LocalDocumentOpener.current // -- WP P1AN1 --
     val requests =
-        remember(vm, context) {
+        remember(vm, context, opener) {
             PresetFileRequests(
                 importFilters = { vm.importFrom(DocumentPicker.startOpen(context, arrayOf("text/*", "*/*")), files::importFilters) },
                 exportFilters = {
@@ -131,7 +143,21 @@ fun PresetsScreen(bridge: DspiBridge, onNavigate: (String) -> Unit, onBack: () -
                         DocumentPicker.startOpen(context, arrayOf("application/json", "*/*")),
                         controller.autoEQMenu::importDatabase
                     )
-                }
+                },
+                // -- WP P1AN1 --
+                openFile = { vm.openDocument(DocumentPicker.startOpen(context, arrayOf("*/*")), opener) },
+                openTemplate = { files.showTemplates(OfflineFiles.templatesFolder(context).path) },
+                saveFile = {
+                    val doc = bridge.snapshots.offline.value
+                    val picked =
+                        DocumentPicker.startCreate(
+                            context,
+                            doc?.fileName?.ifEmpty { null } ?: PresetDocumentFiles.DEFAULT_CONFIGURATION_FILE_NAME,
+                            PresetDocumentFiles.CONFIGURATION_MIME
+                        )
+                    vm.exportTo(picked, { files.savedDocument() }) {}
+                },
+                saveTemplate = { files.askSaveTemplate(OfflineFiles.templatesFolder(context)) }
             )
         }
 
@@ -155,6 +181,10 @@ fun PresetsView(
     val inFlight by controller.presetMenu.presetSwitchInFlight.collectAsState()
     val favorites by controller.autoEQ.favoriteProfiles.collectAsState()
     var showAutoEQBrowser by rememberSaveable { mutableStateOf(initialShowBrowser) }
+    // -- WP P1DCFIX --
+    val notice by controller.files.notice.collectAsState()
+    val appSettings by LocalAppSettings.current.settings.collectAsState()
+    controller.files.guardTimeoutS = AppSettings.safeApplyTimeout(appSettings.safeApplyTimeoutS).toLong()
 
     val connected = status.connected
     val names = state.presetNames
@@ -193,6 +223,9 @@ fun PresetsView(
             }
             val otherPane: @Composable (Modifier) -> Unit = { m ->
                 Column(m) {
+                    // -- WP P1AN1 --
+                    SectionHeader("Snapshots")
+                    MenuRow("Snapshots…", detail = "Capture, recall, A/B") { onNavigate(DspiRoutes.SNAPSHOTS) }
                     ToolsSection(controller.tools, connected)
                     FileSection(controller, requests, connected)
                     AutoEQSection(controller, favorites, onBrowse = {
@@ -210,6 +243,18 @@ fun PresetsView(
                     Text("Presets & Files", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                     if (!connected) {
                         Text("No device", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 12.dp))
+                    }
+                }
+                // -- WP P1DCFIX -- (F5) a file action's outcome: one line, no success modal
+                if (notice.isNotEmpty()) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            notice,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f).testTag(PRESETS_NOTICE_TAG)
+                        )
+                        TextButton(onClick = controller.files::clearNotice) { Text("OK") }
                     }
                 }
                 if (twoPane) {
@@ -242,7 +287,44 @@ fun PresetsView(
         }
     }
 
+    // -- WP P1AN1 -- the import preview and Open Template…
+    val preview by controller.files.preview.collectAsState()
+    ImportPreviewHost(controller.files, preview)
+    val templates by controller.files.templateChoice.collectAsState()
+    val opener = LocalDocumentOpener.current
+    templates?.let { list ->
+        val context = LocalContext.current
+        TemplateChooser(list, onChoose = { t ->
+            controller.files.openTemplate(t, OfflineFiles.templatesFolder(context).path, opener)
+        }, onClose = controller.files::closeTemplates)
+    }
+
     ConsoleAlertHost(controller.host)
+}
+
+// -- WP P1AN1 --
+/** Open Template…: the shipped templates, then the user's; one tap opens it offline. */
+@Composable
+private fun TemplateChooser(list: List<TemplateEntry>, onChoose: (TemplateEntry) -> Unit, onClose: () -> Unit) {
+    Dialog(onDismissRequest = onClose) {
+        Surface(shape = MaterialTheme.shapes.large) {
+            Column(Modifier.padding(vertical = 12.dp)) {
+                Text("Open Template", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 16.dp))
+                if (list.isEmpty()) {
+                    Text("No templates.", modifier = Modifier.padding(16.dp))
+                }
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    list.forEach { t ->
+                        val detail = listOf(if (t.builtin) "built in" else "yours", t.platform, t.status).filter {
+                            it.isNotEmpty()
+                        }.joinToString(" · ")
+                        MenuRow(t.name.ifEmpty { t.id }, detail = detail) { onChoose(t) }
+                    }
+                }
+                TextButton(onClick = onClose, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Cancel") }
+            }
+        }
+    }
 }
 
 @Composable
@@ -389,6 +471,13 @@ private fun FileSection(controller: PresetsController, requests: PresetFileReque
     MenuRow("Import Device Configuration...", enabled = connected && canWrite, onClick = requests.importConfiguration)
     MenuRow("Export Device Configuration...", enabled = connected, onClick = requests.exportConfiguration)
     MenuRow("Share Device Configuration...", enabled = connected, onClick = requests.shareConfiguration)
+    HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+    // -- WP P1AN1 -- offline files (P1OF): open with no device, save back, templates
+    val offline by controller.bridge.snapshots.offline.collectAsState()
+    MenuRow("Open File…", enabled = LocalDocumentOpener.current != null, onClick = requests.openFile)
+    MenuRow("Open Template…", enabled = LocalDocumentOpener.current != null, onClick = requests.openTemplate)
+    offline?.let { doc -> MenuRow("Save File…", detail = doc.fileName, onClick = requests.saveFile) }
+    MenuRow("Save as Template…", enabled = connected, onClick = requests.saveTemplate)
     HorizontalDivider(Modifier.padding(horizontal = 16.dp))
     MenuRow("Save Master Volume", enabled = connected && canWrite, onClick = controller.tools::saveMasterVolume)
     MenuRow("Save Output Configuration", enabled = connected && canWrite, onClick = controller.tools::saveOutputConfig)

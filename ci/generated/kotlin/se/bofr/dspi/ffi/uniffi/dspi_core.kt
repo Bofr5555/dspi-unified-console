@@ -1708,6 +1708,8 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1834,6 +1836,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_alink_system_align(
 fun uniffi_dspi_core_checksum_method_dspicore_alink_system_recall(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_alink_system_save(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_alink_system_save_report(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_alink_system_view(
 ): Short
@@ -2619,6 +2623,8 @@ fun uniffi_dspi_core_fn_method_dspicore_alink_system_recall(`ptr`: Pointer,`scen
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_alink_system_save(`ptr`: Pointer,`revision`: Long,`edits`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
+fun uniffi_dspi_core_fn_method_dspicore_alink_system_save_report(`ptr`: Pointer,`revision`: Long,`edits`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_alink_system_view(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_apply_all_params(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -3701,6 +3707,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_alink_system_save() != 49070.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_alink_system_save_report() != 7845.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_alink_system_view() != 50190.toShort()) {
@@ -6337,6 +6346,13 @@ public interface DspiCoreInterface {
      * refuses, with its words; [`DspiError::Disconnected`] with no session.
      */
     fun `alinkSystemSave`(`revision`: kotlin.ULong, `edits`: AlinkSystemEdits): kotlin.ULong
+    
+    /**
+     * [`DspiCore::alink_system_save`] with the hub's whole answer: the new
+     * revision and the warnings `system.set` gave about the model it kept.
+     * Errors as there.
+     */
+    fun `alinkSystemSaveReport`(`revision`: kotlin.ULong, `edits`: AlinkSystemEdits): AlinkSystemSaved
     
     /**
      * The audio link's installation on the hub this session is on: its
@@ -10221,6 +10237,24 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     callWithPointer {
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_alink_system_save(
+        it, FfiConverterULong.lower(`revision`),FfiConverterTypeAlinkSystemEdits.lower(`edits`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * [`DspiCore::alink_system_save`] with the hub's whole answer: the new
+     * revision and the warnings `system.set` gave about the model it kept.
+     * Errors as there.
+     */
+    @Throws(DspiException::class)override fun `alinkSystemSaveReport`(`revision`: kotlin.ULong, `edits`: AlinkSystemEdits): AlinkSystemSaved {
+            return FfiConverterTypeAlinkSystemSaved.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_alink_system_save_report(
         it, FfiConverterULong.lower(`revision`),FfiConverterTypeAlinkSystemEdits.lower(`edits`),_status)
 }
     }
@@ -20099,6 +20133,49 @@ public object FfiConverterTypeAlinkSystemRoom: FfiConverterRustBuffer<AlinkSyste
 
 
 /**
+ * What saving the "Clock and audio links" edits did.
+ */
+data class AlinkSystemSaved (
+    /**
+     * The model's new revision.
+     */
+    var `revision`: kotlin.ULong, 
+    /**
+     * The hub's warnings about the model it kept (a unit whose firmware has
+     * no audio link, or no USB-direct block): one sentence each, the hub's
+     * words. Empty when there are none.
+     */
+    var `warnings`: List<kotlin.String>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAlinkSystemSaved: FfiConverterRustBuffer<AlinkSystemSaved> {
+    override fun read(buf: ByteBuffer): AlinkSystemSaved {
+        return AlinkSystemSaved(
+            FfiConverterULong.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AlinkSystemSaved) = (
+            FfiConverterULong.allocationSize(value.`revision`) +
+            FfiConverterSequenceString.allocationSize(value.`warnings`)
+    )
+
+    override fun write(value: AlinkSystemSaved, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`revision`, buf)
+            FfiConverterSequenceString.write(value.`warnings`, buf)
+    }
+}
+
+
+
+/**
  * A scene a recall can apply.
  */
 data class AlinkSystemScene (
@@ -29179,7 +29256,9 @@ sealed class DspiException: kotlin.Exception() {
      * sent. `code`: `locked` (the locked-user state allows only volume, mute
      * and preset), `pin_required` (an installer action needs the unlock),
      * `wrong_pin`, `wait` (too many wrong PINs: the refusal window is open;
-     * `installer_lock_state().retry_after_ms` says how long) or `no_pin`.
+     * `installer_lock_state().retry_after_ms` says how long), `no_pin`, or
+     * `hub` (WP MERGEP1D: the hub this console reaches the device through
+     * holds the lock and refused the write).
      */
     class InstallerLock(
         

@@ -135,6 +135,64 @@ fn reply(text: &str) -> Result<Value, CallError> {
     }
 }
 
+// -- WP P1WB1 -- a plain import and an export on the web (the page reads and
+// writes the file; the web has no file system)
+/// `configImport`'s parameters: [`PreviewParams`]'s, and an optional
+/// confirmation token (`confirmToken` of `config_import`).
+#[derive(Debug, Deserialize)]
+pub struct ImportParams {
+    pub text: String,
+    #[serde(default)]
+    pub options: u32,
+    #[serde(default = "every_channel", rename = "eqChannels")]
+    pub eq_channels: u32,
+    #[serde(default)]
+    pub token: Option<String>,
+}
+
+/// `configImport`: apply the chosen blocks of a document to the open device
+/// (`DspiCore::config_import_confirmed`): its JSON reply. A text that is not
+/// a document fails as `bad_document`; a device that cannot be written, an
+/// empty selection or a missing token as `refused`; both with the core's
+/// `noticeKey`.
+pub fn import(core: &DspiCore, p: ImportParams) -> Result<Value, CallError> {
+    need_device(core)?;
+    let text = core.config_import_confirmed(p.text, p.options, p.eq_channels, p.token);
+    reply(&text).map_err(|e| {
+        let document = e
+            .notice_key
+            .as_deref()
+            .is_some_and(|k| k == "config.unreadable");
+        if document {
+            e
+        } else {
+            CallError {
+                code: "refused",
+                ..e
+            }
+        }
+    })
+}
+
+/// `configExport`'s parameters: `meta.name`, `meta.appVersion` and the
+/// input-pair link mask (`global.inputPairLinked`).
+#[derive(Debug, Deserialize)]
+pub struct ExportParams {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default, rename = "appVersion")]
+    pub app_version: String,
+    #[serde(default)]
+    pub links: u8,
+}
+
+/// `configExport`: the open device as a `.dspipreset` document, `{text}`,
+/// for the page to download (`DspiCore::config_export`).
+pub fn export(core: &DspiCore, p: ExportParams) -> Result<Value, CallError> {
+    let text = core.config_export(p.name, p.app_version, p.links)?;
+    Ok(json!({ "text": text }))
+}
+
 // -- WP P1AFIX -- (review p1a N1)
 /// `crossfeedCustomPair`: the crossfeed's custom pair as the device keeps it,
 /// whatever the preset (`DspiCore::crossfeed_custom_pair`): `{freqHz,
@@ -209,6 +267,56 @@ mod tests {
             json!({ "text": MAC, "options": (1 << 16) | 4, "eqChannels": 2 }),
         );
         assert_eq!(p["count"], 2, "{p}");
+    }
+
+    // -- WP P1WB1 --
+    #[test]
+    fn wp_p1wb1_config_import_and_export() {
+        const MAC: &str = include_str!("../../../tests/fixtures/preset/mac-swift-v32.dspipreset");
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        assert_eq!(
+            run(h, "configImport", json!({ "text": MAC }))["code"],
+            "not_open"
+        );
+        assert_eq!(run(h, "configExport", json!({}))["ok"], false);
+        ok(h, "open", json!({ "kind": "demo" }));
+        let out = ok(
+            h,
+            "configExport",
+            json!({ "name": "Here", "appVersion": "web" }),
+        );
+        let doc: Value = serde_json::from_str(out["text"].as_str().unwrap()).unwrap();
+        assert_eq!(doc["meta"]["name"], "Here");
+        // Volumes alone: what the preview said is what the import changed.
+        let options = (1 << 16) | 1;
+        let p = ok(
+            h,
+            "configPreview",
+            json!({ "text": MAC, "options": options }),
+        );
+        assert_eq!(p["count"], 2, "{p}");
+        let r = ok(
+            h,
+            "configImport",
+            json!({ "text": MAC, "options": options }),
+        );
+        assert_eq!(r["ok"], true, "{r}");
+        let after = ok(
+            h,
+            "configPreview",
+            json!({ "text": MAC, "options": options }),
+        );
+        assert_eq!(after["count"], 0, "{after}");
+        let r = run(
+            h,
+            "configImport",
+            json!({ "text": MAC, "options": 1 << 16 }),
+        );
+        assert_eq!(r["code"], "refused", "{r}");
+        assert_eq!(r["noticeKey"], "config.nothing_selected", "{r}");
+        let r = run(h, "configImport", json!({ "text": "{" }));
+        assert_eq!(r["code"], "bad_document", "{r}");
     }
 
     // -- WP P1AFIX --

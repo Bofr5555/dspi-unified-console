@@ -68,7 +68,9 @@ class AppSettingsTest {
             "tubeModellerAdvanced",
             // -- WP AN19 -- Qt's setup flag; macOS WhatsNew.lastShownKey
             "onboarding.setupDone",
-            "whatsNew.lastShownVersion"
+            "whatsNew.lastShownVersion",
+            // -- WP P1DCFIX -- the safe apply's timeout (the web's own setting; no macOS key)
+            "safeApply.timeoutS"
         )
         assertEquals(macOs, AppSettingsFields.keyNames)
     }

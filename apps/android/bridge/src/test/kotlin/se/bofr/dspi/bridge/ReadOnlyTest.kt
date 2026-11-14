@@ -42,6 +42,10 @@ class ReadOnlyTest {
             "alinkSystemSave" to {
                 runCatching { b.alinkSystemSave(1, AlinkSystemEdits(false, null, emptyList(), emptyList(), emptyList(), null)) }
             },
+            // -- WP P1DCFIX -- the save with the hub's warnings
+            "alinkSystemSaveReport" to {
+                runCatching { b.alinkSystemSaveReport(1, AlinkSystemEdits(false, null, emptyList(), emptyList(), emptyList(), null)) }
+            },
             "alinkSystemAlign" to { runCatching { b.alinkSystemAlign() } },
             "alinkSystemRecall" to { runCatching { b.alinkSystemRecall("evening") } },
             "setPreamp" to { b.setPreamp(-1f) },

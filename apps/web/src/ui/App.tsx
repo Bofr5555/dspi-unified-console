@@ -14,6 +14,8 @@ import { About, DevicePicker, SessionView, TabLabel } from "./components";
 import { Session } from "./session";
 // -- WP WB6b --
 import { UnsavedWatch } from "./unsaved";
+// -- WP P1WB1 -- offline files: Open File…, New from Template…
+import { OpenFiles } from "../screens/snapshots/OpenFile";
 
 export interface ConsoleOptions {
   backend: FleetBackend;
@@ -90,6 +92,17 @@ export function App(props: { options: ConsoleOptions }) {
     await session.open(targetFor(source));
   };
 
+  // -- WP P1WB1 -- a document opened with no device: a session of its own each time
+  const documents = useRef(0);
+  const openDocument = async (text: string, fileName: string, core?: CoreClient) => {
+    const id = `files/document~${++documents.current}`;
+    const source: Source = { kind: "document", fileName };
+    const session = new Session(id, "files", "File", source, props.options.readOnly ? "view" : "control", core ?? spawnCore());
+    setSessions((list) => [...list, session]);
+    setActive(id);
+    await session.openDocument(text, fileName);
+  };
+
   const close = async (s: Session) => {
     setSessions((list) => list.filter((x) => x !== s));
     setActive((cur) => (cur === s.id ? null : cur));
@@ -138,6 +151,8 @@ export function App(props: { options: ConsoleOptions }) {
             {listError}
           </p>
         ) : null}
+        {/* -- WP P1WB1 -- the picker and the offline files share the first column */}
+        <div class="side">
         <DevicePicker
           installations={installations}
           env={env}
@@ -147,6 +162,11 @@ export function App(props: { options: ConsoleOptions }) {
           addHubError={addHubError}
           hubDevices={backend.hubDevices ? (url) => backend.hubDevices!(url) : null}
         />
+        {/* -- WP P1WB1 -- */}
+        {props.options.readOnly ? null : (
+          <OpenFiles spawnCore={spawnCore} onOpen={(text, name, core) => void openDocument(text, name, core)} />
+        )}
+        </div>
         <main class="sessions">
           {sessions.length > 1 ? (
             <div class="tabs" role="tablist" aria-label="Open DSPi">
@@ -185,5 +205,8 @@ function targetFor(source: Source): DeviceTarget {
     case "hub":
       // -- WP WB4b --
       return { kind: "hub", url: source.url, deviceId: source.deviceId ?? "" };
+    case "document":
+      // -- WP P1WB1 -- opened by `openDocument`, never from the picker
+      return { kind: "demo" };
   }
 }

@@ -259,11 +259,13 @@ static void filesSection(SmokeDriver &d) {
     d.check(QStringLiteral("qp15: Import Device Configuration opens a file dialog"), answerDialog(d, configFile));
     d.check(QStringLiteral("qp15: the options are asked"), d.waitFor(5000, [&]() { return opened(options); }));
     const QString prompt = options->property("prompt").toString();
+    // -- WP P1QT1 -- the blocks are chosen below the prompt now, one box each
+    // (a Repeater's: found in the dialog's items)
     d.check(QStringLiteral("qp15: the prompt says where the file came from"),
-            prompt.startsWith(QStringLiteral("Saved from %1, firmware ").arg(device->platformName())) &&
-                prompt.endsWith(QLatin1String("EQ, crossover, delays, gains, routing and the DSP features are always applied.")));
-    QObject *volumes = find(host, "ImportConfig.volumes");
-    QObject *hardware = find(host, "ImportConfig.hardware");
+            prompt.startsWith(QStringLiteral("Saved from %1, firmware ").arg(device->platformName())));
+    QQuickItem *optionItems = options->property("contentItem").value<QQuickItem *>();
+    QObject *volumes = optionItems ? d.item(QStringLiteral("ImportConfig.volumes"), optionItems) : nullptr;
+    QObject *hardware = optionItems ? d.item(QStringLiteral("ImportConfig.hardware"), optionItems) : nullptr;
     d.check(QStringLiteral("qp15: volumes and hardware start unticked"),
             volumes && hardware && !volumes->property("checked").toBool() && !hardware->property("checked").toBool());
     d.spin(200);

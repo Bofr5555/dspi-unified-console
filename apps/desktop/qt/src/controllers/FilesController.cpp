@@ -11,10 +11,15 @@
 #include "PresetModel.h"
 #include "Shell.h"
 #include "Snapshot.h"
+#include "LinkController.h"        // -- WP P1QT1 --
+#include "NoticeCenter.h"
+#include "SnapshotsController.h"
+#include "UnsavedGuard.h"
 
 #include "CoreApi.h"
 
 #include <QDateTime>
+#include <QDir>   // -- WP P1QT1 --
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -26,9 +31,11 @@
 #include <QQmlComponent>
 #include <QQuickWindow>
 #include <QSaveFile>
+#include <QStandardPaths>   // -- WP P1QT1 --
 #include <memory>
 
 static const Registrar::Controller<FilesController> filesController;
+static const Registrar::Banner fileBanner("FileBanner", 36);   // -- WP P1QT1 --
 
 namespace {
 // The core refuses a file over 4 MB; one byte more is enough for it to say so
@@ -149,6 +156,26 @@ FilesController::FilesController(const AppContext &ctx, QObject *parent) : QObje
                                "parameters unless you run 'Commit Parameters'."),
                             tr("Reset"), true);
     });
+
+    // -- WP P1QT1 -- offline documents and templates (P1OF)
+    shell->addHandler(QStringLiteral("file.openFile"), this, [this] {
+        pickFile(false, tr("Open File"), tr("DSPi configurations (*.dspipreset *.json);;All files (*)"), QString(), this,
+                 [this](const QString &path) { openFileFrom(path); });
+    });
+    shell->addHandler(QStringLiteral("file.newFromTemplate"), this, [this] { listTemplates(); });
+    shell->addHandler(QStringLiteral("file.saveFile"), this, [this] { saveFile(); });
+    shell->addHandler(QStringLiteral("file.saveAsTemplate"), this, [this] {
+        if (!needDevice()) return;
+        if (m_ctx.device->platformName().isEmpty()) {
+            showError(tr("Still identifying the device. Try again in a moment."));
+            return;
+        }
+        QDir().mkpath(templatesDir());
+        pickFile(true, tr("Save as Template"), tr("DSPi configurations (*.dspipreset)"),
+                 templatesDir() + QLatin1Char('/') + tr("Template") + QStringLiteral(".dspipreset"), this,
+                 [this](const QString &path) { saveTemplateTo(path); });
+    });
+    connect(ctx.device, &DeviceModel::snapshotApplied, this, &FilesController::readOffline);
 
     // The questions and alerts live in the main window, made once it exists
     if (auto *app = qobject_cast<QQmlApplicationEngine *>(ctx.engine)) {
@@ -378,7 +405,7 @@ QString FilesController::importPrompt(const QString &platform, const QString &fi
         text += QStringLiteral("\n\n") +
                 tr("This file came from a %1 device and you are connected to %2. Anything the connected device doesn't have will be skipped.")
                     .arg(platform, here);
-    text += QStringLiteral("\n\n") + tr("EQ, crossover, delays, gains, routing and the DSP features are always applied.");
+    // -- WP P1QT1 -- the blocks are chosen below the prompt now
     return text;
 }
 
@@ -386,15 +413,28 @@ void FilesController::importConfigurationFrom(const QString &path) {
     if (!needDevice()) return;
     m_ctx.core->worker()->call(
         this,
-        [path](FfiCore *) {
+        [path](FfiCore *c) {
             Read r = readFile(path);
             QJsonObject inspected;
+            // -- WP P1QT1 -- what every block would change, and whether the
+            // import is guarded here by default
+            QJsonObject preview;
+            bool guardDefault = false;
             if (r.error.isEmpty()) {
                 const QByteArray text = r.text;
                 inspected = QJsonDocument::fromJson(readSized([text](char *b, uint32_t n) {
                                 return dspi_config_inspect(text.constData(), b, n);
                             })).object();
+                if (inspected.value(QLatin1String("ok")).toBool()) {
+                    preview = QJsonDocument::fromJson(readSized([c, text](char *b, uint32_t n) {
+                                  return dspi_config_preview(c, text.constData(), IMPORT_BY_BLOCK | IMPORT_ALL_BLOCKS,
+                                                             0xFFFFFFFFu, b, n);
+                              })).object();
+                    guardDefault = dspi_apply_guard_default(c);
+                }
             }
+            inspected.insert(QStringLiteral("_preview"), preview);
+            inspected.insert(QStringLiteral("_guardDefault"), guardDefault);
             return std::make_pair(r, inspected);
         },
         [this](std::pair<Read, QJsonObject> result) {
@@ -407,30 +447,67 @@ void FilesController::importConfigurationFrom(const QString &path) {
                 showError(o.value(QLatin1String("error")).toString());
                 return;
             }
+            // -- WP P1QT1 -- a preview the core refused (no settings read yet) is said, not shown empty
+            const QJsonObject preview = o.value(QLatin1String("_preview")).toObject();
+            if (preview.contains(QLatin1String("ok")) && !preview.value(QLatin1String("ok")).toBool()) {
+                showError(preview.value(QLatin1String("error")).toString());
+                return;
+            }
             m_pending = result.first.text;
             emit configurationOptions(importPrompt(o.value(QLatin1String("platform")).toString(),
                                                    o.value(QLatin1String("firmware")).toString(),
-                                                   o.value(QLatin1String("savedUtc")).toString()));
+                                                   o.value(QLatin1String("savedUtc")).toString()),
+                                      preview.toVariantMap(), o.value(QLatin1String("_guardDefault")).toBool());
         });
 }
 
 // The one place a configuration document reaches the device (PRO1's snapshot
 // before and safe-apply hook in here)
-void FilesController::applyConfiguration(bool volumes, bool hardware) {
+void FilesController::applyConfiguration(int blocks, bool guarded) {
     const QByteArray text = std::exchange(m_pending, QByteArray());
     if (text.isEmpty()) return;
-    const uint32_t options = (volumes ? IMPORT_VOLUMES : 0u) | (hardware ? IMPORT_HARDWARE : 0u);
+    // -- WP P1QT1 -- by block (P1DF); every channel's EQ when EQ is ticked
+    const uint32_t options = IMPORT_BY_BLOCK | (uint32_t(blocks) & IMPORT_ALL_BLOCKS);
+    if ((options & IMPORT_ALL_BLOCKS) == 0) {
+        showError(tr("Nothing was selected to import; nothing was changed."));
+        return;
+    }
+    const bool hardware = options & (IMPORT_HARDWARE | IMPORT_LIMITERS);
     auto reply = std::make_shared<QJsonObject>();
     // -- WP QPI2 -- the hardware I/O (pins, limiters) is output configuration:
     // in Independent mode it lands live and unsaved, so the save bar offers it
     if (hardware)
         if (auto *hw = Registrar::instance<HardwareController>()) hw->beginOutputEdit();
     setImporting(true);
+    if (guarded) {
+        // -- WP P1QT1 -- with rollback: the core captures a snapshot first, and
+        // the countdown bar (SnapshotsController) offers Keep and Revert
+        // -- WP P1DCFIX -- for the time set in the Snapshots window (30 s unless set)
+        auto *snapshots = Registrar::instance<SnapshotsController>();
+        const uint32_t timeout = snapshots ? uint32_t(snapshots->guardTimeoutS()) : 0;
+        m_ctx.device->write(
+            QStringLiteral("configuration import"),
+            [text, options, reply, timeout](FfiCore *c) {
+                *reply = QJsonDocument::fromJson(callOnce([c, &text, options, timeout](char *b, uint32_t n) {
+                             return dspi_apply_guarded_import(c, text.constData(), options, 0xFFFFFFFFu, timeout, b, n);
+                         })).object();
+                return reply->value(QLatin1String("ok")).toBool();
+            },
+            [this, reply](bool ok) {
+                setImporting(false);
+                if (!ok) {
+                    showError(refusal(*reply));
+                    return;
+                }
+                if (auto *snapshots = Registrar::instance<SnapshotsController>()) snapshots->guardStarted(*reply);
+            });
+        return;
+    }
     m_ctx.device->write(
         QStringLiteral("configuration import"),
         [text, options, reply](FfiCore *c) {
             *reply = QJsonDocument::fromJson(callOnce([c, &text, options](char *b, uint32_t n) {
-                         return dspi_config_import(c, text.constData(), options, b, n);
+                         return dspi_config_import_selected(c, text.constData(), options, 0xFFFFFFFFu, b, n);
                      })).object();
             return reply->value(QLatin1String("ok")).toBool();
         },
@@ -550,5 +627,158 @@ void FilesController::saveOutputConfiguration() {
             else if (*status == kStatusLocked)
                 showError(tr("Failed to save output configuration: %1.").arg(tr("Another console is applying changes")));
             else showError(tr("Failed to save output configuration. The device did not acknowledge the request."));
+        });
+}
+
+// ---- -- WP P1QT1 -- Offline documents and templates (P1OF) ------------------------------
+
+QString FilesController::templatesDir() {
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/templates");
+}
+
+// The name a saved document carries: the file's
+QString FilesController::saveName() const { return QFileInfo(m_documentPath).completeBaseName(); }
+
+void FilesController::readOffline() {
+    m_ctx.core->worker()->call(
+        this, [](FfiCore *c) { return readSized([c](char *b, uint32_t n) { return dspi_offline_document(c, b, n); }); },
+        [this](QByteArray reply) {
+            const QJsonObject o = QJsonDocument::fromJson(reply).object();
+            const bool offline = o.value(QLatin1String("offline")).toBool();
+            const QString file = offline ? o.value(QLatin1String("fileName")).toString() : QString();
+            if (offline == m_offline && file == m_offlineFile) return;
+            m_offline = offline;
+            m_offlineFile = file;
+            if (!offline) m_documentPath.clear();
+            emit offlineChanged();
+        });
+}
+
+void FilesController::openFileFrom(const QString &path) {
+    m_ctx.core->worker()->call(
+        this, [path](FfiCore *) { return readFile(path); },
+        [this, path](Read r) {
+            if (!r.error.isEmpty()) {
+                showError(r.error);
+                return;
+            }
+            openDocument(r.text, QFileInfo(path).fileName(), path);
+        });
+}
+
+void FilesController::openDocument(const QByteArray &text, const QString &fileName, const QString &path) {
+    // Another "device": the unsaved-changes question first, then off any hub session
+    UnsavedGuard::before(QStringLiteral("device"), this, [this, text, fileName, path] {
+        if (LinkController *link = Registrar::instance<LinkController>();
+            link && (link->inSession() || m_ctx.device->remote()))
+            link->leaveForLocal();
+        const QByteArray name = fileName.toUtf8();
+        m_ctx.core->worker()->call(
+            this,
+            [text, name](FfiCore *c) {
+                return QJsonDocument::fromJson(callOnce([&](char *b, uint32_t n) {
+                           return dspi_open_document(c, text.constData(), name.constData(), b, n);
+                       })).object();
+            },
+            [this, path](QJsonObject o) {
+                if (!o.value(QLatin1String("ok")).toBool()) {
+                    showError(o.value(QLatin1String("error")).toString(tr("This file is no DSPi configuration.")));
+                    return;
+                }
+                m_documentPath = path;
+                m_ctx.device->adoptDocument(QStringLiteral("OFFLINE-DOCUMENT"));
+                QStringList notes;
+                for (const QJsonValue &v : o.value(QLatin1String("notes")).toArray()) notes.append(v.toString());
+                if (!notes.isEmpty()) emit notice(tr("Open File"), notes.join(QLatin1Char('\n')), false);
+            });
+    });
+}
+
+void FilesController::saveFile() {
+    if (!m_offline) {
+        showError(tr("No file is open."));
+        return;
+    }
+    if (m_documentPath.isEmpty()) {
+        // A template opened as a new file: where it goes is asked once
+        pickFile(true, tr("Save File"), tr("DSPi configurations (*.dspipreset)"),
+                 (m_offlineFile.isEmpty() ? tr("DSPi Configuration") : QFileInfo(m_offlineFile).completeBaseName())
+                     + QStringLiteral(".dspipreset"),
+                 this, [this](const QString &path) { saveFileTo(path); });
+        return;
+    }
+    saveFileTo(m_documentPath);
+}
+
+void FilesController::saveFileTo(const QString &path) {
+    const QByteArray version = AppIdentity::version().toUtf8();
+    const ChannelController *channels = Registrar::instance<ChannelController>();
+    const auto links = uint8_t(channels ? channels->linkedPairs() : 0);
+    m_ctx.core->worker()->call(
+        this,
+        [path, version, links](FfiCore *c) {
+            const QByteArray doc = readSized([&](char *b, uint32_t n) { return dspi_save_document(c, version.constData(), links, b, n); });
+            const QString failure = exportFailure(doc);
+            return failure.isEmpty() ? writeFile(path, doc) : failure;
+        },
+        [this, path](QString error) {
+            if (!error.isEmpty()) {
+                showError(error);
+                return;
+            }
+            m_documentPath = path;
+            //: %1 is the file's name
+            if (auto *notices = Registrar::instance<NoticeCenter>()) notices->post(tr("Saved %1.").arg(QFileInfo(path).fileName()));
+        });
+}
+
+void FilesController::saveTemplateTo(const QString &path) {
+    const QByteArray name = QFileInfo(path).completeBaseName().toUtf8();
+    const QByteArray version = AppIdentity::version().toUtf8();
+    const ChannelController *channels = Registrar::instance<ChannelController>();
+    const auto links = uint8_t(channels ? channels->linkedPairs() : 0);
+    m_ctx.core->worker()->call(
+        this,
+        [path, name, version, links](FfiCore *c) {
+            const QByteArray doc = readSized([&](char *b, uint32_t n) {
+                return dspi_save_as_template(c, name.constData(), version.constData(), links, b, n);
+            });
+            const QString failure = exportFailure(doc);
+            return failure.isEmpty() ? writeFile(path, doc) : failure;
+        },
+        [this, path](QString error) {
+            if (!error.isEmpty()) {
+                showError(error);
+                return;
+            }
+            //: %1 is the template's file name
+            if (auto *notices = Registrar::instance<NoticeCenter>()) notices->post(tr("Template saved as %1.").arg(QFileInfo(path).fileName()));
+        });
+}
+
+void FilesController::listTemplates() {
+    const QByteArray dir = QDir::toNativeSeparators(templatesDir()).toUtf8();
+    m_ctx.core->worker()->call(
+        this, [dir](FfiCore *) { return readSized([&](char *b, uint32_t n) { return dspi_template_list(dir.constData(), b, n); }); },
+        [this](QByteArray reply) {
+            QVariantList rows;
+            for (const QJsonValue &v : QJsonDocument::fromJson(reply).array()) rows.append(v.toObject().toVariantMap());
+            emit templatesPicker(rows);
+        });
+}
+
+void FilesController::openTemplate(const QString &id, const QString &name) {
+    const QByteArray i = id.toUtf8();
+    const QByteArray dir = QDir::toNativeSeparators(templatesDir()).toUtf8();
+    m_ctx.core->worker()->call(
+        this, [i, dir](FfiCore *) { return readSized([&](char *b, uint32_t n) { return dspi_template_text(i.constData(), dir.constData(), b, n); }); },
+        [this, name](QByteArray text) {
+            const QString failure = exportFailure(text);
+            if (!failure.isEmpty()) {
+                showError(failure);
+                return;
+            }
+            // A new file from the template: Save File asks where
+            openDocument(text, name, QString());
         });
 }

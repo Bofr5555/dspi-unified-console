@@ -21,6 +21,8 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filter
 import se.bofr.dspi.bridge.BridgeEvent
 import se.bofr.dspi.core.DspiException
+import se.bofr.dspi.feature.presets.DocumentOpener
+import se.bofr.dspi.feature.presets.LocalDocumentOpener
 import se.bofr.dspi.feature.settings.LocalAboutJson
 import se.bofr.dspi.ui.DspiTheme
 import se.bofr.dspi.ui.link.LocalNetworking
@@ -59,6 +61,7 @@ class MainActivity : ComponentActivity() {
                 val link by app.linkSettings.settings.collectAsStateWithLifecycle()
                 val hubs by app.networking.hubs.collectAsStateWithLifecycle() // -- WP AN7 --
                 var networkingOpen by remember { mutableStateOf(false) }
+                val document by bridge.snapshots.offline.collectAsStateWithLifecycle() // -- WP P1AN1 --
                 // macOS DeviceLockNotice: "Another console is applying changes" for 4 s after a LOCKED refusal
                 var lockNotice by remember { mutableStateOf(false) }
                 LaunchedEffect(bridge) {
@@ -72,11 +75,12 @@ class MainActivity : ComponentActivity() {
                     LocalAppSettings provides app.appSettings,
                     LocalAppState provides app.appState,
                     LocalNetworking provides app.networking,
-                    LocalAboutJson provides app.aboutJson
+                    LocalAboutJson provides app.aboutJson,
+                    LocalDocumentOpener provides DocumentOpener(modes::openDocument) // -- WP P1AN1 --
                 ) {
                     AppScaffold(
                         bridge = bridge,
-                        strip = connectionStrip(mode, usbState, remote, lockNotice),
+                        strip = connectionStrip(mode, usbState, remote, lockNotice, document = document?.fileName), // -- WP P1AN1 --
                         // -- WP AN7 -- every user switch goes through the Unsaved Changes flow
                         onExitDemo = { modes.switchTo(DeviceChoice.Usb) },
                         onRequestPermission = { app.session.requestPermission(this) },

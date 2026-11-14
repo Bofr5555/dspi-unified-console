@@ -1358,6 +1358,13 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func alinkSystemSave(revision: UInt64, edits: AlinkSystemEdits) throws  -> UInt64
     
     /**
+     * [`DspiCore::alink_system_save`] with the hub's whole answer: the new
+     * revision and the warnings `system.set` gave about the model it kept.
+     * Errors as there.
+     */
+    func alinkSystemSaveReport(revision: UInt64, edits: AlinkSystemEdits) throws  -> AlinkSystemSaved
+    
+    /**
      * The audio link's installation on the hub this session is on: its
      * elements with their alink state, the rooms, the scenes, alarms and a
      * one-line summary. Reads `system.status` (and `system.get` when the
@@ -5158,6 +5165,20 @@ open func alinkSystemRecall(scene: String)throws  -> AlinkSceneRecall  {
 open func alinkSystemSave(revision: UInt64, edits: AlinkSystemEdits)throws  -> UInt64  {
     return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_alink_system_save(self.uniffiClonePointer(),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterTypeAlinkSystemEdits_lower(edits),$0
+    )
+})
+}
+    
+    /**
+     * [`DspiCore::alink_system_save`] with the hub's whole answer: the new
+     * revision and the warnings `system.set` gave about the model it kept.
+     * Errors as there.
+     */
+open func alinkSystemSaveReport(revision: UInt64, edits: AlinkSystemEdits)throws  -> AlinkSystemSaved  {
+    return try  FfiConverterTypeAlinkSystemSaved_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_alink_system_save_report(self.uniffiClonePointer(),
         FfiConverterUInt64.lower(revision),
         FfiConverterTypeAlinkSystemEdits_lower(edits),$0
     )
@@ -13886,6 +13907,95 @@ public func FfiConverterTypeAlinkSystemRoom_lift(_ buf: RustBuffer) throws -> Al
 #endif
 public func FfiConverterTypeAlinkSystemRoom_lower(_ value: AlinkSystemRoom) -> RustBuffer {
     return FfiConverterTypeAlinkSystemRoom.lower(value)
+}
+
+
+/**
+ * What saving the "Clock and audio links" edits did.
+ */
+public struct AlinkSystemSaved {
+    /**
+     * The model's new revision.
+     */
+    public var revision: UInt64
+    /**
+     * The hub's warnings about the model it kept (a unit whose firmware has
+     * no audio link, or no USB-direct block): one sentence each, the hub's
+     * words. Empty when there are none.
+     */
+    public var warnings: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The model's new revision.
+         */revision: UInt64, 
+        /**
+         * The hub's warnings about the model it kept (a unit whose firmware has
+         * no audio link, or no USB-direct block): one sentence each, the hub's
+         * words. Empty when there are none.
+         */warnings: [String]) {
+        self.revision = revision
+        self.warnings = warnings
+    }
+}
+
+#if compiler(>=6)
+extension AlinkSystemSaved: Sendable {}
+#endif
+
+
+extension AlinkSystemSaved: Equatable, Hashable {
+    public static func ==(lhs: AlinkSystemSaved, rhs: AlinkSystemSaved) -> Bool {
+        if lhs.revision != rhs.revision {
+            return false
+        }
+        if lhs.warnings != rhs.warnings {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(revision)
+        hasher.combine(warnings)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAlinkSystemSaved: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AlinkSystemSaved {
+        return
+            try AlinkSystemSaved(
+                revision: FfiConverterUInt64.read(from: &buf), 
+                warnings: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AlinkSystemSaved, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.revision, into: &buf)
+        FfiConverterSequenceString.write(value.warnings, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAlinkSystemSaved_lift(_ buf: RustBuffer) throws -> AlinkSystemSaved {
+    return try FfiConverterTypeAlinkSystemSaved.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAlinkSystemSaved_lower(_ value: AlinkSystemSaved) -> RustBuffer {
+    return FfiConverterTypeAlinkSystemSaved.lower(value)
 }
 
 
@@ -32028,7 +32138,9 @@ public enum DspiError: Swift.Error {
      * sent. `code`: `locked` (the locked-user state allows only volume, mute
      * and preset), `pin_required` (an installer action needs the unlock),
      * `wrong_pin`, `wait` (too many wrong PINs: the refusal window is open;
-     * `installer_lock_state().retry_after_ms` says how long) or `no_pin`.
+     * `installer_lock_state().retry_after_ms` says how long), `no_pin`, or
+     * `hub` (WP MERGEP1D: the hub this console reaches the device through
+     * holds the lock and refused the write).
      */
     case InstallerLock(
         /**
@@ -36149,6 +36261,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_alink_system_save() != 49070) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_alink_system_save_report() != 7845) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_alink_system_view() != 50190) {

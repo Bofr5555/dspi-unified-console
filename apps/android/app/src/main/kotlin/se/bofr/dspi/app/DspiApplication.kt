@@ -124,6 +124,8 @@ class DspiApplication : Application() {
             usbDevices = usb.devices,
             scope = appScope,
             demoFactory = { startDemoSession(appScope, version, log = { Log.i(TAG, it) }) },
+            // -- WP P1AN1 --
+            documentFactory = { text, name -> startDocumentSession(appScope, version, text, name, log = { Log.i(TAG, it) }) },
             forwardUiVisible = usb::setUiVisible,
             remoteFactory = {
                 network.setSessionActive(true)

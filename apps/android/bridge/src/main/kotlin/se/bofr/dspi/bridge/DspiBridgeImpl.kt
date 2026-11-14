@@ -28,6 +28,7 @@ import se.bofr.dspi.core.AdatOutStatus
 import se.bofr.dspi.core.AlinkSceneRecall
 import se.bofr.dspi.core.AlinkSystemAlign
 import se.bofr.dspi.core.AlinkSystemEdits
+import se.bofr.dspi.core.AlinkSystemSaved
 import se.bofr.dspi.core.AlinkSystemView
 import se.bofr.dspi.core.DeviceEvents
 import se.bofr.dspi.core.DspState
@@ -284,6 +285,9 @@ class DspiBridgeImpl(
 
     // -- WP AN18 --
     override val coreTools: CoreTools = CoreToolsImpl(this)
+
+    // -- WP P1AN1 --
+    override val snapshots: Snapshots by lazy { SnapshotsImpl(this) }
 
     private var uiVisible = true
     private var pollJob: Job? = null
@@ -2188,6 +2192,12 @@ class DspiBridgeImpl(
     override suspend fun alinkSystemSave(revision: Long, edits: AlinkSystemEdits): Long {
         refuseSystemWrite("alinkSystemSave")
         return withContext(network) { core.alinkSystemSave(revision, edits) }
+    }
+
+    // -- WP P1DCFIX --
+    override suspend fun alinkSystemSaveReport(revision: Long, edits: AlinkSystemEdits): AlinkSystemSaved {
+        refuseSystemWrite("alinkSystemSaveReport")
+        return withContext(network) { core.alinkSystemSaveReport(revision, edits) }
     }
 
     override suspend fun alinkSystemAlign(): AlinkSystemAlign {

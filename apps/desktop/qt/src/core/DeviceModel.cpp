@@ -145,6 +145,7 @@ void DeviceModel::openDemo() {
         [this](Outcome r) {
             if (!r.ok) qWarning("DeviceModel: the demo device did not open");
             m_demo = r.ok;
+            m_document = false;   // -- WP P1QT1 --
             m_serial = r.ok ? QStringLiteral("demo") : QString();
             apply(r.snap, 0);
             track(-1);
@@ -164,6 +165,7 @@ void DeviceModel::selectDevice(const QString &serial) {
         [this, serial](Outcome r) {
             if (!r.ok) qWarning("DeviceModel: %s did not open", qPrintable(serial));
             m_demo = false;
+            m_document = false;   // -- WP P1QT1 --
             m_serial = serial;
             apply(r.snap, 0);
             track(-1);
@@ -172,6 +174,10 @@ void DeviceModel::selectDevice(const QString &serial) {
 
 void DeviceModel::reconnect() {
     if (m_remote) return;   // -- WP QP13 -- the hub's session reconnects by itself
+    if (m_document) {       // -- WP P1QT1 -- a document has nothing to reopen
+        refresh();
+        return;
+    }
     if (m_demo) {
         openDemo();
         return;
@@ -352,6 +358,7 @@ void DeviceModel::onDeviceEvent(int event, const QString &serial) {
 void DeviceModel::adoptRemote(const QString &serial) {
     m_remote = true;
     m_demo = false;
+    m_document = false;   // -- WP P1QT1 --
     m_serial = serial;
     refresh();
 }
@@ -367,4 +374,13 @@ void DeviceModel::leaveRemote() {
             apply(snap, 0);
             track(-1);
         });
+}
+
+// -- WP P1QT1 -- an offline document (FilesController's Open File…)
+void DeviceModel::adoptDocument(const QString &serial) {
+    m_remote = false;
+    m_demo = false;
+    m_document = true;
+    m_serial = serial;
+    refresh();
 }

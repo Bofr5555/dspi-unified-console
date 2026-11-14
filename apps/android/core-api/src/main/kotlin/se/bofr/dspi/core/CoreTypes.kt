@@ -2903,6 +2903,22 @@ data class AlinkSystemAlign(
 )
 
 /**
+ * What saving the "Clock and audio links" edits did.
+ */
+data class AlinkSystemSaved(
+    /**
+     * The model's new revision.
+     */
+    val revision: Long,
+    /**
+     * The hub's warnings about the model it kept (a unit whose firmware has
+     * no audio link, or no USB-direct block): one sentence each, the hub's
+     * words. Empty when there are none.
+     */
+    val warnings: List<String>,
+)
+
+/**
  * What `EXT_ALINK_USB` reports.
  */
 data class AlinkUsbConfig(

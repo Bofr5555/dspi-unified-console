@@ -72,6 +72,9 @@ data class SystemUiState(
     val recalledScene: String = "",
     val actionMessage: String = "",
     val actionFailed: Boolean = false,
+    // -- WP P1DCFIX --
+    /** The hub's warnings about the model the last Save kept (one sentence each); empty: none. */
+    val saveWarnings: List<String> = emptyList(),
     val draft: SystemDraft = SystemDraft(),
     /** The hub's revision moved past the draft's: Save is withdrawn, Reload offered. */
     val stale: Boolean = false
@@ -235,20 +238,33 @@ class SystemScreenModel(private val bridge: DspiBridge, private val scope: Corou
         if (!s.draft.dirty || s.stale || !s.mayEdit) return
         act {
             try {
-                bridge.alinkSystemSave(s.draft.revision, s.draft.edits())
-                _state.update { it.copy(draft = SystemDraft(), stale = false, actionMessage = "Saved on the hub.", actionFailed = false) }
+                // -- WP P1DCFIX -- the save with the hub's warnings, shown under the message (as Qt)
+                val saved = bridge.alinkSystemSaveReport(s.draft.revision, s.draft.edits())
+                _state.update {
+                    it.copy(
+                        draft = SystemDraft(),
+                        stale = false,
+                        actionMessage = "Saved on the hub.",
+                        actionFailed = false,
+                        saveWarnings = saved.warnings
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: DspiException) {
                 val conflict = e is DspiException.Link && e.code == "conflict"
-                _state.update { it.copy(stale = it.stale || conflict, actionMessage = words(e), actionFailed = true) }
+                _state.update {
+                    it.copy(stale = it.stale || conflict, actionMessage = words(e), actionFailed = true, saveWarnings = emptyList())
+                }
             }
         }
     }
 
     /** Throws the draft away and reads the view again. */
     fun reload() {
-        _state.update { it.copy(draft = SystemDraft(), stale = false, actionMessage = "", actionFailed = false) }
+        _state.update {
+            it.copy(draft = SystemDraft(), stale = false, actionMessage = "", actionFailed = false, saveWarnings = emptyList())
+        }
         scope.launch { refresh() }
     }
 
