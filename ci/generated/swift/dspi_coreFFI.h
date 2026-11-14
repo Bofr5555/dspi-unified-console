@@ -1871,6 +1871,16 @@ void uniffi_dspi_core_fn_method_dspicore_set_i2s_input_channels(void*_Nonnull pt
 void uniffi_dspi_core_fn_method_dspicore_set_i2s_rx_pin(void*_Nonnull ptr, uint8_t pair, uint8_t pin, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_INPUT_PAIR_BAND_BYPASS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_INPUT_PAIR_BAND_BYPASS
+void uniffi_dspi_core_fn_method_dspicore_set_input_pair_band_bypass(void*_Nonnull ptr, uint8_t input, uint8_t band, int8_t bypass, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_INPUT_PAIR_FILTER
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_INPUT_PAIR_FILTER
+void uniffi_dspi_core_fn_method_dspicore_set_input_pair_filter(void*_Nonnull ptr, uint8_t input, uint8_t band, RustBuffer params, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_INPUT_PAIR_PREAMP
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_INPUT_PAIR_PREAMP
 void uniffi_dspi_core_fn_method_dspicore_set_input_pair_preamp(void*_Nonnull ptr, uint8_t input, float db, RustCallStatus *_Nonnull out_status
@@ -4813,6 +4823,18 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_set_i2s_input_channels(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_I2S_RX_PIN
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_I2S_RX_PIN
 uint16_t uniffi_dspi_core_checksum_method_dspicore_set_i2s_rx_pin(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_INPUT_PAIR_BAND_BYPASS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_INPUT_PAIR_BAND_BYPASS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_set_input_pair_band_bypass(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_INPUT_PAIR_FILTER
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_INPUT_PAIR_FILTER
+uint16_t uniffi_dspi_core_checksum_method_dspicore_set_input_pair_filter(void
     
 );
 #endif

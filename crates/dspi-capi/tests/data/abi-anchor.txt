@@ -868,6 +868,14 @@ bool dspi_set_band_bypass(struct FfiCore *core, uint8_t ch, uint8_t band, bool b
 bool dspi_set_preamp(struct FfiCore *core, float db);
 bool dspi_set_input_preamp(struct FfiCore *core, uint8_t input, float db);
 bool dspi_set_input_pair_preamp(struct FfiCore *core, uint8_t input, float db);
+bool dspi_set_input_pair_filter(struct FfiCore *core,
+uint8_t input,
+uint8_t band,
+struct FilterParams params);
+bool dspi_set_input_pair_band_bypass(struct FfiCore *core,
+uint8_t input,
+uint8_t band,
+bool bypass);
 bool dspi_set_bypass(struct FfiCore *core, bool enabled);
 bool dspi_set_master_volume(struct FfiCore *core, float db);
 bool dspi_set_master_volume_mode(struct FfiCore *core, uint8_t mode);

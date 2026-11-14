@@ -444,6 +444,10 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun setInputPairPreamp(input: Int, db: Float): Unit = throw NotImplementedError("set_input_pair_preamp")
 
+    override fun setInputPairFilter(input: Int, band: Int, params: FilterParams): Unit = throw NotImplementedError("set_input_pair_filter")
+
+    override fun setInputPairBandBypass(input: Int, band: Int, bypass: Boolean): Unit = throw NotImplementedError("set_input_pair_band_bypass")
+
     override fun setBypass(enabled: Boolean): Unit = throw NotImplementedError("set_bypass")
 
     override fun setMasterVolume(db: Float): Unit = throw NotImplementedError("set_master_volume")

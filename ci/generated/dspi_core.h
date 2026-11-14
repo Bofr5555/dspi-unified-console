@@ -3892,6 +3892,25 @@ bool dspi_set_input_preamp(struct FfiCore *core, uint8_t input, float db);
 bool dspi_set_input_pair_preamp(struct FfiCore *core, uint8_t input, float db);
 
 /**
+ * Set PEQ band `band` of a linked input pair (`input` and `input ^ 1`, their
+ * wire channels): one undo step (`DspiCore::set_input_pair_filter`). Call it
+ * for every band edit of a linked pair, a drag's ticks included.
+ */
+bool dspi_set_input_pair_filter(struct FfiCore *core,
+                                uint8_t input,
+                                uint8_t band,
+                                struct FilterParams params);
+
+/**
+ * Bypass or re-enable PEQ band `band` of a linked input pair: one undo step
+ * (`DspiCore::set_input_pair_band_bypass`).
+ */
+bool dspi_set_input_pair_band_bypass(struct FfiCore *core,
+                                     uint8_t input,
+                                     uint8_t band,
+                                     bool bypass);
+
+/**
  * Bypass all processing, or stop.
  */
 bool dspi_set_bypass(struct FfiCore *core, bool enabled);

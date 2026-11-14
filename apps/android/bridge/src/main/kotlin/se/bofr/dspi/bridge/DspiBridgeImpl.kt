@@ -1379,12 +1379,28 @@ class DspiBridgeImpl(
         }
     }
 
-    /** FFI: write one PEQ band to ch, and to its partner while the pair is linked. */
+    // -- WP PAIRBAND --
+    /** The input (its wire channel) whose linked pair [targets] is, or -1: two inputs 2p and 2p+1. */
+    private fun pairInput(targets: List<Pair<Int, Int>>): Int {
+        if (targets.size != 2) return -1
+        val (a, wa) = targets[0]
+        val (_, wb) = targets[1]
+        return if (wa >= 0 && map.inputOf(a) == wa && wb == (wa xor 1)) wa else -1
+    }
+
+    /**
+     * FFI: write one PEQ band to ch, and to its partner while the pair is linked.
+     * -- WP PAIRBAND -- a linked pair is the core's one-step pair write, so one undo
+     * puts both sides back (a drag's ticks join the drag's step, P0W2).
+     */
     private fun applyFilter(targets: List<Pair<Int, Int>>, band: Int, p: FilterParams) {
-        for ((app, w) in targets) {
-            core.setFilter(w, band, p)
-            markDirty(app)
+        val input = pairInput(targets)
+        when {
+            input >= 0 -> core.setInputPairFilter(input, band, p)
+            targets.size > 1 -> grouped(PAIR_BAND_LABEL) { for ((_, w) in targets) core.setFilter(w, band, p) }
+            else -> for ((_, w) in targets) core.setFilter(w, band, p)
         }
+        for ((app, _) in targets) markDirty(app)
     }
 
     override fun setFilter(ch: Int, band: Int, type: Int, freq: Float, gain: Float, q: Float) {
@@ -1419,10 +1435,14 @@ class DspiBridgeImpl(
         if (map.wire(ch) < 0 || band !in 0 until BANDS_PER_CHANNEL) return
         val t = targets(ch)
         fire("setBandBypass", Emit.CURVES) {
-            for ((app, tw) in t) {
-                core.setBandBypass(tw, band, bypass)
-                markDirty(app)
+            // -- WP PAIRBAND -- a linked pair: one undo step
+            val input = pairInput(t)
+            when {
+                input >= 0 -> core.setInputPairBandBypass(input, band, bypass)
+                t.size > 1 -> grouped(PAIR_BAND_LABEL) { for ((_, tw) in t) core.setBandBypass(tw, band, bypass) }
+                else -> for ((_, tw) in t) core.setBandBypass(tw, band, bypass)
             }
+            for ((app, _) in t) markDirty(app)
         }
     }
 
@@ -2799,15 +2819,18 @@ class DspiBridgeImpl(
         val out = map.outputOf(ch)
         val t = targets(ch)
         fire("pasteChannel", Emit.CURVES) {
-            // Always all 10 PEQ bands (a linked input updates its partner too).
-            for (b in 0 until BANDS_PER_CHANNEL) applyFilter(t, b, c.filters[b])
-            if (c.output && out >= 0) {
-                for (b in 0 until MAX_XOVER_BANDS) core.setCrossover(w, b, c.xover[b])
-                core.setOutputGain(out, c.gain)
-                // -- WP AN41 -- a clip from a longer line (RP2350 onto RP2040) takes this device's line, as the
-                // fields do (bridge.maxDelayMs, read here on the FFI thread), instead of the core refusing the paste midway
-                core.setOutputDelay(out, c.delay.coerceAtMost(core.maxDelayMs()))
-                core.setOutputMute(out, c.mute)
+            // -- WP PAIRBAND -- the whole paste is one undo step
+            grouped(PASTE_LABEL) {
+                // Always all 10 PEQ bands (a linked input updates its partner too).
+                for (b in 0 until BANDS_PER_CHANNEL) applyFilter(t, b, c.filters[b])
+                if (c.output && out >= 0) {
+                    for (b in 0 until MAX_XOVER_BANDS) core.setCrossover(w, b, c.xover[b])
+                    core.setOutputGain(out, c.gain)
+                    // -- WP AN41 -- a clip from a longer line (RP2350 onto RP2040) takes this device's line, as the
+                    // fields do (bridge.maxDelayMs, read here on the FFI thread), instead of the core refusing the paste midway
+                    core.setOutputDelay(out, c.delay.coerceAtMost(core.maxDelayMs()))
+                    core.setOutputMute(out, c.mute)
+                }
             }
             markDirty(ch)
         }
@@ -2869,6 +2892,10 @@ class DspiBridgeImpl(
 
         // -- WP P1AN2 -- the undo groups' labels (P1UG); the pair's is the core's own (P1PR)
         const val PAIR_PREAMP_LABEL = "Input trim, linked pair"
+
+        // -- WP PAIRBAND -- the core's label for a linked pair's band (set_input_pair_filter)
+        const val PAIR_BAND_LABEL = "EQ band, linked pair"
+        const val PASTE_LABEL = "Paste EQ"
         const val CLEAR_ALL_LABEL = "Clear All"
         const val DIRECT_ROUTING_LABEL = "Direct routing"
         const val CLEAR_ROUTING_LABEL = "Clear routing"

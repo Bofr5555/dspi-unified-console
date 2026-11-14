@@ -98,8 +98,10 @@ class InstallerWpP1an2Test {
         val mark = core.calls.size
         b.setInputPreamp(0, -2f)
         runCurrent()
-        val writes = core.calls.drop(mark).filter { it.startsWith("setInputPreamp") }
-        assertEquals(listOf("setInputPreamp(0, -2.0)", "setInputPreamp(1, -2.0)"), writes)
+        // -- WP PAIRBAND -- the fake records the pair write as one call (one step), as the core's group
+        val writes = core.calls.drop(mark).filter { it.startsWith("setInputPreamp") || it.startsWith("setInputPairPreamp") }
+        assertEquals(listOf("setInputPairPreamp(0, -2.0)"), writes)
+        assertEquals(-2f, b.inputPreampDB(0))
         assertEquals(-2f, b.inputPreampDB(1))
     }
 

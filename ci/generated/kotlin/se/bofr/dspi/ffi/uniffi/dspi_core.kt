@@ -1754,6 +1754,10 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2404,6 +2408,10 @@ fun uniffi_dspi_core_checksum_method_dspicore_set_i2s_clock_pin_mode(
 fun uniffi_dspi_core_checksum_method_dspicore_set_i2s_input_channels(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_set_i2s_rx_pin(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_set_input_pair_band_bypass(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_set_input_pair_filter(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_set_input_pair_preamp(
 ): Short
@@ -3211,6 +3219,10 @@ fun uniffi_dspi_core_fn_method_dspicore_set_i2s_clock_pin_mode(`ptr`: Pointer,`m
 fun uniffi_dspi_core_fn_method_dspicore_set_i2s_input_channels(`ptr`: Pointer,`channels`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_set_i2s_rx_pin(`ptr`: Pointer,`pair`: Byte,`pin`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_set_input_pair_band_bypass(`ptr`: Pointer,`input`: Byte,`band`: Byte,`bypass`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_set_input_pair_filter(`ptr`: Pointer,`input`: Byte,`band`: Byte,`params`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_set_input_pair_preamp(`ptr`: Pointer,`input`: Byte,`db`: Float,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -4588,6 +4600,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_i2s_rx_pin() != 19823.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_input_pair_band_bypass() != 3637.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_input_pair_filter() != 25730.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_input_pair_preamp() != 35944.toShort()) {
@@ -9397,6 +9415,44 @@ public interface DspiCoreInterface {
      * only) or a transfer error.
      */
     fun `setI2sRxPin`(`pair`: kotlin.UByte, `pin`: kotlin.UByte)
+    
+    /**
+     * Bypass (`true`) or re-enable PEQ band `band` (0..9) of a linked
+     * input pair, both sides, keeping their settings: `input` and then
+     * `input ^ 1` through [`DspiCore::set_band_bypass`], in one undo group
+     * with the label of [`DspiCore::set_input_pair_filter`]. One undo
+     * step; checks and errors as there.
+     */
+    fun `setInputPairBandBypass`(`input`: kotlin.UByte, `band`: kotlin.UByte, `bypass`: kotlin.Boolean)
+    
+    /**
+     * PEQ band `band` (0..9) of a linked input pair: `input` and its
+     * partner (`input ^ 1`, inputs 2p and 2p+1, which are wire channels
+     * 2p and 2p+1) both to `params`, as [`DspiCore::set_filter`] writes
+     * it, in one undo group ([`DspiCore::begin_group`]): one undo step
+     * labelled "EQ band, linked pair", and undo and redo move both sides
+     * together. `input`, the side the person edited, is written first.
+     * The link itself is the client's (a document's `inputPairLinked`):
+     * call this for every band edit while the pair is linked (the band
+     * list, a menu, a typed value, each tick of a graph drag), and
+     * `set_filter` otherwise.
+     *
+     * In a drag ([`DspiCore::set_dragging`]) the group joins the drag's
+     * step, so a whole drag of a pair's bands is one step that holds each
+     * band of each side once (WP P0W2) and undo puts both sides back as
+     * they were when the drag began. A value someone else changes on one
+     * side is judged on its own, as in every step: undo leaves theirs and
+     * names them, and puts the rest back.
+     *
+     * The inputs, the band and the values are checked before anything is
+     * sent. A failure on the second write leaves the first one written
+     * (one undo step takes it back).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an input or its partner
+     * out of range, a band out of range, or the values `set_filter`
+     * refuses; the connection and transfer errors of every setter.
+     */
+    fun `setInputPairFilter`(`input`: kotlin.UByte, `band`: kotlin.UByte, `params`: FilterParams)
     
     /**
      * Preamp of a linked input pair: `input` and its partner (`input ^ 1`,
@@ -16050,6 +16106,64 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_set_i2s_rx_pin(
         it, FfiConverterUByte.lower(`pair`),FfiConverterUByte.lower(`pin`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Bypass (`true`) or re-enable PEQ band `band` (0..9) of a linked
+     * input pair, both sides, keeping their settings: `input` and then
+     * `input ^ 1` through [`DspiCore::set_band_bypass`], in one undo group
+     * with the label of [`DspiCore::set_input_pair_filter`]. One undo
+     * step; checks and errors as there.
+     */
+    @Throws(DspiException::class)override fun `setInputPairBandBypass`(`input`: kotlin.UByte, `band`: kotlin.UByte, `bypass`: kotlin.Boolean)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_set_input_pair_band_bypass(
+        it, FfiConverterUByte.lower(`input`),FfiConverterUByte.lower(`band`),FfiConverterBoolean.lower(`bypass`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * PEQ band `band` (0..9) of a linked input pair: `input` and its
+     * partner (`input ^ 1`, inputs 2p and 2p+1, which are wire channels
+     * 2p and 2p+1) both to `params`, as [`DspiCore::set_filter`] writes
+     * it, in one undo group ([`DspiCore::begin_group`]): one undo step
+     * labelled "EQ band, linked pair", and undo and redo move both sides
+     * together. `input`, the side the person edited, is written first.
+     * The link itself is the client's (a document's `inputPairLinked`):
+     * call this for every band edit while the pair is linked (the band
+     * list, a menu, a typed value, each tick of a graph drag), and
+     * `set_filter` otherwise.
+     *
+     * In a drag ([`DspiCore::set_dragging`]) the group joins the drag's
+     * step, so a whole drag of a pair's bands is one step that holds each
+     * band of each side once (WP P0W2) and undo puts both sides back as
+     * they were when the drag began. A value someone else changes on one
+     * side is judged on its own, as in every step: undo leaves theirs and
+     * names them, and puts the rest back.
+     *
+     * The inputs, the band and the values are checked before anything is
+     * sent. A failure on the second write leaves the first one written
+     * (one undo step takes it back).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an input or its partner
+     * out of range, a band out of range, or the values `set_filter`
+     * refuses; the connection and transfer errors of every setter.
+     */
+    @Throws(DspiException::class)override fun `setInputPairFilter`(`input`: kotlin.UByte, `band`: kotlin.UByte, `params`: FilterParams)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_set_input_pair_filter(
+        it, FfiConverterUByte.lower(`input`),FfiConverterUByte.lower(`band`),FfiConverterTypeFilterParams.lower(`params`),_status)
 }
     }
     

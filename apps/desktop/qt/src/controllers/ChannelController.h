@@ -178,6 +178,8 @@ private:
     // The one write path: `what` names the target (it is the coalescing key)
     void apply(const QString &what, std::function<bool(FfiCore *)> setter, std::function<void(bool)> done = {});
     void writeBand(int channel, int band, bool crossover, const FilterParams &p);
+    // -- WP PAIRBAND -- a linked input pair's PEQ band, both sides: one write, one undo step
+    void writePairBand(int input, int partner, int band, const FilterParams &p);
     // The band edit on `channel` and, for half of a linked input pair, its partner
     void editBand(int channel, int band, bool crossover, const std::function<void(FilterParams &)> &edit);
     // -- WP P1QT2 -- `writes` (its writes queued now) as one undo step labelled

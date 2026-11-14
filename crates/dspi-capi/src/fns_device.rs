@@ -578,6 +578,35 @@ pub extern "C" fn dspi_set_input_pair_preamp(core: *mut FfiCore, input: u8, db: 
     flag(core, |c| c.set_input_pair_preamp(input, db))
 }
 
+// -- WP PAIRBAND --
+/// Set PEQ band `band` of a linked input pair (`input` and `input ^ 1`, their
+/// wire channels): one undo step (`DspiCore::set_input_pair_filter`). Call it
+/// for every band edit of a linked pair, a drag's ticks included.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_set_input_pair_filter(
+    core: *mut FfiCore,
+    input: u8,
+    band: u8,
+    params: FilterParams,
+) -> bool {
+    flag(core, |c| {
+        c.set_input_pair_filter(input, band, r::FilterParams::from(&params))
+    })
+}
+
+// -- WP PAIRBAND --
+/// Bypass or re-enable PEQ band `band` of a linked input pair: one undo step
+/// (`DspiCore::set_input_pair_band_bypass`).
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_set_input_pair_band_bypass(
+    core: *mut FfiCore,
+    input: u8,
+    band: u8,
+    bypass: bool,
+) -> bool {
+    flag(core, |c| c.set_input_pair_band_bypass(input, band, bypass))
+}
+
 /// Bypass all processing, or stop.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_bypass(core: *mut FfiCore, enabled: bool) -> bool {
@@ -1091,6 +1120,10 @@ mod tests_wp_q2a;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p1pr;
+
+// -- WP PAIRBAND --
+#[cfg(test)]
+mod tests_wp_pairband;
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
