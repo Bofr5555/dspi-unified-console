@@ -120,6 +120,12 @@ public:
     // The session is gone: forget the hub's device and read what is left.
     void leaveRemote();
 
+    // -- WP P1QT1 -- After dspi_open_document: an offline document is the open
+    // "device" (`serial` the core's OFFLINE-DOCUMENT). A reconnect re-reads it;
+    // opening the demo, a DSPi or a hub's device leaves it.
+    void adoptDocument(const QString &serial);
+    bool document() const { return m_document; }
+
     // Setters the worker ran so far (the smoke driver's coalescing check)
     int settersRun() const { return m_settersRun.load(); }
 
@@ -161,6 +167,7 @@ private:
     QHash<QString, std::shared_ptr<PendingWrite>> m_queuedWrites;
     std::atomic<int> m_settersRun{ 0 };
     bool m_remote = false;   // -- WP QP13 --
+    bool m_document = false;   // -- WP P1QT1 --
     // -- WP QTGAP1 -- the drag under way (0: none), and the last one's number
     quint64 m_drag = 0;
     quint64 m_drags = 0;

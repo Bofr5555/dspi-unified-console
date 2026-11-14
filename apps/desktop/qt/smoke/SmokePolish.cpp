@@ -86,6 +86,9 @@ const struct {
     { "device.preset9", "Ctrl+9" },
     { "device.mute", "Ctrl+M" },
     { "device.bypass", "Ctrl+B" },
+    // -- WP P1QT1 -- Open File and the A/B key
+    { "file.openFile", "Ctrl+O" },
+    { "device.abToggle", "Ctrl+Shift+C" },
 };
 
 QVariant jsCall(QObject *o, const char *method, const QVariant &a = QVariant(), const QVariant &b = QVariant()) {

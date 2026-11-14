@@ -14,9 +14,15 @@ AbstractButton {
     id: button
     objectName: "DeviceStatus.button"
     // What the button shows, for the smoke driver
-    readonly property string shownName: DeviceModel.connected ? DeviceModel.deviceTitle : qsTr("No Devices")
+    // -- WP P1QT1 -- an offline document says so in place of a device
+    readonly property string shownName: FilesController.offline
+        //: %1 is the open file's name
+        ? qsTr("File: %1").arg(FilesController.offlineFile)
+        : DeviceModel.connected ? DeviceModel.deviceTitle : qsTr("No Devices")
     readonly property string notice: LinkController.lockNotice
-    readonly property string tip: DeviceModel.remote && LinkController.sessionTip.length > 0
+    readonly property string tip: FilesController.offline   // -- WP P1QT1 --
+        ? qsTr("A file is open, not a device: edits change the file once you save it (File > Save File).")
+        : DeviceModel.remote && LinkController.sessionTip.length > 0
         ? LinkController.sessionTip
         : DeviceModel.connected
         //: %1 is the device's serial number
@@ -39,6 +45,13 @@ AbstractButton {
             height: 6
             radius: 3
             color: DeviceModel.connected ? Theme.connected : Theme.disconnected
+        }
+        Icon {   // -- WP P1QT1 --
+            objectName: "DeviceStatus.file"
+            visible: FilesController.offline && button.notice.length === 0
+            name: "folder-open"
+            size: 12
+            color: Theme.textMuted
         }
         Icon {
             visible: button.notice.length > 0
