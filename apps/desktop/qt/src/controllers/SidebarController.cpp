@@ -1,5 +1,6 @@
 // -- WP QP1 -- The sidebar's state and writes (SidebarController.h).
 #include "SidebarController.h"
+#include "Confirm.h"   // -- WP P1QT2 --
 
 #include "ChannelController.h"
 #include "Core.h"
@@ -649,7 +650,7 @@ void SidebarController::saveThenLoad(int previous, int slot) {
         QStringLiteral("preset load"),
         [previous, slot, stage, status](FfiCore *c) {
             nameIfEmpty(c, previous);
-            *status = dspi_save_preset(c, uint8_t(previous));
+            *status = Confirm::savePreset(c, uint8_t(previous));   // -- WP P1QT2 -- token
             if (*status != PRESET_OK) {
                 *stage = 1;
                 return false;
@@ -676,7 +677,7 @@ void SidebarController::savePreset() {
         QStringLiteral("preset save"),
         [slot](FfiCore *c) {
             nameIfEmpty(c, slot);
-            return dspi_save_preset(c, uint8_t(slot));
+            return Confirm::savePreset(c, uint8_t(slot));   // -- WP P1QT2 -- token
         },
         tr("Save Failed"), tr("Failed to save preset (%1)."));
 }
@@ -692,14 +693,14 @@ void SidebarController::copySlot(int sourceSlot, int destination, const QString 
             const uint64_t generation = dspi_connection_generation(c);
             if (save) {
                 nameIfEmpty(c, sourceSlot);
-                dspi_save_preset(c, uint8_t(sourceSlot));
+                Confirm::savePreset(c, uint8_t(sourceSlot));   // -- WP P1QT2 -- token
             } else if (discard) {
                 dspi_load_preset(c, uint8_t(sourceSlot));
             }
             // Another device came in meanwhile: stop
             if (dspi_connection_generation(c) != generation) return PRESET_OK;
             nameIfEmpty(c, destination);
-            return dspi_copy_preset(c, uint8_t(sourceSlot), uint8_t(destination));
+            return Confirm::copyPreset(c, uint8_t(sourceSlot), uint8_t(destination));   // -- WP P1QT2 -- token
         },
         tr("Copy Failed"), tr("Failed to copy preset (%1)."));
 }
@@ -723,7 +724,7 @@ void SidebarController::setDefaultPreset() {
 // factory defaults
 void SidebarController::clearPreset(int slot) {
     if (!presetOccupied(slot) || m_presetBusy) return;
-    runPreset(QStringLiteral("preset clear"), [slot](FfiCore *c) { return dspi_delete_preset(c, uint8_t(slot)); },
+    runPreset(QStringLiteral("preset clear"), [slot](FfiCore *c) { return Confirm::deletePreset(c, uint8_t(slot)); },
               tr("Clear Failed"), tr("Failed to clear preset (%1)."));
 }
 
@@ -738,7 +739,7 @@ void SidebarController::clearAllPresets() {
             uint8_t worst = PRESET_OK;
             for (int slot = 0; slot < MAX_PRESETS; ++slot) {
                 if (!(occupied >> slot & 1)) continue;
-                const uint8_t status = dspi_delete_preset(c, uint8_t(slot));
+                const uint8_t status = Confirm::deletePreset(c, uint8_t(slot));   // -- WP P1QT2 -- token
                 if (status != PRESET_OK) worst = status;
             }
             // The active slot again, now holding the factory defaults

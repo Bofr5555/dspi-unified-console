@@ -51,6 +51,9 @@ SpinBox {
         readOnly: !control.editable
         validator: control.validator
         inputMethodHints: Qt.ImhFormattedNumbersOnly
+        // -- WP P1QT2 -- the field Tab reaches carries the spin box's name too
+        Accessible.role: Accessible.EditableText
+        Accessible.name: control.label
     }
     down.indicator: Rectangle {
         x: 0

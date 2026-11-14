@@ -197,5 +197,24 @@ PopoverPanel {
             color: Theme.textMuted
             wrapMode: Text.Wrap
         }
+        // -- WP P1QT2 -- PRO1 S2's warning: an output above -10 dB of gain with no limiter
+        RowLayout {
+            objectName: "LimiterSettings.unprotected"
+            Layout.fillWidth: true
+            visible: ToolsController.unprotectedText.length > 0
+            spacing: Theme.spacingSmall
+            Icon {
+                name: "triangle-alert"
+                size: 14
+                color: Theme.warning
+            }
+            Text {
+                Layout.fillWidth: true
+                text: ToolsController.unprotectedText
+                font: Theme.fontCaption
+                color: Theme.text
+                wrapMode: Text.Wrap
+            }
+        }
     }
 }

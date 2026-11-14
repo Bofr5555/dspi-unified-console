@@ -1,6 +1,7 @@
 // -- WP QP15 -- The unsaved-changes question on every path that leaves the
 // live state (M42), settled first (SWF7)
 #include "UnsavedGuard.h"
+#include "Confirm.h"   // -- WP P1QT2 --
 
 #include "Core.h"
 #include "CoreWorker.h"
@@ -174,7 +175,7 @@ void UnsavedGuard::answer(const QString &answer) {
             char name[CHANNEL_NAME_LEN] = {};
             if (!dspi_get_preset_name(c, uint8_t(slot), name, sizeof name) || name[0] == 0)
                 dspi_set_preset_name(c, uint8_t(slot), fallback.constData());
-            *status = dspi_save_preset(c, uint8_t(slot));
+            *status = Confirm::savePreset(c, uint8_t(slot));   // -- WP P1QT2 -- token
             return *status == PRESET_OK;
         },
         [this, status](bool ok) {

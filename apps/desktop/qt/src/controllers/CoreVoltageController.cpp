@@ -1,5 +1,6 @@
 // -- WP QP23 -- The Core Voltage page's controller (CoreVoltageController.h).
 #include "CoreVoltageController.h"
+#include "Confirm.h"   // -- WP P1QT2 -- tokens for the stored voltage
 
 #include "Core.h"
 #include "CoreWorker.h"
@@ -264,7 +265,7 @@ void CoreVoltageController::keep(int soakS) {
 
 void CoreVoltageController::commit(const QString &typed) {
     const Typed word(typed);
-    request(QStringLiteral("core voltage commit"), [word](FfiCore *c) { return dspi_core_vreg_cal_commit(c, word.get()); });
+    request(QStringLiteral("core voltage commit"), [word](FfiCore *c) { return Confirm::vregCommit(c, word.get()); });
 }
 
 void CoreVoltageController::endTrial() {
@@ -274,7 +275,7 @@ void CoreVoltageController::endTrial() {
 void CoreVoltageController::manualSet(int code, const QString &typed) {
     const Typed word(typed);
     request(QStringLiteral("core voltage set"),
-            [word, code](FfiCore *c) { return dspi_core_vreg_manual_set(c, code8(code), word.get()); });
+            [word, code](FfiCore *c) { return Confirm::vregManualSet(c, code8(code), word.get()); });
 }
 
 void CoreVoltageController::manualTrial(int code, const QString &typed) {

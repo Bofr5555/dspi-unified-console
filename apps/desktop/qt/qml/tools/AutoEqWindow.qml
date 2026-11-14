@@ -6,19 +6,26 @@ import UConsole
 // AutoEQ > Browse Profiles... (AutoEQBrowser, 600×500): search the headphone
 // database, pick one, Apply sends its profile to inputs 1 and 2. The heart on
 // a row adds it to AutoEQ > Favorite Profiles.
+// -- WP P1QT2 -- Before Apply: the channel pair it goes to (any two inputs or
+// outputs, P1AQ) and the core's preview of what it would do, drawn on a graph
+// (nothing is sent until Apply; the outputs' gain is left alone).
 ToolWindow {
     id: window
     objectName: "AutoEqWindow"
     windowId: "autoeq"
     title: qsTr("AutoEQ - Browse Profiles")
     defaultWidth: 600
-    defaultHeight: 500
+    defaultHeight: 640
     minimumWidth: 450
-    minimumHeight: 350
+    minimumHeight: 460
 
     property string selectedId
     readonly property var selected: selectedId.length ? AutoEqController.profile(selectedId) : ({})
     readonly property bool hasSelection: selected.name !== undefined
+    // -- WP P1QT2 -- the core's preview of the selection on the chosen pair
+    readonly property var preview: AutoEqController.preview
+    readonly property bool previewShown: hasSelection && preview.profileId === selectedId
+    onSelectedIdChanged: AutoEqController.requestPreview(selectedId)
 
     function applySelected() {
         if (!hasSelection || !AutoEqController.canApply) return
@@ -146,6 +153,69 @@ ToolWindow {
                         //: %1 is the search text
                         : qsTr("No headphones found matching \"%1\"").arg(search.text)
                 }
+            }
+        }
+
+        // -- WP P1QT2 -- Where it goes, and what it would do there
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: 1
+            color: Theme.separator
+        }
+        ColumnLayout {
+            objectName: "AutoEqWindow.previewArea"
+            Layout.fillWidth: true
+            Layout.margins: Theme.spacingLarge
+            Layout.bottomMargin: Theme.spacing
+            spacing: Theme.spacingSmall
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spacingSmall
+                Text {
+                    text: qsTr("Apply to")
+                    font: Theme.fontBody
+                    color: Theme.text
+                }
+                AppComboBox {
+                    objectName: "AutoEqWindow.pair"
+                    Layout.preferredWidth: 260
+                    label: qsTr("Apply to")
+                    model: AutoEqController.pairs
+                    textRole: "title"
+                    currentIndex: AutoEqController.pair
+                    onActivated: index => AutoEqController.pair = index
+                }
+                Item { Layout.fillWidth: true }
+            }
+            EffectGraph {
+                objectName: "AutoEqWindow.preview"
+                Layout.fillWidth: true
+                implicitHeight: 130
+                title: qsTr("The profile's response on the chosen channels")
+                curves: window.previewShown
+                        ? window.preview.curves.map(c => ({ points: c.points, color: c.index === 0 ? Theme.accentText : Theme.warning }))
+                        : []
+                gridDb: window.previewShown ? window.preview.gridDb : []
+                gridY: window.previewShown ? window.preview.gridY : []
+                badge: window.previewShown ? qsTr("Preview") : ""
+                Text {
+                    anchors.centerIn: parent
+                    visible: !window.previewShown
+                    text: qsTr("Select a headphone to see what it would do")
+                    font: Theme.fontSmall
+                    color: Theme.textMuted
+                }
+            }
+            Text {
+                objectName: "AutoEqWindow.previewText"
+                Layout.fillWidth: true
+                visible: text.length > 0
+                text: window.previewShown
+                      ? [window.preview.levelText, window.preview.notes].filter(t => t && t.length).join("\n")
+                      : ""
+                font: Theme.fontCaption
+                color: Theme.textMuted
+                wrapMode: Text.Wrap
             }
         }
 
