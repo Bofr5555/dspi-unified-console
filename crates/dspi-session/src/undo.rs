@@ -42,6 +42,16 @@ pub struct Undone {
 }
 
 impl Undone {
+    // -- WP TMCORE --
+    /// A route's step, as the session reports its own.
+    fn routed(step: crate::route::RoutedStep) -> Self {
+        Self {
+            command: step.command,
+            outcome: None,
+            skipped: step.skipped,
+        }
+    }
+
     /// Whether anything actually changed on the device.
     pub fn moved(&self) -> bool {
         self.command.is_some()
@@ -53,6 +63,10 @@ impl Session {
     ///
     /// Returns `Ok(None)` when there is no history at all.
     pub fn undo(&mut self) -> Result<Option<Undone>, WriteError> {
+        // -- WP TMCORE -- the route keeps the history
+        if let Some(step) = self.routed_step(false) {
+            return step.map(|s| s.map(Undone::routed));
+        }
         // -- WP P0W -- the walk is the journal's (`history.rs`), shared with
         // the embedder API's undo.
         let step = self.take_undo();
@@ -123,6 +137,10 @@ impl Session {
 
     /// Re-apply the change that undo most recently reversed.
     pub fn redo(&mut self) -> Result<Option<Undone>, WriteError> {
+        // -- WP TMCORE --
+        if let Some(step) = self.routed_step(true) {
+            return step.map(|s| s.map(Undone::routed));
+        }
         let Some(entry) = self.take_redo() else {
             return Ok(None);
         };

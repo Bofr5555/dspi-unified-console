@@ -485,6 +485,23 @@ fn volume_mode_of(choice: crate::settings::config::VolumeChoice) -> VolumeMode {
     }
 }
 
+// -- WP TMCORE --
+/// The undo step's name for a block of writes with no note of its own.
+const GROUP_LABEL: &str = "Edit";
+
+// -- WP TMCORE --
+/// The undo step's name for a block of lines: its last `#` note, which says
+/// what the gesture did, or [`GROUP_LABEL`].
+fn group_label(lines: &str) -> String {
+    lines
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix('#'))
+        .next_back()
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| GROUP_LABEL.to_string())
+}
+
 fn needs_confirming(desc: &dspi_proto::registry::ParamDesc) -> bool {
     matches!(
         desc.hazard,
@@ -727,6 +744,11 @@ pub struct Live {
     /// A stopped clock for the write gate, so a test can hold a key at a
     /// chosen rate.
     clock: Option<Instant>,
+    // -- WP TMCORE --
+    /// How a device is opened again (a switch, a reconnect) when the
+    /// embedder opens it otherwise than [`Target::connect`]: the Terminal
+    /// puts it on a console core and routes the session's writes there.
+    opener: Option<std::sync::Arc<connect::TargetOpener>>,
 }
 
 impl Live {
@@ -791,9 +813,36 @@ impl Live {
             volume_choice: config.volume.mode,
             gate: WriteGate::default(),
             clock: None,
+            // -- WP TMCORE --
+            opener: None,
         };
         live.sync_model();
         live
+    }
+
+    // -- WP TMCORE --
+    /// Open devices with `open` from now on (a switch, a reconnect), in
+    /// place of [`Target::connect`]. Call before [`Live::set_connection`].
+    pub fn set_opener(&mut self, open: std::sync::Arc<connect::TargetOpener>) {
+        self.opener = Some(open);
+    }
+
+    // -- WP TMCORE --
+    /// The way back to `target`: through the embedder's opener when it set one.
+    fn reconnector(&self, target: Target) -> Reconnector {
+        match &self.opener {
+            Some(open) => Reconnector::with_open(target, std::sync::Arc::clone(open)),
+            None => Reconnector::new(target),
+        }
+    }
+
+    // -- WP TMCORE --
+    /// Open `target` now, as a device switch does.
+    fn open_target(&self, target: &Target) -> Result<connect::Connected, connect::OpenError> {
+        match &self.opener {
+            Some(open) => open(target),
+            None => target.connect(&connect::no_prompt),
+        }
     }
 
     /// Project the device state into the shell's model.
@@ -1194,6 +1243,11 @@ impl Live {
             self.confirm_block(&commands, note);
             return;
         }
+        // -- WP TMCORE -- (O6) one gesture of several writes is one undo step
+        let group = (commands.len() > 1).then(|| group_label(lines));
+        if let Some(label) = &group {
+            session.begin_group(label);
+        }
         let mut note = None;
         for line in lines.lines() {
             let line = line.trim();
@@ -1204,6 +1258,9 @@ impl Live {
                 Some(text) => note = Some(text.trim().to_string()),
                 None => self.run_command(session, line),
             }
+        }
+        if group.is_some() {
+            session.end_group();
         }
         if let Some(note) = note {
             self.note(note);
@@ -1283,6 +1340,8 @@ impl Live {
     fn run_block(&mut self, session: &mut Session, lines: Vec<BlockLine>, note: Option<String>) {
         let mut written = Vec::new();
         let mut failure = None;
+        // -- WP TMCORE -- (O6) the confirmed block is one undo step
+        session.begin_group(note.as_deref().unwrap_or(GROUP_LABEL));
         let mut rest = lines.into_iter();
         for w in rest.by_ref() {
             if self.write_set(session, w.path, &w.indices, w.value) {
@@ -1293,6 +1352,7 @@ impl Live {
                 break;
             }
         }
+        session.end_group();
         self.tell_written(session, &written);
         let Some((failed, why)) = failure else {
             if let Some(note) = note {
@@ -1641,7 +1701,8 @@ impl Live {
             // hub that gave up. Only USB has a device to switch to by serial.
             "reconnect" if self.offline_from_hub() => {
                 if self.reconnect.is_none() {
-                    self.reconnect = self.target.clone().map(Reconnector::new);
+                    // -- WP TMCORE -- through the embedder's opener
+                    self.reconnect = self.target.clone().map(|t| self.reconnector(t));
                     self.echo(String::new());
                 }
                 self.sync_model();
@@ -1880,6 +1941,16 @@ impl Live {
     /// old state. The end is its `BULK_INVALIDATED` (flash_storage.c:4375).
     fn load_preset(&mut self, session: &mut Session, slot: u8) -> bool {
         self.flush_writes(session, true);
+        // -- WP TMCORE -- a routed session loads through its route (the
+        // console core: allowed while locked, waits for the load, holds the
+        // slot's values to the limits profile)
+        if session.is_routed() {
+            if let Err(e) = session.write("preset.load", &[slot], Value::Trigger) {
+                self.note(format!("Load Failed: {e}"));
+                return false;
+            }
+            return self.loaded(session, slot);
+        }
         let status = session.with_transport(|t| {
             t.control_in(
                 dspi_proto::generated::opcodes::REQ_PRESET_LOAD,
@@ -1893,6 +1964,12 @@ impl Live {
             return false;
         }
         self.wait_for_bulk(Source::Preset);
+        self.loaded(session, slot)
+    }
+
+    // -- WP TMCORE -- (the end of `load_preset`, shared with the routed load)
+    /// After a load of `slot`: the image read again and the slot checked.
+    fn loaded(&mut self, session: &mut Session, slot: u8) -> bool {
         if !self.refresh(session) {
             self.state.stale = true;
             return false;
@@ -2350,7 +2427,10 @@ impl Live {
                     // configuration (PresetDocumentTransfer.swift:438).
                     self.state.begin_limiter_edit();
                 }
+                // -- WP TMCORE -- one undo step for the whole import
+                session.begin_group("Import Device Configuration");
                 let report = dspi_session::preset_file::apply(session, &doc, options);
+                session.end_group();
                 // The pair links are the app's, so the device apply leaves
                 // them here (PresetDocumentTransfer.swift:367-375).
                 let mut shared = self.shared.borrow_mut();
@@ -2691,7 +2771,7 @@ impl Live {
         self.shell.model.ext = connect::ext_label(ext);
         self.echo = EchoFilter::default();
         self.echo.set_bulk_source(ext.bulk_source());
-        self.reconnect = Some(Reconnector::new(target.clone()));
+        self.reconnect = Some(self.reconnector(target.clone())); // -- WP TMCORE --
         self.target = Some(target);
         self.offline = false;
     }
@@ -3558,7 +3638,8 @@ pub fn run(mut live: Live, session: &mut Session) -> io::Result<()> {
                 let target = Target::Usb {
                     serial: Some(serial.clone()),
                 };
-                match target.connect(&connect::no_prompt) {
+                // -- WP TMCORE -- through the embedder's opener
+                match live.open_target(&target) {
                     Ok(next) => {
                         *session = next.session;
                         live.adopt(session, next.state);

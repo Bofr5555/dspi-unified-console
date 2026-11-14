@@ -378,7 +378,8 @@ fn print_lock(st: &LockState, json: bool) {
     let state = if st.unlocked {
         "unlocked for this command"
     } else if st.locked {
-        "locked: the core's commands may change only volume, mute and presets"
+        // -- WP TMCORE -- every write of this Terminal is held to it now
+        "locked: only volume, mute and presets can be changed"
     } else {
         "set; the Installer settings need it"
     };
@@ -400,15 +401,10 @@ fn print_lock(st: &LockState, json: bool) {
     if !st.detail.is_empty() {
         println!("  {}", printable(&st.detail));
     }
-    // -- WP P1EFIX -- (review p1e-b F4) the Terminal's own gap, said plainly (TMCORE)
-    println!("  {TERMINAL_GAP}");
+    // -- WP TMCORE -- (was P1EFIX's gap line) every write of this Terminal
+    // goes through the core now: `set`, `eq`, scripts and the interface too
     println!("{}", scope(st));
 }
-
-// -- WP P1EFIX --
-/// What the lock does not hold yet in this Terminal (WP TMCORE closes it).
-pub(crate) const TERMINAL_GAP: &str = "Not yet checked in this Terminal: its single writes (set, eq, \
-     scripts, the TUI) are not checked against the lock or the limits profile.";
 
 fn unlock(core: &DspiCore, pins: &mut Pins<'_>, json: bool) -> u8 {
     let st = core.installer_lock_state();

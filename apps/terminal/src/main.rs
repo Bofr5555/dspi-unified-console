@@ -108,6 +108,8 @@ mod hub;
 mod diag;
 // -- WP P1TM --
 mod pro;
+// -- WP TMCORE -- the write path through the console core
+mod core_route;
 
 use dspi_cmd::COMMAND;
 use std::process::ExitCode;
@@ -706,6 +708,9 @@ OPTIONS:
     --keep-going             in a script, carry on past a failing line
     --force                  agree to a change that needs a decision, such as
                              an output enable that turns another one off
+    --yes                    confirm a dangerous write (preset save or delete,
+                             dev.save, dev.save.io, dev.reset, dev.bootloader)
+                             in a script; on a terminal it asks
 "
     );
 }
@@ -1038,12 +1043,20 @@ fn cmd_tui(target: &Target, flags: &[&str], palette: dspi_tui::theme::Palette) -
         return run_tui(&mut session, state, None, None, lite, no_animation, palette);
     }
 
+    // -- WP TMCORE -- The device is opened on the console core, and the
+    // interface's session writes through it (limits, lock, tokens, undo
+    // groups); a switch or a reconnect opens the same way.
     // One bulk read seeds everything the packet covers, so the first frame
     // shows the person's tuning rather than a flat line.
-    let mut c = match target.connect(&prompt_pin) {
+    let opened = match core_route::open_core(target, &pro::Stores::default_dirs(), &prompt_pin) {
+        Ok(o) => o,
+        Err(e) => return e.report(),
+    };
+    let mut c = match core_route::connected_on(&opened) {
         Ok(c) => c,
         Err(e) => return fail_open(e),
     };
+    drop(opened);
     // -- WP TM9 -- The target as reached: with the hub's id, for a reconnect.
     let reached = c.link.clone().map_or_else(|| target.clone(), Target::Link);
     let link = Some((&reached, &c.ext));
@@ -1106,6 +1119,8 @@ fn run_tui(
         Box::new(dspi_tui::live::ConsoleScreens::new()),
     );
     if let Some((target, ext)) = connection {
+        // -- WP TMCORE -- a device the interface opens again goes on a core too
+        live.set_opener(std::sync::Arc::new(core_route::open_connected));
         live.set_connection(target, ext);
     }
     if let Some(file) = document {
@@ -1439,7 +1454,8 @@ fn cmd_autoeq(target: &Target, args: &[&str], flags: &[&str]) -> u8 {
 /// plan (`Entry::plan`), so a shape this build does not know is cleared
 /// rather than left over from before.
 fn autoeq_one_channel(target: &Target, entry: &dspi_session::autoeq::Entry, name: &str) -> u8 {
-    let mut session = match connect(target) {
+    // -- WP TMCORE -- the bands go through the console core
+    let mut session = match connect_written(target, &[]) {
         Ok(s) => s,
         Err(c) => return c,
     };
@@ -1455,6 +1471,8 @@ fn autoeq_one_channel(target: &Target, entry: &dspi_session::autoeq::Entry, name
     };
     let plan = entry.plan(caps.max_bands);
     let mut failed = Vec::new();
+    // -- WP TMCORE -- one undo step
+    session.begin_group("AutoEQ");
     if let Err(e) = session.write("pre", &[ch], Value::Float(plan.preamp_db)) {
         failed.push(format!("preamp: {e}"));
     }
@@ -1481,6 +1499,7 @@ fn autoeq_one_channel(target: &Target, entry: &dspi_session::autoeq::Entry, name
             failed.push(format!("band {}: {e}", u16::from(i) + 1));
         }
     }
+    session.end_group();
     println!(
         "Applied {} to {}: {applied} bands, preamp {:+.1} dB",
         entry.id,
@@ -1569,7 +1588,14 @@ fn cmd_ext(target: &Target, args: &[&str], json: bool, word: Option<&str>) -> u8
         }
     };
 
-    let mut session = match connect(target) {
+    // -- WP TMCORE -- the pair map is written through the console core (its
+    // lock); the voltage keeps its own path and word (CG14)
+    let opened = if matches!(action, Do::MapWrite(_)) {
+        connect_written(target, &[])
+    } else {
+        connect(target)
+    };
+    let mut session = match opened {
         Ok(s) => s,
         Err(c) => return c,
     };
@@ -1991,9 +2017,11 @@ fn raw_out(target: &Target, args: &[&str], json: bool) -> u8 {
     }
 
     // -- WP TM4 --
-    let mut t = match target.open_raw(&prompt_pin) {
+    // -- WP TMCORE -- a write goes through the console core (its lock and
+    // read-only state)
+    let mut t = match core_route::raw_transport(target) {
         Ok(t) => t,
-        Err(e) => return fail_open(e),
+        Err(c) => return c,
     };
 
     match t.control_out(opcode as u8, value as u16, &payload) {
@@ -2035,9 +2063,11 @@ fn raw_war(target: &Target, args: &[&str], json: bool) -> u8 {
     let value = args.get(1).and_then(|v| parse_num(v)).unwrap_or(0) as u16;
 
     // -- WP TM4 --
-    let mut t = match target.open_raw(&prompt_pin) {
+    // -- WP TMCORE -- a write goes through the console core (its lock and
+    // read-only state)
+    let mut t = match core_route::raw_transport(target) {
         Ok(t) => t,
-        Err(e) => return fail_open(e),
+        Err(c) => return c,
     };
 
     match t.control_in(opcode as u8, value, 1) {
@@ -2136,7 +2166,8 @@ fn cmd_completions(args: &[&str]) -> u8 {
 /// works with the names the device actually reports.
 fn cmd_run(target: &Target, flags: &[&str], json: bool) -> u8 {
     let args = positional_all(flags);
-    let mut s = match connect(target) {
+    // -- WP TMCORE -- the write goes through the console core
+    let mut s = match connect_written(target, flags) {
         Ok(s) => s,
         Err(c) => return c,
     };
@@ -2194,7 +2225,8 @@ fn cmd_script(target: &Target, path: Option<&str>, flags: &[&str], json: bool) -
         return exit::OK;
     }
 
-    let mut s = match connect(target) {
+    // -- WP TMCORE -- every line's write goes through the console core
+    let mut s = match connect_written(target, flags) {
         Ok(s) => s,
         Err(c) => return c,
     };
@@ -2316,7 +2348,7 @@ fn run(s: &mut Session, cmd: Command, json: bool, quiet: bool, force: bool) -> u
                 }
                 Ok(None) => {}
                 Err(e) => {
-                    eprintln!("{COMMAND}: {e}");
+                    say_write(&e);
                     return write_exit(&e);
                 }
             }
@@ -2333,7 +2365,7 @@ fn run(s: &mut Session, cmd: Command, json: bool, quiet: bool, force: bool) -> u
                     exit::OK
                 }
                 Err(e) => {
-                    eprintln!("{COMMAND}: {e}");
+                    say_write(&e);
                     write_exit(&e)
                 }
             }
@@ -2362,7 +2394,7 @@ fn run(s: &mut Session, cmd: Command, json: bool, quiet: bool, force: bool) -> u
                         exit::OK
                     }
                     Err(e) => {
-                        eprintln!("{COMMAND}: {e}");
+                        say_write(&e);
                         write_exit(&e)
                     }
                 };
@@ -2393,7 +2425,7 @@ fn run(s: &mut Session, cmd: Command, json: bool, quiet: bool, force: bool) -> u
                     exit::OK
                 }
                 Err(e) => {
-                    eprintln!("{COMMAND}: {e}");
+                    say_write(&e); // -- WP TMCORE --
                     if let dspi_session::WriteError::Core1Conflict { confirm, .. } = &e {
                         eprintln!("      Re-run with --force to {confirm}.");
                     }
@@ -2439,7 +2471,7 @@ fn run(s: &mut Session, cmd: Command, json: bool, quiet: bool, force: bool) -> u
                     exit::OK
                 }
                 Err(e) => {
-                    eprintln!("{COMMAND}: {e}");
+                    say_write(&e);
                     write_exit(&e)
                 }
             }
@@ -2465,7 +2497,7 @@ fn run(s: &mut Session, cmd: Command, json: bool, quiet: bool, force: bool) -> u
                 exit::OK
             }
             Err(e) => {
-                eprintln!("{COMMAND}: {e}");
+                say_write(&e);
                 write_exit(&e)
             }
         },
@@ -2482,7 +2514,7 @@ fn run(s: &mut Session, cmd: Command, json: bool, quiet: bool, force: bool) -> u
                 exit::OK
             }
             Err(e) => {
-                eprintln!("{COMMAND}: {e}");
+                say_write(&e);
                 write_exit(&e)
             }
         },
@@ -2588,6 +2620,26 @@ fn connect(target: &Target) -> Result<Session, u8> {
     target.open_session(&prompt_pin).map_err(fail_open)
 }
 
+// -- WP TMCORE --
+/// A session for a command that writes: the device opened on the console
+/// core, every write through it (`core_route`). A dangerous write asks on a
+/// terminal, and takes `--yes` in a script.
+fn connect_written(target: &Target, flags: &[&str]) -> Result<Session, u8> {
+    core_route::connect_routed(target, core_route::Confirm::for_command(yes(flags)))
+}
+
+// -- WP TMCORE --
+/// `--yes`: the dangerous writes of this command are confirmed.
+fn yes(flags: &[&str]) -> bool {
+    flags.contains(&"--yes")
+}
+
+// -- WP TMCORE --
+/// Say why a write failed, with the core's action line when it has one.
+fn say_write(e: &dspi_session::WriteError) {
+    core_route::say(e);
+}
+
 /// Distinguish "you typed something wrong" from "the device is unhappy".
 ///
 /// A script needs to tell these apart: bad input is worth reporting to a human,
@@ -2611,6 +2663,13 @@ fn write_exit(e: &dspi_session::WriteError) -> u8 {
         W::Unsettled { .. } => exit::TRANSPORT,
         // -- WP LK4 -- not sent; the device's capabilities are still being read: retry
         W::Unprobed { .. } => exit::TRANSPORT,
+        // -- WP TMCORE -- the console core's refusal or failure
+        W::Routed { kind, .. } => match kind {
+            dspi_session::RouteFailure::Input => exit::USAGE,
+            dspi_session::RouteFailure::Refused => exit::REJECTED,
+            dspi_session::RouteFailure::NoDevice => exit::NO_DEVICE,
+            dspi_session::RouteFailure::Transport => exit::TRANSPORT,
+        },
     }
 }
 

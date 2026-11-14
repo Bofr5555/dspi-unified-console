@@ -15,11 +15,11 @@
 //! for that command only, so `limits set` and `lock set-pin` ask for the PIN
 //! themselves when one is set. With no PIN set nothing asks.
 //!
-//! Over DSPi Link the core is opened on the hub's device transport, not a
-//! core Link session: the hub judges every write against its own limits and
-//! lock as it does for any client, but the hub's guard (P1HA) and its lock
-//! state (`heldBy: hub`) are not seen here; a guarded import is timed by
-//! this command alone.
+//! Over DSPi Link the core opens its own DSPi Link session to the hub (WP
+//! TMCORE): the hub judges every write against its own limits and lock as it
+//! does for any client, its lock state is seen (`heldBy: hub`), and a guarded
+//! import or recall is guarded by the hub too (P1HA, `hub: true`, the
+//! `guard.hub_backstop` line).
 #![warn(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -81,6 +81,9 @@ pub(crate) struct Opened {
     pub core: Arc<DspiCore>,
     /// The device's serial, as its transport describes it.
     pub serial: String,
+    // -- WP TMCORE --
+    /// Keeps the device (and a DSPi Link session) open for the command.
+    pub _handle: Arc<crate::core_route::CoreHandle>,
 }
 
 /// A core with this console's folders named and confirmation tokens
@@ -102,14 +105,16 @@ pub(crate) fn prepare(stores: &Stores) -> Result<Arc<DspiCore>, u8> {
 
 /// Open the target on a prepared core: the probe and the settings read, then
 /// the lock state (from the hub when it holds one; nothing asked otherwise).
+/// -- WP TMCORE -- a hub's device is the core's own DSPi Link session
+/// (`core_route::open_core`): `heldBy: hub`, the hub's guard and backstop.
 pub(crate) fn open(target: &Target, stores: &Stores) -> Result<Opened, u8> {
-    let core = prepare(stores)?;
-    let transport = target.open(&crate::prompt_pin).map_err(crate::fail_open)?;
-    let serial = transport.descriptor().serial.clone();
-    core.open_transport(transport, serial.clone(), 0)
-        .map_err(|e| fail(&e))?;
-    let _ = core.installer_lock_refresh();
-    Ok(Opened { core, serial })
+    let opened = crate::core_route::open_core(target, stores, &crate::prompt_pin)
+        .map_err(crate::core_route::OpenFailure::report)?;
+    Ok(Opened {
+        core: Arc::clone(&opened.handle.core),
+        serial: opened.handle.serial.clone(),
+        _handle: opened.handle,
+    })
 }
 
 /// Say why a core call failed, in the notice table's words where it has a
@@ -124,7 +129,7 @@ pub(crate) fn fail(e: &DspiError) -> u8 {
 }
 
 /// The notices whose action line adds to the error's own words.
-fn explained(key: &str) -> bool {
+pub(crate) fn explained(key: &str) -> bool {
     key.starts_with("installer_lock")
         || key.starts_with("limit")
         || matches!(key, "confirmation_required" | "image_refused")
@@ -512,6 +517,13 @@ pub(crate) fn wait_guard(
     g
 }
 
+// -- WP TMCORE --
+/// The `guard.hub_backstop` row's sentence: the hub puts the settings back
+/// too if this console goes away.
+pub(crate) fn backstop_line() -> String {
+    dspi_core::notice_for_key(dspi_core::NOTICE_GUARD_HUB_BACKSTOP.into(), String::new()).reason
+}
+
 /// Report how a guard ended, and its exit code: kept is success, reverted
 /// is a refusal, the rest a transport failure.
 pub(crate) fn report_guard(g: &GuardedApply, json: bool) -> u8 {
@@ -559,6 +571,10 @@ pub(crate) fn guard_on_stdin(core: &DspiCore, started: GuardedApply, json: bool)
                  within {} s, or it goes back",
                 started.remaining_ms.div_ceil(1000)
             );
+        }
+        // -- WP TMCORE -- the hub guards it too (P1HA): the core's row says so
+        if started.hub {
+            eprintln!("{COMMAND}: {}", backstop_line());
         }
     }
     let answers = stdin_answers();

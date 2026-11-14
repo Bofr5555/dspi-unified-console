@@ -94,6 +94,17 @@ pub enum WriteError {
     )]
     Unprobed { path: String },
 
+    // -- WP TMCORE --
+    /// The session's [`crate::WriteRoute`] refused or failed the write, in
+    /// its own words (`reason`). `action` is a line saying what to do about
+    /// it ("" for none).
+    #[error("{reason}")]
+    Routed {
+        reason: String,
+        action: String,
+        kind: crate::route::RouteFailure,
+    },
+
     #[error("{0}")]
     Value(#[from] ValueError),
 
@@ -377,6 +388,9 @@ pub struct Session {
     /// Moves on every change to the journal or the stacks
     /// ([`Session::history_version`]).
     pub(crate) history_version: u64,
+    // -- WP TMCORE --
+    /// Where writes go instead of the transport ([`Session::set_route`]).
+    route: Option<Box<dyn crate::route::WriteRoute>>,
 }
 
 impl Session {
@@ -398,7 +412,58 @@ impl Session {
             // -- WP P0W --
             replay_source: crate::history::ChangeSource::Undo,
             history_version: 0,
+            // -- WP TMCORE --
+            route: None,
         })
+    }
+
+    // -- WP TMCORE --
+    /// Send this session's writes through `route` from now on (`None`: the
+    /// transport again). See [`crate::route`].
+    pub fn set_route(&mut self, route: Option<Box<dyn crate::route::WriteRoute>>) {
+        self.route = route;
+    }
+
+    // -- WP TMCORE --
+    /// Whether a [`crate::WriteRoute`] takes this session's writes.
+    pub fn is_routed(&self) -> bool {
+        self.route.is_some()
+    }
+
+    // -- WP TMCORE --
+    /// Begin an undo group on the route: the writes until the matching
+    /// [`Session::end_group`] are one undo step called `label`. Nothing
+    /// without a route, or in a dry run.
+    pub fn begin_group(&mut self, label: &str) {
+        if self.dry_run {
+            return;
+        }
+        if let Some(r) = self.route.as_mut() {
+            r.begin_group(label);
+        }
+    }
+
+    // -- WP TMCORE --
+    /// End the group [`Session::begin_group`] began.
+    pub fn end_group(&mut self) {
+        if self.dry_run {
+            return;
+        }
+        if let Some(r) = self.route.as_mut() {
+            r.end_group();
+        }
+    }
+
+    // -- WP TMCORE --
+    /// The route's undo or redo, when there is a route.
+    pub(crate) fn routed_step(
+        &mut self,
+        redo: bool,
+    ) -> Option<Result<Option<crate::route::RoutedStep>, WriteError>> {
+        if self.dry_run {
+            return None;
+        }
+        self.route.as_mut().map(|r| r.step(redo))
     }
 
     pub fn capabilities(&self) -> &Capabilities {
@@ -496,6 +561,14 @@ impl Session {
                 body: c.body,
                 confirm: c.confirm,
             });
+        }
+
+        // -- WP TMCORE -- the route writes (and journals) it; a dry run stays here
+        if !self.dry_run
+            && let Some(r) = self.route.as_mut()
+            && let Some(routed) = r.write(d.path, indices, &value)
+        {
+            return routed;
         }
 
         // A write that cannot be reversed has no use for what it replaces, and
@@ -671,6 +744,10 @@ impl Session {
         }
         if self.dry_run {
             return Ok(Outcome::Accepted);
+        }
+        // -- WP TMCORE --
+        if let Some(r) = self.route.as_mut() {
+            return r.write_band(packet);
         }
         self.transport
             .control_out(op::REQ_SET_EQ_PARAM, 0, &packet.encode())?;

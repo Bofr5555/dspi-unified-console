@@ -1912,6 +1912,143 @@ mod tests_wp_tm11 {
         assert_eq!(running.name, "TM11 test hub");
         assert_eq!(running.handle.name(), "TM11 test hub");
     }
+
+    // -- WP TMCORE --
+    /// The Terminal's write path on a hub's device: the core's own DSPi Link
+    /// session (`core_route::open_core`), with the hub's guard, the hub's lock
+    /// (`heldBy: hub`) and the interface's undo groups.
+    mod tmcore {
+        use super::*;
+        use crate::core_route::{self, Confirm};
+        use crate::pro::Stores;
+        use dspi_proto::value::Value;
+        use dspi_session::{RouteFailure, WriteError};
+
+        fn line(s: &dspi_session::Session, path: &'static str, ix: &[u8], v: Value) -> String {
+            dspi_cmd::format(
+                &dspi_cmd::Command::Set {
+                    path,
+                    indices: ix.to_vec(),
+                    value: v,
+                },
+                &crate::context_for(s),
+            )
+        }
+
+        #[test]
+        #[allow(clippy::too_many_lines)]
+        fn wp_tmcore_a_hub_device_opens_as_a_core_dlink_session() {
+            let store = scratch("tmcore");
+            let running = start(&demo_options(&store), false).unwrap();
+            let port = running.control.port();
+            let pin = pin_of(&running);
+            let stores = Stores::under(&store.join("console"));
+            let open = |t: &Target| {
+                core_route::open_core(t, &stores, &no_prompt)
+                    .expect("the hub's device opens on a core")
+            };
+
+            // Paired with the PIN, the token kept, the device bound: the core's
+            // own session, as `control`.
+            let o = open(&client(port, Some(&pin), &store));
+            let core = std::sync::Arc::clone(&o.handle.core);
+            assert_eq!(core.link_hub_role(), "control");
+            assert!(o.reached.as_ref().is_some_and(|l| l.hub_id.is_some()));
+            assert!(core.apply_guard_default(), "the hub offers its guard");
+
+            // A guarded recall is guarded by the hub too (P1HA): `hub: true`.
+            let snap = core
+                .snapshot_capture("TMCORE".into(), String::new())
+                .unwrap();
+            let g = core.apply_guarded_snapshot(snap.id.clone(), 30).unwrap();
+            assert!(g.hub, "{g:?}");
+            assert!(!crate::pro::backstop_line().is_empty());
+            core.apply_confirm().unwrap();
+
+            // The interface on it: a compound edit is one undo step.
+            let mut c = core_route::connected_on(&o).unwrap();
+            let theme = dspi_tui::Theme::console(
+                dspi_tui::theme::ColorDepth::TrueColor,
+                dspi_tui::theme::Glyphs::Braille,
+            );
+            let mut live = dspi_tui::live::Live::new(
+                c.state,
+                theme,
+                dspi_tui::perf::Performance::default(),
+                Box::new(dspi_tui::live::ConsoleScreens::with_config_path(
+                    store.join("config.toml"),
+                )),
+            );
+            let s = &mut c.session;
+            let gain = |o: usize| core.get_state().output_gain_db[o];
+            let (g0, g1) = (gain(0), gain(1));
+            let block = format!(
+                "{}\n{}\n# Pair",
+                line(s, "out.gain", &[0], Value::Float(-5.0)),
+                line(s, "out.gain", &[1], Value::Float(-6.0)),
+            );
+            live.run_commands(s, &block);
+            assert!((gain(0) + 5.0).abs() < 0.05 && (gain(1) + 6.0).abs() < 0.05);
+            live.run_command(s, "undo");
+            assert!((gain(0) - g0).abs() < 0.05, "{}", gain(0));
+            assert!((gain(1) - g1).abs() < 0.05, "{}", gain(1));
+            drop(c.session);
+            drop(live);
+            drop(core);
+            drop(o);
+
+            // The installer, made admin, gives the hub a profile that locks the
+            // front panel and a PIN.
+            let cid = running.control.auth().clients()[0].cid;
+            assert!(command(&running, &format!("role {cid} admin"), false));
+            let o = open(&client(port, None, &store));
+            let core = std::sync::Arc::clone(&o.handle.core);
+            assert_eq!(core.link_hub_role(), "admin");
+            let handle = core.link_devices()[0].handle;
+            let profile: serde_json::Value = serde_json::from_str(
+                &dspi_session::limits::LimitsProfile {
+                    locked_pages: vec!["front".into()],
+                    ..Default::default()
+                }
+                .to_document(),
+            )
+            .unwrap();
+            let mut f = serde_json::Map::new();
+            f.insert("handle".into(), handle.into());
+            f.insert("profile".into(), profile);
+            core.link_hub_request("limits.set", f).unwrap();
+            let mut f = serde_json::Map::new();
+            f.insert("handle".into(), handle.into());
+            f.insert("pin".into(), "4711-door".into());
+            core.link_hub_request("limits.pin", f).unwrap();
+            drop(core);
+            drop(o);
+
+            // Back as `control`: the hub holds the lock, and a write past it is
+            // refused with the banner's line.
+            assert!(command(&running, &format!("role {cid} control"), false));
+            let o = open(&client(port, None, &store));
+            let lock = o.handle.core.installer_lock_state();
+            assert_eq!(lock.held_by, "hub", "{lock:?}");
+            assert!(lock.locked, "{lock:?}");
+            let mut s = core_route::session_on(&o, Confirm::Refuse).unwrap();
+            let e = s.write("out.gain", &[0], Value::Float(-1.0)).unwrap_err();
+            let banner =
+                dspi_core::notice_for_key(dspi_core::LOCK_BANNER_NOTICE.into(), String::new())
+                    .reason;
+            assert_eq!(e.to_string(), banner);
+            assert!(matches!(
+                e,
+                WriteError::Routed {
+                    kind: RouteFailure::Refused,
+                    ..
+                }
+            ));
+            // Inside the lock's scope, the write goes.
+            assert!(s.write("vol.master", &[], Value::Float(-10.0)).is_ok());
+            assert!(!command(&running, "quit", false));
+        }
+    }
 }
 
 #[cfg(test)]
