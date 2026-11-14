@@ -441,6 +441,8 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
             Ok(tidy(&dspi_core::notice_for_key(p.key, p.detail)))
         }
         "noticeTexts" => Ok(tidy(&dspi_core::notice_texts())),
+        // -- WP P1EFIX -- the limits editor's one range table
+        "limitsFieldRanges" => Ok(tidy(&dspi_core::limits_field_ranges())),
         // -- WP P1TK -- confirmation tokens (dspi_core::confirm)
         "confirmToken" => {
             #[derive(Deserialize)]

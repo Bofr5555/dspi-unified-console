@@ -362,6 +362,11 @@ final class ImportPreviewModel: ObservableObject, Identifiable {
     /// With a way back: the user's choice, or always over DSPi Link.
     var withRollback: Bool { guarded || guardDefault }
 
+    // -- WP P1EFIX -- (review p1e-b F5) a file the core could not preview is
+    // never sent: Import is off, whatever is chosen
+    /// Import may be pressed: the preview read the file and a block is chosen.
+    var canApply: Bool { diff.ok && !selected.isEmpty }
+
     var countLine: String {
         if !diff.ok { return diff.error }
         if diff.rows.isEmpty { return "Nothing in this file differs from the device." }
@@ -382,7 +387,7 @@ struct ImportPreviewView: View {
                 Button("Cancel", action: cancel)
                 Button(model.withRollback ? "Apply with rollback" : "Import", action: apply)
                     .buttonStyle(.borderedProminent)
-                    .disabled(model.selected.isEmpty)
+                    .disabled(!model.canApply)
                     .accessibilityIdentifier("importPreviewApply")
             }
             if !model.name.isEmpty { Text(model.name).font(.headline) }
@@ -492,6 +497,7 @@ enum ImportPreview {
     /// confirmation token.
     static func apply(_ model: ImportPreviewModel, vm: DSPViewModel, snaps: CoreSnapshots = .shared,
                       done: @escaping (Bool) -> Void = { _ in }) {
+        guard model.canApply else { return done(false) }   // -- WP P1EFIX --
         let options = ImportBlock.options(model.selected)
         if model.withRollback {
             snaps.beginGuardedImport(model.text, options: options, done: done)

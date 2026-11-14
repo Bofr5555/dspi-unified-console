@@ -99,6 +99,8 @@ fn wp_p1pr_protect_all_outputs_is_one_undo_step() {
 
     let m = core.undo().unwrap();
     assert_eq!(m.entry.unwrap().label.as_deref(), Some(PROTECT_LABEL));
+    // -- WP P1EFIX -- every client shows the note: the limiters stay on
+    assert_eq!(m.note.as_deref(), Some(crate::journal::PROTECT_UNDONE_NOTE));
     let undone = limiter_rows(&core);
     let kept_on: Vec<_> = before.iter().map(|&(_, t, r, g)| (true, t, r, g)).collect();
     assert_eq!(
@@ -122,8 +124,13 @@ fn wp_p1pr_with_the_limiters_on_one_undo_restores_everything() {
     core.protect_all_outputs(-2.0).unwrap();
     assert_eq!(core.history(1000).len(), n + 1, "one step");
     assert_ne!(limiter_rows(&core), before);
-    core.undo().unwrap();
+    // -- WP P1EFIX -- the note also when they were on before
+    let m = core.undo().unwrap();
+    assert_eq!(m.note.as_deref(), Some(crate::journal::PROTECT_UNDONE_NOTE));
     assert_eq!(limiter_rows(&core), before);
+    // and only for that step: another undo has no such note
+    core.set_output_gain(0, -3.0).unwrap();
+    assert_eq!(core.undo().unwrap().note, None);
 }
 
 #[test]

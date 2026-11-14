@@ -44,8 +44,12 @@ internal const val LOCK_BANNER_TAG = "lock-banner"
 internal const val MODE_ENTRY = "Mode…"
 internal const val UNLOCK_ENTRY = "Unlock…"
 
-/** The line the locked-user banner shows (the core's notice for a locked write says the same). */
-internal const val LOCKED_LINE = "Locked by the installer: volume, mute and presets can be changed."
+// -- WP P1EFIX -- (review p1e-a F2) the banner's line is the core's row, the same in every client
+/** The core's notice row for the locked-user banner; its reason is the line. */
+internal const val LOCK_BANNER_NOTICE_KEY = "installer_lock.banner"
+
+/** The row's title, shown until the core's row is read (a test double without the table). */
+internal const val LOCKED_FALLBACK = "Locked by the installer"
 
 @Composable
 internal fun ModeDialogHost(model: UiModeModel) {
@@ -131,7 +135,7 @@ internal fun ModeDialogHost(model: UiModeModel) {
 
 /** The locked-user state's banner under the strip: what is locked, the installer's note and contact, Unlock. */
 @Composable
-internal fun LockedBanner(lock: LockState?, onUnlock: () -> Unit) {
+internal fun LockedBanner(lock: LockState?, line: String, onUnlock: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Row(
         Modifier.fillMaxWidth().background(colors.secondaryContainer).padding(start = 16.dp, end = 4.dp, top = 2.dp, bottom = 2.dp)
@@ -139,7 +143,7 @@ internal fun LockedBanner(lock: LockState?, onUnlock: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
-            Text("🔒 $LOCKED_LINE", style = MaterialTheme.typography.bodySmall, color = colors.onSecondaryContainer)
+            Text(line, style = MaterialTheme.typography.bodySmall, color = colors.onSecondaryContainer)
             val more = listOfNotNull(lock?.note?.ifBlank { null }, lock?.contact?.ifBlank { null }?.let { "Contact: $it" })
             if (more.isNotEmpty()) {
                 Text(more.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = colors.onSecondaryContainer)

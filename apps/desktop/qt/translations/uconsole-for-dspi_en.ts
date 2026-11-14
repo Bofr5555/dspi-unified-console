@@ -5109,11 +5109,6 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>%1: only volume, mute and presets can be changed.</source>
-        <extracomment>The locked-user banner: %1 the lock&apos;s title (&quot;Locked by the installer&quot;)</extracomment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Installer: %1</source>
         <translation type="unfinished"></translation>
     </message>

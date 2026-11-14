@@ -151,7 +151,15 @@ terminal, `DSPI_INSTALLER_PIN`, or `--installer-pin -` (a line of standard
 input); a new PIN from two prompts, `DSPI_NEW_INSTALLER_PIN` or `--new-pin -`
 (the next line). Exit codes: 0 done, 1 no PIN to be had, 3 a wrong PIN or the
 refusal window (`retryAfterMs`). The Terminal's own folder is
-`<local data dir>/uconsole/limits`, so a PIN set there locks that console only.
+`<local data dir>/uconsole/limits`, so a PIN set there is kept for that console
+only. A PIN typed at a terminal is not echoed (WP P1EFIX).
+
+**Not yet in the Terminal (WP TMCORE).** The Terminal's own single writes
+(`uconsole set`, `uconsole eq`, scripts of them, and the TUI) are not yet checked
+against the installer lock or the limits profile: a PIN set from the Terminal
+holds the Terminal's commands that run on the core (`lock`, `limits`, `snapshot`,
+`ab`, `import --only/--guard/--yes`, `autoeq`), not those writes. `uconsole lock status` says so on every reading. A hub still
+enforces its own lock and limits on every write that reaches it.
 
 ```sh
 printf '%s\n%s\n' "$OLD" "$NEW" | uconsole lock set-pin --installer-pin - --new-pin -

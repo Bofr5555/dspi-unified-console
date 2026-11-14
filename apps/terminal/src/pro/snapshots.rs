@@ -16,21 +16,21 @@ use dspi_tui::shell::connect::{Target, printable};
 use serde_json::{Value, json};
 
 use super::{
-    Args, Stores, fail, guard_on_stdin, guard_seconds, interactive, open, print_diff, read_text,
-    reply, stdin_answers, usage, write_text,
+    Args, Stores, fail, guard_choice, guard_on_stdin, interactive, open, over_dlink, print_diff,
+    read_text, reply, stdin_answers, usage, write_text,
 };
 use crate::exit;
 
 const SNAPSHOT_USAGE: &str = "snapshot takes save NAME [--note TEXT], list, recall ID [--guard \
-                              SECONDS], diff ID [ID], export ID FILE|-, import FILE [--name NAME] \
-                              or delete ID";
+                              SECONDS | --no-guard], diff ID [ID], export ID FILE|-, import FILE \
+                              [--name NAME] or delete ID";
 
 /// `uconsole snapshot ...`.
 pub(crate) fn cmd_snapshot(target: &Target, flags: &[&str], json: bool) -> u8 {
     let args = match Args::parse(
         flags.get(1..).unwrap_or_default(),
         &["--note", "--name", "--guard"],
-        &[],
+        &["--no-guard"],
     ) {
         Ok(a) => a,
         Err(e) => return usage(&e),
@@ -60,10 +60,15 @@ pub(crate) fn cmd_snapshot(target: &Target, flags: &[&str], json: bool) -> u8 {
     match (verb, rest) {
         ("save", [name]) => save(core, name, args.value("--note").unwrap_or(""), json),
         ("list", []) => list(core, json),
-        ("recall", [id]) => match args.value("--guard").map(guard_seconds) {
-            Some(Err(e)) => usage(&e),
-            Some(Ok(secs)) => recall_guarded(core, id, secs, json),
-            None => recall(core, id, json),
+        // -- WP P1EFIX -- guarded by default over DSPi Link (--no-guard opts out)
+        ("recall", [id]) => match guard_choice(
+            args.value("--guard"),
+            args.has("--no-guard"),
+            over_dlink(target),
+        ) {
+            Err(e) => usage(&e),
+            Ok(Some(secs)) => recall_guarded(core, id, secs, json),
+            Ok(None) => recall(core, id, json),
         },
         ("diff", [a]) => diff(core, a, None, json),
         ("diff", [a, b]) => diff(core, a, Some(b), json),

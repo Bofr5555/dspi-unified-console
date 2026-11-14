@@ -772,6 +772,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun flashToDriveGuarded(image: List<Int>, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String) = call { se.bofr.dspi.ffi.uniffi.flashToDriveGuarded(ByteArray(image.size) { image[it].toByte() }, drive.toFfi(), board.toFfi(), typedConfirmation) }
 
+    override fun limitsFieldRanges(): List<LimitFieldRange> = se.bofr.dspi.ffi.uniffi.limitsFieldRanges().map { it.toDomain() }
+
     override fun linkParseAddress(text: String): LinkAddress = call { se.bofr.dspi.ffi.uniffi.linkParseAddress(text).toDomain() }
 
     override fun linkWsUrl(host: String, port: Int, path: String): String = se.bofr.dspi.ffi.uniffi.linkWsUrl(host, port.toUShort(), path)
@@ -3181,6 +3183,26 @@ internal fun LimitsApply.toFfi() =
         lines = lines,
         held = held,
         notes = notes,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.LimitFieldRange.toDomain() =
+    LimitFieldRange(
+        key = key,
+        perOutput = perOutput,
+        unit = unit,
+        min = min,
+        max = max,
+        step = step,
+    )
+
+internal fun LimitFieldRange.toFfi() =
+    se.bofr.dspi.ffi.uniffi.LimitFieldRange(
+        key = key,
+        perOutput = perOutput,
+        unit = unit,
+        min = min,
+        max = max,
+        step = step,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.LockState.toDomain() =

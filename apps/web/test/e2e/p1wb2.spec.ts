@@ -89,6 +89,11 @@ test("P1WB2 Installer: a limit narrowed below the device is held and reported; a
 
   const out2 = limits.getByRole("group", { name: /^OUT2/ });
   const highest = out2.getByLabel("Highest gain (dB)");
+  // -- WP P1EFIX -- the ranges are the core's one table
+  await expect(highest).toHaveAttribute("max", "20");
+  await expect(highest).toHaveAttribute("min", "-60");
+  await expect(limits.getByLabel("Highest master volume (dB)")).toHaveAttribute("min", "-128");
+  await expect(out2.getByLabel("Longest delay (ms)")).toHaveAttribute("max", "85");
   await highest.fill("2");
   await highest.dispatchEvent("change");
   const report = limits.getByRole("status", { name: "Limits report" });
@@ -143,6 +148,11 @@ test("P1WB2 Installer: outputs without a limiter, Protect all outputs; power-on 
   await expect(warning).toHaveCount(0);
   const s = await coreState(page);
   expect(s.limiterEnabled.slice(0, s.numOutputChannels).every(Boolean)).toBe(true);
+  // -- WP P1EFIX -- one undo says the limiters stay on (the core's history note)
+  await session.getByRole("group", { name: "Undo and Redo" }).getByRole("button", { name: "Undo" }).click();
+  await expect(session.getByText(/The limiters stay on/)).toBeVisible();
+  const kept = await coreState(page);
+  expect(kept.limiterEnabled.slice(0, kept.numOutputChannels).every(Boolean)).toBe(true);
 
   // At power-on: the startup preset, written at once.
   const power = session.getByRole("region", { name: "At power-on" });
@@ -321,7 +331,7 @@ test.describe("P1WB2 on a hub", () => {
     const rail = session.getByRole("complementary", { name: "Status" });
     await expect(rail.getByRole("button", { name: "Mode: Locked" })).toBeVisible();
     const banner = session.getByRole("region", { name: "Locked" });
-    await expect(banner).toContainText("Locked by the installer on the hub: volume, mute and presets only.");
+    await expect(banner).toContainText("Locked by the installer: only volume, mute and presets can be changed.");
     await expect(banner).toContainText("Venue A: volume and presets only, please.");
     await expect(session.getByRole("tab")).toHaveCount(0);
     await shot(page, "locked-user");

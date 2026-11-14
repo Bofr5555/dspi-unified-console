@@ -94,6 +94,12 @@ pub const LOCK_SCOPE_NOTICE: &str = "installer_lock.scope";
 /// PIN unlocks the device for this console.
 pub const LOCK_HUB_NOTICE: &str = "installer_lock.hub";
 
+// -- WP P1EFIX --
+/// The locked-user banner's row, the same line in every client: its `reason`
+/// is the banner's sentence ("Locked by the installer: only volume, mute and
+/// presets can be changed."), its `title` a short name for it.
+pub const LOCK_BANNER_NOTICE: &str = "installer_lock.banner";
+
 /// A PIN's shortest and longest length, in characters.
 const PIN_MIN_CHARS: usize = 4;
 const PIN_MAX_CHARS: usize = 64;

@@ -2447,6 +2447,12 @@ void uniffi_dspi_core_fn_func_flash_to_drive(RustBuffer image, RustBuffer drive,
 void uniffi_dspi_core_fn_func_flash_to_drive_guarded(RustBuffer image, RustBuffer drive, RustBuffer board, RustBuffer typed_confirmation, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LIMITS_FIELD_RANGES
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LIMITS_FIELD_RANGES
+RustBuffer uniffi_dspi_core_fn_func_limits_field_ranges(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_FETCH_INFO
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_FETCH_INFO
 RustBuffer uniffi_dspi_core_fn_func_link_fetch_info(RustBuffer host, uint16_t port, RustCallStatus *_Nonnull out_status
@@ -2957,6 +2963,12 @@ uint16_t uniffi_dspi_core_checksum_func_flash_to_drive(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FLASH_TO_DRIVE_GUARDED
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FLASH_TO_DRIVE_GUARDED
 uint16_t uniffi_dspi_core_checksum_func_flash_to_drive_guarded(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LIMITS_FIELD_RANGES
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LIMITS_FIELD_RANGES
+uint16_t uniffi_dspi_core_checksum_func_limits_field_ranges(void
     
 );
 #endif

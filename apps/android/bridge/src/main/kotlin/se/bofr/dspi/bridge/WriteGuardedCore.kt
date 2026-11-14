@@ -1216,6 +1216,8 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "noticeFor",
             "noticeForKey",
             "noticeTexts",
+            // -- WP P1EFIX -- stateless: the limits editor's range table
+            "limitsFieldRanges",
             // -- WP P1PR -- the warning list, from the mirror: a read
             "outputsWithoutLimiter",
             // -- WP P1TK -- confirmation tokens: local state, nothing sent; and

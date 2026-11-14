@@ -64,6 +64,51 @@ pub extern "C" fn dspi_limits_status(core: *mut crate::FfiCore, buf: *mut c_char
     text(core, buf, len, |c| json_reply(Ok(c.limits_status())))
 }
 
+// -- WP P1EFIX --
+/// Every limits field's range, the one table for a limits editor: JSON `{ok,
+/// value:[{key, perOutput, unit, min, max, step}]}` (`dspi_core::limits_field_ranges`).
+/// Takes no core handle and does not block. Returns the bytes needed including
+/// the NUL, 0 for a panic.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_limits_field_ranges(buf: *mut c_char, len: u32) -> u32 {
+    super::guard(0, || {
+        super::copy_text(&json_reply(Ok(dspi_core::limits_field_ranges())), buf, len)
+    })
+}
+
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p1lm;
+
+// -- WP P1EFIX --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_p1efix {
+    use std::ptr;
+
+    use serde_json::Value;
+
+    use super::*;
+
+    #[test]
+    fn wp_p1efix_the_range_table_in_c() {
+        let needed = dspi_limits_field_ranges(ptr::null_mut(), 0);
+        assert!(needed > 0);
+        let mut buf = vec![0u8; needed as usize];
+        assert_eq!(
+            dspi_limits_field_ranges(buf.as_mut_ptr().cast(), needed),
+            needed
+        );
+        let text = std::ffi::CStr::from_bytes_until_nul(&buf)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        let v: Value = serde_json::from_str(text).unwrap();
+        assert_eq!(v["ok"], true);
+        let rows = v["value"].as_array().unwrap();
+        assert_eq!(rows.len(), dspi_core::limits_field_ranges().len());
+        assert_eq!(rows[0]["key"], "maxGainDb");
+        assert_eq!(rows[0]["perOutput"], true);
+        assert_eq!(rows[0]["max"], 20.0);
+    }
+}

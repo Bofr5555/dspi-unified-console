@@ -1710,6 +1710,8 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1770,6 +1772,8 @@ fun uniffi_dspi_core_checksum_func_firmware_guard_check(
 fun uniffi_dspi_core_checksum_func_flash_to_drive(
 ): Short
 fun uniffi_dspi_core_checksum_func_flash_to_drive_guarded(
+): Short
+fun uniffi_dspi_core_checksum_func_limits_field_ranges(
 ): Short
 fun uniffi_dspi_core_checksum_func_link_fetch_info(
 ): Short
@@ -3379,6 +3383,8 @@ fun uniffi_dspi_core_fn_func_flash_to_drive(`image`: RustBuffer.ByValue,`drive`:
 ): Unit
 fun uniffi_dspi_core_fn_func_flash_to_drive_guarded(`image`: RustBuffer.ByValue,`drive`: RustBuffer.ByValue,`board`: RustBuffer.ByValue,`typedConfirmation`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_func_limits_field_ranges(uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_link_fetch_info(`host`: RustBuffer.ByValue,`port`: Short,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_link_parse_address(`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -3608,6 +3614,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_flash_to_drive_guarded() != 25249.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_limits_field_ranges() != 1854.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_link_fetch_info() != 23971.toShort()) {
@@ -24448,8 +24457,9 @@ data class HistoryMove (
     /**
      * Why a value was left alone, in words, when another writer changed it
      * since (only where the core leaves such a change alone): nothing moved,
-     * or, for a drag's step of several values, the others did. `None`
-     * otherwise.
+     * or, for a drag's step of several values, the others did. After an
+     * undo of "Protect all outputs" it also says the limiters stay on
+     * ([`PROTECT_UNDONE_NOTE`], WP P1EFIX). `None` otherwise.
      */
     var `note`: kotlin.String?
 ) {
@@ -24785,6 +24795,78 @@ public object FfiConverterTypeLgStatus: FfiConverterRustBuffer<LgStatus> {
             FfiConverterBoolean.write(value.`present`, buf)
             FfiConverterUByte.write(value.`volume`, buf)
             FfiConverterBoolean.write(value.`muted`, buf)
+    }
+}
+
+
+
+/**
+ * One limits field's range, for a client's limits editor
+ * ([`limits_field_ranges`]).
+ */
+data class LimitFieldRange (
+    /**
+     * The profile document's field: `maxGainDb`, `limiterCeilingDb`,
+     * `highpassMinHz`, `highpassMinSlopeDb`, `delayMinMs`, `delayMaxMs`
+     * (each output's), `maxPeqBoostDb`, `masterVolumeMaxDb` (the device's).
+     */
+    var `key`: kotlin.String, 
+    /**
+     * A field of each output's limits.
+     */
+    var `perOutput`: kotlin.Boolean, 
+    /**
+     * `dB`, `dBFS`, `Hz`, `dB/oct` or `ms`.
+     */
+    var `unit`: kotlin.String, 
+    /**
+     * The lowest value the profile keeps.
+     */
+    var `min`: kotlin.Float, 
+    /**
+     * The highest value the profile keeps.
+     */
+    var `max`: kotlin.Float, 
+    /**
+     * The editor's step.
+     */
+    var `step`: kotlin.Float
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLimitFieldRange: FfiConverterRustBuffer<LimitFieldRange> {
+    override fun read(buf: ByteBuffer): LimitFieldRange {
+        return LimitFieldRange(
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LimitFieldRange) = (
+            FfiConverterString.allocationSize(value.`key`) +
+            FfiConverterBoolean.allocationSize(value.`perOutput`) +
+            FfiConverterString.allocationSize(value.`unit`) +
+            FfiConverterFloat.allocationSize(value.`min`) +
+            FfiConverterFloat.allocationSize(value.`max`) +
+            FfiConverterFloat.allocationSize(value.`step`)
+    )
+
+    override fun write(value: LimitFieldRange, buf: ByteBuffer) {
+            FfiConverterString.write(value.`key`, buf)
+            FfiConverterBoolean.write(value.`perOutput`, buf)
+            FfiConverterString.write(value.`unit`, buf)
+            FfiConverterFloat.write(value.`min`, buf)
+            FfiConverterFloat.write(value.`max`, buf)
+            FfiConverterFloat.write(value.`step`, buf)
     }
 }
 
@@ -31834,6 +31916,34 @@ public object FfiConverterSequenceTypeHistoryEntry: FfiConverterRustBuffer<List<
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeLimitFieldRange: FfiConverterRustBuffer<List<LimitFieldRange>> {
+    override fun read(buf: ByteBuffer): List<LimitFieldRange> {
+        val len = buf.getInt()
+        return List<LimitFieldRange>(len) {
+            FfiConverterTypeLimitFieldRange.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<LimitFieldRange>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeLimitFieldRange.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<LimitFieldRange>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeLimitFieldRange.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeLinkDenied: FfiConverterRustBuffer<List<LinkDenied>> {
     override fun read(buf: ByteBuffer): List<LinkDenied> {
         val len = buf.getInt()
@@ -32861,6 +32971,22 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
         FfiConverterByteArray.lower(`image`),FfiConverterTypeBootloaderDrive.lower(`drive`),FfiConverterTypeFirmwareGuardBoard.lower(`board`),FfiConverterString.lower(`typedConfirmation`),_status)
 }
     
+    
+
+        /**
+         * Every limits field's range, in the order an editor shows them (each
+         * output's fields, then the device's): the one table every client's limits
+         * editor uses (review p1e-a F7). A profile is held to the same ranges when
+         * applied, so a value outside one is clamped, not refused. The delay's
+         * ceiling is the schema's; the device's own line is shorter (21 or 42 ms).
+         */ fun `limitsFieldRanges`(): List<LimitFieldRange> {
+            return FfiConverterSequenceTypeLimitFieldRange.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_limits_field_ranges(
+        _status)
+}
+    )
+    }
     
 
         /**

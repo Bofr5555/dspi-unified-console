@@ -439,3 +439,37 @@ fn wp_p1ab_an_edit_on_b_survives_two_toggles() {
     assert_eq!(r.outs.load(Ordering::SeqCst), sent);
     assert_eq!(recalls(core).len() - before, 3);
 }
+
+// -- WP P1EFIX -- (review p1e-b F1) the real cause of the Swift test's flake:
+// the echo of this console's own earlier write, still queued when B was
+// recalled, was applied after the image and put the old volume back in the
+// mirror (the device held B's). A client that drains its queue late (the
+// Swift transport drains 30 ms after a notification) saw it whenever the
+// keep came within that window.
+#[test]
+fn wp_p1efix_keep_b_with_the_queue_drained_late_shows_b() {
+    let core = DspiCore::new();
+    core.open_demo().unwrap();
+    let _ = core.process_notifications();
+    let v0 = core.get_state().master_volume_db;
+    core.set_master_volume(v0 - 3.0).unwrap();
+    let _ = core.process_notifications();
+    let b = core
+        .snapshot_capture_document("B".into(), String::new())
+        .unwrap();
+    core.set_master_volume(v0).unwrap();
+    // No drain here: the echo of v0 is still queued, as in the Swift test.
+    core.ab_start_documents(String::new(), b).unwrap();
+    let kept = core.ab_keep(AbSide::B).unwrap();
+    assert!(kept.recall.is_some(), "B recalled");
+    assert_eq!(core.get_state().master_volume_db, v0 - 3.0);
+    let _ = core.process_notifications();
+    assert_eq!(
+        core.get_state().master_volume_db,
+        v0 - 3.0,
+        "the late drain keeps B's volume"
+    );
+    // And the device holds it too: a fresh read agrees.
+    core.refresh_params().unwrap();
+    assert_eq!(core.get_state().master_volume_db, v0 - 3.0);
+}

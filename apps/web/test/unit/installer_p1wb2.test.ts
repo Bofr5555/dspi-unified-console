@@ -11,7 +11,6 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  OUTPUT_GAIN_CEILING_DB,
   limitText,
   limitValue,
   limitsSomething,
@@ -33,7 +32,7 @@ import { WasmCore, loadWasmModule } from "../../src/core/wasm";
 import type { CoreClient } from "../../src/core/client";
 import { CoreCallError, type LockStateRecord } from "../../src/core/protocol";
 import { Session } from "../../src/ui/session";
-import { noticeRow } from "../../src/ui/texts";
+import { noticeRow, resetNotices } from "../../src/ui/texts";
 import { GUARD_BACKSTOP_KEY } from "../../src/screens/snapshots/model";
 
 function memory() {
@@ -73,10 +72,12 @@ test("P1WB2 limits: a field set, emptied, and the document round trip; no zero f
   assert.equal(limitsSomething(p), true);
   assert.equal(limitsSomething(tidyProfile({ note: "only words" })), false);
   // Fields: "" is no limit; a number kept in range.
-  assert.equal(limitValue("", -60, 20), undefined);
-  assert.equal(limitValue("abc", -60, 20), undefined);
-  assert.equal(limitValue("25", -60, OUTPUT_GAIN_CEILING_DB), 20, "never above the registry's +20 dB");
-  assert.equal(limitValue("2,5", -60, 20), 2.5);
+  const gain = { min: -60, max: 20 };
+  assert.equal(limitValue("", gain), undefined);
+  assert.equal(limitValue("abc", gain), undefined);
+  assert.equal(limitValue("25", gain), 20, "kept in the range");
+  assert.equal(limitValue("2,5", gain), 2.5);
+  assert.equal(limitValue("500", null), 500, "before the core's table is read: as typed (the core clamps)");
   assert.equal(limitText(undefined), "");
   assert.equal(limitText(-1.234), "-1.23");
 });
@@ -107,7 +108,8 @@ test("P1WB2 lock: one line for each state; no PIN, nothing locked", () => {
   const lock = (o: Partial<LockStateRecord>) => ({ pinSet: true, heldBy: "hub", locked: false, unlocked: false, covers: ["channels"], ...o });
   assert.equal(lockLine(null), "No installer PIN is set: nothing is locked.");
   assert.equal(lockLine(lock({ pinSet: false })), "No installer PIN is set: nothing is locked.");
-  assert.equal(lockLine(lock({ locked: true })), "Locked by the installer on the hub: volume, mute and presets only.");
+  resetNotices();
+  assert.equal(lockLine(lock({ locked: true })), "Locked by the installer", "the row's title before the table is read (P1EFIX)");
   assert.equal(lockLine(lock({ unlocked: true, heldBy: "console" })), "Unlocked on this console for this session.");
   assert.match(lockLine(lock({ covers: [] })), /covers nothing yet/);
 });

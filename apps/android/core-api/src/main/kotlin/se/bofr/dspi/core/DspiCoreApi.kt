@@ -4116,6 +4116,17 @@ interface DspiCoreApi : AutoCloseable {
     fun flashToDriveGuarded(image: List<Int>, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String)
 
     /**
+     * Every limits field's range, in the order an editor shows them (each
+     * output's fields, then the device's): the one table every client's limits
+     * editor uses (review p1e-a F7). A profile is held to the same ranges when
+     * applied, so a value outside one is clamped, not refused. The delay's
+     * ceiling is the schema's; the device's own line is shorter (21 or 42 ms).
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun limitsFieldRanges(): List<LimitFieldRange>
+
+    /**
      * Parse a hub address typed by the user (`host`, `host:port`, `[v6]:port`).
      *
      * Errors: [`DspiError::InvalidArgument`] when it cannot be an address.

@@ -16,6 +16,7 @@ import se.bofr.dspi.core.AutoEqApply
 import se.bofr.dspi.core.AutoEqPreview
 import se.bofr.dspi.core.AutoEqProfile
 import se.bofr.dspi.core.DspiException
+import se.bofr.dspi.core.LimitFieldRange
 import se.bofr.dspi.core.LimitsStatus
 import se.bofr.dspi.core.LockState
 import se.bofr.dspi.core.ModeChoice
@@ -174,6 +175,10 @@ interface Installer {
 
     /** The notice row [key], null when the core has no such row. */
     suspend fun notice(key: String): Notice? = null
+
+    // -- WP P1EFIX -- (review p1e-a F7) one range table in the core, no copy here
+    /** Every limits field's range (the core's `limits_field_ranges`), by field key; empty without a core. */
+    suspend fun fieldRanges(): Map<String, LimitFieldRange> = emptyMap()
 
     /** S2: every output's limiter on at [ceilingDbfs], stereo pairs linked, one undo step. A write. */
     suspend fun protectAllOutputs(ceilingDbfs: Float = PROTECT_CEILING_DB): Result<Unit>
@@ -357,6 +362,10 @@ internal class InstallerImpl(private val bridge: DspiBridgeImpl) : Installer {
 
     override suspend fun notice(key: String): Notice? =
         bridge.onFfi { runCatching { core.noticeForKey(key, "") }.getOrNull()?.takeIf { it.key == key } }
+
+    // -- WP P1EFIX --
+    override suspend fun fieldRanges(): Map<String, LimitFieldRange> =
+        bridge.onFfi { runCatching { core.limitsFieldRanges() }.getOrDefault(emptyList()).associateBy { it.key } }
 
     override suspend fun protectAllOutputs(ceilingDbfs: Float): Result<Unit> {
         refused("protectAllOutputs")?.let { return it }

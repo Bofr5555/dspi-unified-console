@@ -691,6 +691,19 @@ export interface LimitsStatusRecord {
   lastHeld: string[];
 }
 
+// -- WP P1EFIX --
+/** One limits field's range (`dspi_core::LimitFieldRange`): the one table every limits editor uses. */
+export interface LimitFieldRangeRecord {
+  /** The profile's field: `maxGainDb`, ..., `masterVolumeMaxDb`. */
+  key: string;
+  /** A field of each output's limits. */
+  perOutput: boolean;
+  unit: string;
+  min: number;
+  max: number;
+  step: number;
+}
+
 /** A notice from the core's table (`dspi_core::Notice`). */
 export interface NoticeRecord {
   key: string;
@@ -749,6 +762,9 @@ export interface DocumentMethods {
   /** The notice for a failure's `noticeKey` (P1NT). */
   noticeFor: { params: { key: string; detail?: string }; result: NoticeRecord };
   noticeTexts: { params: undefined; result: NoticeRecord[] };
+  // -- WP P1EFIX --
+  /** Every limits field's range, in the editor's order (`dspi_core::limits_field_ranges`). */
+  limitsFieldRanges: { params: undefined; result: LimitFieldRangeRecord[] };
 }
 
 // -- WP SW1 -- the audio link (crates/dspi-wasm/src/alink.rs; not DSPi Link)

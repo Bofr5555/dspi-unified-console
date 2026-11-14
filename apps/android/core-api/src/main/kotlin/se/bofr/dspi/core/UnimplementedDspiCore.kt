@@ -716,6 +716,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun flashToDriveGuarded(image: List<Int>, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String): Unit = throw NotImplementedError("flash_to_drive_guarded")
 
+    override fun limitsFieldRanges(): List<LimitFieldRange> = throw NotImplementedError("limits_field_ranges")
+
     override fun linkParseAddress(text: String): LinkAddress = throw NotImplementedError("link_parse_address")
 
     override fun linkWsUrl(host: String, port: Int, path: String): String = throw NotImplementedError("link_ws_url")

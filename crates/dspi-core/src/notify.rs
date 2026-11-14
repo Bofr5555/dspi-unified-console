@@ -202,6 +202,31 @@ impl DspiCore {
     }
 }
 
+// -- WP P1EFIX -- (review p1e-b F1, the Swift test's real cause)
+impl DspiCore {
+    /// Apply what the device has already said before a whole image is
+    /// written (a snapshot recall, an A/B toggle or keep): a notification
+    /// queued before the image, such as the echo of this console's own
+    /// earlier write, would otherwise be applied after it and put an older
+    /// value back in the mirror while the device holds the image's. What it
+    /// changed is announced at the next [`DspiCore::process_notifications`]
+    /// (as a re-read is), and its event-log records are kept.
+    pub(crate) fn settle_notifications(&self) {
+        let mut result = NotifyResult::default();
+        let mut records = Vec::new();
+        {
+            let mut guard = self.lock();
+            let follow = apply_queued(&mut guard, &mut result, &mut records);
+            if (result.flags != 0 || follow.refresh)
+                && let Some(conn) = guard.conn.as_mut()
+            {
+                conn.announce_refresh = true;
+            }
+        }
+        self.events.record_all(records);
+    }
+}
+
 impl DspiCore {
     /// Whether the open connection's notification stream ended because the
     /// device went away (unplug, closed MIDI port, ended Link session). For

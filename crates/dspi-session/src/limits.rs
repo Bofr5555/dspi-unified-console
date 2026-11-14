@@ -268,6 +268,72 @@ fn registry_range(path: &str) -> Option<(f32, f32)> {
     }
 }
 
+// -- WP P1EFIX --
+/// One limits field's range: what a client's editor offers and what
+/// [`LimitsProfile::normalised`] holds a value to. One table for every
+/// client (review p1e-a F7); the words for the field stay with the client.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FieldRange {
+    /// The profile's field: `maxGainDb`, ... (an [`OutputLimits`] field when
+    /// `per_output`), `maxPeqBoostDb`, `masterVolumeMaxDb`.
+    pub key: &'static str,
+    /// A field of each output's limits, not of the whole device.
+    pub per_output: bool,
+    /// `dB`, `dBFS`, `Hz`, `dB/oct` or `ms`.
+    pub unit: &'static str,
+    /// The lowest value kept.
+    pub min: f32,
+    /// The highest value kept.
+    pub max: f32,
+    /// An editor's step.
+    pub step: f32,
+}
+
+// -- WP P1EFIX --
+/// Every limits field's range, in the order an editor shows them: each
+/// output's fields, then the device's. From the registry where it has the
+/// value's range (`out.gain`, `limit.threshold`, `eq.freq`, `out.delay`'s
+/// schema ceiling, `eq.gain`'s boost, `vol.master`).
+pub fn field_ranges() -> Vec<FieldRange> {
+    let (gmin, gmax) = registry_range("out.gain").unwrap_or((-60.0, 20.0));
+    let (tmin, tmax) = registry_range("limit.threshold").unwrap_or((-30.0, 0.0));
+    let (fmin, fmax) = registry_range("eq.freq").unwrap_or((10.0, 24_000.0));
+    let (dmin, dmax) = registry_range("out.delay").unwrap_or((0.0, 85.0));
+    let (_, boost_max) = registry_range("eq.gain").unwrap_or((-24.0, 24.0));
+    let (vmin, vmax) = registry_range("vol.master").unwrap_or((-128.0, 0.0));
+    let f = |key, per_output, unit, min, max, step| FieldRange {
+        key,
+        per_output,
+        unit,
+        min,
+        max,
+        step,
+    };
+    vec![
+        f("maxGainDb", true, "dB", gmin, gmax, 0.5),
+        f("limiterCeilingDb", true, "dBFS", tmin, tmax, 0.5),
+        f("highpassMinHz", true, "Hz", fmin, fmax, 1.0),
+        f("highpassMinSlopeDb", true, "dB/oct", 6.0, 48.0, 6.0),
+        f("delayMinMs", true, "ms", dmin, dmax, 0.1),
+        f("delayMaxMs", true, "ms", dmin, dmax, 0.1),
+        f("maxPeqBoostDb", false, "dB", 0.0, boost_max, 0.5),
+        f("masterVolumeMaxDb", false, "dB", vmin, vmax, 0.5),
+    ]
+}
+
+// -- WP P1EFIX --
+/// The range of field `key` in [`field_ranges`].
+pub fn field_range(key: &str) -> Option<FieldRange> {
+    field_ranges().into_iter().find(|r| r.key == key)
+}
+
+// -- WP P1EFIX --
+/// `key`'s range as `(min, max)`; a key the table lacks holds nothing.
+fn bounds(key: &str) -> (f32, f32) {
+    field_range(key).map_or((f32::MIN, f32::MAX), |r| (r.min, r.max))
+}
+
 /// `v` held to `lo..=hi`; NaN and infinity read as no limit.
 fn within(v: Option<f32>, lo: f32, hi: f32) -> Option<f32> {
     v.filter(|x| x.is_finite()).map(|x| x.clamp(lo, hi))
@@ -295,18 +361,20 @@ impl LimitsProfile {
     /// range put the right way round, outputs named once (the last wins),
     /// texts cut to length. A profile is always normalised before use.
     pub fn normalised(mut self) -> Self {
-        let (gmin, gmax) = registry_range("out.gain").unwrap_or((-60.0, 20.0));
-        let (_, boost_max) = registry_range("eq.gain").unwrap_or((-24.0, 24.0));
-        let (fmin, fmax) = registry_range("eq.freq").unwrap_or((10.0, 24_000.0));
-        let (tmin, tmax) = registry_range("limit.threshold").unwrap_or((-30.0, 0.0));
-        let (vmin, vmax) = registry_range("vol.master").unwrap_or((-128.0, 0.0));
+        // -- WP P1EFIX -- the one range table every client's editor shows
+        let (gmin, gmax) = bounds("maxGainDb");
+        let (_, boost_max) = bounds("maxPeqBoostDb");
+        let (fmin, fmax) = bounds("highpassMinHz");
+        let (tmin, tmax) = bounds("limiterCeilingDb");
+        let (vmin, vmax) = bounds("masterVolumeMaxDb");
+        let (dmin, dmax) = bounds("delayMaxMs");
         let mut seen: Vec<OutputLimits> = Vec::new();
         for mut o in std::mem::take(&mut self.outputs) {
             o.max_gain_db = within(o.max_gain_db, gmin, gmax);
             o.highpass_min_hz = within(o.highpass_min_hz, fmin, fmax);
             o.highpass_min_slope_db = o.highpass_min_slope_db.map(|s| s.clamp(6, 48));
-            o.delay_min_ms = within(o.delay_min_ms, 0.0, f32::MAX);
-            o.delay_max_ms = within(o.delay_max_ms, 0.0, f32::MAX);
+            o.delay_min_ms = within(o.delay_min_ms, dmin, dmax);
+            o.delay_max_ms = within(o.delay_max_ms, dmin, dmax);
             if let (Some(lo), Some(hi)) = (o.delay_min_ms, o.delay_max_ms)
                 && lo > hi
             {
@@ -1033,5 +1101,68 @@ mod tests_wp_p1dkfix {
         store.write_tries(&StoredTries::default(), "S1").unwrap();
         assert_eq!(store.tries("S1").unwrap(), None, "none kept removes it");
         let _ = std::fs::remove_dir_all(&d);
+    }
+}
+
+// -- WP P1EFIX --
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests_wp_p1efix {
+    use super::*;
+
+    /// One range table: every field once, the registry's ranges, and
+    /// `normalised` holds each value to the same range an editor offers.
+    #[test]
+    fn wp_p1efix_one_range_table_and_normalised_follows_it() {
+        let t = field_ranges();
+        let keys: Vec<_> = t.iter().map(|r| r.key).collect();
+        assert_eq!(
+            keys,
+            [
+                "maxGainDb",
+                "limiterCeilingDb",
+                "highpassMinHz",
+                "highpassMinSlopeDb",
+                "delayMinMs",
+                "delayMaxMs",
+                "maxPeqBoostDb",
+                "masterVolumeMaxDb"
+            ]
+        );
+        assert!(t.iter().all(|r| r.min < r.max && r.step > 0.0));
+        let r = |k| field_range(k).unwrap();
+        assert_eq!((r("maxGainDb").min, r("maxGainDb").max), (-60.0, 20.0));
+        assert_eq!(r("delayMaxMs").max, 85.0);
+        assert_eq!(
+            (r("maxPeqBoostDb").min, r("maxPeqBoostDb").max),
+            (0.0, 24.0)
+        );
+        assert_eq!(r("masterVolumeMaxDb").min, -128.0);
+        assert!(!r("masterVolumeMaxDb").per_output && r("delayMinMs").per_output);
+        let v = serde_json::to_value(r("highpassMinSlopeDb")).unwrap();
+        assert_eq!(v["perOutput"], true);
+        assert_eq!(v["unit"], "dB/oct");
+
+        let p = LimitsProfile {
+            outputs: vec![OutputLimits {
+                output: 0,
+                max_gain_db: Some(99.0),
+                delay_min_ms: Some(400.0),
+                delay_max_ms: Some(500.0),
+                limiter_ceiling_db: Some(-99.0),
+                ..Default::default()
+            }],
+            max_peq_boost_db: Some(40.0),
+            master_volume_max_db: Some(-500.0),
+            ..Default::default()
+        }
+        .normalised();
+        let o = &p.outputs[0];
+        assert_eq!(o.max_gain_db, Some(r("maxGainDb").max));
+        assert_eq!(o.delay_max_ms, Some(r("delayMaxMs").max));
+        assert_eq!(o.delay_min_ms, Some(r("delayMinMs").max));
+        assert_eq!(o.limiter_ceiling_db, Some(r("limiterCeilingDb").min));
+        assert_eq!(p.max_peq_boost_db, Some(r("maxPeqBoostDb").max));
+        assert_eq!(p.master_volume_max_db, Some(r("masterVolumeMaxDb").min));
     }
 }

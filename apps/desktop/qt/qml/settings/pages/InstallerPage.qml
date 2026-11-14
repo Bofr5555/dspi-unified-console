@@ -115,7 +115,7 @@ SettingsPage {
             objectName: "Installer.masterVolumeMax"
             title: qsTr("Master volume at most")
             value: page.limits.masterVolumeMaxDb
-            from: -60; to: 0; step: 0.5; decimals: 1; unit: "dB"; defaultValue: -10
+            key: "masterVolumeMaxDb"; decimals: 1; defaultValue: -10
             enabled: !LimitsController.busy
             onEdited: v => LimitsController.setLimit("masterVolumeMaxDb", v)
         }
@@ -123,7 +123,7 @@ SettingsPage {
             objectName: "Installer.maxPeqBoost"
             title: qsTr("EQ boost at most, every band")
             value: page.limits.maxPeqBoostDb
-            from: 0; to: 20; step: 0.5; decimals: 1; unit: "dB"; defaultValue: 6
+            key: "maxPeqBoostDb"; decimals: 1; defaultValue: 6
             enabled: !LimitsController.busy
             onEdited: v => LimitsController.setLimit("maxPeqBoostDb", v)
         }
@@ -180,7 +180,7 @@ SettingsPage {
                 objectName: "Installer.output." + outGroup.output + ".maxGain"
                 title: qsTr("Gain at most")
                 value: outGroup.modelData.maxGainDb
-                from: -60; to: 20; step: 0.5; decimals: 1; unit: "dB"; defaultValue: 0
+                key: "maxGainDb"; decimals: 1; defaultValue: 0
                 enabled: !LimitsController.busy
                 onEdited: v => LimitsController.setOutputLimit(outGroup.output, "maxGainDb", v)
             }
@@ -188,7 +188,7 @@ SettingsPage {
                 objectName: "Installer.output." + outGroup.output + ".limiter"
                 title: qsTr("Limiter on, ceiling at most")
                 value: outGroup.modelData.limiterCeilingDb
-                from: -30; to: 0; step: 0.5; decimals: 1; unit: "dBFS"; defaultValue: -1
+                key: "limiterCeilingDb"; decimals: 1; defaultValue: -1
                 enabled: !LimitsController.busy
                 onEdited: v => LimitsController.setOutputLimit(outGroup.output, "limiterCeilingDb", v)
             }
@@ -196,7 +196,7 @@ SettingsPage {
                 objectName: "Installer.output." + outGroup.output + ".highpass"
                 title: qsTr("High-pass kept, at or above")
                 value: outGroup.modelData.highpassMinHz
-                from: 10; to: 20000; step: 10; decimals: 0; unit: "Hz"; defaultValue: 80
+                key: "highpassMinHz"; decimals: 0; defaultValue: 80
                 enabled: !LimitsController.busy
                 onEdited: v => LimitsController.setOutputLimit(outGroup.output, "highpassMinHz", v)
             }
@@ -205,7 +205,7 @@ SettingsPage {
                 visible: outGroup.modelData.highpassMinHz !== undefined
                 title: qsTr("High-pass slope at least")
                 value: outGroup.modelData.highpassMinSlopeDb
-                from: 6; to: 48; step: 6; decimals: 0; unit: "dB/oct"; defaultValue: 12
+                key: "highpassMinSlopeDb"; decimals: 0; defaultValue: 12
                 enabled: !LimitsController.busy
                 onEdited: v => LimitsController.setOutputLimit(outGroup.output, "highpassMinSlopeDb", v)
             }
@@ -213,7 +213,7 @@ SettingsPage {
                 objectName: "Installer.output." + outGroup.output + ".delayMin"
                 title: qsTr("Delay at least")
                 value: outGroup.modelData.delayMinMs
-                from: 0; to: 500; step: 0.1; decimals: 2; unit: "ms"; defaultValue: 0
+                key: "delayMinMs"; decimals: 2; defaultValue: 0
                 enabled: !LimitsController.busy
                 onEdited: v => LimitsController.setOutputLimit(outGroup.output, "delayMinMs", v)
             }
@@ -221,7 +221,7 @@ SettingsPage {
                 objectName: "Installer.output." + outGroup.output + ".delayMax"
                 title: qsTr("Delay at most")
                 value: outGroup.modelData.delayMaxMs
-                from: 0; to: 500; step: 0.1; decimals: 2; unit: "ms"; defaultValue: 10
+                key: "delayMaxMs"; decimals: 2; defaultValue: 10
                 enabled: !LimitsController.busy
                 onEdited: v => LimitsController.setOutputLimit(outGroup.output, "delayMaxMs", v)
             }

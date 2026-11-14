@@ -11,11 +11,15 @@ RowLayout {
     property string title
     // The limit's value, or undefined when it is not set
     property var value
-    property real from: 0
-    property real to: 100
-    property real step: 1
+    // -- WP P1EFIX -- the profile's field: its range, step and unit are the
+    // core's one table (LimitsController.ranges), never a copy here
+    property string key
+    readonly property var range: LimitsController.ranges[key] || null
+    readonly property real from: range ? range.min : 0
+    readonly property real to: range ? range.max : 0
+    readonly property real step: range ? range.step : 1
     property int decimals: 0
-    property string unit
+    readonly property string unit: range ? range.unit : ""
     property real defaultValue: 0
     signal edited(real value)
 

@@ -716,6 +716,7 @@ dependencies = [
 name = "dspi-term"
 version = "0.13.0"
 dependencies = [
+ "crossterm",
  "dirs",
  "dspi-cmd",
  "dspi-core",

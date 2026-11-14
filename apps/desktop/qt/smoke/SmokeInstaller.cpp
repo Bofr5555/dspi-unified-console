@@ -213,6 +213,20 @@ static void installerSection(SmokeDriver &d) {
     lc->setText(QStringLiteral("note"), QStringLiteral("Tweeters on outputs 3 and 4"));
     lc->setText(QStringLiteral("contact"), QStringLiteral("installer@example.org"));
     settled(d, lc);
+    // -- WP P1EFIX -- the editor's ranges are the core's one table
+    {
+        const QVariantMap r = lc->ranges();
+        const QVariantMap gain = r.value(QStringLiteral("maxGainDb")).toMap();
+        QQuickItem *gainField = item("Installer.output.0.maxGain");
+        QQuickItem *masterField = item("Installer.masterVolumeMax");
+        d.check("p1efix: the limits ranges come from the core",
+                r.size() == 8 && gain.value(QStringLiteral("max")).toDouble() == 20.0
+                    && r.value(QStringLiteral("masterVolumeMaxDb")).toMap().value(QStringLiteral("min")).toDouble() == -128.0);
+        d.check("p1efix: the Installer page's fields use them",
+                gainField && masterField && gainField->property("to").toDouble() == 20.0
+                    && gainField->property("from").toDouble() == -60.0 && masterField->property("from").toDouble() == -128.0
+                    && gainField->property("unit").toString() == QLatin1String("dB"));
+    }
     d.check("p1qt2: the page shows the limits",
             lc->limits().value(QStringLiteral("masterVolumeMaxDb")).toDouble() == -10.0
                 && lc->outputs().value(0).toMap().value(QStringLiteral("maxGainDb")).toDouble() == -3.0);
@@ -265,6 +279,10 @@ static void installerSection(SmokeDriver &d) {
 
     // The locked-user banner and the one prompt
     d.check("p1qt2: the lock banner shows", banner && d.waitFor(2000, [&] { return banner->property("visible").toBool(); }));
+    // -- WP P1EFIX -- its line is the core's row, the same in every client
+    const QString bannerLine = notices->row(QStringLiteral("installer_lock.banner")).value(QStringLiteral("reason")).toString();
+    d.check("p1efix: the lock banner's line is the core's installer_lock.banner row",
+            banner && !bannerLine.isEmpty() && banner->property("text").toString().startsWith(bannerLine));
     w->close();
     QQuickWindow *main = d.mainWindow();
     d.spin(200);
@@ -394,7 +412,11 @@ static void groupsSection(SmokeDriver &d) {
         d.check("p1qt2: every limiter on at -1 dBFS", allOn);
         // One undo puts every threshold and link group back; the limiters stay
         // on (switching one is audible: the registry never undoes it)
+        qp18NoticeMark();
         undo();
+        // -- WP P1EFIX -- and says so: the core's history note
+        d.check("p1efix: undoing Protect all says the limiters stay on",
+                noticeStarts(d, QStringLiteral("The limiters stay on")));
         bool back = true;
         for (int o = 0; o < tools->numOutputs(); ++o)
             back = back && near(st(d).limiter_threshold_db[o], pre.limiter_threshold_db[o])

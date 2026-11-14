@@ -667,6 +667,8 @@ impl DspiCore {
     /// [`DspiCore::snapshot_recall_document`] for a parsed document.
     fn recall_value(&self, doc: &Value) -> Result<SnapshotRecall> {
         self.ensure_probed();
+        // -- WP P1EFIX -- no echo queued before the image lands after it
+        self.settle_notifications();
         let plan = Plan::of(doc)?;
         // Every check before anything is sent.
         let (generation, image, had_caller) = {

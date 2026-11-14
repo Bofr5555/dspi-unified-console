@@ -20,7 +20,7 @@ use dspi_core::{DspiCore, LockState};
 use dspi_tui::shell::connect::{Target, printable};
 use serde_json::{Value, json};
 
-use super::{Args, Stores, ask, fail, interactive, lock_holder, open, read_text, usage};
+use super::{Args, Stores, ask_secret, fail, interactive, lock_holder, open, read_text, usage};
 use crate::exit;
 
 /// The environment variable a script gives the installer's PIN in.
@@ -83,7 +83,7 @@ impl Pins<'static> {
                 if let Some(p) = std::env::var(PIN_ENV).ok().and_then(usable) {
                     return Some(p);
                 }
-                ask(&format!(
+                ask_secret(&format!(
                     "Installer PIN (or recovery code) for {serial} on this console: "
                 ))
                 .and_then(usable)
@@ -98,9 +98,9 @@ impl Pins<'static> {
                 if !interactive() {
                     return Ok(None);
                 }
-                let first = ask("New installer PIN (4 to 64 characters): ").and_then(usable);
+                let first = ask_secret("New installer PIN (4 to 64 characters): ").and_then(usable);
                 let Some(first) = first else { return Ok(None) };
-                match ask("The same again: ").and_then(usable) {
+                match ask_secret("The same again: ").and_then(usable) {
                     Some(again) if again == first => Ok(Some(first)),
                     _ => Err("the two PINs differ; nothing was changed".into()),
                 }
@@ -378,7 +378,7 @@ fn print_lock(st: &LockState, json: bool) {
     let state = if st.unlocked {
         "unlocked for this command"
     } else if st.locked {
-        "locked: only volume, mute and presets can be changed"
+        "locked: the core's commands may change only volume, mute and presets"
     } else {
         "set; the Installer settings need it"
     };
@@ -400,8 +400,15 @@ fn print_lock(st: &LockState, json: bool) {
     if !st.detail.is_empty() {
         println!("  {}", printable(&st.detail));
     }
+    // -- WP P1EFIX -- (review p1e-b F4) the Terminal's own gap, said plainly (TMCORE)
+    println!("  {TERMINAL_GAP}");
     println!("{}", scope(st));
 }
+
+// -- WP P1EFIX --
+/// What the lock does not hold yet in this Terminal (WP TMCORE closes it).
+pub(crate) const TERMINAL_GAP: &str = "Not yet checked in this Terminal: its single writes (set, eq, \
+     scripts, the TUI) are not checked against the lock or the limits profile.";
 
 fn unlock(core: &DspiCore, pins: &mut Pins<'_>, json: bool) -> u8 {
     let st = core.installer_lock_state();

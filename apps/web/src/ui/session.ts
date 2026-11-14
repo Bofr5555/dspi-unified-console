@@ -31,7 +31,7 @@ import type { HubToken, HubTokens } from "../fleet/hub-tokens";
 // -- WP P1WB2 -- notices from the core's table; the limits profile this page keeps
 import { loadNotices, noticeOf } from "./texts";
 import { safeLocalStorage } from "../fleet/local";
-import { loadProfile } from "../screens/installer/model";
+import { loadFieldRanges, loadProfile } from "../screens/installer/model";
 
 export interface SessionState {
   /** -- WP WB4b -- `pairing`: a hub wants its PIN; `choosing`: pick one of a hub's DSPis. */
@@ -137,6 +137,7 @@ export class Session {
     try {
       const r = await this.core.call("documentOpen", { text, fileName });
       const { document, ...snapshot } = r;
+      await this.requireTokens(); // -- WP P1EFIX -- before the page can write
       this.set({ status: "open", snapshot, document, error: "" });
       void this.afterOpen(); // -- WP P1WB2 --
     } catch (e) {
@@ -175,22 +176,34 @@ export class Session {
 
   private async load(target: DeviceTarget): Promise<void> {
     const snapshot = await this.core.call("open", target);
+    await this.requireTokens(); // -- WP P1EFIX -- before the page can write
     this.set({ status: "open", snapshot, error: "" });
     // -- WP P1WB2 -- every kind: tokens on, the notices, the limits this page keeps, the lock
     await this.afterOpen();
   }
 
+  // -- WP P1EFIX --
+  /**
+   * Gated calls need a confirmation token from here on (P1TK; each prompt mints one). Called
+   * after the core opened the device (or the document) and before the session shows as open,
+   * so the page is never interactive with tokens off (review p1e-a F5). A core without the call
+   * (the tests' stub) leaves the session as it was.
+   */
+  private async requireTokens(): Promise<void> {
+    await this.core.call("requireConfirmation", { on: true }).catch(() => undefined);
+  }
+
   // -- WP P1WB2 --
   /**
-   * Once a device (or a document) is open: gated calls need a confirmation token from here
-   * on (P1TK; each prompt mints one), the notice table is read, the limits profile this page
+   * Once a device (or a document) is open (tokens are already required, `requireTokens`):
+   * the notice table is read, the limits profile this page
    * keeps for the device is applied (P1LM: the web has no files), and the lock is read.
    * Each step's failure leaves the session as it was (the tests' stub core has none of them).
    */
   private async afterOpen(): Promise<void> {
     try {
-      await this.core.call("requireConfirmation", { on: true }).catch(() => undefined);
       await loadNotices(this.core).catch(() => undefined);
+      await loadFieldRanges(this.core).catch(() => undefined); // -- WP P1EFIX --
       const serial = this.state.snapshot?.device.serial || this.deviceId;
       const text = serial && !this.readOnlyReason ? loadProfile(safeLocalStorage(), serial) : "";
       if (text) await this.core.call("limitsApply", { text }).catch(() => undefined);

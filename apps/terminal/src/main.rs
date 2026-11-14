@@ -584,15 +584,20 @@ USAGE:
                              (--only eq,routing,... to apply those blocks alone,
                              --preview to show what would change, --guard S to
                              go back after S seconds (5-300) unless kept,
-                             --yes to confirm without asking)
+                             --yes to confirm without asking). Over DSPi Link
+                             (--link) a whole-device document is guarded for
+                             30 s by default; --no-guard applies it plainly
     {COMMAND} diff <a> [b]    what differs between two documents, or between
                              one and the device
     {COMMAND} open <file>     edit a document with no device, in the interface
                              (\"File:\" in the title); asks to save at the end
-    {COMMAND} snapshot save <name> [--note text] | list | recall <n> [--guard S]
+    {COMMAND} snapshot save <name> [--note text] | list
+             | recall <n> [--guard S | --no-guard]
              | diff <n> [m] | export <n> <file|-> | import <file> | delete <n>
                              whole-device snapshots kept on this computer;
-                             <n> is the number, name or id from `list`
+                             <n> is the number, name or id from `list`.
+                             A recall over DSPi Link (--link) is guarded for
+                             30 s by default (--no-guard: a plain recall)
     {COMMAND} ab [A] <B>      compare two snapshots (with only B, the device now
                              is A): t toggles, d diffs, a or b keeps a side
                              (--keep a|b to end on one at once)

@@ -16,12 +16,10 @@ Banner {
     visible: LimitsController.locked
     readonly property string note: LimitsController.lock.note || ""
     readonly property string contact: LimitsController.lock.contact || ""
-    // The lock's title in the core's words (its notice row), then what still works
-    readonly property string title: NoticeCenter.row(LimitsController.heldByHub ? "installer_lock.hub" : "installer_lock.locked").title
-                                    || qsTr("Locked by the installer")
-    //: The locked-user banner: %1 the lock's title ("Locked by the installer")
-    text: [qsTr("%1: only volume, mute and presets can be changed.").arg(title),
-           note, contact.length ? qsTr("Installer: %1").arg(contact) : ""].filter(t => t.length > 0).join("  ")
+    // -- WP P1EFIX -- the banner's line is the core's row (installer_lock.banner),
+    // the same in every client; the row's title before the table is read
+    readonly property string line: NoticeCenter.row("installer_lock.banner").reason || qsTr("Locked by the installer")
+    text: [line, note, contact.length ? qsTr("Installer: %1").arg(contact) : ""].filter(t => t.length > 0).join("  ")
 
     AppButton {
         objectName: "LockBanner.unlock"

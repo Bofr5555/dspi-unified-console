@@ -32,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -186,6 +187,10 @@ fun AppScaffold(
     val uiMode by modeModel.mode.collectAsStateWithLifecycle()
     val modeChoice by modeModel.choice.collectAsStateWithLifecycle()
     val lockState by modeModel.lock.collectAsStateWithLifecycle()
+    // -- WP P1EFIX -- the locked-user banner's line: the core's row (read on the FFI thread)
+    val lockLine by produceState(LOCKED_FALLBACK, bridge) {
+        value = bridge.installer.notice(LOCK_BANNER_NOTICE_KEY)?.reason?.takeIf { it.isNotBlank() } ?: LOCKED_FALLBACK
+    }
     val locked = uiMode == UiModes.LOCKED_USER
     // The entry: Unlock while locked; none when the hub pins the mode
     val modeEntry: Pair<String, () -> Unit>? = when {
@@ -236,7 +241,7 @@ fun AppScaffold(
                 ) { c ->
                     if (c == DeviceChoice.Network) onConnectNetwork() else onChooseDevice(c)
                 }
-                if (locked) LockedBanner(lockState, modeModel::openDialog) // -- WP P1AN2 --
+                if (locked) LockedBanner(lockState, lockLine, modeModel::openDialog) // -- WP P1AN2 --
                 key(bridge) {
                     // -- WP AN35 -- the host's USB format, for every route; the DSPi is on this phone's USB only outside demo and Link
                     HostChannelsFeed(

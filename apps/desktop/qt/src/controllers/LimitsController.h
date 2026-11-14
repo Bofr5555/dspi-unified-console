@@ -54,6 +54,9 @@ class LimitsController : public QObject {
     Q_PROPERTY(QVariantMap limits READ limits NOTIFY changed)
     // What the last hold changed (limits_status().lastHeld)
     Q_PROPERTY(QStringList lastHeld READ lastHeld NOTIFY changed)
+    // -- WP P1EFIX -- The core's one range table for the limits editor
+    // (`dspi_limits_field_ranges`): field key -> { min, max, step, unit, perOutput }
+    Q_PROPERTY(QVariantMap ranges READ ranges CONSTANT)
 
     // ---- The installer's PIN and the lock ----
     // The core's LockState: { pinSet, unlocked, locked, installerOpen, covers,
@@ -92,6 +95,7 @@ public:
     QVariantList outputs() const;
     QVariantMap limits() const;
     QStringList lastHeld() const;
+    QVariantMap ranges() const { return m_ranges; }
     QVariantMap lock() const { return m_lock.toVariantMap(); }
     bool pinSet() const { return m_lock.value(QLatin1String("pinSet")).toBool(); }
     bool locked() const { return m_lock.value(QLatin1String("locked")).toBool(); }
@@ -157,6 +161,7 @@ private:
     QStringList m_heldSeen;  // the last hold already shown
     QString m_recoveryCode;
     QString m_pinError;
+    QVariantMap m_ranges; // -- WP P1EFIX --
 };
 
 #endif // LIMITSCONTROLLER_H

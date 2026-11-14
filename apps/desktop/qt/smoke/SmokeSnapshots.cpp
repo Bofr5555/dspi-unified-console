@@ -557,13 +557,14 @@ static void offlineSection(SmokeDriver &d) {
     d.check("p1qt1-offline: the K340 template is shipped", !k340.isEmpty());
     QObject *templates = files->host()->findChild<QObject *>(QStringLiteral("TemplatePicker"));
     d.check("p1qt1-offline: its picker opens", d.waitFor(3000, [&] { return opened(templates); }));
-    // -- WP P1DCFIX -- F3: the picker shows the core's status line (the K340 template's draft notice)
+    // -- WP P1DCFIX -- F3: the picker shows the core's status line (the K340 template's notice;
+    // -- WP P1EFIX -- approved on 2026-11-14 (31e50222), so no longer "Draft": any status line)
     {
         const QString status = k340.value(QStringLiteral("status")).toString();
         QQuickItem *line = nullptr;
         d.waitFor(3000, [&] { return (line = inPopup(d, templates, QStringLiteral("TemplatePicker.status.%1").arg(k340Row))) != nullptr; });
         d.check("p1dcfix: the K340 template's status line is shown",
-                status.startsWith(QLatin1String("Draft")) && line && line->isVisible() && line->property("text").toString() == status);
+                !status.isEmpty() && line && line->isVisible() && line->property("text").toString() == status);
     }
     shootBoth(d, d.mainWindow(), QStringLiteral("template-picker"));
     QMetaObject::invokeMethod(templates, "close");

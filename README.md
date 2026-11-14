@@ -93,6 +93,62 @@ Hardware runs are recorded in `docs/core-merge/HW-*.md` and
 What each client lacks against the macOS reference is in
 [`docs/PARITY.md`](docs/PARITY.md), section 5.
 
+### PRO features, phase 1 (on `main`, 2026-11-14)
+
+Phase 1 of the PRO plan ([`docs/core-merge/PLAN-CLIENTS.md`](docs/core-merge/PLAN-CLIENTS.md),
+section 5.9) is merged. Each feature lives once in the core; the clients show it.
+The integrator documents are in [`docs/integrator/`](docs/integrator/)
+(`document-format.md`, `limits-profiles.md`, `installer-lock.md`).
+
+| Feature | What it does | Web | Qt | Android | Swift | Terminal |
+|---|---|---|---|---|---|---|
+| Snapshots | Whole-device snapshots kept on this computer, one folder per device: capture, name, note, recall, export, import | ✓ (kept in the page) | ✓ | ✓ | ✓ with the core attached | `snapshot` |
+| A/B compare | Two snapshots (or the device now and one), toggled with one bulk write and diffed; keep either side. The toggle key is a plain `B` | ✓ | ✓ | ✓ | ✓ | `ab` |
+| Safe apply | A recall or an import with a way back: Keep, or it goes back by itself (30 s by default, 5 to 300 s in Advanced). Over DSPi Link the hub puts it back too if the console goes away | ✓ | ✓ | ✓ | ✓ | `--guard`, on by default over DSPi Link |
+| Limits profiles | An installer narrows what a system may do (per output gain, high-pass, delay range, limiter ceiling; PEQ boost; master volume). One range table in the core for every editor | ✓ (the page keeps the profile) | ✓ | ✓ | not yet | `limits` |
+| Installer lock and PIN | A PIN on this console (or the hub's) leaves volume, mute and presets to the user; a recovery code is shown once. Not a security boundary: real access control is the hub's roles | reads and unlocks a hub's lock; no PIN of its own | ✓ | ✓ | not yet | `lock` (see the gap below) |
+| Confirmation tokens | Dangerous calls (preset save, copy, delete, factory reset, import, firmware writes) run only with a token their confirmation minted | ✓ | ✓ | ✓ | ✓ for the import | ✓ (`--yes` mints it) |
+| Offline documents and templates | Open a `.dspipreset` with no device and edit it as one; templates ship with the app and your own can be saved | ✓ | ✓ | ✓ | ✓ | `open` (templates: not yet) |
+| Document diff and partial import | What a file would change, block by block, and an import of the chosen blocks (volume levels and hardware off unless chosen) | ✓ | ✓ | ✓ | ✓ | `diff`, `import --only`, `--preview` |
+| Undo groups | Compound edits (Clear All, a linked pair's preamp, Direct 1:1, Protect all outputs) are one undo step. Undoing Protect all leaves the limiters on, and every client says so | ✓ | ✓ | ✓ | not yet | not yet (TMCORE) |
+| AutoEQ preview | A headphone profile's curve before it is applied, outputs' gain untouched by default, the suggested trim shown | ✓ | ✓ | ✓ | not yet | `autoeq preview`, `autoeq apply` |
+
+**Terminal commands** (`uconsole --help` lists them all; each one-shot command is one
+session of the core, so an unlock lasts for that command):
+
+```sh
+uconsole open site.dspipreset                     # edit a document with no device
+uconsole snapshot save "Before" --note "as found"
+uconsole snapshot list
+uconsole diff site.dspipreset                     # what it would change on the device
+uconsole import site.dspipreset --only eq,crossover --guard 60   # type keep, or it goes back
+uconsole ab "Before" 2 --keep b                   # compare, end on B
+uconsole --link hub.local snapshot recall 1       # guarded for 30 s by default over DSPi Link
+uconsole --link hub.local snapshot recall 1 --no-guard
+uconsole limits set profile.dspipreset            # also: limits show | clear
+uconsole lock status                              # also: unlock | set-pin | clear-pin
+uconsole autoeq preview <id>                      # then: autoeq apply <id> [ch | l r]
+uconsole status
+```
+
+Over DSPi Link (`--link`) a snapshot recall and an import of a whole-device document are
+guarded by default for 30 s; `--guard S` sets the time, `--no-guard` opts out. Locally (USB,
+MIDI, the demo) nothing is guarded unless `--guard` is given. A guard waits for a person:
+a piped `keep` keeps at once. The installer PIN is never echoed and never taken on the
+command line (`DSPI_INSTALLER_PIN` or `--installer-pin -` in a script).
+
+**Not done yet:**
+
+- **The Terminal's own writes (WP TMCORE).** `uconsole set`, `uconsole eq`, scripts of
+  them and the TUI do not yet go through the core, so they are not checked against the
+  limits profile or the installer lock, and have no undo groups. `uconsole lock status`
+  says so. The Terminal also opens a hub's device directly, not as a core DSPi Link session,
+  so the hub's own guard is not seen there. A hub still enforces its own limits and lock.
+- **The hub's profile and PIN from the clients (WP HUBADMIN).** The clients edit and lock
+  their own copy; setting a hub's profile, PIN or pinned modes from a client, and hearing a
+  hub's `limits.changed`/`mode.changed` mid-session, come with HUBADMIN.
+- **Swift:** the limits editor, the installer lock, undo groups and the AutoEQ preview.
+
 ### What is owed
 
 - **Hardware passes:** a physical replug on Linux (terminal and Qt); the

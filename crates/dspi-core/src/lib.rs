@@ -223,6 +223,8 @@ pub use ab::{AbCompare, AbSide};
 pub use limits::{LimitsApply, LimitsStatus};
 // -- WP P1LK --
 pub use limits::{InstallerPin, LockState};
+// -- WP P1EFIX --
+pub use limits::{LOCK_BANNER_NOTICE, LimitFieldRange, limits_field_ranges};
 pub use modes::{
     ModeChoice, ModeEntry, ModeManifest, ModeOperation, ModeScreen, ModesLockedUser, mode_manifest,
 };

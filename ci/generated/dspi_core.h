@@ -6008,6 +6008,14 @@ uint32_t dspi_limits_clear(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_limits_status(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
+ * Every limits field's range, the one table for a limits editor: JSON `{ok,
+ * value:[{key, perOutput, unit, min, max, step}]}` (`dspi_core::limits_field_ranges`).
+ * Takes no core handle and does not block. Returns the bytes needed including
+ * the NUL, 0 for a panic.
+ */
+uint32_t dspi_limits_field_ranges(char *buf, uint32_t len);
+
+/**
  * The mode manifest, JSON `{ok, version, platforms, modes, lockedUser,
  * screens, operations}` (the shape of `assets/modes/modes.json`). No handle,
  * no I/O; 0 for a panic.
