@@ -351,7 +351,8 @@ struct FirmwareUpdateView: View {
     private func enterBootloaderOnly() {
         let transport = vm.transport
         DispatchQueue.global(qos: .userInitiated).async {
-            DSPViewModel.enterBootloader(transport)   // -- WP P1SW2 -- a token through the core
+            // -- WP P1SW2 -- a token through the core; -- WP P1SW2F -- from this click
+            DSPViewModel.enterBootloader(transport, confirmed: .enterBootloader())
         }
     }
 
@@ -413,10 +414,14 @@ struct FirmwareUpdateView: View {
     /// user and the hardware arrive in stops mattering.
     private func start() {
         confirmed = true
-        installer.installWhenReady()
+        // -- WP P1SW2F -- F3: the installer's lock refuses the write (the
+        // core's row), as the core's flash does in Qt; this click is the
+        // person's confirmation of the flash and of the restart.
+        installer.flashGate = { FirmwareFlashGate.refusal() }
+        guard installer.installWhenReady(confirmed: .firmwareFlash()) else { return }
         guard vm.isDeviceConnected, !rebootRequested else { return }
         rebootRequested = true
-        vm.enterBootloaderForInstall { sent in
+        vm.enterBootloaderForInstall(confirmed: .enterBootloader()) { sent in
             if !sent { installer.abandon(.deviceLocked) }
         }
     }

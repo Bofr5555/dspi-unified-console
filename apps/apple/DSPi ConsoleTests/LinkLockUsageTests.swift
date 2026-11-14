@@ -148,7 +148,7 @@ final class LinkLockUsageTests: XCTestCase {
     func testSavePresetHoldsTheLockAndReleasesIt() {
         let rig = makeRig()
         let rec = instrument(rig, code: REQ_PRESET_SAVE) { self.ok($0) }
-        let status = offMain { rig.vm.savePreset(slot: 2) }
+        let status = offMain { rig.vm.savePreset(slot: 2, confirmed: .savePreset()) }
         XCTAssertEqual(status, PRESET_OK)
         XCTAssertEqual(rec.seenHolders, [LinkHub.localSessionID])
         XCTAssertEqual(rec.seenProbes, [.locked])
@@ -160,7 +160,7 @@ final class LinkLockUsageTests: XCTestCase {
         let rec = instrument(rig, code: REQ_PRESET_SAVE) {
             LinkCmdResponse(tag: $0.tag, status: .error)
         }
-        let status = offMain { rig.vm.savePreset(slot: 2) }
+        let status = offMain { rig.vm.savePreset(slot: 2, confirmed: .savePreset()) }
         XCTAssertEqual(status, 0xFF)
         XCTAssertEqual(rec.seenHolders, [LinkHub.localSessionID])
         XCTAssertNil(holder(rig))
@@ -169,7 +169,7 @@ final class LinkLockUsageTests: XCTestCase {
     func testSavePresetDoesNotTouchTheDeviceWhenLocked() {
         let rig = makeRig()
         XCTAssertTrue(rig.hub.acquireLock(session: rig.remote.id, timeout: 5))
-        let status = offMain { rig.vm.savePreset(slot: 2) }
+        let status = offMain { rig.vm.savePreset(slot: 2, confirmed: .savePreset()) }
         XCTAssertEqual(status, PRESET_STATUS_LOCKED)
         XCTAssertEqual(executed(rig, REQ_PRESET_SAVE), 0)
         XCTAssertEqual(presetFailureText(status), DeviceLock.lockedMessage)
@@ -194,7 +194,7 @@ final class LinkLockUsageTests: XCTestCase {
                 return self.ok(req)
             }
         }
-        let status = offMain { rig.vm.copyPreset(from: 1, to: 4) }
+        let status = offMain { rig.vm.copyPreset(from: 1, to: 4, confirmed: .copyPreset()) }
         XCTAssertEqual(status, PRESET_OK)
         XCTAssertEqual(rec.seenHolders, [LinkHub.localSessionID, LinkHub.localSessionID],
                        "both saves under the lock, not released between them")
@@ -205,7 +205,7 @@ final class LinkLockUsageTests: XCTestCase {
     func testCopyPresetReleasesWhenTheFirstSaveFails() {
         let rig = makeRig()
         let rec = instrument(rig, code: REQ_PRESET_SAVE) { self.ok($0, Data([PRESET_ERR_FLASH_WRITE])) }
-        let status = offMain { rig.vm.copyPreset(from: 1, to: 4) }
+        let status = offMain { rig.vm.copyPreset(from: 1, to: 4, confirmed: .copyPreset()) }
         XCTAssertEqual(status, PRESET_ERR_FLASH_WRITE)
         XCTAssertEqual(rec.seenHolders.count, 1)
         XCTAssertNil(holder(rig))
@@ -223,7 +223,7 @@ final class LinkLockUsageTests: XCTestCase {
     func testSaveOutputConfigHoldsTheLock() {
         let rig = makeRig()
         let rec = instrument(rig, code: REQ_SAVE_OUTPUT_CONFIG) { self.ok($0) }
-        XCTAssertTrue(offMain { rig.vm.saveOutputConfig() })
+        XCTAssertTrue(offMain { rig.vm.saveOutputConfig(confirmed: .saveOutputConfig()) })
         XCTAssertEqual(rec.seenHolders, [LinkHub.localSessionID])
         XCTAssertEqual(rec.seenProbes, [.locked])
         XCTAssertNil(holder(rig))
@@ -232,7 +232,7 @@ final class LinkLockUsageTests: XCTestCase {
     func testSaveOutputConfigReleasesOnDeviceError() {
         let rig = makeRig()
         _ = instrument(rig, code: REQ_SAVE_OUTPUT_CONFIG) { LinkCmdResponse(tag: $0.tag, status: .error) }
-        let result = offMain { rig.vm.saveOutputConfigResult() }
+        let result = offMain { rig.vm.saveOutputConfigResult(confirmed: .saveOutputConfig()) }
         guard case .failure(.error) = result else { return XCTFail("expected .error, got \(result)") }
         XCTAssertNil(holder(rig))
     }
@@ -240,7 +240,7 @@ final class LinkLockUsageTests: XCTestCase {
     func testSaveOutputConfigReportsLockedAndSendsNothing() {
         let rig = makeRig()
         XCTAssertTrue(rig.hub.acquireLock(session: rig.remote.id, timeout: 5))
-        let result = offMain { rig.vm.saveOutputConfigResult() }
+        let result = offMain { rig.vm.saveOutputConfigResult(confirmed: .saveOutputConfig()) }
         guard case .failure(.locked) = result else { return XCTFail("expected .locked, got \(result)") }
         XCTAssertEqual(executed(rig, REQ_SAVE_OUTPUT_CONFIG), 0)
     }
@@ -249,12 +249,12 @@ final class LinkLockUsageTests: XCTestCase {
         let rig = makeRig()
         XCTAssertTrue(rig.vm.isDeviceConnected)
         let rec = instrument(rig, code: REQ_SAVE_PARAMS) { self.ok($0, Data([FLASH_OK])) }
-        XCTAssertEqual(offMain { rig.vm.saveParams() }, FLASH_OK)
+        XCTAssertEqual(offMain { rig.vm.saveParams(confirmed: .saveParams()) }, FLASH_OK)
         XCTAssertEqual(rec.seenHolders, [LinkHub.localSessionID])
         XCTAssertNil(holder(rig))
 
         XCTAssertTrue(rig.hub.acquireLock(session: rig.remote.id, timeout: 5))
-        XCTAssertEqual(offMain { rig.vm.saveParams() }, FLASH_ERR_WRITE)
+        XCTAssertEqual(offMain { rig.vm.saveParams(confirmed: .saveParams()) }, FLASH_ERR_WRITE)
         XCTAssertEqual(executed(rig, REQ_SAVE_PARAMS), 1, "the refused save never reached the device")
     }
 
@@ -337,7 +337,7 @@ final class LinkLockUsageTests: XCTestCase {
         let rig = makeRig()
         let rec = instrument(rig, code: REQ_ENTER_BOOTLOADER) { self.ok($0) }
         let e = expectation(description: "rebooted")
-        rig.vm.enterBootloaderForInstall { sent in XCTAssertTrue(sent); e.fulfill() }
+        rig.vm.enterBootloaderForInstall(confirmed: .enterBootloader()) { sent in XCTAssertTrue(sent); e.fulfill() }
         wait(for: [e], timeout: 5)
         XCTAssertEqual(rec.seenHolders, [LinkHub.localSessionID])
         XCTAssertEqual(rec.seenProbes, [.locked])
@@ -350,7 +350,7 @@ final class LinkLockUsageTests: XCTestCase {
         let rig = makeRig()
         XCTAssertTrue(rig.hub.acquireLock(session: rig.remote.id, timeout: 5))
         let e = expectation(description: "refused")
-        rig.vm.enterBootloaderForInstall { sent in XCTAssertFalse(sent); e.fulfill() }
+        rig.vm.enterBootloaderForInstall(confirmed: .enterBootloader()) { sent in XCTAssertFalse(sent); e.fulfill() }
         wait(for: [e], timeout: 5)
         XCTAssertEqual(executed(rig, REQ_ENTER_BOOTLOADER), 0)
         rig.vm.releaseFirmwareInstallLock()
@@ -359,7 +359,7 @@ final class LinkLockUsageTests: XCTestCase {
 
     func testInstallerAbandonReportsDeviceLocked() {
         let installer = FirmwareInstaller(locator: NoBoardLocator(), verifier: NeverVerifier())
-        installer.installWhenReady()
+        installer.installWhenReady(confirmed: .firmwareFlash())
         installer.abandon(.deviceLocked)
         XCTAssertEqual(installer.state, .failed(.deviceLocked))
         XCTAssertFalse(installer.isArmed)

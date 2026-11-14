@@ -22,22 +22,34 @@ final class SnapshotsP1SW1UITests: XCTestCase {
     }
 
     func testP1SW1SnapshotsSheetCaptureRecallWithRollbackAndKeep() {
-        let app = XCUIApplication()
-        app.launchArguments = ["-LocalTransport", "demo", "-DemoMode", "YES", "-CoreTransport", "YES",
-                               "-OpenTool", "snapshots",
-                               // -- WP P1SW2 -- the app's mode (the window's switch is it now): from Simple
-                               "-ResetInstaller", "YES", "-UIMode", "simple"]
-        app.launch()
-
-        let sheet = app.descendants(matching: .any)["snapshotsView"].firstMatch
+        // -- WP P1SW2F -- the window follows the app's mode (Settings > Mode);
+        // `-UIMode` sets it for one launch.  Simple first, then Advanced.
+        func launch(_ mode: String) -> XCUIApplication {
+            let app = XCUIApplication()
+            app.launchArguments = ["-LocalTransport", "demo", "-DemoMode", "YES", "-CoreTransport", "YES",
+                                   "-OpenTool", "snapshots", "-ResetInstaller", "YES", "-UIMode", mode]
+            app.launch()
+            return app
+        }
+        var app = launch("simple")
+        var sheet = app.descendants(matching: .any)["snapshotsView"].firstMatch
         XCTAssertTrue(sheet.waitForExistence(timeout: 60), "the Snapshots sheet opens")
-        // Simple first (an earlier run may have left Advanced on)
-        app.buttons["Simple"].firstMatch.tap()
+        let mode = app.staticTexts["snapshotsMode"].firstMatch
+        XCTAssertTrue(mode.waitForExistence(timeout: 10))
+        XCTAssertTrue(mode.label.contains("Simple"), "the window shows the app's mode: \(mode.label)")
         pause(2)
         keep(app, "ios-p1sw1-01-simple")
         XCTAssertFalse(app.buttons["snapshotCapture"].exists, "Simple: no capture")
+        XCTAssertFalse(app.buttons["Advanced"].exists, "no mode switch of its own")
+        // Change... leads to Settings > Mode.
+        app.buttons["snapshotsModeChange"].firstMatch.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["modeSwitch"].firstMatch.waitForExistence(timeout: 15),
+                      "Settings > Mode")
+        app.terminate()
 
-        app.buttons["Advanced"].firstMatch.tap()
+        app = launch("advanced")
+        sheet = app.descendants(matching: .any)["snapshotsView"].firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 60), "the Snapshots sheet opens")
         let capture = app.buttons["snapshotCapture"].firstMatch
         XCTAssertTrue(capture.waitForExistence(timeout: 10))
         capture.tap()

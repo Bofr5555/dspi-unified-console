@@ -295,6 +295,9 @@ struct IOSRootView: View {
     private func launch() {
         guard !didLaunch else { return }
         didLaunch = true
+        // -- WP P1SW2F -- Snapshots > Change...: Settings over the console,
+        // once the Snapshots sheet has gone.
+        ModeSettingsLink.openSettings = { HalfSheet.dismiss { showSettings = true } }
         // The setup wizard walks through real hardware (firmware, wiring);
         // the demo device has none, so demo launches go straight to the
         // console.

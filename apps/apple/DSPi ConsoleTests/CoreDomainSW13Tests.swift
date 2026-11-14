@@ -58,7 +58,7 @@ final class CoreDomainSW13Tests: XCTestCase, CoreDomainTesting {
         _ = t.takeRawOpcodesForTest()   // the connect-time read
         #endif
 
-        XCTAssertEqual(offMain { vm.savePreset(slot: 4) }, PRESET_OK)
+        XCTAssertEqual(offMain { vm.savePreset(slot: 4, confirmed: .savePreset()) }, PRESET_OK)
         XCTAssertTrue(spinUntil(5) { vm.activePresetSlot == 4 && vm.isPresetOccupied(4) && !vm.hasUnsavedChanges })
         XCTAssertFalse(try XCTUnwrap(journalled(core, t, "preset.save")).undoable)
 
@@ -69,7 +69,7 @@ final class CoreDomainSW13Tests: XCTestCase, CoreDomainTesting {
         XCTAssertEqual(flushed(t).presetNames[4], cut, "the core cut it the same way")
         XCTAssertFalse(try XCTUnwrap(journalled(core, t, "preset.name")).undoable)
 
-        XCTAssertEqual(offMain { vm.copyPreset(from: 4, to: 5) }, PRESET_OK)
+        XCTAssertEqual(offMain { vm.copyPreset(from: 4, to: 5, confirmed: .copyPreset()) }, PRESET_OK)
         XCTAssertTrue(spinUntil(5) { vm.activePresetSlot == 4 && vm.isPresetOccupied(5) })
         XCTAssertEqual(t.readState().activePresetSlot, 4, "the source stays active")
 
@@ -92,9 +92,9 @@ final class CoreDomainSW13Tests: XCTestCase, CoreDomainTesting {
 
         XCTAssertTrue(offMain { vm.saveMasterVolume() })
         _ = journalled(core, t, "vol.master.save")
-        guard case .success = offMain({ vm.saveOutputConfigResult() }) else { return XCTFail("output save") }
+        guard case .success = offMain({ vm.saveOutputConfigResult(confirmed: .saveOutputConfig()) }) else { return XCTFail("output save") }
         _ = journalled(core, t, "dev.save.io")
-        XCTAssertEqual(offMain { vm.saveParams() }, FLASH_OK)
+        XCTAssertEqual(offMain { vm.saveParams(confirmed: .saveParams()) }, FLASH_OK)
         _ = journalled(core, t, "dev.save")
         XCTAssertTrue(entries(core, t, "raw").isEmpty, "no raw write in the journal")
 
@@ -111,10 +111,10 @@ final class CoreDomainSW13Tests: XCTestCase, CoreDomainTesting {
 
         XCTAssertEqual(offMain { vm.loadPreset(slot: 5) }, PRESET_OK)
         XCTAssertTrue(spinUntil(5) { vm.activePresetSlot == 5 })
-        XCTAssertEqual(offMain { vm.deletePreset(slot: 5) }, PRESET_OK)
+        XCTAssertEqual(offMain { vm.deletePreset(slot: 5, confirmed: .deletePreset()) }, PRESET_OK)
         XCTAssertTrue(offMain { vm.waitForPresetDeletion(slot: 5) })
         XCTAssertTrue(spinUntil(5) { !vm.isPresetOccupied(5) })
-        XCTAssertEqual(offMain { vm.factoryReset() }, FLASH_OK)
+        XCTAssertEqual(offMain { vm.factoryReset(confirmed: .factoryReset()) }, FLASH_OK)
         XCTAssertTrue(spinUntil(10) { vm.isDeviceConnected })
 
         #if DEBUG
@@ -294,25 +294,25 @@ final class CoreDomainSW13Tests: XCTestCase, CoreDomainTesting {
     func testSW13TheCoreHoldsTheLockForEachFlashWriteAndTheImport() throws {
         let (host, _, vm) = lockedVM()
 
-        XCTAssertEqual(offMain { vm.savePreset(slot: 2) }, PRESET_OK)
+        XCTAssertEqual(offMain { vm.savePreset(slot: 2, confirmed: .savePreset()) }, PRESET_OK)
         XCTAssertEqual(host.take(REQ_PRESET_SAVE), [true])
         XCTAssertFalse(host.isHeld)
 
-        XCTAssertEqual(offMain { vm.copyPreset(from: 2, to: 6) }, PRESET_OK)
+        XCTAssertEqual(offMain { vm.copyPreset(from: 2, to: 6, confirmed: .copyPreset()) }, PRESET_OK)
         XCTAssertEqual(host.take(REQ_PRESET_SAVE), [true, true], "both saves under the one lock")
         XCTAssertFalse(host.isHeld)
 
-        XCTAssertEqual(offMain { vm.saveParams() }, FLASH_OK)
+        XCTAssertEqual(offMain { vm.saveParams(confirmed: .saveParams()) }, FLASH_OK)
         XCTAssertEqual(host.take(REQ_SAVE_PARAMS), [true])
         // Swift's fake does not answer this save (the demo device's test
         // covers its success): what counts here is the lock it went out under.
-        _ = offMain { vm.saveOutputConfigResult() }
+        _ = offMain { vm.saveOutputConfigResult(confirmed: .saveOutputConfig()) }
         XCTAssertEqual(host.take(REQ_SAVE_OUTPUT_CONFIG), [true])
         XCTAssertFalse(host.isHeld)
 
         XCTAssertEqual(offMain { vm.loadPreset(slot: 6) }, PRESET_OK)
         XCTAssertEqual(host.take(REQ_PRESET_LOAD), [true])
-        XCTAssertEqual(offMain { vm.deletePreset(slot: 6) }, PRESET_OK)
+        XCTAssertEqual(offMain { vm.deletePreset(slot: 6, confirmed: .deletePreset()) }, PRESET_OK)
         XCTAssertEqual(host.take(REQ_PRESET_DELETE), [true])
 
         let report = try XCTUnwrap(importDocument(vm))
@@ -327,16 +327,16 @@ final class CoreDomainSW13Tests: XCTestCase, CoreDomainTesting {
         let (host, _, vm) = lockedVM()
         host.refuse = true
 
-        XCTAssertEqual(offMain { vm.savePreset(slot: 2) }, PRESET_STATUS_LOCKED)
+        XCTAssertEqual(offMain { vm.savePreset(slot: 2, confirmed: .savePreset()) }, PRESET_STATUS_LOCKED)
         XCTAssertEqual(presetFailureText(PRESET_STATUS_LOCKED), DeviceLock.lockedMessage)
-        XCTAssertEqual(offMain { vm.copyPreset(from: 0, to: 6) }, PRESET_STATUS_LOCKED)
+        XCTAssertEqual(offMain { vm.copyPreset(from: 0, to: 6, confirmed: .copyPreset()) }, PRESET_STATUS_LOCKED)
         XCTAssertEqual(offMain { vm.loadPreset(slot: 0) }, PRESET_STATUS_LOCKED)
-        XCTAssertEqual(offMain { vm.deletePreset(slot: 0) }, PRESET_STATUS_LOCKED)
-        XCTAssertEqual(offMain { vm.saveParams() }, FLASH_ERR_WRITE)
-        guard case .failure(.locked) = offMain({ vm.saveOutputConfigResult() }) else {
+        XCTAssertEqual(offMain { vm.deletePreset(slot: 0, confirmed: .deletePreset()) }, PRESET_STATUS_LOCKED)
+        XCTAssertEqual(offMain { vm.saveParams(confirmed: .saveParams()) }, FLASH_ERR_WRITE)
+        guard case .failure(.locked) = offMain({ vm.saveOutputConfigResult(confirmed: .saveOutputConfig()) }) else {
             return XCTFail("the output save reads as the lock")
         }
-        XCTAssertEqual(offMain { vm.factoryReset() }, FLASH_ERR_WRITE)
+        XCTAssertEqual(offMain { vm.factoryReset(confirmed: .factoryReset()) }, FLASH_ERR_WRITE)
         let report = try XCTUnwrap(importDocument(vm))
         XCTAssertTrue(report.lockedOut)
 
@@ -380,7 +380,7 @@ final class CoreDomainSW13Tests: XCTestCase, CoreDomainTesting {
     /// (an import's is in testSW13ExportAndImportGoThroughTheCore).
     func testSW13ALoadAndAFactoryResetEndTheHistory() {
         let (_, _, vm) = demoVM()
-        XCTAssertEqual(offMain { vm.savePreset(slot: 3) }, PRESET_OK)
+        XCTAssertEqual(offMain { vm.savePreset(slot: 3, confirmed: .savePreset()) }, PRESET_OK)
 
         vm.setMasterVolume(vm.masterVolumeDB - 4)
         XCTAssertTrue(spinUntil(5) { vm.undo.canUndo })
@@ -389,7 +389,7 @@ final class CoreDomainSW13Tests: XCTestCase, CoreDomainTesting {
 
         vm.setMasterVolume(vm.masterVolumeDB - 4)
         XCTAssertTrue(spinUntil(5) { vm.undo.canUndo })
-        XCTAssertEqual(offMain { vm.factoryReset() }, FLASH_OK)
+        XCTAssertEqual(offMain { vm.factoryReset(confirmed: .factoryReset()) }, FLASH_OK)
         XCTAssertTrue(spinUntil(10) { !vm.undo.canUndo }, "the reset ended the history")
     }
 }

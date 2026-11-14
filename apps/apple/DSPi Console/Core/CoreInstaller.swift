@@ -107,13 +107,12 @@ final class CoreInstaller: ObservableObject {
     init(vm: DSPViewModel, folder: URL?) {
         self.vm = vm
         self.folder = folder
-        // `-UIMode simple|advanced` (UI tests, screenshots): the kept choice
-        // for every device; `-ResetInstaller YES` forgets the kept choices.
+        // `-ResetInstaller YES` forgets the kept choices.  `-UIMode` is
+        // `launchMode` (this launch only, never kept: WP P1SW2F, F7).
         let d = UserDefaults.standard
         if Self.resetAtLaunch {
             for key in d.dictionaryRepresentation().keys where key.hasPrefix("uiMode.") { d.removeObject(forKey: key) }
         }
-        if let m = d.string(forKey: "UIMode"), !m.isEmpty { d.set(m, forKey: Self.modeKeyAll) }
         vm.$isDeviceConnected
             .removeDuplicates()
             .receive(on: DispatchQueue.main)
@@ -436,7 +435,11 @@ final class CoreInstaller: ObservableObject {
         let pages = on ? coverPages : []
         run({ try $0.installerLockCover(pages: pages) }) { [weak self] result in
             switch result {
-            case .success(let lock): self?.resolveAfter(lock)
+            case .success(let lock):
+                // -- WP P1SW2F -- F1: the draft follows at once, so an edit
+                // sent before the profile is read again keeps the cover.
+                self?.draft.setLockedPages(lock.covers)
+                self?.resolveAfter(lock)
             case .failure(let e): self?.post(Self.line(for: e), .warning)
             }
         }
@@ -454,7 +457,16 @@ final class CoreInstaller: ObservableObject {
     static func modeKey(serial: String) -> String { "uiMode.device.\(serial)" }
 
     /// The kept choice for `serial`: its own, else the one for every device.
+    /// -- WP P1SW2F -- F7: `-UIMode simple|advanced` (UI tests,
+    /// screenshots): the choice for this launch only, read from the launch
+    /// arguments and never written; a choice made in the app replaces it.
+    static var launchMode: String? = {
+        let m = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)["UIMode"] as? String
+        return (m?.isEmpty ?? true) ? nil : m
+    }()
+
     static func storedChoice(serial: String?) -> String {
+        if let m = launchMode { return m }
         let d = UserDefaults.standard
         if let serial = serial, let own = d.string(forKey: modeKey(serial: serial)), !own.isEmpty { return own }
         return d.string(forKey: modeKeyAll) ?? ""
@@ -475,6 +487,7 @@ final class CoreInstaller: ObservableObject {
             } else {
                 d.set(mode, forKey: Self.modeKeyAll)
             }
+            Self.launchMode = nil   // -- WP P1SW2F -- F7: the user's choice replaces the launch's
             self.chosen = mode
             self.resolve()
         }
@@ -528,6 +541,9 @@ final class CoreInstaller: ObservableObject {
 
     /// The profile to the core: applied at once, what was held reported.
     private func sendProfile() {
+        // -- WP P1SW2F -- F1: what the lock covers is the lock's (the core's
+        // state now), never a draft read before the last cover change.
+        if lock.pinSet { draft.setLockedPages(lock.covers) }
         let document = draft.document(name: "Limits profile")
         write({ try $0.limitsApplyProfile(document: document) }) { [weak self] result in
             guard let self = self else { return }
@@ -546,8 +562,8 @@ final class CoreInstaller: ObservableObject {
 
     /// Remove every limit.  What the lock covers stays while a PIN is set.
     func clearLimits() {
-        if lock.pinSet, !draft.lockedPages.isEmpty {
-            draft = LimitsDraft(lockedPages: draft.lockedPages)
+        if lock.pinSet, !lock.covers.isEmpty {   // -- WP P1SW2F -- F1: the lock's
+            draft = LimitsDraft(lockedPages: lock.covers)
             sendProfile()
             return
         }
@@ -608,6 +624,12 @@ struct LimitsDraft: Equatable {
 
     init(lockedPages: [String]) {
         json = ["lockedPages": lockedPages]
+    }
+
+    /// -- WP P1SW2F -- What the lock covers (empty: the key goes).
+    mutating func setLockedPages(_ pages: [String]) {
+        if pages.isEmpty { json.removeValue(forKey: "lockedPages") } else { json["lockedPages"] = pages }
+        revision += 1
     }
 
     /// From the core's document ("" none).

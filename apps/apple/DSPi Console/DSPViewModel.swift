@@ -3285,7 +3285,7 @@ class DSPViewModel: ObservableObject {
                     if self.presetNames[self.activePresetSlot].isEmpty {
                         self.setPresetName(slot: self.activePresetSlot, name: "Preset \(self.activePresetSlot + 1)")
                     }
-                    let saveStatus = self.savePreset(slot: self.activePresetSlot)
+                    let saveStatus = self.savePreset(slot: self.activePresetSlot, confirmed: .savePreset())
                     guard saveStatus == PRESET_OK else {
                         DispatchQueue.main.async {
                             let alert = NSAlert()
@@ -3346,7 +3346,7 @@ class DSPViewModel: ObservableObject {
                     if self.presetNames[self.activePresetSlot].isEmpty {
                         self.setPresetName(slot: self.activePresetSlot, name: "Preset \(self.activePresetSlot + 1)")
                     }
-                    let saveStatus = self.savePreset(slot: self.activePresetSlot)
+                    let saveStatus = self.savePreset(slot: self.activePresetSlot, confirmed: .savePreset())
                     guard saveStatus == PRESET_OK else {
                         let alert = PlatformAlert()
                         alert.messageText = "Save Failed"

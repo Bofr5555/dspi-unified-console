@@ -64,6 +64,10 @@ enum FirmwareInstallError: Error, Equatable {
     /// Another DSPi Link session held the device lock, so the device was
     /// never asked to restart.
     case deviceLocked
+    /// -- WP P1SW2F -- (review p1sw2 F3) Refused before anything was
+    /// written: the installer's lock (the core's notice row) or a write that
+    /// no person confirmed.
+    case refused(String)
 
     /// One sentence fit to show a user.
     var message: String {
@@ -86,6 +90,8 @@ enum FirmwareInstallError: Error, Equatable {
             return "The device came back running firmware \(got) instead of \(expected)."
         case .deviceLocked:
             return "\(DeviceLock.lockedMessage). Try again when it has finished."
+        case .refused(let words):
+            return words
         }
     }
 }
@@ -304,10 +310,34 @@ final class FirmwareInstaller: ObservableObject {
     /// This is the only way callers should start an install.  Waiting for
     /// `.ready` to *arrive* misses the common case where the board was plugged
     /// in first and the state is already `.ready` when the user clicks.
-    func installWhenReady() {
+    /// -- WP P1SW2F -- False when refused (and failed with the reason).
+    @discardableResult
+    func installWhenReady(confirmed: UserConfirmation) -> Bool {
+        // -- WP P1SW2F -- F3/F5: only a person's FirmwareFlash confirmation
+        // (the Install button) arms a write, and the gate (the installer's
+        // lock) is asked now, while the DSPi is still connected.
+        assert(confirmed.op == .firmwareFlash, "an install armed by \(confirmed.op)")
+        guard confirmed.op == .firmwareFlash else {
+            abandon(.refused(Self.unconfirmedWords))
+            return false
+        }
+        if let refusal = flashGate?() {
+            abandon(refusal)
+            return false
+        }
+        flashConfirmation = confirmed
         armed = true
         if case .ready(let board) = state { install(board) }
+        return true
     }
+
+    /// -- WP P1SW2F -- F3: what refuses a write before anything reaches the
+    /// drive (the installer's lock, in the core's words); nil lets it go.
+    /// Asked when the install is armed and again before the write.
+    var flashGate: (() -> FirmwareInstallError?)?
+    /// The person's confirmation the armed install was made with.
+    private(set) var flashConfirmation: UserConfirmation?
+    static let unconfirmedWords = "The firmware was not written: the install was not confirmed."
 
     /// Whether an update has been committed to but not yet started.
     var isArmed: Bool { armed }
@@ -337,6 +367,12 @@ final class FirmwareInstaller: ObservableObject {
         // detection would otherwise overwrite an error like a missing image
         // with `.ready` on the next tick, since the board is still attached.
         installing = true
+
+        // -- WP P1SW2F -- F3: the gate again, right before the write.
+        if let refusal = flashGate?() {
+            publish(.failed(refusal))
+            return
+        }
 
         guard let volumeURL = board.volumeURL else {
             publish(.failed(.volumeNotMounted(board.chip.volumeName)))

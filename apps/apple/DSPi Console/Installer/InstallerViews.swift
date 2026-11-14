@@ -721,3 +721,26 @@ struct LimitField: Identifiable, Hashable {
     let title: String
     var id: String { key }
 }
+
+/// -- WP P1SW2F -- F6: the way from a tool window to Settings > Mode (the one
+/// place the mode is set, with the Mac's Mode... menu item).  The app's root
+/// names how Settings opens (a window on the Mac, a sheet on iOS).
+enum ModeSettingsLink {
+    static var openSettings: (() -> Void)?
+
+    static func open() {
+        SettingsNavigator.shared.page = "mode"
+        openSettings?()
+    }
+}
+
+/// -- WP P1SW2F -- (review p1sw2 F3) The installer's lock over Swift's own
+/// firmware copy: refused while this console is locked for the open DSPi,
+/// with the core's notice row (the core also refuses the restart into the
+/// bootloader under the lock).
+enum FirmwareFlashGate {
+    static func refusal(_ installer: CoreInstaller = .shared) -> FirmwareInstallError? {
+        guard installer.lockedUser else { return nil }
+        return .refused(CoreInstaller.line(for: .InstallerLock(code: "locked", msg: "")))
+    }
+}
