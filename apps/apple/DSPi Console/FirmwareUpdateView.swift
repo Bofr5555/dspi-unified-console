@@ -351,7 +351,7 @@ struct FirmwareUpdateView: View {
     private func enterBootloaderOnly() {
         let transport = vm.transport
         DispatchQueue.global(qos: .userInitiated).async {
-            _ = transport.getControlRequest(request: REQ_ENTER_BOOTLOADER, value: 0, index: 2, length: 1)
+            DSPViewModel.enterBootloader(transport)   // -- WP P1SW2 -- a token through the core
         }
     }
 

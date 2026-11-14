@@ -432,6 +432,8 @@ final class CoreSnapshots: ObservableObject {
 
     /// The user's words for a failure.
     static func words(_ error: DspiError) -> String {
+        // -- WP P1SW2 -- the lock, the limits, a missing token: the core's row
+        if CoreInstaller.isNamedRefusal(error) { return CoreInstaller.line(for: error) }
         let raw: String
         switch error {
         case .InvalidArgument(let msg), .Io(let msg), .Transfer(let msg): raw = msg

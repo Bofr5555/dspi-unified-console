@@ -374,6 +374,8 @@ private enum SettingsCategory: String, CaseIterable, Identifiable, Hashable {
     case overview
     case globalParams, outputAssignment, i2sConfig, spdifInput, controlInterfaces, controlSurfaces
     case channelGroups, macros, auxOutputs
+    // -- WP P1SW2 -- the Installer mode's pages, and the locked user's note
+    case installer, powerOn, installerNote, mode
 
     var id: Self { self }
 
@@ -395,6 +397,10 @@ private enum SettingsCategory: String, CaseIterable, Identifiable, Hashable {
         case .channelGroups:    return "Channel Groups"
         case .macros:           return "Macros"
         case .auxOutputs:       return "Auxiliary Outputs"
+        case .installer:        return "Installer"          // -- WP P1SW2 --
+        case .powerOn:          return "At Power-On"
+        case .installerNote:    return "Installer's Note"
+        case .mode:             return "Mode"
         }
     }
 
@@ -416,6 +422,10 @@ private enum SettingsCategory: String, CaseIterable, Identifiable, Hashable {
         case .channelGroups:    return "rectangle.3.group"
         case .macros:           return "list.number"
         case .auxOutputs:       return "power"
+        case .installer:        return "key.fill"           // -- WP P1SW2 --
+        case .powerOn:          return "power.circle"
+        case .installerNote:    return "note.text"
+        case .mode:             return "slider.horizontal.3"
         }
     }
 
@@ -450,12 +460,26 @@ private enum SettingsCategory: String, CaseIterable, Identifiable, Hashable {
         case .channelGroups:    return Color(red: 0.424, green: 0.392, blue: 0.718)  // #6c64b7
         case .macros:           return Color(red: 0.620, green: 0.322, blue: 0.553)  // #9e528d
         case .auxOutputs:       return Color(red: 0.478, green: 0.353, blue: 0.675)  // #7a5aac
+        // -- WP P1SW2 -- neutral: no GPIO
+        case .installer, .powerOn, .installerNote, .mode:
+                                return Color(red: 0.392, green: 0.412, blue: 0.443)  // #646971 slate
         }
     }
 
     /// Some hardware pages only apply to certain platforms/firmware. A page
     /// that isn't applicable is hidden from the sidebar entirely.
     func isAvailable(_ vm: DSPViewModel) -> Bool {
+        // -- WP P1SW2 -- The locked user sees About and the installer's note
+        // (the manifest's lockedUser.settings); the Installer pages show in
+        // the Installer mode only (the manifest's "limits" screen).
+        let installer = CoreInstaller.shared
+        if installer.lockedUser { return self == .general || self == .installerNote }
+        switch self {
+        case .installer, .powerOn: return installer.installerMode
+        case .installerNote:     return false
+        case .mode:              return installer.switchable || installer.choice?.reason == "pinned"
+        default: break
+        }
         switch self {
         case .i2sConfig:         return vm.platformName != "STM32H723"
         case .spdifInput:        return vm.inputSourceSupported
@@ -476,11 +500,11 @@ private enum SettingsCategory: String, CaseIterable, Identifiable, Hashable {
 
     /// Non-collapsible sidebar groups, in display order.
     #if os(macOS)
-    private static let applicationPages: [SettingsCategory] = [.general, .softwareUpdate, .advanced, .networking]
+    private static let applicationPages: [SettingsCategory] = [.general, .mode, .softwareUpdate, .advanced, .networking]
     #else
     // iOS: no self-update (the App Store updates the app) and no hub to share
     // devices from (the iOS app is a Link client only).
-    private static let applicationPages: [SettingsCategory] = [.general, .advanced]
+    private static let applicationPages: [SettingsCategory] = [.general, .mode, .advanced]   // -- WP P1SW2 -- Mode
     #endif
 
     static let groups: [(title: String, items: [SettingsCategory])] = [
@@ -495,6 +519,7 @@ private enum SettingsCategory: String, CaseIterable, Identifiable, Hashable {
         // rather than owned by one, which is why they are peers here and not
         // nested inside the Control Surfaces page.
         ("Control",     [.controlSurfaces, .controlInterfaces, .channelGroups, .macros, .auxOutputs]),
+        ("Installer",   [.installer, .powerOn, .installerNote]),   // -- WP P1SW2 --
     ]
 }
 
@@ -593,6 +618,9 @@ final class SettingsNavigator: ObservableObject {
 
 struct SettingsView: View {
     @ObservedObject private var vm = AppState.shared.viewModel
+    @ObservedObject private var installer = CoreInstaller.shared   // -- WP P1SW2 -- the mode's pages
+    /// -- WP P1SW2 -- `-SettingsPage` named a page of a mode not resolved yet.
+    @State private var requestedPage: SettingsCategory?
     @ObservedObject private var saveCoordinator = SettingsSaveCoordinator.shared
     /// Persisted so the window reopens on the page you left it on.
     @AppStorage("settingsSelectedTab") private var selection: SettingsCategory = .general
@@ -715,6 +743,7 @@ struct SettingsView: View {
                let page = SettingsCategory(rawValue: raw) {
                 selection = page
                 compactColumn = .detail
+                if !page.isAvailable(vm) { requestedPage = page }   // -- WP P1SW2 --
             }
             ensureSelectionAvailable()
             if history.isEmpty {
@@ -726,6 +755,15 @@ struct SettingsView: View {
         // current hardware doesn't support disappears from the sidebar, so
         // fall back to General rather than leaving a blank detail pane.
         .onChange(of: vm.isDeviceConnected) { _ in ensureSelectionAvailable() }
+        .onChange(of: installer.mode) { _ in   // -- WP P1SW2 --
+            if let page = requestedPage, page.isAvailable(vm) {
+                requestedPage = nil
+                selection = page
+                compactColumn = .detail
+            }
+            ensureSelectionAvailable()
+        }
+        .onChange(of: installer.lockedUser) { _ in ensureSelectionAvailable() }
         .onChange(of: selection) { newValue in
             if navigatingViaHistory {
                 navigatingViaHistory = false
@@ -794,6 +832,10 @@ struct SettingsView: View {
                                     .onboardingHint("macros")
         case .auxOutputs:       ControlSurfacesSettingsTab(section: .aux)
                                     .onboardingHint("aux-outputs")
+        case .installer:        InstallerSettingsTab()   // -- WP P1SW2 --
+        case .powerOn:          PowerOnSettingsTab()
+        case .installerNote:    InstallerNoteTab()
+        case .mode:             ModeSettingsTab()
         }
     }
 }
@@ -12121,6 +12163,8 @@ struct DSPi_ConsoleApp: App {
     // PlatformInfo changes on connect; AutoEQManager drives the favorites menu.
     @ObservedObject private var platform = PlatformInfo.shared
     @ObservedObject private var autoEQ = AutoEQManager.shared
+    // -- WP P1SW2 -- the mode switch, and the menus the locked user does not get
+    @ObservedObject private var installer = CoreInstaller.shared
 
     /// Whether the menu bar item is present.  The scene inserts and removes
     /// the item from this; the controller and the settings page write it.
@@ -12166,6 +12210,16 @@ struct DSPi_ConsoleApp: App {
             // Restore the standard "Settings..." item (Cmd+,); the plain
             // `Window` Settings scene no longer provides it automatically.
             SettingsCommand()
+
+            // -- WP P1SW2 -- The mode switch (Simple, Advanced, Installer;
+            // the manifest's), or Unlock in the locked-user state.
+            CommandGroup(after: .appSettings) {
+                if installer.lockedUser {
+                    Button("Unlock...") { installer.askUnlock() }
+                } else {
+                    Button("Mode...") { installer.modeShown = true }
+                }
+            }
 
             // Window menu: hide to the menu bar and keep serving.
             CommandGroup(after: .windowArrangement) {
@@ -12282,7 +12336,7 @@ struct DSPi_ConsoleApp: App {
                     FileMenuActions.saveOutputConfig()
                 }
                 }
-                .disabled(onboarding.shouldTakeOverMainWindow())
+                .disabled(onboarding.shouldTakeOverMainWindow() || installer.lockedUser)   // -- WP P1SW2 -- locked: volume, mute, presets only
             }
 
             // AutoEQ Menu
@@ -12323,7 +12377,7 @@ struct DSPi_ConsoleApp: App {
                     AutoEQMenuActions.updateDatabase()
                 }
                 }
-                .disabled(onboarding.shouldTakeOverMainWindow())
+                .disabled(onboarding.shouldTakeOverMainWindow() || installer.lockedUser)   // -- WP P1SW2 -- locked: volume, mute, presets only
             }
 
             // Tools Menu
@@ -12332,6 +12386,13 @@ struct DSPi_ConsoleApp: App {
                 // that is useless before a device is configured.  Group,
                 // not the CommandGroup itself, because a command group is
                 // not a View and carries no .disabled.
+                // -- WP P1SW2 -- The locked user keeps the analyser only (it
+                // changes no audio: P1DKFIX).
+                if installer.lockedUser {
+                    Button("Spectrum Analyser...") {
+                        spectrumWindowController.show(vm: AppState.shared.viewModel)
+                    }
+                } else {
                 Group {
                 Button("Commit Parameters...") {
                     ToolsMenuActions.commitParameters()
@@ -12427,6 +12488,7 @@ struct DSPi_ConsoleApp: App {
                 .keyboardShortcut("I", modifiers: [.command, .shift])
                 }
                 .disabled(onboarding.shouldTakeOverMainWindow())
+                }   // -- WP P1SW2 --
             }
 
             // Users look in Help.  Replacing the group drops the stock

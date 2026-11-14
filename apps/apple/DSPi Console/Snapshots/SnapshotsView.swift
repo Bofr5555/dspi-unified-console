@@ -11,8 +11,8 @@
 //  Simple shows the snapshots read-mostly: Recall and A/B (coordinator,
 //  2026-11-13).  Advanced adds capture, rename, note, delete, import,
 //  export, the rollback choice for a recall on USB and the safe apply's
-//  timeout.  The app has no mode switch yet (P1SW2's), so the window keeps
-//  its own: Advanced on the Mac, Simple first on iOS.
+//  timeout.  -- WP P1SW2 -- The mode is the app's (CoreInstaller): Advanced
+//  on the Mac, Simple first on iOS, the locked user Simple.
 //
 
 import SwiftUI
@@ -27,8 +27,11 @@ import UniformTypeIdentifiers
 
 struct SnapshotsView: View {
     @ObservedObject var snaps: CoreSnapshots
-    /// Advanced (true) or Simple; remembered on this console.
-    @AppStorage("snapshots.advanced") private var advanced: Bool = SnapshotsView.advancedByDefault
+    /// -- WP P1SW2 -- Advanced or Simple: the app's mode (Simple, and the
+    /// locked user, show Recall and A/B only; the Mac opens in Advanced, iOS
+    /// in Simple, from the manifest).
+    @ObservedObject private var installer = CoreInstaller.shared
+    private var advanced: Bool { !installer.simple }
     @State private var captureName = ""
     @State private var aId = ""
     @State private var bId = ""
@@ -39,11 +42,6 @@ struct SnapshotsView: View {
     @State private var deleting: SnapshotInfo?
     @State private var showDiff = true
 
-    #if os(macOS)
-    static let advancedByDefault = true
-    #else
-    static let advancedByDefault = false
-    #endif
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -109,14 +107,24 @@ struct SnapshotsView: View {
         HStack {
             Text("Snapshots").font(.title3.weight(.semibold))
             Spacer()
-            Picker("Mode", selection: $advanced) {
-                Text("Simple").tag(false)
-                Text("Advanced").tag(true)
+            // -- WP P1SW2 -- the app's mode for this device (Simple or
+            // Advanced; the Installer and a pinned or locked mode show here
+            // as they are, the switch is Settings > Mode)
+            if installer.switchable, installer.mode == "simple" || installer.mode == "advanced" {
+                Picker("Mode", selection: Binding(get: { advanced },
+                                                  set: { installer.choose($0 ? "advanced" : "simple", everyDevice: false) })) {
+                    Text("Simple").tag(false)
+                    Text("Advanced").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(maxWidth: 200)
+                .accessibilityIdentifier("snapshotsMode")
+            } else {
+                Text(installer.label(ofMode: installer.mode))
+                    .foregroundColor(.secondary)
+                    .accessibilityIdentifier("snapshotsMode")
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(maxWidth: 200)
-            .accessibilityIdentifier("snapshotsMode")
         }
     }
 
