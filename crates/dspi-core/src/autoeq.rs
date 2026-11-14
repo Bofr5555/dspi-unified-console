@@ -29,6 +29,10 @@ use dspi_session::autoeq::{self as session, AutoEqError, FetchError};
 
 use crate::{DspiError, Result};
 
+// -- WP P1AQ -- preview and apply to any channel pair (PRO1 T6)
+mod pair;
+pub use pair::*;
+
 /// One GET the host is asked to make.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Debug, Clone, PartialEq, Eq)]

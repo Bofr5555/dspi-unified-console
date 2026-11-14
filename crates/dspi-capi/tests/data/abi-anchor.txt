@@ -1261,6 +1261,20 @@ void *user_data);
 uint32_t dspi_autoeq_rebuild_poll(struct AutoEqRebuildHandle *handle, char *buf, uint32_t len);
 void dspi_autoeq_rebuild_cancel(struct AutoEqRebuildHandle *handle);
 void dspi_autoeq_rebuild_free(struct AutoEqRebuildHandle *handle);
+uint32_t dspi_autoeq_preview(struct FfiCore *core,
+const char *profile,
+uint8_t left,
+uint8_t right,
+int8_t apply_level,
+char *buf,
+uint32_t len);
+uint32_t dspi_autoeq_apply(struct FfiCore *core,
+const char *profile,
+uint8_t left,
+uint8_t right,
+int8_t apply_level,
+char *buf,
+uint32_t len);
 uint32_t dspi_link_phase_text(const char *phase, const char *pin_source, char *buf, uint32_t len);
 uint32_t dspi_link_phase_texts(char *buf, uint32_t len);
 uint32_t dspi_onboarding_whats_new_json(char *buf,

@@ -616,6 +616,16 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_apply_revert(void*_Nonnull ptr, R
 RustBuffer uniffi_dspi_core_fn_method_dspicore_apply_status(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_AUTOEQ_APPLY
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_AUTOEQ_APPLY
+RustBuffer uniffi_dspi_core_fn_method_dspicore_autoeq_apply(void*_Nonnull ptr, RustBuffer profile, uint8_t left, uint8_t right, RustBuffer apply_level, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_AUTOEQ_PREVIEW
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_AUTOEQ_PREVIEW
+RustBuffer uniffi_dspi_core_fn_method_dspicore_autoeq_preview(void*_Nonnull ptr, RustBuffer profile, uint8_t left, uint8_t right, RustBuffer apply_level, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_BEGIN_GROUP
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_BEGIN_GROUP
 void uniffi_dspi_core_fn_method_dspicore_begin_group(void*_Nonnull ptr, RustBuffer label, RustCallStatus *_Nonnull out_status
@@ -3213,6 +3223,18 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_apply_revert(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_APPLY_STATUS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_APPLY_STATUS
 uint16_t uniffi_dspi_core_checksum_method_dspicore_apply_status(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_AUTOEQ_APPLY
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_AUTOEQ_APPLY
+uint16_t uniffi_dspi_core_checksum_method_dspicore_autoeq_apply(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_AUTOEQ_PREVIEW
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_AUTOEQ_PREVIEW
+uint16_t uniffi_dspi_core_checksum_method_dspicore_autoeq_preview(void
     
 );
 #endif

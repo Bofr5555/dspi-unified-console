@@ -73,6 +73,8 @@ pub mod ab;
 pub mod limits;
 // -- WP P1LK --
 pub mod modes;
+// -- WP P1AQ --
+pub mod autoeq;
 // -- WP SW3 --
 pub mod system;
 // -- WP WB4a --

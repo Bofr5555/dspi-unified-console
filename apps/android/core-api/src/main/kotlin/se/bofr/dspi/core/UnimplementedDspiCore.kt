@@ -76,6 +76,10 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun openDemoUsbDirect(): Unit = throw NotImplementedError("open_demo_usb_direct")
 
+    override fun autoeqPreview(profile: AutoEqProfile, left: Int, right: Int, applyLevel: Boolean?): AutoEqPreview = throw NotImplementedError("autoeq_preview")
+
+    override fun autoeqApply(profile: AutoEqProfile, left: Int, right: Int, applyLevel: Boolean?): AutoEqApply = throw NotImplementedError("autoeq_apply")
+
     override fun confirmToken(op: ConfirmOp): String = throw NotImplementedError("confirm_token")
 
     override fun requireConfirmation(on: Boolean): Unit = throw NotImplementedError("require_confirmation")

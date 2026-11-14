@@ -7,6 +7,8 @@ import se.bofr.dspi.core.AbSide
 import se.bofr.dspi.core.AlinkSceneRecall
 import se.bofr.dspi.core.AlinkSystemAlign
 import se.bofr.dspi.core.AlinkSystemEdits
+import se.bofr.dspi.core.AutoEqApply
+import se.bofr.dspi.core.AutoEqProfile
 import se.bofr.dspi.core.DspiCoreApi
 import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.FilterParams
@@ -729,6 +731,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.abKeep(side)
     }
 
+    // -- WP P1AQ -- an AutoEQ apply writes both channels of the pair
+    override fun autoeqApply(profile: AutoEqProfile, left: Int, right: Int, applyLevel: Boolean?): AutoEqApply {
+        guard("autoeqApply")
+        return inner.autoeqApply(profile, left, right, applyLevel)
+    }
+
     // -- WP P1LM -- applying a profile holds the device to it (writes)
     override fun limitsApplyProfile(document: String): LimitsApply {
         guard("limitsApplyProfile")
@@ -940,7 +948,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // -- WP P1SA --
             "applyGuardedImport",
             "applyGuardedSnapshot",
-            "applyGuardedSnapshotDocument"
+            "applyGuardedSnapshotDocument",
+            // -- WP P1AQ --
+            "autoeqApply"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -978,6 +988,8 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // -- WP P1DF -- the diff and the preview write nothing
             "configDiff",
             "configPreview",
+            // -- WP P1AQ -- the AutoEQ preview reads the mirror only
+            "autoeqPreview",
             // -- WP P1SN -- the store is the app's files; a capture only reads the device
             "snapshotSetDir",
             "snapshotCapture",

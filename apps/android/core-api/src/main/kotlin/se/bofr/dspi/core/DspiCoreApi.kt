@@ -379,6 +379,49 @@ interface DspiCoreApi : AutoCloseable {
     fun openDemoUsbDirect()
 
     /**
+     * What applying `profile` to wire channels `left` and `right` (two
+     * inputs or two outputs) would do: each channel's PEQ bank, level,
+     * crossover and response curve, what the limits profile would hold, and
+     * the lines to show. Reads the mirror only: nothing is sent.
+     *
+     * `apply_level`: whether the profile's preamp is written; `None` is the
+     * default: yes on inputs (their preamp), no on outputs (their
+     * calibrated gain is kept and the preamp only suggested,
+     * [`AutoEqPreview::suggested_trim_db`]). `Some(true)` on outputs writes
+     * it as their gain.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`]
+     * for a channel out of range, the same channel twice, an input with an
+     * output, or a profile value no setter would take (a non-finite preamp,
+     * a known filter with a frequency or Q not above 0).
+     */
+    @Throws(DspiException::class)
+    fun autoeqPreview(profile: AutoEqProfile, left: Int, right: Int, applyLevel: Boolean?): AutoEqPreview
+
+    /**
+     * Apply `profile` to wire channels `left` and `right` as
+     * [`DspiCore::autoeq_preview`] shows it. First the device's state is
+     * captured as a snapshot, returned as a document and filed in the
+     * snapshot store when a folder is named ([`DspiCore::snapshot_set_dir`]);
+     * then every write is one undo step labelled "AutoEQ: <name>": the
+     * level when applied (`apply_level` as for the preview: inputs' preamp
+     * by default, outputs' gain only when asked), any crossover band the
+     * limits profile asks for, then every PEQ band of both channels.
+     * Values past the limits profile are held to it and reported
+     * ([`AutoEqPreview::held`]); nothing outside the pair changes.
+     *
+     * Errors: those of [`DspiCore::autoeq_preview`], then
+     * [`DspiError::ReadOnly`], all before anything is sent; those of the
+     * snapshot capture, before any write; then the errors of every setter
+     * ([`DspiError::LimitExceeded`] for a high-pass the limits profile
+     * cannot place, [`DspiError::Transfer`] and the rest). A failure part
+     * way leaves the writes made so far as the one undo step, and the
+     * snapshot filed (with a folder named).
+     */
+    @Throws(DspiException::class)
+    fun autoeqApply(profile: AutoEqProfile, left: Int, right: Int, applyLevel: Boolean?): AutoEqApply
+
+    /**
      * A single-use token for `op`, valid for 10 s on the current connection:
      * mint it when the user has confirmed `op` (the confirmation dialog's OK),
      * and pass it to the gated call. No I/O.

@@ -223,7 +223,8 @@ pub struct PlannedBand {
 pub struct ApplyPlan {
     pub preamp_db: f32,
     pub bands: Vec<PlannedBand>,
-    /// Bands to clear: everything the profile does not use. Without this,
+    /// Bands to clear: everything the profile does not use, a band whose
+    /// shape this build does not know included, in band order. Without this,
     /// whatever was there before survives underneath the correction.
     pub cleared: Vec<u8>,
     /// Shapes this build does not know, named once each.
@@ -278,10 +279,14 @@ impl Entry {
                     if !plan.unsupported.contains(&f.kind) {
                         plan.unsupported.push(f.kind.clone());
                     }
+                    // -- WP P1AQ -- an unknown shape's band is cleared too,
+                    // or what was there before survives in the correction.
+                    plan.cleared.push(i as u8);
                 }
             }
         }
-        plan.cleared = (self.filters.len().min(max_bands as usize) as u8..max_bands).collect();
+        plan.cleared
+            .extend(self.filters.len().min(max_bands as usize) as u8..max_bands);
         plan
     }
 }
@@ -1606,6 +1611,32 @@ mod tests {
         assert_eq!(plan.dropped, 2, "12 bands into a bank of 10");
         assert_eq!(plan.bands.len(), 9, "the unknown shape is not invented");
         assert_eq!(plan.unsupported, vec!["wobble".to_string()]);
+    }
+
+    // -- WP P1AQ --
+    /// A band whose shape is not understood is cleared like an unused one,
+    /// so the old filter there does not survive inside the correction.
+    #[test]
+    fn wp_p1aq_an_unknown_shapes_band_is_cleared() {
+        let mut e = entry(vec![
+            ("peaking", 100.0),
+            ("peaking", 200.0),
+            ("peaking", 300.0),
+        ]);
+        e.filters[1].kind = "wobble".into();
+        let plan = e.plan(10);
+        assert_eq!(
+            plan.bands.iter().map(|b| b.band).collect::<Vec<_>>(),
+            [0, 2]
+        );
+        let mut want = vec![1u8];
+        want.extend(3u8..10);
+        assert_eq!(plan.cleared, want, "band 1 and the unused tail, in order");
+        // Every band of the bank is either planned or cleared, once.
+        let mut all: Vec<u8> = plan.bands.iter().map(|b| b.band).collect();
+        all.extend(&plan.cleared);
+        all.sort_unstable();
+        assert_eq!(all, (0u8..10).collect::<Vec<_>>());
     }
 
     #[test]
