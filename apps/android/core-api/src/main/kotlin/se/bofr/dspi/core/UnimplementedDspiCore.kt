@@ -196,6 +196,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun flashConfirmed(image: List<Int>, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String, token: String?): Unit = throw NotImplementedError("flash_confirmed")
 
+    override fun flashToDriveConfirmed(image: List<Int>, drive: BootloaderDrive, token: String?): Unit = throw NotImplementedError("flash_to_drive_confirmed")
+
     override fun firmwareGuardBoard(): FirmwareGuardBoard = throw NotImplementedError("firmware_guard_board")
 
     override fun applyGuardedImport(text: String, options: Long, eqChannels: Long, timeoutS: Long): GuardedApply = throw NotImplementedError("apply_guarded_import")
@@ -704,13 +706,9 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun bootloaderDrives(): List<BootloaderDrive> = throw NotImplementedError("bootloader_drives")
 
-    override fun flashToDrive(image: List<Int>, drive: BootloaderDrive): Unit = throw NotImplementedError("flash_to_drive")
-
     override fun firmwareGuardBoardInBootloader(): FirmwareGuardBoard = throw NotImplementedError("firmware_guard_board_in_bootloader")
 
     override fun firmwareGuardCheck(image: List<Int>, board: FirmwareGuardBoard, typedConfirmation: String): FirmwareGuardVerdict = throw NotImplementedError("firmware_guard_check")
-
-    override fun flashToDriveGuarded(image: List<Int>, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String): Unit = throw NotImplementedError("flash_to_drive_guarded")
 
     override fun limitsFieldRanges(): List<LimitFieldRange> = throw NotImplementedError("limits_field_ranges")
 

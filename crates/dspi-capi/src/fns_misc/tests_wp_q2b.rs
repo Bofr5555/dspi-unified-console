@@ -673,13 +673,20 @@ fn wp_q2b_firmware_functions() {
     let drives = read_json(|b, l| dspi_bootloader_drives(b, l));
     assert!(drives["value"].is_array());
 
-    // An invalid image is refused before the drive is looked at.
+    // An invalid image is refused before the drive is looked at (-- WP P1TZ --
+    // the write is a core's, with a token; no device open).
     let path = CString::new("/nonexistent/drive").unwrap();
-    let reply = read_json(|b, l| dspi_flash_to_drive(junk.as_ptr(), 600, path.as_ptr(), 0, b, l));
+    let c = crate::fns_device::dspi_core_new();
+    let reply = with_token_for_test(c, "firmware_flash", |t, b, l| {
+        dspi_flash_to_drive_confirmed(c, junk.as_ptr(), 600, path.as_ptr(), 0, t, b, l)
+    });
     assert_eq!(reply["ok"], false);
-    assert_eq!(reply["code"], "invalid");
-    let reply = read_json(|b, l| dspi_flash_to_drive(null(), 0, null(), 0, b, l));
+    assert_eq!(reply["code"], "invalid", "{reply}");
+    let reply = with_token_for_test(c, "firmware_flash", |t, b, l| {
+        dspi_flash_to_drive_confirmed(c, null(), 0, null(), 0, t, b, l)
+    });
     assert_eq!(reply["ok"], false);
+    crate::fns_device::dspi_core_free(c);
 
     let (mut a, mut b) = (9u32, 9u32);
     dspi_bootloader_counts(&mut a, &mut b);
@@ -898,7 +905,7 @@ fn wp_q2b_added_functions_are_in_the_header() {
         "dspi_fetch_clock_diag",
         "dspi_uf2_inspect",
         "dspi_bootloader_drives",
-        "dspi_flash_to_drive",
+        // -- WP P1TZ -- dspi_flash_to_drive retired (dspi_flash_to_drive_confirmed)
         "dspi_firmware_version_matches",
     ] {
         assert!(new.contains_key(name), "{name} missing");

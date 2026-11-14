@@ -251,9 +251,13 @@ pub extern "C" fn dspi_core_vreg_manual_set_confirmed(
     })
 }
 
-/// `dspi_flash_to_drive_guarded` with a token minted while the board waits
-/// in its bootloader (`firmware_flash`). JSON reply; nothing reaches the
-/// drive on a refusal.
+/// Write a UF2 image to the bootloader drive at `drive_path` (`platform`: 0
+/// RP2040, 1 RP2350) behind the firmware guard (`board_required_mv`, `typed`
+/// as for `dspi_firmware_guard_check`), with a token minted while the board
+/// waits in its bootloader (`firmware_flash`; `core` needs no device open,
+/// a board already in BOOTSEL has none). Blocks for the copy. JSON reply;
+/// nothing reaches the drive on a refusal (`confirmation_required`,
+/// `firmware_guard`, `invalid`). WP P1TZ retired `dspi_flash_to_drive_guarded`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_flash_confirmed(
     core: *mut FfiCore,
@@ -276,6 +280,30 @@ pub extern "C" fn dspi_flash_confirmed(
             c_str(typed).unwrap_or_default().to_owned(),
             t,
         )
+    })
+}
+
+// -- WP P1TZ -- the free dspi_flash_to_drive, with a token, on a core
+/// Write a UF2 image to the bootloader drive at `drive_path` (`platform`: 0
+/// RP2040, 1 RP2350) without the firmware guard (`dspi_flash_confirmed` is
+/// the guarded write, the one to use), with a token minted for
+/// `firmware_flash` (`core` needs no device open). Blocks for the copy. JSON
+/// `{ok}` or a failure; an invalid image, or a missing or wrong token, never
+/// reaches the drive. WP P1TZ retired `dspi_flash_to_drive`.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_flash_to_drive_confirmed(
+    core: *mut FfiCore,
+    image: *const u8,
+    image_len: u32,
+    drive_path: *const c_char,
+    platform: i8,
+    token: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    confirmed(core, token, buf, len, |c, t| {
+        let drive = drive_at(drive_path, platform)?;
+        c.flash_to_drive_confirmed(c_bytes(image, image_len), drive, t)
     })
 }
 

@@ -9,8 +9,11 @@
  * `dspi_copy_preset`, `dspi_delete_preset`, `dspi_save_params`,
  * `dspi_factory_reset`, `dspi_save_output_config`, `dspi_enter_bootloader`,
  * `dspi_config_import`, `dspi_config_import_selected`,
- * `dspi_core_vreg_cal_commit`, `dspi_core_vreg_manual_set`) and the switch
- * (`dspi_require_confirmation`, `dspi_confirmation_required`).
+ * `dspi_core_vreg_cal_commit`, `dspi_core_vreg_manual_set`), the free
+ * firmware writes (`dspi_flash_to_drive`, `dspi_flash_to_drive_guarded`:
+ * now `dspi_flash_to_drive_confirmed` and `dspi_flash_confirmed` on a core,
+ * which need no device open) and the switch (`dspi_require_confirmation`,
+ * `dspi_confirmation_required`).
  * `dspi_write_param` refuses the gated paths (`preset.save`,
  * `preset.delete`, `dev.save`, `dev.save.io`) with `confirmation_required`.
  */
@@ -5048,18 +5051,6 @@ uint32_t dspi_uf2_inspect(const uint8_t *image, uint32_t image_len, char *buf, u
 uint32_t dspi_bootloader_drives(char *buf, uint32_t len);
 
 /**
- * Write a UF2 image to the bootloader drive at `drive_path` (`platform`: 0
- * RP2040, 1 RP2350). Blocks for the copy. JSON `{ok}` or a failure; an
- * invalid image never reaches the drive. Use the guarded call instead.
- */
-uint32_t dspi_flash_to_drive(const uint8_t *image,
-                             uint32_t image_len,
-                             const char *drive_path,
-                             int8_t platform,
-                             char *buf,
-                             uint32_t len);
-
-/**
  * Whether the open device runs firmware `version`: 1 yes, 0 no, -1 on
  * failure or for a null or non-UTF-8 version.
  */
@@ -5201,19 +5192,6 @@ uint32_t dspi_firmware_guard_check(const uint8_t *image,
                                    const char *typed,
                                    char *buf,
                                    uint32_t len);
-
-/**
- * `dspi_flash_to_drive` behind the firmware guard: nothing reaches the drive
- * unless the guard allows it (`firmware_guard` failure otherwise).
- */
-uint32_t dspi_flash_to_drive_guarded(const uint8_t *image,
-                                     uint32_t image_len,
-                                     const char *drive_path,
-                                     int8_t platform,
-                                     uint16_t board_required_mv,
-                                     const char *typed,
-                                     char *buf,
-                                     uint32_t len);
 
 /**
  * Write one parameter by its registry path. `request` is JSON: `{"path":
@@ -5954,9 +5932,13 @@ uint32_t dspi_core_vreg_manual_set_confirmed(struct FfiCore *core,
                                              uint32_t len);
 
 /**
- * `dspi_flash_to_drive_guarded` with a token minted while the board waits
- * in its bootloader (`firmware_flash`). JSON reply; nothing reaches the
- * drive on a refusal.
+ * Write a UF2 image to the bootloader drive at `drive_path` (`platform`: 0
+ * RP2040, 1 RP2350) behind the firmware guard (`board_required_mv`, `typed`
+ * as for `dspi_firmware_guard_check`), with a token minted while the board
+ * waits in its bootloader (`firmware_flash`; `core` needs no device open,
+ * a board already in BOOTSEL has none). Blocks for the copy. JSON reply;
+ * nothing reaches the drive on a refusal (`confirmation_required`,
+ * `firmware_guard`, `invalid`). WP P1TZ retired `dspi_flash_to_drive_guarded`.
  */
 uint32_t dspi_flash_confirmed(struct FfiCore *core,
                               const uint8_t *image,
@@ -5968,6 +5950,23 @@ uint32_t dspi_flash_confirmed(struct FfiCore *core,
                               const char *token,
                               char *buf,
                               uint32_t len);
+
+/**
+ * Write a UF2 image to the bootloader drive at `drive_path` (`platform`: 0
+ * RP2040, 1 RP2350) without the firmware guard (`dspi_flash_confirmed` is
+ * the guarded write, the one to use), with a token minted for
+ * `firmware_flash` (`core` needs no device open). Blocks for the copy. JSON
+ * `{ok}` or a failure; an invalid image, or a missing or wrong token, never
+ * reaches the drive. WP P1TZ retired `dspi_flash_to_drive`.
+ */
+uint32_t dspi_flash_to_drive_confirmed(struct FfiCore *core,
+                                       const uint8_t *image,
+                                       uint32_t image_len,
+                                       const char *drive_path,
+                                       int8_t platform,
+                                       const char *token,
+                                       char *buf,
+                                       uint32_t len);
 
 /**
  * Keep limits profiles in files under `dir`, the app's own data folder, one

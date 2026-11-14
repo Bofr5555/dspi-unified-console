@@ -2196,7 +2196,7 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      *
      * The connection stays open until the departure is noticed (hotplug or
      * notifications). A firmware update then goes: this call; the
-     * bootloader drive appears (`bootloader_drives`); `flash_to_drive`
+     * bootloader drive appears (`bootloader_drives`); `flash_confirmed`
      * writes the image; the DSPi re-enumerates. Only that last step
      * confirms success: open it again and check the new version with
      * [`DspiCore::firmware_version_matches`]; a timeout there is the
@@ -2810,16 +2810,62 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func firmwareVersionMatches(version: String) throws  -> Bool
     
     /**
-     * [`crate::flash_to_drive_guarded`] with a confirmation token
-     * ([`crate::confirm`], [`crate::ConfirmOp::FirmwareFlash`]): mint it once
-     * the bootloader drive is there (the board has left, so a token minted
-     * while it was still connected no longer holds). Without a good token
-     * while tokens are required, or with a bad one at any time,
-     * [`DspiError::ConfirmationRequired`] and nothing reaches the drive.
+     * Write `image` to the bootloader drive behind the firmware guard
+     * ([`crate::firmware_guard_check`] for `board` and `typed_confirmation`),
+     * with a confirmation token ([`crate::confirm`],
+     * [`crate::ConfirmOp::FirmwareFlash`]): the one to use wherever the core
+     * does the writing. Mint the token once the bootloader drive is there
+     * (the board has left, so a token minted while it was still connected no
+     * longer holds); it works with no device open, and a board already in
+     * BOOTSEL has none. Without a good token, or with one for another
+     * operation, [`DspiError::ConfirmationRequired`] and nothing reaches the
+     * drive. The write itself is as [`DspiCore::flash_to_drive_confirmed`]'s.
      *
-     * Errors: that, then those of `flash_to_drive_guarded`.
+     * Errors: that; [`DspiError::FirmwareGuardBlocked`] with the guard's
+     * message when the image needs confirmation; then the write's.
      */
     func flashConfirmed(image: Data, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String, token: String?) throws 
+    
+    /**
+     * Write `image` to `drive` as `firmware.uf2`, synced to the medium, with a
+     * confirmation token, without the firmware guard ([`DspiCore::flash_confirmed`]
+     * is the write behind the guard, the one to use wherever the core does the
+     * writing).
+     *
+     * Before any byte goes out: the image is fully validated, the drive's
+     * `INFO_UF2.TXT` is read again and must still name the board `drive`
+     * describes, the image's family must be one that board boots, and the
+     * drive must have room for the image. The file is then written with one
+     * `write_all` and one `sync_all`.
+     *
+     * The board reboots into the new firmware as it takes the last block, so
+     * the write or the sync can fail because the drive has gone: that (either
+     * failed and the drive's `INFO_UF2.TXT` is no longer readable) counts as
+     * success, logged at warn level. It cannot be told apart from a cable pulled mid-write, so
+     * `Ok` means only "the write ended, or the drive went away during it, assumed
+     * to be the board rebooting". **The caller must
+     * confirm success** by waiting for the DSPi to re-enumerate and report the
+     * image's version (`Uf2Info::firmware_version`); a timeout there is the
+     * failure.
+     *
+     * The `INFO_UF2.TXT` re-check and the write are separate path-based
+     * operations, so a different drive mounted at the same path in between
+     * would get the file (an inherent check-then-use race; the Qt updater has
+     * the same). The window is a few milliseconds and both boot ROMs reject an
+     * image of the other family.
+     *
+     * The token ([`crate::confirm`], [`crate::ConfirmOp::FirmwareFlash`]; WP
+     * P1TZ): mint it once the bootloader drive is there; it works with no
+     * device open, and a board in BOOTSEL has none. Without a good one, or with
+     * a token for another operation, [`DspiError::ConfirmationRequired`] and
+     * nothing reaches the drive. With a device still open, the installer lock
+     * holds this write too (before the token is spent).
+     *
+     * Errors: that; [`DspiError::InvalidArgument`] for an invalid image, a drive that
+     * is not a boot ROM's, or a family mismatch; [`DspiError::Io`] for a drive
+     * that has gone, is short of space, or fails the write.
+     */
+    func flashToDriveConfirmed(image: Data, drive: BootloaderDrive, token: String?) throws 
     
     /**
      * Reads the name of wire channel `ch` from the device
@@ -6507,7 +6553,7 @@ open func endGroup()  {try! rustCall() {
      *
      * The connection stays open until the departure is noticed (hotplug or
      * notifications). A firmware update then goes: this call; the
-     * bootloader drive appears (`bootloader_drives`); `flash_to_drive`
+     * bootloader drive appears (`bootloader_drives`); `flash_confirmed`
      * writes the image; the DSPi re-enumerates. Only that last step
      * confirms success: open it again and check the new version with
      * [`DspiCore::firmware_version_matches`]; a timeout there is the
@@ -7398,14 +7444,19 @@ open func firmwareVersionMatches(version: String)throws  -> Bool  {
 }
     
     /**
-     * [`crate::flash_to_drive_guarded`] with a confirmation token
-     * ([`crate::confirm`], [`crate::ConfirmOp::FirmwareFlash`]): mint it once
-     * the bootloader drive is there (the board has left, so a token minted
-     * while it was still connected no longer holds). Without a good token
-     * while tokens are required, or with a bad one at any time,
-     * [`DspiError::ConfirmationRequired`] and nothing reaches the drive.
+     * Write `image` to the bootloader drive behind the firmware guard
+     * ([`crate::firmware_guard_check`] for `board` and `typed_confirmation`),
+     * with a confirmation token ([`crate::confirm`],
+     * [`crate::ConfirmOp::FirmwareFlash`]): the one to use wherever the core
+     * does the writing. Mint the token once the bootloader drive is there
+     * (the board has left, so a token minted while it was still connected no
+     * longer holds); it works with no device open, and a board already in
+     * BOOTSEL has none. Without a good token, or with one for another
+     * operation, [`DspiError::ConfirmationRequired`] and nothing reaches the
+     * drive. The write itself is as [`DspiCore::flash_to_drive_confirmed`]'s.
      *
-     * Errors: that, then those of `flash_to_drive_guarded`.
+     * Errors: that; [`DspiError::FirmwareGuardBlocked`] with the guard's
+     * message when the image needs confirmation; then the write's.
      */
 open func flashConfirmed(image: Data, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String, token: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_flash_confirmed(self.uniffiClonePointer(),
@@ -7413,6 +7464,54 @@ open func flashConfirmed(image: Data, drive: BootloaderDrive, board: FirmwareGua
         FfiConverterTypeBootloaderDrive_lower(drive),
         FfiConverterTypeFirmwareGuardBoard_lower(board),
         FfiConverterString.lower(typedConfirmation),
+        FfiConverterOptionString.lower(token),$0
+    )
+}
+}
+    
+    /**
+     * Write `image` to `drive` as `firmware.uf2`, synced to the medium, with a
+     * confirmation token, without the firmware guard ([`DspiCore::flash_confirmed`]
+     * is the write behind the guard, the one to use wherever the core does the
+     * writing).
+     *
+     * Before any byte goes out: the image is fully validated, the drive's
+     * `INFO_UF2.TXT` is read again and must still name the board `drive`
+     * describes, the image's family must be one that board boots, and the
+     * drive must have room for the image. The file is then written with one
+     * `write_all` and one `sync_all`.
+     *
+     * The board reboots into the new firmware as it takes the last block, so
+     * the write or the sync can fail because the drive has gone: that (either
+     * failed and the drive's `INFO_UF2.TXT` is no longer readable) counts as
+     * success, logged at warn level. It cannot be told apart from a cable pulled mid-write, so
+     * `Ok` means only "the write ended, or the drive went away during it, assumed
+     * to be the board rebooting". **The caller must
+     * confirm success** by waiting for the DSPi to re-enumerate and report the
+     * image's version (`Uf2Info::firmware_version`); a timeout there is the
+     * failure.
+     *
+     * The `INFO_UF2.TXT` re-check and the write are separate path-based
+     * operations, so a different drive mounted at the same path in between
+     * would get the file (an inherent check-then-use race; the Qt updater has
+     * the same). The window is a few milliseconds and both boot ROMs reject an
+     * image of the other family.
+     *
+     * The token ([`crate::confirm`], [`crate::ConfirmOp::FirmwareFlash`]; WP
+     * P1TZ): mint it once the bootloader drive is there; it works with no
+     * device open, and a board in BOOTSEL has none. Without a good one, or with
+     * a token for another operation, [`DspiError::ConfirmationRequired`] and
+     * nothing reaches the drive. With a device still open, the installer lock
+     * holds this write too (before the token is spent).
+     *
+     * Errors: that; [`DspiError::InvalidArgument`] for an invalid image, a drive that
+     * is not a boot ROM's, or a family mismatch; [`DspiError::Io`] for a drive
+     * that has gone, is short of space, or fails the write.
+     */
+open func flashToDriveConfirmed(image: Data, drive: BootloaderDrive, token: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_flash_to_drive_confirmed(self.uniffiClonePointer(),
+        FfiConverterData.lower(image),
+        FfiConverterTypeBootloaderDrive_lower(drive),
         FfiConverterOptionString.lower(token),$0
     )
 }
@@ -37199,58 +37298,6 @@ public func firmwareGuardCheck(image: Data, board: FirmwareGuardBoard, typedConf
 })
 }
 /**
- * Write `image` to `drive` as `firmware.uf2`, synced to the medium.
- *
- * Before any byte goes out: the image is fully validated, the drive's
- * `INFO_UF2.TXT` is read again and must still name the board `drive`
- * describes, the image's family must be one that board boots, and the
- * drive must have room for the image. The file is then written with one
- * `write_all` and one `sync_all`.
- *
- * The board reboots into the new firmware as it takes the last block, so
- * the write or the sync can fail because the drive has gone: that (either
- * failed and the drive's `INFO_UF2.TXT` is no longer readable) counts as
- * success, logged at warn level. It cannot be told apart from a cable pulled mid-write, so
- * `Ok` means only "the write ended, or the drive went away during it, assumed
- * to be the board rebooting". **The caller must
- * confirm success** by waiting for the DSPi to re-enumerate and report the
- * image's version (`Uf2Info::firmware_version`); a timeout there is the
- * failure.
- *
- * The `INFO_UF2.TXT` re-check and the write are separate path-based
- * operations, so a different drive mounted at the same path in between
- * would get the file (an inherent check-then-use race; the Qt updater has
- * the same). The window is a few milliseconds and both boot ROMs reject an
- * image of the other family.
- *
- * Errors: [`DspiError::InvalidArgument`] for an invalid image, a drive that
- * is not a boot ROM's, or a family mismatch; [`DspiError::Io`] for a drive
- * that has gone, is short of space, or fails the write.
- */
-public func flashToDrive(image: Data, drive: BootloaderDrive)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
-    uniffi_dspi_core_fn_func_flash_to_drive(
-        FfiConverterData.lower(image),
-        FfiConverterTypeBootloaderDrive_lower(drive),$0
-    )
-}
-}
-/**
- * [`flash_to_drive`] behind the guard: the one to use wherever the core does
- * the writing. Nothing reaches the drive unless the verdict allows it.
- *
- * Errors: [`DspiError::FirmwareGuardBlocked`] with the guard's message when
- * the image needs confirmation; otherwise those of [`flash_to_drive`].
- */
-public func flashToDriveGuarded(image: Data, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
-    uniffi_dspi_core_fn_func_flash_to_drive_guarded(
-        FfiConverterData.lower(image),
-        FfiConverterTypeBootloaderDrive_lower(drive),
-        FfiConverterTypeFirmwareGuardBoard_lower(board),
-        FfiConverterString.lower(typedConfirmation),$0
-    )
-}
-}
-/**
  * Every limits field's range, in the order an editor shows them (each
  * output's fields, then the device's): the one table every client's limits
  * editor uses (review p1e-a F7). A profile is held to the same ranges when
@@ -37552,12 +37599,6 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_firmware_guard_check() != 22496) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_dspi_core_checksum_func_flash_to_drive() != 53083) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_dspi_core_checksum_func_flash_to_drive_guarded() != 25249) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_limits_field_ranges() != 1854) {
@@ -37872,7 +37913,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_end_group() != 28189) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_enter_bootloader_confirmed() != 51251) {
+    if (uniffi_dspi_core_checksum_method_dspicore_enter_bootloader_confirmed() != 20465) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_event_log_devices() != 55922) {
@@ -38031,7 +38072,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_firmware_version_matches() != 52277) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_flash_confirmed() != 36538) {
+    if (uniffi_dspi_core_checksum_method_dspicore_flash_confirmed() != 17722) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_flash_to_drive_confirmed() != 45420) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_get_channel_name() != 25587) {

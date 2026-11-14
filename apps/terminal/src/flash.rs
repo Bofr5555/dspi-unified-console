@@ -27,8 +27,8 @@
 //!   `uconsole raw` ([`Target::open_raw`]), which lets the bootloader request through
 //!   on purpose: another wire format, or an image that cannot be read at all, is
 //!   when a board most needs this.
-//! - **Writing is not success.** [`dspi_core::flash_to_drive_guarded`] (through
-//!   `flash_confirmed`) returning means the write ended, or the drive went away
+//! - **Writing is not success.** [`dspi_core::DspiCore::flash_confirmed`] (the
+//!   guarded write, with its token) returning means the write ended, or the drive went away
 //!   during it, which is assumed to be the board rebooting and which a pulled
 //!   cable looks like too. Only the board
 //!   coming back with the image's version is success.

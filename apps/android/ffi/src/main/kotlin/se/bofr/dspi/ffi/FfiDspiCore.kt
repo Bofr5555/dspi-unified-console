@@ -257,6 +257,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun flashConfirmed(image: List<Int>, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String, token: String?) = call { core.flashConfirmed(ByteArray(image.size) { image[it].toByte() }, drive.toFfi(), board.toFfi(), typedConfirmation, token) }
 
+    override fun flashToDriveConfirmed(image: List<Int>, drive: BootloaderDrive, token: String?) = call { core.flashToDriveConfirmed(ByteArray(image.size) { image[it].toByte() }, drive.toFfi(), token) }
+
     override fun firmwareGuardBoard(): FirmwareGuardBoard = core.firmwareGuardBoard().toDomain()
 
     override fun applyGuardedImport(text: String, options: Long, eqChannels: Long, timeoutS: Long): GuardedApply = call { core.applyGuardedImport(text, options.toUInt(), eqChannels.toUInt(), timeoutS.toUInt()).toDomain() }
@@ -765,13 +767,9 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun bootloaderDrives(): List<BootloaderDrive> = se.bofr.dspi.ffi.uniffi.bootloaderDrives().map { it.toDomain() }
 
-    override fun flashToDrive(image: List<Int>, drive: BootloaderDrive) = call { se.bofr.dspi.ffi.uniffi.flashToDrive(ByteArray(image.size) { image[it].toByte() }, drive.toFfi()) }
-
     override fun firmwareGuardBoardInBootloader(): FirmwareGuardBoard = se.bofr.dspi.ffi.uniffi.firmwareGuardBoardInBootloader().toDomain()
 
     override fun firmwareGuardCheck(image: List<Int>, board: FirmwareGuardBoard, typedConfirmation: String): FirmwareGuardVerdict = se.bofr.dspi.ffi.uniffi.firmwareGuardCheck(ByteArray(image.size) { image[it].toByte() }, board.toFfi(), typedConfirmation).toDomain()
-
-    override fun flashToDriveGuarded(image: List<Int>, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String) = call { se.bofr.dspi.ffi.uniffi.flashToDriveGuarded(ByteArray(image.size) { image[it].toByte() }, drive.toFfi(), board.toFfi(), typedConfirmation) }
 
     override fun limitsFieldRanges(): List<LimitFieldRange> = se.bofr.dspi.ffi.uniffi.limitsFieldRanges().map { it.toDomain() }
 

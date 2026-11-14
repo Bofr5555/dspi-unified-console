@@ -1186,6 +1186,11 @@ int8_t uniffi_dspi_core_fn_method_dspicore_firmware_version_matches(void*_Nonnul
 void uniffi_dspi_core_fn_method_dspicore_flash_confirmed(void*_Nonnull ptr, RustBuffer image, RustBuffer drive, RustBuffer board, RustBuffer typed_confirmation, RustBuffer token, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FLASH_TO_DRIVE_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FLASH_TO_DRIVE_CONFIRMED
+void uniffi_dspi_core_fn_method_dspicore_flash_to_drive_confirmed(void*_Nonnull ptr, RustBuffer image, RustBuffer drive, RustBuffer token, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_GET_CHANNEL_NAME
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_GET_CHANNEL_NAME
 RustBuffer uniffi_dspi_core_fn_method_dspicore_get_channel_name(void*_Nonnull ptr, uint8_t ch, RustCallStatus *_Nonnull out_status
@@ -2462,16 +2467,6 @@ RustBuffer uniffi_dspi_core_fn_func_firmware_guard_board_in_bootloader(RustCallS
 RustBuffer uniffi_dspi_core_fn_func_firmware_guard_check(RustBuffer image, RustBuffer board, RustBuffer typed_confirmation, RustCallStatus *_Nonnull out_status
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_FLASH_TO_DRIVE
-#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_FLASH_TO_DRIVE
-void uniffi_dspi_core_fn_func_flash_to_drive(RustBuffer image, RustBuffer drive, RustCallStatus *_Nonnull out_status
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_FLASH_TO_DRIVE_GUARDED
-#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_FLASH_TO_DRIVE_GUARDED
-void uniffi_dspi_core_fn_func_flash_to_drive_guarded(RustBuffer image, RustBuffer drive, RustBuffer board, RustBuffer typed_confirmation, RustCallStatus *_Nonnull out_status
-);
-#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LIMITS_FIELD_RANGES
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LIMITS_FIELD_RANGES
 RustBuffer uniffi_dspi_core_fn_func_limits_field_ranges(RustCallStatus *_Nonnull out_status
@@ -2976,18 +2971,6 @@ uint16_t uniffi_dspi_core_checksum_func_firmware_guard_board_in_bootloader(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FIRMWARE_GUARD_CHECK
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FIRMWARE_GUARD_CHECK
 uint16_t uniffi_dspi_core_checksum_func_firmware_guard_check(void
-    
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FLASH_TO_DRIVE
-#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FLASH_TO_DRIVE
-uint16_t uniffi_dspi_core_checksum_func_flash_to_drive(void
-    
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FLASH_TO_DRIVE_GUARDED
-#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FLASH_TO_DRIVE_GUARDED
-uint16_t uniffi_dspi_core_checksum_func_flash_to_drive_guarded(void
     
 );
 #endif
@@ -3936,6 +3919,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_firmware_version_matches(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FLASH_CONFIRMED
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FLASH_CONFIRMED
 uint16_t uniffi_dspi_core_checksum_method_dspicore_flash_confirmed(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FLASH_TO_DRIVE_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FLASH_TO_DRIVE_CONFIRMED
+uint16_t uniffi_dspi_core_checksum_method_dspicore_flash_to_drive_confirmed(void
     
 );
 #endif

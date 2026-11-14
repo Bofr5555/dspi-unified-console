@@ -17,8 +17,11 @@ header = """/*
  * `dspi_copy_preset`, `dspi_delete_preset`, `dspi_save_params`,
  * `dspi_factory_reset`, `dspi_save_output_config`, `dspi_enter_bootloader`,
  * `dspi_config_import`, `dspi_config_import_selected`,
- * `dspi_core_vreg_cal_commit`, `dspi_core_vreg_manual_set`) and the switch
- * (`dspi_require_confirmation`, `dspi_confirmation_required`).
+ * `dspi_core_vreg_cal_commit`, `dspi_core_vreg_manual_set`), the free
+ * firmware writes (`dspi_flash_to_drive`, `dspi_flash_to_drive_guarded`:
+ * now `dspi_flash_to_drive_confirmed` and `dspi_flash_confirmed` on a core,
+ * which need no device open) and the switch (`dspi_require_confirmation`,
+ * `dspi_confirmation_required`).
  * `dspi_write_param` refuses the gated paths (`preset.save`,
  * `preset.delete`, `dev.save`, `dev.save.io`) with `confirmation_required`.
  */"""

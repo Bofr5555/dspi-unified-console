@@ -1178,17 +1178,64 @@ interface DspiCoreApi : AutoCloseable {
     fun firmwareVersionMatches(version: String): Boolean
 
     /**
-     * [`crate::flash_to_drive_guarded`] with a confirmation token
-     * ([`crate::confirm`], [`crate::ConfirmOp::FirmwareFlash`]): mint it once
-     * the bootloader drive is there (the board has left, so a token minted
-     * while it was still connected no longer holds). Without a good token
-     * while tokens are required, or with a bad one at any time,
-     * [`DspiError::ConfirmationRequired`] and nothing reaches the drive.
+     * Write `image` to the bootloader drive behind the firmware guard
+     * ([`crate::firmware_guard_check`] for `board` and `typed_confirmation`),
+     * with a confirmation token ([`crate::confirm`],
+     * [`crate::ConfirmOp::FirmwareFlash`]): the one to use wherever the core
+     * does the writing. Mint the token once the bootloader drive is there
+     * (the board has left, so a token minted while it was still connected no
+     * longer holds); it works with no device open, and a board already in
+     * BOOTSEL has none. Without a good token, or with one for another
+     * operation, [`DspiError::ConfirmationRequired`] and nothing reaches the
+     * drive. The write itself is as [`DspiCore::flash_to_drive_confirmed`]'s.
      *
-     * Errors: that, then those of `flash_to_drive_guarded`.
+     * Errors: that; [`DspiError::FirmwareGuardBlocked`] with the guard's
+     * message when the image needs confirmation; then the write's.
      */
     @Throws(DspiException::class)
     fun flashConfirmed(image: List<Int>, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String, token: String?)
+
+    /**
+     * Write `image` to `drive` as `firmware.uf2`, synced to the medium, with a
+     * confirmation token, without the firmware guard ([`DspiCore::flash_confirmed`]
+     * is the write behind the guard, the one to use wherever the core does the
+     * writing).
+     *
+     * Before any byte goes out: the image is fully validated, the drive's
+     * `INFO_UF2.TXT` is read again and must still name the board `drive`
+     * describes, the image's family must be one that board boots, and the
+     * drive must have room for the image. The file is then written with one
+     * `write_all` and one `sync_all`.
+     *
+     * The board reboots into the new firmware as it takes the last block, so
+     * the write or the sync can fail because the drive has gone: that (either
+     * failed and the drive's `INFO_UF2.TXT` is no longer readable) counts as
+     * success, logged at warn level. It cannot be told apart from a cable pulled mid-write, so
+     * `Ok` means only "the write ended, or the drive went away during it, assumed
+     * to be the board rebooting". **The caller must
+     * confirm success** by waiting for the DSPi to re-enumerate and report the
+     * image's version (`Uf2Info::firmware_version`); a timeout there is the
+     * failure.
+     *
+     * The `INFO_UF2.TXT` re-check and the write are separate path-based
+     * operations, so a different drive mounted at the same path in between
+     * would get the file (an inherent check-then-use race; the Qt updater has
+     * the same). The window is a few milliseconds and both boot ROMs reject an
+     * image of the other family.
+     *
+     * The token ([`crate::confirm`], [`crate::ConfirmOp::FirmwareFlash`]; WP
+     * P1TZ): mint it once the bootloader drive is there; it works with no
+     * device open, and a board in BOOTSEL has none. Without a good one, or with
+     * a token for another operation, [`DspiError::ConfirmationRequired`] and
+     * nothing reaches the drive. With a device still open, the installer lock
+     * holds this write too (before the token is spent).
+     *
+     * Errors: that; [`DspiError::InvalidArgument`] for an invalid image, a drive that
+     * is not a boot ROM's, or a family mismatch; [`DspiError::Io`] for a drive
+     * that has gone, is short of space, or fails the write.
+     */
+    @Throws(DspiException::class)
+    fun flashToDriveConfirmed(image: List<Int>, drive: BootloaderDrive, token: String?)
 
     /**
      * What the open board needs, read from the device now. Call before
@@ -1705,7 +1752,7 @@ interface DspiCoreApi : AutoCloseable {
      *
      * The connection stays open until the departure is noticed (hotplug or
      * notifications). A firmware update then goes: this call; the
-     * bootloader drive appears (`bootloader_drives`); `flash_to_drive`
+     * bootloader drive appears (`bootloader_drives`); `flash_confirmed`
      * writes the image; the DSPi re-enumerates. Only that last step
      * confirms success: open it again and check the new version with
      * [`DspiCore::firmware_version_matches`]; a timeout there is the
@@ -4146,40 +4193,6 @@ interface DspiCoreApi : AutoCloseable {
     fun bootloaderDrives(): List<BootloaderDrive>
 
     /**
-     * Write `image` to `drive` as `firmware.uf2`, synced to the medium.
-     *
-     * Before any byte goes out: the image is fully validated, the drive's
-     * `INFO_UF2.TXT` is read again and must still name the board `drive`
-     * describes, the image's family must be one that board boots, and the
-     * drive must have room for the image. The file is then written with one
-     * `write_all` and one `sync_all`.
-     *
-     * The board reboots into the new firmware as it takes the last block, so
-     * the write or the sync can fail because the drive has gone: that (either
-     * failed and the drive's `INFO_UF2.TXT` is no longer readable) counts as
-     * success, logged at warn level. It cannot be told apart from a cable pulled mid-write, so
-     * `Ok` means only "the write ended, or the drive went away during it, assumed
-     * to be the board rebooting". **The caller must
-     * confirm success** by waiting for the DSPi to re-enumerate and report the
-     * image's version (`Uf2Info::firmware_version`); a timeout there is the
-     * failure.
-     *
-     * The `INFO_UF2.TXT` re-check and the write are separate path-based
-     * operations, so a different drive mounted at the same path in between
-     * would get the file (an inherent check-then-use race; the Qt updater has
-     * the same). The window is a few milliseconds and both boot ROMs reject an
-     * image of the other family.
-     *
-     * Errors: [`DspiError::InvalidArgument`] for an invalid image, a drive that
-     * is not a boot ROM's, or a family mismatch; [`DspiError::Io`] for a drive
-     * that has gone, is short of space, or fails the write.
-     *
-     * Stateless (a free function in dspi-core); needs no device.
-     */
-    @Throws(DspiException::class)
-    fun flashToDrive(image: List<Int>, drive: BootloaderDrive)
-
-    /**
      * The record for a board already in the bootloader: unknown, so the check
      * asks.
      *
@@ -4196,18 +4209,6 @@ interface DspiCoreApi : AutoCloseable {
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun firmwareGuardCheck(image: List<Int>, board: FirmwareGuardBoard, typedConfirmation: String): FirmwareGuardVerdict
-
-    /**
-     * [`flash_to_drive`] behind the guard: the one to use wherever the core does
-     * the writing. Nothing reaches the drive unless the verdict allows it.
-     *
-     * Errors: [`DspiError::FirmwareGuardBlocked`] with the guard's message when
-     * the image needs confirmation; otherwise those of [`flash_to_drive`].
-     *
-     * Stateless (a free function in dspi-core); needs no device.
-     */
-    @Throws(DspiException::class)
-    fun flashToDriveGuarded(image: List<Int>, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String)
 
     /**
      * Every limits field's range, in the order an editor shows them (each

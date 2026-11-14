@@ -1102,11 +1102,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "uf2Inspect",
             "firmwareVersionMatches",
             "bootloaderDrives",
-            "flashToDrive",
             "firmwareGuardBoard",
             "firmwareGuardBoardInBootloader",
             "firmwareGuardCheck",
-            "flashToDriveGuarded",
             "getInputSourceName",
             "getDeviceName",
             "fetchOutputLatency",
@@ -1183,11 +1181,13 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // -- WP P1PR -- the warning list, from the mirror: a read
             "outputsWithoutLimiter",
             // -- WP P1TK -- confirmation tokens: local state, nothing sent; and
-            // the firmware-update path's confirmed forms (as enterBootloader
-            // and flashToDriveGuarded)
+            // the firmware-update path's confirmed forms (pass-through, as the
+            // bootloader and drive writes always were: an old firmware must stay updatable)
             "confirmToken",
             "enterBootloaderConfirmed",
             "flashConfirmed",
+            // -- WP P1TZ -- the free drive write, now a core method with a token (as flashConfirmed)
+            "flashToDriveConfirmed",
             // -- WP P1LM -- the profile's files and status: the app's files,
             // nothing sent
             "limitsSetDir",

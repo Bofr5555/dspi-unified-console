@@ -1679,25 +1679,6 @@ fn drive_at(drive_path: *const c_char, platform: i8) -> Result<BootloaderDrive> 
     })
 }
 
-/// Write a UF2 image to the bootloader drive at `drive_path` (`platform`: 0
-/// RP2040, 1 RP2350). Blocks for the copy. JSON `{ok}` or a failure; an
-/// invalid image never reaches the drive. Use the guarded call instead.
-#[unsafe(no_mangle)]
-pub extern "C" fn dspi_flash_to_drive(
-    image: *const u8,
-    image_len: u32,
-    drive_path: *const c_char,
-    platform: i8,
-    buf: *mut c_char,
-    len: u32,
-) -> u32 {
-    free_text(buf, len, || {
-        let written = drive_at(drive_path, platform)
-            .and_then(|drive| dspi_core::flash_to_drive(c_bytes(image, image_len), drive));
-        done_reply(written)
-    })
-}
-
 /// Whether the open device runs firmware `version`: 1 yes, 0 no, -1 on
 /// failure or for a null or non-UTF-8 version.
 #[unsafe(no_mangle)]
@@ -1941,32 +1922,6 @@ pub extern "C" fn dspi_firmware_guard_check(
             c_str(typed).unwrap_or_default().to_owned(),
         );
         json_reply(Ok(verdict))
-    })
-}
-
-/// `dspi_flash_to_drive` behind the firmware guard: nothing reaches the drive
-/// unless the guard allows it (`firmware_guard` failure otherwise).
-#[unsafe(no_mangle)]
-pub extern "C" fn dspi_flash_to_drive_guarded(
-    image: *const u8,
-    image_len: u32,
-    drive_path: *const c_char,
-    platform: i8,
-    board_required_mv: u16,
-    typed: *const c_char,
-    buf: *mut c_char,
-    len: u32,
-) -> u32 {
-    free_text(buf, len, || {
-        let written = drive_at(drive_path, platform).and_then(|drive| {
-            dspi_core::flash_to_drive_guarded(
-                c_bytes(image, image_len),
-                drive,
-                board_needing(board_required_mv),
-                c_str(typed).unwrap_or_default().to_owned(),
-            )
-        });
-        done_reply(written)
     })
 }
 
@@ -2299,15 +2254,20 @@ mod tests_clean1 {
     fn clean1_a_guarded_flash_stops_before_the_drive() {
         let image = stock_image();
         let path = CString::new("/nonexistent/clean1-drive").unwrap();
+        // -- WP P1TZ -- the guarded write is a core's, with a token (no device
+        // open)
+        let h = dspi_core_new();
         let flash = |typed: *const c_char| {
-            reply(|b, l| {
-                dspi_flash_to_drive_guarded(
+            with_token_for_test(h, "firmware_flash", |t, b, l| {
+                dspi_flash_confirmed(
+                    h,
                     image.as_ptr(),
                     image.len() as u32,
                     path.as_ptr(),
                     1,
                     1200,
                     typed,
+                    t,
                     b,
                     l,
                 )
@@ -2321,10 +2281,11 @@ mod tests_clean1 {
         let tried = flash(phrase.as_ptr());
         assert_eq!(tried["ok"], false);
         assert_ne!(tried["code"], "firmware_guard", "{tried}");
-        let no_path = reply(|b, l| {
-            dspi_flash_to_drive_guarded(image.as_ptr(), 4, null(), 1, 1150, null(), b, l)
+        let no_path = with_token_for_test(h, "firmware_flash", |t, b, l| {
+            dspi_flash_confirmed(h, image.as_ptr(), 4, null(), 1, 1150, null(), t, b, l)
         });
         assert_eq!(no_path["code"], "invalid");
+        dspi_core_free(h);
     }
 
     #[test]

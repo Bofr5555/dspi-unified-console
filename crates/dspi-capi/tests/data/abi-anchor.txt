@@ -1145,12 +1145,6 @@ uint32_t dspi_notify_tap_drain(struct FfiCore *core, char *buf, uint32_t len);
 uint64_t dspi_connection_generation(struct FfiCore *core);
 uint32_t dspi_uf2_inspect(const uint8_t *image, uint32_t image_len, char *buf, uint32_t len);
 uint32_t dspi_bootloader_drives(char *buf, uint32_t len);
-uint32_t dspi_flash_to_drive(const uint8_t *image,
-uint32_t image_len,
-const char *drive_path,
-int8_t platform,
-char *buf,
-uint32_t len);
 int8_t dspi_firmware_version_matches(struct FfiCore *core, const char *version);
 uint32_t dspi_core_vreg_cal_view(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_core_vreg_cal_poll(struct FfiCore *core, char *buf, uint32_t len);
@@ -1191,14 +1185,6 @@ bool dspi_cs_demo_learn(struct FfiCore *core, uint8_t protocol, uint32_t code);
 uint32_t dspi_firmware_guard_board(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_firmware_guard_check(const uint8_t *image,
 uint32_t image_len,
-uint16_t board_required_mv,
-const char *typed,
-char *buf,
-uint32_t len);
-uint32_t dspi_flash_to_drive_guarded(const uint8_t *image,
-uint32_t image_len,
-const char *drive_path,
-int8_t platform,
 uint16_t board_required_mv,
 const char *typed,
 char *buf,
@@ -1387,6 +1373,14 @@ const char *drive_path,
 int8_t platform,
 uint16_t board_required_mv,
 const char *typed,
+const char *token,
+char *buf,
+uint32_t len);
+uint32_t dspi_flash_to_drive_confirmed(struct FfiCore *core,
+const uint8_t *image,
+uint32_t image_len,
+const char *drive_path,
+int8_t platform,
 const char *token,
 char *buf,
 uint32_t len);

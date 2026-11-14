@@ -1043,7 +1043,7 @@ impl DspiCore {
     ///
     /// The connection stays open until the departure is noticed (hotplug or
     /// notifications). A firmware update then goes: this call; the
-    /// bootloader drive appears (`bootloader_drives`); `flash_to_drive`
+    /// bootloader drive appears (`bootloader_drives`); `flash_confirmed`
     /// writes the image; the DSPi re-enumerates. Only that last step
     /// confirms success: open it again and check the new version with
     /// [`DspiCore::firmware_version_matches`]; a timeout there is the

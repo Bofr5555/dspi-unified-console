@@ -83,6 +83,14 @@ Release notes of earlier versions: `CHANGELOG-0.13.0.md`.
   `core_vreg_cal_commit`, `core_vreg_manual_set`. Use the `_confirmed` form of each (an
   import: `config_import_confirmed(text, options, eq_channels, token)`, `eq_channels`
   all bits for every channel).
+- The firmware writes are core methods that take a `firmware_flash` token; they work with
+  no device open, so a board already in BOOTSEL (no DSPi connection) is still flashed. Mint
+  the token on any core once the bootloader drive is there. Removed: the free
+  `flash_to_drive` and `flash_to_drive_guarded` (C `dspi_flash_to_drive`,
+  `dspi_flash_to_drive_guarded`); use `flash_confirmed` (behind the firmware guard, the one
+  to use; C `dspi_flash_confirmed`) or `flash_to_drive_confirmed` (without the guard; C
+  `dspi_flash_to_drive_confirmed`). Without a token, or with one for another operation,
+  nothing reaches the drive.
 - Removed: the switch. C `dspi_require_confirmation` and `dspi_confirmation_required`,
   UniFFI `require_confirmation` and `confirmation_required`, the web Worker's
   `requireConfirmation` and `confirmationRequired`.

@@ -1730,8 +1730,6 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
-
-
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1788,10 +1786,6 @@ fun uniffi_dspi_core_checksum_func_filter_type_names(
 fun uniffi_dspi_core_checksum_func_firmware_guard_board_in_bootloader(
 ): Short
 fun uniffi_dspi_core_checksum_func_firmware_guard_check(
-): Short
-fun uniffi_dspi_core_checksum_func_flash_to_drive(
-): Short
-fun uniffi_dspi_core_checksum_func_flash_to_drive_guarded(
 ): Short
 fun uniffi_dspi_core_checksum_func_limits_field_ranges(
 ): Short
@@ -2108,6 +2102,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_firmware_guard_board(
 fun uniffi_dspi_core_checksum_method_dspicore_firmware_version_matches(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_flash_confirmed(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_flash_to_drive_confirmed(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_get_channel_name(
 ): Short
@@ -2894,6 +2890,8 @@ fun uniffi_dspi_core_fn_method_dspicore_firmware_version_matches(`ptr`: Pointer,
 ): Byte
 fun uniffi_dspi_core_fn_method_dspicore_flash_confirmed(`ptr`: Pointer,`image`: RustBuffer.ByValue,`drive`: RustBuffer.ByValue,`board`: RustBuffer.ByValue,`typedConfirmation`: RustBuffer.ByValue,`token`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_flash_to_drive_confirmed(`ptr`: Pointer,`image`: RustBuffer.ByValue,`drive`: RustBuffer.ByValue,`token`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_get_channel_name(`ptr`: Pointer,`ch`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_get_device_name(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -3402,10 +3400,6 @@ fun uniffi_dspi_core_fn_func_firmware_guard_board_in_bootloader(uniffi_out_err: 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_firmware_guard_check(`image`: RustBuffer.ByValue,`board`: RustBuffer.ByValue,`typedConfirmation`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-fun uniffi_dspi_core_fn_func_flash_to_drive(`image`: RustBuffer.ByValue,`drive`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): Unit
-fun uniffi_dspi_core_fn_func_flash_to_drive_guarded(`image`: RustBuffer.ByValue,`drive`: RustBuffer.ByValue,`board`: RustBuffer.ByValue,`typedConfirmation`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): Unit
 fun uniffi_dspi_core_fn_func_limits_field_ranges(uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_link_fetch_info(`host`: RustBuffer.ByValue,`port`: Short,uniffi_out_err: UniffiRustCallStatus, 
@@ -3631,12 +3625,6 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_firmware_guard_check() != 22496.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_dspi_core_checksum_func_flash_to_drive() != 53083.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_dspi_core_checksum_func_flash_to_drive_guarded() != 25249.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_limits_field_ranges() != 1854.toShort()) {
@@ -3951,7 +3939,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_end_group() != 28189.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_enter_bootloader_confirmed() != 51251.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_enter_bootloader_confirmed() != 20465.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_event_log_devices() != 55922.toShort()) {
@@ -4110,7 +4098,10 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_firmware_version_matches() != 52277.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_flash_confirmed() != 36538.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_flash_confirmed() != 17722.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_flash_to_drive_confirmed() != 45420.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_get_channel_name() != 25587.toShort()) {
@@ -7215,7 +7206,7 @@ public interface DspiCoreInterface {
      *
      * The connection stays open until the departure is noticed (hotplug or
      * notifications). A firmware update then goes: this call; the
-     * bootloader drive appears (`bootloader_drives`); `flash_to_drive`
+     * bootloader drive appears (`bootloader_drives`); `flash_confirmed`
      * writes the image; the DSPi re-enumerates. Only that last step
      * confirms success: open it again and check the new version with
      * [`DspiCore::firmware_version_matches`]; a timeout there is the
@@ -7829,16 +7820,62 @@ public interface DspiCoreInterface {
     fun `firmwareVersionMatches`(`version`: kotlin.String): kotlin.Boolean
     
     /**
-     * [`crate::flash_to_drive_guarded`] with a confirmation token
-     * ([`crate::confirm`], [`crate::ConfirmOp::FirmwareFlash`]): mint it once
-     * the bootloader drive is there (the board has left, so a token minted
-     * while it was still connected no longer holds). Without a good token
-     * while tokens are required, or with a bad one at any time,
-     * [`DspiError::ConfirmationRequired`] and nothing reaches the drive.
+     * Write `image` to the bootloader drive behind the firmware guard
+     * ([`crate::firmware_guard_check`] for `board` and `typed_confirmation`),
+     * with a confirmation token ([`crate::confirm`],
+     * [`crate::ConfirmOp::FirmwareFlash`]): the one to use wherever the core
+     * does the writing. Mint the token once the bootloader drive is there
+     * (the board has left, so a token minted while it was still connected no
+     * longer holds); it works with no device open, and a board already in
+     * BOOTSEL has none. Without a good token, or with one for another
+     * operation, [`DspiError::ConfirmationRequired`] and nothing reaches the
+     * drive. The write itself is as [`DspiCore::flash_to_drive_confirmed`]'s.
      *
-     * Errors: that, then those of `flash_to_drive_guarded`.
+     * Errors: that; [`DspiError::FirmwareGuardBlocked`] with the guard's
+     * message when the image needs confirmation; then the write's.
      */
     fun `flashConfirmed`(`image`: kotlin.ByteArray, `drive`: BootloaderDrive, `board`: FirmwareGuardBoard, `typedConfirmation`: kotlin.String, `token`: kotlin.String?)
+    
+    /**
+     * Write `image` to `drive` as `firmware.uf2`, synced to the medium, with a
+     * confirmation token, without the firmware guard ([`DspiCore::flash_confirmed`]
+     * is the write behind the guard, the one to use wherever the core does the
+     * writing).
+     *
+     * Before any byte goes out: the image is fully validated, the drive's
+     * `INFO_UF2.TXT` is read again and must still name the board `drive`
+     * describes, the image's family must be one that board boots, and the
+     * drive must have room for the image. The file is then written with one
+     * `write_all` and one `sync_all`.
+     *
+     * The board reboots into the new firmware as it takes the last block, so
+     * the write or the sync can fail because the drive has gone: that (either
+     * failed and the drive's `INFO_UF2.TXT` is no longer readable) counts as
+     * success, logged at warn level. It cannot be told apart from a cable pulled mid-write, so
+     * `Ok` means only "the write ended, or the drive went away during it, assumed
+     * to be the board rebooting". **The caller must
+     * confirm success** by waiting for the DSPi to re-enumerate and report the
+     * image's version (`Uf2Info::firmware_version`); a timeout there is the
+     * failure.
+     *
+     * The `INFO_UF2.TXT` re-check and the write are separate path-based
+     * operations, so a different drive mounted at the same path in between
+     * would get the file (an inherent check-then-use race; the Qt updater has
+     * the same). The window is a few milliseconds and both boot ROMs reject an
+     * image of the other family.
+     *
+     * The token ([`crate::confirm`], [`crate::ConfirmOp::FirmwareFlash`]; WP
+     * P1TZ): mint it once the bootloader drive is there; it works with no
+     * device open, and a board in BOOTSEL has none. Without a good one, or with
+     * a token for another operation, [`DspiError::ConfirmationRequired`] and
+     * nothing reaches the drive. With a device still open, the installer lock
+     * holds this write too (before the token is spent).
+     *
+     * Errors: that; [`DspiError::InvalidArgument`] for an invalid image, a drive that
+     * is not a boot ROM's, or a family mismatch; [`DspiError::Io`] for a drive
+     * that has gone, is short of space, or fails the write.
+     */
+    fun `flashToDriveConfirmed`(`image`: kotlin.ByteArray, `drive`: BootloaderDrive, `token`: kotlin.String?)
     
     /**
      * Reads the name of wire channel `ch` from the device
@@ -11913,7 +11950,7 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      *
      * The connection stays open until the departure is noticed (hotplug or
      * notifications). A firmware update then goes: this call; the
-     * bootloader drive appears (`bootloader_drives`); `flash_to_drive`
+     * bootloader drive appears (`bootloader_drives`); `flash_confirmed`
      * writes the image; the DSPi re-enumerates. Only that last step
      * confirms success: open it again and check the new version with
      * [`DspiCore::firmware_version_matches`]; a timeout there is the
@@ -13097,14 +13134,19 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
-     * [`crate::flash_to_drive_guarded`] with a confirmation token
-     * ([`crate::confirm`], [`crate::ConfirmOp::FirmwareFlash`]): mint it once
-     * the bootloader drive is there (the board has left, so a token minted
-     * while it was still connected no longer holds). Without a good token
-     * while tokens are required, or with a bad one at any time,
-     * [`DspiError::ConfirmationRequired`] and nothing reaches the drive.
+     * Write `image` to the bootloader drive behind the firmware guard
+     * ([`crate::firmware_guard_check`] for `board` and `typed_confirmation`),
+     * with a confirmation token ([`crate::confirm`],
+     * [`crate::ConfirmOp::FirmwareFlash`]): the one to use wherever the core
+     * does the writing. Mint the token once the bootloader drive is there
+     * (the board has left, so a token minted while it was still connected no
+     * longer holds); it works with no device open, and a board already in
+     * BOOTSEL has none. Without a good token, or with one for another
+     * operation, [`DspiError::ConfirmationRequired`] and nothing reaches the
+     * drive. The write itself is as [`DspiCore::flash_to_drive_confirmed`]'s.
      *
-     * Errors: that, then those of `flash_to_drive_guarded`.
+     * Errors: that; [`DspiError::FirmwareGuardBlocked`] with the guard's
+     * message when the image needs confirmation; then the write's.
      */
     @Throws(DspiException::class)override fun `flashConfirmed`(`image`: kotlin.ByteArray, `drive`: BootloaderDrive, `board`: FirmwareGuardBoard, `typedConfirmation`: kotlin.String, `token`: kotlin.String?)
         = 
@@ -13112,6 +13154,57 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_flash_confirmed(
         it, FfiConverterByteArray.lower(`image`),FfiConverterTypeBootloaderDrive.lower(`drive`),FfiConverterTypeFirmwareGuardBoard.lower(`board`),FfiConverterString.lower(`typedConfirmation`),FfiConverterOptionalString.lower(`token`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Write `image` to `drive` as `firmware.uf2`, synced to the medium, with a
+     * confirmation token, without the firmware guard ([`DspiCore::flash_confirmed`]
+     * is the write behind the guard, the one to use wherever the core does the
+     * writing).
+     *
+     * Before any byte goes out: the image is fully validated, the drive's
+     * `INFO_UF2.TXT` is read again and must still name the board `drive`
+     * describes, the image's family must be one that board boots, and the
+     * drive must have room for the image. The file is then written with one
+     * `write_all` and one `sync_all`.
+     *
+     * The board reboots into the new firmware as it takes the last block, so
+     * the write or the sync can fail because the drive has gone: that (either
+     * failed and the drive's `INFO_UF2.TXT` is no longer readable) counts as
+     * success, logged at warn level. It cannot be told apart from a cable pulled mid-write, so
+     * `Ok` means only "the write ended, or the drive went away during it, assumed
+     * to be the board rebooting". **The caller must
+     * confirm success** by waiting for the DSPi to re-enumerate and report the
+     * image's version (`Uf2Info::firmware_version`); a timeout there is the
+     * failure.
+     *
+     * The `INFO_UF2.TXT` re-check and the write are separate path-based
+     * operations, so a different drive mounted at the same path in between
+     * would get the file (an inherent check-then-use race; the Qt updater has
+     * the same). The window is a few milliseconds and both boot ROMs reject an
+     * image of the other family.
+     *
+     * The token ([`crate::confirm`], [`crate::ConfirmOp::FirmwareFlash`]; WP
+     * P1TZ): mint it once the bootloader drive is there; it works with no
+     * device open, and a board in BOOTSEL has none. Without a good one, or with
+     * a token for another operation, [`DspiError::ConfirmationRequired`] and
+     * nothing reaches the drive. With a device still open, the installer lock
+     * holds this write too (before the token is spent).
+     *
+     * Errors: that; [`DspiError::InvalidArgument`] for an invalid image, a drive that
+     * is not a boot ROM's, or a family mismatch; [`DspiError::Io`] for a drive
+     * that has gone, is short of space, or fails the write.
+     */
+    @Throws(DspiException::class)override fun `flashToDriveConfirmed`(`image`: kotlin.ByteArray, `drive`: BootloaderDrive, `token`: kotlin.String?)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_flash_to_drive_confirmed(
+        it, FfiConverterByteArray.lower(`image`),FfiConverterTypeBootloaderDrive.lower(`drive`),FfiConverterOptionalString.lower(`token`),_status)
 }
     }
     
@@ -33854,60 +33947,6 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
 }
     )
     }
-    
-
-        /**
-         * Write `image` to `drive` as `firmware.uf2`, synced to the medium.
-         *
-         * Before any byte goes out: the image is fully validated, the drive's
-         * `INFO_UF2.TXT` is read again and must still name the board `drive`
-         * describes, the image's family must be one that board boots, and the
-         * drive must have room for the image. The file is then written with one
-         * `write_all` and one `sync_all`.
-         *
-         * The board reboots into the new firmware as it takes the last block, so
-         * the write or the sync can fail because the drive has gone: that (either
-         * failed and the drive's `INFO_UF2.TXT` is no longer readable) counts as
-         * success, logged at warn level. It cannot be told apart from a cable pulled mid-write, so
-         * `Ok` means only "the write ended, or the drive went away during it, assumed
-         * to be the board rebooting". **The caller must
-         * confirm success** by waiting for the DSPi to re-enumerate and report the
-         * image's version (`Uf2Info::firmware_version`); a timeout there is the
-         * failure.
-         *
-         * The `INFO_UF2.TXT` re-check and the write are separate path-based
-         * operations, so a different drive mounted at the same path in between
-         * would get the file (an inherent check-then-use race; the Qt updater has
-         * the same). The window is a few milliseconds and both boot ROMs reject an
-         * image of the other family.
-         *
-         * Errors: [`DspiError::InvalidArgument`] for an invalid image, a drive that
-         * is not a boot ROM's, or a family mismatch; [`DspiError::Io`] for a drive
-         * that has gone, is short of space, or fails the write.
-         */
-    @Throws(DspiException::class) fun `flashToDrive`(`image`: kotlin.ByteArray, `drive`: BootloaderDrive)
-        = 
-    uniffiRustCallWithError(DspiException) { _status ->
-    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_flash_to_drive(
-        FfiConverterByteArray.lower(`image`),FfiConverterTypeBootloaderDrive.lower(`drive`),_status)
-}
-    
-    
-
-        /**
-         * [`flash_to_drive`] behind the guard: the one to use wherever the core does
-         * the writing. Nothing reaches the drive unless the verdict allows it.
-         *
-         * Errors: [`DspiError::FirmwareGuardBlocked`] with the guard's message when
-         * the image needs confirmation; otherwise those of [`flash_to_drive`].
-         */
-    @Throws(DspiException::class) fun `flashToDriveGuarded`(`image`: kotlin.ByteArray, `drive`: BootloaderDrive, `board`: FirmwareGuardBoard, `typedConfirmation`: kotlin.String)
-        = 
-    uniffiRustCallWithError(DspiException) { _status ->
-    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_flash_to_drive_guarded(
-        FfiConverterByteArray.lower(`image`),FfiConverterTypeBootloaderDrive.lower(`drive`),FfiConverterTypeFirmwareGuardBoard.lower(`board`),FfiConverterString.lower(`typedConfirmation`),_status)
-}
-    
     
 
         /**
