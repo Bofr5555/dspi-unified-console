@@ -340,6 +340,15 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         // -- WP P1SN -- snapshots as documents (no files on the web)
         "snapshotCapture" => snapshots::capture(&core, params(req.params)?),
         "snapshotRecall" => snapshots::recall(&core, params(req.params)?),
+        // -- WP P1SA -- safe apply with rollback (src/guarded.rs)
+        "applyGuardedImport" => crate::guarded::import(&core, params(req.params)?),
+        "applyGuardedSnapshot" => crate::guarded::snapshot(&core, params(req.params)?),
+        "applyGuardBegin" => crate::guarded::begin(&core, params(req.params)?),
+        "applyConfirm" => crate::guarded::confirm(&core),
+        "applyRevert" => crate::guarded::revert(&core),
+        "applyPoll" => Ok(crate::guarded::poll(&core)),
+        "applyStatus" => Ok(crate::guarded::status(&core)),
+        "applyGuardDefault" => Ok(crate::guarded::default_on(&core)),
         // -- WP P1OF -- offline editing and templates (src/offline.rs)
         "documentOpen" => document_open(h, &core, params(req.params)?),
         "documentInfo" => crate::offline::info(&core),

@@ -53,6 +53,8 @@ pub mod curves;
 // -- WP WB8 --
 pub mod diag;
 pub mod guard;
+// -- WP P1SA --
+pub mod guarded;
 // -- WP P0W --
 pub mod history;
 // -- WP WB4b --
