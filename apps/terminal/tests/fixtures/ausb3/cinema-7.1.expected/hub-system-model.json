@@ -1,0 +1,104 @@
+{
+  "applyLeadFrames": 2400,
+  "dFrames": 192,
+  "fanOuts": [],
+  "groups": [],
+  "keepUsbAligned": true,
+  "lipSyncUs": 0,
+  "rateHz": 48000,
+  "rooms": [
+    {
+      "id": "cinema",
+      "lipSyncUs": null,
+      "name": "Cinema 7.1"
+    }
+  ],
+  "scenes": [],
+  "senders": [],
+  "sources": [],
+  "units": [
+    {
+      "hopDelayFrames": null,
+      "id": "front",
+      "latencyUs": 0,
+      "measuredLatencyUs": null,
+      "name": "Front L/C/R and sub",
+      "output": null,
+      "repeater": false,
+      "room": "cinema",
+      "serial": "E6614C311B4A8B2F",
+      "slots": null,
+      "speakers": [
+        {
+          "distanceM": 3.4,
+          "output": 0
+        },
+        {
+          "distanceM": 3.4,
+          "output": 1
+        },
+        {
+          "distanceM": 3.1,
+          "output": 2
+        },
+        {
+          "distanceM": 2.6,
+          "output": 8
+        }
+      ],
+      "transport": "usb_direct",
+      "usbMode": "phase_lock"
+    },
+    {
+      "hopDelayFrames": null,
+      "id": "sides",
+      "latencyUs": 0,
+      "measuredLatencyUs": null,
+      "name": "Sides",
+      "output": null,
+      "repeater": false,
+      "room": "cinema",
+      "serial": "E6614C311B4A9C10",
+      "slots": null,
+      "speakers": [
+        {
+          "distanceM": 1.9,
+          "output": 0
+        },
+        {
+          "distanceM": 2.1,
+          "output": 1
+        }
+      ],
+      "transport": "usb_direct",
+      "usbMode": "phase_lock"
+    },
+    {
+      "hopDelayFrames": null,
+      "id": "rears",
+      "latencyUs": 0,
+      "measuredLatencyUs": null,
+      "name": "Rears",
+      "onLockError": "play_unaligned",
+      "output": null,
+      "repeater": false,
+      "room": "cinema",
+      "serial": "E6614C311B4AA0D7",
+      "slots": null,
+      "speakers": [
+        {
+          "distanceM": 2.4,
+          "output": 0
+        },
+        {
+          "distanceM": 2.4,
+          "output": 1
+        }
+      ],
+      "transport": "usb_direct",
+      "usbMode": "phase_lock"
+    }
+  ],
+  "version": 1,
+  "zones": []
+}

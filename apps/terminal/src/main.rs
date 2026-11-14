@@ -108,6 +108,8 @@ mod hub;
 mod diag;
 // -- WP P1TM --
 mod pro;
+// -- WP AUSB3 -- `uconsole usb-direct generate`: the USB-direct sender's files
+mod usb_direct_gen;
 
 use dspi_cmd::COMMAND;
 use std::process::ExitCode;
@@ -267,6 +269,8 @@ fn main() -> ExitCode {
         Some("limits") => pro::installer::cmd_limits(target, &flags, json),
         Some("lock") => pro::installer::cmd_lock(target, &flags, json),
         Some("status") => pro::cmd_status(target, &flags, json),
+        // -- WP AUSB3 -- writes files only; opens no unit
+        Some("usb-direct") => usb_direct_gen::run(&flags, json),
         // No arguments opens the interface; arguments run one command and exit.
         None => cmd_tui(target, &flags, palette),
         Some(other) if other.starts_with("--") => cmd_tui(target, &flags, palette),
@@ -309,6 +313,8 @@ fn is_command_word(word: &str) -> bool {
         "limits",
         "lock",
         "status",
+        // -- WP AUSB3 --
+        "usb-direct",
     ];
     TERMINAL_VERBS.contains(&word)
         || dspi_cmd::VERBS.iter().any(|(n, _)| *n == word)
@@ -646,6 +652,11 @@ USAGE:
                              SOF lock (state, host and VCXO ppm, phase error),
                              the stream's start, gaps, missed and late samples,
                              and why its timeline ended (DIAG)
+    {COMMAND} usb-direct generate <installation.json> [--out <folder>] [--force]
+                             write the computer's side of a USB-direct home
+                             theatre: a PipeWire sink split per unit, the
+                             WirePlumber rules, each unit's routing script,
+                             the hub's model and a settings sheet. Files only
     {COMMAND} autoeq search <q> find a headphone correction profile
     {COMMAND} autoeq apply <id> [ch | l r]
                              apply one to inputs 1 and 2, a channel, or a

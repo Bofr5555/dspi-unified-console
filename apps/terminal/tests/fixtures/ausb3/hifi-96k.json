@@ -1,0 +1,10 @@
+{
+  "name": "hifi",
+  "description": "Stereo, 96 kHz",
+  "rate": 96000,
+  "channels": ["FL", "FR"],
+  "units": [
+    { "id": "left", "serial": "E6614C311B4A1001", "channels": [ { "channel": "FL", "output": 0 } ] },
+    { "id": "right", "serial": "E6614C311B4A1002", "chip": "rp2040", "channels": [ { "channel": "FR", "output": 0 } ] }
+  ]
+}
