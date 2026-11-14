@@ -363,8 +363,12 @@ fn wp_p1of_templates_from_the_users_folder() {
         .iter()
         .map(|t| t["id"].as_str().unwrap())
         .collect();
-    assert_eq!(ids, ["builtin:k340", "hall.dspipreset"]);
-    let hall = &list[1];
+    // -- WP TPL1 -- the shipped templates first (TPL1's checks list them),
+    // then the user's.
+    let shipped = TEMPLATES.len();
+    assert_eq!(ids[shipped - 1], "builtin:k340");
+    assert_eq!(ids[shipped..], ["hall.dspipreset"]);
+    let hall = &list[shipped];
     assert_eq!(hall["name"], "Ünïcødé hall");
     assert_eq!(hall["builtin"], false);
     assert_eq!(hall["status"], "");
@@ -395,7 +399,7 @@ fn wp_p1of_templates_from_the_users_folder() {
     ));
     // A folder that is not there lists the shipped ones.
     let none = parse(&template_list(format!("{user}/missing")));
-    assert_eq!(none.as_array().unwrap().len(), 1);
+    assert_eq!(none.as_array().unwrap().len(), TEMPLATES.len()); // -- WP TPL1 --
     let _ = std::fs::remove_dir_all(dir);
 }
 
