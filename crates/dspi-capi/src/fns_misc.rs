@@ -64,6 +64,8 @@ mod confirm;
 mod limits;
 // -- WP P1OF --
 mod offline;
+// -- WP P1SA --
+mod guarded;
 
 // ── Replies ──────────────────────────────────────────────────────────
 
@@ -2273,6 +2275,10 @@ mod tests_wp_p1df;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p1sn;
+// -- WP P1SA --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_p1sa;
 // -- WP P1AFIX --
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]

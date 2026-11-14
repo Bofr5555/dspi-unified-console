@@ -3461,6 +3461,57 @@ data class FirmwareGuardVerdict(
 )
 
 /**
+ * A guarded apply's state: [`DspiCore::apply_status`] and every guarded call.
+ */
+data class GuardedApply(
+    /**
+     * This core's number for it (1, 2, …); 0 when none was begun.
+     */
+    val id: Long,
+    /**
+     * Where it stands.
+     */
+    val phase: GuardPhase,
+    /**
+     * What was applied: the document's or snapshot's name, or the client's
+     * label for a flow.
+     */
+    val label: String,
+    /**
+     * The hub guards it too (DSPi Link with `apply_guard`): a vanished
+     * client is reverted by the hub.
+     */
+    val hub: Boolean,
+    /**
+     * The timeout, ms.
+     */
+    val timeoutMs: Long,
+    /**
+     * What is left of it, ms; 0 once it has ended.
+     */
+    val remainingMs: Long,
+    /**
+     * How it ended: "" while waiting, `confirmed`, `timeout`, `reverted`
+     * (Revert), `failed` (the apply itself failed), `connection_lost`,
+     * `taken_over` (another console took the device's lock) or
+     * `hub_stopping`.
+     */
+    val reason: String,
+    /**
+     * One plain sentence for the user, "" while waiting.
+     */
+    val message: String,
+    /**
+     * What the apply changed, in the unsaved-changes list's words.
+     */
+    val changes: List<String>,
+    /**
+     * What the apply or the revert did not do, and why.
+     */
+    val notes: List<String>,
+)
+
+/**
  * One change in the history ([`DspiCore::history`]).
  */
 data class HistoryEntry(
@@ -4225,6 +4276,43 @@ enum class FirmwareGuardReason {
      * voltage. Its `confirmation_phrase` is the word `OVERVOLT`.
      */
     OVERVOLT,
+}
+
+/**
+ * Where a guarded apply stands ([`GuardedApply::phase`]).
+ */
+enum class GuardPhase {
+    /**
+     * None has been begun on this core.
+     */
+    IDLE,
+    /**
+     * Applied; waiting for Keep or Revert. The countdown runs.
+     */
+    WAITING,
+    /**
+     * Kept: by Keep, or because another console took the device over.
+     */
+    KEPT,
+    /**
+     * The settings from before are back.
+     */
+    REVERTED,
+    /**
+     * Putting them back failed; it is not tried again.
+     */
+    REVERT_FAILED,
+    /**
+     * The hub went to put them back and the device was not there: nothing
+     * was written.
+     */
+    NOT_WRITTEN,
+    /**
+     * The connection was lost. With the hub's guard this lasts until the
+     * hub says how it ended; without it, the device may still hold the
+     * change, and Revert works once the same device is open again.
+     */
+    LOST,
 }
 
 /**

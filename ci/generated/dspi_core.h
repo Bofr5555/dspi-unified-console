@@ -6022,6 +6022,84 @@ uint32_t dspi_template_list(const char *user_dir, char *buf, uint32_t len);
 uint32_t dspi_template_text(const char *id, const char *user_dir, char *buf, uint32_t len);
 
 /**
+ * Import the `.dspipreset` document `doc` with a way back: `options` and
+ * `eq_channels` as `dspi_config_import_selected` takes them, `timeout_s`
+ * seconds for the Keep (0: 30; at most 590). No confirmation token. JSON:
+ * the state (`waiting`, with the changes), or a failure (`invalid` for no
+ * document, an empty selection, or another apply waiting; the hub's refusal
+ * as `link`; the import's own failure after the snapshot was put back).
+ */
+uint32_t dspi_apply_guarded_import(struct FfiCore *core,
+                                   const char *doc,
+                                   uint32_t options,
+                                   uint32_t eq_channels,
+                                   uint32_t timeout_s,
+                                   char *buf,
+                                   uint32_t len);
+
+/**
+ * Recall snapshot `id` from the store with a way back. JSON as
+ * `dspi_apply_guarded_import`.
+ */
+uint32_t dspi_apply_guarded_snapshot(struct FfiCore *core,
+                                     const char *id,
+                                     uint32_t timeout_s,
+                                     char *buf,
+                                     uint32_t len);
+
+/**
+ * Recall a snapshot document's text with a way back (only a snapshot).
+ * JSON as `dspi_apply_guarded_import`.
+ */
+uint32_t dspi_apply_guarded_snapshot_document(struct FfiCore *core,
+                                              const char *doc,
+                                              uint32_t timeout_s,
+                                              char *buf,
+                                              uint32_t len);
+
+/**
+ * Begin a guard around a flow the client writes itself, named `label`; then
+ * Keep or Revert. JSON: the state, or a failure as for an import.
+ */
+uint32_t dspi_apply_guard_begin(struct FfiCore *core,
+                                const char *label,
+                                uint32_t timeout_s,
+                                char *buf,
+                                uint32_t len);
+
+/**
+ * Keep the change. JSON: the state (`kept`; past the timeout the revert's
+ * end; `lost` when the hub could not be told), or `invalid` when nothing
+ * waits.
+ */
+uint32_t dspi_apply_confirm(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Put the settings from before back now (after a lost USB connection: once
+ * the same device is open again). JSON: the state, or `invalid` when there
+ * is nothing to revert.
+ */
+uint32_t dspi_apply_revert(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Drive the guard from the client's poll, off the UI thread: the timeout's
+ * revert, a lost connection, the hub's word after a reconnect. JSON: the
+ * state.
+ */
+uint32_t dspi_apply_poll(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The state, for the countdown bar. No I/O. JSON: the state.
+ */
+uint32_t dspi_apply_status(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Whether imports and recalls are guarded by default here (over DSPi Link
+ * to a hub with the guard). False for a null handle. No I/O.
+ */
+bool dspi_apply_guard_default(struct FfiCore *core);
+
+/**
  * Start looking for hubs on the local network, replacing any browse running.
  * Returns at once; false only with a null handle, in a build without the
  * feature, or when a thread cannot start. A network failure shows in

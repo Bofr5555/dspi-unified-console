@@ -1156,6 +1156,99 @@ interface DspiCoreApi : AutoCloseable {
     fun firmwareGuardBoard(): FirmwareGuardBoard
 
     /**
+     * Import `text` (a `.dspipreset` document) with a way back: capture a
+     * snapshot, apply the blocks `options` and `eq_channels` choose (as
+     * [`DspiCore::config_import_selected`] takes them), then wait
+     * `timeout_s` seconds (0: 30, at most 590) for
+     * [`DspiCore::apply_confirm`]. A timeout, [`DspiCore::apply_revert`] or a
+     * failed import puts the snapshot back; over DSPi Link the hub guards it
+     * too. No confirmation token: a guarded apply has its own way back.
+     *
+     * Returns the state, [`GuardPhase::Waiting`] with the changes.
+     *
+     * Errors, with nothing applied: [`DspiError::InvalidArgument`] for a text
+     * that is not a document, an empty selection, or while another guarded
+     * apply waits; [`DspiError::Disconnected`], [`DspiError::ReadOnly`];
+     * [`DspiError::Link`] for the hub's refusal (`busy`, `locked`,
+     * `denied`, `no_device`). The import's own errors, after the snapshot
+     * was put back (see [`DspiCore::apply_status`]).
+     */
+    @Throws(DspiException::class)
+    fun applyGuardedImport(text: String, options: Long, eqChannels: Long, timeoutS: Long): GuardedApply
+
+    /**
+     * Recall snapshot `id` from the store with a way back, as
+     * [`DspiCore::apply_guarded_import`] does for a document. Errors as
+     * there, and [`DspiCore::snapshot_recall`]'s.
+     */
+    @Throws(DspiException::class)
+    fun applyGuardedSnapshot(id: String, timeoutS: Long): GuardedApply
+
+    /**
+     * Recall a snapshot document's text with a way back (the web's, which
+     * keeps snapshots as files the page holds). Only a snapshot: any other
+     * document is refused with [`DspiError::InvalidArgument`], nothing sent.
+     */
+    @Throws(DspiException::class)
+    fun applyGuardedSnapshotDocument(text: String, timeoutS: Long): GuardedApply
+
+    /**
+     * Begin a guard around a flow the client runs itself (output enables, a
+     * control-surface edit, several hardware settings): capture a snapshot
+     * now, then the client writes as usual and calls
+     * [`DspiCore::apply_confirm`] or [`DspiCore::apply_revert`]; the timeout
+     * and a lost connection work as for an import. `label` names the flow
+     * in the status. Errors as [`DspiCore::apply_guarded_import`]'s before
+     * anything is applied.
+     */
+    @Throws(DspiException::class)
+    fun applyGuardBegin(label: String, timeoutS: Long): GuardedApply
+
+    /**
+     * Keep the change. Returns the state: [`GuardPhase::Kept`]; or, past
+     * the timeout, the revert's end; or [`GuardPhase::Lost`] when the Keep
+     * could not reach the hub (it is not sent again: the hub reverts).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when nothing is waiting.
+     */
+    @Throws(DspiException::class)
+    fun applyConfirm(): GuardedApply
+
+    /**
+     * Put the settings from before back now. Returns the state:
+     * [`GuardPhase::Reverted`], [`GuardPhase::RevertFailed`], or
+     * [`GuardPhase::Lost`] when the connection went. After a lost USB
+     * connection, it recalls the captured snapshot once the same device is
+     * open again (the user's word, never queued).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when nothing is waiting and no
+     * lost apply can be reverted on the open device.
+     */
+    @Throws(DspiException::class)
+    fun applyRevert(): GuardedApply
+
+    /**
+     * Drive the guard: revert at the timeout, notice a lost connection, ask
+     * the hub how a lost one ended once the connection is back. Call it
+     * from the client's poll, off the UI thread (it may write). Returns the
+     * state; at once, unchanged, while another guarded call runs.
+     */
+    fun applyPoll(): GuardedApply
+
+    /**
+     * The guard's state, for the countdown bar: no I/O, never blocks on a
+     * guarded call.
+     */
+    fun applyStatus(): GuardedApply
+
+    /**
+     * Whether an import or a recall is guarded by default here (owner,
+     * OD-P1g): over DSPi Link to a hub that offers the guard, yes; on USB
+     * it is the user's choice. An A/B toggle never is.
+     */
+    fun applyGuardDefault(): Boolean
+
+    /**
      * Move physical output `slot` (0..`num_pin_outputs`) to GPIO `pin`;
      * `PIN_RESET_TO_DEFAULT` (0xFF) restores the platform default, which is
      * then read back. The firmware applies the move later through a muted

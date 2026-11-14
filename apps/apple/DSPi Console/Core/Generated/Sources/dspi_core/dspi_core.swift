@@ -1431,6 +1431,93 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func applyAtTimeBase(timeBase: UInt8, frame: UInt64, op: UInt8, arg: UInt8, value: Int16) throws 
     
     /**
+     * Keep the change. Returns the state: [`GuardPhase::Kept`]; or, past
+     * the timeout, the revert's end; or [`GuardPhase::Lost`] when the Keep
+     * could not reach the hub (it is not sent again: the hub reverts).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when nothing is waiting.
+     */
+    func applyConfirm() throws  -> GuardedApply
+    
+    /**
+     * Begin a guard around a flow the client runs itself (output enables, a
+     * control-surface edit, several hardware settings): capture a snapshot
+     * now, then the client writes as usual and calls
+     * [`DspiCore::apply_confirm`] or [`DspiCore::apply_revert`]; the timeout
+     * and a lost connection work as for an import. `label` names the flow
+     * in the status. Errors as [`DspiCore::apply_guarded_import`]'s before
+     * anything is applied.
+     */
+    func applyGuardBegin(label: String, timeoutS: UInt32) throws  -> GuardedApply
+    
+    /**
+     * Whether an import or a recall is guarded by default here (owner,
+     * OD-P1g): over DSPi Link to a hub that offers the guard, yes; on USB
+     * it is the user's choice. An A/B toggle never is.
+     */
+    func applyGuardDefault()  -> Bool
+    
+    /**
+     * Import `text` (a `.dspipreset` document) with a way back: capture a
+     * snapshot, apply the blocks `options` and `eq_channels` choose (as
+     * [`DspiCore::config_import_selected`] takes them), then wait
+     * `timeout_s` seconds (0: 30, at most 590) for
+     * [`DspiCore::apply_confirm`]. A timeout, [`DspiCore::apply_revert`] or a
+     * failed import puts the snapshot back; over DSPi Link the hub guards it
+     * too. No confirmation token: a guarded apply has its own way back.
+     *
+     * Returns the state, [`GuardPhase::Waiting`] with the changes.
+     *
+     * Errors, with nothing applied: [`DspiError::InvalidArgument`] for a text
+     * that is not a document, an empty selection, or while another guarded
+     * apply waits; [`DspiError::Disconnected`], [`DspiError::ReadOnly`];
+     * [`DspiError::Link`] for the hub's refusal (`busy`, `locked`,
+     * `denied`, `no_device`). The import's own errors, after the snapshot
+     * was put back (see [`DspiCore::apply_status`]).
+     */
+    func applyGuardedImport(text: String, options: UInt32, eqChannels: UInt32, timeoutS: UInt32) throws  -> GuardedApply
+    
+    /**
+     * Recall snapshot `id` from the store with a way back, as
+     * [`DspiCore::apply_guarded_import`] does for a document. Errors as
+     * there, and [`DspiCore::snapshot_recall`]'s.
+     */
+    func applyGuardedSnapshot(id: String, timeoutS: UInt32) throws  -> GuardedApply
+    
+    /**
+     * Recall a snapshot document's text with a way back (the web's, which
+     * keeps snapshots as files the page holds). Only a snapshot: any other
+     * document is refused with [`DspiError::InvalidArgument`], nothing sent.
+     */
+    func applyGuardedSnapshotDocument(text: String, timeoutS: UInt32) throws  -> GuardedApply
+    
+    /**
+     * Drive the guard: revert at the timeout, notice a lost connection, ask
+     * the hub how a lost one ended once the connection is back. Call it
+     * from the client's poll, off the UI thread (it may write). Returns the
+     * state; at once, unchanged, while another guarded call runs.
+     */
+    func applyPoll()  -> GuardedApply
+    
+    /**
+     * Put the settings from before back now. Returns the state:
+     * [`GuardPhase::Reverted`], [`GuardPhase::RevertFailed`], or
+     * [`GuardPhase::Lost`] when the connection went. After a lost USB
+     * connection, it recalls the captured snapshot once the same device is
+     * open again (the user's word, never queued).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when nothing is waiting and no
+     * lost apply can be reverted on the open device.
+     */
+    func applyRevert() throws  -> GuardedApply
+    
+    /**
+     * The guard's state, for the countdown bar: no I/O, never blocks on a
+     * guarded call.
+     */
+    func applyStatus()  -> GuardedApply
+    
+    /**
      * Begin an undo group: everything written until the matching
      * [`DspiCore::end_group`] that undo can reverse is one undo step,
      * carrying `label` ([`HistoryEntry::label`]), as a drag is. Use it for
@@ -5009,6 +5096,148 @@ open func applyAtTimeBase(timeBase: UInt8, frame: UInt64, op: UInt8, arg: UInt8,
         FfiConverterInt16.lower(value),$0
     )
 }
+}
+    
+    /**
+     * Keep the change. Returns the state: [`GuardPhase::Kept`]; or, past
+     * the timeout, the revert's end; or [`GuardPhase::Lost`] when the Keep
+     * could not reach the hub (it is not sent again: the hub reverts).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when nothing is waiting.
+     */
+open func applyConfirm()throws  -> GuardedApply  {
+    return try  FfiConverterTypeGuardedApply_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_apply_confirm(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Begin a guard around a flow the client runs itself (output enables, a
+     * control-surface edit, several hardware settings): capture a snapshot
+     * now, then the client writes as usual and calls
+     * [`DspiCore::apply_confirm`] or [`DspiCore::apply_revert`]; the timeout
+     * and a lost connection work as for an import. `label` names the flow
+     * in the status. Errors as [`DspiCore::apply_guarded_import`]'s before
+     * anything is applied.
+     */
+open func applyGuardBegin(label: String, timeoutS: UInt32)throws  -> GuardedApply  {
+    return try  FfiConverterTypeGuardedApply_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_apply_guard_begin(self.uniffiClonePointer(),
+        FfiConverterString.lower(label),
+        FfiConverterUInt32.lower(timeoutS),$0
+    )
+})
+}
+    
+    /**
+     * Whether an import or a recall is guarded by default here (owner,
+     * OD-P1g): over DSPi Link to a hub that offers the guard, yes; on USB
+     * it is the user's choice. An A/B toggle never is.
+     */
+open func applyGuardDefault() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_apply_guard_default(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Import `text` (a `.dspipreset` document) with a way back: capture a
+     * snapshot, apply the blocks `options` and `eq_channels` choose (as
+     * [`DspiCore::config_import_selected`] takes them), then wait
+     * `timeout_s` seconds (0: 30, at most 590) for
+     * [`DspiCore::apply_confirm`]. A timeout, [`DspiCore::apply_revert`] or a
+     * failed import puts the snapshot back; over DSPi Link the hub guards it
+     * too. No confirmation token: a guarded apply has its own way back.
+     *
+     * Returns the state, [`GuardPhase::Waiting`] with the changes.
+     *
+     * Errors, with nothing applied: [`DspiError::InvalidArgument`] for a text
+     * that is not a document, an empty selection, or while another guarded
+     * apply waits; [`DspiError::Disconnected`], [`DspiError::ReadOnly`];
+     * [`DspiError::Link`] for the hub's refusal (`busy`, `locked`,
+     * `denied`, `no_device`). The import's own errors, after the snapshot
+     * was put back (see [`DspiCore::apply_status`]).
+     */
+open func applyGuardedImport(text: String, options: UInt32, eqChannels: UInt32, timeoutS: UInt32)throws  -> GuardedApply  {
+    return try  FfiConverterTypeGuardedApply_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_apply_guarded_import(self.uniffiClonePointer(),
+        FfiConverterString.lower(text),
+        FfiConverterUInt32.lower(options),
+        FfiConverterUInt32.lower(eqChannels),
+        FfiConverterUInt32.lower(timeoutS),$0
+    )
+})
+}
+    
+    /**
+     * Recall snapshot `id` from the store with a way back, as
+     * [`DspiCore::apply_guarded_import`] does for a document. Errors as
+     * there, and [`DspiCore::snapshot_recall`]'s.
+     */
+open func applyGuardedSnapshot(id: String, timeoutS: UInt32)throws  -> GuardedApply  {
+    return try  FfiConverterTypeGuardedApply_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_apply_guarded_snapshot(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),
+        FfiConverterUInt32.lower(timeoutS),$0
+    )
+})
+}
+    
+    /**
+     * Recall a snapshot document's text with a way back (the web's, which
+     * keeps snapshots as files the page holds). Only a snapshot: any other
+     * document is refused with [`DspiError::InvalidArgument`], nothing sent.
+     */
+open func applyGuardedSnapshotDocument(text: String, timeoutS: UInt32)throws  -> GuardedApply  {
+    return try  FfiConverterTypeGuardedApply_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_apply_guarded_snapshot_document(self.uniffiClonePointer(),
+        FfiConverterString.lower(text),
+        FfiConverterUInt32.lower(timeoutS),$0
+    )
+})
+}
+    
+    /**
+     * Drive the guard: revert at the timeout, notice a lost connection, ask
+     * the hub how a lost one ended once the connection is back. Call it
+     * from the client's poll, off the UI thread (it may write). Returns the
+     * state; at once, unchanged, while another guarded call runs.
+     */
+open func applyPoll() -> GuardedApply  {
+    return try!  FfiConverterTypeGuardedApply_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_apply_poll(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Put the settings from before back now. Returns the state:
+     * [`GuardPhase::Reverted`], [`GuardPhase::RevertFailed`], or
+     * [`GuardPhase::Lost`] when the connection went. After a lost USB
+     * connection, it recalls the captured snapshot once the same device is
+     * open again (the user's word, never queued).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when nothing is waiting and no
+     * lost apply can be reverted on the open device.
+     */
+open func applyRevert()throws  -> GuardedApply  {
+    return try  FfiConverterTypeGuardedApply_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_apply_revert(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * The guard's state, for the countdown bar: no I/O, never blocks on a
+     * guarded call.
+     */
+open func applyStatus() -> GuardedApply  {
+    return try!  FfiConverterTypeGuardedApply_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_apply_status(self.uniffiClonePointer(),$0
+    )
+})
 }
     
     /**
@@ -20800,6 +21029,213 @@ public func FfiConverterTypeFirmwareGuardVerdict_lower(_ value: FirmwareGuardVer
 
 
 /**
+ * A guarded apply's state: [`DspiCore::apply_status`] and every guarded call.
+ */
+public struct GuardedApply {
+    /**
+     * This core's number for it (1, 2, …); 0 when none was begun.
+     */
+    public var id: UInt64
+    /**
+     * Where it stands.
+     */
+    public var phase: GuardPhase
+    /**
+     * What was applied: the document's or snapshot's name, or the client's
+     * label for a flow.
+     */
+    public var label: String
+    /**
+     * The hub guards it too (DSPi Link with `apply_guard`): a vanished
+     * client is reverted by the hub.
+     */
+    public var hub: Bool
+    /**
+     * The timeout, ms.
+     */
+    public var timeoutMs: UInt32
+    /**
+     * What is left of it, ms; 0 once it has ended.
+     */
+    public var remainingMs: UInt32
+    /**
+     * How it ended: "" while waiting, `confirmed`, `timeout`, `reverted`
+     * (Revert), `failed` (the apply itself failed), `connection_lost`,
+     * `taken_over` (another console took the device's lock) or
+     * `hub_stopping`.
+     */
+    public var reason: String
+    /**
+     * One plain sentence for the user, "" while waiting.
+     */
+    public var message: String
+    /**
+     * What the apply changed, in the unsaved-changes list's words.
+     */
+    public var changes: [String]
+    /**
+     * What the apply or the revert did not do, and why.
+     */
+    public var notes: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * This core's number for it (1, 2, …); 0 when none was begun.
+         */id: UInt64, 
+        /**
+         * Where it stands.
+         */phase: GuardPhase, 
+        /**
+         * What was applied: the document's or snapshot's name, or the client's
+         * label for a flow.
+         */label: String, 
+        /**
+         * The hub guards it too (DSPi Link with `apply_guard`): a vanished
+         * client is reverted by the hub.
+         */hub: Bool, 
+        /**
+         * The timeout, ms.
+         */timeoutMs: UInt32, 
+        /**
+         * What is left of it, ms; 0 once it has ended.
+         */remainingMs: UInt32, 
+        /**
+         * How it ended: "" while waiting, `confirmed`, `timeout`, `reverted`
+         * (Revert), `failed` (the apply itself failed), `connection_lost`,
+         * `taken_over` (another console took the device's lock) or
+         * `hub_stopping`.
+         */reason: String, 
+        /**
+         * One plain sentence for the user, "" while waiting.
+         */message: String, 
+        /**
+         * What the apply changed, in the unsaved-changes list's words.
+         */changes: [String], 
+        /**
+         * What the apply or the revert did not do, and why.
+         */notes: [String]) {
+        self.id = id
+        self.phase = phase
+        self.label = label
+        self.hub = hub
+        self.timeoutMs = timeoutMs
+        self.remainingMs = remainingMs
+        self.reason = reason
+        self.message = message
+        self.changes = changes
+        self.notes = notes
+    }
+}
+
+#if compiler(>=6)
+extension GuardedApply: Sendable {}
+#endif
+
+
+extension GuardedApply: Equatable, Hashable {
+    public static func ==(lhs: GuardedApply, rhs: GuardedApply) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.phase != rhs.phase {
+            return false
+        }
+        if lhs.label != rhs.label {
+            return false
+        }
+        if lhs.hub != rhs.hub {
+            return false
+        }
+        if lhs.timeoutMs != rhs.timeoutMs {
+            return false
+        }
+        if lhs.remainingMs != rhs.remainingMs {
+            return false
+        }
+        if lhs.reason != rhs.reason {
+            return false
+        }
+        if lhs.message != rhs.message {
+            return false
+        }
+        if lhs.changes != rhs.changes {
+            return false
+        }
+        if lhs.notes != rhs.notes {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(phase)
+        hasher.combine(label)
+        hasher.combine(hub)
+        hasher.combine(timeoutMs)
+        hasher.combine(remainingMs)
+        hasher.combine(reason)
+        hasher.combine(message)
+        hasher.combine(changes)
+        hasher.combine(notes)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeGuardedApply: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GuardedApply {
+        return
+            try GuardedApply(
+                id: FfiConverterUInt64.read(from: &buf), 
+                phase: FfiConverterTypeGuardPhase.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf), 
+                hub: FfiConverterBool.read(from: &buf), 
+                timeoutMs: FfiConverterUInt32.read(from: &buf), 
+                remainingMs: FfiConverterUInt32.read(from: &buf), 
+                reason: FfiConverterString.read(from: &buf), 
+                message: FfiConverterString.read(from: &buf), 
+                changes: FfiConverterSequenceString.read(from: &buf), 
+                notes: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: GuardedApply, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.id, into: &buf)
+        FfiConverterTypeGuardPhase.write(value.phase, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+        FfiConverterBool.write(value.hub, into: &buf)
+        FfiConverterUInt32.write(value.timeoutMs, into: &buf)
+        FfiConverterUInt32.write(value.remainingMs, into: &buf)
+        FfiConverterString.write(value.reason, into: &buf)
+        FfiConverterString.write(value.message, into: &buf)
+        FfiConverterSequenceString.write(value.changes, into: &buf)
+        FfiConverterSequenceString.write(value.notes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGuardedApply_lift(_ buf: RustBuffer) throws -> GuardedApply {
+    return try FfiConverterTypeGuardedApply.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGuardedApply_lower(_ value: GuardedApply) -> RustBuffer {
+    return FfiConverterTypeGuardedApply.lower(value)
+}
+
+
+/**
  * One change in the history ([`DspiCore::history`]).
  */
 public struct HistoryEntry {
@@ -29902,6 +30338,138 @@ extension FirmwareGuardReason: Equatable, Hashable {}
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * Where a guarded apply stands ([`GuardedApply::phase`]).
+ */
+
+public enum GuardPhase {
+    
+    /**
+     * None has been begun on this core.
+     */
+    case idle
+    /**
+     * Applied; waiting for Keep or Revert. The countdown runs.
+     */
+    case waiting
+    /**
+     * Kept: by Keep, or because another console took the device over.
+     */
+    case kept
+    /**
+     * The settings from before are back.
+     */
+    case reverted
+    /**
+     * Putting them back failed; it is not tried again.
+     */
+    case revertFailed
+    /**
+     * The hub went to put them back and the device was not there: nothing
+     * was written.
+     */
+    case notWritten
+    /**
+     * The connection was lost. With the hub's guard this lasts until the
+     * hub says how it ended; without it, the device may still hold the
+     * change, and Revert works once the same device is open again.
+     */
+    case lost
+}
+
+
+#if compiler(>=6)
+extension GuardPhase: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeGuardPhase: FfiConverterRustBuffer {
+    typealias SwiftType = GuardPhase
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GuardPhase {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .idle
+        
+        case 2: return .waiting
+        
+        case 3: return .kept
+        
+        case 4: return .reverted
+        
+        case 5: return .revertFailed
+        
+        case 6: return .notWritten
+        
+        case 7: return .lost
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: GuardPhase, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .idle:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .waiting:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .kept:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .reverted:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .revertFailed:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .notWritten:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .lost:
+            writeInt(&buf, Int32(7))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGuardPhase_lift(_ buf: RustBuffer) throws -> GuardPhase {
+    return try FfiConverterTypeGuardPhase.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGuardPhase_lower(_ value: GuardPhase) -> RustBuffer {
+    return FfiConverterTypeGuardPhase.lower(value)
+}
+
+
+extension GuardPhase: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * Who made a change in the history.
  */
 
@@ -33112,6 +33680,33 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_apply_at_time_base() != 14078) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_apply_confirm() != 1016) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_apply_guard_begin() != 27268) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_apply_guard_default() != 61033) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_apply_guarded_import() != 8099) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_apply_guarded_snapshot() != 60494) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_apply_guarded_snapshot_document() != 49168) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_apply_poll() != 47485) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_apply_revert() != 4343) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_apply_status() != 7134) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_begin_group() != 15128) {

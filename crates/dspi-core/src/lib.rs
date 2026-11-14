@@ -133,6 +133,8 @@ pub mod offline;
 mod ab;
 // -- WP P1LM --
 pub mod limits;
+// -- WP P1SA --
+mod guarded;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -217,6 +219,10 @@ pub use offline::{template_list, template_text};
 pub use ab::{AbCompare, AbSide};
 // -- WP P1LM --
 pub use limits::{LimitsApply, LimitsStatus};
+// -- WP P1SA --
+pub use guarded::{
+    APPLY_GUARD_DEFAULT_TIMEOUT_S, APPLY_GUARD_MAX_TIMEOUT_S, GuardPhase, GuardedApply,
+};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///
@@ -267,6 +273,9 @@ pub struct DspiCore {
     // -- WP P1AB --
     /// The running A/B compare. Taken without `inner`, never while holding it.
     pub(crate) ab: ab::AbSlot,
+    // -- WP P1SA --
+    /// The guarded apply (`guarded.rs`). Taken before `inner`, never after.
+    pub(crate) guarded: guarded::GuardSlot,
 }
 
 // -- WP LK4 --
@@ -812,6 +821,8 @@ impl DspiCore {
             snapshots: snapshot::StoreSlot::default(),
             // -- WP P1AB --
             ab: ab::AbSlot::default(),
+            // -- WP P1SA --
+            guarded: guarded::GuardSlot::default(),
         })
     }
 }

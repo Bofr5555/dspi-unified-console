@@ -10,6 +10,7 @@ import se.bofr.dspi.core.AlinkSystemEdits
 import se.bofr.dspi.core.DspiCoreApi
 import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.FilterParams
+import se.bofr.dspi.core.GuardedApply
 import se.bofr.dspi.core.HistoryMove
 import se.bofr.dspi.core.I2cConfig
 import se.bofr.dspi.core.LimitsApply
@@ -733,6 +734,22 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.limitsApplyProfile(document)
     }
 
+    // -- WP P1SA -- a guarded import or recall writes the device
+    override fun applyGuardedImport(text: String, options: Long, eqChannels: Long, timeoutS: Long): GuardedApply {
+        guard("applyGuardedImport")
+        return inner.applyGuardedImport(text, options, eqChannels, timeoutS)
+    }
+
+    override fun applyGuardedSnapshot(id: String, timeoutS: Long): GuardedApply {
+        guard("applyGuardedSnapshot")
+        return inner.applyGuardedSnapshot(id, timeoutS)
+    }
+
+    override fun applyGuardedSnapshotDocument(text: String, timeoutS: Long): GuardedApply {
+        guard("applyGuardedSnapshotDocument")
+        return inner.applyGuardedSnapshotDocument(text, timeoutS)
+    }
+
     override fun filtersImport(text: String, wires: List<Int>): String {
         guard("filtersImport")
         return inner.filtersImport(text, wires)
@@ -909,7 +926,11 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "abToggle",
             "abKeep",
             // -- WP P1LM --
-            "limitsApplyProfile"
+            "limitsApplyProfile",
+            // -- WP P1SA --
+            "applyGuardedImport",
+            "applyGuardedSnapshot",
+            "applyGuardedSnapshotDocument"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -960,6 +981,16 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // -- WP P1AB -- the diff of two documents and the compare's state: no I/O
             "abDiff",
             "abState",
+            // -- WP P1SA -- a begin only captures (the flow's writes are guarded one
+            // by one); Keep writes no device; a revert (Revert, or the timeout on the
+            // poll) puts back a state captured before and is never refused
+            // (PLAN-CLIENTS 5.9); the status and the default are local
+            "applyGuardBegin",
+            "applyConfirm",
+            "applyRevert",
+            "applyPoll",
+            "applyStatus",
+            "applyGuardDefault",
             // -- WP P1OF -- a document opened offline is the demo device seeded
             // from it (as openDemo); saving and the templates write no device
             "openDocument",

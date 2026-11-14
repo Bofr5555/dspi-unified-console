@@ -1414,6 +1414,33 @@ char *buf,
 uint32_t len);
 uint32_t dspi_template_list(const char *user_dir, char *buf, uint32_t len);
 uint32_t dspi_template_text(const char *id, const char *user_dir, char *buf, uint32_t len);
+uint32_t dspi_apply_guarded_import(struct FfiCore *core,
+const char *doc,
+uint32_t options,
+uint32_t eq_channels,
+uint32_t timeout_s,
+char *buf,
+uint32_t len);
+uint32_t dspi_apply_guarded_snapshot(struct FfiCore *core,
+const char *id,
+uint32_t timeout_s,
+char *buf,
+uint32_t len);
+uint32_t dspi_apply_guarded_snapshot_document(struct FfiCore *core,
+const char *doc,
+uint32_t timeout_s,
+char *buf,
+uint32_t len);
+uint32_t dspi_apply_guard_begin(struct FfiCore *core,
+const char *label,
+uint32_t timeout_s,
+char *buf,
+uint32_t len);
+uint32_t dspi_apply_confirm(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_apply_revert(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_apply_poll(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_apply_status(struct FfiCore *core, char *buf, uint32_t len);
+bool dspi_apply_guard_default(struct FfiCore *core);
 bool dspi_link_browse_start(struct FfiCore *core,
 void (*callback)(void *user_data),
 void *user_data,
