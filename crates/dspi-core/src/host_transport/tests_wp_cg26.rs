@@ -559,7 +559,7 @@ fn wp_cg26_the_device_lock_reaches_the_host_and_flows_nest_in_it() {
     let from = host.log.lock().unwrap().len();
     core.device_lock_acquire("restore".into(), 5_000).unwrap();
     // The core's own locked flow nests: the hub is not asked again.
-    core.save_preset(2).unwrap();
+    core.save_preset_tok(2).unwrap();
     core.device_lock_release();
     assert_eq!(
         lock_calls(&host, from),
@@ -574,7 +574,7 @@ fn wp_cg26_the_device_lock_reaches_the_host_and_flows_nest_in_it() {
 
     // A flow of its own takes and gives back the lock around its writes.
     let from = host.log.lock().unwrap().len();
-    core.save_preset(3).unwrap();
+    core.save_preset_tok(3).unwrap();
     let flow = host.log.lock().unwrap()[from..].to_vec();
     assert!(matches!(flow.first(), Some(Call::Lock { .. })), "{flow:?}");
     assert_eq!(flow.last(), Some(&Call::Unlock), "{flow:?}");
@@ -589,7 +589,7 @@ fn wp_cg26_a_lock_held_by_another_session_refuses_the_flow() {
         Err(DspiError::Locked)
     );
     let from = host.log.lock().unwrap().len();
-    assert_eq!(core.save_preset(2), Err(DspiError::Locked));
+    assert_eq!(core.save_preset_tok(2), Err(DspiError::Locked));
     let after = host.log.lock().unwrap()[from..].to_vec();
     assert!(
         !after

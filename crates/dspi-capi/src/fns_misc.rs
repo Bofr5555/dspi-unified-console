@@ -60,6 +60,10 @@ mod alink_usb;
 mod notice_text;
 // -- WP P1TK --
 mod confirm;
+// -- WP P1TZ -- the token helper and the `_confirmed` calls, for other
+// modules' tests
+#[cfg(test)]
+pub(crate) use confirm::*;
 // -- WP P1LM --
 mod limits;
 // -- WP P1LK --
@@ -277,20 +281,6 @@ pub extern "C" fn dspi_fetch_output_pin(core: *mut FfiCore, slot: u8) -> u8 {
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_output_config_mode(core: *mut FfiCore, mode: u8) -> bool {
     flag(core, |c| c.set_output_config_mode(mode))
-}
-
-/// Store the output configuration in flash. Returns the device's status,
-/// 0xFF when it could not be asked.
-#[unsafe(no_mangle)]
-pub extern "C" fn dspi_save_output_config(core: *mut FfiCore) -> u8 {
-    status(core, DspiCore::save_output_config)
-}
-
-/// Reboot the device into its USB bootloader. No answer comes back, so true
-/// means only that the request went out.
-#[unsafe(no_mangle)]
-pub extern "C" fn dspi_enter_bootloader(core: *mut FfiCore) -> bool {
-    flag(core, DspiCore::enter_bootloader)
 }
 
 /// Hold the device for this console (DSPi Link; at once elsewhere) for up to
@@ -885,44 +875,7 @@ pub extern "C" fn dspi_config_inspect(text: *const c_char, buf: *mut c_char, len
     })
 }
 
-/// Apply a configuration document to the device. `options`: bit 0 the
-/// volumes too, bit 1 the hardware configuration too. JSON reply; the device
-/// has changed whatever the buffer.
-#[unsafe(no_mangle)]
-pub extern "C" fn dspi_config_import(
-    core: *mut FfiCore,
-    text: *const c_char,
-    options: u32,
-    buf: *mut c_char,
-    len: u32,
-) -> u32 {
-    self::text(core, buf, len, |c| match arg(text, "text") {
-        Ok(doc) => c.config_import(doc.to_owned(), options),
-        Err(e) => json_reply::<()>(Err(e)),
-    })
-}
-
 // -- WP P1DF --
-/// Apply a configuration document by block: `options` as
-/// `dspi_config_import`'s, or with `DSPI_IMPORT_BY_BLOCK` the
-/// `DSPI_IMPORT_*` block bits; `eq_channels` the wire channels whose EQ is
-/// applied (bit k: channel k; all bits: every one). JSON reply; the device
-/// has changed whatever the buffer.
-#[unsafe(no_mangle)]
-pub extern "C" fn dspi_config_import_selected(
-    core: *mut FfiCore,
-    text: *const c_char,
-    options: u32,
-    eq_channels: u32,
-    buf: *mut c_char,
-    len: u32,
-) -> u32 {
-    self::text(core, buf, len, |c| match arg(text, "text") {
-        Ok(doc) => c.config_import_selected(doc.to_owned(), options, eq_channels),
-        Err(e) => json_reply::<()>(Err(e)),
-    })
-}
-
 /// What `dspi_config_import_selected` with the same arguments would change
 /// on the device, without writing: JSON rows `{block, section, item,
 /// before, after}`, counts per block and a summary. No I/O.
@@ -1726,25 +1679,6 @@ fn drive_at(drive_path: *const c_char, platform: i8) -> Result<BootloaderDrive> 
     })
 }
 
-/// Write a UF2 image to the bootloader drive at `drive_path` (`platform`: 0
-/// RP2040, 1 RP2350). Blocks for the copy. JSON `{ok}` or a failure; an
-/// invalid image never reaches the drive. Use the guarded call instead.
-#[unsafe(no_mangle)]
-pub extern "C" fn dspi_flash_to_drive(
-    image: *const u8,
-    image_len: u32,
-    drive_path: *const c_char,
-    platform: i8,
-    buf: *mut c_char,
-    len: u32,
-) -> u32 {
-    free_text(buf, len, || {
-        let written = drive_at(drive_path, platform)
-            .and_then(|drive| dspi_core::flash_to_drive(c_bytes(image, image_len), drive));
-        done_reply(written)
-    })
-}
-
 /// Whether the open device runs firmware `version`: 1 yes, 0 no, -1 on
 /// failure or for a null or non-UTF-8 version.
 #[unsafe(no_mangle)]
@@ -1808,32 +1742,10 @@ pub extern "C" fn dspi_core_vreg_cal_keep(core: *mut FfiCore, soak_s: u32) -> u8
     status(core, |c| c.core_vreg_cal_keep(soak_s))
 }
 
-/// Store the passed trial's voltage; `typed` as for the start. Returns a
-/// status byte.
-#[unsafe(no_mangle)]
-pub extern "C" fn dspi_core_vreg_cal_commit(core: *mut FfiCore, typed: *const c_char) -> u8 {
-    status(core, |c| {
-        c.core_vreg_cal_commit(optional_text(typed, "typed")?)
-    })
-}
-
 /// End the running trial. Returns a status byte.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_vreg_trial_end(core: *mut FfiCore) -> u8 {
     status(core, DspiCore::core_vreg_trial_end)
-}
-
-/// Store VREG code `value` directly (0: the build's default); `typed` as for
-/// the start. Returns a status byte.
-#[unsafe(no_mangle)]
-pub extern "C" fn dspi_core_vreg_manual_set(
-    core: *mut FfiCore,
-    value: u8,
-    typed: *const c_char,
-) -> u8 {
-    status(core, |c| {
-        c.core_vreg_manual_set(value, optional_text(typed, "typed")?)
-    })
 }
 
 /// Try VREG code `value` until the next reboot; `typed` as for the start.
@@ -2013,32 +1925,6 @@ pub extern "C" fn dspi_firmware_guard_check(
     })
 }
 
-/// `dspi_flash_to_drive` behind the firmware guard: nothing reaches the drive
-/// unless the guard allows it (`firmware_guard` failure otherwise).
-#[unsafe(no_mangle)]
-pub extern "C" fn dspi_flash_to_drive_guarded(
-    image: *const u8,
-    image_len: u32,
-    drive_path: *const c_char,
-    platform: i8,
-    board_required_mv: u16,
-    typed: *const c_char,
-    buf: *mut c_char,
-    len: u32,
-) -> u32 {
-    free_text(buf, len, || {
-        let written = drive_at(drive_path, platform).and_then(|drive| {
-            dspi_core::flash_to_drive_guarded(
-                c_bytes(image, image_len),
-                drive,
-                board_needing(board_required_mv),
-                c_str(typed).unwrap_or_default().to_owned(),
-            )
-        });
-        done_reply(written)
-    })
-}
-
 // ── Parameters by path ───────────────────────────────────────────────
 
 /// What `dspi_write_param` takes.
@@ -2054,7 +1940,10 @@ struct WriteRequest {
 /// "out.gain", "indices": [1], "value": {"float": -4}}` (`indices` may be left
 /// out; an action's value is `"trigger"`). The reply is `{ok, value}` with
 /// the value read back, or a failure; the write has happened whatever the
-/// buffer, so do not call again for a short one.
+/// buffer, so do not call again for a short one. The gated paths
+/// (`preset.save`, `preset.delete`, `dev.save`, `dev.save.io`) need a token
+/// and are always refused here (`confirmation_required`, nothing sent; WP
+/// P1TZ): use their `_confirmed` functions.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_write_param(
     core: *mut FfiCore,
@@ -2365,15 +2254,20 @@ mod tests_clean1 {
     fn clean1_a_guarded_flash_stops_before_the_drive() {
         let image = stock_image();
         let path = CString::new("/nonexistent/clean1-drive").unwrap();
+        // -- WP P1TZ -- the guarded write is a core's, with a token (no device
+        // open)
+        let h = dspi_core_new();
         let flash = |typed: *const c_char| {
-            reply(|b, l| {
-                dspi_flash_to_drive_guarded(
+            with_token_for_test(h, "firmware_flash", |t, b, l| {
+                dspi_flash_confirmed(
+                    h,
                     image.as_ptr(),
                     image.len() as u32,
                     path.as_ptr(),
                     1,
                     1200,
                     typed,
+                    t,
                     b,
                     l,
                 )
@@ -2387,10 +2281,11 @@ mod tests_clean1 {
         let tried = flash(phrase.as_ptr());
         assert_eq!(tried["ok"], false);
         assert_ne!(tried["code"], "firmware_guard", "{tried}");
-        let no_path = reply(|b, l| {
-            dspi_flash_to_drive_guarded(image.as_ptr(), 4, null(), 1, 1150, null(), b, l)
+        let no_path = with_token_for_test(h, "firmware_flash", |t, b, l| {
+            dspi_flash_confirmed(h, image.as_ptr(), 4, null(), 1, 1150, null(), t, b, l)
         });
         assert_eq!(no_path["code"], "invalid");
+        dspi_core_free(h);
     }
 
     #[test]

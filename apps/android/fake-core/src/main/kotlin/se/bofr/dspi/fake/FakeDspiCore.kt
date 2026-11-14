@@ -347,17 +347,9 @@ open class FakeDspiCore(
         }
     }
 
-    // -- WP P1AN2 -- P1TK's token-taking forms: the fake mints any token and runs the plain call
-    // (the core's own tests check the tokens), so the bridge's calls stay on the fake's record
-    /** Whether the bridge turned the core's token requirement on. */
-    var confirmationRequired = false
-        private set
-
-    override fun requireConfirmation(on: Boolean) {
-        confirmationRequired = on
-    }
-
-    override fun confirmationRequired(): Boolean = confirmationRequired
+    // -- WP P1AN2 -- P1TK's token-taking forms: the fake mints any token and runs its own body
+    // (the core's own tests check the tokens), so the bridge's calls stay on the fake's record.
+    // The real core always requires tokens (P1TZ); the fake has no switch either.
 
     private var tokens = 0
 
@@ -382,6 +374,12 @@ open class FakeDspiCore(
     override fun saveOutputConfigConfirmed(token: String?) = saveOutputConfig()
 
     override fun enterBootloaderConfirmed(token: String?) = enterBootloader()
+
+    // -- WP P1TZ -- the core has only the `_confirmed` forms; the fake keeps its plain bodies (and
+    // configImportSelected, which a test's subclass fills in) as its own open functions.
+    /** The fake's per-block import; not implemented here (a test's subclass has it). */
+    open fun configImportSelected(text: String, options: Long, eqChannels: Long): String =
+        throw NotImplementedError("config_import_selected")
 
     // A per-block import goes to configImportSelected (a test's subclass has it); the old two-option one to configImport
     override fun configImportConfirmed(text: String, options: Long, eqChannels: Long, token: String?): String =
@@ -1225,7 +1223,7 @@ open class FakeDspiCore(
 
     override fun setOutputConfigMode(mode: Int) = set("setOutputConfigMode", "$mode") { it.copy(outputConfigMode = mode) }
 
-    override fun saveOutputConfig() = op("saveOutputConfig") { log("SAVE_OUTPUT_CONFIG") }
+    open fun saveOutputConfig() = op("saveOutputConfig") { log("SAVE_OUTPUT_CONFIG") }
 
     override fun setOutputType(slot: Int, kind: Int) = set("setOutputType", "$slot, $kind") {
         if (slot !in 0 until 4 || kind !in 0..1) refuse(DspiConstants.PIN_CONFIG_INVALID_PARAM)
@@ -1450,7 +1448,7 @@ open class FakeDspiCore(
         log("PRESET_SAVE $slot")
     }
 
-    override fun savePreset(slot: Int) = op("savePreset", "$slot") { saveSlot(slot) }
+    open fun savePreset(slot: Int) = op("savePreset", "$slot") { saveSlot(slot) }
 
     override fun loadPreset(slot: Int) = op("loadPreset", "$slot") {
         checkSlot(slot)
@@ -1459,13 +1457,13 @@ open class FakeDspiCore(
         log("PRESET_LOAD $slot")
     }
 
-    override fun copyPreset(source: Int, dest: Int) = op("copyPreset", "$source, $dest") {
+    open fun copyPreset(source: Int, dest: Int) = op("copyPreset", "$source, $dest") {
         checkSlot(source)
         saveSlot(dest)
         saveSlot(source)
     }
 
-    override fun deletePreset(slot: Int) = op("deletePreset", "$slot") {
+    open fun deletePreset(slot: Int) = op("deletePreset", "$slot") {
         checkSlot(slot)
         if (presets[slot] == null) refuse(DspiConstants.PRESET_ERR_SLOT_EMPTY)
         presets[slot] = null
@@ -1502,7 +1500,7 @@ open class FakeDspiCore(
         it.copy(presetStartupMode = mode, presetDefaultSlot = defaultSlot)
     }
 
-    override fun saveParams() = op("saveParams") { saveSlot(s.activePresetSlot) }
+    open fun saveParams() = op("saveParams") { saveSlot(s.activePresetSlot) }
 
     override fun loadParams() = op("loadParams") {
         val slot = s.activePresetSlot
@@ -1510,12 +1508,12 @@ open class FakeDspiCore(
         state = restorePreset(p, slot)
     }
 
-    override fun factoryReset() = op("factoryReset") {
+    open fun factoryReset() = op("factoryReset") {
         state = restorePreset(factory, s.activePresetSlot)
         log("FACTORY_RESET")
     }
 
-    override fun enterBootloader() {
+    open fun enterBootloader() {
         op("enterBootloader") { connected = false }
         deviceEvents?.onDeparted(serial)
     }
@@ -1785,7 +1783,7 @@ open class FakeDspiCore(
         if (s.compat != DspiConstants.COMPAT_OK && s.bulkRaw.firstOrNull()?.toInt() == 0) throw DspiException.Unsupported()
     }
 
-    override fun configImport(text: String, options: Long): String = op("configImport", "$options", device = false) {
+    open fun configImport(text: String, options: Long): String = op("configImport", "$options", device = false) {
         val (ns, result) = FakeFiles.importConfig(s, text, options)
         state = ns
         result

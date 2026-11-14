@@ -32,24 +32,28 @@ fn wp_p1afix_config_refusals_carry_a_notice_key_through_c() {
     let h = dspi_core_new();
     let unreadable = [
         read_json(|b, l| dspi_config_diff(bad.as_ptr(), qt.as_ptr(), b, l)),
-        read_json(|b, l| dspi_config_import(h, bad.as_ptr(), 0, b, l)),
-        read_json(|b, l| dspi_config_import_selected(h, bad.as_ptr(), 0, u32::MAX, b, l)),
+        // -- WP P1TZ -- an unreadable document is refused before the token
+        read_json(|b, l| {
+            dspi_config_import_confirmed(h, bad.as_ptr(), 0, u32::MAX, ptr::null(), b, l)
+        }),
         read_json(|b, l| dspi_config_preview(h, bad.as_ptr(), 0, u32::MAX, b, l)),
     ];
     for r in unreadable {
         assert_eq!(r["ok"], false, "{r}");
         assert_eq!(r["noticeKey"], "config.unreadable", "{r}");
     }
-    // No device.
+    // No device (-- WP P1TZ -- the import with its token).
     for r in [
-        read_json(|b, l| dspi_config_import(h, qt.as_ptr(), 0, b, l)),
+        with_token_for_test(h, "config_import", |t, b, l| {
+            dspi_config_import_confirmed(h, qt.as_ptr(), 0, u32::MAX, t, b, l)
+        }),
         read_json(|b, l| dspi_config_preview(h, qt.as_ptr(), 0, u32::MAX, b, l)),
     ] {
         assert_eq!(r["noticeKey"], "disconnected", "{r}");
     }
     assert!(dspi_open_demo(h));
     let r = read_json(|b, l| {
-        dspi_config_import_selected(h, qt.as_ptr(), IMPORT_BY_BLOCK, u32::MAX, b, l)
+        dspi_config_import_confirmed(h, qt.as_ptr(), IMPORT_BY_BLOCK, u32::MAX, ptr::null(), b, l)
     });
     assert_eq!(r["ok"], false, "{r}");
     assert_eq!(r["noticeKey"], "config.nothing_selected", "{r}");

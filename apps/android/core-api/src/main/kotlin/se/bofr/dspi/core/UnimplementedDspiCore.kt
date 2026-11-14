@@ -84,10 +84,6 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun confirmToken(op: ConfirmOp): String = throw NotImplementedError("confirm_token")
 
-    override fun requireConfirmation(on: Boolean): Unit = throw NotImplementedError("require_confirmation")
-
-    override fun confirmationRequired(): Boolean = throw NotImplementedError("confirmation_required")
-
     override fun fetchAll(): Unit = throw NotImplementedError("fetch_all")
 
     override fun refreshParams(): Unit = throw NotImplementedError("refresh_params")
@@ -186,10 +182,6 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun configExport(name: String, appVersion: String, links: Int): String = throw NotImplementedError("config_export")
 
-    override fun configImport(text: String, options: Long): String = throw NotImplementedError("config_import")
-
-    override fun configImportSelected(text: String, options: Long, eqChannels: Long): String = throw NotImplementedError("config_import_selected")
-
     override fun configImportConfirmed(text: String, options: Long, eqChannels: Long, token: String?): String = throw NotImplementedError("config_import_confirmed")
 
     override fun configPreview(text: String, options: Long, eqChannels: Long): String = throw NotImplementedError("config_preview")
@@ -203,6 +195,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun firmwareVersionMatches(version: String): Boolean = throw NotImplementedError("firmware_version_matches")
 
     override fun flashConfirmed(image: List<Int>, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String, token: String?): Unit = throw NotImplementedError("flash_confirmed")
+
+    override fun flashToDriveConfirmed(image: List<Int>, drive: BootloaderDrive, token: String?): Unit = throw NotImplementedError("flash_to_drive_confirmed")
 
     override fun firmwareGuardBoard(): FirmwareGuardBoard = throw NotImplementedError("firmware_guard_board")
 
@@ -229,8 +223,6 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun fetchOutputPin(slot: Int): Int = throw NotImplementedError("fetch_output_pin")
 
     override fun setOutputConfigMode(mode: Int): Unit = throw NotImplementedError("set_output_config_mode")
-
-    override fun saveOutputConfig(): Unit = throw NotImplementedError("save_output_config")
 
     override fun saveOutputConfigConfirmed(token: String?): Unit = throw NotImplementedError("save_output_config_confirmed")
 
@@ -291,8 +283,6 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun setUart(config: UartConfig): Unit = throw NotImplementedError("set_uart")
 
     override fun setI2c(config: I2cConfig): Unit = throw NotImplementedError("set_i2c")
-
-    override fun enterBootloader(): Unit = throw NotImplementedError("enter_bootloader")
 
     override fun enterBootloaderConfirmed(token: String?): Unit = throw NotImplementedError("enter_bootloader_confirmed")
 
@@ -542,17 +532,11 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun setTubeParam(idx: Int, value: Float): Unit = throw NotImplementedError("set_tube_param")
 
-    override fun savePreset(slot: Int): Unit = throw NotImplementedError("save_preset")
-
     override fun savePresetConfirmed(slot: Int, token: String?): Unit = throw NotImplementedError("save_preset_confirmed")
 
     override fun loadPreset(slot: Int): Unit = throw NotImplementedError("load_preset")
 
-    override fun copyPreset(source: Int, dest: Int): Unit = throw NotImplementedError("copy_preset")
-
     override fun copyPresetConfirmed(source: Int, dest: Int, token: String?): Unit = throw NotImplementedError("copy_preset_confirmed")
-
-    override fun deletePreset(slot: Int): Unit = throw NotImplementedError("delete_preset")
 
     override fun deletePresetConfirmed(slot: Int, token: String?): Unit = throw NotImplementedError("delete_preset_confirmed")
 
@@ -564,13 +548,9 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun setPresetStartup(mode: Int, defaultSlot: Int): Unit = throw NotImplementedError("set_preset_startup")
 
-    override fun saveParams(): Unit = throw NotImplementedError("save_params")
-
     override fun saveParamsConfirmed(token: String?): Unit = throw NotImplementedError("save_params_confirmed")
 
     override fun loadParams(): Unit = throw NotImplementedError("load_params")
-
-    override fun factoryReset(): Unit = throw NotImplementedError("factory_reset")
 
     override fun factoryResetConfirmed(token: String?): Unit = throw NotImplementedError("factory_reset_confirmed")
 
@@ -672,13 +652,9 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun coreVregCalKeep(soakS: Long): Unit = throw NotImplementedError("core_vreg_cal_keep")
 
-    override fun coreVregCalCommit(typed: String?): Unit = throw NotImplementedError("core_vreg_cal_commit")
-
     override fun coreVregCalCommitConfirmed(typed: String?, token: String?): Unit = throw NotImplementedError("core_vreg_cal_commit_confirmed")
 
     override fun coreVregTrialEnd(): Unit = throw NotImplementedError("core_vreg_trial_end")
-
-    override fun coreVregManualSet(value: Int, typed: String?): Unit = throw NotImplementedError("core_vreg_manual_set")
 
     override fun coreVregManualSetConfirmed(value: Int, typed: String?, token: String?): Unit = throw NotImplementedError("core_vreg_manual_set_confirmed")
 
@@ -730,13 +706,9 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun bootloaderDrives(): List<BootloaderDrive> = throw NotImplementedError("bootloader_drives")
 
-    override fun flashToDrive(image: List<Int>, drive: BootloaderDrive): Unit = throw NotImplementedError("flash_to_drive")
-
     override fun firmwareGuardBoardInBootloader(): FirmwareGuardBoard = throw NotImplementedError("firmware_guard_board_in_bootloader")
 
     override fun firmwareGuardCheck(image: List<Int>, board: FirmwareGuardBoard, typedConfirmation: String): FirmwareGuardVerdict = throw NotImplementedError("firmware_guard_check")
-
-    override fun flashToDriveGuarded(image: List<Int>, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String): Unit = throw NotImplementedError("flash_to_drive_guarded")
 
     override fun limitsFieldRanges(): List<LimitFieldRange> = throw NotImplementedError("limits_field_ranges")
 

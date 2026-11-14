@@ -168,7 +168,7 @@ fn clean1_empty_newer_and_oversized_files_are_refused() {
         " ".repeat(MAX_FILE_BYTES)
     );
     assert_eq!(parse_config(&big).unwrap_err(), TOO_LARGE);
-    let r = json_of(&demo().config_import(big, 0));
+    let r = json_of(&demo().config_import_tok(big, 0));
     assert_eq!(r["ok"], false);
 }
 
@@ -274,7 +274,7 @@ fn clean1_an_edited_device_moves_to_another_whole() {
     let text = a.config_export("edited".into(), "1".into(), 1).unwrap();
 
     let b = demo();
-    let r = json_of(&b.config_import(text.clone(), ALL));
+    let r = json_of(&b.config_import_tok(text.clone(), ALL));
     assert_eq!(r["ok"], true, "{r}");
     assert_eq!(r["links"], 1);
     let again = b.config_export("edited".into(), "1".into(), 1).unwrap();
@@ -772,7 +772,7 @@ fn clean1_missing_channels_are_capped_and_negative_indices_missing() {
 #[test]
 fn clean1_imports_need_a_writable_device() {
     let none = DspiCore::new();
-    let r = json_of(&none.config_import(MAC.into(), 0));
+    let r = json_of(&none.config_import_tok(MAC.into(), 0));
     assert_eq!(
         (r["ok"].clone(), r["error"].clone()),
         (json!(false), json!("No device connected."))
@@ -799,7 +799,7 @@ fn clean1_imports_need_a_writable_device() {
     core.fetch_all().unwrap();
     let before = core.get_state();
     for r in [
-        core.config_import(MAC.into(), ALL),
+        core.config_import_tok(MAC.into(), ALL),
         core.filters_import(MAC_FILTERS.into(), vec![0]),
     ] {
         let r = json_of(&r);
@@ -808,7 +808,7 @@ fn clean1_imports_need_a_writable_device() {
     }
     assert_eq!(core.get_state(), before);
     // A file that is not a document is refused before the device is asked.
-    let r = json_of(&demo().config_import("nonsense".into(), 0));
+    let r = json_of(&demo().config_import_tok("nonsense".into(), 0));
     assert!(
         r["error"]
             .as_str()
@@ -837,7 +837,7 @@ fn clean1_exports_and_inspects_read_the_mirror() {
 #[test]
 fn clean1_a_document_import_writes_the_demo_device() {
     let core = demo();
-    let r = json_of(&core.config_import(MAC.into(), ALL));
+    let r = json_of(&core.config_import_tok(MAC.into(), ALL));
     assert_eq!(r["ok"], true, "{r}");
     assert_eq!(r["clean"], true, "{r}");
     assert_eq!(r["links"], 1);
@@ -857,7 +857,7 @@ fn clean1_a_document_import_writes_the_demo_device() {
     // Without the options the volumes and limiters stay.
     let core = demo();
     let before = core.get_state();
-    let r = json_of(&core.config_import(MAC.into(), 0));
+    let r = json_of(&core.config_import_tok(MAC.into(), 0));
     assert_eq!(r["ok"], true, "{r}");
     let s = core.get_state();
     assert_eq!(s.master_volume_db, before.master_volume_db);
@@ -872,16 +872,16 @@ fn clean1_hardware_kept_apart_from_presets_is_reported_written() {
     let text = core.config_export("x".into(), "1".into(), 0).unwrap();
     let mut v = json_of(&text);
     v["channels"][8]["limiter"]["thresholdDb"] = json!(-9.0);
-    let r = json_of(&core.config_import(v.to_string(), IMPORT_HARDWARE));
+    let r = json_of(&core.config_import_tok(v.to_string(), IMPORT_HARDWARE));
     assert_eq!(r["ok"], true, "{r}");
     assert_eq!(r["hardwareWritten"], true, "{r}");
     assert_eq!(core.get_state().limiter_threshold_db[0], -9.0);
     // The same document again changes nothing.
-    let r = json_of(&core.config_import(v.to_string(), IMPORT_HARDWARE));
+    let r = json_of(&core.config_import_tok(v.to_string(), IMPORT_HARDWARE));
     assert_eq!(r["hardwareWritten"], false, "{r}");
     // And without the option nothing of it is written.
     v["channels"][8]["limiter"]["thresholdDb"] = json!(-3.0);
-    let r = json_of(&core.config_import(v.to_string(), 0));
+    let r = json_of(&core.config_import_tok(v.to_string(), 0));
     assert_eq!(r["hardwareWritten"], false, "{r}");
     assert_eq!(core.get_state().limiter_threshold_db[0], -9.0);
 }
@@ -996,7 +996,7 @@ fn clean1_extreme_channel_ids_are_missing_not_a_panic() {
         let text = format!(r#"{{"schemaVersion":1,"channels":[{{"channelId":{id}}}]}}"#);
         let inspected = json_of(&config_inspect(text.clone()));
         assert!(inspected.is_object(), "{id}: {inspected}");
-        let r = json_of(&demo().config_import(text, 0));
+        let r = json_of(&demo().config_import_tok(text, 0));
         assert_eq!(r["ok"], true, "{id}: {r}");
     }
 }

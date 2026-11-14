@@ -41,7 +41,10 @@ fn wp_p1df_diff_preview_and_import_by_block() {
     assert_eq!(p["ok"], true, "{p}");
     assert_eq!(p["count"], p["blocks"]["volumes"]);
     assert_eq!(p["count"], 2, "master and user volume: {p}");
-    let r = read_json(|b, l| dspi_config_import_selected(h, mac.as_ptr(), options, u32::MAX, b, l));
+    // -- WP P1TZ -- the import takes a token.
+    let r = with_token_for_test(h, "config_import", |t, b, l| {
+        dspi_config_import_confirmed(h, mac.as_ptr(), options, u32::MAX, t, b, l)
+    });
     assert_eq!(r["ok"], true, "{r}");
     assert_eq!(r["blocks"], IMPORT_VOLUMES);
     let left = read_json(|b, l| dspi_config_preview(h, mac.as_ptr(), options, u32::MAX, b, l));

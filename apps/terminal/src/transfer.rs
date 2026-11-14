@@ -1068,6 +1068,17 @@ mod wp_tm10_tests {
         assert_eq!(normalise(&written), normalise(QT));
     }
 
+    /// The core's import, with the token a client mints after its "yes":
+    /// tokens are always required (WP P1TZ).
+    pub(super) fn import_with_token(
+        core: &dspi_core::DspiCore,
+        text: String,
+        options: u32,
+    ) -> String {
+        let token = core.confirm_token(dspi_core::ConfirmOp::ConfigImport);
+        core.config_import_confirmed(text, options, u32::MAX, Some(token))
+    }
+
     /// A document from this client goes into Qt's importer and back out, and
     /// one from Qt's exporter goes into this client's.
     #[test]
@@ -1079,7 +1090,8 @@ mod wp_tm10_tests {
         let text = preset_file::write(&preset_file::capture(&mut s, Some("x".into())).unwrap());
 
         let core = qt_core();
-        let reply: serde_json::Value = serde_json::from_str(&core.config_import(text, 0)).unwrap();
+        let reply: serde_json::Value =
+            serde_json::from_str(&import_with_token(&core, text, 0)).unwrap();
         assert_eq!(reply["ok"], true, "{reply}");
 
         // Qt -> Terminal: the same tuning, and the pair map.
@@ -1098,7 +1110,7 @@ mod wp_tm10_tests {
     fn wp_tm10_qts_importer_takes_the_mac_document() {
         let core = qt_core();
         let reply: serde_json::Value =
-            serde_json::from_str(&core.config_import(MAC.into(), 0)).unwrap();
+            serde_json::from_str(&import_with_token(&core, MAC.into(), 0)).unwrap();
         assert_eq!(reply["ok"], true, "{reply}");
         assert_eq!(reply["links"], 1, "{reply}");
         let back =
@@ -1550,7 +1562,8 @@ mod tests_wp_tm4 {
         }
         let text = preset_file::write(&doc);
         assert!(!text.contains("masterVolumeDb") && !text.contains("loudness"));
-        let reply: serde_json::Value = serde_json::from_str(&core.config_import(text, 1)).unwrap();
+        let reply: serde_json::Value =
+            serde_json::from_str(&super::wp_tm10_tests::import_with_token(&core, text, 1)).unwrap();
         assert_eq!(reply["ok"], true, "{reply}");
     }
 

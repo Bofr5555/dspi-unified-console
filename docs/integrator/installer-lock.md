@@ -182,7 +182,7 @@ In the interface, `:unlock` (also offered when a write meets the lock) asks for 
 PIN without showing it, and the unlock lasts until the connection ends.
 
 **The bootloader and a firmware write are installer actions** (WP TMCOREF, every
-client): `enter_bootloader` / `enter_bootloader_confirmed` and, with the device still
+client): `enter_bootloader_confirmed` and, with the device still
 open, `flash_confirmed` are refused while locked (`installer_lock`, code `locked`, or
 `hub` when the hub holds the lock), before the confirmation token is spent. A
 read-only (older-firmware) connection may still enter the bootloader to be updated.

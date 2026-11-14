@@ -66,13 +66,12 @@ NoticeCenter *notices() { return Registrar::instance<NoticeCenter>(); }
 
 LimitsController::LimitsController(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {
     // Named before any device opens (installer-lock.md: with a device open
-    // whose PIN is set, naming it needs the console unlocked), and the
-    // confirmation tokens on from the start (P1TK)
+    // whose PIN is set, naming it needs the console unlocked). Confirmation
+    // tokens (P1TK) are required by every core from the start (P1TZ)
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/limits");
     const QByteArray d = QDir::toNativeSeparators(dir).toUtf8();
     ctx.core->worker()->post([d](FfiCore *c) {
         once([&](char *b, uint32_t n) { return dspi_limits_set_dir(c, d.constData(), b, n); }, 1024);
-        dspi_require_confirmation(c, true);
     });
     connect(ctx.device, &DeviceModel::snapshotApplied, this, &LimitsController::onSnapshot);
     // -- WP HUBADMIN -- the hub's admin events (a core thread; no I/O to set)

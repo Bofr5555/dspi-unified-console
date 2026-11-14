@@ -465,16 +465,8 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
             })?;
             Ok(json!(core.confirm_token(op)))
         }
-        "requireConfirmation" => {
-            #[derive(Deserialize)]
-            struct P {
-                on: bool,
-            }
-            let p: P = params(req.params)?;
-            core.require_confirmation(p.on);
-            Ok(Value::Null)
-        }
-        "confirmationRequired" => Ok(json!(core.confirmation_required())),
+        // -- WP P1TZ -- tokens are always required: requireConfirmation and
+        // confirmationRequired are gone (an unknown method now).
         #[cfg(any(test, feature = "test-hooks"))]
         "test.sleep" => {
             #[derive(Deserialize)]
@@ -1409,7 +1401,15 @@ mod tests {
         // The K340's own configuration on the demo device
         let core = core_of(h).unwrap();
         let doc = include_str!("../../../tests/fixtures/preset/k340-bug1.dspipreset");
-        let r: Value = serde_json::from_str(&core.config_import(doc.into(), 2)).unwrap();
+        // -- WP P1TZ -- the import with its token.
+        let token = core.confirm_token(dspi_core::ConfirmOp::ConfigImport);
+        let r: Value = serde_json::from_str(&core.config_import_confirmed(
+            doc.into(),
+            2,
+            u32::MAX,
+            Some(token),
+        ))
+        .unwrap();
         assert_eq!(r["ok"], true, "{r}");
         let snap = ok(h, "state", Value::Null);
         let labels: Vec<&str> = snap["outputLabels"]

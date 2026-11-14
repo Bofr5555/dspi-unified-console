@@ -185,7 +185,7 @@ test("P1WB2 Installer: outputs without a limiter, Protect all outputs; power-on 
 test("P1WB2 tokens and groups: tokens on, Save asks and saves; an EQ Clear All is one undo", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await openDemo(page);
-  expect(await call(page, "confirmationRequired")).toBe(true);
+  // -- WP P1TZ -- tokens are required by the core from the start (no switch to ask)
   // A gated call with no token is refused; the page's own prompt carries one.
   const refused = await page.evaluate(() =>
     (globalThis as unknown as Clients).dspiClients[0]!.call("write", { path: "preset.save", indices: [0], value: "trigger" }).then(

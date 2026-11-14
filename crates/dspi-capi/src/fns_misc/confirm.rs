@@ -2,15 +2,16 @@
 //! `dspi_core::confirm`.
 //!
 //! `dspi_confirm_token` mints a single-use token for one operation, valid for
-//! 10 s on the open connection; the `_confirmed` functions take it (null: no
-//! token) and are the plain calls otherwise. With `dspi_require_confirmation`
-//! on, a call without a good token is refused before anything is sent:
-//! `{"ok": false, "code": "confirmation_required", "error", "noticeKey":
-//! "confirmation_required"}`. A token that is given is checked whether or not
-//! tokens are required. Each `_confirmed` call has happened (and spent its
-//! token) whatever the buffer, so do not call again for a short one: its reply
-//! is `{"ok": true}` or a failure of a few hundred bytes, except the import's,
-//! which is `dspi_config_import_selected`'s.
+//! 10 s on the open connection; the `_confirmed` functions take it. Tokens
+//! are always required (WP P1TZ, OD-P1f): a call without a good token, a null
+//! one included, is refused before anything is sent: `{"ok": false, "code":
+//! "confirmation_required", "error", "noticeKey": "confirmation_required"}`.
+//! The forms without a token (`dspi_save_preset`, `dspi_config_import`, ...)
+//! and the switch (`dspi_require_confirmation`, `dspi_confirmation_required`)
+//! are removed; `dspi_write_param` refuses the gated paths. Each `_confirmed`
+//! call has happened (and spent its token) whatever the buffer, so do not call
+//! again for a short one: its reply is `{"ok": true}` or a failure of a few
+//! hundred bytes, except the import's (the document's report).
 //!
 //! Operations, by key: `save_preset`, `copy_preset`, `delete_preset`,
 //! `save_params`, `factory_reset`, `save_output_config`, `enter_bootloader`,
@@ -23,7 +24,7 @@ use dspi_core::{ConfirmOp, DspiError};
 use super::{
     arg, board_needing, c_bytes, c_str, done_reply, drive_at, json_reply, optional_text, text,
 };
-use crate::{FfiCore, with_core};
+use crate::FfiCore;
 
 /// A token argument: null is none; bytes that are not UTF-8 are refused.
 fn token(p: *const c_char) -> dspi_core::Result<Option<String>> {
@@ -46,6 +47,18 @@ fn confirmed(
 /// Mint a token for the operation `op` (a key above) once the user has
 /// confirmed it. JSON `{ok, value: <token>}`, or `invalid` for an operation
 /// the core does not have. Each call mints a new token. No I/O.
+///
+/// Tokens are always required (WP P1TZ, OD-P1f; a behaviour change of this
+/// ABI): every gated operation (`save_preset`, `copy_preset`,
+/// `delete_preset`, `save_params`, `factory_reset`, `save_output_config`,
+/// `enter_bootloader`, `config_import`, `vreg_save`, `firmware_flash`) is
+/// refused with code `confirmation_required` and nothing sent unless its
+/// `_confirmed` function gets a good token from here. The functions without
+/// a token (`dspi_save_preset`, `dspi_copy_preset`, `dspi_delete_preset`,
+/// `dspi_save_params`, `dspi_factory_reset`, `dspi_save_output_config`,
+/// `dspi_enter_bootloader`, `dspi_config_import`,
+/// `dspi_config_import_selected`, `dspi_core_vreg_cal_commit`,
+/// `dspi_core_vreg_manual_set`) are removed; there is no switch.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_confirm_token(
     core: *mut FfiCore,
@@ -63,20 +76,10 @@ pub extern "C" fn dspi_confirm_token(
     })
 }
 
-/// Refuse the gated calls without a good token from now on (`on`), or not.
-/// Off by default.
-#[unsafe(no_mangle)]
-pub extern "C" fn dspi_require_confirmation(core: *mut FfiCore, on: bool) {
-    with_core(core, (), |h| h.core.require_confirmation(on));
-}
-
-/// Whether the gated calls need a token. False for a null handle.
-#[unsafe(no_mangle)]
-pub extern "C" fn dspi_confirmation_required(core: *mut FfiCore) -> bool {
-    with_core(core, false, |h| h.core.confirmation_required())
-}
-
-/// `dspi_save_preset` with a token. JSON reply.
+/// Save the live state to preset `slot`. With a token from `dspi_confirm_token` (required; WP P1TZ
+/// retired the form without one). JSON reply: `{"ok": true}`, or a
+/// failure: `code` `refused` with the device's status in `error`,
+/// `confirmation_required` without a good token (nothing sent), ...
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_save_preset_confirmed(
     core: *mut FfiCore,
@@ -90,7 +93,10 @@ pub extern "C" fn dspi_save_preset_confirmed(
     })
 }
 
-/// `dspi_copy_preset` with a token. JSON reply.
+/// Copy preset `source` to `dest`. With a token from `dspi_confirm_token` (required; WP P1TZ
+/// retired the form without one). JSON reply: `{"ok": true}`, or a
+/// failure: `code` `refused` with the device's status in `error`,
+/// `confirmation_required` without a good token (nothing sent), ...
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_copy_preset_confirmed(
     core: *mut FfiCore,
@@ -105,7 +111,10 @@ pub extern "C" fn dspi_copy_preset_confirmed(
     })
 }
 
-/// `dspi_delete_preset` with a token. JSON reply.
+/// Delete preset `slot`. With a token from `dspi_confirm_token` (required; WP P1TZ
+/// retired the form without one). JSON reply: `{"ok": true}`, or a
+/// failure: `code` `refused` with the device's status in `error`,
+/// `confirmation_required` without a good token (nothing sent), ...
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_delete_preset_confirmed(
     core: *mut FfiCore,
@@ -119,7 +128,10 @@ pub extern "C" fn dspi_delete_preset_confirmed(
     })
 }
 
-/// `dspi_save_params` with a token. JSON reply.
+/// Save the live parameters to flash. With a token from `dspi_confirm_token` (required; WP P1TZ
+/// retired the form without one). JSON reply: `{"ok": true}`, or a
+/// failure: `code` `refused` with the device's status in `error`,
+/// `confirmation_required` without a good token (nothing sent), ...
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_save_params_confirmed(
     core: *mut FfiCore,
@@ -130,7 +142,10 @@ pub extern "C" fn dspi_save_params_confirmed(
     confirmed(core, token, buf, len, |c, t| c.save_params_confirmed(t))
 }
 
-/// `dspi_factory_reset` with a token. JSON reply.
+/// Restore the factory defaults, writing flash, and read the device again. With a token from `dspi_confirm_token` (required; WP P1TZ
+/// retired the form without one). JSON reply: `{"ok": true}`, or a
+/// failure: `code` `refused` with the device's status in `error`,
+/// `confirmation_required` without a good token (nothing sent), ...
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_factory_reset_confirmed(
     core: *mut FfiCore,
@@ -141,7 +156,10 @@ pub extern "C" fn dspi_factory_reset_confirmed(
     confirmed(core, token, buf, len, |c, t| c.factory_reset_confirmed(t))
 }
 
-/// `dspi_save_output_config` with a token. JSON reply.
+/// Store the output configuration in flash. With a token from `dspi_confirm_token` (required; WP P1TZ
+/// retired the form without one). JSON reply: `{"ok": true}`, or a
+/// failure: `code` `refused` with the device's status in `error`,
+/// `confirmation_required` without a good token (nothing sent), ...
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_save_output_config_confirmed(
     core: *mut FfiCore,
@@ -154,7 +172,11 @@ pub extern "C" fn dspi_save_output_config_confirmed(
     })
 }
 
-/// `dspi_enter_bootloader` with a token. JSON reply.
+/// Reboot the device into its USB bootloader; `{"ok": true}` means only
+/// that the request went out (no answer comes back). With a token from `dspi_confirm_token` (required; WP P1TZ
+/// retired the form without one). JSON reply: `{"ok": true}`, or a
+/// failure: `code` `refused` with the device's status in `error`,
+/// `confirmation_required` without a good token (nothing sent), ...
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_enter_bootloader_confirmed(
     core: *mut FfiCore,
@@ -167,7 +189,13 @@ pub extern "C" fn dspi_enter_bootloader_confirmed(
     })
 }
 
-/// `dspi_config_import_selected` with a token: its JSON reply, or a refusal
+/// Apply a configuration document to the device. `options`: bit 0 the
+/// volumes too, bit 1 the hardware configuration too, or with
+/// `DSPI_IMPORT_BY_BLOCK` the `DSPI_IMPORT_*` block bits; `eq_channels` the
+/// wire channels whose EQ is applied (bit k: channel k; all bits: every one).
+/// With a token from `dspi_confirm_token` (required; WP P1TZ retired
+/// `dspi_config_import` and `dspi_config_import_selected`). JSON reply; the
+/// device has changed whatever the buffer. Without a good token: a refusal
 /// with `noticeKey` `confirmation_required` and nothing written.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_config_import_confirmed(
@@ -187,7 +215,10 @@ pub extern "C" fn dspi_config_import_confirmed(
     })
 }
 
-/// `dspi_core_vreg_cal_commit` with a token. JSON reply.
+/// Store the passed trial's voltage; `typed` as for the start. With a token from `dspi_confirm_token` (required; WP P1TZ
+/// retired the form without one). JSON reply: `{"ok": true}`, or a
+/// failure: `code` `refused` with the device's status in `error`,
+/// `confirmation_required` without a good token (nothing sent), ...
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_vreg_cal_commit_confirmed(
     core: *mut FfiCore,
@@ -201,7 +232,11 @@ pub extern "C" fn dspi_core_vreg_cal_commit_confirmed(
     })
 }
 
-/// `dspi_core_vreg_manual_set` with a token. JSON reply.
+/// Store VREG code `value` directly (0: the build's default); `typed` as
+/// for the start. With a token from `dspi_confirm_token` (required; WP P1TZ
+/// retired the form without one). JSON reply: `{"ok": true}`, or a
+/// failure: `code` `refused` with the device's status in `error`,
+/// `confirmation_required` without a good token (nothing sent), ...
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_vreg_manual_set_confirmed(
     core: *mut FfiCore,
@@ -216,9 +251,13 @@ pub extern "C" fn dspi_core_vreg_manual_set_confirmed(
     })
 }
 
-/// `dspi_flash_to_drive_guarded` with a token minted while the board waits
-/// in its bootloader (`firmware_flash`). JSON reply; nothing reaches the
-/// drive on a refusal.
+/// Write a UF2 image to the bootloader drive at `drive_path` (`platform`: 0
+/// RP2040, 1 RP2350) behind the firmware guard (`board_required_mv`, `typed`
+/// as for `dspi_firmware_guard_check`), with a token minted while the board
+/// waits in its bootloader (`firmware_flash`; `core` needs no device open,
+/// a board already in BOOTSEL has none). Blocks for the copy. JSON reply;
+/// nothing reaches the drive on a refusal (`confirmation_required`,
+/// `firmware_guard`, `invalid`). WP P1TZ retired `dspi_flash_to_drive_guarded`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_flash_confirmed(
     core: *mut FfiCore,
@@ -244,7 +283,53 @@ pub extern "C" fn dspi_flash_confirmed(
     })
 }
 
+// -- WP P1TZ -- the free dspi_flash_to_drive, with a token, on a core
+/// Write a UF2 image to the bootloader drive at `drive_path` (`platform`: 0
+/// RP2040, 1 RP2350) without the firmware guard (`dspi_flash_confirmed` is
+/// the guarded write, the one to use), with a token minted for
+/// `firmware_flash` (`core` needs no device open). Blocks for the copy. JSON
+/// `{ok}` or a failure; an invalid image, or a missing or wrong token, never
+/// reaches the drive. WP P1TZ retired `dspi_flash_to_drive`.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_flash_to_drive_confirmed(
+    core: *mut FfiCore,
+    image: *const u8,
+    image_len: u32,
+    drive_path: *const c_char,
+    platform: i8,
+    token: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    confirmed(core, token, buf, len, |c, t| {
+        let drive = drive_at(drive_path, platform)?;
+        c.flash_to_drive_confirmed(c_bytes(image, image_len), drive, t)
+    })
+}
+
 #[cfg(test)]
 #[path = "tests_wp_p1tk.rs"]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p1tk;
+
+// -- WP P1TZ -- tokens are always required: other modules' tests call a gated
+// `_confirmed` function with a token minted for it, as a client does.
+#[cfg(test)]
+pub(crate) fn with_token_for_test(
+    h: *mut FfiCore,
+    op: &str,
+    f: impl FnOnce(*const c_char, *mut c_char, u32) -> u32,
+) -> serde_json::Value {
+    let read = |g: &mut dyn FnMut(*mut c_char, u32) -> u32| {
+        let mut buf = vec![0u8; 1 << 20];
+        let n = g(buf.as_mut_ptr().cast(), buf.len() as u32) as usize;
+        assert!(n > 0 && n <= buf.len(), "{n}");
+        serde_json::from_slice::<serde_json::Value>(&buf[..n.saturating_sub(1)]).unwrap_or_default()
+    };
+    let key = std::ffi::CString::new(op).unwrap_or_default();
+    let minted = read(&mut |b, l| dspi_confirm_token(h, key.as_ptr(), b, l));
+    let token =
+        std::ffi::CString::new(minted["value"].as_str().unwrap_or_default()).unwrap_or_default();
+    let mut f = Some(f);
+    read(&mut |b, l| f.take().map_or(0, |f| f(token.as_ptr(), b, l)))
+}

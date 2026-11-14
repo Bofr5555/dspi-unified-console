@@ -65,3 +65,37 @@ Release notes of earlier versions: `CHANGELOG-0.13.0.md`.
   version 3, with Bofr5555's own contributions under version 3 or later and the section 7
   terms; it names the source archive published with each release instead of a repository
   link, and credits the firmware's third-party parts, Noto Sans Mono and AutoEq.
+
+### Integrators (breaking change of the C ABI and the bindings)
+<!-- -- WP P1TZ -- -->
+- Confirmation tokens are always required (OD-P1f). Every dangerous operation (preset
+  save, copy and delete, parameter save, factory reset, output configuration save,
+  bootloader, configuration import, stored core voltage, firmware install) takes a token
+  minted with `confirm_token` (C: `dspi_confirm_token`) after the person confirmed, through
+  its `_confirmed` call; without a good one it is refused with `confirmation_required` and
+  nothing is sent.
+- Removed: the calls without a token. C: `dspi_save_preset`, `dspi_copy_preset`,
+  `dspi_delete_preset`, `dspi_save_params`, `dspi_factory_reset`, `dspi_save_output_config`,
+  `dspi_enter_bootloader`, `dspi_config_import`, `dspi_config_import_selected`,
+  `dspi_core_vreg_cal_commit`, `dspi_core_vreg_manual_set`. UniFFI (Kotlin, Swift):
+  `save_preset`, `copy_preset`, `delete_preset`, `save_params`, `factory_reset`,
+  `save_output_config`, `enter_bootloader`, `config_import`, `config_import_selected`,
+  `core_vreg_cal_commit`, `core_vreg_manual_set`. Use the `_confirmed` form of each (an
+  import: `config_import_confirmed(text, options, eq_channels, token)`, `eq_channels`
+  all bits for every channel).
+- The firmware writes are core methods that take a `firmware_flash` token; they work with
+  no device open, so a board already in BOOTSEL (no DSPi connection) is still flashed. Mint
+  the token on any core once the bootloader drive is there. Removed: the free
+  `flash_to_drive` and `flash_to_drive_guarded` (C `dspi_flash_to_drive`,
+  `dspi_flash_to_drive_guarded`); use `flash_confirmed` (behind the firmware guard, the one
+  to use; C `dspi_flash_confirmed`) or `flash_to_drive_confirmed` (without the guard; C
+  `dspi_flash_to_drive_confirmed`). Without a token, or with one for another operation,
+  nothing reaches the drive.
+- Removed: the switch. C `dspi_require_confirmation` and `dspi_confirmation_required`,
+  UniFFI `require_confirmation` and `confirmation_required`, the web Worker's
+  `requireConfirmation` and `confirmationRequired`.
+- `write_param` (C `dspi_write_param`) refuses the gated paths `preset.save`,
+  `preset.delete`, `dev.save` and `dev.save.io` with `confirmation_required`;
+  `write_param_confirmed` takes them with a token.
+- Migration: [docs/integrator/README.md](docs/integrator/README.md#confirmation-tokens).
+  Every client in this project already uses the `_confirmed` forms.

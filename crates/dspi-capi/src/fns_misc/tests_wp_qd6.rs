@@ -74,7 +74,11 @@ fn wp_qd6_each_fixture_opens_read_only_and_counts_a_refused_write() {
         assert_eq!(dspi_read_only_refusals(h), before + 1, "V{wire}");
         // What read-only mode keeps working is not refused.
         assert!(dspi_clear_clips(h), "V{wire}");
-        assert!(dspi_enter_bootloader(h), "V{wire}");
+        // -- WP P1TZ -- with its token.
+        let r = with_token_for_test(h, "enter_bootloader", |t, b, l| {
+            dspi_enter_bootloader_confirmed(h, t, b, l)
+        });
+        assert_eq!(r["ok"], true, "V{wire}: {r}");
         assert_eq!(dspi_read_only_refusals(h), before + 1, "V{wire}");
     }
     dspi_core_free(h);

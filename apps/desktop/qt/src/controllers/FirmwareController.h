@@ -24,7 +24,7 @@ class QQmlEngine;
 // writes on its own: start() is the person's one decision, then it restarts a
 // connected device into its bootloader, waits for exactly one board with a
 // drive (BootloaderLocator), writes the image behind the core's firmware guard
-// (dspi_flash_to_drive_guarded), and calls it done only when the device comes
+// (dspi_flash_confirmed, with its token), and calls it done only when the device comes
 // back running the image's version. The guard's typed confirmation (core
 // voltage risk) is asked before the device leaves, while the board can still
 // be read (dspi_firmware_guard_board).

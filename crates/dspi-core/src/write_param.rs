@@ -162,6 +162,12 @@ impl DspiCore {
     /// [`DspiError::ReadOnly`]; then the setter's own errors
     /// ([`DspiError::Refused`] with a status byte, [`DspiError::Locked`],
     /// [`DspiError::Transfer`], ...).
+    ///
+    /// The gated paths (`preset.save`, `preset.delete`, `dev.save`,
+    /// `dev.save.io`) need a confirmation token, which this call does not
+    /// take: they are refused with [`DspiError::ConfirmationRequired`] and
+    /// nothing is sent (WP P1TZ); [`DspiCore::write_param_confirmed`] takes
+    /// them with a token.
     pub fn write_param(
         &self,
         path: String,
@@ -506,16 +512,19 @@ impl DspiCore {
                 Some(ParamValue::Int(s.adat_out_pin.into()))
             }),
             "dev.dacmute.test" => echo(self.test_dac_mute()),
-            "dev.save" => echo(self.save_params()),
-            "dev.save.io" => echo(self.save_output_config()),
+            // -- WP P1TZ -- the gated paths stay in the registry (write_param_confirmed
+            // takes them with a token); here, with none, they are refused with
+            // `confirmation_required` and nothing is sent.
+            "dev.save" => echo(self.save_params_with(None)),
+            "dev.save.io" => echo(self.save_output_config_with(None)),
             "dev.name" => {
                 let name = text(v)?;
                 self.set_device_name(name.clone())
                     .map(|()| ParamValue::Text(self.cached_device_name().unwrap_or(name)))
             }
-            "preset.save" => echo(self.save_preset(i0)),
+            "preset.save" => echo(self.save_preset_with(i0, None)), // -- WP P1TZ --
             "preset.load" => echo(self.load_preset(i0)),
-            "preset.delete" => echo(self.delete_preset(i0)),
+            "preset.delete" => echo(self.delete_preset_with(i0, None)), // -- WP P1TZ --
             "preset.name" => then(self.set_preset_name(i0, text(v)?), &|s| {
                 at(&s.preset_names, i0).map(ParamValue::Text)
             }),

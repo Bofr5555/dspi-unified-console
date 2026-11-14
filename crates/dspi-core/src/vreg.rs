@@ -427,22 +427,19 @@ impl DspiCore {
         self.vreg_call(|_, cal, s, _| cal.machine.keep_trial(s, soak_s).map_err(flow_error))
     }
 
+    // -- WP P1TK --
     /// Save the voltage that passed, with a `SET`: the one explicit step from
     /// a pass to flash. The status is read first, so a hang since the last
     /// poll takes the pass back. Read back by later polls: `Committed` or
     /// `VerifyFailed`. `typed` is the word when the view's `commit_needs_word`
     /// says so, even if it was typed for the trial. A refusal leaves the flow in
     /// `Passed`, with the trial running. Errors as for starting.
-    pub fn core_vreg_cal_commit(&self, typed: Option<String>) -> Result<()> {
-        self.core_vreg_cal_commit_with(typed, None)
-    }
-
-    // -- WP P1TK --
-    /// [`DspiCore::core_vreg_cal_commit`] with a confirmation token
-    /// ([`crate::confirm`], [`crate::ConfirmOp::VregSave`]): refused with
-    /// [`DspiError::ConfirmationRequired`], with no write and noted in the
-    /// view, as [`DspiCore::save_preset_confirmed`] is. The word stays as it
-    /// is, beside the token.
+    ///
+    /// Takes a confirmation token ([`crate::confirm`],
+    /// [`crate::ConfirmOp::VregSave`], WP P1TK; required since WP P1TZ):
+    /// without a good one, [`DspiError::ConfirmationRequired`] with no write,
+    /// noted in the view. The word stays as it is, beside the token. There is
+    /// no form without a token.
     pub fn core_vreg_cal_commit_confirmed(
         &self,
         typed: Option<String>,
@@ -462,16 +459,14 @@ impl DspiCore {
         note(&mut cal, r)
     }
 
+    // -- WP P1TK --
     /// Manual `SET` from the Advanced page. `value` 0 is the reset to the
     /// build default; anything else has the flow's limits and confirmation.
     /// Read back by later polls, as a commit. Errors as for starting.
-    pub fn core_vreg_manual_set(&self, value: u8, typed: Option<String>) -> Result<()> {
-        self.core_vreg_manual_set_with(value, typed, None)
-    }
-
-    // -- WP P1TK --
-    /// [`DspiCore::core_vreg_manual_set`] with a confirmation token, as
-    /// [`DspiCore::core_vreg_cal_commit_confirmed`].
+    ///
+    /// Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+    /// WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+    /// without a good one. There is no form without a token.
     pub fn core_vreg_manual_set_confirmed(
         &self,
         value: u8,

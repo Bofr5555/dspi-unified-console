@@ -437,18 +437,6 @@ interface DspiCoreApi : AutoCloseable {
     fun confirmToken(op: ConfirmOp): String
 
     /**
-     * Whether a gated call without a token is refused from now on
-     * ([`DspiError::ConfirmationRequired`]). Off by default. Kept across
-     * connections; minted tokens stay as they are.
-     */
-    fun requireConfirmation(on: Boolean)
-
-    /**
-     * Whether gated calls need a token ([`DspiCore::require_confirmation`]).
-     */
-    fun confirmationRequired(): Boolean
-
-    /**
      * Identify the firmware and read every parameter into the mirror.
      *
      * Reads `REQ_GET_PLATFORM`, then the bulk image in whatever wire format
@@ -1076,9 +1064,9 @@ interface DspiCoreApi : AutoCloseable {
 
     /**
      * Apply a `.dspipreset` document to the device as one bulk write, under
-     * the device lock. `options`: [`IMPORT_VOLUMES`] also applies the master
-     * and user volume, [`IMPORT_HARDWARE`] the hardware I/O and the
-     * limiters. The crossfeed pair map goes over the extension channel when
+     * the device lock, with a confirmation token. `options`:
+     * [`IMPORT_VOLUMES`] also applies the master and user volume,
+     * [`IMPORT_HARDWARE`] the hardware I/O and the limiters. The crossfeed pair map goes over the extension channel when
      * the device has one.
      *
      * Every setting the document holds no readable value for keeps the
@@ -1101,24 +1089,30 @@ interface DspiCoreApi : AutoCloseable {
      * the device could not be written (disconnected, read-only firmware,
      * another console's lock, a failed transfer); the mirror then stays as
      * it was.
-     */
-    fun configImport(text: String, options: Long): String
-
-    fun configImportSelected(text: String, options: Long, eqChannels: Long): String
-
-    /**
-     * [`DspiCore::config_import_selected`] with a confirmation token
-     * ([`crate::confirm`], [`crate::ConfirmOp::ConfigImport`]). Without a
-     * good one while tokens are required, or with a bad one at any time, the
-     * reply is a refusal (`noticeKey` `confirmation_required`) and nothing is
-     * written. A text that is not a document, or an empty selection, is
-     * refused first and leaves the token unspent.
+     *
+     * The EQ is narrowed to the wire channels in `eq_channels` (bit k:
+     * channel k; `u32::MAX` every one). With [`IMPORT_BY_BLOCK`] in
+     * `options` each `IMPORT_*` block bit says whether its block is applied (EQ, crossover, routing and matrix,
+     * outputs, limiters, effects, volume levels, hardware I/O, names), and
+     * a block left out keeps the device's values; without it the old two
+     * bits keep their meaning. The reply also carries `blocks`: the block
+     * bits applied.
+     *
+     * With [`IMPORT_BY_BLOCK`] and no block bit nothing is chosen: the
+     * reply is a refusal (`noticeKey` `config.nothing_selected`) and nothing
+     * is written, journalled or logged; the undo history stays as it was.
+     *
+     * The token ([`crate::confirm`], [`crate::ConfirmOp::ConfigImport`];
+     * required since WP P1TZ): without a good one the reply is a refusal
+     * (`noticeKey` `confirmation_required`) and nothing is written. A text
+     * that is not a document, or an empty selection, is refused first and
+     * leaves the token unspent. There is no form without a token.
      */
     fun configImportConfirmed(text: String, options: Long, eqChannels: Long, token: String?): String
 
     /**
      * What importing `text` with `options` and `eq_channels` (as
-     * [`DspiCore::config_import_selected`] takes them) would change on the
+     * [`DspiCore::config_import_confirmed`] takes them) would change on the
      * device, without writing anything: the preview shown before an import
      * (PRO1 W5). No I/O.
      *
@@ -1184,17 +1178,64 @@ interface DspiCoreApi : AutoCloseable {
     fun firmwareVersionMatches(version: String): Boolean
 
     /**
-     * [`crate::flash_to_drive_guarded`] with a confirmation token
-     * ([`crate::confirm`], [`crate::ConfirmOp::FirmwareFlash`]): mint it once
-     * the bootloader drive is there (the board has left, so a token minted
-     * while it was still connected no longer holds). Without a good token
-     * while tokens are required, or with a bad one at any time,
-     * [`DspiError::ConfirmationRequired`] and nothing reaches the drive.
+     * Write `image` to the bootloader drive behind the firmware guard
+     * ([`crate::firmware_guard_check`] for `board` and `typed_confirmation`),
+     * with a confirmation token ([`crate::confirm`],
+     * [`crate::ConfirmOp::FirmwareFlash`]): the one to use wherever the core
+     * does the writing. Mint the token once the bootloader drive is there
+     * (the board has left, so a token minted while it was still connected no
+     * longer holds); it works with no device open, and a board already in
+     * BOOTSEL has none. Without a good token, or with one for another
+     * operation, [`DspiError::ConfirmationRequired`] and nothing reaches the
+     * drive. The write itself is as [`DspiCore::flash_to_drive_confirmed`]'s.
      *
-     * Errors: that, then those of `flash_to_drive_guarded`.
+     * Errors: that; [`DspiError::FirmwareGuardBlocked`] with the guard's
+     * message when the image needs confirmation; then the write's.
      */
     @Throws(DspiException::class)
     fun flashConfirmed(image: List<Int>, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String, token: String?)
+
+    /**
+     * Write `image` to `drive` as `firmware.uf2`, synced to the medium, with a
+     * confirmation token, without the firmware guard ([`DspiCore::flash_confirmed`]
+     * is the write behind the guard, the one to use wherever the core does the
+     * writing).
+     *
+     * Before any byte goes out: the image is fully validated, the drive's
+     * `INFO_UF2.TXT` is read again and must still name the board `drive`
+     * describes, the image's family must be one that board boots, and the
+     * drive must have room for the image. The file is then written with one
+     * `write_all` and one `sync_all`.
+     *
+     * The board reboots into the new firmware as it takes the last block, so
+     * the write or the sync can fail because the drive has gone: that (either
+     * failed and the drive's `INFO_UF2.TXT` is no longer readable) counts as
+     * success, logged at warn level. It cannot be told apart from a cable pulled mid-write, so
+     * `Ok` means only "the write ended, or the drive went away during it, assumed
+     * to be the board rebooting". **The caller must
+     * confirm success** by waiting for the DSPi to re-enumerate and report the
+     * image's version (`Uf2Info::firmware_version`); a timeout there is the
+     * failure.
+     *
+     * The `INFO_UF2.TXT` re-check and the write are separate path-based
+     * operations, so a different drive mounted at the same path in between
+     * would get the file (an inherent check-then-use race; the Qt updater has
+     * the same). The window is a few milliseconds and both boot ROMs reject an
+     * image of the other family.
+     *
+     * The token ([`crate::confirm`], [`crate::ConfirmOp::FirmwareFlash`]; WP
+     * P1TZ): mint it once the bootloader drive is there; it works with no
+     * device open, and a board in BOOTSEL has none. Without a good one, or with
+     * a token for another operation, [`DspiError::ConfirmationRequired`] and
+     * nothing reaches the drive. With a device still open, the installer lock
+     * holds this write too (before the token is spent).
+     *
+     * Errors: that; [`DspiError::InvalidArgument`] for an invalid image, a drive that
+     * is not a boot ROM's, or a family mismatch; [`DspiError::Io`] for a drive
+     * that has gone, is short of space, or fails the write.
+     */
+    @Throws(DspiException::class)
+    fun flashToDriveConfirmed(image: List<Int>, drive: BootloaderDrive, token: String?)
 
     /**
      * What the open board needs, read from the device now. Call before
@@ -1209,7 +1250,7 @@ interface DspiCoreApi : AutoCloseable {
     /**
      * Import `text` (a `.dspipreset` document) with a way back: capture a
      * snapshot, apply the blocks `options` and `eq_channels` choose (as
-     * [`DspiCore::config_import_selected`] takes them), then wait
+     * [`DspiCore::config_import_confirmed`] takes them), then wait
      * `timeout_s` seconds (0: 30, at most 590) for
      * [`DspiCore::apply_confirm`]. A timeout, [`DspiCore::apply_revert`] or a
      * failed import puts the snapshot back; over DSPi Link the hub guards it
@@ -1329,7 +1370,7 @@ interface DspiCoreApi : AutoCloseable {
 
     /**
      * Where the physical I/O configuration is stored: 0 = independently of
-     * the presets (saved with [`DspiCore::save_output_config`]), 1 = with
+     * the presets (saved with [`DspiCore::save_output_config_confirmed`]), 1 = with
      * each preset. A device-global flash write the firmware runs later.
      * Sets `DspState.output_config_mode`.
      *
@@ -1350,20 +1391,17 @@ interface DspiCoreApi : AutoCloseable {
      * Errors: [`DspiError::Refused`] with a `PRESET_*` status;
      * [`DspiError::Locked`] (Link); [`DspiError::ReadOnly`],
      * [`DspiError::Disconnected`] or a transfer error.
-     */
-    @Throws(DspiException::class)
-    fun saveOutputConfig()
-
-    /**
-     * [`DspiCore::save_output_config`] with a confirmation token
-     * ([`crate::confirm`]), as [`DspiCore::save_preset_confirmed`].
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
     @Throws(DspiException::class)
     fun saveOutputConfigConfirmed(token: String?)
 
     /**
      * On the demo device only, for clients' tests: how
-     * [`save_output_config`](Self::save_output_config) answers from now on. 0 goes
+     * [`save_output_config`](Self::save_output_config_confirmed) answers from now on. 0 goes
      * through, 0xFF stalls, another byte is that status. `Unsupported`, with no
      * traffic, on anything but a simulated device.
      */
@@ -1714,7 +1752,7 @@ interface DspiCoreApi : AutoCloseable {
      *
      * The connection stays open until the departure is noticed (hotplug or
      * notifications). A firmware update then goes: this call; the
-     * bootloader drive appears (`bootloader_drives`); `flash_to_drive`
+     * bootloader drive appears (`bootloader_drives`); `flash_confirmed`
      * writes the image; the DSPi re-enumerates. Only that last step
      * confirms success: open it again and check the new version with
      * [`DspiCore::firmware_version_matches`]; a timeout there is the
@@ -1732,18 +1770,13 @@ interface DspiCoreApi : AutoCloseable {
      * Errors: [`DspiError::Locked`] / [`DspiError::Denied`] when the Link
      * hub refuses its lock; [`DspiError::Disconnected`] when the connection
      * changed while the hub was asked;
-     * [`DspiError::ConfirmationRequired`] while tokens are required
-     * ([`DspiCore::require_confirmation`]), also with no device open: the
-     * gate runs first, so that case is no longer the plain `Ok` (accepted
-     * in review p1b).
-     */
-    @Throws(DspiException::class)
-    fun enterBootloader()
-
-    /**
-     * [`DspiCore::enter_bootloader`] with a confirmation token
-     * ([`crate::confirm`]), as [`DspiCore::save_preset_confirmed`]. With no
-     * device open a token is still checked, and nothing is sent.
+     * [`DspiError::ConfirmationRequired`] without a good token, also with no
+     * device open: the gate runs first, so that case is no longer the plain
+     * `Ok` (accepted in review p1b).
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ); with no device open a token is still checked, and nothing is
+     * sent. There is no form without a token.
      */
     @Throws(DspiException::class)
     fun enterBootloaderConfirmed(token: String?)
@@ -3175,14 +3208,10 @@ interface DspiCoreApi : AutoCloseable {
      * status; [`DspiError::Transfer`] when the save was not confirmed;
      * [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
      * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`].
-     */
-    @Throws(DspiException::class)
-    fun savePreset(slot: Int)
-
-    /**
-     * [`DspiCore::save_preset`] with a confirmation token ([`crate::confirm`]):
-     * [`DspiError::ConfirmationRequired`], with nothing sent, without a good
-     * one while tokens are required, or with a bad one at any time.
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
     @Throws(DspiException::class)
     fun savePresetConfirmed(slot: Int, token: String?)
@@ -3197,7 +3226,7 @@ interface DspiCoreApi : AutoCloseable {
      * load, and stays as it was otherwise. A load that is never confirmed
      * (an empty slot changes nothing) still re-reads and succeeds.
      *
-     * Errors: as [`DspiCore::save_preset`], and the re-read's.
+     * Errors: as [`DspiCore::save_preset_confirmed`], and the re-read's.
      */
     @Throws(DspiException::class)
     fun loadPreset(slot: Int)
@@ -3213,14 +3242,11 @@ interface DspiCoreApi : AutoCloseable {
      *
      * Errors: the first failing save's (`Refused` with its `PRESET_*`
      * status); [`DspiError::Transfer`] when `dest`'s save was not
-     * confirmed; otherwise as [`DspiCore::save_preset`].
-     */
-    @Throws(DspiException::class)
-    fun copyPreset(source: Int, dest: Int)
-
-    /**
-     * [`DspiCore::copy_preset`] with a confirmation token, as
-     * [`DspiCore::save_preset_confirmed`].
+     * confirmed; otherwise as [`DspiCore::save_preset_confirmed`].
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
     @Throws(DspiException::class)
     fun copyPresetConfirmed(source: Int, dest: Int, token: String?)
@@ -3233,14 +3259,11 @@ interface DspiCoreApi : AutoCloseable {
      * the image is read again and becomes the baseline. A deletion that is
      * never confirmed leaves the slot and its name in the mirror and fails.
      *
-     * Errors: as [`DspiCore::save_preset`].
-     */
-    @Throws(DspiException::class)
-    fun deletePreset(slot: Int)
-
-    /**
-     * [`DspiCore::delete_preset`] with a confirmation token, as
-     * [`DspiCore::save_preset_confirmed`].
+     * Errors: as [`DspiCore::save_preset_confirmed`].
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
     @Throws(DspiException::class)
     fun deletePresetConfirmed(slot: Int, token: String?)
@@ -3295,13 +3318,10 @@ interface DspiCoreApi : AutoCloseable {
      * [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
      * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; a transfer
      * error.
-     */
-    @Throws(DspiException::class)
-    fun saveParams()
-
-    /**
-     * [`DspiCore::save_params`] with a confirmation token, as
-     * [`DspiCore::save_preset_confirmed`].
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
     @Throws(DspiException::class)
     fun saveParamsConfirmed(token: String?)
@@ -3328,13 +3348,10 @@ interface DspiCoreApi : AutoCloseable {
      * [`DspiError::Locked`] / [`DspiError::Denied`] (Link);
      * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`]; a transfer
      * error, of the reset or the re-read.
-     */
-    @Throws(DspiException::class)
-    fun factoryReset()
-
-    /**
-     * [`DspiCore::factory_reset`] with a confirmation token, as
-     * [`DspiCore::save_preset_confirmed`].
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
     @Throws(DspiException::class)
     fun factoryResetConfirmed(token: String?)
@@ -3912,16 +3929,12 @@ interface DspiCoreApi : AutoCloseable {
      * `VerifyFailed`. `typed` is the word when the view's `commit_needs_word`
      * says so, even if it was typed for the trial. A refusal leaves the flow in
      * `Passed`, with the trial running. Errors as for starting.
-     */
-    @Throws(DspiException::class)
-    fun coreVregCalCommit(typed: String?)
-
-    /**
-     * [`DspiCore::core_vreg_cal_commit`] with a confirmation token
-     * ([`crate::confirm`], [`crate::ConfirmOp::VregSave`]): refused with
-     * [`DspiError::ConfirmationRequired`], with no write and noted in the
-     * view, as [`DspiCore::save_preset_confirmed`] is. The word stays as it
-     * is, beside the token.
+     *
+     * Takes a confirmation token ([`crate::confirm`],
+     * [`crate::ConfirmOp::VregSave`], WP P1TK; required since WP P1TZ):
+     * without a good one, [`DspiError::ConfirmationRequired`] with no write,
+     * noted in the view. The word stays as it is, beside the token. There is
+     * no form without a token.
      */
     @Throws(DspiException::class)
     fun coreVregCalCommitConfirmed(typed: String?, token: String?)
@@ -3940,13 +3953,10 @@ interface DspiCoreApi : AutoCloseable {
      * Manual `SET` from the Advanced page. `value` 0 is the reset to the
      * build default; anything else has the flow's limits and confirmation.
      * Read back by later polls, as a commit. Errors as for starting.
-     */
-    @Throws(DspiException::class)
-    fun coreVregManualSet(value: Int, typed: String?)
-
-    /**
-     * [`DspiCore::core_vreg_manual_set`] with a confirmation token, as
-     * [`DspiCore::core_vreg_cal_commit_confirmed`].
+     *
+     * Takes a confirmation token ([`crate::confirm`], WP P1TK; required since
+     * WP P1TZ): [`DspiError::ConfirmationRequired`], with nothing sent,
+     * without a good one. There is no form without a token.
      */
     @Throws(DspiException::class)
     fun coreVregManualSetConfirmed(value: Int, typed: String?, token: String?)
@@ -4183,40 +4193,6 @@ interface DspiCoreApi : AutoCloseable {
     fun bootloaderDrives(): List<BootloaderDrive>
 
     /**
-     * Write `image` to `drive` as `firmware.uf2`, synced to the medium.
-     *
-     * Before any byte goes out: the image is fully validated, the drive's
-     * `INFO_UF2.TXT` is read again and must still name the board `drive`
-     * describes, the image's family must be one that board boots, and the
-     * drive must have room for the image. The file is then written with one
-     * `write_all` and one `sync_all`.
-     *
-     * The board reboots into the new firmware as it takes the last block, so
-     * the write or the sync can fail because the drive has gone: that (either
-     * failed and the drive's `INFO_UF2.TXT` is no longer readable) counts as
-     * success, logged at warn level. It cannot be told apart from a cable pulled mid-write, so
-     * `Ok` means only "the write ended, or the drive went away during it, assumed
-     * to be the board rebooting". **The caller must
-     * confirm success** by waiting for the DSPi to re-enumerate and report the
-     * image's version (`Uf2Info::firmware_version`); a timeout there is the
-     * failure.
-     *
-     * The `INFO_UF2.TXT` re-check and the write are separate path-based
-     * operations, so a different drive mounted at the same path in between
-     * would get the file (an inherent check-then-use race; the Qt updater has
-     * the same). The window is a few milliseconds and both boot ROMs reject an
-     * image of the other family.
-     *
-     * Errors: [`DspiError::InvalidArgument`] for an invalid image, a drive that
-     * is not a boot ROM's, or a family mismatch; [`DspiError::Io`] for a drive
-     * that has gone, is short of space, or fails the write.
-     *
-     * Stateless (a free function in dspi-core); needs no device.
-     */
-    @Throws(DspiException::class)
-    fun flashToDrive(image: List<Int>, drive: BootloaderDrive)
-
-    /**
      * The record for a board already in the bootloader: unknown, so the check
      * asks.
      *
@@ -4233,18 +4209,6 @@ interface DspiCoreApi : AutoCloseable {
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun firmwareGuardCheck(image: List<Int>, board: FirmwareGuardBoard, typedConfirmation: String): FirmwareGuardVerdict
-
-    /**
-     * [`flash_to_drive`] behind the guard: the one to use wherever the core does
-     * the writing. Nothing reaches the drive unless the verdict allows it.
-     *
-     * Errors: [`DspiError::FirmwareGuardBlocked`] with the guard's message when
-     * the image needs confirmation; otherwise those of [`flash_to_drive`].
-     *
-     * Stateless (a free function in dspi-core); needs no device.
-     */
-    @Throws(DspiException::class)
-    fun flashToDriveGuarded(image: List<Int>, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String)
 
     /**
      * Every limits field's range, in the order an editor shows them (each
