@@ -761,7 +761,7 @@ impl DspiCore {
                 }
             }
         }
-        let recall = self.snapshot_recall_document(r.before.clone());
+        let recall = self.recall_before(r.before.clone());
         // The hub's guard ends with its own write of the same image: the end
         // everyone hears is "reverted".
         let hub_end = r.hub.map(|h| self.hub_end(h, "apply.cancel"));
@@ -806,6 +806,15 @@ impl DspiCore {
         }
     }
 
+    /// Every revert's one write path: recall the snapshot taken before.
+    ///
+    /// HOOK (P1LM): reverts are never refused by a limit (PLAN-CLIENTS 5.9).
+    /// When P1LM's `crate::limits::unlimited(|| …)` is on main, this recall
+    /// runs inside it; nothing else in this module needs to change.
+    fn recall_before(&self, text: String) -> Result<crate::SnapshotRecall> {
+        self.snapshot_recall_document(text)
+    }
+
     /// Revert a guard whose USB connection was lost, on the same device now
     /// open again: the user's word.
     fn revert_orphan(&self) -> Result<GuardedApply> {
@@ -819,7 +828,7 @@ impl DspiCore {
                 _ => return Err(invalid(NOTHING_WAITING)),
             }
         };
-        let end = match self.snapshot_recall_document(before) {
+        let end = match self.recall_before(before) {
             Ok(rec) => GuardedApply {
                 phase: GuardPhase::Reverted,
                 reason: "reverted".into(),
